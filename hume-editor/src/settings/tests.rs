@@ -161,6 +161,53 @@ fn setting_value_global_only_key_ignores_overrides_arg() {
     );
 }
 
+#[test]
+fn setting_value_subfield_key_falls_back_to_global_whitespace() {
+    // Before the `subfield` macro section existed, `whitespace-space`/
+    // `whitespace-tab`/`whitespace-newline` had no `setting_value` support
+    // at all — `(get-option "whitespace-space")` returned "unknown setting".
+    let mut global = EditorSettings::default();
+    global.whitespace.space = WhitespaceRender::Trailing;
+    global.whitespace.newline = true;
+    assert_eq!(
+        setting_value("whitespace-space", &global, None),
+        Some(OptionValue::Str("trailing".to_string()))
+    );
+    assert_eq!(
+        setting_value("whitespace-newline", &global, None),
+        Some(OptionValue::Str("all".to_string()))
+    );
+}
+
+#[test]
+fn setting_value_whitespace_newline_round_trips_through_write_global() {
+    // Independent-oracle guard, mirroring `setting_value_statusline_round_
+    // trips_through_write_global`: write the wire string via write_global,
+    // read it back via setting_value — must match, proving
+    // format_show_newline really is parse_show_newline's inverse.
+    for wire in SHOW_NEWLINE_VALUES {
+        let mut s = EditorSettings::default();
+        write_global("whitespace-newline", wire, &mut s).unwrap();
+        assert_eq!(
+            setting_value("whitespace-newline", &s, None),
+            Some(OptionValue::Str(wire.to_string()))
+        );
+    }
+}
+
+#[test]
+fn setting_value_subfield_key_buffer_override_wins_over_global() {
+    let global = EditorSettings::default();
+    let ov = BufferOverrides {
+        whitespace_tab: Some(WhitespaceRender::All),
+        ..Default::default()
+    };
+    assert_eq!(
+        setting_value("whitespace-tab", &global, Some(&ov)),
+        Some(OptionValue::Str("all".to_string()))
+    );
+}
+
 // ── TabStyle parsing ─────────────────────────────────────────────────────
 
 #[test]
@@ -211,19 +258,17 @@ fn auto_pairs_ref_enabled_falls_back_to_global_when_no_override() {
     assert_eq!(pairs, crate::ops::auto_pairs::DEFAULT_PAIRS);
 }
 
-// ── write_setting: Global scope ───────────────────────────────────────────
+// ── write_global ───────────────────────────────────────────────────────────
 
 fn global(key: &str, value: &str) -> Result<EditorSettings, String> {
     let mut s = EditorSettings::default();
-    let mut ov = BufferOverrides::default();
-    write_setting(SettingScope::Global, key, value, &mut s, &mut ov)?;
+    write_global(key, value, &mut s)?;
     Ok(s)
 }
 
 fn buffer(key: &str, value: &str) -> Result<BufferOverrides, String> {
-    let mut s = EditorSettings::default();
     let mut ov = BufferOverrides::default();
-    write_setting(SettingScope::Text, key, value, &mut s, &mut ov)?;
+    write_buffer(key, value, &mut ov)?;
     Ok(ov)
 }
 
@@ -471,9 +516,12 @@ fn show_newline_values_round_trip_through_parse_show_newline() {
     // completion-offered value must actually parse, so `SHOW_NEWLINE_
     // VALUES` can't silently drift from `parse_show_newline`.
     for v in SHOW_NEWLINE_VALUES {
-        assert!(
-            parse_show_newline(v).is_ok(),
-            "'{v}' should parse via parse_show_newline"
+        let parsed = parse_show_newline(v);
+        assert!(parsed.is_ok(), "'{v}' should parse via parse_show_newline");
+        assert_eq!(
+            format_show_newline(parsed.unwrap()),
+            *v,
+            "format_show_newline should be parse_show_newline's inverse for '{v}'"
         );
     }
 }
@@ -495,7 +543,7 @@ fn set_global_empty_value_errors() {
     assert!(global("mouse-enabled", "").is_err());
 }
 
-// ── write_setting: Text scope ───────────────────────────────────────────
+// ── write_buffer ───────────────────────────────────────────────────────────
 
 #[test]
 fn set_buffer_tab_width() {
@@ -593,9 +641,8 @@ fn set_buffer_whitespace_fields_are_independent() {
 
 #[test]
 fn set_buffer_global_only_setting_errors() {
-    let mut s = EditorSettings::default();
     let mut ov = BufferOverrides::default();
-    let err = write_setting(SettingScope::Text, "scrolloff", "3", &mut s, &mut ov).unwrap_err();
+    let err = write_buffer("scrolloff", "3", &mut ov).unwrap_err();
     assert!(
         err.contains("global-only"),
         "expected 'global-only' in error: {err}"
@@ -604,7 +651,6 @@ fn set_buffer_global_only_setting_errors() {
 
 #[test]
 fn set_buffer_global_only_all_keys_error() {
-    let mut s = EditorSettings::default();
     let mut ov = BufferOverrides::default();
     for key in [
         "scrolloff",
@@ -618,7 +664,7 @@ fn set_buffer_global_only_all_keys_error() {
         "popup-border",
         "pane-dividers",
     ] {
-        let err = write_setting(SettingScope::Text, key, "1", &mut s, &mut ov).unwrap_err();
+        let err = write_buffer(key, "1", &mut ov).unwrap_err();
         assert!(
             err.contains("global-only"),
             "key '{key}': expected 'global-only' in error: {err}",
@@ -648,8 +694,8 @@ fn set_buffer_whitespace_invalid_value_errors() {
 #[test]
 fn set_global_tab_width_propagates_to_unoverridden_buffer() {
     let mut global = EditorSettings::default();
-    let mut ov = BufferOverrides::default();
-    write_setting(SettingScope::Global, "tab-width", "2", &mut global, &mut ov).unwrap();
+    let ov = BufferOverrides::default();
+    write_global("tab-width", "2", &mut global).unwrap();
     // Text has no override, so it inherits the new global value.
     assert_eq!(ov.tab_width(&global), 2);
 }
@@ -657,67 +703,30 @@ fn set_global_tab_width_propagates_to_unoverridden_buffer() {
 #[test]
 fn set_global_tab_style_propagates_to_unoverridden_buffer() {
     let mut global = EditorSettings::default();
-    let mut ov = BufferOverrides::default();
-    write_setting(
-        SettingScope::Global,
-        "tab-style",
-        "soft",
-        &mut global,
-        &mut ov,
-    )
-    .unwrap();
+    let ov = BufferOverrides::default();
+    write_global("tab-style", "soft", &mut global).unwrap();
     assert_eq!(ov.tab_style(&global), TabStyle::Soft);
 }
 
 #[test]
 fn apply_statusline_wrong_section_count_errors() {
     let mut s = EditorSettings::default();
-    let mut ov = BufferOverrides::default();
     // Two pipes required; one pipe produces only two parts.
-    assert!(
-        write_setting(
-            SettingScope::Global,
-            "statusline",
-            "Mode|Position",
-            &mut s,
-            &mut ov
-        )
-        .is_err()
-    );
+    assert!(write_global("statusline", "Mode|Position", &mut s).is_err());
     // Three pipes / four sections produce four parts, also rejected.
-    assert!(
-        write_setting(
-            SettingScope::Global,
-            "statusline",
-            "Mode|Position|Cwd|Extra",
-            &mut s,
-            &mut ov
-        )
-        .is_err()
-    );
+    assert!(write_global("statusline", "Mode|Position|Cwd|Extra", &mut s).is_err());
 }
 
 #[test]
 fn apply_statusline_unknown_element_name_errors() {
     let mut s = EditorSettings::default();
-    let mut ov = BufferOverrides::default();
-    assert!(
-        write_setting(
-            SettingScope::Global,
-            "statusline",
-            "NotAnElement||",
-            &mut s,
-            &mut ov
-        )
-        .is_err()
-    );
+    assert!(write_global("statusline", "NotAnElement||", &mut s).is_err());
 }
 
 #[test]
 fn apply_statusline_text_scope_rejected() {
-    let mut s = EditorSettings::default();
     let mut ov = BufferOverrides::default();
-    assert!(write_setting(SettingScope::Text, "statusline", "||", &mut s, &mut ov).is_err());
+    assert!(write_buffer("statusline", "||", &mut ov).is_err());
 }
 
 #[test]
@@ -733,7 +742,13 @@ fn is_bool_setting_matches_every_bool_field() {
     ] {
         assert!(is_bool_setting(key), "'{key}' should be a bool setting");
     }
-    for key in ["tab-style", "wrap-mode", "scrolloff", "unknown-key"] {
+    for key in [
+        "tab-style",
+        "wrap-mode",
+        "scrolloff",
+        "whitespace-newline",
+        "unknown-key",
+    ] {
         assert!(
             !is_bool_setting(key),
             "'{key}' should not be a bool setting"
@@ -741,41 +756,85 @@ fn is_bool_setting_matches_every_bool_field() {
     }
 }
 
-// ── all_setting_keys / write_setting cross-check ─────────────────────────
+// ── all_setting_keys / write_global / write_buffer cross-check ────────────
 //
 // `all_setting_keys()` and `setting_scopes()` are both generated from the
-// same `$gkey`/`$bkey`/`$mkey` token stream, with a non-empty `scope: […]`
-// required by the macro's own grammar (`+` repetition) — so every key in
-// `all_setting_keys()` having a declared scope is a structural guarantee,
-// not something a test can catch drifting. What a test *can* catch: a key
-// declared in `global`/`buffer`/`manual_keys` that has no matching arm in
-// `write_setting` (a typo in the hand-written `manual_keys` arms, since
-// the macro-generated arms can't drift from their own key list) — falling
-// through to `write_setting`'s `_ => "unknown setting"` catch-all. That's
-// what this guardrail checks.
+// same `$gkey`/`$bkey`/`$skey`/`$mkey` token stream, with a non-empty
+// `scope: […]` required by the macro's own grammar (`+` repetition) — so
+// every key in `all_setting_keys()` having a declared scope is a structural
+// guarantee, not something a test can catch drifting. What a test *can*
+// catch: a key declared in `global`/`buffer`/`subfield`/`manual_keys` that
+// has no matching arm in `write_global`/`write_buffer` (a typo in the
+// hand-written `manual_keys` arms, since the macro-generated arms can't
+// drift from their own key list) — falling through to the `_ => "unknown
+// setting"` catch-all. That's what this guardrail checks.
 
 #[test]
 fn all_setting_keys_are_recognized_by_apply_setting() {
     for key in all_setting_keys() {
-        let scope = match setting_scopes(key).first() {
-            Some(&"global") => SettingScope::Global,
-            Some(&"buffer") => SettingScope::Text,
-            other => panic!("key '{key}' has no usable first scope: {other:?}"),
-        };
         let mut s = EditorSettings::default();
         let mut ov = BufferOverrides::default();
         // A value no parser accepts: for most keys this is rejected as an
         // *invalid value*, not as an *unrecognized key* — either outcome
         // is fine here, we only guard against the "unknown setting"
         // catch-all, which would mean the key isn't wired into
-        // `write_setting` at all.
-        if let Err(err) = write_setting(scope, key, "\u{0}garbage\u{0}", &mut s, &mut ov) {
+        // `write_global`/`write_buffer` at all.
+        let result = match setting_scopes(key).first() {
+            Some(&Scope::Global) => write_global(key, "\u{0}garbage\u{0}", &mut s),
+            Some(&Scope::Buffer) => write_buffer(key, "\u{0}garbage\u{0}", &mut ov),
+            other => panic!("key '{key}' has no usable first scope: {other:?}"),
+        };
+        if let Err(err) = result {
             assert!(
                 !err.contains("unknown setting"),
-                "key '{key}' from all_setting_keys() is not recognized by write_setting: {err}"
+                "key '{key}' from all_setting_keys() is not recognized: {err}"
             );
         }
     }
+}
+
+#[test]
+fn has_declared_resync_matches_keys_with_derived_state() {
+    // Independent cross-check of the `resync: true` declarations against
+    // `editor::settings_ops::resync_derived_state`'s actual match arms — see
+    // that function's doc for the debug_assert! this backs.
+    for key in ["history-capacity", "undo-levels", "jump-list-capacity", "theme"] {
+        assert!(has_declared_resync(key), "'{key}' should declare resync: true");
+    }
+    for key in ["scrolloff", "tab-width", "mouse-enabled", "unknown-key"] {
+        assert!(
+            !has_declared_resync(key),
+            "'{key}' should not declare resync: true"
+        );
+    }
+}
+
+// ── Pane-scope chokepoint lint (A8) ────────────────────────────────────────
+
+#[test]
+fn every_pane_scoped_key_has_a_typed_set_arm() {
+    // `typed_file::typed_set`'s `Scope::Pane` match arm only handles
+    // "wrap-mode" by name and `unreachable!()`s on anything else declared
+    // `scope: [.., Scope::Pane]` here. This test is the forcing function:
+    // add a second pane-scoped key without adding its `typed_set` arm, and
+    // this fails immediately instead of panicking a live editor at `:set`
+    // time.
+    //
+    // Fail oracle: add `Scope::Pane` to any other macro entry's `scope:`
+    // list (e.g. `tab-width`) without touching `typed_set` — this test must
+    // fail naming that key.
+    let pane_scoped: Vec<&str> = all_setting_keys()
+        .iter()
+        .copied()
+        .filter(|k| setting_scopes(k).contains(&Scope::Pane))
+        .collect();
+    assert_eq!(
+        pane_scoped,
+        vec!["wrap-mode"],
+        "typed_file::typed_set's Scope::Pane match only has an arm for \
+         \"wrap-mode\" — a new pane-scoped key here needs a matching arm \
+         added there too"
+    );
 }
 
 // ── SignColumnConfig parsing ──────────────────────────────────────────────

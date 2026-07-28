@@ -17,7 +17,6 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use crate::editor::lsp::LspState;
 use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
-use crate::settings::SettingScope;
 use crate::ui::statusline::StatusElement;
 use hume_scripting::host::{
     BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
@@ -228,30 +227,17 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
 
 impl<'a> SettingsHost for EditorHostImpl<'a> {
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
-        crate::editor::settings_ops::apply(
-            self.state,
-            self.view,
-            SettingScope::Global,
-            key,
-            value,
-            None,
-        )
+        crate::editor::settings_ops::apply_global(self.state, self.view, key, value)
     }
 
     fn set_buffer_option(&mut self, key: &str, value: &str, bid: BufferId) -> Result<(), String> {
-        // `settings_ops::apply`'s `get_mut` panics on a stale id — validate
-        // first so a bad `bid` from Steel becomes an `Err`, not a panic.
+        // `settings_ops::apply_buffer`'s `get_mut` panics on a stale id —
+        // validate first so a bad `bid` from Steel becomes an `Err`, not a
+        // panic.
         if self.state.buffers.try_get(bid).is_none() {
             return Err(format!("set-buffer-option!: invalid buffer id {bid:?}"));
         }
-        crate::editor::settings_ops::apply(
-            self.state,
-            self.view,
-            SettingScope::Text,
-            key,
-            value,
-            Some(bid),
-        )
+        crate::editor::settings_ops::apply_buffer(self.state, bid, key, value)
     }
 
     fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
@@ -268,9 +254,9 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
     ) -> Result<(), String> {
         // Validate here (for a section-labeled error message), then hand the
         // re-serialized wire string to the chokepoint so the write itself goes
-        // through `write_setting` like every other setting — see
-        // `settings_ops::apply`'s doc for why a raw field write must not
-        // bypass it.
+        // through `write_global` like every other setting — see
+        // `settings_ops::apply_global`'s doc for why a raw field write must
+        // not bypass it.
         let parse = |list: Vec<String>, section: &str| -> Result<Vec<StatusElement>, String> {
             list.iter()
                 .map(|s| {
@@ -292,14 +278,7 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         };
         let wire = format!("{}|{}|{}", join(&left), join(&center), join(&right));
 
-        crate::editor::settings_ops::apply(
-            self.state,
-            self.view,
-            SettingScope::Global,
-            "statusline",
-            &wire,
-            None,
-        )
+        crate::editor::settings_ops::apply_global(self.state, self.view, "statusline", &wire)
     }
 
     fn steel_command_budget_ms(&self) -> u64 {

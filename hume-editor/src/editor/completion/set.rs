@@ -3,7 +3,7 @@ use hume_engine::pane::{WhitespaceRender, WrapMode};
 
 use super::{Completer, Completion, CompletionCtx, CompletionResult, theme_name_candidates};
 use crate::settings::{
-    SHOW_NEWLINE_VALUES, SignColumnConfig, TabStyle, all_setting_keys, setting_scopes,
+    Scope, SHOW_NEWLINE_VALUES, SignColumnConfig, TabStyle, all_setting_keys, setting_scopes,
 };
 
 // ── SetCompleter ──────────────────────────────────────────────────────────────
@@ -17,15 +17,13 @@ use crate::settings::{
 /// - **value** (`=` present) — offers the valid value set for enum/bool keys,
 ///   registered language names for `language`, installed theme names for
 ///   `theme`. Numeric/free-form keys (e.g. `scrolloff`, `statusline`) get no
-///   candidates — the user types them and `write_setting` validates.
+///   candidates — the user types them and `write_global`/`write_buffer`
+///   validates.
 ///
 /// Value lists are completion *hints* mirrored from each setting's parser;
-/// `write_setting` remains the validation SSOT, so the two can drift only in
-/// what's offered, never in what's accepted.
+/// `write_global`/`write_buffer` remain the validation SSOT, so the two can
+/// drift only in what's offered, never in what's accepted.
 pub(crate) struct SetCompleter;
-
-/// The three `:set` scopes. `pane` exists only because `wrap-mode` declares it.
-const SET_SCOPES: &[&str] = &["global", "buffer", "pane"];
 
 /// Prefix-filter `items`, dropping an exact match (Tab on a fully-typed value
 /// is a no-op), and wrap each into a `Completion`. Caller sorts.
@@ -61,7 +59,7 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
 
 /// Phase 1: completing the scope token (`global`/`buffer`/`pane`).
 fn complete_set_scope(prefix: &str, span_start: usize) -> CompletionResult {
-    let mut candidates = prefix_completions(SET_SCOPES.iter().copied(), prefix);
+    let mut candidates = prefix_completions(Scope::ALL.iter().map(|s| s.as_str()), prefix);
     candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
     CompletionResult {
         span_start,
@@ -71,13 +69,21 @@ fn complete_set_scope(prefix: &str, span_start: usize) -> CompletionResult {
 
 /// Phase 2: completing the key. Surface every declared key whose scopes
 /// include `scope`; `language` is the one key with no macro entry — valid
-/// only for buffer, so it's chained in when the scope matches.
+/// only for buffer, so it's chained in when the scope matches. An unparseable
+/// `scope` token (mid-typing garbage) yields no candidates, same as any real
+/// key that doesn't accept it.
 fn complete_set_key(scope: &str, rest: &str, span_start: usize) -> CompletionResult {
+    let Ok(scope) = scope.parse::<Scope>() else {
+        return CompletionResult {
+            span_start,
+            candidates: Vec::new(),
+        };
+    };
     let scope_keys = all_setting_keys()
         .iter()
         .copied()
         .filter(|k| setting_scopes(k).contains(&scope));
-    let language = (scope == "buffer").then_some("language");
+    let language = (scope == Scope::Buffer).then_some("language");
     let mut candidates = prefix_completions(scope_keys.chain(language), rest);
     candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
     CompletionResult {
@@ -102,14 +108,16 @@ fn complete_set_value(
 ) -> CompletionResult {
     // `language` has no `setting_scopes` entry by design (see settings.rs) —
     // valid only for buffer scope, checked directly instead of through the
-    // generic gate below.
+    // generic gate below. An unparseable `scope` token falls through both
+    // branches to the same empty result as a real key rejecting that scope.
+    let scope = scope.parse::<Scope>().ok();
     let mut candidates = if key == "language" {
-        if scope == "buffer" {
+        if scope == Some(Scope::Buffer) {
             prefix_completions(ctx.languages.iter_names(), value_prefix)
         } else {
             Vec::new()
         }
-    } else if !setting_scopes(key).contains(&scope) {
+    } else if !scope.is_some_and(|s| setting_scopes(key).contains(&s)) {
         Vec::new()
     } else if let Some(values) = static_value_candidates(key) {
         prefix_completions(values.iter().copied(), value_prefix)

@@ -235,6 +235,16 @@ impl FromStr for WhitespaceRender {
     }
 }
 
+impl std::fmt::Display for WhitespaceRender {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            WhitespaceRender::None => "none",
+            WhitespaceRender::All => "all",
+            WhitespaceRender::Trailing => "trailing",
+        })
+    }
+}
+
 /// Configuration for whitespace indicator rendering.
 #[derive(Clone, Debug)]
 pub struct WhitespaceConfig {

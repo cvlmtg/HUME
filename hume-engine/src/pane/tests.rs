@@ -172,6 +172,21 @@ fn whitespace_render_values_round_trip_through_from_str() {
 }
 
 #[test]
+fn whitespace_render_display_round_trips_through_from_str() {
+    // `option_value!`'s `from_str` kind (settings.rs) renders this type via
+    // `to_string()` for `(get-option "whitespace-space"|"whitespace-tab")` —
+    // this must round-trip through the same `FromStr` used to write it.
+    for variant in [
+        WhitespaceRender::None,
+        WhitespaceRender::All,
+        WhitespaceRender::Trailing,
+    ] {
+        let rendered = variant.to_string();
+        assert_eq!(rendered.parse::<WhitespaceRender>().unwrap(), variant);
+    }
+}
+
+#[test]
 fn wrap_mode_wrap_width() {
     assert_eq!(WrapMode::None.wrap_width(), None);
     assert_eq!(WrapMode::Soft { width: 80 }.wrap_width(), Some(80));

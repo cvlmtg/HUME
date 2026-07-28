@@ -28,9 +28,9 @@ fn eval_set_option(ed: &mut Editor, source: &str) -> Result<(), String> {
 
 #[test]
 fn set_option_applies_history_capacity() {
-    // Fail oracle: revert set_global_option to a raw write_setting call
-    // (bypassing settings_ops::apply) and the ring never resizes — the
-    // trim assertion below fails (len stays 3).
+    // Fail oracle: revert set_global_option to a raw write_global call
+    // (bypassing settings_ops::apply_global) and the ring never resizes —
+    // the trim assertion below fails (len stays 3).
     let mut ed = editor_from("-[h]>ello\n");
     for cmd in ["a", "b", "c"] {
         ed.state
@@ -232,7 +232,7 @@ impl Drop for RealThemeRuntimeGuard {
 fn typed_theme_sets_setting_on_success() {
     // Fail oracle: revert typed_theme to its own load-then-store path (still
     // correct on its own) with a typo in the delegated key string (e.g.
-    // "themes" instead of "theme") — write_setting would then return
+    // "themes" instead of "theme") — write_global would then return
     // Err("unknown setting"), and this test's Ok() assertion would fail.
     let _guard = RealThemeRuntimeGuard::new();
     let mut ed = editor_from("-[h]>ello\n");
@@ -300,10 +300,10 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
     );
 }
 
-/// A global-only key rejected by `write_setting`'s `Text` arm is reported as
-/// a hook error and leaves the global setting unchanged.
+/// A global-only key rejected by `write_buffer`'s global-only arm is
+/// reported as a hook error and leaves the global setting unchanged.
 ///
-/// Fail oracle: drop the scope check in `write_setting` (or bypass it) and
+/// Fail oracle: drop the scope check in `write_buffer` (or bypass it) and
 /// `scrolloff` would silently end up in the buffer's override slot instead
 /// of erroring.
 #[test]

@@ -64,11 +64,11 @@ fn new_buffer_inherits_undo_levels() {
 #[test]
 fn steel_set_option_applies_undo_levels() {
     // set-option! routes through EditorHostImpl::set_global_option ->
-    // settings_ops::apply, which resyncs every open buffer's cap inline —
-    // no separate pickup step needed after eval returns.
-    // Fail oracle: reintroduce a raw write_setting call in set_global_option
-    // (bypassing settings_ops::apply) and this cap never reaches the buffer,
-    // so the second undo would still succeed.
+    // settings_ops::apply_global, which resyncs every open buffer's cap
+    // inline — no separate pickup step needed after eval returns.
+    // Fail oracle: reintroduce a raw write_global call in set_global_option
+    // (bypassing settings_ops::apply_global) and this cap never reaches the
+    // buffer, so the second undo would still succeed.
     let mut ed = editor_from("-[h]>ello\n");
 
     let names: Vec<String> = ed

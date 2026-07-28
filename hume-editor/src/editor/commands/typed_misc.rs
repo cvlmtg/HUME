@@ -205,15 +205,8 @@ pub fn typed_theme(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(
         ed.report(Severity::Info, format!("Current theme: {current}"));
         return Ok(());
     };
-    crate::editor::settings_ops::apply(
-        &mut ed.state,
-        &mut ed.view,
-        crate::settings::SettingScope::Global,
-        "theme",
-        name,
-        None,
-    )
-    .map_err(CommandError::new)
+    crate::editor::settings_ops::apply_global(&mut ed.state, &mut ed.view, "theme", name)
+        .map_err(CommandError::new)
 }
 
 /// `:theme-debug` — print the resolved style chain for key UI scopes.

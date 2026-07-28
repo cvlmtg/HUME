@@ -116,11 +116,13 @@ pub fn typed_toggle_soft_wrap(
 }
 
 pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+    use crate::settings::Scope;
+
     const USAGE: &str = "Usage: :set global|buffer|pane key=value";
     let Some(arg) = arg else {
         return Err(CommandError::new(USAGE));
     };
-    let Some((scope, rest)) = arg.split_once(' ') else {
+    let Some((scope_str, rest)) = arg.split_once(' ') else {
         return Err(CommandError::new(USAGE));
     };
     // Tolerate stray extra whitespace before the key, matching the
@@ -137,7 +139,7 @@ pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(),
     // `scope:` entry in `settings::setting_scopes` — checked here first and
     // unconditionally, or it would fall through to "unknown setting" below.
     if key == "language" {
-        return match scope {
+        return match scope_str {
             "buffer" => {
                 let new_lang = if value.is_empty() {
                     None
@@ -166,37 +168,38 @@ pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(),
     if scopes.is_empty() {
         return Err(CommandError::new(format!("unknown setting '{key}'")));
     }
-    if !scopes.contains(&scope) {
+
+    // Parse the scope token *after* confirming the key is real, so an
+    // invalid scope on a real key reports "wrong scope for this key" (naming
+    // the key's actual valid scopes) rather than a generic "unknown scope"
+    // message — the user typed a real key, so that's the more useful error.
+    let parsed_scope = scope_str.parse::<Scope>().ok();
+    if !parsed_scope.is_some_and(|s| scopes.contains(&s)) {
         return Err(CommandError::new(format!(
-            "'{key}' cannot be set with :set {scope} — valid scopes: {}",
-            scopes.join(", ")
+            "'{key}' cannot be set with :set {scope_str} — valid scopes: {}",
+            scopes
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         )));
     }
+    let scope = parsed_scope.expect("checked by is_some_and above");
 
     match scope {
-        "global" => settings_ops::apply(
-            &mut ed.state,
-            &mut ed.view,
-            crate::settings::SettingScope::Global,
-            key,
-            value,
-            Some(bid),
-        )
-        .map_err(CommandError::new),
-        "buffer" => settings_ops::apply(
-            &mut ed.state,
-            &mut ed.view,
-            crate::settings::SettingScope::Text,
-            key,
-            value,
-            Some(bid),
-        )
-        .map_err(CommandError::new),
-        "pane" => {
+        Scope::Global => settings_ops::apply_global(&mut ed.state, &mut ed.view, key, value)
+            .map_err(CommandError::new),
+        Scope::Buffer => {
+            settings_ops::apply_buffer(&mut ed.state, bid, key, value).map_err(CommandError::new)
+        }
+        Scope::Pane => {
             // Only pane-scoped setting today — `scopes.contains(&scope)` above
             // already proved `key == "wrap-mode"` (it's the only line whose
-            // `scope:` list contains "pane"). A future pane-scoped setting
-            // gets its own `if key == "..."` arm here.
+            // `scope:` list contains `Scope::Pane`). A future pane-scoped
+            // setting gets its own `if key == "..."` arm here — and
+            // `every_pane_scoped_key_has_a_typed_set_arm`
+            // (`settings/tests.rs`) fails immediately if one is added
+            // without a matching arm.
             if key == "wrap-mode" {
                 use std::str::FromStr;
                 let mode =
@@ -204,9 +207,8 @@ pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(),
                 ed.apply_focused_wrap_mode(mode);
                 return Ok(());
             }
-            unreachable!("'{key}' has scope 'pane' in setting_scopes() but no pane handler here")
+            unreachable!("'{key}' has scope Pane in setting_scopes() but no pane handler here")
         }
-        _ => unreachable!("setting_scopes() emitted unknown scope literal '{scope}' for '{key}'"),
     }
 }
 
