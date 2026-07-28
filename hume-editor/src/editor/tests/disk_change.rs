@@ -482,15 +482,15 @@ fn save_as_to_unrelated_path_succeeds_despite_own_file_changing() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     rewrite_externally(&tmp, "hello, externally changed!\n");
 
-    let other = tempfile::NamedTempFile::new().unwrap();
-    type_cmd(&mut ed, &format!(":w {}", other.path().display()));
+    let other = temp_file_with("");
+    type_cmd(&mut ed, &format!(":w {}", other.display()));
 
-    assert_eq!(std::fs::read_to_string(other.path()).unwrap(), "hello\n");
+    assert_eq!(std::fs::read_to_string(&other).unwrap(), "hello\n");
     // Stored buffer paths are always `fs::canonicalize` output (see
     // `buffer_store.rs`'s note on this) — canonicalize the tempfile's own
     // path too so the comparison isn't tripped up by a macOS symlinked temp
     // dir (`/var` → `/private/var`).
-    let other_canonical = std::fs::canonicalize(other.path()).unwrap();
+    let other_canonical = std::fs::canonicalize(&other).unwrap();
     assert_eq!(
         ed.doc().path(),
         Some(other_canonical.as_path()),
@@ -566,9 +566,8 @@ fn write_all_skips_stale_buffer_but_writes_the_rest_bang_overrides() {
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
 
-    let tmp_b = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp_b.path(), "world\n").unwrap();
-    type_cmd(&mut ed, &format!(":e {}", tmp_b.path().display()));
+    let tmp_b = temp_file_with("world\n");
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.display()));
     let bid_b = ed.focused_buffer_id();
     ed.handle_key(key('i'));
     ed.handle_key(key('y'));
@@ -585,7 +584,7 @@ fn write_all_skips_stale_buffer_but_writes_the_rest_bang_overrides() {
         "hello, externally changed!\n",
         "A must be skipped, not overwritten"
     );
-    assert_eq!(std::fs::read_to_string(tmp_b.path()).unwrap(), "yworld\n");
+    assert_eq!(std::fs::read_to_string(&tmp_b).unwrap(), "yworld\n");
     assert!(ed.state.buffers.get(bid_a).is_dirty(), "A's write was skipped");
     assert!(!ed.state.buffers.get(bid_b).is_dirty());
     assert_eq!(
