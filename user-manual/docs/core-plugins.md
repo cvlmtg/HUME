@@ -32,7 +32,7 @@ PLUM never installs anything on its own: the commands below do the work when you
 | `:plum-list-grammars` | Show the grammar catalog and what's installed |
 | `:plum-cleanup-grammars` | Remove compiled grammars you no longer need |
 
-Leaving PLUM out removes these commands — and, since PLUM is also what registers installed grammars at startup, syntax highlighting along with them. See [Syntax Highlighting](syntax-highlighting.md) for the grammar workflow.
+Leaving PLUM out only removes these commands. Already-installed plugins and grammars keep working without it — PLUM is only needed to install new ones. See [Syntax Highlighting](syntax-highlighting.md) for the grammar workflow.
 
 ## core:lsp
 

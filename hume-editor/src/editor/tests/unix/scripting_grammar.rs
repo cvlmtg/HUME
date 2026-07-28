@@ -128,8 +128,9 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
 // ---------------------------------------------------------------------------
 
 /// Passive grammar registration: an init that registers installed grammars
-/// directly (like plum/register-installed-grammars!) succeeds without error
-/// and populates the pending language regs.  A `(call! "unknown-cmd")` in
+/// directly (like core's `register-installed-grammars!` in
+/// `runtime/scheme/grammars.scm`) succeeds without error and populates the
+/// pending language regs.  A `(call! "unknown-cmd")` in
 /// the same init logs a warning but does not abort — unknown commands are
 /// soft failures during init (buffer access unavailable; command not native).
 ///
@@ -460,5 +461,111 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
         parsed_gen,
         ed.state.buffers.get(bid).text_gen,
         "parsed_gen must catch up to text_gen after the drain"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Grammar registration survives core:plum's absence
+// ---------------------------------------------------------------------------
+
+/// `runtime/scheme/grammars.scm` registers already-compiled grammars
+/// unconditionally at startup, so highlighting for an installed grammar must
+/// not depend on `core:plum` being declared in `init.scm` at all — PLUM is
+/// only needed to *install* a grammar in the first place.
+///
+/// Stages a real compiled JSON grammar at the exact paths core's
+/// `grammar-output-path`/`grammar-highlights-path` expect, points
+/// `HUME_RUNTIME` at the repo's real `runtime/` dir (so the real
+/// `grammar-sources.scm` catalog and `grammars.scm` registrar run), and runs
+/// `init_scripting` against an `init.scm` that never mentions PLUM.
+///
+/// Flip: if grammar registration were still PLUM-only, `has_grammar` would
+/// stay false and the buffer would render unhighlighted.
+#[test]
+fn grammar_registration_survives_plum_absence() {
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
+    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (parser, hl) = grammar_fixture("json");
+    let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("runtime");
+
+    let config_tmp = tempfile::tempdir().unwrap();
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    // No core:plum anywhere in init.scm.
+    std::fs::write(hume_config.join("init.scm"), "").unwrap();
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let data_dir = data_tmp.path().join("hume");
+    let ext = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+    let grammars_dir = data_dir.join("grammars");
+    let hl_dir = grammars_dir.join("sources").join("json");
+    std::fs::create_dir_all(&hl_dir).unwrap();
+    std::fs::copy(&parser, grammars_dir.join(format!("json.{ext}"))).unwrap();
+    std::fs::copy(&hl, hl_dir.join("highlights.scm")).unwrap();
+
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .buffers
+        .get_mut(bid)
+        .set_path(Some(PathBuf::from("test.json")));
+
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", &repo_runtime_dir);
+        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+    }
+    ed.init_scripting();
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "init_scripting without core:plum must not error: {errors:?}"
+    );
+
+    assert!(
+        ed.state.languages.has_grammar("json"),
+        "grammar must be registered at startup without core:plum declared"
+    );
+    ed.reparse_stale_buffers();
+    assert!(
+        ed.state.buffers.get(bid).syntax.is_some(),
+        "buffer must be highlighted without core:plum declared"
+    );
+
+    // Sanity: PLUM's own commands really are unavailable — this run never
+    // loaded the plugin, so the registration above cannot be credited to it.
+    type_cmd(&mut ed, ":plum-install-grammar");
+    let warns: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Warning)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        warns.contains(&"Unknown command: plum-install-grammar".to_string()),
+        "core:plum commands must be unavailable when it isn't declared; got {warns:?}"
     );
 }

@@ -1,66 +1,10 @@
-;;; core:plum/grammars.scm
+;;; core:plum/grammars.scm — grammar INSTALL pipeline only. The source
+;;; catalog, path helpers, and startup registration of already-compiled
+;;; grammars now live in core (runtime/scheme/grammars.scm), so highlighting
+;;; survives PLUM being absent from init.scm; this file only ever runs when
+;;; the user explicitly asks PLUM to install/manage a grammar.
 
 (require "lib.scm")
-(provide plum/declare-grammar-source! plum/register-installed-grammars!)
-
-;; ── Grammar source registry ───────────────────────────────────────────────────
-
-;;; Hash: name → (url rev symbol subpath)
-(define *plum-grammar-sources* (hash))
-
-;;; Register a grammar source from a 5-tuple (name url rev symbol subpath).
-(define (plum/declare-grammar-source! entry)
-  (let ((name    (list-ref entry 0))
-        (url     (list-ref entry 1))
-        (rev     (list-ref entry 2))
-        (symbol  (list-ref entry 3))
-        (subpath (list-ref entry 4)))
-    (set! *plum-grammar-sources*
-          (hash-insert *plum-grammar-sources* name (list url rev symbol subpath)))))
-
-;;; Accessors.
-(define (plum/grammar-source-url name)
-  (list-ref (hash-ref *plum-grammar-sources* name) 0))
-(define (plum/grammar-source-rev name)
-  (list-ref (hash-ref *plum-grammar-sources* name) 1))
-(define (plum/grammar-source-symbol name)
-  (list-ref (hash-ref *plum-grammar-sources* name) 2))
-(define (plum/grammar-source-subpath name)
-  (list-ref (hash-ref *plum-grammar-sources* name) 3))
-
-;; ── Path helpers ──────────────────────────────────────────────────────────────
-
-(define (plum/grammars-dir)
-  (path-join (data-dir) "grammars"))
-
-(define (plum/grammar-sources-dir)
-  (path-join (plum/grammars-dir) "sources"))
-
-(define (plum/grammar-source-dir name)
-  (path-join (plum/grammar-sources-dir) name))
-
-(define (plum/grammar-highlights-path name)
-  (path-join (plum/grammar-source-dir name) "highlights.scm"))
-
-(define (plum/grammar-injections-path name)
-  (path-join (plum/grammar-source-dir name) "injections.scm"))
-
-;;; Shared-library extension for compiled grammars on this platform. Mirrors
-;;; the (removed) `grammar-output-path` Rust builtin's compile-time `cfg`
-;;; dispatch as closely as a runtime string allows: `(hume-target)` only
-;;; recognizes 4 platform strings and returns `#f` otherwise (unlike the
-;;; Rust `cfg(target_os)` match, which covers every OS at compile time), so
-;;; the `else` branch here — like the Rust `else` branch it replaces —
-;;; defaults to "so" rather than erroring on an unrecognized platform.
-(define (plum/platform-grammar-ext)
-  (let ((target (hume-target)))
-    (cond ((and (string? target) (starts-with? target "darwin")) "dylib")
-          ((and (string? target) (starts-with? target "windows")) "dll")
-          (else "so"))))
-
-;;; Path a compiled grammar for `name` lives (or will live) at.
-(define (grammar-output-path name)
-  (path-join (plum/grammars-dir) (string-append name "." (plum/platform-grammar-ext))))
 
 ;;; Helix commit pin, read once at plugin load.
 (define *plum-helix-pin*
@@ -123,7 +67,7 @@
 ;;; (curl having already succeeded), which in practice never happens; that
 ;;; latent risk predates this migration and is out of scope here.
 (define (plum/fetch-raw-query name filename)
-  (let ((tmp (path-join (plum/grammar-sources-dir) (string-append "_fetch_" name "_" filename))))
+  (let ((tmp (path-join (grammar-sources-dir) (string-append "_fetch_" name "_" filename))))
     (run-inline-output! "curl" (list "-fsSL" "-o" tmp "--" (plum/helix-query-url name filename)))
     (let ((content (with-handler
                      (lambda (err) (plum/delete-file tmp) (raise-error err))
@@ -177,7 +121,7 @@
 (define (plum/install-grammar-deps! name)
   (for-each
     (lambda (dep)
-      (unless (plum/grammar-installed? dep)
+      (unless (grammar-installed? dep)
         (log! 'info (string-append "PLUM: installing dependency " dep " for " name))
         (plum/install-grammar dep)))
     (plum/grammar-deps name)))
@@ -187,7 +131,7 @@
 ;;; which would otherwise abort the whole grammar install for no reason.
 ;;; Returns the path on success, `#f` if there is no injections query to fetch.
 (define (plum/try-fetch-injections! name)
-  (let ((path (plum/grammar-injections-path name)))
+  (let ((path (grammar-injections-path name)))
     (with-handler
       (lambda (err)
         (log! 'trace (string-append "PLUM: no injections.scm for " name " (" (to-string err) ")"))
@@ -197,10 +141,6 @@
         path))))
 
 ;; ── Grammar discovery ─────────────────────────────────────────────────────────
-
-;;; #t if the compiled grammar for `name` exists on disk.
-(define (plum/grammar-installed? name)
-  (path-exists? (grammar-output-path name)))
 
 ;;; Strip the platform extension from `filename`, returning the grammar name,
 ;;; or `#f` if the file has no extension (e.g. "sources" dir, dotfiles like
@@ -217,7 +157,7 @@
 ;;; Names of all compiled grammars on disk (filenames in <data>/grammars/
 ;;; with a real extension, excluding the sources/ subdirectory and dotfiles).
 (define (plum/installed-grammars)
-  (let ((gdir (plum/grammars-dir)))
+  (let ((gdir (grammars-dir)))
     (if (not (path-exists? gdir))
         '()
         (filter (lambda (x) x)
@@ -226,12 +166,12 @@
 
 ;;; Declared grammar names not yet compiled.
 (define (plum/missing-grammars)
-  (filter (lambda (name) (not (plum/grammar-installed? name)))
-          (hash-keys->list *plum-grammar-sources*)))
+  (filter (lambda (name) (not (grammar-installed? name)))
+          (hash-keys->list *grammar-sources*)))
 
 ;;; Compiled grammar files whose names are not in the declared source registry.
 (define (plum/orphan-grammars)
-  (filter (lambda (name) (not (hash-contains? *plum-grammar-sources* name)))
+  (filter (lambda (name) (not (hash-contains? *grammar-sources* name)))
           (plum/installed-grammars)))
 
 ;;; Resolve the target grammar for a `:` grammar command: a string argument
@@ -243,7 +183,7 @@
     (cond ((not (string? name))
            (log! 'warn (string-append cmd ": no grammar name given and current buffer has no language set"))
            #f)
-          ((not (hash-contains? *plum-grammar-sources* name))
+          ((not (hash-contains? *grammar-sources* name))
            (log! 'warn (string-append cmd ": unknown grammar \"" name "\" — see :plum-list-grammars"))
            #f)
           (else name))))
@@ -263,16 +203,16 @@
 ;;;      displayln status line — the C compiler itself is silent)
 ;;;   6. register-grammar! — attach to language in this session
 (define (plum/install-grammar name)
-  (let* ((url     (plum/grammar-source-url name))
-         (rev     (plum/grammar-source-rev name))
-         (symbol  (plum/grammar-source-symbol name))
-         (subpath (plum/grammar-source-subpath name))
-         (src-dir (plum/grammar-source-dir name))
+  (let* ((url     (grammar-source-url name))
+         (rev     (grammar-source-rev name))
+         (symbol  (grammar-source-symbol name))
+         (subpath (grammar-source-subpath name))
+         (src-dir (grammar-source-dir name))
          (build-dir (if (equal? subpath "")
                         src-dir
                         (path-join src-dir subpath)))
          (out-path (grammar-output-path name))
-         (hl-path  (plum/grammar-highlights-path name)))
+         (hl-path  (grammar-highlights-path name)))
     (plum/install-grammar-deps! name)
     ;; git clone refuses a non-empty dest — clear any stale source tree (e.g.
     ;; left behind by a prior install that failed after cloning) first.
@@ -290,20 +230,6 @@
     (displayln (string-append "Compiling grammar for " name "..."))
     (compile-grammar! build-dir out-path)
     (register-grammar! name out-path symbol hl-path (plum/try-fetch-injections! name))))
-
-;; ── Startup grammar registration ─────────────────────────────────────────────
-
-;;; Passive: registers already-compiled grammars only, no subprocess. See README.md.
-(define (plum/register-installed-grammars!)
-  (for-each
-    (lambda (name)
-      (let ((out  (grammar-output-path name))
-            (hl   (plum/grammar-highlights-path name))
-            (inj  (plum/grammar-injections-path name))
-            (sym  (plum/grammar-source-symbol name)))
-        (when (and (plum/grammar-installed? name) (path-exists? hl))
-          (register-grammar! name out sym hl (if (path-exists? inj) inj #f)))))
-    (hash-keys->list *plum-grammar-sources*)))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
@@ -324,7 +250,7 @@
   (lambda (grammars)
     (unless (and (list? grammars) (not (null? grammars)))
       (error "plum-ensure-grammars: requires a non-empty list of grammar names, e.g. (call! \"plum-ensure-grammars\" '(\"rust\" \"json\"))"))
-    (let ((missing (filter (lambda (name) (not (plum/grammar-installed? name))) grammars)))
+    (let ((missing (filter (lambda (name) (not (grammar-installed? name))) grammars)))
       (if (null? missing)
           (log! 'info "PLUM: all requested grammars are installed")
           (plum/batch-run "installed grammar" missing plum/install-grammar))))
@@ -333,7 +259,7 @@
 (define-command! "plum-list-grammars"
   "Log declared, installed, orphan, and missing grammar lists."
   (lambda ()
-    (let ((declared  (hash-keys->list *plum-grammar-sources*))
+    (let ((declared  (hash-keys->list *grammar-sources*))
           (installed (plum/installed-grammars))
           (orphans   (plum/orphan-grammars))
           (missing   (plum/missing-grammars)))

@@ -68,12 +68,11 @@ GRAMMAR_SOURCES_HEADER = """\
 ;;;
 ;;; PURE DATA. One literal sexpr — a list of (name git-url rev symbol subpath)
 ;;; 5-tuples. All fields are fully canonicalised; no defaults are applied at
-;;; read time. Read via the R7RS idiom from any plugin:
+;;; read time. Read once at startup by `grammars.scm` via the R7RS idiom:
 ;;;
-;;;   (define *grammar-sources*
-;;;     (call-with-input-file
-;;;       (path-join (runtime-dir) "scheme" "grammar-sources.scm")
-;;;       read))
+;;;   (call-with-input-file
+;;;     (path-join (runtime-dir) "scheme" "grammar-sources.scm")
+;;;     read)
 ;;;
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 ;;; Full sync: run scripts/sync-grammars.py after updating helix-pin.scm.

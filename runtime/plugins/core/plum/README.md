@@ -11,23 +11,15 @@ from GitHub, and installs the tree-sitter grammars that power syntax highlightin
 
 PLUM is not privileged — it's a plugin like any other, so it must be brought in explicitly
 too. Disabling it only removes the management commands below; anything already installed
-keeps working without it.
+keeps working without it, *including* syntax highlighting — registering already-compiled
+grammars at startup is core's job (see [Syntax Highlighting](../../../../user-manual/docs/syntax-highlighting.md)),
+not PLUM's. PLUM is only needed to *install* a plugin or grammar in the first place.
 
 With no explicit `#:commands`/`#:events`/`#:languages`, this reads `core:plum`'s own
-`manifest.scm`, which declares `#:languages '("*")` (any buffer with a detected language)
-plus every `:plum-*` command — so it activates on the first buffer with a language, or the
-first `:plum-*` command you type, whichever comes first. The language trigger runs before a
-buffer's tree-sitter highlighting is wired up, so an already-compiled grammar still
-registers (`plum/register-installed-grammars!`) in time for that buffer, matching eager
-`load-plugin` behavior.
+`manifest.scm`, which declares every `:plum-*` command — so it activates the first time you
+type one.
 
 `(load-plugin "core:plum")` also works, loading it eagerly instead.
-
-**Caveat**: passing a custom `#:commands`/`#:events` override to `declare-plugin` without also
-naming `#:languages` bypasses the manifest entirely (all-or-nothing) — PLUM then won't register
-already-installed grammars until the first `:plum-*` command runs, so buffers opened before
-that render with no syntax highlighting until you do. Keep `#:languages '("*")` (or a narrower
-language list) in any custom override, or load `core:plum` eagerly instead.
 
 ## Commands
 
@@ -59,10 +51,11 @@ LSP language servers are `core:lsp`'s own responsibility (`:lsp-install`, `:lsp-
 
 PLUM bundles two independent subsystems:
 
-- `plugin.scm` — entry point; `require`s the two subsystems below and runs startup
-  grammar registration.
+- `plugin.scm` — entry point; `require`s the two subsystems below.
 - `plugins.scm` — third-party **plugin** install/update/cleanup (`:plum-install` etc).
-- `grammars.scm` — tree-sitter **grammar** install pipeline (`:plum-install-grammar` etc).
+- `grammars.scm` — tree-sitter **grammar** install pipeline (`:plum-install-grammar` etc);
+  builds on the source catalog and path helpers core registers at startup (see "Grammar
+  sources and the Helix pin" below).
 - `lib.scm` — shared utilities: `plum/valid-dir-entry?` and `plum/batch-run` (batch
   installs), used by both `plugins.scm` and `grammars.scm`.
 
@@ -76,12 +69,15 @@ disk state.
 
 ### Grammar sources and the Helix pin
 
-Grammar source metadata (repo URL, pinned revision, tree-sitter symbol, subpath) is declared
-once via `plum/declare-grammar-source!`, loaded from `runtime/scheme/grammar-sources.scm` at
-plugin load time. Syntax-highlighting queries (`highlights.scm`, `injections.scm`) aren't
-authored in HUME — they're fetched from the Helix project's `runtime/queries/` at a pinned
-commit (`runtime/scheme/helix-pin.scm`, read once at load), so HUME rides Helix's
-query-file curation without vendoring it.
+Grammar source metadata (repo URL, pinned revision, tree-sitter symbol, subpath) and the
+path helpers built on it (`grammar-output-path`, `grammar-highlights-path`, …) are core, not
+PLUM — `runtime/scheme/grammars.scm` declares them from `runtime/scheme/grammar-sources.scm`
+unconditionally at startup, before PLUM (or any other plugin) ever loads, and registers any
+already-compiled grammar it finds. PLUM's `grammars.scm` calls those same bindings for its
+install pipeline; it doesn't declare its own copy. Syntax-highlighting queries
+(`highlights.scm`, `injections.scm`) aren't authored in HUME — they're fetched from the Helix
+project's `runtime/queries/` at a pinned commit (`runtime/scheme/helix-pin.scm`, read once at
+PLUM's own load), so HUME rides Helix's query-file curation without vendoring it.
 
 `plum/try-fetch-injections!` tolerates a missing `injections.scm` (most grammars don't have
 one) instead of letting `curl-fetch`'s 404 abort the whole install — an unusual case where
@@ -105,10 +101,11 @@ dependencies (`*plum-grammar-deps*`) before the grammar itself, so `:plum-instal
 a Markdown buffer transparently pulls in `markdown.inline` too — the user never needs to
 discover the dependency exists.
 
-### Startup registration is passive
+### Startup registration is core's job, and passive
 
-`plum/register-installed-grammars!` runs once at plugin load and registers any
-already-compiled grammar found on disk — no subprocess, no network. Grammars declared but not
-yet compiled stay missing until the user explicitly runs `:plum-install-grammar` or
-`:plum-ensure-grammars`; PLUM never auto-installs on startup, since a first run with many
-declared languages could otherwise mean a long, surprising stall before the editor is usable.
+`register-installed-grammars!` (`runtime/scheme/grammars.scm`) runs once at editor startup —
+whether or not PLUM is declared in `init.scm` — and registers any already-compiled grammar
+found on disk: no subprocess, no network. Grammars declared but not yet compiled stay missing
+until the user explicitly runs `:plum-install-grammar` or `:plum-ensure-grammars`; nothing
+auto-installs on startup, since a first run with many declared languages could otherwise mean
+a long, surprising stall before the editor is usable.

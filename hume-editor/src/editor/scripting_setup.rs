@@ -341,6 +341,37 @@ impl Editor {
 
     // ── Scripting ─────────────────────────────────────────────────────────────
 
+    /// Evaluate a bundled runtime Scheme file (`rel_path`, relative to the
+    /// runtime dir) as an init-mode eval — shared by `init_scripting`'s
+    /// prelude/languages/grammars loads. A missing runtime dir or a missing
+    /// file at that path is a silent no-op (all three are optional layers);
+    /// a file that exists but fails to parse/eval is reported as an error.
+    fn eval_runtime_scheme(
+        &mut self,
+        host: &mut hume_scripting::ScriptingHost,
+        rel_path: &str,
+        builtin_names: rustc_hash::FxHashSet<String>,
+    ) {
+        let Some(path) = host.runtime_dir().map(|rt| rt.join(rel_path)) else {
+            return;
+        };
+        let init_budget = self.state.settings.steel_init_budget_ms as u64;
+        let result = {
+            let mut ih = make_init_host(&mut self.state, &mut self.view);
+            host.eval_init(&path, init_budget, &mut ih, builtin_names)
+        };
+        match result {
+            Ok(effects) => self.apply_script_effects(effects),
+            Err(e) => {
+                self.apply_script_effects(e.effects);
+                self.report(
+                    Severity::Error,
+                    format!("runtime/{rel_path}: {}", e.message),
+                );
+            }
+        }
+    }
+
     /// Initialise the Steel scripting host and evaluate `init.scm`.
     ///
     /// Must be called once, after `Editor::open` returns and before
@@ -402,43 +433,15 @@ impl Editor {
         // Each eval gets a fresh EditorHostImpl over `state` + `view`; the
         // `require_cmd_ctx!` guard keeps command-mode builtins unreachable
         // during init evals.
-        if let Some(prelude_path) = host.runtime_dir().map(|rt| rt.join("scheme/prelude.scm")) {
-            let init_budget = self.state.settings.steel_init_budget_ms as u64;
-            let result = {
-                let mut ih = make_init_host(&mut self.state, &mut self.view);
-                host.eval_init(&prelude_path, init_budget, &mut ih, builtin_names.clone())
-            };
-            match result {
-                Ok(effects) => self.apply_script_effects(effects),
-                Err(e) => {
-                    self.apply_script_effects(e.effects);
-                    self.report(
-                        Severity::Error,
-                        format!("runtime/scheme/prelude.scm: {}", e.message),
-                    );
-                }
-            }
-        }
+        self.eval_runtime_scheme(&mut host, "scheme/prelude.scm", builtin_names.clone());
         // Load languages.scm between prelude and init.scm so (define-language! …)
-        // calls are available when init.scm and plugins run.
-        let langs_path = host.runtime_dir().map(|rt| rt.join("scheme/languages.scm"));
-        if let Some(langs_path) = langs_path {
-            let init_budget = self.state.settings.steel_init_budget_ms as u64;
-            let result = {
-                let mut ih = make_init_host(&mut self.state, &mut self.view);
-                host.eval_init(&langs_path, init_budget, &mut ih, builtin_names.clone())
-            };
-            match result {
-                Ok(effects) => self.apply_script_effects(effects),
-                Err(e) => {
-                    self.apply_script_effects(e.effects);
-                    self.report(
-                        Severity::Error,
-                        format!("runtime/scheme/languages.scm: {}", e.message),
-                    );
-                }
-            }
-        }
+        // calls are available when init.scm and plugins run — then grammars.scm,
+        // so every grammar it registers has an identity to attach to (its own
+        // `attach_grammar`/`register_identity_no_rebuild` symmetry means either
+        // order would work, but this keeps the two files' intent — identity,
+        // then capability — in the same order they're read).
+        self.eval_runtime_scheme(&mut host, "scheme/languages.scm", builtin_names.clone());
+        self.eval_runtime_scheme(&mut host, "scheme/grammars.scm", builtin_names.clone());
         {
             let init_budget = self.state.settings.steel_init_budget_ms as u64;
             let result = {

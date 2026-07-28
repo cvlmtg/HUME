@@ -58,11 +58,15 @@ fn load_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
     }
 }
 
-/// `plum/register-installed-grammars!` runs its real body — including the
-/// injections-path lookup — for every entry in the real `grammar-sources.scm`
-/// catalog. None of them are compiled in the empty data dir, so every one is
-/// skipped by the `when` guard and no network call happens; this is a pure
-/// Scheme-syntax/logic smoke test for the PLUM changes, not an installation test.
+/// Core's `register-installed-grammars!` (`runtime/scheme/grammars.scm`)
+/// already ran its real body — including the injections-path lookup — for
+/// every entry in the real `grammar-sources.scm` catalog before PLUM ever
+/// loaded (`init_scripting` evaluates it unconditionally). None of them are
+/// compiled in the empty data dir, so every one was skipped by the `when`
+/// guard and no network call happened. This test then also loads
+/// `core:plum` itself, checking its `grammars.scm` (the install pipeline)
+/// compiles cleanly against those same core bindings — a pure
+/// Scheme-syntax/logic smoke test, not an installation test.
 #[test]
 fn plum_plugin_loads_with_real_grammar_catalog() {
     let _lock = super::HUME_RUNTIME_MUTEX

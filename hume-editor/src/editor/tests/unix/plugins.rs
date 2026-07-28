@@ -2150,12 +2150,13 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
          including \"plum-list\""
     );
     assert!(
-        !ed.scripting
+        ed.scripting
             .as_ref()
             .unwrap()
             .activation_language_plugins("some-made-up-language")
             .is_empty(),
-        "manifest.scm's #:languages '(\"*\") must match any language, including an unregistered one"
+        "manifest.scm declares no #:languages — startup grammar registration is \
+         core's job, so core:plum has no reason to activate on a language set"
     );
 }
 

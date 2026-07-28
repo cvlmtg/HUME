@@ -6,12 +6,13 @@
 ;;; already attached to it (see init.scm.example for override examples).
 ;;;
 ;;; Identity only: extensions, globs, and shebangs.  No tree-sitter grammars
-;;; are shipped here — to enable highlighting, call (register-grammar! …) with
-;;; paths to a compiled grammar library and highlights query (typically provided
-;;; by a plugin).
+;;; are shipped here — to enable highlighting, install a compiled grammar and
+;;; its highlights query, typically via `core:plum`'s `:plum-install-grammar`.
 ;;;
-;;; Grammar source metadata lives in grammar-sources.scm (loaded by a grammar-
-;;; manager plugin, typically core:plum — not by hume at startup).
+;;; Grammar source metadata lives in grammar-sources.scm, and startup
+;;; registration of already-compiled grammars in grammars.scm — both loaded
+;;; unconditionally right after this file (see scripting_setup.rs), so
+;;; highlighting works whether or not a grammar-manager plugin is declared.
 ;;;
 ;;; Source: helix-editor/helix languages.toml @ f6f3eb1fe4a7
 ;;; Full sync: run scripts/sync-grammars.py after updating helix-pin.scm.
