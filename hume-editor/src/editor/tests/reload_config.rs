@@ -23,7 +23,7 @@ use hume_scripting::ScriptingHost;
 
 use crate::editor::keymap::{BindMode, Keymap, WalkResult};
 use crate::editor::lsp::LspState;
-use crate::editor::scripting_setup::ReloadSnapshot;
+use crate::editor::reload::ReloadSnapshot;
 use crate::ui::statusline::StatusElement;
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;

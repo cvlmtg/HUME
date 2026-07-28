@@ -25,6 +25,7 @@ mod async_source;
 pub(crate) mod error;
 pub(crate) mod host_impl;
 mod lifecycle;
+mod reload;
 mod scripting_setup;
 
 pub(crate) mod buffer;
