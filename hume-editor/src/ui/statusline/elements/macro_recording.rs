@@ -18,10 +18,7 @@ impl StatuslineElement for MacroRecordingElement {
 
     fn format(reg: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
         match reg {
-            Some(reg) => (
-                Cow::Owned(format!("[recording @{reg}]")),
-                colors.status_insert,
-            ),
+            Some(reg) => (Cow::Owned(format!("[recording @{reg}]")), colors.statusline),
             None => (Cow::Borrowed(""), colors.statusline),
         }
     }

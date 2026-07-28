@@ -22,6 +22,7 @@ fn editor_settings_default_matches_old_constants() {
     assert!(s.select_changed_text);
     assert!(s.word_selects_whitespace);
     assert!(s.pane_dividers);
+    assert!(s.statusline_mode_colors);
     assert_eq!(s.signcolumn, SignColumnConfig::default());
 }
 
@@ -208,6 +209,21 @@ fn setting_value_subfield_key_buffer_override_wins_over_global() {
     );
 }
 
+#[test]
+fn setting_value_statusline_round_trips_through_write_global() {
+    // Independent-oracle guard: write a wire string via write_global, then
+    // read it back via setting_value — must match, proving format_statusline
+    // really is parse_statusline's inverse. Before this, (get-option
+    // "statusline") returned None ("unknown setting") even after a
+    // successful :set global statusline=... write.
+    let mut s = EditorSettings::default();
+    write_global("statusline", "Mode,FileName||Position", &mut s).unwrap();
+    assert_eq!(
+        setting_value("statusline", &s, None),
+        Some(OptionValue::Str("Mode,FileName||Position".to_string()))
+    );
+}
+
 // ── TabStyle parsing ─────────────────────────────────────────────────────
 
 #[test]
@@ -280,6 +296,15 @@ fn set_global_scrolloff() {
 #[test]
 fn set_global_pane_dividers() {
     assert!(!global("pane-dividers", "false").unwrap().pane_dividers);
+}
+
+#[test]
+fn set_global_statusline_mode_colors() {
+    assert!(
+        !global("statusline.mode-colors", "false")
+            .unwrap()
+            .statusline_mode_colors
+    );
 }
 
 #[test]

@@ -178,6 +178,29 @@ fn get_option_reads_back_lsp_inlay_hints_as_bool() {
 }
 
 #[test]
+fn get_option_reads_back_statusline_mode_colors_as_bool() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(
+        r#"(define-command! "check" "" (lambda ()
+             (unless (equal? (get-option "statusline.mode-colors") #t)
+               (error "unexpected statusline.mode-colors"))))"#,
+        &mut mock,
+    )
+    .unwrap();
+    h.call_steel_cmd(
+        "check",
+        None,
+        vec![],
+        PaneId::default(),
+        BufferId::default(),
+        &mut mock,
+    )
+    .expect("get-option must read back the default statusline.mode-colors (true) as a bool");
+}
+
+#[test]
 fn get_option_unknown_key_errors() {
     let mut h = host();
     let mut mock = MockHost::new();

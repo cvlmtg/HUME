@@ -38,10 +38,13 @@ const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::MiniBuf];
 pub enum StatusElement {
     /// The mode indicator: `"NOR"`, `"INS"`, `"EXT"`, `"CMD"`, `"SRC"`, or `"SEL"`.
     ///
-    /// Rendered with the per-mode color. Contains no padding — the renderer's
-    /// edge padding and inter-element spacing handle surrounding whitespace.
+    /// Rendered in the row style, like every other element — the whole row
+    /// tints with the mode, not just this label. Contains no padding — the
+    /// renderer's edge padding and inter-element spacing handle surrounding
+    /// whitespace.
     Mode,
-    /// A thin vertical bar `│` in the base statusline style.
+    /// A thin vertical bar `│`, styled from `ui.statusline.separator` (falls
+    /// back to the row style when a theme omits that scope).
     ///
     /// Place this explicitly between elements that need a visual divider.
     Separator,
@@ -85,9 +88,7 @@ pub enum StatusElement {
     SearchMatches,
     /// The mini-buffer input field: prompt character followed by typed text.
     ///
-    /// Rendered only when `editor.state.minibuf` is `Some`. Produces the prompt
-    /// character followed by the input text. The block cursor within the
-    /// input is applied as a post-render patch in [`render_statusline`].
+    /// Rendered only when `editor.state.minibuf` is `Some`; empty otherwise.
     MiniBuf,
     /// Macro recording indicator: `"[recording @q]"` while a macro is being
     /// recorded, empty otherwise.
@@ -212,7 +213,7 @@ impl Default for StatusLineConfig {
 /// individual elements to be edge-aware.
 fn pad_left(
     mut spans: Vec<(Cow<'static, str>, Style)>,
-    colors: &crate::ui::theme::EditorColors,
+    colors: &EditorColors,
 ) -> Vec<(Cow<'static, str>, Style)> {
     if !spans.is_empty() {
         spans.insert(0, (Cow::Borrowed(" "), colors.statusline));
@@ -226,7 +227,7 @@ fn pad_left(
 /// offset used by the placement arithmetic.
 fn pad_right(
     mut spans: Vec<(Cow<'static, str>, Style)>,
-    colors: &crate::ui::theme::EditorColors,
+    colors: &EditorColors,
 ) -> Vec<(Cow<'static, str>, Style)> {
     if !spans.is_empty() {
         spans.push((Cow::Borrowed(" "), colors.statusline));
@@ -276,7 +277,12 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
         buf: &mut ratatui::buffer::Buffer,
     ) {
         let editor = self.editor;
-        let colors = EditorColors::from_theme(theme);
+        let mode = editor
+            .state
+            .settings
+            .statusline_mode_colors
+            .then(|| editor.state.mode());
+        let colors = EditorColors::from_theme(theme, mode);
         let y = area.y;
 
         if editor.state.minibuf.is_none() {
@@ -384,9 +390,6 @@ fn render_statusline(
     if center_fits {
         draw_section(screen_buf, &center_spans, center_x, y);
     }
-
-    // Minibuf cursor is rendered by the terminal cursor (set_cursor_position +
-    // set_color_for_mode in cursor.rs). No cell-level override needed.
 }
 
 pub(crate) fn render_element(

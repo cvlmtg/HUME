@@ -18,14 +18,14 @@ impl StatuslineElement for ModeElement {
     }
 
     fn format(mode: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
-        let (label, style) = match mode {
-            EditorMode::Normal => ("NOR", colors.status_normal),
-            EditorMode::Extend => ("EXT", colors.status_extend),
-            EditorMode::Insert => ("INS", colors.status_insert),
-            EditorMode::Search => ("SRC", colors.status_search),
-            EditorMode::Command => ("CMD", colors.status_command),
-            EditorMode::Select => ("SEL", colors.status_select),
+        let label = match mode {
+            EditorMode::Normal => "NOR",
+            EditorMode::Extend => "EXT",
+            EditorMode::Insert => "INS",
+            EditorMode::Search => "SRC",
+            EditorMode::Command => "CMD",
+            EditorMode::Select => "SEL",
         };
-        (Cow::Borrowed(label), style)
+        (Cow::Borrowed(label), colors.statusline)
     }
 }

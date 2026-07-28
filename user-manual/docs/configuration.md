@@ -81,6 +81,7 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
 | `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |
 | `statusline` | `left` \| `center` \| `right` | see [Statusline](#statusline) | Three `\|`-separated sections, each a comma-separated list of element names (empty sections allowed), e.g. `Mode,FileName\|\|Position` |
+| `statusline.mode-colors` | bool | `#t` | Tint the whole statusline with the current mode's color; off shows the theme's base `ui.statusline` color in every mode |
 | `lsp.inlay-hints` | bool | `#f` | Show inlay hints from the language server |
 | `lsp.diagnostics-severity-floor` | `error` \| `warning` \| `info` \| `hint` | `hint` | Lowest diagnostic severity to display |
 | `lsp.request-timeout-ms` | integer ≥ 1 | `10000` | How long to wait for a language-server reply |
@@ -138,16 +139,22 @@ Custom themes are TOML files placed in the `themes/` subdirectory of your HUME c
 
 HUME reads these Helix statusline scopes:
 
-- `ui.statusline` — base statusline style
-- `ui.statusline.normal` — mode pill in Normal mode
-- `ui.statusline.insert` — mode pill in Insert mode
-- `ui.statusline.separator` — separator glyph between statusline elements
+- `ui.statusline` — fallback style for the statusline row, and the style
+  shown in every mode when `statusline.mode-colors` is off
+- `ui.statusline.normal` — row style in Normal mode
+- `ui.statusline.insert` — row style in Insert mode
+- `ui.statusline.separator` — separator glyph between statusline elements;
+  when a theme doesn't define it, the separator matches whatever the row
+  itself is currently tinted, rather than the untinted base `ui.statusline`
 
-HUME adds three more mode pills for modes Helix doesn't have:
+The whole statusline row is tinted with the current mode's color (see
+`statusline.mode-colors` above); a theme that omits a mode scope falls back to
+`ui.statusline`. HUME adds four more mode scopes for modes Helix doesn't have:
 
 - `ui.statusline.extend`
 - `ui.statusline.search`
 - `ui.statusline.command`
+- `ui.statusline.select`
 
 Popups and menus (LSP hover, completion, the fuzzy picker) read their own scopes:
 

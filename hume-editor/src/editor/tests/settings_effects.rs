@@ -167,6 +167,92 @@ fn set_global_mouse_enabled_resyncs_applied_mode_next_frame() {
     );
 }
 
+// ── statusline.mode-colors gates whole-row tinting ─────────────────────────
+
+#[test]
+fn set_option_statusline_mode_colors_gates_whole_row_tint() {
+    // Fail oracle: drop the `statusline_mode_colors` check from
+    // `HumeStatusline::render` (always resolve the real mode) and the
+    // "colors off" assertion below fails — the row would still tint cyan in
+    // Insert mode.
+    //
+    // The fixture theme gives `ui.statusline` and `ui.statusline.normal`
+    // *different* backgrounds — every bundled theme makes them equal, which
+    // would let the off-state assertion pass whether the opt-out reads the
+    // base scope (correct) or silently substitutes `EditorMode::Normal`
+    // (the bug: an imported theme with a distinct Normal-mode accent, e.g.
+    // Helix's old pill idiom, would still tint the row).
+    use hume_engine::types::{ResolvedStyle, Scope};
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let rect = ratatui::layout::Rect::new(0, 0, 40, 8);
+    let row = rect.bottom() - 1;
+
+    let mut styles = std::collections::HashMap::new();
+    styles.insert(
+        "ui.statusline",
+        ResolvedStyle {
+            bg: Some(ratatui::style::Color::DarkGray),
+            ..Default::default()
+        },
+    );
+    styles.insert(
+        "ui.statusline.normal",
+        ResolvedStyle {
+            bg: Some(ratatui::style::Color::Red),
+            ..Default::default()
+        },
+    );
+    styles.insert(
+        "ui.statusline.insert",
+        ResolvedStyle {
+            bg: Some(ratatui::style::Color::Cyan),
+            ..Default::default()
+        },
+    );
+    ed.view.theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+
+    let base_bg = ed.view.theme.resolve_by_name(Scope("ui.statusline")).bg;
+    let normal_bg = ed
+        .view
+        .theme
+        .resolve_by_name(Scope("ui.statusline.normal"))
+        .bg;
+    let insert_bg = ed
+        .view
+        .theme
+        .resolve_by_name(Scope("ui.statusline.insert"))
+        .bg;
+    assert_ne!(
+        base_bg, normal_bg,
+        "sanity: fixture theme must give the base row and Normal distinct colors"
+    );
+    assert_ne!(
+        normal_bg, insert_bg,
+        "fixture theme must give Normal and Insert distinct row colors"
+    );
+
+    ed.feed_key(key('i'));
+    assert_eq!(ed.state.mode(), Mode::Insert);
+
+    // Default: statusline.mode-colors is on — the row tints for Insert.
+    let buf = ed.render_to_buf(rect);
+    assert_eq!(buf[(0, row)].style().bg, insert_bg);
+
+    eval_set_option(&mut ed, r#"(set-option! "statusline.mode-colors" #f)"#)
+        .expect("eval must succeed");
+
+    // Off: the row reads the theme's base style, not the Normal-mode scope,
+    // even while still in Insert mode.
+    let buf = ed.render_to_buf(rect);
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Insert,
+        "toggling the option must not change the mode"
+    );
+    assert_eq!(buf[(0, row)].style().bg, base_bg);
+}
+
 #[test]
 fn set_option_applies_undo_levels() {
     // Fail oracle: same as above, for the undo-levels arm — without the

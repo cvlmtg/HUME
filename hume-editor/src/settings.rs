@@ -651,6 +651,10 @@ define_settings! {
         "pane-dividers" => pane_dividers: bool = true,
             scope: [Scope::Global],
             parser: bool;
+        // Read fresh by the statusline provider each frame — no resync needed.
+        "statusline.mode-colors" => statusline_mode_colors: bool = true,
+            scope: [Scope::Global],
+            parser: bool;
         // Loads and applies the named theme immediately, rolling back to the
         // previous value on failure — see
         // `editor::settings_ops::resync_derived_state`.

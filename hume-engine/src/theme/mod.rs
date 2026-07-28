@@ -272,7 +272,10 @@ impl Theme {
 
     /// Return `true` if this scope name has an explicit entry in the raw map.
     ///
-    /// Used by `:theme-debug` to build the dot-notation fallback chain display.
+    /// Used by `:theme-debug` to build the dot-notation fallback chain display,
+    /// and by `EditorColors::from_theme` to decide whether the statusline
+    /// separator should fall back to the row's own resolved style instead of
+    /// walking the dot-notation chain to the untinted base scope.
     pub fn raw_contains(&self, key: &str) -> bool {
         self.raw.contains_key(key)
     }

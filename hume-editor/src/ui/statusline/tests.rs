@@ -109,6 +109,100 @@ fn macro_recording_element_named_register() {
     insta::assert_snapshot!(text, @"[recording @3]");
 }
 
+// ── Whole-row mode coloring ───────────────────────────────────────────────
+//
+// `EditorColors::default()` uses a reversed style for every mode, which can't
+// distinguish one mode's style from another — these tests need a theme with a
+// distinct color per mode scope instead.
+
+fn make_mode_theme() -> hume_engine::theme::Theme {
+    use hume_engine::types::ResolvedStyle;
+    use ratatui::style::Color;
+    use std::collections::HashMap;
+
+    let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
+    styles.insert(
+        "ui.statusline",
+        ResolvedStyle {
+            fg: Some(Color::White),
+            bg: Some(Color::Black),
+            ..Default::default()
+        },
+    );
+    for (scope, color) in [
+        ("ui.statusline.normal", Color::Red),
+        ("ui.statusline.insert", Color::Cyan),
+        ("ui.statusline.extend", Color::Yellow),
+        ("ui.statusline.search", Color::Magenta),
+        ("ui.statusline.command", Color::Green),
+        ("ui.statusline.select", Color::Blue),
+    ] {
+        styles.insert(
+            scope,
+            ResolvedStyle {
+                fg: Some(color),
+                bg: Some(Color::Black),
+                ..Default::default()
+            },
+        );
+    }
+    hume_engine::theme::Theme::new(styles, ResolvedStyle::default())
+}
+
+#[test]
+fn mode_element_uses_row_style_not_a_per_mode_pill() {
+    // Reintroducing a per-mode pill style (instead of colors.statusline) would
+    // make this fail: the label's style must equal the resolved row style for
+    // that mode, whatever mode is active. The label text itself is appearance,
+    // pinned via inline snapshot rather than a hardcoded assertion.
+    //
+    // Independent oracle: the expected fg comes straight from make_mode_theme's
+    // per-scope color table, not from colors.statusline — asserting against
+    // colors.statusline itself would pass even if from_theme resolved the wrong
+    // scope entirely.
+    use hume_engine::types::EditorMode;
+    use ratatui::style::Color;
+
+    let theme = make_mode_theme();
+    for (mode, expected_fg) in [
+        (EditorMode::Normal, Color::Red),
+        (EditorMode::Insert, Color::Cyan),
+        (EditorMode::Extend, Color::Yellow),
+        (EditorMode::Search, Color::Magenta),
+        (EditorMode::Command, Color::Green),
+        (EditorMode::Select, Color::Blue),
+    ] {
+        let colors = crate::ui::theme::EditorColors::from_theme(&theme, Some(mode));
+        let (text, style) = ModeElement::format(mode, &colors);
+        assert_eq!(style.fg, Some(expected_fg));
+        assert_eq!(style.bg, Some(Color::Black));
+        match mode {
+            EditorMode::Normal => insta::assert_snapshot!(text, @"NOR"),
+            EditorMode::Insert => insta::assert_snapshot!(text, @"INS"),
+            EditorMode::Extend => insta::assert_snapshot!(text, @"EXT"),
+            EditorMode::Search => insta::assert_snapshot!(text, @"SRC"),
+            EditorMode::Command => insta::assert_snapshot!(text, @"CMD"),
+            EditorMode::Select => insta::assert_snapshot!(text, @"SEL"),
+        }
+    }
+}
+
+#[test]
+fn macro_recording_uses_row_style() {
+    // The recording label must match whatever the row is currently tinted —
+    // not a fixed accent of its own. Independent oracle, same rationale as
+    // mode_element_uses_row_style_not_a_per_mode_pill above.
+    use hume_engine::types::EditorMode;
+    use ratatui::style::Color;
+
+    let theme = make_mode_theme();
+    let colors = crate::ui::theme::EditorColors::from_theme(&theme, Some(EditorMode::Search));
+    let (text, style) = MacroRecordingElement::format(Some('q'), &colors);
+    assert_eq!(style.fg, Some(Color::Magenta));
+    assert_eq!(style.bg, Some(Color::Black));
+    insta::assert_snapshot!(text, @"[recording @q]");
+}
+
 // ── LineEnding element ────────────────────────────────────────────────────
 
 fn test_editor_with_text(s: &str) -> crate::editor::Editor {
