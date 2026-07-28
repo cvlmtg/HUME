@@ -185,6 +185,7 @@ impl Editor {
         let settings = EditorSettings::default();
         let jump_list_capacity = settings.jump_list_capacity;
         let history_capacity = settings.history_capacity;
+        let initial_mouse_mode = (settings.mouse_enabled, settings.mouse_select);
         let pane = Pane::new(buffer_id, settings.wrap_mode);
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
@@ -300,6 +301,7 @@ impl Editor {
             lsp: super::lsp::LspState::new_inline(),
             tui_active: false,
             terminal: None,
+            applied_mouse_mode: initial_mouse_mode,
         }
     }
 

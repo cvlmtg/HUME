@@ -539,6 +539,21 @@ pub fn leave_inline_output(
     Ok(())
 }
 
+/// Reapply the mouse-tracking mode to match `mouse_enabled`/`mouse_select`.
+///
+/// Always disables tracking first (a harmless no-op for modes not currently
+/// set — see [`write_mouse_disable`]) then re-enables per the new flags, so
+/// it's safe to call whenever the desired mode changes at runtime, not just
+/// once at startup (unlike [`init`], which only applies the startup mode).
+pub fn set_mouse_mode(term: &SharedTerm, mouse_enabled: bool, mouse_select: bool) -> io::Result<()> {
+    let mut term = term.clone();
+    write_mouse_disable(&mut term)?;
+    if mouse_enabled {
+        write_mouse_enable(&mut term, mouse_select)?;
+    }
+    Ok(())
+}
+
 /// Print the `--- running NAME ---` bold banner and flush stdout.
 ///
 /// Call just after [`enter_inline_output`] so the user sees a clear separator

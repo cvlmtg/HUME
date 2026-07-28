@@ -5,6 +5,7 @@ use crate::editor::message_log::Severity;
 use crate::editor::minibuf::history::HistoryKind;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
+use hume_engine::pipeline::RenderContext;
 
 /// Drive `(set-option! ...)` through the real Steel path
 /// (`EditorHostImpl::set_global_option`) — mirrors the harness in
@@ -50,6 +51,57 @@ fn set_option_applies_history_capacity() {
         ed.state.history.get(HistoryKind::Command).entries().len(),
         2,
         "ring must be trimmed to the new capacity with no manual pickup"
+    );
+}
+
+// ── :set global mouse-enabled / mouse-select resync per frame ─────────────
+
+/// `mouse-enabled`/`mouse-select` are terminal modes applied once at startup
+/// (`hume_platform::terminal::init`, called from `hume-editor/src/lib.rs`
+/// before entering the event loop) — there is no other write side. Before
+/// `resync_mouse_mode` existed, `:set global mouse-enabled=false` changed
+/// `EditorSettings` but the terminal kept reporting mouse events until
+/// restart. `prepare_frame` now calls `resync_mouse_mode` every frame, which
+/// re-applies the terminal mode whenever it drifts from `state.settings`.
+///
+/// No `SharedTerm` exists in test `Editor`s (`Editor::for_testing`/`open`
+/// both seed `terminal: None`), so this can't assert on emitted escape
+/// bytes — that path is covered by `hume-platform`'s
+/// `mouse_enable_without_select_emits_1000_and_1006_only` and friends
+/// (`hume-platform/src/terminal/tests.rs`). This asserts the terminal-mode
+/// tracking state itself (`Editor::applied_mouse_mode`) resyncs to the new
+/// setting on the next `prepare_frame`, which is the part `resync_mouse_mode`
+/// can do headless — the `if let Some(term)` write is a one-line guard
+/// around the same comparison, exercised whenever a real terminal is
+/// attached.
+///
+/// Fail oracle: remove the `self.resync_mouse_mode()` call from
+/// `prepare_frame` — `applied_mouse_mode` stays `(true, false)` (the
+/// constructor default) even after this `:set`, and the assertion fails.
+#[test]
+fn set_global_mouse_enabled_resyncs_applied_mode_next_frame() {
+    let mut ed = editor_from("-[h]>ello\n");
+    assert_eq!(
+        ed.applied_mouse_mode,
+        (true, false),
+        "default EditorSettings has mouse_enabled=true, mouse_select=false"
+    );
+
+    crate::editor::commands::typed_set(&mut ed, Some("global mouse-enabled=false"), false)
+        .expect("set mouse-enabled");
+    assert_eq!(
+        ed.applied_mouse_mode,
+        (true, false),
+        "the setting write itself must not resync — only prepare_frame does"
+    );
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(40, 8, &mut ctx);
+
+    assert_eq!(
+        ed.applied_mouse_mode,
+        (false, false),
+        "prepare_frame must resync the terminal mouse mode from the new setting"
     );
 }
 

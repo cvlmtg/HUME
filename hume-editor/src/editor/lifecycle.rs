@@ -168,6 +168,7 @@ impl Editor {
 
         let jump_list_capacity = settings.jump_list_capacity;
         let history_capacity = settings.history_capacity;
+        let initial_mouse_mode = (settings.mouse_enabled, settings.mouse_select);
 
         // Seed per-pane state from the buffer's history-root selections.
         let mut per_pane_bufs: SecondaryMap<BufferId, PaneBufferState> = SecondaryMap::new();
@@ -284,6 +285,7 @@ impl Editor {
             lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
             tui_active: false,
             terminal: None,
+            applied_mouse_mode: initial_mouse_mode,
         })
     }
 
@@ -660,6 +662,30 @@ impl Editor {
         });
     }
 
+    /// Re-apply the terminal's mouse-tracking mode if `mouse-enabled`/
+    /// `mouse-select` changed since the last time this ran. A no-op when
+    /// nothing changed (the common case, checked every frame) and when no
+    /// terminal is attached (tests, headless `run_keys`).
+    ///
+    /// The comparison-and-update itself doesn't require a live terminal, so
+    /// it stays outside the `if let Some(term)` below — this keeps
+    /// `applied_mouse_mode` in sync with `state.settings` even headless,
+    /// which is what makes the change-detection unit-testable without a
+    /// real `SharedTerm`.
+    pub(super) fn resync_mouse_mode(&mut self) {
+        let desired = (
+            self.state.settings.mouse_enabled,
+            self.state.settings.mouse_select,
+        );
+        if desired == self.applied_mouse_mode {
+            return;
+        }
+        if let Some(term) = &self.terminal {
+            let _ = hume_platform::terminal::set_mouse_mode(term, desired.0, desired.1);
+        }
+        self.applied_mouse_mode = desired;
+    }
+
     /// Prepare the engine pane for rendering by syncing all editor-authoritative
     /// state in one place, once per frame.
     ///
@@ -687,6 +713,15 @@ impl Editor {
         // `transient`/`state`, which `drop_pane_state` clears directly), so
         // this per-frame sweep is where they get reclaimed instead.
         self.prune_closed_pane_caches();
+
+        // `mouse-enabled`/`mouse-select` are terminal modes, not per-frame
+        // render state — `init` (hume-editor/src/lib.rs) only applies them
+        // once at startup. This is the per-frame chokepoint that makes a
+        // later `:set global mouse-enabled=…` take effect immediately
+        // instead of silently doing nothing until restart (see L2 in
+        // docs/LESSONS.md: resync self-triggers at the one place the value
+        // is consumed, not at every write site).
+        self.resync_mouse_mode();
 
         // Re-bake the theme if any scope was interned since the last bake —
         // the single per-frame chokepoint that makes forgetting to bake after

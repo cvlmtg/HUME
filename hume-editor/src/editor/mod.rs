@@ -519,6 +519,13 @@ pub(crate) struct Editor {
     /// headless `run_keys` — those dispatch directly and never enter `run`,
     /// so there is no terminal to attach.
     terminal: Option<hume_platform::terminal::SharedTerm>,
+    /// `(mouse_enabled, mouse_select)` as last applied to `terminal`'s mouse
+    /// tracking mode. `prepare_frame` compares this against the live
+    /// `state.settings` values every frame and re-applies the terminal mode
+    /// when they differ, so `:set global mouse-enabled=…`/`mouse-select=…`
+    /// take effect immediately instead of only at the next restart — see
+    /// `hume_platform::terminal::set_mouse_mode`.
+    applied_mouse_mode: (bool, bool),
 }
 
 impl Editor {
