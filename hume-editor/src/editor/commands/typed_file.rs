@@ -6,6 +6,12 @@ use super::super::Severity;
 use crate::editor::error::CommandError;
 use crate::editor::settings_ops;
 
+/// Shared by every stale-write refusal — `write_buffer_by_id`'s no-arg `:w`
+/// path and `write_file`'s save-as-in-disguise path (see `targets_own_file`
+/// below) both report exactly this, so `typed_write_all` can tell a stale
+/// refusal apart from any other write failure by comparing against it.
+const STALE_WRITE_MSG: &str = "file has changed on disk (add ! to override)";
+
 /// `Some(msg)` when a non-forced write to `meta`'s file must be refused.
 /// Stats the file fresh right now rather than trusting the buffer's cached
 /// disk state, which only reflects whatever some earlier trigger (terminal
@@ -19,9 +25,7 @@ use crate::editor::settings_ops;
 /// stat error as nothing-to-act-on-now.
 fn stale_write_block(meta: &FileMeta) -> Option<&'static str> {
     match hume_platform::io::read_signature(meta.resolved_path()) {
-        Ok(sig) if sig != meta.signature() => {
-            Some("file has changed on disk (add ! to override)")
-        }
+        Ok(sig) if sig != meta.signature() => Some(STALE_WRITE_MSG),
         _ => None,
     }
 }
@@ -353,9 +357,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                     .as_ref()
                     .is_some_and(|own| own.signature() != meta.signature());
                 if targets_own_file && !force && own_baseline_differs {
-                    return Err(CommandError::new(
-                        "file has changed on disk (add ! to override)",
-                    ));
+                    return Err(CommandError::new(STALE_WRITE_MSG));
                 }
                 hume_platform::io::write_file_atomic(&content, &mut meta, force)
                     .map(|retried| (meta, retried))
@@ -414,20 +416,21 @@ pub fn typed_write_all(
     // A buffer whose file changed on disk is skipped, not aborted — one
     // stale buffer among several dirty ones shouldn't block saving the rest.
     // `force` (`:wa!`) writes through every one of them instead, same as a
-    // per-buffer `:w!`.
+    // per-buffer `:w!`. `write_buffer_by_id` is the single chokepoint for the
+    // stale check (no separate pre-check here, which would stat every buffer
+    // twice) — a stale refusal is recognized by its message and downgraded to
+    // a skip; any other write error still aborts the batch.
     let mut count = 0;
     let mut skipped: Vec<String> = Vec::new();
     for bid in dirty_savable {
-        let buf = ed.state.buffers.get(bid);
-        // `dirty_savable`'s filter above guarantees `file_meta.is_some()`.
-        let meta = buf.file_meta.as_ref().expect("filtered above");
-        if !force && stale_write_block(meta).is_some() {
-            skipped.push(buf.display_name());
-            continue;
-        }
         let (content, line_count) = serialize_buffer(ed, bid);
-        write_buffer_by_id(ed, bid, content, line_count, force)?;
-        count += 1;
+        match write_buffer_by_id(ed, bid, content, line_count, force) {
+            Ok(()) => count += 1,
+            Err(e) if e.message() == STALE_WRITE_MSG => {
+                skipped.push(ed.state.buffers.get(bid).display_name());
+            }
+            Err(e) => return Err(e),
+        }
     }
     if count > 0 {
         ed.report(Severity::Info, format!("Written {count} file(s)"));

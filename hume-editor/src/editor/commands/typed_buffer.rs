@@ -50,17 +50,9 @@ pub fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(),
         if ed.doc().is_dirty() && !force {
             return Err(CommandError::new("unsaved changes (use :e! to force)"));
         }
-        let doc = crate::editor::buffer::Buffer::from_file(&path)
-            .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))?;
         let id = ed.focused_buffer_id();
-        ed.reload_buffer_in_place(id, doc);
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_string();
-        ed.report(Severity::Info, format!("Reloaded {name}"));
-        Ok(())
+        ed.reload_from_path(id, &path)
+            .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))
     }
 }
 
