@@ -189,6 +189,15 @@ pub fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
 /// without this refresh the editor's own save would look like an external
 /// change on the very next disk-state check. Takes `meta` by `&mut` so this
 /// refresh can't be forgotten at a call site.
+///
+/// A failure to re-stat does *not* fail the write: the content is already
+/// durably on disk by this point, so surfacing an error here would report a
+/// successful save as failed — the caller would never mark the buffer
+/// saved, `:q` would keep refusing to quit, and no `didSave` would fire,
+/// all while the new content sits on disk. Leaving `meta.signature` stale
+/// instead biases the next disk-state check toward a spurious "changed"
+/// report, never toward silently missing a real one — the same bias
+/// `read_file`'s doc already accepts for a race on the read side.
 pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io::Result<bool> {
     let target = &meta.resolved_path;
     let dir = target.parent().unwrap_or(Path::new("."));
@@ -248,8 +257,10 @@ pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io:
         Err(persist_err) => Err(persist_err.error),
     };
 
-    if result.is_ok() {
-        meta.signature = read_signature(&meta.resolved_path)?;
+    if result.is_ok()
+        && let Ok(sig) = read_signature(&meta.resolved_path)
+    {
+        meta.signature = sig;
     }
     result
 }
