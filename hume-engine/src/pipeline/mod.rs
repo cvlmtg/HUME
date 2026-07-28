@@ -459,18 +459,6 @@ pub struct PaneRenderSettings {
     pub show_indent_guides: bool,
 }
 
-impl Default for PaneRenderSettings {
-    fn default() -> Self {
-        Self {
-            mode: EditorMode::Normal,
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-            show_indent_guides: true,
-        }
-    }
-}
-
 /// Transient bundle of borrows needed to render one pane. Avoids passing a
 /// dozen separate parameters through the call stack.
 pub(crate) struct PaneRenderCtx<'a> {

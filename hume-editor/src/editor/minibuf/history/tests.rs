@@ -253,24 +253,94 @@ fn snapshot_and_restore_round_trips_entries() {
 }
 
 #[test]
-fn set_capacity_updates_limit_and_trims_oldest() {
+fn set_capacity_defers_trim_to_next_push() {
+    // Fail oracle: if set_capacity trimmed immediately, entries.len() would
+    // drop to 2 right after the call instead of only on the next push.
     let mut h = h(10);
     h.push("a".into());
     h.push("b".into());
     h.push("c".into());
     assert_eq!(h.entries.len(), 3);
 
-    // Shrink: oldest entries are trimmed to fit.
+    // Shrink: existing entries are untouched — Vim-style deferred trim.
     h.set_capacity(2);
     assert_eq!(h.capacity, 2);
-    assert_eq!(h.entries.len(), 2);
-    assert_eq!(h.entries.back().map(|s| s.as_str()), Some("c"));
-    assert_eq!(h.entries.front().map(|s| s.as_str()), Some("b"));
+    assert_eq!(
+        h.entries.len(),
+        3,
+        "lowering the cap must not retroactively trim"
+    );
 
-    // Future pushes respect the new limit.
+    // The next push converges to the new cap in one shot.
     h.push("d".into());
     assert_eq!(h.entries.len(), 2);
     assert_eq!(h.entries.back().map(|s| s.as_str()), Some("d"));
+    assert_eq!(h.entries.front().map(|s| s.as_str()), Some("c"));
+}
+
+/// A shrink immediately followed by a raise, with no push in between, must
+/// not lose entries in the transient window — `:reload-config` resets
+/// `history-capacity` to its compiled-in default before `init.scm`
+/// re-raises it, and an eager trim would have discarded everything past the
+/// default before the raise had a chance to take effect.
+#[test]
+fn shrink_then_raise_with_no_push_between_resurrects_every_entry() {
+    let mut h = h(20);
+    for i in 0..20 {
+        h.push(format!("cmd{i}"));
+    }
+    assert_eq!(h.entries.len(), 20);
+
+    // The reset: shrink to a smaller default. Deferred — no trim yet.
+    h.set_capacity(5);
+    assert_eq!(
+        h.entries.len(),
+        20,
+        "shrinking must not eagerly trim — nothing has pushed since"
+    );
+
+    // init.scm re-raising the setting. Still no push — nothing to converge.
+    // Fail oracle: an eager trim on the shrink above would have already
+    // dropped every entry past 5, and raising the cap back up here can't
+    // resurrect what's already gone — entries.len() would stay at 5 instead
+    // of climbing back to 20.
+    h.set_capacity(20);
+    assert_eq!(
+        h.entries.len(),
+        20,
+        "raising the cap back up before any push must resurrect every entry, \
+         not just whatever survived a (nonexistent) eager trim"
+    );
+    assert_eq!(
+        h.entries.front().map(String::as_str),
+        Some("cmd0"),
+        "the very first entry must still be there, not just the count"
+    );
+}
+
+#[test]
+fn set_capacity_shrink_converges_on_a_duplicate_push() {
+    // Fail oracle: the consecutive-duplicate branch used to `return` before
+    // the trim loop, so a shrink only converged on a push that landed a
+    // genuinely new entry — never on a resubmission of the same entry.
+    let mut h = h(10);
+    h.push("a".into());
+    h.push("b".into());
+    h.push("c".into());
+    assert_eq!(h.entries.len(), 3);
+
+    h.set_capacity(2);
+
+    // Consecutive duplicate of the last entry — hits the dedup branch, not
+    // the plain append.
+    h.push("c".into());
+    assert_eq!(
+        h.entries.len(),
+        2,
+        "a deduplicated push must still converge to the shrunk cap"
+    );
+    assert_eq!(h.entries.back().map(|s| s.as_str()), Some("c"));
+    assert_eq!(h.entries.front().map(|s| s.as_str()), Some("b"));
 }
 
 #[test]

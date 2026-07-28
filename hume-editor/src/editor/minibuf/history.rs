@@ -63,29 +63,32 @@ impl History {
         }
     }
 
-    /// Record a submitted entry. Skips empty strings and consecutive duplicates.
-    /// Always resets nav state — a confirm ends the session.
+    /// Record a submitted entry. Skips empty strings and consecutive
+    /// duplicates. Always resets nav state — a confirm ends the session.
+    /// Caps the ring at `self.capacity` with a `while`, not an `if`, so a
+    /// `set_capacity` shrink of any size converges to the new cap in this
+    /// one call rather than one entry per push.
     pub fn push(&mut self, entry: String) {
         self.begin_session();
-        if entry.is_empty() {
-            return;
+        let is_duplicate = self.entries.back().is_some_and(|last| *last == entry);
+        if !entry.is_empty() && !is_duplicate {
+            self.entries.push_back(entry);
         }
-        if self.entries.back().is_some_and(|last| *last == entry) {
-            return;
-        }
-        self.entries.push_back(entry);
-        if self.entries.len() > self.capacity {
+        while self.entries.len() > self.capacity {
             self.entries.pop_front();
         }
     }
 
-    /// Update the capacity limit. Trims oldest entries if the ring is already
-    /// over the new limit. Called when `history-capacity` is changed at runtime.
+    /// Update the capacity limit. Takes effect on the *next* `push`, not
+    /// immediately — matching Vim's `undolevels` semantics (see
+    /// `hume_editing::history::UndoTree::set_undo_levels`): lowering the cap
+    /// does not retroactively trim existing entries. Called when
+    /// `history-capacity` is changed at runtime. No `cursor`/`scratch`
+    /// adjustment needed here, since no entries are removed by this call —
+    /// a mid-navigation `cursor` stays valid until `push`'s own `while` trim
+    /// runs on the next confirm.
     pub fn set_capacity(&mut self, new_cap: usize) {
         self.capacity = new_cap;
-        while self.entries.len() > self.capacity {
-            self.entries.pop_front();
-        }
     }
 
     /// Walk one step older, restricted to entries whose text starts with the
@@ -225,8 +228,9 @@ impl HistoryStore {
         self.search_b.begin_session();
     }
 
-    /// Update the capacity of every ring and trim stale entries.
-    /// Called when the `history-capacity` setting changes at runtime.
+    /// Update the capacity of every ring — see `History::set_capacity` for
+    /// why this doesn't trim. Called when the `history-capacity` setting
+    /// changes at runtime.
     pub fn set_capacity(&mut self, new_cap: usize) {
         self.command.set_capacity(new_cap);
         self.search_f.set_capacity(new_cap);

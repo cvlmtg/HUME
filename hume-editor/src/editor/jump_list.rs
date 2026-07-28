@@ -87,24 +87,33 @@ impl JumpList {
         }
     }
 
-    /// Record a jump. Truncates forward history, deduplicates against the last
-    /// entry by line number, and caps the list at `self.capacity`.
+    /// Change the capacity limit. Takes effect on the *next* `push`, not
+    /// immediately — matching Vim's `undolevels` semantics (see
+    /// `hume_editing::history::UndoTree::set_undo_levels`): lowering the cap
+    /// does not retroactively trim existing entries. No cursor adjustment is
+    /// needed here, since no entries are removed by this call.
+    pub fn set_capacity(&mut self, capacity: usize) {
+        self.capacity = capacity;
+    }
+
+    /// Record a jump. Truncates forward history, deduplicates against the
+    /// last entry by line number, and caps the list at `self.capacity` — a
+    /// `while`, not an `if`, so a `set_capacity` shrink of any size converges
+    /// to the new cap in this one call rather than one entry per push.
     pub fn push(&mut self, entry: JumpEntry) {
         self.entries.truncate(self.cursor);
 
         // Deduplicate: same line AND same buffer — cross-buffer same-line entries are distinct.
-        if let Some(last) = self
+        match self
             .entries
             .back_mut()
             .filter(|l| l.primary_line == entry.primary_line && l.buffer_id == entry.buffer_id)
         {
-            *last = entry;
-            return;
+            Some(last) => *last = entry,
+            None => self.entries.push_back(entry),
         }
 
-        self.entries.push_back(entry);
-
-        if self.entries.len() > self.capacity {
+        while self.entries.len() > self.capacity {
             self.entries.pop_front();
         }
 

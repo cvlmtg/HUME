@@ -28,9 +28,12 @@ fn eval_set_option(ed: &mut Editor, source: &str) -> Result<(), String> {
 
 #[test]
 fn set_option_applies_history_capacity() {
-    // Fail oracle: revert set_global_option to a raw write_global call
-    // (bypassing settings_ops::apply_global) and the ring never resizes —
-    // the trim assertion below fails (len stays 3).
+    // Fail oracle: revert set_global_option to call crate::settings::write_global
+    // directly (bypassing settings_ops::apply_global's resync step).
+    // settings.history_capacity still updates — write_global's own job — so
+    // that assertion stays green; state.history's actual capacity never
+    // resyncs, so it's the post-push assertion at the bottom (verified
+    // empirically: fails "left: 4, right: 2") that goes red.
     let mut ed = editor_from("-[h]>ello\n");
     for cmd in ["a", "b", "c"] {
         ed.state
@@ -49,8 +52,67 @@ fn set_option_applies_history_capacity() {
     assert_eq!(ed.state.settings.history_capacity, 2);
     assert_eq!(
         ed.state.history.get(HistoryKind::Command).entries().len(),
+        3,
+        "lowering the cap must not retroactively trim existing entries"
+    );
+
+    // The next push converges to the new cap in one shot.
+    ed.state
+        .history
+        .get_mut(HistoryKind::Command)
+        .push("d".into());
+    assert_eq!(
+        ed.state.history.get(HistoryKind::Command).entries().len(),
         2,
-        "ring must be trimmed to the new capacity with no manual pickup"
+        "the next push must apply the resynced capacity with no manual pickup"
+    );
+}
+
+#[test]
+fn set_option_applies_jump_list_capacity() {
+    // Fail oracle: revert set_global_option to call crate::settings::write_global
+    // directly (bypassing settings_ops::apply_global's resync step).
+    // settings.jump_list_capacity still updates — write_global's own job —
+    // so that assertion stays green; the live jump list's actual capacity
+    // never resyncs, so it's the post-push assertion at the bottom (verified
+    // empirically: fails "left: 6, right: 2") that goes red.
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid = ed.state.focused_pane_id;
+    let bid = ed.focused_buffer_id();
+    for i in 0..5 {
+        ed.state.panes.jumps[pid].push(crate::editor::jump_list::JumpEntry {
+            buffer_id: bid,
+            selections: hume_editing::selection::SelectionSet::single(
+                hume_editing::selection::Selection::collapsed(0),
+            ),
+            primary_line: i,
+        });
+    }
+    assert_eq!(ed.state.panes.jumps[pid].len(), 5);
+
+    let result = eval_set_option(&mut ed, r#"(set-option! "jump-list-capacity" 2)"#);
+    assert!(result.is_ok(), "eval must succeed: {result:?}");
+
+    assert_eq!(ed.state.settings.jump_list_capacity, 2);
+    assert_eq!(
+        ed.state.panes.jumps[pid].len(),
+        5,
+        "lowering the cap must not retroactively trim existing entries"
+    );
+
+    // The overshoot (5 -> new cap 2) is more than one entry — the next push
+    // must still converge to the cap in this one call.
+    ed.state.panes.jumps[pid].push(crate::editor::jump_list::JumpEntry {
+        buffer_id: bid,
+        selections: hume_editing::selection::SelectionSet::single(
+            hume_editing::selection::Selection::collapsed(0),
+        ),
+        primary_line: 5,
+    });
+    assert_eq!(
+        ed.state.panes.jumps[pid].len(),
+        2,
+        "the next push must apply the resynced capacity with no manual pickup"
     );
 }
 

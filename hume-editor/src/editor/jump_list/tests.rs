@@ -95,6 +95,110 @@ fn capacity_cap() {
 }
 
 #[test]
+fn set_capacity_defers_trim_to_next_push() {
+    // Fail oracle: if set_capacity trimmed immediately, jl.len() would drop
+    // to 2 right after the call instead of only on the next push.
+    let mut jl = JumpList::new(10);
+    for i in 0..5 {
+        jl.push(entry(i * 10, i));
+    }
+    assert_eq!(jl.len(), 5);
+
+    jl.set_capacity(2);
+    assert_eq!(jl.len(), 5, "lowering the cap must not retroactively trim");
+
+    // The overshoot (5 -> new cap 2) is more than one entry — a single push
+    // must still converge to the cap in this one call, proving push's trim
+    // loop is a `while`, not an `if`.
+    jl.push(entry(50, 5));
+    assert_eq!(jl.len(), 2);
+}
+
+#[test]
+fn set_capacity_shrink_converges_on_a_deduplicated_push() {
+    // Fail oracle: the dedup branch used to `return` before the trim loop,
+    // so a shrink only converged on a push that landed a genuinely new
+    // entry — never on one that overwrote the last entry in place.
+    let mut jl = JumpList::new(10);
+    for i in 0..5 {
+        jl.push(entry(i * 10, i));
+    }
+    assert_eq!(jl.len(), 5);
+
+    jl.set_capacity(2);
+
+    // Same line AND buffer as the last push (line 4) — hits the dedup
+    // branch, not the plain append.
+    jl.push(entry(50, 4));
+    assert_eq!(
+        jl.len(),
+        2,
+        "a deduplicated push must still converge to the shrunk cap"
+    );
+}
+
+#[test]
+fn set_capacity_raising_it_does_not_drop_entries() {
+    let mut jl = JumpList::new(2);
+    jl.push(entry(0, 0));
+    jl.push(entry(10, 1));
+    assert_eq!(jl.len(), 2);
+
+    jl.set_capacity(10);
+    assert_eq!(
+        jl.len(),
+        2,
+        "raising the cap must not trim existing entries"
+    );
+
+    jl.push(entry(20, 2));
+    assert_eq!(
+        jl.len(),
+        3,
+        "new capacity must take effect on the next push"
+    );
+}
+
+/// A shrink immediately followed by a raise, with no push in between, must
+/// not lose entries in the transient window — `:reload-config` resets
+/// `jump-list-capacity` to its compiled-in default before `init.scm`
+/// re-raises it, and an eager trim would have discarded everything past the
+/// default before the raise had a chance to take effect. Drives the shrink
+/// and the raise directly against `JumpList` (no `Editor`/`:reload-config`
+/// involved) to isolate that exact sequence.
+#[test]
+fn shrink_then_raise_with_no_push_between_resurrects_every_entry() {
+    const OVER_DEFAULT: usize = DEFAULT_JUMP_LIST_CAPACITY + 200;
+    let mut jl = JumpList::new(OVER_DEFAULT);
+    for i in 0..OVER_DEFAULT {
+        jl.push(entry(i * 10, i));
+    }
+    assert_eq!(jl.len(), OVER_DEFAULT);
+
+    // The reset: shrink to the compiled-in default. Deferred — no trim yet.
+    jl.set_capacity(DEFAULT_JUMP_LIST_CAPACITY);
+    assert_eq!(
+        jl.len(),
+        OVER_DEFAULT,
+        "shrinking must not eagerly trim — nothing has pushed since"
+    );
+
+    // init.scm re-raising the setting. Still no push — nothing to converge.
+    // Fail oracle: make `set_capacity` (or `push`'s trim) eager instead of
+    // deferred and the first `set_capacity` call above would have already
+    // dropped every entry past 100 — raising the cap back up here can't
+    // resurrect what an eager trim already discarded, so `len()` would stay
+    // at 100 instead of climbing back to `OVER_DEFAULT`.
+    jl.set_capacity(OVER_DEFAULT);
+    assert_eq!(
+        jl.len(),
+        OVER_DEFAULT,
+        "raising the cap back up before any push must resurrect every entry, \
+         not just whatever survived a (nonexistent) eager trim"
+    );
+}
+
+#[test]
 fn deduplication() {
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     jl.push(entry(0, 5));
