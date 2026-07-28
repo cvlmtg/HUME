@@ -1114,7 +1114,7 @@ impl CommandRegistry {
             "reload-config",
             "Reload init.scm from scratch.",
             &[],
-            typed_reload_config
+            crate::editor::reload::typed_reload_config
         );
         typed_cmd!(
             "edit",
