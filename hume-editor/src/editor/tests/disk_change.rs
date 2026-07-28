@@ -147,6 +147,37 @@ fn unactioned_change_does_not_refire_until_a_further_change_happens() {
     );
 }
 
+/// `:bn`/`:bp` run the same buffer-enter disk check as `:e`/`:b` — landing on
+/// an externally-changed buffer this way must not silently show stale
+/// content with `:w` free to clobber the external edit.
+///
+/// Fail oracle: before `enter_buffer_with_jump` wired the check into these
+/// commands, `:bnext`/`:bprev` called `switch_to_buffer_with_jump` directly
+/// with no check at all, so the target buffer's disk state stayed `InSync`
+/// no matter what changed externally.
+#[test]
+fn bnext_and_bprev_run_the_buffer_enter_disk_check() {
+    let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid_a = ed.focused_buffer_id();
+
+    let tmp_b = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp_b.path(), "world\n").unwrap();
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.path().display()));
+    let bid_b = ed.focused_buffer_id();
+    assert_ne!(bid_a, bid_b, "setup: :e must open a distinct second buffer");
+
+    // B is focused; rewrite A externally.
+    rewrite_externally(&tmp_a, "hello, externally changed!\n");
+
+    // With only two buffers open, either direction lands back on A.
+    type_cmd(&mut ed, ":bp");
+    assert_eq!(ed.focused_buffer_id(), bid_a);
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "Fail oracle: :bp must run the buffer-enter disk check, not just switch"
+    );
+}
+
 /// A non-focused buffer's external change only warns — no confirm opens
 /// off-focus. But switching into that buffer afterwards must still open the
 /// confirm, even though nothing has changed on disk since the warning: this

@@ -324,6 +324,25 @@ impl Editor {
         );
     }
 
+    /// Switch the focused pane to `target` (recording a jump, same as
+    /// [`Self::switch_to_buffer_with_jump`]) and run the buffer-enter disk
+    /// check — the `:e`/`:b`/`:bn`/`:bp` entry point for external-change
+    /// detection. Checks even when `target` is already focused (e.g. `:e`
+    /// re-targeting the current file), matching those commands' own history.
+    ///
+    /// Deliberately not folded into `switch_to_buffer_with_jump` itself: that
+    /// primitive is also reached from non-interactive callers (Steel's
+    /// `switch-to-buffer!`, and the LSP/async paths that go through it) where
+    /// opening a modal confirm would violate `reload_buffer_from_disk`'s
+    /// focused-buffer contract. Only genuinely interactive buffer-enter
+    /// commands call this.
+    pub(in crate::editor) fn enter_buffer_with_jump(&mut self, target: BufferId) {
+        if target != self.focused_buffer_id() {
+            self.switch_to_buffer_with_jump(target);
+        }
+        self.check_buffer_disk_state(target, super::disk::DiskCheckTrigger::BufferEnter);
+    }
+
     /// Open or refresh a read-only view buffer (`:messages`, `:ls`, `:plugin-status`).
     ///
     /// If a buffer with this label already exists, replaces its content in-place

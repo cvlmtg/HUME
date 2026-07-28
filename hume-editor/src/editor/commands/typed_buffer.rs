@@ -2,7 +2,6 @@ use hume_engine::pipeline::BufferId;
 
 use super::super::Editor;
 use super::super::Severity;
-use crate::editor::buffer::DiskCheckTrigger;
 use crate::editor::error::CommandError;
 
 // ── Multi-buffer typed commands ───────────────────────────────────────────────
@@ -25,10 +24,7 @@ pub fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(),
         // If a buffer is already open for this path, switch without re-reading.
         // Matches Vim semantics and covers the deleted-from-disk case.
         if let Some(bid) = find_buffer_by_path_arg(ed, expanded.as_ref()) {
-            if bid != ed.focused_buffer_id() {
-                ed.switch_to_buffer_with_jump(bid);
-            }
-            ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
+            ed.enter_buffer_with_jump(bid);
             return Ok(());
         }
 
@@ -143,10 +139,7 @@ pub fn typed_buffer_delete(
 pub fn typed_buffer(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     let arg = arg.ok_or_else(|| CommandError::new("usage: :b <name|#|index>"))?;
     let bid = resolve_buffer_arg(ed, arg)?;
-    if bid != ed.focused_buffer_id() {
-        ed.switch_to_buffer_with_jump(bid);
-    }
-    ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
+    ed.enter_buffer_with_jump(bid);
     Ok(())
 }
 
@@ -261,17 +254,13 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
 /// `:bnext` / `:bn` — switch to the next buffer in open-order.
 pub fn typed_bnext(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     let target = ed.state.buffers.next(ed.focused_buffer_id());
-    if target != ed.focused_buffer_id() {
-        ed.switch_to_buffer_with_jump(target);
-    }
+    ed.enter_buffer_with_jump(target);
     Ok(())
 }
 
 /// `:bprev` / `:bp` — switch to the previous buffer in open-order.
 pub fn typed_bprev(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     let target = ed.state.buffers.prev(ed.focused_buffer_id());
-    if target != ed.focused_buffer_id() {
-        ed.switch_to_buffer_with_jump(target);
-    }
+    ed.enter_buffer_with_jump(target);
     Ok(())
 }

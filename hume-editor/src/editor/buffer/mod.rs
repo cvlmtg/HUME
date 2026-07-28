@@ -11,11 +11,12 @@ use hume_editing::text::Text;
 use hume_platform::io::FileMeta;
 
 mod disk;
-pub(crate) use disk::DiskCheckTrigger;
-// Only test code names `DiskState` directly (to seed a stale buffer without a
-// real disk check) — production code goes through `Buffer::is_disk_stale()`.
+// Production callers reach both only via `super::disk::*` from sibling
+// buffer submodules (`file_open::enter_buffer_with_jump`) or `is_disk_stale()`
+// — these re-exports exist only so test code (a different module tree) can
+// name `DiskCheckTrigger`/`DiskState` directly.
 #[cfg(test)]
-pub(crate) use disk::DiskState;
+pub(crate) use disk::{DiskCheckTrigger, DiskState};
 mod file_open;
 pub(crate) mod lifecycle;
 pub(crate) mod store;
