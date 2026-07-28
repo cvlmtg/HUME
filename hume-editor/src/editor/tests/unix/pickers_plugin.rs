@@ -82,6 +82,10 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
     git(sandbox.raw(), &["add", "cached.txt"]);
     std::fs::remove_file(sandbox.raw().join("cached.txt")).unwrap();
 
+    // Bare tempdir(), not safe_tempdir() — `guard` above already holds
+    // HUME_RUNTIME_MUTEX for this test's duration, so this creation is
+    // already race-free. safe_tempdir() would try to re-lock the same
+    // (non-reentrant) mutex on this thread and deadlock.
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     ed.set_cwd(&sandbox.path()).unwrap();
@@ -129,6 +133,8 @@ fn files_picker_esc_dismisses_cleanly() {
     git(sandbox.raw(), &["init", "-q"]);
     std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
 
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     ed.set_cwd(&sandbox.path()).unwrap();
@@ -172,6 +178,8 @@ fn files_picker_esc_dismisses_cleanly() {
 #[test]
 fn files_picker_fd_branch_spawns_given_binary() {
     let guard = HumeRuntimeGuard::new();
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
     let tmp = tempfile::tempdir().unwrap();
 
     let fake_fd = tmp.path().join("fake-fd");
@@ -216,6 +224,8 @@ fn files_picker_fd_branch_spawns_given_binary() {
 #[test]
 fn files_picker_error_path_names_fd() {
     let guard = HumeRuntimeGuard::new();
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
     let tmp = tempfile::tempdir().unwrap();
     let extra = r#"(define-command! "test-error-branch" "" (lambda ()
                      (call! "pickers/files-picker-with" #f #f)))"#;
@@ -244,6 +254,8 @@ fn buffers_picker_lists_switches_and_disambiguates() {
     std::fs::write(sandbox.raw().join("a/mod.rs"), "").unwrap();
     std::fs::write(sandbox.raw().join("b/mod.rs"), "").unwrap();
 
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     ed.set_cwd(&sandbox.path()).unwrap();
@@ -278,6 +290,8 @@ fn buffers_picker_lists_switches_and_disambiguates() {
 #[test]
 fn buffers_picker_esc_is_a_no_op() {
     let guard = HumeRuntimeGuard::new();
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     let starting_bid = ed.focused_buffer_id();

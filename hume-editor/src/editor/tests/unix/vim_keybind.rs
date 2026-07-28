@@ -44,6 +44,10 @@ fn setup_vim_keybind_editor_with_config(
         None => "(load-plugin \"core:stdlib\")\n(load-plugin \"core:vim-keybind\")".to_string(),
     };
 
+    // Deliberately bare, not `safe_tempdir()`: `guard` above already holds
+    // HUME_RUNTIME_MUTEX for this function's whole duration, so this creation
+    // is already race-free. safe_tempdir() would try to re-lock the same
+    // (non-reentrant) mutex on this thread and deadlock.
     let init_dir = tempfile::tempdir().unwrap();
     let init_path = init_dir.path().join("init.scm");
     std::fs::write(&init_path, &init_source).unwrap();
@@ -283,6 +287,9 @@ fn smart_change_to_eol_without_stdlib_errors_at_load() {
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
     // Deliberately no `write_core_plugin(&guard, "stdlib", ...)`.
 
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`setup_vim_keybind_editor_with_config`):
+    // `guard` already holds HUME_RUNTIME_MUTEX for the test's duration.
     let init_dir = tempfile::tempdir().unwrap();
     let init_path = init_dir.path().join("init.scm");
     std::fs::write(&init_path, r#"(load-plugin "core:vim-keybind")"#).unwrap();
@@ -306,6 +313,9 @@ fn change_to_eol_off_does_not_require_stdlib() {
     let guard = HumeRuntimeGuard::new();
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
 
+    // Bare tempdir(), not safe_tempdir() — `guard` already holds
+    // HUME_RUNTIME_MUTEX for the test's duration (see the comment at this
+    // pattern's first occurrence above, in `setup_vim_keybind_editor_with_config`).
     let init_dir = tempfile::tempdir().unwrap();
     let init_path = init_dir.path().join("init.scm");
     std::fs::write(

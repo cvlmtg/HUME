@@ -241,6 +241,14 @@ impl CwdSandbox {
     fn new() -> Self {
         let _lock = CWD_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let saved = std::env::current_dir().expect("current_dir");
+        // Deliberately bare, not `safe_tempdir()`: this only holds CWD_MUTEX,
+        // not HUME_RUNTIME_MUTEX, so this creation is still exposed to the
+        // TMPDIR race described at `safe_tempdir()`'s definition — BUT some
+        // callers (e.g. `pickers_plugin.rs`) construct `CwdSandbox` while
+        // already holding a `HumeRuntimeGuard` on the same thread, and
+        // `safe_tempdir()` would try to re-lock that (non-reentrant) mutex
+        // there and deadlock. Fixing the race here needs a reentrant-aware
+        // lock, not a swap to `safe_tempdir()`.
         let dir = tempfile::tempdir().expect("tempdir");
         Self { dir, saved, _lock }
     }
