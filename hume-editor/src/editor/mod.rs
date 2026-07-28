@@ -198,13 +198,19 @@ impl ConfigState {
     /// binds when the terminal supports the protocol, matching
     /// [`Editor::set_kitty_support`]) and the compiled-in command registry,
     /// with every other field at its empty/`None` default.
-    pub(super) fn new(kitty_enabled: bool) -> Self {
+    ///
+    /// `prior_virtual_lines_generation` is `0` at session start (nothing to
+    /// carry forward) and the outgoing `ConfigState.decorations`'s own
+    /// generation counter on `:reload-config` — see
+    /// [`decorations::DecorationStores::reset`]'s doc for why this can't
+    /// just be `Default::default()` like every other field here.
+    pub(super) fn new(kitty_enabled: bool, prior_virtual_lines_generation: u64) -> Self {
         Self {
             keymap: default_keymap_for(kitty_enabled),
             registry: CommandRegistry::with_defaults(),
             languages: LanguageRegistry::new(),
             trigger_chars: rustc_hash::FxHashMap::default(),
-            decorations: decorations::DecorationStores::default(),
+            decorations: decorations::DecorationStores::reset(prior_virtual_lines_generation),
             pending_hooks: Vec::new(),
             pending_steel_calls: Vec::new(),
             pending_language_detection: Vec::new(),
@@ -217,12 +223,13 @@ impl ConfigState {
     }
 }
 
-/// The keymap every session starts from: the compiled-in trie, plus the
-/// kitty-only default binds when the terminal supports the protocol. Shared
-/// by [`ConfigState::new`] and [`Editor::set_kitty_support`] (which
-/// re-derives the keymap once the terminal probe result is known, before
-/// `init.scm` can override it) so the two can't drift apart on what
-/// "kitty defaults installed" means.
+/// The keymap every session and every `:reload-config` starts from: the
+/// compiled-in trie, plus the kitty-only default binds when the terminal
+/// supports the protocol. Shared by [`ConfigState::new`] (session start /
+/// reload) and [`Editor::set_kitty_support`] (which re-derives the keymap
+/// once the terminal probe result is known, before `init.scm` can override
+/// it) so the two can't drift apart on what "kitty defaults installed"
+/// means.
 pub(super) fn default_keymap_for(kitty_enabled: bool) -> Keymap {
     let mut keymap = Keymap::default();
     if kitty_enabled {
@@ -405,15 +412,15 @@ pub(crate) struct EditorState {
     pub(crate) popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
     /// Shared popup-band view for `PopupLayout::Docked`: written by
     /// `prepare_frame`, read by `PopupBandWidget` (chrome, like the
-    /// drawer). Empty whenever `popup` is `None` or cursor-anchored.
+    /// drawer). Empty whenever `config.popup` is `None` or cursor-anchored.
     pub(crate) popup_band_view: Arc<RwLock<Option<crate::ui::popup::PopupBandState>>>,
     /// Shared menu-overlay view: written by `prepare_frame`, read by its own
     /// `PopupOverlay` registration (separate from the hover popup's, so both
     /// can in principle show at once — the menu paints on top).
     pub(crate) menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
-    /// Shared drawer-overlay view: written on change (open/select-move/
-    /// scroll/close) by `sync_drawer_view`, never per frame — the drawer has
-    /// no cursor-relative geometry to re-resolve every frame.
+    /// Shared drawer-overlay view: written every frame by `prepare_frame`
+    /// (self-healing — see `sync_drawer_view`'s doc for why this changed
+    /// from an on-mutation-only write), read by `DrawerWidget`.
     pub(crate) drawer_view: Arc<RwLock<Option<crate::ui::drawer::DrawerViewState>>>,
     /// Shared picker-overlay view: written per-frame by `sync_picker_view`
     /// (geometry depends on the current panes region, like popup/menu, not
@@ -444,11 +451,14 @@ impl EditorState {
 
     // ── Drawer ──────────────────────────────────────────────────────────
 
-    /// Mirror `self.config.drawer` into `self.drawer_view` for `DrawerWidget` to
-    /// read. Called directly at every drawer mutation site (open, selection
-    /// move, scroll, close) — never per frame, unlike the popup/menu's
-    /// `sync_*_view` (the drawer has no cursor-relative geometry to
-    /// re-resolve each frame).
+    /// Mirror `self.config.drawer` into `self.drawer_view` for `DrawerWidget`
+    /// to read. Called directly at every drawer mutation site (open,
+    /// selection move, scroll, close) for immediacy, *and* unconditionally
+    /// every frame from `Editor::prepare_frame` (like the popup/menu/picker
+    /// `sync_*_view`s) so the view can never drift from the model — in
+    /// particular, so a direct `self.state.config.drawer = None` (as
+    /// `reset_config_state` does, bypassing `close-drawer!`'s callback
+    /// queueing) can't leave a stale view painting a closed drawer.
     pub(super) fn sync_drawer_view(&self) {
         let resolved = self
             .config

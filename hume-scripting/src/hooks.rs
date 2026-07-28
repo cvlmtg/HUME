@@ -57,10 +57,12 @@ pub enum HookId {
     /// char-string source)`.
     OnTriggerChar,
     /// Fires after `completion-accept!` applies the item's main `textEdit`
-    /// (or `insertText` fallback) — Steel handles `additionalTextEdits` and
-    /// `completionItem/resolve` from here, since Rust only ever applies
-    /// the primary edit. Args: `(bid item)`, `item` the accepted
-    /// `CompletionItem`'s raw JSON decoded via `json_to_steel`.
+    /// (or `insertText` fallback), `additionalTextEdits`, and (if needed)
+    /// `completionItem/resolve` — Rust owns all three atomically, so this is
+    /// a plain extension point for anything the completion store doesn't
+    /// itself parse (e.g. `command`), not a place that needs to apply edits.
+    /// Args: `(bid item)`, `item` the accepted `CompletionItem`'s raw JSON
+    /// decoded via `json_to_steel`.
     OnCompletionAccept,
     /// Fires from the Insert-mode per-keystroke refilter path, but only when
     /// the open session's `isIncomplete` flag is set — a bounded,

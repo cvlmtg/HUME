@@ -89,6 +89,24 @@ pub(crate) struct DecorationStores {
 }
 
 impl DecorationStores {
+    /// A fresh, empty store — used by `ConfigState::new` for both session
+    /// start (`prior_generation: 0`, nothing to carry forward) and
+    /// `:reload-config`'s reset (the outgoing `ConfigState`'s own
+    /// `decorations.virtual_lines_generation()`).
+    ///
+    /// Bumps `prior_generation` rather than resetting to `0`: on a second
+    /// (or later) reload, a plain reset-to-`0` could coincidentally equal a
+    /// pane's already-synced counter in `Editor::virtual_lines_synced` (e.g.
+    /// a pane that hasn't synced since the *first* reload also left it at
+    /// `0`), which would skip the sync that clears the pane's stale `Arc` of
+    /// the old virtual lines.
+    pub(crate) fn reset(prior_generation: u64) -> Self {
+        Self {
+            virtual_lines_generation: prior_generation.wrapping_add(1),
+            ..Default::default()
+        }
+    }
+
     /// Replaces `bid`'s inlay hints wholesale, sorted by `pos` (required for
     /// `remap_through`'s batch position mapping).
     pub(crate) fn set_inlay_hints(&mut self, bid: BufferId, mut hints: Vec<InlayHintEntry>) {

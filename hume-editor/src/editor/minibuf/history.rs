@@ -54,7 +54,14 @@ pub struct History {
 }
 
 impl History {
+    /// `capacity == 0` is a silent black hole (every `push` immediately
+    /// evicts what it just pushed) rather than a documented "unlimited" —
+    /// unlike `undo-levels`, where `0` means exactly that. The settings
+    /// parser (`usize_nonzero`) already rejects `0` for `history-capacity`
+    /// before it can reach here; this just makes the trap loud if that
+    /// guard is ever bypassed (a test constructing a `History` directly).
     pub fn new(capacity: usize) -> Self {
+        debug_assert!(capacity > 0, "History capacity must be non-zero");
         Self {
             entries: VecDeque::new(),
             capacity,
@@ -88,6 +95,7 @@ impl History {
     /// a mid-navigation `cursor` stays valid until `push`'s own `while` trim
     /// runs on the next confirm.
     pub fn set_capacity(&mut self, new_cap: usize) {
+        debug_assert!(new_cap > 0, "History capacity must be non-zero");
         self.capacity = new_cap;
     }
 

@@ -183,6 +183,70 @@ impl LspState {
             .any(|e| e.client.state() == ServerState::Starting || !e.progress.is_empty())
     }
 
+    /// Clears state `:reload-config`'s reset must not let survive — see
+    /// `Editor::reset_config_state`. `callbacks` holds `Box<dyn FnOnce>`
+    /// closures that capture `SteelVal`s from the outgoing engine
+    /// (`lsp/bridge.rs`'s `lsp_callback`); `dispatch_completed` already
+    /// tolerates a missing callback entry (early-returns, logging only for
+    /// the internal fire-and-forget `shutdown` request), so dropping them
+    /// here is safe. `configs` is the `register-lsp-server!` registration
+    /// store the new `init.scm` re-populates. `completion`/`completion_ui`
+    /// hold a session whose `on-completion-refilter` handler dies with the
+    /// outgoing engine — leaving them would strand a menu that silently
+    /// stops refetching; `supersede` is that session's in-flight-request
+    /// index, meaningless once the session is gone. Deliberately *not*
+    /// touching `servers`/`diagnostics`: an already-spawned process keeps
+    /// running on its old config until `:lsp-restart`, and its last-known
+    /// diagnostics are what `resync_config_state` replays, per `docs/lsp.md`.
+    ///
+    /// Every field above is named explicitly, not `..Self::with_backend(..)`
+    /// struct-update syntax: `backend` is `Box<dyn LspBackend>`, which has no
+    /// meaningful default to reconstruct against. A field added to this
+    /// struct in the future needs an explicit line here (keep or clear) —
+    /// there's no compiler nudge for that the way `ConfigState`'s wholesale
+    /// rebuild gets one, so treat this list with the same suspicion as
+    /// `EditorState`'s old field-by-field reset.
+    pub(crate) fn reset_config(&mut self) {
+        self.callbacks.clear();
+        self.configs.clear();
+        self.completion = None;
+        self.completion_ui = None;
+        self.supersede.clear();
+    }
+
+    /// Buffers currently attached to a `Running` server, paired with the
+    /// server's registered language — the exact set `:reload-config`'s
+    /// `resync_config_state` re-fires `OnLspAttach`/`OnDiagnosticsChanged`
+    /// for. `Starting` is excluded: it fires its own `OnLspAttach` shortly
+    /// after, from this same struct's `BecameRunning` handling in
+    /// `dispatch_lsp_action`, and firing here too would double it. `Crashed`
+    /// must not fire at all.
+    pub(super) fn running_attached_buffers(
+        &self,
+        buffers: &crate::editor::BufferStore,
+    ) -> Vec<(BufferId, LanguageName)> {
+        buffers
+            .iter()
+            .filter_map(|(bid, buf)| {
+                let entry = self.servers.get(&buf.lsp_server?)?;
+                if entry.client.state() != ServerState::Running {
+                    return None;
+                }
+                Some((bid, entry.language.clone()?))
+            })
+            .collect()
+    }
+
+    /// Every buffer with a cached diagnostic, from any server, alive or
+    /// crashed — see `DiagnosticsStore::buffers_with_diagnostics`. Unlike
+    /// `running_attached_buffers`, this is not filtered by server state:
+    /// `:reload-config`'s resync uses it to replay `OnDiagnosticsChanged`
+    /// from the surviving cache regardless of whether the server that
+    /// published it is still `Running`.
+    pub(super) fn buffers_with_diagnostics(&self) -> impl Iterator<Item = BufferId> + '_ {
+        self.diagnostics.buffers_with_diagnostics()
+    }
+
     /// Production constructor: one real server process per registration.
     /// `wake` is forwarded to every spawned server's reader/stderr threads,
     /// so the main loop wakes instead of polling for completion.

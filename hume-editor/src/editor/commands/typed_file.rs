@@ -152,7 +152,7 @@ pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(),
                     }
                     Some(ed.state.config.languages.intern(value))
                 };
-                ed.set_buffer_language(bid, new_lang);
+                ed.set_buffer_language_explicit(bid, new_lang);
                 Ok(())
             }
             _ => Err(CommandError::new(

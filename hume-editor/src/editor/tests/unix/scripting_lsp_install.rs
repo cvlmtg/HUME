@@ -71,7 +71,7 @@ fn load_with_init(ed: &mut Editor, data_dir: &std::path::Path, init_src: &str) {
         std::env::set_var("HUME_RUNTIME", &repo_runtime_dir);
         std::env::set_var("XDG_DATA_HOME", data_dir);
     }
-    ed.init_scripting();
+    ed.init_scripting(&mut Default::default());
     unsafe {
         std::env::remove_var("XDG_CONFIG_HOME");
         std::env::remove_var("HUME_RUNTIME");

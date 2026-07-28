@@ -45,6 +45,27 @@ pub(crate) fn apply_global(
     Ok(())
 }
 
+/// Reset every global setting to its compiled-in default and rerun every
+/// `resync: true` effect against the reset values — called by
+/// `:reload-config`'s reset so a runtime `:set global`/`:theme` change (or
+/// one applied by the previous `init.scm`) never survives a reload.
+///
+/// `state.settings = EditorSettings::default()` alone would leave
+/// `view.theme` still baked with the old theme: `theme`'s default is the
+/// empty string, and `resync_derived_state`'s `"theme"` arm deliberately
+/// no-ops on empty (nothing to load), so the view's theme is set directly
+/// to the same compiled-in default `Editor::open` uses instead of relying
+/// on that arm.
+pub(crate) fn reset_globals(state: &mut EditorState, view: &mut EngineView) {
+    state.settings = crate::settings::EditorSettings::default();
+    view.theme = crate::ui::theme::build_default_theme();
+    for &key in crate::settings::all_setting_keys() {
+        if crate::settings::has_declared_resync(key) {
+            resync_derived_state(state, view, key);
+        }
+    }
+}
+
 /// Write a buffer-scoped setting override. No buffer-scoped key has a
 /// derived-state effect today (see [`crate::settings::write_buffer`]'s doc),
 /// so unlike [`apply_global`] there is nothing to resync here.

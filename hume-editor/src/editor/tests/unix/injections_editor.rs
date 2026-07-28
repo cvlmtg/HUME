@@ -20,7 +20,7 @@ fn load_plum(ed: &mut Editor, data_dir: &std::path::Path) {
         std::env::set_var("HUME_RUNTIME", &repo_runtime_dir);
         std::env::set_var("XDG_DATA_HOME", data_dir);
     }
-    ed.init_scripting();
+    ed.init_scripting(&mut Default::default());
     unsafe {
         std::env::remove_var("XDG_CONFIG_HOME");
         std::env::remove_var("HUME_RUNTIME");
@@ -50,7 +50,7 @@ fn load_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
         std::env::set_var("HUME_RUNTIME", &repo_runtime_dir);
         std::env::set_var("XDG_DATA_HOME", data_dir);
     }
-    ed.init_scripting();
+    ed.init_scripting(&mut Default::default());
     unsafe {
         std::env::remove_var("XDG_CONFIG_HOME");
         std::env::remove_var("HUME_RUNTIME");
@@ -59,14 +59,12 @@ fn load_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
 }
 
 /// Core's `register-installed-grammars!` (`runtime/scheme/grammars.scm`)
-/// already ran its real body — including the injections-path lookup — for
-/// every entry in the real `grammar-sources.scm` catalog before PLUM ever
-/// loaded (`init_scripting` evaluates it unconditionally). None of them are
-/// compiled in the empty data dir, so every one was skipped by the `when`
-/// guard and no network call happened. This test then also loads
-/// `core:plum` itself, checking its `grammars.scm` (the install pipeline)
-/// compiles cleanly against those same core bindings — a pure
-/// Scheme-syntax/logic smoke test, not an installation test.
+/// already ran before PLUM ever loaded (`init_scripting` evaluates it
+/// unconditionally) — walked the empty `<data>/grammars/`, found nothing,
+/// and never touched the catalog at all. This test then loads `core:plum`
+/// itself, checking its `grammars.scm` (the install pipeline) compiles
+/// cleanly and its bindings resolve against those same core bindings — a
+/// pure Scheme-syntax/logic smoke test, not an installation test.
 #[test]
 fn plum_plugin_loads_with_real_grammar_catalog() {
     let _lock = super::HUME_RUNTIME_MUTEX
@@ -444,11 +442,7 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
 
     type_cmd(&mut ed, ":plum-install-grammar json");
 
-    let ext = if cfg!(target_os = "macos") {
-        "dylib"
-    } else {
-        "so"
-    };
+    let ext = hume_test_fixtures::grammar_platform_ext();
     let out_path = data_dir.join("grammars").join(format!("json.{ext}"));
     let errors: Vec<String> = ed
         .state

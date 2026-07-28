@@ -144,11 +144,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
         return;
     }
     let (parser, hl) = grammar_fixture("json");
-    let ext = if cfg!(target_os = "macos") {
-        "dylib"
-    } else {
-        "so"
-    };
+    let ext = hume_test_fixtures::grammar_platform_ext();
 
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path().join("hume");
@@ -243,11 +239,7 @@ fn install_real_json_grammar_e2e() {
     std::fs::create_dir_all(data_dir.join("plugins")).unwrap();
 
     let src_dir = data_dir.join("grammars/sources/json");
-    let ext = if cfg!(target_os = "macos") {
-        "dylib"
-    } else {
-        "so"
-    };
+    let ext = hume_test_fixtures::grammar_platform_ext();
     let out_path = data_dir.join("grammars").join(format!("json.{ext}"));
 
     // Step 1: git clone --filter=blob:none
@@ -381,7 +373,7 @@ fn setup_editor_with_languages_scm(
         std::env::set_var("XDG_DATA_HOME", data_tmp.path());
     }
 
-    ed.init_scripting();
+    ed.init_scripting(&mut Default::default());
 
     unsafe {
         std::env::remove_var("XDG_CONFIG_HOME");
@@ -488,32 +480,9 @@ fn grammar_registration_survives_plum_absence() {
     if skip_unless_grammars(&["json"]) {
         return;
     }
-    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-
     let (parser, hl) = grammar_fixture("json");
-    let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("runtime");
-
-    let config_tmp = tempfile::tempdir().unwrap();
-    let hume_config = config_tmp.path().join("hume");
-    std::fs::create_dir_all(&hume_config).unwrap();
     // No core:plum anywhere in init.scm.
-    std::fs::write(hume_config.join("init.scm"), "").unwrap();
-
-    let data_tmp = tempfile::tempdir().unwrap();
-    let data_dir = data_tmp.path().join("hume");
-    let ext = if cfg!(target_os = "macos") {
-        "dylib"
-    } else {
-        "so"
-    };
-    let grammars_dir = data_dir.join("grammars");
-    let hl_dir = grammars_dir.join("sources").join("json");
-    std::fs::create_dir_all(&hl_dir).unwrap();
-    std::fs::copy(&parser, grammars_dir.join(format!("json.{ext}"))).unwrap();
-    std::fs::copy(&hl, hl_dir.join("highlights.scm")).unwrap();
+    let fixture = StagedGrammarFixture::new("json", &parser, &hl, "");
 
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -521,18 +490,8 @@ fn grammar_registration_survives_plum_absence() {
         .buffers
         .get_mut(bid)
         .set_path(Some(PathBuf::from("test.json")));
-
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", &repo_runtime_dir);
-        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-    }
-    ed.init_scripting();
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
+    ed.init_scripting(&mut Default::default());
+    drop(fixture);
 
     let errors: Vec<String> = ed
         .state
@@ -569,6 +528,74 @@ fn grammar_registration_survives_plum_absence() {
     assert!(
         warns.contains(&"Unknown command: plum-install-grammar".to_string()),
         "core:plum commands must be unavailable when it isn't declared; got {warns:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// A user override in init.scm must not undo a startup grammar attachment
+// ---------------------------------------------------------------------------
+
+/// `grammars.scm` attaches every already-compiled grammar before `init.scm`
+/// runs (`scripting_setup.rs`: prelude → languages → grammars → init.scm).
+/// `languages.scm`'s own header documents overriding an entry by redefining
+/// it in `init.scm` — this exercises exactly that documented pattern for an
+/// already-grammared language and asserts highlighting survives it.
+///
+/// Flip: if `register_identity_no_rebuild` still dropped an attached grammar
+/// on re-registration, `has_grammar` would go false and the buffer would
+/// render unhighlighted after `init.scm`'s `define-language!` call.
+#[test]
+fn define_language_override_in_init_keeps_startup_grammar() {
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
+    let (parser, hl) = grammar_fixture("json");
+    // The documented override pattern: redefine an already-grammared
+    // language in init.scm to add an extension.
+    let fixture = StagedGrammarFixture::new(
+        "json",
+        &parser,
+        &hl,
+        r#"(define-language! "json" '("json" "jsonc"))"#,
+    );
+
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .buffers
+        .get_mut(bid)
+        .set_path(Some(PathBuf::from("test.jsonc")));
+    ed.init_scripting(&mut Default::default());
+    drop(fixture);
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "init.scm's define-language! override must not error: {errors:?}"
+    );
+
+    assert!(
+        ed.state.config.languages.has_grammar("json"),
+        "grammar attached by grammars.scm must survive init.scm's identity override"
+    );
+    ed.reparse_stale_buffers();
+    assert!(
+        ed.state.buffers.get(bid).syntax.is_some(),
+        "buffer must still be highlighted after the init.scm override"
+    );
+    // The override itself must have taken effect: the buffer's new .jsonc
+    // extension detects as json, proving this isn't a stale pre-override
+    // identity papering over a dropped-then-never-reattached grammar.
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.config.languages.id_of("json"),
+        "the .jsonc extension added by init.scm must detect as json"
     );
 }
 
@@ -616,7 +643,7 @@ fn init_errors_with_catalog(
         std::env::set_var("HUME_RUNTIME", runtime_tmp.path());
         std::env::set_var("XDG_DATA_HOME", data_tmp.path());
     }
-    ed.init_scripting();
+    ed.init_scripting(&mut Default::default());
     unsafe {
         std::env::remove_var("XDG_CONFIG_HOME");
         std::env::remove_var("HUME_RUNTIME");
@@ -662,11 +689,7 @@ fn grammar_catalog_is_read_lazily_on_first_use() {
     );
 
     // Tripwire check: one compiled file forces the catalog, which then fails.
-    let ext = if cfg!(target_os = "macos") {
-        "dylib"
-    } else {
-        "so"
-    };
+    let ext = hume_test_fixtures::grammar_platform_ext();
     let (errors, ..) = init_errors_with_catalog(broken, |data| {
         let grammars = data.join("grammars");
         std::fs::create_dir_all(&grammars).unwrap();
@@ -688,11 +711,7 @@ fn grammar_catalog_is_read_lazily_on_first_use() {
 #[test]
 fn orphan_compiled_grammar_is_skipped_not_registered() {
     let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
-    let ext = if cfg!(target_os = "macos") {
-        "dylib"
-    } else {
-        "so"
-    };
+    let ext = hume_test_fixtures::grammar_platform_ext();
 
     let (errors, ed, _dirs) = init_errors_with_catalog(catalog, |data| {
         let grammars = data.join("grammars");
@@ -732,11 +751,7 @@ fn orphan_compiled_grammar_is_skipped_not_registered() {
 #[test]
 fn known_grammar_missing_highlights_warns_and_is_not_registered() {
     let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
-    let ext = if cfg!(target_os = "macos") {
-        "dylib"
-    } else {
-        "so"
-    };
+    let ext = hume_test_fixtures::grammar_platform_ext();
 
     let (errors, ed, _dirs) = init_errors_with_catalog(catalog, |data| {
         let grammars = data.join("grammars");

@@ -133,7 +133,11 @@ impl Editor {
     }
 
     /// Close the minibuffer and clear any active completion session.
-    pub(super) fn close_minibuf(&mut self) {
+    ///
+    /// Visible crate-editor-wide (not just `mappings`): `Editor::
+    /// reset_config_state` calls this directly when a `(prompt! …)` session
+    /// is open at reload time, reusing this instead of duplicating its body.
+    pub(in crate::editor) fn close_minibuf(&mut self) {
         self.state.minibuf = None;
         self.state.minibuf_completion = None;
         self.state.history.begin_session_all();

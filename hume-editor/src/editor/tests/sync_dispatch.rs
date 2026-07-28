@@ -906,7 +906,7 @@ fn steel_unknown_cmd_errors_and_continues() {
 }
 
 /// **Finding 6 — mouse input drains pending hooks via `handle_event`**: any hooks that
-/// are sitting in `state.pending_hooks` before a mouse event must be drained by
+/// are sitting in `state.config.pending_hooks` before a mouse event must be drained by
 /// `handle_event`, which is the single interactive drain choke point.
 ///
 /// Setup: a hook is seeded directly into `pending_hooks` via `fire_hook_silent`.

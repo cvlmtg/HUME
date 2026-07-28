@@ -48,7 +48,7 @@ const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin "core:stdlib")
 /// The handshake below (draining the backend's `initialize` response and
 /// dispatching `BecameRunning`) fires `on-lsp-attach` *before* `ed.scripting`
 /// is even assigned. That's fine: `fire_hook_silent` only pushes onto
-/// `state.pending_hooks`, which lives on `Editor::state` independent of
+/// `state.config.pending_hooks`, which lives on `Editor::state` independent of
 /// `scripting` — the queued hook survives host installation and is still
 /// there for a later `ed.drain_hooks()` to process against the real host.
 fn setup_declared(

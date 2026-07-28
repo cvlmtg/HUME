@@ -111,6 +111,69 @@ fn detect_and_set_language_no_match_leaves_none() {
     assert!(ed.state.buffers.get(bid).language.is_none());
 }
 
+/// Regression test: `open-buffer!` then `set-buffer-language!` on the same
+/// new buffer, in one eval — `apply_script_effects`'s tail
+/// (`detect_pending_languages`) used to unconditionally re-detect every
+/// freshly-opened buffer, silently overwriting the explicit assertion the
+/// same eval had *just* made (the `SetBufferLanguage` effect applies first,
+/// earlier in the same effect log). Detection would pick "rust" from the
+/// `.rs` extension; the explicit `set-buffer-language!` call asks for
+/// "notes" — the explicit call must win.
+#[test]
+fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>b\n");
+    register_rust(&mut ed, "rust", &["rs"]);
+    ed.state
+        .config
+        .languages
+        .register_identity_no_rebuild("notes", &[], &[], &[]);
+    ed.state
+        .config
+        .languages
+        .rebuild_glob_set()
+        .expect("rebuild ok");
+
+    let file_tmp = tempfile::tempdir().unwrap();
+    let file = file_tmp.path().join("main.rs");
+    std::fs::write(&file, "fn main() {}\n").unwrap();
+    let file_str = file.to_string_lossy().replace('\\', "/");
+
+    let mut host = hume_scripting::ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        &format!(
+            r#"(define-command! "go" "" (lambda ()
+                 (define b (open-buffer! "{file_str}"))
+                 (set-buffer-language! b "notes")))"#
+        ),
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":go");
+
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&file.canonicalize().unwrap())
+        .expect("the opened buffer must be findable by path");
+    assert_eq!(
+        ed.state
+            .buffers
+            .get(bid)
+            .language
+            .map(|id| ed.state.config.languages.name_of(id)),
+        Some("notes"),
+        "the explicit set-buffer-language! call must win over what plain \
+         detection would have found from the .rs extension"
+    );
+    assert!(
+        ed.state.buffers.get(bid).language_explicit,
+        "the buffer must be marked explicit, not left looking auto-detected"
+    );
+}
+
 // ── :set buffer language= intercept ──────────────────────────────────────────
 
 fn run_cmd(ed: &mut Editor, cmd: &str) -> Result<(), CommandError> {

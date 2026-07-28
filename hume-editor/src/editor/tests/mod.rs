@@ -200,7 +200,7 @@ impl Editor {
         Self {
             state: EditorState {
                 buffers,
-                config: super::ConfigState::new(false),
+                config: super::ConfigState::new(false, 0),
                 mode: Mode::Normal,
                 pending_keys: Vec::new(),
                 count: None,
@@ -591,6 +591,7 @@ mod picker;
 mod picker_source_steel;
 mod picker_steel;
 mod plugins;
+mod reload_config;
 mod render_snapshot;
 mod scripting_effects;
 mod scripting_grammar;

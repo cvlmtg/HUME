@@ -9,7 +9,11 @@ HUME reads persistent configuration from:
 - **macOS / Linux:** `$XDG_CONFIG_HOME/hume/init.scm` (defaults to `~/.config/hume/init.scm`)
 - **Windows:** `%APPDATA%\hume\init.scm`
 
-If the file does not exist, HUME starts with defaults. If it fails partway through, the error is reported in `:messages` and everything up to that point stays applied — so a broken line late in the file leaves you half-configured rather than back at defaults. Fix it and run `:reload-config` to re-run the file from scratch without restarting.
+If the file does not exist, HUME starts with defaults. If it fails partway through, the error is reported in `:messages` and everything up to that point stays applied — so a broken line late in the file leaves you half-configured rather than back at defaults. Fix it and run `:reload-config` to re-run the file without restarting.
+
+`:reload-config` starts from a clean slate: every option, key binding, hook, command, and plugin goes back to its default first, then the file runs again — so removing a line from `init.scm` and reloading does undo what it did. Any `:set global`/`:set buffer`/`:theme` change you made during the session is discarded too, not just what `init.scm` set, with two exceptions: a pane-scoped `:set pane wrap-mode=…`, which stays as you left it (panes are editing state, not config), and an explicit `:set buffer language=<name>`, which is restored after the reload rather than discarded — detection can't reconstruct it on its own (that's exactly why you had to set it explicitly), so losing it on every reload would be more surprising than keeping it. If the file fails partway through this time, you're left with defaults plus whatever ran before the error, same as at startup.
+
+Buffers stay open and language servers stay attached across a reload — it behaves as if every open file were closed and reopened. Completion triggers, inline diagnostics, and any per-language setup your config applies (e.g. from `on-language-set`) come back too, without restarting the language server or losing your place in the file.
 
 A reference config ships at `runtime/init.scm.example` (see [File locations](#file-locations)); copy it to the path above if you want a starting point, or see [Example init.scm](#example-init-scm) below.
 

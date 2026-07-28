@@ -80,6 +80,12 @@ pub(crate) struct Buffer {
     /// Detected or explicitly set language identity (e.g. `rust`, `json`).
     /// `None` for unrecognised filetypes and scratch buffers.
     pub(crate) language: Option<LanguageId>,
+    /// `true` when `language` was written by `:set buffer language=` or Steel's
+    /// `set-buffer-language!`, rather than by detection. `:reload-config`'s
+    /// reset reads this (before clearing it) to restore the user's own
+    /// assertion across the reload instead of letting re-detection silently
+    /// pick something else — see `clear_languages_all`.
+    pub(crate) language_explicit: bool,
     /// Monotonically increasing counter, bumped on every text mutation.
     /// `reparse_stale_buffers` skips a buffer when this equals
     /// `syntax.parsed_gen()`.
@@ -118,6 +124,18 @@ pub(crate) struct Buffer {
     /// scratch replacement) default to `false` — their close always
     /// announces, matching pre-refactor behaviour.
     pub(crate) open_hook_pending: bool,
+    /// Bumped by [`lifecycle::replace_buffer_in_place`] — the only path that
+    /// swaps a `BufferId`'s content without a close/open pair (the
+    /// last-buffer scratch replacement in `close_buffer`). A versioned
+    /// slotmap key alone can't distinguish "the same buffer that was open
+    /// before `:reload-config` started" from "a fresh scratch buffer that
+    /// happens to have reused that same key in place": `replace_buffer_in_place`
+    /// mutates the existing slot rather than freeing and reinserting it, so
+    /// the key's own version never changes. `typed_reload_config` pairs each
+    /// pre-reload `BufferId` with this stamp; `resync_config_state` and the
+    /// explicit-language restore treat a bid whose current stamp has moved
+    /// on as a different buffer, not the one the snapshot meant.
+    pub(crate) replace_stamp: u64,
 }
 
 impl Buffer {
@@ -143,6 +161,7 @@ impl Buffer {
             search_matches: SearchMatches::default(),
             overrides: BufferOverrides::default(),
             language: None,
+            language_explicit: false,
             text_gen: 0,
             syntax: None,
             read_only: false,
@@ -151,6 +170,7 @@ impl Buffer {
             lsp_pending: Vec::new(),
             last_insert: None,
             open_hook_pending: false,
+            replace_stamp: 0,
         }
     }
 

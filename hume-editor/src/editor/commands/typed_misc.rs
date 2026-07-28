@@ -113,25 +113,68 @@ pub fn typed_plugin_status(
     Ok(())
 }
 
-/// `:reload-config` — drop the scripting engine and re-evaluate `init.scm`
-/// from scratch, restoring a clean slate.
+/// `:reload-config` — reset every piece of config-owned state to its
+/// compiled-in default, drop the scripting engine, and re-evaluate
+/// `init.scm` from scratch.
 ///
-/// Stale `SteelBacked` entries from the previous init must be removed from the
-/// registry before `init_scripting()` runs: otherwise the new `builtin_names`
-/// set (built from `registry.names()`) would contain every Steel command from
-/// the prior load, and every `(define-command!)` in the re-evaluated
-/// `init.scm` would fail the builtin-conflict check in
-/// `editor/src/scripting/builtins/commands.rs` with "conflicts with a built-in
-/// command and cannot be redefined".
+/// `reset_config_state` is the full contract for what "from scratch" resets
+/// (keymap, settings, LSP registrations, decorations, dynamic commands, …)
+/// and why it must run — including clearing dynamic commands from the
+/// registry — before `ed.scripting` is dropped and `init_scripting()` runs:
+/// otherwise the new `builtin_names` set (built from `registry.names()`)
+/// would contain every Steel command from the prior load, and every
+/// `(define-command!)` in the re-evaluated `init.scm` would fail the
+/// builtin-conflict check in `editor/src/scripting/builtins/commands.rs`
+/// with "conflicts with a built-in command and cannot be redefined".
+///
+/// Buffers, panes, undo history, registers, and running LSP server
+/// processes are untouched — only *config* resets, not editing state.
+///
+/// `resync_config_state` runs last, after `init_scripting` has rebuilt the
+/// engine and re-detected every buffer's language: it replays the
+/// buffer-open lifecycle (`OnLspAttach` for already-attached servers,
+/// `OnBufferOpen`, `OnDiagnosticsChanged` from the surviving diagnostics
+/// cache) so state a hook would normally repopulate — trigger characters,
+/// inline diagnostics/inlay hints, buffer-open-driven decorations — doesn't
+/// stay empty simply because reload never causes the transition that hook
+/// is gated on. See `Editor::resync_config_state`'s doc for why this is
+/// scoped to a replay rather than a literal LSP close+reopen.
 pub fn typed_reload_config(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
+    // Checked before anything is touched: `init_scripting` needs this same
+    // directory to re-evaluate `init.scm`, and failing here — before
+    // `reset_config_state` wipes languages/keymap/theme/highlighting — means
+    // a reload with no HOME/XDG_CONFIG_HOME leaves the editor exactly as it
+    // was, rather than reset to compiled-in defaults with no way back.
+    if hume_platform::dirs::config_dir().is_none() {
+        return Err(CommandError::new(
+            "reload-config: no config directory — HOME/XDG_CONFIG_HOME (APPDATA on Windows) unset",
+        ));
+    }
+    // Lifetime totals, not `unseen_counts`: the log can evict old entries
+    // past `MAX_ENTRIES`, which would otherwise skew a before/after unseen
+    // count in either direction on a long session — see `MessageLog::totals`.
+    // Warnings count too, not just errors: every failure mode `init_scripting`
+    // and the hooks below can hit (no runtime dir, an unknown keymap target,
+    // an unregistered restored language, …) reports at `Severity::Warning`,
+    // and an unconditional success message would bury it under "it worked".
+    let (errors_before, warnings_before) = ed.state.message_log.totals();
+    let mut snapshot = ed.reset_config_state();
     ed.scripting = None;
-    ed.state.config.registry.unregister_dynamic_commands();
-    ed.init_scripting();
-    ed.report(Severity::Info, "Config reloaded".to_string());
+    ed.init_scripting(&mut snapshot);
+    ed.resync_config_state(&snapshot);
+    // Drained here, inside the accounting window, rather than left for the
+    // next interactive event: `resync_config_state` only *enqueues* its
+    // hooks (`fire_hook_silent`), and a handler error from one of them is
+    // exactly the kind of failure "Config reloaded" must not paper over.
+    ed.drain_hooks();
+    let (errors_after, warnings_after) = ed.state.message_log.totals();
+    if errors_after == errors_before && warnings_after == warnings_before {
+        ed.report(Severity::Info, "Config reloaded".to_string());
+    }
     Ok(())
 }
 

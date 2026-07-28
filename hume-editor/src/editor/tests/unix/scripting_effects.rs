@@ -261,7 +261,7 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
 /// pipeline: `:go` → `call_steel_cmd` → `open-buffer!` opens (queuing the
 /// bid) → `apply_script_effects`'s tail drain runs `detect_and_set_language`.
 ///
-/// Fail oracle: drop the `state.pending_language_detection.push(bid)` line
+/// Fail oracle: drop the `state.config.pending_language_detection.push(bid)` line
 /// from `open_buffer_and_notify` (or the tail drain from
 /// `apply_script_effects`) — the opened buffer's `language` stays `None`.
 #[test]

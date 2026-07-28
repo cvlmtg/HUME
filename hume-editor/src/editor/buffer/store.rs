@@ -116,6 +116,48 @@ impl BufferStore {
         }
     }
 
+    /// Clear every open buffer's setting overrides back to "inherit from
+    /// global" — called by `:reload-config`'s reset so a `set-buffer-option!`
+    /// from the previous `init.scm` (e.g. one fired from an `OnLanguageSet`
+    /// hook) doesn't outlive the config that set it.
+    pub(crate) fn clear_overrides_all(&mut self) {
+        for buf in self.buffers.values_mut() {
+            buf.overrides = crate::settings::BufferOverrides::default();
+        }
+    }
+
+    /// Clear every open buffer's language identity and syntax attachment —
+    /// called by `:reload-config`'s reset immediately before `state.config.languages`
+    /// is replaced with a fresh `LanguageRegistry`. `reset_config_state` reads
+    /// `language_explicit` on every buffer *before* calling this, so a
+    /// `:set buffer language=`/`set-buffer-language!` assertion can be
+    /// restored after the post-reload re-detect sweep rather than being
+    /// silently overwritten by whatever plain detection finds.
+    ///
+    /// `Buffer.language` is a `LanguageId`, an index into that registry; left
+    /// alone across the swap it would dangle (surviving only by the
+    /// coincidence that `languages.scm` re-interns identical names in
+    /// identical order). Clearing it also restores `set_buffer_language`'s
+    /// `None -> Some` transition on the post-reload re-detect sweep, so
+    /// `OnLanguageSet` and its downstream syntax/LSP wiring re-fire instead
+    /// of hitting that function's unchanged-value early return.
+    ///
+    /// `Buffer.syntax` holds an `Arc<GrammarBundle>` from that same outgoing
+    /// registry (via `Syntax::bundle`) and must go with it: normally only
+    /// `setup_buffer_syntax` (reached through `set_buffer_language`) tears it
+    /// down, but when a buffer's language doesn't re-detect after the reload
+    /// (`None -> None`), `set_buffer_language`'s unchanged-value guard never
+    /// runs `setup_buffer_syntax` at all — leaving the buffer highlighted
+    /// from a grammar registry that no longer exists unless this clears it
+    /// directly.
+    pub(crate) fn clear_languages_all(&mut self) {
+        for buf in self.buffers.values_mut() {
+            buf.language = None;
+            buf.language_explicit = false;
+            buf.syntax = None;
+        }
+    }
+
     /// Remove `id` from the store.
     ///
     /// Returns the most-recently-used buffer excluding `id` (the recommended

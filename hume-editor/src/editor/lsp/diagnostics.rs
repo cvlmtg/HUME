@@ -183,6 +183,15 @@ impl DiagnosticsStore {
         removed
     }
 
+    /// Every buffer with at least one stored diagnostic, from any server —
+    /// including one whose server has since crashed or stopped: `remove_server`
+    /// drops a stopped server's own entries, but a crash leaves them here
+    /// deliberately (see `LspState::reset_config`'s doc), so `:reload-config`'s
+    /// resync can still replay `OnDiagnosticsChanged` for them.
+    pub(crate) fn buffers_with_diagnostics(&self) -> impl Iterator<Item = BufferId> + '_ {
+        self.by_buffer.keys().copied()
+    }
+
     /// Production callers: `:lsp-status` and the `(diagnostic-counts …)` builtin.
     pub(crate) fn counts(&self, bid: BufferId) -> (usize, usize) {
         let Some(entry) = self.by_buffer.get(&bid) else {

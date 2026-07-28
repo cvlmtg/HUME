@@ -19,19 +19,28 @@ fn fixtures_root() -> PathBuf {
         .join("tests/fixtures/grammars")
 }
 
-/// Absolute path to the pre-built grammar shared library for `name`.
-///
-/// Callers that require the file to exist should check or load it immediately
-/// after calling this — the helper does not verify presence.
-pub fn grammar_parser_path(name: &str) -> PathBuf {
-    let suffix = if cfg!(target_os = "macos") {
+/// Shared-library extension for a compiled tree-sitter grammar on this
+/// platform. Exposed (not just used internally by [`grammar_parser_path`])
+/// for callers that stage a grammar fixture at a runtime path of their own
+/// (e.g. a fake `<data>/grammars/`) rather than reading the fixture root.
+pub fn grammar_platform_ext() -> &'static str {
+    if cfg!(target_os = "macos") {
         "dylib"
     } else if cfg!(windows) {
         "dll"
     } else {
         "so"
-    };
-    fixtures_root().join(name).join(format!("parser.{suffix}"))
+    }
+}
+
+/// Absolute path to the pre-built grammar shared library for `name`.
+///
+/// Callers that require the file to exist should check or load it immediately
+/// after calling this — the helper does not verify presence.
+pub fn grammar_parser_path(name: &str) -> PathBuf {
+    fixtures_root()
+        .join(name)
+        .join(format!("parser.{}", grammar_platform_ext()))
 }
 
 /// Absolute path to the highlights query file for `name`.

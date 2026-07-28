@@ -29,8 +29,9 @@ pub(super) fn runtime_scheme_dir() -> PathBuf {
 }
 
 /// Read `(url, rev)` for grammar `name` from `grammar-sources.scm`, the same
-/// catalog PLUM reads at runtime. Avoids duplicating pins into the test (they
-/// drift otherwise). Entries are 5-tuples of quoted strings:
+/// catalog core's `grammars.scm` reads at runtime. Avoids duplicating pins
+/// into the test (they drift otherwise). Entries are 5-tuples of quoted
+/// strings:
 ///   ("name" "url" "rev" "symbol" "subpath")
 /// so splitting a matched line on `"` puts the values at odd indices.
 pub(super) fn grammar_source(name: &str) -> (String, String) {
@@ -112,6 +113,57 @@ fn attach_then_set_language_attaches_syntax() {
             .layers()
             .is_some(),
         "engine tree must be set"
+    );
+}
+
+/// `reset_config_state` (via `BufferStore::clear_languages_all`) bypasses
+/// `set_buffer_language` entirely — it writes `buf.language = None` directly,
+/// which is the bug `clear_language_detaches_syntax_keeps_identity` above
+/// doesn't cover: that test clears through `set_buffer_language`, the normal
+/// path that also tears down `buf.syntax` via `setup_buffer_syntax`. Flip:
+/// if `clear_languages_all` forgot to clear `syntax` too, this would still
+/// be `Some` after `reset_config_state`, holding an `Arc<GrammarBundle>`
+/// from the registry the reset is about to replace.
+#[test]
+fn reset_config_state_clears_buffer_syntax_not_just_language() {
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
+    let (parser, hl) = grammar_fixture("json");
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .config
+        .languages
+        .register_identity("json", &["json"], &[], &[])
+        .unwrap();
+    ed.state
+        .config
+        .languages
+        .attach_grammar(
+            "json",
+            &parser,
+            "tree_sitter_json",
+            &hl,
+            None,
+            &mut ed.view.registry,
+        )
+        .unwrap();
+    let lang = ed.state.config.languages.intern("json");
+    ed.set_buffer_language(bid, Some(lang));
+    ed.reparse_stale_buffers();
+    assert!(
+        ed.state.buffers.get(bid).syntax.is_some(),
+        "sanity: syntax must be attached before reset"
+    );
+
+    ed.reset_config_state();
+
+    assert!(
+        ed.state.buffers.get(bid).syntax.is_none(),
+        "buffer syntax must not survive the reset — it holds an \
+         Arc<GrammarBundle> from the outgoing LanguageRegistry that \
+         clear_languages_all replaces"
     );
 }
 

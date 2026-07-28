@@ -91,7 +91,12 @@ fn capacity_cap() {
     while let Some(e) = jl.backward(entry(0, 0)) {
         oldest = e.primary_line;
     }
-    assert_eq!(oldest, 1);
+    // `backward`'s own "save current position" append enforces the same cap
+    // as `push` — it evicts one more entry (line 1) to make room for the
+    // saved position, so the true oldest survivor is line 2, not line 1.
+    // Fail oracle: dropping that trim (leaving `backward` free to grow the
+    // list to `CAP + 1`) would keep line 1 reachable and this assertion red.
+    assert_eq!(oldest, 2);
 }
 
 #[test]
@@ -112,6 +117,22 @@ fn set_capacity_defers_trim_to_next_push() {
     // loop is a `while`, not an `if`.
     jl.push(entry(50, 5));
     assert_eq!(jl.len(), 2);
+
+    // `backward`'s own "save current position" append enforces the same cap
+    // as `push` — with capacity 2 already full (line 4, line 5), saving the
+    // current position evicts line 4 to make room, so only one step back is
+    // reachable. Fail oracle: without that trim, the list would transiently
+    // hold 3 entries and line 4 would still be reachable as a second step.
+    let e = jl.backward(entry(9999, 9999)).unwrap();
+    assert_eq!(
+        e.primary_line, 5,
+        "the surviving pushed entry is the newest push"
+    );
+    assert!(
+        jl.backward(entry(0, 0)).is_none(),
+        "capacity 2 holds only the newest push and the saved current position \
+         — line 4 must have been evicted to make room, not line 5"
+    );
 }
 
 #[test]

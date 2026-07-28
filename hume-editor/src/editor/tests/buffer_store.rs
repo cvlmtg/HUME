@@ -413,9 +413,12 @@ fn find_by_path_leaves_verbatim_unc_paths_alone() {
     // leaves it untouched, so these two remain distinct buffers.
     let mut ed = Editor::for_testing(Buffer::new(Text::from("hello\n"), SelectionSet::default()));
     let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).set_path(Some(
-        std::path::PathBuf::from(r"\\?\UNC\server\share\foo.txt"),
-    ));
+    ed.state
+        .buffers
+        .get_mut(bid)
+        .set_path(Some(std::path::PathBuf::from(
+            r"\\?\UNC\server\share\foo.txt",
+        )));
 
     let found = ed
         .state

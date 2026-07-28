@@ -234,7 +234,7 @@ Available hooks and their lambda signatures:
 | `on-diagnostics-changed` | A buffer's LSP diagnostics change | `(buffer-id)` — pull details with `diagnostics-for-buffer` |
 | `on-lsp-attach` | A language server attaches to a buffer | `(buffer-id server-name)` |
 | `on-lsp-detach` | A language server detaches from a buffer | `(buffer-id server-name)` |
-| `on-viewport-change` | The visible region of a pane changes | `()` |
+| `on-viewport-change` | The visible region of a pane changes | `(buffer-id first-line last-line)` |
 | `on-trigger-char` | A registered trigger character is typed | `(buffer-id char source)` |
 | `on-completion-accept` | A completion entry is accepted | `(buffer-id item)` |
 | `on-completion-refilter` | Completion input changes | `(buffer-id text)` |

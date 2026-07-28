@@ -53,13 +53,13 @@ impl Editor {
     /// Apply the kitty keyboard-protocol probe result atomically: set the
     /// runtime flag and re-derive the keymap via the same
     /// [`super::default_keymap_for`] `ConfigState::new` uses, so the kitty-only
-    /// default keybinds (when enabled) are installed identically at startup.
-    /// Called once at startup after the probe (and from headless `run_keys`,
-    /// which assumes full capability) so the binds can never diverge from the
-    /// flag.
+    /// default keybinds (when enabled) are installed identically at startup
+    /// and on every `:reload-config`. Called once at startup after the probe
+    /// (and from headless `run_keys`, which assumes full capability) so the
+    /// binds can never diverge from the flag.
     ///
-    /// Must run before `init_scripting`: it replaces the keymap wholesale, so
-    /// calling it after `init.scm` has evaluated would discard any user
+    /// Must run before `init_scripting`: it replaces the keymap wholesale,
+    /// so calling it after `init.scm` has evaluated would discard any user
     /// `bind-key!` on top of it.
     pub(crate) fn set_kitty_support(&mut self, kitty_enabled: bool) {
         self.kitty_enabled = kitty_enabled;
@@ -183,7 +183,7 @@ impl Editor {
                 buffers,
                 // `kitty_enabled: false` below matches: the real probe result
                 // isn't known until `set_kitty_support` runs, after `open`.
-                config: super::ConfigState::new(false),
+                config: super::ConfigState::new(false, 0),
                 mode: Mode::Normal,
                 pending_keys: Vec::new(),
                 count: None,
@@ -875,6 +875,12 @@ impl Editor {
         self.sync_menu_view(ctx);
         self.sync_completion_menu_view(ctx);
         self.sync_picker_view();
+        // The drawer has no cursor-relative geometry, so it doesn't need
+        // step 9's ordering — but it's synced here unconditionally anyway
+        // (self-healing), on top of every direct mutation-site call, so the
+        // view can never drift from `state.config.drawer` for a frame. See
+        // `EditorState::sync_drawer_view`'s doc.
+        self.state.sync_drawer_view();
     }
 
     /// Sync every engine pane's selection mirror from the authoritative `pane_state`.

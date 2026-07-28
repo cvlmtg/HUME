@@ -16,13 +16,38 @@ use hume_scripting::SteelBufferId;
 use hume_scripting::hooks::HookId;
 
 impl Editor {
-    /// Set the language identity for buffer `bid`.
-    ///
-    /// No-op when the value is unchanged (avoids spurious hook fires).
-    /// On change: writes `Buffer.language`, fires `OnLanguageSet` with `(bid, name-or-#f)`.
-    /// All write paths (detection at open, `:set buffer language=`, Steel API) go
-    /// through this function.
+    /// Set the language identity for buffer `bid`, via plain detection —
+    /// does not mark `language_explicit` (see `set_buffer_language_explicit`
+    /// for the user/script write paths).
     pub(super) fn set_buffer_language(&mut self, bid: BufferId, new_lang: Option<LanguageId>) {
+        self.set_buffer_language_impl(bid, new_lang, false);
+    }
+
+    /// Set the language identity for buffer `bid` from a user or script
+    /// assertion (`:set buffer language=`, Steel's `set-buffer-language!`)
+    /// rather than detection — stamps `language_explicit` so
+    /// `:reload-config`'s reset can restore the assertion across the reload
+    /// instead of letting its post-reload re-detect sweep silently pick
+    /// something else (see `clear_languages_all`).
+    pub(super) fn set_buffer_language_explicit(
+        &mut self,
+        bid: BufferId,
+        new_lang: Option<LanguageId>,
+    ) {
+        self.set_buffer_language_impl(bid, new_lang, true);
+    }
+
+    /// No-op when the value is unchanged (avoids spurious hook fires) — but
+    /// `language_explicit` is still stamped either way, since it records how
+    /// the *current* value arrived, not whether this call changed it.
+    /// On change: writes `Buffer.language`, fires `OnLanguageSet` with `(bid, name-or-#f)`.
+    fn set_buffer_language_impl(
+        &mut self,
+        bid: BufferId,
+        new_lang: Option<LanguageId>,
+        explicit: bool,
+    ) {
+        self.state.buffers.get_mut(bid).language_explicit = explicit;
         if self.state.buffers.get(bid).language == new_lang {
             return;
         }
@@ -74,7 +99,7 @@ impl Editor {
 
     /// Detect and set the language for every buffer
     /// `buffer::lifecycle::open_buffer_and_notify` queued onto
-    /// `state.pending_language_detection` — the disjoint-borrow open
+    /// `state.config.pending_language_detection` — the disjoint-borrow open
     /// chokepoint can't do this inline (see that function's doc), so every
     /// caller that regains a full `&mut Editor` drains this once: directly
     /// after opening (`Editor::open_buffer`, `apply_edit_request_response`),
@@ -116,7 +141,17 @@ impl Editor {
                 .try_get(bid)
                 .is_some_and(|b| b.open_hook_pending)
             {
-                self.detect_and_set_language(bid);
+                // A `SetBufferLanguage` effect for this same bid, applied
+                // earlier in this same `apply_script_effects` call (e.g.
+                // `(define b (open-buffer! path)) (set-buffer-language! b
+                // "notes")` in one eval), already stamped `language_explicit`
+                // — detection must not clobber it with whatever plain
+                // detection finds for the path, the same reasoning as
+                // `init_scripting`'s post-reload sweep. `OnBufferOpen` still
+                // fires either way: the buffer was genuinely opened.
+                if !self.state.buffers.get(bid).language_explicit {
+                    self.detect_and_set_language(bid);
+                }
                 self.state.buffers.get_mut(bid).open_hook_pending = false;
                 let val = SteelBufferId::new(bid).into_steel_val();
                 self.fire_hook_silent(HookId::OnBufferOpen, &[val]);

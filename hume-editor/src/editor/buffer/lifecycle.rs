@@ -268,6 +268,12 @@ pub(crate) fn replace_buffer_in_place(
         new_doc.search_pattern.is_none(),
         "replace_buffer_in_place: new_doc must have no active search state",
     );
+    // Carry the stamp forward past whatever `new_doc`'s constructor set it
+    // to (always 0) — see `Buffer::replace_stamp`'s doc for why this bump,
+    // not the buffer's content, is what marks `id` as "not the same buffer
+    // instance a snapshot taken before this call meant".
+    let mut new_doc = new_doc;
+    new_doc.replace_stamp = buffers.get(id).replace_stamp.wrapping_add(1);
     // The new doc carries no syntax attachment (Buffer.syntax = None by
     // construction — the flip made this assignment alone sufficient to drop
     // any stale committed layers, since they now live inside Buffer.syntax).

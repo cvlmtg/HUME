@@ -11,6 +11,8 @@
 
 use super::*;
 
+use std::path::Path;
+
 // ── Shared unix-only guards and fixtures ─────────────────────────────────────
 
 /// Lock `HUME_RUNTIME_MUTEX`, create isolated `runtime` and `tmp` tempdirs,
@@ -98,9 +100,11 @@ fn write_core_plugin(guard: &HumeRuntimeGuard, name: &str, source: &str) {
 /// `XDG_DATA_HOME` doesn't need the same care — nothing outside HUME's own
 /// `data-dir` resolution reads it, so there is no allocator-style hazard.
 struct RealRuntimeGuard {
-    _lock: std::sync::MutexGuard<'static, ()>,
     _data_tmp: tempfile::TempDir,
     prev_xdg_data_home: Option<String>,
+    // Last field — released after `_data_tmp` is deleted (see
+    // `HumeRuntimeGuard`'s doc for why the drop order matters).
+    _lock: std::sync::MutexGuard<'static, ()>,
 }
 
 impl RealRuntimeGuard {
@@ -114,9 +118,9 @@ impl RealRuntimeGuard {
             std::env::set_var("XDG_DATA_HOME", data_tmp.path());
         }
         RealRuntimeGuard {
-            _lock: lock,
             _data_tmp: data_tmp,
             prev_xdg_data_home,
+            _lock: lock,
         }
     }
 }
@@ -129,6 +133,83 @@ impl Drop for RealRuntimeGuard {
                 Some(v) => std::env::set_var("XDG_DATA_HOME", v),
                 None => std::env::remove_var("XDG_DATA_HOME"),
             }
+        }
+    }
+}
+
+/// Points `XDG_CONFIG_HOME`/`HUME_RUNTIME`/`XDG_DATA_HOME` at a config
+/// tempdir (holding a caller-chosen `init.scm`), the real repo `runtime/`
+/// dir, and a data tempdir staged with a real compiled grammar at the exact
+/// paths core's `grammar-output-path`/`grammar-highlights-path` expect — so
+/// `init_scripting`'s unconditional `scheme/grammars.scm` eval (see
+/// `scripting_setup.rs`) registers it against the real source catalog.
+///
+/// Held for the fixture's whole lifetime (unlike `RealRuntimeGuard`, which
+/// has no config dir at all) so a later `:reload-config` dispatch can
+/// re-enter `init_scripting` against the same paths after `write_init`
+/// swaps in a new `init.scm`.
+struct StagedGrammarFixture {
+    config_dir: PathBuf,
+    _config_tmp: tempfile::TempDir,
+    _data_tmp: tempfile::TempDir,
+    // Last field — released after the tempdirs above are deleted (see
+    // `HumeRuntimeGuard`'s doc for why the drop order matters).
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+impl StagedGrammarFixture {
+    /// `grammar_name`'s compiled fixture library and `highlights.scm` staged
+    /// under a fresh `<data>/grammars/`; `init_scm` written to a fresh
+    /// `init.scm`. Caller supplies `grammar_name`'s own fixture files —
+    /// callers gate on `skip_unless_grammars` first.
+    fn new(grammar_name: &str, parser: &Path, highlights: &Path, init_scm: &str) -> Self {
+        let lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let repo_runtime_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
+
+        let config_tmp = tempfile::tempdir().expect("tempdir");
+        let config_dir = config_tmp.path().join("hume");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(config_dir.join("init.scm"), init_scm).unwrap();
+
+        let data_tmp = tempfile::tempdir().expect("tempdir");
+        let grammars_dir = data_tmp.path().join("hume").join("grammars");
+        let hl_dir = grammars_dir.join("sources").join(grammar_name);
+        std::fs::create_dir_all(&hl_dir).unwrap();
+        std::fs::copy(
+            parser,
+            grammars_dir.join(format!(
+                "{grammar_name}.{}",
+                hume_test_fixtures::grammar_platform_ext()
+            )),
+        )
+        .unwrap();
+        std::fs::copy(highlights, hl_dir.join("highlights.scm")).unwrap();
+
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+            std::env::set_var("HUME_RUNTIME", repo_runtime_dir);
+            std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+        }
+
+        Self {
+            config_dir,
+            _config_tmp: config_tmp,
+            _data_tmp: data_tmp,
+            _lock: lock,
+        }
+    }
+
+    fn write_init(&self, init_scm: &str) {
+        std::fs::write(self.config_dir.join("init.scm"), init_scm).unwrap();
+    }
+}
+
+impl Drop for StagedGrammarFixture {
+    fn drop(&mut self) {
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+            std::env::remove_var("HUME_RUNTIME");
+            std::env::remove_var("XDG_DATA_HOME");
         }
     }
 }
@@ -211,6 +292,7 @@ mod picker_source;
 mod picker_source_steel;
 mod pickers_plugin;
 mod plugins;
+mod reload_config;
 mod scripting_effects;
 mod scripting_grammar;
 mod scripting_lsp_install;

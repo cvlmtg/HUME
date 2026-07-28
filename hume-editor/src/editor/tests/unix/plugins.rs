@@ -1578,7 +1578,7 @@ fn setup_editor_with_init_scripting(
     }
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.init_scripting();
+    ed.init_scripting(&mut Default::default());
 
     unsafe {
         std::env::remove_var("XDG_CONFIG_HOME");
@@ -1815,7 +1815,7 @@ fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
     }
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.init_scripting();
+    ed.init_scripting(&mut Default::default());
 
     unsafe {
         std::env::remove_var("XDG_CONFIG_HOME");
@@ -1856,7 +1856,7 @@ fn language_activation_lint_warns_on_unknown_language() {
 ///
 /// Flip: running the lint before the second language flush (instead of after)
 /// would incorrectly warn here because the flush has not yet applied the
-/// `define-language!` call to `state.languages`.
+/// `define-language!` call to `state.config.languages`.
 #[test]
 fn language_trigger_lint_silent_for_known_language() {
     use crate::editor::Severity;
@@ -1890,7 +1890,7 @@ fn language_trigger_lint_silent_for_known_language() {
 /// makes the check order-independent.
 ///
 /// Flip: move the lint before `init.scm`'s `apply_script_effects` call →
-/// "foo" is not yet in `state.languages` → lint emits a spurious Warning →
+/// "foo" is not yet in `state.config.languages` → lint emits a spurious Warning →
 /// assertion fires.
 #[test]
 fn language_trigger_lint_silent_for_forward_defined_language() {
@@ -1920,7 +1920,7 @@ fn language_trigger_lint_silent_for_forward_defined_language() {
 /// wildcard, not a language identity to look up in the registry.
 ///
 /// Flip: drop the `lang != "*"` guard from the lint → "*" is looked up in
-/// `state.languages`, is never found, and a spurious Warning fires on every
+/// `state.config.languages`, is never found, and a spurious Warning fires on every
 /// startup for any manifest.scm using the wildcard.
 #[test]
 fn language_activation_lint_silent_for_wildcard() {

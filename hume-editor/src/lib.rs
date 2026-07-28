@@ -128,7 +128,7 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
     editor.set_kitty_support(kitty_enabled);
     editor.attach_terminal(shared.clone());
-    editor.init_scripting();
+    editor.init_scripting(&mut Default::default());
     // Open remaining paths after scripting init so OnBufferOpen hooks fire.
     editor.open_extra_files(rest);
     // Drain hooks queued during init (OnBufferOpen, OnLanguageSet, etc.) before

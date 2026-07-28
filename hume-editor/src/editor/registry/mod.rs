@@ -138,13 +138,17 @@ impl CommandRegistry {
         self.commands.contains_key(name)
     }
 
-    /// Remove every `SteelBacked` and `Lazy` mappable command in one pass.
+    /// Remove every `SteelBacked` and `Lazy` mappable command in one pass,
+    /// leaving native commands untouched.
     ///
-    /// Used by `:reload-config` to clear stale entries before re-evaluating
-    /// `init.scm` with a fresh engine — otherwise those names would appear in
-    /// `builtin_cmd_names` and cause every `(define-command!)` to raise a
-    /// phantom "conflicts with a built-in command" error. `Lazy` stubs must
-    /// also be cleared so re-declared activation command names do not collide.
+    /// Test-only: `:reload-config` no longer calls this directly —
+    /// `ConfigState::new` rebuilds the whole registry via
+    /// `CommandRegistry::with_defaults()`, which achieves the same "no
+    /// stale dynamic entries in `builtin_cmd_names`" result without needing
+    /// a second, hand-maintained "which fields count as dynamic" definition
+    /// to stay in sync with `with_defaults()`. Kept for its own unit
+    /// coverage of the retain predicate.
+    #[cfg(test)]
     pub(crate) fn unregister_dynamic_commands(&mut self) {
         self.commands
             .retain(|_, cmd| !matches!(cmd, Command::Mappable(mc) if !mc.is_native()));
@@ -257,8 +261,7 @@ impl CommandRegistry {
 
 #[cfg(test)]
 impl CommandRegistry {
-    /// Collect the canonical names of every `SteelBacked` command.
-    /// Only used in tests — production code uses `unregister_dynamic_commands`.
+    /// Collect the canonical names of every `SteelBacked` command. Test-only.
     pub(crate) fn steel_backed_names(&self) -> Vec<String> {
         self.commands
             .values()

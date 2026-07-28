@@ -79,7 +79,15 @@ pub struct JumpList {
 
 impl JumpList {
     /// Create a new jump list with the given capacity limit.
+    ///
+    /// `capacity == 0` is a silent black hole (every `push` immediately
+    /// evicts what it just pushed) rather than a documented "unlimited" —
+    /// unlike `undo-levels`, where `0` means exactly that. The settings
+    /// parser (`usize_nonzero`) already rejects `0` for `jump-list-capacity`
+    /// before it can reach here; this just makes the trap loud if that
+    /// guard is ever bypassed (a test constructing a `JumpList` directly).
     pub fn new(capacity: usize) -> Self {
+        debug_assert!(capacity > 0, "JumpList capacity must be non-zero");
         Self {
             entries: VecDeque::new(),
             cursor: 0,
@@ -93,6 +101,7 @@ impl JumpList {
     /// does not retroactively trim existing entries. No cursor adjustment is
     /// needed here, since no entries are removed by this call.
     pub fn set_capacity(&mut self, capacity: usize) {
+        debug_assert!(capacity > 0, "JumpList capacity must be non-zero");
         self.capacity = capacity;
     }
 
@@ -151,6 +160,14 @@ impl JumpList {
         // line as the last recorded jump (e.g., two search matches on one line).
         if self.cursor == self.entries.len() {
             self.entries.push_back(current);
+            // Same cap enforcement as `push()` — this is the list's other
+            // append site, and without it a list already at capacity grows
+            // to `capacity + 1` here (capacity stops being an invariant of
+            // the type). `while`, matching `push`, for the same
+            // shrink-converges-in-one-call reasoning.
+            while self.entries.len() > self.capacity {
+                self.entries.pop_front();
+            }
             self.cursor = self.entries.len() - 1;
         }
 

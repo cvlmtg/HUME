@@ -311,13 +311,13 @@ impl Editor {
     }
 
     /// The open picker session — only ever called from `handle_picker_key`,
-    /// whose caller (`handle_key`) already checked `state.picker.is_some()`
+    /// whose caller (`handle_key`) already checked `state.config.picker.is_some()`
     /// before dispatching here.
     fn picker_mut(&mut self) -> &mut super::super::picker::PickerSession {
         self.state
             .config
             .picker
             .as_mut()
-            .expect("handle_picker_key is only called while state.picker.is_some()")
+            .expect("handle_picker_key is only called while state.config.picker.is_some()")
     }
 }

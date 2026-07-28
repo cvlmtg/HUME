@@ -118,6 +118,25 @@
 //! template against its generated file's leading lines verbatim, treating a
 //! line containing a `{sha}`/`{tag}` format slot as matching on its prefix
 //! before the `{` rather than byte-for-byte.
+//!
+//! # `EditorState` field classification drift
+//!
+//! `Editor::reset_config_state` resets `EditorState.config: ConfigState`
+//! wholesale (a field added there is reset by construction — see
+//! `ConfigState`'s own doc), but every *other* `EditorState` field needs a
+//! human decision: does `:reload-config` reset it too (like `settings`, via
+//! `settings_ops::reset_globals`), or does it survive untouched (buffers,
+//! panes, undo history, registers, …)? Nothing enforced that decision get
+//! made — a field added directly to `EditorState` instead of nested inside
+//! `ConfigState` would silently default to "survives", correct for most
+//! fields but wrong for one that should have reset.
+//!
+//! `editor_state_fields_are_classified` extracts every top-level field name
+//! from `EditorState`'s struct body and diffs it against
+//! `EDITOR_STATE_FIELD_CLASSIFICATION` in both directions: a new field with
+//! no entry fails naming it (forcing a classification decision at the point
+//! it's added, not silently); a stale entry for a since-removed field also
+//! fails, so the list can't rot into a document nobody trusts.
 
 #[cfg(test)]
 mod tests {
@@ -1134,6 +1153,281 @@ mod tests {
              the stale template text. Update the *_HEADER constant to match.\n\
              Violations:\n{}\n",
             violations.join("\n")
+        );
+    }
+
+    // ── `EditorState` field classification drift ────────────────────────────────
+
+    /// `(field name, classification)` for every `EditorState` field other
+    /// than `config` (exempt — `ConfigState`'s wholesale rebuild classifies
+    /// itself; see its own doc). Three buckets, by how `:reload-config`'s
+    /// reset treats the field:
+    /// - `"config: …"` — reset outside `ConfigState`'s own rebuild, by a
+    ///   named mechanism in `reset_config_state`.
+    /// - `"accounting: …"` — deliberately read, not reset, to judge the
+    ///   reload itself.
+    /// - `"preserved"` (optionally with a one-clause reason where it isn't
+    ///   obvious) — untouched: buffer content/undo/panes/registers/macros/
+    ///   search/mode, every transient per-dispatch or per-frame flag, and
+    ///   every `Arc` overlay view (self-healing per frame regardless of
+    ///   `config`, so resetting the model they mirror is enough).
+    const EDITOR_STATE_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
+        (
+            "buffers",
+            "config: clear_languages_all/clear_overrides_all reset language + \
+             overrides; content, undo history, and everything else survive",
+        ),
+        (
+            "settings",
+            "config: settings_ops::reset_globals rebuilds EditorSettings wholesale",
+        ),
+        (
+            "message_log",
+            "accounting: typed_reload_config diffs this before/after the reset \
+             to decide whether to report success — resetting it would defeat that",
+        ),
+        ("mode", "preserved"),
+        ("pending_keys", "preserved"),
+        ("count", "preserved"),
+        ("wait_char", "preserved"),
+        ("pending_char", "preserved"),
+        ("registers", "preserved"),
+        ("kill_ring", "preserved"),
+        ("clipboard", "preserved"),
+        ("register_prefix", "preserved"),
+        ("last_command", "preserved"),
+        ("last_paste", "preserved"),
+        ("should_quit", "preserved"),
+        ("terminate_exit_code", "preserved"),
+        ("minibuf", "preserved"),
+        ("minibuf_completion", "preserved"),
+        ("status_msg", "preserved"),
+        ("summary_ttl", "preserved"),
+        ("last_find", "preserved"),
+        ("search", "preserved"),
+        ("focused_pane_id", "preserved"),
+        ("panes", "preserved"),
+        ("history", "preserved"),
+        ("force_full_redraw", "preserved"),
+        ("inline_output", "preserved"),
+        ("inline_output_entered", "preserved: test-only seam"),
+        ("motion_format_scratch", "preserved"),
+        ("visual_move_target_cols", "preserved"),
+        ("last_repeatable_action", "preserved"),
+        ("selection_recipe", "preserved"),
+        ("pending_repeat", "preserved"),
+        ("insert_session", "preserved"),
+        ("autoindent_pending", "preserved"),
+        ("explicit_count", "preserved"),
+        ("pending_ctrl_extend", "preserved"),
+        ("macro_recording", "preserved"),
+        ("macro_pending", "preserved"),
+        ("replay_queue", "preserved"),
+        ("skip_macro_record", "preserved"),
+        ("is_replaying", "preserved"),
+        ("mouse_drag_anchor", "preserved"),
+        ("cwd", "preserved"),
+        ("lsp_completion_dismiss_pending", "preserved"),
+        (
+            "completion_menu_view",
+            "preserved: Arc view, self-healing per-frame regardless of config",
+        ),
+        (
+            "minibuf_completion_view",
+            "preserved: Arc view, self-healing per-frame",
+        ),
+        (
+            "diagnostic_scopes",
+            "preserved: ScopeIds are registry-relative, not theme-relative — \
+             survive a theme reset",
+        ),
+        ("inlay_hint_scope", "preserved: registry-relative ScopeId"),
+        (
+            "virtual_text_fallback_scope",
+            "preserved: registry-relative ScopeId",
+        ),
+        (
+            "runtime_scope_cache",
+            "preserved: registry-relative ScopeIds",
+        ),
+        ("popup_view", "preserved: Arc view, self-healing per-frame"),
+        (
+            "popup_band_view",
+            "preserved: Arc view, self-healing per-frame",
+        ),
+        ("menu_view", "preserved: Arc view, self-healing per-frame"),
+        ("drawer_view", "preserved: Arc view, self-healing per-frame"),
+        ("picker_view", "preserved: Arc view, self-healing per-frame"),
+        ("wake", "preserved: cross-thread waker infra, not config"),
+    ];
+
+    /// Extract top-level field names from a Rust struct's body text (the
+    /// text strictly between its outer `{` and matching `}`). Strips
+    /// `///`/`//` comment lines and `#[...]` attribute lines first (so a
+    /// doc comment mentioning a colon, or `#[cfg(test)]` on its own line,
+    /// is never mistaken for a field), then splits on depth-0 commas —
+    /// tracking `(){}[]<>` nesting so a field's own generic type (e.g.
+    /// `Vec<(BufferId, Option<String>)>`, or a wrapped multi-line type)
+    /// is never mistaken for a field boundary — and takes the last
+    /// identifier before each segment's first depth-0 `:` (skipping `::`
+    /// path separators, including the ones inside `pub(in crate::editor)`)
+    /// as that field's name.
+    fn struct_field_names(body: &str) -> Vec<String> {
+        let stripped: String = body
+            .lines()
+            .filter(|line| {
+                let t = line.trim();
+                !t.starts_with("///") && !t.starts_with("//") && !t.starts_with('#')
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        fn field_name_in_segment(seg: &[char]) -> Option<String> {
+            let mut depth = 0i32;
+            let mut colon_at = None;
+            for (i, &c) in seg.iter().enumerate() {
+                match c {
+                    '(' | '[' | '{' | '<' => depth += 1,
+                    ')' | ']' | '}' | '>' => depth -= 1,
+                    ':' if depth == 0 => {
+                        let is_path_sep =
+                            seg.get(i + 1) == Some(&':') || (i > 0 && seg[i - 1] == ':');
+                        if !is_path_sep {
+                            colon_at = Some(i);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            seg[..colon_at?]
+                .iter()
+                .collect::<String>()
+                .split_whitespace()
+                .next_back()
+                .map(str::to_string)
+        }
+
+        let chars: Vec<char> = stripped.chars().collect();
+        let mut names = Vec::new();
+        let mut depth = 0i32;
+        let mut seg_start = 0usize;
+        for (i, &c) in chars.iter().enumerate() {
+            match c {
+                '(' | '[' | '{' | '<' => depth += 1,
+                ')' | ']' | '}' | '>' => depth -= 1,
+                ',' if depth == 0 => {
+                    if let Some(name) = field_name_in_segment(&chars[seg_start..i]) {
+                        names.push(name);
+                    }
+                    seg_start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        if let Some(name) = field_name_in_segment(&chars[seg_start..]) {
+            names.push(name);
+        }
+        names
+    }
+
+    /// Exercises the tricky patterns actually present in `EditorState`: a
+    /// doc comment, an own-line attribute, a field whose type wraps onto a
+    /// second line, a generic with an internal tuple (nested commas), and
+    /// `pub(in crate::editor)` visibility (a `::` path separator inside the
+    /// parens, before the field's own `:`).
+    #[test]
+    fn struct_field_names_handles_wrapped_generics_and_attributes() {
+        let body = r#"
+            /// doc comment: mentions a colon, must not be read as a field
+            pub(crate) buffers: BufferStore,
+            #[cfg(test)]
+            pub(crate) inline_output_entered: bool,
+            pub(crate) minibuf_completion_view:
+                Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>>,
+            pub(super) pending_hooks: Vec<(hume_scripting::hooks::HookId, Vec<steel::rvals::SteelVal>)>,
+            pub(in crate::editor) completion: Option<completion::CompletionSession>,
+        "#;
+        assert_eq!(
+            struct_field_names(body),
+            vec![
+                "buffers",
+                "inline_output_entered",
+                "minibuf_completion_view",
+                "pending_hooks",
+                "completion",
+            ]
+        );
+    }
+
+    /// Fail oracle: add a field directly to `EditorState` (outside
+    /// `config: ConfigState`) without adding a matching entry to
+    /// `EDITOR_STATE_FIELD_CLASSIFICATION` — this test fails naming the
+    /// field, in either direction (new unclassified field, or a stale
+    /// entry for a field that no longer exists).
+    #[test]
+    fn editor_state_fields_are_classified() {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
+        let path = std::path::Path::new(&manifest).join("src/editor/mod.rs");
+        let src = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+
+        let struct_start = src
+            .find("pub(crate) struct EditorState {")
+            .expect("EditorState struct not found in editor/mod.rs");
+        let body_start = src[struct_start..]
+            .find('{')
+            .expect("no opening brace for EditorState")
+            + struct_start;
+        let mut depth = 0i32;
+        let mut body_end = body_start;
+        for (i, c) in src[body_start..].char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        body_end = body_start + i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let fields: std::collections::BTreeSet<String> =
+            struct_field_names(&src[body_start + 1..body_end])
+                .into_iter()
+                .filter(|f| f != "config")
+                .collect();
+
+        let classified: std::collections::BTreeSet<&str> = EDITOR_STATE_FIELD_CLASSIFICATION
+            .iter()
+            .map(|(name, _)| *name)
+            .collect();
+
+        let unclassified: Vec<&String> = fields
+            .iter()
+            .filter(|f| !classified.contains(f.as_str()))
+            .collect();
+        assert!(
+            unclassified.is_empty(),
+            "EditorState gained new field(s) {unclassified:?} with no entry in \
+             EDITOR_STATE_FIELD_CLASSIFICATION — decide whether :reload-config's \
+             reset should touch it (add the mechanism to reset_config_state and \
+             classify it \"config: …\" here), or whether it genuinely survives a \
+             reload (classify it \"preserved\"), then add the entry"
+        );
+
+        let stale: Vec<&str> = classified
+            .iter()
+            .filter(|name| !fields.contains(name.to_string().as_str()))
+            .copied()
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "EDITOR_STATE_FIELD_CLASSIFICATION lists {stale:?}, which is no longer \
+             a field on EditorState — remove the stale entry"
         );
     }
 }
