@@ -494,6 +494,14 @@ impl Editor {
                     while reader.poll(Some(Duration::ZERO), |_| true)? {
                         match reader.read(|_| true)? {
                             Event::WindowResized(_) => continue,
+                            // A window manager can resize and refocus in the
+                            // same gesture (snapping a tile, say) — the
+                            // `_ => break` catch-all below would otherwise
+                            // swallow this without running the disk check.
+                            Event::FocusIn => {
+                                self.check_all_disk_state();
+                                break;
+                            }
                             Event::Key(key) if key.kind != KeyEventKind::Release => {
                                 self.handle_event(Event::Key(key));
                                 self.sync_search_cache();
