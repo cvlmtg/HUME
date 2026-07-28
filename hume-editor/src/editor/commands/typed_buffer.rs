@@ -2,6 +2,7 @@ use hume_engine::pipeline::BufferId;
 
 use super::super::Editor;
 use super::super::Severity;
+use crate::editor::buffer::DiskCheckTrigger;
 use crate::editor::error::CommandError;
 
 // ── Multi-buffer typed commands ───────────────────────────────────────────────
@@ -27,7 +28,7 @@ pub fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(),
             if bid != ed.focused_buffer_id() {
                 ed.switch_to_buffer_with_jump(bid);
             }
-            ed.check_buffer_disk_state(bid);
+            ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
             return Ok(());
         }
 
@@ -145,7 +146,7 @@ pub fn typed_buffer(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<
     if bid != ed.focused_buffer_id() {
         ed.switch_to_buffer_with_jump(bid);
     }
-    ed.check_buffer_disk_state(bid);
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
     Ok(())
 }
 

@@ -11,6 +11,7 @@ use hume_editing::text::Text;
 use hume_platform::io::FileMeta;
 
 mod disk;
+pub(crate) use disk::DiskCheckTrigger;
 // Only test code names `DiskState` directly (to seed a stale buffer without a
 // real disk check) — production code goes through `Buffer::is_disk_stale()`.
 #[cfg(test)]

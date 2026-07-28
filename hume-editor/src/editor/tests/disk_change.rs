@@ -3,6 +3,7 @@
 //! the confirm overlay's reload/keep choices).
 
 use super::*;
+use crate::editor::buffer::DiskCheckTrigger;
 use pretty_assertions::assert_eq;
 
 /// Overwrite `path`'s content with something a different length than
@@ -25,7 +26,7 @@ fn external_rewrite_is_detected_and_opens_confirm() {
     rewrite_externally(&tmp, "hello, world!\n");
 
     let bid = ed.focused_buffer_id();
-    ed.check_buffer_disk_state(bid);
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
 
     // Fail oracle: a mtime-only comparison could miss this on a filesystem
     // whose mtime resolution is coarser than the test's wall-clock delta.
@@ -43,7 +44,7 @@ fn autoread_false_warns_without_opening_confirm() {
 
     let (_, warnings_before) = ed.state.message_log.totals();
     let bid = ed.focused_buffer_id();
-    ed.check_buffer_disk_state(bid);
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     let (_, warnings_after) = ed.state.message_log.totals();
 
     assert_eq!(warnings_after, warnings_before + 1);
@@ -60,13 +61,38 @@ fn deleted_file_warns_and_never_prompts() {
     std::fs::remove_file(&tmp).unwrap();
 
     let bid = ed.focused_buffer_id();
-    ed.check_buffer_disk_state(bid);
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
 
     assert!(ed.doc().is_disk_stale());
     assert!(ed.state.config.confirm.is_none());
     assert_eq!(
         ed.state.status_msg.as_deref(),
         Some(format!("{name}: file no longer exists on disk").as_str())
+    );
+}
+
+/// A deleted file warns once; a second check with the file still gone must
+/// stay silent — same "don't nag again for the same thing" rule `Changed`
+/// follows, just with no signature to compare (there's only one "vanished").
+///
+/// Fail oracle: if the `Vanished` arm never recorded that it had already
+/// reported, every later ambient trigger (each terminal focus regain) would
+/// warn all over again, forever.
+#[test]
+fn vanished_file_does_not_refire_on_every_trigger() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    std::fs::remove_file(&tmp).unwrap();
+    let bid = ed.focused_buffer_id();
+
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+    let (_, warnings_after_first) = ed.state.message_log.totals();
+
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+    let (_, warnings_after_second) = ed.state.message_log.totals();
+
+    assert_eq!(
+        warnings_after_second, warnings_after_first,
+        "a vanished file already reported must stay silent on a later check"
     );
 }
 
@@ -79,7 +105,7 @@ fn pathless_buffers_are_never_flagged() {
     let bid = ed.focused_buffer_id();
     let (_, warnings_before) = ed.state.message_log.totals();
 
-    ed.check_buffer_disk_state(bid);
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
 
     let (_, warnings_after) = ed.state.message_log.totals();
     assert_eq!(warnings_after, warnings_before);
@@ -101,10 +127,10 @@ fn unactioned_change_does_not_refire_until_a_further_change_happens() {
     rewrite_externally(&tmp, "hello, world!\n");
     let bid = ed.focused_buffer_id();
 
-    ed.check_buffer_disk_state(bid);
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     let (_, warnings_after_first) = ed.state.message_log.totals();
 
-    ed.check_buffer_disk_state(bid);
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     let (_, warnings_after_second) = ed.state.message_log.totals();
     assert_eq!(
         warnings_after_second, warnings_after_first,
@@ -112,12 +138,51 @@ fn unactioned_change_does_not_refire_until_a_further_change_happens() {
     );
 
     rewrite_externally(&tmp, "a third, distinctly different revision\n");
-    ed.check_buffer_disk_state(bid);
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     let (_, warnings_after_third) = ed.state.message_log.totals();
     assert_eq!(
         warnings_after_third,
         warnings_after_second + 1,
         "a genuinely new external change must still fire"
+    );
+}
+
+/// A non-focused buffer's external change only warns — no confirm opens
+/// off-focus. But switching into that buffer afterwards must still open the
+/// confirm, even though nothing has changed on disk since the warning: this
+/// is the documented "asked about on its own next buffer-enter" promise.
+///
+/// Fail oracle: if `BufferEnter` deduped an already-reported `Changed` state
+/// exactly like `Ambient` does, `:b #` landing on the buffer would find
+/// nothing new to report and stay silent — silently breaking the promise.
+#[test]
+fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
+    let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid_a = ed.focused_buffer_id();
+
+    let tmp_b = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp_b.path(), "world\n").unwrap();
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.path().display()));
+    let bid_b = ed.focused_buffer_id();
+    assert_ne!(bid_a, bid_b, "setup: :e must open a distinct second buffer");
+
+    // Switch back to A — B stays open as the alternate, unfocused.
+    type_cmd(&mut ed, ":b #");
+    assert_eq!(ed.focused_buffer_id(), bid_a, "setup: :b # must return to A");
+
+    rewrite_externally(tmp_b.path(), "world, externally changed!\n");
+    let (_, warnings_before) = ed.state.message_log.totals();
+    ed.check_buffer_disk_state(bid_b, DiskCheckTrigger::Ambient);
+    let (_, warnings_after) = ed.state.message_log.totals();
+    assert_eq!(warnings_after, warnings_before + 1, "a non-focused change only warns");
+    assert!(ed.state.config.confirm.is_none());
+
+    // Enter B via :b — the deferred prompt must appear now.
+    type_cmd(&mut ed, ":b #");
+    assert_eq!(ed.focused_buffer_id(), bid_b);
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "buffer-enter must prompt a pending change even if already warned about"
     );
 }
 
@@ -138,7 +203,7 @@ fn writing_the_buffer_does_not_flag_it_as_externally_changed() {
 
     let bid = ed.focused_buffer_id();
     let (_, warnings_before) = ed.state.message_log.totals();
-    ed.check_buffer_disk_state(bid);
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     let (_, warnings_after) = ed.state.message_log.totals();
 
     assert_eq!(warnings_after, warnings_before);
@@ -156,7 +221,7 @@ fn confirm_reload_choice_reloads_and_clears_disk_stale() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     rewrite_externally(&tmp, "HELLO!!\n");
     let bid = ed.focused_buffer_id();
-    ed.check_buffer_disk_state(bid);
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     assert!(ed.state.config.confirm.is_some(), "setup: confirm must be open");
 
     ed.handle_key(key('r'));
@@ -182,7 +247,7 @@ fn confirm_keep_choice_leaves_buffer_untouched_and_still_stale() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     rewrite_externally(&tmp, "HELLO!!\n");
     let bid = ed.focused_buffer_id();
-    ed.check_buffer_disk_state(bid);
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
 
     ed.handle_key(key('k'));
 
@@ -198,7 +263,7 @@ fn confirm_any_other_key_dismisses_without_reloading() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     rewrite_externally(&tmp, "HELLO!!\n");
     let bid = ed.focused_buffer_id();
-    ed.check_buffer_disk_state(bid);
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
 
     ed.handle_key(key_esc());
 

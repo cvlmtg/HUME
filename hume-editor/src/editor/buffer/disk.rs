@@ -30,6 +30,13 @@ pub(crate) enum DiskChange {
 /// so a later check can tell "the same change I already warned about" from
 /// "something changed again", and `Vanished` is kept apart from `Changed`
 /// since there is no signature to recreate-and-compare for a deleted file.
+///
+/// Deliberately never written by [`Editor::check_buffer_disk_state`] into
+/// `FileMeta::signature` — that field stays the write baseline
+/// (`disk_change_for`'s point of comparison) for as long as the change goes
+/// un-actioned, so a *further* external change is still detected as one.
+/// This enum answers a different question: "have I already reported the
+/// disk state I'm looking at right now?"
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum DiskState {
     /// Matches what the editor last read or wrote — nothing to guard against.
@@ -38,6 +45,24 @@ pub(crate) enum DiskState {
     Changed(hume_platform::io::FileSignature),
     /// The backing file no longer exists.
     Vanished,
+}
+
+/// Which trigger ran a disk check — decides whether a `Changed` state that
+/// was already reported should re-fire.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DiskCheckTrigger {
+    /// Terminal focus, `:checktime`, return from an inline shell command. A
+    /// state already reported (by an earlier ambient check, or by this same
+    /// buffer having been entered before) must stay silent — nothing new to
+    /// say.
+    Ambient,
+    /// Switching the focused pane onto this buffer (`:e`, `:b`, `:bn`,
+    /// `:bp`, …). Delivers on the documented "asked about on its own next
+    /// buffer-enter" promise: a change that only got a warning earlier
+    /// (buffer wasn't focused yet, or `autoread` was off at the time) must
+    /// still prompt now that the user has actually landed on it, even
+    /// though nothing changed on disk since that warning.
+    BufferEnter,
 }
 
 impl Editor {
@@ -63,56 +88,69 @@ impl Editor {
 
     /// Check one buffer's disk state and act on it.
     ///
-    /// `Vanished` always just warns — there is nothing to reload from, so
-    /// never prompt. `Changed` on the *focused* buffer opens a reload
-    /// confirm when its `autoread` setting is on; every other case (a
-    /// non-focused buffer, or `autoread` off) only warns and flags
-    /// `disk_stale`, asked about on its own next buffer-enter.
+    /// `Vanished` always just warns, once — there is nothing to reload
+    /// from, so never prompt, and a state already reported must not
+    /// re-warn on every later trigger. `Changed` on the *focused* buffer
+    /// opens a reload confirm when its `autoread` setting is on; every
+    /// other case (a non-focused buffer, or `autoread` off) only warns.
     ///
-    /// A `Changed` result immediately overwrites the buffer's stored
-    /// signature with the one just read, regardless of what the user does
-    /// next — a later check must not re-report the exact same disk state
-    /// it already reported once; only a *further* change should fire
-    /// again. This is independent of `disk_stale`, which stays set (and
-    /// keeps guarding `:w`) until an actual reload or write — "don't nag
-    /// again for the same thing" and "don't silently overwrite" are
-    /// separate questions with separate answers.
-    pub(in crate::editor) fn check_buffer_disk_state(&mut self, bid: BufferId) {
+    /// A `Changed`/`Vanished` state already reported stays silent on a
+    /// further `Ambient` check — "don't nag again for the same thing" — but
+    /// a `BufferEnter` check always prompts a pending `Changed` on the
+    /// focused, `autoread`-on buffer regardless: that is the "asked about
+    /// on its own next buffer-enter" deferred prompt the non-focused/
+    /// `autoread`-off warning promised earlier. `FileMeta::signature` (the
+    /// write baseline `disk_change_for` compares against) is untouched
+    /// either way, so a *further* external change still reads as `Changed`.
+    pub(in crate::editor) fn check_buffer_disk_state(
+        &mut self,
+        bid: BufferId,
+        trigger: DiskCheckTrigger,
+    ) {
         match self.disk_change_for(bid) {
             DiskChange::Unchanged => {}
             DiskChange::Vanished => {
-                self.state.buffers.get_mut(bid).disk_state = DiskState::Vanished;
-                let name = self.state.buffers.get(bid).display_name();
-                self.report(
-                    Severity::Warning,
-                    format!("{name}: file no longer exists on disk"),
-                );
+                let buf = self.state.buffers.get_mut(bid);
+                let already_reported = buf.disk_state == DiskState::Vanished;
+                buf.disk_state = DiskState::Vanished;
+                if !already_reported {
+                    let name = self.state.buffers.get(bid).display_name();
+                    self.report(
+                        Severity::Warning,
+                        format!("{name}: file no longer exists on disk"),
+                    );
+                }
             }
             DiskChange::Changed(sig) => {
                 let buf = self.state.buffers.get_mut(bid);
+                let already_reported =
+                    matches!(buf.disk_state, DiskState::Changed(prev) if prev == sig);
                 buf.disk_state = DiskState::Changed(sig);
-                if let Some(meta) = buf.file_meta.as_mut() {
-                    meta.set_signature(sig);
-                }
+
                 let buf = self.state.buffers.get(bid);
                 let name = buf.display_name();
                 let dirty = buf.is_dirty();
                 let autoread = buf.overrides.autoread(&self.state.settings);
-                if bid == self.focused_buffer_id() && autoread {
+                let focused = bid == self.focused_buffer_id();
+
+                if focused && autoread && (trigger == DiskCheckTrigger::BufferEnter || !already_reported)
+                {
                     self.open_disk_change_confirm(bid, &name, dirty);
-                } else {
+                } else if !already_reported {
                     self.report(Severity::Warning, format!("{name}: file has changed on disk"));
                 }
             }
         }
     }
 
-    /// Check every open buffer. Called from every trigger point (terminal
-    /// focus, return from an inline shell command, `:checktime`).
+    /// Check every open buffer. Called from ambient trigger points (terminal
+    /// focus, return from an inline shell command, `:checktime`) — never
+    /// `BufferEnter`, since no single buffer among many is "the one being
+    /// entered".
     pub(crate) fn check_all_disk_state(&mut self) {
         let ids: Vec<BufferId> = self.state.buffers.iter().map(|(id, _)| id).collect();
         for id in ids {
-            self.check_buffer_disk_state(id);
+            self.check_buffer_disk_state(id, DiskCheckTrigger::Ambient);
         }
     }
 
