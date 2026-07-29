@@ -22,21 +22,6 @@ fn call(ed: &mut Editor, name: &str) {
     ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
 }
 
-/// Drains async sources (and their queued Steel callbacks) in a bounded
-/// loop until `until` returns true — CI scheduling jitter can't flake this.
-fn drain_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(2);
-    loop {
-        ed.drain_async_sources();
-        ed.drain_pending_steel_calls();
-        if until(ed) {
-            return;
-        }
-        assert!(Instant::now() < deadline, "condition never became true");
-        std::thread::sleep(Duration::from_millis(10));
-    }
-}
-
 #[test]
 fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
     let tmp = safe_tempdir();
@@ -55,15 +40,7 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
     type_cmd(&mut ed, ":go");
     call(&mut ed, "spawn-it");
 
-    drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 3
-    });
+    drain_until_picker_total(&mut ed, 3);
 
     let mut ctx = RenderContext::new();
     ed.prepare_frame(40, 12, &mut ctx);
@@ -96,15 +73,7 @@ fn nul_delimited_source_splits_on_nul() {
     type_cmd(&mut ed, ":go");
     call(&mut ed, "spawn-it");
 
-    drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 2
-    });
+    drain_until_picker_total(&mut ed, 2);
 
     let picker = ed.state.config.picker.as_ref().unwrap();
     assert_eq!(picker.window(10).collect::<Vec<_>>(), vec!["a", "b"]);

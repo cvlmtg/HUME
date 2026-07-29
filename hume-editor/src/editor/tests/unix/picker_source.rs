@@ -8,7 +8,6 @@ use super::*;
 use crate::editor::picker::{self, PickerSession};
 use hume_platform::process::line_source::spawn_line_source;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 use steel::rvals::SteelVal;
 
 fn open_bare_picker(ed: &mut Editor) {
@@ -18,20 +17,6 @@ fn open_bare_picker(ed: &mut Editor) {
 
 fn no_op_wake() -> Arc<dyn Fn() + Send + Sync> {
     Arc::new(|| {})
-}
-
-/// Drives `drain_async_sources` in a bounded loop until `until` returns
-/// true, so CI scheduling jitter can't flake these tests.
-fn drain_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(2);
-    loop {
-        ed.drain_async_sources();
-        if until(ed) {
-            return;
-        }
-        assert!(Instant::now() < deadline, "condition never became true");
-        std::thread::sleep(Duration::from_millis(10));
-    }
 }
 
 /// `kill -0` against the real OS as an independent liveness oracle — never
@@ -60,7 +45,7 @@ fn end_to_end_drain_streams_lines_into_the_store() {
         .unwrap()
         .attach_source(source);
 
-    drain_until(&mut ed, |ed| {
+    drain_sources_until(&mut ed, |ed| {
         ed.state
             .config
             .picker
@@ -97,7 +82,7 @@ fn coalesced_push_reranks_against_the_live_query() {
         .unwrap()
         .attach_source(source);
 
-    drain_until(&mut ed, |ed| {
+    drain_sources_until(&mut ed, |ed| {
         ed.state
             .config
             .picker
@@ -130,7 +115,7 @@ fn nonzero_exit_reports_a_status_message_with_stderr() {
         .unwrap()
         .attach_source(source);
 
-    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_sources_until(&mut ed, |ed| ed.state.status_msg.is_some());
 
     let msg = ed.state.status_msg.as_ref().expect("status set");
     assert!(msg.contains("boom"), "got: {msg}");

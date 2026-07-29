@@ -23,21 +23,6 @@ fn call(ed: &mut Editor, name: &str) {
     ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
 }
 
-/// Drains async sources (and their queued Steel callbacks) in a bounded
-/// loop until `until` returns true — CI scheduling jitter can't flake this.
-fn drain_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(2);
-    loop {
-        ed.drain_async_sources();
-        ed.drain_pending_steel_calls();
-        if until(ed) {
-            return;
-        }
-        assert!(Instant::now() < deadline, "condition never became true");
-        std::thread::sleep(Duration::from_millis(10));
-    }
-}
-
 #[test]
 fn happy_path_delivers_stdout_stderr_and_exit_code() {
     let tmp = safe_tempdir();

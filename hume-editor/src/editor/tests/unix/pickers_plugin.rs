@@ -1,6 +1,5 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
-use std::time::{Duration, Instant};
 
 use super::*;
 use crate::editor::dispatch::ArgSource;
@@ -29,21 +28,6 @@ const PICKERS_PLUGIN: &str = include_str!(concat!(
 
 fn call(ed: &mut Editor, name: &str) {
     ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
-}
-
-/// Drains async sources (and their queued Steel callbacks) in a bounded loop
-/// until `until` returns true — CI scheduling jitter can't flake this.
-fn drain_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(2);
-    loop {
-        ed.drain_async_sources();
-        ed.drain_pending_steel_calls();
-        if until(ed) {
-            return;
-        }
-        assert!(Instant::now() < deadline, "condition never became true");
-        std::thread::sleep(Duration::from_millis(10));
-    }
 }
 
 /// Load the real `core:pickers` plugin, plus `extra_source` appended to the
@@ -116,15 +100,7 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
 
     ed.feed_key(key('g'));
     ed.feed_key(key('f'));
-    drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 3
-    });
+    drain_until_picker_total(&mut ed, 3);
 
     let picker = ed.state.config.picker.as_ref().expect("picker open");
     assert_eq!(picker.prompt(), "files: ");
@@ -223,15 +199,7 @@ fn files_picker_fd_branch_spawns_given_binary() {
     ed.set_cwd(&sandbox.path()).unwrap();
 
     call(&mut ed, "test-fd-branch");
-    drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 2
-    });
+    drain_until_picker_total(&mut ed, 2);
     let picker = ed.state.config.picker.as_ref().expect("picker open");
     assert_eq!(
         picker.window(10).collect::<Vec<_>>(),
@@ -293,15 +261,7 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
 
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
-    drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 3
-    });
+    drain_until_picker_total(&mut ed, 3);
 
     let picker = ed.state.config.picker.as_ref().expect("picker open");
     assert_eq!(picker.prompt(), "git: ");
@@ -396,15 +356,7 @@ fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory()
 
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
-    drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 1
-    });
+    drain_until_picker_total(&mut ed, 1);
     assert_eq!(
         ed.state
             .config
@@ -447,15 +399,7 @@ fn git_modified_picker_row_and_accept_handle_path_with_space() {
 
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
-    drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 1
-    });
+    drain_until_picker_total(&mut ed, 1);
 
     let picker = ed.state.config.picker.as_ref().expect("picker open");
     let rows: Vec<&str> = picker.window(10).collect();
@@ -501,15 +445,7 @@ fn git_modified_picker_accept_resolves_nested_relative_path() {
 
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
-    drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 1
-    });
+    drain_until_picker_total(&mut ed, 1);
     assert_eq!(
         ed.state
             .config
@@ -558,15 +494,7 @@ fn git_modified_picker_untracked_false_config_hides_untracked_files() {
 
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
-    drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 1
-    });
+    drain_until_picker_total(&mut ed, 1);
 
     let picker = ed.state.config.picker.as_ref().expect("picker open");
     let rows: Vec<&str> = picker.window(10).collect();
@@ -592,15 +520,7 @@ fn git_modified_picker_untracked_default_lists_files_inside_untracked_directory(
     ed.set_cwd(&sandbox.path()).unwrap();
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
-    drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 1
-    });
+    drain_until_picker_total(&mut ed, 1);
     let rows: Vec<&str> = ed
         .state
         .config
@@ -756,11 +676,28 @@ fn git_modified_picker_esc_dismisses_cleanly() {
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
     assert!(ed.state.config.picker.is_some());
+    assert_eq!(
+        ed.state.config.async_jobs.len(),
+        1,
+        "the `git status` job must be tracked while the picker is open — \
+         this is the fail oracle for `(cancel-async! job-id)`: delete that \
+         call from plugin.scm and this job leaks past Esc below"
+    );
 
     ed.feed_key(key_esc());
     ed.drain_pending_steel_calls();
 
     assert!(ed.state.config.picker.is_none());
+    assert!(
+        ed.state.config.async_jobs.is_empty(),
+        "dismissing the picker must cancel the outstanding `git status` job, \
+         not leave it running to completion for nothing"
+    );
+    assert!(
+        ed.state.status_msg.is_none(),
+        "cancelling must not raise — a `job-id` still `#f` when `on-select` \
+         fires would surface as a status message here"
+    );
     assert_eq!(
         ed.focused_buffer_id(),
         starting_bid,

@@ -12,6 +12,59 @@
 use super::*;
 
 use std::path::Path;
+use std::time::{Duration, Instant};
+
+// ── Shared async-drain helpers ────────────────────────────────────────────────
+//
+// Every unix test that waits on a spawned child or streaming source (a
+// picker source, a `spawn-async!` job) polls in a bounded loop instead of a
+// single drain call — a background thread's result can land on any frame,
+// so CI scheduling jitter would flake a "drain once and assert" test.
+
+/// Drains async sources and their queued Steel callbacks in a bounded loop
+/// until `until` returns true.
+fn drain_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        ed.drain_async_sources();
+        ed.drain_pending_steel_calls();
+        if until(ed) {
+            return;
+        }
+        assert!(Instant::now() < deadline, "condition never became true");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Same loop as [`drain_until`], but skips `drain_pending_steel_calls` — for
+/// tests that drive the Rust-level registry directly, with no Steel VM in
+/// play.
+fn drain_sources_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        ed.drain_async_sources();
+        if until(ed) {
+            return;
+        }
+        assert!(Instant::now() < deadline, "condition never became true");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Waits until the open picker's `total_len()` reaches exactly `n` — the
+/// row-count wait repeated across every `picker-source-spawn!`/
+/// `spawn-async!` picker test. No picker open never satisfies it.
+fn drain_until_picker_total(ed: &mut Editor, n: usize) {
+    drain_until(ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == n
+    });
+}
 
 // ── Shared unix-only guards and fixtures ─────────────────────────────────────
 
