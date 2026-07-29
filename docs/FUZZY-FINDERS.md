@@ -35,10 +35,6 @@ remaining work below ships.
   would feed the same drain→store path as the spawn source. Build only if the
   fd-fallback posture proves inadequate in practice. Also tracked in
   `docs/ROADMAP.md`.
-- **Generic `spawn-async`** — non-picker consumers of the streaming
-  reader-thread/split/drain machinery in `line_source.rs`. Deferred until a
-  second client exists; named candidate is an external-command completion
-  source (see `docs/COMPLETION-PICKER.md`).
 - **Q-B6 — unify completion's filter onto the picker's `nucleo-matcher`.**
   Completion still uses a hand-rolled subsequence match; revisit once the
   picker's feel is validated, as its own small task with a side-by-side

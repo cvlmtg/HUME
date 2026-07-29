@@ -19,8 +19,9 @@ use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
-    BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost, EditorHost,
-    LanguageHost, LspHost, OptionValue, OutputHost, PopupKind, SettingsHost, TimerHost, UiHost,
+    AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
+    EditHost, EditorHost, LanguageHost, LspHost, OptionValue, OutputHost, PopupKind, SettingsHost,
+    TimerHost, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -130,6 +131,11 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
     // Same unconditional-Some rationale as `lsp()` above.
     fn timers(&mut self) -> Option<&mut dyn TimerHost> {
+        Some(self)
+    }
+    // The job registry lives on `self.state.config` — always reachable, no
+    // `Option`-wrapped upstream field to gate on (unlike `timers`/`lsp`).
+    fn async_process(&mut self) -> Option<&mut dyn AsyncProcessHost> {
         Some(self)
     }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
@@ -649,6 +655,57 @@ impl<'a> TimerHost for EditorHostImpl<'a> {
         if let Some(timers) = self.timers.as_mut() {
             timers.cancel(id);
         }
+    }
+}
+
+impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
+    fn spawn_async(
+        &mut self,
+        cmd: &str,
+        args: Vec<String>,
+        cwd: Option<PathBuf>,
+        callback: steel::rvals::SteelVal,
+    ) -> u64 {
+        let id = self.state.config.next_async_job_id;
+        self.state.config.next_async_job_id += 1;
+
+        match hume_platform::process::job::spawn_job(
+            cmd,
+            &args,
+            cwd.as_deref(),
+            std::sync::Arc::clone(&self.state.wake),
+        ) {
+            Ok(job) => {
+                self.state
+                    .config
+                    .async_jobs
+                    .insert(id, crate::editor::async_job::PendingJob { job, callback });
+            }
+            // Spawn failed before a job/callback contract could exist — fire
+            // the callback right here rather than leaving it unfired, with
+            // the same "no output, -1 exit code" shape a signal-killed
+            // child produces (the sentinel `%run-inline-output!` already
+            // uses — a real exit code can never be -1, it's u8-wide).
+            Err(e) => {
+                self.state.config.pending_steel_calls.push((
+                    callback,
+                    vec![
+                        steel::rvals::SteelVal::StringV("".into()),
+                        steel::rvals::SteelVal::StringV(format!("cannot run '{cmd}': {e}").into()),
+                        steel::rvals::SteelVal::IntV(-1),
+                    ],
+                ));
+            }
+        }
+        id
+    }
+
+    fn cancel_async(&mut self, id: u64) {
+        // Dropping the entry drops its `SpawnedJob` (kills + reaps the
+        // child) and its callback `SteelVal` without ever calling it — a
+        // no-op if `id` already completed, was already cancelled, or never
+        // existed (a spawn failure that already fired its callback above).
+        self.state.config.async_jobs.remove(&id);
     }
 }
 

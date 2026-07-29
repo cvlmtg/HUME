@@ -321,6 +321,27 @@ A few extra functions cover things Scheme has no way to know on its own:
 
 `run-inline-output!` also takes a `#:cwd` keyword to set the working directory, and raises an error if the command exits non-zero — wrap it in a handler if a failure is expected.
 
+`command`/`spawn-process`/`wait` all block the whole editor until the command finishes — fine for something instant (`git rev-parse`), but not for anything that might take a moment while the user keeps typing. For that, run it in the background instead:
+
+```scheme
+(spawn-async! "git" (list "show" (string-append ref ":" path)) repo-root
+  (lambda (stdout stderr exit-code)
+    (if (= exit-code 0)
+        (use-the-output stdout)
+        (report-the-failure stderr))))
+```
+
+`spawn-async!` starts `cmd` with `args` (in `cwd`, or `#f` for HUME's own working
+directory) and returns immediately — nothing blocks. `callback` is called exactly once,
+later, once the command has finished: `stdout` and `stderr` are its complete output as
+strings, `exit-code` is its exit code (`-1` if it was killed by a signal, or if the
+command couldn't even be started — a missing binary, say). A command that fails to
+start or exits non-zero still calls `callback` rather than raising an error, so there's
+only one place to handle the outcome. `spawn-async!` returns an id; call
+`(cancel-async! id)` to kill the command and discard its callback before it fires —
+useful when a debounced action (a hook firing on every keystroke, say) ends up
+superseded by a newer one before the older command has finished.
+
 Only install or overwrite files under `(data-dir)` unless you have a specific reason to go elsewhere — that's where HUME expects a plugin's own data (installed grammars, downloaded servers, plugin state) to live.
 
 ### Custom pickers

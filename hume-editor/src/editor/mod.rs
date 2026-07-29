@@ -21,6 +21,7 @@ use hume_treesitter::registry::LanguageRegistry;
 
 use self::keymap::{Keymap, WaitCharPending};
 
+mod async_job;
 mod async_source;
 pub(crate) mod error;
 pub(crate) mod host_impl;
@@ -169,6 +170,15 @@ pub(crate) struct ConfigState {
     /// buffers; every Steel-eval path drains it at the tail of
     /// `apply_script_effects`.
     pub(crate) pending_language_detection: Vec<hume_engine::pipeline::BufferId>,
+    /// In-flight `spawn-async!` jobs, keyed by the id `spawn-async!`
+    /// returned to Steel. Drained by `Editor::drain_async_jobs`; dropping
+    /// this map (a `:reload-config` wholesale rebuild) kills every
+    /// in-flight child for free — see `async_job::PendingJob`'s doc.
+    pub(crate) async_jobs: rustc_hash::FxHashMap<u64, async_job::PendingJob>,
+    /// Monotonic counter minting the next `spawn-async!` job id — mirrors
+    /// the picker's `token`/timer's `TimerId` shape, but lives here (rather
+    /// than reusing either) since a job id is neither.
+    pub(crate) next_async_job_id: u64,
     /// The `(prompt! …)` callback — persists for as long as `minibuf` holds
     /// the prompt session (unlike `pending_steel_calls`, which drains the
     /// same frame it's pushed to). `handle_command`'s Confirm/Cancel arms
@@ -220,6 +230,8 @@ impl ConfigState {
             pending_hooks: Vec::new(),
             pending_steel_calls: Vec::new(),
             pending_language_detection: Vec::new(),
+            async_jobs: rustc_hash::FxHashMap::default(),
+            next_async_job_id: 0,
             steel_prompt_callback: None,
             popup: None,
             menu: None,

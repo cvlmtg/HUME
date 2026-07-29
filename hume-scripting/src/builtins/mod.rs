@@ -24,6 +24,7 @@ pub(crate) mod json;
 pub(crate) mod keymap_bind;
 pub(crate) mod lsp;
 pub(crate) mod plugins;
+pub(crate) mod process;
 pub(crate) mod settings;
 pub(crate) mod statusline;
 pub(crate) mod syntax;
@@ -231,6 +232,23 @@ macro_rules! builtins {
 // close-menu!/close-drawer! (which drop the callback), this always invokes
 // it — the picker's exactly-once lifecycle has no "silently dropped"
 // state. Idempotent when no picker is open.
+//
+// spawn-async! — generic async subprocess execution: direct argv spawn, no
+// shell, stdin closed immediately, off the main thread. callback fires
+// exactly once, (stdout stderr exit-code), once the child exits — never
+// inline, so typing never stalls waiting for it. Unlike
+// picker-source-spawn!, a spawn failure does not raise: callback still
+// fires, with empty stdout, a message naming cmd in stderr, and exit-code
+// -1 (also the signal-killed-child sentinel) — the same
+// callback-always-fires-exactly-once contract as lsp-request, so a plugin
+// never has to handle failure in two places. Returns a job id for
+// cancel-async!. Unlike picker-source-spawn!'s streaming line batches, the
+// whole output is captured before callback fires — for whole-output
+// consumers (git show, git status) rather than picker-scale enumeration.
+//
+// cancel-async! — kills the job's child and drops its callback without
+// firing it. Idempotent: an already-completed, already-cancelled, or
+// unknown id is a silent no-op, matching cancel-timer!'s contract.
 //
 // Variadic call! macro — desugars to %dispatch-command, the in-VM dispatcher
 // for calls originating inside Steel (call! from a plugin body, or the bare
@@ -466,6 +484,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // Timers — not LSP-specific, but added as part of the LSP work.
         cmd "after" timers::after(ms: SteelVal, thunk: SteelVal);
         cmd "cancel-timer!" timers::cancel_timer(id: SteelVal);
+
+        // Generic async subprocess execution — one-shot capture, not a
+        // streaming source (that's `picker-source-spawn!`'s shape).
+        cmd "spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: SteelVal);
+        cmd "cancel-async!" process::cancel_async(id: SteelVal);
         open "language-has-grammar?" syntax::language_has_grammar(name: SteelVal);
         cmd "buffer-language" buffers::buffer_language(bid: args::BidArg);
         cmd "set-buffer-language!" buffers::set_buffer_language_steel(bid: args::BidArg, lang: SteelVal);

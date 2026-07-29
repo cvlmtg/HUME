@@ -272,6 +272,8 @@ impl Drop for CwdSandbox {
 }
 
 mod alternate;
+mod async_job;
+mod async_job_steel;
 mod buffer;
 mod buffer_store;
 mod cd;

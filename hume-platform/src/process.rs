@@ -37,10 +37,20 @@ use std::os::unix::process::CommandExt as _;
 
 use crate::path::strip_unc_prefix;
 
+/// Shared spawn/pipe/wake machinery underneath [`line_source`] (line-batch
+/// streaming, for the picker's external-command source) and [`job`]
+/// (whole-output capture, for `spawn-async!`) — kept internal since neither
+/// consumption shape is meant to be built a third way.
+pub(crate) mod child;
+
 /// Streaming a child's stdout into complete lines, for the picker's
-/// external-command source (`picker-source-spawn!`) and future consumers of
-/// the same reader-thread/drain shape.
+/// external-command source (`picker-source-spawn!`).
 pub mod line_source;
+
+/// One-shot subprocess capture — spawns a command, waits for it to exit,
+/// and delivers the complete stdout/stderr/exit-status once. Backs the
+/// `spawn-async!` Steel builtin.
+pub mod job;
 
 /// Process-wide tracking so a force-exit can still reap long-lived children.
 pub mod tracked;

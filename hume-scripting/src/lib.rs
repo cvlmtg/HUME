@@ -62,9 +62,9 @@ pub use builtins::commands::parse_count_extend;
 pub use builtins::ids::SteelBufferId;
 pub use hooks::HookId;
 pub use host::{
-    BindMode, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost, EditHost,
-    EditorHost, LanguageHost, LspHost, OutputHost, PopupKind, SettingsHost, TimerHost, UiHost,
-    unsupported,
+    AsyncProcessHost, BindMode, BufferHost, CommandHost, CompletionHost, CursorHost,
+    DecorationHost, EditHost, EditorHost, LanguageHost, LspHost, OutputHost, PopupKind,
+    SettingsHost, TimerHost, UiHost, unsupported,
 };
 pub use keys::parse_key_stream;
 pub use log::LogLevel;

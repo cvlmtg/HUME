@@ -13,7 +13,8 @@
 //! own, only arrival-driven wakes. A picker's spawned line source follows
 //! the same shape: `drain_picker_source` (`picker_source.rs`) has no
 //! matching `AsyncSource` entry, only a drain call from
-//! `drain_async_sources` below.
+//! `drain_async_sources` below. `spawn-async!`'s jobs (`async_job.rs`) are
+//! the same shape again.
 
 use std::time::{Duration, Instant};
 
@@ -57,5 +58,6 @@ impl Editor {
         self.drain_due_timers();
         self.drain_lsp();
         self.drain_picker_source();
+        self.drain_async_jobs();
     }
 }

@@ -128,6 +128,11 @@ pub trait EditorHost {
     fn timers(&mut self) -> Option<&mut dyn TimerHost> {
         None
     }
+    /// `(spawn-async! …)` / `(cancel-async! …)` — `None` for hosts with no
+    /// job registry to spawn onto (test stubs).
+    fn async_process(&mut self) -> Option<&mut dyn AsyncProcessHost> {
+        None
+    }
     /// Terminal-safety state around `#:inline-output` commands — `None` for
     /// hosts with no live TUI to protect (test stubs): `is_inline_output_command`
     /// reads false and `ensure_inline_output_screen` is a no-op success.
@@ -508,6 +513,34 @@ pub trait TimerHost {
     /// Cancels a previously scheduled timer. A no-op if `id` already fired,
     /// was already cancelled, or this host has no timer wheel right now.
     fn cancel_timer(&mut self, id: u64);
+}
+
+/// Async subprocess execution — accessed through
+/// [`EditorHost::async_process`]. Backs `(spawn-async! cmd args cwd
+/// callback)` / `(cancel-async! id)`.
+pub trait AsyncProcessHost {
+    /// Spawns `cmd` with `args` (direct argv, no shell) in `cwd` (`None` =
+    /// the editor's own cwd), capturing its whole stdout/stderr to
+    /// completion. Always returns a job id, even if the spawn itself fails
+    /// — `callback` still fires exactly once either way, `(stdout stderr
+    /// exit-code)`, `exit-code` `-1` for a signal-killed child, a status the
+    /// OS never returned, or a spawn failure (missing binary, bad `cwd`).
+    /// No error channel: a plugin holding a callback should never have to
+    /// handle failure in two places, matching `lsp-request`/`prompt!`/
+    /// `picker!`'s exactly-once contract.
+    fn spawn_async(
+        &mut self,
+        cmd: &str,
+        args: Vec<String>,
+        cwd: Option<PathBuf>,
+        callback: steel::rvals::SteelVal,
+    ) -> u64;
+
+    /// Kills and reaps the job's child and drops its callback without
+    /// firing it. A no-op if `id` already completed, was already
+    /// cancelled, or never existed (a spawn failure that already fired its
+    /// callback) — same idempotent contract as `cancel_timer`.
+    fn cancel_async(&mut self, id: u64);
 }
 
 /// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer

@@ -17,15 +17,19 @@
 
 use std::io::{self, Read};
 use std::path::Path;
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::ExitStatus;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use crate::path::strip_unc_prefix;
+use crate::process::child::{STDERR_CAPTURE_CAP, WakeOnDrop, read_capped, spawn_piped};
 use crate::process::tracked::TrackedChild;
-use crate::process::{ReapOnDrop, spawn_in_own_group};
+
+/// Re-exported so existing callers (`hume-editor`'s `host_impl.rs`) keep
+/// naming this as `line_source::WakeCallback` — the canonical definition
+/// now lives in `child.rs`, shared with `job.rs`.
+pub use crate::process::child::WakeCallback;
 
 /// Splits a byte stream into complete lines on `delim`, carrying a trailing
 /// partial line across `push_chunk` calls.
@@ -86,35 +90,12 @@ impl LineSplitter {
     }
 }
 
-/// Called by the reader thread after posting a batch of lines, so the
-/// editor's main loop wakes and drains it instead of rechecking on a poll
-/// cadence. Type-erased so this crate stays free of a `hume-lsp`/`termina`
-/// dependency; production wraps `termina::PlatformWaker::wake`.
-pub type WakeCallback = Arc<dyn Fn() + Send + Sync>;
-
-/// Invokes a [`WakeCallback`] on drop — fires whether the reader thread
-/// exits normally or unwinds from a panic, so a dead source still wakes the
-/// main loop once (the subsequent drain observes the disconnect via the
-/// existing channel). Mirrors `hume-lsp::transport::WakeOnDrop`.
-struct WakeOnDrop(WakeCallback);
-
-impl Drop for WakeOnDrop {
-    fn drop(&mut self) {
-        (self.0)();
-    }
-}
-
 /// Bound on the line-batch channel. A child producing lines faster than the
 /// editor drains them blocks the reader thread's `send`, which stops it
 /// reading stdout, which back-pressures the child on its own stdout pipe —
 /// a flooding child slows itself rather than growing editor memory
 /// unboundedly.
 const BATCH_CHANNEL_BOUND: usize = 128;
-
-/// Cap on captured stderr bytes: enough for a useful error message: bytes
-/// past the cap are still drained from the pipe (so a chatty child never
-/// blocks writing to it) but discarded.
-const STDERR_CAPTURE_CAP: usize = 8 * 1024;
 
 /// Bound on how long [`SpawnedLineSource::finish`] waits for the captured
 /// stderr to arrive once the child has been reaped or killed — the stderr
@@ -161,25 +142,7 @@ pub fn spawn_line_source(
     delimiter: u8,
     wake: WakeCallback,
 ) -> io::Result<SpawnedLineSource> {
-    let mut command = Command::new(cmd);
-    command.args(args);
-    if let Some(dir) = cwd {
-        command.current_dir(strip_unc_prefix(dir.to_path_buf()));
-    }
-
-    command
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = ReapOnDrop::new(spawn_in_own_group(&mut command)?);
-
-    // Non-inherited stdin: the child sees immediate EOF on read rather than
-    // racing the editor's own key reads on the terminal (same contract as
-    // PLUM's `plum/run!`).
-    drop(child.get_mut().stdin.take());
-
-    let stdout = child.get_mut().stdout.take().expect("piped stdout");
-    let stderr = child.get_mut().stderr.take().expect("piped stderr");
+    let (child, stdout, stderr) = spawn_piped(cmd, args, cwd)?;
 
     let (tx, rx) = mpsc::sync_channel::<Vec<String>>(BATCH_CHANNEL_BOUND);
     let (tx_err, rx_err) = mpsc::sync_channel::<String>(1);
@@ -198,7 +161,10 @@ pub fn spawn_line_source(
 
     let stderr_thread = thread::Builder::new()
         .name("hume-line-source-stderr".into())
-        .spawn(move || stderr_capture_loop(stderr, &tx_err))?;
+        .spawn(move || {
+            let captured = read_capped(stderr, STDERR_CAPTURE_CAP);
+            let _ = tx_err.send(String::from_utf8_lossy(&captured).into_owned());
+        })?;
 
     Ok(SpawnedLineSource {
         cmd: cmd.to_string(),
@@ -317,28 +283,6 @@ fn reader_loop(
     }
     // `tx` (moved into the caller's closure) drops when this returns,
     // disconnecting the channel — the drain side observes that as EOF.
-}
-
-/// Reads stderr to EOF, capturing up to [`STDERR_CAPTURE_CAP`] bytes and
-/// discarding the rest (still draining the pipe so the child never blocks
-/// writing to it), then sends the capture once.
-fn stderr_capture_loop(mut r: impl Read, tx: &mpsc::SyncSender<String>) {
-    let mut buf = [0u8; 4096];
-    let mut captured = Vec::new();
-    loop {
-        match r.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                if captured.len() < STDERR_CAPTURE_CAP {
-                    let remaining = STDERR_CAPTURE_CAP - captured.len();
-                    captured.extend_from_slice(&buf[..n.min(remaining)]);
-                }
-            }
-            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-            Err(_) => break,
-        }
-    }
-    let _ = tx.send(String::from_utf8_lossy(&captured).into_owned());
 }
 
 #[cfg(test)]

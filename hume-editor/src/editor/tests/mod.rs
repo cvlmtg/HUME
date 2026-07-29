@@ -544,6 +544,7 @@ pub(crate) use hume_test_fixtures::{
 };
 
 mod alternate;
+mod async_job_steel;
 mod async_source;
 mod auto_pairs;
 mod buffer;
