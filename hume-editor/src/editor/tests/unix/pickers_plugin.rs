@@ -281,12 +281,12 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
     );
 }
 
-// Fail oracle for this test: `EditorHostImpl::open_picker`'s initial-items
-// `push` (seeding the empty list `picker!` was given) unconditionally
-// clears `PickerSession::pending` — without the `set_pending` call that
-// restores `#:pending`'s caller intent afterward, this session would read
-// as "already populated" from frame one, and `is_pending()` would be `#f`
-// even before `git status` has returned anything.
+// Fail oracle for this test: `PickerSession::seed` only clears `pending`
+// when the seed is non-empty. `git status` hasn't run yet when this picker
+// opens, so `picker!` seeds it with an empty list — if `seed` cleared
+// `pending` unconditionally, this session would read as "already populated"
+// from frame one, and `is_pending()` would be `#f` before `git status` has
+// returned anything.
 #[test]
 fn git_modified_picker_is_pending_until_git_status_returns() {
     let guard = HumeRuntimeGuard::new();

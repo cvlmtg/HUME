@@ -111,13 +111,14 @@ impl PickerSession {
         self.pending || self.source.is_some()
     }
 
-    /// Overrides the pending flag directly — `EditorHostImpl::open_picker`
-    /// calls this right after its own initial-items `push` to restore
-    /// `#:pending`'s caller intent, since that push (unconditional, to seed
-    /// whatever `picker!` was given up front) would otherwise clear it even
-    /// for a caller that opened empty with `#:pending #t` and no seed items.
-    pub(crate) fn set_pending(&mut self, pending: bool) {
-        self.pending = pending;
+    /// Seeds the initial item list `picker!` was given. An empty seed is
+    /// not a batch arrival — nothing has come back yet, so `#:pending` must
+    /// survive it; a non-empty one goes through `push`, which clears
+    /// `pending` because a populated list needs no "still arriving" marker.
+    pub(crate) fn seed(&mut self, items: Vec<PickerItem>) {
+        if !items.is_empty() {
+            self.push(self.token, items);
+        }
     }
 
     /// Appends `items` and reranks, but only if `token` matches this
@@ -432,6 +433,27 @@ mod tests {
         assert!(
             s.is_pending(),
             "a rejected push must not clear pending — the real batch hasn't arrived yet"
+        );
+    }
+
+    #[test]
+    fn seed_with_items_clears_pending() {
+        let mut s = PickerSession::new(dummy_on_select(), String::new(), true);
+        s.seed(items(&["a"]));
+        assert!(
+            !s.is_pending(),
+            "seeding real items means the list is already populated — no \"still arriving\" marker needed"
+        );
+        assert_eq!(window_vec(&s, 10), vec!["a"]);
+    }
+
+    #[test]
+    fn empty_seed_leaves_pending_intact() {
+        let mut s = PickerSession::new(dummy_on_select(), String::new(), true);
+        s.seed(items(&[]));
+        assert!(
+            s.is_pending(),
+            "an empty seed is not a batch arrival — `#:pending`'s caller intent must survive it"
         );
     }
 

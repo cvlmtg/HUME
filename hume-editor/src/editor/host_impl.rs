@@ -1114,12 +1114,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|(display, payload)| crate::editor::picker::PickerItem { display, payload })
             .collect();
-        session.push(token, picker_items); // fresh token — always applies
-        // The push above clears `pending` unconditionally (it always
-        // "applies" on a fresh token) — restore the caller's actual
-        // intent, since an empty `#:pending #t` open with no seed items
-        // must stay pending, not read as "already populated".
-        session.set_pending(pending);
+        session.seed(picker_items);
         crate::editor::picker::open_picker(self.state, self.lsp.as_deref_mut(), session);
         Ok(token)
     }
