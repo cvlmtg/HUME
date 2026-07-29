@@ -296,6 +296,15 @@ impl Editor {
             KeyCode::Char('p') if key.modifiers.contains(Modifiers::CONTROL) => Some(-1),
             KeyCode::PageDown => Some(visible_rows as isize),
             KeyCode::PageUp => Some(-(visible_rows as isize)),
+            // `div_ceil`, not the `(visible_rows / 2).max(1)` the drawer and
+            // `cmd_half_page_*` use, so this is `0` when `visible_rows` is `0` —
+            // keeping paging a documented no-op before the first frame.
+            KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => {
+                Some(visible_rows.div_ceil(2) as isize)
+            }
+            KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => {
+                Some(-(visible_rows.div_ceil(2) as isize))
+            }
             _ => None,
         };
         if let Some(delta) = step {

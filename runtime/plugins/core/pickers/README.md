@@ -24,8 +24,8 @@ not deferred to a first-use trigger:
 | `g m` | `picker-git-modified`   | Fuzzy-pick a file with staged or unstaged git changes and open it |
 
 Inside an open picker: type to filter, `Up`/`Down`/`Ctrl+p`/`Ctrl+n` move the
-selection, `PageUp`/`PageDown` page it, `Backspace` edits the query, `Enter`
-accepts, `Esc` dismisses.
+selection, `PageUp`/`PageDown` page it, `Ctrl+u`/`Ctrl+d` move it by half a
+page, `Backspace` edits the query, `Enter` accepts, `Esc` dismisses.
 
 ## File source
 

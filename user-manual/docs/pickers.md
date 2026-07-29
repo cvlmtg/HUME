@@ -73,5 +73,6 @@ Once a picker is open:
 | `Down` / `Ctrl+n`            | Move selection down |
 | `Up` / `Ctrl+p`               | Move selection up |
 | `PageDown` / `PageUp`        | Page the list |
+| `Ctrl+d` / `Ctrl+u`           | Move selection by half a page |
 | `Enter`                     | Open the selected item |
 | `Esc`                       | Dismiss without opening anything |

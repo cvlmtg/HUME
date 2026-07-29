@@ -130,6 +130,47 @@ fn page_keys_before_first_frame_are_safe_noops() {
     assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 0);
 }
 
+#[test]
+fn half_page_keys_move_by_half_the_list_rows() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let items: Vec<String> = (0..50).map(|i| format!("item{i}")).collect();
+    let refs: Vec<&str> = items.iter().map(String::as_str).collect();
+    open_test_picker(&mut ed, &refs);
+    frame(&mut ed, 60, 16);
+
+    let geo = panel_geometry(ed.view.last_pane_area).expect("viable geometry at 60x16");
+    ed.feed_key(key_ctrl('d'));
+    assert_eq!(
+        ed.state.config.picker.as_ref().unwrap().selected(),
+        geo.list_rows.div_ceil(2)
+    );
+    ed.feed_key(key_ctrl('u'));
+    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 0);
+}
+
+#[test]
+fn half_page_keys_before_first_frame_are_safe_noops() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_picker(&mut ed, &["a", "b", "c"]);
+    // No `frame()` call: `last_pane_area` is still `Rect::default()`.
+    ed.feed_key(key_ctrl('d'));
+    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 0);
+    ed.feed_key(key_ctrl('u'));
+    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 0);
+}
+
+#[test]
+fn half_page_down_saturates_at_last_item_without_wrapping() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_picker(&mut ed, &["a", "b", "c"]);
+    frame(&mut ed, 60, 16);
+
+    ed.feed_key(key_ctrl('d'));
+    ed.feed_key(key_ctrl('d'));
+    ed.feed_key(key_ctrl('d'));
+    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 2);
+}
+
 // ── Backspace ────────────────────────────────────────────────────────────────
 
 #[test]
