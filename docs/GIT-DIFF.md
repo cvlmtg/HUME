@@ -558,9 +558,9 @@ A plugin under `runtime/plugins/git-diff/`, mirroring the nvim five-module layou
 > Deferred — not to be built in this pass. Additive on top of 5a per the additivity
 > constraint: no change to state, fetch, debounce, or init from 5a.
 
-Prerequisites: **Phase 4.5 (virtual-line `Before` anchor + per-segment scopes)** and **a
-resolved decision on the virtual-line scroll question** (see "Open risk" below) — both new
-requirements this pass, not previously called out as blocking a shippable layer.
+Prerequisites: **Phase 4.5 (virtual-line `Before` anchor + per-segment scopes)** and **a fix for
+the top-line `before`-block disagreement** (see "Open risk" below) — both new requirements this
+pass, not previously called out as blocking a shippable layer.
 
 - **diff** (extended): for each changed hunk, also call `(diff-words old-line new-line)`,
   checking `deadline-hit?` to skip word highlights on a timeout and fall back to a whole-line
@@ -580,14 +580,28 @@ requirements this pass, not previously called out as blocking a shippable layer.
 - **init**: `toggle-inline-diff` becomes real (enables the 5b renderer in addition to 5a's
   signs).
 
-**Open risk, not resolved by this doc:** HUME's viewport does **not** account for virtual
-lines when scrolling — `hume-engine/src/pipeline/pane_render.rs:171-183` deliberately never
-lets a dropped virtual row decrement `top_skip_remaining`, so a `Before(top_line)` block
-cannot scroll partially off-screen; it disappears as a unit once the real wrap rows scroll
-into `top_line`. nvim's `_adjust_scroll` problem exists here in a sharper form, and no Steel
-builtin can nudge the scroll offset today. Needs a real design decision when 5b starts
-(accept the behavior, or find/build a scroll-nudge path) — don't carry forward the
-assumption that this is a non-issue.
+**Open risk, not resolved by this doc:** scroll/cursor math counts virtual rows —
+`hume-engine/src/format.rs:143` `display_rows_for_line` is the SSOT for "how many display rows
+does line N occupy" (`before`/`content`/`after`), consumed by both
+`hume-editor/src/editor/scroll.rs:230,313` and `hume-editor/src/editor/cursor.rs:69` on the
+wrapped path. Fine-grained scrolling through a virtual block is not handled: it moves
+atomically. `hume-engine/src/pipeline/pane_render.rs:171-183` never lets a dropped virtual row
+decrement `top_skip_remaining` (that budget only counts `top_line`'s wrap rows), and
+`hume-editor/src/editor/scroll.rs:326-342` clamps a cut point inside a `before`/`after` block to
+`top_row_offset = 0` rather than splitting it — so a `Before(top_line)` block disappears as a
+unit once the real wrap rows scroll into `top_line`. Acceptable for a 1-3 row deleted-line
+block; no Steel builtin exists to nudge the scroll offset for a smoother path.
+
+The blocker for 5b: the renderer and the cursor/scroll code disagree about whether the top
+line's own `before` block is visible. The renderer draws `Before(top_line)` at screen row 0
+when `top_row_offset == 0` (`pane_render.rs:118-125`, per
+`hume-engine/src/pipeline/tests.rs:210` `before_virtual_line_renders_when_not_skipped`), but
+`cursor.rs:79-85` and `scroll.rs:240-242` both treat the top line's `before` count as 0. This
+makes terminal cursor placement, `screen_to_char_offset` (mouse), and scroll-margin row
+counting land one row off from what's drawn whenever `top_row_offset == 0`. Fix required: pick
+one rule (suppress `Before(top_line)` in the renderer, or make cursor/scroll count it) and add
+a test pairing the render snapshot with `screen_pos`/`ensure_cursor_visible` for the same
+viewport state.
 
 ---
 
@@ -627,8 +641,12 @@ store) + theme `diff.*` `bg` values in all four themes.**
   dependency (`hume-scripting/Cargo.toml` still has none).
 - **Engine render**: `hume-engine/src/providers.rs` (`VirtualLine:228`,
   `VirtualLineAnchor:202-214`, `HighlightTier:37-45`), `hume-engine/src/pipeline/pane_render.rs`
-  (`:171-183` scroll-vs-virtual-lines caveat, `:326-330` row_bg, `:356-437` emit_virtual_row —
-  `pipeline` is a module dir, not one file), `hume-engine/src/render.rs`
+  (`:118-125` top-line `before` render, `:171-183` scroll-vs-virtual-lines caveat, `:326-330`
+  row_bg, `:356-437` emit_virtual_row — `pipeline` is a module dir, not one file),
+  `hume-engine/src/format.rs` (`:143` `display_rows_for_line`, the scroll/cursor row-count SSOT),
+  `hume-editor/src/editor/cursor.rs` (`:79-85` top-line `before` assumption),
+  `hume-editor/src/editor/scroll.rs` (`:240-242`, `:326-342` top-line `before` assumption +
+  atomic-block clamp), `hume-engine/src/render.rs`
   (`fill_row_bg` method `:96`, free fn `:559`, consumers at `:122,174,231,276,294`),
   `hume-engine/src/types.rs` (`Grapheme.scope` `:160`).
 - **Steel surface**: `hume-scripting/src/hooks.rs:75-88` (HOOKS table, 12 entries, no
@@ -669,11 +687,13 @@ store) + theme `diff.*` `bg` values in all four themes.**
 - **Virtual-line Steel bridge — new risk, Phase 4.5.** The engine type is ready
   (`Before`/`After` anchoring, per-segment scopes); the Steel-facing `set-virtual-lines!`
   bridge is not. This gates Phase 5b specifically — Phase 5a (signs) is unaffected.
-- **Virtual-line scroll accounting — open, not resolved.** `pane_render.rs:171-183` confirms
-  HUME's viewport does not track virtual lines the way nvim's `_adjust_scroll` compensates
-  for; a `Before(top_line)` block disappears as a unit rather than scrolling gradually. Phase
-  5b needs a real answer here (accept the behavior, or find/build a scroll-nudge path) —
-  don't carry forward the assumption that this is a non-issue.
+- **Virtual-line scroll accounting — open.** Scroll/cursor math counts virtual rows via
+  `display_rows_for_line` (`hume-engine/src/format.rs:143`); a virtual block scrolls atomically
+  rather than row-by-row (`pane_render.rs:171-183`, `scroll.rs:326-342`) — acceptable for small
+  blocks. The blocker for Phase 5b: `pane_render.rs:118-125` renders `Before(top_line)` at
+  screen row 0 while `cursor.rs:79-85`/`scroll.rs:240-242` treat the top line's `before` block
+  as never shown — the two disagree once `top_row_offset == 0`. Fix required (suppress the
+  render or make cursor/scroll count it) plus a paired render/`screen_pos` test.
 - **Native callbacks needing `&mut Editor`** — resolved by Phase 1: job-completion callbacks
   run through `Editor::drain_async_jobs` where the main loop holds `&mut Editor`, mirroring
   `line_source.rs`'s wake-based dispatch and the LSP `drain_lsp`/`queue_steel_call` template.
