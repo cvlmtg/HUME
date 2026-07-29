@@ -579,20 +579,32 @@ accounting a `Before`-anchored block needs (see below) is already in place.
 - **init**: `toggle-inline-diff` becomes real (enables the 5b renderer in addition to 5a's
   signs).
 
-**Virtual-line scroll accounting — resolved.** `ViewportState::top_row_offset` counts display
-rows of `top_line`'s whole visual block (`before` + wrap rows + `after`), not content rows only
-— every row, virtual or real, is an equal scroll unit. The renderer skips virtual rows through
-the same budget as wrap rows (`hume-engine/src/pipeline/pane_render.rs`'s `drain_virtual_lines`,
-via `ViewportCursor::try_skip`), and the editor's row math
-(`hume-editor/src/editor/cursor.rs`'s `screen_pos`/`screen_to_char_offset`,
-`hume-editor/src/editor/scroll.rs`'s `ensure_cursor_visible_wrapped`/`scroll_backward_from_cursor`,
-`hume-editor/src/editor/mouse.rs`'s wheel scroll) all derive line-height from
-`hume-engine/src/format.rs:143` `display_rows_for_line(...).total()` on that same invariant. A
-`Before(top_line)` block — including one anchored to buffer line 0, taller than the viewport —
-scrolls into and out of view one row at a time, and the renderer and cursor/scroll code always
-agree on which row of the block is on screen; see
-`hume-engine/src/pipeline/tests.rs`'s `virtual_before_block_taller_than_viewport_exposes_every_row`
-and `hume-editor/src/editor/tests/virtual_line_scroll.rs`.
+**Virtual-line scroll accounting — resolved, in every wrap mode.** `ViewportState::top_row_offset`
+counts display rows of `top_line`'s whole visual block (`before` + content rows + `after`), not
+content rows only — every row, virtual or real, is an equal scroll unit. The renderer skips
+virtual rows through the same budget as content rows
+(`hume-engine/src/pipeline/pane_render.rs`'s `drain_virtual_lines`, via
+`ViewportCursor::try_skip`) unconditionally — it was never gated by wrap mode. The editor's row
+math (`hume-editor/src/editor/cursor.rs`'s `screen_pos`/`screen_to_char_offset`,
+`hume-editor/src/editor/scroll.rs`'s `ensure_cursor_visible`/`scroll_backward_from_cursor`,
+`hume-editor/src/editor/mouse.rs`'s wheel scroll) is unified across wrap modes too — all derive
+line-height from `hume-engine/src/format.rs:143` `display_rows_for_line(...).total()`, which
+returns `content: 1` for `WrapMode::None`, so one code path serves both. `hume-engine/src/layout.rs`'s
+`compute_line_range` adds `top_skip` into its no-wrap range budget too, matching the wrapping
+branch. A `Before`/`After` block — including one anchored to buffer line 0 or the very last
+buffer line, taller than the viewport — scrolls into and out of view one row at a time in either
+wrap mode, and the renderer and cursor/scroll code always agree on which row is on screen. An
+EOF-overshoot bug in wheel-scroll (resetting to the block's first row instead of clamping to its
+last on a large notch) is fixed alongside this. `scroll::clamp_top_row_offset` self-heals a
+`top_row_offset` left stale by a write site that doesn't validate it (`Pane::recall_scroll`, an
+LSP jump), once per pane per frame. Screen-relative cursor-follow (mouse wheel, page/half-page
+scroll — `visual_move.rs`'s `VerticalUnit::ScreenRow` / `screen_move_vertical`) counts virtual
+rows toward its display-row budget so the cursor tracks the same distance the viewport moved;
+plain `j`/`k` (`VerticalUnit::ContentRow`) keep treating virtual rows as free, landing only on
+real content. See `hume-engine/src/pipeline/tests.rs`'s
+`virtual_before_block_taller_than_viewport_exposes_every_row`,
+`hume-editor/src/editor/tests/virtual_line_scroll.rs`, and the `_no_wrap` test siblings in
+`cursor/tests.rs`/`scroll/tests.rs`/`mouse/tests.rs`.
 
 ---
 
@@ -636,8 +648,10 @@ store) + theme `diff.*` `bg` values in all four themes.**
   `pipeline` is a module dir, not one file), `hume-engine/src/format.rs` (`:143`
   `display_rows_for_line`, the scroll/cursor row-count SSOT), `hume-editor/src/editor/cursor.rs`
   (`screen_pos`/`screen_to_char_offset`), `hume-editor/src/editor/scroll.rs`
-  (`ensure_cursor_visible_wrapped`/`scroll_backward_from_cursor`), `hume-editor/src/editor/mouse.rs`
-  (`scroll_viewport_up`/`scroll_viewport_down`), `hume-engine/src/render.rs`
+  (`ensure_cursor_visible`/`scroll_backward_from_cursor`/`clamp_top_row_offset`),
+  `hume-editor/src/editor/mouse.rs` (`scroll_viewport_up`/`scroll_viewport_down`),
+  `hume-editor/src/editor/visual_move.rs` (`screen_move_vertical`, `VerticalUnit::ScreenRow`),
+  `hume-engine/src/render.rs`
   (`fill_row_bg` method `:96`, free fn `:559`, consumers at `:122,174,231,276,294`),
   `hume-engine/src/types.rs` (`Grapheme.scope` `:160`).
 - **Steel surface**: `hume-scripting/src/hooks.rs:75-88` (HOOKS table, 12 entries, no
@@ -678,12 +692,12 @@ store) + theme `diff.*` `bg` values in all four themes.**
 - **Virtual-line Steel bridge — new risk, Phase 4.5.** The engine type is ready
   (`Before`/`After` anchoring, per-segment scopes); the Steel-facing `set-virtual-lines!`
   bridge is not. This gates Phase 5b specifically — Phase 5a (signs) is unaffected.
-- **Virtual-line scroll accounting — resolved.** `top_row_offset` counts display rows of
-  `top_line`'s whole visual block (`before` + content + `after`); renderer and editor row math
-  agree on every row, and a `Before`-anchored block — including one anchored to line 0, taller
-  than the viewport — scrolls into view one row at a time. See
-  `hume-engine/src/format.rs:143` (`display_rows_for_line`, the shared SSOT) and the tests listed
-  under Phase 5b above.
+- **Virtual-line scroll accounting — resolved, in every wrap mode.** `top_row_offset` counts
+  display rows of `top_line`'s whole visual block (`before` + content + `after`); renderer and
+  editor row math agree on every row in both wrap modes, and a `Before`/`After`-anchored block —
+  including one anchored to line 0 or the last buffer line, taller than the viewport — scrolls
+  into view one row at a time. See `hume-engine/src/format.rs:143` (`display_rows_for_line`, the
+  shared SSOT) and the tests listed under Phase 5b above.
 - **Native callbacks needing `&mut Editor`** — resolved by Phase 1: job-completion callbacks
   run through `Editor::drain_async_jobs` where the main loop holds `&mut Editor`, mirroring
   `line_source.rs`'s wake-based dispatch and the LSP `drain_lsp`/`queue_steel_call` template.

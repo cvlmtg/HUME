@@ -2,7 +2,7 @@ use crate::ops::MotionMode;
 use hume_engine::pipeline::EngineView;
 
 use super::super::EditorState;
-use super::super::visual_move::apply_visual_vertical;
+use super::super::visual_move::{VerticalUnit, apply_visual_vertical};
 use super::{current_selections, focused_buffer_id, focused_format_context, viewport};
 use crate::editor::error::CommandError;
 
@@ -20,7 +20,7 @@ pub fn cmd_page_down(
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     let count = viewport(state, view).height as usize;
-    apply_visual_vertical(state, view, count, true, mode, false);
+    apply_visual_vertical(state, view, count, true, mode, VerticalUnit::ScreenRow);
     Ok(())
 }
 pub fn cmd_page_up(
@@ -30,7 +30,7 @@ pub fn cmd_page_up(
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     let count = viewport(state, view).height as usize;
-    apply_visual_vertical(state, view, count, false, mode, false);
+    apply_visual_vertical(state, view, count, false, mode, VerticalUnit::ScreenRow);
     Ok(())
 }
 pub fn cmd_half_page_down(
@@ -40,7 +40,7 @@ pub fn cmd_half_page_down(
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     let count = (viewport(state, view).height as usize / 2).max(1);
-    apply_visual_vertical(state, view, count, true, mode, false);
+    apply_visual_vertical(state, view, count, true, mode, VerticalUnit::ScreenRow);
     Ok(())
 }
 pub fn cmd_half_page_up(
@@ -50,7 +50,7 @@ pub fn cmd_half_page_up(
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     let count = (viewport(state, view).height as usize / 2).max(1);
-    apply_visual_vertical(state, view, count, false, mode, false);
+    apply_visual_vertical(state, view, count, false, mode, VerticalUnit::ScreenRow);
     Ok(())
 }
 

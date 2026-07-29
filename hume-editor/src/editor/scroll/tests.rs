@@ -298,6 +298,29 @@ fn providers_with_before_line(line: usize) -> ProviderSet {
     p
 }
 
+/// Emits `self.1` distinct `Before(self.0)` rows, texted "1".."9".
+struct MultiBeforeLine(usize, usize);
+
+impl hume_engine::providers::VirtualLineSource for MultiBeforeLine {
+    fn virtual_lines(
+        &self,
+        visible_lines: std::ops::Range<usize>,
+        _content_width: u16,
+        out: &mut Vec<hume_engine::providers::VirtualLine>,
+    ) {
+        if visible_lines.contains(&self.0) {
+            for i in 0..self.1 {
+                out.push(hume_engine::providers::VirtualLine {
+                    anchor: hume_engine::providers::VirtualLineAnchor::Before(self.0),
+                    provider_id: 0,
+                    text: (i + 1).to_string(),
+                    segments: Vec::new(),
+                });
+            }
+        }
+    }
+}
+
 /// A virtual row anchored between the viewport's top and the cursor
 /// "steals" a row from the lines below it — `ensure_cursor_visible` must
 /// still scroll far enough to bring the cursor fully into view, not just
@@ -347,4 +370,140 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row() {
         "cursor row {row} must be inside the {}-row viewport",
         v.height
     );
+}
+
+/// No-wrap mirror of `ensure_cursor_visible_accounts_for_a_stolen_virtual_row`
+/// — row math is wrap-mode-agnostic.
+#[test]
+fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row_no_wrap() {
+    let r = rope("a\nb\nc\nd\n");
+    let mut v = viewport(0, 2, 80);
+    let wrap = WrapMode::None;
+    let providers = providers_with_before_line(2);
+    let cursor_char = r.line_to_char(3);
+
+    ensure_cursor_visible(
+        &mut v,
+        &r,
+        cursor_char,
+        &wrap,
+        4,
+        &WhitespaceConfig::default(),
+        &mut FormatScratch::new(),
+        0,
+        &providers,
+        80,
+    );
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    let pos = cursor::screen_pos(
+        &v,
+        &r,
+        cursor_char,
+        &wrap,
+        4,
+        &WhitespaceConfig::default(),
+        &mut ctx,
+        &providers,
+        80,
+    );
+    let (_, row) = pos.expect("cursor must be visible after ensure_cursor_visible");
+    assert!(
+        (row as usize) < v.height as usize,
+        "cursor row {row} must be inside the {}-row viewport, no-wrap too",
+        v.height
+    );
+}
+
+/// A `Before(0)` block must be fully reachable by scrolling to the top of
+/// the buffer — no special-casing hides or truncates it at the very start,
+/// in either wrap mode. Mirrors the user-facing requirement behind this
+/// fix: virtual lines anchored above buffer line 0 must be scrollable into
+/// view just like any other `before` block.
+///
+/// Cursor starts on line 2 with the viewport already showing it; a margin
+/// larger than the room available between `top_line` and the cursor forces
+/// `scroll_backward_from_cursor` to walk past line 1, past line 0's own
+/// content, and into line 0's 3-row `Before` block — landing at
+/// `top_line == 0, top_row_offset == 0` (the block's very first row), the
+/// correct top-of-buffer terminal state, rather than stopping short or
+/// underflowing.
+#[test]
+fn scroll_backward_from_cursor_reaches_into_before_line_0() {
+    let r = rope("a\nb\nc\n");
+    let mut providers = ProviderSet::new();
+    providers.add_virtual_line_source(Box::new(MultiBeforeLine(0, 3)));
+    let cursor_char = r.line_to_char(2);
+
+    for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
+        let mut v = viewport(2, 10, 80);
+        ensure_cursor_visible(
+            &mut v,
+            &r,
+            cursor_char,
+            &wrap,
+            4,
+            &WhitespaceConfig::default(),
+            &mut FormatScratch::new(),
+            10, // margin far larger than the 2 real rows between top and cursor
+            &providers,
+            80,
+        );
+        assert_eq!(
+            v.top_line, 0,
+            "walk reaches the very first buffer line ({wrap:?})"
+        );
+        assert_eq!(
+            v.top_row_offset, 0,
+            "walk reaches the first row of Before(0)'s block, not a partial offset ({wrap:?})"
+        );
+    }
+}
+
+/// `clamp_top_row_offset` must shrink an out-of-range offset (as `recall_scroll`
+/// or an LSP jump could leave behind) down to the top line's actual current
+/// block size, in either wrap mode.
+#[test]
+fn clamp_top_row_offset_shrinks_stale_offset() {
+    let r = rope("a\nb\n");
+    let providers = providers_with_before_line(0); // Before(0): 1 row + content: 1 row = total 2
+
+    for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
+        let mut v = viewport(0, 5, 80);
+        v.top_row_offset = 200; // wildly stale — e.g. a resize shrank the block since it was set
+        clamp_top_row_offset(
+            &mut v,
+            &r,
+            &wrap,
+            4,
+            &WhitespaceConfig::default(),
+            &mut FormatScratch::new(),
+            &providers,
+            80,
+        );
+        assert_eq!(
+            v.top_row_offset, 1,
+            "clamped to the block's last valid row (total 2, so max offset 1) ({wrap:?})"
+        );
+    }
+}
+
+/// `clamp_top_row_offset` must leave an already-valid offset untouched.
+#[test]
+fn clamp_top_row_offset_is_a_noop_when_already_valid() {
+    let r = rope("a\nb\n");
+    let providers = providers_with_before_line(0);
+    let mut v = viewport(0, 5, 80);
+    v.top_row_offset = 1;
+    clamp_top_row_offset(
+        &mut v,
+        &r,
+        &WrapMode::None,
+        4,
+        &WhitespaceConfig::default(),
+        &mut FormatScratch::new(),
+        &providers,
+        80,
+    );
+    assert_eq!(v.top_row_offset, 1);
 }

@@ -2133,6 +2133,19 @@ pub(super) fn scroll_into_view(
 ) {
     use super::scroll;
     let content_width = pane.content_width(rope.len_lines());
+    // Self-heal a `top_row_offset` left stale by a write site that doesn't
+    // validate it (`recall_scroll`, an LSP jump) before the cursor-follow
+    // logic below reads it — see `clamp_top_row_offset`'s doc.
+    scroll::clamp_top_row_offset(
+        &mut pane.viewport,
+        rope,
+        wrap_mode,
+        tab_width,
+        whitespace,
+        scratch,
+        &pane.providers,
+        content_width,
+    );
     scroll::ensure_cursor_visible(
         &mut pane.viewport,
         rope,

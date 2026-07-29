@@ -14,161 +14,15 @@ use super::cursor;
 // ---------------------------------------------------------------------------
 
 #[allow(clippy::too_many_arguments)]
-/// Adjust `viewport.top_line` (and `top_row_offset` when wrapping) so the
-/// cursor's display row is visible with `v_margin` rows of look-ahead.
+/// Adjust `viewport.top_line`/`top_row_offset` so the cursor's display row
+/// is visible with `v_margin` rows of look-ahead.
 ///
-/// `providers`/`content_width` feed the wrapped path's virtual-row-aware row
-/// counting (`display_rows_for_line`) — the unwrapped path stays plain
-/// line-count arithmetic; a virtual line's effect on no-wrap vertical
-/// scrolling is out of scope here.
+/// `providers`/`content_width` feed the virtual-row-aware row counting
+/// (`display_rows_for_line`). Wrap-mode-agnostic: `display_rows_for_line`
+/// returns `content: 1` for `WrapMode::None`, so the same block-row
+/// accounting (`before`/content/`after`, per `ViewportState::top_row_offset`'s
+/// doc) applies whether or not the line itself wraps.
 pub(super) fn ensure_cursor_visible(
-    viewport: &mut ViewportState,
-    rope: &ropey::Rope,
-    cursor_char: usize,
-    wrap_mode: &WrapMode,
-    tab_width: u8,
-    whitespace: &WhitespaceConfig,
-    scratch: &mut FormatScratch,
-    v_margin: usize,
-    providers: &ProviderSet,
-    content_width: u16,
-) {
-    if wrap_mode.is_wrapping() {
-        ensure_cursor_visible_wrapped(
-            viewport,
-            rope,
-            cursor_char,
-            wrap_mode,
-            tab_width,
-            whitespace,
-            scratch,
-            v_margin,
-            providers,
-            content_width,
-        );
-    } else {
-        let cursor_line = rope.char_to_line(cursor_char);
-        ensure_cursor_visible_unwrapped(viewport, cursor_line, v_margin);
-    }
-}
-
-/// Adjust `viewport.horizontal_offset` so the cursor's display column stays
-/// visible. When wrapping is active, horizontal offset is forced to 0
-/// (wrapping handles long lines). The horizontal margin is fixed —
-/// `scrolloff` only governs the vertical axis.
-pub(super) fn ensure_cursor_visible_horizontal(
-    viewport: &mut ViewportState,
-    rope: &ropey::Rope,
-    cursor_char: usize,
-    wrap_mode: &WrapMode,
-    tab_width: u8,
-    whitespace: &WhitespaceConfig,
-    scratch: &mut FormatScratch,
-) {
-    const H_MARGIN: usize = 5;
-
-    if wrap_mode.is_wrapping() {
-        viewport.horizontal_offset = 0;
-        return;
-    }
-
-    let cursor_line = rope.char_to_line(cursor_char);
-    let (_sub_row, cursor_col) = cursor::format_row_col(
-        rope,
-        cursor_line,
-        cursor_char,
-        wrap_mode,
-        tab_width,
-        whitespace,
-        scratch,
-    );
-    let content_width = viewport.width as usize;
-    if content_width == 0 {
-        return;
-    }
-
-    let margin = H_MARGIN.min(content_width / 2);
-    let offset = viewport.horizontal_offset as usize;
-
-    if cursor_col < offset + margin {
-        viewport.horizontal_offset = cursor_col.saturating_sub(margin) as u16;
-    } else if cursor_col >= offset + content_width - margin {
-        viewport.horizontal_offset = cursor_col.saturating_sub(content_width - margin - 1) as u16;
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-/// Scroll the viewport so the cursor's display row lands at `target_row`
-/// (0-based) inside the visible area. Used by `zz`/`zt`/`zb`-style commands.
-///
-/// Top-of-buffer is clamped to `top_line == 0`; bottom-of-buffer is *not*
-/// clamped (vim/Helix semantics — empty rows past EOF are allowed).
-pub(super) fn scroll_cursor_to_row(
-    viewport: &mut ViewportState,
-    rope: &ropey::Rope,
-    cursor_char: usize,
-    wrap_mode: &WrapMode,
-    tab_width: u8,
-    whitespace: &WhitespaceConfig,
-    scratch: &mut FormatScratch,
-    target_row: usize,
-    providers: &ProviderSet,
-    content_width: u16,
-) {
-    let cursor_line = rope.char_to_line(cursor_char);
-
-    if !wrap_mode.is_wrapping() {
-        viewport.top_line = cursor_line.saturating_sub(target_row);
-        viewport.top_row_offset = 0;
-        return;
-    }
-
-    let cursor_sub = cursor::sub_row(
-        rope,
-        cursor_line,
-        cursor_char,
-        wrap_mode,
-        tab_width,
-        whitespace,
-        scratch,
-    );
-    scroll_backward_from_cursor(
-        viewport,
-        rope,
-        cursor_line,
-        cursor_sub,
-        target_row,
-        wrap_mode,
-        tab_width,
-        whitespace,
-        scratch,
-        providers,
-        content_width,
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-fn ensure_cursor_visible_unwrapped(
-    viewport: &mut ViewportState,
-    cursor_line: usize,
-    v_margin: usize,
-) {
-    let height = viewport.height as usize;
-    let margin = v_margin.min(height / 2);
-
-    let top = viewport.top_line;
-    if cursor_line < top + margin {
-        viewport.top_line = cursor_line.saturating_sub(margin);
-    } else if height > 0 && cursor_line >= top + height - margin {
-        viewport.top_line = cursor_line.saturating_sub(height - margin - 1);
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn ensure_cursor_visible_wrapped(
     viewport: &mut ViewportState,
     rope: &ropey::Rope,
     cursor_char: usize,
@@ -294,6 +148,134 @@ fn ensure_cursor_visible_wrapped(
         );
     }
 }
+
+/// Clamp `viewport.top_row_offset` to a valid row of `top_line`'s current
+/// visual block.
+///
+/// Single self-heal chokepoint for staleness: nothing else in the codebase
+/// validates a `top_row_offset` write against the block it actually refers
+/// to (`Pane::recall_scroll` restores a saved offset verbatim; an LSP
+/// goto-definition jump moves `top_line` without touching `top_row_offset`
+/// at all) — the block a stale offset was valid for can shrink or disappear
+/// entirely (wrap width change, a `VirtualLineSource` removed, a resize)
+/// between the write and the next read. Call once per pane per frame, before
+/// `ensure_cursor_visible`, so every other write site can stay unvalidated.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn clamp_top_row_offset(
+    viewport: &mut ViewportState,
+    rope: &ropey::Rope,
+    wrap_mode: &WrapMode,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
+    scratch: &mut FormatScratch,
+    providers: &ProviderSet,
+    content_width: u16,
+) {
+    let total = display_rows_for_line(
+        rope,
+        viewport.top_line,
+        tab_width,
+        whitespace,
+        wrap_mode,
+        providers,
+        content_width,
+        scratch,
+    )
+    .total();
+    viewport.top_row_offset = viewport.top_row_offset.min(total.saturating_sub(1) as u16);
+}
+
+/// Adjust `viewport.horizontal_offset` so the cursor's display column stays
+/// visible. When wrapping is active, horizontal offset is forced to 0
+/// (wrapping handles long lines). The horizontal margin is fixed —
+/// `scrolloff` only governs the vertical axis.
+pub(super) fn ensure_cursor_visible_horizontal(
+    viewport: &mut ViewportState,
+    rope: &ropey::Rope,
+    cursor_char: usize,
+    wrap_mode: &WrapMode,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
+    scratch: &mut FormatScratch,
+) {
+    const H_MARGIN: usize = 5;
+
+    if wrap_mode.is_wrapping() {
+        viewport.horizontal_offset = 0;
+        return;
+    }
+
+    let cursor_line = rope.char_to_line(cursor_char);
+    let (_sub_row, cursor_col) = cursor::format_row_col(
+        rope,
+        cursor_line,
+        cursor_char,
+        wrap_mode,
+        tab_width,
+        whitespace,
+        scratch,
+    );
+    let content_width = viewport.width as usize;
+    if content_width == 0 {
+        return;
+    }
+
+    let margin = H_MARGIN.min(content_width / 2);
+    let offset = viewport.horizontal_offset as usize;
+
+    if cursor_col < offset + margin {
+        viewport.horizontal_offset = cursor_col.saturating_sub(margin) as u16;
+    } else if cursor_col >= offset + content_width - margin {
+        viewport.horizontal_offset = cursor_col.saturating_sub(content_width - margin - 1) as u16;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+/// Scroll the viewport so the cursor's display row lands at `target_row`
+/// (0-based) inside the visible area. Used by `zz`/`zt`/`zb`-style commands.
+///
+/// Top-of-buffer is clamped to `top_line == 0`; bottom-of-buffer is *not*
+/// clamped (vim/Helix semantics — empty rows past EOF are allowed).
+pub(super) fn scroll_cursor_to_row(
+    viewport: &mut ViewportState,
+    rope: &ropey::Rope,
+    cursor_char: usize,
+    wrap_mode: &WrapMode,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
+    scratch: &mut FormatScratch,
+    target_row: usize,
+    providers: &ProviderSet,
+    content_width: u16,
+) {
+    let cursor_line = rope.char_to_line(cursor_char);
+    let cursor_sub = cursor::sub_row(
+        rope,
+        cursor_line,
+        cursor_char,
+        wrap_mode,
+        tab_width,
+        whitespace,
+        scratch,
+    );
+    scroll_backward_from_cursor(
+        viewport,
+        rope,
+        cursor_line,
+        cursor_sub,
+        target_row,
+        wrap_mode,
+        tab_width,
+        whitespace,
+        scratch,
+        providers,
+        content_width,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
 
 #[allow(clippy::too_many_arguments)]
 fn scroll_backward_from_cursor(

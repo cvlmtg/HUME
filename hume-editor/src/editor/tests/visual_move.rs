@@ -242,12 +242,12 @@ fn visual_move_up_with_explicit_count_moves_buffer_lines() {
 
 /// Scroll commands (page/half-page) always move by display rows, regardless of
 /// `explicit_count` — the buffer-vs-visual choice is a parameter passed by the
-/// caller (`by_buffer_line`), not a global-state read inside the shared core.
-/// This guards against `apply_visual_vertical` accidentally reading
+/// caller (`unit`), not a global-state read inside the shared core. This
+/// guards against `apply_visual_vertical` accidentally reading
 /// `state.explicit_count` itself instead of trusting its parameter.
 #[test]
 fn apply_visual_vertical_ignores_explicit_count_when_caller_forces_visual() {
-    use crate::editor::visual_move::apply_visual_vertical;
+    use crate::editor::visual_move::{VerticalUnit, apply_visual_vertical};
     use crate::ops::MotionMode;
 
     let mut ed = visual_test_editor(0);
@@ -258,12 +258,12 @@ fn apply_visual_vertical_ignores_explicit_count_when_caller_forces_visual() {
         1,
         true,
         MotionMode::Move,
-        false,
+        VerticalUnit::ContentRow,
     );
     assert_eq!(
         ed.current_selections().primary().head(),
         76,
-        "by_buffer_line=false must move one visual row even with explicit_count=true"
+        "VerticalUnit::ContentRow must move one visual row even with explicit_count=true"
     );
 }
 

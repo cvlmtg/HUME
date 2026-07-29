@@ -152,3 +152,69 @@ fn mouse_wheel_moves_one_row_at_a_time_through_a_before_block() {
     );
     assert_eq!(ed.viewport().top_row_offset, 0);
 }
+
+/// Emits `self.1` distinct `After(self.0)` rows.
+struct MultiAfterLine(usize, usize);
+
+impl VirtualLineSource for MultiAfterLine {
+    fn virtual_lines(
+        &self,
+        visible_lines: std::ops::Range<usize>,
+        _content_width: u16,
+        out: &mut Vec<VirtualLine>,
+    ) {
+        if visible_lines.contains(&self.0) {
+            for i in 0..self.1 {
+                out.push(VirtualLine {
+                    anchor: VirtualLineAnchor::After(self.0),
+                    provider_id: 0,
+                    text: (i + 1).to_string(),
+                    segments: Vec::new(),
+                });
+            }
+        }
+    }
+}
+
+/// Screen-relative cursor-follow (`VerticalUnit::ScreenRow` — mouse wheel,
+/// page/half-page scroll) must count virtual rows toward its display-row
+/// budget: moving "5 display rows" down through a 3-row `After(1)` block
+/// only advances the cursor 2 REAL lines (0 → 1 → 2), not 5 — matching
+/// where the viewport itself would land, in either wrap mode. Plain `j`/`k`
+/// (`VerticalUnit::ContentRow`, exercised elsewhere) are unaffected: virtual
+/// rows stay free for those.
+#[test]
+fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
+    use crate::editor::visual_move::{VerticalUnit, apply_visual_vertical};
+    use crate::ops::MotionMode;
+
+    let content: String = (0..6).map(|i| format!("{i}\n")).collect();
+    let buf = Text::from(content.as_str());
+    let sels = SelectionSet::single(Selection::collapsed(0));
+
+    for wrap in [WrapMode::None, WrapMode::Soft { width: 0 }] {
+        let mut ed = Editor::for_testing(Buffer::new(buf.clone(), sels.clone()));
+        let pid = ed.state.focused_pane_id;
+        ed.view.panes[pid].wrap_mode = wrap;
+        ed.view.panes[pid]
+            .providers
+            .add_virtual_line_source(Box::new(MultiAfterLine(1, 3)));
+
+        apply_visual_vertical(
+            &mut ed.state,
+            &mut ed.view,
+            5,
+            true,
+            MotionMode::Move,
+            VerticalUnit::ScreenRow,
+        );
+        let cursor_line = ed
+            .doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head());
+        assert_eq!(
+            cursor_line, 2,
+            "5 display rows crosses 3 virtual After(1) rows, landing on real line 2, not 5 ({wrap:?})"
+        );
+    }
+}

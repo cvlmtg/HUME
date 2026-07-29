@@ -311,10 +311,7 @@ fn providers_with_before_line(line: usize) -> ProviderSet {
 /// cursor's own line as occupying a screen row above it — the cursor
 /// must land one row lower than it would with zero providers.
 ///
-/// Uses a *wrapping* mode deliberately: virtual-row awareness is scoped
-/// to the wrapping code path only (`WrapMode::None` stays plain
-/// line-count arithmetic, unaware of virtual lines — by design, split
-/// between the wrapping and non-wrapping paths).
+/// See the `_no_wrap` sibling below — row math is wrap-mode-agnostic.
 #[test]
 fn screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     let rope = Rope::from_str("a\nb\nc\n");
@@ -367,8 +364,8 @@ fn screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
 ///
 /// Also covers a click that lands *on* the virtual row itself (screen
 /// row 1): clamped to line 1's own first content sub-row (precise
-/// anchor-line mapping isn't implemented yet). Uses a wrapping mode deliberately
-/// — see `screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line`.
+/// anchor-line mapping isn't implemented yet). See the `_no_wrap` sibling
+/// below — row math is wrap-mode-agnostic.
 #[test]
 fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {
     let rope = Rope::from_str("a\nb\nc\n");
@@ -402,4 +399,176 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {
         Some(rope.line_to_char(2)),
         "row 3 must resolve to line 2, correctly accounting for the stolen row"
     );
+}
+
+/// No-wrap mirror of `screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line`
+/// — row math is wrap-mode-agnostic (`display_rows_for_line` returns
+/// `content: 1` for `WrapMode::None`), so the same virtual-row accounting
+/// must hold with wrapping off.
+#[test]
+fn screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() {
+    let rope = Rope::from_str("a\nb\nc\n");
+    let v = vp(0, 80, 10);
+    let wrap = WrapMode::None;
+    let mut ctx = RenderContext::new();
+    let cursor_char = rope.line_to_char(1);
+
+    let with_none = screen_pos(
+        &v,
+        &rope,
+        cursor_char,
+        &wrap,
+        4,
+        &ws(),
+        &mut ctx,
+        &no_providers(),
+        80,
+    );
+    assert_eq!(
+        with_none,
+        Some((0, 1)),
+        "sanity: no provider — cursor at row 1"
+    );
+
+    let with_virtual = screen_pos(
+        &v,
+        &rope,
+        cursor_char,
+        &wrap,
+        4,
+        &ws(),
+        &mut ctx,
+        &providers_with_before_line(1),
+        80,
+    );
+    assert_eq!(
+        with_virtual,
+        Some((0, 2)),
+        "a virtual row before line 1 must push the cursor down one more row, no-wrap too"
+    );
+}
+
+/// No-wrap mirror of `screen_to_char_offset_accounts_for_a_stolen_virtual_row`.
+#[test]
+fn screen_to_char_offset_accounts_for_a_stolen_virtual_row_no_wrap() {
+    let rope = Rope::from_str("a\nb\nc\n");
+    let v = vp(0, 80, 10);
+    let wrap = WrapMode::None;
+    let mut s = FormatScratch::new();
+    let providers = providers_with_before_line(1);
+
+    let on_virtual_row =
+        screen_to_char_offset(0, 1, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80);
+    assert_eq!(
+        on_virtual_row,
+        Some(rope.line_to_char(1)),
+        "a click on the virtual row clamps to line 1's own first char"
+    );
+
+    let on_pushed_down_content =
+        screen_to_char_offset(0, 2, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80);
+    assert_eq!(
+        on_pushed_down_content,
+        Some(rope.line_to_char(1)),
+        "row 2 must resolve to line 1 (pushed down by the virtual row), not line 2"
+    );
+
+    let on_next_line =
+        screen_to_char_offset(0, 3, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80);
+    assert_eq!(
+        on_next_line,
+        Some(rope.line_to_char(2)),
+        "row 3 must resolve to line 2, correctly accounting for the stolen row"
+    );
+}
+
+// ── Buffer-edge virtual blocks: Before(0) and After(last_line) ──────────
+
+/// A `VirtualLineSource` double that emits `self.1` distinct `After(line)`
+/// rows, texted "1".."9", when queried for `line`.
+struct MultiAfterLine(usize, usize);
+
+impl hume_engine::providers::VirtualLineSource for MultiAfterLine {
+    fn virtual_lines(
+        &self,
+        visible_lines: std::ops::Range<usize>,
+        _content_width: u16,
+        out: &mut Vec<hume_engine::providers::VirtualLine>,
+    ) {
+        if visible_lines.contains(&self.0) {
+            for i in 0..self.1 {
+                out.push(hume_engine::providers::VirtualLine {
+                    anchor: hume_engine::providers::VirtualLineAnchor::After(self.0),
+                    provider_id: 0,
+                    text: (i + 1).to_string(),
+                    segments: Vec::new(),
+                });
+            }
+        }
+    }
+}
+
+/// `screen_pos` for a cursor on buffer line 0 must count a `Before(0)`
+/// block above it exactly like any other line's `before` block — no
+/// special-casing at the very top of the buffer, in either wrap mode.
+#[test]
+fn screen_pos_accounts_for_before_line_0() {
+    let rope = Rope::from_str("a\nb\n");
+    let v = vp(0, 80, 10);
+    let cursor_char = 0; // start of line 0
+    let mut providers = ProviderSet::new();
+    providers.add_virtual_line_source(Box::new(OneBeforeLine(0)));
+
+    for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
+        let mut ctx = RenderContext::new();
+        let pos = screen_pos(
+            &v,
+            &rope,
+            cursor_char,
+            &wrap,
+            4,
+            &ws(),
+            &mut ctx,
+            &providers,
+            80,
+        );
+        assert_eq!(
+            pos,
+            Some((0, 1)),
+            "Before(0) pushes the cursor on line 0 down one row ({wrap:?})"
+        );
+    }
+}
+
+/// `screen_pos` for a cursor on the last real buffer line must not be
+/// thrown off by an `After(last_line)` block anchored to that same line —
+/// the block is *after* the cursor's row, so it must not affect the
+/// cursor's own screen row at all (only rows below it).
+#[test]
+fn screen_pos_unaffected_by_after_on_cursors_own_last_line() {
+    let rope = Rope::from_str("a\nb\n");
+    let cursor_char = rope.line_to_char(1); // start of the last real line
+    let mut providers = ProviderSet::new();
+    providers.add_virtual_line_source(Box::new(MultiAfterLine(1, 3)));
+
+    for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
+        let v = vp(0, 80, 10);
+        let mut ctx = RenderContext::new();
+        let pos = screen_pos(
+            &v,
+            &rope,
+            cursor_char,
+            &wrap,
+            4,
+            &ws(),
+            &mut ctx,
+            &providers,
+            80,
+        );
+        assert_eq!(
+            pos,
+            Some((0, 1)),
+            "After(1) trails the cursor's own line — no effect on its row ({wrap:?})"
+        );
+    }
 }

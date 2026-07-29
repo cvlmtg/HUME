@@ -137,10 +137,16 @@ fn compute_line_range(
     last_line_idx: usize,
     tab_width: u8,
 ) -> Range<usize> {
-    // For non-wrapping mode each buffer line is exactly one display row.
+    // For non-wrapping mode each buffer line is exactly one *content* row —
+    // but `top_skip` (`ViewportState::top_row_offset`) can still be nonzero
+    // from virtual `before`/`after` rows anchored to a line in range, which
+    // this arithmetic doesn't otherwise account for (unlike the wrapping
+    // branch below, virtual rows aren't counted per-line here either). Add
+    // it into the budget the same generous-by-construction way: it can only
+    // over-supply lines (the render stage clips extras via `vc.is_full()`),
+    // never under-supply the bottom of the range.
     if !wrap_mode.is_wrapping() {
-        // top_skip is always 0 for non-wrapping (no wrapped lines).
-        let end = (top_line + viewport_height as usize).min(last_line_idx);
+        let end = (top_line + viewport_height as usize + top_skip as usize).min(last_line_idx);
         return top_line..end;
     }
 

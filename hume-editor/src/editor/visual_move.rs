@@ -12,9 +12,10 @@ use crate::ops::text_object::{
     apply_nearest_word_result, cmd_select_word_nearest_on_line, nearest_word_on_line,
 };
 use hume_editing::selection::Selection;
-use hume_engine::format::{FormatScratch, format_buffer_line};
+use hume_engine::format::{FormatScratch, display_rows_for_line, format_buffer_line};
 use hume_engine::pane::{WhitespaceConfig, WrapMode};
 use hume_engine::pipeline::EngineView;
+use hume_engine::providers::ProviderSet;
 use hume_engine::types::CellContent;
 
 use super::commands::{apply_focused_motion, focused_buffer_id, focused_format_context};
@@ -152,32 +153,360 @@ fn visual_move_up_one(
     }
 }
 
-/// Shared core for the four visual-line movement EditorCmds.
-///
-/// When wrapping is off every buffer line is exactly one display row, so we
-/// fall back to the pure buffer-line motions to avoid any overhead. Callers
-/// that want an explicit user count to mean "N buffer lines" even while
-/// wrapping is on (`j`/`k`) pass `by_buffer_line = true`; callers where a
-/// count is inherently a display-row measure (page/half-page scroll, mouse
-/// wheel) always pass `false`.
+/// A row within a buffer line's visual block (`before`/content/`after` —
+/// see `ViewportState::top_row_offset`'s doc), used by `screen_move_vertical`
+/// to walk display rows one at a time without resolving a char offset for
+/// every row crossed (only `Content` rows are valid cursor positions).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RowKind {
+    Before,
+    Content,
+    After,
+}
+
+#[derive(Clone, Copy)]
+struct BlockPos {
+    line: usize,
+    kind: RowKind,
+    row: usize,
+}
+
+/// Advance (or retreat) `pos` by exactly one display row, crossing line
+/// boundaries as needed. Returns `None` at the buffer's start/end — the
+/// caller clamps to the last position reached.
+#[allow(clippy::too_many_arguments)]
+fn step_block_row(
+    pos: BlockPos,
+    down: bool,
+    rope: &ropey::Rope,
+    wrap_mode: &WrapMode,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
+    providers: &ProviderSet,
+    content_width: u16,
+    scratch: &mut FormatScratch,
+    last_line: usize,
+) -> Option<BlockPos> {
+    let breakdown = display_rows_for_line(
+        rope,
+        pos.line,
+        tab_width,
+        whitespace,
+        wrap_mode,
+        providers,
+        content_width,
+        scratch,
+    );
+    if down {
+        let next_in_kind = |kind: RowKind, count: usize| {
+            (pos.row + 1 < count).then_some(BlockPos {
+                row: pos.row + 1,
+                kind,
+                ..pos
+            })
+        };
+        match pos.kind {
+            RowKind::Before => next_in_kind(RowKind::Before, breakdown.before).or(Some(BlockPos {
+                kind: RowKind::Content,
+                row: 0,
+                ..pos
+            })),
+            RowKind::Content => next_in_kind(RowKind::Content, breakdown.content)
+                .or_else(|| {
+                    (breakdown.after > 0).then_some(BlockPos {
+                        kind: RowKind::After,
+                        row: 0,
+                        ..pos
+                    })
+                })
+                .or_else(|| {
+                    cross_line_down(
+                        pos.line,
+                        last_line,
+                        rope,
+                        wrap_mode,
+                        tab_width,
+                        whitespace,
+                        providers,
+                        content_width,
+                        scratch,
+                    )
+                }),
+            RowKind::After => next_in_kind(RowKind::After, breakdown.after).or_else(|| {
+                cross_line_down(
+                    pos.line,
+                    last_line,
+                    rope,
+                    wrap_mode,
+                    tab_width,
+                    whitespace,
+                    providers,
+                    content_width,
+                    scratch,
+                )
+            }),
+        }
+    } else {
+        // `.then(||...)`, not `.then_some(...)` — the row subtractions below
+        // must not be eagerly evaluated when the guard is false (Rust always
+        // evaluates a plain argument before the call, so `then_some` would
+        // still underflow `row - 1` at `row == 0` even though it discards
+        // the result).
+        let prev_in_kind = |kind: RowKind| {
+            (pos.row > 0).then(|| BlockPos {
+                row: pos.row - 1,
+                kind,
+                ..pos
+            })
+        };
+        match pos.kind {
+            RowKind::After => prev_in_kind(RowKind::After).or(Some(BlockPos {
+                kind: RowKind::Content,
+                row: breakdown.content.saturating_sub(1),
+                ..pos
+            })),
+            RowKind::Content => prev_in_kind(RowKind::Content)
+                .or_else(|| {
+                    (breakdown.before > 0).then(|| BlockPos {
+                        kind: RowKind::Before,
+                        row: breakdown.before - 1,
+                        ..pos
+                    })
+                })
+                .or_else(|| {
+                    cross_line_up(
+                        pos.line,
+                        rope,
+                        wrap_mode,
+                        tab_width,
+                        whitespace,
+                        providers,
+                        content_width,
+                        scratch,
+                    )
+                }),
+            RowKind::Before => prev_in_kind(RowKind::Before).or_else(|| {
+                cross_line_up(
+                    pos.line,
+                    rope,
+                    wrap_mode,
+                    tab_width,
+                    whitespace,
+                    providers,
+                    content_width,
+                    scratch,
+                )
+            }),
+        }
+    }
+}
+
+/// Cross from `line` into `line + 1`'s first row (its `before` block if it
+/// has one, else its first content row — content is never empty). Mirrors
+/// `cross_line_up`: must resolve the target line's actual starting kind
+/// here, not just assume `Before, row: 0` and rely on the next
+/// `step_block_row` call to fall through to `Content` — that would cost an
+/// extra budget unit crossing a line with zero `before` rows.
+#[allow(clippy::too_many_arguments)]
+fn cross_line_down(
+    line: usize,
+    last_line: usize,
+    rope: &ropey::Rope,
+    wrap_mode: &WrapMode,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
+    providers: &ProviderSet,
+    content_width: u16,
+    scratch: &mut FormatScratch,
+) -> Option<BlockPos> {
+    if line >= last_line {
+        return None;
+    }
+    let next_line = line + 1;
+    let breakdown = display_rows_for_line(
+        rope,
+        next_line,
+        tab_width,
+        whitespace,
+        wrap_mode,
+        providers,
+        content_width,
+        scratch,
+    );
+    Some(if breakdown.before > 0 {
+        BlockPos {
+            line: next_line,
+            kind: RowKind::Before,
+            row: 0,
+        }
+    } else {
+        BlockPos {
+            line: next_line,
+            kind: RowKind::Content,
+            row: 0,
+        }
+    })
+}
+
+/// Cross from `line` into `line - 1`'s last row (its `after` block if it
+/// has one, else its last content row).
+#[allow(clippy::too_many_arguments)]
+fn cross_line_up(
+    line: usize,
+    rope: &ropey::Rope,
+    wrap_mode: &WrapMode,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
+    providers: &ProviderSet,
+    content_width: u16,
+    scratch: &mut FormatScratch,
+) -> Option<BlockPos> {
+    if line == 0 {
+        return None;
+    }
+    let prev_line = line - 1;
+    let breakdown = display_rows_for_line(
+        rope,
+        prev_line,
+        tab_width,
+        whitespace,
+        wrap_mode,
+        providers,
+        content_width,
+        scratch,
+    );
+    Some(if breakdown.after > 0 {
+        BlockPos {
+            line: prev_line,
+            kind: RowKind::After,
+            row: breakdown.after - 1,
+        }
+    } else {
+        BlockPos {
+            line: prev_line,
+            kind: RowKind::Content,
+            row: breakdown.content.saturating_sub(1),
+        }
+    })
+}
+
+/// Move `head` down (or up) by `count` **display** rows — virtual `before`/
+/// `after` rows (from any `VirtualLineSource`) consume a unit of the budget
+/// but are never a valid landing spot. Unlike `visual_move_down_one`/`up_one`
+/// (per-press `j`/`k` semantics, where a virtual row is free and never costs
+/// a keystroke), this is for callers where `count` already IS a display-row
+/// measurement of something else — the mouse wheel's or page-scroll's own
+/// viewport delta — and must track it 1:1, including virtual rows, so the
+/// cursor stays at roughly the same relative screen row the viewport just
+/// moved to. Lands on the last real content row reached when the budget
+/// runs out (or the buffer's start/end, clamped, if it runs out first).
+#[allow(clippy::too_many_arguments)]
+fn screen_move_vertical(
+    rope: &ropey::Rope,
+    head: usize,
+    down: bool,
+    count: usize,
+    wrap_mode: &WrapMode,
+    tab_width: u8,
+    whitespace: &WhitespaceConfig,
+    target_col: u16,
+    providers: &ProviderSet,
+    content_width: u16,
+    scratch: &mut FormatScratch,
+) -> usize {
+    let last_line = rope.len_lines().saturating_sub(2);
+    let line = rope.char_to_line(head);
+    let (sub, _) = format_row_col(rope, line, head, wrap_mode, tab_width, whitespace, scratch);
+
+    let mut pos = BlockPos {
+        line,
+        kind: RowKind::Content,
+        row: sub,
+    };
+    let mut last_content = pos;
+    for _ in 0..count {
+        let Some(next) = step_block_row(
+            pos,
+            down,
+            rope,
+            wrap_mode,
+            tab_width,
+            whitespace,
+            providers,
+            content_width,
+            scratch,
+            last_line,
+        ) else {
+            break; // buffer start/end — clamp to the last position reached
+        };
+        pos = next;
+        if pos.kind == RowKind::Content {
+            last_content = pos;
+        }
+    }
+
+    scratch.clear();
+    format_buffer_line(
+        rope,
+        last_content.line,
+        tab_width,
+        whitespace,
+        wrap_mode,
+        None,
+        &[],
+        scratch,
+    );
+    find_char_at_display_col(scratch, last_content.row, target_col)
+}
+
+/// How `apply_visual_vertical`'s `count` should be interpreted.
+pub(super) enum VerticalUnit {
+    /// `count` buffer lines — `j`/`k` with an explicit numeric prefix
+    /// (matches relative-line-number gutters even while wrapping).
+    BufferLine,
+    /// `count` real content rows; virtual rows are free (never cost a
+    /// keystroke, never a landing spot) — plain `j`/`k` with no explicit
+    /// count.
+    ContentRow,
+    /// `count` display rows, virtual rows included — mouse wheel and
+    /// page/half-page scroll. See `screen_move_vertical`'s doc.
+    ScreenRow,
+}
+
+/// Shared core for the visual-line movement EditorCmds and screen-relative
+/// scroll commands (page/half-page, mouse wheel).
 pub(super) fn apply_visual_vertical(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
     down: bool,
     mode: MotionMode,
-    by_buffer_line: bool,
+    unit: VerticalUnit,
 ) {
     let (wrap_mode, tab_width, whitespace) = focused_format_context(state, view);
 
-    if !wrap_mode.is_wrapping() || by_buffer_line {
+    // No-wrap content rows are buffer lines exactly (no sub-row stepping
+    // possible), so `ContentRow` degenerates to the same buffer-line motion
+    // as `BufferLine` there — cheaper, and avoids a wasted `display_rows_for_line`
+    // walk when there's nothing to walk over.
+    let use_buffer_line_motion = matches!(unit, VerticalUnit::BufferLine)
+        || (matches!(unit, VerticalUnit::ContentRow) && !wrap_mode.is_wrapping());
+    if use_buffer_line_motion {
         let motion = if down { cmd_move_down } else { cmd_move_up };
         apply_focused_motion(state, view, |b, s| motion(b, s, count, mode));
         return;
     }
+    // Only `ScreenRow`, or `ContentRow` while wrapping, reach here.
+    let use_screen_row = matches!(unit, VerticalUnit::ScreenRow);
 
     let focused = state.focused_pane_id;
     let buf_id = focused_buffer_id(state, view);
+    // `ScreenRow` needs the pane's providers/content_width to see virtual
+    // lines — fetched here (from `view`, disjoint from the `state` fields
+    // the closure below borrows) rather than threaded through every caller.
+    let pane = &view.panes[focused];
+    let content_width = pane.content_width(state.buffers.get(buf_id).text().len_lines());
+    let providers = &pane.providers;
     let scratch = &mut state.motion_format_scratch;
     let target_cols = &mut state.visual_move_target_cols;
     target_cols.clear();
@@ -220,29 +549,46 @@ pub(super) fn apply_visual_vertical(
             sels.map(|sel| {
                 let &target_col = col_iter.next().unwrap();
                 let mut head = sel.head();
-                for _ in 0..count {
-                    head = if down {
-                        visual_move_down_one(
-                            rope,
-                            head,
-                            &wrap_mode,
-                            tab_width,
-                            &whitespace,
-                            target_col,
-                            scratch,
-                        )
-                    } else {
-                        visual_move_up_one(
-                            rope,
-                            head,
-                            &wrap_mode,
-                            tab_width,
-                            &whitespace,
-                            target_col,
-                            scratch,
-                        )
-                    };
-                }
+                let head = if use_screen_row {
+                    screen_move_vertical(
+                        rope,
+                        head,
+                        down,
+                        count,
+                        &wrap_mode,
+                        tab_width,
+                        &whitespace,
+                        target_col,
+                        providers,
+                        content_width,
+                        scratch,
+                    )
+                } else {
+                    for _ in 0..count {
+                        head = if down {
+                            visual_move_down_one(
+                                rope,
+                                head,
+                                &wrap_mode,
+                                tab_width,
+                                &whitespace,
+                                target_col,
+                                scratch,
+                            )
+                        } else {
+                            visual_move_up_one(
+                                rope,
+                                head,
+                                &wrap_mode,
+                                tab_width,
+                                &whitespace,
+                                target_col,
+                                scratch,
+                            )
+                        };
+                    }
+                    head
+                };
                 let anchor = if mode == MotionMode::Extend {
                     sel.anchor()
                 } else {
@@ -266,8 +612,12 @@ pub(super) fn cmd_visual_move_down(
 ) -> Result<(), CommandError> {
     // A count typed by the user (e.g. `9j`) means "9 buffer lines" — matching
     // relative-line-number gutters — even when soft-wrap is on.
-    let by_buffer_line = state.explicit_count;
-    apply_visual_vertical(state, view, count, true, mode, by_buffer_line);
+    let unit = if state.explicit_count {
+        VerticalUnit::BufferLine
+    } else {
+        VerticalUnit::ContentRow
+    };
+    apply_visual_vertical(state, view, count, true, mode, unit);
     Ok(())
 }
 
@@ -277,8 +627,12 @@ pub(super) fn cmd_visual_move_up(
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let by_buffer_line = state.explicit_count;
-    apply_visual_vertical(state, view, count, false, mode, by_buffer_line);
+    let unit = if state.explicit_count {
+        VerticalUnit::BufferLine
+    } else {
+        VerticalUnit::ContentRow
+    };
+    apply_visual_vertical(state, view, count, false, mode, unit);
     Ok(())
 }
 
