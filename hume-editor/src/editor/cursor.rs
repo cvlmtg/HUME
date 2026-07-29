@@ -4,19 +4,16 @@
 //! is an editor-level concern. The engine knows nothing about it — it only
 //! styles the grapheme at each selection head.
 //!
-//! This module computes:
-//! - [`screen_pos`] — the `(col, row)` of the primary selection head in the
-//!   pane content area (terminal cursor placement).
-//! - [`gutter_width`] — the gutter offset to add so the terminal cursor lands
-//!   at the correct absolute screen column.
-//! - [`sub_row`] — which wrapped display row the primary selection head is on
-//!   (used by scroll to keep the head visible).
+//! Both directions of the screen ↔ buffer mapping are thin consumers of
+//! `hume_engine::rows::RowMap`, so neither can disagree with the renderer
+//! about which display row a position is on.
 
-use hume_engine::format::{FormatScratch, display_rows_for_line};
 use hume_engine::layout::gutter_width_for_line;
-use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
-use hume_engine::pipeline::RenderContext;
-use hume_engine::providers::{GutterColumn, ProviderSet};
+use hume_engine::pane::ViewportState;
+use hume_engine::providers::GutterColumn;
+use hume_engine::rows::{ColTarget, RowMap};
+
+use super::scroll::top_pos;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -29,76 +26,24 @@ use hume_engine::providers::{GutterColumn, ProviderSet};
 /// should not happen after `scroll::ensure_cursor_visible`).
 ///
 /// `col` accounts for `viewport.horizontal_offset` (0 while wrapping, since
-/// wrap mode has no horizontal scroll — see `scroll::ensure_cursor_visible_horizontal`).
-///
-/// Row math is wrap-mode-agnostic: `display_rows_for_line` returns
-/// `content: 1` for `WrapMode::None` (each buffer line is exactly one
-/// content row), so the same block-row accounting — `before`/content/`after`,
-/// per `ViewportState::top_row_offset`'s doc — applies whether or not the
-/// line itself wraps.
-#[allow(clippy::too_many_arguments)]
+/// wrap mode has no horizontal scroll — see
+/// `scroll::ensure_cursor_visible_horizontal`).
 pub(crate) fn screen_pos(
     viewport: &ViewportState,
-    rope: &ropey::Rope,
+    rm: &mut RowMap<'_>,
     cursor_char: usize,
-    wrap_mode: &WrapMode,
-    tab_width: u8,
-    whitespace: &WhitespaceConfig,
-    ctx: &mut RenderContext,
-    providers: &ProviderSet,
-    content_width: u16,
 ) -> Option<(u16, u16)> {
-    let scratch = &mut ctx.cursor_format;
-    let cursor_line = rope.char_to_line(cursor_char);
-    let height = viewport.height as usize;
-    if height == 0 || cursor_line < viewport.top_line {
+    let height = viewport.height;
+    if height == 0 {
         return None;
     }
-
-    let (cursor_sub, cursor_col) = format_row_col(
-        rope,
-        cursor_line,
-        cursor_char,
-        wrap_mode,
-        tab_width,
-        whitespace,
-        scratch,
-    );
-
-    let top_row = viewport.top_row_offset as usize;
-    let mut screen_row = 0usize;
-
-    for line_idx in viewport.top_line..=cursor_line {
-        let is_top = line_idx == viewport.top_line;
-        let skip = if is_top { top_row } else { 0 };
-        let breakdown = display_rows_for_line(
-            rope,
-            line_idx,
-            tab_width,
-            whitespace,
-            wrap_mode,
-            providers,
-            content_width,
-            scratch,
-        );
-        // The cursor's own position within its line's block is
-        // `before + cursor_sub`; `skip` is only nonzero on the viewport's
-        // top line.
-        if line_idx == cursor_line {
-            screen_row += (breakdown.before + cursor_sub).saturating_sub(skip);
-            break;
-        }
-        screen_row += breakdown.total().saturating_sub(skip);
-        if screen_row >= height {
-            return None;
-        }
-    }
-
-    if screen_row >= height {
-        return None;
-    }
-    let col = cursor_col.saturating_sub(viewport.horizontal_offset as usize);
-    Some((col as u16, screen_row as u16))
+    let (cursor_pos, cursor_col) = rm.locate(cursor_char);
+    // Capping the walk one row short of the viewport's height makes an
+    // off-screen cursor a `None` rather than a row past the last one; a cursor
+    // scrolled off the *top* is likewise unreachable walking forward.
+    let screen_row = rm.distance(top_pos(viewport), cursor_pos, height as usize - 1)?;
+    let col = cursor_col.saturating_sub(viewport.horizontal_offset);
+    Some((col, screen_row as u16))
 }
 
 /// Gutter width in terminal columns for the current frame.
@@ -112,297 +57,41 @@ pub(crate) fn gutter_width<'a>(
     gutter_width_for_line(gutter_columns, total_lines.saturating_sub(1))
 }
 
-/// Which wrapped display sub-row of buffer `line_idx` contains `cursor_char`.
-///
-/// Used by `scroll::ensure_cursor_visible` to keep the selection head visible.
-pub(crate) fn sub_row(
-    rope: &ropey::Rope,
-    line_idx: usize,
-    cursor_char: usize,
-    wrap_mode: &WrapMode,
-    tab_width: u8,
-    whitespace: &WhitespaceConfig,
-    scratch: &mut FormatScratch,
-) -> usize {
-    format_row_col(
-        rope,
-        line_idx,
-        cursor_char,
-        wrap_mode,
-        tab_width,
-        whitespace,
-        scratch,
-    )
-    .0
-}
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-/// Format `line_idx` and locate `cursor_char` within the resulting display rows.
-///
-/// Returns `(sub_row, col)` where `sub_row` is the 0-based display row index
-/// within the line, and `col` is the display column within that row (the
-/// grapheme's `col` field from the engine format output).
-pub(crate) fn format_row_col(
-    rope: &ropey::Rope,
-    line_idx: usize,
-    cursor_char: usize,
-    wrap_mode: &WrapMode,
-    tab_width: u8,
-    whitespace: &WhitespaceConfig,
-    scratch: &mut FormatScratch,
-) -> (usize, usize) {
-    let line_start_char = rope.line_to_char(line_idx);
-    let line_start_byte = rope.char_to_byte(line_start_char);
-    let cursor_byte_abs = rope.char_to_byte(cursor_char);
-    let cursor_byte_in_line = cursor_byte_abs.saturating_sub(line_start_byte);
-
-    scratch.display_rows.clear();
-    scratch.graphemes.clear();
-    scratch.line_texts.clear();
-    hume_engine::format::format_buffer_line(
-        rope,
-        line_idx,
-        tab_width,
-        whitespace,
-        wrap_mode,
-        None,
-        &[],
-        scratch,
-    );
-
-    for (i, row) in scratch.display_rows.iter().enumerate() {
-        if row.graphemes.is_empty() {
-            continue;
-        }
-        let first = &scratch.graphemes[row.graphemes.start];
-        let last = &scratch.graphemes[row.graphemes.end - 1];
-        let row_byte_start = first.byte_range.start;
-        let row_byte_end = last.byte_range.end;
-        let is_last = i + 1 == scratch.display_rows.len();
-
-        if cursor_byte_in_line >= row_byte_start && (cursor_byte_in_line < row_byte_end || is_last)
-        {
-            let col = scratch.graphemes[row.graphemes.clone()]
-                .iter()
-                .find(|g| g.byte_range.start == cursor_byte_in_line)
-                .map_or_else(
-                    || {
-                        // Selection head is past all graphemes in this row (e.g., at eol).
-                        let lg = &scratch.graphemes[row.graphemes.end - 1];
-                        (lg.col + lg.width as u16) as usize
-                    },
-                    |g| g.col as usize,
-                );
-            return (i, col);
-        }
-    }
-
-    // Fallback: last sub-row, column past last grapheme.
-    let last = scratch.display_rows.len().saturating_sub(1);
-    let col = scratch
-        .display_rows
-        .get(last)
-        .filter(|r| !r.graphemes.is_empty())
-        .map(|r| {
-            let lg = &scratch.graphemes[r.graphemes.end - 1];
-            (lg.col + lg.width as u16) as usize
-        })
-        .unwrap_or(0);
-    (last, col)
-}
-
 // ---------------------------------------------------------------------------
 // Screen-to-buffer reverse mapping
 // ---------------------------------------------------------------------------
 
-/// Convert a terminal-absolute `(screen_x, screen_y)` click position to a
-/// buffer char offset.
+/// Convert a pane-relative `(screen_x, screen_y)` click position to a buffer
+/// char offset.
 ///
 /// `gutter_w` is the width of the gutter in terminal columns (from
-/// [`gutter_width`]). Clicks that land inside the gutter return `None`.
+/// [`gutter_width`]). Clicks in the gutter return `None`; every other click
+/// resolves, clamped to the document's last row if it lands past the end.
 ///
-/// The coordinate space is pane-relative: `(0, 0)` is the top-left cell of
-/// the pane, matching what `MouseEvent.column` / `.row` report
-/// when the pane fills the whole terminal (which is currently always true).
-///
-/// Returns `None` if the click is:
-/// - in the gutter,
-/// - below the last buffer line, or
-/// - the buffer is empty.
-#[allow(clippy::too_many_arguments)]
+/// The coordinate space is pane-relative: `(0, 0)` is the top-left cell of the
+/// pane, matching what `MouseEvent.column`/`.row` report when the pane fills
+/// the whole terminal (which is currently always true).
 pub(crate) fn screen_to_char_offset(
     screen_x: u16,
     screen_y: u16,
     gutter_w: u16,
     viewport: &ViewportState,
-    rope: &ropey::Rope,
-    wrap_mode: &WrapMode,
-    tab_width: u8,
-    whitespace: &WhitespaceConfig,
-    scratch: &mut FormatScratch,
-    providers: &ProviderSet,
-    content_width: u16,
+    rm: &mut RowMap<'_>,
 ) -> Option<usize> {
     // Clicks inside the gutter (line numbers etc.) do not map to text.
     if screen_x < gutter_w {
         return None;
     }
-
-    let total_lines = rope.len_lines();
-    // A buffer always ends with '\n', so the last "line" in ropey is an empty
-    // sentinel. The real last editable line is `total_lines - 2` (or 0 for a
-    // one-line buffer that is just "\n").
-    let last_real_line = total_lines.saturating_sub(2);
-
-    let target_row = screen_y as usize;
-    // Screen column past the gutter, plus horizontal scroll offset (0 while
-    // wrapping — see `scroll::ensure_cursor_visible_horizontal`).
+    // Screen column past the gutter, plus horizontal scroll (0 while wrapping
+    // — see `scroll::ensure_cursor_visible_horizontal`).
     let content_col = (screen_x - gutter_w).saturating_add(viewport.horizontal_offset);
 
-    // Walk from the top of the viewport counting display rows until we
-    // reach the target screen row. Wrap-mode-agnostic — `display_rows_for_line`
-    // returns `content: 1` for `WrapMode::None`, so the same block-row
-    // accounting (`before`/content/`after`) applies either way.
-    let mut remaining = target_row;
-    let top_row = viewport.top_row_offset as usize;
-
-    for line_idx in viewport.top_line..total_lines {
-        let is_top = line_idx == viewport.top_line;
-        let skip = if is_top { top_row } else { 0 };
-        let breakdown = display_rows_for_line(
-            rope,
-            line_idx,
-            tab_width,
-            whitespace,
-            wrap_mode,
-            providers,
-            content_width,
-            scratch,
-        );
-        let visible_rows = breakdown.total().saturating_sub(skip);
-
-        if remaining < visible_rows {
-            // `block_row` is this line's row within its own visual block
-            // (`before` + content + `after`), reconstructed by adding
-            // back the rows already skipped off the top. A click landing
-            // in the `before`/`after` portion is on a virtual row, not
-            // buffer content — clamp to this line's first/last content
-            // sub-row. Precisely mapping such a click to its anchor
-            // line's exact position needs a real `VirtualLineSource` to
-            // have anything to map from; this only needs to degrade
-            // sensibly with zero providers registered, which is always
-            // true here.
-            let block_row = remaining + skip;
-            let target_sub = if block_row < breakdown.before {
-                0
-            } else if block_row < breakdown.before + breakdown.content {
-                block_row - breakdown.before
-            } else {
-                breakdown.content.saturating_sub(1)
-            };
-            return char_at_display_col(
-                content_col,
-                target_sub,
-                line_idx,
-                rope,
-                tab_width,
-                whitespace,
-                wrap_mode,
-                scratch,
-            );
-        }
-
-        remaining = remaining.saturating_sub(visible_rows);
-        if line_idx >= last_real_line {
-            break;
-        }
-    }
-    // Click is below the last line — clamp to end of last real line.
-    char_at_display_col(
-        content_col,
-        // sub-row doesn't matter much; last sub will be used anyway
-        usize::MAX,
-        last_real_line,
-        rope,
-        tab_width,
-        whitespace,
-        wrap_mode,
-        scratch,
-    )
-}
-
-/// Given a target display column and a `DisplayRow`, return the char offset of
-/// the grapheme that best matches (or the last grapheme if past the end).
-fn col_to_char_offset(
-    target_col: usize,
-    row: &hume_engine::types::DisplayRow,
-    scratch: &hume_engine::format::FormatScratch,
-    rope: &ropey::Rope,
-    line_idx: usize,
-) -> usize {
-    let graphemes = &scratch.graphemes[row.graphemes.clone()];
-    if graphemes.is_empty() {
-        return rope.line_to_char(line_idx);
-    }
-
-    // Find the grapheme whose column range contains `target_col`.
-    for g in graphemes {
-        let g_end = g.col as usize + g.width as usize;
-        if target_col < g_end {
-            return g.char_offset;
-        }
-    }
-    // Past the last grapheme — return the last char offset in the row.
-    graphemes
-        .last()
-        .map(|g| g.char_offset)
-        .unwrap_or_else(|| rope.line_to_char(line_idx))
-}
-
-/// Find the char offset for `(content_col, target_sub_row)` within
-/// `line_idx`, using the engine format pipeline.
-#[allow(clippy::too_many_arguments)]
-fn char_at_display_col(
-    content_col: u16,
-    target_sub: usize,
-    line_idx: usize,
-    rope: &ropey::Rope,
-    tab_width: u8,
-    whitespace: &WhitespaceConfig,
-    wrap_mode: &WrapMode,
-    scratch: &mut FormatScratch,
-) -> Option<usize> {
-    scratch.display_rows.clear();
-    scratch.graphemes.clear();
-    scratch.line_texts.clear();
-    hume_engine::format::format_buffer_line(
-        rope,
-        line_idx,
-        tab_width,
-        whitespace,
-        wrap_mode,
-        None,
-        &[],
-        scratch,
-    );
-
-    if scratch.display_rows.is_empty() {
-        return Some(rope.line_to_char(line_idx));
-    }
-
-    // Clamp target sub-row to the last display row of this line.
-    let sub = target_sub.min(scratch.display_rows.len().saturating_sub(1));
-    let row = &scratch.display_rows[sub];
-    Some(col_to_char_offset(
-        content_col as usize,
-        row,
-        scratch,
-        rope,
-        line_idx,
-    ))
+    let top = rm.clamp(top_pos(viewport));
+    let clicked = rm.advance(top, screen_y as isize);
+    // A click asks which cell it hit, so a column past the text resolves to
+    // the row's last cell rather than its last *content* cell — landing on the
+    // line's `\n`, a real cursor position in HUME's inclusive model.
+    Some(rm.char_at(clicked, content_col, ColTarget::Cell))
 }
 
 // ---------------------------------------------------------------------------

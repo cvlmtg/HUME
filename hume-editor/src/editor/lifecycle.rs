@@ -4,16 +4,18 @@ use std::time::Duration;
 
 use termina::event::{Event, KeyEvent, KeyEventKind};
 
-use hume_engine::pane::{Pane, WhitespaceConfig, WrapMode};
+use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, PaneRenderSettings, RenderContext};
 use hume_engine::types::EditorMode;
 
+use super::buffer::Buffer;
 use super::search::SearchCursor;
 #[cfg(test)]
 use super::search::{SearchMatches, SearchPattern};
 use crate::editor::lsp::diagnostics::DiagSeverity;
 use crate::editor::search;
 use crate::ops::pair::find_bracket_pair;
+use crate::settings::EditorSettings;
 use hume_editing::lines::line_end_exclusive;
 use hume_platform::terminal::{SharedTerm, Term};
 
@@ -391,8 +393,7 @@ impl Editor {
                 .selections
                 .primary()
                 .head();
-                let (pane_settings_cursor, gutter_w) =
-                    self.resolve_pane_settings(self.state.focused_pane_id);
+                let (_, gutter_w) = self.resolve_pane_settings(self.state.focused_pane_id);
                 let vp = self.view.panes[self.state.focused_pane_id].viewport.clone();
                 // `prepare_frame` ran earlier this iteration and stored the
                 // terminal area; recompute the focused pane's origin from it
@@ -404,20 +405,14 @@ impl Editor {
                     .pane_rect(self.state.focused_pane_id)
                     .map(|r| (r.x, r.y))
                     .expect("focused pane must have a rect after prepare_frame");
-                let focused_pane = &self.view.panes[self.state.focused_pane_id];
-                let content_width = focused_pane.content_width(self.doc().text().len_lines());
-                super::cursor::screen_pos(
-                    &vp,
-                    self.doc().text().rope(),
-                    cursor_char,
-                    &pane_settings_cursor.wrap_mode,
-                    pane_settings_cursor.tab_width,
-                    &pane_settings_cursor.whitespace,
-                    &mut ctx,
-                    &focused_pane.providers,
-                    content_width,
-                )
-                .map(|(col, row)| (col + gutter_w + ox, row + oy))
+                let mut rm = super::commands::pane_row_map(
+                    self.doc(),
+                    &self.state.settings,
+                    &self.view.panes[self.state.focused_pane_id],
+                    &mut ctx.cursor_format,
+                );
+                super::cursor::screen_pos(&vp, &mut rm, cursor_char)
+                    .map(|(col, row)| (col + gutter_w + ox, row + oy))
             } else {
                 None
             };
@@ -802,28 +797,16 @@ impl Editor {
         let pane_ids: Vec<PaneId> = self.view.panes.keys().collect();
         for pid in pane_ids {
             let buf_id = self.view.panes[pid].buffer_id;
-            let doc = self.state.buffers.get(buf_id);
-            let tab_width = doc.overrides.tab_width(&self.state.settings);
-            let whitespace = doc.overrides.whitespace(&self.state.settings);
-            let len_lines = doc.text().len_lines();
-            let rope = doc.text().rope();
             let cursor_char = self.state.panes.state[pid][buf_id]
                 .selections
                 .primary()
                 .head();
-            let wrap_mode = {
-                let pane = &self.view.panes[pid];
-                pane.wrap_mode.resolve(pane.content_width(len_lines))
-            };
-            let pane = &mut self.view.panes[pid];
             scroll_into_view(
-                pane,
-                rope,
+                self.state.buffers.get(buf_id),
+                &self.state.settings,
+                &mut self.view.panes[pid],
                 cursor_char,
                 &mut ctx.cursor_format,
-                &wrap_mode,
-                tab_width,
-                &whitespace,
                 scrolloff,
             );
 
@@ -1740,21 +1723,17 @@ impl Editor {
     ) -> Option<((u16, u16), ratatui::layout::Rect, u16, u16)> {
         let focused = self.state.focused_pane_id;
         let pane_rect = self.view.pane_rect(focused)?;
-        let (pane_settings, gutter_w) = self.resolve_pane_settings(focused);
+        let (_, gutter_w) = self.resolve_pane_settings(focused);
         let vp = &self.view.panes[focused].viewport;
         let buf = self.state.buffers.get(self.focused_buffer_id());
         let content_width = pane_rect.width.saturating_sub(gutter_w);
-        let (col, row) = super::cursor::screen_pos(
-            vp,
-            buf.text().rope(),
-            anchor_char,
-            &pane_settings.wrap_mode,
-            pane_settings.tab_width,
-            &pane_settings.whitespace,
-            ctx,
-            &self.view.panes[focused].providers,
-            content_width,
-        )?;
+        let mut rm = super::commands::pane_row_map(
+            buf,
+            &self.state.settings,
+            &self.view.panes[focused],
+            &mut ctx.cursor_format,
+        );
+        let (col, row) = super::cursor::screen_pos(vp, &mut rm, anchor_char)?;
         let anchor = (col + gutter_w + pane_rect.x, row + pane_rect.y);
         // Reserve 2 cells on each axis for the popup's 1-cell frame, so
         // content + border together fit the same envelope this budget used
@@ -2117,56 +2096,25 @@ impl Editor {
 
 /// Scroll the pane viewport so `cursor_char` stays within the visible area.
 ///
-/// Calls both the vertical and horizontal `ensure_cursor_visible` helpers in
-/// one shot. Used by `prepare_frame` for both the scratch-view path and the
-/// normal document path.
-#[allow(clippy::too_many_arguments)]
+/// Calls the clamp and both the vertical and horizontal `ensure_cursor_visible`
+/// helpers in one shot, over a single row map — so the three agree on the row
+/// list by construction, and a line's format is reused across them.
 pub(super) fn scroll_into_view(
+    doc: &Buffer,
+    settings: &EditorSettings,
     pane: &mut Pane,
-    rope: &ropey::Rope,
     cursor_char: usize,
     scratch: &mut hume_engine::format::FormatScratch,
-    wrap_mode: &WrapMode,
-    tab_width: u8,
-    whitespace: &WhitespaceConfig,
     scrolloff: usize,
 ) {
     use super::scroll;
-    let content_width = pane.content_width(rope.len_lines());
-    // Self-heal a `top_row_offset` left stale by a write site that doesn't
+    let (mut rm, viewport) = super::commands::pane_row_map_mut(doc, settings, pane, scratch);
+    // Self-heal a viewport top left stale by a write site that doesn't
     // validate it (`recall_scroll`, an LSP jump) before the cursor-follow
-    // logic below reads it — see `clamp_top_row_offset`'s doc.
-    scroll::clamp_top_row_offset(
-        &mut pane.viewport,
-        rope,
-        wrap_mode,
-        tab_width,
-        whitespace,
-        scratch,
-        &pane.providers,
-        content_width,
-    );
-    scroll::ensure_cursor_visible(
-        &mut pane.viewport,
-        rope,
-        cursor_char,
-        wrap_mode,
-        tab_width,
-        whitespace,
-        scratch,
-        scrolloff,
-        &pane.providers,
-        content_width,
-    );
-    scroll::ensure_cursor_visible_horizontal(
-        &mut pane.viewport,
-        rope,
-        cursor_char,
-        wrap_mode,
-        tab_width,
-        whitespace,
-        scratch,
-    );
+    // logic below reads it — see `clamp_viewport_top`'s doc.
+    scroll::clamp_viewport_top(viewport, &mut rm);
+    scroll::ensure_cursor_visible(viewport, &mut rm, cursor_char, scrolloff);
+    scroll::ensure_cursor_visible_horizontal(viewport, &mut rm, cursor_char);
 }
 
 /// Convert a char-offset position to a line-relative byte offset.

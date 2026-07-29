@@ -4,13 +4,27 @@ use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
 use hume_engine::providers::ProviderSet;
 use ropey::Rope;
 
-fn ws() -> WhitespaceConfig {
-    WhitespaceConfig::default()
-}
 fn no_providers() -> ProviderSet {
     ProviderSet::new()
 }
 const SCROLL_LINES: usize = 3; // default from EditorSettings
+
+fn map<'a>(
+    rope: &'a Rope,
+    wrap: WrapMode,
+    providers: &'a ProviderSet,
+    scratch: &'a mut FormatScratch,
+) -> RowMap<'a> {
+    RowMap::new(
+        rope,
+        wrap,
+        4,
+        WhitespaceConfig::default(),
+        providers,
+        80,
+        scratch,
+    )
+}
 
 // Build a rope with `n` content lines (each "line\n"), plus the structural trailing '\n'.
 // total_lines() == n + 1 (ropey's phantom line).
@@ -34,24 +48,17 @@ fn down_no_wrap_clamps_at_last_real_line() {
     // scrolled into view (a stricter "last line always at the bottom" clamp
     // would make such a block permanently unreachable).
     let rope = rope_with_lines(10);
-    let total = rope.len_lines(); // 11 (10 content + phantom)
     let mut vp = ViewportState::new(80, 5);
     vp.top_line = 0;
+    let providers = no_providers();
     let mut scratch = FormatScratch::new();
 
     // Scroll far enough to hit the cap.
     for _ in 0..20 {
         scroll_viewport_down(
             &mut vp,
-            &rope,
-            &WrapMode::None,
-            4,
-            &ws(),
-            total,
+            &mut map(&rope, WrapMode::None, &providers, &mut scratch),
             SCROLL_LINES,
-            &no_providers(),
-            80,
-            &mut scratch,
         );
     }
     assert_eq!(
@@ -66,23 +73,16 @@ fn down_no_wrap_clamps_at_last_real_line() {
 
 #[test]
 fn down_no_wrap_file_fits_no_movement() {
-    // 3 content lines, viewport height 10 → max_top = 0 → no movement.
+    // 3 content lines, viewport height 10 → everything fits → no movement.
     let rope = rope_with_lines(3);
-    let total = rope.len_lines();
     let mut vp = ViewportState::new(80, 10);
+    let providers = no_providers();
     let mut scratch = FormatScratch::new();
 
     scroll_viewport_down(
         &mut vp,
-        &rope,
-        &WrapMode::None,
-        4,
-        &ws(),
-        total,
+        &mut map(&rope, WrapMode::None, &providers, &mut scratch),
         SCROLL_LINES,
-        &no_providers(),
-        80,
-        &mut scratch,
     );
     assert_eq!(vp.top_line, 0, "viewport must not move when file fits");
 }
@@ -90,21 +90,14 @@ fn down_no_wrap_file_fits_no_movement() {
 #[test]
 fn down_no_wrap_advances_by_scroll_lines() {
     let rope = rope_with_lines(20);
-    let total = rope.len_lines();
     let mut vp = ViewportState::new(80, 5);
+    let providers = no_providers();
     let mut scratch = FormatScratch::new();
 
     scroll_viewport_down(
         &mut vp,
-        &rope,
-        &WrapMode::None,
-        4,
-        &ws(),
-        total,
+        &mut map(&rope, WrapMode::None, &providers, &mut scratch),
         SCROLL_LINES,
-        &no_providers(),
-        80,
-        &mut scratch,
     );
     assert_eq!(
         vp.top_line, SCROLL_LINES,
@@ -119,20 +112,15 @@ fn up_no_wrap_clamps_at_zero() {
     let rope = rope_with_lines(10);
     let mut vp = ViewportState::new(80, 5);
     vp.top_line = 1; // only 1 above top
+    let providers = no_providers();
     let mut scratch = FormatScratch::new();
 
     scroll_viewport_up(
         &mut vp,
-        &rope,
-        &WrapMode::None,
-        4,
-        &ws(),
+        &mut map(&rope, WrapMode::None, &providers, &mut scratch),
         SCROLL_LINES,
-        &no_providers(),
-        80,
-        &mut scratch,
     );
-    assert_eq!(vp.top_line, 0, "saturating_sub must not underflow");
+    assert_eq!(vp.top_line, 0, "stepping back must not underflow");
 }
 
 #[test]
@@ -140,18 +128,13 @@ fn up_no_wrap_decrements_by_scroll_lines() {
     let rope = rope_with_lines(20);
     let mut vp = ViewportState::new(80, 5);
     vp.top_line = 10;
+    let providers = no_providers();
     let mut scratch = FormatScratch::new();
 
     scroll_viewport_up(
         &mut vp,
-        &rope,
-        &WrapMode::None,
-        4,
-        &ws(),
+        &mut map(&rope, WrapMode::None, &providers, &mut scratch),
         SCROLL_LINES,
-        &no_providers(),
-        80,
-        &mut scratch,
     );
     assert_eq!(vp.top_line, 10 - SCROLL_LINES);
 }
@@ -161,18 +144,13 @@ fn up_at_top_is_no_op() {
     let rope = rope_with_lines(10);
     let mut vp = ViewportState::new(80, 5);
     vp.top_line = 0;
+    let providers = no_providers();
     let mut scratch = FormatScratch::new();
 
     scroll_viewport_up(
         &mut vp,
-        &rope,
-        &WrapMode::None,
-        4,
-        &ws(),
+        &mut map(&rope, WrapMode::None, &providers, &mut scratch),
         SCROLL_LINES,
-        &no_providers(),
-        80,
-        &mut scratch,
     );
     assert_eq!(vp.top_line, 0);
     assert_eq!(vp.top_row_offset, 0);
@@ -184,22 +162,15 @@ fn up_at_top_is_no_op() {
 fn down_wrap_file_fits_no_movement() {
     // 2 short lines in a wide viewport → all rows fit → no scroll.
     let rope = rope_with_lines(2);
-    let total = rope.len_lines();
     let mut vp = ViewportState::new(80, 10);
     let wrap = WrapMode::Soft { width: 80 };
+    let providers = no_providers();
     let mut scratch = FormatScratch::new();
 
     scroll_viewport_down(
         &mut vp,
-        &rope,
-        &wrap,
-        4,
-        &ws(),
-        total,
+        &mut map(&rope, wrap, &providers, &mut scratch),
         SCROLL_LINES,
-        &no_providers(),
-        80,
-        &mut scratch,
     );
     assert_eq!(vp.top_line, 0, "no scroll when file fits in viewport");
     assert_eq!(vp.top_row_offset, 0);
@@ -239,7 +210,6 @@ impl hume_engine::providers::VirtualLineSource for MultiAfterLine {
 #[test]
 fn down_reaches_every_row_of_an_after_last_line_block() {
     let rope = rope_with_lines(2); // last real line = index 1
-    let total = rope.len_lines();
     let mut providers = ProviderSet::new();
     providers.add_virtual_line_source(Box::new(MultiAfterLine(1, 3)));
     let mut scratch = FormatScratch::new();
@@ -253,32 +223,10 @@ fn down_reaches_every_row_of_an_after_last_line_block() {
                 (exp_line, exp_offset),
                 "{wrap:?}"
             );
-            scroll_viewport_down(
-                &mut vp,
-                &rope,
-                &wrap,
-                4,
-                &ws(),
-                total,
-                1,
-                &providers,
-                80,
-                &mut scratch,
-            );
+            scroll_viewport_down(&mut vp, &mut map(&rope, wrap, &providers, &mut scratch), 1);
         }
         // One more notch past the last row must stay clamped, not reset.
-        scroll_viewport_down(
-            &mut vp,
-            &rope,
-            &wrap,
-            4,
-            &ws(),
-            total,
-            1,
-            &providers,
-            80,
-            &mut scratch,
-        );
+        scroll_viewport_down(&mut vp, &mut map(&rope, wrap, &providers, &mut scratch), 1);
         assert_eq!(
             (vp.top_line, vp.top_row_offset),
             (1, 3),
@@ -296,7 +244,6 @@ fn down_reaches_every_row_of_an_after_last_line_block() {
 #[test]
 fn down_overshoot_past_after_last_line_clamps_not_resets() {
     let rope = rope_with_lines(2);
-    let total = rope.len_lines();
     let mut providers = ProviderSet::new();
     providers.add_virtual_line_source(Box::new(MultiAfterLine(1, 3)));
     let mut scratch = FormatScratch::new();
@@ -306,18 +253,7 @@ fn down_overshoot_past_after_last_line_clamps_not_resets() {
         vp.top_line = 1;
         vp.top_row_offset = 1; // already partway into the After block
         // A large notch overshoots well past the block's remaining rows.
-        scroll_viewport_down(
-            &mut vp,
-            &rope,
-            &wrap,
-            4,
-            &ws(),
-            total,
-            10,
-            &providers,
-            80,
-            &mut scratch,
-        );
+        scroll_viewport_down(&mut vp, &mut map(&rope, wrap, &providers, &mut scratch), 10);
         assert_eq!(vp.top_line, 1, "{wrap:?}");
         assert_eq!(
             vp.top_row_offset, 3,

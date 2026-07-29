@@ -12,12 +12,13 @@
 //! number of lines (Vim-style). Moving the cursor with the viewport prevents
 //! `ensure_cursor_visible` from snapping the viewport back on the next frame.
 
-use hume_engine::format::{FormatScratch, display_rows_for_line};
-use hume_engine::pane::WrapMode;
-use hume_engine::providers::ProviderSet;
+use hume_engine::pane::ViewportState;
+use hume_engine::rows::RowMap;
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
+use super::commands::pane_row_map_mut;
 use super::cursor;
+use super::scroll;
 use super::visual_move::{VerticalUnit, apply_visual_vertical};
 use crate::ops::MotionMode;
 use hume_editing::selection::{Selection, SelectionSet};
@@ -110,28 +111,13 @@ impl Editor {
         };
         {
             let buf_id = self.focused_buffer_id();
-            let raw_wrap = self.focused_wrap_mode();
-            let len_lines = self.state.buffers.get(buf_id).text().len_lines();
-            let tab_width = self.doc().overrides.tab_width(&self.state.settings);
-            let whitespace = self.doc().overrides.whitespace(&self.state.settings);
-            let rope = self.state.buffers.get(buf_id).text().rope();
-            let content_width = {
-                let pane = &self.view.panes[self.state.focused_pane_id];
-                pane.content_width(len_lines)
-            };
-            let wrap_mode = raw_wrap.resolve(content_width);
-            let pane = &mut self.view.panes[self.state.focused_pane_id];
-            scroll_viewport_up(
-                &mut pane.viewport,
-                rope,
-                &wrap_mode,
-                tab_width,
-                &whitespace,
-                scroll_lines,
-                &pane.providers,
-                content_width,
+            let (mut rm, viewport) = pane_row_map_mut(
+                self.state.buffers.get(buf_id),
+                &self.state.settings,
+                &mut self.view.panes[self.state.focused_pane_id],
                 &mut self.state.motion_format_scratch,
             );
+            scroll_viewport_up(viewport, &mut rm, scroll_lines);
         }
         let vp_after = {
             let vp = &self.view.panes[self.state.focused_pane_id].viewport;
@@ -158,29 +144,13 @@ impl Editor {
         };
         {
             let buf_id = self.focused_buffer_id();
-            let raw_wrap = self.focused_wrap_mode();
-            let tab_width = self.doc().overrides.tab_width(&self.state.settings);
-            let whitespace = self.doc().overrides.whitespace(&self.state.settings);
-            let rope = self.state.buffers.get(buf_id).text().rope();
-            let total_lines = rope.len_lines();
-            let content_width = {
-                let pane = &self.view.panes[self.state.focused_pane_id];
-                pane.content_width(total_lines)
-            };
-            let wrap_mode = raw_wrap.resolve(content_width);
-            let pane = &mut self.view.panes[self.state.focused_pane_id];
-            scroll_viewport_down(
-                &mut pane.viewport,
-                rope,
-                &wrap_mode,
-                tab_width,
-                &whitespace,
-                total_lines,
-                scroll_lines,
-                &pane.providers,
-                content_width,
+            let (mut rm, viewport) = pane_row_map_mut(
+                self.state.buffers.get(buf_id),
+                &self.state.settings,
+                &mut self.view.panes[self.state.focused_pane_id],
                 &mut self.state.motion_format_scratch,
             );
+            scroll_viewport_down(viewport, &mut rm, scroll_lines);
         }
         let vp_after = {
             let vp = &self.view.panes[self.state.focused_pane_id].viewport;
@@ -203,32 +173,20 @@ impl Editor {
 
     fn click_to_char(&mut self, col: u16, row: u16) -> Option<usize> {
         let buf_id = self.focused_buffer_id();
-        let (vp, gutter_w) = {
+        let gutter_w = {
             let pane = &self.view.panes[self.state.focused_pane_id];
-            let gw = cursor::gutter_width(
+            cursor::gutter_width(
                 pane.providers.gutter_columns(),
                 self.state.buffers.get(buf_id).text().len_lines(),
-            );
-            (pane.viewport.clone(), gw)
+            )
         };
-        let content_width = vp.width.saturating_sub(gutter_w).max(1);
-        let wrap_mode = self.focused_wrap_mode().resolve(content_width);
-        let tab_width = self.doc().overrides.tab_width(&self.state.settings);
-        let whitespace = self.doc().overrides.whitespace(&self.state.settings);
-        let rope = self.state.buffers.get(buf_id).text().rope();
-        cursor::screen_to_char_offset(
-            col,
-            row,
-            gutter_w,
-            &vp,
-            rope,
-            &wrap_mode,
-            tab_width,
-            &whitespace,
+        let (mut rm, viewport) = pane_row_map_mut(
+            self.state.buffers.get(buf_id),
+            &self.state.settings,
+            &mut self.view.panes[self.state.focused_pane_id],
             &mut self.state.motion_format_scratch,
-            &self.view.panes[self.state.focused_pane_id].providers,
-            content_width,
-        )
+        );
+        cursor::screen_to_char_offset(col, row, gutter_w, viewport, &mut rm)
     }
 }
 
@@ -236,130 +194,27 @@ impl Editor {
 // Viewport scroll helpers (no cursor movement)
 // ---------------------------------------------------------------------------
 
-#[allow(clippy::too_many_arguments)]
-/// Decrement by `scroll_lines` display rows — one row of `top_line`'s whole
-/// visual block (`before` + content + `after`) per unit, same invariant as
-/// `top_row_offset` itself (see `ViewportState`'s doc). Wrap-mode-agnostic:
-/// `display_rows_for_line` returns `content: 1` for `WrapMode::None`.
-fn scroll_viewport_up(
-    viewport: &mut hume_engine::pane::ViewportState,
-    rope: &ropey::Rope,
-    wrap_mode: &WrapMode,
-    tab_width: u8,
-    whitespace: &hume_engine::pane::WhitespaceConfig,
-    scroll_lines: usize,
-    providers: &ProviderSet,
-    content_width: u16,
-    scratch: &mut FormatScratch,
-) {
-    let mut rows_left = scroll_lines;
-    while rows_left > 0 {
-        if viewport.top_row_offset > 0 {
-            let dec = rows_left.min(viewport.top_row_offset as usize);
-            viewport.top_row_offset -= dec as u16;
-            rows_left -= dec;
-        } else if viewport.top_line > 0 {
-            viewport.top_line -= 1;
-            let rows = display_rows_for_line(
-                rope,
-                viewport.top_line,
-                tab_width,
-                whitespace,
-                wrap_mode,
-                providers,
-                content_width,
-                scratch,
-            )
-            .total();
-            // Jump to the last row of the new top line's block.
-            let sub = rows.saturating_sub(1);
-            viewport.top_row_offset = sub as u16;
-            rows_left = rows_left.saturating_sub(1);
-        } else {
-            break;
-        }
-    }
+/// Scroll the viewport up by `rows` display rows, saturating at the top of the
+/// document.
+fn scroll_viewport_up(viewport: &mut ViewportState, rm: &mut RowMap<'_>, rows: usize) {
+    let top = scroll::top_pos(viewport);
+    scroll::set_top(viewport, rm.advance(top, -(rows as isize)));
 }
 
-#[allow(clippy::too_many_arguments)]
-/// Wrap-mode-agnostic mirror of `scroll_viewport_up` — see its doc.
-fn scroll_viewport_down(
-    viewport: &mut hume_engine::pane::ViewportState,
-    rope: &ropey::Rope,
-    wrap_mode: &WrapMode,
-    tab_width: u8,
-    whitespace: &hume_engine::pane::WhitespaceConfig,
-    total_lines: usize,
-    scroll_lines: usize,
-    providers: &ProviderSet,
-    content_width: u16,
-    scratch: &mut FormatScratch,
-) {
-    // Content lines = all lines minus the structural trailing '\n' sentinel.
-    let content_lines = total_lines.saturating_sub(1);
-    let height = viewport.height as usize;
-
-    // If everything (real content + any virtual rows) already fits in the
-    // viewport, there's nothing to scroll.
-    let mut total_rows = 0usize;
-    for i in 0..content_lines {
-        total_rows += display_rows_for_line(
-            rope,
-            i,
-            tab_width,
-            whitespace,
-            wrap_mode,
-            providers,
-            content_width,
-            scratch,
-        )
-        .total();
-        if total_rows > height {
-            break;
-        }
-    }
-    if total_rows <= height {
+/// Scroll the viewport down by `rows` display rows.
+///
+/// Saturates at the document's last display row rather than at "last line on
+/// the last screen row": scrolling past EOF is allowed (the vim/Helix
+/// convention `scroll_cursor_to_row` already follows), and an
+/// `After(last_line)` virtual block would otherwise be permanently unreachable.
+fn scroll_viewport_down(viewport: &mut ViewportState, rm: &mut RowMap<'_>, rows: usize) {
+    // Nothing to scroll when the whole document — virtual rows included —
+    // already fits on screen.
+    if rm.fits_in(viewport.height) {
         return;
     }
-
-    // Maximum top_line is the last content line index.
-    let last_line = content_lines.saturating_sub(1);
-    let mut rows_left = scroll_lines;
-    while rows_left > 0 {
-        if viewport.top_line > last_line {
-            break;
-        }
-        let rows = display_rows_for_line(
-            rope,
-            viewport.top_line,
-            tab_width,
-            whitespace,
-            wrap_mode,
-            providers,
-            content_width,
-            scratch,
-        )
-        .total();
-        let remaining_in_line = rows.saturating_sub(1 + viewport.top_row_offset as usize);
-        if rows_left <= remaining_in_line {
-            viewport.top_row_offset += rows_left as u16;
-            break;
-        }
-        if viewport.top_line < last_line {
-            // Consume the rest of this line, advance to the next.
-            rows_left -= remaining_in_line + 1;
-            viewport.top_row_offset = 0;
-            viewport.top_line += 1;
-        } else {
-            // Already the last line — nothing further to scroll to. Clamp
-            // to its final row (e.g. the last `After` row) instead of
-            // resetting to 0, which would snap back to the top of this
-            // line's block and undo whatever forward progress this notch
-            // already made.
-            viewport.top_row_offset = rows.saturating_sub(1) as u16;
-            break;
-        }
-    }
+    let top = scroll::top_pos(viewport);
+    scroll::set_top(viewport, rm.advance(top, rows as isize));
 }
 
 // ---------------------------------------------------------------------------

@@ -20,7 +20,10 @@ use std::borrow::Cow;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
+use hume_engine::format::FormatScratch;
+use hume_engine::pane::{Pane, ViewportState, WhitespaceConfig};
 use hume_engine::pipeline::{BufferId, Direction, EngineView, PaneId};
+use hume_engine::rows::RowMap;
 use slotmap::SecondaryMap;
 
 use super::registry::MappableCommand;
@@ -39,6 +42,7 @@ use super::{Severity, register_ops};
 use crate::editor::error::CommandError;
 use crate::ops::MotionMode;
 use crate::ops::edit::clear_blank_line_indent;
+use crate::settings::EditorSettings;
 
 // ── EditorState helpers ───────────────────────────────────────────────────────
 
@@ -759,23 +763,63 @@ pub(super) fn viewport<'a>(
     &view.panes[state.focused_pane_id].viewport
 }
 
-/// Resolved `(wrap_mode, tab_width, whitespace)` for the focused doc and pane.
-pub(super) fn focused_format_context(
-    state: &EditorState,
-    view: &EngineView,
-) -> (
-    hume_engine::pane::WrapMode,
-    u8,
-    hume_engine::pane::WhitespaceConfig,
-) {
-    let buf = doc(state, view);
-    let tab_width = buf.overrides.tab_width(&state.settings);
-    let whitespace = buf.overrides.whitespace(&state.settings);
-    let pane = &view.panes[state.focused_pane_id];
-    let wrap_mode = pane
-        .wrap_mode
-        .resolve(pane.content_width(buf.text().len_lines()));
-    (wrap_mode, tab_width, whitespace)
+/// The doc-level format settings a row map needs, resolving buffer overrides
+/// against the global settings. The one place that precedence is applied.
+fn format_overrides(doc: &Buffer, settings: &EditorSettings) -> (u8, WhitespaceConfig) {
+    (
+        doc.overrides.tab_width(settings),
+        doc.overrides.whitespace(settings),
+    )
+}
+
+/// A [`RowMap`] over `pane`'s view of `doc` — the display-row list every
+/// scroll, cursor and movement consumer reads instead of walking rows itself.
+///
+/// Borrows come in already split so a caller can keep a `&mut` on a disjoint
+/// field while holding the map: `visual_move` rewrites `state.panes`
+/// selections, and [`pane_row_map_mut`] hands back the pane's viewport.
+pub(super) fn pane_row_map<'a>(
+    doc: &'a Buffer,
+    settings: &'a EditorSettings,
+    pane: &'a Pane,
+    scratch: &'a mut FormatScratch,
+) -> RowMap<'a> {
+    let (tab_width, whitespace) = format_overrides(doc, settings);
+    RowMap::new(
+        doc.text().rope(),
+        pane.wrap_mode,
+        tab_width,
+        whitespace,
+        &pane.providers,
+        pane.content_width(doc.text().len_lines()),
+        scratch,
+    )
+}
+
+/// [`pane_row_map`] plus the pane's viewport, for the scroll consumers that
+/// write the viewport while reading the map. The two are disjoint fields of
+/// `pane`, which a caller holding only `&mut Pane` cannot split apart itself
+/// without also re-deriving the map's inputs.
+pub(super) fn pane_row_map_mut<'a>(
+    doc: &'a Buffer,
+    settings: &'a EditorSettings,
+    pane: &'a mut Pane,
+    scratch: &'a mut FormatScratch,
+) -> (RowMap<'a>, &'a mut ViewportState) {
+    let (tab_width, whitespace) = format_overrides(doc, settings);
+    // Both need the whole pane, so they are read before it is split.
+    let wrap_mode = pane.wrap_mode;
+    let content_width = pane.content_width(doc.text().len_lines());
+    let rm = RowMap::new(
+        doc.text().rope(),
+        wrap_mode,
+        tab_width,
+        whitespace,
+        &pane.providers,
+        content_width,
+        scratch,
+    );
+    (rm, &mut pane.viewport)
 }
 
 /// Snapshot the focused pane's current cursor as a `JumpEntry`.

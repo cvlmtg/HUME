@@ -1,6 +1,8 @@
 use super::*;
 use hume_engine::format::FormatScratch;
 use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
+use hume_engine::providers::ProviderSet;
+use hume_engine::rows::RowMap;
 use ropey::Rope;
 
 fn vp(top_line: usize, width: u16, height: u16) -> ViewportState {
@@ -13,9 +15,19 @@ fn ws() -> WhitespaceConfig {
     WhitespaceConfig::default()
 }
 
-/// No `VirtualLineSource` registered — `display_rows_for_line` reduces
-/// to content-only `RowsBreakdown`s, matching every test below's
-/// virtual-line-unaware expectations exactly.
+fn map<'a>(
+    rope: &'a Rope,
+    wrap: WrapMode,
+    providers: &'a ProviderSet,
+    content_width: u16,
+    scratch: &'a mut FormatScratch,
+) -> RowMap<'a> {
+    RowMap::new(rope, wrap, 4, ws(), providers, content_width, scratch)
+}
+
+/// No `VirtualLineSource` registered — every line's block reduces to its
+/// content rows, matching every test below's virtual-line-unaware expectations
+/// exactly.
 fn no_providers() -> ProviderSet {
     ProviderSet::new()
 }
@@ -28,19 +40,14 @@ fn nowrap_click_first_char() {
     // "abc\ndef\n": chars 0-2 = 'a','b','c', char 3 = '\n', chars 4-6 = 'd','e','f'
     let rope = Rope::from_str("abc\ndef\n");
     let v = vp(0, 80, 10);
+    let providers = no_providers();
     let mut s = FormatScratch::new();
     let got = screen_to_char_offset(
         0,
         0,
         0,
         &v,
-        &rope,
-        &WrapMode::None,
-        4,
-        &ws(),
-        &mut s,
-        &no_providers(),
-        80,
+        &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
     );
     assert_eq!(got, Some(0));
 }
@@ -50,19 +57,14 @@ fn nowrap_click_first_char() {
 fn nowrap_click_mid_first_line() {
     let rope = Rope::from_str("abc\ndef\n");
     let v = vp(0, 80, 10);
+    let providers = no_providers();
     let mut s = FormatScratch::new();
     let got = screen_to_char_offset(
         2,
         0,
         0,
         &v,
-        &rope,
-        &WrapMode::None,
-        4,
-        &ws(),
-        &mut s,
-        &no_providers(),
-        80,
+        &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
     );
     assert_eq!(got, Some(2));
 }
@@ -72,19 +74,14 @@ fn nowrap_click_mid_first_line() {
 fn nowrap_click_second_line() {
     let rope = Rope::from_str("abc\ndef\n");
     let v = vp(0, 80, 10);
+    let providers = no_providers();
     let mut s = FormatScratch::new();
     let got = screen_to_char_offset(
         0,
         1,
         0,
         &v,
-        &rope,
-        &WrapMode::None,
-        4,
-        &ws(),
-        &mut s,
-        &no_providers(),
-        80,
+        &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
     );
     assert_eq!(got, Some(4)); // 'd' is char 4
 }
@@ -94,6 +91,7 @@ fn nowrap_click_second_line() {
 fn nowrap_gutter_click_returns_none() {
     let rope = Rope::from_str("abc\n");
     let v = vp(0, 80, 10);
+    let providers = no_providers();
     let mut s = FormatScratch::new();
     // gutter_w = 4; click at column 2 is inside the gutter.
     let got = screen_to_char_offset(
@@ -101,13 +99,7 @@ fn nowrap_gutter_click_returns_none() {
         0,
         4,
         &v,
-        &rope,
-        &WrapMode::None,
-        4,
-        &ws(),
-        &mut s,
-        &no_providers(),
-        80,
+        &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
     );
     assert_eq!(got, None);
 }
@@ -120,6 +112,7 @@ fn nowrap_gutter_click_returns_none() {
 fn nowrap_click_past_line_end() {
     let rope = Rope::from_str("hi\n");
     let v = vp(0, 80, 10);
+    let providers = no_providers();
     let mut s = FormatScratch::new();
     // Click at column 99, way past "hi" — lands at '\n' (char 2), the eol marker.
     let got = screen_to_char_offset(
@@ -127,13 +120,7 @@ fn nowrap_click_past_line_end() {
         0,
         0,
         &v,
-        &rope,
-        &WrapMode::None,
-        4,
-        &ws(),
-        &mut s,
-        &no_providers(),
-        80,
+        &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
     );
     assert_eq!(got, Some(2));
 }
@@ -144,6 +131,7 @@ fn nowrap_viewport_scrolled() {
     // Lines: 0=a, 1=b, 2=c, 3=d. top_line=2 → screen row 0 is line 2 = 'c'.
     let rope = Rope::from_str("a\nb\nc\nd\n");
     let v = vp(2, 80, 10); // top_line = 2
+    let providers = no_providers();
     let mut s = FormatScratch::new();
     // Line 2 starts at char 4 ('c'). Screen row 0, col 0 → char 4.
     let got = screen_to_char_offset(
@@ -151,13 +139,7 @@ fn nowrap_viewport_scrolled() {
         0,
         0,
         &v,
-        &rope,
-        &WrapMode::None,
-        4,
-        &ws(),
-        &mut s,
-        &no_providers(),
-        80,
+        &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
     );
     assert_eq!(got, Some(4));
 }
@@ -169,19 +151,14 @@ fn nowrap_horizontal_scroll() {
     let rope = Rope::from_str("abcde\n");
     let mut v = vp(0, 80, 10);
     v.horizontal_offset = 2;
+    let providers = no_providers();
     let mut s = FormatScratch::new();
     let got = screen_to_char_offset(
         0,
         0,
         0,
         &v,
-        &rope,
-        &WrapMode::None,
-        4,
-        &ws(),
-        &mut s,
-        &no_providers(),
-        80,
+        &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
     );
     assert_eq!(got, Some(2));
 }
@@ -196,36 +173,13 @@ fn wrap_click_first_and_second_visual_row() {
     let rope = Rope::from_str("abcdefgh\n");
     let v = vp(0, 10, 10);
     let wrap = WrapMode::Soft { width: 4 };
+    let providers = no_providers();
     let mut s = FormatScratch::new();
 
-    let row0 = screen_to_char_offset(
-        0,
-        0,
-        0,
-        &v,
-        &rope,
-        &wrap,
-        4,
-        &ws(),
-        &mut s,
-        &no_providers(),
-        10,
-    );
+    let row0 = screen_to_char_offset(0, 0, 0, &v, &mut map(&rope, wrap, &providers, 10, &mut s));
     assert_eq!(row0, Some(0));
 
-    let row1 = screen_to_char_offset(
-        0,
-        1,
-        0,
-        &v,
-        &rope,
-        &wrap,
-        4,
-        &ws(),
-        &mut s,
-        &no_providers(),
-        10,
-    );
+    let row1 = screen_to_char_offset(0, 1, 0, &v, &mut map(&rope, wrap, &providers, 10, &mut s));
     assert_eq!(row1, Some(4));
 }
 
@@ -235,21 +189,10 @@ fn wrap_click_mid_second_row() {
     let rope = Rope::from_str("abcdefgh\n");
     let v = vp(0, 10, 10);
     let wrap = WrapMode::Soft { width: 4 };
+    let providers = no_providers();
     let mut s = FormatScratch::new();
 
-    let got = screen_to_char_offset(
-        2,
-        1,
-        0,
-        &v,
-        &rope,
-        &wrap,
-        4,
-        &ws(),
-        &mut s,
-        &no_providers(),
-        10,
-    );
+    let got = screen_to_char_offset(2, 1, 0, &v, &mut map(&rope, wrap, &providers, 10, &mut s));
     assert_eq!(got, Some(6)); // 'g' is char 6
 }
 
@@ -259,21 +202,10 @@ fn wrap_click_below_last_line_clamped() {
     let rope = Rope::from_str("hi\n");
     let v = vp(0, 80, 10);
     let wrap = WrapMode::Soft { width: 40 };
+    let providers = no_providers();
     let mut s = FormatScratch::new();
     // Screen row 99 is past the end — should return something in line 0.
-    let got = screen_to_char_offset(
-        0,
-        99,
-        0,
-        &v,
-        &rope,
-        &wrap,
-        4,
-        &ws(),
-        &mut s,
-        &no_providers(),
-        80,
-    );
+    let got = screen_to_char_offset(0, 99, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert!(got.is_some());
 }
 
@@ -317,37 +249,24 @@ fn screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     let rope = Rope::from_str("a\nb\nc\n");
     let v = vp(0, 80, 10);
     let wrap = WrapMode::Soft { width: 80 };
-    let mut ctx = RenderContext::new();
     // Cursor at char 2 = start of line 1 ('b').
     let cursor_char = rope.line_to_char(1);
 
-    let with_none = screen_pos(
-        &v,
-        &rope,
-        cursor_char,
-        &wrap,
-        4,
-        &ws(),
-        &mut ctx,
-        &no_providers(),
-        80,
-    );
+    let bare = no_providers();
+    let mut s = FormatScratch::new();
+    let with_none = screen_pos(&v, &mut map(&rope, wrap, &bare, 80, &mut s), cursor_char);
     assert_eq!(
         with_none,
         Some((0, 1)),
         "sanity: no provider — cursor at row 1"
     );
 
+    let providers = providers_with_before_line(1);
+    let mut s = FormatScratch::new();
     let with_virtual = screen_pos(
         &v,
-        &rope,
+        &mut map(&rope, wrap, &providers, 80, &mut s),
         cursor_char,
-        &wrap,
-        4,
-        &ws(),
-        &mut ctx,
-        &providers_with_before_line(1),
-        80,
     );
     assert_eq!(
         with_virtual,
@@ -371,13 +290,13 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {
     let rope = Rope::from_str("a\nb\nc\n");
     let v = vp(0, 80, 10);
     let wrap = WrapMode::Soft { width: 80 };
-    let mut s = FormatScratch::new();
     let providers = providers_with_before_line(1);
+    let mut s = FormatScratch::new();
 
     // Row layout: 0 = line 0 ('a'), 1 = virtual-before(line 1),
     // 2 = line 1's own content ('b'), 3 = line 2 ('c').
     let on_virtual_row =
-        screen_to_char_offset(0, 1, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80);
+        screen_to_char_offset(0, 1, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_virtual_row,
         Some(rope.line_to_char(1)),
@@ -385,7 +304,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {
     );
 
     let on_pushed_down_content =
-        screen_to_char_offset(0, 2, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80);
+        screen_to_char_offset(0, 2, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_pushed_down_content,
         Some(rope.line_to_char(1)),
@@ -393,7 +312,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {
     );
 
     let on_next_line =
-        screen_to_char_offset(0, 3, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80);
+        screen_to_char_offset(0, 3, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_next_line,
         Some(rope.line_to_char(2)),
@@ -402,44 +321,30 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {
 }
 
 /// No-wrap mirror of `screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line`
-/// — row math is wrap-mode-agnostic (`display_rows_for_line` returns
-/// `content: 1` for `WrapMode::None`), so the same virtual-row accounting
-/// must hold with wrapping off.
+/// — row math is wrap-mode-agnostic (a line occupies exactly one content row
+/// with wrapping off), so the same virtual-row accounting must hold.
 #[test]
 fn screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() {
     let rope = Rope::from_str("a\nb\nc\n");
     let v = vp(0, 80, 10);
     let wrap = WrapMode::None;
-    let mut ctx = RenderContext::new();
     let cursor_char = rope.line_to_char(1);
 
-    let with_none = screen_pos(
-        &v,
-        &rope,
-        cursor_char,
-        &wrap,
-        4,
-        &ws(),
-        &mut ctx,
-        &no_providers(),
-        80,
-    );
+    let bare = no_providers();
+    let mut s = FormatScratch::new();
+    let with_none = screen_pos(&v, &mut map(&rope, wrap, &bare, 80, &mut s), cursor_char);
     assert_eq!(
         with_none,
         Some((0, 1)),
         "sanity: no provider — cursor at row 1"
     );
 
+    let providers = providers_with_before_line(1);
+    let mut s = FormatScratch::new();
     let with_virtual = screen_pos(
         &v,
-        &rope,
+        &mut map(&rope, wrap, &providers, 80, &mut s),
         cursor_char,
-        &wrap,
-        4,
-        &ws(),
-        &mut ctx,
-        &providers_with_before_line(1),
-        80,
     );
     assert_eq!(
         with_virtual,
@@ -454,11 +359,11 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row_no_wrap() {
     let rope = Rope::from_str("a\nb\nc\n");
     let v = vp(0, 80, 10);
     let wrap = WrapMode::None;
-    let mut s = FormatScratch::new();
     let providers = providers_with_before_line(1);
+    let mut s = FormatScratch::new();
 
     let on_virtual_row =
-        screen_to_char_offset(0, 1, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80);
+        screen_to_char_offset(0, 1, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_virtual_row,
         Some(rope.line_to_char(1)),
@@ -466,7 +371,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row_no_wrap() {
     );
 
     let on_pushed_down_content =
-        screen_to_char_offset(0, 2, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80);
+        screen_to_char_offset(0, 2, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_pushed_down_content,
         Some(rope.line_to_char(1)),
@@ -474,7 +379,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row_no_wrap() {
     );
 
     let on_next_line =
-        screen_to_char_offset(0, 3, 0, &v, &rope, &wrap, 4, &ws(), &mut s, &providers, 80);
+        screen_to_char_offset(0, 3, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_next_line,
         Some(rope.line_to_char(2)),
@@ -520,17 +425,11 @@ fn screen_pos_accounts_for_before_line_0() {
     providers.add_virtual_line_source(Box::new(OneBeforeLine(0)));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
-        let mut ctx = RenderContext::new();
+        let mut s = FormatScratch::new();
         let pos = screen_pos(
             &v,
-            &rope,
+            &mut map(&rope, wrap, &providers, 80, &mut s),
             cursor_char,
-            &wrap,
-            4,
-            &ws(),
-            &mut ctx,
-            &providers,
-            80,
         );
         assert_eq!(
             pos,
@@ -553,17 +452,11 @@ fn screen_pos_unaffected_by_after_on_cursors_own_last_line() {
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let v = vp(0, 80, 10);
-        let mut ctx = RenderContext::new();
+        let mut s = FormatScratch::new();
         let pos = screen_pos(
             &v,
-            &rope,
+            &mut map(&rope, wrap, &providers, 80, &mut s),
             cursor_char,
-            &wrap,
-            4,
-            &ws(),
-            &mut ctx,
-            &providers,
-            80,
         );
         assert_eq!(
             pos,

@@ -1,6 +1,10 @@
 use super::*;
+use hume_engine::format::FormatScratch;
 use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
+use hume_engine::providers::ProviderSet;
 use ropey::Rope;
+
+use crate::editor::cursor;
 
 fn viewport(top: usize, height: u16, width: u16) -> ViewportState {
     let mut v = ViewportState::new(width, height);
@@ -12,9 +16,27 @@ fn rope(text: &str) -> Rope {
     Rope::from_str(text)
 }
 
-/// No `VirtualLineSource` registered — `display_rows_for_line` reduces
-/// to `RowsBreakdown { before: 0, content, after: 0 }` for every line,
-/// matching every test's virtual-line-unaware expectations exactly.
+fn map<'a>(
+    rope: &'a Rope,
+    wrap: WrapMode,
+    providers: &'a ProviderSet,
+    content_width: u16,
+    scratch: &'a mut FormatScratch,
+) -> RowMap<'a> {
+    RowMap::new(
+        rope,
+        wrap,
+        4,
+        WhitespaceConfig::default(),
+        providers,
+        content_width,
+        scratch,
+    )
+}
+
+/// No `VirtualLineSource` registered — every line's block reduces to its
+/// content rows, matching every test's virtual-line-unaware expectations
+/// exactly.
 fn no_providers() -> ProviderSet {
     ProviderSet::new()
 }
@@ -25,17 +47,13 @@ fn no_providers() -> ProviderSet {
 fn no_wrap_cursor_visible_no_scroll_needed() {
     let r = rope("a\nb\nc\nd\ne\n");
     let mut v = viewport(0, 10, 80);
+    let providers = no_providers();
+    let mut s = FormatScratch::new();
     ensure_cursor_visible(
         &mut v,
-        &r,
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
         r.line_to_char(2),
-        &WrapMode::None,
-        4,
-        &WhitespaceConfig::default(),
-        &mut FormatScratch::new(),
         3,
-        &no_providers(),
-        80,
     );
     assert_eq!(v.top_line, 0);
 }
@@ -44,17 +62,13 @@ fn no_wrap_cursor_visible_no_scroll_needed() {
 fn no_wrap_cursor_below_viewport_scrolls_down() {
     let r = rope("a\nb\nc\nd\ne\nf\ng\nh\n");
     let mut v = viewport(0, 5, 80);
+    let providers = no_providers();
+    let mut s = FormatScratch::new();
     ensure_cursor_visible(
         &mut v,
-        &r,
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
         r.line_to_char(7),
-        &WrapMode::None,
-        4,
-        &WhitespaceConfig::default(),
-        &mut FormatScratch::new(),
         3,
-        &no_providers(),
-        80,
     );
     let cursor_line = 7usize;
     assert!(cursor_line >= v.top_line);
@@ -65,39 +79,29 @@ fn no_wrap_cursor_below_viewport_scrolls_down() {
 fn no_wrap_cursor_above_viewport_scrolls_up() {
     let r = rope("a\nb\nc\nd\ne\nf\ng\nh\n");
     let mut v = viewport(5, 5, 80);
+    let providers = no_providers();
+    let mut s = FormatScratch::new();
     ensure_cursor_visible(
         &mut v,
-        &r,
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
         r.line_to_char(1),
-        &WrapMode::None,
-        4,
-        &WhitespaceConfig::default(),
-        &mut FormatScratch::new(),
         3,
-        &no_providers(),
-        80,
     );
     let cursor_line = 1usize;
     assert!(cursor_line >= v.top_line);
     assert!(cursor_line < v.top_line + v.height as usize);
 }
 
-// ── cursor_sub_row ───────────────────────────────────────────────────────
+// ── cursor sub-row ───────────────────────────────────────────────────────
 
 #[test]
 fn cursor_sub_row_no_wrap() {
     // With a WrapMode::None, the whole line is one row, sub-row 0.
     let r = rope("hello world\n");
-    let mut scratch = FormatScratch::new();
-    let sub = cursor::sub_row(
-        &r,
-        0,
-        5,
-        &WrapMode::None,
-        4,
-        &WhitespaceConfig::default(),
-        &mut scratch,
-    );
+    let providers = no_providers();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&r, WrapMode::None, &providers, 80, &mut s);
+    let sub = rm.locate(5).0.row;
     assert_eq!(sub, 0);
 }
 
@@ -105,29 +109,13 @@ fn cursor_sub_row_no_wrap() {
 fn cursor_sub_row_wrapped() {
     // "abcdefgh" with Soft { width: 4 } → 2 rows: "abcd" / "efgh".
     let r = rope("abcdefgh\n");
-    let mut scratch = FormatScratch::new();
+    let providers = no_providers();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&r, WrapMode::Soft { width: 4 }, &providers, 80, &mut s);
     // Cursor at char 0 → sub-row 0.
-    let sub0 = cursor::sub_row(
-        &r,
-        0,
-        0,
-        &WrapMode::Soft { width: 4 },
-        4,
-        &WhitespaceConfig::default(),
-        &mut scratch,
-    );
-    assert_eq!(sub0, 0);
+    assert_eq!(rm.locate(0).0.row, 0);
     // Cursor at char 4 → sub-row 1.
-    let sub1 = cursor::sub_row(
-        &r,
-        0,
-        4,
-        &WrapMode::Soft { width: 4 },
-        4,
-        &WhitespaceConfig::default(),
-        &mut scratch,
-    );
-    assert_eq!(sub1, 1);
+    assert_eq!(rm.locate(4).0.row, 1);
 }
 
 // ── ensure_cursor_visible (wrap) top/bottom margin enforcement ───────────
@@ -145,16 +133,12 @@ fn wrap_cursor_within_top_margin_scrolls_up() {
     v.top_line = 3;
     v.top_row_offset = 0;
     let cursor_char = r.line_to_char(3);
+    let providers = no_providers();
+    let mut s = FormatScratch::new();
     ensure_cursor_visible(
         &mut v,
-        &r,
+        &mut map(&r, WrapMode::Soft { width: 2 }, &providers, 2, &mut s),
         cursor_char,
-        &WrapMode::Soft { width: 2 },
-        4,
-        &WhitespaceConfig::default(),
-        &mut FormatScratch::new(),
-        2,
-        &no_providers(),
         2,
     );
     assert_eq!(v.top_line, 1);
@@ -168,16 +152,12 @@ fn wrap_cursor_within_bottom_margin_scrolls_down() {
     v.top_line = 0;
     v.top_row_offset = 0;
     let cursor_char = r.line_to_char(7);
+    let providers = no_providers();
+    let mut s = FormatScratch::new();
     ensure_cursor_visible(
         &mut v,
-        &r,
+        &mut map(&r, WrapMode::Soft { width: 2 }, &providers, 2, &mut s),
         cursor_char,
-        &WrapMode::Soft { width: 2 },
-        4,
-        &WhitespaceConfig::default(),
-        &mut FormatScratch::new(),
-        2,
-        &no_providers(),
         2,
     );
     assert_eq!(v.top_line, 2);
@@ -198,34 +178,25 @@ fn zt_then_scrolloff_trims_cursor_inward() {
     let r = rope(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
     let cursor_char = r.line_to_char(25);
+    let providers = no_providers();
 
     // 1) `zt`: target_row = 0 → top_line = cursor_line.
+    let mut s = FormatScratch::new();
     scroll_cursor_to_row(
         &mut v,
-        &r,
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
         cursor_char,
-        &WrapMode::None,
-        4,
-        &WhitespaceConfig::default(),
-        &mut FormatScratch::new(),
         0,
-        &no_providers(),
-        80,
     );
     assert_eq!(v.top_line, 25, "zt places top at cursor line");
 
     // 2) Per-frame correction: scrolloff = 3 trims cursor inward by 3 rows.
+    let mut s = FormatScratch::new();
     ensure_cursor_visible(
         &mut v,
-        &r,
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
         cursor_char,
-        &WrapMode::None,
-        4,
-        &WhitespaceConfig::default(),
-        &mut FormatScratch::new(),
         3,
-        &no_providers(),
-        80,
     );
     assert_eq!(v.top_line, 22, "scrolloff trims top inward by margin (3)");
 }
@@ -236,32 +207,23 @@ fn zb_then_scrolloff_trims_cursor_inward() {
     let r = rope(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
     let cursor_char = r.line_to_char(25);
+    let providers = no_providers();
 
+    let mut s = FormatScratch::new();
     scroll_cursor_to_row(
         &mut v,
-        &r,
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
         cursor_char,
-        &WrapMode::None,
-        4,
-        &WhitespaceConfig::default(),
-        &mut FormatScratch::new(),
         23,
-        &no_providers(),
-        80,
     );
     assert_eq!(v.top_line, 2, "zb places cursor on display row 23");
 
+    let mut s = FormatScratch::new();
     ensure_cursor_visible(
         &mut v,
-        &r,
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
         cursor_char,
-        &WrapMode::None,
-        4,
-        &WhitespaceConfig::default(),
-        &mut FormatScratch::new(),
         3,
-        &no_providers(),
-        80,
     );
     // cursor_line=25, top=2, height=24, margin=3 → cursor at row 23 = height-margin-1.
     // bottom branch fires: top_line = 25 - (24-3-1) = 25 - 20 = 5.
@@ -339,31 +301,16 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row() {
     let providers = providers_with_before_line(2);
     let cursor_char = r.line_to_char(3);
 
+    let mut s = FormatScratch::new();
     ensure_cursor_visible(
         &mut v,
-        &r,
+        &mut map(&r, wrap, &providers, 80, &mut s),
         cursor_char,
-        &wrap,
-        4,
-        &WhitespaceConfig::default(),
-        &mut FormatScratch::new(),
         0,
-        &providers,
-        80,
     );
 
-    let mut ctx = hume_engine::pipeline::RenderContext::new();
-    let pos = cursor::screen_pos(
-        &v,
-        &r,
-        cursor_char,
-        &wrap,
-        4,
-        &WhitespaceConfig::default(),
-        &mut ctx,
-        &providers,
-        80,
-    );
+    let mut s = FormatScratch::new();
+    let pos = cursor::screen_pos(&v, &mut map(&r, wrap, &providers, 80, &mut s), cursor_char);
     let (_, row) = pos.expect("cursor must be visible after ensure_cursor_visible");
     assert!(
         (row as usize) < v.height as usize,
@@ -382,31 +329,16 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row_no_wrap() {
     let providers = providers_with_before_line(2);
     let cursor_char = r.line_to_char(3);
 
+    let mut s = FormatScratch::new();
     ensure_cursor_visible(
         &mut v,
-        &r,
+        &mut map(&r, wrap, &providers, 80, &mut s),
         cursor_char,
-        &wrap,
-        4,
-        &WhitespaceConfig::default(),
-        &mut FormatScratch::new(),
         0,
-        &providers,
-        80,
     );
 
-    let mut ctx = hume_engine::pipeline::RenderContext::new();
-    let pos = cursor::screen_pos(
-        &v,
-        &r,
-        cursor_char,
-        &wrap,
-        4,
-        &WhitespaceConfig::default(),
-        &mut ctx,
-        &providers,
-        80,
-    );
+    let mut s = FormatScratch::new();
+    let pos = cursor::screen_pos(&v, &mut map(&r, wrap, &providers, 80, &mut s), cursor_char);
     let (_, row) = pos.expect("cursor must be visible after ensure_cursor_visible");
     assert!(
         (row as usize) < v.height as usize,
@@ -423,11 +355,10 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row_no_wrap() {
 ///
 /// Cursor starts on line 2 with the viewport already showing it; a margin
 /// larger than the room available between `top_line` and the cursor forces
-/// `scroll_backward_from_cursor` to walk past line 1, past line 0's own
-/// content, and into line 0's 3-row `Before` block — landing at
-/// `top_line == 0, top_row_offset == 0` (the block's very first row), the
-/// correct top-of-buffer terminal state, rather than stopping short or
-/// underflowing.
+/// the backward walk past line 1, past line 0's own content, and into line
+/// 0's 3-row `Before` block — landing at `top_line == 0, top_row_offset ==
+/// 0` (the block's very first row), the correct top-of-buffer terminal
+/// state, rather than stopping short or underflowing.
 #[test]
 fn scroll_backward_from_cursor_reaches_into_before_line_0() {
     let r = rope("a\nb\nc\n");
@@ -437,17 +368,12 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let mut v = viewport(2, 10, 80);
+        let mut s = FormatScratch::new();
         ensure_cursor_visible(
             &mut v,
-            &r,
+            &mut map(&r, wrap, &providers, 80, &mut s),
             cursor_char,
-            &wrap,
-            4,
-            &WhitespaceConfig::default(),
-            &mut FormatScratch::new(),
             10, // margin far larger than the 2 real rows between top and cursor
-            &providers,
-            80,
         );
         assert_eq!(
             v.top_line, 0,
@@ -460,7 +386,7 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
     }
 }
 
-/// `clamp_top_row_offset` must shrink an out-of-range offset (as `recall_scroll`
+/// `clamp_viewport_top` must shrink an out-of-range offset (as `recall_scroll`
 /// or an LSP jump could leave behind) down to the top line's actual current
 /// block size, in either wrap mode.
 #[test]
@@ -471,16 +397,8 @@ fn clamp_top_row_offset_shrinks_stale_offset() {
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let mut v = viewport(0, 5, 80);
         v.top_row_offset = 200; // wildly stale — e.g. a resize shrank the block since it was set
-        clamp_top_row_offset(
-            &mut v,
-            &r,
-            &wrap,
-            4,
-            &WhitespaceConfig::default(),
-            &mut FormatScratch::new(),
-            &providers,
-            80,
-        );
+        let mut s = FormatScratch::new();
+        clamp_viewport_top(&mut v, &mut map(&r, wrap, &providers, 80, &mut s));
         assert_eq!(
             v.top_row_offset, 1,
             "clamped to the block's last valid row (total 2, so max offset 1) ({wrap:?})"
@@ -488,22 +406,14 @@ fn clamp_top_row_offset_shrinks_stale_offset() {
     }
 }
 
-/// `clamp_top_row_offset` must leave an already-valid offset untouched.
+/// `clamp_viewport_top` must leave an already-valid offset untouched.
 #[test]
 fn clamp_top_row_offset_is_a_noop_when_already_valid() {
     let r = rope("a\nb\n");
     let providers = providers_with_before_line(0);
     let mut v = viewport(0, 5, 80);
     v.top_row_offset = 1;
-    clamp_top_row_offset(
-        &mut v,
-        &r,
-        &WrapMode::None,
-        4,
-        &WhitespaceConfig::default(),
-        &mut FormatScratch::new(),
-        &providers,
-        80,
-    );
+    let mut s = FormatScratch::new();
+    clamp_viewport_top(&mut v, &mut map(&r, WrapMode::None, &providers, 80, &mut s));
     assert_eq!(v.top_row_offset, 1);
 }

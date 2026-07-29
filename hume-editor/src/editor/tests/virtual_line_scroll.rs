@@ -1,17 +1,24 @@
-// Editor-level integration tests for the top-line `Before`-block fix
-// (docs/GIT-DIFF.md's former "virtual-line scroll accounting" open risk):
-// the renderer and `cursor::screen_pos` must agree on where a `Before(0)`
-// virtual block places buffer content, and wheel scrolling must move
-// through such a block one display row at a time. No production
-// `VirtualLineSource` emits `Before` yet (docs/GIT-DIFF.md Phase 4.5) — these
-// register a synthetic one directly on the pane, mirroring `cursor/tests.rs`'s
-// and `scroll/tests.rs`'s `OneBeforeLine` doubles.
+// Editor-level integration tests for the two ways a provider can add display
+// rows the buffer text alone does not account for, and the requirement that
+// the renderer and `cursor::screen_pos` agree about both:
+//
+//   - a `VirtualLineSource`'s `Before`/`After` rows, which occupy whole screen
+//     rows (docs/GIT-DIFF.md's former "virtual-line scroll accounting" risk),
+//   - an `InlineDecoration`'s inserts, which take columns and so can push a
+//     line onto an extra wrap row.
+//
+// No production `VirtualLineSource` emits `Before` yet (docs/GIT-DIFF.md Phase
+// 4.5) — these register synthetic providers directly on the pane, mirroring
+// `cursor/tests.rs`'s and `scroll/tests.rs`'s `OneBeforeLine` doubles.
 
 use super::*;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 use hume_engine::pane::WrapMode;
-use hume_engine::providers::{VirtualLine, VirtualLineAnchor, VirtualLineSource};
+use hume_engine::providers::{
+    InlineDecoration, InlineInsert, VirtualLine, VirtualLineAnchor, VirtualLineSource,
+};
+use hume_engine::types::ScopeId;
 use ratatui::layout::Rect;
 use termina::event::{Event, MouseEvent, MouseEventKind};
 
@@ -82,26 +89,16 @@ fn screen_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     // code does after `prepare_frame`.
     let pid = ed.state.focused_pane_id;
     let vp = ed.view.panes[pid].viewport.clone();
-    let len_lines = ed.doc().text().len_lines();
-    let content_width = ed.view.panes[pid].content_width(len_lines);
-    let wrap_mode = ed.view.panes[pid].wrap_mode.resolve(content_width);
-    let tab_width = ed.doc().overrides.tab_width(&ed.state.settings);
-    let whitespace = ed.doc().overrides.whitespace(&ed.state.settings);
-    let rope = ed.doc().text().rope();
     let cursor_char = ed.current_selections().primary().head();
-    let mut ctx = hume_engine::pipeline::RenderContext::new();
-
-    let pos = crate::editor::cursor::screen_pos(
-        &vp,
-        rope,
-        cursor_char,
-        &wrap_mode,
-        tab_width,
-        &whitespace,
-        &mut ctx,
-        &ed.view.panes[pid].providers,
-        content_width,
+    let mut scratch = hume_engine::format::FormatScratch::new();
+    let mut rm = crate::editor::commands::pane_row_map(
+        ed.doc(),
+        &ed.state.settings,
+        &ed.view.panes[pid],
+        &mut scratch,
     );
+
+    let pos = crate::editor::cursor::screen_pos(&vp, &mut rm, cursor_char);
     assert_eq!(
         pos.map(|(_, row)| row),
         Some(1),
@@ -217,4 +214,75 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
             "5 display rows crosses 3 virtual After(1) rows, landing on real line 2, not 5 ({wrap:?})"
         );
     }
+}
+
+// ── Inline decorations count toward the wrap row budget ──────────────────
+//
+// The other axis of the same "counted rows must equal rendered rows"
+// requirement. An inline insert takes columns, so it participates in
+// wrapping: a line that fits on one row without it can need two with it.
+// Row counting that formats without inserts (as it did before `RowMap`)
+// reports one row where the renderer draws two, and everything below the
+// hint lands one row off.
+
+/// Emits one 6-column inline insert at the head of line 0. Holds an
+/// already-interned scope, the same contract real providers follow.
+struct HintOnLine0(ScopeId);
+
+impl InlineDecoration for HintOnLine0 {
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<InlineInsert>) {
+        if line_idx == 0 {
+            out.push(InlineInsert {
+                byte_offset: 0,
+                text: "HHHHHH".to_string(),
+                scope: self.0,
+            });
+        }
+    }
+}
+
+#[test]
+fn screen_pos_counts_an_inline_hints_extra_wrap_row() {
+    // Line 0 is "abcdef" — 6 columns, which fits the 10-column content width
+    // on its own. The 6-column hint makes 12, wrapping it onto a second row:
+    //
+    //   row 0  HHHHHHabcd
+    //   row 1  ef
+    //   row 2  y            ← line 1, pushed down by the hint's wrap row
+    let buf = Text::from("abcdef\ny\n");
+    // Cursor on line 1 (char 7), below the wrap the hint causes.
+    let sels = SelectionSet::single(Selection::collapsed(7));
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    ed.state.settings.scrolloff = 0;
+    let pid = ed.state.focused_pane_id;
+    ed.view.panes[pid].wrap_mode = WrapMode::Soft { width: 0 };
+    let scope = ed.view.registry.intern("ui.virtual_text");
+    ed.view.panes[pid]
+        .providers
+        .add_inline_decoration(Box::new(HintOnLine0(scope)));
+
+    // Height 4 leaves 3 content rows once the statusline takes one.
+    let rendered = ed.render_to_buf(Rect::new(0, 0, 10, 4));
+    assert_eq!(cell(&rendered, 0, 0), "H", "sanity: hint drawn at row 0");
+    assert_eq!(
+        cell(&rendered, 0, 1),
+        "e",
+        "the hint pushed 'ef' onto a second wrap row"
+    );
+    assert_eq!(cell(&rendered, 0, 2), "y", "line 1 follows at row 2");
+
+    let vp = ed.view.panes[pid].viewport.clone();
+    let cursor_char = ed.current_selections().primary().head();
+    let mut scratch = hume_engine::format::FormatScratch::new();
+    let mut rm = crate::editor::commands::pane_row_map(
+        ed.doc(),
+        &ed.state.settings,
+        &ed.view.panes[pid],
+        &mut scratch,
+    );
+    assert_eq!(
+        crate::editor::cursor::screen_pos(&vp, &mut rm, cursor_char).map(|(_, row)| row),
+        Some(2),
+        "screen_pos must count the hint's wrap row, as the renderer does"
+    );
 }

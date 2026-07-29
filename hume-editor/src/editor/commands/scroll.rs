@@ -3,7 +3,7 @@ use hume_engine::pipeline::EngineView;
 
 use super::super::EditorState;
 use super::super::visual_move::{VerticalUnit, apply_visual_vertical};
-use super::{current_selections, focused_buffer_id, focused_format_context, viewport};
+use super::{current_selections, focused_buffer_id, pane_row_map_mut, viewport};
 use crate::editor::error::CommandError;
 
 // ── Page / half-page scroll ───────────────────────────────────────────────────
@@ -58,25 +58,14 @@ pub fn cmd_half_page_up(
 
 fn cmd_view_scroll_to_row(state: &mut EditorState, view: &mut EngineView, target_row: usize) {
     let cursor_char = current_selections(state, view).primary().head();
-    let (wrap_mode, tab_width, whitespace) = focused_format_context(state, view);
     let buf_id = focused_buffer_id(state, view);
-    let content_width = view.panes[state.focused_pane_id]
-        .content_width(state.buffers.get(buf_id).text().len_lines());
-    let pane = &mut view.panes[state.focused_pane_id];
-    // `buffers` and `motion_format_scratch` are disjoint fields of `state`, so
-    // the rope can be borrowed alongside the scratch — no clone needed.
-    super::super::scroll::scroll_cursor_to_row(
-        &mut pane.viewport,
-        state.buffers.get(buf_id).text().rope(),
-        cursor_char,
-        &wrap_mode,
-        tab_width,
-        &whitespace,
+    let (mut rm, viewport) = pane_row_map_mut(
+        state.buffers.get(buf_id),
+        &state.settings,
+        &mut view.panes[state.focused_pane_id],
         &mut state.motion_format_scratch,
-        target_row,
-        &pane.providers,
-        content_width,
     );
+    super::super::scroll::scroll_cursor_to_row(viewport, &mut rm, cursor_char, target_row);
 }
 
 pub fn cmd_view_center(
