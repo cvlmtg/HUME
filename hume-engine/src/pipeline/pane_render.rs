@@ -168,19 +168,12 @@ pub(crate) fn render_pane(
 /// Stops early if the viewport fills up. After returning, `vc.vl_cursor`
 /// points past the last consumed virtual line.
 ///
-/// `top_skip_rows` (`vc.top_skip_remaining`) counts wrap rows of `top_line`
-/// only — it is computed editor-side from `format::count_visual_rows`, which
-/// has no notion of virtual lines. So a virtual row dropped here must NOT
-/// decrement that budget (unlike a skipped buffer wrap row, via `try_skip` in
-/// `render_buffer_line`): doing so would eat a skip unit meant for a wrap row,
-/// shifting the whole viewport down by one row per skipped virtual line.
-/// Consequence: a `Before(top_line)` virtual block cannot be scrolled
-/// partially off-screen — it disappears as a unit once `top_row_offset`
-/// scrolls into `top_line`. In practice `top_skip_remaining` is only ever
-/// nonzero during the very first call (`Before(top_line)`, before any of
-/// `top_line`'s own wrap rows have been consumed) — the editor clamps
-/// `top_row_offset < rows(top_line)`, so by the time `After(top_line)` runs,
-/// `render_buffer_line` has already exhausted the budget on real wrap rows.
+/// `top_skip_rows` (`vc.top_skip_remaining`) counts display rows of
+/// `top_line`'s whole visual block (`before` + wrap rows + `after`) — see
+/// `ViewportState::top_row_offset`'s doc. A virtual row here is skipped
+/// through the same `try_skip` budget as a buffer wrap row in
+/// `render_buffer_line`, so scrolling moves through a virtual block one row
+/// at a time, same as real content.
 fn drain_virtual_lines(
     anchor: VirtualLineAnchor,
     vc: &mut ViewportCursor,
@@ -194,7 +187,7 @@ fn drain_virtual_lines(
     while vc.vl_cursor < scratch.format.virtual_lines.len()
         && scratch.format.virtual_lines[vc.vl_cursor].anchor == anchor
     {
-        if vc.top_skip_remaining > 0 {
+        if vc.try_skip() {
             vc.vl_cursor += 1;
             continue;
         }

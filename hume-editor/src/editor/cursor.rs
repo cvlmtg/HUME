@@ -76,19 +76,16 @@ pub(crate) fn screen_pos(
                 content_width,
                 scratch,
             );
-            // `top_row_offset` only ever indexes into a line's *content* rows
-            // (virtual rows never partially scroll — see `ViewportState`'s
-            // own doc) — so the viewport's own top line never shows its
-            // `before` block: it's either fully above the viewport already
-            // (scrolled past) or the natural at-rest state simply starts
-            // this line at its content, not its virtual annotation.
-            let visible_before = if is_top { 0 } else { breakdown.before };
+            // `top_row_offset` counts rows of the line's whole visual block
+            // (`before` + content + `after` — see `ViewportState`'s doc), so
+            // the cursor's own position within its line's block is
+            // `before + cursor_sub`; `skip` is only nonzero on the viewport's
+            // top line.
             if line_idx == cursor_line {
-                screen_row += visible_before + cursor_sub.saturating_sub(skip);
+                screen_row += (breakdown.before + cursor_sub).saturating_sub(skip);
                 break;
             }
-            screen_row +=
-                visible_before + (breakdown.content + breakdown.after).saturating_sub(skip);
+            screen_row += breakdown.total().saturating_sub(skip);
             if screen_row >= height {
                 return None;
             }
@@ -289,24 +286,24 @@ pub(crate) fn screen_to_char_offset(
                 content_width,
                 scratch,
             );
-            // Same "the viewport's own top line never shows its `before`
-            // block" reasoning as `screen_pos`.
-            let visible_before = if is_top { 0 } else { breakdown.before };
-            let content_visible = breakdown.content.saturating_sub(skip);
-            let visible_rows = visible_before + content_visible + breakdown.after;
+            let visible_rows = breakdown.total().saturating_sub(skip);
 
             if remaining < visible_rows {
-                // A click landing in the `before`/`after` portion is on a
-                // virtual row, not buffer content — clamp to this line's
-                // first/last content sub-row. Precisely mapping such a click
-                // to its anchor line's exact position needs a
-                // real `VirtualLineSource` to have anything to map from;
-                // this only needs to degrade sensibly with zero providers
-                // registered, which is always true here.
-                let target_sub = if remaining < visible_before {
+                // `block_row` is this line's row within its own visual block
+                // (`before` + content + `after`), reconstructed by adding
+                // back the rows already skipped off the top. A click landing
+                // in the `before`/`after` portion is on a virtual row, not
+                // buffer content — clamp to this line's first/last content
+                // sub-row. Precisely mapping such a click to its anchor
+                // line's exact position needs a real `VirtualLineSource` to
+                // have anything to map from; this only needs to degrade
+                // sensibly with zero providers registered, which is always
+                // true here.
+                let block_row = remaining + skip;
+                let target_sub = if block_row < breakdown.before {
                     0
-                } else if remaining < visible_before + content_visible {
-                    skip + (remaining - visible_before)
+                } else if block_row < breakdown.before + breakdown.content {
+                    block_row - breakdown.before
                 } else {
                     breakdown.content.saturating_sub(1)
                 };

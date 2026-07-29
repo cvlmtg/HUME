@@ -615,5 +615,6 @@ mod undo_levels;
 mod unix;
 mod view_scroll;
 mod vim_keybind;
+mod virtual_line_scroll;
 mod visual_move;
 mod wrap;

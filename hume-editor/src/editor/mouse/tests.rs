@@ -1,10 +1,14 @@
 use super::*;
 use hume_engine::format::FormatScratch;
 use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
+use hume_engine::providers::ProviderSet;
 use ropey::Rope;
 
 fn ws() -> WhitespaceConfig {
     WhitespaceConfig::default()
+}
+fn no_providers() -> ProviderSet {
+    ProviderSet::new()
 }
 const SCROLL_LINES: usize = 3; // default from EditorSettings
 
@@ -39,6 +43,8 @@ fn down_no_wrap_clamps_at_max_top() {
             &ws(),
             total,
             SCROLL_LINES,
+            &no_providers(),
+            80,
             &mut scratch,
         );
     }
@@ -61,6 +67,8 @@ fn down_no_wrap_file_fits_no_movement() {
         &ws(),
         total,
         SCROLL_LINES,
+        &no_providers(),
+        80,
         &mut scratch,
     );
     assert_eq!(vp.top_line, 0, "viewport must not move when file fits");
@@ -81,6 +89,8 @@ fn down_no_wrap_advances_by_scroll_lines() {
         &ws(),
         total,
         SCROLL_LINES,
+        &no_providers(),
+        80,
         &mut scratch,
     );
     assert_eq!(
@@ -105,6 +115,8 @@ fn up_no_wrap_clamps_at_zero() {
         4,
         &ws(),
         SCROLL_LINES,
+        &no_providers(),
+        80,
         &mut scratch,
     );
     assert_eq!(vp.top_line, 0, "saturating_sub must not underflow");
@@ -124,6 +136,8 @@ fn up_no_wrap_decrements_by_scroll_lines() {
         4,
         &ws(),
         SCROLL_LINES,
+        &no_providers(),
+        80,
         &mut scratch,
     );
     assert_eq!(vp.top_line, 10 - SCROLL_LINES);
@@ -143,6 +157,8 @@ fn up_at_top_is_no_op() {
         4,
         &ws(),
         SCROLL_LINES,
+        &no_providers(),
+        80,
         &mut scratch,
     );
     assert_eq!(vp.top_line, 0);
@@ -168,6 +184,8 @@ fn down_wrap_file_fits_no_movement() {
         &ws(),
         total,
         SCROLL_LINES,
+        &no_providers(),
+        80,
         &mut scratch,
     );
     assert_eq!(vp.top_line, 0, "no scroll when file fits in viewport");

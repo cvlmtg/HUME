@@ -12,8 +12,9 @@
 //! number of lines (Vim-style). Moving the cursor with the viewport prevents
 //! `ensure_cursor_visible` from snapping the viewport back on the next frame.
 
-use hume_engine::format::{FormatScratch, count_visual_rows};
+use hume_engine::format::{FormatScratch, display_rows_for_line};
 use hume_engine::pane::WrapMode;
+use hume_engine::providers::ProviderSet;
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use super::cursor;
@@ -114,10 +115,11 @@ impl Editor {
             let tab_width = self.doc().overrides.tab_width(&self.state.settings);
             let whitespace = self.doc().overrides.whitespace(&self.state.settings);
             let rope = self.state.buffers.get(buf_id).text().rope();
-            let wrap_mode = {
+            let content_width = {
                 let pane = &self.view.panes[self.state.focused_pane_id];
-                raw_wrap.resolve(pane.content_width(len_lines))
+                pane.content_width(len_lines)
             };
+            let wrap_mode = raw_wrap.resolve(content_width);
             let pane = &mut self.view.panes[self.state.focused_pane_id];
             scroll_viewport_up(
                 &mut pane.viewport,
@@ -126,6 +128,8 @@ impl Editor {
                 tab_width,
                 &whitespace,
                 scroll_lines,
+                &pane.providers,
+                content_width,
                 &mut self.state.motion_format_scratch,
             );
         }
@@ -159,10 +163,11 @@ impl Editor {
             let whitespace = self.doc().overrides.whitespace(&self.state.settings);
             let rope = self.state.buffers.get(buf_id).text().rope();
             let total_lines = rope.len_lines();
-            let wrap_mode = {
+            let content_width = {
                 let pane = &self.view.panes[self.state.focused_pane_id];
-                raw_wrap.resolve(pane.content_width(total_lines))
+                pane.content_width(total_lines)
             };
+            let wrap_mode = raw_wrap.resolve(content_width);
             let pane = &mut self.view.panes[self.state.focused_pane_id];
             scroll_viewport_down(
                 &mut pane.viewport,
@@ -172,6 +177,8 @@ impl Editor {
                 &whitespace,
                 total_lines,
                 scroll_lines,
+                &pane.providers,
+                content_width,
                 &mut self.state.motion_format_scratch,
             );
         }
@@ -229,6 +236,7 @@ impl Editor {
 // Viewport scroll helpers (no cursor movement)
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn scroll_viewport_up(
     viewport: &mut hume_engine::pane::ViewportState,
     rope: &ropey::Rope,
@@ -236,11 +244,14 @@ fn scroll_viewport_up(
     tab_width: u8,
     whitespace: &hume_engine::pane::WhitespaceConfig,
     scroll_lines: usize,
+    providers: &ProviderSet,
+    content_width: u16,
     scratch: &mut FormatScratch,
 ) {
     if wrap_mode.is_wrapping() {
-        scratch.clear();
-        // Decrement by `scroll_lines` display rows, respecting sub-row offsets.
+        // Decrement by `scroll_lines` display rows — one row of `top_line`'s
+        // whole visual block (`before` + content + `after`) per unit, same
+        // invariant as `top_row_offset` itself (see `ViewportState`'s doc).
         let mut rows_left = scroll_lines;
         while rows_left > 0 {
             if viewport.top_row_offset > 0 {
@@ -249,15 +260,18 @@ fn scroll_viewport_up(
                 rows_left -= dec;
             } else if viewport.top_line > 0 {
                 viewport.top_line -= 1;
-                let rows = count_visual_rows(
+                let rows = display_rows_for_line(
                     rope,
                     viewport.top_line,
                     tab_width,
                     whitespace,
                     wrap_mode,
+                    providers,
+                    content_width,
                     scratch,
-                );
-                // Jump to the last sub-row of the new top line.
+                )
+                .total();
+                // Jump to the last row of the new top line's block.
                 let sub = rows.saturating_sub(1);
                 viewport.top_row_offset = sub as u16;
                 rows_left = rows_left.saturating_sub(1);
@@ -279,9 +293,10 @@ fn scroll_viewport_down(
     whitespace: &hume_engine::pane::WhitespaceConfig,
     total_lines: usize,
     scroll_lines: usize,
+    providers: &ProviderSet,
+    content_width: u16,
     scratch: &mut FormatScratch,
 ) {
-    scratch.clear();
     // Content lines = all lines minus the structural trailing '\n' sentinel.
     let content_lines = total_lines.saturating_sub(1);
     let height = viewport.height as usize;
@@ -289,7 +304,17 @@ fn scroll_viewport_down(
         // For wrapping, guard: if total display rows fit in the viewport, nothing to scroll.
         let mut total_rows = 0usize;
         for i in 0..content_lines {
-            total_rows += count_visual_rows(rope, i, tab_width, whitespace, wrap_mode, scratch);
+            total_rows += display_rows_for_line(
+                rope,
+                i,
+                tab_width,
+                whitespace,
+                wrap_mode,
+                providers,
+                content_width,
+                scratch,
+            )
+            .total();
             if total_rows > height {
                 break;
             }
@@ -305,14 +330,17 @@ fn scroll_viewport_down(
             if viewport.top_line > last_line {
                 break;
             }
-            let rows = count_visual_rows(
+            let rows = display_rows_for_line(
                 rope,
                 viewport.top_line,
                 tab_width,
                 whitespace,
                 wrap_mode,
+                providers,
+                content_width,
                 scratch,
-            );
+            )
+            .total();
             let remaining_in_line = rows.saturating_sub(1 + viewport.top_row_offset as usize);
             if rows_left <= remaining_in_line {
                 viewport.top_row_offset += rows_left as u16;

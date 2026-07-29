@@ -197,10 +197,24 @@ fn ensure_cursor_visible_wrapped(
         whitespace,
         scratch,
     );
+    // Row of the cursor within its own line's visual block (`before` +
+    // content + `after` — see `ViewportState::top_row_offset`'s doc).
+    let cursor_breakdown = display_rows_for_line(
+        rope,
+        cursor_line,
+        tab_width,
+        whitespace,
+        wrap_mode,
+        providers,
+        content_width,
+        scratch,
+    );
+    let cursor_block_row = cursor_breakdown.before + cursor_sub;
 
     // ── Cursor above the viewport ────────────────────────────────────────────
     let top_row = viewport.top_row_offset as usize;
-    if cursor_line < viewport.top_line || (cursor_line == viewport.top_line && cursor_sub < top_row)
+    if cursor_line < viewport.top_line
+        || (cursor_line == viewport.top_line && cursor_block_row < top_row)
     {
         scroll_backward_from_cursor(
             viewport,
@@ -219,14 +233,15 @@ fn ensure_cursor_visible_wrapped(
     }
 
     // ── Count display rows from scroll position to cursor ────────────────────
-    // Same before/content/after accumulation as `cursor::screen_pos` — see
-    // its doc comment for why a nonzero `skip` on the viewport's own top
-    // line means that line's `before` block (if any) has already scrolled
-    // off entirely.
+    // Same before/content/after accumulation as `cursor::screen_pos`.
     let mut display_row: usize = 0;
     for line_idx in viewport.top_line..=cursor_line {
         let is_top = line_idx == viewport.top_line;
         let skip = if is_top { top_row } else { 0 };
+        if line_idx == cursor_line {
+            display_row += cursor_block_row.saturating_sub(skip);
+            break;
+        }
         let breakdown = display_rows_for_line(
             rope,
             line_idx,
@@ -237,14 +252,7 @@ fn ensure_cursor_visible_wrapped(
             content_width,
             scratch,
         );
-        // The viewport's own top line never shows its `before` block — see
-        // `cursor::screen_pos`'s doc comment for why.
-        let visible_before = if is_top { 0 } else { breakdown.before };
-        if line_idx == cursor_line {
-            display_row += visible_before + cursor_sub.saturating_sub(skip);
-            break;
-        }
-        display_row += visible_before + (breakdown.content + breakdown.after).saturating_sub(skip);
+        display_row += breakdown.total().saturating_sub(skip);
         if display_row >= height {
             break;
         }
@@ -302,7 +310,21 @@ fn scroll_backward_from_cursor(
     content_width: u16,
 ) {
     viewport.top_line = cursor_line;
-    viewport.top_row_offset = cursor_sub as u16;
+    // Seed at the cursor's row within its own line's visual block (`before`
+    // + content + `after`), then walk backward one block row at a time —
+    // every row is an equal scroll unit, so this can land on any row of any
+    // block, including mid-`before`/`after`.
+    let cursor_breakdown = display_rows_for_line(
+        rope,
+        cursor_line,
+        tab_width,
+        whitespace,
+        wrap_mode,
+        providers,
+        content_width,
+        scratch,
+    );
+    viewport.top_row_offset = (cursor_breakdown.before + cursor_sub) as u16;
     let mut rows_above = 0;
     while rows_above < target_rows {
         if viewport.top_row_offset > 0 {
@@ -322,24 +344,11 @@ fn scroll_backward_from_cursor(
             );
             let total = breakdown.total();
             if rows_above + total > target_rows {
+                // Uniform rows mean the cut point lands exactly here, no
+                // clamping needed — this line contributes exactly
+                // `remaining` visible rows above the cursor.
                 let remaining = target_rows - rows_above;
-                // `top_row_offset` only ever indexes into this line's
-                // content (virtual rows never partially scroll). A cut
-                // point inside `after` clamps to `top_row_offset = 0`
-                // (content row 0) — showing `content + after` in full, but
-                // never a fractional `after` row. A cut point inside
-                // `before` also clamps to 0 — this line becomes the
-                // viewport's new top, and a top line never shows its own
-                // `before` block (see `cursor::screen_pos`'s doc comment),
-                // so this rounds *down* rather than overshooting into the
-                // virtual block.
-                viewport.top_row_offset = if remaining > breakdown.after
-                    && remaining <= breakdown.after + breakdown.content
-                {
-                    (breakdown.content - (remaining - breakdown.after)) as u16
-                } else {
-                    0
-                };
+                viewport.top_row_offset = (total - remaining) as u16;
                 break;
             }
             rows_above += total;

@@ -17,8 +17,10 @@ use ropey::Rope;
 pub struct ViewportState {
     /// First fully-visible buffer line.
     pub top_line: usize,
-    /// How many display rows of `top_line` to skip (sub-row offset for
-    /// partially-scrolled wrapped lines).
+    /// How many display rows of `top_line`'s visual block — virtual `before`
+    /// rows, the line's own wrap rows, then virtual `after` rows, in that
+    /// order — have already scrolled past. Every row in the block is an
+    /// equally skippable unit; nothing about `before`/`after` is special.
     pub top_row_offset: u16,
     /// Horizontal scroll in columns (0 when soft-wrap is on).
     pub horizontal_offset: u16,

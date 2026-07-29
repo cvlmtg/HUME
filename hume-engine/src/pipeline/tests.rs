@@ -193,17 +193,32 @@ fn cell_symbol(buf: &ratatui::buffer::Buffer, x: u16, y: u16) -> String {
 }
 
 #[test]
-fn before_virtual_line_dropped_without_stealing_skip_budget() {
-    // top_row_offset=1 skips wrap row 0 ("aaaa"). The Before(0) virtual
-    // line must be dropped too, but WITHOUT consuming another unit of the
-    // skip budget — screen row 0 must show wrap row 1 ("bbbb"), not wrap
-    // row 2 ("cccc") and not the virtual line.
-    let buf = render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::Before(0));
-    assert_eq!(cell_symbol(&buf, 0, 0), "b", "screen row 0 is wrap row 1");
-    assert_eq!(cell_symbol(&buf, 1, 0), "b");
-    assert_eq!(cell_symbol(&buf, 2, 0), "b");
-    assert_eq!(cell_symbol(&buf, 3, 0), "b");
-    assert_eq!(cell_symbol(&buf, 0, 1), "c", "screen row 1 is wrap row 2");
+fn before_virtual_line_skipped_one_row_at_a_time() {
+    // Line 0's block under Before(0) is [V, aaaa, bbbb, cccc] — 4 rows.
+    // `top_row_offset` walks through it uniformly, the same as it would a
+    // plain wrap row: each unit of offset drops exactly one block row,
+    // virtual or real.
+    let offset1 = render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::Before(0));
+    assert_eq!(
+        cell_symbol(&offset1, 0, 0),
+        "a",
+        "offset 1 skips V only, wrap row 0 shows"
+    );
+    assert_eq!(cell_symbol(&offset1, 0, 1), "b", "wrap row 1 follows");
+
+    let offset2 = render_wrapped_pane_with_virtual_line(2, VirtualLineAnchor::Before(0));
+    assert_eq!(
+        cell_symbol(&offset2, 0, 0),
+        "b",
+        "offset 2 skips V and wrap row 0"
+    );
+
+    let offset4 = render_wrapped_pane_with_virtual_line(4, VirtualLineAnchor::Before(0));
+    assert_eq!(
+        cell_symbol(&offset4, 0, 0),
+        "z",
+        "offset 4 skips the whole 4-row block — line 1 shows"
+    );
 }
 
 #[test]
@@ -233,6 +248,89 @@ fn after_virtual_line_renders_below_skipped_rows() {
         "V",
         "After(0) virtual line still renders"
     );
+}
+
+/// Emits `self.0` distinct `Before(0)` virtual rows, texted "1".."9" — a
+/// virtual block taller than a small viewport, to prove every row in it is
+/// individually reachable by scrolling, not just the rows nearest the edge.
+struct MultiBeforeLine(usize);
+
+impl crate::providers::VirtualLineSource for MultiBeforeLine {
+    fn virtual_lines(
+        &self,
+        visible_lines: std::ops::Range<usize>,
+        _content_width: u16,
+        out: &mut Vec<crate::providers::VirtualLine>,
+    ) {
+        if visible_lines.contains(&0) {
+            for i in 0..self.0 {
+                out.push(crate::providers::VirtualLine {
+                    anchor: VirtualLineAnchor::Before(0),
+                    provider_id: 0,
+                    text: (i + 1).to_string(),
+                    segments: Vec::new(),
+                });
+            }
+        }
+    }
+}
+
+/// Line 0 is "x" (one unwrapped row) with `n` `Before(0)` virtual rows
+/// stacked above it, viewed through a viewport `height` rows tall.
+fn render_pane_with_n_before_lines(
+    top_row_offset: u16,
+    n: usize,
+    height: u16,
+) -> ratatui::buffer::Buffer {
+    let rope = ropey::Rope::from_str("x\ny\n");
+    let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
+    let bid = bids.insert(());
+
+    let mut pane = Pane::new(bid, WrapMode::Soft { width: 10 });
+    pane.viewport = crate::pane::ViewportState::new(10, height);
+    pane.viewport.top_row_offset = top_row_offset;
+    pane.providers
+        .add_virtual_line_source(Box::new(MultiBeforeLine(n)));
+
+    let theme = Theme::default();
+    let pane_rect = rect(0, 0, 10, height);
+    let pane_ctx = PaneRenderCtx {
+        pane: &pane,
+        rope: &rope,
+        syntax: None,
+        theme: &theme,
+        rect: pane_rect,
+        settings: PaneRenderSettings {
+            mode: EditorMode::Normal,
+            wrap_mode: WrapMode::Soft { width: 10 },
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+            show_indent_guides: true,
+        },
+        dim: None,
+    };
+    let mut scratch = FrameScratch::new();
+    let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+    render_pane(&pane_ctx, &mut scratch, &mut buf);
+    buf
+}
+
+#[test]
+fn virtual_before_block_taller_than_viewport_exposes_every_row() {
+    // Line 0's block is [1, 2, 3, x] — 4 rows — in a viewport only 2 rows
+    // tall, so the block can never be shown in full. Every row must still be
+    // individually reachable: walking `top_row_offset` through the block one
+    // unit at a time surfaces each row at the top of the viewport in turn,
+    // with none permanently stuck outside it.
+    let expected = ["1", "2", "3", "x"];
+    for (offset, expect) in expected.iter().enumerate() {
+        let buf = render_pane_with_n_before_lines(offset as u16, 3, 2);
+        assert_eq!(
+            cell_symbol(&buf, 0, 0),
+            *expect,
+            "offset {offset}: block row {offset} must be the top visible row"
+        );
+    }
 }
 
 // ── Provider id stamping (G3) ────────────────────────────────────────
