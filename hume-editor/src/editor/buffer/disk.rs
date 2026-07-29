@@ -170,7 +170,10 @@ impl Editor {
                 {
                     self.open_disk_change_confirm(bid, &name, dirty);
                 } else if !already_reported {
-                    self.report(Severity::Warning, format!("{name}: file has changed on disk"));
+                    self.report(
+                        Severity::Warning,
+                        format!("{name}: file has changed on disk"),
+                    );
                 }
             }
         }

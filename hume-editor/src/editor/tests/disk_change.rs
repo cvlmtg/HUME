@@ -197,13 +197,21 @@ fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
 
     // Switch back to A — B stays open as the alternate, unfocused.
     type_cmd(&mut ed, ":b #");
-    assert_eq!(ed.focused_buffer_id(), bid_a, "setup: :b # must return to A");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid_a,
+        "setup: :b # must return to A"
+    );
 
     rewrite_externally(&tmp_b, "world, externally changed!\n");
     let (_, warnings_before) = ed.state.message_log.totals();
     ed.check_buffer_disk_state(bid_b, DiskCheckTrigger::Ambient);
     let (_, warnings_after) = ed.state.message_log.totals();
-    assert_eq!(warnings_after, warnings_before + 1, "a non-focused change only warns");
+    assert_eq!(
+        warnings_after,
+        warnings_before + 1,
+        "a non-focused change only warns"
+    );
     assert!(ed.state.config.confirm.is_none());
 
     // Enter B via :b — the deferred prompt must appear now.
@@ -235,7 +243,11 @@ fn change_detected_mid_insert_warns_instead_of_prompting() {
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     let (_, warnings_after) = ed.state.message_log.totals();
 
-    assert_eq!(warnings_after, warnings_before + 1, "must warn instead of prompting");
+    assert_eq!(
+        warnings_after,
+        warnings_before + 1,
+        "must warn instead of prompting"
+    );
     assert!(ed.state.config.confirm.is_none());
 
     // Back in Normal, only a buffer-enter check reopens the deferred prompt
@@ -285,7 +297,10 @@ fn confirm_reload_choice_reloads_and_clears_disk_stale() {
     rewrite_externally(&tmp, "HELLO!!\n");
     let bid = ed.focused_buffer_id();
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
-    assert!(ed.state.config.confirm.is_some(), "setup: confirm must be open");
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "setup: confirm must be open"
+    );
 
     ed.handle_key(key('r'));
 
@@ -350,23 +365,35 @@ fn reload_confirm_accept_after_focus_moved_away_does_not_panic() {
     let bid_a = ed.focused_buffer_id();
     rewrite_externally(&tmp_a, "hello, externally changed!\n");
     ed.check_buffer_disk_state(bid_a, DiskCheckTrigger::Ambient);
-    assert!(ed.state.config.confirm.is_some(), "setup: confirm must be open");
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "setup: confirm must be open"
+    );
 
     // Simulate an async callback moving focus without going through key
     // dispatch — the confirm is left open, still targeting A.
     let (tmp_b, _tmp_b_guard) = temp_file("world\n");
-    let (bid_b, _) = ed
-        .resolve_open_path(&tmp_b.display().to_string())
-        .unwrap();
+    let (bid_b, _) = ed.resolve_open_path(&tmp_b.display().to_string()).unwrap();
     ed.switch_to_buffer_without_jump(bid_b);
-    assert_ne!(ed.focused_buffer_id(), bid_a, "setup: focus must have moved off A");
+    assert_ne!(
+        ed.focused_buffer_id(),
+        bid_a,
+        "setup: focus must have moved off A"
+    );
 
     let (_, warnings_before) = ed.state.message_log.totals();
     ed.handle_key(key('r'));
     let (_, warnings_after) = ed.state.message_log.totals();
 
-    assert!(ed.state.config.confirm.is_none(), "confirm must still close");
-    assert_eq!(warnings_after, warnings_before + 1, "must warn instead of reloading");
+    assert!(
+        ed.state.config.confirm.is_none(),
+        "confirm must still close"
+    );
+    assert_eq!(
+        warnings_after,
+        warnings_before + 1,
+        "must warn instead of reloading"
+    );
     assert_eq!(ed.focused_buffer_id(), bid_b, "focus must stay put");
     assert_eq!(
         ed.state.buffers.get(bid_a).text().to_string(),
@@ -534,7 +561,11 @@ fn checktime_warns_for_a_changed_non_focused_buffer() {
     assert_ne!(ed.focused_buffer_id(), bid_a);
 
     type_cmd(&mut ed, ":b #");
-    assert_eq!(ed.focused_buffer_id(), bid_a, "setup: :b # must return to A");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid_a,
+        "setup: :b # must return to A"
+    );
 
     rewrite_externally(&tmp_b, "world, externally changed!\n");
     let (_, warnings_before) = ed.state.message_log.totals();
@@ -579,7 +610,10 @@ fn write_all_skips_stale_buffer_but_writes_the_rest_bang_overrides() {
         "A must be skipped, not overwritten"
     );
     assert_eq!(std::fs::read_to_string(&tmp_b).unwrap(), "yworld\n");
-    assert!(ed.state.buffers.get(bid_a).is_dirty(), "A's write was skipped");
+    assert!(
+        ed.state.buffers.get(bid_a).is_dirty(),
+        "A's write was skipped"
+    );
     assert!(!ed.state.buffers.get(bid_b).is_dirty());
     assert_eq!(
         ed.state.status_msg.as_deref(),
@@ -613,7 +647,10 @@ fn unchanged_check_resets_disk_state_to_in_sync() {
 
     let injected_sig = hume_platform::io::read_signature(&tmp).unwrap();
     ed.state.buffers.get_mut(bid).disk_state = DiskState::Changed(injected_sig);
-    assert!(ed.doc().is_disk_stale(), "setup: disk_state must start Changed");
+    assert!(
+        ed.doc().is_disk_stale(),
+        "setup: disk_state must start Changed"
+    );
 
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
 
@@ -699,9 +736,16 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     let (_, warnings_after) = ed.state.message_log.totals();
 
-    assert_eq!(warnings_after, warnings_before + 1, "must warn instead of prompting");
+    assert_eq!(
+        warnings_after,
+        warnings_before + 1,
+        "must warn instead of prompting"
+    );
     assert!(ed.state.config.confirm.is_none());
-    assert!(ed.state.config.picker.is_some(), "the picker must stay open");
+    assert!(
+        ed.state.config.picker.is_some(),
+        "the picker must stay open"
+    );
 
     ed.state.config.picker = None;
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);

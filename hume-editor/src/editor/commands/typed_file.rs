@@ -283,9 +283,7 @@ fn write_buffer_by_id(
     let Some(meta) = buf.file_meta.as_mut() else {
         return Err(CommandError::new("no file name"));
     };
-    if !force
-        && let Some(msg) = stale_write_block(meta)
-    {
+    if !force && let Some(msg) = stale_write_block(meta) {
         return Err(CommandError::new(msg));
     }
     match hume_platform::io::write_file_atomic(&content, meta, force) {

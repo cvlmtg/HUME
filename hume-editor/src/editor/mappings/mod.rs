@@ -97,9 +97,8 @@ impl Editor {
         // visible. Full-modal: `handle_picker_key` always consumes, so while
         // a picker is open `handle_insert`'s own completion intercept never
         // runs — no conflict between the two.
-        let picker_consumed = !confirm_consumed
-            && self.state.config.picker.is_some()
-            && self.handle_picker_key(key);
+        let picker_consumed =
+            !confirm_consumed && self.state.config.picker.is_some() && self.handle_picker_key(key);
 
         // ── Selection menu intercept ─────────────────────────────────────
         // Guarded early-return before mode dispatch, not a new `Mode` — a

@@ -26,10 +26,7 @@ fn bind_sequence_multi_key() {
             force_extend: false,
         },
     );
-    assert!(matches!(
-        trie.walk(&[key!('g')]),
-        WalkResult::Interior
-    ));
+    assert!(matches!(trie.walk(&[key!('g')]), WalkResult::Interior));
     assert!(matches!(
         trie.walk(&[key!('g'), key!('g')]),
         WalkResult::Leaf(ref c) if c.name == "goto-first-line"
@@ -55,10 +52,7 @@ fn bind_sequence_shadows_existing_leaf() {
             force_extend: false,
         },
     );
-    assert!(matches!(
-        trie.walk(&[key!('g')]),
-        WalkResult::Interior
-    ));
+    assert!(matches!(trie.walk(&[key!('g')]), WalkResult::Interior));
     assert!(matches!(
         trie.walk(&[key!('g'), key!('g')]),
         WalkResult::Leaf(ref c) if c.name == "new-cmd"
@@ -91,10 +85,7 @@ fn remove_sequence_multi_key() {
     );
     trie.remove_sequence(&[key!('g'), key!('g')]);
     // Interior node for `g` remains; leaf `gg` is gone.
-    assert!(matches!(
-        trie.walk(&[key!('g')]),
-        WalkResult::Interior
-    ));
+    assert!(matches!(trie.walk(&[key!('g')]), WalkResult::Interior));
     assert!(matches!(
         trie.walk(&[key!('g'), key!('g')]),
         WalkResult::NoMatch
