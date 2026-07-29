@@ -71,9 +71,8 @@ pub(crate) fn spawn_piped(
         .stderr(Stdio::piped());
     let mut child = ReapOnDrop::new(spawn_in_own_group(&mut command)?);
 
-    // Non-inherited stdin: the child sees immediate EOF on read rather than
-    // racing the editor's own key reads on the terminal (same contract as
-    // PLUM's `plum/run!`).
+    // Closes the write end this process holds on the child's stdin pipe —
+    // the "stdin closed immediately" this fn's doc promises.
     drop(child.get_mut().stdin.take());
 
     let stdout = child.get_mut().stdout.take().expect("piped stdout");
@@ -133,9 +132,7 @@ pub(crate) fn read_bounded(mut r: impl Read, limit: usize) -> io::Result<Vec<u8>
         }
     }
     if overflowed {
-        return Err(io::Error::other(format!(
-            "output exceeded {limit} bytes"
-        )));
+        return Err(io::Error::other(format!("output exceeded {limit} bytes")));
     }
     Ok(captured)
 }

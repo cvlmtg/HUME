@@ -37,7 +37,6 @@ impl Editor {
         // borrow of the map that would also need to remove the entry.
         // Mirrors `drain_lsp`'s `let server_ids: Vec<_> = ...collect();`.
         let ids: Vec<u64> = self.state.config.async_jobs.keys().copied().collect();
-        let mut completed = Vec::new();
         for id in ids {
             let Some(pending) = self.state.config.async_jobs.get_mut(&id) else {
                 continue;
@@ -52,17 +51,14 @@ impl Editor {
                 .remove(&id)
                 .expect("just found by get_mut above");
             let code = result.status.and_then(|s| s.code()).unwrap_or(-1);
-            completed.push((
+            self.queue_steel_call(
                 pending.callback,
                 vec![
                     SteelVal::StringV(result.stdout.into()),
                     SteelVal::StringV(result.stderr.into()),
                     SteelVal::IntV(code as isize),
                 ],
-            ));
-        }
-        for (callback, args) in completed {
-            self.queue_steel_call(callback, args);
+            );
         }
     }
 }

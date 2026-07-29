@@ -23,13 +23,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use crate::process::WakeCallback;
 use crate::process::child::{STDERR_CAPTURE_CAP, WakeOnDrop, read_capped, spawn_piped};
 use crate::process::tracked::TrackedChild;
-
-/// Re-exported so existing callers (`hume-editor`'s `host_impl.rs`) keep
-/// naming this as `line_source::WakeCallback` — the canonical definition
-/// now lives in `child.rs`, shared with `job.rs`.
-pub use crate::process::child::WakeCallback;
 
 /// Splits a byte stream into complete lines on `delim`, carrying a trailing
 /// partial line across `push_chunk` calls.

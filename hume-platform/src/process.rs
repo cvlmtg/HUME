@@ -43,6 +43,13 @@ use crate::path::strip_unc_prefix;
 /// consumption shape is meant to be built a third way.
 pub(crate) mod child;
 
+/// Called by a spawned job/source's reader thread on completion, so the
+/// editor's main loop wakes and drains it instead of polling. Defined in
+/// `child` (crate-private), re-exported once here — the single public path
+/// both [`line_source::spawn_line_source`] and [`job::spawn_job`] name in
+/// their signatures, rather than each re-exporting it separately.
+pub use child::WakeCallback;
+
 /// Streaming a child's stdout into complete lines, for the picker's
 /// external-command source (`picker-source-spawn!`).
 pub mod line_source;

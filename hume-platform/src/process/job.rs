@@ -28,12 +28,11 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use crate::process::WakeCallback;
 use crate::process::child::{
     JOB_STDOUT_CAP, STDERR_CAPTURE_CAP, WakeOnDrop, read_bounded, read_capped, spawn_piped,
 };
 use crate::process::tracked::TrackedChild;
-
-pub use crate::process::child::WakeCallback;
 
 /// The complete output of a finished [`SpawnedJob`]: whole stdout (never
 /// *silently* truncated — capped at [`JOB_STDOUT_CAP`], but exceeding it
@@ -69,13 +68,8 @@ struct Captured {
 /// leader, so it's also reaped on a force-exit that skips this `Drop`
 /// entirely — see `tracked`'s module doc.
 pub struct SpawnedJob {
-    cmd: String,
     child: TrackedChild,
     rx: Option<mpsc::Receiver<Captured>>,
-    /// Detached (not joined) on drop — same rationale as
-    /// `SpawnedLineSource::threads`: nothing here needs to flush before
-    /// exit.
-    threads: Vec<thread::JoinHandle<()>>,
 }
 
 /// Spawns `cmd` with `args` (direct argv, no shell), piped stdio, stdin
@@ -109,7 +103,12 @@ pub fn spawn_job(
 
     let job_child = child.clone();
     let job_cmd = cmd.to_string();
-    let job_thread = thread::Builder::new()
+    // The returned `JoinHandle` is intentionally dropped, not stored:
+    // dropping it detaches the thread (same as a bare `thread::spawn`
+    // whose handle is discarded) — nothing here ever needs to join it, so
+    // keeping it around would just be a field that's written once and read
+    // never.
+    thread::Builder::new()
         .name("hume-job".into())
         .spawn(move || {
             // Fires as this closure returns, after the send below — a
@@ -144,10 +143,8 @@ pub fn spawn_job(
         })?;
 
     Ok(SpawnedJob {
-        cmd: cmd.to_string(),
         child,
         rx: Some(rx),
-        threads: vec![job_thread],
     })
 }
 
@@ -172,10 +169,6 @@ fn wait_for_exit(child: &TrackedChild) -> Option<ExitStatus> {
 const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(5);
 
 impl SpawnedJob {
-    pub fn cmd(&self) -> &str {
-        &self.cmd
-    }
-
     /// The child's OS process id, for a signal-0 liveness probe independent
     /// of this handle's own state. Test-support only: every caller is
     /// cross-crate test code, so this can't be `#[cfg(test)]`-gated the way
@@ -220,10 +213,9 @@ impl Drop for SpawnedJob {
         self.child.reap();
         // Bounded channel (capacity 1): the job thread can be blocked
         // mid-`send` if `try_take_result` was never polled — dropping the
-        // receiver makes that `send` return `Err`, letting the thread exit
-        // even though it's detached rather than joined above.
+        // receiver makes that `send` return `Err`, letting the detached
+        // thread exit on its own.
         self.rx = None;
-        self.threads.clear();
     }
 }
 

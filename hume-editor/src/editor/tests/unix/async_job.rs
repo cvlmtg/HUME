@@ -34,7 +34,9 @@ fn end_to_end_drain_delivers_the_full_result_exactly_once() {
     let args = vec!["-c".to_string(), "printf 'hi'".to_string()];
     let id = spawn_async(&mut ed, "sh", args, SteelVal::BoolV(false));
 
-    drain_sources_until(&mut ed, |ed| !ed.state.config.pending_steel_calls.is_empty());
+    drain_sources_until(&mut ed, |ed| {
+        !ed.state.config.pending_steel_calls.is_empty()
+    });
 
     assert!(
         !ed.state.config.async_jobs.contains_key(&id),
@@ -63,7 +65,9 @@ fn nonzero_exit_and_stderr_reach_the_callback() {
     let args = vec!["-c".to_string(), "echo boom >&2; exit 3".to_string()];
     spawn_async(&mut ed, "sh", args, SteelVal::BoolV(false));
 
-    drain_sources_until(&mut ed, |ed| !ed.state.config.pending_steel_calls.is_empty());
+    drain_sources_until(&mut ed, |ed| {
+        !ed.state.config.pending_steel_calls.is_empty()
+    });
 
     let (_, call_args) = &ed.state.config.pending_steel_calls[0];
     assert_eq!(call_args[1], SteelVal::StringV("boom\n".into()));
