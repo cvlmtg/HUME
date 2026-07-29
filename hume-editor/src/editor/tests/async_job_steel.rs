@@ -1,8 +1,8 @@
 // The Steel surface for `spawn-async!`/`cancel-async!`.
-// Portable half: the empty-cmd raise path and cancelling an unknown id —
-// neither ever actually spawns a live child, so they need no `sh`. See
-// `tests/unix/async_job_steel.rs` for the real-spawn end-to-end coverage
-// (happy path, nonzero exit, missing binary, kill-on-cancel).
+// Portable half: cancelling an unknown id, which never actually spawns a
+// live child, so it needs no `sh`. See `tests/unix/async_job_steel.rs` for
+// the real-spawn end-to-end coverage (happy path, nonzero exit, missing
+// binary and empty-cmd spawn failures, kill-on-cancel).
 
 use std::path::Path;
 
@@ -18,25 +18,6 @@ fn run(ed: &mut Editor, tmp: &Path, source: &str) {
 
 fn call(ed: &mut Editor, name: &str) {
     ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
-}
-
-#[test]
-fn empty_cmd_raises_naming_the_arg() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(define-command! "spawn-empty" "" (lambda ()
-             (spawn-async! "" '() #f (lambda (out err code) (void)))))"#,
-    );
-    call(&mut ed, "spawn-empty");
-
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
-    assert!(
-        msg.contains("spawn-async!") && msg.contains("cmd"),
-        "error should name the builtin and the empty cmd, got {msg:?}"
-    );
 }
 
 #[test]

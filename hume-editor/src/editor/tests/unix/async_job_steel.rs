@@ -5,6 +5,8 @@
 // the Rust-only registry/drain coverage that skips Steel entirely.
 
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use super::*;
@@ -99,6 +101,61 @@ fn missing_binary_fires_the_callback_with_code_negative_one() {
     ed.drain_pending_steel_calls();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "-1");
+}
+
+#[test]
+fn empty_cmd_fires_the_callback_instead_of_raising() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define-command! "go" "" (lambda ()
+          (spawn-async! "" '() #f
+            (lambda (out err code)
+              (log! 'info (number->string code))))))
+        "#,
+    );
+    call(&mut ed, "go");
+    // Same "fires synchronously inside spawn-async!" shape as the missing-
+    // binary case above — no `drain_async_sources` needed.
+    ed.drain_pending_steel_calls();
+
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "-1",
+        "an empty cmd must fire the documented failure triple, never raise"
+    );
+}
+
+#[test]
+fn spawn_failure_wakes_the_event_loop() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    let woken = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&woken);
+    ed.state.wake = Arc::new(move || {
+        counted.fetch_add(1, Ordering::SeqCst);
+    });
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define-command! "go" "" (lambda ()
+          (spawn-async! "definitely-not-a-real-binary-xyz" '() #f
+            (lambda (out err code) (void)))))
+        "#,
+    );
+    call(&mut ed, "go");
+
+    assert_eq!(
+        woken.load(Ordering::SeqCst),
+        1,
+        "a spawn failure must wake the loop the same way a completing job does, \
+         so a callback chained from inside a queued Steel call isn't stranded \
+         until the next keystroke"
+    );
 }
 
 #[test]

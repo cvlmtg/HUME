@@ -35,9 +35,10 @@ pub(crate) fn spawn_async(
     callback: SteelVal,
 ) -> SteelResult {
     let cmd = string_arg(cmd, "spawn-async! cmd")?;
-    if cmd.trim().is_empty() {
-        steel::stop!(Generic => "spawn-async!: cmd must not be empty");
-    }
+    // No empty-cmd guard here, unlike `picker-source-spawn!`: this builtin's
+    // contract is "callback always fires, never raises" (see the doc
+    // above), and `Command::new("")` already fails with ENOENT, producing
+    // exactly the documented failure triple without a special case.
     let args = list_to_strings(args, "spawn-async! args")?;
     let cwd = optional_path_arg(cwd, "spawn-async! cwd")?;
 

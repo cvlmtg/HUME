@@ -695,6 +695,15 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
                         steel::rvals::SteelVal::IntV(-1),
                     ],
                 ));
+                // The `Ok` arm needs no wake: the job thread wakes the loop
+                // itself on completion. This callback has no background
+                // thread behind it, so without this it would sit unfired
+                // until something else happens to wake the loop — e.g.
+                // never, if `spawn-async!` was itself called from inside a
+                // queued Steel callback (`prepare_frame`'s
+                // `drain_pending_steel_calls` won't re-drain what it pushes
+                // to mid-drain).
+                (self.state.wake)();
             }
         }
         id
