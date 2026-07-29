@@ -321,6 +321,59 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
     );
 }
 
+// Fail oracle for this test: `EditorHostImpl::open_picker`'s initial-items
+// `push` (seeding the empty list `picker!` was given) unconditionally
+// clears `PickerSession::pending` — without the `set_pending` call that
+// restores `#:pending`'s caller intent afterward, this session would read
+// as "already populated" from frame one, and `is_pending()` would be `#f`
+// even before `git status` has returned anything.
+#[test]
+fn git_modified_picker_is_pending_until_git_status_returns() {
+    let guard = HumeRuntimeGuard::new();
+    let sandbox = CwdSandbox::new();
+    git_init(sandbox.raw());
+    std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
+
+    // Bare tempdir(), not safe_tempdir() — see the comment at this pattern's
+    // first occurrence above (`files_picker_in_git_repo_uses_git_index_and_opens_selection`).
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.set_cwd(&sandbox.path()).unwrap();
+
+    ed.feed_key(key('g'));
+    ed.feed_key(key('m'));
+    assert!(
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .expect("picker open")
+            .is_pending(),
+        "must be pending the instant it opens, before `git status` has had a \
+         chance to run"
+    );
+
+    drain_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| !p.is_pending())
+            .unwrap_or(false)
+    });
+
+    assert_eq!(
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .expect("picker open")
+            .total_len(),
+        1,
+        "the result that arrived must actually be there once pending clears"
+    );
+}
+
 #[test]
 fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory() {
     let guard = HumeRuntimeGuard::new();

@@ -2082,6 +2082,7 @@ impl Editor {
                     selected_row,
                     matched: session.matched_len(),
                     total: session.total_len(),
+                    pending: session.is_pending(),
                     x: geo.x,
                     y: geo.y,
                     width: geo.width,

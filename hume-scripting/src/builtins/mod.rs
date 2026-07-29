@@ -207,7 +207,11 @@ macro_rules! builtins {
 // this session. Allowed from any mode, but closes any open completion
 // session first (one modal owner at a time). on-select fires exactly once:
 // the selected payload on Enter, or #f on Esc, picker-close!, or being
-// replaced by a second picker! call.
+// replaced by a second picker! call. #:pending marks a picker opened empty
+// with more results still arriving via spawn-async! (surfaced to the UI as
+// a "still populating" indicator, cleared by the first applied push!) — a
+// picker-source-spawn!-backed picker needs no such flag, since an attached
+// source already implies "still populating" on its own.
 //
 // picker-push! — appends items to the open picker, gated by the token
 // open_picker returned. A stale token (picker closed/replaced since) or no
@@ -480,7 +484,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "close-drawer!" ui::close_drawer();
 
         // Fuzzy-picker widget.
-        cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal);
+        cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal, pending: SteelVal);
         cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
         cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal);
         cmd "%picker-close!" ui::picker_close(token: SteelVal);

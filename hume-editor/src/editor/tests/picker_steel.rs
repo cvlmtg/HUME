@@ -469,6 +469,7 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
             vec![("one".to_string(), SteelVal::StringV("p1".into()))],
             String::new(),
             SteelVal::Void,
+            false,
         )
         .unwrap();
     assert!(ed.state.config.picker.is_some());
@@ -504,6 +505,7 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
             vec![("one".to_string(), SteelVal::StringV("p1".into()))],
             String::new(),
             SteelVal::Void,
+            false,
         )
         .unwrap();
 

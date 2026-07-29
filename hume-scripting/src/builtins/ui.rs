@@ -142,18 +142,21 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal
         .collect()
 }
 
-/// `(%picker! items on-select prompt)` — the `picker!` Scheme wrapper
-/// supplies `#:prompt`'s default. Returns the new session's token.
+/// `(%picker! items on-select prompt pending)` — the `picker!` Scheme
+/// wrapper supplies `#:prompt`'s/`#:pending`'s defaults. Returns the new
+/// session's token.
 pub(crate) fn picker(
     ctx: &mut SteelCtx,
     items: SteelVal,
     on_select: SteelVal,
     prompt: SteelVal,
+    pending: SteelVal,
 ) -> SteelResult {
     let items = picker_items(items, "picker! items")?;
     let prompt = string_arg(prompt, "picker! #:prompt")?;
+    let pending = bool_arg(pending, "picker! #:pending")?;
     let token = require_cap(ctx.host.ui(), "picker!")?
-        .open_picker(items, prompt, on_select)
+        .open_picker(items, prompt, on_select, pending)
         .map_err(generic_err)?;
     Ok(SteelVal::IntV(token as isize))
 }

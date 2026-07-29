@@ -62,6 +62,14 @@ pub(crate) struct PickerSession {
     /// child, and this field is dropped whenever the session itself is
     /// (`close_picker`'s `take()`, `open_picker`'s replace).
     source: Option<SpawnedLineSource>,
+    /// Set by `picker!`'s `#:pending` for a caller whose results arrive via
+    /// `spawn-async!` rather than `picker-source-spawn!` — the latter
+    /// already has its own "still populating" signal (`source.is_some()`),
+    /// so this flag only exists for the shape that has no `source` to ask.
+    /// Cleared by the first `push` that actually applies (matching token),
+    /// even an empty batch — a clean `git status`, say, still means the job
+    /// is done. See [`is_pending`](Self::is_pending).
+    pending: bool,
 }
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
@@ -70,7 +78,7 @@ impl PickerSession {
     /// Opens empty — the caller's initial item list (from `picker!`) arrives
     /// through the same `push` path as any later batch, matching B6's "open
     /// empty, then attach source" composition.
-    pub(crate) fn new(on_select: SteelVal, prompt: String) -> Self {
+    pub(crate) fn new(on_select: SteelVal, prompt: String, pending: bool) -> Self {
         Self {
             items: Vec::new(),
             query: String::new(),
@@ -83,6 +91,7 @@ impl PickerSession {
             prompt,
             token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
             source: None,
+            pending,
         }
     }
 
@@ -94,6 +103,23 @@ impl PickerSession {
         &self.prompt
     }
 
+    /// Whether results are still arriving: either `picker!`'s `#:pending`
+    /// hasn't been cleared by a matching `push` yet, or a streaming
+    /// `picker-source-spawn!` source is still attached (cleared once its
+    /// reader disconnects and the caller consumes it via `take_source`).
+    pub(crate) fn is_pending(&self) -> bool {
+        self.pending || self.source.is_some()
+    }
+
+    /// Overrides the pending flag directly — `EditorHostImpl::open_picker`
+    /// calls this right after its own initial-items `push` to restore
+    /// `#:pending`'s caller intent, since that push (unconditional, to seed
+    /// whatever `picker!` was given up front) would otherwise clear it even
+    /// for a caller that opened empty with `#:pending #t` and no seed items.
+    pub(crate) fn set_pending(&mut self, pending: bool) {
+        self.pending = pending;
+    }
+
     /// Appends `items` and reranks, but only if `token` matches this
     /// session's token. A mismatch is expected-normal (a late batch from a
     /// picker the user already closed or replaced) — silent no-op, not an
@@ -102,6 +128,7 @@ impl PickerSession {
         if token != self.token {
             return false;
         }
+        self.pending = false;
         self.items.extend(items);
         self.rerank();
         true
@@ -344,7 +371,7 @@ mod tests {
     }
 
     fn open() -> PickerSession {
-        PickerSession::new(dummy_on_select(), String::new())
+        PickerSession::new(dummy_on_select(), String::new(), false)
     }
 
     fn payload_str(v: &SteelVal) -> &str {
@@ -369,8 +396,43 @@ mod tests {
 
     #[test]
     fn prompt_is_stored_verbatim() {
-        let s = PickerSession::new(dummy_on_select(), "files: ".to_string());
+        let s = PickerSession::new(dummy_on_select(), "files: ".to_string(), false);
         assert_eq!(s.prompt(), "files: ");
+    }
+
+    #[test]
+    fn not_pending_by_default() {
+        assert!(!open().is_pending());
+    }
+
+    #[test]
+    fn pending_flag_set_on_open_and_cleared_by_a_matching_push() {
+        let mut s = PickerSession::new(dummy_on_select(), String::new(), true);
+        assert!(s.is_pending());
+        let token = s.token();
+        assert!(s.push(token, items(&["a"])));
+        assert!(!s.is_pending(), "a matching push must clear pending");
+    }
+
+    #[test]
+    fn pending_flag_cleared_by_a_matching_push_even_with_an_empty_batch() {
+        // A clean `git status` still means the job finished — pending must
+        // not stay stuck just because there was nothing to add.
+        let mut s = PickerSession::new(dummy_on_select(), String::new(), true);
+        let token = s.token();
+        assert!(s.push(token, items(&[])));
+        assert!(!s.is_pending());
+    }
+
+    #[test]
+    fn pending_flag_survives_a_stale_token_push() {
+        let mut s = PickerSession::new(dummy_on_select(), String::new(), true);
+        let stale = s.token().wrapping_add(1);
+        assert!(!s.push(stale, items(&["x"])));
+        assert!(
+            s.is_pending(),
+            "a rejected push must not clear pending — the real batch hasn't arrived yet"
+        );
     }
 
     #[test]

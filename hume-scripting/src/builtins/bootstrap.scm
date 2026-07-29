@@ -114,8 +114,8 @@
 (define (show-popup! text #:anchor [anchor 'cursor] #:kind [kind 'sticky] #:lang [lang #f])
   (%show-popup! text anchor kind lang))
 
-(define (picker! items on-select #:prompt [prompt ""])
-  (%picker! items on-select prompt))
+(define (picker! items on-select #:prompt [prompt ""] #:pending [pending #f])
+  (%picker! items on-select prompt pending))
 
 (define (picker-source-spawn! token cmd args #:cwd [cwd #f] #:nul [nul #f])
   (%picker-source-spawn! token cmd args cwd nul))

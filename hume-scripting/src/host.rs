@@ -623,8 +623,8 @@ pub trait UiHost {
     /// call back with `#f`).
     fn close_drawer(&mut self) -> Result<(), String>;
 
-    /// `(picker! items on-select #:prompt "…")` — opens the fuzzy-finder
-    /// panel. `items` are `(display . payload)`
+    /// `(picker! items on-select #:prompt "…" #:pending [#f])` — opens the
+    /// fuzzy-finder panel. `items` are `(display . payload)`
     /// pairs; `payload` is handed back to `on-select` verbatim, never
     /// interpreted by Rust. Returns a token that scopes later
     /// `picker-push!` calls to this session. Unlike the menu/drawer, the
@@ -633,11 +633,17 @@ pub trait UiHost {
     /// at a time. `on-select` fires exactly once, queued (never invoked
     /// inline): the selected payload on `Enter`, or `#f` on `Esc`,
     /// `picker-close!`, or being replaced by a second `picker!` call.
+    /// `pending`: set when a caller opens empty and expects more results
+    /// via `spawn-async!` rather than `picker-source-spawn!` (which already
+    /// implies "still populating" on its own) — surfaced to the UI as a
+    /// "results still arriving" indicator, cleared by the first `push!`
+    /// that actually applies.
     fn open_picker(
         &mut self,
         items: Vec<(String, steel::rvals::SteelVal)>,
         prompt: String,
         on_select: steel::rvals::SteelVal,
+        pending: bool,
     ) -> Result<u64, String>;
 
     /// `(picker-push! token items)` — appends `items` to the open picker's

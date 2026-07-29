@@ -53,6 +53,11 @@ pub(crate) struct PickerViewState {
     /// right-aligned `"matched/total"` counter on the input row.
     pub(crate) matched: usize,
     pub(crate) total: usize,
+    /// `PickerSession::is_pending` — appends a "still arriving" marker to
+    /// the counter so a picker opened empty (`spawn-async!`-backed, or a
+    /// live `picker-source-spawn!` source) doesn't read as "zero results"
+    /// while its job is still running.
+    pub(crate) pending: bool,
     /// Outer footprint (including the 1-cell frame), centered in the panes
     /// region this same frame.
     pub(crate) x: u16,
@@ -221,7 +226,11 @@ pub(crate) fn draw_picker_panel(
     let inner_width = (outer.width - 2) as usize;
     let input_y = outer.y + 1;
 
-    let counts = format!("{}/{}", state.matched, state.total);
+    let counts = if state.pending {
+        format!("{}/{} …", state.matched, state.total)
+    } else {
+        format!("{}/{}", state.matched, state.total)
+    };
     let counts_width = unicode_width::UnicodeWidthStr::width(counts.as_str());
 
     // Clip the prompt itself only in the pathological case where it alone

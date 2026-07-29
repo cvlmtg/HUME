@@ -16,7 +16,7 @@ fn marker(name: &str) -> SteelVal {
 }
 
 fn open_test_picker_with_callback(ed: &mut Editor, items: &[&str], callback: SteelVal) {
-    let mut session = PickerSession::new(callback, String::new());
+    let mut session = PickerSession::new(callback, String::new(), false);
     let token = session.token();
     let picker_items: Vec<PickerItem> = items
         .iter()
@@ -34,7 +34,7 @@ fn open_test_picker(ed: &mut Editor, items: &[&str]) {
 }
 
 fn open_test_picker_with_prompt(ed: &mut Editor, items: &[&str], prompt: &str) {
-    let mut session = PickerSession::new(marker("cb"), prompt.to_string());
+    let mut session = PickerSession::new(marker("cb"), prompt.to_string(), false);
     let token = session.token();
     let picker_items: Vec<PickerItem> = items
         .iter()

@@ -122,7 +122,10 @@
 ;;; `picker-source-spawn!`: a streaming source's display *is* its payload,
 ;;; but this picker needs an "XY "-prefixed display and a bare-path payload
 ;;; built together from the fully parsed output, so `spawn-async!`'s
-;;; whole-output-at-once shape fits, not per-line batches. `on-select`
+;;; whole-output-at-once shape fits, not per-line batches. `#:pending #t`
+;;; marks the empty open as "results still arriving" — unlike
+;;; `picker-source-spawn!`'s source, `spawn-async!` gives the picker store no
+;;; signal of its own that a fetch is in flight. `on-select`
 ;;; resolves the chosen repo-root-relative path against `root` before
 ;;; opening it: `open-buffer!` resolves a relative path against the editor's
 ;;; cwd (`:pwd`), which only coincides with the repo root when `:pwd` *is*
@@ -136,7 +139,8 @@
                            (if path
                                (switch-to-buffer! (open-buffer! (path-join root path)))
                                (cancel-async! job-id)))
-                         #:prompt "git: ")])
+                         #:prompt "git: "
+                         #:pending #t)])
     (set! job-id
       (spawn-async! "git"
                     (list "status" "--porcelain" "-z" "--no-renames"

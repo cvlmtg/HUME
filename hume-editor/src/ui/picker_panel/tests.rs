@@ -41,6 +41,7 @@ fn state(
         selected_row,
         matched: rows.len(),
         total: rows.len(),
+        pending: false,
         x: geo.x,
         y: geo.y,
         width: geo.width,
@@ -263,6 +264,31 @@ fn draw_picker_panel_does_not_rewindow_rows() {
         !painted.contains("item3"),
         "beyond list_rows must not paint"
     );
+}
+
+#[test]
+fn draw_picker_panel_pending_marks_the_counter_snapshot() {
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let geo = PanelGeometry {
+        x: 2,
+        y: 3,
+        width: 14,
+        height: 6,
+        list_rows: 3,
+    };
+    let mut s = state("ab", &[], None, &geo);
+    s.pending = true;
+    let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+
+    insta::assert_snapshot!(symbols_in(&buf, outer), @r"
+    ┌────────────┐
+    │ab     0/0 …│
+    │            │
+    │            │
+    │            │
+    └────────────┘
+    ");
 }
 
 #[test]

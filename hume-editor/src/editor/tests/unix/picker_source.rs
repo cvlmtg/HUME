@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use steel::rvals::SteelVal;
 
 fn open_bare_picker(ed: &mut Editor) {
-    let session = PickerSession::new(SteelVal::BoolV(false), String::new());
+    let session = PickerSession::new(SteelVal::BoolV(false), String::new(), false);
     picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
 }
 
@@ -183,7 +183,7 @@ fn replacing_the_session_kills_the_previous_source_child() {
 
     // A fresh `open_picker` call replaces (and — via `close_picker` — drops)
     // whatever session was open, same as a second `picker!` from Steel.
-    let replacement = PickerSession::new(SteelVal::BoolV(false), String::new());
+    let replacement = PickerSession::new(SteelVal::BoolV(false), String::new(), false);
     picker::open_picker(&mut ed.state, Some(&mut ed.lsp), replacement);
 
     assert!(

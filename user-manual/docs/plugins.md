@@ -387,6 +387,11 @@ replaced before the command finishes. `(picker-push! token items)` appends a bat
 ordinary `(display . payload)` items instead, for a source that produces its own results
 asynchronously (an LSP request, a timer) rather than through a spawned command.
 
+`picker-source-spawn!` already shows the user something is still loading. A picker
+populated by `picker-push!` from a `spawn-async!` callback has no such signal of its
+own, so pass `#:pending #t` to `picker!` when opening empty this way — it marks the
+panel as "results still arriving" until the first `picker-push!` call lands.
+
 ## Bundled core plugins
 
 HUME ships several built-in plugins — see [Core Plugins](core-plugins.md) for the full list and what each does.
