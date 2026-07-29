@@ -5,7 +5,7 @@ use slotmap::{SlotMap, new_key_type};
 use crate::format::FormatScratch;
 use crate::pane::{Pane, WhitespaceConfig, WrapMode};
 use crate::providers::{
-    BottomBandProvider, GutterCell, InlineInsert, StatuslineProvider, SyntaxSpans, TabBarProvider,
+    BottomBandProvider, GutterCell, StatuslineProvider, SyntaxSpans, TabBarProvider,
 };
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
@@ -42,10 +42,6 @@ pub struct FrameScratch {
     pub format: FormatScratch,
     /// Buffers for the Style stage (Stage 3).
     pub style: StyleScratch,
-    /// Inline inserts collected for the current buffer line. Kept separate from
-    /// `format` so the fused pipeline can borrow `&inline_inserts` and
-    /// `&mut format` simultaneously without a borrow conflict.
-    pub inline_inserts: Vec<InlineInsert>,
     /// Scratch storage for gutter cells rendered per row.
     pub gutter_cells: Vec<GutterCell>,
     /// Pre-computed gutter column widths used by the render stage.
@@ -57,7 +53,6 @@ impl FrameScratch {
         Self {
             format: FormatScratch::new(),
             style: StyleScratch::new(),
-            inline_inserts: Vec::new(),
             gutter_cells: Vec::new(),
             col_widths: Vec::new(),
         }
@@ -67,15 +62,8 @@ impl FrameScratch {
     pub fn clear(&mut self) {
         self.format.clear();
         self.style.clear();
-        self.inline_inserts.clear();
         self.gutter_cells.clear();
         self.col_widths.clear();
-    }
-
-    /// Reset only the per-line buffers reused between buffer lines in the fused pipeline.
-    pub(crate) fn clear_line(&mut self) {
-        self.format.clear_line_bufs();
-        self.style.styles.clear();
     }
 }
 
@@ -474,39 +462,4 @@ pub(crate) struct PaneRenderCtx<'a> {
     /// `Some` for non-focused panes — blend every written cell's fg/bg toward
     /// this target by `factor`. `None` for the focused pane.
     pub dim: Option<(ratatui::style::Color, f32)>,
-}
-
-// ---------------------------------------------------------------------------
-// Viewport cursor — tracks skip / emit / full state across all row sources
-// ---------------------------------------------------------------------------
-
-/// Mutable progress state for the fused render loop.
-///
-/// Centralises the three pieces of state that every row source (virtual lines,
-/// buffer lines, filler rows) must consult before emitting a display row.
-struct ViewportCursor {
-    /// Next screen row to write to.
-    screen_row: u16,
-    /// Maximum screen rows available for content.
-    viewport_height: u16,
-    /// Rows still to skip at the top (viewport scrolled into a wrapped line).
-    top_skip_remaining: usize,
-    /// Index into the sorted `virtual_lines` scratch buffer.
-    vl_cursor: usize,
-}
-
-impl ViewportCursor {
-    fn is_full(&self) -> bool {
-        self.screen_row >= self.viewport_height
-    }
-
-    /// If rows remain to be skipped, decrement the counter and return `true`.
-    fn try_skip(&mut self) -> bool {
-        if self.top_skip_remaining > 0 {
-            self.top_skip_remaining -= 1;
-            true
-        } else {
-            false
-        }
-    }
 }

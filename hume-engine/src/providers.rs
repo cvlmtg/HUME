@@ -219,9 +219,9 @@ impl VirtualLineAnchor {
 /// A virtual (non-buffer) display row injected by a provider.
 ///
 /// Providers supply plain `text` + scoped byte-range `segments` rather than
-/// pre-built `Grapheme`s: the pipeline (`emit_virtual_row`) does the grapheme
-/// segmentation and width/col bookkeeping itself, the same as it does for
-/// real buffer lines, so providers can't get that arithmetic wrong. Virtual
+/// pre-built `Grapheme`s: `rows::RowMap` does the grapheme segmentation and
+/// width/col bookkeeping itself, the same as it does for real buffer lines, so
+/// providers can't get that arithmetic wrong. Virtual
 /// lines own their own layout — `text` is not subject to the buffer's wrap
 /// mode or tab width.
 #[derive(Clone)]
@@ -231,7 +231,7 @@ pub struct VirtualLine {
     pub text: String,
     /// Byte ranges into `text`, each tagged with the `ScopeId` its graphemes
     /// should resolve to. Bytes not covered by any segment get no scope
-    /// (`emit_virtual_row` falls back to `ui.virtual_text`). Segments must
+    /// (the render stage falls back to `ui.virtual_text`). Segments must
     /// have been interned via `ScopeRegistry` before the first render (same
     /// contract as `HighlightSource`).
     pub segments: Vec<(Range<usize>, ScopeId)>,

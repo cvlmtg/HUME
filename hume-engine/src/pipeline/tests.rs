@@ -4,9 +4,7 @@ use super::*;
 use ratatui::layout::Rect;
 
 use super::layout::split_rect;
-use super::pane_render::emit_virtual_row;
 use crate::providers::VirtualLineAnchor;
-use crate::render::{self, ComposeCtx};
 use crate::types::{ResolvedStyle, RowKind};
 
 fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
@@ -18,34 +16,36 @@ fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
     }
 }
 
-// ── emit_virtual_row scope styling (B3/B4) ──────────────────────────
+// ── Virtual-row scope styling (B3/B4) ───────────────────────────────
 
-fn make_compose_ctx<'a>(
-    visible: &'a crate::layout::VisibleRange,
-    viewport: &'a crate::pane::ViewportState,
-    theme: &'a Theme,
-    pane_rect: Rect,
-    rope: &'a ropey::Rope,
-) -> ComposeCtx<'a> {
-    ComposeCtx {
-        gutter_columns: &[],
-        visible,
-        viewport,
-        mode: EditorMode::Normal,
-        primary_head_line: 0,
-        tab_width: 4,
-        tilde_style: theme.ui.virtual_text.into(),
-        indent_guide_style: theme.ui.indent_guide.into(),
-        show_indent_guides: true,
-        pane_rect,
-        theme,
-        pane_bg: None,
-        rope,
+/// Emits one `Before(0)` row whose first grapheme carries `scope` and whose
+/// second carries none.
+struct ScopedVirtualLine {
+    scope: crate::types::ScopeId,
+}
+
+impl crate::providers::VirtualLineSource for ScopedVirtualLine {
+    fn virtual_lines(
+        &self,
+        visible_lines: std::ops::Range<usize>,
+        _content_width: u16,
+        out: &mut Vec<crate::providers::VirtualLine>,
+    ) {
+        if visible_lines.contains(&0) {
+            out.push(crate::providers::VirtualLine {
+                anchor: VirtualLineAnchor::Before(0),
+                provider_id: 0,
+                text: "H~".to_string(),
+                // "H" (byte 0..1) carries the scope; "~" (byte 1..2) carries
+                // none and must fall back to `ui.virtual_text`.
+                segments: vec![(0..1, self.scope)],
+            });
+        }
     }
 }
 
 #[test]
-fn emit_virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
+fn virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
     // Two graphemes: one carries an interned scope (must resolve to that
     // scope's fg), one carries no scope (must fall back to ui.virtual_text).
     let mut registry = ScopeRegistry::new();
@@ -68,35 +68,33 @@ fn emit_virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
     let mut theme = Theme::new(styles_map, ResolvedStyle::default());
     theme.bake(&registry);
 
-    let mut scratch = FrameScratch::new();
-    scratch
-        .format
-        .virtual_lines
-        .push(crate::providers::VirtualLine {
-            anchor: VirtualLineAnchor::Before(0),
-            provider_id: 0,
-            text: "H~".to_string(),
-            // "H" (byte 0..1) carries the scope; "~" (byte 1..2) carries
-            // none and must fall back to `ui.virtual_text`.
-            segments: vec![(0..1, hint_scope)],
-        });
+    let rope = ropey::Rope::from_str("z\n");
+    let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
+    let bid = bids.insert(());
+    let mut pane = Pane::new(bid, WrapMode::None);
+    pane.viewport = crate::pane::ViewportState::new(20, 5);
+    pane.providers
+        .add_virtual_line_source(Box::new(ScopedVirtualLine { scope: hint_scope }));
 
-    let visible = crate::layout::VisibleRange {
-        line_range: 0..1,
-        top_skip_rows: 0,
-        content_height: 5,
-        content_width: 20,
-        gutter_width: 0,
-        last_line_idx: 0,
-    };
-    let viewport = crate::pane::ViewportState::new(20, 5);
     let pane_rect = rect(0, 0, 20, 5);
-    let rope = ropey::Rope::new();
-    let compose_ctx = make_compose_ctx(&visible, &viewport, &theme, pane_rect, &rope);
+    let pane_ctx = PaneRenderCtx {
+        pane: &pane,
+        rope: &rope,
+        syntax: None,
+        theme: &theme,
+        rect: pane_rect,
+        settings: PaneRenderSettings {
+            mode: EditorMode::Normal,
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+            show_indent_guides: true,
+        },
+        dim: None,
+    };
+    let mut scratch = FrameScratch::new();
     let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
-    let mut canvas = render::PaneCanvas::new(&mut buf, None);
-
-    emit_virtual_row(0, 0, 0, &mut scratch, &compose_ctx, &mut canvas);
+    render_pane(&pane_ctx, &mut scratch, &mut buf);
 
     let scoped_cell = buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap();
     assert_eq!(
@@ -213,11 +211,26 @@ fn before_virtual_line_skipped_one_row_at_a_time() {
         "offset 2 skips V and wrap row 0"
     );
 
-    let offset4 = render_wrapped_pane_with_virtual_line(4, VirtualLineAnchor::Before(0));
+    let offset3 = render_wrapped_pane_with_virtual_line(3, VirtualLineAnchor::Before(0));
     assert_eq!(
-        cell_symbol(&offset4, 0, 0),
-        "z",
-        "offset 4 skips the whole 4-row block — line 1 shows"
+        cell_symbol(&offset3, 0, 0),
+        "c",
+        "offset 3 reaches the block's last row"
+    );
+
+    // Offset 4 is past the end of a 4-row block: not an address in the
+    // document, so it clamps to the block's last row. `scroll::clamp_viewport_top`
+    // resolves the same state the same way — which is the point. The renderer
+    // used to treat an over-large offset as rows-to-skip and carry over into
+    // line 1 while the clamp said line 0's last row, so the two halves
+    // disagreed about one viewport state; both now read the address the same
+    // way, and production never gets here anyway (the clamp runs every frame
+    // before render).
+    let past_end = render_wrapped_pane_with_virtual_line(4, VirtualLineAnchor::Before(0));
+    assert_eq!(
+        cell_symbol(&past_end, 0, 0),
+        "c",
+        "an offset past the block clamps to its last row, as the clamp does"
     );
 }
 

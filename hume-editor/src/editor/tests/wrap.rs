@@ -184,8 +184,8 @@ fn wrap_toggle_on_zeroes_scroll_offsets() {
 /// Turning wrap *off* must also zero `top_row_offset`. Unwrapped scrolling
 /// never touches it (`ensure_cursor_visible_unwrapped` only moves `top_line`),
 /// so a sub-row offset left over from wrapped scrolling would otherwise
-/// persist and get forwarded verbatim by the renderer as `top_skip_rows`,
-/// shifting unwrapped content down by that many rows.
+/// persist, and the renderer would start its row walk from it, shifting
+/// unwrapped content down by that many rows.
 #[test]
 fn wrap_toggle_off_zeroes_top_row_offset() {
     let mut ed = editor_from("-[a]>b\n");

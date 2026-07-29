@@ -856,7 +856,7 @@ impl BufferOverrides {
             tab: self.whitespace_tab.unwrap_or(global.whitespace.tab),
             newline: self.whitespace_newline.unwrap_or(global.whitespace.newline),
             // Rendering chars are not per-buffer configurable; always from global.
-            ..global.whitespace.clone()
+            ..global.whitespace
         }
     }
 

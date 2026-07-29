@@ -201,9 +201,9 @@ impl Editor {
         // Any actual mode change invalidates the sub-row scroll state:
         // off→on starts wrapping fresh; on→off leaves non-wrap rendering with
         // no sub-row concept (nothing in unwrapped scrolling ever clears a
-        // stale `top_row_offset`, and the renderer forwards it verbatim as
-        // `top_skip_rows` regardless of wrap mode); on→on width/style changes
-        // can leave a sub-row offset past the new line's row count.
+        // stale `top_row_offset`, and the renderer starts its row walk from it
+        // regardless of wrap mode); on→on width/style changes can leave a
+        // sub-row offset past the new line's row count.
         if mode_changed {
             let vp = self.viewport_mut();
             vp.horizontal_offset = 0;

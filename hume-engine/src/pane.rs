@@ -248,7 +248,7 @@ impl std::fmt::Display for WhitespaceRender {
 }
 
 /// Configuration for whitespace indicator rendering.
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct WhitespaceConfig {
     pub space: WhitespaceRender,
     pub tab: WhitespaceRender,
