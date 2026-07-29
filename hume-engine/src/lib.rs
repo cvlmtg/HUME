@@ -5,6 +5,7 @@ pub mod pane;
 pub mod pipeline;
 pub mod providers;
 pub mod render;
+pub mod rows;
 pub mod style;
 pub mod theme;
 pub mod types;

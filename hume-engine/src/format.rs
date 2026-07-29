@@ -6,6 +6,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 use crate::providers::{InlineInsert, ProviderSet, VirtualLine, VirtualLineAnchor};
+use crate::rows::RowsBreakdown;
 use crate::types::{CellContent, DisplayRow, Grapheme, RowKind};
 
 // ---------------------------------------------------------------------------
@@ -106,30 +107,6 @@ pub fn count_visual_rows(
         scratch,
     );
     scratch.display_rows.len()
-}
-
-/// Display-row breakdown for a single buffer line: virtual rows anchored
-/// `Before` it, its own wrap/content rows, and virtual rows anchored `After`
-/// it. `total()` is the number of screen rows the line's whole visual block
-/// (virtual rows included) occupies.
-///
-/// This is the single source of truth for "how many display rows does line
-/// N occupy" once any `VirtualLineSource` exists — editor scroll/cursor math
-/// must stop counting `content` alone (via `count_visual_rows`) and use this
-/// instead, or a virtual block above/below a line throws off both scrolling
-/// and cursor placement by the number of virtual rows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct RowsBreakdown {
-    pub before: usize,
-    pub content: usize,
-    pub after: usize,
-}
-
-impl RowsBreakdown {
-    /// Total screen rows this line's visual block occupies.
-    pub fn total(&self) -> usize {
-        self.before + self.content + self.after
-    }
 }
 
 /// Compute the `RowsBreakdown` for `line_idx`.
