@@ -3,9 +3,9 @@
 //! (the trait method) is a plain map lookup per queried line.
 //!
 //! Unlike the popup/menu widgets, this provider is consulted by *scroll and
-//! cursor math* (`display_rows_for_line`), not just rendering — so the
-//! per-line lookup must stay cheap (a `FxHashMap` get + `Vec` clone-out, no
-//! per-frame allocation-heavy work).
+//! cursor math* through `rows::RowMap`, not just rendering — so the per-line
+//! lookup must stay cheap (a `FxHashMap` get + `Vec` clone-out, no per-frame
+//! allocation-heavy work).
 
 use rustc_hash::FxHashMap;
 use std::ops::Range;

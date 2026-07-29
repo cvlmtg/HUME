@@ -240,9 +240,9 @@ pub struct VirtualLine {
 /// Produces virtual display rows (inline diagnostics, code lenses, git blame).
 ///
 /// Implementations must be cheap per-line lookups into their own state (same
-/// contract as `SignSource`): `format::display_rows_for_line` calls this for
-/// a single line during scroll/cursor accounting, not just per-frame render,
-/// so this can run far more often than once per frame.
+/// contract as `SignSource`): `rows::RowMap` queries a single line whenever it
+/// needs that line's block shape, which is scroll, cursor and movement math as
+/// well as render — so this can run far more often than once per frame.
 pub trait VirtualLineSource {
     fn virtual_lines(
         &self,

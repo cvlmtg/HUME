@@ -105,8 +105,8 @@ the merge it would be avoiding.
   Phase 4.4/4.5 for the remaining gaps (line-background tint; virtual-line anchor/segments).
 - **`VirtualLine` already carries per-segment styling — engine-side only.** `VirtualLine.segments:
   Vec<(Range<usize>, ScopeId)>` (`hume-engine/src/providers.rs:228`) and `Grapheme.scope:
-  Option<ScopeId>` (`hume-engine/src/types.rs:160`), consumed in `emit_virtual_row`
-  (`hume-engine/src/pipeline/pane_render.rs:356-437`). The engine type supports styled,
+  Option<ScopeId>` (`hume-engine/src/types.rs:160`), segmented by `rows::RowMap`'s virtual-row
+  accessor and styled in `hume-engine/src/pipeline/pane_render.rs`. The engine type supports styled,
   segmented, `Before`-or-`After`-anchored virtual lines. **The Steel-facing bridge does not
   yet expose this** — see "Two verified plan-vs-code contradictions" below.
 - **A generic plugin highlight tier**: `HighlightTier::Extra`
@@ -364,9 +364,9 @@ lines has its own gap — see Phase 4.5).
 
 1. **Styled virtual lines — already done, engine-side.** `VirtualLine.segments: Vec<(Range<usize>,
    ScopeId)>` (`hume-engine/src/providers.rs:228`) and `Grapheme.scope: Option<ScopeId>`
-   (`hume-engine/src/types.rs:160`) already exist and are consumed in `emit_virtual_row`
-   (`hume-engine/src/pipeline/pane_render.rs:356-437`, resolved via
-   `compose_ctx.theme.resolve(id)`). Red, struck deleted lines + word-del highlighting inside
+   (`hume-engine/src/types.rs:160`) already exist; `rows::RowMap` segments the row and
+   `hume-engine/src/pipeline/pane_render.rs` resolves each grapheme's scope via
+   `theme.resolve(id)`. Red, struck deleted lines + word-del highlighting inside
    them are representable at this layer with the current API — no engine change needed here.
    (Steel cannot reach this yet — Phase 4.5.)
 
@@ -581,29 +581,36 @@ accounting a `Before`-anchored block needs (see below) is already in place.
 
 **Virtual-line scroll accounting — resolved, in every wrap mode.** `ViewportState::top_row_offset`
 counts display rows of `top_line`'s whole visual block (`before` + content rows + `after`), not
-content rows only — every row, virtual or real, is an equal scroll unit. The renderer skips
-virtual rows through the same budget as content rows
-(`hume-engine/src/pipeline/pane_render.rs`'s `drain_virtual_lines`, via
-`ViewportCursor::try_skip`) unconditionally — it was never gated by wrap mode. The editor's row
-math (`hume-editor/src/editor/cursor.rs`'s `screen_pos`/`screen_to_char_offset`,
-`hume-editor/src/editor/scroll.rs`'s `ensure_cursor_visible`/`scroll_backward_from_cursor`,
-`hume-editor/src/editor/mouse.rs`'s wheel scroll) is unified across wrap modes too — all derive
-line-height from `hume-engine/src/format.rs:143` `display_rows_for_line(...).total()`, which
-returns `content: 1` for `WrapMode::None`, so one code path serves both. `hume-engine/src/layout.rs`'s
-`compute_line_range` adds `top_skip` into its no-wrap range budget too, matching the wrapping
-branch. A `Before`/`After` block — including one anchored to buffer line 0 or the very last
-buffer line, taller than the viewport — scrolls into and out of view one row at a time in either
-wrap mode, and the renderer and cursor/scroll code always agree on which row is on screen. An
+content rows only — every row, virtual or real, is an equal scroll unit, and the pair
+`(top_line, top_row_offset)` is the address of the viewport's top row.
+
+`hume-engine/src/rows.rs`'s `RowMap` is the one implementation of that row list. Rendering,
+scrolling, cursor placement, mouse mapping and visual movement all consume it, so "which row is
+on screen" cannot be answered two ways: the renderer walks the map from `clamp(viewport top)`,
+and the editor's row math asks the same map. That parity is now by construction rather than by
+seven walkers agreeing — the shape this section originally described, where each consumer
+re-derived the row list with its own skip arithmetic and clamp policy.
+
+A `Before`/`After` block — including one anchored to buffer line 0 or the very last buffer line,
+taller than the viewport — scrolls into and out of view one row at a time in either wrap mode. An
 EOF-overshoot bug in wheel-scroll (resetting to the block's first row instead of clamping to its
-last on a large notch) is fixed alongside this. `scroll::clamp_top_row_offset` self-heals a
-`top_row_offset` left stale by a write site that doesn't validate it (`Pane::recall_scroll`, an
-LSP jump), once per pane per frame. Screen-relative cursor-follow (mouse wheel, page/half-page
-scroll — `visual_move.rs`'s `VerticalUnit::ScreenRow` / `screen_move_vertical`) counts virtual
-rows toward its display-row budget so the cursor tracks the same distance the viewport moved;
-plain `j`/`k` (`VerticalUnit::ContentRow`) keep treating virtual rows as free, landing only on
-real content. See `hume-engine/src/pipeline/tests.rs`'s
+last on a large notch) is fixed alongside this; `advance` saturates at the document's last row.
+`scroll::clamp_viewport_top` self-heals a viewport top left stale by a write site that doesn't
+validate it (`Pane::recall_scroll`, an LSP jump), once per pane per frame. Screen-relative
+cursor-follow (mouse wheel, page/half-page scroll — `visual_move.rs`'s
+`VerticalUnit::ScreenRow`) counts virtual rows toward its display-row budget so the cursor tracks
+the same distance the viewport moved; plain `j`/`k` (`VerticalUnit::ContentRow`) keep treating
+virtual rows as free, landing only on real content.
+
+Inline decorations count toward the same budget: an inlay hint takes columns and so participates
+in wrapping, and `RowMap` queries `InlineDecoration` when it counts a line's rows, so a hint that
+pushes a line onto an extra wrap row moves the rows below it for scroll math exactly as it does
+on screen.
+
+See `hume-engine/src/rows/tests.rs`, `hume-engine/src/pipeline/tests.rs`'s
 `virtual_before_block_taller_than_viewport_exposes_every_row`,
-`hume-editor/src/editor/tests/virtual_line_scroll.rs`, and the `_no_wrap` test siblings in
+`hume-editor/src/editor/tests/virtual_line_scroll.rs` (including
+`screen_pos_counts_an_inline_hints_extra_wrap_row`), and the `_no_wrap` test siblings in
 `cursor/tests.rs`/`scroll/tests.rs`/`mouse/tests.rs`.
 
 ---
@@ -642,15 +649,16 @@ store) + theme `diff.*` `bg` values in all four themes.**
   `hume-editor`'s `Host` impl forwards to existing `hume-editing/src/diff.rs:149`
   (`diff_lines`) and `:254` (`diff_words`) — no new diff code, no new `hume-scripting`
   dependency (`hume-scripting/Cargo.toml` still has none).
-- **Engine render**: `hume-engine/src/providers.rs` (`VirtualLine:228`,
-  `VirtualLineAnchor:202-214`, `HighlightTier:37-45`), `hume-engine/src/pipeline/pane_render.rs`
-  (`drain_virtual_lines`'s uniform `try_skip`, `:326-330` row_bg, `:356-437` emit_virtual_row —
-  `pipeline` is a module dir, not one file), `hume-engine/src/format.rs` (`:143`
-  `display_rows_for_line`, the scroll/cursor row-count SSOT), `hume-editor/src/editor/cursor.rs`
-  (`screen_pos`/`screen_to_char_offset`), `hume-editor/src/editor/scroll.rs`
-  (`ensure_cursor_visible`/`scroll_backward_from_cursor`/`clamp_top_row_offset`),
+- **Engine render**: `hume-engine/src/rows.rs` (`RowMap`, the display-row authority every
+  consumer below reads — block shape, stepping, char↔row mapping, render accessors),
+  `hume-engine/src/providers.rs` (`VirtualLine`, `VirtualLineAnchor`, `HighlightTier`),
+  `hume-engine/src/pipeline/pane_render.rs` (`render_pane`'s row walk — `pipeline` is a module
+  dir, not one file), `hume-engine/src/layout.rs` (pane geometry only),
+  `hume-editor/src/editor/cursor.rs` (`screen_pos`/`screen_to_char_offset`),
+  `hume-editor/src/editor/scroll.rs`
+  (`ensure_cursor_visible`/`scroll_cursor_to_row`/`clamp_viewport_top`),
   `hume-editor/src/editor/mouse.rs` (`scroll_viewport_up`/`scroll_viewport_down`),
-  `hume-editor/src/editor/visual_move.rs` (`screen_move_vertical`, `VerticalUnit::ScreenRow`),
+  `hume-editor/src/editor/visual_move.rs` (`move_vertical`, `VerticalUnit`),
   `hume-engine/src/render.rs`
   (`fill_row_bg` method `:96`, free fn `:559`, consumers at `:122,174,231,276,294`),
   `hume-engine/src/types.rs` (`Grapheme.scope` `:160`).
@@ -694,10 +702,11 @@ store) + theme `diff.*` `bg` values in all four themes.**
   bridge is not. This gates Phase 5b specifically — Phase 5a (signs) is unaffected.
 - **Virtual-line scroll accounting — resolved, in every wrap mode.** `top_row_offset` counts
   display rows of `top_line`'s whole visual block (`before` + content + `after`); renderer and
-  editor row math agree on every row in both wrap modes, and a `Before`/`After`-anchored block —
-  including one anchored to line 0 or the last buffer line, taller than the viewport — scrolls
-  into view one row at a time. See `hume-engine/src/format.rs:143` (`display_rows_for_line`, the
-  shared SSOT) and the tests listed under Phase 5b above.
+  editor row math agree on every row in both wrap modes because they read the same
+  `hume-engine/src/rows.rs` `RowMap`, and a `Before`/`After`-anchored block — including one
+  anchored to line 0 or the last buffer line, taller than the viewport — scrolls into view one
+  row at a time. Inline decorations count toward the same rows, so an inlay hint that wraps a
+  line cannot desync scroll math from the screen. See the tests listed under Phase 5b above.
 - **Native callbacks needing `&mut Editor`** — resolved by Phase 1: job-completion callbacks
   run through `Editor::drain_async_jobs` where the main loop holds `&mut Editor`, mirroring
   `line_source.rs`'s wake-based dispatch and the LSP `drain_lsp`/`queue_steel_call` template.

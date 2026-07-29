@@ -5,8 +5,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
-use crate::providers::{InlineInsert, ProviderSet, VirtualLine, VirtualLineAnchor};
-use crate::rows::RowsBreakdown;
+use crate::providers::{InlineInsert, VirtualLine};
 use crate::types::{CellContent, DisplayRow, Grapheme, RowKind};
 
 // ---------------------------------------------------------------------------
@@ -77,86 +76,6 @@ impl Default for FormatScratch {
 // ---------------------------------------------------------------------------
 // Buffer line formatting
 // ---------------------------------------------------------------------------
-
-/// Return the number of display rows that `line_idx` occupies when formatted.
-///
-/// Convenience wrapper for external crates (e.g. the editor's scroll logic)
-/// that need to count visual rows without using `FormatScratch` directly for
-/// all four pipeline stages.
-///
-/// The scratch buffers are cleared before use; the caller may treat `scratch`
-/// as dirty after this call.
-pub fn count_visual_rows(
-    rope: &Rope,
-    line_idx: usize,
-    tab_width: u8,
-    whitespace: &WhitespaceConfig,
-    wrap_mode: &WrapMode,
-    scratch: &mut FormatScratch,
-) -> usize {
-    scratch.clear_line_bufs();
-    scratch.line_texts.clear();
-    format_buffer_line(
-        rope,
-        line_idx,
-        tab_width,
-        whitespace,
-        wrap_mode,
-        None,
-        &[],
-        scratch,
-    );
-    scratch.display_rows.len()
-}
-
-/// Compute the `RowsBreakdown` for `line_idx`.
-///
-/// Queries every registered `VirtualLineSource` for `line_idx..line_idx + 1`
-/// — same per-line-lookup cost contract as `SignSource`/`VirtualLineSource`'s
-/// render-time use (cheap; no allocation-heavy work), since this now runs
-/// during scroll/cursor math too, not just render. `scratch.virtual_lines`
-/// is used as scratch storage for the query and left empty on return.
-#[allow(clippy::too_many_arguments)]
-pub fn display_rows_for_line(
-    rope: &Rope,
-    line_idx: usize,
-    tab_width: u8,
-    whitespace: &WhitespaceConfig,
-    wrap_mode: &WrapMode,
-    providers: &ProviderSet,
-    content_width: u16,
-    scratch: &mut FormatScratch,
-) -> RowsBreakdown {
-    let content = count_visual_rows(rope, line_idx, tab_width, whitespace, wrap_mode, scratch);
-
-    scratch.virtual_lines.clear();
-    for (_, provider) in &providers.virtual_lines {
-        provider.virtual_lines(
-            line_idx..line_idx + 1,
-            content_width,
-            &mut scratch.virtual_lines,
-        );
-    }
-    let mut before = 0usize;
-    let mut after = 0usize;
-    for vl in &scratch.virtual_lines {
-        match vl.anchor {
-            VirtualLineAnchor::Before(n) if n == line_idx => before += 1,
-            VirtualLineAnchor::After(n) if n == line_idx => after += 1,
-            // A provider returning an anchor for a line outside the queried
-            // range would be a provider bug; ignore rather than panic (same
-            // "never trust provider output blindly" stance as G3's id stamping).
-            _ => {}
-        }
-    }
-    scratch.virtual_lines.clear();
-
-    RowsBreakdown {
-        before,
-        content,
-        after,
-    }
-}
 
 /// Format one buffer line, appending zero or more `DisplayRow`s.
 ///
