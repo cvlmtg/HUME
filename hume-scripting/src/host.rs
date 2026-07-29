@@ -668,12 +668,19 @@ pub trait UiHost {
         nul: bool,
     ) -> Result<bool, String>;
 
-    /// `(picker-close!)` — ends the open picker, if any, firing its
-    /// `on-select` with `#f` (unlike `close-menu!`/`close-drawer!`, which
-    /// drop the callback without invoking it — the picker's callback
-    /// lifecycle guarantees exactly one fire per session no matter how it
-    /// ends). Idempotent: closing when none is open is not an error.
-    fn picker_close(&mut self);
+    /// `(picker-close! #:token [token #f])` — ends the open picker, if any,
+    /// firing its `on-select` with `#f` (unlike `close-menu!`/
+    /// `close-drawer!`, which drop the callback without invoking it — the
+    /// picker's callback lifecycle guarantees exactly one fire per session
+    /// no matter how it ends). `token` scopes the close to a specific
+    /// session the same way `picker-push!`'s does: `Some(t)` is a no-op if
+    /// the open picker's token doesn't match `t` (someone else's session
+    /// has since taken over) — the async-callback case `picker-push!`
+    /// already guards against. `#f`/omitted closes whatever picker is open,
+    /// unconditionally, for the synchronous "the user hit Esc" caller that
+    /// has no token to check against. Idempotent either way: closing when
+    /// none is open is not an error.
+    fn picker_close(&mut self, token: Option<u64>);
 }
 
 /// LSP-driven text edits, workspace edits, and go-to-location — accessed

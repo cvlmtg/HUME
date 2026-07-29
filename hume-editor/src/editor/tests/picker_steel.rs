@@ -243,6 +243,52 @@ fn picker_close_bang_fires_false_once_and_is_idempotent() {
     );
 }
 
+// ── picker-close! #:token: scoped close ignores a picker it didn't open ────
+
+#[test]
+fn picker_close_bang_with_a_stale_token_leaves_a_later_picker_open() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define tok-a #f)
+        (define-command! "go-a" "" (lambda ()
+          (set! tok-a (picker! (list (cons "a-item" "pa")) (lambda (x) (log! 'info (to-string "A:" x)))))))
+        (define-command! "go-b" "" (lambda ()
+          (picker! (list (cons "b-item" "pb")) (lambda (x) (log! 'info (to-string "B:" x))))))
+        (define-command! "close-a" "" (lambda () (picker-close! #:token tok-a)))
+        "#,
+    );
+    type_cmd(&mut ed, ":go-a");
+    // Replaces A with B — A's on-select already fired (with #f) and drained
+    // below, same as `opening_a_second_picker_fires_the_first_callback...`.
+    call(&mut ed, "go-b");
+    ed.drain_pending_steel_calls();
+    ed.state.status_msg = None;
+
+    // A's stale token must not touch B's picker, even though B is what's
+    // open right now — the bug this token exists to prevent.
+    call(&mut ed, "close-a");
+    assert!(
+        ed.state.config.picker.is_some(),
+        "a stale #:token close must be a no-op, not close whatever picker is open"
+    );
+    assert!(
+        ed.state.status_msg.is_none(),
+        "no callback should fire for a stale-token close"
+    );
+
+    ed.feed_key(key_enter());
+    ed.drain_pending_steel_calls();
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "B: pb",
+        "B's own on-select must still fire normally"
+    );
+}
+
 // ── items must be dotted pairs, not proper lists ────────────────────────────
 
 #[test]
@@ -432,15 +478,47 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
     assert_eq!(ed.state.config.picker.as_ref().unwrap().total_len(), 1);
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.picker_close();
+    host.picker_close(None);
     assert!(ed.state.config.picker.is_none());
     assert_eq!(ed.state.config.pending_steel_calls.len(), 1);
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.picker_close();
+    host.picker_close(None);
     assert_eq!(
         ed.state.config.pending_steel_calls.len(),
         1,
         "closing with no picker open must be a no-op"
+    );
+}
+
+#[test]
+fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    let mut ed = editor_from("-[a]>bc\n");
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let token = host
+        .open_picker(
+            vec![("one".to_string(), SteelVal::StringV("p1".into()))],
+            String::new(),
+            SteelVal::Void,
+        )
+        .unwrap();
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.picker_close(Some(token + 1));
+    assert!(
+        ed.state.config.picker.is_some(),
+        "a mismatched token must not close the open picker"
+    );
+    assert!(ed.state.config.pending_steel_calls.is_empty());
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.picker_close(Some(token));
+    assert!(
+        ed.state.config.picker.is_none(),
+        "the matching token must close it"
     );
 }

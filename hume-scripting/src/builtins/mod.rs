@@ -231,7 +231,11 @@ macro_rules! builtins {
 // picker-close! — ends the open picker, firing on-select with #f. Unlike
 // close-menu!/close-drawer! (which drop the callback), this always invokes
 // it — the picker's exactly-once lifecycle has no "silently dropped"
-// state. Idempotent when no picker is open.
+// state. Idempotent when no picker is open. #:token, like picker-push!'s,
+// scopes the close to a specific session — Some(t) is a no-op if the open
+// picker isn't the one that opened with token t; omitted/#f closes whatever
+// is open unconditionally, for a synchronous caller (Esc) with no token to
+// check.
 //
 // spawn-async! — generic async subprocess execution: direct argv spawn, no
 // shell, stdin closed immediately, off the main thread. callback fires
@@ -479,7 +483,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal);
         cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
         cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal);
-        cmd "picker-close!" ui::picker_close();
+        cmd "%picker-close!" ui::picker_close(token: SteelVal);
 
         // Timers — not LSP-specific, but added as part of the LSP work.
         cmd "after" timers::after(ms: SteelVal, thunk: SteelVal);

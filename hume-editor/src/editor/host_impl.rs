@@ -1161,7 +1161,15 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         Ok(true)
     }
 
-    fn picker_close(&mut self) {
+    fn picker_close(&mut self, token: Option<u64>) {
+        if let Some(token) = token {
+            let Some(session) = self.state.config.picker.as_ref() else {
+                return;
+            };
+            if session.token() != token {
+                return;
+            }
+        }
         crate::editor::picker::close_picker(self.state, steel::rvals::SteelVal::BoolV(false));
     }
 }

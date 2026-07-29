@@ -360,6 +360,13 @@ never looks inside it. `on-select` fires exactly once: with the chosen item's `p
 if the user presses `Enter`, or `#f` if they press `Esc`, call `picker-close!`, or open a
 second picker while this one is still open (which replaces it).
 
+If you close the picker from an asynchronous callback (a `spawn-async!` result
+arriving after the user has moved on, say), pass `picker!`'s return value as
+`picker-close!`'s `#:token`: the close then becomes a no-op if the picker has
+since been closed or replaced, rather than tearing down whatever different
+picker the user has open by then. Called with no token — the usual case, from
+a key binding — `picker-close!` closes whatever picker is currently open.
+
 For a handful of items — buffers, a plugin's own static list, the output of a quick
 synchronous command — build the whole list up front and pass it to `picker!` directly.
 For anything enumeration-scale (file lists, grep-style output), open the picker empty

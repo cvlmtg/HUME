@@ -120,6 +120,9 @@
 (define (picker-source-spawn! token cmd args #:cwd [cwd #f] #:nul [nul #f])
   (%picker-source-spawn! token cmd args cwd nul))
 
+(define (picker-close! #:token [token #f])
+  (%picker-close! token))
+
 (define-syntax call!
   (syntax-rules ()
     ((_ name args ...)

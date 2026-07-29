@@ -150,10 +150,14 @@
                       (if (= exit-code 0)
                           (picker-push! token (pickers/parse-git-status stdout))
                           (begin
-                            ;; The picker already opened empty — close it to
-                            ;; preserve the "no picker on failure" contract.
-                            (picker-close!)
-                            (log! 'error "picker-git-modified: `git status` failed — check the repository state"))))))))
+                            ;; #:token: this picker may already be closed or
+                            ;; replaced by the time a slow `git status`
+                            ;; fails — closing unconditionally would tear
+                            ;; down whatever picker the user has open by
+                            ;; then instead of preserving the "no picker on
+                            ;; failure" contract for *this* session.
+                            (picker-close! #:token token)
+                            (log! 'error (string-append "picker-git-modified: `git status` failed: " stderr)))))))))
 
 ;;; Internal dispatch seam: repo root passed in explicitly so tests can drive
 ;;; the not-a-repo branch via `call!` instead of manipulating the sandbox.

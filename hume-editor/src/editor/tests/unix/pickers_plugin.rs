@@ -678,6 +678,11 @@ fn git_modified_picker_git_status_failure_does_not_say_clean() {
         !msg.contains("clean"),
         "a failed `git status` must not be reported as a clean working tree; got: {msg}"
     );
+    assert!(
+        msg.contains("fatal") || msg.contains("git repository"),
+        "the log message must carry git's own diagnostic (stderr), not just a \
+         generic failure line; got: {msg}"
+    );
     assert!(ed.state.config.picker.is_none());
 }
 

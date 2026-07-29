@@ -13,8 +13,8 @@ use crate::SteelCtx;
 use crate::host::PopupKind;
 
 use super::args::{
-    bool_arg, list_items, list_to_strings, optional_path_arg, optional_string_arg, pair_fields,
-    string_arg, usize_arg,
+    bool_arg, list_items, list_to_strings, optional_path_arg, optional_string_arg,
+    optional_usize_arg, pair_fields, string_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -196,8 +196,10 @@ pub(crate) fn picker_source_spawn(
     Ok(SteelVal::BoolV(applied))
 }
 
-/// `(picker-close!)`.
-pub(crate) fn picker_close(ctx: &mut SteelCtx) -> SteelResult {
-    require_cap(ctx.host.ui(), "picker-close!")?.picker_close();
+/// `(%picker-close! token)` — the `picker-close!` Scheme wrapper supplies
+/// `#:token`'s `#f` default.
+pub(crate) fn picker_close(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
+    let token = optional_usize_arg(token, "picker-close! #:token")?.map(|t| t as u64);
+    require_cap(ctx.host.ui(), "picker-close!")?.picker_close(token);
     Ok(SteelVal::Void)
 }
