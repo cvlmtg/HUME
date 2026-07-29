@@ -51,9 +51,10 @@ share a basename (two `mod.rs` files, say).
 ## Git-modified files
 
 `picker-git-modified` runs `git status --porcelain -z --no-renames
---untracked-files=<mode>` (a fast, local, small-output command, so this is a
-synchronous spawn — not the streaming source `picker-files` uses) and lists
-every entry exactly as git prints it: the two-letter status code (`M `,
+--untracked-files=<mode>` in the background — not the line-streaming source
+`picker-files` uses, since the picker needs the whole, parsed output at
+once, not individual rows as they arrive — and lists every entry exactly as
+git prints it: the two-letter status code (`M `,
 `A `, ` M`, `??`, …) followed by the path, relative to the repo root. `-z`
 avoids git's C-quoting of paths with whitespace or non-ASCII; `--no-renames`
 guarantees one field per entry (a rename otherwise prints as two NUL-separated
@@ -69,10 +70,11 @@ A clean tree still opens the picker, just with no rows. A cwd outside any
 git repository (or a failed `git status`) surfaces as a status message
 instead.
 
-Since this is a synchronous spawn, the default `#t` walks every untracked
-directory fully (`--untracked-files=all`) before `g m` opens — a large
-un-ignored directory (no `.gitignore` entry) makes the editor pause for that
-walk. Set `"untracked"` to `#f` to skip it.
+The default `#t` walks every untracked directory fully
+(`--untracked-files=all`) — a large un-ignored directory (no `.gitignore`
+entry) makes that walk slower, though the editor itself never blocks on it:
+`g m` opens immediately with an empty list and populates once the walk
+finishes. Set `"untracked"` to `#f` to skip it and populate sooner.
 
 ### Config
 

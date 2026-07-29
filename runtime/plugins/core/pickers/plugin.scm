@@ -116,30 +116,44 @@
        (filter (lambda (s) (not (equal? s ""))) (split-many output pickers/nul))))
 
 ;;; Open the git-modified-files picker for the given absolute repo `root`.
-;;; Sync spawn, not `picker-source-spawn!`: a streaming source's display
-;;; *is* its payload, but this picker needs an "XY "-prefixed display and a
-;;; bare-path payload, so the two fields must be built separately here.
-;;; `on-select` resolves the chosen repo-root-relative path against `root`
-;;; before opening it: `open-buffer!` resolves a relative path against the
-;;; editor's cwd (`:pwd`), which only coincides with the repo root when
-;;; `:pwd` *is* the repo root — from any subdirectory an unjoined path opens
-;;; the wrong file.
+;;; Opens the picker empty immediately, then populates it once the async
+;;; `git status` completes — same "open empty, populate on arrival" shape as
+;;; `pickers/open-files-picker!`, via `spawn-async!` rather than
+;;; `picker-source-spawn!`: a streaming source's display *is* its payload,
+;;; but this picker needs an "XY "-prefixed display and a bare-path payload
+;;; built together from the fully parsed output, so `spawn-async!`'s
+;;; whole-output-at-once shape fits, not per-line batches. `on-select`
+;;; resolves the chosen repo-root-relative path against `root` before
+;;; opening it: `open-buffer!` resolves a relative path against the editor's
+;;; cwd (`:pwd`), which only coincides with the repo root when `:pwd` *is*
+;;; the repo root — from any subdirectory an unjoined path opens the wrong
+;;; file. Dismissing without selecting cancels the outstanding `git status`
+;;; job — no point letting it keep running once nothing can show its result.
 (define (pickers/open-git-picker! root)
-  (let ([output (pickers/run-stdout-raw
-                  "git"
-                  (list "status" "--porcelain" "-z" "--no-renames"
-                        (string-append "--untracked-files="
-                                        (if pickers/untracked "all" "no"))))])
-    ;; `#f` (spawn/exit failure) is the only failure outcome — `""` (clean
-    ;; tree) parses to an empty item list and opens the picker same as any
-    ;; other empty-result state, no special-casing needed.
-    (if (not output)
-        (error "picker-git-modified: `git status` failed — check the repository state")
-        (picker! (pickers/parse-git-status output)
-                 (lambda (path)
-                   (when path
-                     (switch-to-buffer! (open-buffer! (path-join root path)))))
-                 #:prompt "git: "))))
+  (let* ([job-id #f]
+         [token (picker! '()
+                         (lambda (path)
+                           (if path
+                               (switch-to-buffer! (open-buffer! (path-join root path)))
+                               (cancel-async! job-id)))
+                         #:prompt "git: ")])
+    (set! job-id
+      (spawn-async! "git"
+                    (list "status" "--porcelain" "-z" "--no-renames"
+                          (string-append "--untracked-files="
+                                          (if pickers/untracked "all" "no")))
+                    #f
+                    (lambda (stdout stderr exit-code)
+                      ;; A clean tree (exit 0, empty stdout) parses to an
+                      ;; empty item list and pushes as a no-op — no
+                      ;; special-casing needed, same as the sync version.
+                      (if (= exit-code 0)
+                          (picker-push! token (pickers/parse-git-status stdout))
+                          (begin
+                            ;; The picker already opened empty — close it to
+                            ;; preserve the "no picker on failure" contract.
+                            (picker-close!)
+                            (log! 'error "picker-git-modified: `git status` failed — check the repository state"))))))))
 
 ;;; Internal dispatch seam: repo root passed in explicitly so tests can drive
 ;;; the not-a-repo branch via `call!` instead of manipulating the sandbox.

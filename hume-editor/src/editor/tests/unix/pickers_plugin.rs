@@ -293,6 +293,15 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
 
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
+    drain_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 3
+    });
 
     let picker = ed.state.config.picker.as_ref().expect("picker open");
     assert_eq!(picker.prompt(), "git: ");
@@ -334,6 +343,15 @@ fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory()
 
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
+    drain_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 1
+    });
     assert_eq!(
         ed.state
             .config
@@ -376,6 +394,15 @@ fn git_modified_picker_row_and_accept_handle_path_with_space() {
 
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
+    drain_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 1
+    });
 
     let picker = ed.state.config.picker.as_ref().expect("picker open");
     let rows: Vec<&str> = picker.window(10).collect();
@@ -421,6 +448,15 @@ fn git_modified_picker_accept_resolves_nested_relative_path() {
 
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
+    drain_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 1
+    });
     assert_eq!(
         ed.state
             .config
@@ -469,6 +505,15 @@ fn git_modified_picker_untracked_false_config_hides_untracked_files() {
 
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
+    drain_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 1
+    });
 
     let picker = ed.state.config.picker.as_ref().expect("picker open");
     let rows: Vec<&str> = picker.window(10).collect();
@@ -494,6 +539,15 @@ fn git_modified_picker_untracked_default_lists_files_inside_untracked_directory(
     ed.set_cwd(&sandbox.path()).unwrap();
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
+    drain_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 1
+    });
     let rows: Vec<&str> = ed
         .state
         .config
@@ -556,6 +610,12 @@ fn git_modified_picker_clean_tree_opens_empty_picker() {
 
     ed.feed_key(key('g'));
     ed.feed_key(key('m'));
+    // total_len() stays 0 whether the async `git status` callback has run
+    // yet or not, so it can't be the drain predicate here — wait for the
+    // job to leave the registry instead, so the assertion below proves the
+    // callback actually ran and produced zero rows, not just that nothing
+    // has happened yet.
+    drain_until(&mut ed, |ed| ed.state.config.async_jobs.is_empty());
 
     let picker = ed
         .state
@@ -607,6 +667,7 @@ fn git_modified_picker_git_status_failure_does_not_say_clean() {
 
     ed.state.status_msg = None;
     call(&mut ed, "test-git-status-fails");
+    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
 
     let msg = ed
         .state
