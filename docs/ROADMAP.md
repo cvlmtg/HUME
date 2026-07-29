@@ -34,6 +34,7 @@
 - **`:sort` permutes whole rows, keyed by the selected text (`sort -k`), per contiguous run, numeric auto-detected** — rejects both Helix's `:sort` (permutes text *between* selection slots, rows never move — requires a manual `%` + split-on-newline step to sort a file) and Kakoune's `|sort` (pipes each selection through the shell, so N one-line selections is an N-way no-op). Non-adjacent selections form independent groups; equal keys keep document order (stable); `-r`/`-i` flip/fold the comparison, never the result. Deferred: a `--lexicographic` override for when auto-numeric guesses wrong (e.g. `1.10` vs `1.9`) — not worth shipping until it actually bites.
 - **External file-change detection = stat-on-trigger (mtime + size), not a filesystem watcher** — Neovim's own design for the same problem, copied deliberately. inotify/FSEvents/kqueue/ReadDirectoryChangesW disagree on rename semantics and coalescing, and a watcher needs a thread + handle per watched directory; stating at a handful of trigger points (terminal focus, buffer-enter, return from an inline shell command, `:checktime`) costs nothing in the background and behaves identically on every platform. Size is compared alongside mtime because HFS+/FAT only report mtime to one-second resolution. `autoread` (default on) prompts via a reusable native confirm overlay; off just warns. `:w` refuses whenever a fresh stat at write time disagrees with the buffer's last-read/written signature, regardless of whether any trigger has run — forced with `!`.
 - **Pickers are Steel-defined only — no native picker definitions** — defaults ship as `core:pickers`, built from the same public API a third-party plugin gets, so the API is dogfooded by construction instead of rotting behind private hooks. A fixed native set would need a Rust PR per new finder.
+- **Git gutter signs and inline diff are one plugin (`git-diff`), not two** — both are pure renderings of the same hunk set (one `git show` fetch, one `diff-buffer-lines` call, one debounce cycle); splitting them would duplicate that shared state to isolate the ~20% that differs per rendering, and two independently-diffing plugins risk disagreeing about the same file. See `docs/GIT-DIFF.md`.
 
 ## Roadmap
 
@@ -68,7 +69,7 @@
 - [ ] `core:lsp` `cargo-git` install flavor — installs from a pinned git tag instead of crates.io semver; unblocks `nil`.
 - [ ] `core:lsp` install support for `pkg:golang` (gopls) and `pkg:pypi` source kinds — currently fail loudly as unsupported (see `docs/LSP-INSTALL.md`'s "v1 scope and limitations").
 - [ ] `:lsp-install` argument completion — Steel commands have no argument-completion path today.
-- [ ] Git gutter signs — plugin candidate, keep out of core.
+- [ ] `git-diff` plugin — gutter signs + inline diff, layered (signs first, then virtual deleted lines, then background tint); plugin candidate, keep out of core. Design: `docs/GIT-DIFF.md`.
 
 ## Open questions
 
