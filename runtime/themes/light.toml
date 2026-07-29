@@ -35,6 +35,16 @@ inherits = "dark"
 "diagnostic.info"    = { fg = "cyan",   modifiers = ["underlined"] }
 "diagnostic.hint"    = { fg = "green",  modifiers = ["underlined"] }
 
+# ── Diff ──────────────────────────────────────────────────────────────────────
+# Redeclared for the same reason as diagnostics above — re-resolve against
+# this file's palette instead of inheriting dark's colors.
+"diff.plus"         = { fg = "green" }
+"diff.minus"        = { fg = "red" }
+"diff.delta"        = { fg = "cyan" }
+"diff.plus.gutter"  = { fg = "green" }
+"diff.minus.gutter" = { fg = "red" }
+"diff.delta.gutter" = { fg = "cyan" }
+
 # ── Whitespace ────────────────────────────────────────────────────────────────
 "ui.whitespace" = { fg = "#c0c0c8" }
 
