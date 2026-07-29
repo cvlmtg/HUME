@@ -152,6 +152,7 @@ pub(crate) fn kill_tracked_children() {
 /// repeat call into a no-op (verified in the vendored `std` source), which
 /// is what makes it safe for both a normal-exit `Drop` and this table's own
 /// reap to call [`reap`](Self::reap) without coordinating who goes first.
+#[derive(Clone)]
 pub struct TrackedChild(Arc<ChildSlot>);
 
 impl TrackedChild {

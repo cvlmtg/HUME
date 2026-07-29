@@ -2,15 +2,18 @@
 //! whole stdout, whole stderr, and exit status exactly once — the shape
 //! `spawn-async!` needs, as opposed to `line_source`'s per-line streaming.
 //!
-//! Completion here is the child *exiting*, not stdout reaching EOF (as it
-//! is for `line_source`, which drains on a per-frame budget and can't
-//! block). The capture thread this module spawns is free to block, so it
-//! reads stdout to EOF, joins the stderr thread, and only then sends the
-//! result — the main thread never reaps a lingering child on a schedule
-//! ([`SpawnedJob::try_take_result`]'s job/`line_source::SpawnedLineSource`'s
-//! `finish` split is exactly this: the capture thread owns waiting for
-//! output, the main thread owns reaping the exit status once output is
-//! known to be complete).
+//! Completion here is the child *exiting*, which is not implied by its
+//! pipes reaching EOF — a child can close (or exec away from) its stdio
+//! while continuing to run, so "both pipes at EOF" is not "the child is
+//! done". The capture thread this module spawns is free to block, so it
+//! reads stdout to EOF, joins the stderr thread, then polls the child's
+//! real exit status (never a blocking `wait`, which would hold the shared
+//! [`TrackedChild`] slot's lock for the child's entire remaining lifetime
+//! and starve a concurrent `cancel-async!`/[`SpawnedJob::drop`]), and only
+//! then sends the complete result. [`SpawnedJob::try_take_result`] is a
+//! pure receive with no reaping of its own — unlike
+//! `line_source::SpawnedLineSource::finish`, which reaps on the main thread
+//! because EOF really is completion for a line source.
 //!
 //! Two capture threads, not one: reading stdout to EOF and then stderr
 //! would deadlock on a child that fills its stderr pipe while this thread
@@ -23,6 +26,7 @@ use std::path::Path;
 use std::process::ExitStatus;
 use std::sync::mpsc;
 use std::thread;
+use std::time::Duration;
 
 use crate::process::child::{STDERR_CAPTURE_CAP, WakeOnDrop, read_capped, spawn_piped};
 use crate::process::tracked::TrackedChild;
@@ -32,21 +36,23 @@ pub use crate::process::child::WakeCallback;
 /// The complete output of a finished [`SpawnedJob`]: whole stdout (never
 /// truncated — it's the caller's data, not a diagnostic), whole stderr
 /// (capped at [`STDERR_CAPTURE_CAP`] — diagnostic only), and exit status
-/// (`None` only if the OS gave none back even after a kill+wait fallback —
-/// vanishingly rare).
+/// (`None` only if the capture thread's own exit-status poll errored, or
+/// the thread panicked before sending — vanishingly rare either way).
 pub struct JobResult {
     pub stdout: String,
     pub stderr: String,
     pub status: Option<ExitStatus>,
 }
 
-/// What the capture thread hands to the main thread — everything except the
-/// exit status, which [`SpawnedJob::try_take_result`] reaps itself once
-/// this arrives (see its doc for why that's not done on the capture
-/// thread).
+/// What the capture thread hands to the main thread — stdout, stderr, and
+/// the exit status it already waited for (`status` is `None` only if the
+/// exit-status poll itself errored; a thread that panics before sending is
+/// handled separately, by [`SpawnedJob::try_take_result`] synthesizing an
+/// empty `Captured` on channel disconnect).
 struct Captured {
     stdout: String,
     stderr: String,
+    status: Option<ExitStatus>,
 }
 
 /// A running external command whose whole output is being captured to
@@ -79,13 +85,24 @@ pub fn spawn_job(
     wake: WakeCallback,
 ) -> io::Result<SpawnedJob> {
     let (child, stdout, stderr) = spawn_piped(cmd, args, cwd)?;
+    // Converted to a `TrackedChild` up front, not deferred to the end like
+    // `line_source` does — the job thread below needs its own handle to
+    // poll the child's exit status, so it and this function's returned
+    // `SpawnedJob` must share the same tracked slot from the start. From
+    // here on this function owns reaping the child on every early return
+    // (the disarmed `ReapOnDrop` guard no longer covers it).
+    let child = TrackedChild::new(child.into_inner());
 
     let (tx, rx) = mpsc::sync_channel::<Captured>(1);
 
     let stderr_thread = thread::Builder::new()
         .name("hume-job-stderr".into())
-        .spawn(move || read_capped(stderr, STDERR_CAPTURE_CAP))?;
+        .spawn(move || read_capped(stderr, STDERR_CAPTURE_CAP))
+        .inspect_err(|_| {
+            child.reap();
+        })?;
 
+    let job_child = child.clone();
     let job_thread = thread::Builder::new()
         .name("hume-job".into())
         .spawn(move || {
@@ -98,20 +115,45 @@ pub fn spawn_job(
             // wedging this job forever — the exit status still carries the
             // failure, and stdout is what most callers actually want.
             let stderr_bytes = stderr_thread.join().unwrap_or_default();
+            let status = wait_for_exit(&job_child);
             let captured = Captured {
                 stdout: String::from_utf8_lossy(&stdout_bytes).into_owned(),
                 stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
+                status,
             };
             let _ = tx.send(captured);
+        })
+        .inspect_err(|_| {
+            child.reap();
         })?;
 
     Ok(SpawnedJob {
         cmd: cmd.to_string(),
-        child: TrackedChild::new(child.into_inner()),
+        child,
         rx: Some(rx),
         threads: vec![job_thread],
     })
 }
+
+/// Polls `child`'s exit status rather than blocking on a plain `wait()` —
+/// `wait()` would hold the shared slot's mutex for the child's entire
+/// remaining lifetime, starving the `try_wait`/`reap` calls a concurrent
+/// `cancel-async!` or [`SpawnedJob::drop`] needs that same lock for. `None`
+/// only if `try_wait` itself errors — vanishingly rare.
+fn wait_for_exit(child: &TrackedChild) -> Option<ExitStatus> {
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Some(status),
+            Ok(None) => thread::sleep(EXIT_POLL_INTERVAL),
+            Err(_) => return None,
+        }
+    }
+}
+
+/// Poll interval for [`wait_for_exit`] — frequent enough that a job's
+/// result is delivered promptly after the child actually exits, cheap
+/// enough that a long-running child costs nothing but idle wakeups.
+const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(5);
 
 impl SpawnedJob {
     pub fn cmd(&self) -> &str {
@@ -129,36 +171,30 @@ impl SpawnedJob {
     }
 
     /// Non-blocking: `Some` at most once, the moment the capture thread's
-    /// single message arrives (or, if that thread panicked before sending,
-    /// synthesized as empty output — the callback must still fire exactly
-    /// once). Reaps the exit status here, not on the capture thread: both
-    /// pipes are already at EOF by the time this message lands, so the
-    /// child has almost always already exited and `try_wait` returns
-    /// immediately; the rare child that lingers is killed right away rather
-    /// than waited for, same tradeoff as `SpawnedLineSource::finish`.
+    /// single message — stdout, stderr, and the child's real exit status,
+    /// already waited for — arrives (or, if that thread panicked before
+    /// sending, synthesized as empty output with no status — the callback
+    /// must still fire exactly once). Nothing left to reap here: unlike
+    /// `SpawnedLineSource::finish`, the capture thread already confirmed
+    /// the child exited before sending.
     pub fn try_take_result(&mut self) -> Option<JobResult> {
         let Some(rx) = &self.rx else {
             return None;
         };
         let captured = match rx.try_recv() {
-            Ok(captured) => Some(captured),
+            Ok(captured) => captured,
             Err(mpsc::TryRecvError::Empty) => return None,
-            Err(mpsc::TryRecvError::Disconnected) => None,
+            Err(mpsc::TryRecvError::Disconnected) => Captured {
+                stdout: String::new(),
+                stderr: String::new(),
+                status: None,
+            },
         };
         self.rx = None;
-        let Captured { stdout, stderr } = captured.unwrap_or_else(|| Captured {
-            stdout: String::new(),
-            stderr: String::new(),
-        });
-        let status = match self.child.try_wait() {
-            Ok(Some(status)) => Some(status),
-            Ok(None) => self.child.reap(),
-            Err(_) => None,
-        };
         Some(JobResult {
-            stdout,
-            stderr,
-            status,
+            stdout: captured.stdout,
+            stderr: captured.stderr,
+            status: captured.status,
         })
     }
 }
@@ -245,6 +281,26 @@ mod tests {
             let result = poll_until_result(&mut job);
             assert_eq!(result.status.and_then(|s| s.code()), Some(3));
             assert!(result.stderr.contains("oops"), "got: {:?}", result.stderr);
+        }
+
+        #[test]
+        fn child_still_running_after_pipes_close_is_not_reported_as_killed() {
+            // Closes both pipes, then keeps running for a bit before a
+            // real, successful exit — both pipes reaching EOF must not be
+            // mistaken for the child having exited (regression: it used to
+            // be `reap()`ed right there, turning this into exit code -1).
+            let args = vec![
+                "-c".to_string(),
+                "printf hi; exec 1>&- 2>&-; sleep 0.3; exit 0".to_string(),
+            ];
+            let mut job = spawn_job("sh", &args, None, no_op_wake()).expect("spawn sh");
+            let result = poll_until_result(&mut job);
+            assert_eq!(result.stdout, "hi");
+            assert_eq!(
+                result.status.and_then(|s| s.code()),
+                Some(0),
+                "child ran to a real exit(0) after closing its pipes, not a kill"
+            );
         }
 
         #[test]
