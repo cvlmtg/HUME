@@ -28,16 +28,20 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use crate::process::child::{STDERR_CAPTURE_CAP, WakeOnDrop, read_capped, spawn_piped};
+use crate::process::child::{
+    JOB_STDOUT_CAP, STDERR_CAPTURE_CAP, WakeOnDrop, read_bounded, read_capped, spawn_piped,
+};
 use crate::process::tracked::TrackedChild;
 
 pub use crate::process::child::WakeCallback;
 
 /// The complete output of a finished [`SpawnedJob`]: whole stdout (never
-/// truncated — it's the caller's data, not a diagnostic), whole stderr
-/// (capped at [`STDERR_CAPTURE_CAP`] — diagnostic only), and exit status
-/// (`None` only if the capture thread's own exit-status poll errored, or
-/// the thread panicked before sending — vanishingly rare either way).
+/// *silently* truncated — capped at [`JOB_STDOUT_CAP`], but exceeding it
+/// fails the job rather than handing back a short prefix), whole stderr
+/// (capped at [`STDERR_CAPTURE_CAP`] — diagnostic only, truncation there is
+/// fine), and exit status (`None` on a stdout read failure/overflow, or if
+/// the capture thread's own exit-status poll errored, or the thread
+/// panicked before sending — the last three vanishingly rare).
 pub struct JobResult {
     pub stdout: String,
     pub stderr: String,
@@ -75,9 +79,10 @@ pub struct SpawnedJob {
 }
 
 /// Spawns `cmd` with `args` (direct argv, no shell), piped stdio, stdin
-/// closed immediately. One thread reads stderr to EOF (capped); a second
-/// reads stdout to EOF (uncapped), joins the first, then sends the combined
-/// capture once and fires `wake`.
+/// closed immediately. One thread reads stderr to EOF (capped, lenient); a
+/// second reads stdout to EOF (capped at [`JOB_STDOUT_CAP`], strict — a
+/// read error or overflow fails the job), joins the first, then sends the
+/// combined capture once and fires `wake`.
 pub fn spawn_job(
     cmd: &str,
     args: &[String],
@@ -103,6 +108,7 @@ pub fn spawn_job(
         })?;
 
     let job_child = child.clone();
+    let job_cmd = cmd.to_string();
     let job_thread = thread::Builder::new()
         .name("hume-job".into())
         .spawn(move || {
@@ -110,16 +116,26 @@ pub fn spawn_job(
             // panicking read still wakes the drain to observe the
             // synthesized result `try_take_result` produces on disconnect.
             let _wake_on_drop = WakeOnDrop(wake);
-            let stdout_bytes = read_capped(stdout, usize::MAX);
+            let stdout_result = read_bounded(stdout, JOB_STDOUT_CAP);
             // A panicked stderr thread degrades to empty stderr rather than
             // wedging this job forever — the exit status still carries the
             // failure, and stdout is what most callers actually want.
             let stderr_bytes = stderr_thread.join().unwrap_or_default();
             let status = wait_for_exit(&job_child);
-            let captured = Captured {
-                stdout: String::from_utf8_lossy(&stdout_bytes).into_owned(),
-                stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
-                status,
+            let captured = match stdout_result {
+                Ok(stdout_bytes) => Captured {
+                    stdout: String::from_utf8_lossy(&stdout_bytes).into_owned(),
+                    stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
+                    status,
+                },
+                // A truncated stdout is worse than none: hand back the
+                // documented spawn-failure shape (empty stdout, a message
+                // in stderr, no exit code) rather than silently short data.
+                Err(e) => Captured {
+                    stdout: String::new(),
+                    stderr: format!("{job_cmd}: {e}"),
+                    status: None,
+                },
             };
             let _ = tx.send(captured);
         })

@@ -23,7 +23,10 @@ pub(crate) struct PendingJob {
 impl Editor {
     /// Fires the callback of every job that has completed since the last
     /// frame — `(stdout stderr exit-code)`, `exit-code` `-1` for a
-    /// signal-killed child or a status the OS never returned. Queued via
+    /// signal-killed child, a status the OS never returned, or a stdout
+    /// read that failed or exceeded `JOB_STDOUT_CAP` (`stderr` then names
+    /// the failure instead of carrying the child's own diagnostics).
+    /// Queued via
     /// `queue_steel_call`, never invoked inline: this runs from
     /// `drain_async_sources`, the same per-frame chokepoint the LSP/timer
     /// callbacks already share, which is what puts a completing job's
