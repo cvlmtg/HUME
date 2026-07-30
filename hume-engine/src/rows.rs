@@ -534,32 +534,41 @@ impl<'a> RowMap<'a> {
                     .char_offset
             }
             ColTarget::NearestContent => {
-                // Virtual fill cells have no buffer position at all; the
-                // end-of-line sentinel has one but is not content, so it only
-                // answers when nothing else can (an empty line). An
-                // inline-insert (`Virtual`) cell carries the `char_offset` of
-                // the *real* grapheme it precedes — a column elsewhere on the
-                // row minimising distance against it would land on a
-                // character this cell isn't at, so it's excluded outright
-                // rather than merely deprioritised. The newline indicator
-                // (`whitespace-newline`) shares the EOL sentinel's column and
-                // must be excluded the same way — but `Indicator` also covers
-                // tab/space glyphs, which *are* real content, so the newline
-                // case alone is singled out by its `byte_range`: unlike a
-                // tab/space indicator (which spans real bytes in the line),
-                // the newline indicator's `byte_range` is empty, exactly like
-                // the EOL sentinel it's drawn on top of (`format.rs`'s
-                // newline-indicator push).
-                let is_newline_indicator = |g: &Grapheme| {
-                    matches!(g.content, CellContent::Indicator { .. }) && g.byte_range.is_empty()
-                };
+                // Which cells are eligible landing spots, by content type:
+                // - `Grapheme`/`WidthContinuation`: real content, always eligible.
+                // - `Empty` (the EOL sentinel) has a buffer position but is not
+                //   content, so it only answers when nothing else can (an
+                //   empty line) — gated on `admit_eol`.
+                // - `Virtual` (an inline-insert cell) carries the `char_offset`
+                //   of the *real* grapheme it precedes — a column elsewhere on
+                //   the row minimising distance against it would land on a
+                //   character this cell isn't at, so it's excluded outright
+                //   rather than merely deprioritised.
+                // - `Indicator` also covers tab/space glyphs, which *are* real
+                //   content — except the newline indicator (`whitespace-newline`),
+                //   which shares the EOL sentinel's column and must be excluded
+                //   the same way. Singled out by `byte_range`: unlike a
+                //   tab/space indicator (real bytes in the line), the newline
+                //   indicator's `byte_range` is empty, exactly like the EOL
+                //   sentinel it's drawn on top of (`format.rs`'s
+                //   newline-indicator push).
+                // An exhaustive match (not a chain of exclusion filters) so a
+                // future `CellContent` variant forces a decision here instead
+                // of silently defaulting to eligible.
                 let nearest = |admit_eol: bool| {
                     graphemes
                         .iter()
+                        // Virtual-row cells (segmented separately by
+                        // `segment_virtual_row`) have no buffer position at
+                        // all; unreachable from `char_at`, which only ever
+                        // formats content rows, but guarded defensively.
                         .filter(|g| g.char_offset != usize::MAX)
-                        .filter(|g| admit_eol || !matches!(g.content, CellContent::Empty))
-                        .filter(|g| !matches!(g.content, CellContent::Virtual { .. }))
-                        .filter(|g| !is_newline_indicator(g))
+                        .filter(|g| match g.content {
+                            CellContent::Grapheme | CellContent::WidthContinuation => true,
+                            CellContent::Empty => admit_eol,
+                            CellContent::Virtual { .. } => false,
+                            CellContent::Indicator { .. } => !g.byte_range.is_empty(),
+                        })
                         .min_by_key(|g| target_col.abs_diff(g.col))
                         .map(|g| g.char_offset)
                 };
