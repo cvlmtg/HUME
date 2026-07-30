@@ -264,6 +264,41 @@ impl ScriptingHost {
     }
 }
 
+/// `true` for a name HUME's own conventions mark as never called directly by
+/// plugin/config code — used by [`ScriptingHost::host_global_names`] to keep
+/// the generated `steel-language-server` host-globals file to the surface a
+/// plugin author would actually type. Checked against a full generated list
+/// of every name these patterns *don't* match (260 entries, at the time of
+/// writing) to confirm none of them is a legitimate public name.
+///
+/// - `%`-prefixed (`%register-lsp-server!`, `%dispatch-command`, …): HUME's
+///   private-primitive convention — each has a public Scheme wrapper of the
+///   same name minus the `%` (`register-lsp-server!`, `call!`, …) that
+///   plugin code calls instead. Only HUME's own shipped
+///   `runtime/scheme/prelude.scm` and `builtins/bootstrap.scm` call these
+///   directly, and neither is a file a user edits.
+/// - `*earmuffed*` (`*grammar-sources-cache*`, the Rust-injected
+///   `*hume.ctx*` eval-time sentinel, …): Scheme's own convention for
+///   internal/dynamic state, never part of a public API by that same
+///   convention.
+/// - `hm.`-prefixed (`hm.eval-string`, …): steel-core's `steel/meta` module,
+///   aliased under `hm.` by `bootstrap.scm`'s `require-builtin … as hm.`
+///   purely so HUME's own Rust-facing glue can reach it — never meant to be
+///   called by plugin code, which has no reason to alias `steel/meta` itself.
+/// - `#`-prefixed: steel-core's own internal markers, including the
+///   non-deterministic anonymous `###ctx-funcN` wrapper names
+///   `steel_vm/builtin.rs`'s `GENSYM` mints for each context-aware builtin
+///   registration (a `thread_local!` counter shared by every `Engine` on the
+///   same test-runner thread, so its exact numbering isn't stable across
+///   runs — see `docs/LESSONS.md`'s L8). HUME itself never registers a
+///   `#`-prefixed name.
+fn is_internal_name(name: &str) -> bool {
+    name.starts_with('%')
+        || name.starts_with('#')
+        || name.starts_with("hm.")
+        || (name.starts_with('*') && name.ends_with('*'))
+}
+
 impl ScriptingHost {
     // ── Outward API (clean; no direct field access outside this module) ────────
 
@@ -311,33 +346,17 @@ impl ScriptingHost {
     }
 
     /// Every top-level global and macro name HUME's own layers add on top of
-    /// a pristine Steel engine — the payload for the generated
-    /// `steel-language-server` host-globals file (see
-    /// `runtime/plugins/core/steel-server/lsp-home/hume-globals.scm`'s
+    /// a pristine Steel engine, minus HUME's own internal-only names — the
+    /// payload for the generated `steel-language-server` host-globals file
+    /// (see `runtime/plugins/core/steel-server/lsp-home/hume-globals.scm`'s
     /// generator).
     ///
-    /// Diffs against a fresh `Engine::new()` rather than filtering by name
-    /// prefix: HUME's `%`-prefixed internal primitives (`%register-lsp-server!`,
-    /// `%dispatch-command`, …) are real free identifiers the server must
-    /// also learn about — `steel-language-server`'s own free-identifier
-    /// check does not skip `%`, only its own mangled-module markers, so a
-    /// prefix-based filter would under-cover `runtime/scheme/prelude.scm`
-    /// (which calls `%define-language!`/`%register-grammar!` directly).
-    /// Diffing against the baseline also means upstream Steel stdlib names
+    /// Diffs against a fresh `Engine::new()` so upstream Steel stdlib names
     /// never appear in the output — the server already knows those from its
-    /// own internal engine.
-    ///
-    /// Excludes every name starting with `#`: steel-core mints anonymous
-    /// `###ctx-funcN` wrapper names (`steel_vm/builtin.rs`'s `GENSYM`, a
-    /// `thread_local!` counter shared by every `Engine` built on the same
-    /// test-runner thread) for each context-aware builtin registration —
-    /// non-deterministic across runs/thread scheduling and never a name a
-    /// Scheme author could type, so a baseline diff alone doesn't filter
-    /// them out (the baseline's own counter has already moved past
-    /// `self.steel`'s range by the time this runs). HUME itself never
-    /// registers a `#`-prefixed name, so this can't drop anything real.
-    /// Also excludes [`HUME_CTX`]: a Rust-injected eval-time sentinel, never
-    /// meaningful to a Scheme author.
+    /// own internal engine — then drops anything [`is_internal_name`] flags:
+    /// HUME's own naming conventions for "never called by plugin code",
+    /// checked against a full, real-world generated list to confirm no
+    /// legitimate public name matches any of them.
     ///
     /// Sorted and deduped for a stable, reviewable diff in the checked-in
     /// generated file.
@@ -364,7 +383,7 @@ impl ScriptingHost {
             globals
                 .iter()
                 .map(|s| s.resolve().to_string())
-                .filter(|n| n != HUME_CTX && !n.starts_with('#') && !baseline_globals.contains(n))
+                .filter(|n| !is_internal_name(n) && !baseline_globals.contains(n))
                 .collect()
         };
         names.extend({
@@ -372,7 +391,7 @@ impl ScriptingHost {
             macros
                 .keys()
                 .map(|s| s.resolve().to_string())
-                .filter(|n| !n.starts_with('#') && !baseline_macros.contains(n))
+                .filter(|n| !is_internal_name(n) && !baseline_macros.contains(n))
                 .collect::<Vec<_>>()
         });
         names.sort_unstable();
