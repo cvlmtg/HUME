@@ -1,7 +1,7 @@
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::format::unicode_display_width;
-use crate::layout::VisibleRange;
+use crate::layout::PaneGeometry;
 use crate::pane::ViewportState;
 use crate::providers::{GutterColumn, GutterRowCtx, ProviderId};
 use crate::theme::Theme;
@@ -20,7 +20,7 @@ pub(crate) const INDENT_GUIDE_GLYPH: &str = "╎";
 /// and pass them through without repeating at each call site.
 pub(crate) struct ComposeCtx<'a> {
     pub gutter_columns: &'a [(ProviderId, Box<dyn GutterColumn>)],
-    pub visible: &'a VisibleRange,
+    pub visible: &'a PaneGeometry,
     pub viewport: &'a ViewportState,
     pub mode: EditorMode,
     pub primary_head_line: usize,

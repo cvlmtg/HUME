@@ -4,7 +4,7 @@ use crate::pane::ViewportState;
 use crate::providers::GutterColumn;
 
 // ---------------------------------------------------------------------------
-// Visible range — output of Stage 1
+// Pane geometry — output of Stage 1
 // ---------------------------------------------------------------------------
 
 /// The output of the Layout stage: the pane geometry the Format/Render stages
@@ -14,7 +14,7 @@ use crate::providers::GutterColumn;
 /// from the viewport's top address, so the walk is the layout and no estimate
 /// of "how many lines fill the screen" is needed.
 #[derive(Debug, Clone)]
-pub struct VisibleRange {
+pub struct PaneGeometry {
     /// Available display rows in the content area.
     pub content_height: u16,
     /// Available columns in the content area (viewport width − gutter width).
@@ -46,21 +46,21 @@ pub fn gutter_width_for_line<'a>(
     gutter_columns.map(|c| c.width(max_line) as u16).sum()
 }
 
-/// Compute the `VisibleRange` for a pane given its current state.
+/// Compute the `PaneGeometry` for a pane given its current state.
 ///
 /// This is purely arithmetic — no heap allocations.
 pub fn compute_viewport<'a>(
     rope: &Rope,
     viewport: &ViewportState,
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn>,
-) -> VisibleRange {
+) -> PaneGeometry {
     // 0-based index of the last line — the single source of truth for
     // GutterColumn::width(). Using the whole-file last line (not just what is
     // on screen) keeps gutter width stable as the user scrolls.
     let last_line_idx = rope.len_lines().saturating_sub(1);
     let gutter_width = gutter_width_for_line(gutter_columns, last_line_idx);
 
-    VisibleRange {
+    PaneGeometry {
         content_height: viewport.height,
         content_width: viewport.width.saturating_sub(gutter_width).max(1),
         gutter_width,

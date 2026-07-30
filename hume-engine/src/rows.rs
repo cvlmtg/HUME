@@ -156,6 +156,12 @@ impl<'a> RowMap<'a> {
         content_width: u16,
         scratch: &'a mut FormatScratch,
     ) -> Self {
+        debug_assert!(
+            rope.len_chars() == 0 || rope.char(rope.len_chars() - 1) == '\n',
+            "RowMap requires a trailing '\\n' (the buffer invariant) — \
+             without it `last_line`'s `len_lines() - 2` drops the rope's \
+             actual last content line"
+        );
         Self {
             rope,
             wrap_mode: wrap_mode.resolve(content_width),

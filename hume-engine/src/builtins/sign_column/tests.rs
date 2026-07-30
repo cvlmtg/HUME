@@ -194,7 +194,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     }];
     let styles = vec![crate::types::ResolvedStyle::default()];
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(col))];
-    let visible = crate::layout::VisibleRange {
+    let visible = crate::layout::PaneGeometry {
         content_height: 1,
         content_width: 6,
         gutter_width: 2,
@@ -289,7 +289,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
     let styles = vec![crate::types::ResolvedStyle::default()];
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> =
         vec![(0, Box::new(empty_col)), (1, Box::new(content_col))];
-    let visible = crate::layout::VisibleRange {
+    let visible = crate::layout::PaneGeometry {
         content_height: 1,
         content_width: 6,
         gutter_width: 2, // 0 (empty_col) + 2 (content_col)
@@ -542,7 +542,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
     }];
     let styles = vec![crate::types::ResolvedStyle::default()];
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(col))];
-    let visible = crate::layout::VisibleRange {
+    let visible = crate::layout::PaneGeometry {
         content_height: 1,
         content_width: 5,
         gutter_width: 3,

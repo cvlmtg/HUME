@@ -5,7 +5,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
-use crate::providers::{InlineInsert, VirtualLine};
+use crate::providers::InlineInsert;
 use crate::types::{CellContent, DisplayRow, Grapheme, RowKind};
 
 // ---------------------------------------------------------------------------
@@ -17,22 +17,21 @@ use crate::types::{CellContent, DisplayRow, Grapheme, RowKind};
 /// Owned by [`crate::pipeline::FrameScratch`] so capacity is retained across
 /// frames — no heap allocation after the first frame warms up the `Vec`s.
 pub struct FormatScratch {
-    /// `DisplayRow`s produced for the current buffer line (or all visible lines
-    /// in the batch path). Cleared per line (fused) or per frame (batch).
+    /// `DisplayRow`s produced for the current buffer line. Cleared per line
+    /// by [`FormatScratch::clear_line_bufs`].
     pub display_rows: Vec<DisplayRow>,
     /// `Grapheme`s for the current buffer line; rows index into this.
     pub graphemes: Vec<Grapheme>,
-    /// Virtual lines collected from all providers for the visible range.
-    pub virtual_lines: Vec<VirtualLine>,
     /// Pre-materialised text for the current buffer line. Written by
-    /// `format_buffer_line`; read by `pipeline::render_buffer_line` as `line_str`.
+    /// `format_buffer_line`; read by `rows::RowMap`'s render accessors as
+    /// `RenderRow::line_text`.
     pub line_texts: String,
     /// Per-frame arena backing `CellContent::Virtual`/`Indicator` text ranges
     /// — inline-insert text, whitespace-indicator glyphs, and virtual-line
     /// text, none of which can be `&'static str` (LSP hints, Steel-configured
-    /// icons). Cleared per buffer line in `FrameScratch::clear_line`, mirroring
-    /// `line_texts` — compose for that line/virtual-row always runs before
-    /// the clear.
+    /// icons). Cleared per buffer line in [`FormatScratch::clear_line_bufs`],
+    /// mirroring `line_texts` — compose for that line/virtual-row always runs
+    /// before the clear.
     pub virtual_texts: String,
 }
 
@@ -41,7 +40,6 @@ impl FormatScratch {
         Self {
             display_rows: Vec::with_capacity(16),
             graphemes: Vec::with_capacity(512),
-            virtual_lines: Vec::new(),
             line_texts: String::with_capacity(512),
             virtual_texts: String::with_capacity(256),
         }
@@ -50,16 +48,15 @@ impl FormatScratch {
     /// Reset all buffers to empty, retaining allocated capacity.
     pub fn clear(&mut self) {
         self.clear_line_bufs();
-        self.virtual_lines.clear();
         self.line_texts.clear();
     }
 
-    /// Reset the per-buffer-line fields shared with [`FrameScratch::clear_line`]
-    /// (`display_rows`, `graphemes`, `virtual_texts`).
+    /// Reset the per-buffer-line fields (`display_rows`, `graphemes`,
+    /// `virtual_texts`).
     ///
     /// Excludes `line_texts`: the fused render pipeline clears it at its own
-    /// point (right before appending that line's text), decoupled from
-    /// `clear_line`'s cadence — see `line_texts`'s field doc.
+    /// point (right before appending that line's text), decoupled from this
+    /// method's cadence — see `line_texts`'s field doc.
     pub fn clear_line_bufs(&mut self) {
         self.display_rows.clear();
         self.graphemes.clear();
@@ -99,9 +96,10 @@ pub fn format_buffer_line(
     inline_inserts: &[InlineInsert],
     scratch: &mut FormatScratch,
 ) {
-    // Append this rope line's text to the persistent `line_texts` buffer.
-    // The caller already recorded `line_texts.len()` as the start offset for
-    // this line, so we just extend from here. Rope chunks are valid UTF-8.
+    // The caller (`rows::RowMap::format_line`) clears `line_texts` right
+    // before this call, so `text_start` is always 0 — kept as a variable
+    // (not assumed) so `line_str` below stays correct if that contract ever
+    // changes. Rope chunks are valid UTF-8.
     let text_start = scratch.line_texts.len();
     let line_slice = rope.line(line_idx);
     for chunk in line_slice.chunks() {

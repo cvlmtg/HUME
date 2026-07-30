@@ -37,7 +37,7 @@ fn renders_simple_text() {
     let graphemes = vec![simple_grapheme(0, 0, 1), simple_grapheme(1, 1, 1)];
     let rows = [simple_row(0..2)];
     let styles = vec![ResolvedStyle::default(); 2];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
@@ -101,7 +101,7 @@ fn renders_simple_text() {
 fn filler_rows_have_tilde() {
     // Only render_tilde_fillers (not compose_row) draws tildes — verify
     // it fills every requested row from the given start row onward.
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 5, // 5 rows requested; caller already rendered row 0
         content_width: 20,
         gutter_width: 0,
@@ -157,7 +157,7 @@ fn do_compose_row(
     row: &DisplayRow,
     graphemes: &[Grapheme],
     styles: &[ResolvedStyle],
-    visible: VisibleRange,
+    visible: PaneGeometry,
     viewport: ViewportState,
     tab_width: u8,
     w: u16,
@@ -219,7 +219,7 @@ fn horizontal_scroll_clips_left_columns() {
         .collect();
     let rows = [simple_row(0..5)];
     let styles = vec![ResolvedStyle::default(); 5];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
@@ -286,7 +286,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
     ];
     let rows = [simple_row(0..3)];
     let styles = vec![ResolvedStyle::default(); 3];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
@@ -333,7 +333,7 @@ fn indent_guide_drawn_at_inner_tab_stops() {
         graphemes: 0..11,
     }];
     let styles = vec![ResolvedStyle::default(); 11];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
@@ -397,7 +397,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         graphemes: 0..11,
     }];
     let styles = vec![ResolvedStyle::default(); 11];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
@@ -480,7 +480,7 @@ fn indent_guide_not_drawn_on_wrap_rows() {
         graphemes: 4..8,
     }];
     let styles = vec![ResolvedStyle::default(); 8];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
@@ -513,7 +513,7 @@ fn indicator_content_fills_tab_width() {
     }];
     let rows = [simple_row(0..1)];
     let styles = vec![ResolvedStyle::default()];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
@@ -572,7 +572,7 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
     ];
     let rows = [simple_row(0..2)];
     let styles = vec![ResolvedStyle::default(); 2];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
@@ -632,7 +632,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
     let styles = vec![ResolvedStyle::default()];
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> =
         vec![(0, Box::new(OverlongGutter))];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 1,
         content_width: 6,
         gutter_width: 4,
@@ -708,7 +708,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
     let styles = vec![ResolvedStyle::default()];
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> =
         vec![(0, Box::new(OverlongGutter))];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 1,
         content_width: 1,
         gutter_width: 4,
@@ -840,7 +840,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         (0, Box::new(ExactFillGutter)),
         (1, Box::new(LeftoverGutter)),
     ];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 1,
         content_width: 2,
         gutter_width: 8, // 2 (ExactFillGutter) + 6 (LeftoverGutter)
@@ -950,7 +950,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
     let rows = [simple_row(0..1)];
     let styles = vec![ResolvedStyle::default()];
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(HugeGutter))];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 1,
         content_width: 1,
         gutter_width: 20,
@@ -1070,7 +1070,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
         let rows = [simple_row(0..1)];
         let styles = vec![ResolvedStyle::default()];
         let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, col)];
-        let visible = VisibleRange {
+        let visible = PaneGeometry {
             content_height: 1,
             content_width: 4,
             gutter_width: 3,
@@ -1183,7 +1183,7 @@ fn gutter_column_reads_rope_via_ctx() {
     let styles = vec![ResolvedStyle::default()];
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> =
         vec![(0, Box::new(FirstCharGutter))];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 2,
         content_width: 10,
         gutter_width: 2,
@@ -1310,7 +1310,7 @@ fn compose_row_dims_cells_inline() {
         bg: Some(Color::Rgb(0, 0, 0)),
         ..Default::default()
     }];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 1,
         content_width: 2,
         gutter_width: 0,
@@ -1373,7 +1373,7 @@ fn compose_row_non_rgb_dim_target_is_noop() {
         fg: Some(Color::Rgb(255, 255, 255)),
         ..Default::default()
     }];
-    let visible = VisibleRange {
+    let visible = PaneGeometry {
         content_height: 1,
         content_width: 2,
         gutter_width: 0,

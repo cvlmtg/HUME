@@ -4,8 +4,9 @@ use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, Se
 use std::collections::HashMap;
 
 /// Test driver mirroring the live pipeline's Style-stage orchestration
-/// (`pipeline.rs::render_buffer_line`): primary-based `is_head_line`,
-/// `rebuild_tier_bufs` once per buffer line, `style_row` per display row.
+/// (`pipeline::pane_render::render_pane`'s row walk): primary-based
+/// `is_head_line`, `rebuild_tier_bufs` once per buffer line, `style_row` per
+/// display row.
 /// No highlight providers or tree — these tests cover cursor/selection styling only.
 fn apply_styles(
     rows: &[DisplayRow],
