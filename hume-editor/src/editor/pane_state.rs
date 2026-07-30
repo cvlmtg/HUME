@@ -198,16 +198,17 @@ impl Editor {
             }
             pane.wrap_mode = WrapMode::None;
         }
-        // Any actual mode change invalidates the sub-row scroll state:
-        // off→on starts wrapping fresh; on→off leaves non-wrap rendering with
-        // no sub-row concept (nothing in unwrapped scrolling ever clears a
-        // stale `top_row_offset`, and the renderer starts its row walk from it
-        // regardless of wrap mode); on→on width/style changes can leave a
-        // sub-row offset past the new line's row count.
+        // Horizontal scroll is meaningless once wrapped, so an actual mode
+        // change zeroes it. `top_row_offset`, by contrast, addresses a row
+        // inside `top_line`'s whole visual block in *either* wrap mode
+        // (`scroll::set_top` writes it unconditionally) — a mode change can
+        // leave it past the new block's row count (off→on starts a
+        // narrower block; on→on width/style changes can shrink it), but
+        // that's exactly what `scroll::clamp_viewport_top` repairs once per
+        // pane per frame, so there is no need to throw a still-valid
+        // address away here.
         if mode_changed {
-            let vp = self.viewport_mut();
-            vp.horizontal_offset = 0;
-            vp.top_row_offset = 0;
+            self.viewport_mut().horizontal_offset = 0;
         }
     }
 }

@@ -166,8 +166,10 @@ fn wrap_toggle_on_falls_back_to_indent_for_never_configured_pane() {
     assert_eq!(focused_pane(&ed).wrap_mode, WrapMode::Indent { width: 0 });
 }
 
+/// A wrap-mode change zeroes horizontal scroll (meaningless once wrapped) but
+/// leaves `top_row_offset` alone — see `apply_focused_wrap_mode`'s doc.
 #[test]
-fn wrap_toggle_on_zeroes_scroll_offsets() {
+fn wrap_toggle_on_zeroes_horizontal_offset_only() {
     let mut ed = editor_from("-[a]>b\n");
     {
         let pane = &mut ed.view.panes[ed.state.focused_pane_id];
@@ -178,16 +180,21 @@ fn wrap_toggle_on_zeroes_scroll_offsets() {
     ed.execute_typed("wrap", None).unwrap(); // on
     let pane = focused_pane(&ed);
     assert_eq!(pane.viewport.horizontal_offset, 0);
-    assert_eq!(pane.viewport.top_row_offset, 0);
+    assert_eq!(
+        pane.viewport.top_row_offset, 3,
+        "top_row_offset is a row address valid in either wrap mode — a mode \
+         change must not discard it"
+    );
 }
 
-/// Turning wrap *off* must also zero `top_row_offset`. Unwrapped scrolling
-/// never touches it (`ensure_cursor_visible_unwrapped` only moves `top_line`),
-/// so a sub-row offset left over from wrapped scrolling would otherwise
-/// persist, and the renderer would start its row walk from it, shifting
-/// unwrapped content down by that many rows.
+/// Turning wrap *off* must not force-reset `top_row_offset`: it addresses a
+/// row inside `top_line`'s block in either wrap mode (`scroll::set_top`
+/// writes it unconditionally). If the new (no-wrap) block is shorter than
+/// the old one, the offset is now stale — but `scroll::clamp_viewport_top`
+/// repairs that once per pane per frame, not `apply_focused_wrap_mode`
+/// itself, so the raw value must survive the `:set` call untouched.
 #[test]
-fn wrap_toggle_off_zeroes_top_row_offset() {
+fn wrap_toggle_off_leaves_top_row_offset_for_the_next_frame_to_clamp() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
     {
@@ -197,15 +204,29 @@ fn wrap_toggle_off_zeroes_top_row_offset() {
     ed.execute_typed("wrap", None).unwrap(); // off
     let pane = focused_pane(&ed);
     assert_eq!(pane.wrap_mode, WrapMode::None);
-    assert_eq!(pane.viewport.top_row_offset, 0);
+    assert_eq!(
+        pane.viewport.top_row_offset, 3,
+        "apply_focused_wrap_mode itself must not reset a still-unvalidated offset"
+    );
+
+    // No-wrap: line 0's whole block is 1 row (content only, no providers
+    // registered) — the only valid address is row 0, so the next frame's
+    // self-heal must pull the stale offset down to it.
+    ed.render_to_buf(ratatui::layout::Rect::new(0, 0, 40, 8));
+    assert_eq!(
+        focused_pane(&ed).viewport.top_row_offset,
+        0,
+        "clamp_viewport_top, not the wrap-mode change, is what repairs staleness"
+    );
 }
 
 /// Changing the wrap style/width while already wrapping (`:set pane
-/// wrap-mode=` to a different variant) must also reset `top_row_offset` — the
-/// old sub-row offset was measured against the previous width and may no
-/// longer be a valid sub-row index for the line under the new width.
+/// wrap-mode=` to a different variant) must likewise leave `top_row_offset`
+/// for `clamp_viewport_top` to repair, not reset it inline — the old offset
+/// was measured against the previous width and may no longer be a valid
+/// sub-row index once the width changes.
 #[test]
-fn set_pane_wrap_mode_change_while_wrapping_zeroes_top_row_offset() {
+fn set_pane_wrap_mode_change_while_wrapping_leaves_top_row_offset_for_the_next_frame_to_clamp() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "pane wrap-mode=soft:80").expect(":set pane wrap-mode=soft:80 failed");
     {
@@ -215,7 +236,67 @@ fn set_pane_wrap_mode_change_while_wrapping_zeroes_top_row_offset() {
     run_set(&mut ed, "pane wrap-mode=soft:20").expect(":set pane wrap-mode=soft:20 failed");
     let pane = focused_pane(&ed);
     assert_eq!(pane.wrap_mode, WrapMode::Soft { width: 20 });
-    assert_eq!(pane.viewport.top_row_offset, 0);
+    assert_eq!(
+        pane.viewport.top_row_offset, 3,
+        "the raw offset survives the width change untouched"
+    );
+
+    ed.render_to_buf(ratatui::layout::Rect::new(0, 0, 40, 8));
+    assert_eq!(
+        focused_pane(&ed).viewport.top_row_offset,
+        0,
+        "line 0's block is 1 row under either width here, so clamp pulls the stale offset to it"
+    );
+}
+
+/// The scenario the fix is actually for: a `Before` block on the top line
+/// that the pre-fix reset would blow past. Wrap on, scrolled so `top_line`
+/// sits inside a 3-row `Before(0)` block (`top_row_offset = 1`, one row
+/// already scrolled past, two still showing); `:set wrap-mode=none` must not
+/// jump the viewport back up to the top of that block — the address is
+/// still valid (a `Before` block occupies the same rows regardless of wrap
+/// mode) and clamp_viewport_top would find nothing to repair.
+#[test]
+fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block() {
+    struct ThreeBeforeLine0;
+    impl hume_engine::providers::VirtualLineSource for ThreeBeforeLine0 {
+        fn virtual_lines(
+            &self,
+            visible: std::ops::Range<usize>,
+            _content_width: u16,
+            out: &mut Vec<hume_engine::providers::VirtualLine>,
+        ) {
+            if visible.contains(&0) {
+                for _ in 0..3 {
+                    out.push(hume_engine::providers::VirtualLine {
+                        anchor: hume_engine::providers::VirtualLineAnchor::Before(0),
+                        provider_id: 0,
+                        text: "V".to_string(),
+                        segments: Vec::new(),
+                    });
+                }
+            }
+        }
+    }
+
+    let mut ed = editor_from("-[a]>b\n");
+    run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
+    ed.view.panes[ed.state.focused_pane_id]
+        .providers
+        .add_virtual_line_source(Box::new(ThreeBeforeLine0));
+    {
+        let pane = &mut ed.view.panes[ed.state.focused_pane_id];
+        pane.viewport.top_line = 0;
+        pane.viewport.top_row_offset = 1; // inside the Before(0) block
+    }
+
+    ed.execute_typed("wrap", None).unwrap(); // off
+    let pane = focused_pane(&ed);
+    assert_eq!(pane.wrap_mode, WrapMode::None);
+    assert_eq!(
+        pane.viewport.top_row_offset, 1,
+        "still-valid address inside the Before block must not be discarded"
+    );
 }
 
 // ── Split inheritance ────────────────────────────────────────────────────────
