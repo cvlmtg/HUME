@@ -190,6 +190,12 @@ impl<'a> RowMap<'a> {
     /// line is), so this changes only which graphemes the render accessors
     /// emit. Editor-side consumers want whole lines and leave it `None`.
     pub fn with_h_window(mut self, h_window: Option<Range<u16>>) -> Self {
+        debug_assert!(
+            h_window.is_none() || !self.wrap_mode.is_wrapping(),
+            "with_h_window is a WrapMode::None-only clip — a wrapping RowMap \
+             would silently under-count content rows, since format_line \
+             passes h_window through to the formatter even while wrapping"
+        );
         self.h_window = h_window;
         self
     }
@@ -288,16 +294,22 @@ impl<'a> RowMap<'a> {
     ///
     /// Every HUME buffer ends with a structural `\n`, so ropey reports one
     /// extra empty line past the content; the last real line is
-    /// `len_lines() - 2`. This is the one place that rule lives.
+    /// `len_lines() - 2`. The one place that rule lives for row/viewport
+    /// math — editor-side buffer-line clamping (`file_open.rs`,
+    /// `ops/edit/mod.rs`, `ops/motion/char_move.rs`, `typed_misc.rs`)
+    /// re-derives it independently, since those sites don't hold a `RowMap`.
     pub fn last_line(&self) -> usize {
         self.rope.len_lines().saturating_sub(2)
     }
 
-    /// The document's last display row — the overscroll clamp target.
+    /// The document's last display row.
     ///
     /// Vim-style: the final block row may scroll all the way up to the top of
     /// the viewport, so this is itself a valid viewport address rather than a
-    /// bound one row past the end.
+    /// bound one row past the end. `clamp`/`advance` reach the same row
+    /// without calling this directly (they pull an arbitrary position into
+    /// range rather than fetching it outright); this accessor is for a
+    /// caller that wants "the very last row" itself.
     pub fn last_pos(&mut self) -> RowPos {
         let line = self.last_line();
         let total = self.block(line).total();
@@ -467,6 +479,18 @@ impl<'a> RowMap<'a> {
         }
 
         // No row claimed the offset: answer with the end of the last row.
+        // Every content row has at least one grapheme (an empty line still
+        // gets its EOL sentinel), and the last row's `is_last` branch above
+        // matches any `target_byte` at or past its own start — so reaching
+        // here means either `rows` is empty or every row was skipped for
+        // having no graphemes, both of which indicate a formatting bug
+        // rather than a normal input.
+        debug_assert!(
+            !rows.is_empty(),
+            "locate_in_line: line {line}, char_offset {char_offset} matched \
+             no row — every content row should claim some byte range of the \
+             line"
+        );
         let last_row = rows.len().saturating_sub(1);
         let col = rows
             .get(last_row)
