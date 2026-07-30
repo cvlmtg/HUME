@@ -541,13 +541,25 @@ impl<'a> RowMap<'a> {
                 // the *real* grapheme it precedes — a column elsewhere on the
                 // row minimising distance against it would land on a
                 // character this cell isn't at, so it's excluded outright
-                // rather than merely deprioritised.
+                // rather than merely deprioritised. The newline indicator
+                // (`whitespace-newline`) shares the EOL sentinel's column and
+                // must be excluded the same way — but `Indicator` also covers
+                // tab/space glyphs, which *are* real content, so the newline
+                // case alone is singled out by its `byte_range`: unlike a
+                // tab/space indicator (which spans real bytes in the line),
+                // the newline indicator's `byte_range` is empty, exactly like
+                // the EOL sentinel it's drawn on top of (`format.rs`'s
+                // newline-indicator push).
+                let is_newline_indicator = |g: &Grapheme| {
+                    matches!(g.content, CellContent::Indicator { .. }) && g.byte_range.is_empty()
+                };
                 let nearest = |admit_eol: bool| {
                     graphemes
                         .iter()
                         .filter(|g| g.char_offset != usize::MAX)
                         .filter(|g| admit_eol || !matches!(g.content, CellContent::Empty))
                         .filter(|g| !matches!(g.content, CellContent::Virtual { .. }))
+                        .filter(|g| !is_newline_indicator(g))
                         .min_by_key(|g| target_col.abs_diff(g.col))
                         .map(|g| g.char_offset)
                 };

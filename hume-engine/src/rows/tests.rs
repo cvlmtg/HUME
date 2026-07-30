@@ -585,6 +585,28 @@ fn char_at_nearest_content_stays_off_the_eol_sentinel() {
 }
 
 #[test]
+fn char_at_nearest_content_stays_off_the_newline_indicator() {
+    // Same scenario as the sibling test above, but with the newline
+    // indicator (`whitespace-newline`) enabled: `format.rs` pushes it at the
+    // same column and char_offset as the EOL sentinel, so a sticky column
+    // past the end of the text must still land on the last real character —
+    // not the indicator cell, which `Indicator`'s tab/space-glyph cases make
+    // ineligible for a blanket exclusion.
+    let rope = Rope::from_str("hi\n");
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    let mut whitespace = ws();
+    whitespace.newline = true;
+    let mut rm = RowMap::new(&rope, WrapMode::None, 4, whitespace, &providers, 80, &mut s);
+
+    assert_eq!(
+        rm.char_at(RowPos::new(0, 0), 99, ColTarget::NearestContent),
+        1,
+        "sticky column must land on 'i', not the newline indicator"
+    );
+}
+
+#[test]
 fn char_at_nearest_content_skips_a_trailing_inline_insert() {
     // "hi\n" plus a trailing insert "ZZZ" (an end-of-line diagnostic summary,
     // say) appended after the text. Both the EOL sentinel and the insert's
