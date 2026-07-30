@@ -216,10 +216,6 @@ fn var_name_len(s: &str) -> usize {
 /// `"/home/user/dev/hume"` → `"~/dev/hume"`.  Exact match returns `"~"`.
 /// When `home_dir()` is unavailable or the path does not start with the home
 /// directory, the full path is returned unchanged.
-pub fn shorten_home(path: &std::path::Path) -> String {
-    shorten_home_with(path, crate::dirs::home_dir)
-}
-
 fn shorten_home_with(
     path: &std::path::Path,
     home_fn: impl FnOnce() -> Option<std::path::PathBuf>,
@@ -239,8 +235,8 @@ fn shorten_home_with(
 /// verbatim prefix, then collapse the home prefix to `~`. All user-facing
 /// path strings (`Buffer::display_path`, cwd displays) are produced here.
 ///
-/// Order matters: `shorten_home`'s prefix match is against the clean
-/// `C:\Users\...` form, which a verbatim-prefixed string wouldn't match.
+/// Order matters: the home-prefix match is against the clean `C:\Users\...`
+/// form, which a verbatim-prefixed string wouldn't match.
 pub fn display_form(path: &std::path::Path) -> String {
     display_form_with(path, crate::dirs::home_dir)
 }
