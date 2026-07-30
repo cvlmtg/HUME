@@ -67,9 +67,8 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
 /// so it never collapses).
 #[test]
 fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
-    let mut ed = editor_from(
-        "-[0]>123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\n",
-    );
+    let mut ed =
+        editor_from("-[0]>123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\n");
     let pid_a = ed.state.focused_pane_id;
     ed.execute_typed("vsplit", None).unwrap();
     let pid_b = ed.state.focused_pane_id; // vsplit focuses the new pane

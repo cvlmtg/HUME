@@ -435,12 +435,13 @@ impl<'a> RowMap<'a> {
                 // its `char_offset` — `style::resolve_grapheme_col` skips
                 // forward past any `Virtual` cells to reach it, the same rule
                 // `style::char_offset_to_col` applies for selection styling.
-                let col = crate::style::resolve_grapheme_col(char_offset, graphemes, &row.graphemes)
-                    .map_or_else(
-                        // Past every grapheme on the row (end of line).
-                        || last.col.saturating_add(last.width as u16),
-                        |(col, _)| col,
-                    );
+                let col =
+                    crate::style::resolve_grapheme_col(char_offset, graphemes, &row.graphemes)
+                        .map_or_else(
+                            // Past every grapheme on the row (end of line).
+                            || last.col.saturating_add(last.width as u16),
+                            |(col, _)| col,
+                        );
                 return (i, col);
             }
         }
