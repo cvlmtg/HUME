@@ -451,6 +451,51 @@ fn fits_in_counts_virtual_rows_toward_the_height() {
     );
 }
 
+#[test]
+fn fits_in_zero_height_never_fits() {
+    // Every document has at least one row (even a single empty line), so a
+    // zero-height viewport can never fit it — regardless of how short the
+    // document is.
+    let rope = Rope::from_str("x\n");
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert!(!rm.fits_in(0));
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "content_width >= 1")]
+fn new_panics_on_zero_content_width() {
+    let rope = Rope::from_str("x\n");
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    RowMap::new(&rope, WrapMode::None, 4, ws(), &providers, 0, &mut s);
+}
+
+#[test]
+fn wrap_width_one_emits_one_grapheme_per_row_without_hanging() {
+    let rope = Rope::from_str("abcd\n");
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    let mut rm = RowMap::new(
+        &rope,
+        WrapMode::Soft { width: 1 },
+        4,
+        ws(),
+        &providers,
+        80,
+        &mut s,
+    );
+
+    let breakdown = rm.block(0);
+    assert_eq!(
+        breakdown.content, 4,
+        "one grapheme per row at wrap width 1"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // locate() / char_at()
 // ---------------------------------------------------------------------------

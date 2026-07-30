@@ -162,6 +162,13 @@ impl<'a> RowMap<'a> {
              without it `last_line`'s `len_lines() - 2` drops the rope's \
              actual last content line"
         );
+        debug_assert!(
+            content_width >= 1,
+            "RowMap requires content_width >= 1 — a 0 here leaves \
+             WrapMode::resolve's width:0 sentinel unresolved, and \
+             wrap_width() then panics far from this call site. Callers pass \
+             pane_width.max(1) (see Pane::content_width)."
+        );
         Self {
             rope,
             wrap_mode: wrap_mode.resolve(content_width),
@@ -391,6 +398,13 @@ impl<'a> RowMap<'a> {
     /// Walks at most `height + 1` rows, so this stays cheap on a huge buffer
     /// where the answer is obviously "no".
     pub fn fits_in(&mut self, height: u16) -> bool {
+        // Every document has at least one row (RowPos::default()), which
+        // cannot fit in a zero-height viewport — short-circuit before the
+        // loop below, which never compares its `rows = 1` starting count
+        // against `height` if the walk ends on the very first `next()`.
+        if height == 0 {
+            return false;
+        }
         let mut cur = RowPos::default();
         let mut rows = 1usize;
         while let Some(next) = self.next(cur) {
