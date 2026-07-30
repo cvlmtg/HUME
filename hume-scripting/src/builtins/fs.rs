@@ -94,10 +94,11 @@ pub(crate) fn path_join(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 // ── path->display ─────────────────────────────────────────────────────────────
 
 /// `(path->display path)` — run `path` through HUME's display-form pipeline
-/// (Windows `\\?\` stripping, `~`-collapse) so Scheme-side path comparisons
-/// (e.g. the buffer picker's cwd-relativization) line up with paths that came
-/// from `buffer-display-path`. No filesystem access; expects an absolute path
-/// — `~`-collapse is a no-op on relative input.
+/// (Windows `\\?\` stripping, `~`-collapse) so a Scheme-side path built by
+/// hand (e.g. `lsp/uri->display-path` stripping a `file://` URI prefix)
+/// renders the same way as paths that came from `buffer-display-path`. No
+/// filesystem access; expects an absolute path — `~`-collapse is a no-op on
+/// relative input.
 pub(crate) fn path_to_display(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     if args.len() != 1 {
         steel::stop!(ArityMismatch => "path->display expects exactly 1 arg, got {}", args.len());
