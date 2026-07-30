@@ -597,9 +597,14 @@ fn statusline_display_path_synthetic_buffer_shows_label() {
 #[test]
 fn statusline_display_path_real_file_still_shows_path() {
     // Regression guard: the label fallback must not shadow a real path.
+    //
+    // Expectation is hand-built, not `display_form(path)` — that would be
+    // circular with `Buffer::set_path`, which derives `display_path` by
+    // calling the very same function. `/some/absolute/path/file.rs` has no
+    // `$HOME` prefix and no Windows verbatim prefix, so `display_form` is a
+    // no-op on it and it must come back byte-identical.
     let mut ed = test_editor();
     let path = std::path::Path::new("/some/absolute/path/file.rs");
     ed.doc_mut().set_path(Some(path.to_owned()));
-    let display = hume_platform::path::display_form(path);
-    assert_eq!(statusline_display_path(&ed), display);
+    assert_eq!(statusline_display_path(&ed), "/some/absolute/path/file.rs");
 }

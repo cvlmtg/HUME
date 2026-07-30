@@ -120,10 +120,25 @@
                         (hash-ref loc "targetRange")))))
 
 ;;; "path/to/file.rs" stripped of the "file://" scheme prefix — good enough
-;;; for display, not for parsing back into a URI.
+;;; for display, not for parsing back into a URI (no percent-decoding, no
+;;; UNC-share authority handling — see `hume_lsp::uri::uri_to_path` on the
+;;; Rust side for that). A Windows drive-letter URI (`file:///C:/foo`)
+;;; decodes to an extra leading '/' before the drive letter that a plain
+;;; 7-char strip leaves in ("/C:/foo"); drop it so the result reads
+;;; "C:/foo" like every other path this file displays.
 (define (lsp/uri->display-path uri)
+  (define (ascii-letter? c)
+    (let ([n (char->integer c)])
+      (or (and (>= n 65) (<= n 90)) (and (>= n 97) (<= n 122)))))
+  (define (strip-drive-letter-slash s)
+    (if (and (>= (string-length s) 3)
+             (equal? (substring s 0 1) "/")
+             (ascii-letter? (string-ref s 1))
+             (equal? (substring s 2 3) ":"))
+        (substring s 1 (string-length s))
+        s))
   (if (and (>= (string-length uri) 7) (equal? (substring uri 0 7) "file://"))
-      (path->display (substring uri 7 (string-length uri)))
+      (path->display (strip-drive-letter-slash (substring uri 7 (string-length uri))))
       uri))
 
 ;;; "path/to/file.rs:12:5" — 1-based line/col, matching every other editor's

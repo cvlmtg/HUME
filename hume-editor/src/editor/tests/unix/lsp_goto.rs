@@ -206,6 +206,44 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
     );
 }
 
+/// A Windows drive-letter `file://` URI (`file:///C:/...`) must display in
+/// the drawer without a leading `/` before the drive letter —
+/// `lsp/uri->display-path`'s plain 7-char scheme strip alone leaves one in
+/// ("/C:/foo"), not a valid Windows path. The second location's file need
+/// not exist: opening the drawer only formats row labels, it doesn't touch
+/// the filesystem (only selecting a row and jumping would).
+#[test]
+fn windows_drive_letter_uri_displays_without_leading_slash() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let win_uri = "file:///C:/Users/x/main.rs";
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/definition",
+            serde_json::json!([loc(&uri, 0, 0), loc(win_uri, 1, 0)]),
+        );
+    });
+
+    run_goto(&mut ed, ":lsp-goto-definition");
+
+    let rows = {
+        let guard = ed.state.drawer_view.read().unwrap();
+        guard
+            .as_ref()
+            .expect("drawer must open for a multi-entry array")
+            .rows
+            .clone()
+    };
+    assert_eq!(rows.len(), 2);
+    assert!(
+        rows[1].starts_with("C:/Users/x/main.rs"),
+        "Windows drive-letter URI must display without a leading '/' \
+         before the drive letter, got {:?}",
+        rows[1]
+    );
+}
+
 /// The multi-entry-array case exercises `lsp/location-display`'s row
 /// formatting (`lsp/normalize-location`), unlike the single-entry jump
 /// tests above (which only ever reach `goto-location!` directly) — the
