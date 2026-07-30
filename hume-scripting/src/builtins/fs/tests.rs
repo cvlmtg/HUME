@@ -49,17 +49,47 @@ fn path_join_type_error() {
 
 // ── path->display ─────────────────────────────────────────────────────────
 
-#[test]
-fn path_to_display_matches_display_form_oracle() {
-    let args = vec![SteelVal::StringV("/some/absolute/path/file.rs".into())];
-    let result = path_to_display(&args).unwrap();
-    let s = match result {
+fn call_path_to_display(path: &str) -> String {
+    let args = vec![SteelVal::StringV(path.into())];
+    match path_to_display(&args).unwrap() {
         SteelVal::StringV(s) => s.to_string(),
         other => panic!("expected string, got {other:?}"),
+    }
+}
+
+/// A path with no home prefix and no Windows verbatim prefix must come back
+/// byte-identical — an oracle independent of `display_form`'s own logic,
+/// unlike comparing against `display_form`'s output directly.
+#[test]
+fn path_to_display_leaves_unrelated_path_unchanged() {
+    let input = "/some/absolute/path/file.rs";
+    assert_eq!(call_path_to_display(input), input);
+}
+
+/// `~`-collapse: a path under `$HOME` must come back with the home prefix
+/// replaced by `~`, built here from the raw separator rather than by calling
+/// `display_form`/`shorten_home` — the two behaviours this builtin exists for
+/// (this one and UNC-strip below) must each have a hand-computed expectation.
+#[test]
+fn path_to_display_collapses_home_prefix() {
+    let Some(home) = hume_platform::dirs::home_dir() else {
+        return; // no $HOME in this environment — nothing to collapse against
     };
-    let expected =
-        hume_platform::path::display_form(std::path::Path::new("/some/absolute/path/file.rs"));
-    assert_eq!(s, expected);
+    let input = home.join("dev").join("hume").join("x.rs");
+    let sep = std::path::MAIN_SEPARATOR;
+    let expected = format!("~{sep}dev{sep}hume{sep}x.rs");
+    assert_eq!(call_path_to_display(input.to_str().unwrap()), expected);
+}
+
+/// UNC-strip: a Windows verbatim-prefixed path must have `\\?\` removed,
+/// leaving a plain drive-letter path.
+#[cfg(windows)]
+#[test]
+fn path_to_display_strips_windows_verbatim_prefix() {
+    assert_eq!(
+        call_path_to_display(r"\\?\C:\Users\x\file.rs"),
+        r"C:\Users\x\file.rs"
+    );
 }
 
 #[test]
