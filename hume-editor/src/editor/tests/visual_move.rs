@@ -791,7 +791,8 @@ fn steel_wrapper_bare_dispatch_moves_visual_row() {
 /// Buffer: wrapped 80-char line 0, then three short lines "b"/"c"/"d" (chars
 /// 81/83/85). From char 0, 3 buffer lines lands on 'd' (85); 3 *visual* rows
 /// (sub-row 1, then "b", then "c") would land on 'c' (83) instead — the two
-/// outcomes are distinguishable, so this pins `by_buffer_line`, not just count.
+/// outcomes are distinguishable, so this pins `VerticalUnit::BufferLine`,
+/// not just count.
 #[test]
 fn steel_wrapper_explicit_count_moves_buffer_lines() {
     use crate::editor::host_impl::EditorHostImpl;

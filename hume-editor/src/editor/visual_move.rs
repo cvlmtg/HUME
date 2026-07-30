@@ -199,11 +199,12 @@ pub(super) fn cmd_visual_move_up(
 
 /// Wrap-aware variant of `select-word-nearest-on-line`.
 ///
-/// When wrap is active, scopes the nearest-word search to the head's current
-/// visual row rather than the full buffer line. This prevents the search from
-/// finding words that live on an adjacent visual row when the head lands on
-/// leading whitespace near a wrap boundary — the failure mode that causes
-/// `j`/`k` bindings to oscillate in place.
+/// When wrap is active, scopes the nearest-word search to the selection
+/// anchor's current visual row rather than the full buffer line — matching
+/// `cmd_select_word_nearest_on_line`'s own use of `sel.anchor()`. This
+/// prevents the search from finding words that live on an adjacent visual
+/// row when the anchor lands on leading whitespace near a wrap boundary —
+/// the failure mode that causes `j`/`k` bindings to oscillate in place.
 ///
 /// Falls back to `cmd_select_word_nearest_on_line` (buffer-line bounds) when
 /// wrap is off, producing identical behaviour.

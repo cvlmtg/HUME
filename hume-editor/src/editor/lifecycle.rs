@@ -800,11 +800,12 @@ impl Editor {
         //    `visible_char_range`/`visible_line_range`, which read
         //    `viewport.top_line` — so a same-frame scroll (step 6) can leave
         //    a newly-exposed line's hints/signs unsynced until next frame.
-        //    That's a one-frame cosmetic lag that self-corrects; the
-        //    alternative (syncing after scroll, as before) is exactly the
-        //    scroll/render/caret disagreement this ordering fixes.
+        //    That's a one-frame cosmetic lag that self-corrects; syncing
+        //    after scroll instead would let step 6's `RowMap` see row
+        //    counts/columns the providers haven't caught up to yet — the
+        //    scroll/render/caret disagreement this ordering avoids.
         //    `update_virtual_line_providers` has no viewport dependency, so
-        //    its move here is unconditional either way.
+        //    its position here is unconditional either way.
         self.update_sign_providers();
         self.update_inlay_hint_providers();
         self.update_virtual_line_providers();

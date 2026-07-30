@@ -178,11 +178,12 @@ impl Editor {
     /// both `:wrap` and `:set pane wrap-mode=…`.
     ///
     /// Setting a wrapping mode also updates `saved_wrap_mode` (the restore
-    /// target for a future `:wrap` toggle-on) and, on an off→on transition,
-    /// zeroes horizontal scroll (meaningless once wrapped). Setting
-    /// `WrapMode::None` stashes the pane's current wrap mode into
-    /// `saved_wrap_mode` first, preserving the toggle invariant that it's
-    /// never `None`.
+    /// target for a future `:wrap` toggle-on) and, on any actual mode
+    /// change, zeroes horizontal scroll (meaningless once wrapped — and
+    /// already 0 on every other transition, so this only has a visible
+    /// effect off→on). Setting `WrapMode::None` stashes the pane's current
+    /// wrap mode into `saved_wrap_mode` first, preserving the toggle
+    /// invariant that it's never `None`.
     pub(crate) fn apply_focused_wrap_mode(&mut self, mode: hume_engine::pane::WrapMode) {
         use hume_engine::pane::WrapMode;
         let now_wrapping = mode.is_wrapping();
@@ -200,13 +201,18 @@ impl Editor {
         }
         // Horizontal scroll is meaningless once wrapped, so an actual mode
         // change zeroes it. `top_row_offset`, by contrast, addresses a row
-        // inside `top_line`'s whole visual block in *either* wrap mode
-        // (`scroll::set_top` writes it unconditionally) — a mode change can
-        // leave it past the new block's row count (off→on starts a
-        // narrower block; on→on width/style changes can shrink it), but
-        // that's exactly what `scroll::clamp_viewport_top` repairs once per
-        // pane per frame, so there is no need to throw a still-valid
-        // address away here.
+        // inside `top_line`'s whole visual block (`before` + content rows +
+        // `after`) in *either* wrap mode (`scroll::set_top` writes it
+        // unconditionally) — a mode change can leave it past the new
+        // block's row count (off→on starts a narrower block; on→on
+        // width/style changes can shrink it), and that out-of-range case is
+        // exactly what `scroll::clamp_viewport_top` repairs once per pane
+        // per frame, so there is no need to throw the address away here.
+        // What clamping *cannot* catch: only `content` changes with wrap
+        // mode, so an offset that addressed an `after` row in no-wrap can
+        // still be in range once wrapping grows `content` — landing on a
+        // wrap row of the line's own text instead of the virtual row it
+        // used to point at. Silent, not a bug this function fixes.
         if mode_changed {
             self.viewport_mut().horizontal_offset = 0;
         }
