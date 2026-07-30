@@ -140,6 +140,93 @@ fn buffer_prefix_ambiguous_errors() {
     );
 }
 
+/// Creates `$HOME/<name>` for a `~`-expansion test, removing it on drop.
+/// `hume_platform::path::expand`'s `~` resolves against the real `$HOME` (no
+/// injection point at this level), so exercising it means touching the real
+/// one; each caller picks a distinct name, so parallel tests never collide,
+/// and cleanup is guaranteed even if the test panics.
+struct HomeScratchDir(std::path::PathBuf);
+
+impl HomeScratchDir {
+    fn new(name: &str) -> Self {
+        let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
+        let dir = home.join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        Self(dir)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for HomeScratchDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn buffer_tilde_path_switches() {
+    let dir = HomeScratchDir::new(".hume_test_tilde_switch");
+    let path = dir.path().join("file.rs");
+    std::fs::write(&path, "x\n").unwrap();
+    let canonical = std::fs::canonicalize(&path).unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+
+    ed.execute_typed("b", Some("~/.hume_test_tilde_switch/file.rs"))
+        .unwrap();
+    assert_eq!(
+        ed.doc().path(),
+        Some(canonical.as_path()),
+        ":b ~/<path> must switch to the buffer opened at that path"
+    );
+}
+
+/// Regression test: `resolve_buffer_arg`'s ambiguity labels are built from
+/// `display_path`, which `~`-collapses paths under `$HOME` — retyping the
+/// exact label shown must resolve, not error again with "no buffer matching".
+///
+/// Fail oracle: drop the `hume_platform::path::expand` call from
+/// `resolve_buffer_arg`'s absolute-path branch — `Path::is_absolute()` on a
+/// literal `~/...` string is `false`, so the retype falls through to the
+/// basename/prefix branches (which compare against the bare basename, not
+/// the full label) and errors "no buffer matching".
+#[test]
+fn buffer_ambiguous_label_is_retypeable() {
+    let dir1 = HomeScratchDir::new(".hume_test_tilde_p1");
+    let dir2 = HomeScratchDir::new(".hume_test_tilde_p2");
+    let p1 = dir1.path().join("same.txt");
+    let p2 = dir2.path().join("same.txt");
+    std::fs::write(&p1, "a\n").unwrap();
+    std::fs::write(&p2, "b\n").unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
+    ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
+
+    let err = ed
+        .execute_typed("b", Some("same.txt"))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains('~'),
+        "expected ~-collapsed labels in the ambiguity message, got: {err}"
+    );
+    let labels = err
+        .splitn(2, ": ")
+        .nth(1)
+        .expect("message must list labels");
+    let first_label = labels.split(", ").next().unwrap();
+
+    ed.execute_typed("b", Some(first_label))
+        .unwrap_or_else(|e| {
+            panic!("retyping the ambiguity label {first_label:?} must resolve, got: {e}")
+        });
+}
+
 #[test]
 fn buffer_scratch_literal_switches_back() {
     let (p1, _t1) = temp_file("file1\n");

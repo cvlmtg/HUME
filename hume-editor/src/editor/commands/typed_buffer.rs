@@ -126,7 +126,8 @@ pub fn typed_buffer_delete(
 ///
 /// Accepts four argument forms (tried in order):
 /// 1. Numeric 1-based index matching `:ls` output.
-/// 2. Absolute path — resolved via canonicalize then looked up in the store.
+/// 2. Absolute path (after `~`/env-var expansion) — resolved via canonicalize
+///    then looked up in the store.
 /// 3. Exact display-name match (basename or `*scratch*`).
 /// 4. Unique basename prefix.
 ///
@@ -195,8 +196,12 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
 
     // 2. Absolute path — match an open buffer by canonical OR lexical path.
     //    Lexical fallback keeps buffers reachable after their file is deleted.
-    if Path::new(arg).is_absolute() {
-        return find_buffer_by_path_arg(ed, arg)
+    //    `~`/env-var expansion first, matching :e's handling (typed_edit) —
+    //    an ambiguity message's label can be a `~`-collapsed display_path, so
+    //    retyping it verbatim must resolve the same way :e would.
+    let expanded = hume_platform::path::expand(arg);
+    if Path::new(expanded.as_ref()).is_absolute() {
+        return find_buffer_by_path_arg(ed, expanded.as_ref())
             .ok_or_else(|| CommandError::new(format!("{arg}: not an open buffer")));
     }
 
