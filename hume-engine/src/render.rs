@@ -250,9 +250,10 @@ fn compose_gutter(
 /// row (used to resolve `CellContent::Grapheme` byte ranges). Pass `""` for
 /// virtual/filler rows that have no backing buffer line.
 ///
-/// `virtual_texts` is the per-frame arena backing `CellContent::Indicator`/
-/// `Virtual` ranges (`FormatScratch::virtual_texts`) — same lifetime/borrow
-/// rationale as `line_str`.
+/// `virtual_texts` is the per-frame arena backing this row's
+/// `CellContent::Indicator`/`Virtual` ranges (`FormatScratch::virtual_texts`
+/// for a content row, `virtual_row.texts` for a provider's virtual row) —
+/// same lifetime/borrow rationale as `line_str`.
 ///
 /// `col_widths` must already be populated by the caller (one entry per gutter
 /// column). Passed separately from `compose_ctx` because in the fused pipeline it lives

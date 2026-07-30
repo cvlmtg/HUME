@@ -110,8 +110,8 @@ struct CachedLine {
     /// [`VirtualLineAnchor::sort_key`] imposes, so the `i`th `After` row is at
     /// index `before + i`.
     virtual_lines: Vec<VirtualLine>,
-    /// Whether the scratch's `display_rows`/`graphemes`/`line_texts` currently
-    /// hold this line's formatted content rows.
+    /// Whether the scratch's `display_rows`/`graphemes`/`line_texts`/
+    /// `virtual_texts` currently hold this line's formatted content rows.
     formatted: bool,
 }
 
@@ -639,26 +639,27 @@ impl<'a> RowMap<'a> {
         }
     }
 
-    /// Lay one virtual row out into the scratch and borrow it back.
+    /// Lay one virtual row out into its own scratch and borrow it back.
+    ///
+    /// Uses `FormatScratch::virtual_row`, not the content-line buffers: a
+    /// `Before` row renders ahead of its line's content rows, which may
+    /// already be formatted and cached (`block` runs the formatter in
+    /// wrapping mode to count wrap rows) — clobbering the shared buffers
+    /// here would destroy that cached format and force a redundant reformat
+    /// of the content rows that follow.
     fn segment_virtual_row(&mut self, line: usize, vl_idx: usize) -> RenderRow<'_> {
-        // Laying out a virtual row reuses the same row/grapheme buffers a
-        // content line formats into, so whatever was formatted is gone.
-        self.scratch.clear_line_bufs();
-        if let Some(c) = &mut self.cached {
-            c.formatted = false;
-        }
-
         let cached = self
             .cached
             .as_ref()
             .expect("kind() resolved this line's block");
         let vl = &cached.virtual_lines[vl_idx];
         let provider_id = vl.provider_id;
-        let scratch = &mut *self.scratch;
+        let vrow = &mut self.scratch.virtual_row;
+        vrow.clear();
 
         // One copy of the row's text into the arena; each cell then names a
         // sub-range of it.
-        let (arena_base, _) = push_arena_text(&mut scratch.virtual_texts, &vl.text);
+        let (arena_base, _) = push_arena_text(&mut vrow.texts, &vl.text);
 
         let mut col: u32 = 0;
         for (byte_offset, grapheme_str) in vl.text.grapheme_indices(true) {
@@ -671,7 +672,7 @@ impl<'a> RowMap<'a> {
             let start = arena_base.saturating_add(u32::try_from(byte_offset).unwrap_or(u32::MAX));
             let len = u16::try_from(grapheme_str.len()).unwrap_or(u16::MAX);
 
-            scratch.graphemes.push(Grapheme {
+            vrow.graphemes.push(Grapheme {
                 byte_range: 0..0, // zero-length: virtual, no buffer position
                 char_offset: usize::MAX,
                 col,
@@ -683,7 +684,7 @@ impl<'a> RowMap<'a> {
             col = col.saturating_add(width as u32);
             if width == 2 {
                 // Both cells of a double-wide glyph stay on this row.
-                scratch.graphemes.push(Grapheme {
+                vrow.graphemes.push(Grapheme {
                     byte_range: 0..0,
                     char_offset: usize::MAX,
                     col,
@@ -695,20 +696,20 @@ impl<'a> RowMap<'a> {
             }
         }
 
-        scratch.display_rows.push(DisplayRow {
+        let row = vrow.row.insert(DisplayRow {
             kind: crate::types::RowKind::Virtual {
                 provider_id,
                 anchor_line: line,
             },
-            graphemes: 0..scratch.graphemes.len(),
+            graphemes: 0..vrow.graphemes.len(),
         });
 
         RenderRow {
-            row: scratch.display_rows.last().expect("pushed above"),
-            graphemes: &scratch.graphemes,
+            row,
+            graphemes: &vrow.graphemes,
             // A virtual row has no buffer text; every cell of it is `Virtual`.
             line_text: "",
-            virtual_texts: &scratch.virtual_texts,
+            virtual_texts: &vrow.texts,
         }
     }
 

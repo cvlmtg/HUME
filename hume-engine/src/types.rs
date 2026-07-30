@@ -186,9 +186,11 @@ pub struct Grapheme {
 
 /// What a grapheme cell displays.
 ///
-/// `Indicator` and `Virtual` reference a range in the per-frame text arena
-/// (`FormatScratch::virtual_texts`) rather than borrowing a string directly —
-/// their source text (Steel-configured whitespace glyphs, LSP inlay hints,
+/// `Indicator` and `Virtual` reference a range in a per-frame text arena in
+/// `FormatScratch` (`virtual_texts` for a content line's inline decorations,
+/// `virtual_row.texts` for a provider's virtual row — see
+/// `rows::RenderRow::virtual_texts`) rather than borrowing a string directly
+/// — their source text (Steel-configured whitespace glyphs, LSP inlay hints,
 /// provider-built virtual lines) is never truly `'static`, and `Grapheme`
 /// must stay `Copy` on the per-cell hot path. `(start: u32, len: u16)` keeps
 /// the variant small; a single line's arena realistically never approaches

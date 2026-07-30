@@ -26,13 +26,18 @@ pub struct FormatScratch {
     /// `format_buffer_line`; read by `rows::RowMap`'s render accessors as
     /// `RenderRow::line_text`.
     pub line_texts: String,
-    /// Per-frame arena backing `CellContent::Virtual`/`Indicator` text ranges
-    /// — inline-insert text, whitespace-indicator glyphs, and virtual-line
-    /// text, none of which can be `&'static str` (LSP hints, Steel-configured
-    /// icons). Cleared per buffer line in [`FormatScratch::clear_line_bufs`],
-    /// mirroring `line_texts` — compose for that line/virtual-row always runs
-    /// before the clear.
+    /// Per-frame arena backing the content line's `CellContent::Virtual`
+    /// (inline inserts) and `Indicator` (whitespace glyphs, tab fill) text
+    /// ranges, none of which can be `&'static str` (LSP hints,
+    /// Steel-configured icons). Cleared per buffer line in
+    /// [`FormatScratch::clear_line_bufs`], mirroring `line_texts` — compose
+    /// for that line always runs before the clear.
     pub virtual_texts: String,
+    /// Scratch for the virtual row currently being laid out by
+    /// `rows::RowMap::segment_virtual_row` — separate from the fields above
+    /// so laying out a provider's virtual row never disturbs the content
+    /// line's already-formatted rows/graphemes/arena.
+    pub virtual_row: VirtualRowScratch,
 }
 
 impl FormatScratch {
@@ -42,6 +47,7 @@ impl FormatScratch {
             graphemes: Vec::with_capacity(512),
             line_texts: String::with_capacity(512),
             virtual_texts: String::with_capacity(256),
+            virtual_row: VirtualRowScratch::new(),
         }
     }
 
@@ -49,6 +55,7 @@ impl FormatScratch {
     pub fn clear(&mut self) {
         self.clear_line_bufs();
         self.line_texts.clear();
+        self.virtual_row.clear();
     }
 
     /// Reset the per-buffer-line fields (`display_rows`, `graphemes`,
@@ -65,6 +72,49 @@ impl FormatScratch {
 }
 
 impl Default for FormatScratch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Scratch for laying out one virtual (non-buffer) display row.
+///
+/// A dedicated buffer, not a reuse of `FormatScratch`'s content-line fields:
+/// a `Before` virtual row renders ahead of its line's content rows, and
+/// those may already be formatted and cached (`rows::RowMap::block` runs the
+/// formatter in wrapping mode to count wrap rows) — clobbering the shared
+/// buffers to lay out the virtual row would destroy that cached format and
+/// force a redundant reformat of the content rows that follow.
+pub struct VirtualRowScratch {
+    /// The one row laid out here. `None` before the first use.
+    pub row: Option<DisplayRow>,
+    /// Graphemes for `row`.
+    pub graphemes: Vec<Grapheme>,
+    /// Arena backing this row's `CellContent::Virtual` text ranges —
+    /// entirely the provider's `VirtualLine::text`, unlike
+    /// `FormatScratch::virtual_texts` which backs a content line's inline
+    /// decorations.
+    pub texts: String,
+}
+
+impl VirtualRowScratch {
+    pub fn new() -> Self {
+        Self {
+            row: None,
+            graphemes: Vec::with_capacity(128),
+            texts: String::with_capacity(128),
+        }
+    }
+
+    /// Reset to empty, retaining allocated capacity.
+    pub fn clear(&mut self) {
+        self.row = None;
+        self.graphemes.clear();
+        self.texts.clear();
+    }
+}
+
+impl Default for VirtualRowScratch {
     fn default() -> Self {
         Self::new()
     }
@@ -564,12 +614,13 @@ fn grapheme_display(
     (w, CellContent::Grapheme)
 }
 
-/// Push `text` into the per-frame arena (`FormatScratch::virtual_texts`),
-/// returning a `(start, len)` range cheap enough to store in a `Copy`
-/// `CellContent`. A single line's pushed text realistically never approaches
-/// the `u32`/`u16` bounds; `debug_assert` catches an overflow in tests, while
-/// release saturates rather than panicking (mirrors the `current_col`
-/// saturation pattern in `format_buffer_line`).
+/// Push `text` into a per-frame text arena (`FormatScratch::virtual_texts`
+/// or `VirtualRowScratch::texts`), returning a `(start, len)` range cheap
+/// enough to store in a `Copy` `CellContent`. A single line's pushed text
+/// realistically never approaches the `u32`/`u16` bounds; `debug_assert`
+/// catches an overflow in tests, while release saturates rather than
+/// panicking (mirrors the `current_col` saturation pattern in
+/// `format_buffer_line`).
 pub(crate) fn push_arena_text(arena: &mut String, text: &str) -> (u32, u16) {
     let start = arena.len();
     arena.push_str(text);

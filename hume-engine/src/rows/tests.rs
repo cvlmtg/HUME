@@ -814,10 +814,32 @@ fn render_row_formats_a_line_once_however_many_rows_are_drawn() {
 }
 
 #[test]
-fn render_row_reformats_content_after_a_virtual_row_reused_the_scratch() {
-    // Laying out a virtual row overwrites the buffers a content line formats
-    // into, which is the render order for any line with a Before block. The
-    // content rows that follow must still come back correct.
+fn render_row_does_not_reformat_a_line_because_of_its_virtual_rows() {
+    // A Before row is laid out and rendered before its line's content rows —
+    // it must not disturb the already-formatted content row/grapheme/arena
+    // state that follows it in the same block.
+    let rope = Rope::from_str("abcdef\n");
+    let (mut providers, calls) = with_counting_insert(0, 0, "hint");
+    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 1)));
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
+
+    assert_eq!(rm.block(0).content, 2);
+    let after_count = calls.get();
+    rm.render_row(RowPos::new(0, 0)); // the Before row
+    rm.render_row(RowPos::new(0, 1)); // content row 0
+    rm.render_row(RowPos::new(0, 2)); // content row 1
+    assert_eq!(
+        calls.get(),
+        after_count,
+        "rendering a line's Before row must not force its content rows to re-format"
+    );
+}
+
+#[test]
+fn render_row_yields_correct_content_rows_after_a_virtual_row() {
+    // A virtual row's layout must not disturb the content rows that follow
+    // it in the same block: they must still come back correct.
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
     providers.add_virtual_line_source(Box::new(FixedAnchor {
