@@ -50,7 +50,11 @@ pub fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(),
         if ed.doc().is_dirty() && !force {
             return Err(CommandError::new("unsaved changes (use :e! to force)"));
         }
-        let display = ed.doc().display_path().unwrap_or_default().to_string();
+        let display = ed
+            .doc()
+            .display_path()
+            .expect("path is Some ⇒ display_path is Some (Buffer::set_path)")
+            .to_string();
         let id = ed.focused_buffer_id();
         ed.reload_from_path(id, &path)
             .map_err(|e| CommandError::new(format!("{display}: {e}")))

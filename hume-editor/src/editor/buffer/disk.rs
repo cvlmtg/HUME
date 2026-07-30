@@ -286,7 +286,10 @@ impl Editor {
         let Some(path) = buf.path().map(std::path::Path::to_path_buf) else {
             return;
         };
-        let display = buf.display_path().unwrap_or_default().to_string();
+        let display = buf
+            .display_path()
+            .expect("path is Some ⇒ display_path is Some (Buffer::set_path)")
+            .to_string();
         if let Err(e) = self.reload_from_path(bid, &path) {
             self.report(Severity::Warning, format!("{display}: {e}"));
         }
