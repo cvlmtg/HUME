@@ -99,7 +99,11 @@ pub(super) fn ensure_cursor_visible_horizontal(
 
     let (_, cursor_col) = rm.locate(cursor_char);
     let cursor_col = cursor_col as usize;
-    let content_width = viewport.width as usize;
+    // `locate`'s column is content-relative (the gutter isn't part of it),
+    // so the margin must compare against the content width the map itself
+    // was built with — not `viewport.width`, which still includes the
+    // gutter and so under-counts how many columns are actually visible.
+    let content_width = rm.content_width() as usize;
     if content_width == 0 {
         return;
     }

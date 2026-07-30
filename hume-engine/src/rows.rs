@@ -189,6 +189,15 @@ impl<'a> RowMap<'a> {
         self.wrap_mode.is_wrapping()
     }
 
+    /// Width available for content — the same `content_width` the caller
+    /// passed to [`RowMap::new`] (gutter already subtracted). The one column
+    /// bound `locate`'s columns are relative to, so a caller sizing anything
+    /// against display columns (horizontal scroll) reads it here rather than
+    /// re-deriving it from the pane and risking the two drifting apart.
+    pub fn content_width(&self) -> u16 {
+        self.content_width
+    }
+
     // ── Block shape ──────────────────────────────────────────────────────
 
     /// The display-row breakdown of `line`'s visual block.

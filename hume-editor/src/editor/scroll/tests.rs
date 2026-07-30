@@ -417,3 +417,52 @@ fn clamp_top_row_offset_is_a_noop_when_already_valid() {
     clamp_viewport_top(&mut v, &mut map(&r, WrapMode::None, &providers, 80, &mut s));
     assert_eq!(v.top_row_offset, 1);
 }
+
+// ── ensure_cursor_visible_horizontal ─────────────────────────────────────
+
+/// `locate`'s column is content-relative (gutter already subtracted), so the
+/// margin check must compare it against the map's own `content_width`, not
+/// `viewport.width` (still gutter-inclusive). Viewport width 80, content
+/// width 72 (an 8-column gutter): cursor at column 70 is inside the margin
+/// measured against content width (70 >= 72 - 5) but not against the wider
+/// viewport width (70 < 80 - 5) — so a scroll fires here only if the fix is
+/// in place.
+#[test]
+fn horizontal_scroll_margin_uses_content_width_not_viewport_width() {
+    let r = rope(&("a".repeat(100) + "\n"));
+    let mut v = viewport(0, 10, 80);
+    let providers = no_providers();
+    let mut s = FormatScratch::new();
+    let cursor_char = 70;
+
+    ensure_cursor_visible_horizontal(
+        &mut v,
+        &mut map(&r, WrapMode::None, &providers, 72, &mut s),
+        cursor_char,
+    );
+
+    assert_eq!(
+        v.horizontal_offset, 4,
+        "cursor_col(70) - (content_width(72) - margin(5) - 1) = 4"
+    );
+}
+
+/// Same cursor position, no scroll needed once the (correct) content width
+/// is wide enough that the cursor sits outside the margin — sanity check
+/// that the assertion above isn't just "always scrolls".
+#[test]
+fn horizontal_scroll_margin_no_scroll_when_within_content_width() {
+    let r = rope(&("a".repeat(100) + "\n"));
+    let mut v = viewport(0, 10, 80);
+    let providers = no_providers();
+    let mut s = FormatScratch::new();
+    let cursor_char = 70;
+
+    ensure_cursor_visible_horizontal(
+        &mut v,
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
+        cursor_char,
+    );
+
+    assert_eq!(v.horizontal_offset, 0, "70 < content_width(80) - margin(5)");
+}
