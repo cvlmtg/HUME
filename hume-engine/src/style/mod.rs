@@ -351,7 +351,11 @@ fn collect_head_cols(
 /// carry the offset of the real grapheme they precede, pushed just before it),
 /// so `partition_point` can land on an insert rather than the real grapheme at
 /// that offset — the loop below skips forward past any such ties.
-fn resolve_grapheme_col(
+///
+/// `pub(crate)`: also the resolver `rows::RowMap::locate_in_line` uses, so the
+/// two column-lookup paths (selection styling, cursor placement) can't drift
+/// on how they treat a `Virtual` tie.
+pub(crate) fn resolve_grapheme_col(
     char_offset: usize,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,

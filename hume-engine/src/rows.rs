@@ -422,13 +422,15 @@ impl<'a> RowMap<'a> {
             if target_byte >= first.byte_range.start
                 && (target_byte < last.byte_range.end || is_last)
             {
-                let col = graphemes[row.graphemes.clone()]
-                    .iter()
-                    .find(|g| g.byte_range.start == target_byte)
+                // The real grapheme, not an inline-insert decoration sharing
+                // its `char_offset` — `style::resolve_grapheme_col` skips
+                // forward past any `Virtual` cells to reach it, the same rule
+                // `style::char_offset_to_col` applies for selection styling.
+                let col = crate::style::resolve_grapheme_col(char_offset, graphemes, &row.graphemes)
                     .map_or_else(
                         // Past every grapheme on the row (end of line).
                         || last.col.saturating_add(last.width as u16),
-                        |g| g.col,
+                        |(col, _)| col,
                     );
                 return (i, col);
             }
@@ -480,12 +482,18 @@ impl<'a> RowMap<'a> {
             ColTarget::NearestContent => {
                 // Virtual fill cells have no buffer position at all; the
                 // end-of-line sentinel has one but is not content, so it only
-                // answers when nothing else can (an empty line).
+                // answers when nothing else can (an empty line). An
+                // inline-insert (`Virtual`) cell carries the `char_offset` of
+                // the *real* grapheme it precedes — a column elsewhere on the
+                // row minimising distance against it would land on a
+                // character this cell isn't at, so it's excluded outright
+                // rather than merely deprioritised.
                 let nearest = |admit_eol: bool| {
                     graphemes
                         .iter()
                         .filter(|g| g.char_offset != usize::MAX)
                         .filter(|g| admit_eol || !matches!(g.content, CellContent::Empty))
+                        .filter(|g| !matches!(g.content, CellContent::Virtual { .. }))
                         .min_by_key(|g| target_col.abs_diff(g.col))
                         .map(|g| g.char_offset)
                 };

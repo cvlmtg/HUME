@@ -499,6 +499,21 @@ fn locate_offsets_the_row_by_the_lines_before_block() {
 }
 
 #[test]
+fn locate_skips_a_mid_line_inline_insert_sharing_the_real_graphemes_offset() {
+    // "ab\n", no wrap: an inline insert "XY" (an inlay hint, say) spliced in
+    // right before 'b' shares 'b's char_offset (1). `locate` must resolve to
+    // the real grapheme's column — 'a' at 0, the insert's own two cells at 1
+    // and 2, 'b' at 3 — not the insert's column, matching what
+    // `style::resolve_grapheme_col` already guarantees for selection styling.
+    let rope = Rope::from_str("ab\n");
+    let (providers, _calls) = with_counting_insert(0, 1, "XY");
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(rm.locate(1), (RowPos::new(0, 0), 3));
+}
+
+#[test]
 fn char_at_cell_lands_on_the_eol_sentinel_past_the_text() {
     // "hi\n": h at column 0, i at column 1, and the end-of-line sentinel at
     // column 2 standing for the '\n' (char 2) — a real cursor position in
@@ -524,6 +539,26 @@ fn char_at_nearest_content_stays_off_the_eol_sentinel() {
     assert_eq!(
         rm.char_at(RowPos::new(0, 0), 99, ColTarget::NearestContent),
         1
+    );
+}
+
+#[test]
+fn char_at_nearest_content_skips_a_trailing_inline_insert() {
+    // "hi\n" plus a trailing insert "ZZZ" (an end-of-line diagnostic summary,
+    // say) appended after the text. Both the EOL sentinel and the insert's
+    // cells sit at the '\n' char offset — a sticky column past all of them
+    // must still land on the last *real* character ('i'), not the insert or
+    // the newline the way an unfiltered nearest-column search would (it
+    // would prefer the insert's own trailing cell, being visually closer).
+    let rope = Rope::from_str("hi\n");
+    let (providers, _calls) = with_counting_insert(0, 2, "ZZZ");
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        rm.char_at(RowPos::new(0, 0), 10, ColTarget::NearestContent),
+        1,
+        "sticky column must land on 'i', not the trailing insert or the newline"
     );
 }
 
