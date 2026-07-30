@@ -53,9 +53,8 @@ pub(crate) struct VirtualLineEntry {
 /// buffer `line` (0-indexed) — the diagnostics plugin's per-line summary
 /// (`"[n] <message>"` or a bare message). Keyed and rendered exactly like
 /// `inlay_hints` (unconditional per-frame rebuild in
-/// `update_inline_diagnostics_providers` — this store is render-only,
-/// unlike `virtual_lines` which also feeds scroll/cursor math and so needs
-/// a dirty-tracking generation).
+/// `update_inline_diagnostics_providers`, cheap enough that it doesn't need
+/// the dirty-tracking generation gate `virtual_lines` uses).
 pub(crate) struct InlineDiagnosticEntry {
     pub(crate) line: usize,
     pub(crate) text: String,

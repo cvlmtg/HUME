@@ -70,6 +70,64 @@ fn before_hint_renders_immediately_before_its_char() {
     insta::assert_snapshot!(snap);
 }
 
+/// `prepare_frame` must sync `update_inlay_hint_providers` *before* it
+/// scrolls: the scroll step and `screen_pos` both build a `RowMap` off the
+/// same pane provider Arc `update_inlay_hint_providers` writes, so if scroll
+/// ran first it would size line 0's block without the hint (1 row) while
+/// `screen_pos` — built fresh right after `prepare_frame` returns, as
+/// production code does for the terminal caret — sees the hint already
+/// written (2 rows) and disagrees about which absolute row the cursor is on.
+///
+/// Wrap width 3, a `before` hint "HHH" splices in right before line 0's only
+/// char ("x") — a mid-line insert, so unlike a trailing/end-of-line insert it
+/// participates in wrapping. With the hint, line 0 wraps to 2 rows (`HHH` /
+/// `x`), pushing line 2 ("b", the cursor) to absolute row 3. Viewport height
+/// 3 content rows (rect height 4, one row reserved for the statusline),
+/// scrolloff 0: without the hint, the cursor's row (2) is already the last
+/// visible row, so a scroll step that doesn't see the hint decides nothing
+/// needs to move.
+#[test]
+fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor() {
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.state.settings.lsp_inlay_hints = true; // off by default
+    ed.state.settings.scrolloff = 0;
+    type_text(&mut ed, "x\na\nb");
+    let bid = ed.focused_buffer_id();
+    ed.set_current_selections(hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::collapsed(4), // 'b', line 2
+    ));
+    let pid = ed.state.focused_pane_id;
+    ed.view.panes[pid].wrap_mode = hume_engine::pane::WrapMode::Soft { width: 3 };
+    ed.state.config.decorations.set_inlay_hints(
+        bid,
+        vec![InlayHintEntry {
+            pos: 0, // the 'x'
+            text: "HHH".to_string(),
+            before: true, // mid-line insert, so it participates in wrapping
+        }],
+    );
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(10, 4, &mut ctx);
+
+    let vp = ed.view.panes[pid].viewport.clone();
+    let cursor_char = ed.current_selections().primary().head();
+    let mut scratch = hume_engine::format::FormatScratch::new();
+    let mut rm = crate::editor::commands::pane_row_map(
+        ed.doc(),
+        &ed.state.settings,
+        &ed.view.panes[pid],
+        &mut scratch,
+    );
+    assert_eq!(
+        crate::editor::cursor::screen_pos(&vp, &mut rm, cursor_char),
+        Some((0, 2)),
+        "scroll must have already accounted for the hint's extra wrap row, \
+         placing the cursor at the last visible row rather than leaving it \
+         unplaceable off the bottom"
+    );
+}
+
 #[test]
 fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
     // "🎉" is 1 char, 4 UTF-8 bytes. An 'after' hint at char index 0 (the

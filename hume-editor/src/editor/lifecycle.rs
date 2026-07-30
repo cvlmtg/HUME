@@ -753,7 +753,7 @@ impl Editor {
         //    any Steel calls that work queued (LSP request/timer callbacks).
         //    `drain_pending_steel_calls` also unconditionally consumes any
         //    deferred LSP-completion dismissal (`set_mode`'s Insert-exit arm)
-        //    — this is what makes step 9's `sync_completion_menu_view` below
+        //    — this is what makes step 10's `sync_completion_menu_view` below
         //    always see an up-to-date session, with no separate call needed.
         self.drain_async_sources();
         self.drain_pending_steel_calls();
@@ -785,7 +785,34 @@ impl Editor {
         //    mirror against the pane's *current* buffer.
         self.sync_all_pane_mirrors();
 
-        // 5. Scroll every pane so its primary cursor stays visible. Must run
+        // 5. Sync everything that decides row counts/columns for step 6's
+        //    `RowMap`-driven scroll, in this order because none of them
+        //    depends on this frame's viewport (a gutter/decoration change
+        //    must be visible to the scroll math that positions the cursor
+        //    against it, not just to the renderer one step later):
+        //      5a. gutter sign data (diagnostics + plugin signs) — decides
+        //          gutter width, which decides `Pane::content_width`, which
+        //          decides the wrap column.
+        //      5b/5c/5d. inlay hints / virtual lines / end-of-line
+        //          diagnostic summaries — each a `RowMap` provider
+        //          (`inline_decorations` or `virtual_lines`) that
+        //          `RowMap::format_line`/`block` reads, so they change wrap
+        //          row counts and columns the moment they appear.
+        //    Tradeoff: 5a/5b/5d scope their own work to
+        //    `visible_char_range`/`visible_line_range`, which read
+        //    `viewport.top_line` — so a same-frame scroll (step 6) can leave
+        //    a newly-exposed line's hints/signs unsynced until next frame.
+        //    That's a one-frame cosmetic lag that self-corrects; the
+        //    alternative (syncing after scroll, as before) is exactly the
+        //    scroll/render/caret disagreement this ordering fixes.
+        //    `update_virtual_line_providers` has no viewport dependency, so
+        //    its move here is unconditional either way.
+        self.update_sign_providers();
+        self.update_inlay_hint_providers();
+        self.update_virtual_line_providers();
+        self.update_inline_diagnostics_providers();
+
+        // 6. Scroll every pane so its primary cursor stays visible. Must run
         //    after step 2: the drains can switch a pane's `buffer_id` mid-frame
         //    (picker accept, LSP goto-definition), and this reads buffer_id/
         //    rope/cursor together from SSOT, so it always scrolls the pane's
@@ -827,32 +854,16 @@ impl Editor {
             }
         }
 
-        // 6. Sync highlight data (search matches, bracket matches, diagnostic
+        // 7. Sync highlight data (search matches, bracket matches, diagnostic
         //    underlines, extra highlights) to shared Arc buffers read by the
-        //    highlight providers during rendering.
+        //    highlight providers during rendering. Render-only — no `RowMap`
+        //    consumer reads highlight scope, only the cell's styling.
         self.update_highlight_providers();
 
-        // 6b. Sync gutter sign data (diagnostics + plugin signs) the same way.
-        self.update_sign_providers();
-
-        // 6c. Sync inlay-hint data (decoration store → per-pane InlineDecoration).
-        self.update_inlay_hint_providers();
-
-        // 6d. Sync virtual-line data (decoration store → per-pane VirtualLineSource),
-        //     gated on a generation check — this feeds the virtual-line-aware
-        //     scroll/cursor math too, not just render.
-        self.update_virtual_line_providers();
-
-        // 6e. Sync diagnostics end-of-line summary data (decoration store →
-        //     per-pane InlineDecoration), same unconditional per-frame
-        //     rebuild as inlay hints (6c) — render-only, no scroll/cursor
-        //     math depends on it.
-        self.update_inline_diagnostics_providers();
-
-        // 7. Sync completion-popup view to the shared Arc for `MinibufCompletionOverlay`.
+        // 8. Sync completion-popup view to the shared Arc for `MinibufCompletionOverlay`.
         self.sync_minibuf_completion_view();
 
-        // 8. Store the terminal area + divider setting: pane-focus/split
+        // 9. Store the terminal area + divider setting: pane-focus/split
         //    commands have no terminal handle between frames, so they
         //    recompute geometry from these via `EngineView::pane_rects`/
         //    `pane_rect` rather than trusting a stored rect list.
@@ -860,20 +871,20 @@ impl Editor {
         self.view.last_terminal_area = terminal_area;
         self.view.reserve_seam = reserve_seam;
 
-        // 9. Sync the popup-, menu-, LSP-completion-menu-, and
-        //    picker-overlay views. Deliberately *after* step 8: their
-        //    geometry needs the focused pane's current-frame rect via
-        //    `EngineView::pane_rect` (popup/menu/completion) or
-        //    `last_pane_area` directly (picker), which reads `last_pane_area`
-        //    — calling this any earlier would position against last frame's
-        //    geometry.
+        // 10. Sync the popup-, menu-, LSP-completion-menu-, and
+        //     picker-overlay views. Deliberately *after* step 9: their
+        //     geometry needs the focused pane's current-frame rect via
+        //     `EngineView::pane_rect` (popup/menu/completion) or
+        //     `last_pane_area` directly (picker), which reads `last_pane_area`
+        //     — calling this any earlier would position against last frame's
+        //     geometry.
         self.sync_popup_view(ctx);
         self.sync_popup_band_view();
         self.sync_menu_view(ctx);
         self.sync_completion_menu_view(ctx);
         self.sync_picker_view();
         // The drawer has no cursor-relative geometry, so it doesn't need
-        // step 9's ordering — but it's synced here unconditionally anyway
+        // step 10's ordering — but it's synced here unconditionally anyway
         // (self-healing), on top of every direct mutation-site call, so the
         // view can never drift from `state.config.drawer` for a frame. See
         // `EditorState::sync_drawer_view`'s doc.
@@ -1250,7 +1261,9 @@ impl Editor {
     /// pane's own `Arc<RwLock<FxHashMap<line, Vec<Sign>>>>` buffers, read by
     /// that pane's `SharedSignSource`s. Stays visible in Insert mode — same
     /// reasoning as [`Self::update_highlight_providers`]'s diagnostics
-    /// section, which this runs right after.
+    /// section. Called from `prepare_frame`'s step 5, *before* scrolling: the
+    /// sign column's width feeds `Pane::content_width`, which decides the
+    /// wrap column the scroll step's `RowMap` resolves against.
     pub(super) fn update_sign_providers(&mut self) {
         use hume_engine::builtins::sign_column::Sign;
 
@@ -1507,8 +1520,11 @@ impl Editor {
     /// `decorations.inline_diagnostics` store to each pane's second
     /// `InlayHintProvider` Arc (`PaneRenderHandles::inline_diagnostics`).
     /// Unconditional per-frame rebuild, same as `update_inlay_hint_providers`
-    /// — this store is render-only, unlike `virtual_lines` which also feeds
-    /// scroll/cursor math and so needs a dirty-tracking generation gate.
+    /// — cheap enough that, unlike `virtual_lines`, it doesn't need a
+    /// dirty-tracking generation gate to skip needless work. Both write into
+    /// a pane's `inline_decorations` providers, which `RowMap::format_line`
+    /// reads, so this feeds wrap row counts and columns exactly like inlay
+    /// hints do — called from `prepare_frame`'s step 5, *before* scrolling.
     pub(super) fn update_inline_diagnostics_providers(&mut self) {
         use hume_engine::providers::InlineInsert;
 
@@ -1585,11 +1601,13 @@ impl Editor {
 
     /// Sync per-pane virtual-line decorations from the
     /// `decorations.virtual_lines` store to each pane's `PaneVirtualLines`
-    /// Arc. Unlike inlay hints, this only rebuilds when
-    /// `decorations.virtual_lines_generation()` changed since the pane's
-    /// last sync — this feeds the virtual-line-aware scroll/cursor math
-    /// every frame, not just render, so skipping needless rebuild work
-    /// matters more here.
+    /// Arc — a `RowMap::block` provider, so this feeds row *counts* the same
+    /// way inlay hints/inline diagnostics feed wrap columns. Unlike those two,
+    /// this only rebuilds when `decorations.virtual_lines_generation()`
+    /// changed since the pane's last sync, since resolving each entry's scope
+    /// (`runtime_scope`) is costlier to redo unconditionally every frame.
+    /// Called from `prepare_frame`'s step 5, *before* scrolling, no
+    /// viewport dependency to make stale.
     /// Every entry becomes an `After(line)` virtual line — no `Before`
     /// anchoring in v1 (inline diagnostics render below
     /// the line they annotate).
@@ -1754,7 +1772,7 @@ impl Editor {
     /// [`Self::sync_popup_band_view`] instead — this clears `popup_view` for
     /// that case, same as when no popup is open at all.
     ///
-    /// Called from `prepare_frame` after `last_pane_area` is set (step 9):
+    /// Called from `prepare_frame` after `last_pane_area` is set (step 10):
     /// `EngineView::pane_rect` reads that field, so calling this any earlier
     /// would position against the previous frame's geometry.
     pub(super) fn sync_popup_view(&mut self, ctx: &mut RenderContext) {
@@ -1969,10 +1987,10 @@ impl Editor {
     /// selected-row styling), but anchored at the completion session's
     /// token-start char rather than the live cursor (which drifts as the
     /// user types further into the token). Called every frame from
-    /// `prepare_frame`'s step 9, same as [`Self::sync_popup_view`]/
+    /// `prepare_frame`'s step 10, same as [`Self::sync_popup_view`]/
     /// [`Self::sync_menu_view`] and for the same reason: it needs
     /// `EngineView::pane_rect`, which reads `last_pane_area` — only current
-    /// after step 8 runs.
+    /// after step 9 runs.
     pub(super) fn sync_completion_menu_view(&self, ctx: &mut RenderContext) {
         if self.lsp.completion.is_none()
             && self
@@ -2024,9 +2042,9 @@ impl Editor {
     }
 
     /// Write the open picker session into the shared `PickerViewState` Arc
-    /// so `PickerOverlay` can paint it this frame. Same step-9 timing as
+    /// so `PickerOverlay` can paint it this frame. Same step-10 timing as
     /// `sync_popup_view`/`sync_menu_view`/`sync_completion_menu_view` (needs
-    /// `last_pane_area`, set in step 8) but, unlike them, centers in the
+    /// `last_pane_area`, set in step 9) but, unlike them, centers in the
     /// panes region rather than anchoring at the cursor — no `RenderContext`
     /// needed.
     ///
