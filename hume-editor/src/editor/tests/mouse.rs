@@ -1,10 +1,20 @@
 use super::*;
+use hume_editing::selection::Selection;
 use pretty_assertions::assert_eq;
 use termina::event::{Event, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
 fn mouse_left_down(col: u16, row: u16) -> Event {
     Event::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
+        column: col,
+        row,
+        modifiers: Modifiers::NONE,
+    })
+}
+
+fn mouse_drag(col: u16, row: u16) -> Event {
+    Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Drag(MouseButton::Left),
         column: col,
         row,
         modifiers: Modifiers::NONE,
@@ -43,6 +53,118 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
     // (out of bounds before the fix, since the buffer is now 2 chars
     // shorter than it was when the click coordinates were captured).
     assert_eq!(state(&ed), "  x\n\nc-[d]>\n");
+}
+
+// ── Drag ──────────────────────────────────────────────────────────────────
+
+/// A left-drag after a click extends the selection from the click's anchor
+/// to the drag's resolved head.
+#[test]
+fn drag_extends_selection_from_click_anchor() {
+    let mut ed = editor_from("-[0]>123456789\n");
+    ed.view.last_pane_area = ratatui::layout::Rect::new(0, 0, 80, 24);
+
+    ed.handle_event(mouse_left_down(0, 0)); // anchor at char 0
+    ed.handle_event(mouse_drag(4, 0)); // head at char 4 ('4')
+
+    let sel = ed.current_selections().primary();
+    assert_eq!(sel.anchor(), 0);
+    assert_eq!(sel.head(), 4, "drag head must resolve to content col 4");
+}
+
+/// A drag whose coordinates fall inside a *different* pane's rect (a fast
+/// mouse move during a `:vsplit` drag easily crosses the seam) must be
+/// ignored, not translated as if it were still in the originating pane —
+/// `col - rect.x`/`row - rect.y` would otherwise underflow when the drag
+/// lands left of/above the originating pane's own rect origin.
+#[test]
+fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
+    let mut ed =
+        editor_from("-[0]>123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\n");
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_b = ed.state.focused_pane_id; // vsplit focuses the new (right) pane
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(100, 25, &mut ctx);
+
+    // Click pane B (right half, gutter 4): screen col 57 = rect.x(50) +
+    // gutter(4) + content col 3 (see vsplit_click_... below for the geometry).
+    ed.handle_event(mouse_left_down(57, 0));
+    assert_eq!(ed.state.focused_pane_id, pid_b);
+    let head_after_click = ed.current_selections().primary().head();
+
+    // Drag to col 0 — inside pane A's rect (x ∈ [0, 49)), left of pane B's
+    // own rect.x (50). Without the rect.contains guard, `col - rect.x`
+    // underflows a u16 subtraction.
+    ed.handle_event(mouse_drag(0, 0));
+
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        head_after_click,
+        "a drag that crosses into another pane's rect must be ignored"
+    );
+}
+
+// ── Scroll wheel ─────────────────────────────────────────────────────────
+
+/// The scroll wheel moves the viewport AND every cursor together, by the
+/// same `mouse_scroll_lines` amount — not just the viewport. Module doc:
+/// "Moving the cursor with the viewport prevents `ensure_cursor_visible`
+/// from snapping the viewport back on the next frame."
+#[test]
+fn scroll_up_moves_viewport_and_cursor_together() {
+    let mut lines = String::from("-[l]>ine0\n");
+    for i in 1..30 {
+        lines.push_str(&format!("line{i}\n"));
+    }
+    let mut ed = editor_from(&lines);
+
+    // Scroll the viewport down to line 10 first, then place the cursor at
+    // that same top line — the state a real scroll-then-click leaves
+    // behind, and the case that distinguishes "viewport moved" from
+    // "cursor moved with it".
+    let pid = ed.state.focused_pane_id;
+    ed.view.panes[pid].viewport.top_line = 10;
+    let head = ed.doc().text().line_to_char(10);
+    ed.set_current_selections(SelectionSet::single(Selection::collapsed(head)));
+
+    ed.handle_event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 0,
+        row: 0,
+        modifiers: Modifiers::NONE,
+    }));
+
+    assert_eq!(
+        ed.view.panes[pid].viewport.top_line, 7,
+        "viewport must scroll up by mouse_scroll_lines (3)"
+    );
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
+        7,
+        "cursor must move with the viewport so it stays at the same screen row"
+    );
+}
+
+/// At the top of the document, the viewport can't move — and per
+/// `mouse_scroll_up`'s own `vp_before != vp_after` guard, the cursor must
+/// stay put too, not silently drift up on every wheel tick.
+#[test]
+fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
+    let mut ed = editor_from("-[a]>\nb\nc\n");
+
+    ed.handle_event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 0,
+        row: 0,
+        modifiers: Modifiers::NONE,
+    }));
+
+    let pid = ed.state.focused_pane_id;
+    assert_eq!(ed.view.panes[pid].viewport.top_line, 0);
+    assert_eq!(ed.current_selections().primary().head(), 0);
 }
 
 // ── Multi-pane hit-testing ────────────────────────────────────────────────
