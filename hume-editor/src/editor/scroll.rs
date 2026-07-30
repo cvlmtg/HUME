@@ -43,7 +43,11 @@ pub(super) fn ensure_cursor_visible(
     if height == 0 {
         return;
     }
-    let margin = v_margin.min(height / 2);
+    // `(height - 1) / 2`, not `height / 2`: at an even height, a margin of
+    // exactly `height / 2` leaves arm 2's stable window empty (its bounds
+    // `margin..height-margin` collapse to a single point), so the two
+    // correction arms fight over that one row and rescroll every frame.
+    let margin = v_margin.min(height.saturating_sub(1) / 2);
     let (cursor_pos, _) = rm.locate(cursor_char);
     let top = top_pos(viewport);
 

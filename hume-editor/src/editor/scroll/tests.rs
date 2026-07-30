@@ -92,6 +92,43 @@ fn no_wrap_cursor_above_viewport_scrolls_up() {
     assert!(cursor_line < v.top_line + v.height as usize);
 }
 
+/// A `scrolloff` at or above half the viewport height (`:set scrolloff=999`'s
+/// "always center" idiom, at an even height) used to leave the "no scroll
+/// needed" window empty: the two correction arms disagreed about where the
+/// cursor should land and rescrolled every single frame. Calling
+/// `ensure_cursor_visible` again with the cursor unmoved must be a no-op —
+/// it wasn't, before capping the margin at `(height - 1) / 2`.
+#[test]
+fn no_wrap_huge_scrolloff_at_even_height_settles_after_one_scroll() {
+    let text: String = (0..50).map(|i| format!("line{i}\n")).collect();
+    let r = rope(&text);
+    let mut v = viewport(0, 24, 80);
+    let providers = no_providers();
+    let cursor_char = r.line_to_char(20);
+
+    let mut s = FormatScratch::new();
+    ensure_cursor_visible(
+        &mut v,
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
+        cursor_char,
+        999,
+    );
+    let top_after_first = v.top_line;
+
+    let mut s = FormatScratch::new();
+    ensure_cursor_visible(
+        &mut v,
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
+        cursor_char,
+        999,
+    );
+
+    assert_eq!(
+        v.top_line, top_after_first,
+        "ensure_cursor_visible must be a fixed point once the cursor is already visible"
+    );
+}
+
 // ── cursor sub-row ───────────────────────────────────────────────────────
 
 #[test]
@@ -367,13 +404,17 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
     let cursor_char = r.line_to_char(2);
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
-        let mut v = viewport(2, 10, 80);
+        // Height 20 (not 10): `ensure_cursor_visible` caps the margin at
+        // `(height - 1) / 2`, so the margin needs enough headroom from the
+        // height alone to stay "far larger" than the 5-row walk back to
+        // line 0's Before block, regardless of the `v_margin` passed below.
+        let mut v = viewport(2, 20, 80);
         let mut s = FormatScratch::new();
         ensure_cursor_visible(
             &mut v,
             &mut map(&r, wrap, &providers, 80, &mut s),
             cursor_char,
-            10, // margin far larger than the 2 real rows between top and cursor
+            20, // margin far larger than the 2 real rows between top and cursor
         );
         assert_eq!(
             v.top_line, 0,
