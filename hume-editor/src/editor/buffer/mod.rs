@@ -73,8 +73,11 @@ pub(crate) struct Buffer {
     /// UNC-stripped, `~`-collapsed) — the single form shown to the user
     /// everywhere a buffer path appears. Consumers print it verbatim; the
     /// only allowed runtime-time exceptions are statusline width-shortening
-    /// and picker cwd-relativization. Always `Some` when `path` is `Some`
-    /// (see `Buffer::from_file`); `None` for scratch/synthetic buffers.
+    /// and picker cwd-relativization. Always `Some` when `path` is `Some` —
+    /// `set_path` derives it structurally (see `Buffer::set_path`); callers
+    /// that resolved a user-typed path overwrite it afterwards with
+    /// `set_display_path` for the typed-derived form. `None` for
+    /// scratch/synthetic buffers.
     pub(super) display_path: Option<String>,
     /// File metadata captured at open/save time (permissions, uid/gid).
     /// `None` for scratch buffers; populated after a successful save.
@@ -194,20 +197,20 @@ impl Buffer {
 
     /// Load a file from disk, returning a ready-to-use `Buffer`.
     ///
-    /// Sets `path` and `file_meta` from the resolved filesystem metadata, and
-    /// derives a default `display_path` from the canonical path — callers that
-    /// resolved a user-typed path (`resolve_open_path`, save-as, ...) overwrite
-    /// it with the typed-derived form afterwards; this default only surfaces
-    /// for opens with no typed path (Steel `open-buffer!`, `:tutor`, LSP goto).
-    /// `search_pattern` and `search_matches` are left at their defaults
-    /// (no active search) — caller contract for `replace_buffer_in_place`.
+    /// Sets `path` and `file_meta` from the resolved filesystem metadata;
+    /// `set_path` derives a canonical-path-based `display_path` alongside it —
+    /// callers that resolved a user-typed path (`resolve_open_path`, save-as,
+    /// ...) overwrite it with the typed-derived form afterwards, via
+    /// `set_display_path`; this default only surfaces for opens with no typed
+    /// path (Steel `open-buffer!`, `:tutor`, LSP goto). `search_pattern` and
+    /// `search_matches` are left at their defaults (no active search) —
+    /// caller contract for `replace_buffer_in_place`.
     pub(crate) fn from_file(path: &Path) -> io::Result<Self> {
         let (content, meta) = hume_platform::io::read_file(path)?;
         let text = Text::from(content.as_str());
         let sels = SelectionSet::default();
         let mut buf = Self::new(text, sels);
         buf.set_path(Some(meta.resolved_path().to_path_buf()));
-        buf.display_path = Some(hume_platform::path::display_form(meta.resolved_path()));
         buf.file_meta = Some(meta);
         Ok(buf)
     }
@@ -269,12 +272,17 @@ impl Buffer {
     }
 
     /// Set the buffer's file path, enforcing the "path has a basename"
-    /// invariant. Pass `None` to clear (scratch buffer).
+    /// invariant, and derive `display_path` alongside it so the two can never
+    /// drift out of pairing. Pass `None` to clear both (scratch buffer).
     ///
     /// Why: `display_name()` falls back to `*scratch*` when `path.file_name()`
     /// is `None`, so pathological paths like `/` or `..` would collide with a
     /// real scratch buffer in `:ls` and make `:b *scratch*` ambiguous. Rejecting
     /// at the boundary keeps the collision truly unreachable.
+    ///
+    /// The derived `display_path` is only a default: callers with a
+    /// user-typed path overwrite it afterwards via `set_display_path` (see
+    /// `Buffer::from_file`).
     pub(crate) fn set_path(&mut self, path: Option<PathBuf>) {
         if let Some(ref p) = path {
             debug_assert!(
@@ -283,6 +291,7 @@ impl Buffer {
                 p.display()
             );
         }
+        self.display_path = path.as_deref().map(hume_platform::path::display_form);
         self.path = path;
     }
 

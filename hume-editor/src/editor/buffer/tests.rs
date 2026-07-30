@@ -650,6 +650,25 @@ fn set_path_none_clears_path() {
 }
 
 #[test]
+fn set_path_derives_display_path() {
+    let mut b = Buffer::new(Text::empty(), SelectionSet::default());
+    assert!(b.display_path().is_none());
+    b.set_path(Some(PathBuf::from("/tmp/file.txt")));
+    assert_eq!(
+        b.display_path(),
+        Some(hume_platform::path::display_form(Path::new("/tmp/file.txt")).as_str())
+    );
+}
+
+#[test]
+fn set_path_none_clears_display_path() {
+    let mut b = Buffer::new(Text::empty(), SelectionSet::default());
+    b.set_path(Some(PathBuf::from("/tmp/file.txt")));
+    b.set_path(None);
+    assert!(b.display_path().is_none());
+}
+
+#[test]
 #[should_panic(expected = "path must have a basename")]
 fn set_path_rejects_root() {
     let mut b = Buffer::new(Text::empty(), SelectionSet::default());
