@@ -168,23 +168,27 @@ fn visual_preferred_col_reset_on_horizontal_motion() {
     );
 }
 
-/// WrapMode::None falls back to buffer-line movement.
+/// WrapMode::None: a no-wrap content row *is* a buffer line, so bare `j`
+/// lands on the same char a buffer-line hop would (0 → 81 "short") — but it
+/// still goes through the sticky *display*-column model (`move_vertical`),
+/// matching page/half-page/wheel scroll in the same mode, so `horiz` latches
+/// here too.
 #[test]
-fn visual_move_no_wrap_falls_back_to_buffer_line() {
+fn visual_move_no_wrap_content_row_is_a_buffer_line() {
     let mut ed = visual_test_editor(0);
     // wrap_mode is pane-owned: apply_visual_vertical reads it via the focused pane.
     ed.view.panes[ed.state.focused_pane_id].wrap_mode = hume_engine::pane::WrapMode::None;
 
     ed.handle_key(key('j'));
-    // With no wrapping: j moves by one buffer line (0 → 81 "short").
     assert_eq!(
         ed.current_selections().primary().head(),
         81,
-        "WrapMode::None: j moves by buffer line"
+        "WrapMode::None: a content row is a buffer line"
     );
-    assert!(
-        ed.current_selections().primary().horiz().is_none(),
-        "no sticky col in non-wrap mode"
+    assert_eq!(
+        ed.current_selections().primary().horiz(),
+        Some(0),
+        "sticky display column latches even in no-wrap mode"
     );
 }
 
@@ -237,6 +241,61 @@ fn visual_move_up_with_explicit_count_moves_buffer_lines() {
         ed.current_selections().primary().head(),
         0,
         "1k: one buffer line lands on line 0 col 0, not the last sub-row (char 76)"
+    );
+}
+
+/// No-wrap `j` (`ContentRow`) and a screen-relative scroll of the same row
+/// count (`ScreenRow`, what page/half-page/the mouse wheel use) must land on
+/// the *same* character — both preserve the sticky *display* column, not the
+/// char-offset column `move_down_inner` uses. Line 0 has a leading tab (tab
+/// width 4): 'f' sits at char index 1 but display column 4. Landing by char
+/// column would put both on line 1's char index 1 ('b'); landing by display
+/// column — the correct, unified model — puts both on char index 4 ('e').
+#[test]
+fn no_wrap_bare_j_and_screen_row_scroll_agree_on_display_column() {
+    use crate::editor::visual_move::{VerticalUnit, apply_visual_vertical};
+    use crate::ops::MotionMode;
+    use hume_editing::selection::{Selection, SelectionSet};
+    use hume_editing::text::Text;
+
+    let no_wrap_editor_at_f = || {
+        let content = "\tfoo\nabcdefgh\n";
+        let buf = Text::from(content);
+        let sels = SelectionSet::single(Selection::collapsed(1)); // 'f', display col 4
+        let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+        ed.view.panes[ed.state.focused_pane_id].wrap_mode = hume_engine::pane::WrapMode::None;
+        ed
+    };
+
+    let mut bare_j = no_wrap_editor_at_f();
+    apply_visual_vertical(
+        &mut bare_j.state,
+        &mut bare_j.view,
+        1,
+        true,
+        MotionMode::Move,
+        VerticalUnit::ContentRow,
+    );
+    let bare_j_head = bare_j.current_selections().primary().head();
+
+    let mut screen_row = no_wrap_editor_at_f();
+    apply_visual_vertical(
+        &mut screen_row.state,
+        &mut screen_row.view,
+        1,
+        true,
+        MotionMode::Move,
+        VerticalUnit::ScreenRow,
+    );
+    let screen_row_head = screen_row.current_selections().primary().head();
+
+    assert_eq!(
+        bare_j_head, screen_row_head,
+        "ContentRow and ScreenRow must land on the same char"
+    );
+    assert_eq!(
+        screen_row_head, 9,
+        "display col 4 on line 1 (\"abcdefgh\") is char index 4 → 'e', absolute offset 9"
     );
 }
 

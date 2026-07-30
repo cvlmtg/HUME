@@ -58,12 +58,15 @@ pub(super) fn goto_first_nonblank(buf: &Text, head: usize) -> usize {
 /// Move the cursor down one line, preserving the char-offset column.
 ///
 /// `preferred_col` overrides the column computed from the current position.
-/// Pass `None` to use the current column. A `Some` value supports sticky-column
-/// behaviour once the editor layer tracks it.
+/// Pass `None` to use the current column.
 ///
-/// **Column model (current simplification):** column is a char offset from line
-/// start, not a display column. This is correct for ASCII. When the renderer
-/// adds tab/wide-char support, vertical motions will switch to display columns.
+/// **Column model:** column is a char offset from line start, not a display
+/// column — correct for ASCII, wrong for tabs/wide chars. Interactive `j`/`k`
+/// (and page/half-page scroll, the mouse wheel) never reach this: they go
+/// through `editor::visual_move::move_vertical`'s display-column model
+/// instead. This function is now reached only by an explicit numeric prefix
+/// (`9j`), which counts buffer lines to match relative-line-number gutters,
+/// and by direct/proptest callers of the pure `cmd_move_down` op.
 pub(super) fn move_down_inner(buf: &Text, head: usize, preferred_col: Option<usize>) -> usize {
     let line = buf.char_to_line(head);
     if line + 1 >= buf.len_lines() {

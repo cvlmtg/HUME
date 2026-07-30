@@ -97,13 +97,16 @@ pub(super) fn apply_visual_vertical(
     unit: VerticalUnit,
 ) {
     let focused = state.focused_pane_id;
-    // A no-wrap content row *is* a buffer line, so `ContentRow` degenerates to
-    // the same motion as `BufferLine` there — cheaper, and it keeps
-    // `move_vertical` to the two cases that actually differ. `is_wrapping`
-    // needs no resolved width, so the pane's raw mode answers it.
-    let wrapping = view.panes[focused].wrap_mode.is_wrapping();
-    let use_buffer_line_motion = matches!(unit, VerticalUnit::BufferLine)
-        || (matches!(unit, VerticalUnit::ContentRow) && !wrapping);
+    // Only an explicit count (`9j`) takes the pure buffer-line motion, to
+    // match relative-line-number gutters even while wrapping. A bare `j`/`k`
+    // always goes through `move_vertical` below so it shares one column
+    // model — the sticky *display* column `Selection::horiz` is documented
+    // for — with page/half-page scroll and the mouse wheel (`ScreenRow`),
+    // which must preserve display columns across virtual rows regardless of
+    // wrap mode. The cost in no-wrap mode is a per-press format of the
+    // cursor's line instead of pure rope arithmetic; `move_down_inner`'s
+    // char-offset column model is now reached only via `BufferLine`.
+    let use_buffer_line_motion = matches!(unit, VerticalUnit::BufferLine);
     if use_buffer_line_motion {
         let motion = if down { cmd_move_down } else { cmd_move_up };
         apply_focused_motion(state, view, |b, s| motion(b, s, count, mode));
