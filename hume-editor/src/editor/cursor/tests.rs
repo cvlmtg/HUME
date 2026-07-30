@@ -501,3 +501,35 @@ fn screen_pos_clamps_a_top_row_offset_past_the_lines_current_block() {
         "clamped top (0,1) sits exactly on the cursor's row — distance 0"
     );
 }
+
+/// A zero-height viewport (a pane collapsed to nothing mid-resize) has no
+/// row to place the cursor on.
+#[test]
+fn screen_pos_zero_height_returns_none() {
+    let rope = Rope::from_str("a\nb\nc\n");
+    let v = vp(0, 80, 0);
+    let providers = no_providers();
+    let mut s = FormatScratch::new();
+
+    let pos = screen_pos(&v, &mut map(&rope, WrapMode::None, &providers, 80, &mut s), 0);
+    assert_eq!(pos, None);
+}
+
+/// A cursor more rows below the viewport's top than the viewport is tall —
+/// the case `ensure_cursor_visible` is supposed to prevent, but `screen_pos`
+/// must still answer `None` rather than a row past the visible window.
+#[test]
+fn screen_pos_cursor_below_viewport_returns_none() {
+    let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
+    let v = vp(0, 80, 2); // only rows for lines 0-1 are visible
+    let providers = no_providers();
+    let mut s = FormatScratch::new();
+    let cursor_char = rope.line_to_char(5); // 'f' — 5 rows below the top
+
+    let pos = screen_pos(
+        &v,
+        &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
+        cursor_char,
+    );
+    assert_eq!(pos, None);
+}
