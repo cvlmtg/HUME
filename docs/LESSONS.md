@@ -85,6 +85,18 @@ being called promptly — without touching A's callers at all.
 **Files:** `hume-engine/src/theme/mod.rs` (`Theme::bake_if_stale`),
 `hume-editor/src/editor/lifecycle.rs` (`prepare_frame` call site).
 
+**Second instance, stronger remedy:** `Buffer::set_path`/`set_display_path`
+had the same convention-plus-`debug_assert!` shape (every path-setting call
+site had to remember a matching display-path derivation). Here A's only
+caller was `Buffer::set_path` itself — no external callers to reroute — so
+the fix skipped self-healing-at-consumption entirely and merged B into A:
+`set_path` now derives `display_path` directly, making the pairing
+structural instead of convention-enforced. Prefer this merge when A has no
+legitimate external callers; reach for self-heal-at-consumption only when it
+does (as in the `ScopeRegistry` case above). Fixed alongside the `04591455`/
+`45ed2c51`/`0ab787a4` review. **Files:**
+`hume-editor/src/editor/buffer/mod.rs` (`Buffer::set_path`).
+
 ---
 
 ## L3 — Plan said "ask user"; execution silently took the default (2026-07)
