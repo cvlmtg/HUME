@@ -13,7 +13,10 @@
 //! | `runtime-dir`   | `() → string \| #f`            | Runtime dir, or `#f` if absent               |
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
 //! | `path->display` | `string → string`               | UNC-strip + `~`-collapse; no filesystem access |
-//! | `path-separator`| `() → string`                   | OS-native path separator (`/` or `\`)        |
+//!
+//! `path-separator` is *not* registered here — steel-core's `steel/meta`
+//! module already provides it as a bare global (`Engine::new()` baseline),
+//! and HUME registering its own would silently shadow it.
 
 use std::path::{Path, PathBuf};
 
@@ -103,19 +106,6 @@ pub(crate) fn path_to_display(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
         steel::stop!(TypeMismatch => "path->display: arg must be a string, got {:?}", args[0]);
     };
     hume_platform::path::display_form(Path::new(s.as_str()))
-        .into_steelval()
-        .map_err(generic_err)
-}
-
-// ── path-separator ────────────────────────────────────────────────────────────
-
-/// `(path-separator)` — the OS-native path separator (`/` on Unix, `\` on
-/// Windows), for building the same prefix `path->display` output would use.
-/// A niladic function, not a bare value, so it round-trips through
-/// `load-plugin`'s module boundary the same way `data-dir`/`path-join` do.
-pub(crate) fn path_separator(_args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
-    std::path::MAIN_SEPARATOR
-        .to_string()
         .into_steelval()
         .map_err(generic_err)
 }

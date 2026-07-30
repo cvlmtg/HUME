@@ -516,7 +516,6 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_value("hume-target", SteelVal::FuncV(install::hume_target));
     steel.register_value("path-join", SteelVal::FuncV(fs::path_join));
     steel.register_value("path->display", SteelVal::FuncV(fs::path_to_display));
-    steel.register_value("path-separator", SteelVal::FuncV(fs::path_separator));
 
     // Evaluate the Scheme bootstrap (defines `load-plugin`, and — at its
     // tail — captures steel-core's original print functions/port before

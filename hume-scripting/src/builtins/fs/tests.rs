@@ -73,16 +73,46 @@ fn path_to_display_type_error() {
     assert!(path_to_display(&args).is_err());
 }
 
-// ── path-separator ────────────────────────────────────────────────────────
+// ── path-separator (steel-core builtin, not registered by HUME) ──────────
 
+/// `(path-separator)` is not a HUME builtin — it comes from steel-core's
+/// `steel/meta` module, already a bare global in `Engine::new()`. Prove it
+/// resolves *through a loaded plugin*, not just at the top level: a
+/// `register_value` of a non-function value is known to silently stub out
+/// inside `load-plugin`'d code (see memory
+/// `reference_steel_load_plugin_bare_globals`), and this name must not
+/// regress to a HUME-registered shadow that could reintroduce that trap.
+///
+/// Fail oracle: reintroducing `fs::path_separator` registered as a bare
+/// value (not a niladic function) would make this test hang or error
+/// instead of logging the separator.
 #[test]
-fn path_separator_matches_main_separator() {
-    let result = path_separator(&[]).unwrap();
-    let s = match result {
-        SteelVal::StringV(s) => s.to_string(),
-        other => panic!("expected string, got {other:?}"),
-    };
-    assert_eq!(s, std::path::MAIN_SEPARATOR.to_string());
+fn path_separator_resolves_inside_loaded_plugin() {
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("probe");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(
+        plugin_dir.join("plugin.scm"),
+        r#"(log! 'info (path-separator))"#,
+    )
+    .unwrap();
+
+    let mut host = crate::ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+    let mut null_host = crate::null_host::NullHost;
+    host.eval_source(r#"(load-plugin "user/probe")"#, &mut null_host)
+        .expect("(path-separator) must be callable from inside a loaded plugin");
+
+    let msgs = host.take_pending_messages();
+    assert!(
+        msgs.iter()
+            .any(|(_, msg)| msg == &std::path::MAIN_SEPARATOR.to_string()),
+        "expected a log message equal to {:?}, got: {:?}",
+        std::path::MAIN_SEPARATOR.to_string(),
+        msgs
+    );
 }
 
 // ── data-dir display (no UNC prefix) ─────────────────────────────────────
