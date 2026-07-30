@@ -221,7 +221,6 @@ mod testing {
 
     pub(crate) fn buf_with_path(path: &str) -> Buffer {
         let mut b = make_buf();
-        b.set_display_path(Some(hume_platform::path::display_form(Path::new(path))));
         b.set_path(Some(PathBuf::from(path)));
         b
     }

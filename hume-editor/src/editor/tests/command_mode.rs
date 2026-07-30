@@ -6,19 +6,8 @@ use pretty_assertions::assert_eq;
 /// return its id — used by the `:q`/`:qa`/`:wq` multi-buffer tests below,
 /// which need a second file buffer distinct from `editor_with_file`'s.
 fn open_second_file_buffer(ed: &mut Editor) -> BufferId {
-    let tmp2 = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp2.path(), "world\n").unwrap();
-    let (_, meta2) = hume_platform::io::read_file(tmp2.path()).unwrap();
-    let mut buf2 = crate::editor::buffer::Buffer::new(
-        hume_editing::text::Text::from("world\n"),
-        SelectionSet::default(),
-    );
-    buf2.set_display_path(Some(hume_platform::path::display_form(
-        meta2.resolved_path(),
-    )));
-    buf2.set_path(Some(tmp2.path().to_path_buf()));
-    buf2.file_meta = Some(meta2);
-    ed.open_buffer(buf2)
+    let (buf, _tmp_path) = file_buffer("world\n");
+    ed.open_buffer(buf)
 }
 
 // ── Command mode ──────────────────────────────────────────────────────────────
@@ -569,18 +558,7 @@ fn colon_qa_lands_on_first_dirty_buffer_in_open_order() {
 
     // Open two more buffers and dirty them both; open-order = clean_buf, buf2, buf3.
     let mk_dirty_buf = |ed: &mut Editor| {
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(tmp.path(), "content\n").unwrap();
-        let (_, meta) = hume_platform::io::read_file(tmp.path()).unwrap();
-        let mut buf = crate::editor::buffer::Buffer::new(
-            hume_editing::text::Text::from("content\n"),
-            SelectionSet::default(),
-        );
-        buf.set_display_path(Some(hume_platform::path::display_form(
-            meta.resolved_path(),
-        )));
-        buf.set_path(Some(tmp.path().to_path_buf()));
-        buf.file_meta = Some(meta);
+        let (buf, _tmp) = file_buffer("content\n");
         let id = ed.open_buffer(buf);
         ed.switch_to_buffer_without_jump(id);
         ed.handle_key(key('i'));
@@ -616,30 +594,13 @@ fn colon_qa_walk_through_dirty_buffers() {
 
     // Open two dirty file buffers.
     let mk_dirty_buf = |ed: &mut Editor| {
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(tmp.path(), "content\n").unwrap();
-        let (_, meta) = hume_platform::io::read_file(tmp.path()).unwrap();
-        let path = tmp.path().to_path_buf();
-        let mut buf = crate::editor::buffer::Buffer::new(
-            hume_editing::text::Text::from("content\n"),
-            SelectionSet::default(),
-        );
-        buf.set_display_path(Some(hume_platform::path::display_form(
-            meta.resolved_path(),
-        )));
-        buf.set_path(Some(path));
-        buf.file_meta = Some(meta);
+        let (buf, tmp_path) = file_buffer("content\n");
         let id = ed.open_buffer(buf);
         ed.switch_to_buffer_without_jump(id);
         ed.handle_key(key('i'));
         ed.handle_key(key('x'));
         ed.handle_key(key_esc());
         assert!(ed.doc().is_dirty());
-        // Drop the open handle: on Windows, NamedTempFile opens without
-        // FILE_SHARE_DELETE, so an open handle would block the atomic rename
-        // in `:w` with ERROR_SHARING_VIOLATION. TempPath keeps the file on disk
-        // until it is dropped.
-        let tmp_path = tmp.into_temp_path();
         (id, tmp_path)
     };
 

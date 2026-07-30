@@ -122,14 +122,14 @@ fn jump_editor(cursor_line: usize) -> Editor {
 }
 
 /// Write `file_content` to a temp file, return an editor pointing at it.
+///
+/// `set_path` derives `display_path` from `path` (see `Buffer::set_path`) —
+/// this fixture doesn't call a resolve-typed-path helper, so the two stay
+/// paired on the raw (non-canonical) tempfile path, same as `path()` itself.
 fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfile::TempPath) {
     let (path, tmp_path) = temp_file(file_content);
     let (_, meta) = hume_platform::io::read_file(&path).unwrap();
     let mut ed = editor_from(initial_state);
-    ed.doc_mut()
-        .set_display_path(Some(hume_platform::path::display_form(
-            meta.resolved_path(),
-        )));
     ed.doc_mut().set_path(Some(path));
     ed.doc_mut().file_meta = Some(meta);
     (ed, tmp_path)
@@ -443,6 +443,18 @@ fn temp_file(content: &str) -> (std::path::PathBuf, tempfile::TempPath) {
     std::fs::write(f.path(), content).unwrap();
     let path = f.path().to_path_buf();
     (path, f.into_temp_path())
+}
+
+/// Build a fresh file-backed `Buffer` from `content`, written to a temp file.
+/// `set_path` derives `display_path` from the raw tempfile path (see
+/// `Buffer::set_path`) — the same default `Buffer::from_file` produces.
+fn file_buffer(content: &str) -> (Buffer, tempfile::TempPath) {
+    let (path, tmp_path) = temp_file(content);
+    let (_, meta) = hume_platform::io::read_file(&path).unwrap();
+    let mut buf = Buffer::new(Text::from(content), SelectionSet::default());
+    buf.set_path(Some(path));
+    buf.file_meta = Some(meta);
+    (buf, tmp_path)
 }
 
 /// Acquire the cwd lock, save the current directory, and restore it on drop.

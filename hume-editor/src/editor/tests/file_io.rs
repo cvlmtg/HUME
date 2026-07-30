@@ -1,5 +1,3 @@
-use hume_editing::selection::Selection;
-use hume_editing::text::Text;
 use hume_engine::pipeline::BufferId;
 
 use super::*;
@@ -66,16 +64,7 @@ pub(super) fn dirty_focused(ed: &mut Editor) {
 /// Create a temp file and open it as one more buffer. The buffer starts clean
 /// (same content as the file). Caller must dirty it themselves after switching.
 pub(super) fn open_file_buffer(ed: &mut Editor, content: &str) -> (tempfile::TempPath, BufferId) {
-    let (path, tmp_path) = temp_file(content);
-    let (_, meta) = hume_platform::io::read_file(&path).unwrap();
-    let text = Text::from(content);
-    let sels = SelectionSet::single(Selection::collapsed(0));
-    let mut buf = Buffer::new(text, sels);
-    buf.set_display_path(Some(hume_platform::path::display_form(
-        meta.resolved_path(),
-    )));
-    buf.set_path(Some(path));
-    buf.file_meta = Some(meta);
+    let (buf, tmp_path) = file_buffer(content);
     let bid = ed.open_buffer(buf);
     (tmp_path, bid)
 }

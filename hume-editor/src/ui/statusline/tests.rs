@@ -601,6 +601,5 @@ fn statusline_display_path_real_file_still_shows_path() {
     let path = std::path::Path::new("/some/absolute/path/file.rs");
     ed.doc_mut().set_path(Some(path.to_owned()));
     let display = hume_platform::path::display_form(path);
-    ed.doc_mut().set_display_path(Some(display.clone()));
     assert_eq!(statusline_display_path(&ed), display);
 }

@@ -50,12 +50,9 @@ fn ls_long_alias_works() {
 #[test]
 fn ls_header_columns_align_with_data_columns() {
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    // `editor_with_file` stores the raw (non-canonical) tempfile path as
-    // `path()` but a canonicalized `display_path` (mirroring `Buffer::from_file`'s
-    // default) — canonicalize here too so the oracle matches what `:ls` actually
-    // shows (macOS temp dirs live under a `/var` symlink to `/private/var`; see
-    // memory feedback_macos_tempfile_canonicalize).
-    let doc_path = std::fs::canonicalize(ed.doc().path().unwrap()).unwrap();
+    // `set_path` derives `display_path` from the same path it stores, so the
+    // oracle can read `path()` directly with no canonicalize step.
+    let doc_path = ed.doc().path().unwrap().to_path_buf();
     let out = ls_output(&mut ed);
     let mut lines = out.lines();
     let header = lines.next().expect("header row");
