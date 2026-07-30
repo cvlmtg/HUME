@@ -19,7 +19,7 @@ fn simple_row(graphemes: std::ops::Range<usize>) -> DisplayRow {
     }
 }
 
-fn simple_grapheme(col: u16, byte_start: usize, ch_len: usize) -> Grapheme {
+fn simple_grapheme(col: u32, byte_start: usize, ch_len: usize) -> Grapheme {
     Grapheme {
         byte_range: byte_start..byte_start + ch_len,
         // char_offset is not needed for render tests (selections handled in style stage).
@@ -206,7 +206,7 @@ fn do_compose_row(
 
 #[test]
 fn horizontal_scroll_clips_left_columns() {
-    let graphemes: Vec<Grapheme> = (0..5u16)
+    let graphemes: Vec<Grapheme> = (0..5u32)
         .map(|i| Grapheme {
             byte_range: (i as usize)..(i as usize + 1),
             char_offset: i as usize,
@@ -317,7 +317,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
 fn indent_guide_drawn_at_inner_tab_stops() {
     // A line with indent_depth=2 and tab_width=4 should show a guide at col 4.
     // (guides at k*tab_width for k in 1..depth, so k=1 => col 4)
-    let graphemes: Vec<Grapheme> = (0..11u16)
+    let graphemes: Vec<Grapheme> = (0..11u32)
         .map(|i| Grapheme {
             byte_range: (i as usize)..(i as usize + 1),
             char_offset: i as usize,
@@ -381,7 +381,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
     // tab_width=4, guide expected at col 4) but with the setting off —
     // proves ComposeCtx::show_indent_guides actually gates the draw loop,
     // not just that the glyph can appear under default settings.
-    let graphemes: Vec<Grapheme> = (0..11u16)
+    let graphemes: Vec<Grapheme> = (0..11u32)
         .map(|i| Grapheme {
             byte_range: (i as usize)..(i as usize + 1),
             char_offset: i as usize,
@@ -461,7 +461,7 @@ fn indent_guide_not_drawn_on_wrap_rows() {
     // in general, but this test specifically pins that a Wrap row draws
     // no guide even when it would otherwise qualify — so render only the
     // Wrap row (a continuation of line 0, graphemes 4..8 of "    text").
-    let graphemes: Vec<Grapheme> = (0..8u16)
+    let graphemes: Vec<Grapheme> = (0..8u32)
         .map(|i| Grapheme {
             byte_range: (i as usize)..(i as usize + 1),
             char_offset: i as usize,

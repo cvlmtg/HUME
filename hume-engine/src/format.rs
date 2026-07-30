@@ -92,7 +92,7 @@ pub fn format_buffer_line(
     tab_width: u8,
     whitespace: &WhitespaceConfig,
     wrap_mode: &WrapMode,
-    h_window: Option<Range<u16>>,
+    h_window: Option<Range<u32>>,
     inline_inserts: &[InlineInsert],
     scratch: &mut FormatScratch,
 ) {
@@ -118,10 +118,13 @@ pub fn format_buffer_line(
     let trailing_ws_start = line_str.trim_end().len();
     let indent_depth = compute_indent_depth(line_str, tab_width);
 
-    let wrap_width = wrap_mode.wrap_width().unwrap_or(u16::MAX); // u16::MAX = sentinel for "no wrap"
+    // `WrapMode { width }` stays terminal-bounded (`u16`) — widened here since
+    // it's compared against `current_col`, which now tracks a document column
+    // that can exceed a `u16`.
+    let wrap_width = wrap_mode.wrap_width().map_or(u32::MAX, u32::from); // u32::MAX = sentinel for "no wrap"
     // For indent-wrap, continuation rows start at this column.
-    let indent_cols: u16 = if matches!(wrap_mode, WrapMode::Indent { .. }) {
-        (indent_depth as u16) * (tab_width as u16)
+    let indent_cols: u32 = if matches!(wrap_mode, WrapMode::Indent { .. }) {
+        (indent_depth as u32) * (tab_width as u32)
     } else {
         0
     };
@@ -189,7 +192,7 @@ pub fn format_buffer_line(
                 );
                 let visible = h_window
                     .as_ref()
-                    .is_none_or(|w| wrap.current_col + ins_width as u16 > w.start);
+                    .is_none_or(|w| wrap.current_col + ins_width as u32 > w.start);
                 if visible {
                     push_insert_cells(
                         virtual_texts_out,
@@ -201,7 +204,7 @@ pub fn format_buffer_line(
                         &mut wrap.current_col,
                     );
                 } else {
-                    wrap.current_col = wrap.current_col.saturating_add(ins_width as u16);
+                    wrap.current_col = wrap.current_col.saturating_add(ins_width as u32);
                 }
             }
             insert_idx += 1;
@@ -270,7 +273,7 @@ pub fn format_buffer_line(
         let char_count = grapheme_str.chars().count();
         let visible = h_window
             .as_ref()
-            .is_none_or(|w| wrap.current_col + width as u16 > w.start);
+            .is_none_or(|w| wrap.current_col + width as u32 > w.start);
         if visible {
             graphemes_out.push(Grapheme {
                 byte_range: byte_offset..byte_offset + grapheme_str.len(),
@@ -283,7 +286,7 @@ pub fn format_buffer_line(
             });
         }
         char_pos += char_count;
-        wrap.current_col = wrap.current_col.saturating_add(width as u16);
+        wrap.current_col = wrap.current_col.saturating_add(width as u32);
 
         // For CJK (width == 2): emit a WidthContinuation placeholder so the
         // render stage knows not to write anything to the second cell.
@@ -377,7 +380,7 @@ pub fn format_buffer_line(
 /// Grouping these five fields avoids threading them as separate `&mut`
 /// parameters through `maybe_wrap`.
 struct WrapState {
-    current_col: u16,
+    current_col: u32,
     wrap_row: u16,
     /// Index into `graphemes_out` where the current display row began.
     row_g_start: usize,
@@ -400,14 +403,14 @@ impl WrapState {
     fn maybe_wrap(
         &mut self,
         width: u8,
-        wrap_width: u16,
-        indent_cols: u16,
+        wrap_width: u32,
+        indent_cols: u32,
         line_idx: usize,
         indent_depth: u8,
         rows_out: &mut Vec<DisplayRow>,
         graphemes_out: &mut [Grapheme],
     ) {
-        if wrap_width == u16::MAX || self.current_col + width as u16 <= wrap_width {
+        if wrap_width == u32::MAX || self.current_col + width as u32 <= wrap_width {
             return;
         }
         if self.current_col == 0 {
@@ -439,7 +442,7 @@ impl WrapState {
         for g in &mut graphemes_out[split_at..] {
             g.col = new_col;
             g.indent_depth = indent_depth;
-            new_col += g.width as u16;
+            new_col += g.width as u32;
         }
         self.current_col = new_col;
         self.last_ws_g_idx = split_at;
@@ -487,10 +490,10 @@ fn is_whitespace_grapheme(s: &str) -> bool {
 /// stop. Column-dependent, so a wrap that moves a tab to a new starting
 /// column (see `format_buffer_line`'s post-`maybe_wrap` recompute) requires
 /// calling this again rather than reusing the pre-wrap width.
-fn tab_display_width(col: u16, tab_width: u8) -> u8 {
-    let tab_width = tab_width.max(1) as u16;
+fn tab_display_width(col: u32, tab_width: u8) -> u8 {
+    let tab_width = tab_width.max(1) as u32;
     let next_stop = (col / tab_width + 1).saturating_mul(tab_width);
-    // saturating: at col ≈ u16::MAX the true next stop overflows u16; clamp
+    // saturating: at col ≈ u32::MAX the true next stop overflows u32; clamp
     // to a 1-wide tab instead of panicking (debug) or wrapping (release).
     next_stop.saturating_sub(col).clamp(1, 255) as u8
 }
@@ -498,7 +501,7 @@ fn tab_display_width(col: u16, tab_width: u8) -> u8 {
 /// Compute the display `width` and `CellContent` for one grapheme cluster.
 fn grapheme_display(
     grapheme_str: &str,
-    current_col: u16,
+    current_col: u32,
     tab_width: u8,
     whitespace: &WhitespaceConfig,
     is_trailing: bool,
@@ -601,7 +604,7 @@ fn push_insert_cells(
     byte_range: Range<usize>,
     char_offset: usize,
     indent_depth: u8,
-    current_col: &mut u16,
+    current_col: &mut u32,
 ) {
     let (text_start, _) = push_arena_text(virtual_texts_out, &ins.text);
     for (g_byte_offset, g_str) in ins.text.grapheme_indices(true) {
@@ -629,7 +632,7 @@ fn push_insert_cells(
             indent_depth,
             scope: Some(ins.scope),
         });
-        *current_col = current_col.saturating_add(g_width as u16);
+        *current_col = current_col.saturating_add(g_width as u32);
     }
 }
 

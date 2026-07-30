@@ -507,3 +507,32 @@ fn horizontal_scroll_margin_no_scroll_when_within_content_width() {
 
     assert_eq!(v.horizontal_offset, 0, "70 < content_width(80) - margin(5)");
 }
+
+/// A cursor past column 65535 on a huge unwrapped line must scroll to its
+/// true (unclamped) column, not a `u16`-truncated one — regression guard
+/// for the `u16` → `u32` display-column widening. Independent oracle: every
+/// char is 1 column wide, so `cursor_col == cursor_char`, and the expected
+/// offset is plain arithmetic on that value.
+#[test]
+fn horizontal_scroll_reaches_past_former_u16_column_ceiling() {
+    let r = rope(&("a".repeat(70_000) + "\n"));
+    let mut v = viewport(0, 10, 80);
+    let providers = no_providers();
+    let mut s = FormatScratch::new();
+    let cursor_char = 69_999; // last 'a', column 69_999 — past u16::MAX (65_535)
+
+    ensure_cursor_visible_horizontal(
+        &mut v,
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
+        cursor_char,
+    );
+
+    assert_eq!(
+        v.horizontal_offset, 69_925,
+        "cursor_col(69_999) - (content_width(80) - margin(5) - 1) = 69_925"
+    );
+    assert!(
+        v.horizontal_offset > u16::MAX as u32,
+        "offset must exceed the former u16 ceiling, not wrap/truncate into it"
+    );
+}

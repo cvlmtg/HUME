@@ -49,7 +49,15 @@ pub(crate) fn screen_pos(
     // scrolled off the *top* is likewise unreachable walking forward.
     let screen_row = rm.distance(top, cursor_pos, height as usize - 1)?;
     let col = cursor_col.saturating_sub(viewport.horizontal_offset);
-    Some((col, screen_row as u16))
+    // `ensure_cursor_visible_horizontal` keeps the cursor's document column
+    // within one viewport width of `horizontal_offset`, so once past that
+    // subtraction it's a small on-screen offset — safe to narrow to the
+    // terminal-cell (`u16`) domain this function returns.
+    debug_assert!(
+        u16::try_from(col).is_ok(),
+        "on-screen cursor column {col} exceeds a u16 — cursor should be within the viewport"
+    );
+    Some((col as u16, screen_row as u16))
 }
 
 /// Gutter width in terminal columns for the current frame.
@@ -92,7 +100,7 @@ pub(crate) fn screen_to_char_offset(
     }
     // Screen column past the gutter, plus horizontal scroll (0 while wrapping
     // — see `scroll::ensure_cursor_visible_horizontal`).
-    let content_col = (screen_x - gutter_w).saturating_add(viewport.horizontal_offset);
+    let content_col = ((screen_x - gutter_w) as u32).saturating_add(viewport.horizontal_offset);
 
     let top = rm.clamp(top_pos(viewport));
     let clicked = rm.advance(top, screen_y as isize);

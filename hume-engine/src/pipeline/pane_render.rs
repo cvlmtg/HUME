@@ -84,13 +84,12 @@ pub(crate) fn render_pane(
     // Clip `WrapMode::None` formatting to the visible horizontal window — a
     // single unwrapped line can be arbitrarily long (a minified JS file is a
     // real case), so scanning past the right edge would cost O(line_length)
-    // per frame and, pre-clip, overflow `current_col` (`u16`) on lines wider
-    // than 65535 columns. Wrapping modes are already bounded by `wrap_width`.
+    // per frame. Wrapping modes are already bounded by `wrap_width`.
     let h_window = (!pane_ctx.settings.wrap_mode.is_wrapping()).then(|| {
         let h_offset = pane_ctx.pane.viewport.horizontal_offset;
         let end = h_offset
-            .saturating_add(visible.content_width)
-            .saturating_add(H_WINDOW_SLACK);
+            .saturating_add(visible.content_width as u32)
+            .saturating_add(H_WINDOW_SLACK as u32);
         h_offset..end
     });
 

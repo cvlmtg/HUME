@@ -22,8 +22,11 @@ pub struct ViewportState {
     /// order — have already scrolled past. Every row in the block is an
     /// equally skippable unit; nothing about `before`/`after` is special.
     pub top_row_offset: u16,
-    /// Horizontal scroll in columns (0 when soft-wrap is on).
-    pub horizontal_offset: u16,
+    /// Horizontal scroll in columns (0 when soft-wrap is on). A document
+    /// column, not a terminal cell — widened past `u16` alongside
+    /// `Grapheme::col` so scrolling isn't ceilinged at column 65535 on an
+    /// unwrapped line.
+    pub horizontal_offset: u32,
     /// Total width of the pane in terminal cells (gutter + content).
     pub width: u16,
     /// Total height of the pane in terminal cells.
@@ -54,7 +57,7 @@ impl ViewportState {
 pub struct ScrollPosition {
     pub top_line: usize,
     pub top_row_offset: u16,
-    pub horizontal_offset: u16,
+    pub horizontal_offset: u32,
 }
 
 // ---------------------------------------------------------------------------

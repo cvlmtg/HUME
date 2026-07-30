@@ -116,9 +116,9 @@ pub(super) fn ensure_cursor_visible_horizontal(
     let offset = viewport.horizontal_offset as usize;
 
     if cursor_col < offset + margin {
-        viewport.horizontal_offset = cursor_col.saturating_sub(margin) as u16;
+        viewport.horizontal_offset = cursor_col.saturating_sub(margin) as u32;
     } else if cursor_col >= offset + content_width - margin {
-        viewport.horizontal_offset = cursor_col.saturating_sub(content_width - margin - 1) as u16;
+        viewport.horizontal_offset = cursor_col.saturating_sub(content_width - margin - 1) as u32;
     }
 }
 

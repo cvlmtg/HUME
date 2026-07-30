@@ -42,7 +42,7 @@ fn move_vertical(
     head: usize,
     down: bool,
     count: usize,
-    target_col: u16,
+    target_col: u32,
     budget: RowBudget,
 ) -> usize {
     let (start, _) = rm.locate(head);
@@ -139,10 +139,10 @@ pub(super) fn apply_visual_vertical(
         |_text, sels| {
             // Pass 1: resolve each selection's sticky display column from
             // sel.horiz, computing it fresh on the first j/k press.
-            target_cols.extend(sels.iter_sorted().map(|sel| {
-                sel.horiz()
-                    .map_or_else(|| rm.locate(sel.head()).1, |col| col as u16)
-            }));
+            target_cols.extend(
+                sels.iter_sorted()
+                    .map(|sel| sel.horiz().unwrap_or_else(|| rm.locate(sel.head()).1)),
+            );
 
             // Pass 2: move each selection, preserving the sticky column so
             // consecutive j/k presses reuse it.
@@ -155,7 +155,7 @@ pub(super) fn apply_visual_vertical(
                 } else {
                     head
                 };
-                Selection::with_horiz(anchor, head, target_col as u32)
+                Selection::with_horiz(anchor, head, target_col)
             })
         },
     );

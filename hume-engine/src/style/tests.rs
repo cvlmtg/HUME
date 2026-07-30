@@ -54,7 +54,7 @@ fn make_graphemes(count: usize) -> Vec<Grapheme> {
         .map(|i| Grapheme {
             byte_range: i..i + 1,
             char_offset: i,
-            col: i as u16,
+            col: i as u32,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -140,7 +140,7 @@ fn make_graphemes_with_sentinel() -> Vec<Grapheme> {
         .map(|i| Grapheme {
             byte_range: i..i + 1,
             char_offset: i,
-            col: i as u16,
+            col: i as u32,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,

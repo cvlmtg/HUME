@@ -21,10 +21,10 @@ fn tab_display_width_normal_range() {
 }
 
 #[test]
-fn tab_display_width_saturates_near_u16_max() {
-    // col=65535, tab_width=4: true next stop is 65536, which overflows u16.
+fn tab_display_width_saturates_near_u32_max() {
+    // col=u32::MAX, tab_width=4: true next stop overflows u32.
     // Without the saturating_mul/clamp fix this panics in debug builds.
-    assert_eq!(tab_display_width(u16::MAX, 4), 1);
+    assert_eq!(tab_display_width(u32::MAX, 4), 1);
 }
 
 fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayRow>, Vec<Grapheme>) {
@@ -458,7 +458,7 @@ fn space_indicator_trailing_mode_interior() {
         ..WhitespaceConfig::default()
     };
     let (_, graphemes, _) = do_format_ws("  A  B  \n", ws);
-    let is_indicator = |col: u16| {
+    let is_indicator = |col: u32| {
         matches!(
             graphemes.iter().find(|g| g.col == col).unwrap().content,
             CellContent::Indicator { .. }
@@ -485,7 +485,7 @@ fn space_indicator_trailing_mode_blank_line() {
         ..WhitespaceConfig::default()
     };
     let (_, graphemes, arena) = do_format_ws("   \n", ws);
-    for col in 0..3u16 {
+    for col in 0..3u32 {
         let g = graphemes.iter().find(|g| g.col == col).unwrap();
         assert_eq!(
             cell_text(&arena, &g.content),
@@ -635,7 +635,7 @@ fn strip_line_ending_cr_not_stripped() {
 fn do_format_windowed(
     text: &str,
     wrap_mode: WrapMode,
-    h_window: Option<Range<u16>>,
+    h_window: Option<Range<u32>>,
 ) -> (Vec<DisplayRow>, Vec<Grapheme>) {
     let rope = Rope::from_str(text);
     let ws = WhitespaceConfig::default();
@@ -776,8 +776,8 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
         .collect();
     assert_eq!(insert_cells.len(), 300, "one virtual cell per grapheme");
     assert!(insert_cells.iter().all(|g| g.width == 1));
-    let cols: Vec<u16> = insert_cells.iter().map(|g| g.col).collect();
-    let expected: Vec<u16> = (0..300).collect();
+    let cols: Vec<u32> = insert_cells.iter().map(|g| g.col).collect();
+    let expected: Vec<u32> = (0..300).collect();
     assert_eq!(cols, expected, "columns advance 0..300 without wraparound");
 }
 
@@ -812,7 +812,7 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
         .collect();
     assert_eq!(insert_cells.len(), 5, "one virtual cell per grapheme");
     assert!(insert_cells.iter().all(|g| g.width == 1));
-    let cols: Vec<u16> = insert_cells.iter().map(|g| g.col).collect();
+    let cols: Vec<u32> = insert_cells.iter().map(|g| g.col).collect();
     assert_eq!(
         cols,
         vec![3, 4, 5, 6, 7],
@@ -821,20 +821,20 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
 }
 
 #[test]
-fn no_window_caller_does_not_overflow_u16_on_huge_line() {
-    // Belt-and-braces: callers that pass `h_window: None` (cursor/visual-move
-    // lookups) get no clipping at all, so a pathologically long line must
-    // still not panic via `u16` overflow in `current_col` — the accumulation
-    // saturates instead. 70,000 ASCII chars comfortably exceeds `u16::MAX`
-    // (65,535).
+fn no_window_caller_reaches_true_column_past_former_u16_ceiling() {
+    // `current_col`/`Grapheme::col` are `u32`, so a line past the old
+    // `u16::MAX` (65,535) column ceiling no longer saturates — the column at
+    // the end of a 70,000-char pure-ASCII line is its true (unclamped) char
+    // index, not a clipped 65,535. Independent oracle: every char is 1
+    // column wide, so col == index.
     let text: String = "a".repeat(70_000);
     let (rows, graphemes) = do_format_windowed(&text, WrapMode::None, None);
     assert_eq!(rows.len(), 1);
     assert_eq!(graphemes.len(), 70_000, "no window: every char is scanned");
     assert_eq!(
         graphemes.last().unwrap().col,
-        u16::MAX,
-        "current_col saturates at u16::MAX rather than wrapping"
+        69_999,
+        "column exceeds the former u16 ceiling instead of saturating at it"
     );
 }
 

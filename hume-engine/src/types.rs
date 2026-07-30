@@ -170,7 +170,7 @@ pub struct Grapheme {
     /// graphemes (inline inserts, newline indicators) that have no buffer char.
     pub char_offset: usize,
     /// Display column within the row (0-based, accounts for preceding widths).
-    pub col: u16,
+    pub col: u32,
     /// Display width: 1 for ASCII/most Unicode, 2 for CJK, >1 for tabs.
     pub width: u8,
     /// What to render.

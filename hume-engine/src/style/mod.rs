@@ -22,9 +22,9 @@ pub struct StyleScratch {
     /// Sorted highlight intervals split by tier; built once per buffer line.
     pub tier_bufs: TierBufs,
     /// Selection column spans for the current row (all selections, including primary).
-    pub sel_spans: Vec<(u16, u16)>,
+    pub sel_spans: Vec<(u32, u32)>,
     /// Display columns of each selection head on the current row (all selections, including primary).
-    pub head_cols: Vec<u16>,
+    pub head_cols: Vec<u32>,
     /// Sorted copy of selections; populated once per frame or batch call.
     pub sorted_sels: Vec<Selection>,
     /// Index of the primary selection within `sorted_sels`. `None` if empty.
@@ -36,9 +36,9 @@ pub struct StyleScratch {
     /// fragile DocPos equality: two distinct selections could share the same head position.
     pub primary_idx_in_sorted: Option<usize>,
     /// Display column of the primary selection's head on the current row. `None` if not on this row.
-    pub primary_head_col: Option<u16>,
+    pub primary_head_col: Option<u32>,
     /// Column span of the primary selection on the current row. `None` if not on this row.
-    pub primary_sel_span: Option<(u16, u16)>,
+    pub primary_sel_span: Option<(u32, u32)>,
 }
 
 impl StyleScratch {
@@ -242,8 +242,8 @@ fn collect_selection_spans(
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
-    out: &mut Vec<(u16, u16)>,
-    primary_sel_span: &mut Option<(u16, u16)>,
+    out: &mut Vec<(u32, u32)>,
+    primary_sel_span: &mut Option<(u32, u32)>,
 ) {
     out.clear();
     *primary_sel_span = None;
@@ -297,7 +297,7 @@ fn collect_selection_spans(
         // (col). Using the left edge caused backward selections to silently drop
         // their anchor cell from the highlighted span.
         let col_end = char_offset_to_end_col(sel_char_end, graphemes, row_range)
-            .unwrap_or_else(|| row_gs.last().map_or(0, |g| g.col + g.width as u16));
+            .unwrap_or_else(|| row_gs.last().map_or(0, |g| g.col + g.width as u32));
         if col_end > col_start {
             out.push((col_start, col_end));
             if Some(idx) == primary_idx {
@@ -322,8 +322,8 @@ fn collect_head_cols(
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
-    out: &mut Vec<u16>,
-    primary_head_col: &mut Option<u16>,
+    out: &mut Vec<u32>,
+    primary_head_col: &mut Option<u32>,
 ) {
     out.clear();
     *primary_head_col = None;
@@ -359,7 +359,7 @@ pub(crate) fn resolve_grapheme_col(
     char_offset: usize,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
-) -> Option<(u16, u16)> {
+) -> Option<(u32, u32)> {
     if char_offset == usize::MAX {
         // Sentinel: "extend to end of row" — let the caller use the fallback.
         return None;
@@ -384,7 +384,7 @@ pub(crate) fn resolve_grapheme_col(
     }) {
         idx += 1;
     }
-    row_graphemes.get(idx).map(|g| (g.col, g.width as u16))
+    row_graphemes.get(idx).map(|g| (g.col, g.width as u32))
 }
 
 /// Left edge (`g.col`) of the grapheme at `char_offset` in this row.
@@ -395,7 +395,7 @@ fn char_offset_to_col(
     char_offset: usize,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
-) -> Option<u16> {
+) -> Option<u32> {
     resolve_grapheme_col(char_offset, graphemes, row_range).map(|(col, _)| col)
 }
 
@@ -407,7 +407,7 @@ fn char_offset_to_end_col(
     char_offset: usize,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
-) -> Option<u16> {
+) -> Option<u32> {
     resolve_grapheme_col(char_offset, graphemes, row_range).map(|(col, width)| col + width)
 }
 

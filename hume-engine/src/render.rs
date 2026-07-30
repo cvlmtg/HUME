@@ -306,12 +306,21 @@ pub(crate) fn compose_row(
         }
 
         // Horizontal scroll: skip cells left of the viewport.
-        if g.col + g.width as u16 <= h_offset {
+        if g.col + g.width as u32 <= h_offset {
             continue;
         }
-        // Clip cells that start before the viewport edge.
+        // Clip cells that start before the viewport edge. `g.col` is a
+        // document column (`u32`), but this render path always runs behind
+        // `with_h_window` (`pane_render.rs`), so a cell surviving the skip
+        // above sits within one viewport width of `h_offset` — safely
+        // representable in the terminal-cell (`u16`) domain the rest of
+        // compose works in.
         let visible_col = g.col.saturating_sub(h_offset);
-        let screen_x = content_x_origin + visible_col;
+        debug_assert!(
+            u16::try_from(visible_col).is_ok(),
+            "on-screen column {visible_col} exceeds a u16 — h_window should have clipped this cell"
+        );
+        let screen_x = content_x_origin + visible_col as u16;
         if screen_x >= right_edge {
             break; // past right edge — done with this row
         }
@@ -330,8 +339,8 @@ pub(crate) fn compose_row(
         // `g.col < h_offset < g.col + g.width`, which has no integer
         // solution when `g.width == 1`.
         if g.col < h_offset {
-            let visible_cells = g.width as u16 - (h_offset - g.col);
-            for i in 0..visible_cells {
+            let visible_cells = g.width as u32 - (h_offset - g.col);
+            for i in 0..visible_cells as u16 {
                 let sx = screen_x + i;
                 if sx < right_edge {
                     canvas.set_cell(sx, y, " ", ratatui_style);
@@ -386,11 +395,15 @@ pub(crate) fn compose_row(
         // Draw a guide at each inner tab-stop: col = k*tw for k in 1..depth.
         // These positions are guaranteed to lie within the leading whitespace.
         for k in 1..depth {
-            let guide_col = k as u16 * tw;
+            let guide_col = k as u32 * tw as u32;
             // Account for horizontal scroll.
-            if guide_col + tw > h_offset {
+            if guide_col + tw as u32 > h_offset {
                 let visible_col = guide_col.saturating_sub(h_offset);
-                let screen_x = content_x_origin + visible_col;
+                debug_assert!(
+                    u16::try_from(visible_col).is_ok(),
+                    "on-screen indent guide column {visible_col} exceeds a u16"
+                );
+                let screen_x = content_x_origin + visible_col as u16;
                 if screen_x < right_edge {
                     canvas.set_cell(
                         screen_x,

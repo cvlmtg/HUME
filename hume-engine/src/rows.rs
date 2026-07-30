@@ -138,7 +138,7 @@ pub struct RowMap<'a> {
     whitespace: WhitespaceConfig,
     providers: &'a ProviderSet,
     content_width: u16,
-    h_window: Option<Range<u16>>,
+    h_window: Option<Range<u32>>,
     scratch: &'a mut FormatScratch,
     /// Inline inserts for the line currently being formatted. Reused across
     /// the lines one map visits.
@@ -189,7 +189,7 @@ impl<'a> RowMap<'a> {
     /// Row counts are unaffected (no-wrap is one content row however wide the
     /// line is), so this changes only which graphemes the render accessors
     /// emit. Editor-side consumers want whole lines and leave it `None`.
-    pub fn with_h_window(mut self, h_window: Option<Range<u16>>) -> Self {
+    pub fn with_h_window(mut self, h_window: Option<Range<u32>>) -> Self {
         debug_assert!(
             h_window.is_none() || !self.wrap_mode.is_wrapping(),
             "with_h_window is a WrapMode::None-only clip — a wrapping RowMap \
@@ -433,7 +433,7 @@ impl<'a> RowMap<'a> {
 
     /// Locate `char_offset`: its display row, and its display column in that
     /// row.
-    pub fn locate(&mut self, char_offset: usize) -> (RowPos, u16) {
+    pub fn locate(&mut self, char_offset: usize) -> (RowPos, u32) {
         let line = self.rope.char_to_line(char_offset);
         let before = self.block(line).before;
         self.ensure_formatted(line);
@@ -443,7 +443,7 @@ impl<'a> RowMap<'a> {
 
     /// Which content sub-row of `line` holds `char_offset`, and at what column.
     /// Requires `line` to be formatted into the scratch.
-    fn locate_in_line(&self, line: usize, char_offset: usize) -> (usize, u16) {
+    fn locate_in_line(&self, line: usize, char_offset: usize) -> (usize, u32) {
         let line_start_byte = self.rope.char_to_byte(self.rope.line_to_char(line));
         let target_byte = self
             .rope
@@ -471,7 +471,7 @@ impl<'a> RowMap<'a> {
                     crate::style::resolve_grapheme_col(char_offset, graphemes, &row.graphemes)
                         .map_or_else(
                             // Past every grapheme on the row (end of line).
-                            || last.col.saturating_add(last.width as u16),
+                            || last.col.saturating_add(last.width as u32),
                             |(col, _)| col,
                         );
                 return (i, col);
@@ -497,7 +497,7 @@ impl<'a> RowMap<'a> {
             .filter(|r| !r.graphemes.is_empty())
             .map_or(0, |r| {
                 let lg = &graphemes[r.graphemes.end - 1];
-                lg.col.saturating_add(lg.width as u16)
+                lg.col.saturating_add(lg.width as u32)
             });
         (last_row, col)
     }
@@ -508,7 +508,7 @@ impl<'a> RowMap<'a> {
     /// A virtual row is not buffer content, so `pos` landing on one clamps to
     /// the nearest content sub-row of the same line — the first for a `Before`
     /// row, the last for an `After` row.
-    pub fn char_at(&mut self, pos: RowPos, target_col: u16, target: ColTarget) -> usize {
+    pub fn char_at(&mut self, pos: RowPos, target_col: u32, target: ColTarget) -> usize {
         let b = self.block(pos.line);
         let sub = pos
             .row
@@ -529,7 +529,7 @@ impl<'a> RowMap<'a> {
             ColTarget::Cell => {
                 graphemes
                     .iter()
-                    .find(|g| target_col < g.col.saturating_add(g.width as u16))
+                    .find(|g| target_col < g.col.saturating_add(g.width as u32))
                     .unwrap_or_else(|| graphemes.last().expect("non-empty checked above"))
                     .char_offset
             }
@@ -660,7 +660,7 @@ impl<'a> RowMap<'a> {
         // sub-range of it.
         let (arena_base, _) = push_arena_text(&mut scratch.virtual_texts, &vl.text);
 
-        let mut col: u16 = 0;
+        let mut col: u32 = 0;
         for (byte_offset, grapheme_str) in vl.text.grapheme_indices(true) {
             let width = unicode_display_width(grapheme_str).clamp(1, 2) as u8;
             let scope = vl
@@ -680,7 +680,7 @@ impl<'a> RowMap<'a> {
                 indent_depth: 0,
                 scope,
             });
-            col = col.saturating_add(width as u16);
+            col = col.saturating_add(width as u32);
             if width == 2 {
                 // Both cells of a double-wide glyph stay on this row.
                 scratch.graphemes.push(Grapheme {
