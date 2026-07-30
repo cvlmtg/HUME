@@ -72,12 +72,11 @@ pub(crate) struct Buffer {
     /// Fully display-ready path string (absolutized, lexically normalized,
     /// UNC-stripped, `~`-collapsed) — the single form shown to the user
     /// everywhere a buffer path appears. Consumers print it verbatim; the
-    /// only allowed runtime-time exceptions are statusline width-shortening
-    /// and picker cwd-relativization. Always `Some` when `path` is `Some` —
-    /// `set_path` derives it structurally (see `Buffer::set_path`); callers
-    /// that resolved a user-typed path overwrite it afterwards with
-    /// `set_display_path` for the typed-derived form. `None` for
-    /// scratch/synthetic buffers.
+    /// only allowed runtime-time exception is statusline width-shortening.
+    /// Always `Some` when `path` is `Some` — `set_path` derives it
+    /// structurally (see `Buffer::set_path`); callers that resolved a
+    /// user-typed path overwrite it afterwards with `set_display_path` for
+    /// the typed-derived form. `None` for scratch/synthetic buffers.
     pub(super) display_path: Option<String>,
     /// File metadata captured at open/save time (permissions, uid/gid).
     /// `None` for scratch buffers; populated after a successful save.

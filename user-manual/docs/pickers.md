@@ -29,9 +29,9 @@ git's index doesn't know it's gone.
 
 ## Picking buffers
 
-`g b` opens a picker over every open buffer, showing each one's path (relative to `:pwd`
-when possible) rather than just its filename — so two open files that happen to share a
-name, like two different `mod.rs` files, show up as distinct, disambiguated rows.
+`g b` opens a picker over every open buffer, showing each one's full path rather than just
+its filename — so two open files that happen to share a name, like two different `mod.rs`
+files, show up as distinct, disambiguated rows.
 
 ## Picking modified files
 
