@@ -74,9 +74,11 @@ pub(crate) fn gutter_width<'a>(
 /// [`gutter_width`]). Clicks in the gutter return `None`; every other click
 /// resolves, clamped to the document's last row if it lands past the end.
 ///
-/// The coordinate space is pane-relative: `(0, 0)` is the top-left cell of the
-/// pane, matching what `MouseEvent.column`/`.row` report when the pane fills
-/// the whole terminal (which is currently always true).
+/// The coordinate space is pane-relative: `(0, 0)` is the top-left cell of
+/// the pane. `MouseEvent.column`/`.row` are terminal-absolute — callers
+/// translate through `Editor::pane_at_screen_pos` (`editor/src/editor/mouse.rs`)
+/// first, which also decides which pane a click landed in when more than one
+/// is on screen (a `:split`/`:vsplit`).
 pub(crate) fn screen_to_char_offset(
     screen_x: u16,
     screen_y: u16,

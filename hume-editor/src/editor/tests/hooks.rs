@@ -59,6 +59,11 @@ fn mouse_click_in_insert_fires_on_mode_change() {
     let mut ed = editor_from("-[a]>b\n");
     ed.view.panes[ed.state.focused_pane_id].viewport =
         hume_engine::pane::ViewportState::new(80, 24);
+    // The click below is hit-tested against pane rects, which only
+    // `prepare_frame` normally populates — set it directly, matching the
+    // viewport size above, since this test exercises hook dispatch, not a
+    // full frame.
+    ed.view.last_pane_area = ratatui::layout::Rect::new(0, 0, 80, 24);
 
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();

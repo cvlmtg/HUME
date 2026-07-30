@@ -4,16 +4,22 @@
 //! Button-event tracking (mode 1002) is only enabled when `editor.mouse_select`
 //! is true, so `MouseEventKind::Drag` events are received only in that case.
 //!
-//! Click-to-position converts the terminal-absolute `(column, row)` from the
-//! mouse event into a buffer char offset via `screen_to_char_offset`
-//! (`editor/src/editor/cursor.rs`).
+//! A click's `(column, row)` is terminal-absolute, but every pane's own
+//! coordinate space starts at its rect's origin — a split puts more than one
+//! pane on screen at once, so a click is first hit-tested against
+//! `EngineView::pane_rects()` ([`Editor::pane_at_screen_pos`]) to find which
+//! pane it landed in and to translate the coordinate into that pane's frame
+//! before `screen_to_char_offset` (`editor/src/editor/cursor.rs`) resolves it
+//! to a buffer char offset.
 //!
 //! Scroll wheel events move both the viewport and all cursors by the configured
 //! number of lines (Vim-style). Moving the cursor with the viewport prevents
 //! `ensure_cursor_visible` from snapping the viewport back on the next frame.
 
 use hume_engine::pane::ViewportState;
+use hume_engine::pipeline::PaneId;
 use hume_engine::rows::RowMap;
+use ratatui::layout::Position;
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use super::commands::pane_row_map_mut;
@@ -53,23 +59,30 @@ impl Editor {
     // ── Click ─────────────────────────────────────────────────────────────────
 
     fn mouse_left_down(&mut self, col: u16, row: u16) {
-        // Clicks in the statusline (last terminal row) are ignored.
-        let vp_height = self.view.panes[self.state.focused_pane_id].viewport.height;
-        if row >= vp_height {
+        // Hit-test before anything else: a miss (statusline, tabline, a
+        // divider seam — anything outside a pane's own rect) is a no-op, and
+        // a hit's pane-relative coordinates are what every step below needs.
+        let Some((pid, rel_col, rel_row)) = self.pane_at_screen_pos(col, row) else {
             return;
-        }
+        };
 
         // Move to Normal mode on click, regardless of current mode — BEFORE
-        // resolving the click's char offset. `end_insert_session` can shrink
-        // the buffer (the blank-line indent trim), so computing `click_to_char`
-        // first would resolve against a buffer length the exit is about to
-        // invalidate: the offset could land past the new end, or simply on
-        // the wrong char once positions shift.
+        // resolving the click's char offset, and while the *previously*
+        // focused pane is still current. `end_insert_session` can shrink
+        // that pane's buffer (the blank-line indent trim), so computing
+        // `click_to_char` first would resolve against a buffer length the
+        // exit is about to invalidate: the offset could land past the new
+        // end, or simply on the wrong char once positions shift.
         if self.state.mode() == Mode::Insert {
             self.end_insert_session();
         }
 
-        if let Some(char_off) = self.click_to_char(col, row) {
+        // Click-to-focus: a click in another pane (a `:split`/`:vsplit`)
+        // moves focus there, the same plain assignment `cmd_pane_focus_*`
+        // uses — no jump-list push, matching those.
+        self.state.focused_pane_id = pid;
+
+        if let Some(char_off) = self.click_to_char(pid, rel_col, rel_row) {
             // Collapse the primary selection to the clicked position.
             let sel = Selection::collapsed(char_off);
             self.set_current_selections(SelectionSet::single(sel));
@@ -90,12 +103,20 @@ impl Editor {
             return;
         };
 
-        let vp_height = self.view.panes[self.state.focused_pane_id].viewport.height;
-        if row >= vp_height {
+        // A drag never moves focus mid-gesture — it extends the selection in
+        // the pane the click that started it already focused. Hit-test only
+        // that pane's own rect, so a drag that leaves it (as a fast mouse
+        // move easily can) is ignored rather than resolving against the
+        // wrong pane.
+        let pid = self.state.focused_pane_id;
+        let Some(rect) = self.view.pane_rect(pid) else {
+            return;
+        };
+        if !rect.contains(Position::new(col, row)) {
             return;
         }
 
-        if let Some(head) = self.click_to_char(col, row) {
+        if let Some(head) = self.click_to_char(pid, col - rect.x, row - rect.y) {
             let sel = Selection::new(anchor, head);
             self.set_current_selections(SelectionSet::single(sel));
         }
@@ -171,10 +192,25 @@ impl Editor {
 
     // ── Coordinate conversion ─────────────────────────────────────────────────
 
-    fn click_to_char(&mut self, col: u16, row: u16) -> Option<usize> {
-        let buf_id = self.focused_buffer_id();
+    /// Which pane `(col, row)` (terminal-absolute) falls in, and its
+    /// position translated into that pane's own rect-relative coordinates —
+    /// what `click_to_char` and `screen_to_char_offset` expect. `None` for a
+    /// click outside every pane's rect (statusline, tabline, a divider seam).
+    fn pane_at_screen_pos(&self, col: u16, row: u16) -> Option<(PaneId, u16, u16)> {
+        let pos = Position::new(col, row);
+        self.view
+            .pane_rects()
+            .into_iter()
+            .find(|(_, rect)| rect.contains(pos))
+            .map(|(pid, rect)| (pid, col - rect.x, row - rect.y))
+    }
+
+    /// Resolve a pane-relative `(col, row)` click in pane `pid` to a buffer
+    /// char offset.
+    fn click_to_char(&mut self, pid: PaneId, col: u16, row: u16) -> Option<usize> {
+        let buf_id = self.view.panes[pid].buffer_id;
         let gutter_w = {
-            let pane = &self.view.panes[self.state.focused_pane_id];
+            let pane = &self.view.panes[pid];
             cursor::gutter_width(
                 pane.providers.gutter_columns(),
                 self.state.buffers.get(buf_id).text().len_lines(),
@@ -183,7 +219,7 @@ impl Editor {
         let (mut rm, viewport) = pane_row_map_mut(
             self.state.buffers.get(buf_id),
             &self.state.settings,
-            &mut self.view.panes[self.state.focused_pane_id],
+            &mut self.view.panes[pid],
             &mut self.state.motion_format_scratch,
         );
         cursor::screen_to_char_offset(col, row, gutter_w, viewport, &mut rm)
