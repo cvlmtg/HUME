@@ -511,7 +511,11 @@ fn screen_pos_zero_height_returns_none() {
     let providers = no_providers();
     let mut s = FormatScratch::new();
 
-    let pos = screen_pos(&v, &mut map(&rope, WrapMode::None, &providers, 80, &mut s), 0);
+    let pos = screen_pos(
+        &v,
+        &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
+        0,
+    );
     assert_eq!(pos, None);
 }
 

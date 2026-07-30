@@ -490,10 +490,7 @@ fn wrap_width_one_emits_one_grapheme_per_row_without_hanging() {
     );
 
     let breakdown = rm.block(0);
-    assert_eq!(
-        breakdown.content, 4,
-        "one grapheme per row at wrap width 1"
-    );
+    assert_eq!(breakdown.content, 4, "one grapheme per row at wrap width 1");
 }
 
 // ---------------------------------------------------------------------------
