@@ -465,3 +465,39 @@ fn screen_pos_unaffected_by_after_on_cursors_own_last_line() {
         );
     }
 }
+
+/// `screen_pos` must clamp a stale `top_row_offset` the same way
+/// `pane_render.rs`'s row walk clamps its own start address (`RowMap::clamp`)
+/// before drawing — a write site that never validates the offset against the
+/// block it addresses (`recall_scroll`, an LSP jump) can leave it pointing
+/// past a line's current block, e.g. after a `Before` block shrinks.
+///
+/// Line 0's block is `Before(0)` (1 row) + content (1 row) = 2 rows total,
+/// valid addresses 0..2. `top_row_offset = 2` is one past the end — stale,
+/// as if the block used to be taller. The cursor sits on line 0's own
+/// content row (address `(0, 1)`), which the clamped top (`(0, 1)`) resolves
+/// to directly (distance 0); walking forward from the raw, unclamped
+/// address `(0, 2)` immediately steps to line 1 (`next` only checks
+/// `row + 1 < total`, so any row `>= total` jumps a whole line at once) and
+/// permanently overshoots the cursor, since `distance` only walks forward —
+/// yielding `None` instead of the clamped answer.
+#[test]
+fn screen_pos_clamps_a_top_row_offset_past_the_lines_current_block() {
+    let rope = Rope::from_str("a\nb\n");
+    let mut v = vp(0, 80, 10);
+    v.top_row_offset = 2; // past line 0's 2-row block (before=1, content=1)
+    let cursor_char = 0; // 'a' — line 0's own content row, address (0, 1)
+    let providers = providers_with_before_line(0);
+    let mut s = FormatScratch::new();
+
+    let pos = screen_pos(
+        &v,
+        &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
+        cursor_char,
+    );
+    assert_eq!(
+        pos,
+        Some((0, 0)),
+        "clamped top (0,1) sits exactly on the cursor's row — distance 0"
+    );
+}

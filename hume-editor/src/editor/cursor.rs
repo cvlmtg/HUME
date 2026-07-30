@@ -38,10 +38,16 @@ pub(crate) fn screen_pos(
         return None;
     }
     let (cursor_pos, cursor_col) = rm.locate(cursor_char);
+    // Clamp the top the same way `pane_render.rs` does before its row walk:
+    // a write site that doesn't validate `top_row_offset` against the block
+    // it addresses (`recall_scroll`, an LSP jump — see `clamp_viewport_top`'s
+    // doc) can leave it stale for a frame, and walking from the raw address
+    // would disagree with the renderer about which row is on screen.
+    let top = rm.clamp(top_pos(viewport));
     // Capping the walk one row short of the viewport's height makes an
     // off-screen cursor a `None` rather than a row past the last one; a cursor
     // scrolled off the *top* is likewise unreachable walking forward.
-    let screen_row = rm.distance(top_pos(viewport), cursor_pos, height as usize - 1)?;
+    let screen_row = rm.distance(top, cursor_pos, height as usize - 1)?;
     let col = cursor_col.saturating_sub(viewport.horizontal_offset);
     Some((col, screen_row as u16))
 }
