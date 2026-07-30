@@ -51,9 +51,9 @@ plugin's own `lsp-home/hume-globals.scm` — a generated file listing every Stee
 HUME's own layers add (builtins, bootstrap wrappers, prelude macros, native command names),
 each declared via upstream's `(#%register-global "name")` mechanism (see the
 [steel-language-server README](https://github.com/mattwparas/steel/tree/master/crates/steel-language-server)
-for the general mechanism). `hume-globals.scm` is regenerated from the real command
-registry and Steel engine — see its own header comment — and a build-time test
-(`hume-editor`'s `hume_globals_scm_matches_generated_host_names`) fails if it drifts.
+for the general mechanism). `hume-globals.scm` is regenerated from HUME's real command
+registry and Steel engine — see its own header comment — and a build-time check keeps it
+from drifting out of sync.
 
 Setting your own `STEEL_LSP_HOME` has no effect on HUME's scheme server: this plugin's
 registration always overrides it. Register `"scheme"` yourself in `init.scm` (with your own
