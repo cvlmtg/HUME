@@ -191,10 +191,11 @@ pub struct Grapheme {
 /// `virtual_row.texts` for a provider's virtual row — see
 /// `rows::RenderRow::virtual_texts`) rather than borrowing a string directly
 /// — their source text (Steel-configured whitespace glyphs, LSP inlay hints,
-/// provider-built virtual lines) is never truly `'static`, and `Grapheme`
-/// must stay `Copy` on the per-cell hot path. `(start: u32, len: u16)` keeps
-/// the variant small; a single line's arena realistically never approaches
-/// either bound (see `format::push_arena_text`).
+/// provider-built virtual lines) is never truly `'static`, and `CellContent`
+/// must stay `Copy` on the per-cell hot path (pushed and matched once per
+/// grapheme in `format_buffer_line`/`style_row`). `(start: u32, len: u16)`
+/// keeps the variant small; a single line's arena realistically never
+/// approaches either bound (see `format::push_arena_text`).
 #[derive(Copy, Clone, Debug)]
 pub enum CellContent {
     /// A real grapheme cluster. The text is read from the rope via `byte_range`.
