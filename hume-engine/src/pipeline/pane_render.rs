@@ -112,6 +112,7 @@ pub(crate) fn render_pane(
         format,
     )
     .with_h_window(h_window);
+    let last_content_line = rows.last_line();
 
     // ── Row walk ──────────────────────────────────────────────────────────
     let height = visible.content_height.min(pane_ctx.rect.height);
@@ -129,7 +130,7 @@ pub(crate) fn render_pane(
         match rows.kind(pos) {
             RowKind::Content(_) => {
                 let line = line.get_or_insert_with(|| {
-                    LineStyle::enter(pos.line, pane_ctx, style, &compose_ctx)
+                    LineStyle::enter(pos.line, last_content_line, pane_ctx, style)
                 });
                 let row = rows.render_row(pos);
                 style
@@ -227,13 +228,15 @@ struct LineStyle {
 impl LineStyle {
     fn enter(
         line_idx: usize,
+        last_content_line: usize,
         pane_ctx: &PaneRenderCtx,
         style: &mut super::StyleScratch,
-        compose_ctx: &ComposeCtx,
     ) -> Self {
         debug_assert!(
-            line_idx <= compose_ctx.visible.last_line_idx,
-            "row walk reached line {line_idx}, past the buffer's last line"
+            line_idx <= last_content_line,
+            "row walk reached line {line_idx}, past the buffer's last \
+             content line {last_content_line} — `RowMap::last_line`, not \
+             `visible.last_line_idx` (the phantom trailing-\\n line one past it)"
         );
         crate::style::rebuild_tier_bufs(
             line_idx,
