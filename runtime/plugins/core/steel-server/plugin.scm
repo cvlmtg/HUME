@@ -9,7 +9,7 @@
   (let ([rt (runtime-dir)])
     (and rt
          (let ([dir (path-join rt "plugins" "core" "steel-server" "lsp-home")])
-           (and (path-exists? dir) dir)))))
+           (and (path-exists? (path-join dir "hume-globals.scm")) dir)))))
 
 (define (steel-server/register!)
   (unless (lsp-registered-for-language? "scheme")
