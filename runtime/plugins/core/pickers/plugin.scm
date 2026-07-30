@@ -179,27 +179,11 @@
 
 ;; ── Buffers picker ────────────────────────────────────────────────────────────
 
-;;; `path` relative to the editor cwd when it lies inside it, else unchanged
-;;; (best-effort: a canonicalization mismatch just yields the absolute path).
-;;; Both sides go through `path->display` so the comparison is apples-to-apples
-;;; regardless of `~`-collapsing or Windows `\\?\` stripping.
-(define (pickers/relativize path)
-  (let* ([cwd (path->display (current-directory))]
-         [sep (path-separator)]
-         ;; A cwd that already ends in a separator ("/" root, or a Windows
-         ;; drive root "C:\") is its own prefix — avoid building "//".
-         [prefix (if (ends-with? cwd sep)
-                     cwd
-                     (string-append cwd sep))])
-    (if (starts-with? path prefix)
-        (substring path (string-length prefix) (string-length path))
-        path)))
-
-;;; Display: the (relativized) path when the buffer has one — a bare name
+;;; Display: the buffer's display-ready path when it has one — a bare name
 ;;; would be an ambiguous basename — else the buffer name (`*scratch*`, etc).
 (define (pickers/buffer-item bid)
   (let ([path (buffer-display-path bid)])
-    (cons (if path (pickers/relativize path) (buffer-name bid)) bid)))
+    (cons (or path (buffer-name bid)) bid)))
 
 (define-command! "picker-buffers"
   "Fuzzy-pick an open buffer and switch to it."
