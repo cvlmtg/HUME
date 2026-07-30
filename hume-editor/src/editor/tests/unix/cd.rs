@@ -227,8 +227,8 @@ fn typed_pwd_reports_current_directory() {
         .status_msg
         .as_deref()
         .expect(":pwd must report a message");
-    let expected = hume_platform::path::shorten_home(&canonical);
-    assert_eq!(msg, expected, ":pwd must report shorten_home(cwd)");
+    let expected = hume_platform::path::display_form(&canonical);
+    assert_eq!(msg, expected, ":pwd must report display_form(cwd)");
 }
 
 #[test]
@@ -245,7 +245,7 @@ fn typed_pwd_long_alias_works() {
         .status_msg
         .as_deref()
         .expect(":print-working-directory must report a message");
-    let expected = hume_platform::path::shorten_home(&canonical);
+    let expected = hume_platform::path::display_form(&canonical);
     assert_eq!(msg, expected, "long alias must match :pwd output");
 }
 

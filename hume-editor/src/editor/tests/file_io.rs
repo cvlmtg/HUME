@@ -71,6 +71,9 @@ pub(super) fn open_file_buffer(ed: &mut Editor, content: &str) -> (tempfile::Tem
     let text = Text::from(content);
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut buf = Buffer::new(text, sels);
+    buf.set_display_path(Some(hume_platform::path::display_form(
+        meta.resolved_path(),
+    )));
     buf.set_path(Some(path));
     buf.file_meta = Some(meta);
     let bid = ed.open_buffer(buf);

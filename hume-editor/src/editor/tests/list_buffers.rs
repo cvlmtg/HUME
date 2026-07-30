@@ -50,7 +50,12 @@ fn ls_long_alias_works() {
 #[test]
 fn ls_header_columns_align_with_data_columns() {
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    let doc_path = ed.doc().path().unwrap().to_path_buf();
+    // `editor_with_file` stores the raw (non-canonical) tempfile path as
+    // `path()` but a canonicalized `display_path` (mirroring `Buffer::from_file`'s
+    // default) — canonicalize here too so the oracle matches what `:ls` actually
+    // shows (macOS temp dirs live under a `/var` symlink to `/private/var`; see
+    // memory feedback_macos_tempfile_canonicalize).
+    let doc_path = std::fs::canonicalize(ed.doc().path().unwrap()).unwrap();
     let out = ls_output(&mut ed);
     let mut lines = out.lines();
     let header = lines.next().expect("header row");
@@ -60,7 +65,7 @@ fn ls_header_columns_align_with_data_columns() {
     let path_col = header.find("path").expect("header must contain 'path'");
 
     let file_name = doc_path.file_name().unwrap().to_str().unwrap().to_string();
-    let shortened_path = hume_platform::path::shorten_home(&doc_path);
+    let shortened_path = hume_platform::path::display_form(&doc_path);
     let name_start = row
         .find(file_name.as_str())
         .expect("row must contain the buffer's file name");

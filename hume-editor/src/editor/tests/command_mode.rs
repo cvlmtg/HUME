@@ -2,6 +2,25 @@ use super::*;
 use hume_scripting::host::CommandHost;
 use pretty_assertions::assert_eq;
 
+/// Open a second real (file-backed) buffer with content `"world\n"` and
+/// return its id — used by the `:q`/`:qa`/`:wq` multi-buffer tests below,
+/// which need a second file buffer distinct from `editor_with_file`'s.
+fn open_second_file_buffer(ed: &mut Editor) -> BufferId {
+    let tmp2 = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp2.path(), "world\n").unwrap();
+    let (_, meta2) = hume_platform::io::read_file(tmp2.path()).unwrap();
+    let mut buf2 = crate::editor::buffer::Buffer::new(
+        hume_editing::text::Text::from("world\n"),
+        SelectionSet::default(),
+    );
+    buf2.set_display_path(Some(hume_platform::path::display_form(
+        meta2.resolved_path(),
+    )));
+    buf2.set_path(Some(tmp2.path().to_path_buf()));
+    buf2.file_meta = Some(meta2);
+    ed.open_buffer(buf2)
+}
+
 // ── Command mode ──────────────────────────────────────────────────────────────
 
 #[test]
@@ -340,16 +359,7 @@ fn colon_q_one_of_two_file_buffers_switches_not_quits() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let first_buf = ed.focused_buffer_id();
 
-    let tmp2 = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp2.path(), "world\n").unwrap();
-    let (_, meta2) = hume_platform::io::read_file(tmp2.path()).unwrap();
-    let mut buf2 = crate::editor::buffer::Buffer::new(
-        hume_editing::text::Text::from("world\n"),
-        SelectionSet::default(),
-    );
-    buf2.set_path(Some(tmp2.path().to_path_buf()));
-    buf2.file_meta = Some(meta2);
-    let second_buf = ed.open_buffer(buf2);
+    let second_buf = open_second_file_buffer(&mut ed);
     ed.switch_to_buffer_without_jump(second_buf);
     assert_eq!(ed.focused_buffer_id(), second_buf);
 
@@ -401,16 +411,7 @@ fn colon_q_bang_on_dirty_buffer_with_other_real_buffer_closes_not_quits() {
     assert!(ed.doc().is_dirty(), "buffer must be dirty before :q!");
 
     // Open a second real file-backed buffer.
-    let tmp2 = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp2.path(), "world\n").unwrap();
-    let (_, meta2) = hume_platform::io::read_file(tmp2.path()).unwrap();
-    let mut buf2 = crate::editor::buffer::Buffer::new(
-        hume_editing::text::Text::from("world\n"),
-        SelectionSet::default(),
-    );
-    buf2.set_path(Some(tmp2.path().to_path_buf()));
-    buf2.file_meta = Some(meta2);
-    let other_buf = ed.open_buffer(buf2);
+    let other_buf = open_second_file_buffer(&mut ed);
     ed.switch_to_buffer_without_jump(dirty_buf);
 
     type_cmd(&mut ed, ":q!");
@@ -462,16 +463,7 @@ fn colon_qa_refused_when_a_background_buffer_is_dirty() {
     let file_buf = ed.focused_buffer_id();
 
     // Open a second file buffer and dirty it.
-    let tmp2 = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp2.path(), "world\n").unwrap();
-    let (_, meta2) = hume_platform::io::read_file(tmp2.path()).unwrap();
-    let mut buf2 = crate::editor::buffer::Buffer::new(
-        hume_editing::text::Text::from("world\n"),
-        SelectionSet::default(),
-    );
-    buf2.set_path(Some(tmp2.path().to_path_buf()));
-    buf2.file_meta = Some(meta2);
-    let bg_buf = ed.open_buffer(buf2);
+    let bg_buf = open_second_file_buffer(&mut ed);
     ed.switch_to_buffer_without_jump(bg_buf);
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
@@ -584,6 +576,9 @@ fn colon_qa_lands_on_first_dirty_buffer_in_open_order() {
             hume_editing::text::Text::from("content\n"),
             SelectionSet::default(),
         );
+        buf.set_display_path(Some(hume_platform::path::display_form(
+            meta.resolved_path(),
+        )));
         buf.set_path(Some(tmp.path().to_path_buf()));
         buf.file_meta = Some(meta);
         let id = ed.open_buffer(buf);
@@ -629,6 +624,9 @@ fn colon_qa_walk_through_dirty_buffers() {
             hume_editing::text::Text::from("content\n"),
             SelectionSet::default(),
         );
+        buf.set_display_path(Some(hume_platform::path::display_form(
+            meta.resolved_path(),
+        )));
         buf.set_path(Some(path));
         buf.file_meta = Some(meta);
         let id = ed.open_buffer(buf);
@@ -836,16 +834,7 @@ fn colon_wq_single_pane_other_buffer_closes_buffer_and_stays() {
     let expected_content = ed.doc().text().to_string();
 
     // Open a second real file-backed buffer.
-    let tmp2 = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp2.path(), "world\n").unwrap();
-    let (_, meta2) = hume_platform::io::read_file(tmp2.path()).unwrap();
-    let mut buf2 = crate::editor::buffer::Buffer::new(
-        hume_editing::text::Text::from("world\n"),
-        SelectionSet::default(),
-    );
-    buf2.set_path(Some(tmp2.path().to_path_buf()));
-    buf2.file_meta = Some(meta2);
-    let other_buf = ed.open_buffer(buf2);
+    let other_buf = open_second_file_buffer(&mut ed);
     ed.switch_to_buffer_without_jump(dirty_buf);
 
     type_cmd(&mut ed, ":wq");

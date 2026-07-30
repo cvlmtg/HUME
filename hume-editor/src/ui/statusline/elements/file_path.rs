@@ -4,7 +4,7 @@ use ratatui::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use hume_platform::path::{is_path_sep, shorten_home, strip_unc_prefix};
+use hume_platform::path::is_path_sep;
 
 use crate::editor::Editor;
 use crate::ui::theme::EditorColors;
@@ -21,27 +21,14 @@ pub(in crate::ui::statusline) fn render(
     (Cow::Owned(filepath_text.to_owned()), colors.statusline)
 }
 
-/// Returns the display path for the `FilePath` element: `display_path` (user-typed,
-/// symlinks unresolved) when set, falling back to the canonical `path`. Both are
-/// stripped of the Windows `\\?\` verbatim prefix and `~`-collapsed for display.
-/// Falls back to the buffer's display name (label, or `*scratch*`) when there is
-/// no path at all — scratch and synthetic buffers.
+/// Returns the display path for the `FilePath` element: the buffer's
+/// display-ready path string, printed verbatim, falling back to the buffer's
+/// display name (label, or `*scratch*`) for scratch and synthetic buffers.
 pub(in crate::ui::statusline) fn statusline_display_path(editor: &Editor) -> String {
     let doc = editor.doc();
-    match doc.display_path().or_else(|| doc.path()) {
-        Some(p) => display_path_string(p),
-        None => doc.display_name(),
-    }
-}
-
-/// Normalize a buffer path for display: strip the Windows `\\?\` verbatim
-/// prefix (no-op on other platforms and on paths that never carried one, e.g.
-/// `display_path`'s `absolute_unresolved` output), then `~`-collapse.
-/// `strip_unc_prefix` must run first — `shorten_home`'s prefix match is
-/// against the clean `C:\Users\...` form, which the verbatim-prefixed string
-/// wouldn't match.
-pub(in crate::ui::statusline) fn display_path_string(path: &std::path::Path) -> String {
-    shorten_home(&strip_unc_prefix(path.to_owned()))
+    doc.display_path()
+        .map(str::to_owned)
+        .unwrap_or_else(|| doc.display_name())
 }
 
 /// Shorten `display` (a `~`-collapsed path string) to fit within `max_cols`

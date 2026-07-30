@@ -126,6 +126,10 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
     let (path, tmp_path) = temp_file(file_content);
     let (_, meta) = hume_platform::io::read_file(&path).unwrap();
     let mut ed = editor_from(initial_state);
+    ed.doc_mut()
+        .set_display_path(Some(hume_platform::path::display_form(
+            meta.resolved_path(),
+        )));
     ed.doc_mut().set_path(Some(path));
     ed.doc_mut().file_meta = Some(meta);
     (ed, tmp_path)

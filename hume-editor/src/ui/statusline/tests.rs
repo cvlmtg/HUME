@@ -1,5 +1,5 @@
 use super::elements::file_path::{
-    display_path_string, shorten_path_to_width, shorten_path_to_width_with, statusline_display_path,
+    shorten_path_to_width, shorten_path_to_width_with, statusline_display_path,
 };
 use super::*;
 use ratatui::style::Style;
@@ -567,33 +567,6 @@ fn shorten_path_unix_sep_ignores_backslash() {
     assert_eq!(result, r"~/foo\b…");
 }
 
-// ── display_path_string (Windows `\\?\` prefix stripping) ─────────────────
-
-#[test]
-fn display_path_string_plain_path_matches_shorten_home() {
-    // No verbatim prefix to strip: output must be exactly what shorten_home
-    // alone would produce — an oracle independent of strip_unc_prefix.
-    let path = std::path::Path::new("/some/absolute/path/file.rs");
-    assert_eq!(
-        display_path_string(path),
-        hume_platform::path::shorten_home(path)
-    );
-}
-
-#[cfg(windows)]
-#[test]
-fn display_path_string_strips_windows_verbatim_prefix() {
-    // Regression: statusline must never show the raw `\\?\` extended-length
-    // prefix that `canonicalize` attaches on Windows.
-    let path = std::path::Path::new(r"\\?\C:\Users\x\file.rs");
-    let result = display_path_string(path);
-    assert!(
-        !result.contains(r"\\?\"),
-        "statusline path {result:?} still carries the verbatim prefix"
-    );
-    assert!(result.contains("file.rs"));
-}
-
 // ── statusline_display_path (label fallback for path-less buffers) ────────
 //
 // Regression: the statusline's FilePath element used to render "" for
@@ -627,8 +600,7 @@ fn statusline_display_path_real_file_still_shows_path() {
     let mut ed = test_editor();
     let path = std::path::Path::new("/some/absolute/path/file.rs");
     ed.doc_mut().set_path(Some(path.to_owned()));
-    assert_eq!(
-        statusline_display_path(&ed),
-        hume_platform::path::shorten_home(path)
-    );
+    let display = hume_platform::path::display_form(path);
+    ed.doc_mut().set_display_path(Some(display.clone()));
+    assert_eq!(statusline_display_path(&ed), display);
 }

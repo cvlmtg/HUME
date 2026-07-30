@@ -58,6 +58,13 @@ fn buffer_path_blocked_in_init_mode() {
     assert!(super::super::errors::require_cmd(&h.ctx_init(), "buffer-path").is_err());
 }
 
+/// `buffer-display-path` is blocked in init mode.
+#[test]
+fn buffer_display_path_blocked_in_init_mode() {
+    let mut h = SteelCtxTestHarness::new();
+    assert!(super::super::errors::require_cmd(&h.ctx_init(), "buffer-display-path").is_err());
+}
+
 /// `buffer-name` is blocked in init mode.
 #[test]
 fn buffer_name_blocked_in_init_mode() {
@@ -158,6 +165,23 @@ fn buffer_path_invalid_id_errors() {
     let mut ctx = h.ctx();
     // NullHost.buffer_exists always returns false.
     let result = buffer_path(&mut ctx, default_bid());
+    assert!(result.is_err(), "non-existent buffer id must error");
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid buffer id")
+    );
+}
+
+/// `buffer-display-path` with a valid BufferId but non-existent buffer raises
+/// an error, exactly like `buffer-path`.
+#[test]
+fn buffer_display_path_invalid_id_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    // NullHost.buffer_exists always returns false.
+    let result = buffer_display_path(&mut ctx, default_bid());
     assert!(result.is_err(), "non-existent buffer id must error");
     assert!(
         result

@@ -82,3 +82,21 @@ fn strip_unc_prefix_plain_path_unchanged() {
     let got = strip_unc_prefix(PathBuf::from(r"C:\Users\x"));
     assert_eq!(got, PathBuf::from(r"C:\Users\x"));
 }
+
+// ── display_form_with ─────────────────────────────────────────────────────
+
+#[test]
+fn display_form_with_strips_unc_then_shortens_home() {
+    let got = display_form_with(Path::new(r"\\?\C:\Users\Alice\dev\hume"), || {
+        Some(PathBuf::from(r"C:\Users\Alice"))
+    });
+    assert_eq!(got, r"~\dev\hume");
+}
+
+#[test]
+fn display_form_with_verbatim_unc_passthrough() {
+    let got = display_form_with(Path::new(r"\\?\UNC\server\share"), || {
+        Some(PathBuf::from(r"C:\Users\Alice"))
+    });
+    assert_eq!(got, r"\\?\UNC\server\share");
+}

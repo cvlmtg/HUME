@@ -123,7 +123,7 @@
 ;;; for display, not for parsing back into a URI.
 (define (lsp/uri->display-path uri)
   (if (and (>= (string-length uri) 7) (equal? (substring uri 0 7) "file://"))
-      (substring uri 7 (string-length uri))
+      (path->display (substring uri 7 (string-length uri)))
       uri))
 
 ;;; "path/to/file.rs:12:5" — 1-based line/col, matching every other editor's

@@ -56,8 +56,10 @@ impl Editor {
     }
 
     /// Resolve a path argument to an open buffer, opening the file if it isn't
-    /// already open. Shared sequence: `expand` → `absolute_unresolved` (display
-    /// path) → `canonicalize` → `open_or_dedup` → `set_display_path` if new.
+    /// already open. Shared sequence: `expand` → `absolute_unresolved` +
+    /// `display_form` (display path) → `canonicalize` → `open_or_dedup` →
+    /// `set_display_path` if new (overwriting `Buffer::from_file`'s
+    /// canonical-derived default with the typed-derived form).
     /// Errors propagate as raw `io::Error`; callers format with whichever path
     /// string suits their reporting.
     pub(in crate::editor) fn resolve_open_path(
@@ -66,7 +68,10 @@ impl Editor {
     ) -> io::Result<(BufferId, bool)> {
         let expanded = hume_platform::path::expand(path_str);
         let path = std::path::Path::new(expanded.as_ref());
-        let display = hume_platform::path::absolute_unresolved(path, &self.state.cwd);
+        let display = hume_platform::path::display_form(&hume_platform::path::absolute_unresolved(
+            path,
+            &self.state.cwd,
+        ));
         let canonical = hume_platform::fs::canonicalize(path)?;
         let (bid, is_new) = self.open_or_dedup(&canonical)?;
         if is_new {

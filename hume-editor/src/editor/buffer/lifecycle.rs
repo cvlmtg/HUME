@@ -67,6 +67,10 @@ pub(crate) fn open_buffer_and_notify(
     state: &mut EditorState,
     doc: Buffer,
 ) -> BufferId {
+    debug_assert!(
+        doc.path().is_none() || doc.display_path().is_some(),
+        "buffer with a path must carry a display_path (Buffer::from_file sets the default)"
+    );
     let bid = open_buffer(
         ev,
         &mut state.buffers,

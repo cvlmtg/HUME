@@ -47,6 +47,44 @@ fn path_join_type_error() {
     assert!(path_join(&args).is_err());
 }
 
+// ── path->display ─────────────────────────────────────────────────────────
+
+#[test]
+fn path_to_display_matches_display_form_oracle() {
+    let args = vec![SteelVal::StringV("/some/absolute/path/file.rs".into())];
+    let result = path_to_display(&args).unwrap();
+    let s = match result {
+        SteelVal::StringV(s) => s.to_string(),
+        other => panic!("expected string, got {other:?}"),
+    };
+    let expected =
+        hume_platform::path::display_form(std::path::Path::new("/some/absolute/path/file.rs"));
+    assert_eq!(s, expected);
+}
+
+#[test]
+fn path_to_display_no_args_errors() {
+    assert!(path_to_display(&[]).is_err());
+}
+
+#[test]
+fn path_to_display_type_error() {
+    let args = vec![SteelVal::IntV(42)];
+    assert!(path_to_display(&args).is_err());
+}
+
+// ── path-separator ────────────────────────────────────────────────────────
+
+#[test]
+fn path_separator_matches_main_separator() {
+    let result = path_separator(&[]).unwrap();
+    let s = match result {
+        SteelVal::StringV(s) => s.to_string(),
+        other => panic!("expected string, got {other:?}"),
+    };
+    assert_eq!(s, std::path::MAIN_SEPARATOR.to_string());
+}
+
 // ── data-dir display (no UNC prefix) ─────────────────────────────────────
 
 /// On all platforms `(data-dir)` must return a string that does not begin

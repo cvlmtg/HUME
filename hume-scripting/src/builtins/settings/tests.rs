@@ -289,6 +289,9 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_path(&self, id: BufferId) -> Option<std::path::PathBuf> {
         self.inner.buffer_path(id)
     }
+    fn buffer_display_path(&self, id: BufferId) -> Option<String> {
+        self.inner.buffer_display_path(id)
+    }
     fn buffer_display_name(&self, id: BufferId) -> Option<String> {
         self.inner.buffer_display_name(id)
     }

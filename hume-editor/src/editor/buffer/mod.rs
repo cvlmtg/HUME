@@ -69,11 +69,13 @@ pub(crate) struct Buffer {
     saved_revision: Option<RevisionId>,
     /// Canonical file path (after symlink resolution). `None` for scratch buffers.
     pub(super) path: Option<PathBuf>,
-    /// Absolute path as supplied by the user (symlinks NOT resolved). Display-only;
-    /// `path` is the canonical identity for dedup and I/O. `None` when the buffer
-    /// was not opened via a user-typed path (scratch, synthetic, startup arg without
-    /// recording). `FilePath` statusline element falls back to `path` when absent.
-    pub(super) display_path: Option<PathBuf>,
+    /// Fully display-ready path string (absolutized, lexically normalized,
+    /// UNC-stripped, `~`-collapsed) — the single form shown to the user
+    /// everywhere a buffer path appears. Consumers print it verbatim; the
+    /// only allowed runtime-time exceptions are statusline width-shortening
+    /// and picker cwd-relativization. Always `Some` when `path` is `Some`
+    /// (see `Buffer::from_file`); `None` for scratch/synthetic buffers.
+    pub(super) display_path: Option<String>,
     /// File metadata captured at open/save time (permissions, uid/gid).
     /// `None` for scratch buffers; populated after a successful save.
     pub(crate) file_meta: Option<FileMeta>,
@@ -192,7 +194,11 @@ impl Buffer {
 
     /// Load a file from disk, returning a ready-to-use `Buffer`.
     ///
-    /// Sets `path` and `file_meta` from the resolved filesystem metadata.
+    /// Sets `path` and `file_meta` from the resolved filesystem metadata, and
+    /// derives a default `display_path` from the canonical path — callers that
+    /// resolved a user-typed path (`resolve_open_path`, save-as, ...) overwrite
+    /// it with the typed-derived form afterwards; this default only surfaces
+    /// for opens with no typed path (Steel `open-buffer!`, `:tutor`, LSP goto).
     /// `search_pattern` and `search_matches` are left at their defaults
     /// (no active search) — caller contract for `replace_buffer_in_place`.
     pub(crate) fn from_file(path: &Path) -> io::Result<Self> {
@@ -201,6 +207,7 @@ impl Buffer {
         let sels = SelectionSet::default();
         let mut buf = Self::new(text, sels);
         buf.set_path(Some(meta.resolved_path().to_path_buf()));
+        buf.display_path = Some(hume_platform::path::display_form(meta.resolved_path()));
         buf.file_meta = Some(meta);
         Ok(buf)
     }
@@ -284,15 +291,14 @@ impl Buffer {
         self.path.as_deref()
     }
 
-    /// Set the display path (user-supplied, symlinks unresolved). Pass `None` to clear.
-    pub(crate) fn set_display_path(&mut self, path: Option<PathBuf>) {
-        self.display_path = path;
+    /// Set the display-ready path string (see field doc). Pass `None` to clear.
+    pub(crate) fn set_display_path(&mut self, display: Option<String>) {
+        self.display_path = display;
     }
 
-    /// Absolute path as supplied by the user (symlinks NOT resolved), or `None` when
-    /// the buffer was not opened via a typed path. The `FilePath` statusline element
-    /// falls back to `self.path()` when this returns `None`.
-    pub(crate) fn display_path(&self) -> Option<&Path> {
+    /// The fully display-ready path string, or `None` for scratch/synthetic
+    /// buffers. Print verbatim — no further transforms needed.
+    pub(crate) fn display_path(&self) -> Option<&str> {
         self.display_path.as_deref()
     }
 

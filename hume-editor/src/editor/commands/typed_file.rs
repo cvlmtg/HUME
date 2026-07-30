@@ -331,11 +331,12 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                 p.to_owned()
             }
         };
-        // Lexically-normalized absolute path without symlink resolution, recorded for
-        // the FilePath statusline element so it shows the user-typed path, not the
-        // canonicalized one.  `normalize_lexical` is used here because `path` was
-        // already made absolute above (via cwd.join or identity).
-        let display_path = hume_platform::path::normalize_lexical(&path);
+        // Display-ready form of the user-typed path (not the canonicalized one),
+        // recorded for user-facing display. `normalize_lexical` is used here
+        // (rather than `absolute_unresolved`) because `path` was already made
+        // absolute above (via cwd.join or identity).
+        let display_path =
+            hume_platform::path::display_form(&hume_platform::path::normalize_lexical(&path));
         // Try to preserve existing file's permissions; if the file doesn't
         // exist yet, write_file_new creates it with default permissions.
         let result = match hume_platform::io::read_file_meta(&path) {

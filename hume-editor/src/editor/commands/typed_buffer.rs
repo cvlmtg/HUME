@@ -50,9 +50,10 @@ pub fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(),
         if ed.doc().is_dirty() && !force {
             return Err(CommandError::new("unsaved changes (use :e! to force)"));
         }
+        let display = ed.doc().display_path().unwrap_or_default().to_string();
         let id = ed.focused_buffer_id();
         ed.reload_from_path(id, &path)
-            .map_err(|e| CommandError::new(format!("{}: {e}", path.display())))
+            .map_err(|e| CommandError::new(format!("{display}: {e}")))
     }
 }
 
@@ -88,7 +89,10 @@ pub fn typed_cd(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), 
     let resolved = ed
         .set_cwd(&target)
         .map_err(|e| CommandError::new(format!("{}: {e}", target.display())))?;
-    ed.report(Severity::Info, format!("cwd: {}", resolved.display()));
+    ed.report(
+        Severity::Info,
+        format!("cwd: {}", hume_platform::path::display_form(&resolved)),
+    );
     Ok(())
 }
 
@@ -96,7 +100,7 @@ pub fn typed_cd(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), 
 pub fn typed_pwd(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
     ed.report(
         Severity::Info,
-        hume_platform::path::shorten_home(&ed.state.cwd),
+        hume_platform::path::display_form(&ed.state.cwd),
     );
     Ok(())
 }
@@ -161,8 +165,8 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     // `*scratch*` otherwise. Unambiguous regardless of whether the collision
     // was on basename or prefix.
     let label = |buf: &Buffer| -> String {
-        buf.path()
-            .map(|p| p.display().to_string())
+        buf.display_path()
+            .map(str::to_owned)
             .unwrap_or_else(|| Buffer::SCRATCH_BUFFER_NAME.to_owned())
     };
 

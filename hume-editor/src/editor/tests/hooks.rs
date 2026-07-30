@@ -290,6 +290,7 @@ fn on_buffer_open_queued_after_on_language_set() {
 
     let mut doc = Buffer::scratch();
     doc.path = Some(std::path::PathBuf::from("/tmp/foo.rs"));
+    doc.display_path = Some("/tmp/foo.rs".to_string());
     ed.open_buffer(doc);
 
     // Inspect the queue before draining — drain_hooks would empty it.

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use ratatui::style::Style;
 
-use hume_platform::path::shorten_home;
+use hume_platform::path::display_form;
 
 use super::StatuslineElement;
 use crate::editor::Editor;
@@ -19,6 +19,6 @@ impl StatuslineElement for CwdElement {
     }
 
     fn format(cwd: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
-        (Cow::Owned(shorten_home(&cwd)), colors.statusline)
+        (Cow::Owned(display_form(&cwd)), colors.statusline)
     }
 }

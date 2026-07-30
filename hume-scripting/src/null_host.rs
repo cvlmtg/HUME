@@ -58,6 +58,9 @@ impl BufferHost for NullHost {
     fn buffer_path(&self, _id: BufferId) -> Option<PathBuf> {
         None
     }
+    fn buffer_display_path(&self, _id: BufferId) -> Option<String> {
+        None
+    }
     fn buffer_display_name(&self, _id: BufferId) -> Option<String> {
         None
     }

@@ -82,11 +82,14 @@ impl Completer for BufferNameCompleter {
                     return None;
                 }
                 let display = if *name_count.get(&base).expect("base was counted above") >= 2 {
-                    // Two or more buffers share this basename — show parent dir.
-                    if let Some(parent) = buf.path().and_then(|p| p.parent()) {
-                        format!("{base}  ({}/)", hume_platform::path::shorten_home(parent))
-                    } else {
-                        base // scratch can't collide
+                    // Two or more buffers share this basename — show parent dir,
+                    // taken from the display-ready path (already `~`-collapsed).
+                    let dir = buf
+                        .display_path()
+                        .map(|p| hume_platform::path::split_path_at_sep(p).0);
+                    match dir {
+                        Some(dir) if !dir.is_empty() => format!("{base}  ({dir})"),
+                        _ => base, // scratch can't collide
                     }
                 } else {
                     base

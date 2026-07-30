@@ -318,7 +318,9 @@ fn resolve_or_open(
         crate::editor::buffer::lifecycle::open_or_dedup_and_notify(view, state, &canonical)
             .map_err(|e| format!("{}: {e}", canonical.display()))?;
     if is_new {
-        let display = hume_platform::path::absolute_unresolved(path, &state.cwd);
+        let display = hume_platform::path::display_form(&hume_platform::path::absolute_unresolved(
+            path, &state.cwd,
+        ));
         state.buffers.get_mut(bid).set_display_path(Some(display));
     }
     Ok(bid)
@@ -347,15 +349,23 @@ pub(crate) fn apply_workspace_edit(
         // fail to apply against the wrong text (they can silently produce
         // corrupted content instead of erroring) — so this must be rejected
         // before any commit, not left to a downstream length coincidence.
+        let display = || {
+            state
+                .buffers
+                .get(bid)
+                .display_path()
+                .map(str::to_owned)
+                .unwrap_or_else(|| path.display().to_string())
+        };
         if planned.iter().any(|(planned_bid, _)| *planned_bid == bid) {
             return Err(format!(
                 "{}: workspace edit contains more than one entry for this file",
-                path.display()
+                display()
             ));
         }
         let expect_gen = version.map(|v| v as u64);
         let cs = build_edit_changeset(state, lsp, bid, &edits, expect_gen)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
+            .map_err(|e| format!("{}: {e}", display()))?;
         planned.push((bid, cs));
     }
     let buffers_modified = planned.len();

@@ -70,14 +70,12 @@ pub fn typed_list_buffers(
         };
         let dirty_marker = if buf.is_dirty() { '+' } else { ' ' };
 
-        let path_ref = buf.path();
-        let name = path_ref
+        let name = buf
+            .path()
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
             .unwrap_or(buf.label.as_deref().unwrap_or("*scratch*"));
-        let path = path_ref
-            .map(hume_platform::path::shorten_home)
-            .unwrap_or_default();
+        let path = buf.display_path().unwrap_or_default();
 
         out.push_str(&format!(
             "{:>4}  {}{}  {:<32}  {}\n",

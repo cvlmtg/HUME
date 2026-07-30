@@ -12,6 +12,8 @@
 //! | `data-dir`      | `() → string \| #f`            | HUME data directory (XDG), or `#f` if unset  |
 //! | `runtime-dir`   | `() → string \| #f`            | Runtime dir, or `#f` if absent               |
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
+//! | `path->display` | `string → string`               | UNC-strip + `~`-collapse; no filesystem access |
+//! | `path-separator`| `() → string`                   | OS-native path separator (`/` or `\`)        |
 
 use std::path::{Path, PathBuf};
 
@@ -82,6 +84,38 @@ pub(crate) fn path_join(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     result
         .to_string_lossy()
         .as_ref()
+        .into_steelval()
+        .map_err(generic_err)
+}
+
+// ── path->display ─────────────────────────────────────────────────────────────
+
+/// `(path->display path)` — run `path` through HUME's display-form pipeline
+/// (Windows `\\?\` stripping, `~`-collapse) so Scheme-side path comparisons
+/// (e.g. the buffer picker's cwd-relativization) line up with paths that came
+/// from `buffer-display-path`. No filesystem access; expects an absolute path
+/// — `~`-collapse is a no-op on relative input.
+pub(crate) fn path_to_display(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
+    if args.len() != 1 {
+        steel::stop!(ArityMismatch => "path->display expects exactly 1 arg, got {}", args.len());
+    }
+    let SteelVal::StringV(s) = &args[0] else {
+        steel::stop!(TypeMismatch => "path->display: arg must be a string, got {:?}", args[0]);
+    };
+    hume_platform::path::display_form(Path::new(s.as_str()))
+        .into_steelval()
+        .map_err(generic_err)
+}
+
+// ── path-separator ────────────────────────────────────────────────────────────
+
+/// `(path-separator)` — the OS-native path separator (`/` on Unix, `\` on
+/// Windows), for building the same prefix `path->display` output would use.
+/// A niladic function, not a bare value, so it round-trips through
+/// `load-plugin`'s module boundary the same way `data-dir`/`path-join` do.
+pub(crate) fn path_separator(_args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
+    std::path::MAIN_SEPARATOR
+        .to_string()
         .into_steelval()
         .map_err(generic_err)
 }

@@ -105,6 +105,9 @@ impl BufferHost for MockHost {
     fn buffer_path(&self, _id: BufferId) -> Option<std::path::PathBuf> {
         None
     }
+    fn buffer_display_path(&self, _id: BufferId) -> Option<String> {
+        None
+    }
     fn buffer_display_name(&self, _id: BufferId) -> Option<String> {
         None
     }

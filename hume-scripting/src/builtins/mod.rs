@@ -405,6 +405,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "buffers" buffers::buffers();
         cmd "panes" buffers::panes();
         cmd "buffer-path" buffers::buffer_path(bid: args::BidArg);
+        cmd "buffer-display-path" buffers::buffer_display_path(bid: args::BidArg);
         cmd "buffer-name" buffers::buffer_name(bid: args::BidArg);
         cmd "buffer-dirty?" buffers::buffer_dirty(bid: args::BidArg);
         // Live cursor read — reflects synchronous edits in the same eval.
@@ -513,6 +514,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // `hume-target` reads platform info, not directory state.
     steel.register_value("hume-target", SteelVal::FuncV(install::hume_target));
     steel.register_value("path-join", SteelVal::FuncV(fs::path_join));
+    steel.register_value("path->display", SteelVal::FuncV(fs::path_to_display));
+    steel.register_value("path-separator", SteelVal::FuncV(fs::path_separator));
 
     // Evaluate the Scheme bootstrap (defines `load-plugin`, and — at its
     // tail — captures steel-core's original print functions/port before

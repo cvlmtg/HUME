@@ -174,6 +174,9 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
         self.buffer(id)?.path().map(Path::to_path_buf)
     }
+    fn buffer_display_path(&self, id: BufferId) -> Option<String> {
+        self.buffer(id)?.display_path().map(str::to_owned)
+    }
     fn buffer_display_name(&self, id: BufferId) -> Option<String> {
         self.buffer(id).map(|buf| buf.display_name().to_owned())
     }

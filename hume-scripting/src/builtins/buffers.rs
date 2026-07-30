@@ -72,6 +72,20 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     }
 }
 
+/// `(buffer-display-path bid)` → fully display-ready path string (absolutized,
+/// lexically normalized, UNC-stripped, `~`-collapsed) — print verbatim, or `#f`
+/// for unsaved buffers. Unlike `buffer-path`, never suitable for filesystem ops.
+pub(crate) fn buffer_display_path(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
+    if !ctx.host.buffers().buffer_exists(id) {
+        steel::stop!(Generic => "buffer-display-path: invalid buffer id {id:?}");
+    }
+    match ctx.host.buffers().buffer_display_path(id) {
+        Some(p) => p.into_steelval().map_err(generic_err),
+        None => Ok(SteelVal::BoolV(false)),
+    }
+}
+
 /// `(buffer-name bid)` → display name (filename or `"*scratch*"`).
 pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;

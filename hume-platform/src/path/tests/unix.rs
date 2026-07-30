@@ -143,3 +143,21 @@ fn strip_unc_prefix_is_noop_on_non_windows() {
     let got = strip_unc_prefix(PathBuf::from("/tmp/foo"));
     assert_eq!(got, PathBuf::from("/tmp/foo"));
 }
+
+// ── display_form_with ────────────────────────────────────────────────────
+
+#[test]
+fn display_form_with_path_inside_home() {
+    use std::path::Path;
+    let got = display_form_with(Path::new("/home/user/dev/hume"), || {
+        Some(PathBuf::from("/home/user"))
+    });
+    assert_eq!(got, "~/dev/hume");
+}
+
+#[test]
+fn display_form_with_no_home_returns_full_path() {
+    use std::path::Path;
+    let got = display_form_with(Path::new("/tmp/foo"), || None);
+    assert_eq!(got, "/tmp/foo");
+}

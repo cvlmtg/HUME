@@ -100,13 +100,11 @@ impl Editor {
             Some(ref path) => Buffer::from_file(path)?,
             None => Buffer::new(Text::empty(), SelectionSet::single(Selection::collapsed(0))),
         };
-        // Record the user-typed path (symlinks unresolved) for the FilePath statusline
-        // element. Buffer::from_file only stores the canonicalized path; we capture the
-        // original here before it is discarded.
+        // Record the user-typed path (symlinks unresolved) for user-facing display,
+        // overwriting `Buffer::from_file`'s canonical-derived default.
         if let Some(ref path) = file_path {
-            doc.set_display_path(Some(hume_platform::path::absolute_unresolved(
-                path,
-                &startup_cwd,
+            doc.set_display_path(Some(hume_platform::path::display_form(
+                &hume_platform::path::absolute_unresolved(path, &startup_cwd),
             )));
         }
 
