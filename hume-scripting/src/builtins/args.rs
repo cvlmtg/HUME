@@ -111,6 +111,22 @@ pub(crate) fn list_to_strings(val: SteelVal, ctx_name: &str) -> Result<Vec<Strin
         .collect()
 }
 
+/// A Steel list of `("KEY" . "VALUE")` dotted pairs, unpacked to
+/// `Vec<(String, String)>` — the wire shape for `register-lsp-server!`'s
+/// `#:env`.
+pub(crate) fn list_to_env_pairs(
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<Vec<(String, String)>, SteelErr> {
+    list_items(val, ctx_name)?
+        .into_iter()
+        .map(|entry| {
+            let (key, value) = pair_fields(entry, ctx_name, "(\"KEY\" . \"VALUE\")")?;
+            Ok((string_arg(key, ctx_name)?, string_arg(value, ctx_name)?))
+        })
+        .collect()
+}
+
 /// A Steel list of single-character strings, unpacked to a `Vec<char>`.
 pub(crate) fn chars_arg(val: SteelVal, ctx_name: &str) -> Result<Vec<char>, SteelErr> {
     list_to_strings(val, ctx_name)?

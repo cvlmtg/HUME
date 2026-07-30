@@ -150,6 +150,7 @@ macro_rules! builtins {
 // register-lsp-server! — queues a last-wins registration, applied (with any
 // already-open matching buffers attached) at the end of the current eval.
 // init-options/settings: Steel data, decoded to JSON at the boundary.
+// #:env: list of ("KEY" . "VALUE") pairs, applied additively at spawn time.
 //
 // lsp-request — generic LSP bridge. server: registered language name, or #f
 // for the focused buffer's attached server. callback: (lambda (err result)),
@@ -425,7 +426,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // LSP server registration — last-wins, queued (like language regs) and
         // applied at the end of the current eval, from init, plugin activation,
         // or a command/hook body.
-        open "%register-lsp-server!" lsp::register_lsp_server(language: SteelVal, command: SteelVal, args_val: SteelVal, root_markers_val: SteelVal, init_options: SteelVal, settings: SteelVal);
+        open "%register-lsp-server!" lsp::register_lsp_server(language: SteelVal, command: SteelVal, args_val: SteelVal, root_markers_val: SteelVal, init_options: SteelVal, settings: SteelVal, env_val: SteelVal);
         open "unregister-lsp-server!" lsp::unregister_lsp_server(language: SteelVal);
         // Lifecycle — stop/restart a running server, or open the status view.
         cmd "lsp-stop!" lsp::lsp_stop(language: SteelVal);

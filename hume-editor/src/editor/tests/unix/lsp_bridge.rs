@@ -238,7 +238,7 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
     let (mut raw_backend, log) = OrderedLogBackend::new();
     raw_backend.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     let sid = raw_backend
-        .start("rust-analyzer", &[], Path::new("."))
+        .start("rust-analyzer", &[], Path::new("."), &[])
         .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(raw_backend));
     let mut client = LspClient::new(sid, PathBuf::from("."));

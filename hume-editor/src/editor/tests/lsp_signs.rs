@@ -55,7 +55,9 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     if !diags.is_empty() {
         backend.push_from_server(sid, publish_diagnostics_notification(uri.as_str(), diags));
     }
@@ -479,7 +481,9 @@ fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
     std::fs::write(&file, "one two three four five six\n").unwrap();
 
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
 
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));

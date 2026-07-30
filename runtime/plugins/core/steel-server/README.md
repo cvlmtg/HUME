@@ -44,11 +44,21 @@ terminal, then run `:steel-server-install` (or restart HUME) to register it. To 
 ## Host globals
 
 The server has no built-in knowledge of HUME's own Scheme builtins (`define-command!`,
-`register-lsp-server!`, and the rest), so it may flag them as unknown identifiers while
-editing HUME config or plugin files. Upstream supports declaring host globals via a
-`globals.scm` file in the directory named by the `STEEL_LSP_HOME` environment variable —
-see the [steel-language-server README](https://github.com/mattwparas/steel/tree/master/crates/steel-language-server)
-for details.
+`register-lsp-server!`, and the rest), so left to itself it would flag every one of them as
+an unknown identifier while editing HUME config or plugin files. This plugin avoids that
+automatically: it registers the server with `#:env` pointing `STEEL_LSP_HOME` at this
+plugin's own `lsp-home/hume-globals.scm` — a generated file listing every Steel identifier
+HUME's own layers add (builtins, bootstrap wrappers, prelude macros, native command names),
+each declared via upstream's `(#%register-global "name")` mechanism (see the
+[steel-language-server README](https://github.com/mattwparas/steel/tree/master/crates/steel-language-server)
+for the general mechanism). `hume-globals.scm` is regenerated from the real command
+registry and Steel engine — see its own header comment — and a build-time test
+(`hume-editor`'s `hume_globals_scm_matches_generated_host_names`) fails if it drifts.
+
+Setting your own `STEEL_LSP_HOME` has no effect on HUME's scheme server: this plugin's
+registration always overrides it. Register `"scheme"` yourself in `init.scm` (with your own
+`#:env`) if you need different host-globals wiring — same override rule as everything else
+in this plugin.
 
 ## Commands
 

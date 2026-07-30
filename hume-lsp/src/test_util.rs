@@ -110,8 +110,14 @@ impl RecordingLspBackend {
 }
 
 impl LspBackend for RecordingLspBackend {
-    fn start(&mut self, cmd: &str, args: &[String], root: &Path) -> std::io::Result<ServerId> {
-        self.inner.start(cmd, args, root)
+    fn start(
+        &mut self,
+        cmd: &str,
+        args: &[String],
+        root: &Path,
+        env: &[(String, String)],
+    ) -> std::io::Result<ServerId> {
+        self.inner.start(cmd, args, root, env)
     }
 
     fn send(&mut self, server: ServerId, msg: Message) {

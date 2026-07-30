@@ -59,6 +59,7 @@ fn queues_a_pending_registration_in_init_mode() {
         list_of(&["Cargo.toml"]),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
+        list_of(&[]),
     );
     assert!(result.is_ok());
     drop(ctx);
@@ -68,6 +69,39 @@ fn queues_a_pending_registration_in_init_mode() {
     assert_eq!(reg.root_markers, vec!["Cargo.toml".to_string()]);
     assert_eq!(reg.init_options, None);
     assert_eq!(reg.settings, None);
+    assert_eq!(reg.env, Vec::<(String, String)>::new());
+}
+
+/// `#:env` decodes a list of `("KEY" . "VALUE")` dotted pairs into
+/// `PendingLspServerReg.env` — the wire shape `steel-server/plugin.scm`
+/// uses to point `STEEL_LSP_HOME` at the generated host-globals file.
+#[test]
+fn decodes_env_dotted_pairs() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    let env_val = crate::builtins::args::cons_pair(
+        "STEEL_LSP_HOME".into_steelval().unwrap(),
+        "/tmp/lsp-home".into_steelval().unwrap(),
+    )
+    .unwrap();
+    let env_list: SteelVal = vec![env_val].into_steelval().unwrap();
+    let result = register_lsp_server(
+        &mut ctx,
+        "scheme".into_steelval().unwrap(),
+        "steel-language-server".into_steelval().unwrap(),
+        list_of(&[]),
+        list_of(&[]),
+        SteelVal::BoolV(false),
+        SteelVal::BoolV(false),
+        env_list,
+    );
+    assert!(result.is_ok());
+    drop(ctx);
+    let reg = expect_register(&h);
+    assert_eq!(
+        reg.env,
+        vec![("STEEL_LSP_HOME".to_string(), "/tmp/lsp-home".to_string())]
+    );
 }
 
 #[test]
@@ -90,6 +124,7 @@ fn decodes_steel_hashmap_blobs_to_json() {
         list_of(&[]),
         SteelVal::HashMapV(Gc::new(init_opts).into()),
         SteelVal::HashMapV(Gc::new(settings).into()),
+        list_of(&[]),
     );
     assert!(result.is_ok());
     drop(ctx);
@@ -113,6 +148,7 @@ fn queues_a_pending_registration_from_command_mode() {
         list_of(&[]),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
+        list_of(&[]),
     );
     assert!(result.is_ok());
     drop(ctx);
@@ -134,6 +170,7 @@ fn allowed_during_plugin_activation_even_though_is_init_is_false() {
         list_of(&[]),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
+        list_of(&[]),
     );
     assert!(result.is_ok());
 }
@@ -150,6 +187,7 @@ fn unconvertible_init_options_is_a_type_mismatch_error() {
         list_of(&[]),
         SteelVal::FuncV(|_| unreachable!()),
         SteelVal::BoolV(false),
+        list_of(&[]),
     );
     assert!(result.is_err());
 }
@@ -196,6 +234,7 @@ fn register_unregister_register_ordering_is_preserved() {
         list_of(&[]),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
+        list_of(&[]),
     )
     .unwrap();
     unregister_lsp_server(&mut ctx, "rust".into_steelval().unwrap()).unwrap();
@@ -207,6 +246,7 @@ fn register_unregister_register_ordering_is_preserved() {
         list_of(&[]),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
+        list_of(&[]),
     )
     .unwrap();
     drop(ctx);
@@ -350,6 +390,7 @@ fn pending_register(language: &str) -> Effect {
         root_markers: Vec::new(),
         init_options: None,
         settings: None,
+        env: Vec::new(),
     }))
 }
 

@@ -20,7 +20,9 @@ fn attach_running_utf8_server(ed: &mut Editor) -> ServerId {
         "initialize",
         serde_json::json!({"capabilities": {}, "positionEncoding": "utf-8"}),
     );
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
     client.start_handshake(&mut backend);
     let (sid2, ev) = backend.drain().into_iter().next().unwrap();

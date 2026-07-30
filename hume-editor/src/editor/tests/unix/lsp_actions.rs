@@ -58,7 +58,9 @@ fn setup_with_capabilities(
         "initialize",
         serde_json::json!({"capabilities": capabilities}),
     );
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     configure(&mut backend, sid);
 
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();

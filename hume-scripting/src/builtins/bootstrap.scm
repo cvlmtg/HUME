@@ -44,8 +44,9 @@
                                         #:args [args '()]
                                         #:root-markers [root-markers '()]
                                         #:init-options [init-options #f]
-                                        #:settings [settings #f])
-  (%register-lsp-server! language command args root-markers init-options settings))
+                                        #:settings [settings #f]
+                                        #:env [env '()])
+  (%register-lsp-server! language command args root-markers init-options settings env))
 
 (define (lsp-request server method params callback #:allow-stale [allow-stale #f]
                                                      #:supersede [supersede #f])

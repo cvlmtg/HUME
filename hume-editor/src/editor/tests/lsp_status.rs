@@ -26,7 +26,9 @@ fn eval_register(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &
 fn status_text_lists_a_running_server_with_root_and_pending_count() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
 
     let root = PathBuf::from("/tmp/hume-lsp-status-test");
@@ -64,7 +66,7 @@ fn status_text_reports_no_servers_when_none_are_registered() {
 fn lsp_stop_deregisters_the_server_and_clears_buffer_attachment() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let root = PathBuf::from("/tmp/hume-lsp-stop-test");
     ed.lsp
@@ -108,7 +110,7 @@ fn lsp_stop_with_no_matching_server_stops_nothing() {
 fn lsp_stop_clears_the_buffer_s_pending_change_queue() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let root = PathBuf::from("/tmp/hume-lsp-stop-pending-test");
     ed.lsp
@@ -272,7 +274,9 @@ fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
 fn stderr_action_is_logged_at_trace_with_the_server_name_prefix() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
         .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
@@ -292,7 +296,9 @@ fn stderr_action_is_logged_at_trace_with_the_server_name_prefix() {
 fn log_message_error_type_is_reported_at_error_severity() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
         .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
@@ -318,7 +324,9 @@ fn log_message_error_type_is_reported_at_error_severity() {
 fn log_message_info_type_is_reported_at_trace_not_shown_as_status() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
         .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
@@ -343,7 +351,9 @@ fn log_message_info_type_is_reported_at_trace_not_shown_as_status() {
 fn show_message_is_reported_at_info_severity() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
         .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
@@ -366,7 +376,9 @@ fn show_message_is_reported_at_info_severity() {
 fn progress_report_events_are_dropped_without_any_log_line() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
         .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
@@ -413,7 +425,9 @@ fn progress_report_events_are_dropped_without_any_log_line() {
 fn lsp_shutdown_all_transitions_every_running_client_to_dead() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, PathBuf::from("/tmp/hume-shutdown-test"));
     client.set_state_for_test(ServerState::Running);
@@ -438,7 +452,9 @@ fn lsp_shutdown_all_on_a_starting_client_skips_the_protocol_but_still_tears_down
     // `backend.shutdown` call covers it regardless of protocol state.
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
         .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));

@@ -358,6 +358,15 @@ impl LspState {
             .and_then(|c| c.init_options.clone())
     }
 
+    /// The registered `#:env` pairs for `language`, or `None` if
+    /// unregistered — lets a test assert the `#:env` decode/round-trip into
+    /// `LspServerConfig.env` without reaching into the private `configs`
+    /// map directly.
+    #[cfg(test)]
+    pub(crate) fn config_env_for_test(&self, language: &str) -> Option<Vec<(String, String)>> {
+        self.configs.get(language).map(|c| c.env.clone())
+    }
+
     /// Number of tracked servers — one entry per `backend.start`, so a
     /// second buffer attaching under the same (language, root) key (rather
     /// than spawning) leaves this unchanged.

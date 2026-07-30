@@ -310,6 +310,76 @@ impl ScriptingHost {
         self.dirs.data_dir.as_deref()
     }
 
+    /// Every top-level global and macro name HUME's own layers add on top of
+    /// a pristine Steel engine — the payload for the generated
+    /// `steel-language-server` host-globals file (see
+    /// `runtime/plugins/core/steel-server/lsp-home/hume-globals.scm`'s
+    /// generator).
+    ///
+    /// Diffs against a fresh `Engine::new()` rather than filtering by name
+    /// prefix: HUME's `%`-prefixed internal primitives (`%register-lsp-server!`,
+    /// `%dispatch-command`, …) are real free identifiers the server must
+    /// also learn about — `steel-language-server`'s own free-identifier
+    /// check does not skip `%`, only its own mangled-module markers, so a
+    /// prefix-based filter would under-cover `runtime/scheme/prelude.scm`
+    /// (which calls `%define-language!`/`%register-grammar!` directly).
+    /// Diffing against the baseline also means upstream Steel stdlib names
+    /// never appear in the output — the server already knows those from its
+    /// own internal engine.
+    ///
+    /// Excludes every name starting with `#`: steel-core mints anonymous
+    /// `###ctx-funcN` wrapper names (`steel_vm/builtin.rs`'s `GENSYM`, a
+    /// `thread_local!` counter shared by every `Engine` built on the same
+    /// test-runner thread) for each context-aware builtin registration —
+    /// non-deterministic across runs/thread scheduling and never a name a
+    /// Scheme author could type, so a baseline diff alone doesn't filter
+    /// them out (the baseline's own counter has already moved past
+    /// `self.steel`'s range by the time this runs). HUME itself never
+    /// registers a `#`-prefixed name, so this can't drop anything real.
+    /// Also excludes [`HUME_CTX`]: a Rust-injected eval-time sentinel, never
+    /// meaningful to a Scheme author.
+    ///
+    /// Sorted and deduped for a stable, reviewable diff in the checked-in
+    /// generated file.
+    ///
+    /// Reads two guards on the same `RwLock` sequentially (never held
+    /// simultaneously — `parking_lot`'s `RwLock` is not reentrant): globals
+    /// first, then macros, each collected into an owned `Vec` before the
+    /// guard drops.
+    pub fn host_global_names(&self) -> Vec<String> {
+        let baseline = Engine::new();
+        let baseline_globals: rustc_hash::FxHashSet<String> = baseline
+            .globals()
+            .iter()
+            .map(|s| s.resolve().to_string())
+            .collect();
+        let baseline_macros: rustc_hash::FxHashSet<String> = baseline
+            .in_scope_macros()
+            .keys()
+            .map(|s| s.resolve().to_string())
+            .collect();
+
+        let mut names: Vec<String> = {
+            let globals = self.steel.globals();
+            globals
+                .iter()
+                .map(|s| s.resolve().to_string())
+                .filter(|n| n != HUME_CTX && !n.starts_with('#') && !baseline_globals.contains(n))
+                .collect()
+        };
+        names.extend({
+            let macros = self.steel.in_scope_macros();
+            macros
+                .keys()
+                .map(|s| s.resolve().to_string())
+                .filter(|n| !n.starts_with('#') && !baseline_macros.contains(n))
+                .collect::<Vec<_>>()
+        });
+        names.sort_unstable();
+        names.dedup();
+        names
+    }
+
     /// Drain all accumulated log messages since the last drain.
     pub fn take_pending_messages(&mut self) -> Vec<(LogLevel, String)> {
         std::mem::take(&mut self.pending_messages)

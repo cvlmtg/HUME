@@ -17,7 +17,9 @@ use hume_scripting::ScriptingHost;
 fn attach_running_server(ed: &mut Editor, initialize_result: serde_json::Value) -> ServerId {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", initialize_result);
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.start_handshake(ed.lsp.backend_mut());
@@ -76,7 +78,9 @@ fn lsp_capabilities_is_false_before_running() {
     let mut ed = editor_from("-[a]>bcdef\n");
     // Client wired but handshake never driven — stays Starting.
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
         .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));

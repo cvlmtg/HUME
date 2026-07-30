@@ -5,7 +5,7 @@ use crate::codec::RequestId;
 fn respond_to_delivers_on_next_drain_not_inline() {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
 
     backend.send(
         sid,
@@ -42,7 +42,7 @@ fn respond_to_delivers_on_next_drain_not_inline() {
 fn fail_with_delivers_error_response() {
     let mut backend = InlineLspBackend::new();
     backend.fail_with("textDocument/definition", -32601, "not found");
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     backend.send(
         sid,
         Message::Request {
@@ -67,7 +67,7 @@ fn responses_are_fifo_per_method() {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("m", serde_json::json!(1));
     backend.respond_to("m", serde_json::json!(2));
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
 
     for i in 1..=2 {
         backend.send(
@@ -98,7 +98,7 @@ fn responses_are_fifo_per_method() {
 #[test]
 fn request_with_no_canned_response_is_recorded_but_produces_no_event() {
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     backend.send(
         sid,
         Message::Request {
@@ -114,7 +114,7 @@ fn request_with_no_canned_response_is_recorded_but_produces_no_event() {
 #[test]
 fn push_from_server_surfaces_on_drain() {
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     backend.push_from_server(
         sid,
         Message::Notification {
@@ -130,7 +130,7 @@ fn push_from_server_surfaces_on_drain() {
 #[test]
 fn with_default_handshake_answers_initialize() {
     let mut backend = InlineLspBackend::with_default_handshake();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     backend.send(
         sid,
         Message::Request {

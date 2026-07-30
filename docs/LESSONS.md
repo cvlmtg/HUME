@@ -303,3 +303,86 @@ landed in `92c96c07` on `2026-07-28`, three days after the process started.
 
 **Files:** `hume-platform/src/unix.rs` (`run_bounded` + `SPIN_BOUND`),
 `.github/workflows/ci.yml` (`timeout-minutes`).
+
+---
+
+## L7 — Non-reentrant test mutex held across a helper that re-acquires it (2026-07-30)
+
+**Root cause:** A test held `HUME_RUNTIME_MUTEX` (a plain `std::sync::Mutex`,
+not reentrant) for its *entire* body via `let _lock = MUTEX.lock()...` bound
+at the top of the function — the standard pattern for guarding a process-global
+env var (`HUME_RUNTIME`) for as long as anything might read it. Later in the
+same function, a call to the shared `safe_tempdir()` helper tried to acquire
+the *same* mutex again, on the *same* thread. `std::sync::Mutex` doesn't
+detect same-thread re-entrancy — it just blocks forever, since the lock is
+already held by the very thread trying to acquire it.
+
+**Concrete instance:** `steel_server_plugin_registers_scheme_with_generated_globals_env`
+(`hume-editor/src/editor/tests/scripting_host_globals.rs`) held `_lock` for the
+whole test, then called `safe_tempdir()` near the end — `cargo test` reported
+the test as "running for over 60 seconds" instead of failing fast.
+
+**Prevention rules:**
+
+1. **Scope a mutex guard to the critical section, not the whole test.**
+   `HUME_RUNTIME` only needs the lock held from `set_var` to `remove_var`
+   around `ScriptingHost::new()` (the one place that reads it) — wrap just
+   that in a block expression (`let host = { let _lock = ...; ...; host };`)
+   so the guard drops before any later helper in the same function can touch
+   the same mutex.
+2. **Before adding `safe_tempdir()` (or anything else documented as taking
+   `HUME_RUNTIME_MUTEX`) inside a test, check whether that test already holds
+   the lock from an earlier step.** A same-thread self-deadlock on a
+   `std::sync::Mutex` doesn't panic or error — it hangs silently, and the only
+   symptom is the test runner's own generic "running for over Ns" notice.
+3. **When a test hangs with no assertion failure, suspect a lock, not the
+   logic under test first.** Instrument with `eprintln!`s bracketing each
+   step (`--nocapture`) to find the last one that printed — the gap between
+   the last print and the next is where the hang is, and a mutex acquire is
+   the first thing to check there before doubting the code under test.
+
+**Files:** `hume-editor/src/editor/tests/scripting_host_globals.rs`
+(`host_and_editor_after_runtime_layers`'s scoped-lock block).
+
+---
+
+## L8 — Diffing a live `Engine` against a fresh baseline still leaked non-deterministic internals (2026-07-30)
+
+**Root cause:** Generating a list of "every Steel identifier HUME adds" by
+diffing a fully-built `ScriptingHost`'s engine against a bare `Engine::new()`
+baseline assumed the diff would cleanly separate "ours" from "upstream's".
+It didn't: steel-core mints anonymous wrapper names (`###ctx-funcN`) for each
+context-aware builtin registration, drawn from a `thread_local!` `AtomicUsize`
+counter (`GENSYM` in `steel_vm/builtin.rs`) shared by *every* `Engine`
+constructed on that OS thread — not reset per `Engine::new()`. Since
+`cargo test` reuses worker threads across many tests, the baseline engine
+(constructed *after* the real one, later in the same test) drew a
+*different, non-overlapping* range of counter values than the real one — so
+the diff never cancelled them out, and the generated file's `###ctx-func*`
+entries changed on every run depending on test scheduling.
+
+**Concrete instance:** the first generated
+`runtime/plugins/core/steel-server/lsp-home/hume-globals.scm` differed
+between two consecutive `HUME_WRITE_STEEL_GLOBALS=1` runs purely from
+`###ctx-func0`..`###ctx-func106`-style entries; a regenerate-then-immediately-
+recheck cycle failed the drift test it was meant to satisfy.
+
+**Prevention rules:**
+
+1. **A baseline diff only cancels state the baseline shares with the
+   subject.** Per-instance, monotonically-numbered internal names (gensyms,
+   arena/generation counters, anything seeded from process- or thread-global
+   mutable state) are never shared across two separately-constructed
+   instances, however "fresh" both are — a diff must filter these by pattern,
+   not rely on the baseline to absorb them.
+2. **Before trusting a generated/snapshotted list as deterministic, regenerate
+   it twice in a row (not just once) and diff the two outputs.** One
+   successful generation proves the mechanism runs; it proves nothing about
+   run-to-run stability.
+3. **Also run the drift test as part of (not isolated from) the full suite**
+   — the nondeterminism here only showed up because other tests on the same
+   worker thread had already advanced the shared counter; running the new
+   test alone in isolation looked stable.
+
+**Files:** `hume-scripting/src/lib.rs` (`ScriptingHost::host_global_names`'s
+`!n.starts_with('#')` filter).

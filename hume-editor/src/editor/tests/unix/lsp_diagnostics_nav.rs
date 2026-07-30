@@ -45,7 +45,9 @@ fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> (Editor, RealRuntime
     std::fs::write(file, "aa\nbb\ncc\ndd\n").unwrap();
 
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     let uri = hume_lsp::uri::path_to_uri(file).unwrap();
     if !diags.is_empty() {
         backend.push_from_server(sid, publish_diagnostics_notification(uri.as_str(), diags));

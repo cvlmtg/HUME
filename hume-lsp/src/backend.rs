@@ -16,8 +16,15 @@ pub struct ServerId(pub u32);
 
 pub trait LspBackend {
     /// Spawn (threaded) or register (inline) a server. Handshake is the
-    /// client layer's job — this is transport-level only.
-    fn start(&mut self, cmd: &str, args: &[String], root: &Path) -> std::io::Result<ServerId>;
+    /// client layer's job — this is transport-level only. `env` is applied
+    /// additively to the spawned process's inherited environment.
+    fn start(
+        &mut self,
+        cmd: &str,
+        args: &[String],
+        root: &Path,
+        env: &[(String, String)],
+    ) -> std::io::Result<ServerId>;
     fn send(&mut self, server: ServerId, msg: Message);
     /// All events that arrived since the last drain. Arrival order is
     /// preserved per server; cross-server interleaving is unspecified.
@@ -56,8 +63,14 @@ impl Default for ThreadedLspBackend {
 }
 
 impl LspBackend for ThreadedLspBackend {
-    fn start(&mut self, cmd: &str, args: &[String], root: &Path) -> std::io::Result<ServerId> {
-        let handle = ServerHandle::spawn(cmd, args, root, Arc::clone(&self.wake))?;
+    fn start(
+        &mut self,
+        cmd: &str,
+        args: &[String],
+        root: &Path,
+        env: &[(String, String)],
+    ) -> std::io::Result<ServerId> {
+        let handle = ServerHandle::spawn(cmd, args, root, env, Arc::clone(&self.wake))?;
         let id = ServerId(self.next);
         self.next += 1;
         self.servers.insert(id, handle);

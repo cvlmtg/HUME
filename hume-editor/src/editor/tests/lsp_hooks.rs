@@ -15,7 +15,9 @@ use hume_scripting::ScriptingHost;
 fn wire_starting_server(ed: &mut Editor) -> ServerId {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.start_handshake(ed.lsp.backend_mut());
@@ -72,7 +74,9 @@ fn on_lsp_detach_fires_with_the_language_when_a_server_is_stopped() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp
         .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
@@ -167,8 +171,10 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
     backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
-    let sid_a = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
-    let sid_b = backend.start("pylsp", &[], Path::new(".")).unwrap();
+    let sid_a = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
+    let sid_b = backend.start("pylsp", &[], Path::new("."), &[]).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
 
     let mut client_a = LspClient::new(sid_a, PathBuf::from("."));
@@ -283,7 +289,9 @@ fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     // Two publishes for the same (server, uri) within one drain batch —
     // `drain_lsp` coalesces to the last one, but the hook must still fire
     // exactly once, not zero (dropped) or twice (one per publish).

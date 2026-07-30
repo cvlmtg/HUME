@@ -87,7 +87,13 @@ impl Default for InlineLspBackend {
 }
 
 impl LspBackend for InlineLspBackend {
-    fn start(&mut self, _cmd: &str, _args: &[String], _root: &Path) -> std::io::Result<ServerId> {
+    fn start(
+        &mut self,
+        _cmd: &str,
+        _args: &[String],
+        _root: &Path,
+        _env: &[(String, String)],
+    ) -> std::io::Result<ServerId> {
         let id = ServerId(self.next);
         self.next += 1;
         Ok(id)

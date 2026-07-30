@@ -57,6 +57,9 @@ pub struct PendingLspServerReg {
     pub root_markers: Vec<String>,
     pub init_options: Option<serde_json::Value>,
     pub settings: Option<serde_json::Value>,
+    /// `#:env` — extra environment variables applied additively (never
+    /// clearing the inherited environment) when the server process spawns.
+    pub env: Vec<(String, String)>,
 }
 
 /// An LSP server registration, unregistration, stop/restart, or status-view

@@ -11,13 +11,13 @@ use crate::types::{Effect, PendingLspNotify, PendingLspRequest, PendingLspServer
 use crate::{PendingLspServerReg, SteelCtx};
 
 use super::args::{
-    BidArg, bool_arg, json_params, list_to_strings, optional_json_arg, optional_string_arg,
-    string_arg,
+    BidArg, bool_arg, json_params, list_to_env_pairs, list_to_strings, optional_json_arg,
+    optional_string_arg, string_arg,
 };
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
-/// `(%register-lsp-server! language command args root-markers init-options settings)`
+/// `(%register-lsp-server! language command args root-markers init-options settings env)`
 ///
 /// Callable from init.scm, plugin activation, or a command/hook body —
 /// unlike `%define-language!`, this is not gated to init/activation-only.
@@ -27,8 +27,15 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// `lsp-registered-for-language?` reads through the effect log, so it
 /// reports this registration as live immediately, within the same eval.
 ///
-/// All list args must be lists of strings. Pushes an
+/// `args`/`root-markers` are lists of strings; `env` is a list of
+/// `("KEY" . "VALUE")` dotted pairs, applied additively to the spawned
+/// process's inherited environment. Pushes an
 /// `Effect::LspServerOp(PendingLspServerOp::Register)`.
+// Each param is a positional/keyword arg the `builtins!` table maps 1:1 from
+// `register-lsp-server!`'s own Steel signature — bundling them into a struct
+// would break that direct correspondence for no benefit, since every arg is
+// already decoded and validated independently right below.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn register_lsp_server(
     ctx: &mut SteelCtx,
     language: SteelVal,
@@ -37,6 +44,7 @@ pub(crate) fn register_lsp_server(
     root_markers_val: SteelVal,
     init_options: SteelVal,
     settings: SteelVal,
+    env_val: SteelVal,
 ) -> SteelResult {
     let language = string_arg(language, "register-lsp-server! language")?;
     let command = string_arg(command, "register-lsp-server! command")?;
@@ -44,6 +52,7 @@ pub(crate) fn register_lsp_server(
     let root_markers = list_to_strings(root_markers_val, "register-lsp-server! root-markers")?;
     let init_options = optional_json_arg(init_options, "register-lsp-server! init-options")?;
     let settings = optional_json_arg(settings, "register-lsp-server! settings")?;
+    let env = list_to_env_pairs(env_val, "register-lsp-server! env")?;
 
     ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Register(
         PendingLspServerReg {
@@ -53,6 +62,7 @@ pub(crate) fn register_lsp_server(
             root_markers,
             init_options,
             settings,
+            env,
         },
     )));
     Ok(SteelVal::Void)

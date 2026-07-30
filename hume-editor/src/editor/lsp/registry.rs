@@ -31,6 +31,10 @@ pub(crate) struct LspServerConfig {
     /// and resolved per-item to answer `workspace/configuration` pull
     /// requests (`Editor::dispatch_lsp_action`'s `ServerRequest` arm).
     pub(crate) settings: Option<serde_json::Value>,
+    /// `#:env` — applied additively to the spawned process's inherited
+    /// environment (`lsp_attach_buffer`'s spawn branch, via
+    /// `LspBackend::start`).
+    pub(crate) env: Vec<(String, String)>,
 }
 
 /// Walks up from `file`'s directory to the first ancestor containing any of
@@ -130,6 +134,7 @@ impl Editor {
                 root_markers: reg.root_markers,
                 init_options: reg.init_options,
                 settings: reg.settings,
+                env: reg.env,
             },
         );
 
@@ -210,7 +215,11 @@ impl Editor {
             );
             return;
         } else {
-            match self.lsp.backend.start(&config.command, &config.args, &root) {
+            match self
+                .lsp
+                .backend
+                .start(&config.command, &config.args, &root, &config.env)
+            {
                 Ok(server_id) => {
                     let mut client = hume_lsp::client::LspClient::new(server_id, root);
                     client.set_init_options(config.init_options.clone());

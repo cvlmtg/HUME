@@ -61,7 +61,9 @@ registered server useful.
 ```
 
 Declared lazily like this, it activates on the first Scheme buffer or the first time you run
-`:steel-server-install`.
+`:steel-server-install`. It's registered so HUME's own commands and configuration functions
+are recognized while you edit `init.scm` or a plugin file — you won't see unknown-identifier
+warnings for anything HUME itself provides.
 
 **This is a temporary plugin.** The underlying server isn't in HUME's regular server catalog
 yet, so it can't be installed through `:lsp-install` like other servers. Once it lands

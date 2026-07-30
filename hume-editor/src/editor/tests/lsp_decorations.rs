@@ -17,7 +17,9 @@ use hume_scripting::ScriptingHost;
 fn attach_running_server(ed: &mut Editor) -> ServerId {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
     client.start_handshake(ed.lsp.backend_mut());
@@ -354,7 +356,9 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     backend.push_from_server(
         sid,
         hume_lsp::codec::Message::Notification {

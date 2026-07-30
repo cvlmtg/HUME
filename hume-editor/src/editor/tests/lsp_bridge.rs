@@ -23,7 +23,9 @@ pub(super) fn setup_with(
     configure: impl FnOnce(&mut InlineLspBackend, ServerId),
 ) -> ServerId {
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     configure(&mut backend, sid);
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, PathBuf::from("."));
@@ -44,7 +46,9 @@ pub(super) fn setup_with_recording(
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (ServerId, NotificationLog, RequestLog) {
     let (mut backend, log, requests) = RecordingLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     configure(&mut backend, sid);
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, PathBuf::from("."));
@@ -405,8 +409,14 @@ impl OrderedLogBackend {
 }
 
 impl LspBackend for OrderedLogBackend {
-    fn start(&mut self, cmd: &str, args: &[String], root: &Path) -> std::io::Result<ServerId> {
-        self.inner.start(cmd, args, root)
+    fn start(
+        &mut self,
+        cmd: &str,
+        args: &[String],
+        root: &Path,
+        env: &[(String, String)],
+    ) -> std::io::Result<ServerId> {
+        self.inner.start(cmd, args, root, env)
     }
 
     fn send(&mut self, server: ServerId, msg: Message) {

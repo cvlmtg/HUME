@@ -104,7 +104,7 @@ fn scripted_initialize_round_trip_through_editor() {
 
     let backend = ed.lsp.backend_mut();
     let server = backend
-        .start("rust-analyzer", &[], std::path::Path::new("."))
+        .start("rust-analyzer", &[], std::path::Path::new("."), &[])
         .expect("inline start never fails");
     backend.send(
         server,
@@ -146,7 +146,7 @@ mod next_wake_covers_client_state {
     fn wired_editor() -> (Editor, hume_lsp::backend::ServerId) {
         let mut ed = editor_from("-[w]>ord\n");
         let mut backend = InlineLspBackend::new();
-        let sid = backend.start("x", &[], Path::new(".")).unwrap();
+        let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
         ed.lsp = super::super::super::lsp::LspState::from_backend_for_test(Box::new(backend));
         (ed, sid)
     }
@@ -225,8 +225,8 @@ mod next_wake_covers_client_state {
         // near one on another.
         let mut ed = editor_from("-[w]>ord\n");
         let mut backend = InlineLspBackend::new();
-        let sid_near = backend.start("x", &[], Path::new(".")).unwrap();
-        let sid_far = backend.start("y", &[], Path::new(".")).unwrap();
+        let sid_near = backend.start("x", &[], Path::new("."), &[]).unwrap();
+        let sid_far = backend.start("y", &[], Path::new("."), &[]).unwrap();
         ed.lsp = super::super::super::lsp::LspState::from_backend_for_test(Box::new(backend));
 
         let mut client_near = LspClient::new(sid_near, PathBuf::from("."));

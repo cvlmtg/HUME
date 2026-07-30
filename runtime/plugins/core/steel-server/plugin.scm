@@ -1,10 +1,25 @@
 ;;; core:steel-server
 
+;;; Directory of the generated host-globals file steel-language-server reads
+;;; (see lsp-home/hume-globals.scm) — #f when the runtime dir is unavailable
+;;; or the file wasn't staged. The existence check is load-bearing, not
+;;; defensive: the server panics at startup if STEEL_LSP_HOME names a
+;;; missing directory (it `read_dir`s it unconditionally, no fallback).
+(define (steel-server/lsp-home)
+  (let ([rt (runtime-dir)])
+    (and rt
+         (let ([dir (path-join rt "plugins" "core" "steel-server" "lsp-home")])
+           (and (path-exists? dir) dir)))))
+
 (define (steel-server/register!)
   (unless (lsp-registered-for-language? "scheme")
-    (register-lsp-server! "scheme"
-                          #:command "steel-language-server"
-                          #:root-markers '("cog.scm"))))
+    (let ([home (steel-server/lsp-home)])
+      (unless home
+        (log! 'warn "steel-server: host-globals dir missing — HUME builtins will be flagged as unknown identifiers"))
+      (register-lsp-server! "scheme"
+                            #:command "steel-language-server"
+                            #:root-markers '("cog.scm")
+                            #:env (if home (list (cons "STEEL_LSP_HOME" home)) '())))))
 
 (define-command! "steel-server-install"
   "Install steel-language-server with cargo and register it for scheme buffers."

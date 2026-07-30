@@ -180,6 +180,7 @@ order doesn't matter. `register-lsp-server!` takes:
 | `#:root-markers` | Filenames that mark a project root (HUME walks up from the opened file looking for the nearest one) |
 | `#:init-options` | Server configuration, sent once at startup — see below |
 | `#:settings` | Server configuration, handed over on an ongoing basis — see below |
+| `#:env` | Extra environment variables for the server process, as a list of `("NAME" . "value")` pairs — added on top of the environment HUME itself runs in, never replacing it |
 
 Examples for a few commonly used servers:
 

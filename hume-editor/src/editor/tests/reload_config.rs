@@ -659,7 +659,9 @@ fn reset_clears_dynamic_commands() {
 fn wire_starting_server(ed: &mut Editor, language: &str) -> ServerId {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
-    let sid = backend.start("test-server", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("test-server", &[], Path::new("."), &[])
+        .unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
     client.start_handshake(ed.lsp.backend_mut());

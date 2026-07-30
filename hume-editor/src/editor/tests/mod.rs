@@ -605,6 +605,7 @@ mod reload_config;
 mod render_snapshot;
 mod scripting_effects;
 mod scripting_grammar;
+mod scripting_host_globals;
 mod search;
 mod select_all;
 mod settings_effects;

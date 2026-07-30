@@ -71,7 +71,7 @@ fn ingest_converts_utf16_positions_across_an_emoji() {
 
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
     // UTF-16 units: 0-1 = emoji, 2 = space, 3..8 = "error".
     backend.push_from_server(
@@ -112,7 +112,7 @@ fn two_publishes_in_one_drain_batch_coalesce_to_the_last() {
 
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
     // First publish: two errors. Second (same uri, same batch): one warning.
     // Only the second must survive — servers burst-publish and only the
@@ -147,7 +147,7 @@ fn publish_for_an_unopened_file_is_dropped_without_spam() {
 
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
     backend.push_from_server(
         sid,
@@ -180,7 +180,7 @@ fn malformed_publish_diagnostics_reaches_the_unhandled_notification_path() {
 
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     // `uri` and `diagnostics` both wrong-shaped — fails to parse as
     // `PublishDiagnosticsParams`, so `hume-lsp` classifies it as a
     // `ServerNotification` fallthrough instead of `Diagnostics`.
@@ -227,7 +227,7 @@ fn publish_with_matching_version_is_ingested() {
 
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let bid = open_with_client(&mut ed, &file, sid);
     let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
@@ -255,7 +255,7 @@ fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnosti
 
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let bid = open_with_client(&mut ed, &file, sid);
     let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
@@ -315,7 +315,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
 
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let bid = open_with_client(&mut ed, &file, sid);
 
@@ -377,7 +377,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
 
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let bid = open_with_client(&mut ed, &file, sid);
 
@@ -459,7 +459,7 @@ fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
 
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let bid = open_with_client(&mut ed, &file, sid);
     ed.lsp.insert_server_key_for_test(
@@ -503,7 +503,7 @@ fn zero_width_diagnostic_on_minimal_buffer_is_widened_onto_the_newline() {
 
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let bid = open_with_client(&mut ed, &file, sid);
     let uri = hume_lsp::uri::path_to_uri(&file).unwrap();

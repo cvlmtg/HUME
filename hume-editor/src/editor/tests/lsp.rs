@@ -33,7 +33,9 @@ fn wire_client(ed: &mut Editor, backend: InlineLspBackend, sid: ServerId) {
 fn callback_fires_with_ok_outcome_on_response() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     backend.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     wire_client(&mut ed, backend, sid);
 
@@ -69,7 +71,7 @@ fn callback_fires_with_ok_outcome_on_response() {
 fn callback_never_fires_for_a_request_with_no_response() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     wire_client(&mut ed, backend, sid);
 
     let fired = Rc::new(RefCell::new(false));
@@ -108,7 +110,7 @@ fn timed_out_request_dispatches_callback_with_timed_out_outcome_and_logs_trace()
     // timeout to `err` rather than hanging silently.
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     wire_client(&mut ed, backend, sid);
 
     let result: Rc<RefCell<Vec<Outcome>>> = Rc::new(RefCell::new(Vec::new()));
@@ -154,7 +156,7 @@ fn stale_response_is_dropped_when_buffer_moved_past_text_gen() {
     let sent_gen = ed.state.buffers.get(bid).text_gen;
 
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     backend.respond_to(
         "textDocument/hover",
         serde_json::json!({"contents": "stale"}),
@@ -199,7 +201,7 @@ fn allow_stale_delivers_despite_buffer_moving_past_text_gen() {
     let sent_gen = ed.state.buffers.get(bid).text_gen;
 
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     backend.respond_to("textDocument/hover", serde_json::json!({"contents": "ok"}));
     wire_client(&mut ed, backend, sid);
 
@@ -239,7 +241,7 @@ fn crashed_action_is_reported_to_the_message_log() {
     // glue's side: dispatching that action actually reaches the log.
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     wire_client(&mut ed, backend, sid);
 
     ed.dispatch_lsp_action(
@@ -260,7 +262,7 @@ fn crashed_action_is_reported_to_the_message_log() {
 fn crash_fails_in_flight_requests_immediately_instead_of_waiting_for_their_deadline() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     // No response scripted — this request would otherwise sit pending
     // until its (deliberately far-future) deadline.
     wire_client(&mut ed, backend, sid);
@@ -305,7 +307,7 @@ fn initialize_timeout_reports_a_crash_through_drain_lsp() {
     // the editor glue's side: `drain_lsp` actually dispatches that action.
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new(); // no scripted `initialize` response
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.start_handshake(ed.lsp.backend_mut());
@@ -334,7 +336,7 @@ fn shutdown_error_response_is_logged_at_trace() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
     backend.fail_with("shutdown", -32603, "internal error");
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     wire_client(&mut ed, backend, sid);
 
     let (client, backend) = ed.lsp.client_and_backend(sid).unwrap();
@@ -353,7 +355,7 @@ fn shutdown_error_response_is_logged_at_trace() {
 fn server_request_action_gets_exactly_one_response() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     backend.push_from_server(
         sid,
         hume_lsp::codec::Message::Request {
@@ -388,7 +390,9 @@ fn workspace_configuration_resolves_the_attached_servers_registered_settings() {
     let mut host = ScriptingHost::new();
 
     let (mut backend, response_log) = hume_lsp::test_util::RecordingLspBackend::with_response_log();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     backend.push_from_server(
         sid,
         hume_lsp::codec::Message::Request {
@@ -435,7 +439,9 @@ fn workspace_configuration_answers_null_when_requesting_server_has_no_registered
     let mut host = ScriptingHost::new();
 
     let (mut backend, response_log) = hume_lsp::test_util::RecordingLspBackend::with_response_log();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     backend.push_from_server(
         sid,
         hume_lsp::codec::Message::Request {
@@ -476,8 +482,10 @@ fn workspace_configuration_never_leaks_another_servers_settings() {
     let mut host = ScriptingHost::new();
 
     let (mut backend, response_log) = hume_lsp::test_util::RecordingLspBackend::with_response_log();
-    let rust_sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
-    let python_sid = backend.start("pyright", &[], Path::new("py")).unwrap();
+    let rust_sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
+    let python_sid = backend.start("pyright", &[], Path::new("py"), &[]).unwrap();
     backend.push_from_server(
         python_sid,
         hume_lsp::codec::Message::Request {
@@ -532,7 +540,7 @@ fn lsp_stop_dispatches_timed_out_for_in_flight_callbacks_instead_of_orphaning_th
     // `CallbackEntry` leaked in `LspState.callbacks` forever.
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new(".")).unwrap();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     wire_client(&mut ed, backend, sid);
     ed.lsp
         .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
@@ -579,7 +587,9 @@ fn lsp_stop_dispatches_timed_out_for_in_flight_callbacks_instead_of_orphaning_th
 fn became_running_flushes_queued_messages_through_the_backend() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::with_default_handshake();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     wire_client(&mut ed, backend, sid);
 
     let (client, backend) = ed
@@ -649,6 +659,38 @@ fn second_registration_replaces_first() {
         ed.lsp.config_command_for_test("rust").as_deref(),
         Some("rust-analyzer-2"),
         "second registration must win"
+    );
+}
+
+/// `#:env` decodes from a list of `("KEY" . "VALUE")` dotted pairs all the
+/// way into `LspServerConfig.env` — the wire shape `steel-server/plugin.scm`
+/// uses for `STEEL_LSP_HOME`. Complements the Steel-boundary decode test in
+/// `hume-scripting`'s `builtins::lsp::tests::decodes_env_dotted_pairs`
+/// (which stops at `PendingLspServerReg`) and the real-process delivery
+/// test in `hume-lsp`'s `transport::tests::unix` (which stops at
+/// `ServerHandle::spawn`) — this one is the middle link, the editor-level
+/// apply path (`apply_pending_lsp_server_reg`).
+#[test]
+fn env_round_trips_into_lsp_server_config() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[w]>ord\n");
+    ed.lsp = LspState::new_inline();
+    let mut host = ScriptingHost::new();
+
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer"
+                                  #:env (list (cons "FOO" "bar") (cons "STEEL_LSP_HOME" "/tmp/lsp-home")))"#,
+        tmp.path(),
+    );
+
+    assert_eq!(
+        ed.lsp.config_env_for_test("rust"),
+        Some(vec![
+            ("FOO".to_string(), "bar".to_string()),
+            ("STEEL_LSP_HOME".to_string(), "/tmp/lsp-home".to_string()),
+        ])
     );
 }
 

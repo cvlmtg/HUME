@@ -8,7 +8,9 @@ use super::super::*;
 fn start_send_drain_round_trips_through_cat() {
     let root = std::env::current_dir().unwrap();
     let mut backend = ThreadedLspBackend::new();
-    let id = backend.start("/bin/cat", &[], &root).expect("spawn cat");
+    let id = backend
+        .start("/bin/cat", &[], &root, &[])
+        .expect("spawn cat");
 
     backend.send(
         id,
@@ -53,7 +55,9 @@ fn start_threads_the_waker_through_to_the_spawned_server() {
         let _ = tx_wake.send(());
     });
     let mut backend = ThreadedLspBackend::with_waker(wake);
-    let id = backend.start("/bin/cat", &[], &root).expect("spawn cat");
+    let id = backend
+        .start("/bin/cat", &[], &root, &[])
+        .expect("spawn cat");
 
     backend.send(
         id,

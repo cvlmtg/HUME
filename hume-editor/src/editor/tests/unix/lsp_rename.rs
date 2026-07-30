@@ -43,7 +43,9 @@ fn setup(
         "initialize",
         serde_json::json!({"capabilities": {"renameProvider": true}}),
     );
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     configure(&mut backend, sid);
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, PathBuf::from("."));

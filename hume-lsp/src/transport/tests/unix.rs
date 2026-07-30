@@ -7,7 +7,8 @@ use crate::codec::RequestId;
 #[test]
 fn cat_echoes_frames_and_drop_reaps_without_hanging() {
     let root = std::env::current_dir().unwrap();
-    let mut handle = ServerHandle::spawn("/bin/cat", &[], &root, no_op_wake()).expect("spawn cat");
+    let mut handle =
+        ServerHandle::spawn("/bin/cat", &[], &root, &[], no_op_wake()).expect("spawn cat");
 
     let sent = Message::Request {
         id: RequestId::Int(1),
@@ -47,7 +48,7 @@ fn cat_echoes_frames_and_drop_reaps_without_hanging() {
 fn cat_echo_fires_waker() {
     let root = std::env::current_dir().unwrap();
     let (wake, rx_wake) = counting_wake();
-    let handle = ServerHandle::spawn("/bin/cat", &[], &root, wake).expect("spawn cat");
+    let handle = ServerHandle::spawn("/bin/cat", &[], &root, &[], wake).expect("spawn cat");
 
     handle.send(Message::Notification {
         method: "ping".to_string(),
@@ -57,6 +58,45 @@ fn cat_echo_fires_waker() {
     rx_wake
         .recv_timeout(std::time::Duration::from_secs(5))
         .expect("reader thread must wake the loop after cat echoes the notification back");
+
+    drop(handle);
+}
+
+/// `env` reaches the spawned process's actual environment — the real-process
+/// link in the `#:env` chain (Steel decode → `LspServerConfig` → here).
+/// Additive, not replacing: the child also inherits `PATH` well enough to
+/// resolve `/bin/sh` itself, so this only proves the *extra* pair arrives,
+/// not that the whole environment was clobbered.
+#[test]
+fn env_reaches_the_spawned_process() {
+    let root = std::env::current_dir().unwrap();
+    let mut handle = ServerHandle::spawn(
+        "/bin/sh",
+        &["-c".to_string(), "printenv HUME_TEST_VAR 1>&2".to_string()],
+        &root,
+        &[("HUME_TEST_VAR".to_string(), "steel-lsp-home".to_string())],
+        no_op_wake(),
+    )
+    .expect("spawn sh");
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut stderr = String::new();
+    while std::time::Instant::now() < deadline {
+        for ev in handle.try_recv_all() {
+            if let InboundEvent::Stderr(s) = ev {
+                stderr.push_str(&s);
+            }
+        }
+        if stderr.contains("steel-lsp-home") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+
+    assert!(
+        stderr.contains("steel-lsp-home"),
+        "child process must see HUME_TEST_VAR from `env`, got stderr: {stderr:?}"
+    );
 
     drop(handle);
 }
@@ -74,6 +114,7 @@ fn drop_does_not_hang_when_stderr_floods_past_the_bound() {
         "/bin/sh",
         &["-c".to_string(), "yes flood 1>&2".to_string()],
         &root,
+        &[],
         no_op_wake(),
     )
     .expect("spawn sh");

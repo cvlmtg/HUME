@@ -57,7 +57,9 @@ fn setup(content: &str, publishes: &[&[DiagFixture]]) -> DiagCtx {
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     for diags in publishes {
         backend.push_from_server(sid, publish_diagnostics_notification(uri.as_str(), diags));
     }
@@ -179,7 +181,9 @@ fn progress_action(token: &str, value: serde_json::Value) -> ClientAction {
 #[test]
 fn starting_server_displays_a_loading_indicator() {
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
 
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
@@ -205,7 +209,9 @@ fn starting_server_displays_a_loading_indicator() {
 #[test]
 fn progress_begin_report_end_tracks_the_active_task() {
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
 
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
@@ -275,7 +281,9 @@ fn progress_begin_report_end_tracks_the_active_task() {
 #[test]
 fn progress_begin_missing_title_still_animates_the_spinner() {
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
     backend.push_from_server(
         sid,
         hume_lsp::codec::Message::Notification {
@@ -311,7 +319,9 @@ fn progress_begin_missing_title_still_animates_the_spinner() {
 #[test]
 fn crash_clears_progress_so_the_spinner_stops() {
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("rust-analyzer", &[], Path::new(".")).unwrap();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
 
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));

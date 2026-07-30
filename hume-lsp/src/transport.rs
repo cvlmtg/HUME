@@ -88,12 +88,15 @@ pub struct ServerHandle {
 
 impl ServerHandle {
     /// Spawns the process (cwd = `root`) and its three bridging threads.
-    /// `wake` is called after the reader/stderr threads post an event, so
-    /// the editor's main loop wakes instead of polling for completion.
+    /// `env` is applied additively to the inherited environment (no
+    /// `env_clear`). `wake` is called after the reader/stderr threads post
+    /// an event, so the editor's main loop wakes instead of polling for
+    /// completion.
     pub fn spawn(
         cmd: &str,
         args: &[String],
         root: &Path,
+        env: &[(String, String)],
         wake: WakeCallback,
     ) -> std::io::Result<ServerHandle> {
         #[cfg(windows)]
@@ -114,6 +117,7 @@ impl ServerHandle {
 
         command
             .args(args)
+            .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
             .current_dir(root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
