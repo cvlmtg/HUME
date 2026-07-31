@@ -23,9 +23,12 @@ use self::keymap::{Keymap, WaitCharPending};
 
 mod async_job;
 mod async_source;
+mod decoration_providers;
 pub(crate) mod error;
+mod frame;
 pub(crate) mod host_impl;
 mod lifecycle;
+mod overlay_sync;
 mod reload;
 mod scripting_setup;
 
@@ -684,6 +687,20 @@ impl Editor {
 
     pub(super) fn end_insert_session(&mut self) {
         commands::end_insert_session(&mut self.state, &self.view);
+    }
+
+    /// Set the editing mode. The cursor shape reflecting the new mode will be
+    /// emitted after the current frame's draw call.
+    ///
+    /// Enqueues `OnModeChange` through the unified `pending_hooks` channel
+    /// (same path as the `EditorCmd` handlers); `drain_hooks` fires it after
+    /// the current dispatch completes.
+    ///
+    /// For Insert mode entry and exit use [`begin_insert_session`] and
+    /// [`end_insert_session`] instead — they manage the undo group and
+    /// dot-repeat recording alongside the mode change.
+    pub(super) fn set_mode(&mut self, mode: Mode) {
+        self.state.set_mode(mode);
     }
 }
 

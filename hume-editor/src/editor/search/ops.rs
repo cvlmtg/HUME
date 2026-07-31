@@ -18,7 +18,10 @@ use slotmap::SecondaryMap;
 
 use hume_engine::pipeline::{BufferId, PaneId};
 
+#[cfg(test)]
+use super::SearchPattern;
 use super::{SearchCursor, SearchMatches};
+use crate::editor::Editor;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::PaneBufferState;
 use crate::ops::search::{find_all_matches, search_match_info};
@@ -118,4 +121,39 @@ pub(crate) fn sync_search_cache(
 ) {
     update_buffer_matches(buffers, bid);
     update_pane_cursor(buffers, pane_state, pid, bid);
+}
+
+impl Editor {
+    /// Accessor for the focused buffer's active search pattern (used in tests).
+    #[cfg(test)]
+    pub(crate) fn search_pattern(&self) -> Option<&SearchPattern> {
+        self.state
+            .buffers
+            .get(self.focused_buffer_id())
+            .search_pattern
+            .as_ref()
+    }
+
+    /// Accessor for the focused buffer's match cache.
+    #[cfg(test)]
+    pub(crate) fn search_matches(&self) -> &SearchMatches {
+        &self
+            .state
+            .buffers
+            .get(self.focused_buffer_id())
+            .search_matches
+    }
+
+    /// Accessor for the focused pane's search cursor (match count, wrapped flag).
+    pub(crate) fn current_search_cursor(&self) -> &SearchCursor {
+        &self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()].search_cursor
+    }
+
+    /// Recompute the match list and pane search cursor for the focused buffer,
+    /// if stale. No-op when no search is active.
+    pub(crate) fn sync_search_cache(&mut self) {
+        let pid = self.state.focused_pane_id;
+        let bid = self.focused_buffer_id();
+        sync_search_cache(&mut self.state.buffers, &mut self.state.panes.state, pid, bid);
+    }
 }
