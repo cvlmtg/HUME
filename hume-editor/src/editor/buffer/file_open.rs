@@ -354,12 +354,15 @@ impl Editor {
     /// so repeated calls don't accumulate duplicates in `:ls`. Otherwise opens a
     /// fresh read-only buffer. Then switches the focused pane to it and positions
     /// the cursor at `cursor_line` (0-indexed, clamped to last content line).
+    /// Returns the view buffer's id, e.g. for callers attaching decorations
+    /// (`:messages`'s severity highlights) that must target this specific
+    /// buffer rather than whatever ends up focused.
     pub(crate) fn open_read_only_view(
         &mut self,
         label: &'static str,
         content: &str,
         cursor_line: usize,
-    ) {
+    ) -> BufferId {
         use hume_editing::selection::{Selection, SelectionSet};
         use hume_editing::text::Text;
 
@@ -385,5 +388,7 @@ impl Editor {
         let char_pos = rope.line_to_char(target_line);
         self.state.panes.state[pid][bid].selections =
             SelectionSet::single(Selection::collapsed(char_pos));
+
+        bid
     }
 }

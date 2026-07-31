@@ -25,6 +25,10 @@ export const SCOPES = [
   ["Diff", ["diff.plus", "diff.minus", "diff.delta"]],
   ["Diagnostic", [
     "diagnostic.error", "diagnostic.warning", "diagnostic.info", "diagnostic.hint",
+    "diagnostic.error.message", "diagnostic.warning.message",
+    "diagnostic.info.message", "diagnostic.hint.message",
+    "diagnostic.error.message-text", "diagnostic.warning.message-text",
+    "diagnostic.info.message-text", "diagnostic.hint.message-text",
   ]],
 ];
 
@@ -75,6 +79,14 @@ export const DEFAULT_SC = {
   "diff.plus": "green", "diff.minus": "red", "diff.delta": "yellow",
   "diagnostic.error": "red", "diagnostic.warning": "yellow",
   "diagnostic.info": "blue", "diagnostic.hint": "cyan",
+  "diagnostic.error.message": { fg: "black", bg: "red" },
+  "diagnostic.warning.message": { fg: "black", bg: "yellow" },
+  "diagnostic.info.message": { fg: "black", bg: "blue" },
+  "diagnostic.hint.message": { fg: "black", bg: "cyan" },
+  "diagnostic.error.message-text": "red",
+  "diagnostic.warning.message-text": "yellow",
+  "diagnostic.info.message-text": "blue",
+  "diagnostic.hint.message-text": "cyan",
 };
 
 export const CODE = [

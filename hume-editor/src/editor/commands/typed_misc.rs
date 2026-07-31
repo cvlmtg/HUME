@@ -18,7 +18,7 @@ pub fn typed_messages(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    let content = ed.state.message_log.format_for_display();
+    let (content, spans) = ed.state.message_log.format_with_spans();
     if content.is_empty() {
         ed.report(Severity::Info, "No messages".to_string());
         return Ok(());
@@ -26,7 +26,14 @@ pub fn typed_messages(
     ed.state.message_log.mark_all_seen();
     // open_read_only_view clamps cursor_line to the last content line — pass
     // usize::MAX so it always positions at the bottom (most recent entry).
-    ed.open_read_only_view("[messages]", &content, usize::MAX);
+    let bid = ed.open_read_only_view("[messages]", &content, usize::MAX);
+    // Wholesale replace under a fixed source name — repeat `:messages` calls
+    // route through set_view_content (no ChangeSet), so stale spans from a
+    // prior call can't be remapped and must be overwritten here instead.
+    ed.state
+        .config
+        .decorations
+        .set_extra_highlights("messages".to_string(), bid, spans);
     Ok(())
 }
 

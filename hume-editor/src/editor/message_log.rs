@@ -7,6 +7,7 @@
 use std::collections::VecDeque;
 
 use super::EditorState;
+use super::decorations::ExtraHighlightEntry;
 
 // ── Severity ─────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,30 @@ impl Severity {
             Severity::Warning => "warning",
             Severity::Error => "error",
             Severity::Trace => "trace",
+        }
+    }
+
+    /// Theme scope for this severity's `[label]` badge in `:messages` —
+    /// carries a background fill, no underline. `Trace` reuses `hint`, the
+    /// lowest-noise diagnostic severity, since it has no diagnostic counterpart.
+    fn badge_scope(self) -> &'static str {
+        match self {
+            Severity::Info => "diagnostic.info.message",
+            Severity::Warning => "diagnostic.warning.message",
+            Severity::Error => "diagnostic.error.message",
+            Severity::Trace => "diagnostic.hint.message",
+        }
+    }
+
+    /// Theme scope for this severity's message text in `:messages` — a
+    /// foreground tint, distinct from `badge_scope` so the body doesn't
+    /// inherit the badge's background via dot-notation fallback.
+    fn text_scope(self) -> &'static str {
+        match self {
+            Severity::Info => "diagnostic.info.message-text",
+            Severity::Warning => "diagnostic.warning.message-text",
+            Severity::Error => "diagnostic.error.message-text",
+            Severity::Trace => "diagnostic.hint.message-text",
         }
     }
 }
@@ -181,23 +206,59 @@ impl MessageLog {
         Some(msg)
     }
 
-    /// Full log formatted for display in the `:messages` scratch buffer.
+    /// Full log formatted for display in the `:messages` scratch buffer,
+    /// along with the severity-highlight spans for each line.
     ///
-    /// Each line is prefixed with `[severity]` for scannability. Returns an
-    /// empty string if there are no entries.
-    pub(crate) fn format_for_display(&self) -> String {
+    /// Each line is `[severity] text\n`. Returns an empty string and no
+    /// spans if there are no entries. Spans are char offsets (not bytes) —
+    /// message text may be non-ASCII — matching the char-indexed contract of
+    /// [`ExtraHighlightEntry`].
+    pub(crate) fn format_with_spans(&self) -> (String, Vec<ExtraHighlightEntry>) {
         if self.entries.is_empty() {
-            return String::new();
+            return (String::new(), Vec::new());
         }
         let mut out = String::new();
+        let mut spans = Vec::new();
+        let mut pos = 0;
         for entry in &self.entries {
+            let label = entry.severity.label();
+
             out.push('[');
-            out.push_str(entry.severity.label());
-            out.push_str("] ");
-            out.push_str(&entry.text);
+            out.push_str(label);
+            out.push(']');
+            let badge_len = label.len() + 2; // '[' + label + ']'
+            spans.push(ExtraHighlightEntry {
+                start: pos,
+                end: pos + badge_len,
+                scope: entry.severity.badge_scope().to_string(),
+            });
+            pos += badge_len;
+
+            out.push(' ');
+            pos += 1;
+
+            let text_len = entry.text.chars().count();
+            if text_len > 0 {
+                out.push_str(&entry.text);
+                spans.push(ExtraHighlightEntry {
+                    start: pos,
+                    end: pos + text_len,
+                    scope: entry.severity.text_scope().to_string(),
+                });
+                pos += text_len;
+            }
+
             out.push('\n');
+            pos += 1;
         }
-        out
+        (out, spans)
+    }
+
+    /// Test-only convenience over [`format_with_spans`] for assertions that
+    /// only care about the rendered text.
+    #[cfg(test)]
+    pub(crate) fn format_for_display(&self) -> String {
+        self.format_with_spans().0
     }
 }
 

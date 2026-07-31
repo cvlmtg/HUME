@@ -51,6 +51,16 @@
 "diagnostic.info" = { fg = "blue", modifiers = [ "underlined" ] }
 "diagnostic.hint" = { fg = "green", modifiers = [ "underlined" ] }
 "diagnostic.deprecated" = { modifiers = [ "crossed_out" ] }
+# :messages severity badge/body — no underline, so redeclared as sub-keys
+# rather than modifying diagnostic.* above (which LSP squiggles also use).
+"diagnostic.error.message" = { fg = "bg", bg = "red" }
+"diagnostic.warning.message" = { fg = "bg", bg = "sand" }
+"diagnostic.info.message" = { fg = "bg", bg = "blue" }
+"diagnostic.hint.message" = { fg = "bg", bg = "green" }
+"diagnostic.error.message-text" = { fg = "red" }
+"diagnostic.warning.message-text" = { fg = "sand" }
+"diagnostic.info.message-text" = { fg = "blue" }
+"diagnostic.hint.message-text" = { fg = "green" }
 "error" = { fg = "red" }
 "warning" = { fg = "sand" }
 "info" = { fg = "blue" }

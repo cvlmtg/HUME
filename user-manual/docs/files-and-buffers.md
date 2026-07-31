@@ -117,6 +117,8 @@ Some commands open special read-only buffers for inspecting the editor's state:
 
 These are regular buffers in all other respects — you can scroll, search, and quit them with `:q` or `:bd`.
 
+In `[messages]`, each entry's `[warning]`/`[error]`/`[trace]` tag and message text are colored by severity; themes can restyle these independently of everything else.
+
 ## Persistence and safety
 
 A few things worth knowing before trusting HUME with real work:

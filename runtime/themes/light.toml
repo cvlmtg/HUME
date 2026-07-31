@@ -35,6 +35,18 @@ inherits = "dark"
 "diagnostic.info"    = { fg = "cyan",   modifiers = ["underlined"] }
 "diagnostic.hint"    = { fg = "green",  modifiers = ["underlined"] }
 
+# :messages severity badge/body — redeclared (not inherited) for the same
+# reason as diagnostic.* above; also no underline, so a sub-key rather than
+# a diagnostic.* edit (which LSP squiggles also use).
+"diagnostic.error.message"        = { fg = "white", bg = "red" }
+"diagnostic.warning.message"      = { fg = "white", bg = "yellow" }
+"diagnostic.info.message"         = { fg = "white", bg = "cyan" }
+"diagnostic.hint.message"         = { fg = "white", bg = "green" }
+"diagnostic.error.message-text"   = { fg = "red" }
+"diagnostic.warning.message-text" = { fg = "yellow" }
+"diagnostic.info.message-text"    = { fg = "cyan" }
+"diagnostic.hint.message-text"    = { fg = "green" }
+
 # ── Diff ──────────────────────────────────────────────────────────────────────
 # Redeclared for the same reason as diagnostics above — re-resolve against
 # this file's palette instead of inheriting dark's colors.

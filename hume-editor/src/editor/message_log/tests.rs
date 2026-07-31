@@ -133,6 +133,72 @@ fn format_for_display_prefixes() {
 }
 
 #[test]
+fn format_with_spans_empty() {
+    let log = MessageLog::new();
+    let (text, spans) = log.format_with_spans();
+    assert_eq!(text, "");
+    assert!(spans.is_empty());
+}
+
+#[test]
+fn format_with_spans_offsets_and_scopes() {
+    let log = make_log(&[(Severity::Warning, "bad key"), (Severity::Error, "crash")]);
+    let (text, spans) = log.format_with_spans();
+    assert_eq!(text, "[warning] bad key\n[error] crash\n");
+
+    // Oracle derived from the `[label] text\n` format spec, independent of
+    // the implementation's own offset bookkeeping:
+    // "[warning]" is 9 chars (0..9), " " at 9, "bad key" is 7 chars (10..17),
+    // "\n" at 17. "[error]" is 7 chars (18..25), " " at 25, "crash" is 5
+    // chars (26..31), "\n" at 31.
+    assert_eq!(spans.len(), 4);
+    assert_eq!((spans[0].start, spans[0].end), (0, 9));
+    assert_eq!(spans[0].scope, "diagnostic.warning.message");
+    assert_eq!((spans[1].start, spans[1].end), (10, 17));
+    assert_eq!(spans[1].scope, "diagnostic.warning.message-text");
+    assert_eq!((spans[2].start, spans[2].end), (18, 25));
+    assert_eq!(spans[2].scope, "diagnostic.error.message");
+    assert_eq!((spans[3].start, spans[3].end), (26, 31));
+    assert_eq!(spans[3].scope, "diagnostic.error.message-text");
+}
+
+#[test]
+fn format_with_spans_counts_chars_not_bytes() {
+    // "café ☕" is 6 chars but 8 bytes (é = 2 bytes, ☕ = 3 bytes). A
+    // byte-length implementation would place the second entry's spans 2
+    // bytes too late (start=15 instead of 13, off by len("café ☕") - 6 = 2).
+    let log = make_log(&[(Severity::Info, "café ☕"), (Severity::Warning, "ok")]);
+    let (text, spans) = log.format_with_spans();
+    assert_eq!(text, "[info] café ☕\n[warning] ok\n");
+
+    assert_eq!(spans.len(), 4);
+    // "[info]" = 6 chars (0..6), " " at 6, "café ☕" = 6 chars (7..13).
+    assert_eq!((spans[0].start, spans[0].end), (0, 6));
+    assert_eq!((spans[1].start, spans[1].end), (7, 13));
+    // "\n" at 13, "[warning]" = 9 chars (14..23), " " at 23, "ok" (24..26).
+    assert_eq!((spans[2].start, spans[2].end), (14, 23));
+    assert_eq!((spans[3].start, spans[3].end), (24, 26));
+}
+
+#[test]
+fn format_with_spans_skips_empty_text() {
+    let log = make_log(&[(Severity::Warning, "")]);
+    let (text, spans) = log.format_with_spans();
+    assert_eq!(text, "[warning] \n");
+    // Only the badge span — no zero-width span for the empty message text.
+    assert_eq!(spans.len(), 1);
+    assert_eq!((spans[0].start, spans[0].end), (0, 9));
+}
+
+#[test]
+fn severity_trace_uses_hint_scopes() {
+    let log = make_log(&[(Severity::Trace, "t")]);
+    let (_, spans) = log.format_with_spans();
+    assert_eq!(spans[0].scope, "diagnostic.hint.message");
+    assert_eq!(spans[1].scope, "diagnostic.hint.message-text");
+}
+
+#[test]
 fn push_respects_cap() {
     let mut log = MessageLog::new();
     // Push MAX_ENTRIES + 1 entries; the oldest should be evicted.

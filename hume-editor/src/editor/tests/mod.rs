@@ -602,6 +602,7 @@ mod lsp_statusline;
 mod lsp_sync;
 mod lsp_virtual_lines;
 mod macros;
+mod messages;
 mod mouse;
 mod multi_pane;
 mod page_scroll;
