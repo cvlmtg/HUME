@@ -362,6 +362,94 @@ fn accept_with_a_non_collapsed_selection_errors_instead_of_force_collapsing_it()
     );
 }
 
+#[test]
+fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_text_edit_end() {
+    let tmp = safe_tempdir();
+    // textEdit replaces chars [0, 2) ("ab") with "XY"; additionalTextEdits
+    // is a *zero-width* insert of "ZZ" exactly at [2, 2) — the cursor
+    // position, and thus the textEdit's own `end_now`. The half-open overlap
+    // test alone (`s < end_now && start_now < e`) treats a zero-width range
+    // at `end_now` as not overlapping (`e == end_now` fails `s < end_now`).
+    // But `translate_in_place` maps a live selection head with `Assoc::
+    // After` (cursor moves past text inserted at its own position), so once
+    // the additional edit lands first, the live head sits *after* "ZZ" —
+    // and the cursor edit's `back` chars then delete "ZZ" itself instead of
+    // the "ab" the server's range targeted, silently destroying the
+    // additional edit and leaving "cd" from the server's own range
+    // untouched. Before this test's fix, that ran to completion as
+    // "abXYcdef\n" instead of erroring.
+    let mut ed = editor_from("ab-[c]>def\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "x" "insertText" "ignored-fallback"
+                           "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 0)
+                                                        "end" (hash "line" 0 "character" 2))
+                                       "newText" "XY")
+                           "additionalTextEdits"
+                             (list (hash "range" (hash "start" (hash "line" 0 "character" 2)
+                                                      "end" (hash "line" 0 "character" 2))
+                                     "newText" "ZZ")))))
+             (completion-accept! 0)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abcdef\n",
+        "buffer must be untouched — a zero-width additionalTextEdit sitting \
+         exactly at the textEdit's end must count as an overlap"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("overlaps additionaltextedits"),
+        "expected an overlap error, got {msg:?}"
+    );
+}
+
+#[test]
+fn accept_with_no_text_edit_remaps_the_primary_anchor_through_additional_text_edits() {
+    let tmp = safe_tempdir();
+    // `primary_head`/`anchor` are captured *before* `additionalTextEdits`
+    // lands, in pre-shift buffer coordinates; the live cursor position used
+    // to decide "is this the primary cursor" (and, once recognized, to
+    // locate its token via `anchor`) is only available *after* it lands.
+    // `completion-update-filter!` narrows the filter to 4 chars without any
+    // matching buffer edit (`typed` no longer reflects real typed content —
+    // the exact divergence `anchor` exists to handle, see `ReplaceSpan::
+    // TokenBefore`'s field docs), so `head - typed` and the correctly
+    // anchor-derived start land on genuinely different buffer positions once
+    // additionalTextEdits (a 3-char import-like insert at the top of the
+    // file) shifts everything after it. Left unmapped, `primary_head` stays
+    // stale (3) against the live, shifted head (6) — never recognized as
+    // primary — and the `head - typed` fallback scans from position 2,
+    // landing outside "abc" entirely (right after the "// " import) instead
+    // of at the real token boundary (3, right after "abc").
+    let mut ed = editor_from("abc-[ ]>def\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "wxyz" "insertText" "X"
+                           "additionalTextEdits"
+                             (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
+                                                      "end" (hash "line" 0 "character" 0))
+                                     "newText" "// ")))))
+             (completion-update-filter! "wxyz")
+             (completion-accept! 0)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "// X\n",
+        "primary_head/anchor must be remapped through additionalTextEdits' \
+         own changeset before deciding which cursor is primary and where \
+         its token starts"
+    );
+}
+
 // ── Empty items: no session, not an invisible menu ────────────────────
 
 #[test]

@@ -275,13 +275,8 @@ pub(crate) fn commit_char_edits(
     if char_edits.is_empty() {
         return Ok(None);
     }
-    let Some(buf) = state.buffers.try_get(bid) else {
-        return Err("no such buffer".to_string());
-    };
-    if buf.is_read_only() {
-        return Err("buffer is read-only".to_string());
-    }
-    let len_before = state.buffers.get(bid).text().rope().len_chars();
+    let buf = checked_buffer(state, bid, None)?;
+    let len_before = buf.text().rope().len_chars();
     let cs = build_changeset_from_char_edits(len_before, char_edits)?;
     Ok(Some(commit_changeset(state, bid, cs)))
 }

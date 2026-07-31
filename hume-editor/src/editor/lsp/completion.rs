@@ -684,10 +684,19 @@ impl CompletionSession {
         // overlap in the first place.
         if let ReplaceSpan::Uniform { back, forward } = span {
             let (start_now, end_now) = (head_now - back, head_now + forward);
-            if additional_char_edits
+            // The half-open overlap test alone (`s < end_now && start_now <
+            // e`) misses a *zero-width* additional edit sitting exactly at
+            // `end_now`: it inserts before the cursor edit lands, so
+            // `translate_in_place`'s `Assoc::After` on selection heads
+            // (`hume-editing/src/selection/mod.rs`) walks the live head past
+            // the inserted text — the cursor edit's `back` chars then eat
+            // that inserted text instead of the span the server asked for.
+            // An insertion at `start_now` is safe (it shifts the whole span
+            // uniformly ahead of the edit) and stays excluded.
+            let overlaps = additional_char_edits
                 .iter()
-                .any(|&(s, e, _)| s < end_now && start_now < e)
-            {
+                .any(|&(s, e, _)| (s < end_now && start_now < e) || (s == e && s == end_now));
+            if overlaps {
                 return Err("completion-accept!: textEdit overlaps additionalTextEdits".to_string());
             }
         }
@@ -727,6 +736,51 @@ impl CompletionSession {
                 }
                 return Err(e);
             }
+        };
+
+        // `primary_head`/`anchor` were captured before `additionalTextEdits`
+        // landed — the closure below compares them against live heads read
+        // *after* `commit_char_edits` above already shifted every selection
+        // across those edits (`apply_doc_edit_grouped` → `translate_in_place`).
+        // Left unmapped, an additional edit ahead of the cursor (e.g. an
+        // auto-inserted import line) would make `head == primary_head` never
+        // match the real primary, or — worse — spuriously match a different
+        // cursor that happened to remap onto the stale value.
+        //
+        // Both map with `Assoc::After`, *not* the `Before` `anchor()` itself
+        // uses for `cs_since_begin` — that association is specific to real
+        // typed content (a char landing exactly at the anchor extends the
+        // token leftward-inclusive). `cs_additional` is a foreign, unrelated
+        // document edit (e.g. an auto-inserted import), not typed content;
+        // an edit landing exactly at the anchor should carry it forward
+        // exactly like any other live cursor position would, so the
+        // completion's own text still lands where the user's token actually
+        // was — after the inserted text, never spliced inside it.
+        let span = match span {
+            ReplaceSpan::TokenBefore {
+                primary_head,
+                anchor,
+                typed,
+                forward,
+            } => {
+                let (primary_head, anchor) = match &cs_additional {
+                    Some(cs_a) => {
+                        let mut ph = [primary_head];
+                        cs_a.map_positions(&mut ph, Assoc::After);
+                        let mut a = [anchor];
+                        cs_a.map_positions(&mut a, Assoc::After);
+                        (ph[0], a[0])
+                    }
+                    None => (primary_head, anchor),
+                };
+                ReplaceSpan::TokenBefore {
+                    primary_head,
+                    anchor,
+                    typed,
+                    forward,
+                }
+            }
+            uniform => uniform,
         };
 
         let cs_cursors = match span {

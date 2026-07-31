@@ -395,9 +395,9 @@ impl Editor {
         let head = self.current_selections().primary().head();
         // Backspace crossing the anchor already dismissed the session in
         // `handle_completion_key`, before the edit ran. But `head` can still
-        // land before `anchor` here — e.g. an arrow key moves the cursor
-        // without going through that dismissal check, and the next
-        // printable char reaches this point with a stale anchor. Dismiss
+        // land before `anchor` here — e.g. a Steel hook mutating selections
+        // mid-session, or any other out-of-band cursor move that doesn't
+        // route through `handle_insert`'s trie-leaf dismissal. Dismiss
         // rather than slice with an inverted or out-of-range span.
         let len = self.doc().text().len_chars();
         if head < anchor || head > len {
