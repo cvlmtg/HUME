@@ -48,7 +48,7 @@ pub(super) fn ensure_cursor_visible(
     // `margin..height-margin` collapse to a single point), so the two
     // correction arms fight over that one row and rescroll every frame.
     let margin = v_margin.min(height.saturating_sub(1) / 2);
-    let (cursor_pos, _) = rm.locate(cursor_char);
+    let cursor_pos = rm.locate_row(cursor_char);
     let top = top_pos(viewport);
 
     if cursor_pos < top {
@@ -133,7 +133,7 @@ pub(super) fn scroll_cursor_to_row(
     cursor_char: usize,
     target_row: usize,
 ) {
-    let (cursor_pos, _) = rm.locate(cursor_char);
+    let cursor_pos = rm.locate_row(cursor_char);
     scroll_back_from(viewport, rm, cursor_pos, target_row);
 }
 

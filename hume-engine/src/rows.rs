@@ -510,6 +510,23 @@ impl<'a> RowMap<'a> {
         (last_row, col)
     }
 
+    /// The display row `char_offset` sits on, without resolving its column.
+    ///
+    /// In `WrapMode::None` a line is exactly one content row (see
+    /// [`RowMap::block`]), so the sub-row is always 0 and the answer falls out
+    /// of the block breakdown with no formatting at all — the difference
+    /// between O(1) and O(offset into the line) for the callers that only want
+    /// the row.
+    pub fn locate_row(&mut self, char_offset: usize) -> RowPos {
+        if self.wrap_mode.is_wrapping() {
+            // Wrapping needs the sub-row, which only formatting can answer —
+            // and `block` has already formatted the line to count its rows.
+            return self.locate(char_offset).0;
+        }
+        let line = self.rope.char_to_line(char_offset);
+        RowPos::new(line, self.block(line).before)
+    }
+
     /// The char offset `target_col` resolves to on `pos`'s row, under
     /// `target`'s policy.
     ///

@@ -927,3 +927,53 @@ fn a_column_query_after_an_offset_query_reformats() {
     let (pos, _) = rm.locate(3);
     assert_eq!(rm.char_at(pos, 40, ColTarget::Cell), 40);
 }
+
+#[test]
+fn locate_row_answers_without_formatting_in_no_wrap() {
+    let rope = long_unwrapped_line();
+    let mut providers = ProviderSet::new();
+    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 2)));
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        rm.locate_row(5),
+        RowPos::new(0, 2),
+        "the line's own row sits after the two Before rows above it"
+    );
+
+    // `format_buffer_line` pushes its first row before it scans anything, so
+    // an empty `display_rows` proves the formatter never ran at all.
+    drop(rm);
+    assert!(
+        s.display_rows.is_empty(),
+        "a no-wrap row comes from the block breakdown, with no formatting"
+    );
+}
+
+#[test]
+fn locate_row_agrees_with_locate_in_both_wrap_modes() {
+    // `locate` is the oracle here, which is not circular: the claim *is* that
+    // the two agree, and `locate`'s own answers are pinned independently by
+    // the `locate_*` tests above.
+    //
+    // "a\n\nébc\n" covers an empty line, a line with Before rows above it, a
+    // multi-byte grapheme, and the phantom line past the last `\n`.
+    let rope = Rope::from_str("a\n\nébc\n");
+    let mut providers = ProviderSet::new();
+    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(1), 2)));
+
+    for wrap in [WrapMode::None, WrapMode::Soft { width: 2 }] {
+        let mut s = FormatScratch::new();
+        let mut rm = map(&rope, wrap, &providers, &mut s);
+        // Inclusive upper bound is defensive — the buffer invariant keeps a
+        // cursor at `head < len_chars()`.
+        for offset in 0..=rope.len_chars() {
+            // `locate_row` first, so it has to be right without a previous
+            // `locate` having warmed the scratch.
+            let row = rm.locate_row(offset);
+            let via_locate = rm.locate(offset).0;
+            assert_eq!(row, via_locate, "{wrap:?}, offset {offset}");
+        }
+    }
+}

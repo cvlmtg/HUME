@@ -45,7 +45,7 @@ fn move_vertical(
     target_col: u32,
     budget: RowBudget,
 ) -> usize {
-    let (start, _) = rm.locate(head);
+    let start = rm.locate_row(head);
     let mut pos = start;
     let mut last_content = start;
     let mut remaining = count;
@@ -244,7 +244,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
         buf_id,
         |text, sels| {
             let new_sels = sels.map(|sel| {
-                let (pos, _) = rm.locate(sel.anchor());
+                let pos = rm.locate_row(sel.anchor());
                 let (line_start, line_end_excl) =
                     rm.content_row_char_bounds(pos).unwrap_or_else(|| {
                         let buf_line = text.char_to_line(sel.anchor());
