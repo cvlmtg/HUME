@@ -7,8 +7,8 @@ use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, PaneId, PaneRenderSettings, RenderContext};
 use hume_engine::types::EditorMode;
 
-use super::buffer::Buffer;
 use super::Editor;
+use super::buffer::Buffer;
 use crate::settings::EditorSettings;
 
 /// Project a `SelectionSet` into an engine pane's head-sorted selection mirror.

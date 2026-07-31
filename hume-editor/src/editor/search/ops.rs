@@ -154,6 +154,11 @@ impl Editor {
     pub(crate) fn sync_search_cache(&mut self) {
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
-        sync_search_cache(&mut self.state.buffers, &mut self.state.panes.state, pid, bid);
+        sync_search_cache(
+            &mut self.state.buffers,
+            &mut self.state.panes.state,
+            pid,
+            bid,
+        );
     }
 }

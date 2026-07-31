@@ -2056,7 +2056,7 @@ fn smart_p_dp_reads_ring() {
 /// on its `CmdMeta`.
 ///
 /// Fail oracle: remove `.transparent_to_last_command()` from `exit-insert`'s
-/// registration in `registry/defaults.rs` → `last_command` becomes "exit-insert"
+/// registration in `registry/defaults/editor_cmds.rs` → `last_command` becomes "exit-insert"
 /// → `p` pastes "CLIP" → `contains('a')` fails.
 #[test]
 fn smart_p_after_change_reads_ring() {
@@ -2085,7 +2085,7 @@ fn smart_p_after_change_reads_ring() {
 ///
 /// Directly pins the sole exception in the stamp mechanism: `exit-insert` is
 /// registered with `stamps_last_command = false` (via `.transparent_to_last_command()`
-/// in `registry/defaults.rs`), so `step_stamp_last_command` skips it.
+/// in `registry/defaults/editor_cmds.rs`), so `step_stamp_last_command` skips it.
 ///
 /// Fail oracle: remove `.transparent_to_last_command()` from `exit-insert`'s
 /// registration → `stamps_last_command` becomes `true` → marker becomes
