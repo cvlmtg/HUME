@@ -8,11 +8,12 @@ use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
 use hume_ops::register::SEARCH_REGISTER;
 use hume_ops::search::{
-    compile_search_regex, escape_regex, find_all_matches, find_match_from_cache, find_next_match,
+    SearchDirection, compile_search_regex, escape_regex, find_all_matches, find_match_from_cache,
+    find_next_match,
 };
 use hume_ops::text_object::inner_word_impl;
 
-use super::super::{EditorState, MiniBuffer, Mode, SearchDirection};
+use super::super::{EditorState, MiniBuffer, Mode};
 use super::{
     current_selections, doc, focused_buffer_id, search_pattern, set_current_selections,
     set_primary_selection,

@@ -1,7 +1,7 @@
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 
-pub use super::MotionMode;
+use super::MotionMode;
 
 /// Whether an f/t motion places the cursor on the found character or adjacent to it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

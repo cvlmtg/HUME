@@ -9,9 +9,6 @@ pub mod ui;
 // paths uniformly, without conditional `crate::` vs `hume::` branching.
 extern crate self as hume;
 
-// Re-exports for editor/tests/ integration tests.
-pub use editor::keymap::{BindMode as KeymapBindMode, Keymap};
-
 // The test DSL is compiled only when running tests. It lives in its own
 // module so every other module can `use crate::testing::*;` inside
 // `#[cfg(test)]` blocks without any runtime cost in release builds.

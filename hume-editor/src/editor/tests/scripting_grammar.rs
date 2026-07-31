@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::render_snapshot::render_to_styled_string;
-use hume_test_fixtures::skip_unless_grammars;
+use hume_test_fixtures::{grammar_parser_path, grammar_query_path, skip_unless_grammars};
 
 // ---------------------------------------------------------------------------
 // Helpers

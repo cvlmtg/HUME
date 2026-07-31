@@ -6,8 +6,10 @@
 
 use super::*;
 
-use crate::editor::tests::{grammar_parser_path, grammar_query_path, helix_injections_path};
-use hume_test_fixtures::{skip_unless_file, skip_unless_grammars};
+use hume_test_fixtures::{
+    grammar_parser_path, grammar_query_path, helix_injections_path, skip_unless_file,
+    skip_unless_grammars,
+};
 
 /// Attach the fixture grammar `name` (source name == attach identity — true
 /// for every real PLUM install; there is no renaming split in production).

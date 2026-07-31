@@ -65,7 +65,7 @@ mod timer_bridge;
 mod timers;
 mod visual_move;
 
-pub(crate) use search::{SearchDirection, SearchState};
+pub(crate) use search::SearchState;
 
 // Re-export module-level helpers so sibling submodules can call `super::foo()`.
 use scripting_setup::theme_search_paths;

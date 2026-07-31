@@ -8,7 +8,7 @@
 
 use super::*;
 
-use hume_test_fixtures::skip_unless_grammars;
+use hume_test_fixtures::{grammar_parser_path, grammar_query_path, skip_unless_grammars};
 use hume_treesitter::grammar::LoadedGrammar;
 
 use crate::editor::buffer::Buffer;

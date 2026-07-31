@@ -44,17 +44,12 @@
 use std::fmt;
 use std::str::FromStr;
 
+use hume_editing::tab_style::TabStyle;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_ops::auto_pairs::Pair;
-
-// `TabStyle` is a text-model concern (hard tab vs. spaces-to-tab-stop), not an
-// editor concern, so it lives in `hume-editing` — re-exported here so this
-// module's public surface (and every existing `crate::settings::TabStyle`
-// reference) is unchanged.
-pub use hume_editing::tab_style::TabStyle;
 
 // ── SignColumnConfig ──────────────────────────────────────────────────────────
 

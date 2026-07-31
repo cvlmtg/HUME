@@ -59,7 +59,7 @@ fn message_log_summary_ttl() {
 
     let noop = KeyEvent::new(KeyCode::Char('h'), Modifiers::NONE);
 
-    let (buf, sels) = crate::testing::parse_state("-[a]>\n");
+    let (buf, sels) = hume_test_fixtures::testing::parse_state("-[a]>\n");
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(buf, sels));
 
     // report() sets status_msg AND logs to message_log.

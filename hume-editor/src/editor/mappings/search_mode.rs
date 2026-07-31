@@ -7,8 +7,8 @@ use super::super::jump_list::JumpEntry;
 use super::super::minibuf::MiniBufferEvent;
 use super::super::minibuf::history::{HistoryDir, HistoryStore};
 use super::super::search::SearchPattern;
-use super::super::{Editor, Mode, SearchDirection, search};
-use hume_ops::search::{compile_search_regex, find_next_match};
+use super::super::{Editor, Mode, search};
+use hume_ops::search::{SearchDirection, compile_search_regex, find_next_match};
 
 impl Editor {
     // ── Search mode ───────────────────────────────────────────────────────────

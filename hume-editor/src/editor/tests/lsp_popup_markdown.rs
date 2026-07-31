@@ -11,7 +11,7 @@ use std::path::Path;
 use super::*;
 use hume_engine::pipeline::RenderContext;
 use hume_scripting::ScriptingHost;
-use hume_test_fixtures::skip_unless_grammars;
+use hume_test_fixtures::{grammar_parser_path, grammar_query_path, skip_unless_grammars};
 
 fn run(ed: &mut Editor, tmp: &Path, source: &str) {
     let mut host = ScriptingHost::new();

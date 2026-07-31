@@ -3,9 +3,9 @@ use hume_engine::pane::{WhitespaceRender, WrapMode};
 
 use super::{Completer, Completion, CompletionCtx, CompletionResult, theme_name_candidates};
 use crate::settings::{
-    LANGUAGE_KEY, SHOW_NEWLINE_VALUES, Scope, SignColumnConfig, TabStyle, all_setting_keys,
-    setting_scopes,
+    LANGUAGE_KEY, SHOW_NEWLINE_VALUES, Scope, SignColumnConfig, all_setting_keys, setting_scopes,
 };
+use hume_editing::tab_style::TabStyle;
 
 // ── SetCompleter ──────────────────────────────────────────────────────────────
 

@@ -9,14 +9,15 @@ use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
 use crate::editor::search::SearchPattern;
-use crate::editor::{EditorState, SearchDirection, SearchState};
+use crate::editor::{EditorState, SearchState};
 use crate::settings::EditorSettings;
-use crate::testing::{parse_state, serialize_state};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId};
 use hume_ops::register::{KillRing, RegisterSet};
+use hume_ops::search::SearchDirection;
+use hume_test_fixtures::testing::{parse_state, serialize_state};
 use hume_treesitter::parse_worker::InlineParseBackend;
 use slotmap::SecondaryMap;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
@@ -550,14 +551,6 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
         mode: ed.state.mode,
     }
 }
-
-// ── Grammar fixture paths ─────────────────────────────────────────────────────
-//
-// Shared with hume-treesitter's test suite via the hume-test-fixtures dev
-// crate — see that crate for the path helpers and require-fixtures gating.
-pub(crate) use hume_test_fixtures::{
-    grammar_parser_path, grammar_query_path, helix_injections_path,
-};
 
 mod alternate;
 mod async_job_steel;

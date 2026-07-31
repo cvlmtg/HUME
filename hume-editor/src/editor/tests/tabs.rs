@@ -1,5 +1,5 @@
 use super::*;
-use crate::settings::TabStyle;
+use hume_editing::tab_style::TabStyle;
 use pretty_assertions::assert_eq;
 
 // ── Insert-mode Tab handling ──────────────────────────────────────────────────

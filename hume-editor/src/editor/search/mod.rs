@@ -14,8 +14,7 @@ pub(crate) mod ops;
 use std::sync::Arc;
 
 use hume_editing::history::RevisionId;
-
-pub(crate) use hume_ops::search::SearchDirection;
+use hume_ops::search::SearchDirection;
 
 // ── Per-buffer types ──────────────────────────────────────────────────────────
 
