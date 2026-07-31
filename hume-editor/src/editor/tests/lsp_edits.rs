@@ -636,7 +636,7 @@ fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
+        .register_identity_no_rebuild("rust", &["rs"], &[], &[], None);
     ed.state
         .config
         .languages

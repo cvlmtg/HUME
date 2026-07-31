@@ -130,7 +130,8 @@ fn language_registry_remove_is_idempotent() {
 #[test]
 fn register_identity_then_by_name_returns_entry() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("toml", &["toml"], &[], &[]).unwrap();
+    reg.register_identity("toml", &["toml"], &[], &[], None)
+        .unwrap();
     assert!(
         reg.by_name("toml").is_some(),
         "identity should be registered"
@@ -149,7 +150,7 @@ fn register_identity_then_by_name_returns_entry() {
 fn register_identity_with_invalid_glob_errors() {
     let mut reg = LanguageRegistry::new();
     let err = reg
-        .register_identity("broken", &[], &["["], &[])
+        .register_identity("broken", &[], &["["], &[], None)
         .expect_err("unterminated character class must fail glob compilation");
     assert!(
         matches!(err, super::RegisterError::GlobBuild(_)),
@@ -160,7 +161,7 @@ fn register_identity_with_invalid_glob_errors() {
 #[test]
 fn register_identity_with_globs_lookup() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[])
+    reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[], None)
         .unwrap();
     let matches = reg.compiled_globs().matches(Path::new("Makefile"));
     assert!(!matches.is_empty(), "Makefile should match registered glob");
@@ -177,7 +178,7 @@ fn register_identity_with_globs_lookup() {
 #[test]
 fn remove_clears_glob_and_shebang_entries() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("python", &["py"], &["*.py"], &["python"])
+    reg.register_identity("python", &["py"], &["*.py"], &["python"], None)
         .unwrap();
     assert!(reg.by_extension("py").is_some());
     assert!(reg.by_shebang("python").is_some());
@@ -202,8 +203,9 @@ fn remove_clears_glob_and_shebang_entries() {
 #[test]
 fn deindex_does_not_clobber_another_languages_shared_extension() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("c", &["c", "h"], &[], &[]).unwrap();
-    reg.register_identity("cpp", &["cpp", "h"], &[], &[])
+    reg.register_identity("c", &["c", "h"], &[], &[], None)
+        .unwrap();
+    reg.register_identity("cpp", &["cpp", "h"], &[], &[], None)
         .unwrap();
     assert_eq!(
         reg.by_extension("h"),
@@ -212,7 +214,7 @@ fn deindex_does_not_clobber_another_languages_shared_extension() {
     );
 
     // Re-register c, dropping .h from its own extension list.
-    reg.register_identity("c", &["c"], &[], &[]).unwrap();
+    reg.register_identity("c", &["c"], &[], &[], None).unwrap();
 
     assert_eq!(
         reg.by_extension("h"),
@@ -252,7 +254,7 @@ fn attached_grammar_survives_identity_re_registration() {
 
     // Re-register identity, as `define-language!` would from init.scm to add
     // an extra extension.
-    reg.register_identity("rust", &["rs", "mylang"], &[], &[])
+    reg.register_identity("rust", &["rs", "mylang"], &[], &[], None)
         .expect("re-registering identity must succeed");
 
     assert!(
@@ -274,10 +276,65 @@ fn attached_grammar_survives_identity_re_registration() {
     assert_eq!(detected, reg.id_of("rust"));
 }
 
+/// With no `lsp_language_id` override, the wire `languageId` falls back to
+/// the language's own name.
+///
+/// Flip: hardcoding `lsp_language_id_of` to always return the override
+/// (ignoring the `None` case) makes this fail — there is no override here.
+#[test]
+fn lsp_language_id_of_falls_back_to_name_when_unset() {
+    let mut reg = LanguageRegistry::new();
+    reg.register_identity("rust", &["rs"], &[], &[], None)
+        .unwrap();
+    let id = reg.id_of("rust").unwrap();
+    assert_eq!(reg.lsp_language_id_of(id), "rust");
+}
+
+/// An `lsp_language_id` override is returned verbatim instead of the name —
+/// the case this whole feature exists for (`tsx` -> `typescriptreact`).
+///
+/// Flip: making `lsp_language_id_of` always return `name_of` regardless of
+/// the stored override makes this fail.
+#[test]
+fn lsp_language_id_of_returns_override_when_set() {
+    let mut reg = LanguageRegistry::new();
+    reg.register_identity("tsx", &["tsx"], &[], &[], Some("typescriptreact"))
+        .unwrap();
+    let id = reg.id_of("tsx").unwrap();
+    assert_eq!(reg.lsp_language_id_of(id), "typescriptreact");
+}
+
+/// Re-registering a language's identity without `lsp_language_id` resets the
+/// override to `None` — `define-language!` replaces the whole identity
+/// record, matching how it already replaces extensions/globs/shebangs
+/// wholesale (see `attached_grammar_survives_identity_re_registration`, which
+/// covers the sibling "grammar survives, identity doesn't" half of the same
+/// contract).
+///
+/// Flip: merging the new identity into the old one instead of replacing it
+/// would keep the stale override here, and this assertion would fail.
+#[test]
+fn identity_re_registration_resets_lsp_language_id_override() {
+    let mut reg = LanguageRegistry::new();
+    reg.register_identity("tsx", &["tsx"], &[], &[], Some("typescriptreact"))
+        .unwrap();
+    let id = reg.id_of("tsx").unwrap();
+    assert_eq!(reg.lsp_language_id_of(id), "typescriptreact");
+
+    reg.register_identity("tsx", &["tsx", "mytsx"], &[], &[], None)
+        .unwrap();
+    assert_eq!(
+        reg.lsp_language_id_of(id),
+        "tsx",
+        "re-registering without an override must reset to the name"
+    );
+}
+
 #[test]
 fn detect_language_by_extension() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("rust", &["rs"], &[], &[]).unwrap();
+    reg.register_identity("rust", &["rs"], &[], &[], None)
+        .unwrap();
     let id = detect_language(Some(Path::new("foo.rs")), None, &reg);
     assert_eq!(id, reg.id_of("rust"));
     // Flip: wrong extension must not detect.
@@ -288,7 +345,7 @@ fn detect_language_by_extension() {
 #[test]
 fn detect_language_by_glob() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[])
+    reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[], None)
         .unwrap();
     let id = detect_language(Some(Path::new("/project/Makefile")), None, &reg);
     assert_eq!(id, reg.id_of("makefile"));
@@ -299,11 +356,18 @@ fn detect_language_by_glob() {
 #[test]
 fn detect_language_glob_beats_extension() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("typescript", &["ts"], &[], &[])
+    reg.register_identity("typescript", &["ts"], &[], &[], None)
         .unwrap();
-    reg.register_identity("tsconfig", &[], &["tsconfig.json", "*.config.json"], &[])
+    reg.register_identity(
+        "tsconfig",
+        &[],
+        &["tsconfig.json", "*.config.json"],
+        &[],
+        None,
+    )
+    .unwrap();
+    reg.register_identity("json", &["json"], &[], &[], None)
         .unwrap();
-    reg.register_identity("json", &["json"], &[], &[]).unwrap();
     let id = detect_language(Some(Path::new("tsconfig.json")), None, &reg);
     assert_eq!(id, reg.id_of("tsconfig"));
     // Flip: without the glob match, a plain .json should detect as json.
@@ -314,9 +378,9 @@ fn detect_language_glob_beats_extension() {
 #[test]
 fn detect_language_glob_tiebreak_last_registered_wins() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("generic-json", &[], &["*.json"], &[])
+    reg.register_identity("generic-json", &[], &["*.json"], &[], None)
         .unwrap();
-    reg.register_identity("strict-json", &[], &["*.json"], &[])
+    reg.register_identity("strict-json", &[], &["*.json"], &[], None)
         .unwrap();
     assert_eq!(
         detect_language(Some(Path::new("config.json")), None, &reg),
@@ -324,9 +388,9 @@ fn detect_language_glob_tiebreak_last_registered_wins() {
     );
 
     let mut reg2 = LanguageRegistry::new();
-    reg2.register_identity("strict-json", &[], &["*.json"], &[])
+    reg2.register_identity("strict-json", &[], &["*.json"], &[], None)
         .unwrap();
-    reg2.register_identity("generic-json", &[], &["*.json"], &[])
+    reg2.register_identity("generic-json", &[], &["*.json"], &[], None)
         .unwrap();
     assert_eq!(
         detect_language(Some(Path::new("config.json")), None, &reg2),
@@ -337,7 +401,7 @@ fn detect_language_glob_tiebreak_last_registered_wins() {
 #[test]
 fn detect_language_by_shebang() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("python", &["py"], &[], &["python3", "python"])
+    reg.register_identity("python", &["py"], &[], &["python3", "python"], None)
         .unwrap();
     let id = detect_language(
         Some(Path::new("script")),
@@ -353,7 +417,7 @@ fn detect_language_by_shebang() {
 #[test]
 fn detect_language_shebang_direct_path() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("bash", &["sh"], &[], &["bash"])
+    reg.register_identity("bash", &["sh"], &[], &["bash"], None)
         .unwrap();
     // Extension wins over shebang.
     let id = detect_language(Some(Path::new("run.sh")), Some("#!/bin/bash"), &reg);
@@ -378,8 +442,9 @@ fn detect_language_no_match() {
 #[test]
 fn extension_matching_is_case_sensitive() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("c", &["c"], &[], &[]).unwrap();
-    reg.register_identity("cpp", &["C"], &[], &[]).unwrap();
+    reg.register_identity("c", &["c"], &[], &[], None).unwrap();
+    reg.register_identity("cpp", &["C"], &[], &[], None)
+        .unwrap();
     assert_eq!(
         detect_language(Some(Path::new("foo.c")), None, &reg),
         reg.id_of("c"),

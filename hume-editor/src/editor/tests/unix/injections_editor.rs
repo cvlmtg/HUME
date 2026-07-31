@@ -501,7 +501,7 @@ fn plum_install_grammar_resolves_helix_inherits_chain() {
     ed.state
         .config
         .languages
-        .register_identity("tsx", &["tsx"], &[], &[])
+        .register_identity("tsx", &["tsx"], &[], &[], None)
         .unwrap();
 
     type_cmd(&mut ed, ":plum-install-grammar tsx");

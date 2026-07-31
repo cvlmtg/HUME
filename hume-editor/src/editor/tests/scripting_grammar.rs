@@ -82,7 +82,7 @@ fn attach_then_set_language_attaches_syntax() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     ed.state
         .config
@@ -135,7 +135,7 @@ fn reset_config_state_clears_buffer_syntax_not_just_language() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     ed.state
         .config
@@ -179,7 +179,7 @@ fn clear_language_detaches_syntax_keeps_identity() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     ed.state
         .config
@@ -221,7 +221,7 @@ fn sweep_attaches_syntax_on_matching_language() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     // Set language BEFORE grammar is attached — no syntax yet.
     let lang = ed.state.config.languages.intern("json");
@@ -263,7 +263,7 @@ fn sweep_no_op_for_nonmatching_language() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     // Set language but don't attach grammar yet — parser stays absent.
     let lang = ed.state.config.languages.intern("json");
@@ -311,7 +311,7 @@ fn reparse_advances_parsed_gen_after_edit() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     ed.state
         .config
@@ -404,7 +404,7 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     ed.state
         .config
@@ -449,7 +449,7 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     assert!(
         !ed.state.config.languages.has_grammar("json"),
@@ -497,7 +497,7 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     ed.state
         .config
@@ -550,7 +550,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     ed.state
         .config
@@ -630,7 +630,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     ed.state
         .config
@@ -720,7 +720,7 @@ fn parse_worker_result_is_async_then_installed() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     ed.state
         .config
@@ -796,12 +796,12 @@ fn grammar_swap_clears_stale_in_flight() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     ed.state
         .config
@@ -912,7 +912,7 @@ fn rust_function_highlight_snapshot() {
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     ed.state
         .config

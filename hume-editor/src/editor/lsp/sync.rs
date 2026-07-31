@@ -54,7 +54,13 @@ impl Editor {
             .buffers
             .get(bid)
             .language
-            .map(|id| self.state.config.languages.name_of(id).to_owned())
+            .map(|id| {
+                self.state
+                    .config
+                    .languages
+                    .lsp_language_id_of(id)
+                    .to_owned()
+            })
             .expect("attached buffer always has a language");
         self.send_doc_notification(bid, DidOpenTextDocument::METHOD, move |buf, uri| {
             serde_json::json!({

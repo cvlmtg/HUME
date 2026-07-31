@@ -384,7 +384,7 @@ fn queued_effects_before_failure_are_rolled_back() {
         &dir,
         "effects.scm",
         r#"(register-lsp-server! "rust" #:command "rust-analyzer")
-               (%define-language! "foo" '() '() '())
+               (%define-language! "foo" '() '() '() #f)
                (error "intentional mid-body error")"#,
     );
     let id = plugin_id("core:effects");

@@ -710,7 +710,7 @@ fn runtime_registration_attaches_already_open_buffer() {
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     let mut host = ScriptingHost::new();
 
@@ -748,7 +748,7 @@ fn unregister_stops_running_client_and_clears_config() {
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     let mut host = ScriptingHost::new();
     eval_register(
@@ -822,7 +822,7 @@ fn replace_while_running_leaves_old_client_untouched() {
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     let mut host = ScriptingHost::new();
     eval_register(
@@ -876,7 +876,7 @@ fn register_and_open_matching_file_spawns_exactly_one_server_and_second_buffer_a
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     let mut host = ScriptingHost::new();
     eval_register(
@@ -920,7 +920,7 @@ fn opening_a_file_under_a_different_root_spawns_a_second_server() {
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     let mut host = ScriptingHost::new();
     eval_register(
@@ -958,7 +958,7 @@ fn crashed_server_is_not_silently_reattached_to() {
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     let mut host = ScriptingHost::new();
     eval_register(

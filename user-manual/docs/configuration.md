@@ -281,6 +281,14 @@ The arguments, in order, are: the language name, a list of file extensions, a li
 
 Write extensions **without** a leading dot: `"myl"`, not `".myl"`. An extension with a dot never matches.
 
+If a language server expects a different identifier than the language's name (for example TypeScript's language servers expect `"typescriptreact"`, not HUME's `"tsx"`), override it with `#:language-id`:
+
+```scheme
+(define-language! "my-lang" '("myl") #:language-id "my-language-server-id")
+```
+
+It defaults to the language name when omitted.
+
 The definition registers the language and associates it with tree-sitter grammars installed via PLUM:
 
 ```

@@ -420,7 +420,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "switch-to-buffer!" buffers::switch_to_buffer(bid: args::BidArg);
 
         // Language identity and grammar builtins
-        config "%define-language!" syntax::define_language(name: SteelVal, exts_val: SteelVal, globs_val: SteelVal, shebangs_val: SteelVal);
+        config "%define-language!" syntax::define_language(name: SteelVal, exts_val: SteelVal, globs_val: SteelVal, shebangs_val: SteelVal, lsp_language_id_val: SteelVal);
         open   "%register-grammar!" syntax::register_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, injections_path: SteelVal);
 
         // LSP server registration — last-wins, queued (like language regs) and

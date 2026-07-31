@@ -15,6 +15,7 @@
 - Quitting with Ctrl-C/SIGTERM/SIGHUP/SIGQUIT now shuts down language servers gracefully and exits with the conventional `128 + signal` code.
 - Fixed a bug where a closed terminal with no controlling process could leave a HUME process spinning at 100% CPU.
 - `mouse-enabled`/`mouse-select` and `jump-list-capacity` now apply immediately when changed with `:set`, instead of only at startup.
+- Fixed a bug where opening a `.tsx`/`.jsx` (or other Helix-vs-LSP-spelling-mismatched) file made the language server log an "Invalid languageId" warning and silently correct it. `define-language!` gained a `#:language-id` keyword to override the wire identifier when it differs from the language name; bundled languages whose Helix name and LSP identifier differ (`tsx`, `jsx`, `hcl`, `tfvars`, `docker-compose`, `docker-bake`, `quarto`, `robot`, `rmarkdown`) now carry the correct override.
 
 ## [0.10.0] - 2026-07-24
 

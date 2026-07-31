@@ -57,6 +57,7 @@ fn define_language_non_string_name_errors() {
         empty_list(),
         empty_list(),
         empty_list(),
+        SteelVal::BoolV(false),
     );
     assert!(
         result.is_err(),
@@ -79,6 +80,7 @@ fn define_language_queues_pending_reg() {
             empty_list(),
             empty_list(),
             empty_list(),
+            SteelVal::BoolV(false),
         );
         assert!(
             result.is_ok(),
@@ -104,12 +106,41 @@ fn define_language_accepts_symbol_name() {
             empty_list(),
             empty_list(),
             empty_list(),
+            SteelVal::BoolV(false),
         );
         assert!(result.is_ok());
     }
     assert!(matches!(
         lang_regs(&h)[0],
         PendingLanguageReg::Identity { name, .. } if name == "python"
+    ));
+}
+
+/// `%define-language!`'s 5th arg decodes into `PendingLanguageReg::Identity`'s
+/// `lsp_language_id` — `#f` becomes `None`, a string becomes `Some`.
+///
+/// Fail oracle: dropping the 5th arg or ignoring it would leave
+/// `lsp_language_id` `None` even when a string was passed — the second
+/// assertion below would fail.
+#[test]
+fn define_language_decodes_lsp_language_id_arg() {
+    let mut h = SteelCtxTestHarness::new();
+    {
+        let mut ctx = h.ctx_init();
+        define_language(
+            &mut ctx,
+            str_val("tsx"),
+            empty_list(),
+            empty_list(),
+            empty_list(),
+            str_val("typescriptreact"),
+        )
+        .expect("%define-language! must succeed with a string lsp-language-id");
+    }
+    assert!(matches!(
+        lang_regs(&h)[0],
+        PendingLanguageReg::Identity { lsp_language_id, .. }
+            if lsp_language_id.as_deref() == Some("typescriptreact")
     ));
 }
 

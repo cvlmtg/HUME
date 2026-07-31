@@ -28,7 +28,7 @@ fn register_markdown(ed: &mut Editor) {
     ed.state
         .config
         .languages
-        .register_identity("markdown", &["md"], &[], &[])
+        .register_identity("markdown", &["md"], &[], &[], None)
         .unwrap();
     ed.state
         .config

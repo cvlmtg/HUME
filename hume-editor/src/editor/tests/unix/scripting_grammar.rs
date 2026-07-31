@@ -102,7 +102,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
@@ -297,7 +297,7 @@ fn install_real_json_grammar_e2e() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[])
+        .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
@@ -382,6 +382,108 @@ fn setup_editor_with_languages_scm(
     }
 
     (ed, vec![config_tmp, runtime_tmp, data_tmp])
+}
+
+/// `define-language!`'s `#:language-id` keyword — introduced as a plain
+/// function (converted from a `syntax-rules` macro) so it can take an
+/// optional trailing keyword arg — round-trips through the real `prelude.scm`
+/// exactly like the old positional-only calls still used everywhere else in
+/// `languages.scm`. Exercises both call shapes side by side: `plain-lang` (no
+/// keyword, the pre-existing shape) and `tsx` (with the override).
+///
+/// Flip: reverting `%define-language!`'s arity (or `prelude.scm`'s function)
+/// to the old 4-arg macro breaks eval outright — `init_scripting` would log
+/// an error and neither identity would register.
+#[test]
+fn define_language_language_id_keyword_round_trips_through_real_prelude() {
+    let languages_scm = r#"
+        (define-language! "plain-lang" '("plainext"))
+        (define-language! "tsx" '("tsx") #:language-id "typescriptreact")
+    "#;
+
+    let (ed, _dirs) = setup_editor_with_languages_scm(languages_scm, "test.tsx");
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "#:language-id must parse and eval cleanly: {errors:?}"
+    );
+
+    let plain_id = ed
+        .state
+        .config
+        .languages
+        .id_of("plain-lang")
+        .expect("plain-lang must have registered");
+    assert_eq!(
+        ed.state.config.languages.lsp_language_id_of(plain_id),
+        "plain-lang",
+        "a call with no #:language-id must fall back to the name"
+    );
+
+    let tsx_id = ed
+        .state
+        .config
+        .languages
+        .id_of("tsx")
+        .expect("tsx must have registered");
+    assert_eq!(
+        ed.state.config.languages.lsp_language_id_of(tsx_id),
+        "typescriptreact",
+        "#:language-id must override the wire languageId"
+    );
+}
+
+/// The actual bug report this whole feature exists for: opening a `.tsx`
+/// file made `typescript-language-server` log "Invalid languageId \"tsx\"
+/// ... Correcting to \"typescriptreact\"", because the bundled
+/// `languages.scm` sent HUME's own language name as the wire `languageId`.
+/// Boots against the real, shipped `runtime/` dir (not a hand-written
+/// fixture) so this fails if a future `scripts/sync-grammars.py` run ever
+/// drops the `#:language-id` overrides again.
+///
+/// Flip: this test fails today on `main` (before this change), since
+/// `lsp_language_id_of` doesn't exist yet and `tsx`'s bundled identity has no
+/// override — proving it actually exercises the bug.
+#[test]
+fn tsx_bundled_language_id_is_typescriptreact() {
+    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let config_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(hume_config.join("init.scm"), "").unwrap();
+    let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
+
+    let mut ed = editor_from("-[a]>b\n");
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", real_runtime);
+        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+    }
+    ed.init_scripting(&mut Default::default());
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    let id = ed
+        .state
+        .config
+        .languages
+        .id_of("tsx")
+        .expect("tsx must be a bundled language");
+    assert_eq!(
+        ed.state.config.languages.lsp_language_id_of(id),
+        "typescriptreact"
+    );
 }
 
 /// Locks the startup invariant the `run()` reorder (`hume-editor/src/lib.rs`)

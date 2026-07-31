@@ -48,12 +48,15 @@ LANGUAGES_HEADER = """\
 ;;;
 ;;; Evaluated at startup before init.scm.  Override any entry by redefining
 ;;; it in init.scm — `define-language!` replaces the prior identity
-;;; (extensions/globs/shebangs) for a given name, and keeps any grammar
-;;; already attached to it (see init.scm.example for override examples).
+;;; (extensions/globs/shebangs/language-id) for a given name, and keeps any
+;;; grammar already attached to it (see init.scm.example for override examples).
 ;;;
-;;; Identity only: extensions, globs, and shebangs.  No tree-sitter grammars
-;;; are shipped here — to enable highlighting, install a compiled grammar and
-;;; its highlights query, typically via `core:plum`'s `:plum-install-grammar`.
+;;; Identity only: extensions, globs, shebangs, and an optional `#:language-id`
+;;; override for the `languageId` sent to language servers (only present when
+;;; it differs from the name, e.g. "tsx" -> "typescriptreact"). No tree-sitter
+;;; grammars are shipped here — to enable highlighting, install a compiled
+;;; grammar and its highlights query, typically via `core:plum`'s
+;;; `:plum-install-grammar`.
 ;;;
 ;;; Grammar source metadata lives in grammar-sources.scm, and startup
 ;;; registration of already-compiled grammars in grammars.scm — both loaded
@@ -151,7 +154,7 @@ def parse_grammars(doc: dict) -> dict[str, dict]:
 
 
 def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
-    """Return [{name, extensions, globs, shebangs, grammar_name}] for each language."""
+    """Return [{name, extensions, globs, shebangs, grammar_name, language_id}] for each language."""
     langs = []
     overrides = []
     no_grammar = []
@@ -188,6 +191,7 @@ def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
                 "globs": globs,
                 "shebangs": shebangs,
                 "grammar_name": grammar_name,
+                "language_id": entry.get("language-id"),
             }
         )
 
@@ -254,17 +258,23 @@ def emit_language_identities(langs: list[dict]) -> list[str]:
         exts = lang["extensions"]
         globs = lang["globs"]
         shebangs = lang["shebangs"]
+        language_id = lang.get("language_id")
+        language_id_suffix = f" #:language-id {scheme_str(language_id)}" if language_id else ""
 
         if shebangs:
             lines.append(
-                f"(define-language! {name_s} {scheme_list(exts)} {scheme_list(globs)} {scheme_list(shebangs)})"
+                f"(define-language! {name_s} {scheme_list(exts)} {scheme_list(globs)} "
+                f"{scheme_list(shebangs)}{language_id_suffix})"
             )
         elif globs:
-            lines.append(f"(define-language! {name_s} {scheme_list(exts)} {scheme_list(globs)})")
+            lines.append(
+                f"(define-language! {name_s} {scheme_list(exts)} {scheme_list(globs)}"
+                f"{language_id_suffix})"
+            )
         elif exts:
-            lines.append(f"(define-language! {name_s} {scheme_list(exts)})")
+            lines.append(f"(define-language! {name_s} {scheme_list(exts)}{language_id_suffix})")
         else:
-            lines.append(f"(define-language! {name_s})")
+            lines.append(f"(define-language! {name_s}{language_id_suffix})")
     return lines
 
 

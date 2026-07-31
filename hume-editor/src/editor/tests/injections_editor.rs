@@ -63,13 +63,13 @@ fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
     ed.state
         .config
         .languages
-        .register_identity("markdown", &["md"], &[], &[])
+        .register_identity("markdown", &["md"], &[], &[], None)
         .unwrap();
     attach(&mut ed, "markdown", "tree_sitter_markdown", true);
     ed.state
         .config
         .languages
-        .register_identity("markdown.inline", &[], &[], &[])
+        .register_identity("markdown.inline", &[], &[], &[], None)
         .unwrap();
     attach(
         &mut ed,
@@ -80,7 +80,7 @@ fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     attach(&mut ed, "rust", "tree_sitter_rust", false);
 

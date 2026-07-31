@@ -178,6 +178,7 @@ impl Editor {
                     extensions,
                     globs,
                     shebangs,
+                    lsp_language_id,
                 } => {
                     let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
                     let shebangs_ref: Vec<&str> = shebangs.iter().map(String::as_str).collect();
@@ -196,6 +197,7 @@ impl Editor {
                         &exts,
                         &valid_globs,
                         &shebangs_ref,
+                        lsp_language_id.as_deref(),
                     );
                     any_identity = true;
                 }

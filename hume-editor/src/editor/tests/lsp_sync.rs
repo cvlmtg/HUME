@@ -44,7 +44,7 @@ fn attached_editor(tmp: &tempfile::TempDir) -> (Editor, BufferId, NotificationLo
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
 
     let mut host = ScriptingHost::new();
@@ -116,6 +116,51 @@ fn did_open_carries_full_text_and_language_id() {
     assert_eq!(params["textDocument"]["text"], "hello world\n");
 }
 
+/// `didOpen`'s `languageId` is the language's registered `lsp_language_id`
+/// override, not HUME's own language name — the actual bug this test guards:
+/// a bare `typescript-language-server` rejects `"tsx"` and logs "Invalid
+/// languageId", correcting it to `"typescriptreact"` itself. The expected
+/// string here is a hardcoded literal, never derived from `name_of` /
+/// `lsp_language_id_of` — an independent oracle.
+///
+/// Flip: reverting `lsp_did_open` to `name_of` instead of
+/// `lsp_language_id_of` makes this fail (`languageId` would be `"tsx"`).
+#[test]
+fn did_open_carries_the_lsp_language_id_override_not_the_hume_name() {
+    let tmp = safe_tempdir();
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    let file = root.join("component.tsx");
+    std::fs::write(&file, "const x = 1;\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    let (backend, log, _requests) = RecordingLspBackend::with_default_handshake();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    ed.state
+        .config
+        .languages
+        .register_identity("tsx", &["tsx"], &[], &[], Some("typescriptreact"))
+        .unwrap();
+
+    let mut host = ScriptingHost::new();
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "tsx" #:command "typescript-language-server")"#,
+        tmp.path(),
+    );
+
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    ed.drain_lsp();
+
+    let log = log.borrow();
+    let (method, params) = log
+        .iter()
+        .find(|(m, _)| m == "textDocument/didOpen")
+        .expect("didOpen must have been sent");
+    assert_eq!(method, "textDocument/didOpen");
+    assert_eq!(params["textDocument"]["languageId"], "typescriptreact");
+}
+
 /// Fix 1: `lsp_did_open` must queue behind the handshake, never write to
 /// the wire before `initialize` completes — the spec forbids anything else
 /// arriving first. Before the drain that carries the initialize response,
@@ -136,7 +181,7 @@ fn did_open_is_queued_until_the_handshake_completes_then_flushes_in_order() {
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     let mut host = ScriptingHost::new();
     eval_register(
@@ -333,7 +378,7 @@ fn register_lsp_server_init_options_reach_the_initialize_request() {
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
 
     let mut host = ScriptingHost::new();

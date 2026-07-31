@@ -90,6 +90,17 @@ The arguments, in order, are:
 
 Trailing arguments you don't need can be dropped — `(define-language! "my-lang" '("myl"))` is fine.
 
+If the language server you'll connect expects a different identifier than
+`"my-lang"` — for example TypeScript's language servers expect
+`"typescriptreact"` for `.tsx` files, not HUME's `"tsx"` — override it with
+`#:language-id`:
+
+```scheme
+(define-language! "my-lang" '("myl") #:language-id "my-language-server-id")
+```
+
+It defaults to the language name when omitted.
+
 Now `my-lang` is detected like any built-in. For a grammar that isn't in the catalog — a private or experimental tree-sitter grammar — point HUME at the compiled library and a highlight query file by hand:
 
 ```scheme

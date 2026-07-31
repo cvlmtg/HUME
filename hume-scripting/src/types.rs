@@ -35,6 +35,7 @@ pub enum PendingLanguageReg {
         extensions: Vec<String>,
         globs: Vec<String>,
         shebangs: Vec<String>,
+        lsp_language_id: Option<String>,
     },
     Grammar {
         name: String,

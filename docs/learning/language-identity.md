@@ -70,7 +70,13 @@ The funnel does five things in sequence:
 4. Sets up (or tears down) syntax parsing for the buffer based on the new
    language.
 5. Attaches the buffer to a language server for the new language, spawning
-   one if needed (see the LSP doc).
+   one if needed (see the LSP doc). The identifier sent over the wire to the
+   server is usually the language name itself, but a language can register a
+   separate identifier for this one purpose — some language servers expect a
+   different spelling than HUME's own name for the language (TypeScript's
+   servers expect `"typescriptreact"`, not `"tsx"`, for example). That's the
+   one place the name and the wire identity are allowed to diverge; every
+   other subsystem still reads the name.
 
 Having one funnel makes it impossible for any code path to change the language
 and forget to update syntax state, or to change it without notifying plugins.

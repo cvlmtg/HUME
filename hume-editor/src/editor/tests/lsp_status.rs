@@ -155,7 +155,7 @@ fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     let mut host = ScriptingHost::new();
     eval_register(
@@ -212,7 +212,7 @@ fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[])
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     let mut host = ScriptingHost::new();
     eval_register(

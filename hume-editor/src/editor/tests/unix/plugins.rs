@@ -162,7 +162,7 @@ fn failed_activation_does_not_leave_a_queued_lsp_registration() {
 fn lazy_plugin_defined_language_is_registered_on_activation() {
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
-        r#"(%define-language! "foo" '() '() '())
+        r#"(%define-language! "foo" '() '() '() #f)
            (define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -1793,7 +1793,7 @@ fn language_trigger_lint_silent_for_known_language() {
     // %define-language! (the Rust primitive) works without prelude.scm
     // (the macro wrapper in languages.scm is absent in the test environment).
     let (ed, _dirs) = setup_lang_lint_editor(
-        r#"(%define-language! "foo" '() '() '())
+        r#"(%define-language! "foo" '() '() '() #f)
            (declare-plugin "user/tp" #:languages '("foo"))"#,
     );
 
@@ -1828,7 +1828,7 @@ fn language_trigger_lint_silent_for_forward_defined_language() {
     // declare-plugin BEFORE define-language! — the forward-reference case.
     let (ed, _dirs) = setup_lang_lint_editor(
         r#"(declare-plugin "user/tp" #:languages '("foo"))
-           (%define-language! "foo" '() '() '())"#,
+           (%define-language! "foo" '() '() '() #f)"#,
     );
 
     assert!(

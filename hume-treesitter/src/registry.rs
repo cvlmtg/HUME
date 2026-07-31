@@ -33,6 +33,10 @@ pub struct LanguageIdentity {
     pub globs: Vec<String>,
     /// Shebang substrings to match (e.g. `"python"`, `"node"`).
     pub shebangs: Vec<String>,
+    /// Override for the wire `languageId` sent to language servers, when it
+    /// differs from the name (e.g. `"tsx"` needs `"typescriptreact"`).
+    /// `None` means callers should fall back to the name — see `lsp_language_id_of`.
+    pub lsp_language_id: Option<String>,
 }
 
 // ── GrammarBundle ─────────────────────────────────────────────────────────────
@@ -194,9 +198,21 @@ impl LanguageRegistry {
         &self.names[id.0 as usize]
     }
 
+    /// The `languageId` LSP servers expect for `id` — the language name
+    /// unless an override was registered. HUME's names mirror Helix's, which
+    /// diverge from the LSP spec's well-known identifiers for a handful of
+    /// languages (`tsx` → `typescriptreact`).
+    pub fn lsp_language_id_of(&self, id: LanguageId) -> &str {
+        self.identities[id.0 as usize]
+            .as_ref()
+            .and_then(|i| i.lsp_language_id.as_deref())
+            .unwrap_or_else(|| self.name_of(id))
+    }
+
     // ── Identity ──────────────────────────────────────────────────────────────
 
-    /// Register a language identity: name, extensions, glob patterns, shebangs.
+    /// Register a language identity: name, extensions, glob patterns, shebangs,
+    /// LSP `languageId` override.
     ///
     /// Returns `Err(RegisterError::GlobBuild)` if the combined glob set would exceed
     /// globset's NFA size limit.
@@ -209,8 +225,10 @@ impl LanguageRegistry {
         extensions: &[&str],
         globs: &[&str],
         shebangs: &[&str],
+        lsp_language_id: Option<&str>,
     ) -> Result<LanguageId, RegisterError> {
-        let id = self.register_identity_no_rebuild(name, extensions, globs, shebangs);
+        let id =
+            self.register_identity_no_rebuild(name, extensions, globs, shebangs, lsp_language_id);
         self.rebuild_glob_set()?;
         Ok(id)
     }
@@ -220,17 +238,18 @@ impl LanguageRegistry {
     /// Intended for batch registration: call this N times then call
     /// `rebuild_glob_set` once, avoiding O(N²) NFA constructions at startup.
     ///
-    /// Replaces extensions/globs/shebangs for `name`; an already-attached
-    /// grammar is kept — identity and grammar are independent facts about a
-    /// language, and re-registering one must not silently undo the other.
-    /// (Symmetric with `attach_grammar`, which likewise preserves an existing
-    /// identity.) A grammar only ever changes via `attach_grammar`.
+    /// Replaces extensions/globs/shebangs/lsp_language_id for `name`; an
+    /// already-attached grammar is kept — identity and grammar are independent
+    /// facts about a language, and re-registering one must not silently undo
+    /// the other. (Symmetric with `attach_grammar`, which likewise preserves an
+    /// existing identity.) A grammar only ever changes via `attach_grammar`.
     pub fn register_identity_no_rebuild(
         &mut self,
         name: &str,
         extensions: &[&str],
         globs: &[&str],
         shebangs: &[&str],
+        lsp_language_id: Option<&str>,
     ) -> LanguageId {
         let id = self.intern(name);
         if let Some(old) = self.identities[id.0 as usize].take() {
@@ -240,6 +259,7 @@ impl LanguageRegistry {
             extensions: extensions.iter().map(|s| s.to_string()).collect(),
             globs: globs.iter().map(|s| s.to_string()).collect(),
             shebangs: shebangs.iter().map(|s| s.to_string()).collect(),
+            lsp_language_id: lsp_language_id.map(str::to_owned),
         };
         for ext in &new_identity.extensions {
             self.by_ext.insert(ext.clone(), id);

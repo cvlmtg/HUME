@@ -374,7 +374,7 @@ fn goto_to_an_unopened_file_detects_its_language() {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
+        .register_identity_no_rebuild("rust", &["rs"], &[], &[], None);
     ed.state
         .config
         .languages

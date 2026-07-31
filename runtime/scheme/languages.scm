@@ -2,12 +2,15 @@
 ;;;
 ;;; Evaluated at startup before init.scm.  Override any entry by redefining
 ;;; it in init.scm — `define-language!` replaces the prior identity
-;;; (extensions/globs/shebangs) for a given name, and keeps any grammar
-;;; already attached to it (see init.scm.example for override examples).
+;;; (extensions/globs/shebangs/language-id) for a given name, and keeps any
+;;; grammar already attached to it (see init.scm.example for override examples).
 ;;;
-;;; Identity only: extensions, globs, and shebangs.  No tree-sitter grammars
-;;; are shipped here — to enable highlighting, install a compiled grammar and
-;;; its highlights query, typically via `core:plum`'s `:plum-install-grammar`.
+;;; Identity only: extensions, globs, shebangs, and an optional `#:language-id`
+;;; override for the `languageId` sent to language servers (only present when
+;;; it differs from the name, e.g. "tsx" -> "typescriptreact"). No tree-sitter
+;;; grammars are shipped here — to enable highlighting, install a compiled
+;;; grammar and its highlights query, typically via `core:plum`'s
+;;; `:plum-install-grammar`.
 ;;;
 ;;; Grammar source metadata lives in grammar-sources.scm, and startup
 ;;; registration of already-compiled grammars in grammars.scm — both loaded
@@ -69,8 +72,8 @@
 (define-language! "dhall" '("dhall"))
 (define-language! "diff" '("diff" "patch" "rej"))
 (define-language! "djot" '("dj" "djot"))
-(define-language! "docker-bake" '() '("docker-bake.hcl" "docker-bake.override.hcl"))
-(define-language! "docker-compose" '() '("docker-compose.yaml" "docker-compose.yml" "compose.yaml" "compose.yml"))
+(define-language! "docker-bake" '() '("docker-bake.hcl" "docker-bake.override.hcl") #:language-id "dockerbake")
+(define-language! "docker-compose" '() '("docker-compose.yaml" "docker-compose.yml" "compose.yaml" "compose.yml") #:language-id "dockercompose")
 (define-language! "dockerfile" '("Dockerfile" "dockerfile" "Containerfile" "containerfile") '("Dockerfile" "Dockerfile.*" "dockerfile" "dockerfile.*" "Containerfile" "Containerfile.*" "containerfile" "containerfile.*"))
 (define-language! "dot" '("dot"))
 (define-language! "doxyfile" '() '("Doxyfile"))
@@ -131,14 +134,14 @@
 (define-language! "gpr" '("gpr"))
 (define-language! "graphql" '("gql" "graphql" "graphqls"))
 (define-language! "gren" '("gren"))
-(define-language! "groovy" '("gradle" "groovy" "jenkinsfile") '("Jenkinsfile" "Jenkinsfile.*") '("groovy"))
+(define-language! "groovy" '("gradle" "groovy" "jenkinsfile") '("Jenkinsfile" "Jenkinsfile.*") '("groovy") #:language-id "groovy")
 (define-language! "gts" '("gts"))
 (define-language! "hare" '("ha"))
 (define-language! "haskell" '("hs" "hs-boot" "hsc") '() '("runhaskell" "stack"))
 (define-language! "haskell-literate" '("lhs") '() '("runhaskell" "stack"))
 (define-language! "haskell-persistent" '("persistentmodels"))
 (define-language! "haxe" '("hx"))
-(define-language! "hcl" '("hcl" "tf" "nomad"))
+(define-language! "hcl" '("hcl" "tf" "nomad") #:language-id "terraform")
 (define-language! "hdl" '("hdl"))
 (define-language! "heex" '("heex"))
 (define-language! "helm" '() '("templates/*.yaml" "templates/*.yml" "templates/_*.tpl" "templates/NOTES.txt"))
@@ -157,7 +160,7 @@
 (define-language! "inko" '("inko"))
 (define-language! "janet" '("cgen" "janet" "jdn") '() '("janet"))
 (define-language! "java" '("java" "jav" "pde"))
-(define-language! "javascript" '("js" "mjs" "cjs" "rules" "es6" "pac" "gs") '(".node_repl_history" "jakefile") '("node"))
+(define-language! "javascript" '("js" "mjs" "cjs" "rules" "es6" "pac" "gs") '(".node_repl_history" "jakefile") '("node") #:language-id "javascript")
 (define-language! "jinja" '("jinja" "jinja2" "j2"))
 (define-language! "jjconfig" '() '("jj/config.toml" "jj/**/*.toml" ".jj/repo/*.toml"))
 (define-language! "jjdescription" '() '("*.jjdescription"))
@@ -170,7 +173,7 @@
 (define-language! "json5" '("json5"))
 (define-language! "jsonc" '("jsonc") '("{t,j}sconfig.json" "bun.lock" ".devcontainer.json" "devcontainer.json" ".vscode/*.json"))
 (define-language! "jsonnet" '("libsonnet" "jsonnet"))
-(define-language! "jsx" '("jsx"))
+(define-language! "jsx" '("jsx") #:language-id "javascriptreact")
 (define-language! "julia" '("jl") '() '("julia"))
 (define-language! "just" '("just") '("justfile" "Justfile" ".justfile" ".Justfile"))
 (define-language! "kcl" '("kcl"))
@@ -236,7 +239,7 @@
 (define-language! "pest" '("pest"))
 (define-language! "php" '("php" "inc" "php4" "php5" "phtml" "ctp") '() '("php"))
 (define-language! "php-only")
-(define-language! "picat" '("pi" "picat") '() '("picat"))
+(define-language! "picat" '("pi" "picat") '() '("picat") #:language-id "picat")
 (define-language! "pip-requirements" '() '("requirements.txt" "constraints.txt"))
 (define-language! "pkgbuild" '() '("PKGBUILD"))
 (define-language! "pkl" '("pkl" "pcf") '("PklProject"))
@@ -257,7 +260,7 @@
 (define-language! "python" '("py" "pyi" "py3" "pyw" "ptl" "rpy" "cpy" "ipy" "pyt") '(".python_history" ".pythonstartup" ".pythonrc" "*SConstruct" "*SConscript" "*sconstruct") '("python" "uv"))
 (define-language! "qml" '("qml"))
 (define-language! "qmv" '() '("/tmp/qmv*"))
-(define-language! "quarto" '("qmd"))
+(define-language! "quarto" '("qmd") #:language-id "qmd")
 (define-language! "quint" '("qnt"))
 (define-language! "r" '("r" "R") '(".Rprofile" "Rprofile.site" ".RHistory" "radian/profile" ".radian_profile") '("r" "R"))
 (define-language! "racket" '("rkt" "rktd" "rktl" "scrbl" "zuo") '() '("racket" "zuo"))
@@ -265,8 +268,8 @@
 (define-language! "rego" '("rego"))
 (define-language! "rescript" '("res"))
 (define-language! "ripple" '("ripple"))
-(define-language! "rmarkdown" '("rmd" "Rmd"))
-(define-language! "robot" '("robot" "resource"))
+(define-language! "rmarkdown" '("rmd" "Rmd") #:language-id "rmd")
+(define-language! "robot" '("robot" "resource") #:language-id "robotframework")
 (define-language! "robots.txt" '() '("robots.txt"))
 (define-language! "ron" '("ron"))
 (define-language! "rpmspec" '("spec"))
@@ -315,7 +318,7 @@
 (define-language! "templ" '("templ"))
 (define-language! "tera" '("tera"))
 (define-language! "textproto" '("txtpb" "textpb" "textproto"))
-(define-language! "tfvars" '("tfvars"))
+(define-language! "tfvars" '("tfvars") #:language-id "terraform-vars")
 (define-language! "thrift" '("thrift"))
 (define-language! "tilt" '("tiltfile") '("Tiltfile"))
 (define-language! "tlaplus" '("tla"))
@@ -324,10 +327,10 @@
 (define-language! "toml" '("toml") '("pdm.lock" "poetry.lock" "Cargo.lock" "uv.lock" "containers.conf" "containers.conf.d/*.conf" "containers.conf.modules/*.conf" "mounts.conf" "policy.conf" "registries.conf" "storage.conf" "staticcheck.conf"))
 (define-language! "tql" '("tql"))
 (define-language! "tsq" '() '("queries/*.scm" "injections.scm" "highlights.scm" "indents.scm" "textobjects.scm" "locals.scm" "tags.scm"))
-(define-language! "tsx" '("tsx"))
+(define-language! "tsx" '("tsx") #:language-id "typescriptreact")
 (define-language! "twig" '("twig"))
-(define-language! "typescript" '("ts" "mts" "cts") '() '("deno" "bun" "ts-node"))
-(define-language! "typespec" '("tsp"))
+(define-language! "typescript" '("ts" "mts" "cts") '() '("deno" "bun" "ts-node") #:language-id "typescript")
+(define-language! "typespec" '("tsp") #:language-id "typespec")
 (define-language! "typst" '("typst" "typ"))
 (define-language! "ungrammar" '("ungram" "ungrammar"))
 (define-language! "unison" '("u"))
