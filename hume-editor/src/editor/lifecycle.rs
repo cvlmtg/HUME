@@ -1741,16 +1741,27 @@ impl Editor {
         let focused = self.state.focused_pane_id;
         let pane_rect = self.view.pane_rect(focused)?;
         let (_, gutter_w) = self.resolve_pane_settings(focused);
-        let vp = &self.view.panes[focused].viewport;
-        let buf = self.state.buffers.get(self.focused_buffer_id());
         let content_width = pane_rect.width.saturating_sub(gutter_w);
-        let mut rm = super::commands::pane_row_map(
-            buf,
-            &self.state.settings,
-            &self.view.panes[focused],
-            &mut ctx.cursor_format,
-        );
-        let (col, row) = super::cursor::screen_pos(vp, &mut rm, anchor_char)?;
+        // Step 6 (`scroll_into_view`) already resolved the focused cursor's
+        // screen cell this frame, via the same locate/distance walk
+        // `screen_pos` runs below — nothing between steps 6 and 10 moves the
+        // cursor or the viewport, so the two callers anchored at the live
+        // cursor (`sync_popup_view`, `sync_menu_view`) can reuse it instead of
+        // re-walking the row list (a full per-line format in wrap mode).
+        let (col, row) = match ctx.cursor_screen {
+            Some(cell) if anchor_char == self.focused_cursor_char() => cell,
+            _ => {
+                let vp = &self.view.panes[focused].viewport;
+                let buf = self.state.buffers.get(self.focused_buffer_id());
+                let mut rm = super::commands::pane_row_map(
+                    buf,
+                    &self.state.settings,
+                    &self.view.panes[focused],
+                    &mut ctx.cursor_format,
+                );
+                super::cursor::screen_pos(vp, &mut rm, anchor_char)?
+            }
+        };
         let anchor = (col + gutter_w + pane_rect.x, row + pane_rect.y);
         // Reserve 2 cells on each axis for the popup's 1-cell frame, so
         // content + border together fit the same envelope this budget used

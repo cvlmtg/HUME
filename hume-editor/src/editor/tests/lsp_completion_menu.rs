@@ -11,8 +11,11 @@
 use super::*;
 use crate::editor::buffer::Buffer;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
+use crate::editor::{commands, cursor};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
+use hume_engine::format::FormatScratch;
+use hume_engine::pane::WrapMode;
 use hume_engine::pipeline::RenderContext;
 use ratatui::layout::Rect;
 
@@ -570,4 +573,62 @@ fn stale_anchor_after_switching_focus_to_another_buffer_skips_render() {
         ed.state.completion_menu_view.read().unwrap().is_none(),
         "popup must not render a session anchored to a buffer that isn't focused"
     );
+}
+
+// ── Regression: overlay anchor reuses the scroll pass's cached cursor cell ──
+//
+// `popup_anchor_and_bounds` takes a fast path when its `anchor_char` is the
+// focused cursor: it reuses `ctx.cursor_screen`, resolved by `scroll_into_view`
+// earlier in `prepare_frame`, instead of re-walking the row list. Pins that
+// the reused cell agrees with a full, independent walk — in wrap mode, where
+// that walk is a per-line format, so a wrong cache would show up as a
+// silently-misplaced popup, not a panic.
+
+#[test]
+fn completion_popup_anchor_matches_an_independent_screen_pos_walk_when_wrapped() {
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let pid = ed.state.focused_pane_id;
+    // Explicit non-zero width, independent of the terminal size passed to
+    // `prepare_frame` below, so the cursor lands several wrap rows into the
+    // line regardless of pane width.
+    ed.view.panes[pid].wrap_mode = WrapMode::Soft { width: 6 };
+
+    ed.feed_key(key('i'));
+    for ch in "abcdefghijklmnopqrstuvwxyz0123456789".chars() {
+        ed.feed_key(key(ch));
+    }
+    begin_session(&mut ed, &[("candidate", None)]);
+
+    let mut ctx = RenderContext::new();
+    // Ample room on every side: `resolve_popup_geometry` neither flips above
+    // the cursor nor clamps the position, so the popup's (x, y) is exactly
+    // (anchor_x, anchor_y + 1) — letting this test check the anchor cell
+    // itself without reimplementing that geometry logic.
+    ed.prepare_frame(80, 24, &mut ctx);
+
+    let (x, y) = {
+        let view = ed.state.completion_menu_view.read().unwrap();
+        let state = view.as_ref().expect("popup must be showing");
+        (state.x, state.y)
+    };
+
+    // Independent oracle: re-derive the same cell via a fresh `RowMap` and
+    // `cursor::screen_pos` — the exact primitives the fast path's slow
+    // fallback uses — entirely bypassing `ctx.cursor_screen`.
+    let bid = ed.focused_buffer_id();
+    let cursor_char = ed.current_selections().primary().head();
+    let pane_rect = ed.view.pane_rect(pid).expect("focused pane has a rect");
+    let buf = ed.state.buffers.get(bid);
+    let gutter_w = cursor::gutter_width(
+        ed.view.panes[pid].providers.gutter_columns(),
+        buf.text().len_lines(),
+    );
+    let mut scratch = FormatScratch::new();
+    let mut rm = commands::pane_row_map(buf, &ed.state.settings, &ed.view.panes[pid], &mut scratch);
+    let vp = &ed.view.panes[pid].viewport;
+    let (col, row) = cursor::screen_pos(vp, &mut rm, cursor_char).expect("cursor is visible");
+    let expected_x = col + gutter_w + pane_rect.x;
+    let expected_y = row + pane_rect.y + 1; // resolve_popup_geometry: room below → anchor_y + 1
+
+    assert_eq!((x, y), (expected_x, expected_y));
 }
