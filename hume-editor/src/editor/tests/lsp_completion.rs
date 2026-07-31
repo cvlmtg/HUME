@@ -133,13 +133,14 @@ fn accept_with_a_text_edit_extends_the_range_to_cover_chars_typed_after_begin() 
 }
 
 #[test]
-fn accept_with_an_off_spec_text_edit_range_not_containing_the_cursor_clamps_instead_of_panicking() {
+fn accept_with_an_off_spec_text_edit_range_not_containing_the_cursor_errors_and_leaves_the_buffer_untouched()
+ {
     let tmp = safe_tempdir();
     // LSP spec (completion.rs `text_edit` doc, Note 1): a conforming
     // server's completion range always contains the request position — the
-    // as-if-typed model `accept` now uses (every edit expressed as a char
-    // count behind/ahead of the live cursor) depends on that guarantee. This
-    // range starts at char 1 while the cursor sits at char 0, deliberately
+    // as-if-typed model `accept` uses (every edit expressed as a char count
+    // behind/ahead of the live cursor) depends on that guarantee. This range
+    // starts at char 1 while the cursor sits at char 0, deliberately
     // off-spec and unreachable through real typing.
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
@@ -154,10 +155,19 @@ fn accept_with_an_off_spec_text_edit_range_not_containing_the_cursor_clamps_inst
              (completion-accept! 0)))"#,
     );
     type_cmd(&mut ed, ":go");
-    // A delete region that doesn't reach the cursor clamps to start there
-    // instead of panicking or silently doing nothing — no crash, no data
-    // loss beyond what the server's own (off-spec) range already implied.
-    assert_eq!(ed.doc().text().to_string(), "XYZef\n");
+    // A delete region that doesn't reach the cursor errors instead of
+    // silently clamping to some other span the server never asked for — no
+    // data loss, no guessing at a malformed server's intent.
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abcdef\n",
+        "buffer must be untouched when the server's range doesn't contain the cursor"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("does not contain the cursor"),
+        "expected a containment error, got {msg:?}"
+    );
 }
 
 #[test]
@@ -244,6 +254,111 @@ fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
     assert!(
         msg.to_lowercase().contains("error") || msg.to_lowercase().contains("changed"),
         "expected an error message, got {msg:?}"
+    );
+}
+
+#[test]
+fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_zero() {
+    use crate::editor::commands::open_pane;
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let bid_a = ed.focused_buffer_id();
+    // A second pane showing the same buffer, still unfocused.
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid_a);
+
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "begin" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))))
+           (define-command! "finish" "" (lambda ()
+             (completion-accept! 0)))"#,
+    );
+    type_cmd(&mut ed, ":begin");
+    assert!(ed.lsp.completion.is_some(), "sanity: session began");
+
+    // Nothing dismisses a session on a focused-pane change — focus moves to
+    // the pane the session did *not* begin in. `pane_state::ensure` would
+    // otherwise fabricate a fresh cursor at char 0 for pane B (it has never
+    // shown this buffer's selections before), landing the completion at the
+    // top of the file instead of erroring.
+    ed.switch_focused_pane(pid_b);
+
+    let before = ed.doc().text().to_string();
+    type_cmd(&mut ed, ":finish");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before,
+        "accept! must reject — the session's pane is no longer focused"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("no longer focused"),
+        "expected a pane-focus error, got {msg:?}"
+    );
+}
+
+#[test]
+fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
+    let tmp = safe_tempdir();
+    // textEdit replaces chars [0, 3) ("abc"); additionalTextEdits targets
+    // [2, 4) ("cd") — the two overlap at chars 2-3. Before the commit under
+    // review, both landed in one batched `ChangeSet` that rejected overlap;
+    // splitting them apart dropped that check.
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "x" "insertText" "ignored-fallback"
+                           "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 0)
+                                                        "end" (hash "line" 0 "character" 3))
+                                       "newText" "XYZ")
+                           "additionalTextEdits"
+                             (list (hash "range" (hash "start" (hash "line" 0 "character" 2)
+                                                      "end" (hash "line" 0 "character" 4))
+                                     "newText" "QQ")))))
+             (completion-accept! 0)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abcdef\n",
+        "buffer must be untouched when additionalTextEdits overlaps the main textEdit"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("overlaps additionaltextedits"),
+        "expected an overlap error, got {msg:?}"
+    );
+}
+
+#[test]
+fn accept_with_a_non_collapsed_selection_errors_instead_of_force_collapsing_it() {
+    let tmp = safe_tempdir();
+    // A real (non-collapsed) selection over "bc" — `replace_around_cursors`
+    // would otherwise splice text around its head and force-collapse it,
+    // silently discarding whatever the user had selected.
+    let mut ed = editor_from("a-[bc]>def\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))
+             (completion-accept! 0)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abcdef\n",
+        "buffer must be untouched — accept must reject a non-collapsed selection"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("must be collapsed"),
+        "expected a collapsed-selection error, got {msg:?}"
     );
 }
 

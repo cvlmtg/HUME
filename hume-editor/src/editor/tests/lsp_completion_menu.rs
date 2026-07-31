@@ -462,7 +462,7 @@ fn typing_after_accept_composes_into_the_open_edit_group_without_panicking() {
 }
 
 #[test]
-fn typing_after_moving_the_cursor_before_the_anchor_dismisses_instead_of_panicking() {
+fn left_arrow_dismisses_the_session_immediately() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     for ch in "abc".chars() {
@@ -471,25 +471,83 @@ fn typing_after_moving_the_cursor_before_the_anchor_dismisses_instead_of_panicki
     begin_session(&mut ed, &[("abc", None)]);
 
     // Left isn't intercepted by `handle_completion_key` (only Tab/BackTab/
-    // Up/Down/Enter/Esc/Backspace are) — it's handled by the insert trie and
-    // returns before reaching the refilter guard, so the session survives
-    // with its anchor now stale relative to the cursor. Two presses land the
-    // cursor two chars before the anchor, so the very next char inserted
-    // still leaves `head < anchor` — the inverted-range case.
-    ed.feed_key(KeyEvent::new(KeyCode::Left, Modifiers::NONE));
+    // Up/Down/Enter/Esc/Backspace are) — it resolves through the insert
+    // trie's `WalkResult::Leaf` arm instead, which now dismisses any open
+    // completion session unconditionally before running the motion. Before
+    // this fix the session instead survived with a now-stale anchor, so a
+    // later `Enter` would accept using a `(back, forward)` span still
+    // derived from the pre-move anchor — silently swallowing whatever the
+    // cursor had moved across.
     ed.feed_key(KeyEvent::new(KeyCode::Left, Modifiers::NONE));
     assert!(
-        ed.lsp.completion.is_some(),
-        "sanity: Left does not itself dismiss the session"
+        ed.lsp.completion.is_none(),
+        "a motion key must dismiss the session immediately, not leave a stale anchor"
     );
 
     ed.feed_key(key('x'));
+    let text = ed.doc().text().to_string();
+    assert_eq!(
+        text, "abxc\n",
+        "sanity: typing after dismissal is ordinary insertion, at the moved cursor"
+    );
+}
+
+#[test]
+fn right_arrow_then_enter_dismisses_instead_of_swallowing_the_passed_over_char() {
+    // The finding this fixes, reproduced with default keybindings: cursor
+    // sits right before an existing 'X' (typed "pri" then triggered
+    // completion mid-line), press Right once — stepping over 'X' without
+    // dismissing the session, pre-fix — then Enter. Pre-fix, `accept`
+    // re-anchored its `(back, forward)` span to the live head, so accepting
+    // would have overwritten the token *plus* 'X'. Post-fix, Right dismisses
+    // the session outright, so Enter is an ordinary newline and 'X' survives.
+    let mut ed = editor_from("pri-[X]>\n");
+    ed.feed_key(key('i'));
+    begin_session(&mut ed, &[("print", None)]);
+    assert!(ed.lsp.completion.is_some(), "sanity: session is open");
+
+    ed.feed_key(KeyEvent::new(KeyCode::Right, Modifiers::NONE));
     assert!(
         ed.lsp.completion.is_none(),
-        "a stale anchor past the cursor must dismiss the session, not panic"
+        "Right must dismiss the session immediately"
     );
-    let text = ed.doc().text().to_string();
-    assert_eq!(text, "axbc\n");
+
+    ed.feed_key(key_enter());
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "priX\n\n",
+        "Enter with no session open must insert a plain newline, not accept — \
+         and 'X' (the char the cursor stepped over) must survive intact"
+    );
+}
+
+#[test]
+fn ctrl_w_dismisses_the_session_instead_of_leaving_a_stale_anchor() {
+    // `Ctrl+W` (delete-word-backward) is a `MappableCommand::Edit` bound in
+    // the insert trie — it runs through `run_native_body`, not
+    // `apply_insert_edit`, so it can never call `observe_edit` to keep the
+    // session's anchor in sync (the lint `single native-dispatch funnel
+    // discipline` forbids routing it any other way). Before this fix the
+    // session survived with a now-meaningless anchor; post-fix, any
+    // trie-matched key (this one included) dismisses the session outright.
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.feed_key(key('i'));
+    for ch in "pri".chars() {
+        ed.feed_key(key(ch));
+    }
+    begin_session(&mut ed, &[("print", None)]);
+    assert!(ed.lsp.completion.is_some(), "sanity: session is open");
+
+    ed.feed_key(key_ctrl('w'));
+    assert!(
+        ed.lsp.completion.is_none(),
+        "Ctrl+W must dismiss the session immediately"
+    );
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\n",
+        "sanity: delete-word-backward still runs normally once the session is out of the way"
+    );
 }
 
 // ── Regression: minibuffer `:e <Tab>` completion untouched ───────────────────
@@ -512,13 +570,14 @@ fn minibuffer_e_tab_completion_is_unaffected_by_the_lsp_completion_guard() {
 
 // ── Regression: stale anchor after an out-of-band buffer change ─────────────
 //
-// `session.anchor()` is captured once, at `completion-begin!` time, and never
-// remapped through later edits. `refilter_lsp_completion_after_edit` (see the
-// test above) only revalidates it against printable-char/Backspace keypresses
-// — an edit from any other source (a `:e!` reload, a pane switching to a
-// different buffer) can leave `anchor` pointing past the currently-focused
-// buffer's end, and `sync_completion_menu_view` must not panic walking
-// `RowMap::locate` with it.
+// `session.anchor()` is derived by mapping the `completion-begin!`-time
+// position through every edit `CompletionSession::observe_edit` has been
+// told about — but only `apply_insert_edit` (the chokepoint every ordinary
+// Insert-mode keystroke goes through) ever calls `observe_edit`. An edit from
+// any other source (a `:e!` reload, a pane switching to a different buffer)
+// bypasses it entirely and can leave `anchor` pointing past the
+// currently-focused buffer's end, and `sync_completion_menu_view` must not
+// panic walking `RowMap::locate` with it.
 
 #[test]
 fn stale_anchor_after_a_buffer_reload_skips_render_instead_of_panicking() {
@@ -713,6 +772,46 @@ fn additional_text_edits_land_once_not_once_per_cursor() {
         text.matches("// header\n").count(),
         1,
         "additionalTextEdits has no cursor of its own — must land once, not per cursor"
+    );
+}
+
+#[test]
+fn additional_text_edits_track_a_real_edit_observed_since_begin_not_the_live_rope_directly() {
+    // Request-time document: "fo, extra\n" — additionalTextEdits' wire range
+    // (chars 4..9, "extra") is computed against exactly this document.
+    // Cursor sits right after "fo" (before the comma).
+    let mut ed = editor_from("fo-[,]> extra\n");
+    ed.feed_key(key('i'));
+    begin_session_items(
+        &mut ed,
+        &[serde_json::json!({
+            "label": "foo",
+            "insertText": "func",
+            "additionalTextEdits": [
+                {"range": {"start": {"line": 0, "character": 4}, "end": {"line": 0, "character": 9}},
+                 "newText": "EXTRA"}
+            ]
+        })],
+    );
+    // A real keystroke since `begin` shifts everything after it by one char
+    // — decoding additionalTextEdits' wire range against the *live* rope
+    // directly (the pre-fix bug) would land one char off ("extr" preceded
+    // by the space, not "extra"); decoding against `rope_at_begin` and
+    // mapping forward through the observed edit (the fix) still finds
+    // "extra" exactly, regardless of what happened elsewhere on the line.
+    ed.feed_key(key('o'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "foo, extra\n",
+        "sanity: real edit landed"
+    );
+
+    ed.feed_key(key_enter());
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "func, EXTRA\n",
+        "additionalTextEdits must track the real edit typed since begin, landing on \
+         \"extra\" — not on whatever the same wire offsets now point at in the live rope"
     );
 }
 

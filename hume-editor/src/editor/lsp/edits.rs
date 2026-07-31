@@ -194,52 +194,44 @@ pub(crate) fn apply_text_edits_returning_cs(
     Ok(commit_changeset(state, bid, cs))
 }
 
-/// Applies a `completionItem/resolve` response's `additionalTextEdits`
-/// (wire positions, computed by the server against the document as it stood
-/// *before* the completion's main edit landed) onto `bid`'s *current* text.
-/// `rope_pre`/`encoding` decode the response's wire positions into the char
-/// offsets they meant at request time; `accept_cs` (the main edit's own
-/// `ChangeSet`, from [`apply_text_edits_returning_cs`]) then maps those
-/// offsets forward onto the post-accept document — exact position tracking
-/// through the intervening edit, unlike the UTF-16-delta approximation this
-/// replaces. A caller must re-check the buffer's generation before calling
-/// this (the response can arrive after further edits) — this function does
-/// not gen-check itself, since by the time it runs the "expected" generation
-/// is `accept_cs`'s own postcondition, not a value the caller passes in.
+/// Decodes `edits` (wire positions, computed by the server against the
+/// document as it stood at `rope_at`) into char-offset `(start, end, text)`
+/// triples valid against the document `cs_forward` transforms `rope_at`
+/// into — exact position tracking through every edit `cs_forward` composes,
+/// unlike a scalar-delta approximation. Pure: no buffer access, so it can run
+/// before deciding whether the caller's own edit (if any) would overlap the
+/// result.
 ///
-/// A no-op (`Ok(())`) if `resolved_edits` is empty — matches
+/// Two callers, two documents-since-`rope_at`: LSP completion accept, where
+/// `rope_at` is the request-time snapshot and `cs_forward` is every
+/// keystroke observed since; and a `completionItem/resolve` response, where
+/// `rope_at` is the pre-accept snapshot and `cs_forward` is the accept
+/// edit's own changeset.
+///
+/// Returns an empty `Vec` (not an error) when `edits` is empty — matches
 /// `apply-text-edits!`'s convention of erroring on an empty list only when
-/// the caller has no legitimate empty-response case; here, an empty
-/// `additionalTextEdits` on resolve is normal (nothing more to apply).
-pub(crate) fn apply_resolved_additional_edits(
-    state: &mut EditorState,
-    bid: BufferId,
-    rope_pre: &ropey::Rope,
-    accept_cs: &ChangeSet,
+/// the caller has no legitimate empty-response case; both callers here do
+/// (no `additionalTextEdits` at all is normal).
+pub(crate) fn build_edits_from_earlier_document<'a>(
+    rope_at: &ropey::Rope,
+    cs_forward: &ChangeSet,
     encoding: PositionEncoding,
-    resolved_edits: &[lsp_types::TextEdit],
-) -> Result<(), String> {
-    if resolved_edits.is_empty() {
-        return Ok(());
+    edits: &'a [lsp_types::TextEdit],
+) -> Result<Vec<(usize, usize, &'a str)>, String> {
+    if edits.is_empty() {
+        return Ok(Vec::new());
     }
-    let Some(buf) = state.buffers.try_get(bid) else {
-        return Err("no such buffer".to_string());
-    };
-    if buf.is_read_only() {
-        return Err("buffer is read-only".to_string());
-    }
-
-    let mut ranges: Vec<(usize, usize)> = resolved_edits
+    let mut ranges: Vec<(usize, usize)> = edits
         .iter()
         .map(|e| {
             let start = wire_to_char(
-                rope_pre,
+                rope_at,
                 e.range.start.line as usize,
                 e.range.start.character as usize,
                 encoding,
             );
             let end = wire_to_char(
-                rope_pre,
+                rope_at,
                 e.range.end.line as usize,
                 e.range.end.character as usize,
                 encoding,
@@ -249,7 +241,7 @@ pub(crate) fn apply_resolved_additional_edits(
         .collect();
     if let Some(&(start, end)) = ranges.iter().find(|&&(start, end)| end < start) {
         return Err(format!(
-            "resolved edit has a reversed range (end {end} before start {start})"
+            "text edit has a reversed range (end {end} before start {start})"
         ));
     }
     // `map_ranges` requires sorted-by-start input; sort the (range, text)
@@ -258,18 +250,40 @@ pub(crate) fn apply_resolved_additional_edits(
     let mut indexed: Vec<usize> = (0..ranges.len()).collect();
     indexed.sort_by_key(|&i| ranges[i].0);
     ranges.sort_by_key(|&(start, _)| start);
-    accept_cs.map_ranges(&mut ranges);
+    cs_forward.map_ranges(&mut ranges);
 
-    let rope = state.buffers.get(bid).text().rope();
-    let len_before = rope.len_chars();
-    let char_edits: Vec<(usize, usize, &str)> = indexed
+    Ok(indexed
         .into_iter()
         .zip(ranges)
-        .map(|(orig_i, (start, end))| (start, end, resolved_edits[orig_i].new_text.as_str()))
-        .collect();
+        .map(|(orig_i, (start, end))| (start, end, edits[orig_i].new_text.as_str()))
+        .collect())
+}
+
+/// Commits pre-computed char-offset edits (from
+/// [`build_edits_from_earlier_document`] or any other char-space source)
+/// against `bid`'s *current* text as one `ChangeSet` — validates
+/// overlap/reversed-range across the batch itself (via
+/// [`build_changeset_from_char_edits`]) immediately before mutating.
+/// `Ok(None)` for an empty batch (nothing to commit); `Ok(Some(cs))`
+/// otherwise, so a caller composing this into a larger changeset doesn't need
+/// its own empty-batch branch.
+pub(crate) fn commit_char_edits(
+    state: &mut EditorState,
+    bid: BufferId,
+    char_edits: Vec<(usize, usize, &str)>,
+) -> Result<Option<ChangeSet>, String> {
+    if char_edits.is_empty() {
+        return Ok(None);
+    }
+    let Some(buf) = state.buffers.try_get(bid) else {
+        return Err("no such buffer".to_string());
+    };
+    if buf.is_read_only() {
+        return Err("buffer is read-only".to_string());
+    }
+    let len_before = state.buffers.get(bid).text().rope().len_chars();
     let cs = build_changeset_from_char_edits(len_before, char_edits)?;
-    commit_changeset(state, bid, cs);
-    Ok(())
+    Ok(Some(commit_changeset(state, bid, cs)))
 }
 
 pub(crate) struct WorkspaceEditSummary {

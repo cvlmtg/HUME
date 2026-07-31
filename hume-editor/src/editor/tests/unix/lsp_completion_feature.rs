@@ -477,7 +477,7 @@ fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
 /// `additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it`
 /// — same fixture and expected result, but the additionalTextEdits arrive
 /// via `completionItem/resolve` instead of inline on the completion
-/// response, exercising `edits::apply_resolved_additional_edits`'
+/// response, exercising `edits::build_edits_from_earlier_document`'s
 /// `ChangeSet::map_ranges` position tracking instead of the inline atomic
 /// batch. Both land at the identical final text, proving the resolve path
 /// is exact, not an approximation.

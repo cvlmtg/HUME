@@ -420,49 +420,83 @@ pub(crate) fn insert_str(
     })
 }
 
-/// Replaces `back` chars behind each selection's head and `forward` chars
-/// ahead of it with `text` — the multi-cursor form of "the user typed this
-/// text here." Used by LSP completion accept: a conforming server's
-/// completion range always contains the request position (LSP spec), so a
-/// `(back, forward)` pair derived from one cursor's own edit is the same
-/// char span typing would have consumed at any cursor, and applying it
-/// uniformly gives every cursor the completion, not just the one the server
-/// saw.
+/// Scans backward from `pos` over identifier (`Word`-class) chars, stopping
+/// at the first non-`Word` boundary — the start of the token immediately
+/// preceding `pos`. Grapheme-safe (steps via `prev_grapheme_boundary`, never
+/// a raw `-= 1`).
+pub(crate) fn word_start_before(text: &Text, pos: usize) -> usize {
+    let mut cursor = pos;
+    while cursor > 0 {
+        let prev = prev_grapheme_boundary(text, cursor);
+        let Some(ch) = text.char_at(prev) else { break };
+        if hume_editing::word::classify_char(ch) != hume_editing::word::CharClass::Word {
+            break;
+        }
+        cursor = prev;
+    }
+    cursor
+}
+
+/// General multi-cursor "replace around each head" primitive: for every
+/// selection, `start_of(buf, head)` determines where the deletion begins and
+/// `forward` chars ahead of the head are replaced along with it, uniformly,
+/// by `text`. [`replace_around_cursors`] is the common case (`start_of` is a
+/// uniform backward char count). LSP completion's `insertText` fallback (no
+/// server-provided range) calls this directly instead, since it has no
+/// single uniform notion of "how far back" — its own `start_of` closure
+/// special-cases the session's primary cursor (whose true token start is
+/// `CompletionSession::anchor()`, tracked independently of live buffer
+/// content — see that method's doc for why) and falls back to a per-cursor
+/// scan for every other cursor.
 ///
-/// Two cursors closer together than `back`, or a cursor nearer the buffer
-/// start than `back`, would otherwise produce a delete range starting before
-/// `b.old_pos()` (the previous selection's edit already claimed that text) —
-/// clamped to `b.old_pos()` instead of erroring, so a cramped cursor simply
-/// replaces less and every cursor still receives `text`.
-pub(crate) fn replace_around_cursors(
+/// Two cursors closer together than the resulting span, or a cursor nearer
+/// the buffer start than it, would otherwise produce a delete range starting
+/// before `b.old_pos()` (the previous selection's edit already claimed that
+/// text) — clamped to `b.old_pos()` instead of erroring, so a cramped cursor
+/// simply replaces less and every cursor still receives `text`.
+pub(crate) fn replace_span_around_cursors(
     buf: Text,
     sels: SelectionSet,
-    back: usize,
+    start_of: impl Fn(&Text, usize) -> usize,
     forward: usize,
     text: &str,
 ) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let head = sel.head();
-        // `head - back`/`head + forward` are a uniform char delta and can
-        // land mid-cluster when this cursor's surrounding text differs from
-        // the one the span was derived from (e.g. a combining mark). Snap
+        // `start_of(head)`/`head + forward` bound a char span that can land
+        // mid-cluster when this cursor's surrounding text differs from the
+        // one the span was derived from (e.g. a combining mark). Snap
         // outward — floor `start` down, ceil `end` up — to the enclosing
         // cluster boundary rather than splitting it; the round-trip is
         // identity when already on a boundary, since `next_grapheme_boundary`
         // always advances strictly and `prev_grapheme_boundary` always
-        // retreats strictly *except* at 0, which it clamps to instead of
-        // signaling "no earlier boundary" — the `raw_end == 0` guard below
-        // covers that one case explicitly.
-        let raw_start = head.saturating_sub(back);
+        // retreats strictly except at 0, which it clamps to instead of
+        // signaling "no earlier boundary" — harmless here since `start`'s
+        // round trip through both directions still lands at 0 in that case.
+        let raw_start = start_of(buf, head);
         let start =
             prev_grapheme_boundary(buf, next_grapheme_boundary(buf, raw_start)).max(b.old_pos());
-        // `len_chars() - 1` is the buffer's structural trailing `\n` — never
-        // consume it.
-        let raw_end = (head + forward).min(buf.len_chars() - 1).max(start);
-        let end = if raw_end == 0 {
+        // Capped at `len_chars()` (not `len_chars() - 1`) so the boundary
+        // lookups below never see an out-of-range offset; the structural
+        // newline itself is protected by the overshoot check just after.
+        let raw_end = (head + forward).min(buf.len_chars()).max(start);
+        let ceiled = if raw_end == 0 {
             0
         } else {
             next_grapheme_boundary(buf, prev_grapheme_boundary(buf, raw_end))
+        };
+        // `len_chars() - 1` is the buffer's structural trailing `\n` — never
+        // consume it. The cap above must not run *after* the ceil: a
+        // mid-cluster `raw_end` capped early and then ceiled (e.g. the final
+        // cluster is `\r\n` — a lone `\r` survives normalization and gets a
+        // structural `\n` appended after it) would ceil right back past the
+        // newline. Floor back to that cluster's own start instead of
+        // splitting it.
+        let last = buf.len_chars() - 1;
+        let end = if ceiled > last {
+            prev_grapheme_boundary(buf, ceiled).max(start)
+        } else {
+            ceiled
         };
         b.retain(start - b.old_pos());
         b.delete(end - start);
@@ -470,6 +504,30 @@ pub(crate) fn replace_around_cursors(
         let sel = Selection::collapsed(b.new_pos());
         new_sels.push(sel);
     })
+}
+
+/// Replaces `back` chars behind each selection's head and `forward` chars
+/// ahead of it with `text` — the multi-cursor form of "the user typed this
+/// text here." Used by LSP completion accept for a server-provided `textEdit`
+/// range: a conforming server's completion range always contains the request
+/// position (LSP spec), so a `(back, forward)` pair derived from one cursor's
+/// own edit is the same char span typing would have consumed at any cursor,
+/// and applying it uniformly gives every cursor the completion, not just the
+/// one the server saw.
+pub(crate) fn replace_around_cursors(
+    buf: Text,
+    sels: SelectionSet,
+    back: usize,
+    forward: usize,
+    text: &str,
+) -> (Text, SelectionSet, ChangeSet) {
+    replace_span_around_cursors(
+        buf,
+        sels,
+        |_buf, head| head.saturating_sub(back),
+        forward,
+        text,
+    )
 }
 
 /// Returns `true` if `line` has leading whitespace and nothing else before its

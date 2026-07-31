@@ -15,7 +15,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::decorations::DecorationStores;
 use crate::editor::pane_state::PaneBufferState;
-use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
+use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 
@@ -134,9 +134,7 @@ pub(crate) fn apply_doc_edit_grouped(
         // Identity changeset: a read-only buffer means nothing happened, so a
         // caller remapping other state through the result must see a no-op,
         // not a stale/mismatched-length one.
-        let mut b = ChangeSetBuilder::new(buffers.get(buf_id).text().len_chars());
-        b.retain_rest();
-        return b.finish();
+        return ChangeSet::identity(buffers.get(buf_id).text().len_chars());
     }
     let buf_pre = buffers.get(buf_id).text().clone();
     let rope_pre = buf_pre.rope().clone();

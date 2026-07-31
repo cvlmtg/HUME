@@ -223,6 +223,21 @@ impl<'a> PosMapCursor<'a> {
 // ── ChangeSet impl ───────────────────────────────────────────────────────────
 
 impl ChangeSet {
+    /// Builds the identity changeset for a document of `len` chars — retains
+    /// everything, changes nothing. Starting point for callers that accumulate
+    /// edits via repeated [`compose`](Self::compose) calls (e.g. a session
+    /// tracking every edit since some earlier snapshot) and need a neutral
+    /// element to compose the first observed edit onto.
+    pub fn identity(len: usize) -> ChangeSet {
+        let mut ops = Vec::new();
+        push_merge(&mut ops, Operation::Retain(len));
+        ChangeSet {
+            ops,
+            len_before: len,
+            len_after: len,
+        }
+    }
+
     /// Returns `true` if this changeset is the identity transform — all
     /// operations are `Retain` and the document is unchanged.
     pub fn is_identity(&self) -> bool {
@@ -232,6 +247,16 @@ impl ChangeSet {
     /// The ordered list of operations in this changeset.
     pub fn ops(&self) -> &[Operation] {
         &self.ops
+    }
+
+    /// Char length of the document this changeset expects to be applied to.
+    pub fn len_before(&self) -> usize {
+        self.len_before
+    }
+
+    /// Char length of the document this changeset produces.
+    pub fn len_after(&self) -> usize {
+        self.len_after
     }
 
     // ── apply ────────────────────────────────────────────────────────────────

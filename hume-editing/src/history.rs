@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use rustc_hash::FxHashMap;
 
-use crate::changeset::{ChangeSet, ChangeSetBuilder};
+use crate::changeset::ChangeSet;
 use crate::selection::SelectionSet;
 use crate::transaction::Transaction;
 
@@ -119,10 +119,7 @@ impl History {
     /// `buf_len` is the character length of the initial buffer (needed to
     /// build the identity ChangeSet).
     pub fn new(initial_sels: SelectionSet, buf_len: usize) -> Self {
-        // Build an identity ChangeSet: retain every character unchanged.
-        let mut b = ChangeSetBuilder::new(buf_len);
-        b.retain_rest();
-        let identity_cs = b.finish();
+        let identity_cs = ChangeSet::identity(buf_len);
 
         // The root's forward and inverse are both identity transactions.
         // The selection is the initial cursor state.

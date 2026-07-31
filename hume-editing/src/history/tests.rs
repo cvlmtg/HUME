@@ -1,4 +1,5 @@
 use super::*;
+use crate::changeset::ChangeSetBuilder;
 use crate::selection::{Selection, SelectionSet};
 
 // ── Helpers ───────────────────────────────────────────────────────────────

@@ -23,11 +23,16 @@ impl Editor {
     // ── Insert mode ───────────────────────────────────────────────────────────
 
     /// Applies a grouped edit on the focused (pane, buffer) and, if an LSP
-    /// completion session is open, remaps its anchor through the resulting
-    /// `ChangeSet` — the single chokepoint every keystroke handler below
-    /// goes through, so no call site needs its own remap-or-not decision.
-    /// See `CompletionSession::remap_anchor` for why every keystroke needs
-    /// this, not just ones at the primary cursor.
+    /// completion session is open on that same buffer, records the edit on
+    /// it via `observe_edit` — the chokepoint every keystroke handler below
+    /// that edits the focused buffer directly goes through, so no such call
+    /// site needs its own record-or-not decision. (A cursor-motion or
+    /// edit-command key that instead resolves through the insert trie is a
+    /// separate case — `handle_insert`'s `WalkResult::Leaf` arm dismisses
+    /// the session outright before reaching any of those, since none of them
+    /// route back through here.) See `CompletionSession::observe_edit` for
+    /// why every keystroke reaching this function needs recording, not just
+    /// ones at the primary cursor.
     fn apply_insert_edit(
         &mut self,
         cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
@@ -42,8 +47,20 @@ impl Editor {
             buf,
             cmd,
         );
-        if let Some(session) = self.lsp.completion.as_mut() {
-            session.remap_anchor(&cs);
+        // A session anchored to a different buffer than the one this edit
+        // just landed on has nothing to record here — this can only happen
+        // while a stale session (its buffer no longer focused) is still
+        // open, since `apply_insert_edit` always edits the focused buffer.
+        // `observe_edit`'s own length check would reject a mismatched
+        // `ChangeSet` anyway, but checking `bid` up front documents why,
+        // rather than relying on that as a coincidence.
+        let stale = self
+            .lsp
+            .completion
+            .as_mut()
+            .is_some_and(|session| session.bid() == buf && !session.observe_edit(&cs));
+        if stale {
+            self.clear_completion_menu();
         }
     }
 
@@ -66,6 +83,18 @@ impl Editor {
         let trie_result = self.state.config.keymap.insert.walk(&[key]);
         match trie_result {
             WalkResult::Leaf(cmd) => {
+                // Every key that resolves to a trie leaf is a cursor motion
+                // or an edit command — Esc, arrows, Ctrl-W, any user-bound
+                // insert key. None of them route through `apply_insert_edit`
+                // (motions bypass it entirely; `MappableCommand::Edit` below
+                // goes through `run_native_body` instead, which cannot hand
+                // its `ChangeSet` back here — see that branch), so an open
+                // completion session can't stay correctly anchored past one:
+                // a motion moves the cursor off the token, and an edit
+                // command mutates outside the one chokepoint that keeps the
+                // session's anchor in sync. Dismiss unconditionally rather
+                // than let either corrupt the session silently.
+                self.clear_completion_menu();
                 let Some(reg_cmd) = self
                     .state
                     .config
