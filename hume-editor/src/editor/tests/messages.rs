@@ -25,6 +25,45 @@ fn extra_arc(ed: &Editor, pid: PaneId) -> Vec<(usize, usize, usize, ScopeId)> {
         .clone()
 }
 
+/// Regression test for the reported crash: `:messages` interns its severity
+/// scope names synchronously during command dispatch, then the very next
+/// frame both writes their spans AND renders them. `render_to_buf`'s internal
+/// `prepare_frame` is the ONLY frame here — no warm-up frame — which is
+/// exactly the shape that panicked in `hume-engine/src/theme/mod.rs`'s
+/// `Theme::resolve` before `prepare_frame` gained its end-of-frame
+/// `bake_if_stale`.
+#[test]
+fn messages_renders_its_badge_color_on_the_first_frame() {
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.state
+        .message_log
+        .push(Severity::Warning, "bad key".to_string());
+    ed.execute_typed("messages", None).unwrap();
+
+    let area = ratatui::layout::Rect::new(0, 0, 40, 3);
+    let buf = ed.render_to_buf(area);
+
+    let badge_scope = ed
+        .view
+        .registry
+        .get("diagnostic.warning.message")
+        .expect("`:messages` must have interned its badge scope");
+    let resolved = ed.view.theme.resolve(badge_scope);
+    assert!(
+        resolved.bg.is_some(),
+        "sanity: the badge scope must resolve to a real background color"
+    );
+
+    let bg_colors: Vec<_> = (area.left()..area.right())
+        .flat_map(|x| (area.top()..area.bottom()).map(move |y| (x, y)))
+        .map(|(x, y)| buf[(x, y)].style().bg)
+        .collect();
+    assert!(
+        bg_colors.contains(&resolved.bg),
+        "the [warning] badge's real background must appear on the frame :messages first interns it"
+    );
+}
+
 #[test]
 fn messages_populates_the_extra_highlights_store() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();

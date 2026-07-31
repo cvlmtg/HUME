@@ -140,9 +140,11 @@ pub struct EngineView {
     pub buffers: SlotMap<BufferId, ()>,
     pub theme: Theme,
     /// Session-wide scope registry. Providers intern their scopes here.
-    /// `Editor::prepare_frame` calls `theme.bake_if_stale(&registry)` once per
-    /// frame, before every render, so newly interned scopes are always baked —
-    /// no other call site needs to bake manually after interning.
+    /// `Editor::prepare_frame` calls `theme.bake_if_stale(&registry)` twice
+    /// per frame — before its own steps run and again after — so a scope
+    /// interned by one of those steps (extra highlights, a newly attached
+    /// grammar, ...) is still baked before `render_into` resolves anything.
+    /// No other call site needs to bake manually after interning.
     pub registry: ScopeRegistry,
     /// Optional tab bar rendered at the top of the terminal area.
     pub tabbar: Option<Box<dyn TabBarProvider>>,

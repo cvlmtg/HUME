@@ -26,9 +26,11 @@ use crate::types::{ResolvedStyle, Scope, ScopeId};
 /// bounded by `u16::MAX`.
 ///
 /// [`Theme::bake_if_stale`], called unconditionally from `prepare_frame`
-/// every frame, re-bakes whenever new scopes were interned since the last
-/// bake, so no caller needs to bake manually after interning. After baking,
-/// [`Theme::resolve`] is an O(1) `Vec` index.
+/// twice every frame (once before the frame's own steps run, once after),
+/// re-bakes whenever new scopes were interned since the last bake, so no
+/// caller needs to bake manually after interning — including a scope a
+/// frame's own steps intern partway through, which the first call alone
+/// can't see. After baking, [`Theme::resolve`] is an O(1) `Vec` index.
 ///
 /// Lives on [`crate::pipeline::EngineView`] so it outlives all providers.
 #[derive(Default)]
@@ -235,9 +237,12 @@ impl Theme {
     ///
     /// `ScopeRegistry` is append-only and `bake` sizes `baked` to exactly
     /// `registry.len()`, so `baked.len() != registry.len()` is precisely "new
-    /// scopes are unbaked". Called once per frame from `prepare_frame` — the
-    /// single pre-render sync point — so no other call site needs to remember
-    /// to bake after interning.
+    /// scopes are unbaked". Called twice per frame from `prepare_frame` —
+    /// once up front (catching up on interning since the last frame) and
+    /// once at the very end (catching this frame's own steps, several of
+    /// which intern scopes lazily as they run) — so no other call site needs
+    /// to remember to bake after interning, and nothing this frame resolves
+    /// can outrun `baked`. Cheap when nothing changed: one `usize` compare.
     pub fn bake_if_stale(&mut self, registry: &ScopeRegistry) {
         if self.baked.len() != registry.len() {
             self.bake(registry);

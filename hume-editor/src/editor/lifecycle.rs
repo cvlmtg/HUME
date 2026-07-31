@@ -716,8 +716,14 @@ impl Editor {
         self.resync_mouse_mode();
 
         // Re-bake the theme if any scope was interned since the last bake —
-        // the single per-frame chokepoint that makes forgetting to bake after
-        // an `intern`/`intern_runtime` call harmless (see `bake_if_stale`).
+        // catches up on interning from the *previous* frame or from command
+        // dispatch between frames (e.g. `:theme`). This frame's own steps
+        // (2, 5, 7 below) can themselves intern new scopes — extra
+        // highlights, inline diagnostics, virtual lines, a newly attached
+        // grammar's capture names — so a second `bake_if_stale` runs at the
+        // very end of this function, right before `render_into` gets to
+        // resolve anything. Without it, a scope interned mid-frame and
+        // resolved by that same frame's render is past the end of `baked`.
         self.view.theme.bake_if_stale(&self.view.registry);
 
         // Shared rect list every per-pane step below drives off — partitioned
@@ -888,6 +894,12 @@ impl Editor {
         // view can never drift from `state.config.drawer` for a frame. See
         // `EditorState::sync_drawer_view`'s doc.
         self.state.sync_drawer_view();
+
+        // Second bake — see the comment on the early call above. Cheap when
+        // nothing changed (one `usize` comparison); catches every scope this
+        // frame's own steps interned, so `render_into` never resolves against
+        // a `ScopeId` past the end of `baked`.
+        self.view.theme.bake_if_stale(&self.view.registry);
     }
 
     /// Sync every engine pane's selection mirror from the authoritative `pane_state`.

@@ -287,6 +287,58 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
     );
 }
 
+/// Reproduces the same-frame scope-intern-then-resolve race: a scope name
+/// that has never been interned before must render its real style on the
+/// very first frame it appears in, not a stale/default style (or panic).
+/// `render_to_buf`'s internal `prepare_frame` is the ONLY frame here — no
+/// warm-up frame, unlike most tests in this file, since a warm-up frame is
+/// exactly what would paper over the bug this asserts against. Uses a
+/// dot-notation sub-key of an existing scope ("diagnostic.warning") so the
+/// name itself is new (freshly interned by `update_highlight_providers`)
+/// while still resolving to a real, non-default style via fallback.
+#[test]
+fn extra_highlight_style_resolves_correctly_on_the_frame_it_is_first_interned() {
+    let tmp = safe_tempdir();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    type_text(&mut ed, "abcdefgh");
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm" "" (lambda ()
+             (set-extra-highlights! "linter" (current-buffer)
+               (list (list 0 8 "diagnostic.warning.qa-regression-marker")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    let rect = ratatui::layout::Rect::new(0, 0, 20, 3);
+    let buf = ed.render_to_buf(rect);
+
+    let scope_id = ed
+        .view
+        .registry
+        .get("diagnostic.warning.qa-regression-marker")
+        .expect("set-extra-highlights! must have interned the scope");
+    let resolved = ed.view.theme.resolve(scope_id);
+    assert!(
+        resolved.fg.is_some(),
+        "sanity: the dot-notation fallback to \"diagnostic.warning\" must resolve to a real color"
+    );
+
+    let fg_colors: Vec<_> = (rect.left()..rect.right())
+        .flat_map(|x| (rect.top()..rect.bottom()).map(move |y| (x, y)))
+        .map(|(x, y)| buf[(x, y)].style().fg)
+        .collect();
+    assert!(
+        fg_colors.contains(&resolved.fg),
+        "the newly-interned scope's real color must appear on the frame it was \
+         first interned, not the default the bake-before-intern race would produce"
+    );
+}
+
 // ── Cross-tier layering (engine-level, confirms end-to-end wiring) ──────────
 
 /// Search matches (tier `SearchMatch`) must beat extra highlights (tier
@@ -314,16 +366,6 @@ fn search_match_beats_extra_highlight_in_overlapping_region() {
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm");
     ed = ed.with_search_regex("cde");
-
-    // The "unused" scope is interned lazily inside this first `prepare_frame`
-    // (during the write step, which runs *after* that frame's own
-    // `bake_if_stale`) — rendering in the same frame it's first interned
-    // would resolve against a not-yet-baked ScopeId (see
-    // `Theme::resolve`'s debug_assert). One extra frame lets the next
-    // `bake_if_stale` catch up — a one-frame
-    // default-style flash for newly-interned runtime scopes is accepted.
-    let mut ctx = RenderContext::new();
-    ed.prepare_frame(20, 3, &mut ctx);
 
     use ratatui::layout::Rect;
     let rect = Rect::new(0, 0, 20, 3);
