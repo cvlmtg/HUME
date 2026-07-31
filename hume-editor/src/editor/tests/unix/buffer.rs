@@ -216,8 +216,8 @@ fn buffer_ambiguous_label_is_retypeable() {
         "expected ~-collapsed labels in the ambiguity message, got: {err}"
     );
     let labels = err
-        .splitn(2, ": ")
-        .nth(1)
+        .split_once(": ")
+        .map(|(_, rest)| rest)
         .expect("message must list labels");
     let first_label = labels.split(", ").next().unwrap();
 
