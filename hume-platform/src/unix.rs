@@ -250,6 +250,7 @@ pub(super) fn spawn_terminator(
                 match run_terminator_blocking(
                     tty.as_ref().map(std::fs::File::as_fd),
                     sig_read.as_fd(),
+                    INPUT_THROTTLE,
                 ) {
                     Ok(Trigger::Signal) => {
                         let code = exit_code_for_signal(signal_flag.load(Ordering::Acquire));
@@ -316,10 +317,14 @@ pub(super) fn spawn_terminator(
 /// wait on it fails; a broken `tty_fd` degrades to `None` instead of
 /// failing, since losing the hangup watch must never cost signal service.
 /// Never touches the process — kept separate from [`spawn_terminator`] so it
-/// can be driven directly in tests.
+/// can be driven directly in tests. `input_throttle` is [`INPUT_THROTTLE`] in
+/// production; tests that assert on how fast a signal interrupts it inject a
+/// much larger value instead, so their pass/fail margin isn't pinned to the
+/// same constant the timing assertion is checking.
 fn run_terminator_blocking(
     mut tty_fd: Option<BorrowedFd<'_>>,
     sig_fd: BorrowedFd<'_>,
+    input_throttle: Duration,
 ) -> io::Result<Trigger> {
     loop {
         let (tty_ready, sig_ready) = match tty_fd {
@@ -365,7 +370,7 @@ fn run_terminator_blocking(
                 // drain above; the throttle still elapses before we look at
                 // the tty again either way.
                 Ok(Status::Input) => {
-                    let _ = wait_readable(sig_fd, Some(INPUT_THROTTLE));
+                    let _ = wait_readable(sig_fd, Some(input_throttle));
                 }
                 Ok(Status::Live) => {}
                 Ok(Status::Hangup) => return Ok(Trigger::Hangup),
@@ -627,9 +632,18 @@ mod terminator_tests {
     /// test failure. Takes the fds by value — they must outlive the spawned
     /// thread — while each test keeps its own peer/writer handle so it can
     /// still act on the connection after the call starts.
-    fn run_bounded(tty: Option<UnixStream>, sig_read: UnixStream, bound: Duration) -> Trigger {
+    fn run_bounded(
+        tty: Option<UnixStream>,
+        sig_read: UnixStream,
+        input_throttle: Duration,
+        bound: Duration,
+    ) -> Trigger {
         let handle = std::thread::spawn(move || {
-            run_terminator_blocking(tty.as_ref().map(UnixStream::as_fd), sig_read.as_fd())
+            run_terminator_blocking(
+                tty.as_ref().map(UnixStream::as_fd),
+                sig_read.as_fd(),
+                input_throttle,
+            )
         });
         let deadline = Instant::now() + bound;
         while !handle.is_finished() {
@@ -658,7 +672,7 @@ mod terminator_tests {
         drop(peer);
         let (sig_read, _sig_write) = idle_sig_pipe();
         assert_eq!(
-            run_bounded(Some(fd), sig_read, SPIN_BOUND),
+            run_bounded(Some(fd), sig_read, INPUT_THROTTLE, SPIN_BOUND),
             Trigger::Hangup,
             "hangup must be detected once peer closes"
         );
@@ -670,7 +684,7 @@ mod terminator_tests {
         let (sig_read, mut sig_write) = idle_sig_pipe();
         sig_write.write_all(b"x").expect("write");
         assert_eq!(
-            run_bounded(Some(tty_fd), sig_read, SPIN_BOUND),
+            run_bounded(Some(tty_fd), sig_read, INPUT_THROTTLE, SPIN_BOUND),
             Trigger::Signal,
             "signal must be detected while the tty is idle and still open"
         );
@@ -684,7 +698,7 @@ mod terminator_tests {
         let (sig_read, mut sig_write) = idle_sig_pipe();
         sig_write.write_all(b"x").expect("write");
         assert_eq!(
-            run_bounded(None, sig_read, SPIN_BOUND),
+            run_bounded(None, sig_read, INPUT_THROTTLE, SPIN_BOUND),
             Trigger::Signal,
             "signal must be detected with no tty to watch"
         );
@@ -703,7 +717,7 @@ mod terminator_tests {
         drop(sig_write);
 
         let handle = std::thread::spawn(move || {
-            run_terminator_blocking(Some(tty_fd.as_fd()), sig_read.as_fd())
+            run_terminator_blocking(Some(tty_fd.as_fd()), sig_read.as_fd(), INPUT_THROTTLE)
         });
         std::thread::sleep(Duration::from_millis(50));
         assert!(
@@ -853,7 +867,7 @@ mod terminator_tests {
 
         let start = std::time::Instant::now();
         assert_eq!(
-            run_bounded(Some(tty_fd), sig_read, SPIN_BOUND),
+            run_bounded(Some(tty_fd), sig_read, INPUT_THROTTLE, SPIN_BOUND),
             Trigger::Signal,
             "signal detected"
         );
@@ -867,13 +881,22 @@ mod terminator_tests {
     }
 
     /// A signal arriving while the tty is continuously readable (real
-    /// typing) must not wait out `INPUT_THROTTLE` — the `Status::Input` arm
-    /// must stay watching `sig_fd`, not blind-sleep. A plain
-    /// `thread::sleep(INPUT_THROTTLE)` there would still pass every other
+    /// typing) must not wait out the throttle — the `Status::Input` arm must
+    /// stay watching `sig_fd`, not blind-sleep. A plain
+    /// `thread::sleep(input_throttle)` there would still pass every other
     /// test in this module (none keep the tty readable across the wait) but
     /// fails this one on timing.
+    ///
+    /// Injects a throttle far larger than production's `INPUT_THROTTLE`
+    /// instead of using it directly: a blind-sleep regression then takes
+    /// seconds, not ~100ms, so the elapsed-time assertion below can use a
+    /// wide margin without losing the ability to catch it — a margin pinned
+    /// to `INPUT_THROTTLE` itself left only ~90ms of slack for scheduling
+    /// jitter on a loaded CI runner, which one run ate through.
     #[test]
     fn signal_during_continuous_tty_input_is_not_delayed_by_the_throttle() {
+        const TEST_THROTTLE: Duration = Duration::from_secs(1);
+
         let (tty_fd, mut tty_peer) = UnixStream::pair().expect("socketpair");
         // Keep the tty permanently readable: write and never drain, so
         // every `hangup_status` call sees `Status::Input` again.
@@ -887,16 +910,15 @@ mod terminator_tests {
 
         let start = Instant::now();
         assert_eq!(
-            run_bounded(Some(tty_fd), sig_read, SPIN_BOUND),
+            run_bounded(Some(tty_fd), sig_read, TEST_THROTTLE, SPIN_BOUND),
             Trigger::Signal,
             "signal detected despite continuous tty input"
         );
+        let elapsed = start.elapsed();
         assert!(
-            start.elapsed() < INPUT_THROTTLE,
-            "signal took {:?}, at least as long as the input throttle ({:?}) — \
+            elapsed < TEST_THROTTLE / 2,
+            "signal took {elapsed:?}, at least half the injected throttle ({TEST_THROTTLE:?}) — \
              the throttle wait must be interruptible by a signal, not a blind sleep",
-            start.elapsed(),
-            INPUT_THROTTLE
         );
         writer.join().expect("writer thread panicked");
     }
