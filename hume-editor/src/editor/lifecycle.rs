@@ -2003,6 +2003,20 @@ impl Editor {
         }
 
         let resolved = self.lsp.completion.as_ref().and_then(|session| {
+            // `session.anchor()` is a char offset captured when the session
+            // began; it isn't remapped through edits, so an out-of-band
+            // shrink (LSP applyEdit, file reload) or a pane switch since can
+            // leave it pointing past the focused buffer's current end, or at
+            // a buffer that isn't even the one on screen. `RowMap::locate`
+            // (reached via `popup_anchor_and_bounds`) has no way to tell a
+            // stale offset from a live one, so check both here.
+            if session.bid() != self.focused_buffer_id() {
+                return None;
+            }
+            let len = self.state.buffers.get(session.bid()).text().len_chars();
+            if session.anchor() >= len {
+                return None;
+            }
             let (anchor, pane_rect, _max_width, _max_height) =
                 self.popup_anchor_and_bounds(ctx, session.anchor())?;
             let lines: Vec<String> = session

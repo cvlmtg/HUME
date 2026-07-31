@@ -166,8 +166,11 @@ pub struct Grapheme {
     /// Absolute char offset from the start of the buffer.
     ///
     /// Populated by the format stage so the style stage can resolve selection
-    /// head positions without any rope lookups. `usize::MAX` for purely virtual
-    /// graphemes (inline inserts, newline indicators) that have no buffer char.
+    /// head positions without any rope lookups. A content row's inline-insert
+    /// (`Virtual`) cells and its newline indicator still carry the real char
+    /// offset of the buffer position they sit at or precede — `usize::MAX` is
+    /// reserved for a virtual-*row*'s cells, which have no buffer position at
+    /// all (see [`crate::rows::RowMap::render_row`]).
     pub char_offset: usize,
     /// Display column within the row (0-based, accounts for preceding widths).
     pub col: u32,

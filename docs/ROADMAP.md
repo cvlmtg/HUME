@@ -67,6 +67,8 @@
 
 - [ ] Byte-string parsing in settings — `"10MB"` / `"512KB"` strings; companion to the size-threshold setting.
 - [ ] Native directory-walker fallback for the file picker — for bare directories without `fd`; build only if the fallback posture proves inadequate in practice (see `docs/FUZZY-FINDERS.md`).
+- [ ] `RowMap` per-frame double formatting — `scroll_into_view` and the render walk each build their own map (different `FormatScratch`s), so a wrapped line between the viewport top and the cursor gets formatted twice a frame. Would need a format cache shared across the two passes within one frame.
+- [ ] `RowMap::block`'s provider queries are one line at a time (`virtual_lines(line..line+1, ..)`) — the `VirtualLineSource` API already takes a `Range`, but no caller ever queries wider than one line, so each cache miss pays a per-provider lock+lookup+clone per line. Batching would need the render path to query its whole visible range up front.
 
 ### Plugins
 

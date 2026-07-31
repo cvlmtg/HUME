@@ -250,7 +250,7 @@ fn no_wrap_block_counts_without_running_the_formatter() {
 }
 
 // ---------------------------------------------------------------------------
-// kind() / clamp() / last_pos()
+// kind() / clamp() / last_line()
 // ---------------------------------------------------------------------------
 
 /// Line 0 wrapped into 2 content rows, with 2 Before rows and 1 After row:
@@ -308,9 +308,23 @@ fn clamp_pulls_line_and_row_into_the_document() {
 }
 
 #[test]
-fn last_pos_is_the_final_block_row() {
+fn last_line_excludes_the_phantom_trailing_line() {
+    // Every buffer ends with a structural '\n', so ropey's `len_lines()`
+    // reports one extra empty line past the content; `last_line` must not
+    // count it as a real line.
+    let rope = Rope::from_str("a\nb\nc\n");
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    let rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(rm.last_line(), 2);
+}
+
+#[test]
+fn clamp_reaches_the_documents_very_last_row() {
     // "a\nb\nc\n" has 3 real lines; line 2 carries 1 After row, so the
-    // document's last row is that virtual row at (2, 1).
+    // document's last row is that virtual row at (2, 1). `clamp` is the
+    // documented way to reach it (RowMap has no dedicated accessor).
     let rope = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
     providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(2), 1)));
@@ -318,11 +332,9 @@ fn last_pos_is_the_final_block_row() {
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.last_line(),
-        2,
-        "phantom trailing line is not a real line"
+        rm.clamp(RowPos::new(usize::MAX, usize::MAX)),
+        RowPos::new(2, 1)
     );
-    assert_eq!(rm.last_pos(), RowPos::new(2, 1));
 }
 
 // ---------------------------------------------------------------------------
@@ -380,6 +392,26 @@ fn prev_is_the_inverse_of_next() {
 }
 
 #[test]
+fn next_and_prev_stop_exactly_at_the_documents_edges() {
+    let (rope, providers, expected) = three_line_doc();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    let first = expected[0];
+    let last = *expected.last().expect("non-empty");
+    assert_eq!(
+        rm.prev(first),
+        None,
+        "no row precedes the document's first row"
+    );
+    assert_eq!(
+        rm.next(last),
+        None,
+        "no row follows the document's last row"
+    );
+}
+
+#[test]
 fn advance_matches_repeated_stepping_and_saturates_at_both_ends() {
     let (rope, providers, expected) = three_line_doc();
     let mut s = FormatScratch::new();
@@ -400,6 +432,50 @@ fn advance_matches_repeated_stepping_and_saturates_at_both_ends() {
     let last = *expected.last().expect("non-empty");
     assert_eq!(rm.advance(first, -10), first, "saturates at the first row");
     assert_eq!(rm.advance(last, 10), last, "saturates at the last row");
+}
+
+#[test]
+fn advance_counted_reports_how_far_it_actually_stepped() {
+    let (rope, providers, expected) = three_line_doc();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    // In bounds: the count matches the requested delta exactly.
+    for (i, &from) in expected.iter().enumerate() {
+        for (j, &to) in expected.iter().enumerate() {
+            let delta = j as isize - i as isize;
+            let (pos, taken) = rm.advance_counted(from, delta);
+            assert_eq!(pos, to, "advance_counted({from:?}, {delta}) position");
+            assert_eq!(
+                taken,
+                delta.unsigned_abs(),
+                "advance_counted({from:?}, {delta}) count"
+            );
+        }
+    }
+
+    // Past either edge: the document stops the walk short, so the count is
+    // less than what was asked for.
+    let first = expected[0];
+    let last = *expected.last().expect("non-empty");
+    assert_eq!(
+        rm.advance_counted(first, -10),
+        (first, 0),
+        "no rows exist before the first row"
+    );
+    assert_eq!(
+        rm.advance_counted(last, 10),
+        (last, 0),
+        "no rows exist past the last row"
+    );
+
+    // The documented "count is also the distance back" property
+    // `scroll::scroll_back_from` relies on: having stepped `n` rows backward
+    // from `pos`, `distance` from the landing spot back to `pos` is that
+    // same `n`.
+    let pos = expected[4];
+    let (landed, taken) = rm.advance_counted(pos, -3);
+    assert_eq!(rm.distance(landed, pos, expected.len()), Some(taken));
 }
 
 #[test]
@@ -461,6 +537,28 @@ fn fits_in_zero_height_never_fits() {
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
+    assert!(!rm.fits_in(0));
+}
+
+#[test]
+fn degenerate_single_empty_line_document() {
+    // A bare "\n" is the smallest possible buffer under the invariant: one
+    // real (empty) line plus the structural trailing newline.
+    let rope = Rope::from_str("\n");
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(rm.last_line(), 0);
+    assert_eq!(
+        rm.clamp(RowPos::new(99, 99)),
+        RowPos::new(0, 0),
+        "the only row in a one-line document is (0, 0)"
+    );
+    assert!(
+        rm.fits_in(1),
+        "the document's single row fits a height of 1"
+    );
     assert!(!rm.fits_in(0));
 }
 

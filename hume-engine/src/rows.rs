@@ -205,10 +205,6 @@ impl<'a> RowMap<'a> {
         self
     }
 
-    pub fn wrap_mode(&self) -> WrapMode {
-        self.wrap_mode
-    }
-
     pub fn is_wrapping(&self) -> bool {
         self.wrap_mode.is_wrapping()
     }
@@ -306,20 +302,6 @@ impl<'a> RowMap<'a> {
     /// re-derives it independently, since those sites don't hold a `RowMap`.
     pub fn last_line(&self) -> usize {
         self.rope.len_lines().saturating_sub(2)
-    }
-
-    /// The document's last display row.
-    ///
-    /// Vim-style: the final block row may scroll all the way up to the top of
-    /// the viewport, so this is itself a valid viewport address rather than a
-    /// bound one row past the end. `clamp`/`advance` reach the same row
-    /// without calling this directly (they pull an arbitrary position into
-    /// range rather than fetching it outright); this accessor is for a
-    /// caller that wants "the very last row" itself.
-    pub fn last_pos(&mut self) -> RowPos {
-        let line = self.last_line();
-        let total = self.block(line).total();
-        RowPos::new(line, total.saturating_sub(1))
     }
 
     /// Pull `pos` into the document: `line` into `0..=last_line()`, then `row`
@@ -453,9 +435,18 @@ impl<'a> RowMap<'a> {
     /// Locate `char_offset`: its display row, and its display column in that
     /// row.
     pub fn locate(&mut self, char_offset: usize) -> (RowPos, u32) {
+        debug_assert!(
+            char_offset <= self.rope.len_chars(),
+            "locate: char_offset {char_offset} is out of range for a buffer \
+             of {} chars — ropey's own `char_to_line` panics past this point, \
+             so a caller holding a position from an earlier frame (an LSP \
+             completion anchor, a stale selection) must revalidate it \
+             against the current buffer before reaching here",
+            self.rope.len_chars()
+        );
         let line = self.rope.char_to_line(char_offset);
         let before = self.block(line).before;
-        let line_start_byte = self.rope.char_to_byte(self.rope.line_to_char(line));
+        let line_start_byte = self.rope.line_to_byte(line);
         let target_byte = self
             .rope
             .char_to_byte(char_offset)
@@ -531,6 +522,12 @@ impl<'a> RowMap<'a> {
     /// between O(1) and O(offset into the line) for the callers that only want
     /// the row.
     pub fn locate_row(&mut self, char_offset: usize) -> RowPos {
+        debug_assert!(
+            char_offset <= self.rope.len_chars(),
+            "locate_row: char_offset {char_offset} is out of range for a \
+             buffer of {} chars — see the debug_assert in RowMap::locate",
+            self.rope.len_chars()
+        );
         if self.wrap_mode.is_wrapping() {
             // Wrapping needs the sub-row, which only formatting can answer —
             // and `block` has already formatted the line to count its rows.
@@ -791,9 +788,10 @@ impl<'a> RowMap<'a> {
             breakdown.content,
             "line {line} formatted to a different row count than it was counted at"
         );
-        if let Some(c) = &mut self.cached {
-            c.extent = Some(bound);
-        }
+        self.cached
+            .as_mut()
+            .expect("block() above populated the cache")
+            .extent = Some(bound);
     }
 
     /// Format `line`'s content rows into the scratch.

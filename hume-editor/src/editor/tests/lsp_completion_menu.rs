@@ -9,7 +9,10 @@
 // and render path, not the filter/rank logic.
 
 use super::*;
+use crate::editor::buffer::Buffer;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
+use hume_editing::selection::SelectionSet;
+use hume_editing::text::Text;
 use hume_engine::pipeline::RenderContext;
 use ratatui::layout::Rect;
 
@@ -496,4 +499,75 @@ fn minibuffer_e_tab_completion_is_unaffected_by_the_lsp_completion_guard() {
     // have been intercepted or altered by the LSP completion guard (no
     // session exists in Command mode at all).
     assert!(ed.lsp.completion.is_none());
+}
+
+// ── Regression: stale anchor after an out-of-band buffer change ─────────────
+//
+// `session.anchor()` is captured once, at `completion-begin!` time, and never
+// remapped through later edits. `refilter_lsp_completion_after_edit` (see the
+// test above) only revalidates it against printable-char/Backspace keypresses
+// — an edit from any other source (a `:e!` reload, a pane switching to a
+// different buffer) can leave `anchor` pointing past the currently-focused
+// buffer's end, and `sync_completion_menu_view` must not panic walking
+// `RowMap::locate` with it.
+
+#[test]
+fn stale_anchor_after_a_buffer_reload_skips_render_instead_of_panicking() {
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.feed_key(key('i'));
+    for line in ["line0", "line1", "line2", "line3", "line4"] {
+        for ch in line.chars() {
+            ed.feed_key(key(ch));
+        }
+        ed.feed_key(key_enter());
+    }
+    // Cursor is now on the blank line past "line4\n" — the session anchor.
+    begin_session(&mut ed, &[("candidate", None)]);
+    let bid = ed.focused_buffer_id();
+    let anchor = ed.lsp.completion.as_ref().unwrap().anchor();
+    assert!(anchor > 3, "sanity: anchor is deep in the buffer");
+
+    // `reload_buffer_in_place` (`:e!`) clamps every pane's cursor to the new,
+    // much shorter content, but has no notion of an open completion session
+    // — so `anchor` is left pointing past the reloaded buffer's end.
+    let replacement = Buffer::new(Text::from("hi\n"), SelectionSet::default());
+    ed.reload_buffer_in_place(bid, replacement);
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(40, 8, &mut ctx); // must not panic
+
+    assert!(
+        ed.state.completion_menu_view.read().unwrap().is_none(),
+        "popup must not render against a stale out-of-range anchor"
+    );
+    assert!(
+        ed.lsp.completion.is_some(),
+        "the guard skips only this frame's render — dismissal stays with \
+         the existing keypress-driven paths"
+    );
+}
+
+#[test]
+fn stale_anchor_after_switching_focus_to_another_buffer_skips_render() {
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.feed_key(key('i'));
+    for ch in "hello".chars() {
+        ed.feed_key(key(ch));
+    }
+    begin_session(&mut ed, &[("candidate", None)]);
+    assert!(ed.lsp.completion.is_some(), "sanity: session open");
+
+    // Switch focus to a different buffer without dismissing the session —
+    // `sync_completion_menu_view` builds its `RowMap` over whichever buffer
+    // is focused *now*, not the one the session was opened against.
+    let other = ed.open_buffer(Buffer::new(Text::from("other\n"), SelectionSet::default()));
+    ed.switch_to_buffer_with_jump(other);
+
+    let mut ctx = RenderContext::new();
+    ed.prepare_frame(40, 8, &mut ctx); // must not panic
+
+    assert!(
+        ed.state.completion_menu_view.read().unwrap().is_none(),
+        "popup must not render a session anchored to a buffer that isn't focused"
+    );
 }
