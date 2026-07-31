@@ -686,7 +686,7 @@ fn reload_config_explicit_language_restore_skips_a_bid_whose_buffer_was_swapped_
 // ---------------------------------------------------------------------------
 
 /// A real `:reload-config` dispatch must leave every piece of *editing*
-/// state exactly as `docs/ROADMAP.md`'s decision promises — "buffers,
+/// state exactly as `typed_reload_config`'s doc comment promises — "buffers,
 /// panes, undo history, registers, and running LSP server processes are
 /// untouched — only config resets". Drives each piece of state through the
 /// same key/command DSL a user would (not direct field pokes), then

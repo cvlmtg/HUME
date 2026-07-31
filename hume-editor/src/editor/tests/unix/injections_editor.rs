@@ -91,8 +91,8 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
 /// `:plum-list` exercises `plugins.scm`'s `plum/installed-plugins` (built on
 /// `plum/list-dir`, a Steel `read-dir`-backed helper) against a real (empty)
 /// data dir — no network. Pins that plugin discovery via Steel's stdlib
-/// process/fs helpers (see docs/ROADMAP.md's plugin trust model decision)
-/// works for loading and basic discovery.
+/// process/fs helpers (see `user-manual/docs/plugins.md`'s "Filesystem and
+/// processes") works for loading and basic discovery.
 #[test]
 fn plum_list_runs_with_no_errors_against_empty_data_dir() {
     let _lock = super::HUME_RUNTIME_MUTEX

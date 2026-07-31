@@ -44,8 +44,9 @@ impl Completer for CommandCompleter {
 /// Completes open buffer names for `:b`.
 ///
 /// Matches on the file basename (or `*scratch*` for unnamed buffers).
-/// The `replacement` is the full canonical path so the command receives an
-/// unambiguous target.
+/// The `replacement` is the full canonical `path`, not `display_path` — it
+/// feeds straight back into path resolution, which doesn't `~`-expand, so an
+/// unambiguous target requires the canonical form.
 ///
 /// When two open buffers share the same basename, a shortened parent-directory
 /// suffix is appended to `display` (e.g. `foo.rs  (~/a/)`) so the user can

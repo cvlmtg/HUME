@@ -1,7 +1,7 @@
 //! External file-change detection: stat-on-trigger, mtime+size comparison.
 //!
-//! Deliberately not a filesystem watcher — see `docs/ROADMAP.md`'s decision
-//! table. inotify/FSEvents/kqueue/ReadDirectoryChangesW disagree on rename
+//! Deliberately not a filesystem watcher.
+//! inotify/FSEvents/kqueue/ReadDirectoryChangesW disagree on rename
 //! semantics and coalescing, and a watcher needs a thread + handle per
 //! watched directory; stating on a handful of trigger points (terminal
 //! focus, buffer-enter, `:checktime`) has zero background cost and behaves

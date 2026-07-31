@@ -172,8 +172,8 @@ impl Editor {
         // re-detect sweep can restore it — otherwise a buffer whose language
         // was explicitly asserted rather than detected (e.g. an extensionless
         // file) would silently lose that assertion to whatever plain
-        // detection finds, contradicting "buffers are untouched" (see
-        // `docs/ROADMAP.md`'s `:reload-config` decision).
+        // detection finds, contradicting "buffers are untouched" — the
+        // invariant `:reload-config` promises the rest of this function.
         let explicit_languages = self
             .state
             .buffers

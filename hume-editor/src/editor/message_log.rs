@@ -44,6 +44,13 @@ impl Severity {
     /// Theme scope for this severity's `[label]` badge in `:messages` —
     /// carries a background fill, no underline. `Trace` reuses `hint`, the
     /// lowest-noise diagnostic severity, since it has no diagnostic counterpart.
+    ///
+    /// Sub-keys of `diagnostic.<severity>` rather than edits to it:
+    /// `Theme::resolve_raw`'s dot-notation fallback *picks* the first match
+    /// rather than layering, so writing directly to `diagnostic.error` here
+    /// would strip the `underlined` modifier LSP diagnostic squiggles in code
+    /// buffers rely on. Themes that don't define the sub-keys fall back to
+    /// plain `diagnostic.<severity>` styling.
     fn badge_scope(self) -> &'static str {
         match self {
             Severity::Info => "diagnostic.info.message",
@@ -213,6 +220,11 @@ impl MessageLog {
     /// spans if there are no entries. Spans are char offsets (not bytes) —
     /// message text may be non-ASCII — matching the char-indexed contract of
     /// [`ExtraHighlightEntry`].
+    ///
+    /// Highlighting goes through the `Extra` tier rather than tree-sitter:
+    /// `[messages]` is a synthetic, path-less buffer, so `detect_language`
+    /// never attaches a grammar to it (and a grammar for `[severity] text`
+    /// lines would be absurd anyway).
     pub(crate) fn format_with_spans(&self) -> (String, Vec<ExtraHighlightEntry>) {
         if self.entries.is_empty() {
             return (String::new(), Vec::new());

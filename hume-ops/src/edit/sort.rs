@@ -2,8 +2,10 @@
 //!
 //! Unlike Helix's `:sort` (which permutes *text between selection slots* and
 //! leaves row boundaries untouched) this permutes the rows themselves, keyed
-//! by whatever text a selection covers on them — closer to `sort -k`. See
-//! `docs/ROADMAP.md` for the full design rationale.
+//! by whatever text a selection covers on them — closer to `sort -k`. Also
+//! rejects Kakoune's `|sort` (pipes each selection through the shell), since
+//! that makes N one-line selections an N-way no-op — there's nothing for a
+//! per-line shell invocation to reorder against.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::lines::line_end_exclusive;

@@ -7,7 +7,7 @@
 //! ones owned elsewhere (`hume-lsp`'s LSP transport, this crate's own
 //! `line_source`). General-purpose process spawning for plugin code goes
 //! through Steel's own `steel/process` stdlib instead (full-trust plugin
-//! model — see `docs/ROADMAP.md`'s plugin trust model decision); what
+//! model — see `user-manual/docs/plugins.md`'s "Filesystem and processes"); what
 //! remains here beyond the above is a handful of utility functions wrapping
 //! genuinely platform-conditional logic (Windows compiler selection, sha256
 //! tool selection, archive unpacking with chmod) that a Scheme rewrite would
@@ -513,6 +513,11 @@ pub fn no_windows_compiler_found() -> bool {
 /// isolation for `run_inline_output`'s short-lived children — doesn't need
 /// this: a plain `.status()` call has nothing to track and Ctrl+C isolation
 /// alone only needed the trait, not this wrapper.
+///
+/// Accepted trade-off: leaving the foreground process group costs these
+/// children the kernel's SIGHUP on pty teardown (only the foreground group
+/// gets one) — covered instead by the LSP `processId` convention and by
+/// stdin EOF for everything else.
 ///
 /// `process_group(0)` runs `setpgid(0, 0)` from the child's own pre-exec
 /// hook, which races the parent: this function hasn't returned yet when

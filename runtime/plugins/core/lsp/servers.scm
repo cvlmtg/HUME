@@ -8,7 +8,7 @@
 ;; ── Filesystem + list-search helpers ────────────────────────────────────────
 ;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports`, duplicated
 ;; from plum/lib.scm's same-named helpers — plugins never require each
-;; other's modules (see docs/ROADMAP.md "Plugin namespace isolation").
+;; other's modules.
 
 ;;; First element of `lst` satisfying `pred?`, or `#f`.
 (define (lsp/find pred? lst)

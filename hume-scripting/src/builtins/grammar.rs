@@ -4,8 +4,8 @@
 //! |------------------------|---------------------|--------------------------------|
 //! | `compile-grammar!`     | `string string → void` | `tree-sitter build -o out src` |
 //!
-//! No sandbox checks — full-trust plugin model (see `docs/ROADMAP.md`'s
-//! plugin trust model decision). This stays a Rust builtin only for the
+//! No sandbox checks — full-trust plugin model (see
+//! `user-manual/docs/plugins.md`'s "Filesystem and processes"). This stays a Rust builtin only for the
 //! Windows compiler-selection dance (`hume_platform::process::tree_sitter_build`
 //! probes `cl`/`clang`/`gcc`/`zig` and writes `--target`-stripping wrapper
 //! scripts) — a Scheme rewrite would only make that logic worse.

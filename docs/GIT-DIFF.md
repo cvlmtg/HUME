@@ -30,7 +30,7 @@ type it compares the buffer against a git ref (default `HEAD`) and renders:
 - **Gutter +/- signs** — a first-class rendering of the same hunk data as the three above,
   not an afterthought. *(Not actually in the nvim reference plugin — verified zero
   `sign_text`/`sign_hl` calls across its ~870 Lua lines. This is HUME-side scope beyond
-  parity; see `docs/ROADMAP.md`'s git-gutter decision row.)*
+  parity; see "Why gutter signs are merged into this plugin, not a separate one" below.)*
 
 The nvim version is ~700 lines of Lua plus the native primitives it leans on: `vim.diff`
 (line diff, native C), `vim.system` (async git), `vim.uv` timers (debounce), and extmarks
@@ -457,7 +457,8 @@ trait (`hume-scripting/src/host.rs`).
      `decorations.rs:66-70`, char offsets matching `diff_words`' `WordHunk` ranges).
    - **gutter sign** — already covered by `set-signs!`. Note: nvim's own inline-diff plugin
      (`/Users/matteo/dev/neovim-inline-diff`) defines **no signs at all** — this is HUME-side
-     scope beyond parity; cross-reference `docs/ROADMAP.md`'s git-gutter decision row.
+     scope beyond parity; cross-reference "Why gutter signs are merged into this plugin, not
+     a separate one" above.
    - **virtual line** (styled segments, anchored `Before`/`After`) — **not fully covered; see
      Phase 4.5.** The engine type is ready but the bridge is not.
    - **line background** (full-width tint) — confirmed missing, and a real gap.
@@ -679,10 +680,9 @@ store) + theme `diff.*` `bg` values in all four themes.**
   four but need `bg` and `.word` variants added (see theme prereq above).
 - **Plugin (Phase 5a/5b/5c)**: new `runtime/plugins/git-diff/*.scm` (model on
   `runtime/plugins/core/lsp/inlay.scm`); `runtime/init.scm.example`.
-- **Docs**: `docs/ROADMAP.md` (records the merge decision + points at this file in place of
-  the standalone "Git gutter signs" item; note the existing open "Unified decoration system"
-  item this phase's Phase 4.4 work will interact with); optional `docs/learning/*.md` on the
-  job-execution/decoration design.
+- **Docs**: `docs/ROADMAP.md`'s `git-diff` plugin roadmap item already points at this file;
+  note the existing open "Unified decoration system" item this phase's Phase 4.4 work will
+  interact with; optional `docs/learning/*.md` on the job-execution/decoration design.
 
 ## Risks / watch-list
 

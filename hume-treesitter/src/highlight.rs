@@ -188,9 +188,8 @@ impl TreeSitterHighlighter {
 /// behind this same signature, would add a fill-before-read protocol that
 /// every caller inherits. Starting the query below the root is not an
 /// option either — patterns rooted at ancestor nodes silently stop
-/// matching. Revisit bar and fix order: see "Syntax highlight query
-/// granularity" in docs/ROADMAP.md (pre-bucketed viewport query first, span
-/// cache second).
+/// matching. If this ever needs revisiting, fix order: a pre-bucketed
+/// viewport query first, a span cache second.
 pub fn layer_highlights_for_line(
     layers: &SyntaxLayers,
     line_idx: usize,

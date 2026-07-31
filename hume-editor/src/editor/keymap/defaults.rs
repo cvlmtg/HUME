@@ -242,6 +242,12 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('k'), cmd!("move-up"));
     t.bind_leaf(key!(Up), cmd!("move-up"));
 
+    // Extend mode itself is an `e` toggle, not a held modifier — Ctrl+motion was
+    // rejected as the universal extend modifier (fatal legacy-terminal collisions
+    // on 10 of 15 motion keys; Ctrl-i/Tab below is one instance), and Alt was
+    // rejected because it types accented characters on macOS. Kitty Ctrl+motion
+    // (below) is a graceful bonus on top of that model, not the model itself.
+    //
     // NOTE: Ctrl+h/j/k/l/w/b (kitty one-shot extend) are NOT bound in the trie.
     // The dispatcher normalises them: strips CONTROL and passes extend=true to
     // execute_keymap_command when kitty_enabled is true. Commands without an

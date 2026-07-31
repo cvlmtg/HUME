@@ -671,7 +671,9 @@ define_settings! {
             parser: bool;
         // After `c` (change), leaving Insert mode selects the text just
         // typed — see `cmd_change` and `end_insert_session`'s pinned-anchor
-        // finalization.
+        // finalization. Only `c` does this; `i`/`a`/`o`/`O` always leave a
+        // collapsed cursor, since there's no prior selection whose extent
+        // the typed text is replacing.
         "select-changed-text" => select_changed_text: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;

@@ -12,6 +12,10 @@ pub(crate) struct EditorColors {
     /// except the separator paints with this style, so the whole row tints
     /// with the mode. `None` for the mode (`statusline.mode-colors` off) holds
     /// the theme's base `ui.statusline` style instead.
+    ///
+    /// Replaces Helix's mode-pill idiom (a colored 3-character corner): the
+    /// whole row makes the active mode legible at a glance instead of
+    /// requiring a glance at one small corner.
     pub statusline: Style,
 
     /// Separator glyph (`│`) between statusline elements. When a theme

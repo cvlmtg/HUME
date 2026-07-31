@@ -2,8 +2,8 @@
 //! dirs, and the canonical install-lock root, computed once and shared by
 //! every builtin that needs them.
 //!
-//! Full-trust plugin model (see `docs/ROADMAP.md`'s plugin trust model
-//! decision) — this does not enforce a sandbox. What lives here is editor-
+//! Full-trust plugin model (see `user-manual/docs/plugins.md`'s "Filesystem
+//! and processes") — this does not enforce a sandbox. What lives here is editor-
 //! integration state: the display-form data/runtime dirs (`data-dir`/
 //! `runtime-dir`), and the canonical `<data>/servers/` root the cross-process
 //! install lock (`acquire-install-lock!`/`release-install-lock!`) needs

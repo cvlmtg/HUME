@@ -1,8 +1,8 @@
 //! LSP server install pipeline builtins: platform identification, sha256
 //! hashing, archive unpacking, and a cross-process install lock.
 //!
-//! No sandbox checks — full-trust plugin model (see `docs/ROADMAP.md`'s
-//! plugin trust model decision). sha256 hashing and archive unpacking shell
+//! No sandbox checks — full-trust plugin model (see
+//! `user-manual/docs/plugins.md`'s "Filesystem and processes"). sha256 hashing and archive unpacking shell
 //! out to per-platform system tools (`hume_platform::process`) rather than
 //! pulling in hashing/archive crates — see `docs/LSP-INSTALL.md`'s "Required
 //! external tools" note for exactly what each platform needs installed.
@@ -54,7 +54,7 @@ pub(crate) fn hume_target(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 /// `(sha256-file path)` — the sha256 digest of `path` as lowercase hex.
 ///
 /// No sandbox check and no compare/delete logic — full-trust plugin model
-/// (see `docs/ROADMAP.md`'s plugin trust model decision). Compare-and-delete-
+/// (see `user-manual/docs/plugins.md`'s "Filesystem and processes"). Compare-and-delete-
 /// on-mismatch lives in Scheme (`lsp/verify-sha256!` in `servers.scm`) —
 /// this is a thin wrapper over the platform tool selection (`shasum`/
 /// `sha256sum`/`certutil`) that a Scheme rewrite would only make worse.
@@ -199,7 +199,7 @@ pub(crate) fn acquire_install_lock(ctx: &mut SteelCtx) -> Result<SteelVal, Steel
 /// with terminal raw mode off (see `run_inline_output`'s doc comment in
 /// `hume-platform::process`), so an unisolated child would be killed by the
 /// same Ctrl+C that's meant to interrupt only it. No sandbox checks — plugins
-/// are trusted code (see `docs/ROADMAP.md`'s plugin trust model decision).
+/// are trusted code (see `user-manual/docs/plugins.md`'s "Filesystem and processes").
 ///
 /// # Errors
 /// The binary can't be spawned (e.g. not found on `PATH`).

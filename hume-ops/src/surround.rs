@@ -5,6 +5,9 @@
 //! - `ms(` → `d`  deletes the parens
 //! - `ms(` → `r[` replaces `()` with `[]` (via smart replace)
 //! - `ms(` → `c`  enters insert with two cursors on the delimiters
+//!
+//! Deliberately not Helix's `md`/`mr`, which bake the selection and the
+//! action together as a single keystroke — that violates select-then-act.
 
 use crate::MotionMode;
 use crate::edit::apply_edit;

@@ -398,8 +398,9 @@ fn parse_sort_flags(arg: Option<&str>) -> Result<SortOpts, CommandError> {
 ///
 /// Diverges deliberately from Helix's `:sort`, which permutes text *between*
 /// selection slots and leaves row boundaries untouched — this permutes the
-/// rows themselves, closer to `sort -k`. See `docs/ROADMAP.md` for the full
-/// semantics (grouping, numeric auto-detection, selection remapping).
+/// rows themselves, closer to `sort -k`. See `hume_ops::edit::sort` for the
+/// full semantics (grouping, numeric auto-detection, selection remapping)
+/// and its rejection of Kakoune's `|sort` too.
 pub fn typed_sort(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
     if force {
         return Err(CommandError::new(

@@ -1,7 +1,7 @@
 //! Editor-integration filesystem builtins for HUME's Steel scripting engine.
 //!
-//! Full-trust plugin model (see `docs/ROADMAP.md`'s plugin trust model
-//! decision): general filesystem access goes through Steel's own
+//! Full-trust plugin model (see `user-manual/docs/plugins.md`'s "Filesystem
+//! and processes"): general filesystem access goes through Steel's own
 //! `steel/filesystem`/`steel/ports` stdlib, not a HUME builtin. What remains
 //! here is editor-integration info Steel can't derive on its own, plus
 //! `path-join`'s Windows UNC-prefix stripping (Steel's own

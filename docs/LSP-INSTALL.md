@@ -387,7 +387,7 @@ unregister path + client shutdown (for `:lsp-uninstall` and reinstall-while-runn
 per-language, matching the registry's language keying — the plugin fans out); attach
 already-open buffers after registration. `servers.scm` runs `curl`/`git`/`npm` directly
 through Steel's own `steel/process` (`command`/`spawn-process`/`which`) — per HUME's
-full-trust plugin model (see `docs/ROADMAP.md`'s plugin trust model decision), there is no
+full-trust plugin model (see `user-manual/docs/plugins.md`'s "Filesystem and processes"), there is no
 path sandbox to route these through. The sandbox-free Rust builtins that survive are ones a
 Scheme rewrite would only make platform-conditional logic worse: `run-inline-output!`
 (process-group-isolated spawn, needed because `#:inline-output` commands run with terminal

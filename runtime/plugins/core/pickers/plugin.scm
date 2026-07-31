@@ -1,6 +1,8 @@
 ;;; core:pickers — fuzzy pickers for files, buffers, and git-modified files,
 ;;; built entirely from the public plugin API (`picker!`,
 ;;; `picker-source-spawn!`) — exactly what a third-party picker plugin gets.
+;;; Deliberately no native (Rust) picker definitions: a fixed native set
+;;; would need a Rust PR for every new finder.
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 ;; `(plugin-config)` only returns the real hash while this body is being

@@ -398,6 +398,9 @@ pub(in super::super) fn parse_typed_command(input: &str) -> (&str, bool, Option<
 /// Only whole tokens (separated by ASCII spaces) are substituted, so filenames
 /// containing `%` or `#` as part of a longer word pass through unchanged.
 /// Spacing is preserved; returns a user-facing error on the first unresolved token.
+///
+/// Expands to the canonical `path`, not `display_path`: the result feeds
+/// straight back into path resolution, which doesn't `~`-expand.
 fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, CommandError> {
     let mut out = String::with_capacity(arg.len());
     for (i, token) in arg.split(' ').enumerate() {

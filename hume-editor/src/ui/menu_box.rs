@@ -116,6 +116,10 @@ pub(crate) fn draw_box_border(buf: &mut ScreenBuf, outer: Rect, style: Style) {
 /// to keep the two edges symmetric. That nudge can push `start` past `slack`
 /// when `view == 1` (`slack == 0`), so the final `.min(slack)` clamps it back
 /// onto the track.
+///
+/// A proportional thumb, not arrow glyphs: an arrow can tell you there's more
+/// to scroll, not how much more, and both menus and popups need that at a
+/// glance.
 fn scrollbar_thumb(view: usize, total: usize, scroll: usize) -> Option<(usize, usize)> {
     if view == 0 || total <= view {
         return None;

@@ -25,7 +25,8 @@ use hume_test_fixtures::skip_unless_grammars;
 /// two-step shape `plum/install-grammar` now runs via `run-inline-output!`
 /// (the removed `hume_platform::process::git_clone_rev`'s Rust
 /// implementation collapsed clone+checkout into one call; full-trust plugin
-/// model, see `docs/ROADMAP.md`, moved that shape to Scheme).
+/// model, see `user-manual/docs/plugins.md`'s "Filesystem and processes",
+/// moved that shape to Scheme).
 fn git_clone_rev_for_test(
     url: &str,
     dest: &std::path::Path,
