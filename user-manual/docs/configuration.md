@@ -268,40 +268,7 @@ The default is equivalent to:
 
 ## Language detection
 
-HUME detects file languages from extension, glob pattern, or shebang line. Define custom languages from Steel:
-
-```scheme
-(define-language! "my-lang"
-  '("myl")
-  '("*.my")
-  '("myinterpreter"))
-```
-
-The arguments, in order, are: the language name, a list of file extensions, a list of glob patterns, and a list of shebang lines. Trailing arguments you don't need can be dropped — `(define-language! "my-lang" '("myl"))` is fine.
-
-Write extensions **without** a leading dot: `"myl"`, not `".myl"`. An extension with a dot never matches.
-
-If a language server expects a different identifier than the language's name (for example TypeScript's language servers expect `"typescriptreact"`, not HUME's `"tsx"`), override it with `#:language-id`:
-
-```scheme
-(define-language! "my-lang" '("myl") #:language-id "my-language-server-id")
-```
-
-It defaults to the language name when omitted.
-
-The definition registers the language and associates it with tree-sitter grammars installed via PLUM:
-
-```
-:plum-install-grammar my-lang
-```
-
-See [Syntax Highlighting](syntax-highlighting.md) for the full grammar workflow — prerequisites, batch install, manual `register-grammar!`, and troubleshooting.
-
-Hooks can trigger on language detection:
-
-```scheme
-(declare-plugin "my-plugin" #:events '(on-language-set))
-```
+HUME detects file languages from extension, glob pattern, or shebang line. See [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language) for defining custom languages with `define-language!` and, for grammars outside the catalog, `register-grammar!`.
 
 ## Example init.scm
 

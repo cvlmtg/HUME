@@ -1,9 +1,9 @@
 # Changelog
 
 ## Unreleased
-- `core:steel-server` no longer flags HUME's own commands and configuration functions as unknown identifiers while you edit `init.scm` or a plugin file. `register-lsp-server!` gained a new `#:env` keyword for passing extra environment variables to a spawned server.
+- `core:steel-server` no longer flags HUME's own commands and configuration functions as unknown identifiers while you edit `init.scm` or a plugin file.
 - The buffer picker (`g b`) now shows each buffer's full display path instead of a `:pwd`-relative one.
-- New `core:pickers` picker, `g m`, lists files with staged or unstaged git changes. Untracked-file inclusion is configurable via `#:config (hash "untracked" #t | #f)` (default on).
+- New `core:pickers` picker, `g m`, lists files with staged or unstaged git changes. Untracked-file inclusion is configurable via `#:config (hash "untracked" #t | #f)`.
 - HUME now notices when an open file changes on disk and prompts to reload it. Controlled by the `autoread` option (default on); `:w`/`:wa` refuse to overwrite a changed file unless forced with `!`.
 - New `:sort` command sorts each run of adjacent selected rows by their selected text, with `-r` (reverse) and `-i` (case-insensitive) flags; numeric keys are auto-detected.
 - Scrollable popups and menus now show a scrollbar.
@@ -12,10 +12,10 @@
 - Syntax highlighting no longer requires the `core:plum` plugin to be loaded — installed grammars register automatically at startup.
 - `set-option!` can now be called from a hook or command body, not just `init.scm`.
 - `get-option` takes an optional buffer id to read a specific buffer's overrides.
-- Quitting with Ctrl-C/SIGTERM/SIGHUP/SIGQUIT now shuts down language servers gracefully and exits with the conventional `128 + signal` code.
 - Fixed a bug where a closed terminal with no controlling process could leave a HUME process spinning at 100% CPU.
+- Quitting with Ctrl-C/SIGTERM/SIGHUP/SIGQUIT now shuts down language servers gracefully and exits with the conventional `128 + signal` code.
 - `mouse-enabled`/`mouse-select` and `jump-list-capacity` now apply immediately when changed with `:set`, instead of only at startup.
-- Fixed a bug where opening a `.tsx`/`.jsx` (or other Helix-vs-LSP-spelling-mismatched) file made the language server log an "Invalid languageId" warning and silently correct it. `define-language!` gained a `#:language-id` keyword to override the wire identifier when it differs from the language name; bundled languages whose Helix name and LSP identifier differ (`tsx`, `jsx`, `hcl`, `tfvars`, `docker-compose`, `docker-bake`, `quarto`, `robot`, `rmarkdown`) now carry the correct override.
+- Fixed a bug where opening a `.tsx`/`.jsx` file made the language server log an "Invalid languageId" warning.
 
 ## [0.10.0] - 2026-07-24
 
