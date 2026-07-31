@@ -22,14 +22,14 @@
 //!
 //! All native command variants (`Motion`, `Selection`, `Edit`, `EditorCmd`)
 //! must execute exclusively through `commands::run_native_body`
-//! (`src/editor/commands/mod.rs`) — the one place that destructures a native
-//! variant to call its `fun` pointer, with `run_dispatch_pipeline` doing all
-//! post-dispatch bookkeeping (paste-session commit, jump-list update,
-//! dot-repeat recording, `last_command` stamping) around it.
+//! (`src/editor/commands/pipeline.rs`) — the one place that destructures a
+//! native variant to call its `fun` pointer, with `run_dispatch_pipeline`
+//! doing all post-dispatch bookkeeping (paste-session commit, jump-list
+//! update, dot-repeat recording, `last_command` stamping) around it.
 //!
 //! `single_native_dispatch_funnel` scans the editor crate for any line
 //! binding a native `MappableCommand`'s `fun` field for execution outside
-//! `commands/mod.rs`.
+//! `commands/pipeline.rs`.
 //!
 //! **Opt-out**: annotate the violation line (or the line above it, so
 //! `cargo fmt` doesn't hoist a trailing comment) with
@@ -374,12 +374,12 @@ mod tests {
 
     // ── Single native-dispatch funnel discipline ──────────────────────────────
 
-    /// Forbid any site outside `commands/mod.rs` from binding the `fun` field of
+    /// Forbid any site outside `commands/pipeline.rs` from binding the `fun` field of
     /// a native `MappableCommand` variant (`Motion { fun`, `Selection { fun`,
     /// `Edit { fun`, `EditorCmd { fun`).
     ///
     /// These patterns mean "I am reaching into a native variant to call its
-    /// function pointer."  Only `run_native_body` in `commands/mod.rs` is
+    /// function pointer."  Only `run_native_body` in `commands/pipeline.rs` is
     /// allowed to do that — it is the single funnel that the dispatch pipeline
     /// wraps with all post-dispatch bookkeeping.  A second naked match would
     /// silently drop the bookkeeping cluster (jump list, last_command,
@@ -409,7 +409,7 @@ mod tests {
         ];
 
         // Only this file is the single legal executor of native commands.
-        let allowed_file = "src/editor/commands/mod.rs";
+        let allowed_file = "src/editor/commands/pipeline.rs";
 
         let mut violations: Vec<String> = Vec::new();
 
@@ -501,7 +501,7 @@ mod tests {
 
         assert!(
             violations.is_empty(),
-            "\nNative-command `fun` binding found outside `run_native_body` in `commands/mod.rs`.\n\
+            "\nNative-command `fun` binding found outside `run_native_body` in `commands/pipeline.rs`.\n\
              Only that function may destructure and call native MappableCommand variants.\n\
              All bookkeeping (jump list, last_command, dot-repeat, paste session) lives\n\
              there — a second dispatch path silently drops the entire cluster.\n\
