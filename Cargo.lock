@@ -1146,6 +1146,10 @@ dependencies = [
 [[package]]
 name = "hume-test-fixtures"
 version = "0.1.0"
+dependencies = [
+ "hume-editing",
+ "pretty_assertions",
+]
 
 [[package]]
 name = "hume-treesitter"

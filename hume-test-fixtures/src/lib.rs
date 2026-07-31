@@ -1,11 +1,17 @@
-//! Grammar-fixture paths and require-fixtures gating shared by
-//! `hume-treesitter`'s and `hume-editor`'s test suites. Fixtures are
-//! installed by `scripts/fetch-test-grammars.sh` into
-//! `tests/fixtures/grammars/<name>/`, with `queries/` normalized to the
-//! fixture root regardless of whether the upstream grammar repo is a
-//! monorepo — callers never need to parse `grammar-sources.scm` for subpaths.
+//! Shared test infrastructure for `hume-editor` and `hume-treesitter`.
+//!
+//! [`testing`] holds the marker-annotated buffer/selection DSL
+//! (`parse_state`/`serialize_state`/`assert_state!`) used by editing-command
+//! tests. Everything below is grammar-fixture paths and require-fixtures
+//! gating shared by both crates' test suites. Fixtures are installed by
+//! `scripts/fetch-test-grammars.sh` into `tests/fixtures/grammars/<name>/`,
+//! with `queries/` normalized to the fixture root regardless of whether the
+//! upstream grammar repo is a monorepo — callers never need to parse
+//! `grammar-sources.scm` for subpaths.
 
 use std::path::{Path, PathBuf};
+
+pub mod testing;
 
 /// Set to `"1"` (by CI and `scripts/test-all.sh`) to turn a missing grammar
 /// fixture into a hard test failure instead of a skip — mirrors
