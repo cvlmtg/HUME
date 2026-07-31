@@ -15,7 +15,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::decorations::DecorationStores;
 use crate::editor::pane_state::PaneBufferState;
-use hume_editing::changeset::ChangeSet;
+use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 
@@ -118,6 +118,10 @@ pub(crate) fn apply_doc_edit(
 /// Uses `std::mem::take` on the active `SelectionSet` instead of `clone()`.
 /// `apply_edit_grouped` is infallible, so no panic can leave the set in its
 /// default state.
+///
+/// Returns the applied `ChangeSet` — `mappings/insert.rs`'s `apply_insert_edit`
+/// uses it to remap an open LSP completion session's anchor through every
+/// keystroke, not just the primary cursor's own position.
 pub(crate) fn apply_doc_edit_grouped(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
@@ -125,9 +129,14 @@ pub(crate) fn apply_doc_edit_grouped(
     focused_pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
-) {
+) -> ChangeSet {
     if buffers.get(buf_id).is_read_only() {
-        return;
+        // Identity changeset: a read-only buffer means nothing happened, so a
+        // caller remapping other state through the result must see a no-op,
+        // not a stale/mismatched-length one.
+        let mut b = ChangeSetBuilder::new(buffers.get(buf_id).text().len_chars());
+        b.retain_rest();
+        return b.finish();
     }
     let buf_pre = buffers.get(buf_id).text().clone();
     let rope_pre = buf_pre.rope().clone();
@@ -143,6 +152,7 @@ pub(crate) fn apply_doc_edit_grouped(
     let text_gen = buffers.get(buf_id).text_gen;
     record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
     record_lsp_edits(buffers, decorations, buf_id, text_gen, &cs, &rope_pre);
+    cs
 }
 
 /// Re-paste from the paste-session snapshot into the focused buffer, replacing

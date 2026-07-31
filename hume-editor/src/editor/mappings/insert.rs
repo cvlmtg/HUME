@@ -1,4 +1,7 @@
+use hume_editing::changeset::ChangeSet;
 use hume_editing::lines::leading_whitespace_end;
+use hume_editing::selection::SelectionSet;
+use hume_editing::text::Text;
 use hume_scripting::SteelBufferId;
 use hume_scripting::hooks::HookId;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
@@ -18,6 +21,31 @@ use crate::ops::motion::cmd_move_right;
 
 impl Editor {
     // ── Insert mode ───────────────────────────────────────────────────────────
+
+    /// Applies a grouped edit on the focused (pane, buffer) and, if an LSP
+    /// completion session is open, remaps its anchor through the resulting
+    /// `ChangeSet` — the single chokepoint every keystroke handler below
+    /// goes through, so no call site needs its own remap-or-not decision.
+    /// See `CompletionSession::remap_anchor` for why every keystroke needs
+    /// this, not just ones at the primary cursor.
+    fn apply_insert_edit(
+        &mut self,
+        cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+    ) {
+        let focused = self.state.focused_pane_id;
+        let buf = self.focused_buffer_id();
+        let cs = doc_ops::apply_doc_edit_grouped(
+            &mut self.state.buffers,
+            &self.state.config.decorations,
+            &mut self.state.panes.state,
+            focused,
+            buf,
+            cmd,
+        );
+        if let Some(session) = self.lsp.completion.as_mut() {
+            session.remap_anchor(&cs);
+        }
+    }
 
     pub(in super::super) fn handle_insert(&mut self, key: KeyEvent) {
         // ── LSP completion menu intercept ────────────────────────────────
@@ -121,25 +149,11 @@ impl Editor {
                         } else if self.should_auto_pair(pair, ap_pairs) {
                             // Context is clear: insert open+close or wrap selection.
                             // NLL: `ap_pairs` last used in the condition above; borrow ends here.
-                            doc_ops::apply_doc_edit_grouped(
-                                &mut self.state.buffers,
-                                &self.state.config.decorations,
-                                &mut self.state.panes.state,
-                                focused,
-                                buf,
-                                |b, s| insert_pair_close(b, s, open, close),
-                            );
+                            self.apply_insert_edit(|b, s| insert_pair_close(b, s, open, close));
                         } else {
                             // Next char is a word char (or symmetric prev is word char):
                             // insert only the typed character.
-                            doc_ops::apply_doc_edit_grouped(
-                                &mut self.state.buffers,
-                                &self.state.config.decorations,
-                                &mut self.state.panes.state,
-                                focused,
-                                buf,
-                                |b, s| insert_char(b, s, ch),
-                            );
+                            self.apply_insert_edit(|b, s| insert_char(b, s, ch));
                         }
                     } else if ap_pairs.iter().any(|p| p.close == ch && !p.is_symmetric())
                         && self.should_skip_close(ch)
@@ -155,24 +169,10 @@ impl Editor {
                         );
                         inserted = false;
                     } else {
-                        doc_ops::apply_doc_edit_grouped(
-                            &mut self.state.buffers,
-                            &self.state.config.decorations,
-                            &mut self.state.panes.state,
-                            focused,
-                            buf,
-                            |b, s| insert_char(b, s, ch),
-                        );
+                        self.apply_insert_edit(|b, s| insert_char(b, s, ch));
                     }
                 } else {
-                    doc_ops::apply_doc_edit_grouped(
-                        &mut self.state.buffers,
-                        &self.state.config.decorations,
-                        &mut self.state.panes.state,
-                        focused,
-                        buf,
-                        |b, s| insert_char(b, s, ch),
-                    );
+                    self.apply_insert_edit(|b, s| insert_char(b, s, ch));
                 }
                 if inserted {
                     let language = self
@@ -194,14 +194,7 @@ impl Editor {
                 self.state.autoindent_pending = false;
                 let style = self.doc().overrides.tab_style(&self.state.settings);
                 let tw = self.doc().overrides.tab_width(&self.state.settings);
-                doc_ops::apply_doc_edit_grouped(
-                    &mut self.state.buffers,
-                    &self.state.config.decorations,
-                    &mut self.state.panes.state,
-                    focused,
-                    buf,
-                    move |b, s| insert_tab(b, s, style, tw),
-                );
+                self.apply_insert_edit(move |b, s| insert_tab(b, s, style, tw));
             }
 
             // ── Newline ───────────────────────────────────────────────────────
@@ -217,14 +210,7 @@ impl Editor {
             // on it should trim.
             KeyCode::Enter => {
                 let trim_blank = self.state.autoindent_pending;
-                doc_ops::apply_doc_edit_grouped(
-                    &mut self.state.buffers,
-                    &self.state.config.decorations,
-                    &mut self.state.panes.state,
-                    focused,
-                    buf,
-                    move |b, s| insert_newline_indent(b, s, trim_blank),
-                );
+                self.apply_insert_edit(move |b, s| insert_newline_indent(b, s, trim_blank));
                 self.state.autoindent_pending = true;
             }
 
@@ -240,45 +226,17 @@ impl Editor {
                     // Dedent: snap every cursor in leading whitespace back to
                     // the previous tab stop. All-or-nothing — if any cursor
                     // isn't in leading ws, the whole batch falls back.
-                    doc_ops::apply_doc_edit_grouped(
-                        &mut self.state.buffers,
-                        &self.state.config.decorations,
-                        &mut self.state.panes.state,
-                        focused,
-                        buf,
-                        move |b, s| dedent_tab_backward(b, s, tw),
-                    );
+                    self.apply_insert_edit(move |b, s| dedent_tab_backward(b, s, tw));
                 } else if ap_enabled && self.is_between_pair(ap_pairs) {
                     // NLL: `ap_pairs` last used in the condition above; borrow ends here.
-                    doc_ops::apply_doc_edit_grouped(
-                        &mut self.state.buffers,
-                        &self.state.config.decorations,
-                        &mut self.state.panes.state,
-                        focused,
-                        buf,
-                        delete_pair,
-                    );
+                    self.apply_insert_edit(delete_pair);
                 } else {
-                    doc_ops::apply_doc_edit_grouped(
-                        &mut self.state.buffers,
-                        &self.state.config.decorations,
-                        &mut self.state.panes.state,
-                        focused,
-                        buf,
-                        delete_char_backward,
-                    );
+                    self.apply_insert_edit(delete_char_backward);
                 }
             }
             KeyCode::Delete => {
                 self.state.autoindent_pending = false;
-                doc_ops::apply_doc_edit_grouped(
-                    &mut self.state.buffers,
-                    &self.state.config.decorations,
-                    &mut self.state.panes.state,
-                    focused,
-                    buf,
-                    delete_char_forward,
-                );
+                self.apply_insert_edit(delete_char_forward);
             }
 
             _ => {}

@@ -12,7 +12,7 @@ use super::*;
 use crate::editor::buffer::Buffer;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
 use crate::editor::{commands, cursor};
-use hume_editing::selection::SelectionSet;
+use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 use hume_engine::format::FormatScratch;
 use hume_engine::pane::WrapMode;
@@ -20,7 +20,6 @@ use hume_engine::pipeline::RenderContext;
 use ratatui::layout::Rect;
 
 fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
-    let bid = ed.focused_buffer_id();
     let items_json: Vec<serde_json::Value> = items
         .iter()
         .map(|(label, detail)| {
@@ -31,7 +30,14 @@ fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
             v
         })
         .collect();
-    let items: Vec<StoredCompletionItem> = items_json
+    begin_session_items(ed, &items_json);
+}
+
+/// Generalized form of [`begin_session`] for items carrying `textEdit` /
+/// `additionalTextEdits` — arbitrary JSON, not just label/detail.
+fn begin_session_items(ed: &mut Editor, items: &[serde_json::Value]) {
+    let bid = ed.focused_buffer_id();
+    let items: Vec<StoredCompletionItem> = items
         .iter()
         .map(|v| StoredCompletionItem::from_json(v).expect("test item"))
         .collect();
@@ -631,4 +637,178 @@ fn completion_popup_anchor_matches_an_independent_screen_pos_walk_when_wrapped()
     let expected_y = row + pane_rect.y + 1; // resolve_popup_geometry: room below → anchor_y + 1
 
     assert_eq!((x, y), (expected_x, expected_y));
+}
+
+// ── Multi-cursor accept ─────────────────────────────────────────────────────
+//
+// `c` on two selections leaves two collapsed cursors in one Insert session
+// (`hume-editor/src/ops/edit/tests.rs`'s `change_span`/`delete_selection`
+// tests cover the deletion itself) — these pin that accepting a completion
+// lands the edit at every one of them, not just the primary, and that the
+// session's own bookkeeping (anchor, undo grouping) stays correct regardless
+// of which cursor is primary.
+
+#[test]
+fn accepting_a_completion_lands_at_every_cursor_not_just_the_primary() {
+    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    ed.feed_key(key('c'));
+    for ch in "st".chars() {
+        ed.feed_key(key(ch));
+    }
+    begin_session(&mut ed, &[("std", None)]);
+    ed.feed_key(key_enter());
+    assert_eq!(ed.doc().text().to_string(), "std std\n");
+}
+
+#[test]
+fn accepting_a_server_text_edit_also_lands_at_every_cursor() {
+    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    ed.feed_key(key('c'));
+    for ch in "st".chars() {
+        ed.feed_key(key(ch));
+    }
+    let head = ed.current_selections().primary().head();
+    // `newText` distinct from `label`/`insertText` — proves the server's
+    // range drove the replacement, not the `insertText` fallback.
+    begin_session_items(
+        &mut ed,
+        &[serde_json::json!({
+            "label": "std",
+            "insertText": "ignored-fallback",
+            "textEdit": {
+                "range": {
+                    "start": {"line": 0, "character": (head - 2) as u32},
+                    "end": {"line": 0, "character": head as u32}
+                },
+                "newText": "STD"
+            }
+        })],
+    );
+    ed.feed_key(key_enter());
+    assert_eq!(ed.doc().text().to_string(), "STD STD\n");
+}
+
+#[test]
+fn additional_text_edits_land_once_not_once_per_cursor() {
+    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    ed.feed_key(key('c'));
+    for ch in "st".chars() {
+        ed.feed_key(key(ch));
+    }
+    begin_session_items(
+        &mut ed,
+        &[serde_json::json!({
+            "label": "std",
+            "insertText": "std",
+            "additionalTextEdits": [
+                {"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}},
+                 "newText": "// header\n"}
+            ]
+        })],
+    );
+    ed.feed_key(key_enter());
+    let text = ed.doc().text().to_string();
+    assert_eq!(text, "// header\nstd std\n");
+    assert_eq!(
+        text.matches("// header\n").count(),
+        1,
+        "additionalTextEdits has no cursor of its own — must land once, not per cursor"
+    );
+}
+
+#[test]
+fn multi_cursor_accept_is_one_undo_step_in_insert_mode() {
+    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    ed.feed_key(key('c'));
+    for ch in "st".chars() {
+        ed.feed_key(key(ch));
+    }
+    begin_session(&mut ed, &[("std", None)]);
+    ed.feed_key(key_enter());
+    ed.feed_key(key('!'));
+    assert_eq!(ed.doc().text().to_string(), "std! std!\n");
+    ed.feed_key(key_esc());
+    ed.handle_key(key('u'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "foo bar\n",
+        "one undo reverts the whole session: both cursors' completion \
+         accept plus the char typed after it"
+    );
+}
+
+#[test]
+fn multi_cursor_accept_is_one_undo_step_from_steel_outside_insert_mode() {
+    // Two cursors placed directly, entirely in Normal mode — no `c`, no
+    // Insert-mode key ever pressed, so no edit group is open going in.
+    // Mirrors `lsp_completion.rs`'s `accept_is_one_undo_step` (single
+    // cursor, same Steel-only setup) but with two.
+    let mut ed = editor_from("-[a]>bcdef gh-[i]>jkl\n");
+    begin_session_items(
+        &mut ed,
+        &[serde_json::json!({
+            "label": "std",
+            "insertText": "X",
+            "additionalTextEdits": [
+                {"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}},
+                 "newText": "// header\n"}
+            ]
+        })],
+    );
+    let session = ed.lsp.completion.take().expect("session open");
+    session
+        .accept(&mut ed.state, &mut ed.lsp, 0)
+        .expect("accept must succeed");
+    let text = ed.doc().text().to_string();
+    assert_eq!(
+        text.matches('X').count(),
+        2,
+        "both cursors must receive the completion"
+    );
+    assert!(
+        text.starts_with("// header\n"),
+        "additionalTextEdits must land"
+    );
+
+    ed.handle_key(key('u'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abcdef ghijkl\n",
+        "one undo must revert both cursors' completion and additionalTextEdits \
+         together, even though accept opened its own edit group"
+    );
+}
+
+#[test]
+fn anchor_remap_keeps_the_filter_correct_when_primary_is_not_the_first_cursor() {
+    // Two cursors from one `c`, but the SECOND is primary — every keystroke
+    // inserts at cursor 1 *before* cursor 2 (primary) shifts cursor 2's head
+    // by more than one char. Without remapping the session anchor through
+    // each keystroke, the filter would pick up drifted text instead of what
+    // was actually typed at the primary.
+    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    ed.feed_key(key('c'));
+    let bid = ed.focused_buffer_id();
+    let pid = ed.state.focused_pane_id;
+    // Force the second (higher-offset) cursor to be primary.
+    {
+        let sels = &mut ed.state.panes.state[pid][bid].selections;
+        let heads: Vec<usize> = sels.iter_sorted().map(|s| s.head()).collect();
+        *sels = SelectionSet::from_vec(heads.iter().map(|&h| Selection::collapsed(h)).collect(), 1);
+    }
+    begin_session(&mut ed, &[("candidate", None)]);
+    for ch in "st".chars() {
+        ed.feed_key(key(ch));
+    }
+    let session = ed.lsp.completion.as_ref().expect("session stays open");
+    assert_eq!(
+        ed.doc()
+            .text()
+            .slice(session.anchor()..ed.current_selections().primary().head())
+            .to_string(),
+        "st",
+        "filter span (anchor..primary head) must be exactly what was typed \
+         at the primary cursor, not text drifted in from the other cursor's \
+         own insert"
+    );
 }

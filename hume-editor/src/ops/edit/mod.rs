@@ -420,6 +420,58 @@ pub(crate) fn insert_str(
     })
 }
 
+/// Replaces `back` chars behind each selection's head and `forward` chars
+/// ahead of it with `text` — the multi-cursor form of "the user typed this
+/// text here." Used by LSP completion accept: a conforming server's
+/// completion range always contains the request position (LSP spec), so a
+/// `(back, forward)` pair derived from one cursor's own edit is the same
+/// char span typing would have consumed at any cursor, and applying it
+/// uniformly gives every cursor the completion, not just the one the server
+/// saw.
+///
+/// Two cursors closer together than `back`, or a cursor nearer the buffer
+/// start than `back`, would otherwise produce a delete range starting before
+/// `b.old_pos()` (the previous selection's edit already claimed that text) —
+/// clamped to `b.old_pos()` instead of erroring, so a cramped cursor simply
+/// replaces less and every cursor still receives `text`.
+pub(crate) fn replace_around_cursors(
+    buf: Text,
+    sels: SelectionSet,
+    back: usize,
+    forward: usize,
+    text: &str,
+) -> (Text, SelectionSet, ChangeSet) {
+    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+        let head = sel.head();
+        // `head - back`/`head + forward` are a uniform char delta and can
+        // land mid-cluster when this cursor's surrounding text differs from
+        // the one the span was derived from (e.g. a combining mark). Snap
+        // outward — floor `start` down, ceil `end` up — to the enclosing
+        // cluster boundary rather than splitting it; the round-trip is
+        // identity when already on a boundary, since `next_grapheme_boundary`
+        // always advances strictly and `prev_grapheme_boundary` always
+        // retreats strictly *except* at 0, which it clamps to instead of
+        // signaling "no earlier boundary" — the `raw_end == 0` guard below
+        // covers that one case explicitly.
+        let raw_start = head.saturating_sub(back);
+        let start =
+            prev_grapheme_boundary(buf, next_grapheme_boundary(buf, raw_start)).max(b.old_pos());
+        // `len_chars() - 1` is the buffer's structural trailing `\n` — never
+        // consume it.
+        let raw_end = (head + forward).min(buf.len_chars() - 1).max(start);
+        let end = if raw_end == 0 {
+            0
+        } else {
+            next_grapheme_boundary(buf, prev_grapheme_boundary(buf, raw_end))
+        };
+        b.retain(start - b.old_pos());
+        b.delete(end - start);
+        b.insert(text);
+        let sel = Selection::collapsed(b.new_pos());
+        new_sels.push(sel);
+    })
+}
+
 /// Returns `true` if `line` has leading whitespace and nothing else before its
 /// structural newline — a blank, auto-indented line with no real content.
 ///

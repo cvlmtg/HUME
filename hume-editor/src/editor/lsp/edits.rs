@@ -13,8 +13,33 @@ use hume_engine::pipeline::{BufferId, EngineView};
 use super::LspState;
 use super::introspect;
 use crate::editor::EditorState;
+use crate::editor::buffer::Buffer;
 use crate::editor::doc_ops;
 use crate::editor::pane_state;
+
+/// Shared precondition check for every edit entry point in this module: the
+/// buffer exists, is writable, and hasn't moved since the caller computed its
+/// positions against it. One definition so `build_edit_changeset` and
+/// `CompletionSession::accept` (which needs the same guard but isn't
+/// building from wire `TextEdit`s) can't drift apart.
+pub(crate) fn checked_buffer(
+    state: &EditorState,
+    bid: BufferId,
+    expect_gen: Option<u64>,
+) -> Result<&Buffer, String> {
+    let Some(buf) = state.buffers.try_get(bid) else {
+        return Err("no such buffer".to_string());
+    };
+    if buf.is_read_only() {
+        return Err("buffer is read-only".to_string());
+    }
+    if let Some(expected_gen) = expect_gen
+        && buf.text_gen != expected_gen
+    {
+        return Err("buffer changed since these edits were computed".to_string());
+    }
+    Ok(buf)
+}
 
 fn one_of_to_text_edit(
     oe: lsp_types::OneOf<lsp_types::TextEdit, lsp_types::AnnotatedTextEdit>,
@@ -39,17 +64,7 @@ fn build_edit_changeset(
     edits: &[lsp_types::TextEdit],
     expect_gen: Option<u64>,
 ) -> Result<ChangeSet, String> {
-    let Some(buf) = state.buffers.try_get(bid) else {
-        return Err("no such buffer".to_string());
-    };
-    if buf.is_read_only() {
-        return Err("buffer is read-only".to_string());
-    }
-    if let Some(expected_gen) = expect_gen
-        && buf.text_gen != expected_gen
-    {
-        return Err("buffer changed since these edits were computed".to_string());
-    }
+    let buf = checked_buffer(state, bid, expect_gen)?;
     if edits.is_empty() {
         return Err("no edits given".to_string());
     }

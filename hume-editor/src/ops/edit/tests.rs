@@ -196,6 +196,100 @@ fn insert_str_empty_is_identity() {
     );
 }
 
+// ── replace_around_cursors ───────────────────────────────────────────────────
+//
+// The multi-cursor "as if typed" primitive behind LSP completion accept:
+// replaces `back` chars behind each cursor's head and `forward` chars ahead
+// of it with `text`, uniformly at every selection.
+
+#[test]
+fn replace_around_cursors_single_cursor_baseline() {
+    // head=2 ('l'); back=2 deletes "he"; forward=0 leaves the head char and
+    // everything after untouched.
+    assert_state!(
+        "he-[l]>lo\n",
+        |(buf, sels)| replace_around_cursors(buf, sels, 2, 0, "XYZ"),
+        "XYZ-[l]>lo\n"
+    );
+}
+
+#[test]
+fn replace_around_cursors_two_cursors_uniform_spacing() {
+    // The op-level shape of the multi-cursor completion bug: two cursors,
+    // each right after its own typed "st", both get the same replacement.
+    assert_state!(
+        "st-[ ]>st-[\n]>",
+        |(buf, sels)| replace_around_cursors(buf, sels, 2, 0, "XY"),
+        "XY-[ ]>XY-[\n]>"
+    );
+}
+
+#[test]
+fn replace_around_cursors_forward_consumes_chars_ahead_of_head() {
+    // head=2 ('l'); back=1 deletes "e"; forward=1 also consumes the head
+    // char itself ('l') — completing in the middle of a token, where the
+    // server's range extends past the live cursor.
+    assert_state!(
+        "he-[l]>lo\n",
+        |(buf, sels)| replace_around_cursors(buf, sels, 1, 1, "XYZ"),
+        "hXYZ-[l]>o\n"
+    );
+}
+
+#[test]
+fn replace_around_cursors_clamps_underflow_at_buffer_start() {
+    // head=2 ('c'); back=5 asks for more chars than exist before the cursor
+    // — clamped to the buffer start (0) rather than underflowing.
+    assert_state!(
+        "ab-[c]>de\n",
+        |(buf, sels)| replace_around_cursors(buf, sels, 5, 0, "Z"),
+        "Z-[c]>de\n"
+    );
+}
+
+#[test]
+fn replace_around_cursors_clamps_when_cursors_are_closer_than_back() {
+    // Cursors at 'c' and 'd' (1 char apart) with back=2 each: the ideal
+    // start for the second cursor (1 char before 'c') would fall inside
+    // territory the first cursor's edit already claimed. Clamped to the
+    // first edit's end instead of erroring — the second cursor still gets
+    // "Z", it just eats one char ('c') instead of two ("b","c").
+    assert_state!(
+        "ab-[c]>-[d]>ef\n",
+        |(buf, sels)| replace_around_cursors(buf, sels, 2, 0, "Z"),
+        "Z-[Z]>-[d]>ef\n"
+    );
+}
+
+#[test]
+fn replace_around_cursors_snaps_start_outward_past_a_combining_mark() {
+    // "café" = c,a,f,e,{combining acute} — one grapheme cluster spans chars
+    // [3,5). head=6 ('x'), back=2 puts the raw start at char 4, splitting
+    // the cluster between the base 'e' and its accent. The snap floors it
+    // to 3, deleting the whole cluster instead of orphaning the accent.
+    assert_state!(
+        "cafe\u{0301} -[x]>\n",
+        |(buf, sels)| replace_around_cursors(buf, sels, 2, 0, "Z"),
+        "cafZ-[x]>\n"
+    );
+}
+
+#[test]
+fn replace_around_cursors_zero_span_matches_insert_str() {
+    // back=0 forward=0 degenerates to a pure multi-cursor insert.
+    // Independent oracle: insert_str is a separately implemented op, so
+    // agreement here isn't circular against replace_around_cursors's own
+    // logic.
+    let buf = Text::from("foo bar\n");
+    let sels = SelectionSet::from_vec(vec![Selection::collapsed(0), Selection::collapsed(4)], 0);
+    let (buf_replace, sels_replace, cs_replace) =
+        replace_around_cursors(buf.clone(), sels.clone(), 0, 0, "X");
+    let (buf_insert, sels_insert, cs_insert) = insert_str(buf, sels, "X");
+    assert_eq!(buf_replace.to_string(), buf_insert.to_string());
+    assert_eq!(sels_replace, sels_insert);
+    assert_eq!(cs_replace, cs_insert);
+}
+
 // ── insert_tab ────────────────────────────────────────────────────────────
 
 #[test]

@@ -3,7 +3,8 @@
 //! `update-filter!`/`top`/`accept!`/`dismiss!`. One singleton session per
 //! editor (not per buffer) — starting a new one replaces the old.
 
-use hume_editing::position_encoding::char_to_wire;
+use hume_editing::changeset::{Assoc, ChangeSet};
+use hume_editing::position_encoding::wire_to_char;
 use hume_engine::pipeline::BufferId;
 use hume_scripting::hooks::HookId;
 use hume_scripting::json::json_to_steel;
@@ -11,7 +12,8 @@ use hume_scripting::json::json_to_steel;
 use super::LspState;
 use super::edits;
 use super::introspect;
-use crate::editor::{Editor, EditorState};
+use crate::editor::{Editor, EditorState, doc_ops, pane_state};
+use crate::ops::edit::replace_around_cursors;
 
 /// One item, typed via `lsp_types::CompletionItem`. `insert_text`/`text_edit`
 /// have snippet syntax (`${n:default}`, `$n`) already stripped when the
@@ -296,6 +298,20 @@ pub(crate) struct CompletionSession {
     /// Char offset where the completed token starts — the primary
     /// selection head at `completion-begin!` time.
     anchor: usize,
+    /// `anchor`'s value at `begin()`, before any `remap_anchor` call —
+    /// paired with `rope_at_begin` as the coordinate system a server's
+    /// `textEdit` range was computed against. Unlike `anchor`, never
+    /// remapped: it's a fixed reference point, not a position tracked
+    /// through edits.
+    anchor_at_begin: usize,
+    /// The buffer's rope at `begin()` time — an O(1) clone (ropey is
+    /// structurally shared). A server's wire `textEdit` range is computed
+    /// against the document as it stood at the completion *request*, which
+    /// is this snapshot, not whatever the buffer holds by `accept()` time:
+    /// if an earlier cursor on the same line has since inserted text (only
+    /// possible when the primary isn't the first cursor), decoding the
+    /// server's range against the live rope would land on the wrong chars.
+    rope_at_begin: ropey::Rope,
     items: Vec<StoredCompletionItem>,
     /// Ranked indices into `items`, rebuilt by every `update_filter` call.
     filtered: Vec<u32>,
@@ -325,6 +341,24 @@ impl CompletionSession {
     /// drifts as the user types further into the token).
     pub(crate) fn anchor(&self) -> usize {
         self.anchor
+    }
+
+    /// Remaps `anchor` through an Insert-mode edit — called after every
+    /// keystroke that lands in the buffer while this session is open, not
+    /// just ones at the primary cursor. Without this, a keystroke at a
+    /// cursor *before* the primary (multi-cursor Insert mode) shifts the
+    /// primary head by more than one char while `anchor` stays put, and
+    /// `refilter_lsp_completion_after_edit`'s `slice(anchor..head)` picks up
+    /// the drifted text.
+    ///
+    /// `Assoc::Before`: the anchor marks the token's start, so text inserted
+    /// exactly at it belongs to the token and the anchor must stay left of
+    /// it — same association `apply_doc_edit_grouped` already uses for
+    /// `pinned_anchors`.
+    pub(crate) fn remap_anchor(&mut self, cs: &ChangeSet) {
+        let mut positions = [self.anchor];
+        cs.map_positions(&mut positions, Assoc::Before);
+        self.anchor = positions[0];
     }
 
     /// The server's `isIncomplete` flag from the response that began this
@@ -373,6 +407,8 @@ impl CompletionSession {
         let mut session = Self {
             bid,
             anchor,
+            anchor_at_begin: anchor,
+            rope_at_begin: state.buffers.get(bid).text().rope().clone(),
             items,
             filtered: Vec::new(),
             rank_scratch: Vec::new(),
@@ -421,15 +457,15 @@ impl CompletionSession {
     }
 
     /// Applies `filtered[idx]`'s `textEdit` (falling back to `insertText`
-    /// over the whole identifier token when absent) plus any
-    /// `additionalTextEdits` — atomically, as one undo step — gen-checked
-    /// against `generation_at_begin`. All edits are wire positions computed
-    /// by the server against the *same* pre-accept document (LSP spec:
-    /// `additionalTextEdits` never overlap the main edit), so batching them
-    /// into one `ChangeSet` needs no relative position adjustment between
-    /// them — unlike a resolve response's edits (see below), which are
-    /// computed later, against that same pre-accept document, and so must
-    /// be mapped *forward* through this edit before they mean anything.
+    /// over the whole identifier token when absent) at *every* cursor in the
+    /// focused pane, as if the completion had been typed at each — a
+    /// conforming server's completion range always contains the request
+    /// position (LSP spec, `completion.rs`'s `text_edit` doc), so the
+    /// primary's own edit, re-expressed as a char count behind/ahead of its
+    /// live head, is the same span typing would have consumed at any cursor.
+    /// `additionalTextEdits` have no cursor of their own and are applied once,
+    /// document-wide. Both land as one undo step — gen-checked against
+    /// `generation_at_begin`.
     ///
     /// If the item lacks `additionalTextEdits` entirely (not just an empty
     /// array — see [`StoredCompletionItem::has_additional_text_edits`]) and
@@ -450,70 +486,139 @@ impl CompletionSession {
             .get(idx)
             .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
         let item = &self.items[item_idx as usize];
+        edits::checked_buffer(state, self.bid, Some(self.generation_at_begin))?;
         let encoding = introspect::encoding_for_buffer(state, lsp, self.bid);
-        let cursor = self.anchor + self.filter.chars().count();
-        // `char_to_wire` positions are internal rope-derived counters, not
-        // untrusted plugin input — a real rope can't exceed u32 lines/columns
-        // short of a multi-gigabyte single line, so `expect` here fails loud
-        // on a genuine invariant violation rather than silently truncating.
-        let to_position = |rope: &ropey::Rope, pos: usize| {
-            let (line, character) = char_to_wire(rope, pos, encoding);
-            lsp_types::Position {
-                line: u32::try_from(line).expect("line exceeds u32"),
-                character: u32::try_from(character).expect("character exceeds u32"),
-            }
-        };
-        let text_edit = match &item.text_edit {
-            Some(te) => {
-                // The server's range was computed against the anchor..cursor
-                // span *at request time* — characters typed since (further
-                // narrowing the filter) sit just past `end` and must be
-                // replaced too, or they survive verbatim next to the
-                // inserted text. Only extend, never shrink: a cursor at or
-                // before the server's own end leaves its range untouched.
-                let rope = state.buffers.get(self.bid).text().rope();
-                let end = to_position(rope, cursor);
-                let mut te = te.clone();
-                if end > te.range.end {
-                    te.range.end = end;
-                }
-                te
-            }
-            None => {
-                // No server-provided range: replace the whole identifier
-                // token, not just the anchor..cursor span — any prefix typed
-                // *before* triggering completion (e.g. "fo" before the popup
-                // opened) sits before `anchor` and is otherwise left
-                // untouched, duplicating it ahead of `insert_text`.
-                let text = state.buffers.get(self.bid).text();
-                let start = word_start_before(text, self.anchor);
-                let rope = text.rope();
-                lsp_types::TextEdit {
-                    range: lsp_types::Range {
-                        start: to_position(rope, start),
-                        end: to_position(rope, cursor),
-                    },
-                    new_text: item.insert_text.clone(),
-                }
-            }
-        };
 
-        // Captured *before* the edit lands — a resolve response (if one
-        // ends up sent below) is computed against this exact pre-accept
-        // document, and its wire positions must be decoded against it, not
-        // whatever the buffer holds once the response actually arrives.
+        let pid = state.focused_pane_id;
+        pane_state::ensure(&mut state.panes.state, &state.buffers, pid, self.bid);
+        let head_now = state.panes.state[pid][self.bid].selections.primary().head();
+
+        let (start_now, end_now, new_text) = {
+            let text = state.buffers.get(self.bid).text();
+            match &item.text_edit {
+                Some(te) => {
+                    let rope_at_begin = &self.rope_at_begin;
+                    let start_b = wire_to_char(
+                        rope_at_begin,
+                        te.range.start.line as usize,
+                        te.range.start.character as usize,
+                        encoding,
+                    );
+                    let end_b = wire_to_char(
+                        rope_at_begin,
+                        te.range.end.line as usize,
+                        te.range.end.character as usize,
+                        encoding,
+                    );
+                    // `self.anchor` already reflects every keystroke since
+                    // `begin` (via `remap_anchor`); the server's range was
+                    // decoded against the frozen `rope_at_begin` above and
+                    // doesn't move on its own, so shifting it by the same
+                    // amount the anchor has drifted keeps it pinned to the
+                    // token, as if decoded fresh against the live document.
+                    let drift = self.anchor as isize - self.anchor_at_begin as isize;
+                    let start_now = (start_b as isize + drift).max(0) as usize;
+                    let end_from_anchor_now = (end_b as isize + drift).max(0) as usize;
+                    // Only extend, never shrink: characters typed since
+                    // begin (further narrowing the filter) sit just past the
+                    // server's own end and must be replaced too, or they
+                    // survive verbatim next to the inserted text.
+                    let cursor_now = self.anchor + self.filter.chars().count();
+                    let end_now = cursor_now.max(end_from_anchor_now);
+                    (start_now, end_now, te.new_text.clone())
+                }
+                None => {
+                    // No server-provided range: replace the whole identifier
+                    // token, not just the anchor..cursor span — any prefix
+                    // typed *before* triggering completion (e.g. "fo" before
+                    // the popup opened) sits before `anchor` and is
+                    // otherwise left untouched, duplicating it ahead of
+                    // `insert_text`.
+                    let start_now = word_start_before(text, self.anchor);
+                    let end_now = self.anchor + self.filter.chars().count();
+                    (start_now, end_now, item.insert_text.clone())
+                }
+            }
+        };
+        // Re-expressed relative to the primary's own live head so the same
+        // (back, forward) pair replays at every cursor, `replace_around_
+        // cursors`-style. `saturating_sub` only clamps for an off-spec
+        // server range that doesn't contain the request position — a
+        // conforming server's never does that (LSP spec), so `start_now <=
+        // head_now <= end_now` in the reachable, spec-conforming case.
+        let back = head_now.saturating_sub(start_now);
+        let forward = end_now.saturating_sub(head_now);
+
+        // Captured before any edit lands — a resolve response (if one ends
+        // up sent below) is computed against this exact pre-accept document,
+        // and its wire positions must be decoded against it, not whatever
+        // the buffer holds once the response actually arrives.
         let rope_pre = state.buffers.get(self.bid).text().rope().clone();
 
-        let mut all_edits = Vec::with_capacity(1 + item.additional_text_edits.len());
-        all_edits.push(text_edit);
-        all_edits.extend(item.additional_text_edits.iter().cloned());
-        let accept_cs = edits::apply_text_edits_returning_cs(
-            state,
-            lsp,
+        // Insert mode already has a group open (composing this accept into
+        // the ongoing session); a Steel-triggered accept outside Insert mode
+        // does not, so open one here — both edits below then land as one
+        // undo step regardless of caller.
+        let opened_group = state.panes.state[pid][self.bid].edit_group.is_none();
+        if opened_group {
+            doc_ops::begin_edit_group(&state.buffers, &mut state.panes.state, pid, self.bid);
+        }
+
+        // additionalTextEdits have no cursor of their own — document-level,
+        // applied first so the cursor edit below reads live selections
+        // already shifted across them, not the pre-edit positions.
+        //
+        // Validation (overlap/reversed-range checks) happens before any
+        // mutation, so a rejected batch here leaves the buffer untouched —
+        // but a group opened just above would otherwise leak, still open
+        // and empty, for the next edit to wrongly compose into. Commit it
+        // (a no-op: `commit_edit_group` skips recording when nothing was
+        // ever composed in) before propagating the error.
+        let cs_additional = if item.additional_text_edits.is_empty() {
+            None
+        } else {
+            match edits::apply_text_edits_returning_cs(
+                state,
+                lsp,
+                self.bid,
+                item.additional_text_edits.clone(),
+                Some(self.generation_at_begin),
+            ) {
+                Ok(cs) => Some(cs),
+                Err(e) => {
+                    if opened_group {
+                        doc_ops::commit_edit_group(
+                            &mut state.buffers,
+                            &mut state.panes.state,
+                            pid,
+                            self.bid,
+                        );
+                    }
+                    return Err(e);
+                }
+            }
+        };
+
+        let cs_cursors = doc_ops::apply_doc_edit_grouped(
+            &mut state.buffers,
+            &state.config.decorations,
+            &mut state.panes.state,
+            pid,
             self.bid,
-            all_edits,
-            Some(self.generation_at_begin),
-        )?;
+            move |b, s| replace_around_cursors(b, s, back, forward, &new_text),
+        );
+
+        if opened_group {
+            doc_ops::commit_edit_group(&mut state.buffers, &mut state.panes.state, pid, self.bid);
+        }
+
+        // The full pre-accept-document → post-accept-document transform —
+        // `maybe_send_resolve` needs it composed, not just the cursor edit's
+        // own half, to map a resolve response's positions forward correctly.
+        let accept_cs = match cs_additional {
+            Some(cs_a) => cs_a.compose(cs_cursors),
+            None => cs_cursors,
+        };
 
         // Fire on-completion-accept with the raw (pristine) item after the
         // edit lands — an extension point for anything this store doesn't

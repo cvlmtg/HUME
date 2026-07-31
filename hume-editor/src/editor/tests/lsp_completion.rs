@@ -133,8 +133,14 @@ fn accept_with_a_text_edit_extends_the_range_to_cover_chars_typed_after_begin() 
 }
 
 #[test]
-fn accept_with_a_text_edit_applies_the_servers_range_exactly() {
+fn accept_with_an_off_spec_text_edit_range_not_containing_the_cursor_clamps_instead_of_panicking() {
     let tmp = safe_tempdir();
+    // LSP spec (completion.rs `text_edit` doc, Note 1): a conforming
+    // server's completion range always contains the request position — the
+    // as-if-typed model `accept` now uses (every edit expressed as a char
+    // count behind/ahead of the live cursor) depends on that guarantee. This
+    // range starts at char 1 while the cursor sits at char 0, deliberately
+    // off-spec and unreachable through real typing.
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -148,10 +154,10 @@ fn accept_with_a_text_edit_applies_the_servers_range_exactly() {
              (completion-accept! 0)))"#,
     );
     type_cmd(&mut ed, ":go");
-    // textEdit replaces chars [1, 4) ("bcd") with "XYZ" — the server's
-    // explicit range, not the anchor..cursor guess (anchor=0, no filter
-    // typed, which would have been a zero-width insert at 0).
-    assert_eq!(ed.doc().text().to_string(), "aXYZef\n");
+    // A delete region that doesn't reach the cursor clamps to start there
+    // instead of panicking or silently doing nothing — no crash, no data
+    // loss beyond what the server's own (off-spec) range already implied.
+    assert_eq!(ed.doc().text().to_string(), "XYZef\n");
 }
 
 #[test]
@@ -544,7 +550,11 @@ fn all_items_malformed_behaves_like_an_empty_response() {
 #[test]
 fn insert_replace_text_edit_applies_the_narrower_insert_range() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
+    // Cursor at char 1 ('b') — inside the `insert` range below, per the LSP
+    // spec's containment guarantee (`completion.rs`'s `text_edit` doc);
+    // unlike the two off-spec regression tests, this one isn't testing
+    // range-vs-cursor divergence, so the fixture stays spec-conforming.
+    let mut ed = editor_from("a-[b]>cdef\n");
     run(
         &mut ed,
         tmp.path(),
