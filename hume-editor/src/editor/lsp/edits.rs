@@ -1,17 +1,23 @@
 //! Edit + navigation primitives: `apply-text-edits!`,
 //! `apply-workspace-edit!`, `goto-location!`, `selection-spans-full-line?`.
 //!
-//! All state/view-only (no `&mut Editor` needed) so these are callable
-//! directly from `EditorHostImpl`, the same discipline as the decoration
-//! setters.
+//! Everything but `Editor::apply_edit_request_response` is state/view-only
+//! (no `&mut Editor` needed) so those are callable directly from
+//! `EditorHostImpl`, the same discipline as the decoration setters. The one
+//! exception answers a server-initiated request, which needs the full
+//! `apply_workspace_edit` + `detect_pending_languages` pair — it lives here
+//! rather than in `drain.rs` because it shares the edit-application path
+//! with `apply-workspace-edit!` and belongs next to it.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::position_encoding::{PositionEncoding, wire_to_char};
 use hume_engine::pipeline::{BufferId, EngineView};
+use hume_lsp::codec::ResponseError;
 
 use super::LspState;
 use super::introspect;
+use crate::editor::Editor;
 use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::doc_ops;
@@ -562,4 +568,43 @@ pub(crate) fn selection_spans_full_line(state: &EditorState, bid: BufferId) -> b
         text.len_chars()
     };
     start == line_start && end_exclusive == line_end
+}
+
+impl Editor {
+    /// Answers a server-initiated `workspace/applyEdit` request by actually
+    /// applying it. Per spec this never fails at the JSON-RPC level: a rejected or
+    /// malformed edit still gets a 200 response, just with `applied: false`.
+    pub(in crate::editor) fn apply_edit_request_response(
+        &mut self,
+        params: &serde_json::Value,
+    ) -> Result<serde_json::Value, ResponseError> {
+        let Some(edit_json) = params.get("edit").cloned() else {
+            return Ok(serde_json::json!({
+                "applied": false,
+                "failureReason": "missing edit",
+            }));
+        };
+        let we: lsp_types::WorkspaceEdit = match serde_json::from_value(edit_json) {
+            Ok(we) => we,
+            Err(e) => {
+                return Ok(serde_json::json!({
+                    "applied": false,
+                    "failureReason": format!("malformed edit: {e}"),
+                }));
+            }
+        };
+        let result = apply_workspace_edit(&mut self.state, &mut self.view, &self.lsp, we);
+        // Drain regardless of outcome: `apply_workspace_edit`'s contract is
+        // "validate all, then apply all", but it opens buffers as it *validates*
+        // each entry (`edits.rs`'s `resolve_or_open` calls), so a failure on
+        // entry 3 of 5 still leaves entries 1-2's buffers open and queued here.
+        self.detect_pending_languages();
+        match result {
+            Ok(_summary) => Ok(serde_json::json!({ "applied": true })),
+            Err(e) => Ok(serde_json::json!({
+                "applied": false,
+                "failureReason": e,
+            })),
+        }
+    }
 }

@@ -1,4 +1,6 @@
-use super::*;
+use std::time::{Duration, Instant};
+
+use super::{SPINNER_INTERVAL, SpinnerClock};
 
 #[test]
 fn spinner_clock_advances_only_after_the_interval_elapses() {

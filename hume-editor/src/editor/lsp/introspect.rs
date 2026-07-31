@@ -367,3 +367,50 @@ pub(crate) fn viewport_range(
     let total_lines = state.buffers.try_get(id)?.text().len_lines();
     Some(pane_visible_range(pane, total_lines))
 }
+
+impl crate::editor::Editor {
+    /// `:lsp-status` text: one line per registered server (language, root,
+    /// lifecycle state, in-flight request count, negotiated encoding),
+    /// followed by one line per attached buffer with its diagnostic counts.
+    pub(in crate::editor) fn lsp_status_text(&self) -> String {
+        let mut servers: Vec<(&str, &hume_lsp::client::LspClient)> = self
+            .lsp
+            .servers
+            .values()
+            .filter_map(|e| e.language.as_deref().map(|lang| (lang, &e.client)))
+            .collect();
+        servers.sort_by(|a, b| a.0.cmp(b.0).then_with(|| a.1.root().cmp(b.1.root())));
+
+        let mut lines = Vec::new();
+        if servers.is_empty() {
+            lines.push("No LSP servers registered.".to_string());
+        }
+        for (language, client) in servers {
+            lines.push(format!(
+                "{language} @ {} — {:?}, {} in flight, encoding: {:?}",
+                client.root().display(),
+                client.state(),
+                client.pending_count(),
+                client.encoding(),
+            ));
+        }
+
+        let mut buffer_lines: Vec<String> = self
+            .state
+            .buffers
+            .iter()
+            .filter_map(|(bid, buf)| {
+                buf.lsp_server.map(|_| {
+                    let (errors, warnings) = self.lsp.diagnostics.counts(bid);
+                    format!(
+                        "  {} — {errors} error(s), {warnings} warning(s)",
+                        buf.display_name()
+                    )
+                })
+            })
+            .collect();
+        lines.append(&mut buffer_lines);
+
+        lines.join("\n")
+    }
+}
