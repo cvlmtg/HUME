@@ -1,4 +1,4 @@
-pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("HUME_GIT_SHA"));
+pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("HUME_VERSION_SUFFIX"));
 
 pub mod editor;
 pub mod ops;

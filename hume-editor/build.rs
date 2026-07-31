@@ -14,7 +14,29 @@ fn main() {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "unknown".into());
-    println!("cargo:rustc-env=HUME_GIT_SHA={sha}");
+
+    // On a tagged release commit (HEAD exactly at `v{CARGO_PKG_VERSION}`), the
+    // version string should be clean with no commit-hash suffix; every other
+    // build (dev, nightly, CI) keeps the `-<sha>` suffix for traceability.
+    let version = std::env::var("CARGO_PKG_VERSION").expect("cargo sets CARGO_PKG_VERSION");
+    let is_release_tag = std::process::Command::new("git")
+        .args([
+            "describe",
+            "--tags",
+            "--exact-match",
+            "--match",
+            &format!("v{version}"),
+        ])
+        .current_dir(workspace)
+        .output()
+        .ok()
+        .is_some_and(|o| o.status.success());
+    let suffix = if is_release_tag {
+        String::new()
+    } else {
+        format!("-{sha}")
+    };
+    println!("cargo:rustc-env=HUME_VERSION_SUFFIX={suffix}");
 
     // Resolve the real git-dir paths via `--git-path` so the rerun-if-changed
     // directives work correctly in git worktrees and submodules (where `.git`
