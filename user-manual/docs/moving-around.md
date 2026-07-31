@@ -56,23 +56,13 @@ The idiomatic line movements live under the `g` prefix:
 
 | Key | Movement |
 |-----|----------|
+| `g g` | First line of file |
+| `g e` | Last line of file |
 | `g h` | Start of line |
 | `g l` | End of line (last character) |
 | `g s` | First non-whitespace character on the line |
 | `Home` | Start of line |
 | `End` | End of line |
-
-## Goto prefix (`g`)
-
-Press `g` followed by a second key for line jumps:
-
-| Key | Movement |
-|-----|----------|
-| `g g` | First line of file |
-| `g e` | Last line of file |
-| `g h` | Start of line |
-| `g l` | End of line |
-| `g s` | First non-whitespace on line |
 
 ## Jump to a line by number
 

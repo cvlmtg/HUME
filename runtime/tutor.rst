@@ -262,7 +262,7 @@ and a head (moving end). The cursor sits on the head character. This
 lesson covers the tools for building and shaping a single selection.
 Editing what you have selected — deleting, changing, replacing — comes
 in Lesson 3.
-HUME can also handle multiple selections. They will be covered in Lesson 8.
+HUME can also handle multiple selections. They will be covered in Lesson 9.
 
 2.1 Line Selection
 ------------------
@@ -428,7 +428,7 @@ Summary
 -------
 
 +------------------+---------------------------------------+
-| x / X           | select line / select line backward    |
+| x / X            | select line / select line backward    |
 +------------------+---------------------------------------+
 | Ctrl+x           | extend line selection                 |
 +------------------+---------------------------------------+
@@ -445,7 +445,7 @@ Summary
 ``Ctrl+g h`` / ``Ctrl+g l`` / ``Ctrl+g s`` — one-shot extend line motions
 
 Lesson 3 — Editing with Selections
-===================================
+==================================
 
 Every action in HUME consumes the current selection. The single
 character under your cursor is always selected — you can act on it
@@ -526,20 +526,20 @@ the range (newlines are preserved to keep line structure intact).
 Exercise
 ~~~~~~~~
 
-Navigate onto the "O" below (use ``j`` to go to the correct line,
-then press ``gl`` to move to the last character of the line) and
-press ``r0`` to fix the typo (the letter O was typed instead of
-a zero):
-
-Listening on port 808O
-
-Exercise
-~~~~~~~~
-
 Press ``w`` to select the word "secret", then press ``r*`` to
 mask every character with an asterisk:
 
 password = "secret"
+
+Exercise
+~~~~~~~~
+
+Select the paragraph title using ``x``, then press ``y`` to copy it.
+Press ``r`` and then ``=`` to replace the while title. Then press
+``;`` to collapse the selection and then ``P`` to paste the title
+above the current line.
+
+1.1 Introduction
 
 3.4 Join Lines
 --------------
@@ -902,8 +902,8 @@ Summary
 | .           | repeat last selection + edit (not motion) |
 +-------------+-------------------------------------------+
 
-Lesson 7 — Search and Text Objects
-===================================
+Lesson 7 — Search and Replace
+=============================
 
 7.1 Search
 ----------
@@ -992,7 +992,70 @@ TODO: validate input before saving
 FIXME: handle the timeout case
 FIXME: retry after a transient failure
 
-7.2 Text Objects
+7.2 Replace
+-----------
+
+HUME has no ``:s/old/new/`` substitute command. Replacing text means
+building a selection that covers every occurrence, then changing it
+all at once — the same select-then-act model you have been using all
+along, just wider.
+
++----+-----------------------------------------------------------+
+| m/ | turn every match of the current search into a selection   |
++----+-----------------------------------------------------------+
+| s  | select regex matches inside the current selection(s)      |
++----+-----------------------------------------------------------+
+
+To replace across the whole buffer: search for the text with ``/old``
+and ``Enter``, then press ``m/`` to turn every match into a selection.
+Press ``c``, type the replacement, and ``Esc`` — every match changes
+together. Press ``,`` to collapse back to one selection when done.
+
+To replace within a smaller region instead, select the region first
+(for example press ``x`` for a line), then press ``s`` and type the
+pattern. ``s`` narrows the matches to inside that selection and
+leaves everything else alone; unlike ``m/`` it needs a selection
+wider than one character to start from.
+
+Exercise
+~~~~~~~~
+
+The block below shadows ``count`` with a second, unrelated variable
+of the same name — a common bug. Put the cursor inside the braces
+and press ``mi{`` to select the block body, then press ``s``, type
+"count", and ``Enter`` to select only the four ``count``\ s inside
+the block. Press ``c``, type "total", and ``Esc`` to rename them —
+the outer declaration on the first line is untouched. Press ``,``
+when done:
+
+let count = 0;
+if (ready) {
+  let count = 10;
+  count = count * 2;
+  console.log(count);
+}
+
+Summary
+-------
+
++------------+------------------------------------------------+
+| / ? n N    | search forward / backward / next / prev        |
++------------+------------------------------------------------+
+| *          | search word under cursor                       |
++------------+------------------------------------------------+
+| Ctrl+/     | search selection literally                     |
++------------+------------------------------------------------+
+| Ctrl+n / N | extend to next / previous match                |
++------------+------------------------------------------------+
+| m/         | select every match in the buffer               |
++------------+------------------------------------------------+
+| s          | select matches inside the current selection(s) |
++------------+------------------------------------------------+
+
+Lesson 8 — Text Objects
+=======================
+
+8.1 Text Objects
 ----------------
 
 Text objects select structured regions. Prefix ``mi`` for INNER
@@ -1057,7 +1120,7 @@ then change it with ``c``.
 
 status = "pending"
 
-7.3 Surrounding Delimiters
+8.2 Surrounding Delimiters
 --------------------------
 
 +----------+------------------------------------------------------------+
@@ -1083,29 +1146,21 @@ return (value + offset)
 Summary
 -------
 
-+---------------+-----------------------------------------+
-| / ? n N       | search forward / backward / next / prev |
-+---------------+-----------------------------------------+
-| *             | search word under cursor                |
-+---------------+-----------------------------------------+
-| Ctrl+/        | search selection literally              |
-+---------------+-----------------------------------------+
-| Ctrl+n / N    | extend to next / previous match         |
-+---------------+-----------------------------------------+
-| mi<d> / ma<d> | inner / around text object              |
-+---------------+-----------------------------------------+
-| mii           | select the last text typed in Insert    |
-+---------------+-----------------------------------------+
-| ms<d>         | select surrounding delimiter pair       |
-+---------------+-----------------------------------------+
++---------------+--------------------------------------+
+| mi<d> / ma<d> | inner / around text object           |
++---------------+--------------------------------------+
+| mii           | select the last text typed in Insert |
++---------------+--------------------------------------+
+| ms<d>         | select surrounding delimiter pair    |
++---------------+--------------------------------------+
 
-Lesson 8 — Multi-Selection
+Lesson 9 — Multi-Selection
 ==========================
 
 HUME can hold many independent cursors simultaneously. This lesson
 covers how to create and manage them.
 
-8.1 Pruning Selections
+9.1 Pruning Selections
 ----------------------
 
 +--------+---------------------------------------------------------+
@@ -1133,7 +1188,7 @@ Clone the repo,
 install dependencies,
 and run the tests.
 
-8.2 Select All
+9.2 Select All
 --------------
 
 +---+------------------------------------------------+
@@ -1150,7 +1205,7 @@ Press ``%`` and observe the selection covers every character. Then
 press ``;`` to collapse back to a single-character selection. Press
 ``Ctrl+o`` to jump back to where you were before ``%``.
 
-8.3 Select Within
+9.3 Select Within
 -----------------
 
 +---+-------------------------------------------------------+
@@ -1158,7 +1213,9 @@ press ``;`` to collapse back to a single-character selection. Press
 +---+-------------------------------------------------------+
 
 Each match within the selection becomes its own selection. Works
-on any selection, not just the whole buffer.
+on any selection, not just the whole buffer. You already used ``s``
+in Lesson 7.2 to scope a replace to one region — this is the same
+key, shown here as the general entry point into multi-cursor work.
 
 Exercise
 ~~~~~~~~
@@ -1173,7 +1230,7 @@ and a third FIXME in the tests.
 The canonical multi-cursor entry: ``%`` (select all) → ``s<pattern>``
 (select matches) → edit (applies to all cursors simultaneously).
 
-8.4 Split into Lines
+9.4 Split into Lines
 --------------------
 
 +---+-------------------------------------------------------+
@@ -1196,7 +1253,7 @@ lint: skipped
 test: skipped
 build: skipped
 
-8.5 Trim Selections
+9.5 Trim Selections
 -------------------
 
 +---+----------------------------------------------------------+
@@ -1214,8 +1271,8 @@ title = "My Application"
 version = "1.0.0"  
 license = "MIT"   
 
-8.6 Cycling the Primary Selection
-----------------------------------
+9.6 Cycling the Primary Selection
+---------------------------------
 
 +---+----------------------------------+
 | ( | cycle primary selection backward |
@@ -1237,7 +1294,7 @@ The first FIXME is in the handler,
 a second FIXME is in the parser,
 and the last FIXME in the tests.
 
-8.7 Copy Selection on Next Line
+9.7 Copy Selection on Next Line
 -------------------------------
 
 +---+---------------------------------------------------------------------+
@@ -1259,7 +1316,7 @@ old-server-1.example.com
 old-server-2.example.com
 old-server-3.example.com
 
-8.8 Align Selections
+9.8 Align Selections
 --------------------
 
 +---+---------------------------------------------------------+
@@ -1324,14 +1381,14 @@ Summary
 | &      | align selections  |        |                    |
 +--------+-------------------+--------+--------------------+
 
-Lesson 9 — Files and Commands
-=============================
+Lesson 10 — Files and Commands
+==============================
 
 Typed commands begin with ``:`` followed by a name (and optionally an
 argument), then ``Enter``. Many have short aliases.
 
-9.1 Saving and Quitting
------------------------
+10.1 Saving and Quitting
+------------------------
 
 +-----------+-----------------------------------------------------------------+
 | :w        | save (write) the current buffer to its file                     |
@@ -1359,8 +1416,8 @@ Exercise
 Try ``:w`` now to confirm the path in the statusline is a temporary path,
 not your runtime directory.
 
-9.2 Opening Files and Reloading
--------------------------------
+10.2 Opening Files and Reloading
+--------------------------------
 
 +-----------+------------------------------------------------------+
 | :e <path> | open a file (creates a new buffer)                   |
@@ -1373,8 +1430,8 @@ not your runtime directory.
 If you open a path that is already in a buffer, ``:e`` switches to that
 buffer instead of opening a duplicate.
 
-9.3 Managing Buffers
---------------------
+10.3 Managing Buffers
+---------------------
 
 +------------+---------------------------------------------------+
 | :ls        | list all open buffers                             |
@@ -1394,8 +1451,8 @@ In any typed command that takes a path, ``%`` expands to the current
 file's path and ``#`` expands to the alternate (previously focused)
 file's path. For example: ``:e #`` reopens the alternate buffer.
 
-9.4 Other Useful Commands
--------------------------
+10.4 Other Useful Commands
+--------------------------
 
 +----------------+---------------------------------------------------------+
 | :version :ver  | show the editor version                                 |
