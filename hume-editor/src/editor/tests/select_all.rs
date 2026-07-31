@@ -43,7 +43,7 @@ fn select_all_matches_no_search_is_noop() {
 /// `select-all-matches` falls back to SEARCH_REGISTER when regex is cleared.
 #[test]
 fn select_all_matches_uses_search_register_fallback() {
-    use crate::ops::register::SEARCH_REGISTER;
+    use hume_ops::register::SEARCH_REGISTER;
     let mut ed = editor_from("-[ab cd ab]>\n");
     ed.state
         .registers
@@ -106,7 +106,7 @@ fn star_on_partial_selection_expands_to_word() {
     // Independent oracle: the pattern must actually match "hello" in the buffer.
     let sp = ed.search_pattern().expect("search pattern must be set");
     let buf = ed.doc().text();
-    let matches = crate::ops::search::find_all_matches(buf, &sp.regex);
+    let matches = hume_ops::search::find_all_matches(buf, &sp.regex);
     assert_eq!(
         matches,
         vec![(0, 4)],
@@ -183,7 +183,7 @@ fn star_whole_word_skips_substring_matches() {
     // inside "last" (positions 4-5). Expected matches: exactly one, at char 0.
     let sp = ed.search_pattern().expect("search pattern must be set");
     let buf = ed.doc().text();
-    let matches = crate::ops::search::find_all_matches(buf, &sp.regex);
+    let matches = hume_ops::search::find_all_matches(buf, &sp.regex);
     assert_eq!(matches, vec![(0, 1)], "only standalone 'as' must match");
 }
 
@@ -226,7 +226,7 @@ fn search_selection_uses_literal_text() {
     // the standalone "ell" (6..9) — proving it's substring, not whole-word, search.
     let sp = ed.search_pattern().expect("search pattern must be set");
     let buf = ed.doc().text();
-    let matches = crate::ops::search::find_all_matches(buf, &sp.regex);
+    let matches = hume_ops::search::find_all_matches(buf, &sp.regex);
     assert_eq!(matches, vec![(1, 3), (6, 8)]);
 }
 
@@ -254,7 +254,7 @@ fn search_selection_escapes_metacharacters() {
     // Oracle: the escaped '.' must NOT match "axb" as a wildcard.
     let sp = ed.search_pattern().expect("search pattern must be set");
     let buf = ed.doc().text();
-    let matches = crate::ops::search::find_all_matches(buf, &sp.regex);
+    let matches = hume_ops::search::find_all_matches(buf, &sp.regex);
     assert_eq!(matches, vec![(0, 2)], "escaped '.' must not match 'axb'");
 }
 

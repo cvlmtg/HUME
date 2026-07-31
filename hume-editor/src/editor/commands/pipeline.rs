@@ -14,7 +14,7 @@ use crate::editor::jump_list::JumpEntry;
 use crate::editor::registry::{CmdMeta, MappableCommand};
 use crate::editor::replay::{RepeatableAction, SelectionStep};
 use crate::editor::{EditorState, Mode, Severity};
-use crate::ops::MotionMode;
+use hume_ops::MotionMode;
 
 use super::{current_selections, doc, focused_buffer_id};
 

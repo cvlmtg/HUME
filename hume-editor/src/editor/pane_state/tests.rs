@@ -39,7 +39,7 @@ fn fresh_from_buf_seeds_stable_initial_sels_across_promotion() {
     // transaction on promotion, `initial_sels()` (and this seed) would
     // return the promoted revision's post-edit selection instead.
     use crate::editor::buffer::Buffer;
-    use crate::ops::edit::insert_char;
+    use hume_ops::edit::insert_char;
 
     let mut buf = Buffer::new(Text::from("hello\n"), SelectionSet::default());
     let expected = buf.initial_sels();

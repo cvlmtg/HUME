@@ -9,8 +9,8 @@ use hume_engine::types::EditorMode;
 
 use super::Editor;
 use crate::editor::lsp::diagnostics::DiagSeverity;
-use crate::ops::pair::find_bracket_pair;
 use hume_editing::lines::line_end_exclusive;
+use hume_ops::pair::find_bracket_pair;
 
 impl Editor {
     /// Interned scope ids for the four diagnostic severities, in

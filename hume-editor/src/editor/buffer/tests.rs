@@ -1,10 +1,10 @@
 use super::*;
-use crate::ops::edit::{
+use crate::testing::{parse_state, serialize_state};
+use hume_ops::edit::{
     delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
     paste_before, repeat_edit,
 };
-use crate::ops::register::yank_selections;
-use crate::testing::{parse_state, serialize_state};
+use hume_ops::register::yank_selections;
 use pretty_assertions::assert_eq;
 
 // ── DocHelper ─────────────────────────────────────────────────────────────

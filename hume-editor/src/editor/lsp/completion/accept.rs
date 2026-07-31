@@ -11,7 +11,7 @@ use super::CompletionSession;
 use super::item::{StoredCompletionItem, parse_additional_text_edits_lenient};
 use crate::editor::lsp::{LspCallback, LspState, edits, introspect};
 use crate::editor::{EditorState, Severity};
-use crate::ops::edit::{replace_around_cursors, replace_span_around_cursors, word_start_before};
+use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors, word_start_before};
 
 /// How `CompletionSession::accept` derives the per-cursor deletion span: a
 /// uniform `(back, forward)` pair when the server sent a `textEdit` (safe

@@ -47,8 +47,8 @@ use std::str::FromStr;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 
-use crate::ops::auto_pairs::Pair;
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
+use hume_ops::auto_pairs::Pair;
 
 // `TabStyle` is a text-model concern (hard tab vs. spaces-to-tab-stop), not an
 // editor concern, so it lives in `hume-editing` — re-exported here so this
@@ -821,12 +821,12 @@ impl BufferOverrides {
 
     /// Effective auto-pairs config for this buffer: `(enabled, &pairs)`.
     ///
-    /// The pair list itself is a fixed constant (`crate::ops::auto_pairs::DEFAULT_PAIRS`)
+    /// The pair list itself is a fixed constant (`hume_ops::auto_pairs::DEFAULT_PAIRS`)
     /// — only `auto-pairs-enabled` is an actual per-buffer setting.
     pub(crate) fn auto_pairs_ref(&self, global: &EditorSettings) -> (bool, &'static [Pair]) {
         (
             self.auto_pairs_enabled(global),
-            crate::ops::auto_pairs::DEFAULT_PAIRS,
+            hume_ops::auto_pairs::DEFAULT_PAIRS,
         )
     }
 }

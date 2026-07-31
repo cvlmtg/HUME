@@ -17,7 +17,7 @@
 //!
 //! Every method here is (a) a thin wrapper over a *real* production
 //! structure/function it holds (`self.settings`, `hume::settings::
-//! setting_value`, `hume::ops::register::is_valid_register_name`),
+//! setting_value`, `hume_ops::register::is_valid_register_name`),
 //! (b) pure recording of whatever the test already told it (`dispatched_
 //! native`, `native_names`), or (c) a reduced but faithful mirror of a real
 //! decision, restated in the exact terms this mock actually tracks
@@ -224,7 +224,7 @@ impl LanguageHost for MockHost {
 
 impl CommandHost for MockHost {
     fn is_valid_register_name(&self, ch: char) -> bool {
-        hume::ops::register::is_valid_register_name(ch)
+        hume_ops::register::is_valid_register_name(ch)
     }
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
         Ok(self.native_names.contains(name))

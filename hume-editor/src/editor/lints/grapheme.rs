@@ -5,7 +5,7 @@
 //! `pos += 1` / `pos -= 1`, which skip over combining codepoints (e.g. `é` =
 //! U+0065 + U+0301) instead of advancing a full grapheme cluster.
 //!
-//! `no_raw_char_stepping_in_motion_code` recursively scans `src/ops/`,
+//! `no_raw_char_stepping_in_motion_code` recursively scans `hume-ops/src/`,
 //! `hume-editing/src/lines.rs` + `hume-editing/src/word.rs` for the
 //! forbidden patterns.
 //!
@@ -32,12 +32,13 @@ fn no_raw_char_stepping_in_motion_code() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR")
         .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
 
-    // Collect all non-test source files under src/ops/ plus two standalone files.
-    // Using directory traversal so future submodule splits are covered automatically.
+    // Collect all non-test source files under hume-ops/src/ plus two
+    // standalone files. Using directory traversal so future submodule splits
+    // are covered automatically.
     let root = std::path::Path::new(&manifest);
     let workspace_root = root.parent().expect("workspace root");
     let mut paths: Vec<std::path::PathBuf> = Vec::new();
-    collect_source_rs(&root.join("src/ops"), &mut paths);
+    collect_source_rs(&workspace_root.join("hume-ops/src"), &mut paths);
     // lines.rs and word.rs live in the editing crate — scan them from there.
     paths.push(workspace_root.join("hume-editing/src/lines.rs"));
     paths.push(workspace_root.join("hume-editing/src/word.rs"));

@@ -2,8 +2,8 @@ use termina::event::KeyEvent;
 
 use super::super::minibuf::MiniBufferEvent;
 use super::super::{Editor, Mode};
-use crate::ops::search::compile_search_regex;
-use crate::ops::selection_cmd::select_matches_within;
+use hume_ops::search::compile_search_regex;
+use hume_ops::selection_cmd::select_matches_within;
 
 impl Editor {
     // ── Select mode (s) ────────────────────────────────────────────────────────

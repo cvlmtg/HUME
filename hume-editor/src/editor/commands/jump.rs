@@ -1,5 +1,5 @@
-use crate::ops::MotionMode;
 use hume_engine::pipeline::{Direction, EngineView};
+use hume_ops::MotionMode;
 
 use super::super::{EditorState, Severity};
 use super::{

@@ -531,7 +531,7 @@ fn d_yanks_selection_into_register_before_deleting() {
 /// pure tests of `yank_selections` never touch `Editor.registers` or `kill_ring`.
 #[test]
 fn y_populates_register_without_changing_buffer() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('y'));
@@ -623,7 +623,7 @@ fn r_then_enter_replaces_with_newline() {
 /// Multi-char selection: every grapheme becomes '\n', except a grapheme that
 /// already was '\n' — `replace_selections` never replaces an existing newline,
 /// it is retained as-is (see `replace_multiline_selection_skips_newline` in
-/// `ops/edit/tests.rs`). This exercises that rule with the new Enter argument.
+/// `hume-ops/src/edit/tests/replace.rs`). This exercises that rule with the new Enter argument.
 #[test]
 fn r_then_enter_multi_char_selection_replaces_each_grapheme() {
     let mut ed = editor_from("-[ab\ncd]>\n");
@@ -643,7 +643,7 @@ fn r_then_tab_replaces_with_tab() {
 }
 
 /// `f<ret>` is accepted as a wait-char argument (the wait clears, unlike Esc)
-/// but never matches: `find_char_on_line_forward` (ops/motion/find.rs)
+/// but never matches: `find_char_on_line_forward` (hume-ops/src/motion/find.rs)
 /// explicitly excludes '\n' as a structural line boundary, not content — by
 /// design, not a bug. This documents that "accepted argument" and "found on
 /// line" are separate questions, exactly like `fz` on a line with no 'z'.

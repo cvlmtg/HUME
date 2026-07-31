@@ -395,7 +395,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
     }
 
     fn is_valid_register_name(&self, ch: char) -> bool {
-        crate::ops::register::is_valid_register_name(ch)
+        hume_ops::register::is_valid_register_name(ch)
     }
 
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
@@ -503,7 +503,7 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         if hume_editing::word::classify_char(ch) != hume_editing::word::CharClass::Word {
             return String::new();
         }
-        let Some((start, end)) = crate::ops::text_object::inner_word_impl(
+        let Some((start, end)) = hume_ops::text_object::inner_word_impl(
             text,
             head,
             hume_editing::word::is_word_boundary,

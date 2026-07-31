@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 
 use crate::editor::error::CommandError;
-use crate::ops::MotionMode;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use hume_engine::pipeline::EngineView;
+use hume_ops::MotionMode;
 
 // ── Command metadata for dispatch bookkeeping ────────────────────────────────
 

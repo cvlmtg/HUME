@@ -12,6 +12,7 @@ hume-engine = { path = "../hume-engine" }
 hume-platform = { path = "../hume-platform" }
 hume-scripting = { path = "../hume-scripting" }
 hume-editing = { path = "../hume-editing" }
+hume-ops = { path = "../hume-ops" }
 hume-treesitter = { path = "../hume-treesitter" }
 hume-lsp = { path = "../hume-lsp" }
 lsp-types = "0.97"
@@ -45,4 +46,5 @@ hume-scripting = { path = "../hume-scripting", features = ["test-util"] }
 hume-treesitter = { path = "../hume-treesitter", features = ["test-util"] }
 hume-lsp = { path = "../hume-lsp", features = ["test-util"] }
 hume-platform = { path = "../hume-platform", features = ["test-util"] }
+hume-ops = { path = "../hume-ops", features = ["test-util"] }
 hume-test-fixtures = { path = "../hume-test-fixtures" }

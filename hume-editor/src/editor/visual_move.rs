@@ -3,16 +3,16 @@
 //! When soft-wrap is active, `j`/`k` move by one display row rather than one
 //! buffer line. These commands need a `RowMap` — unavailable in the pure
 //! `(&Text, SelectionSet) -> SelectionSet` motion signature — so they live here
-//! instead of `ops/motion`.
+//! instead of `hume-ops`'s `motion` module.
 
-use crate::ops::MotionMode;
-use crate::ops::motion::{cmd_move_down, cmd_move_up};
-use crate::ops::text_object::{
-    apply_nearest_word_result, cmd_select_word_nearest_on_line, nearest_word_on_line,
-};
 use hume_editing::selection::Selection;
 use hume_engine::pipeline::EngineView;
 use hume_engine::rows::{ColTarget, RowKind, RowMap};
+use hume_ops::MotionMode;
+use hume_ops::motion::{cmd_move_down, cmd_move_up};
+use hume_ops::text_object::{
+    apply_nearest_word_result, cmd_select_word_nearest_on_line, nearest_word_on_line,
+};
 
 use super::commands::{apply_focused_motion, focused_buffer_id, pane_row_map};
 use super::{EditorState, doc_ops};

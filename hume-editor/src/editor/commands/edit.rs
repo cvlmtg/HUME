@@ -1,15 +1,15 @@
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
-use crate::ops::MotionMode;
-use crate::ops::edit::{
+use hume_editing::selection::{Selection, SelectionSet};
+use hume_ops::MotionMode;
+use hume_ops::edit::{
     align_selections, change_span, delete_selection, delete_selection_content,
     join_lines_select_spaces, paste_after, paste_before, replace_selections,
 };
-use crate::ops::register::{
+use hume_ops::register::{
     BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER, yank_selections,
 };
-use crate::ops::surround::wrap_each_selection;
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_ops::surround::wrap_each_selection;
 
 use super::super::{EditorState, Severity, doc_ops, register_ops};
 use super::{

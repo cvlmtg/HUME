@@ -262,7 +262,7 @@ fn auto_pairs_ref_enabled_resolves_override_over_global() {
     };
     let (enabled, pairs) = ov.auto_pairs_ref(&global);
     assert!(!enabled);
-    assert_eq!(pairs, crate::ops::auto_pairs::DEFAULT_PAIRS);
+    assert_eq!(pairs, hume_ops::auto_pairs::DEFAULT_PAIRS);
 }
 
 #[test]
@@ -271,7 +271,7 @@ fn auto_pairs_ref_enabled_falls_back_to_global_when_no_override() {
     let ov = BufferOverrides::default();
     let (enabled, pairs) = ov.auto_pairs_ref(&global);
     assert_eq!(enabled, global.auto_pairs_enabled);
-    assert_eq!(pairs, crate::ops::auto_pairs::DEFAULT_PAIRS);
+    assert_eq!(pairs, hume_ops::auto_pairs::DEFAULT_PAIRS);
 }
 
 // ── write_global ───────────────────────────────────────────────────────────

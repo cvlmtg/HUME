@@ -7,7 +7,7 @@ use hume_engine::pipeline::EngineView;
 use crate::editor::buffer::LastInsert;
 use crate::editor::replay::InsertSession;
 use crate::editor::{EditorState, Mode, Severity};
-use crate::ops::edit::clear_blank_line_indent;
+use hume_ops::edit::clear_blank_line_indent;
 
 use super::{
     apply_focused_edit_grouped, apply_focused_motion, begin_edit_group_current,
@@ -28,11 +28,11 @@ pub(super) fn is_group_open_current(state: &EditorState, view: &EngineView) -> b
 /// would actually change the buffer. Checked before calling it so the common
 /// case (exiting Insert mode away from a blank line) skips the edit entirely
 /// instead of running an identity one (see
-/// [`crate::ops::edit::blank_line_ws_range`]'s doc comment).
+/// [`hume_ops::edit::blank_line_ws_range`]'s doc comment).
 pub(super) fn has_blank_line_cursor(state: &EditorState, view: &EngineView) -> bool {
     let buf = doc(state, view).text();
     current_selections(state, view).iter_sorted().any(|sel| {
-        sel.is_collapsed() && crate::ops::edit::blank_line_ws_range(buf, sel.head()).is_some()
+        sel.is_collapsed() && hume_ops::edit::blank_line_ws_range(buf, sel.head()).is_some()
     })
 }
 

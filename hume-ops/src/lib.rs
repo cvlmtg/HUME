@@ -1,0 +1,33 @@
+pub mod auto_pairs;
+pub mod edit;
+pub mod motion;
+pub mod pair;
+pub mod register;
+pub mod search;
+pub mod selection_cmd;
+pub mod surround;
+pub mod text_object;
+
+// ── MotionMode ────────────────────────────────────────────────────────────────
+
+/// Controls how a motion updates the selection's anchor and head.
+///
+/// | Mode | Anchor | Head | Usage |
+/// |------|--------|------|-------|
+/// | `Move`   | `new_head` | `new_head` | Plain cursor move — anchor re-set to head |
+/// | `Extend` | `old_anchor` | `new_head` | Grow selection — keep existing anchor |
+///
+/// `Move` always produces a collapsed single-character selection (anchor == head).
+/// `Extend` keeps the existing anchor, only moving the head.
+///
+/// All Motion, Selection, and EditorCmd functions receive a `MotionMode` at
+/// dispatch time. Most motion and text-object commands branch on it (word-select
+/// and text-object commands use [`Extend`](MotionMode::Extend) to union new
+/// ranges with the existing selection rather than replacing it). Commands with
+/// no extend semantics (e.g. surround, flip, collapse) accept `_mode` and
+/// ignore it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MotionMode {
+    Move,
+    Extend,
+}

@@ -11,7 +11,7 @@
 use std::borrow::Cow;
 
 use crate::editor::clipboard::SystemClipboard;
-use crate::ops::register::{CLIPBOARD_REGISTER, RegisterSet, is_register_linewise};
+use hume_ops::register::{CLIPBOARD_REGISTER, RegisterSet, is_register_linewise};
 
 /// Pending state for the two-keystroke `"<reg>` register-prefix sequence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

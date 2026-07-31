@@ -254,9 +254,9 @@ fn visual_move_up_with_explicit_count_moves_buffer_lines() {
 #[test]
 fn no_wrap_bare_j_and_screen_row_scroll_agree_on_display_column() {
     use crate::editor::visual_move::{VerticalUnit, apply_visual_vertical};
-    use crate::ops::MotionMode;
     use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::Text;
+    use hume_ops::MotionMode;
 
     let no_wrap_editor_at_f = || {
         let content = "\tfoo\nabcdefgh\n";
@@ -307,7 +307,7 @@ fn no_wrap_bare_j_and_screen_row_scroll_agree_on_display_column() {
 #[test]
 fn apply_visual_vertical_ignores_explicit_count_when_caller_forces_visual() {
     use crate::editor::visual_move::{VerticalUnit, apply_visual_vertical};
-    use crate::ops::MotionMode;
+    use hume_ops::MotionMode;
 
     let mut ed = visual_test_editor(0);
     ed.state.explicit_count = true; // simulate "a count was typed"

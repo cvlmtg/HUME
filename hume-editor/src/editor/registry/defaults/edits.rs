@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::editor::registry::{CommandRegistry, MappableCommand};
-use crate::ops::edit::{
+use hume_ops::edit::{
     delete_char_backward, delete_char_forward, delete_selection, delete_word_backward,
     make_text_capitalized, make_text_lowercase, make_text_uppercase,
 };

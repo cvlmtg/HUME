@@ -152,7 +152,7 @@ fn normal_mode_paste_replaces_every_selection_in_a_multi_cursor_selection() {
     // selections at once is no exception. Two-char selections here (not
     // bare 1-char cursors) so this exercises replace, not insert-before —
     // see `insert_str_replaces_forward_selection` vs. `insert_str_two_cursors`
-    // in `ops/edit/tests.rs` for why that distinction matters.
+    // in `hume-ops/src/edit/tests/insert.rs` for why that distinction matters.
     let mut ed = editor_from("-[ab]>cd-[ef]>gh\n");
     paste(&mut ed, "X");
     assert_eq!(ed.doc().text().to_string(), "XcdXgh\n");

@@ -48,12 +48,12 @@ impl Editor {
         use crate::editor::buffer::Buffer;
         use crate::editor::buffer::store::BufferStore;
         use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
-        use crate::ops::register::{KillRing, RegisterSet};
         use crate::settings::EditorSettings;
         use crate::ui::build_pane;
         use hume_editing::selection::{Selection, SelectionSet};
         use hume_editing::text::Text;
         use hume_engine::pipeline::LayoutTree;
+        use hume_ops::register::{KillRing, RegisterSet};
         use slotmap::SecondaryMap;
         use std::collections::VecDeque;
 

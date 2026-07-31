@@ -1,0 +1,22 @@
+[package]
+name = "hume-ops"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+# A small number of test-only helpers (e.g. KillRing::len, repeat_edit) are
+# exercised by hume-editor's test suite too. hume-editor's `[dev-dependencies]`
+# pulls this feature in — see hume-platform's `test-util` (its `src/lib.rs`)
+# for the same pattern.
+test-util = []
+
+[dependencies]
+hume-editing = { path = "../hume-editing" }
+regex-cursor = "0.1.5"
+unicode-segmentation.workspace = true
+rustc-hash.workspace = true
+termina = "0.3.3"
+
+[dev-dependencies]
+hume-test-fixtures = { path = "../hume-test-fixtures" }
+pretty_assertions = "1.4.1"

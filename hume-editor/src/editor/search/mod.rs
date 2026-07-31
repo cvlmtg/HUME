@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use hume_editing::history::RevisionId;
 
-pub(crate) use crate::ops::search::SearchDirection;
+pub(crate) use hume_ops::search::SearchDirection;
 
 // ── Per-buffer types ──────────────────────────────────────────────────────────
 

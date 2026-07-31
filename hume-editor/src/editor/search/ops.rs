@@ -24,7 +24,7 @@ use super::{SearchCursor, SearchMatches};
 use crate::editor::Editor;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::PaneBufferState;
-use crate::ops::search::{find_all_matches, search_match_info};
+use hume_ops::search::{find_all_matches, search_match_info};
 
 /// Clear the active search state for buffer `bid`: drop the pattern,
 /// reset the match cache, and reset every pane's search cursor.

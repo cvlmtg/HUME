@@ -4,7 +4,7 @@ use super::super::Editor;
 use super::super::Severity;
 use super::current_jump_entry;
 use crate::editor::error::CommandError;
-use crate::ops::edit::{SortOpts, SortRefusal, sort_rows};
+use hume_ops::edit::{SortOpts, SortRefusal, sort_rows};
 
 // ── Message log ──────────────────────────────────────────────────────────────
 

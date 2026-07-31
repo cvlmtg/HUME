@@ -69,7 +69,7 @@ fn setup_vim_keybind_editor_with_config(
 // ── Plugin rebinds ─────────────────────────────────────────────────────────────
 //
 // `$`/`^`/`0`/`G`/`Ctrl+6` each just `bind-key!` an already-tested native
-// command (see `hume-editor/src/ops/motion/tests.rs` and
+// command (see `hume-ops/src/motion/tests/` and
 // `tests/alternate.rs`) to a new key — one test spot-checks that the real
 // plugin file's `bind-key!` lines are wired to the right command names,
 // rather than one near-duplicate test per key.
@@ -154,7 +154,7 @@ fn shift_c_changes_to_eol_and_enters_insert() {
 /// shadowed `copy-selection-on-next-line` instead of changing text — vim has
 /// no bare-cursor gesture to match here, so HUME's multicursor idiom wins.
 /// Mirrors `copy_next_line_range_selection` in
-/// `hume-editor/src/ops/selection_cmd/copy.rs`: a forward selection covering
+/// `hume-ops/src/selection_cmd/copy.rs`: a forward selection covering
 /// "hello" is duplicated one line down with the same column span, buffer
 /// text untouched.
 #[test]

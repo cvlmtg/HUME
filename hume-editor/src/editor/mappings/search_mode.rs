@@ -8,7 +8,7 @@ use super::super::minibuf::MiniBufferEvent;
 use super::super::minibuf::history::{HistoryDir, HistoryStore};
 use super::super::search::SearchPattern;
 use super::super::{Editor, Mode, SearchDirection, search};
-use crate::ops::search::{compile_search_regex, find_next_match};
+use hume_ops::search::{compile_search_regex, find_next_match};
 
 impl Editor {
     // ── Search mode ───────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ impl Editor {
                 // Persist pattern in 's' register for future n/N.
                 self.state
                     .registers
-                    .write_text(crate::ops::register::SEARCH_REGISTER, vec![pattern]);
+                    .write_text(hume_ops::register::SEARCH_REGISTER, vec![pattern]);
                 // Record the pre-search position in the jump list before
                 // discarding it — the search moved the cursor to the match.
                 let pid = self.state.focused_pane_id;

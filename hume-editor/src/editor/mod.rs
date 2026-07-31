@@ -13,9 +13,9 @@ use self::replay::{InsertSession, MacroPending, PendingRepeat, RepeatableAction,
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::PaneView;
-use crate::ops::register::{KillRing, RegisterSet};
 use crate::settings::EditorSettings;
 use hume_editing::selection::SelectionSet;
+use hume_ops::register::{KillRing, RegisterSet};
 use hume_treesitter::parse_worker::ParseBackend;
 use hume_treesitter::registry::LanguageRegistry;
 

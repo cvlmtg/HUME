@@ -1061,6 +1061,7 @@ dependencies = [
  "hume-editing",
  "hume-engine",
  "hume-lsp",
+ "hume-ops",
  "hume-platform",
  "hume-scripting",
  "hume-test-fixtures",
@@ -1111,6 +1112,19 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "hume-ops"
+version = "0.1.0"
+dependencies = [
+ "hume-editing",
+ "hume-test-fixtures",
+ "pretty_assertions",
+ "regex-cursor",
+ "rustc-hash",
+ "termina",
+ "unicode-segmentation",
 ]
 
 [[package]]

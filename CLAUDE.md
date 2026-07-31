@@ -10,8 +10,8 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 - `docs/LEARNING.md` — Concepts and Rust patterns explained as they arise
 
 ## Architectural invariants (quick orientation)
-- **Workspace**: five crates — `hume-engine/` (rendering pipeline, pane geometry), `hume-editor/` (buffer, ops, scripting, keymaps, everything else; builds the `hume` binary), `hume-editing/` (text model, selections, grapheme utils), `hume-platform/` (terminal I/O, filesystem helpers), `hume-scripting/` (Steel scripting host).
-- **Named commands** (`hume-editor/src/ops/edit/`, `hume-editor/src/ops/motion/`) are pure functions of buffer + selections (plus command-specific params like `count: usize`, `MotionMode`). Edits also return a `ChangeSet`. They have no knowledge of keys.
+- **Workspace**: `hume-engine/` (rendering pipeline, pane geometry), `hume-editor/` (editor state, scripting glue, keymaps, everything else; builds the `hume` binary), `hume-ops/` (named commands — pure functions of buffer + selections), `hume-editing/` (text model, selections, grapheme utils), `hume-platform/` (terminal I/O, filesystem helpers), `hume-scripting/` (Steel scripting host), `hume-treesitter/` (grammar loading, incremental parse), `hume-lsp/` (LSP client transport), plus `hume-test-fixtures/` (shared test DSL and grammar fixtures, dev-only).
+- **Named commands** (`hume-ops/src/edit/`, `hume-ops/src/motion/`) are pure functions of buffer + selections (plus command-specific params like `count: usize`, `MotionMode`). Edits also return a `ChangeSet`. They have no knowledge of keys — `hume-ops` doesn't depend on `hume-editor`, so this is compiler-enforced, not just discipline.
 - **Keymaps** (`hume-editor/src/editor/keymap/`) map `KeyEvent` sequences to command names via a trie. Per-mode keymaps (Normal, Extend, Insert).
 - **Buffer invariant**: every buffer always ends with a structural `\n`. Cursors always satisfy `head < len_chars()`.
 
@@ -32,7 +32,7 @@ These must be respected from the first line of code — retrofitting is expensiv
   - **Forbidden**: `pos += 1`, `pos -= 1`, `start += 1`, `start -= 1`, `end += 1`, `end -= 1`, `head += 1`, `head -= 1`, `char_at(pos + 1)`, `char_at(pos - 1)` in any motion or selection code. These step over raw chars and will land mid-cluster on combining sequences (e.g. `é` = U+0065 + U+0301) or ZWJ emoji.
   - **Required**: `next_grapheme_boundary(buf, pos)` and `prev_grapheme_boundary(buf, pos)` from `hume-editing/src/grapheme.rs` for all position advances in motion/selection logic.
   - **Allowed**: `line += 1` for line-level iteration, `i += 1` in bracket/delimiter scanning (ASCII only), `len_chars() - 1` for end-of-buffer clamping.
-  - **Enforced**: `cargo test no_raw_char_stepping_in_motion_code` (in `hume-editor/src/editor/lints/grapheme.rs`) recursively scans `hume-editor/src/ops/` and `hume-editing/src/lines.rs` + `hume-editing/src/word.rs` for forbidden patterns and fails the build if found.
+  - **Enforced**: `cargo test no_raw_char_stepping_in_motion_code` (in `hume-editor/src/editor/lints/grapheme.rs`) recursively scans `hume-ops/src/` and `hume-editing/src/lines.rs` + `hume-editing/src/word.rs` for forbidden patterns and fails the build if found.
 
 ## Rust coding philosophy
 This project is both a product and a learning journey. Write the best Rust possible, and teach as you go.

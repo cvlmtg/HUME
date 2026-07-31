@@ -1,6 +1,6 @@
 use super::read_register_text;
 use crate::editor::clipboard::SystemClipboard;
-use crate::ops::register::{CLIPBOARD_REGISTER, RegisterSet};
+use hume_ops::register::{CLIPBOARD_REGISTER, RegisterSet};
 
 fn seeded_registers(values: &[&str]) -> RegisterSet {
     let mut regs = RegisterSet::new();

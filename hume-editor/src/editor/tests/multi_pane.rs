@@ -1102,7 +1102,7 @@ fn wrap_toggle_affects_only_focused_pane() {
 #[test]
 fn close_then_focus_next_without_reframe_lands_on_live_pane() {
     use crate::editor::commands::cmd_pane_focus_next;
-    use crate::ops::MotionMode;
+    use hume_ops::MotionMode;
 
     let mut ed = editor_from("-[h]>ello\n");
     let pid_a = ed.state.focused_pane_id;
@@ -1132,7 +1132,7 @@ fn close_then_focus_next_without_reframe_lands_on_live_pane() {
 #[test]
 fn split_then_focus_left_without_reframe_reaches_new_pane() {
     use crate::editor::commands::cmd_pane_focus_left;
-    use crate::ops::MotionMode;
+    use hume_ops::MotionMode;
 
     let mut ed = editor_from("-[h]>ello\n");
     let pid_a = ed.state.focused_pane_id;

@@ -7,7 +7,7 @@
 //!
 //! They are registered in [`super::registry`] and called via function pointer
 //! from `execute_keymap_command`, exactly like the pure `cmd_*` functions in
-//! `ops/motion.rs`, `ops/edit.rs`, etc.
+//! `hume-ops`'s `motion`, `edit`, etc. modules.
 //!
 //! The `count` parameter is the user's numeric prefix (default 1). Commands
 //! that don't use a count accept it and ignore it (`_count`).
@@ -56,7 +56,7 @@ impl EditorState {
     /// ring; any other explicit register prefix routes through `write_register`.
     pub(super) fn route_kill(&mut self, yanked: Vec<String>) {
         match self.take_register_prefix() {
-            None | Some(crate::ops::register::KILL_RING_REGISTER) => self.kill_ring.push(yanked),
+            None | Some(hume_ops::register::KILL_RING_REGISTER) => self.kill_ring.push(yanked),
             Some(reg) => self.write_register(reg, yanked),
         }
     }

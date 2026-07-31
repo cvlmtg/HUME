@@ -4,13 +4,13 @@ use hume_editing::text::Text;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
-use crate::ops::MotionMode;
-use crate::ops::edit::insert_char;
-use crate::ops::motion::{
+use hume_ops::MotionMode;
+use hume_ops::edit::insert_char;
+use hume_ops::motion::{
     cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_newline, cmd_goto_line_start,
     cmd_move_left, cmd_move_right,
 };
-use crate::ops::selection_cmd::{cmd_collapse_selection_to_anchor, cmd_collapse_selection_to_head};
+use hume_ops::selection_cmd::{cmd_collapse_selection_to_anchor, cmd_collapse_selection_to_head};
 
 use super::super::replay::PendingRepeat;
 use super::super::{EditorState, MiniBuffer, Mode};

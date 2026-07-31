@@ -4,7 +4,7 @@ use pretty_assertions::assert_eq;
 // ── word-selects-whitespace (mm/MM, w/W/b/B around-word default) ──────────
 //
 // Full-dispatch coverage of the default flip: the ops-level tests in
-// ops/motion/tests.rs and ops/text_object/tests.rs cover the span math
+// hume-ops/src/motion/tests/ and hume-ops/src/text_object/tests/ cover the span math
 // (leading-preferred, trailing fallback for the first word of a line); these
 // confirm the setting actually gates behavior through the real
 // keymap/registry/dispatch path (:set, direct field write, and replay).
@@ -55,7 +55,7 @@ fn b_default_selects_leading_space() {
 /// trailing whitespace and leaves head on that space — just outside the
 /// word's own bounds — which would defeat `select_prev_word`'s "am I still
 /// on the word I just found" check and re-return the same word. See
-/// apply_word_select's `backward` parameter in ops/motion/word.rs.
+/// apply_word_select's `backward` parameter in hume-ops/src/motion/word.rs.
 #[test]
 fn b_b_walks_back_through_distinct_words() {
     let mut ed = editor_from("one two three -[f]>our\n");

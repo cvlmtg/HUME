@@ -183,7 +183,7 @@ impl VirtualLineSource for MultiAfterLine {
 #[test]
 fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
     use crate::editor::visual_move::{VerticalUnit, apply_visual_vertical};
-    use crate::ops::MotionMode;
+    use hume_ops::MotionMode;
 
     let content: String = (0..6).map(|i| format!("{i}\n")).collect();
     let buf = Text::from(content.as_str());

@@ -3,8 +3,8 @@ use termina::event::{KeyCode, KeyEvent, Modifiers};
 use super::super::commands::cmd_clear_search;
 use super::super::dispatch::ArgSource;
 use super::super::keymap::WalkResult;
-use crate::ops::MotionMode;
-use crate::ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
+use hume_ops::MotionMode;
+use hume_ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
 
 use super::super::Editor;
 use super::super::register_ops::RegisterPrefix;

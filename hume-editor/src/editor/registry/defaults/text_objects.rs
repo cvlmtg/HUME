@@ -2,7 +2,7 @@ use crate::editor::commands::cmd_visual_select_word_nearest_on_line;
 use std::borrow::Cow;
 
 use crate::editor::registry::{CommandRegistry, MappableCommand};
-use crate::ops::text_object::{
+use hume_ops::text_object::{
     cmd_around_angle, cmd_around_argument, cmd_around_backtick, cmd_around_brace,
     cmd_around_bracket, cmd_around_double_quote, cmd_around_line, cmd_around_paren,
     cmd_around_single_quote, cmd_around_uppercase_word, cmd_around_word, cmd_inner_angle,

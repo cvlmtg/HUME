@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
 use super::super::search::SearchPattern;
-use crate::ops::MotionMode;
-use crate::ops::register::SEARCH_REGISTER;
-use crate::ops::search::{
-    compile_search_regex, escape_regex, find_all_matches, find_match_from_cache, find_next_match,
-};
-use crate::ops::text_object::inner_word_impl;
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::word::{CharClass, classify_char, is_word_boundary};
 use hume_engine::pipeline::EngineView;
+use hume_ops::MotionMode;
+use hume_ops::register::SEARCH_REGISTER;
+use hume_ops::search::{
+    compile_search_regex, escape_regex, find_all_matches, find_match_from_cache, find_next_match,
+};
+use hume_ops::text_object::inner_word_impl;
 
 use super::super::{EditorState, MiniBuffer, Mode, SearchDirection};
 use super::{

@@ -14,27 +14,27 @@ mod tests {
     use proptest::prelude::*;
 
     use crate::editor::buffer::Buffer;
-    use crate::ops::MotionMode;
-    use crate::ops::edit::{
+    use hume_editing::changeset::ChangeSet;
+    use hume_editing::selection::{Selection, SelectionSet};
+    use hume_editing::text::Text;
+    use hume_ops::MotionMode;
+    use hume_ops::edit::{
         delete_char_backward, delete_char_forward, delete_selection, insert_char,
     };
-    use crate::ops::motion::{
+    use hume_ops::motion::{
         cmd_goto_line_end, cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right,
         cmd_move_up, cmd_select_next_uppercase_word, cmd_select_next_uppercase_word_around,
         cmd_select_next_word, cmd_select_next_word_around, cmd_select_prev_uppercase_word,
         cmd_select_prev_uppercase_word_around, cmd_select_prev_word, cmd_select_prev_word_around,
     };
-    use crate::ops::selection_cmd::{
+    use hume_ops::selection_cmd::{
         cmd_collapse_selection_to_head, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
         cmd_flip_selections, cmd_keep_primary_selection,
     };
-    use crate::ops::text_object::{
+    use hume_ops::text_object::{
         cmd_around_word, cmd_inner_line, cmd_inner_word, cmd_select_uppercase_word_around,
         cmd_select_word_around,
     };
-    use hume_editing::changeset::ChangeSet;
-    use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
 
     // ── DocHelper — thin wrapper keeping sels alongside Buffer ────────────────
 

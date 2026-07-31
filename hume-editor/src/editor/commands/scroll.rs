@@ -1,5 +1,5 @@
-use crate::ops::MotionMode;
 use hume_engine::pipeline::EngineView;
+use hume_ops::MotionMode;
 
 use super::super::EditorState;
 use super::super::visual_move::{VerticalUnit, apply_visual_vertical};

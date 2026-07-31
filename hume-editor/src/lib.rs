@@ -1,7 +1,6 @@
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("HUME_VERSION_SUFFIX"));
 
 pub mod editor;
-pub mod ops;
 pub mod settings;
 pub mod ui;
 
@@ -22,8 +21,6 @@ mod proptest_doc;
 mod proptest_editor;
 #[cfg(test)]
 pub(crate) mod testing;
-#[cfg(test)]
-pub(crate) use hume_test_fixtures::assert_state;
 
 /// Run a key sequence against a file without entering the interactive terminal.
 ///

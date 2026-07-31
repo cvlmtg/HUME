@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use super::super::minibuf::history::{HistoryKind, HistoryStore};
 use super::super::replay::InsertInput;
 use super::super::{Editor, Mode, doc_ops};
-use crate::ops::edit::insert_str;
+use hume_ops::edit::insert_str;
 
 impl Editor {
     // ── Terminal paste ───────────────────────────────────────────────────────

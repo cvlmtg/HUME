@@ -191,7 +191,7 @@ opened.
 **Concrete instance:** `user-manual/docs/from-vim.md`, Vim `S` row. The
 original "`x` then `c`" was right. It was "corrected" to `m i l` then `c`
 on the assumption that `xc` joins lines. `change_span`
-(`hume-editor/src/ops/edit/mod.rs`) explicitly excludes a trailing `\n` —
+(`hume-ops/src/edit/delete.rs`) explicitly excludes a trailing `\n` —
 "`c` clears line content but keeps the line" — and its doc comment names
 `select-line` / `x` as the very case it exists to handle. The user caught
 it with "`xc` does NOT join lines".

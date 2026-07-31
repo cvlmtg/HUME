@@ -1,12 +1,12 @@
-use crate::ops::MotionMode;
-use crate::ops::motion::{find_char_backward, find_char_forward};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use hume_engine::pipeline::EngineView;
+use hume_ops::MotionMode;
+use hume_ops::motion::{find_char_backward, find_char_forward};
 
 use super::super::EditorState;
 use crate::editor::error::CommandError;
-use crate::ops::motion::FindKind;
+use hume_ops::motion::FindKind;
 
 use super::apply_focused_motion;
 

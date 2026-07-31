@@ -11,13 +11,13 @@ use super::super::keymap::WalkResult;
 use super::super::registry::MappableCommand;
 use super::super::replay::InsertInput;
 use super::super::{Editor, Severity, commands, doc_ops};
-use crate::ops::MotionMode;
-use crate::ops::auto_pairs::{delete_pair, insert_pair_close};
-use crate::ops::edit::{
+use hume_ops::MotionMode;
+use hume_ops::auto_pairs::{delete_pair, insert_pair_close};
+use hume_ops::edit::{
     dedent_tab_backward, delete_char_backward, delete_char_forward, insert_char,
     insert_newline_indent, insert_tab,
 };
-use crate::ops::motion::cmd_move_right;
+use hume_ops::motion::cmd_move_right;
 
 impl Editor {
     // ── Insert mode ───────────────────────────────────────────────────────────
@@ -476,7 +476,7 @@ impl Editor {
     /// `(char_before_cursor, char_at_cursor)` matches a configured pair.
     ///
     /// Used by Backspace to decide whether to delete both brackets or just one.
-    fn is_between_pair(&self, pairs: &[crate::ops::auto_pairs::Pair]) -> bool {
+    fn is_between_pair(&self, pairs: &[hume_ops::auto_pairs::Pair]) -> bool {
         let buf = self.doc().text();
         self.current_selections().iter_sorted().all(|sel| {
             if !sel.is_collapsed() || sel.head() == 0 {
@@ -497,13 +497,13 @@ impl Editor {
     /// context rules; non-collapsed selections always pass (they wrap).
     fn should_auto_pair(
         &self,
-        pair: &crate::ops::auto_pairs::Pair,
-        ap_pairs: &[crate::ops::auto_pairs::Pair],
+        pair: &hume_ops::auto_pairs::Pair,
+        ap_pairs: &[hume_ops::auto_pairs::Pair],
     ) -> bool {
         let buf = self.doc().text();
         self.current_selections().iter_sorted().all(|sel| {
             !sel.is_collapsed()
-                || crate::ops::auto_pairs::should_auto_pair_at(buf, sel.head(), pair, ap_pairs)
+                || hume_ops::auto_pairs::should_auto_pair_at(buf, sel.head(), pair, ap_pairs)
         })
     }
 }

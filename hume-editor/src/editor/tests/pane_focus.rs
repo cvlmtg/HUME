@@ -5,8 +5,8 @@ use crate::editor::commands::{
     cmd_pane_focus_up, open_pane,
 };
 use crate::editor::error::CommandError;
-use crate::ops::MotionMode;
 use hume_engine::pipeline::{Direction, EngineView, PaneId, RenderContext};
+use hume_ops::MotionMode;
 
 type Cmd = fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>;
 

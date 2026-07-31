@@ -26,8 +26,8 @@ use super::commands::pane_row_map_mut;
 use super::cursor;
 use super::scroll;
 use super::visual_move::{VerticalUnit, apply_visual_vertical};
-use crate::ops::MotionMode;
 use hume_editing::selection::{Selection, SelectionSet};
+use hume_ops::MotionMode;
 
 use super::{Editor, Mode};
 

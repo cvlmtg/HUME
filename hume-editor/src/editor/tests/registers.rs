@@ -21,7 +21,7 @@ fn register_prefix_routes_yank_to_named_register() {
 /// and the kill ring (not to register '5').
 #[test]
 fn register_prefix_clears_after_one_operation() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('"'));
@@ -50,7 +50,7 @@ fn register_prefix_clears_after_one_operation() {
 /// `Esc` after `"` cancels the prefix — the next `y` writes to clipboard + ring.
 #[test]
 fn esc_cancels_register_prefix() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('"'));
@@ -74,7 +74,7 @@ fn esc_cancels_register_prefix() {
 /// Digit registers are symmetric: yank writes RegisterSet['3'], paste reads it.
 #[test]
 fn paste_from_named_register() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hello]>world\n");
 
@@ -139,7 +139,7 @@ fn digit_register_decoupled_from_kill_ring() {
 /// `"by` discards the yank — `'"'` must remain empty.
 #[test]
 fn black_hole_register_via_prefix() {
-    use crate::ops::register::BLACK_HOLE_REGISTER;
+    use hume_ops::register::BLACK_HOLE_REGISTER;
 
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('"'));
@@ -161,7 +161,7 @@ fn black_hole_register_via_prefix() {
 #[test]
 fn clipboard_register_falls_back_to_memory_when_unavailable() {
     use crate::editor::Severity;
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hello]>\n");
     // Simulate a headless environment with no clipboard server.
@@ -206,7 +206,7 @@ fn clipboard_register_falls_back_to_memory_when_unavailable() {
 /// `"kp` must paste the kill-ring head, not the clipboard.
 #[test]
 fn kill_ring_register_pastes_ring_head() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hello]>world\n");
     ed.feed_key(key('d')); // delete "hello" → ring head = ["hello"]
@@ -263,7 +263,7 @@ fn kill_ring_register_paste_seeds_cycle() {
 /// `"ky` pushes the yank onto the kill ring and does NOT touch the clipboard.
 #[test]
 fn kill_ring_register_yank_pushes_ring_only() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hello]>world\n");
     // Ensure clipboard starts empty.
@@ -423,7 +423,7 @@ fn smart_p_dp_reads_ring() {
 /// → `p` pastes "CLIP" → `contains('a')` fails.
 #[test]
 fn smart_p_after_change_reads_ring() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[a]>b\n");
     ed.state
@@ -497,7 +497,7 @@ fn delete_in_insert_mode_stamps_marker() {
 /// behavior (`d j p` → clipboard).
 #[test]
 fn smart_p_insert_motion_resets_to_clipboard() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[a]>b\n");
     ed.state
@@ -523,7 +523,7 @@ fn smart_p_insert_motion_resets_to_clipboard() {
 /// Motion is NOT in `SMART_P_LAST_CMDS`, so `p` falls back to clipboard.
 #[test]
 fn smart_p_motion_resets_to_clipboard() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     // Two-line buffer; cursor on line 0.
     let mut ed = editor_from("-[a]>b\ncd\n");
@@ -574,7 +574,7 @@ fn smart_p_after_yank_reads_clipboard() {
 /// Consecutive `p p` after `d` keeps reading the ring (last_command stays in set).
 #[test]
 fn smart_p_consecutive_paste_stays_in_ring() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[X]>abc\n");
     // Seed clipboard with something distinct.
@@ -600,7 +600,7 @@ fn smart_p_consecutive_paste_stays_in_ring() {
 /// ring even when the clipboard holds different content.
 #[test]
 fn xdp_pastes_ring_head_not_clipboard() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[A]>\nB\n");
     ed.state.clipboard.force_unavailable();
@@ -626,7 +626,7 @@ fn xdp_pastes_ring_head_not_clipboard() {
 /// the idle drain so this invariant is checked automatically by all paste tests now.
 #[test]
 fn smart_p_survives_idle_replay_drain() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[A]>\nB\n");
     ed.state.clipboard.force_unavailable();
@@ -661,7 +661,7 @@ fn kill_ring_depth_capped_at_ten() {
 /// `"cy` writes clipboard only — no kill-ring push.
 #[test]
 fn explicit_cy_writes_clipboard_only() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hello]>\n");
     // Kill the ring beforehand so we can detect any erroneous push.
@@ -949,7 +949,7 @@ fn paste_before_cycle_stays_above_linewise() {
 /// has `is_paste = true`, so the next `p` must append (not replace).
 #[test]
 fn paste_after_cycle_appends_cycled_entry() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[x]>\n");
     ed.state.clipboard.force_unavailable();
@@ -985,7 +985,7 @@ fn paste_after_cycle_appends_cycled_entry() {
 /// Consecutive `p` presses append copies rather than replacing the selected paste.
 #[test]
 fn consecutive_paste_appends_copies() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[ab]>\n");
     ed.state.clipboard.force_unavailable();
@@ -1013,7 +1013,7 @@ fn consecutive_paste_appends_copies() {
 /// and the kill ring is empty — the second `p` must not be a no-op.
 #[test]
 fn consecutive_clipboard_paste_appends() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[x]>\n");
     ed.state.clipboard.force_unavailable(); // headless: reads fall back to in-memory mirror
@@ -1036,7 +1036,7 @@ fn consecutive_clipboard_paste_appends() {
 /// whatever happens to be at the ring head.
 #[test]
 fn consecutive_paste_repeats_last_not_ring_head() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[x]>\n");
     ed.state.clipboard.force_unavailable();

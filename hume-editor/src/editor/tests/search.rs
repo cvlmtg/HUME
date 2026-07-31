@@ -304,7 +304,7 @@ fn select_within_empty_confirm_cancels() {
 /// A prior search pattern must survive a select-within so that n/N still works.
 #[test]
 fn select_within_does_not_overwrite_search_register() {
-    use crate::ops::register::SEARCH_REGISTER;
+    use hume_ops::register::SEARCH_REGISTER;
     let mut ed = editor_from("-[ab cd ab]>\n");
     // Simulate a prior search by writing directly to the search register (as
     // search confirm does).

@@ -2,7 +2,7 @@ use crate::editor::commands::{cmd_visual_move_down, cmd_visual_move_up};
 use std::borrow::Cow;
 
 use crate::editor::registry::{CommandRegistry, MappableCommand};
-use crate::ops::motion::{
+use hume_ops::motion::{
     cmd_goto_first_line, cmd_goto_first_nonblank, cmd_goto_last_line, cmd_goto_line_end,
     cmd_goto_line_start, cmd_move_left, cmd_move_right, cmd_next_paragraph, cmd_prev_paragraph,
     cmd_select_line, cmd_select_line_backward, cmd_select_next_uppercase_word,

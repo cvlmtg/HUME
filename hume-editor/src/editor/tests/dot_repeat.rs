@@ -551,7 +551,7 @@ fn dot_after_find_is_noop() {
 /// not the ring, confirming the neutralization has the correct semantic effect.
 #[test]
 fn dot_restamps_last_command() {
-    use crate::ops::register::CLIPBOARD_REGISTER;
+    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[foo]> bar\n");
     // Seed the clipboard with a sentinel value distinct from the kill-ring head.

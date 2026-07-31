@@ -701,7 +701,7 @@ fn completion_popup_anchor_matches_an_independent_screen_pos_walk_when_wrapped()
 // ── Multi-cursor accept ─────────────────────────────────────────────────────
 //
 // `c` on two selections leaves two collapsed cursors in one Insert session
-// (`hume-editor/src/ops/edit/tests.rs`'s `change_span`/`delete_selection`
+// (`hume-ops/src/edit/tests/delete.rs`'s `change_span`/`delete_selection`
 // tests cover the deletion itself) — these pin that accepting a completion
 // lands the edit at every one of them, not just the primary, and that the
 // session's own bookkeeping (anchor, undo grouping) stays correct regardless
