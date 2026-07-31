@@ -40,6 +40,7 @@ fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayRow>, Vec<Grapheme>
             &ws,
             &wrap_mode,
             None,
+            FormatBound::Full,
             &inserts,
             &mut scratch,
         );
@@ -306,6 +307,7 @@ fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayRow>, Vec<Graph
             &ws,
             &WrapMode::None,
             None,
+            FormatBound::Full,
             &inserts,
             &mut scratch,
         );
@@ -649,6 +651,7 @@ fn do_format_windowed(
             &ws,
             &wrap_mode,
             h_window.clone(),
+            FormatBound::Full,
             &inserts,
             &mut scratch,
         );
@@ -725,6 +728,7 @@ fn row_char_offsets_are_non_decreasing_with_inline_inserts() {
         &WhitespaceConfig::default(),
         &WrapMode::None,
         None,
+        FormatBound::Full,
         &inserts,
         &mut scratch,
     );
@@ -766,6 +770,7 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
         &WhitespaceConfig::default(),
         &WrapMode::None,
         None,
+        FormatBound::Full,
         &inserts,
         &mut scratch,
     );
@@ -802,6 +807,7 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
         &WhitespaceConfig::default(),
         &WrapMode::None,
         None,
+        FormatBound::Full,
         &inserts,
         &mut scratch,
     );

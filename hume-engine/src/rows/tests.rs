@@ -854,3 +854,76 @@ fn render_row_yields_correct_content_rows_after_a_virtual_row() {
     assert_eq!(row_text(&rm.render_row(RowPos::new(0, 1))), "abcd");
     assert_eq!(row_text(&rm.render_row(RowPos::new(0, 2))), "efgh");
 }
+
+// ---------------------------------------------------------------------------
+// Bounded formatting
+// ---------------------------------------------------------------------------
+
+/// One unwrapped line far longer than any query needs to scan. Pure ASCII, so
+/// column == char offset and the expected answers are plain arithmetic.
+fn long_unwrapped_line() -> Rope {
+    Rope::from_str(&("a".repeat(70_000) + "\n"))
+}
+
+#[test]
+fn locate_formats_only_as_far_as_the_target_offset() {
+    let rope = long_unwrapped_line();
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(rm.locate(5).1, 5, "pure ASCII: column equals char offset");
+
+    // Dropping the map releases its borrow of the scratch, letting the test
+    // read what the formatter actually emitted — an oracle over `format.rs`'s
+    // output rather than anything `RowMap` reports about itself.
+    drop(rm);
+    assert_eq!(
+        s.graphemes.len(),
+        6,
+        "the target grapheme and the five before it, not all 70k"
+    );
+}
+
+#[test]
+fn char_at_formats_only_as_far_as_the_target_column() {
+    let rope = long_unwrapped_line();
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(rm.char_at(RowPos::new(0, 0), 5, ColTarget::Cell), 5);
+
+    drop(rm);
+    assert_eq!(
+        s.graphemes.len(),
+        7,
+        "through the first cell past column 5, not all 70k"
+    );
+}
+
+#[test]
+fn a_wider_offset_on_a_cached_line_reformats() {
+    // The narrower scan left everything past its target unformatted, so the
+    // cached extent must not be treated as answering the wider one.
+    let rope = long_unwrapped_line();
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(rm.locate(3).1, 3);
+    assert_eq!(rm.locate(50).1, 50, "the second query must rescan");
+}
+
+#[test]
+fn a_column_query_after_an_offset_query_reformats() {
+    // A byte-bounded scan says nothing about how far the columns reached, so
+    // the two bound kinds can never satisfy each other.
+    let rope = long_unwrapped_line();
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    let (pos, _) = rm.locate(3);
+    assert_eq!(rm.char_at(pos, 40, ColTarget::Cell), 40);
+}

@@ -25,7 +25,9 @@ use std::ops::Range;
 use ropey::Rope;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::format::{FormatScratch, format_buffer_line, push_arena_text, unicode_display_width};
+use crate::format::{
+    FormatBound, FormatScratch, format_buffer_line, push_arena_text, unicode_display_width,
+};
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{InlineInsert, ProviderSet, VirtualLine, VirtualLineAnchor};
 use crate::types::{CellContent, DisplayRow, Grapheme};
@@ -110,9 +112,12 @@ struct CachedLine {
     /// [`VirtualLineAnchor::sort_key`] imposes, so the `i`th `After` row is at
     /// index `before + i`.
     virtual_lines: Vec<VirtualLine>,
-    /// Whether the scratch's `display_rows`/`graphemes`/`line_texts`/
-    /// `virtual_texts` currently hold this line's formatted content rows.
-    formatted: bool,
+    /// How much of this line the scratch's `display_rows`/`graphemes`/
+    /// `line_texts`/`virtual_texts` currently hold. `None` until it is
+    /// formatted at all; otherwise the bound the scan was run to, which is a
+    /// *lower* bound on what is really there (a bounded scan that never hit
+    /// its stop walked the whole line).
+    extent: Option<FormatBound>,
 }
 
 /// Everything the render stage needs to style and compose one display row.
@@ -266,7 +271,8 @@ impl<'a> RowMap<'a> {
         // formatter. That is the difference between O(1) and O(line length)
         // per query on a minified line megabytes wide.
         let content = if self.wrap_mode.is_wrapping() {
-            self.format_line(line);
+            // `Full`: the row count *is* the output, so nothing may be clipped.
+            self.format_line(line, FormatBound::Full);
             self.scratch.display_rows.len()
         } else {
             1
@@ -285,7 +291,7 @@ impl<'a> RowMap<'a> {
             line,
             breakdown,
             virtual_lines,
-            formatted: self.wrap_mode.is_wrapping(),
+            extent: self.wrap_mode.is_wrapping().then_some(FormatBound::Full),
         });
         breakdown
     }
@@ -436,20 +442,22 @@ impl<'a> RowMap<'a> {
     pub fn locate(&mut self, char_offset: usize) -> (RowPos, u32) {
         let line = self.rope.char_to_line(char_offset);
         let before = self.block(line).before;
-        self.ensure_formatted(line);
-        let (sub, col) = self.locate_in_line(line, char_offset);
-        (RowPos::new(line, before + sub), col)
-    }
-
-    /// Which content sub-row of `line` holds `char_offset`, and at what column.
-    /// Requires `line` to be formatted into the scratch.
-    fn locate_in_line(&self, line: usize, char_offset: usize) -> (usize, u32) {
         let line_start_byte = self.rope.char_to_byte(self.rope.line_to_char(line));
         let target_byte = self
             .rope
             .char_to_byte(char_offset)
             .saturating_sub(line_start_byte);
+        // Only up to the target: everything past it is irrelevant to where
+        // this one offset sits.
+        self.ensure_formatted(line, FormatBound::ToByte(target_byte));
+        let (sub, col) = self.locate_in_line(line, target_byte, char_offset);
+        (RowPos::new(line, before + sub), col)
+    }
 
+    /// Which content sub-row of `line` holds `target_byte` (line-relative,
+    /// resolved by the caller), and at what column. Requires `line` to be
+    /// formatted into the scratch at least as far as `ToByte(target_byte)`.
+    fn locate_in_line(&self, line: usize, target_byte: usize, char_offset: usize) -> (usize, u32) {
         let rows = &self.scratch.display_rows;
         let graphemes = &self.scratch.graphemes;
 
@@ -514,7 +522,9 @@ impl<'a> RowMap<'a> {
             .row
             .saturating_sub(b.before)
             .min(b.content.saturating_sub(1));
-        self.ensure_formatted(pos.line);
+        // Only up to the target column: no cell further right can be the one
+        // this column resolves to, under either policy.
+        self.ensure_formatted(pos.line, FormatBound::ToCol(target_col));
 
         let line_start = self.rope.line_to_char(pos.line);
         let Some(row) = self.scratch.display_rows.get(sub) else {
@@ -590,7 +600,9 @@ impl<'a> RowMap<'a> {
         if sub >= b.content {
             return None;
         }
-        self.ensure_formatted(pos.line);
+        // `Full`: this reads the *next* row's first char to bound the current
+        // one, so it needs every row the line produces.
+        self.ensure_formatted(pos.line, FormatBound::Full);
 
         let rows = &self.scratch.display_rows;
         let graphemes = &self.scratch.graphemes;
@@ -623,7 +635,9 @@ impl<'a> RowMap<'a> {
     pub fn render_row(&mut self, pos: RowPos) -> RenderRow<'_> {
         match self.kind(pos) {
             RowKind::Content(sub) => {
-                self.ensure_formatted(pos.line);
+                // `Full`: the render stage emits whole rows, and its own
+                // clipping is the map's `h_window`, applied inside the format.
+                self.ensure_formatted(pos.line, FormatBound::Full);
                 RenderRow {
                     row: &self.scratch.display_rows[sub],
                     graphemes: &self.scratch.graphemes,
@@ -715,20 +729,40 @@ impl<'a> RowMap<'a> {
 
     // ── Formatting ───────────────────────────────────────────────────────
 
-    /// Guarantee the scratch holds `line`'s formatted content rows.
-    fn ensure_formatted(&mut self, line: usize) {
+    /// Guarantee the scratch holds `line`'s content rows, formatted at least
+    /// as far as `bound` reaches.
+    fn ensure_formatted(&mut self, line: usize, bound: FormatBound) {
+        debug_assert!(
+            self.h_window.is_none() || matches!(bound, FormatBound::Full),
+            "a bounded query on an h_window map would clip twice — the render \
+             path bounds its own formats by window and never asks for one"
+        );
+        // Any wrapping mode needs the whole line: a clipped scan would emit
+        // fewer rows than the count `block` already committed to. Applied
+        // before the check *and* the record below, so a wrapping query never
+        // stores a bound narrower than what it actually ran.
+        let bound = if self.wrap_mode.is_wrapping() {
+            FormatBound::Full
+        } else {
+            bound
+        };
+        // After `block`, which either confirms the cache or replaces it.
         let breakdown = self.block(line);
-        if self.cached.as_ref().is_some_and(|c| c.formatted) {
+        if self
+            .cached
+            .as_ref()
+            .is_some_and(|c| c.extent.is_some_and(|e| e.covers(bound)))
+        {
             return;
         }
-        self.format_line(line);
+        self.format_line(line, bound);
         debug_assert_eq!(
             self.scratch.display_rows.len(),
             breakdown.content,
             "line {line} formatted to a different row count than it was counted at"
         );
         if let Some(c) = &mut self.cached {
-            c.formatted = true;
+            c.extent = Some(bound);
         }
     }
 
@@ -738,7 +772,7 @@ impl<'a> RowMap<'a> {
     /// they participate in wrapping, so counting rows without them makes the
     /// row list disagree with what the renderer emits the moment an inlay hint
     /// pushes a line past the wrap column.
-    fn format_line(&mut self, line: usize) {
+    fn format_line(&mut self, line: usize, bound: FormatBound) {
         self.inline_inserts.clear();
         for (_, provider) in &self.providers.inline_decorations {
             provider.decorations_for_line(line, &mut self.inline_inserts);
@@ -754,6 +788,7 @@ impl<'a> RowMap<'a> {
             &self.whitespace,
             &self.wrap_mode,
             self.h_window.clone(),
+            bound,
             &self.inline_inserts,
             &mut *self.scratch,
         );

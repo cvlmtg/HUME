@@ -124,6 +124,67 @@ impl Default for VirtualRowScratch {
 // Buffer line formatting
 // ---------------------------------------------------------------------------
 
+/// How far into a line [`format_buffer_line`] needs to scan.
+///
+/// A query that only wants one position out of a line — where a char offset
+/// sits (`ToByte`), or which char a display column lands on (`ToCol`) — has
+/// its answer as soon as the scan passes that point, so it can stop there
+/// instead of walking an arbitrarily long unwrapped line to the end.
+///
+/// **The stop is a pure optimization, never a correctness mechanism.** A
+/// bounded scan emits a strict *prefix* of what `Full` emits: it only
+/// truncates, no emitted cell differs, and `clipped` suppresses only the
+/// end-of-line tail. Every consumer is prefix-stable — `rows::RowMap::locate`
+/// resolves by binary search and never reads past its target,
+/// `char_at`/`Cell` takes the first cell containing the column, and
+/// `char_at`/`NearestContent` takes the first column-nearest cell. So
+/// scanning further than asked can never change an answer, which is what lets
+/// `Full` stand in for any bound.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum FormatBound {
+    /// Scan the whole line. Required whenever the row *count* matters (any
+    /// wrapping mode) or the caller reads the line's tail.
+    Full,
+    /// Stop after the grapheme containing this line-relative byte offset.
+    ToByte(usize),
+    /// Stop after the first grapheme whose own start column is past this one.
+    ToCol(u32),
+}
+
+impl FormatBound {
+    /// Whether a scan already run to `self` also answers a request for
+    /// `other`. Conservative by design: a `false` costs a reformat, never a
+    /// stale read.
+    ///
+    /// Cross-kind pairs never cover each other — a byte bound implies no
+    /// useful column bound (a 4-byte char is one column) and vice versa (a
+    /// tab is one byte and up to 255 columns).
+    pub fn covers(self, other: Self) -> bool {
+        match (self, other) {
+            (Self::Full, _) => true,
+            (Self::ToByte(a), Self::ToByte(b)) => a >= b,
+            (Self::ToCol(a), Self::ToCol(b)) => a >= b,
+            _ => false,
+        }
+    }
+
+    /// Whether a just-emitted grapheme spanning `bytes` and starting at
+    /// display column `start_col` carries the scan past this bound.
+    ///
+    /// `ToCol` tests the grapheme's *own* start column, not the running
+    /// column after it: a wide cell (tab expanse, CJK glyph) can straddle the
+    /// target, and stopping on the running column would drop the cell to its
+    /// right — which may be strictly nearer the target than the straddling
+    /// one, changing what `NearestContent` answers.
+    fn reached(self, bytes: &Range<usize>, start_col: u32) -> bool {
+        match self {
+            Self::Full => false,
+            Self::ToByte(b) => bytes.contains(&b),
+            Self::ToCol(t) => start_col > t,
+        }
+    }
+}
+
 /// Format one buffer line, appending zero or more `DisplayRow`s.
 ///
 /// `h_window` clips emitted graphemes to a horizontal column range — used only
@@ -133,8 +194,13 @@ impl Default for VirtualRowScratch {
 /// visible prefix instead of the whole line); graphemes left of `h_window.start`
 /// are scanned (needed for tab-stop column arithmetic) but not pushed, since the
 /// compose stage would discard them anyway. Pass `None` for wrapping modes
-/// (already bounded by `wrap_width`) and for callers that need the whole line
-/// (e.g. cursor-position lookups).
+/// (already bounded by `wrap_width`) and for editor-side callers, which bound
+/// themselves by target position through `bound` instead — the window is a
+/// *viewport* clip, and their targets are routinely outside it.
+///
+/// `bound` stops the scan once the requesting query's answer is determined —
+/// see [`FormatBound`]. Pass [`FormatBound::Full`] whenever the row count or
+/// the line's tail matters.
 #[allow(clippy::too_many_arguments)]
 pub fn format_buffer_line(
     rope: &Rope,
@@ -143,6 +209,7 @@ pub fn format_buffer_line(
     whitespace: &WhitespaceConfig,
     wrap_mode: &WrapMode,
     h_window: Option<Range<u32>>,
+    bound: FormatBound,
     inline_inserts: &[InlineInsert],
     scratch: &mut FormatScratch,
 ) {
@@ -212,11 +279,11 @@ pub fn format_buffer_line(
     // so the style stage can resolve selection positions without rope lookups.
     let mut char_pos = rope.line_to_char(line_idx);
 
-    // Set when `h_window` bounds the scan and formatting stopped early because
-    // `current_col` reached the window's right edge. Everything past that
-    // point — the EOL sentinel, trailing inserts, the newline indicator — is
-    // off-screen by definition, so it is skipped rather than emitted at the
-    // wrong (clipped) column.
+    // Set when the scan stopped early — either `h_window` reached its right
+    // edge, or `bound` was satisfied. Everything past that point — the EOL
+    // sentinel, trailing inserts, the newline indicator — sits at or beyond
+    // the true end of line, so it is skipped rather than emitted at a column
+    // the truncated scan never reached.
     let mut clipped = false;
 
     'lines: for (byte_offset, grapheme_str) in line_str.grapheme_indices(true) {
@@ -321,14 +388,19 @@ pub fn format_buffer_line(
 
         // ── Emit grapheme ─────────────────────────────────────────────────
         let char_count = grapheme_str.chars().count();
+        // Read after `maybe_wrap`, which rewrites `current_col` when it moves
+        // this grapheme to a continuation row. Shared by the pushed cell and
+        // the `bound` check below so the two cannot disagree.
+        let start_col = wrap.current_col;
+        let byte_range = byte_offset..byte_offset + grapheme_str.len();
         let visible = h_window
             .as_ref()
-            .is_none_or(|w| wrap.current_col + width as u32 > w.start);
+            .is_none_or(|w| start_col + width as u32 > w.start);
         if visible {
             graphemes_out.push(Grapheme {
-                byte_range: byte_offset..byte_offset + grapheme_str.len(),
+                byte_range: byte_range.clone(),
                 char_offset: char_pos,
-                col: wrap.current_col,
+                col: start_col,
                 width,
                 content,
                 indent_depth,
@@ -344,7 +416,7 @@ pub fn format_buffer_line(
             // Both cells of a double-wide char always stay on the same row.
             // Backing up the primary to avoid overflow is not yet implemented.
             graphemes_out.push(Grapheme {
-                byte_range: byte_offset..byte_offset + grapheme_str.len(),
+                byte_range: byte_range.clone(),
                 // Same char as the primary cell — this is not a distinct buffer position.
                 char_offset: char_pos - char_count,
                 col: wrap.current_col,
@@ -353,6 +425,17 @@ pub fn format_buffer_line(
                 indent_depth,
                 scope: None,
             });
+        }
+
+        // Checked here, at the very end of the iteration, so the grapheme that
+        // satisfies the bound is emitted whole — with any inline inserts that
+        // precede it and its own width-continuation cell. Stopping earlier
+        // (inside the insert-injection loop) could leave a run of `Virtual`
+        // cells as the last thing on the row, and `NearestContent` excludes
+        // those, so the real grapheme they decorate would go missing.
+        if bound.reached(&byte_range, start_col) {
+            clipped = true;
+            break 'lines;
         }
     }
 

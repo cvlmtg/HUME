@@ -1100,6 +1100,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
         &crate::pane::WhitespaceConfig::default(),
         &crate::pane::WrapMode::None,
         None,
+        crate::format::FormatBound::Full,
         &inserts,
         &mut fmt,
     );
@@ -1177,6 +1178,7 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
         &crate::pane::WhitespaceConfig::default(),
         &crate::pane::WrapMode::None,
         None,
+        crate::format::FormatBound::Full,
         &inserts,
         &mut fmt,
     );
@@ -1252,6 +1254,7 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
         &crate::pane::WhitespaceConfig::default(),
         &crate::pane::WrapMode::None,
         None,
+        crate::format::FormatBound::Full,
         &inserts,
         &mut fmt,
     );
