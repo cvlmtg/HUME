@@ -169,8 +169,16 @@ fn hume_globals_scm_matches_generated_host_names() {
 /// `STEEL_LSP_HOME` at the real, existing `lsp-home/` directory this same
 /// module's drift test keeps in sync.
 ///
+/// PATH-independent by construction: `plugin.scm`'s own load-time tail may
+/// have already registered `"scheme"` if `steel-language-server` happens to
+/// be on this machine's `$PATH` (harmless no-op then, guarded by `unless
+/// (lsp-registered-for-language? "scheme")`), so this test explicitly
+/// unregisters first and asserts the cleared pre-state — proving the
+/// `Some("steel-language-server")` assertion below can only be satisfied by
+/// the `steel-server/register!` call under test, not by that load-time tail.
+///
 /// Flip: rename `lsp-home/` on disk (or point `steel-server/lsp-home` at a
-/// nonexistent directory) — this test starts failing on the `is_some`
+/// nonexistent directory) — this test starts failing on the `STEEL_LSP_HOME`
 /// assertion, since the plugin's own `path-exists?` guard falls through to
 /// the `#f`/no-`#:env` branch.
 #[test]
@@ -189,15 +197,25 @@ fn steel_server_plugin_registers_scheme_with_generated_globals_env() {
     };
     ed.apply_script_effects(effects);
 
-    // `plugin.scm`'s own load-time tail already calls `steel-server/register!`
-    // when `steel-language-server` happens to be on this machine's `$PATH`
-    // (harmless no-op below, guarded by `unless (lsp-registered-for-language?
-    // "scheme")`) — call it explicitly too so the test also passes in CI,
-    // where the binary is never installed.
-    let src = r#"(define-command! "probe-steel-server-register" "" (lambda () (steel-server/register!)))"#;
-    let cmd_tmp = safe_tempdir();
-    eval_with_real_host(&mut ed, &mut host, src, cmd_tmp.path());
-    type_cmd(&mut ed, ":probe-steel-server-register");
+    let tmp = safe_tempdir();
+
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(unregister-lsp-server! "scheme")"#,
+        tmp.path(),
+    );
+    assert!(
+        ed.lsp.config_command_for_test("scheme").is_none(),
+        "pre-state: scheme must be unregistered before the register! call under test"
+    );
+
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(steel-server/register!)"#,
+        tmp.path(),
+    );
 
     assert_eq!(
         ed.lsp.config_command_for_test("scheme").as_deref(),
