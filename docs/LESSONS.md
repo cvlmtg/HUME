@@ -34,8 +34,8 @@ Cursor/text assertions passed.  Nine bookkeeping regressions shipped.
 3. **Duplicate-match smell** — two identical `match cmd { Motion { fun } | … }`
    arms in different files is a SSOT violation.  Collapse to one funnel.
 
-**Files:** `hume-editor/src/editor/commands/mod.rs` (funnel),
-`hume-editor/src/editor/lints.rs` (lint), `hume-editor/src/editor/tests/mod.rs`
+**Files:** `hume-editor/src/editor/commands/pipeline.rs` (funnel),
+`hume-editor/src/editor/lints/dispatch_funnel.rs` (lint), `hume-editor/src/editor/tests/mod.rs`
 (snapshot helper), `hume-editor/src/editor/tests/sync_dispatch.rs` (parity tests).
 
 ---

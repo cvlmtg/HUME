@@ -1299,15 +1299,15 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
 // `(call! …)` wrapper leaves IDENTICAL `BookkeepingSnapshot` state.
 //
 // Each test documents a fail oracle: which single line in `run_dispatch_pipeline`
-// (commands/mod.rs) to revert to confirm the assertion breaks on that field.
+// (commands/pipeline.rs) to revert to confirm the assertion breaks on that field.
 
 /// **Parity: repeatable edit** — `delete` dispatched via keypress vs via Steel
 /// `(call! "delete")` must produce the same `last_command` and `last_repeatable`.
 ///
 /// Fail oracle (last_command): comment out `state.last_command = Some(name)` at
-///   commands/mod.rs:221 → snap_steel.last_command is None; assertion fails.
+///   commands/pipeline.rs:175 → snap_steel.last_command is None; assertion fails.
 /// Fail oracle (last_repeatable): comment out the `if is_repeatable { … }` block
-///   at commands/mod.rs:210–217 → snap_steel.last_repeatable is None; assertion fails.
+///   at commands/pipeline.rs:213–220 → snap_steel.last_repeatable is None; assertion fails.
 #[test]
 fn parity_delete_bookkeeping_keypress_vs_steel() {
     // Path A — keypress.
@@ -1357,7 +1357,7 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
 /// via Steel `(call! "goto-last-line")` must push the same number of jump entries.
 ///
 /// Fail oracle (jump_len): comment out the `pre_jump` / jump-list push block
-///   at commands/mod.rs:157–207 → snap_steel.jump_len stays 0; assertion fails.
+///   at commands/pipeline.rs:181–197 → snap_steel.jump_len stays 0; assertion fails.
 #[test]
 fn parity_jump_bookkeeping_keypress_vs_steel() {
     let content = "-[l]>ine1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n";

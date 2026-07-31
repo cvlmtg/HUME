@@ -100,7 +100,7 @@ impl Editor {
     /// Most of what this must reset lives on [`super::ConfigState`], reset by
     /// *construction* — see its doc for why a field added there can't be
     /// forgotten the way a field added directly here still can (enforced by
-    /// the `editor_state_fields_are_classified` lint in `lints.rs`).
+    /// the `editor_state_fields_are_classified` lint in `lints/field_classification.rs`).
     ///
     /// Order matters: every Steel value rooted in the outgoing engine
     /// (queued callbacks, open overlay sessions, scheduled thunks) is
