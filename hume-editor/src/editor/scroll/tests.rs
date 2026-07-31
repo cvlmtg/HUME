@@ -52,7 +52,7 @@ fn no_wrap_cursor_visible_no_scroll_needed() {
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        r.line_to_char(2),
+        RowPos::new(2, 0),
         3,
     );
     assert_eq!(v.top_line, 0);
@@ -67,7 +67,7 @@ fn no_wrap_cursor_below_viewport_scrolls_down() {
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        r.line_to_char(7),
+        RowPos::new(7, 0),
         3,
     );
     let cursor_line = 7usize;
@@ -84,7 +84,7 @@ fn no_wrap_cursor_above_viewport_scrolls_up() {
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        r.line_to_char(1),
+        RowPos::new(1, 0),
         3,
     );
     let cursor_line = 1usize;
@@ -104,13 +104,13 @@ fn no_wrap_huge_scrolloff_at_even_height_settles_after_one_scroll() {
     let r = rope(&text);
     let mut v = viewport(0, 24, 80);
     let providers = no_providers();
-    let cursor_char = r.line_to_char(20);
+    let cursor_pos = RowPos::new(20, 0);
 
     let mut s = FormatScratch::new();
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        cursor_char,
+        cursor_pos,
         999,
     );
     let top_after_first = v.top_line;
@@ -119,7 +119,7 @@ fn no_wrap_huge_scrolloff_at_even_height_settles_after_one_scroll() {
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        cursor_char,
+        cursor_pos,
         999,
     );
 
@@ -172,12 +172,9 @@ fn wrap_cursor_within_top_margin_scrolls_up() {
     let cursor_char = r.line_to_char(3);
     let providers = no_providers();
     let mut s = FormatScratch::new();
-    ensure_cursor_visible(
-        &mut v,
-        &mut map(&r, WrapMode::Soft { width: 2 }, &providers, 2, &mut s),
-        cursor_char,
-        2,
-    );
+    let mut rm = map(&r, WrapMode::Soft { width: 2 }, &providers, 2, &mut s);
+    let cursor_pos = rm.locate_row(cursor_char);
+    ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 2);
     assert_eq!(v.top_line, 1);
     assert_eq!(v.top_row_offset, 0);
 }
@@ -191,12 +188,9 @@ fn wrap_cursor_within_bottom_margin_scrolls_down() {
     let cursor_char = r.line_to_char(7);
     let providers = no_providers();
     let mut s = FormatScratch::new();
-    ensure_cursor_visible(
-        &mut v,
-        &mut map(&r, WrapMode::Soft { width: 2 }, &providers, 2, &mut s),
-        cursor_char,
-        2,
-    );
+    let mut rm = map(&r, WrapMode::Soft { width: 2 }, &providers, 2, &mut s);
+    let cursor_pos = rm.locate_row(cursor_char);
+    ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 2);
     assert_eq!(v.top_line, 2);
     assert_eq!(v.top_row_offset, 0);
 }
@@ -232,7 +226,7 @@ fn zt_then_scrolloff_trims_cursor_inward() {
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        cursor_char,
+        RowPos::new(25, 0),
         3,
     );
     assert_eq!(v.top_line, 22, "scrolloff trims top inward by margin (3)");
@@ -259,7 +253,7 @@ fn zb_then_scrolloff_trims_cursor_inward() {
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        cursor_char,
+        RowPos::new(25, 0),
         3,
     );
     // cursor_line=25, top=2, height=24, margin=3 → cursor at row 23 = height-margin-1.
@@ -339,12 +333,9 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row() {
     let cursor_char = r.line_to_char(3);
 
     let mut s = FormatScratch::new();
-    ensure_cursor_visible(
-        &mut v,
-        &mut map(&r, wrap, &providers, 80, &mut s),
-        cursor_char,
-        0,
-    );
+    let mut rm = map(&r, wrap, &providers, 80, &mut s);
+    let cursor_pos = rm.locate_row(cursor_char);
+    ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 0);
 
     let mut s = FormatScratch::new();
     let pos = cursor::screen_pos(&v, &mut map(&r, wrap, &providers, 80, &mut s), cursor_char);
@@ -367,12 +358,9 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row_no_wrap() {
     let cursor_char = r.line_to_char(3);
 
     let mut s = FormatScratch::new();
-    ensure_cursor_visible(
-        &mut v,
-        &mut map(&r, wrap, &providers, 80, &mut s),
-        cursor_char,
-        0,
-    );
+    let mut rm = map(&r, wrap, &providers, 80, &mut s);
+    let cursor_pos = rm.locate_row(cursor_char);
+    ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 0);
 
     let mut s = FormatScratch::new();
     let pos = cursor::screen_pos(&v, &mut map(&r, wrap, &providers, 80, &mut s), cursor_char);
@@ -410,10 +398,10 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
         // line 0's Before block, regardless of the `v_margin` passed below.
         let mut v = viewport(2, 20, 80);
         let mut s = FormatScratch::new();
+        let mut rm = map(&r, wrap, &providers, 80, &mut s);
+        let cursor_pos = rm.locate_row(cursor_char);
         ensure_cursor_visible(
-            &mut v,
-            &mut map(&r, wrap, &providers, 80, &mut s),
-            cursor_char,
+            &mut v, &mut rm, cursor_pos,
             20, // margin far larger than the 2 real rows between top and cursor
         );
         assert_eq!(
@@ -476,11 +464,9 @@ fn horizontal_scroll_margin_uses_content_width_not_viewport_width() {
     let mut s = FormatScratch::new();
     let cursor_char = 70;
 
-    ensure_cursor_visible_horizontal(
-        &mut v,
-        &mut map(&r, WrapMode::None, &providers, 72, &mut s),
-        cursor_char,
-    );
+    let mut rm = map(&r, WrapMode::None, &providers, 72, &mut s);
+    let cursor_col = rm.locate(cursor_char).1;
+    ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_col);
 
     assert_eq!(
         v.horizontal_offset, 4,
@@ -499,11 +485,9 @@ fn horizontal_scroll_margin_no_scroll_when_within_content_width() {
     let mut s = FormatScratch::new();
     let cursor_char = 70;
 
-    ensure_cursor_visible_horizontal(
-        &mut v,
-        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        cursor_char,
-    );
+    let mut rm = map(&r, WrapMode::None, &providers, 80, &mut s);
+    let cursor_col = rm.locate(cursor_char).1;
+    ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_col);
 
     assert_eq!(v.horizontal_offset, 0, "70 < content_width(80) - margin(5)");
 }
@@ -521,11 +505,12 @@ fn horizontal_scroll_reaches_past_former_u16_column_ceiling() {
     let mut s = FormatScratch::new();
     let cursor_char = 69_999; // last 'a', column 69_999 — past u16::MAX (65_535)
 
-    ensure_cursor_visible_horizontal(
-        &mut v,
-        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        cursor_char,
-    );
+    // The column is resolved through `locate`, not passed in as a literal:
+    // the narrowing this guards against would live in that resolution, and a
+    // hand-written column would step over the very code under test.
+    let mut rm = map(&r, WrapMode::None, &providers, 80, &mut s);
+    let cursor_col = rm.locate(cursor_char).1;
+    ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_col);
 
     assert_eq!(
         v.horizontal_offset, 69_925,
@@ -534,5 +519,119 @@ fn horizontal_scroll_reaches_past_former_u16_column_ceiling() {
     assert!(
         v.horizontal_offset > u16::MAX as u32,
         "offset must exceed the former u16 ceiling, not wrap/truncate into it"
+    );
+}
+
+// ── One cursor resolution per frame ──────────────────────────────────────
+//
+// `lifecycle::scroll_into_view` resolves the cursor once and hands the result
+// to the draw path, which used to rebuild a row map and re-derive it. The two
+// tests below cover the halves of that claim: the row it reports is the row a
+// forward walk finds, and resolving it costs one format.
+
+/// Counts formats of `line`: `RowMap::format_line` queries every registered
+/// inline-decoration provider exactly once per format and nowhere else, so
+/// this counts `format_buffer_line` runs without depending on anything the
+/// row map reports about itself.
+struct CountFormatsOf(usize, std::rc::Rc<std::cell::Cell<usize>>);
+
+impl hume_engine::providers::InlineDecoration for CountFormatsOf {
+    fn decorations_for_line(
+        &self,
+        line_idx: usize,
+        _out: &mut Vec<hume_engine::providers::InlineInsert>,
+    ) {
+        if line_idx == self.0 {
+            self.1.set(self.1.get() + 1);
+        }
+    }
+}
+
+/// `ensure_cursor_visible` reports the cursor's screen row from the rows
+/// `scroll_back_from` stepped *backward* (or, in its stable arm, from the
+/// distance it already measured). `screen_pos` derives the same row by walking
+/// *forward* from the settled viewport top. The draw path may only skip that
+/// forward walk if the two always agree — so sweep the shapes where they could
+/// diverge: both wrap modes, a viewport shorter than the virtual block, a top
+/// above and below the cursor, and every line including the phantom last one.
+#[test]
+fn reported_screen_row_agrees_with_a_forward_walk() {
+    let r = rope("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
+    let mut providers = ProviderSet::new();
+    providers.add_virtual_line_source(Box::new(MultiBeforeLine(3, 2)));
+
+    for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
+        for height in [1u16, 2, 5, 8] {
+            for top in [0usize, 2, 5, 9] {
+                for line in 0..r.len_lines() - 1 {
+                    let cursor_char = r.line_to_char(line);
+                    let mut v = viewport(top, height, 80);
+
+                    let mut s = FormatScratch::new();
+                    let mut rm = map(&r, wrap, &providers, 80, &mut s);
+                    clamp_viewport_top(&mut v, &mut rm);
+                    let cursor_pos = rm.locate_row(cursor_char);
+                    let reported = ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 2);
+
+                    let mut s = FormatScratch::new();
+                    let walked = cursor::screen_pos(
+                        &v,
+                        &mut map(&r, wrap, &providers, 80, &mut s),
+                        cursor_char,
+                    );
+                    assert_eq!(
+                        reported.map(|row| row as u16),
+                        walked.map(|(_, row)| row),
+                        "{wrap:?}, height {height}, top {top}, line {line}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// One frame resolves the cursor's line once. Modelled as the two halves that
+/// used to hold separate row maps over the same scratch: the scroll step
+/// (`lifecycle::scroll_into_view`) and the terminal-cursor placement the draw
+/// path asks for. In `WrapMode::None` `block` never formats, so `locate` is
+/// the only thing that can move the counter — making 1 a derived expectation,
+/// not a measured one.
+#[test]
+fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
+    let r = rope(&("a".repeat(5_000) + "\n"));
+    let formats = std::rc::Rc::new(std::cell::Cell::new(0));
+    let mut providers = ProviderSet::new();
+    providers.add_inline_decoration(Box::new(CountFormatsOf(0, std::rc::Rc::clone(&formats))));
+    let mut v = viewport(0, 10, 80);
+    let cursor_char = 4_000;
+
+    let mut s = FormatScratch::new();
+    let mut rm = map(&r, WrapMode::None, &providers, 80, &mut s);
+    clamp_viewport_top(&mut v, &mut rm);
+    let (cursor_pos, cursor_col) = rm.locate(cursor_char);
+    let row = ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 3).expect("height is 10");
+    ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_col);
+    let placed = cursor::place(&v, cursor_col, row);
+
+    assert_eq!(
+        formats.get(),
+        1,
+        "the scroll step must resolve the cursor with a single format"
+    );
+
+    // ...and the cell it produced is the one the discarded second row map
+    // used to compute, so nothing was traded away for that saving. Runs after
+    // the count above: re-deriving is exactly the second format being ruled
+    // out, so it has to stay on this side of the assertion.
+    let mut s = FormatScratch::new();
+    let walked = cursor::screen_pos(
+        &v,
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
+        cursor_char,
+    );
+    assert_eq!(
+        Some(placed),
+        walked,
+        "placement must match a full re-derivation"
     );
 }

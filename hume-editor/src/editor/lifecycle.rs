@@ -385,14 +385,12 @@ impl Editor {
                 let statusline_row = size.height.saturating_sub(1);
                 Some((mb.statusline_cursor_col(), statusline_row))
             } else if self.state.mode().cursor_is_bar() {
-                // Insert / Select: place the terminal cursor at the document head.
-                let cursor_char = self.state.panes.state[self.state.focused_pane_id]
-                    [self.focused_buffer_id()]
-                .selections
-                .primary()
-                .head();
+                // Insert / Select: place the terminal cursor at the document
+                // head, where `prepare_frame`'s scroll step already resolved it
+                // — the row map that decided *where to scroll* had to answer
+                // this question anyway, so re-deriving it here would walk the
+                // same rows a second time.
                 let (_, gutter_w) = self.resolve_pane_settings(self.state.focused_pane_id);
-                let vp = self.view.panes[self.state.focused_pane_id].viewport.clone();
                 // `prepare_frame` ran earlier this iteration and stored the
                 // terminal area; recompute the focused pane's origin from it
                 // so the bar cursor lands inside the pane, not at the
@@ -403,13 +401,7 @@ impl Editor {
                     .pane_rect(self.state.focused_pane_id)
                     .map(|r| (r.x, r.y))
                     .expect("focused pane must have a rect after prepare_frame");
-                let mut rm = super::commands::pane_row_map(
-                    self.doc(),
-                    &self.state.settings,
-                    &self.view.panes[self.state.focused_pane_id],
-                    &mut ctx.cursor_format,
-                );
-                super::cursor::screen_pos(&vp, &mut rm, cursor_char)
+                ctx.cursor_screen
                     .map(|(col, row)| (col + gutter_w + ox, row + oy))
             } else {
                 None
@@ -702,6 +694,11 @@ impl Editor {
         terminal_height: u16,
         ctx: &mut RenderContext,
     ) {
+        // A `RenderContext` is allocated once and reused for every frame, so
+        // last frame's cursor cell would otherwise be indistinguishable from
+        // one step 6 resolved this frame. Cleared here, filled there.
+        ctx.cursor_screen = None;
+
         // Reclaim viewport-debounce/scroll-key/virtual-line-sync cache
         // entries for panes closed since the last frame. These three live on
         // `Editor` rather than `EditorState.panes` (unlike `jumps`/`render`/
@@ -827,7 +824,7 @@ impl Editor {
                 .selections
                 .primary()
                 .head();
-            scroll_into_view(
+            let cursor_screen = scroll_into_view(
                 self.state.buffers.get(buf_id),
                 &self.state.settings,
                 &mut self.view.panes[pid],
@@ -835,6 +832,9 @@ impl Editor {
                 &mut ctx.cursor_format,
                 scrolloff,
             );
+            if pid == self.state.focused_pane_id {
+                ctx.cursor_screen = cursor_screen;
+            }
 
             // A real visible-range change (scroll command, cursor-follow
             // during typing, or a resize that altered height) debounces
@@ -2111,11 +2111,16 @@ impl Editor {
 // Module-level helpers
 // ---------------------------------------------------------------------------
 
-/// Scroll the pane viewport so `cursor_char` stays within the visible area.
+/// Scroll the pane viewport so `cursor_char` stays within the visible area, and
+/// report where the cursor ended up on screen (pane-relative, before the
+/// gutter). `None` for a viewport with no rows to place it in.
 ///
 /// Calls the clamp and both the vertical and horizontal `ensure_cursor_visible`
 /// helpers in one shot, over a single row map — so the three agree on the row
-/// list by construction, and a line's format is reused across them.
+/// list by construction, and a line's format is reused across them. The cursor
+/// is resolved exactly once here, for all three plus the terminal-cursor
+/// placement: scrolling only ever *writes* the viewport, and the row map holds
+/// no viewport, so no arm below can change what `locate` already answered.
 pub(super) fn scroll_into_view(
     doc: &Buffer,
     settings: &EditorSettings,
@@ -2123,15 +2128,23 @@ pub(super) fn scroll_into_view(
     cursor_char: usize,
     scratch: &mut hume_engine::format::FormatScratch,
     scrolloff: usize,
-) {
+) -> Option<(u16, u16)> {
     use super::scroll;
     let (mut rm, viewport) = super::commands::pane_row_map_mut(doc, settings, pane, scratch);
     // Self-heal a viewport top left stale by a write site that doesn't
     // validate it (`recall_scroll`, an LSP jump) before the cursor-follow
     // logic below reads it — see `clamp_viewport_top`'s doc.
     scroll::clamp_viewport_top(viewport, &mut rm);
-    scroll::ensure_cursor_visible(viewport, &mut rm, cursor_char, scrolloff);
-    scroll::ensure_cursor_visible_horizontal(viewport, &mut rm, cursor_char);
+    // A collapsed split has nothing to scroll and nowhere to put a cursor.
+    // Checked before `locate`, which would otherwise scan the cursor's line
+    // for an answer no one can use.
+    if viewport.height == 0 {
+        return None;
+    }
+    let (cursor_pos, cursor_col) = rm.locate(cursor_char);
+    let screen_row = scroll::ensure_cursor_visible(viewport, &mut rm, cursor_pos, scrolloff);
+    scroll::ensure_cursor_visible_horizontal(viewport, &mut rm, cursor_col);
+    screen_row.map(|row| super::cursor::place(viewport, cursor_col, row))
 }
 
 /// Convert a char-offset position to a line-relative byte offset.

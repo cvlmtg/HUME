@@ -33,41 +33,44 @@ pub(super) fn set_top(viewport: &mut ViewportState, pos: RowPos) {
 
 /// Adjust the viewport so the cursor's display row is visible with `v_margin`
 /// rows of look-ahead above and below it.
+///
+/// Returns the cursor's resulting screen row — its distance below the (possibly
+/// just-moved) viewport top. Every arm below already knows that number, so
+/// handing it back saves the caller a second walk over the same rows: the
+/// stable arm measured it directly, and each scrolling arm gets it from
+/// [`scroll_back_from`], which counts the rows it stepped back over. `None`
+/// only for a zero-height viewport, which has no screen row to report.
 pub(super) fn ensure_cursor_visible(
     viewport: &mut ViewportState,
     rm: &mut RowMap<'_>,
-    cursor_char: usize,
+    cursor_pos: RowPos,
     v_margin: usize,
-) {
+) -> Option<usize> {
     let height = viewport.height as usize;
     if height == 0 {
-        return;
+        return None;
     }
     // `(height - 1) / 2`, not `height / 2`: at an even height, a margin of
     // exactly `height / 2` leaves arm 2's stable window empty (its bounds
     // `margin..height-margin` collapse to a single point), so the two
     // correction arms fight over that one row and rescroll every frame.
     let margin = v_margin.min(height.saturating_sub(1) / 2);
-    let cursor_pos = rm.locate_row(cursor_char);
     let top = top_pos(viewport);
 
     if cursor_pos < top {
-        scroll_back_from(viewport, rm, cursor_pos, margin);
-        return;
+        return Some(scroll_back_from(viewport, rm, cursor_pos, margin));
     }
 
     // `None` means the cursor is more than a viewport's worth of rows below
     // the top, which wants the same correction as any other too-low cursor.
-    match rm.distance(top, cursor_pos, height) {
-        Some(rows_down) if rows_down < margin => {
-            scroll_back_from(viewport, rm, cursor_pos, margin);
-        }
-        Some(rows_down) if rows_down < height.saturating_sub(margin) => {}
+    Some(match rm.distance(top, cursor_pos, height) {
+        Some(rows_down) if rows_down < margin => scroll_back_from(viewport, rm, cursor_pos, margin),
+        Some(rows_down) if rows_down < height.saturating_sub(margin) => rows_down,
         _ => {
             let target = height.saturating_sub(margin).saturating_sub(1);
-            scroll_back_from(viewport, rm, cursor_pos, target);
+            scroll_back_from(viewport, rm, cursor_pos, target)
         }
-    }
+    })
 }
 
 /// Pull the viewport's top onto a row that actually exists.
@@ -92,7 +95,7 @@ pub(super) fn clamp_viewport_top(viewport: &mut ViewportState, rm: &mut RowMap<'
 pub(super) fn ensure_cursor_visible_horizontal(
     viewport: &mut ViewportState,
     rm: &mut RowMap<'_>,
-    cursor_char: usize,
+    cursor_col: u32,
 ) {
     const H_MARGIN: usize = 5;
 
@@ -101,7 +104,6 @@ pub(super) fn ensure_cursor_visible_horizontal(
         return;
     }
 
-    let (_, cursor_col) = rm.locate(cursor_char);
     let cursor_col = cursor_col as usize;
     // `locate`'s column is content-relative (the gutter isn't part of it),
     // so the margin must compare against the content width the map itself
@@ -142,15 +144,18 @@ pub(super) fn scroll_cursor_to_row(
 // ---------------------------------------------------------------------------
 
 /// Put the top of the viewport `rows_above` display rows before `cursor_pos`,
-/// saturating at the document's first row.
+/// saturating at the document's first row. Returns how many rows it actually
+/// stepped back — which, `next`/`prev` being inverses, is the cursor's screen
+/// row under the new top.
 fn scroll_back_from(
     viewport: &mut ViewportState,
     rm: &mut RowMap<'_>,
     cursor_pos: RowPos,
     rows_above: usize,
-) {
-    let top = rm.advance(cursor_pos, -(rows_above as isize));
+) -> usize {
+    let (top, stepped) = rm.advance_counted(cursor_pos, -(rows_above as isize));
     set_top(viewport, top);
+    stepped
 }
 
 // ---------------------------------------------------------------------------

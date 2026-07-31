@@ -48,6 +48,16 @@ pub(crate) fn screen_pos(
     // off-screen cursor a `None` rather than a row past the last one; a cursor
     // scrolled off the *top* is likewise unreachable walking forward.
     let screen_row = rm.distance(top, cursor_pos, height as usize - 1)?;
+    Some(place(viewport, cursor_col, screen_row))
+}
+
+/// Turn a resolved document column and screen row into a pane-relative cell.
+///
+/// Split out from [`screen_pos`] so the scroll step — which necessarily resolves
+/// both while deciding where to scroll — can produce the same answer without
+/// re-walking the row list. The two must not drift: this is the only place the
+/// horizontal-offset subtraction and the `u16` narrowing happen.
+pub(crate) fn place(viewport: &ViewportState, cursor_col: u32, screen_row: usize) -> (u16, u16) {
     let col = cursor_col.saturating_sub(viewport.horizontal_offset);
     // `ensure_cursor_visible_horizontal` keeps the cursor's document column
     // within one viewport width of `horizontal_offset`, so once past that
@@ -57,7 +67,7 @@ pub(crate) fn screen_pos(
         u16::try_from(col).is_ok(),
         "on-screen cursor column {col} exceeds a u16 — cursor should be within the viewport"
     );
-    Some((col as u16, screen_row as u16))
+    (col as u16, screen_row as u16)
 }
 
 /// Gutter width in terminal columns for the current frame.

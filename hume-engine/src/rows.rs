@@ -374,9 +374,21 @@ impl<'a> RowMap<'a> {
     /// Step `delta` rows from `pos`, saturating at either end of the document.
     /// The starting address is clamped first, so a stale viewport self-heals.
     pub fn advance(&mut self, pos: RowPos, delta: isize) -> RowPos {
+        self.advance_counted(pos, delta).0
+    }
+
+    /// [`RowMap::advance`], plus how many rows it actually stepped — fewer than
+    /// `delta.unsigned_abs()` only when the document's edge stopped the walk.
+    ///
+    /// Since [`RowMap::next`] and [`RowMap::prev`] are exact inverses, the count
+    /// is also the distance back: after stepping `n` rows *backward* from `pos`,
+    /// `distance(result, pos) == n`. That lets a caller that scrolled backward
+    /// from the cursor learn the cursor's resulting screen row without walking
+    /// the same rows forward again.
+    pub fn advance_counted(&mut self, pos: RowPos, delta: isize) -> (RowPos, usize) {
         let mut cur = self.clamp(pos);
-        let steps = delta.unsigned_abs();
-        for _ in 0..steps {
+        let mut taken = 0;
+        for _ in 0..delta.unsigned_abs() {
             let stepped = if delta >= 0 {
                 self.next(cur)
             } else {
@@ -386,8 +398,9 @@ impl<'a> RowMap<'a> {
                 Some(next) => cur = next,
                 None => break,
             }
+            taken += 1;
         }
-        cur
+        (cur, taken)
     }
 
     /// Rows from `from` forward to `to`, or `None` if `to` is behind `from` or

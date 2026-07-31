@@ -99,6 +99,12 @@ pub struct RenderContext {
     /// Distinct from `frame.format` — used outside the render pipeline, where
     /// borrowing `frame` simultaneously would conflict.
     pub cursor_format: FormatScratch,
+    /// Where the focused pane's cursor landed on screen (pane-relative, before
+    /// the gutter), resolved by the scroll step that already had the row map
+    /// open. `None` until that step runs, and reset every frame — a
+    /// `RenderContext` outlives the frame that filled it, so a leftover value
+    /// must never read as the current one.
+    pub cursor_screen: Option<(u16, u16)>,
 }
 
 impl RenderContext {
@@ -109,6 +115,7 @@ impl RenderContext {
             seams: Vec::new(),
             seam_arms: FxHashMap::default(),
             cursor_format: FormatScratch::new(),
+            cursor_screen: None,
         }
     }
 }
