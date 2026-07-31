@@ -4,10 +4,10 @@ use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::display_col_in_line;
 use hume_editing::lines::{leading_whitespace_end, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::tab_style::TabStyle;
 use hume_editing::text::Text;
 
 use super::apply_edit;
-use crate::settings::TabStyle;
 
 /// Insert `ch` at every selection.
 ///
@@ -80,8 +80,7 @@ fn is_blank_indented_line(buf: &Text, line_start: usize, ws_end: usize) -> bool 
 /// (whitespace only, no content) — `None` otherwise.
 ///
 /// Single source of truth for "is this cursor on a blank indented line",
-/// shared by the command-layer pre-flight check
-/// ([`crate::editor::commands::has_blank_line_cursor`], gating
+/// shared by the editor's command-layer pre-flight check (gating
 /// `clear_blank_line_indent` so exiting Insert mode away from a blank line
 /// doesn't run an identity edit — which would still bump `text_gen` and
 /// record a spurious pending tree-sitter edit) and the edit ops below.

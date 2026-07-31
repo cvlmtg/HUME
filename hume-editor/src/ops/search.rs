@@ -13,8 +13,14 @@
 
 use regex_cursor::{Input, RopeyCursor, engines::meta::Regex};
 
-use crate::editor::SearchDirection;
 use hume_editing::text::Text;
+
+/// Direction for `search-forward` / `search-backward` and `search-next` / `search-prev`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SearchDirection {
+    Forward,
+    Backward,
+}
 
 // ── compile_search_regex ──────────────────────────────────────────────────────
 

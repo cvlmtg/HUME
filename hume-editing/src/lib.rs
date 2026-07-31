@@ -33,6 +33,7 @@ pub mod history;
 pub mod lines;
 pub mod position_encoding;
 pub mod selection;
+pub mod tab_style;
 pub mod text;
 pub mod transaction;
 pub mod word;

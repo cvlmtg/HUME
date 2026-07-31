@@ -1,5 +1,6 @@
 #[cfg(test)]
-use crate::settings::TabStyle;
+use hume_editing::tab_style::TabStyle;
+
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
@@ -53,7 +54,7 @@ pub(crate) use sort::{SortOpts, SortRefusal, sort_rows};
 ///
 /// This is the count mechanism for selection commands and other operations that
 /// do not produce a ChangeSet. Use [`repeat_edit`] when the composed ChangeSet
-/// is needed for undo/redo bookkeeping via [`crate::editor::buffer::Buffer`].
+/// is needed for undo/redo bookkeeping via the editor's buffer type.
 ///
 /// For motions, count is handled inside `apply_motion` per-selection instead
 /// (prevents premature merging of multi-cursor selections between steps).
@@ -71,8 +72,8 @@ pub(crate) fn repeat(
 ///
 /// Like [`repeat`], but the command must return `(Text, SelectionSet,
 /// ChangeSet)`. The N changesets are folded with [`ChangeSet::compose`] so the
-/// whole repetition becomes a single undo step when passed to
-/// [`crate::editor::buffer::Buffer::apply_edit`].
+/// whole repetition becomes a single undo step when passed to the editor
+/// buffer's own `apply_edit`.
 ///
 /// If `count == 0`, returns the original state with an identity ChangeSet.
 #[cfg(test)]

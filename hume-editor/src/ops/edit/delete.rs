@@ -86,7 +86,7 @@ pub(crate) fn delete_char_backward(
 /// Dedent to the previous tab stop at every selection.
 ///
 /// For each collapsed cursor sitting in leading whitespace (caller-checked —
-/// see [`Editor::should_dedent_backspace`]), this deletes the whitespace
+/// see the editor's `should_dedent_backspace`), this deletes the whitespace
 /// between the cursor and the previous tab-stop column. Mixed tabs and spaces
 /// are handled by walking the line forward with tab expansion to locate the
 /// char offset at the target column ([`char_pos_at_display_col`]).

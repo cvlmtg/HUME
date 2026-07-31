@@ -15,12 +15,7 @@ use std::sync::Arc;
 
 use hume_editing::history::RevisionId;
 
-/// Direction for `search-forward` / `search-backward` and `search-next` / `search-prev`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SearchDirection {
-    Forward,
-    Backward,
-}
+pub(crate) use crate::ops::search::SearchDirection;
 
 // ── Per-buffer types ──────────────────────────────────────────────────────────
 
