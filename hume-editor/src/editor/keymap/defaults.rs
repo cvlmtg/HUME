@@ -324,8 +324,8 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('&'), cmd!("align-selections"));
     t.bind_leaf(key!('c'), cmd!("change"));
     t.bind_leaf(key!('y'), cmd!("yank"));
-    t.bind_leaf(key!('p'), cmd!("paste-after"));
-    t.bind_leaf(key!('P'), cmd!("paste-before"));
+    t.bind_leaf(key!('p'), cmd!("smart-paste-after"));
+    t.bind_leaf(key!('P'), cmd!("smart-paste-before"));
     // Kill-ring cycle: `[` walks older, `]` walks newer; each press also pastes.
     // These claim the bracket namespace (accepted design trade-off).
     t.bind_leaf(key!('['), cmd!("paste-ring-older"));

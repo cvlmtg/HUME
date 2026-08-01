@@ -112,6 +112,23 @@ surprising flip-flops inside replay loops. Leaving insert mode (`<esc>`) is
 also transparent to the heuristic, so `c <text> <esc> p` still reads the
 ring: the `change` marker survives the escape and the swap idiom lands.
 
+## Plain paste versus smart paste
+
+Everything above describes *smart* paste — the heuristic bound to the default
+paste keys. HUME also exposes a *plain* paste with no heuristic at all: it
+always reads the kill-ring head and never appends on a repeat, no matter what
+the previous command was. Pressing it twice in a row replaces the first paste
+rather than stacking a second copy next to it.
+
+Plain paste exists for the cases where predictability matters more than the
+convenience of Smart-p — a keymap or a plugin driving paste programmatically
+wants a fixed, known source rather than a heuristic that depends on editing
+history. It has no key bound by default; the default keys run the smart
+variant. A bundled alternate keymap plugin rebinds the default paste keys to
+the plain commands instead, pairing them with the system clipboard on
+separate keys — trading Smart-p's single "just paste" key for two dedicated,
+always-predictable ones.
+
 ## Paste sessions and cycling
 
 When the ring head isn't the entry you wanted, `[` and `]` step through the

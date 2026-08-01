@@ -111,7 +111,7 @@ impl CommandRegistry {
         .reg(self);
         ecmd(
             "paste-after",
-            "Paste register contents after the selection.",
+            "Paste register contents after the selection. Bare (no \"<reg> prefix) reads the kill-ring head; never stacks on repeat.",
             cmd_paste_after,
         )
         .paste()
@@ -120,8 +120,26 @@ impl CommandRegistry {
         .reg(self);
         ecmd(
             "paste-before",
-            "Paste register contents before the selection.",
+            "Paste register contents before the selection. Bare (no \"<reg> prefix) reads the kill-ring head; never stacks on repeat.",
             cmd_paste_before,
+        )
+        .paste()
+        .repeatable()
+        .clears_extend()
+        .reg(self);
+        ecmd(
+            "smart-paste-after",
+            "Paste after the selection: kill-ring head after a change/delete, clipboard otherwise; stacks on repeat.",
+            cmd_smart_paste_after,
+        )
+        .paste()
+        .repeatable()
+        .clears_extend()
+        .reg(self);
+        ecmd(
+            "smart-paste-before",
+            "Paste before the selection: kill-ring head after a change/delete, clipboard otherwise; stacks on repeat.",
+            cmd_smart_paste_before,
         )
         .paste()
         .repeatable()

@@ -703,13 +703,10 @@ fn steel_call_jump_cmd_records_jump_entry() {
 /// → after undo, the paste text is still present.
 #[test]
 fn steel_call_paste_then_motion_commits_paste_session() {
-    // Seed the kill ring with "hello" so paste-after has something to paste.
+    // Seed the kill ring with "hello" — plain paste-after's bare (no "<reg>
+    // prefix) source is always the kill-ring head, regardless of last_command.
     let mut ed = editor_from("-[w]>orld\n");
     ed.state.kill_ring.push(vec!["hello".to_owned()]);
-
-    // Prime last_command = "delete" so smart-p reads from kill ring.
-    use std::borrow::Cow;
-    ed.state.last_command = Some(Cow::Borrowed("delete"));
 
     let names: Vec<String> = ed
         .state

@@ -172,70 +172,87 @@ pub fn cmd_yank(
     Ok(())
 }
 
+/// Which source a bare paste — no `"<reg>` prefix — reads from, and whether
+/// the append (stacking) path is live.
+///
+/// `classic-paste` used to have to arm a register prefix purely to switch the
+/// Smart-p heuristic off before calling the (then sole) paste command; that
+/// workaround is the tell that plain, predictable paste needed its own name
+/// rather than living only inside the heuristic.
+enum PasteSource<'a> {
+    /// Plain `paste-after`/`paste-before`: kill-ring head, never stacks.
+    Plain,
+    /// `smart-paste-after`/`-before`: ring head after a kill, clipboard
+    /// otherwise (falling back to the ring silently if the clipboard is
+    /// unavailable); a second press stacks another copy. Carries
+    /// `last_command` for the heuristic.
+    Smart(Option<&'a str>),
+}
+
 /// Core paste implementation: open/extend a paste session and apply.
 ///
 /// `before`: true for `P` (paste before), false for `p` (paste after).
-fn do_paste(state: &mut EditorState, view: &mut EngineView, before: bool) {
+fn do_paste(state: &mut EditorState, view: &mut EngineView, before: bool, source: PasteSource<'_>) {
     if super::focused_buffer_read_only(state, view) {
         state.report(Severity::Info, "Buffer is read-only".to_string());
         return;
     }
-    // Clone last_command so the borrow on state ends before the mutable call below.
-    let last_command = state.last_command.clone();
-    let last_cmd = last_command.as_deref();
-
-    // An explicit register prefix (`"Xp`) overrides the append path — the user
-    // is asking for a specific register, not a repeat of the last paste.
-    // Append when the previous command was any paste-family command (p, P, [, ]).
-    // Membership is read from `CmdMeta::is_paste` — no parallel string list.
-    let is_append = last_cmd
-        .and_then(|c| state.config.registry.get_mappable(c))
-        .is_some_and(|cmd| cmd.meta().is_paste)
-        && state.register_prefix.is_none();
 
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
 
     // Append path: re-paste the verbatim values from the previous paste.
-    // No ring/clipboard re-lookup — ring emptiness is irrelevant.
-    if is_append && let Some(values) = state.last_paste.clone() {
-        // Collapse the just-pasted selection so the new paste stacks
-        // adjacent to it rather than replacing it.
-        let text = state.buffers.get(buf).text();
-        let sels = std::mem::take(&mut state.panes.state[focused][buf].selections);
-        state.panes.state[focused][buf].selections = sels.map(|s| {
-            if before {
-                Selection::collapsed(s.start())
-            } else {
-                Selection::collapsed(s.end_inclusive(text))
-            }
-        });
-        state.panes.state[focused][buf].paste_before = before;
-        open_paste_session_and_apply(state, focused, buf, before, &values);
-        // Preserve the cycle position — the seeded origin from the first
-        // paste in this run remains correct for `[`/`]`.
-        return;
-    }
+    // No ring/clipboard re-lookup — ring emptiness is irrelevant. Smart-only:
+    // plain paste always replaces, never stacks.
+    if let PasteSource::Smart(last_cmd) = source {
+        // An explicit register prefix (`"Xp`) overrides the append path — the
+        // user is asking for a specific register, not a repeat of the last
+        // paste. Append when the previous command was any paste-family
+        // command (p, P, [, ], plain paste). Membership is read from
+        // `CmdMeta::is_paste` — no parallel string list.
+        let is_append = last_cmd
+            .and_then(|c| state.config.registry.get_mappable(c))
+            .is_some_and(|cmd| cmd.meta().is_paste)
+            && state.register_prefix.is_none();
 
-    // Fall through: is_append but nothing ever pasted (e.g. lone `[`/`]`
-    // no-op before any paste) or !is_append — treat as a fresh paste.
+        if is_append && let Some(values) = state.last_paste.clone() {
+            // Collapse the just-pasted selection so the new paste stacks
+            // adjacent to it rather than replacing it.
+            let text = state.buffers.get(buf).text();
+            let sels = std::mem::take(&mut state.panes.state[focused][buf].selections);
+            state.panes.state[focused][buf].selections = sels.map(|s| {
+                if before {
+                    Selection::collapsed(s.start())
+                } else {
+                    Selection::collapsed(s.end_inclusive(text))
+                }
+            });
+            state.panes.state[focused][buf].paste_before = before;
+            open_paste_session_and_apply(state, focused, buf, before, &values);
+            // Preserve the cycle position — the seeded origin from the first
+            // paste in this run remains correct for `[`/`]`.
+            return;
+        }
+        // Fall through: is_append but nothing ever pasted (e.g. lone `[`/`]`
+        // no-op before any paste) or !is_append — treat as a fresh paste.
+    }
 
     // Fresh paste: resolve source via register prefix / Smart-p / clipboard.
     // Returns None to signal a no-op (black-hole, empty register, empty ring+clipboard).
-    let Some((values, cycle_origin)) = resolve_paste_values(state, last_cmd) else {
+    let Some((values, cycle_origin)) = resolve_paste_values(state, source) else {
         return;
     };
 
     state.panes.state[focused][buf].paste_before = before;
-    state.last_paste = Some(values.clone());
     open_paste_session_and_apply(state, focused, buf, before, &values);
     state.kill_ring.seed_cycle(cycle_origin);
 }
 
 /// Snapshot the pre-paste selections, open a paste group, and apply one paste
-/// from `values`. Does **not** seed the kill-ring cycle cursor — the caller
-/// handles that for the fresh-paste path; the append path preserves the existing
-/// cycle position.
+/// from `values`. Records `values` into `last_paste` for the smart append
+/// path and `[`/`]` cycling. Does **not** seed the kill-ring cycle cursor —
+/// the caller handles that for the fresh-paste path; the append path
+/// preserves the existing cycle position.
 fn open_paste_session_and_apply(
     state: &mut EditorState,
     focused: PaneId,
@@ -257,6 +274,7 @@ fn open_paste_session_and_apply(
         buf,
         |b, s| paste_fn(b, s, values),
     );
+    state.last_paste = Some(values.to_vec());
 }
 
 /// Resolve values for a **fresh** paste and the ring-slot origin for seeding.
@@ -266,10 +284,10 @@ fn open_paste_session_and_apply(
 /// Returns `None` to signal a no-op (black-hole, empty register, or empty ring+clipboard).
 fn resolve_paste_values(
     state: &mut EditorState,
-    last_cmd: Option<&str>,
+    source: PasteSource<'_>,
 ) -> Option<(Vec<String>, Option<usize>)> {
-    match state.take_register_prefix() {
-        None => {
+    match (state.take_register_prefix(), source) {
+        (None, PasteSource::Smart(last_cmd)) => {
             let prefer_ring = last_cmd.is_some_and(|c| SMART_P_LAST_CMDS.contains(&c));
             if prefer_ring {
                 let values = state.kill_ring.head()?.to_vec();
@@ -304,13 +322,14 @@ fn resolve_paste_values(
                 }
             }
         }
-        Some(BLACK_HOLE_REGISTER) => None,
-        // "kp: paste kill-ring head; seed cycle so [/] continue from slot 0.
-        Some(KILL_RING_REGISTER) => {
+        // Plain's bare source (no prefix) is the same as an explicit "k: the
+        // kill-ring head, no clipboard fallback.
+        (None, PasteSource::Plain) | (Some(KILL_RING_REGISTER), _) => {
             let values = state.kill_ring.head()?.to_vec();
             Some((values, Some(0)))
         }
-        Some(c) => {
+        (Some(BLACK_HOLE_REGISTER), _) => None,
+        (Some(c), _) => {
             // Digits and clipboard. Digits read in-memory RegisterSet (symmetric
             // with "Ny writes). Clipboard routes through the OS clipboard.
             let (cow, warn) =
@@ -324,25 +343,63 @@ fn resolve_paste_values(
     }
 }
 
-/// Paste after the selection.
+/// Paste after the selection: plain paste, kill-ring head by default, never
+/// stacks. See [`PasteSource::Plain`].
 pub fn cmd_paste_after(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_paste(state, view, false);
+    do_paste(state, view, false, PasteSource::Plain);
     Ok(())
 }
 
-/// Paste before the selection.
+/// Paste before the selection: plain paste, kill-ring head by default, never
+/// stacks. See [`PasteSource::Plain`].
 pub fn cmd_paste_before(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_paste(state, view, true);
+    do_paste(state, view, true, PasteSource::Plain);
+    Ok(())
+}
+
+/// Smart-paste after the selection: ring after a kill, clipboard otherwise,
+/// stacks on a repeat. See [`PasteSource::Smart`].
+pub fn cmd_smart_paste_after(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    let last_command = state.last_command.clone();
+    do_paste(
+        state,
+        view,
+        false,
+        PasteSource::Smart(last_command.as_deref()),
+    );
+    Ok(())
+}
+
+/// Smart-paste before the selection: ring after a kill, clipboard otherwise,
+/// stacks on a repeat. See [`PasteSource::Smart`].
+pub fn cmd_smart_paste_before(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    let last_command = state.last_command.clone();
+    do_paste(
+        state,
+        view,
+        true,
+        PasteSource::Smart(last_command.as_deref()),
+    );
     Ok(())
 }
 

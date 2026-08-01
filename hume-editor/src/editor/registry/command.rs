@@ -41,11 +41,14 @@ pub(crate) struct CmdMeta {
     /// jump list can record a threshold-exceeding move. Selection commands are
     /// excluded — staging a text-object is not deliberate navigation.
     pub is_motion: bool,
-    /// Whether this command is a paste-family command (p, P, [, ]).
+    /// Whether this command is a paste-family command (plain or smart p, P, [, ]).
     ///
-    /// Read by `commands/edit.rs` to detect a paste-after pattern (p → p appends
-    /// from `last_paste` instead of the clipboard). Does not affect the
-    /// paste-session commit — that is driven solely by `defers_paste_commit`.
+    /// Read by `commands/edit.rs` to detect a paste-after pattern for the
+    /// *smart* variants (p → p appends from `last_paste` instead of the
+    /// clipboard) — plain paste always replaces regardless of this flag, but
+    /// still needs it set so a following smart paste sees it as a continuation.
+    /// Does not affect the paste-session commit — that is driven solely by
+    /// `defers_paste_commit`.
     pub is_paste: bool,
     /// Whether this command defers the paste-session commit.
     ///

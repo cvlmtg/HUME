@@ -1509,7 +1509,7 @@ fn extend_exits_after_paste() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('y')); // yank "h" into ring
     ed.state.mode = Mode::Extend;
-    ed.handle_key(key('p')); // paste-after
+    ed.handle_key(key('p')); // smart-paste-after
     assert_eq!(ed.state.mode, Mode::Normal, "paste exits Extend");
 }
 

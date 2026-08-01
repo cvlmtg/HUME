@@ -249,6 +249,8 @@
 (#%register-global "show-drawer-list!")
 (#%register-global "show-menu!")
 (#%register-global "show-popup!")
+(#%register-global "smart-paste-after")
+(#%register-global "smart-paste-before")
 (#%register-global "spawn-async!")
 (#%register-global "split-selection-on-newlines")
 (#%register-global "surround-add")

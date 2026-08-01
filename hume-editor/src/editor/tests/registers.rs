@@ -582,8 +582,8 @@ fn smart_p_consecutive_paste_stays_in_ring() {
         .registers
         .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
     ed.feed_key(key('d')); // delete 'X' → ring = ["X"]
-    ed.feed_key(key('p')); // first paste → from ring, last_command = "paste-after"
-    // last_command = "paste-after", is_paste = true → is_append = true → appends from last_paste.
+    ed.feed_key(key('p')); // first paste → from ring, last_command = "smart-paste-after"
+    // last_command = "smart-paste-after", is_paste = true → is_append = true → appends from last_paste.
     ed.feed_key(key('p')); // second paste → still from ring
     // Buffer should contain "X" twice (pasted) and NOT "CLIP".
     let buf = ed.doc().text().to_string();
@@ -1023,7 +1023,7 @@ fn consecutive_clipboard_paste_appends() {
     // ring is empty — this is the regression case
 
     ed.feed_key(key('p')); // last_command=None → clipboard → pastes "XY"; last_paste=["XY"]
-    ed.feed_key(key('p')); // last_command="paste-after" ∈ PASTE_FAMILY → repeat last_paste
+    ed.feed_key(key('p')); // last_command="smart-paste-after" ∈ PASTE_FAMILY → repeat last_paste
     let buf = ed.doc().text().to_string();
     assert_eq!(
         buf.matches("XY").count(),
@@ -1152,4 +1152,156 @@ fn register_prefix_consumed_by_paste() {
         Some(vec!["REG5".to_string()]),
         "register 5 must be unchanged after d — prefix leaked if it differs"
     );
+}
+
+// ── Plain paste (`paste-after`/`paste-before`) ────────────────────────────────
+//
+// `p`/`P` dispatch the smart variants (see the smart-p block above); these
+// commands are reachable by name only (`:`, `call!`, or a plugin keymap).
+// Dispatched the same way `classic-paste`'s Steel wrappers and
+// `async_job_steel.rs`/`dot_repeat.rs` dispatch a command by name — through
+// `execute_keymap_command`, the same pipeline a keymap or `(call! …)` uses
+// (not a direct fn call, and unlike `:`, it doesn't itself stamp
+// `last_command` with an unrelated name in between two dispatches).
+
+fn dispatch_command(ed: &mut Editor, name: &str) {
+    ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
+}
+
+/// Bare plain paste reads the kill-ring head, not the clipboard — unlike
+/// smart-p, it never falls through to the clipboard when there's no register
+/// prefix.
+#[test]
+fn plain_paste_reads_ring_not_clipboard() {
+    use hume_ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[x]>\n");
+    ed.state
+        .registers
+        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.state.kill_ring.push(vec!["RING".to_string()]);
+
+    dispatch_command(&mut ed, "paste-after");
+
+    let buf = ed.doc().text().to_string();
+    assert!(buf.contains("RING"), "plain paste must read the ring head");
+    assert!(
+        !buf.contains("CLIP"),
+        "plain paste must not fall back to the clipboard"
+    );
+}
+
+/// Two consecutive plain pastes replace, never stack — the append path is
+/// smart-only.
+#[test]
+fn plain_paste_does_not_stack() {
+    let mut ed = editor_from("-[x]>\n");
+    ed.state.kill_ring.push(vec!["RING".to_string()]);
+
+    dispatch_command(&mut ed, "paste-after");
+    dispatch_command(&mut ed, "paste-after");
+
+    let buf = ed.doc().text().to_string();
+    assert_eq!(
+        buf.matches("RING").count(),
+        1,
+        "second plain paste must replace the first, not stack a copy; buf={buf:?}"
+    );
+}
+
+/// `[` after a plain paste still cycles — plain paste opens the same session
+/// smart paste does.
+#[test]
+fn plain_paste_opens_ring_cycle_session() {
+    let mut ed = editor_from("-[x]>\n");
+    ed.state.kill_ring.push(vec!["OLDER".to_string()]);
+    ed.state.kill_ring.push(vec!["RING".to_string()]);
+
+    dispatch_command(&mut ed, "paste-after");
+    ed.feed_key(key('[')); // cycle to the older ring entry
+
+    let buf = ed.doc().text().to_string();
+    assert!(
+        buf.contains("OLDER"),
+        "[ after a plain paste must cycle the ring; buf={buf:?}"
+    );
+    assert!(!buf.contains("RING"));
+}
+
+/// An explicit register prefix on a plain paste reads that register, same as
+/// on smart paste.
+#[test]
+fn plain_paste_honors_register_prefix() {
+    let mut ed = editor_from("-[x]>\n");
+    ed.state.registers.write_text('3', vec!["REG3".to_string()]);
+    ed.state.kill_ring.push(vec!["RING".to_string()]);
+
+    ed.handle_key(key('"'));
+    ed.handle_key(key('3'));
+    dispatch_command(&mut ed, "paste-after");
+
+    let buf = ed.doc().text().to_string();
+    assert!(
+        buf.contains("REG3"),
+        "\"3 + plain paste must read register 3"
+    );
+    assert!(!buf.contains("RING"));
+}
+
+/// `"b` (black hole) on a plain paste is a no-op, same as on smart paste.
+#[test]
+fn plain_paste_black_hole_is_noop() {
+    let mut ed = editor_from("-[x]>\n");
+    ed.state.kill_ring.push(vec!["RING".to_string()]);
+
+    ed.handle_key(key('"'));
+    ed.handle_key(key('b'));
+    dispatch_command(&mut ed, "paste-after");
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "x\n",
+        "\"b + plain paste must be a no-op"
+    );
+}
+
+/// A smart paste right after a plain paste takes the append path — `is_paste`
+/// family membership, not the specific command name, drives continuity.
+#[test]
+fn smart_paste_appends_after_plain_paste() {
+    use hume_ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[x]>\n");
+    ed.state.clipboard.force_unavailable();
+    ed.state
+        .registers
+        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.state.kill_ring.push(vec!["RING".to_string()]);
+
+    dispatch_command(&mut ed, "paste-after"); // plain: reads ring head "RING"
+    ed.feed_key(key('p')); // smart: last_command is paste-family → append
+
+    let buf = ed.doc().text().to_string();
+    assert_eq!(
+        buf.matches("RING").count(),
+        2,
+        "smart paste after a plain paste must append, not read fresh; buf={buf:?}"
+    );
+}
+
+/// Plain paste on a read-only buffer reports and makes no edit.
+#[test]
+fn plain_paste_refuses_read_only_buffer() {
+    let mut ed = editor_from("-[x]>\n");
+    ed.state.kill_ring.push(vec!["RING".to_string()]);
+    ed.doc_mut().read_only = true;
+
+    dispatch_command(&mut ed, "paste-after");
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "x\n",
+        "read-only buffer must refuse the paste"
+    );
+    assert_eq!(ed.state.status_msg.as_deref(), Some("Buffer is read-only"));
 }

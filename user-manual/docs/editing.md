@@ -85,6 +85,8 @@ Since `y` writes to both the clipboard and the kill ring, `y` then `p` pastes wh
 
 `[` and `]` only work inside a **paste session** — one opened by a preceding `p` or `P`. Each cycle replaces the previous paste, and the whole session records as a single undo step. Consecutive `p` presses append copies, each starting a new session and a separate undo step.
 
+`p`/`P` run `smart-paste-after`/`smart-paste-before` under the hood. Two plain commands, `paste-after`/`paste-before`, exist alongside them with no key bound by default — always reading the kill-ring head, never falling back to the clipboard, and never appending on a repeat — for keymaps and plugins that want a predictable paste instead of the heuristic. See [GUI-style paste](#gui-style-paste-bundled-plugin) below for a plugin built on them.
+
 ### Pasting from the terminal
 
 Pasting text from outside HUME — your system clipboard via the terminal's own paste shortcut, a mouse paste, or a paste from `tmux`/`screen` — lands in one step, however long the pasted text is.
@@ -215,7 +217,7 @@ Note that this moves wrapping onto `m s`: it takes over the default `m s` (selec
 
 ## GUI-style paste (bundled plugin)
 
-If you'd rather keep the clipboard and the kill ring on separate keys instead of letting `p` choose, load `core:classic-paste`. It puts the kill ring on `p` / `P` and the system clipboard on `Ctrl+V` / `Ctrl+Shift+V` (the latter needs the kitty protocol).
+If you'd rather keep the clipboard and the kill ring on separate keys instead of letting `p` choose, load `core:classic-paste`. It binds the plain paste commands: the kill ring on `p` / `P` and the system clipboard on `Ctrl+V` / `Ctrl+Shift+V` (the latter needs the kitty protocol).
 
 ```scheme
 (load-plugin "core:classic-paste")
