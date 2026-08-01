@@ -39,6 +39,7 @@ export default defineConfig({
         items: [
           { text: 'Moving Around', link: '/moving-around' },
           { text: 'Editing', link: '/editing' },
+          { text: 'Copy & Paste', link: '/copy-and-paste' },
           { text: 'Selections', link: '/selections' },
           { text: 'Language Servers', link: '/lsp' },
         ],

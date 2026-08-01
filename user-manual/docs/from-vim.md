@@ -115,7 +115,7 @@ Two more registers exist but can't be typed after `"`: the search register (the 
 Letter registers `a`–`z` other than the special names above do not exist. All yanks and deletes go to the kill ring (`k`) and digit registers (`0`–`9`).
 :::
 
-See [Register prefix](editing.md#register-prefix) for the full syntax and canonical register list.
+See [Register prefix](copy-and-paste.md#register-prefix) for the full syntax and canonical register list.
 
 ### Macros
 

@@ -138,7 +138,7 @@ Text objects (use the `m` prefix):
 
 Numbered registers are shared between macros and yanked text — last write wins. Recording is ignored in read-only buffers and during replay.
 
-See [Register prefix](editing.md#register-prefix) for the full register list.
+See [Register prefix](copy-and-paste.md#register-prefix) for the full register list.
 
 ### Other
 

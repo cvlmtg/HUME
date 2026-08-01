@@ -190,7 +190,7 @@ HUME shows nothing while it waits, so make it obvious from context that a charac
 
 ### Register prefix
 
-To make subsequent `(call! …)` invocations in a command body target a specific register, call `set-register-prefix!` with a single-character register name (`0`–`9`, `k`, `c`, `b` — see [Register prefix](editing.md#register-prefix) for what each one holds):
+To make subsequent `(call! …)` invocations in a command body target a specific register, call `set-register-prefix!` with a single-character register name (`0`–`9`, `k`, `c`, `b` — see [Register prefix](copy-and-paste.md#register-prefix) for what each one holds):
 
 ```scheme
 (define-command! "paste-kill-ring-after"
