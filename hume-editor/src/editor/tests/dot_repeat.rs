@@ -537,49 +537,56 @@ fn dot_after_find_is_noop() {
     assert_eq!(state(&ed), state_after_find);
 }
 
-/// After `.`, `last_command` must be neutralized to `None`,
-/// NOT left as the name of the replayed command (`"delete"`, `"change"`, …).
+/// A dot-repeated delete is itself a fresh capture: a bare `p` right after
+/// `.` reads what `.` just deleted, not the clipboard.
 ///
-/// `replay_dot` sets `last_command = None` so that smart-p
-/// (`SMART_P_LAST_CMDS = ["change","delete"]`) correctly routes a bare `p`/`P`
-/// to the clipboard rather than the kill-ring after a dot-repeat.
+/// This is a deliberate consequence of `PasteAnchor` (the smart-paste redo)
+/// having no dot-repeat special case at all — `replay_dot` runs the replayed
+/// edit through the ordinary `commands::run_native_body` → `route_kill` →
+/// `mark_ring_captured` path, which stamps the anchor at the replay's own
+/// `BufferStore::edit_seq()` exactly as a live `d` would. The old
+/// `last_command`-based heuristic forced every dot-repeat to the clipboard
+/// unconditionally (`replay_dot` set `last_command = None`); the new model
+/// has no equivalent step to remove, since nothing here treats a replayed
+/// delete differently from a typed one.
 ///
-/// Fail oracle: removing `last_command = None` at the end of `replay_dot` makes
-/// this test fail (last_command stays `"delete"` after the inner replay).
-///
-/// Behavior assertion: a `p` pressed after `.` must paste from the clipboard,
-/// not the ring, confirming the neutralization has the correct semantic effect.
+/// Fail oracle: make `route_kill`/`mark_ring_captured` skip stamping when
+/// called from `run_native_body` outside the dispatch pipeline (i.e. during
+/// replay) — the ring head would then be stale by the time `p` reads it and
+/// `p` would fall through to "CLIP" instead.
 #[test]
-fn dot_restamps_last_command() {
+fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
     use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[foo]> bar\n");
-    // Seed the clipboard with a sentinel value distinct from the kill-ring head.
+    // Seed the clipboard with a sentinel value distinct from anything the
+    // ring could hold, so a wrong clipboard read is unambiguous.
     ed.state
         .registers
         .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
 
-    ed.feed_key(key('d')); // delete "foo" → ring head = ["foo"], last_command = "delete"
-    assert_eq!(
-        ed.state.last_command.as_deref(),
-        Some("delete"),
-        "setup: last_command must be 'delete' after d"
-    );
-
+    ed.feed_key(key('d')); // delete "foo" → ring head = ["foo"]
     ed.feed_key(key('w')); // move to "bar"
-    ed.feed_key(key('.')); // repeat; replay_dot fires and emits Replay
+    ed.feed_key(key('.')); // repeat; replay_dot fires a fresh delete
 
-    // White-box: last_command is neutralized to None after dot-repeat replay.
-    assert_eq!(
-        ed.state.last_command, None,
-        "replay_dot must neutralize last_command to None"
-    );
+    let ring_head = ed
+        .state
+        .kill_ring
+        .head()
+        .expect("dot-repeat of a delete must push to the ring")
+        .to_vec();
 
-    // Black-box: a subsequent bare `p` reads the clipboard, not the ring.
-    ed.feed_key(key('p'));
+    ed.feed_key(key('p')); // bare p — must read the ring, not the clipboard
+    let text = state(&ed);
+    for v in &ring_head {
+        assert!(
+            text.contains(v.as_str()),
+            "p after dot-repeat delete must paste the ring head {v:?}; buf={text:?}"
+        );
+    }
     assert!(
-        state(&ed).contains("CLIP"),
-        "p after dot-repeat must paste clipboard, not ring head"
+        !text.contains("CLIP"),
+        "p after dot-repeat delete must not read the clipboard; buf={text:?}"
     );
 }
 

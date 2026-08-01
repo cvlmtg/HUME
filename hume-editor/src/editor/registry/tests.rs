@@ -295,13 +295,11 @@ fn runtime_register_and_lookup() {
         name: Cow::Owned("steel-test-cmd".to_string()),
         doc: Cow::Borrowed("A dummy Steel command for testing."),
         fun: dummy_fn,
-        is_paste: false,
         defers_paste_commit: false,
         repeatable: false,
         jump: false,
         visual_move: false,
         extendable: false,
-        stamps_last_command: true,
         clears_extend: false,
     };
     reg.register(cmd);
@@ -394,13 +392,11 @@ fn steel_backed_names_filters_by_variant() {
         name: Cow::Owned("%hume-cmd-decoy".to_string()),
         doc: Cow::Borrowed("doc"),
         fun: noop,
-        is_paste: false,
         defers_paste_commit: false,
         repeatable: false,
         jump: false,
         visual_move: false,
         extendable: false,
-        stamps_last_command: true,
         clears_extend: false,
     });
 

@@ -770,8 +770,9 @@ Submit the form form draft today.
 
 ``p`` is context-aware:
 
-- after ``c`` or ``d``, it reads from the kill ring
-- otherwise it reads from the clipboard
+- while nothing has been edited since your last ``c``/``d``/``y``, it
+  reads from the kill ring
+- once something has been edited, it reads from the clipboard
 
 This means you can delete something with ``d`` and immediately ``p``
 to paste the deleted text, without switching registers manually.
@@ -792,9 +793,9 @@ Summary
 | [ / ] | cycle ring (after paste)      |
 +-------+-------------------------------+
 
-``p`` reads from kill ring after ``c`` / ``d``, from clipboard
-otherwise. ``y`` leaves the selection — press ``;`` to collapse
-before pasting a copy.
+``p`` reads from kill ring while nothing's been edited since ``c`` /
+``d`` / ``y``, from clipboard otherwise. ``y`` leaves the selection —
+press ``;`` to collapse before pasting a copy.
 
 Lesson 6 — Find, Till, and Repeat
 =================================

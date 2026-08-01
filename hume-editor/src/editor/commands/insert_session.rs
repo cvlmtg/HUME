@@ -131,15 +131,23 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
     // e.g. via Backspace) drops the pins entirely — `spans` stays `None`, so
     // this session contributes nothing to the `mii` stash and (for `c`)
     // falls back to a collapsed cursor.
-    let (pinned, select_on_exit) = {
+    let (pinned, select_on_exit, kill_opened) = {
         let pid = state.focused_pane_id;
         let bid = focused_buffer_id(state, view);
         let pbs = &mut state.panes.state[pid][bid];
         (
             pbs.pinned_anchors.take(),
             std::mem::take(&mut pbs.select_on_exit),
+            std::mem::take(&mut pbs.kill_opened_session),
         )
     };
+    // `cmd_change` stamped `PasteAnchor` right after the deletion, but every
+    // keystroke since has bumped `edit_seq` — refresh the stamp to the
+    // session's final `seq` (source unchanged) so `c <text> <Esc> p` still
+    // reads the ring. See `PaneBufferState::kill_opened_session`'s doc.
+    if kill_opened && let Some(anchor) = state.paste_anchor.as_mut() {
+        anchor.seq = state.buffers.edit_seq();
+    }
     let valid_pins = pinned.filter(|a| a.len() == current_selections(state, view).len());
     let spans: Option<Vec<Option<(usize, usize)>>> = valid_pins.map(|anchors| {
         let buf = doc(state, view).text();

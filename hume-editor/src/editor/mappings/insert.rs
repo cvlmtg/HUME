@@ -109,7 +109,6 @@ impl Editor {
                 // edit group. `run_native_body` routes through `apply_doc_edit_grouped`
                 // when a group is open, so no special-casing is needed here.
                 if let MappableCommand::Edit { .. } = reg_cmd {
-                    let name = reg_cmd.name().clone();
                     commands::run_native_body(
                         &mut self.state,
                         &mut self.view,
@@ -117,7 +116,6 @@ impl Editor {
                         Some(1),
                         false,
                     );
-                    self.state.last_command = Some(name);
                     return;
                 }
                 // Any cursor-motion command (arrows, Home/End, …) invalidates

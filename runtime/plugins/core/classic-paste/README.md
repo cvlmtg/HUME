@@ -21,9 +21,9 @@ to a first-use trigger:
 | `Ctrl+V`       | classic-clipboard-after  | Paste the OS clipboard after the selection    |
 | `Ctrl+Shift+V` | classic-clipboard-before | Paste the OS clipboard before the selection   |
 
-Default HUME behavior (smart-p: clipboard unless the last command was a change/delete) is
-unchanged unless this plugin is loaded — loading it replaces the default `p`/`P` bindings
-outright, not conditionally.
+Default HUME behavior (smart-p: kill ring while nothing's been edited since the last
+change/delete/yank, clipboard once something has) is unchanged unless this plugin is
+loaded — loading it replaces the default `p`/`P` bindings outright, not conditionally.
 
 ## How it works
 

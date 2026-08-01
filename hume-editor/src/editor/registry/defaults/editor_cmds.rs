@@ -73,7 +73,6 @@ impl CommandRegistry {
             "Return to normal mode from insert mode.",
             cmd_exit_insert,
         )
-        .transparent_to_last_command()
         .reg(self);
 
         // ── Editor commands — edit composites ─────────────────────────────────
@@ -111,37 +110,33 @@ impl CommandRegistry {
         .reg(self);
         ecmd(
             "paste-after",
-            "Paste register contents after the selection. Bare (no \"<reg> prefix) reads the kill-ring head; never stacks on repeat.",
+            "Paste register contents after the selection. Bare (no \"<reg> prefix) reads the kill-ring head, with no clipboard fallback.",
             cmd_paste_after,
         )
-        .paste()
         .repeatable()
         .clears_extend()
         .reg(self);
         ecmd(
             "paste-before",
-            "Paste register contents before the selection. Bare (no \"<reg> prefix) reads the kill-ring head; never stacks on repeat.",
+            "Paste register contents before the selection. Bare (no \"<reg> prefix) reads the kill-ring head, with no clipboard fallback.",
             cmd_paste_before,
         )
-        .paste()
         .repeatable()
         .clears_extend()
         .reg(self);
         ecmd(
             "smart-paste-after",
-            "Paste after the selection: kill-ring head after a change/delete, clipboard otherwise; stacks on repeat.",
+            "Paste after the selection: kill-ring head while nothing has been edited since the last capture, clipboard otherwise.",
             cmd_smart_paste_after,
         )
-        .paste()
         .repeatable()
         .clears_extend()
         .reg(self);
         ecmd(
             "smart-paste-before",
-            "Paste before the selection: kill-ring head after a change/delete, clipboard otherwise; stacks on repeat.",
+            "Paste before the selection: kill-ring head while nothing has been edited since the last capture, clipboard otherwise.",
             cmd_smart_paste_before,
         )
-        .paste()
         .repeatable()
         .clears_extend()
         .reg(self);

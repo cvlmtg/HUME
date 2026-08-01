@@ -26,6 +26,15 @@ pub(crate) struct BufferStore {
     /// Most-recently-used list, tail = most recent.
     /// Length is always ≤ `order.len()`; entries are unique.
     mru: Vec<BufferId>,
+    /// Monotonic counter bumped once per user edit/undo/redo, in any open
+    /// buffer — the `doc_ops` five-function chokepoint is the sole writer.
+    /// Unlike `Buffer::text_gen` (per-buffer, bumped by system refreshes too —
+    /// `set_view_content`, `reload_from_text`), this is deliberately global
+    /// and edit-only: `PasteAnchor` stamps it so a paste can tell "did
+    /// anything change, anywhere" without caring which buffer, and a
+    /// `:messages` refresh or `:e!` between a kill and a paste must not look
+    /// like an edit. See `PasteAnchor`'s doc for the read side.
+    edit_seq: u64,
 }
 
 impl BufferStore {
@@ -34,7 +43,20 @@ impl BufferStore {
             buffers: SecondaryMap::new(),
             order: Vec::new(),
             mru: Vec::new(),
+            edit_seq: 0,
         }
+    }
+
+    /// Current edit sequence — see the field doc.
+    pub(crate) fn edit_seq(&self) -> u64 {
+        self.edit_seq
+    }
+
+    /// Advance the edit sequence by one. Called only from the `doc_ops`
+    /// chokepoint, once per actual mutation (never on a no-op undo/redo at a
+    /// history boundary, never on a read-only-refused edit).
+    pub(crate) fn bump_edit_seq(&mut self) {
+        self.edit_seq += 1;
     }
 
     /// Register a new buffer slot. Called from `Editor::open_buffer` after the

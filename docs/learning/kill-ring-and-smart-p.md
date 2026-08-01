@@ -67,63 +67,81 @@ two protections at once:
 When the user presses `p` for a bare paste, which source does it read — the
 clipboard, or the ring head?
 
-HUME records the name of the most recent command. When bare paste fires, it
-reads that name and routes accordingly:
+HUME answers by asking a narrower question: *has anything been edited since
+the ring last changed?* If not, paste reads the ring — the buffer is still in
+the state the capture left it in, so the ring head is still "the thing that
+was just here." If something has been edited since, paste reads the system
+clipboard instead — the user has moved on, and cross-app paste stays the
+default.
 
-- **Previous command was a delete or change** → paste reads the kill-ring head
-  (most recently killed text). Swap idioms work.
-- **Previous command was a paste or paste-cycle** → consecutive paste presses
-  append the same values verbatim, independent of what the ring or clipboard
-  hold at that moment.
-- **Anything else** → paste reads the system clipboard. Cross-application
-  paste remains one keystroke. (If no OS clipboard is available — a headless
-  environment — this case falls back to the ring head.)
+- **Nothing edited since the last capture (`d`/`c`/`y`)** → paste reads the
+  kill-ring head. Swap idioms work: `d`, move around, `p` restores what was
+  killed, as long as no edit happened along the way.
+- **Something edited since** → paste reads the system clipboard, falling back
+  to the ring head if no OS clipboard is available (a headless environment).
 
-The intuition behind the allow-list (this short set keeps paste in the ring;
-everything else switches to clipboard):
+Motions, searches, and undo/redo don't fit either bucket the way a command
+name would — they're judged by what they actually do to the buffer. A motion
+touches nothing, so it never switches the source; undo and redo *are* edits
+(they change what's on screen), so they do switch it. This replaces the older
+design, which routed by matching the *name* of the previous command against a
+fixed allow-list (`change`, `delete`) — that list needed hand-maintained
+exceptions for `exit-insert` (to not break the swap idiom on `<esc>`) and for
+macro replay and dot-repeat (both forced to the clipboard unconditionally, to
+keep replay deterministic). Judging by buffer state instead of command name
+needs none of that: dot-repeating a delete is itself a fresh capture, so a
+paste right after `.` correctly reads what `.` just deleted — no special case
+required.
 
-- The user can apply one rule without memorising special cases: *"did I just
-  delete or change? Then the next paste reads the ring. Otherwise the
-  clipboard."*
-- Motions, searches, and undo all clear the path. These operations typically
-  signal a context switch — the user has moved on from "edit this spot" to
-  something else. A paste at the new location should usually be the
-  cross-app one.
+**Repeat presses still work like a stack.** `xd p p p` produces three copies.
+Each press re-reads the same source fresh; since nothing has changed the
+ring (or clipboard) between presses, the same value comes back each time —
+and pasting a value that matches what's already selected appends alongside it
+rather than replacing it (see "Repeat vs. swap" below), so the copies stack.
 
-A few non-obvious entries are worth calling out explicitly:
+## Repeat vs. swap: smart-paste's one rule, not two mechanisms
 
-**Paste itself keeps the ring active.** Consecutive paste presses all read
-the ring head. You can paste the same deleted text multiple times — `xd p p
-p` produces three copies — without the second or third paste silently
-switching to the clipboard.
+Two things used to feel like separate smart-paste behaviors — "paste over a
+selection replaces it" and "pasting again after a paste appends another
+copy" — but they're the same rule seen from different starting points: **if
+what you're about to paste is already exactly what's selected, collapse the
+selection and paste next to it instead of over it.**
 
-**Yank is not in the allow-list.** A yank is the moment the user has chosen
-to capture text for export — the next paste should hit the clipboard, not
-the ring. The yanked text is still pushed into the ring and remains
-reachable by name or by cycling; it is simply not the first thing bare paste
-reaches for.
+- Selection is a bare cursor → there's nothing to compare against, so paste
+  just lands next to the cursor.
+- Selection holds different text than what's being pasted → replace it. This
+  is the ordinary case: select a word, paste a replacement over it.
+- Selection holds the *same* text that's about to be pasted → collapse first,
+  then paste next to it. This is what makes `p p p` stack: after the first
+  paste, the pasted text is selected, and the second paste's source resolves
+  to that same text again, so it appends rather than clobbering the first
+  copy.
 
-**Macro replay and dot-repeat are both non-exceptions.** After a macro
-replay and after a dot-repeat, the heuristic is left in a "not delete, not
-change" state regardless of what the macro or the repeated command contained.
-This makes replay deterministic — the paste source after `q<reg>` or `.` is
-always the clipboard, independent of what was just re-run — and avoids
-surprising flip-flops inside replay loops. Leaving insert mode (`<esc>`) is
-also transparent to the heuristic, so `c <text> <esc> p` still reads the
-ring: the `change` marker survives the escape and the swap idiom lands.
+This is smart-paste-only. Plain paste never compares — see "Plain paste
+versus smart paste" below for why.
 
 ## Plain paste versus smart paste
 
-Everything above describes *smart* paste — the heuristic bound to the default
-paste keys. HUME also exposes a *plain* paste with no heuristic at all: it
-always reads the kill-ring head and never appends on a repeat, no matter what
-the previous command was. Pressing it twice in a row replaces the first paste
-rather than stacking a second copy next to it.
+Everything above describes *smart* paste — the heuristic bound to the
+default paste keys, in both what it reads (ring vs. clipboard) and how a
+repeat behaves (append vs. replace, per "Repeat vs. swap" above). HUME also
+exposes a *plain* paste with none of that: it always reads the kill-ring
+head, with no clipboard fallback, and it always replaces a non-collapsed
+selection outright — no text comparison, ever. Pasting the same text twice
+over the same selection just replaces it with itself the second time; to
+stack a copy, collapse the selection first (`;`), then paste.
 
-Plain paste exists for the cases where predictability matters more than the
-convenience of Smart-p — a keymap or a plugin driving paste programmatically
-wants a fixed, known source rather than a heuristic that depends on editing
-history. It has no key bound by default; the default keys run the smart
+That "no comparison, ever" is deliberate, not an oversight: plain paste's
+whole reason to exist is predictability for code driving it programmatically
+— a keymap or a plugin script that selects some text and pastes should never
+have to first ask "is this exactly what's already there?" to know what will
+happen. Smart-paste's repeat-vs-swap rule exists because a human pressing `p`
+twice in a row has an intent worth inferring; a script pasting over a
+selection has already stated its intent by choosing that selection, and
+inferring around it would make plain paste unpredictable for the one use
+case it exists for.
+
+Plain paste has no key bound by default; the default keys run the smart
 variant. A bundled alternate keymap plugin rebinds the default paste keys to
 the plain commands instead, pairing them with the system clipboard on
 separate keys — trading Smart-p's single "just paste" key for two dedicated,
@@ -178,11 +196,10 @@ place. The distinction falls out of inspecting the yanked text — no separate
 `P`-linewise command names it, and cycling the kill ring moves freely between
 linewise and charwise entries as the cycle position changes.
 
-**Consecutive `p` presses append** rather than replacing. After a paste, the
-pasted text is selected. A second `p` collapses that selection and pastes
-again adjacent to it — two copies side by side, each a separate undo step.
-This is intentional: the session model makes cycle-replace cheap (`[`/`]`),
-so consecutive `p` can safely mean "add another copy".
+**Consecutive `p` presses append** rather than replacing — see "Repeat vs.
+swap" above for the underlying rule. Each press is its own separate undo
+step, distinct from a `[`/`]` cycle (which folds into the one undo step the
+paste session opened).
 
 **`p` after `[`/`]` appends the cycled entry.** If you cycled to the
 second-oldest entry and then press `p`, the new paste appends a second copy

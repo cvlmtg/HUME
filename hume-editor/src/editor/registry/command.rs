@@ -41,20 +41,11 @@ pub(crate) struct CmdMeta {
     /// jump list can record a threshold-exceeding move. Selection commands are
     /// excluded — staging a text-object is not deliberate navigation.
     pub is_motion: bool,
-    /// Whether this command is a paste-family command (plain or smart p, P, [, ]).
-    ///
-    /// Read by `commands/edit.rs` to detect a paste-after pattern for the
-    /// *smart* variants (p → p appends from `last_paste` instead of the
-    /// clipboard) — plain paste always replaces regardless of this flag, but
-    /// still needs it set so a following smart paste sees it as a continuation.
-    /// Does not affect the paste-session commit — that is driven solely by
-    /// `defers_paste_commit`.
-    pub is_paste: bool,
     /// Whether this command defers the paste-session commit.
     ///
     /// `true` only for ring-cycle commands (`[` / `]`). Ring cycles must NOT
     /// commit the paste session — they fold into one undo step with the original
-    /// paste. Always implies `is_paste`.
+    /// paste.
     pub defers_paste_commit: bool,
     /// Whether this command always records a jump-list entry before executing,
     /// regardless of how far the cursor moves (goto / search / page-scroll /
@@ -83,14 +74,6 @@ pub(crate) struct CmdMeta {
     /// repeatable. One bit here covers every combination without requiring an
     /// enum variant per combination.
     pub repeatable: bool,
-    /// Whether dispatching this command overwrites `last_command`.
-    ///
-    /// `false` for `exit-insert` only — it closes an insert session that a kill
-    /// (`c`) may have opened, so stamping it would clobber the `"change"` marker
-    /// and break `c <text> Esc p` → ring. Set at registration via
-    /// `.transparent_to_last_command()` on the `EditorCmdBuilder`. All other
-    /// commands are `true`.
-    pub stamps_last_command: bool,
     /// Whether this command exits sticky Extend mode after it runs.
     ///
     /// `true` for buffer-modifying selection acts: `delete`, `paste-*`, `replace`,
@@ -217,11 +200,8 @@ pub(crate) enum MappableCommand {
         #[allow(dead_code)]
         doc: Cow<'static, str>,
         fun: EditorCmdFn,
-        /// Whether this command is a paste-family command (p, P, [, ]).
-        /// See [`CmdMeta::is_paste`] for the full rationale.
-        is_paste: bool,
         /// Whether this command defers the paste-session commit.
-        /// `true` only for ring-cycle commands (`[` / `]`). Always implies `is_paste`.
+        /// `true` only for ring-cycle commands (`[` / `]`).
         /// See [`CmdMeta::defers_paste_commit`] for the full rationale.
         defers_paste_commit: bool,
         /// Whether `.` should replay this command.
@@ -238,9 +218,6 @@ pub(crate) enum MappableCommand {
         /// Motion and Selection are always extendable (implicit). Edit is never
         /// extendable (implicit). Only EditorCmd needs an explicit flag.
         extendable: bool,
-        /// Whether dispatching this command overwrites `last_command` for smart-p.
-        /// `false` only for `exit-insert`; all other commands are `true`.
-        stamps_last_command: bool,
         /// Whether this command exits sticky Extend mode after it runs.
         /// See [`CmdMeta::clears_extend`] for the full rationale.
         clears_extend: bool,
@@ -328,82 +305,68 @@ impl MappableCommand {
             Self::Motion { jump, reaching, .. } => CmdMeta {
                 tracks_selection: true,
                 is_motion: true,
-                is_paste: false,
                 defers_paste_commit: false,
                 is_jump: *jump,
                 is_visual_move: false,
                 reaching: *reaching,
                 repeatable: false,
-                stamps_last_command: true,
                 clears_extend: false,
             },
             Self::Selection { jump, .. } => CmdMeta {
                 tracks_selection: true,
                 is_motion: false,
-                is_paste: false,
                 defers_paste_commit: false,
                 is_jump: *jump,
                 is_visual_move: false,
                 reaching: false,
                 repeatable: false,
-                stamps_last_command: true,
                 clears_extend: false,
             },
             Self::Edit { repeatable, .. } => CmdMeta {
                 tracks_selection: false,
                 is_motion: false,
-                is_paste: false,
                 defers_paste_commit: false,
                 is_jump: false,
                 is_visual_move: false,
                 reaching: false,
                 repeatable: *repeatable,
-                stamps_last_command: true,
                 clears_extend: false,
             },
             Self::EditorCmd {
-                is_paste,
                 defers_paste_commit,
                 repeatable,
                 jump,
                 visual_move,
-                stamps_last_command,
                 clears_extend,
                 ..
             } => CmdMeta {
                 tracks_selection: false,
                 is_motion: false,
-                is_paste: *is_paste,
                 defers_paste_commit: *defers_paste_commit,
                 is_jump: *jump,
                 is_visual_move: *visual_move,
                 reaching: false,
                 repeatable: *repeatable,
-                stamps_last_command: *stamps_last_command,
                 clears_extend: *clears_extend,
             },
             Self::SteelBacked { repeatable, .. } => CmdMeta {
                 tracks_selection: false,
                 is_motion: false,
-                is_paste: false,
                 defers_paste_commit: false,
                 is_jump: false,
                 is_visual_move: false,
                 reaching: false,
                 repeatable: *repeatable,
-                stamps_last_command: true,
                 clears_extend: false,
             },
             Self::Lazy { .. } => CmdMeta {
                 tracks_selection: false,
                 is_motion: false,
-                is_paste: false,
                 defers_paste_commit: false,
                 is_jump: false,
                 is_visual_move: false,
                 reaching: false,
                 repeatable: false,
-                stamps_last_command: true,
                 clears_extend: false,
             },
         }

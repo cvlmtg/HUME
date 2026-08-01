@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicI32;
@@ -245,6 +244,38 @@ impl ConfigState {
     }
 }
 
+// ── PasteAnchor ──────────────────────────────────────────────────────────────
+
+/// Which source a bare paste (no `"<reg>` prefix) reads, valid only while
+/// [`buffer::store::BufferStore::edit_seq`] is still `seq` — the moment any
+/// buffer is edited (or undone/redone), the stamped `seq` falls behind and a
+/// bare `smart-paste-*` falls through to the clipboard instead.
+///
+/// Written by every capture that pushes onto the kill ring (`d`/`c`/`y`, bare
+/// or `"k`-prefixed — see `EditorState::mark_ring_captured`) and by every
+/// completed bare paste (plain or smart) and ring cycle (`[`/`]`), each
+/// re-stamping with the *post*-edit `seq` and whatever source it actually
+/// used. The re-stamp on completion is load-bearing, not cosmetic: a paste is
+/// itself an edit, so without it the anchor a capture wrote would go stale on
+/// the very first paste that reads it, and `d p p p` would paste the kill
+/// once and the clipboard twice. An explicit register read (`"5p`, `"cp`, …)
+/// does not stamp — it is a plain edit as far as this mechanism is concerned.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PasteAnchor {
+    pub(super) seq: u64,
+    pub(super) source: AnchorSource,
+}
+
+/// See [`PasteAnchor`].
+#[derive(Debug, Clone, Copy)]
+pub(super) enum AnchorSource {
+    /// Kill-ring slot (`0` = head). Looked up fresh via `KillRing::slot` at
+    /// read time rather than snapshotting the text, so a stamp always
+    /// reflects the ring's current contents at that slot.
+    Ring(usize),
+    Clipboard,
+}
+
 /// The keymap every session and every `:reload-config` starts from: the
 /// compiled-in trie, plus the kitty-only default binds when the terminal
 /// supports the protocol. Shared by [`ConfigState::new`] (session start /
@@ -292,10 +323,8 @@ pub(crate) struct EditorState {
     pub(super) clipboard: clipboard::SystemClipboard,
     /// State machine for the two-keystroke `"<reg>` register-prefix sequence.
     pub(super) register_prefix: Option<register_ops::RegisterPrefix>,
-    /// Name of the most recently dispatched command.
-    pub(super) last_command: Option<Cow<'static, str>>,
-    /// Values of the most recent paste.
-    pub(super) last_paste: Option<Vec<String>>,
+    /// Which source a bare paste reads next, and until when — see [`PasteAnchor`].
+    pub(super) paste_anchor: Option<PasteAnchor>,
     pub(super) should_quit: bool,
     /// Set by the platform terminator thread to the process exit code when a
     /// signal asks the editor to quit — `0` means "no termination requested"

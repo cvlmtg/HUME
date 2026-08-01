@@ -28,7 +28,7 @@ use super::jump_list::JumpEntry;
 use super::register_ops;
 use super::register_ops::RegisterPrefix;
 use super::search::SearchPattern;
-use super::{EditorState, Severity};
+use super::{AnchorSource, EditorState, PasteAnchor, Severity};
 use crate::settings::EditorSettings;
 
 // ── EditorState helpers ───────────────────────────────────────────────────────
@@ -56,9 +56,24 @@ impl EditorState {
     /// ring; any other explicit register prefix routes through `write_register`.
     pub(super) fn route_kill(&mut self, yanked: Vec<String>) {
         match self.take_register_prefix() {
-            None | Some(hume_ops::register::KILL_RING_REGISTER) => self.kill_ring.push(yanked),
+            None | Some(hume_ops::register::KILL_RING_REGISTER) => {
+                self.kill_ring.push(yanked);
+                self.mark_ring_captured();
+            }
             Some(reg) => self.write_register(reg, yanked),
         }
+    }
+
+    /// Record that the kill-ring head is the freshest capture, for a
+    /// following bare paste to read. Call immediately after any
+    /// `kill_ring.push` driven by a bare or `"k`-prefixed yank/delete/change —
+    /// never after a push to an explicit named register, which bare paste
+    /// never reads. See [`super::PasteAnchor`]'s doc for the full mechanism.
+    pub(super) fn mark_ring_captured(&mut self) {
+        self.paste_anchor = Some(PasteAnchor {
+            seq: self.buffers.edit_seq(),
+            source: AnchorSource::Ring(0),
+        });
     }
 
     /// Commit the open paste session on the focused (pane, buffer) pair, if any.
@@ -368,8 +383,7 @@ pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 #[cfg(test)]
 pub(in crate::editor) use pane::open_pane;
 pub(in crate::editor) use pipeline::{
-    run_dispatch_pipeline, run_native_body, step_paste_commit, step_stamp_last_command,
-    step_stamp_repeatable,
+    run_dispatch_pipeline, run_native_body, step_paste_commit, step_stamp_repeatable,
 };
 
 // Visual-line commands live in visual_move.rs; re-export for the registry glob.

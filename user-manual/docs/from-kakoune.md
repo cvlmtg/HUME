@@ -133,7 +133,7 @@ Kakoune registers are lists of text, one entry per selection, and you name any o
 
 There is no arbitrary `"x`, and no register holding the buffer name or selection indices — Kakoune's `%`, `.` and `#` registers exist to feed `%sh{}`, which HUME has no use for.
 
-The larger difference is what happens by default. Kakoune ships without clipboard integration; you wire up `xclip` or `pbcopy` through a pipe. HUME has the system clipboard built in as `"c`, plus a kill ring behind it, and `p` picks between them: it pastes from the kill ring when you just deleted or changed something, and from the clipboard otherwise. Right after a paste, `[` and `]` swap in older and newer kill-ring entries.
+The larger difference is what happens by default. Kakoune ships without clipboard integration; you wire up `xclip` or `pbcopy` through a pipe. HUME has the system clipboard built in as `"c`, plus a kill ring behind it, and `p` picks between them: it pastes from the kill ring while nothing has been edited since your last delete/change/yank, and from the clipboard once something has. Right after a paste, `[` and `]` swap in older and newer kill-ring entries.
 
 See [Register prefix](copy-and-paste.md#register-prefix) for the full syntax.
 

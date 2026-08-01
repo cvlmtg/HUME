@@ -168,9 +168,7 @@ impl Editor {
     ///
     /// Runs the selection recipe motions and edit body with [`commands::run_native_body`]
     /// (avoiding pipeline re-entry), then feeds insert keys through `handle_insert`.
-    ///
-    /// After replay, neutralizes `last_command` so bare `p` reads the clipboard,
-    /// but preserves `last_repeatable_action` so `.` chains.
+    /// Preserves `last_repeatable_action` so `.` chains.
     pub(crate) fn replay_dot(&mut self, count: usize) {
         let Some(action) = self.state.last_repeatable_action.take() else {
             return;
@@ -276,8 +274,6 @@ impl Editor {
 
         // Restore the action so `.` can be pressed again.
         self.state.last_repeatable_action = Some(action);
-        // Neutralize last_command after replay so a bare `p` reads the clipboard.
-        self.state.last_command = None;
     }
 
     /// Drain the macro replay queue, executing each key in order.
@@ -301,9 +297,6 @@ impl Editor {
             }
         }
         self.state.is_replaying = false;
-        // Neutralize last_command after replay so a bare `p` reads the clipboard
-        // rather than whatever kill command ran last inside the macro.
-        self.state.last_command = None;
         self.state.last_repeatable_action = saved_action;
     }
 }

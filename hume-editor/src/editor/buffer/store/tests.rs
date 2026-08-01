@@ -84,3 +84,58 @@ fn touch_mru_promotes_to_tail() {
     store.touch_mru(a);
     assert_eq!(store.mru_excluding(a), Some(b));
 }
+
+/// `edit_seq` starts at 0 and only moves via the explicit bump — nothing else
+/// touches it (see `PasteAnchor`, which relies on this for staleness checks).
+#[test]
+fn edit_seq_starts_at_zero_and_bumps_explicitly() {
+    let mut store = BufferStore::new();
+    assert_eq!(store.edit_seq(), 0);
+    store.bump_edit_seq();
+    assert_eq!(store.edit_seq(), 1);
+    store.bump_edit_seq();
+    assert_eq!(store.edit_seq(), 2);
+}
+
+/// `Buffer::set_view_content` (`:messages`/`:ls` refresh) is a system refresh,
+/// not a user edit — it must not advance `edit_seq`, or a `PasteAnchor`
+/// stamped by a capture would go stale just from the user glancing at
+/// `:messages` between a kill and a paste.
+///
+/// Fail oracle: route `set_view_content` through `BufferStore::bump_edit_seq`
+/// (or through the `doc_ops` chokepoint) → this test's `assert_eq!` fails.
+#[test]
+fn view_content_refresh_does_not_bump_edit_seq() {
+    let (mut store, mut ev) = store_with_engine();
+    let id = make_id(&mut ev);
+    store.open(id, make_buf());
+    let before = store.edit_seq();
+    store
+        .get_mut(id)
+        .set_view_content(Text::from("refreshed\n"));
+    assert_eq!(
+        store.edit_seq(),
+        before,
+        "set_view_content is a system refresh, not a user edit — edit_seq must not move"
+    );
+}
+
+/// `Buffer::reload_from_text` (`:e!`) is likewise a system refresh, not a
+/// user edit — same rationale as `view_content_refresh_does_not_bump_edit_seq`.
+#[test]
+fn reload_from_text_does_not_bump_edit_seq() {
+    let (mut store, mut ev) = store_with_engine();
+    let id = make_id(&mut ev);
+    store.open(id, make_buf());
+    let before = store.edit_seq();
+    store.get_mut(id).reload_from_text(
+        Text::from("reloaded\n"),
+        SelectionSet::default(),
+        SelectionSet::default(),
+    );
+    assert_eq!(
+        store.edit_seq(),
+        before,
+        "reload_from_text (:e!) is a system refresh, not a user edit — edit_seq must not move"
+    );
+}

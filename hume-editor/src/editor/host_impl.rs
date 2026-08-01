@@ -429,8 +429,8 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 Some(crate::editor::register_ops::RegisterPrefix::Selected(r));
         }
         // Delegate to the shared pipeline — all bookkeeping (paste session, jump
-        // list, dot-repeat, last_command) lives there so the sync path is
-        // identical to the keypress path.
+        // list, dot-repeat) lives there so the sync path is identical to the
+        // keypress path.
         crate::editor::commands::run_dispatch_pipeline(
             self.state,
             self.view,

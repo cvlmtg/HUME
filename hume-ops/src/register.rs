@@ -247,9 +247,13 @@ impl KillRing {
     }
 
     /// Borrow ring slot `n` (0-based), where 0 = head.
-    #[cfg(test)]
     pub fn slot(&self, n: usize) -> Option<&[String]> {
         self.entries.get(n).map(Vec::as_slice)
+    }
+
+    /// Current `[`/`]` cycle position, if a session is active.
+    pub fn cycle_position(&self) -> Option<usize> {
+        self.cycle
     }
 
     /// Advance the cycle cursor one step older and return that entry.
@@ -288,6 +292,14 @@ impl KillRing {
     #[cfg(any(test, feature = "test-util"))]
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    /// `true` if the ring holds no entries. Pairs with `len` per clippy's
+    /// `len_without_is_empty`; `head()` is the actual production-code check
+    /// for "is there anything to paste" — this exists for `len`'s test callers.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 }
 

@@ -98,7 +98,7 @@ Vim's confirm-each-match flag (`:%s/…/gc`) has no equivalent, but you see ever
 
 ### Registers
 
-HUME replaces Vim's letter registers (`a`–`z`) with a small set of mnemonic single-character names and digit registers `"0`–`"9`. The default paste (`p`) is smart: it reads from the kill ring when the last operation was a `d` or `c`, and from the system clipboard otherwise. After `y` this still pastes the text you just yanked, because `y` writes the clipboard as well as the kill ring — but if you yanked to an explicit non-default register (`"0y`), `p` reads the clipboard (which was not touched), so use `"0p` to paste from the named register.
+HUME replaces Vim's letter registers (`a`–`z`) with a small set of mnemonic single-character names and digit registers `"0`–`"9`. The default paste (`p`) is smart: it reads from the kill ring while nothing has been edited since your last `d`/`c`/`y`, and from the system clipboard once something has. After `y` this still pastes the text you just yanked, because `y` writes the clipboard as well as the kill ring — but if you yanked to an explicit non-default register (`"0y`), `p` reads the clipboard (which was not touched), so use `"0p` to paste from the named register.
 
 | Name | HUME function | Vim equivalent |
 |------|---------------|----------------|

@@ -158,24 +158,6 @@ pub(super) fn step_snapshot_recipe(
 
 // ── AFTER (native steps) ────────────────────────────────────────────────────
 
-/// Stamp `last_command` after the body when `stamps` is `true`.
-///
-/// `stamps` comes from `CmdMeta.stamps_last_command`, which is `false` only for
-/// `exit-insert` — it closes an insert session a kill (`c`) may have opened, so
-/// stamping it would clobber the `"change"` marker and break `c <text> Esc p` → ring.
-///
-/// Called **after** body for native (smart-p reads old value during body),
-/// **before** body for Steel (outer name pre-stamped; inner `call!` overrides).
-pub(in crate::editor) fn step_stamp_last_command(
-    state: &mut EditorState,
-    name: Cow<'static, str>,
-    stamps: bool,
-) {
-    if stamps {
-        state.last_command = Some(name);
-    }
-}
-
 /// Record jump list entry if the command is a jump or the cursor moved
 /// past the threshold.
 pub(super) fn step_record_jump(
@@ -308,12 +290,6 @@ pub(in crate::editor) fn run_dispatch_pipeline(
         "command '{name}' is both repeatable and selection-tracking — \
          step_stamp_repeatable and step_update_recipe would both fire",
     );
-    // Ring-cycle defer only makes sense on a paste command.
-    debug_assert!(
-        !meta.defers_paste_commit || meta.is_paste,
-        "command '{name}' defers paste commit but is not a paste command",
-    );
-
     // BEFORE
     step_paste_commit(state, view, meta.defers_paste_commit);
     let pre_jump = step_capture_pre_jump(state, view, &meta);
@@ -324,7 +300,6 @@ pub(in crate::editor) fn run_dispatch_pipeline(
     run_native_body(state, view, cmd, ctx.count, ctx.extend);
 
     // AFTER
-    step_stamp_last_command(state, name.clone(), meta.stamps_last_command);
     step_record_jump(state, view, pre_jump, meta.is_jump);
     step_stamp_repeatable(state, &name, ctx.count.unwrap_or(1), char_arg, pre_recipe);
     step_update_recipe(state, view, &meta, &name, &ctx, char_arg);

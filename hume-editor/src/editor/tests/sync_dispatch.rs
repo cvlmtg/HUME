@@ -497,101 +497,6 @@ fn steel_call_native_respects_register_prefix() {
     );
 }
 
-/// **Finding 2 — last_command (smart-p)**: after `(call! "delete")` from Steel,
-/// `last_command` must be `"delete"` so a subsequent `p` reads the kill ring.
-///
-/// Fail oracle: comment out `state.last_command = Some(name)` in `step_stamp_last_command`
-/// → last_command stays stale (prior command) instead of "delete".
-#[test]
-fn steel_call_delete_sets_last_command_for_smart_p() {
-    // Buffer: "foo bar\n", cursor on "foo".
-    let mut ed = editor_from("-[foo]> bar\n");
-
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
-        r#"(define-command! "steel-delete" ""
-                 (lambda () (call! "delete")))"#
-            .to_owned(),
-        Default::default(),
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
-
-    // Execute the Steel delete.
-    ed.execute_keymap_command("steel-delete".into(), Some(1), false, ArgSource::Keymap);
-    // last_command must be "delete" so smart-p reads the kill ring.
-    assert_eq!(
-        ed.state.last_command.as_deref(),
-        Some("delete"),
-        "last_command must be 'delete' after Steel (call! \"delete\")"
-    );
-}
-
-/// **Regression: no-dispatch SteelBacked must stamp its own name, not stay stale.**
-///
-/// A SteelBacked command that runs no inner native command must overwrite
-/// `last_command` with its own name. If it does not, a prior "delete" (in
-/// `SMART_P_LAST_CMDS`) stays as `last_command` and a subsequent `p` wrongly
-/// pastes from the kill ring instead of the clipboard.
-///
-/// Fail oracle: remove the pre-stamp `self.state.last_command = Some(name.clone())`
-/// from `execute_keymap_command` → last_command stays "delete" → test fails.
-#[test]
-fn steel_no_dispatch_cmd_stamps_own_name() {
-    let mut ed = editor_from("-[f]>oo bar\n");
-
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    // "noop-cmd" dispatches no inner native — no (call! …) anywhere.
-    host.eval_source_returning_defs(
-        r#"(define-command! "noop-cmd" "" (lambda () (+ 1 0)))"#.to_owned(),
-        Default::default(),
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
-
-    // First: run a kill command to set last_command = "delete".
-    ed.execute_keymap_command("delete".into(), Some(1), false, ArgSource::Keymap);
-    assert_eq!(
-        ed.state.last_command.as_deref(),
-        Some("delete"),
-        "pre-condition"
-    );
-
-    // Now run the no-dispatch Steel command — must overwrite last_command.
-    ed.execute_keymap_command("noop-cmd".into(), Some(1), false, ArgSource::Keymap);
-    assert_eq!(
-        ed.state.last_command.as_deref(),
-        Some("noop-cmd"),
-        "last_command must be 'noop-cmd' after a no-dispatch SteelBacked command"
-    );
-}
-
 /// **Finding 3 — dot-repeat**: a repeatable native command invoked via Steel must
 /// set `last_repeatable_action` so `.` can replay it.
 ///
@@ -704,7 +609,7 @@ fn steel_call_jump_cmd_records_jump_entry() {
 #[test]
 fn steel_call_paste_then_motion_commits_paste_session() {
     // Seed the kill ring with "hello" — plain paste-after's bare (no "<reg>
-    // prefix) source is always the kill-ring head, regardless of last_command.
+    // prefix) source is always the kill-ring head, with no anchor consultation.
     let mut ed = editor_from("-[w]>orld\n");
     ed.state.kill_ring.push(vec!["hello".to_owned()]);
 
@@ -1290,19 +1195,17 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
 // ── Dual-path parity tests ────────────────────────────────────────────────────
 //
 // The original regression: `run_command_sync` executed native commands naked —
-// cursor moved correctly but the bookkeeping cluster (jump list, last_command,
-// dot-repeat, paste-session commit) was silently dropped.  These tests assert
-// that dispatching the same native command via the keypress path AND via a Steel
+// cursor moved correctly but the bookkeeping cluster (jump list, dot-repeat,
+// paste-session commit) was silently dropped.  These tests assert that
+// dispatching the same native command via the keypress path AND via a Steel
 // `(call! …)` wrapper leaves IDENTICAL `BookkeepingSnapshot` state.
 //
 // Each test documents a fail oracle: which single line in `run_dispatch_pipeline`
 // (commands/pipeline.rs) to revert to confirm the assertion breaks on that field.
 
 /// **Parity: repeatable edit** — `delete` dispatched via keypress vs via Steel
-/// `(call! "delete")` must produce the same `last_command` and `last_repeatable`.
+/// `(call! "delete")` must produce the same `last_repeatable`.
 ///
-/// Fail oracle (last_command): comment out `state.last_command = Some(name)` at
-///   commands/pipeline.rs:175 → snap_steel.last_command is None; assertion fails.
 /// Fail oracle (last_repeatable): comment out the `if is_repeatable { … }` block
 ///   at commands/pipeline.rs:213–220 → snap_steel.last_repeatable is None; assertion fails.
 #[test]
@@ -1414,7 +1317,7 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
 ///   path → `paste_session_open` diverges.
 #[test]
 fn parity_steel_branch_cluster_vs_native() {
-    // ── Case 1: repeatable edit — pins dot-repeat and last_command stages ─────
+    // ── Case 1: repeatable edit — pins the dot-repeat stage ───────────────────
     // Path A — native repeatable edit.
     let mut ed_native = editor_from("-[f]>oo\n");
     ed_native.execute_keymap_command("delete".into(), Some(1), false, ArgSource::Keymap);
@@ -1455,15 +1358,6 @@ fn parity_steel_branch_cluster_vs_native() {
         snap_native.paste_session_open, snap_steel.paste_session_open,
         "paste-session stage parity"
     );
-    // The Steel pre-stamp puts "steel-del" into last_command before the body,
-    // then the inner `(call! "delete")` running through `run_dispatch_pipeline`
-    // overwrites with "delete" (inner wins — intentional for smart-p routing).
-    // Verify the inner name landed (and last_command is non-None on both paths).
-    assert_eq!(
-        snap_native.last_command.as_deref(),
-        snap_steel.last_command.as_deref(),
-        "last_command must be identical on both paths (inner 'delete' wins on both)"
-    );
     // Steel AFTER records `last_repeatable` for the OUTER command name ("steel-del"),
     // not the inner "delete" from `call!`. Outer-name-wins preserves the correct
     // semantic so `.` replays the outer Steel command, not the primitive it wrapped.
@@ -1496,12 +1390,11 @@ fn parity_steel_branch_cluster_vs_native() {
     // Fail oracle: delete the `step_paste_commit` call in the Steel BEFORE block
     //   of `Editor::dispatch` → the paste session remains open → assertion fails.
     let mut ed2 = editor_from("-[a]>bc\n");
-    // Seed the kill ring so `p` has something to paste.
+    // Seed the kill ring so `p` has something to paste. No anchor is set, but
+    // the test harness's clipboard is unavailable, so smart-paste's bare
+    // resolution falls back to the ring head regardless.
     ed2.state.kill_ring.push(vec!["X".to_string()]);
-    // Set last_command to a kill (smart-p routes `p` to the ring when the prior
-    // command was change/delete/yank; "change" is in SMART_P_LAST_CMDS).
-    ed2.state.last_command = Some("change".into());
-    ed2.feed_key(key('p')); // paste-after → resolves ring head, opens paste session
+    ed2.feed_key(key('p')); // smart-paste-after → resolves ring head, opens paste session
     let pane_id = ed2.state.focused_pane_id;
     let buf_id = ed2.focused_buffer_id();
     assert!(

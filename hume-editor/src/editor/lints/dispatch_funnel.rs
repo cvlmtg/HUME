@@ -5,7 +5,7 @@
 //! (`src/editor/commands/pipeline.rs`) — the one place that destructures a
 //! native variant to call its `fun` pointer, with `run_dispatch_pipeline`
 //! doing all post-dispatch bookkeeping (paste-session commit, jump-list
-//! update, dot-repeat recording, `last_command` stamping) around it.
+//! update, dot-repeat recording) around it.
 //!
 //! `single_native_dispatch_funnel` scans the editor crate for any line
 //! binding a native `MappableCommand`'s `fun` field for execution outside
@@ -26,8 +26,8 @@ use super::{collect_source_rs, strip_line_comment};
 /// function pointer."  Only `run_native_body` in `commands/pipeline.rs` is
 /// allowed to do that — it is the single funnel that the dispatch pipeline
 /// wraps with all post-dispatch bookkeeping.  A second naked match would
-/// silently drop the bookkeeping cluster (jump list, last_command,
-/// dot-repeat, paste session) exactly as happened in the original regression.
+/// silently drop the bookkeeping cluster (jump list, dot-repeat, paste
+/// session) exactly as happened in the original regression.
 ///
 /// Opt-out: annotate the violation line, or the line immediately above it,
 /// with `// single-funnel-exempt: <reason>`.  The preceding-line form is the
@@ -150,7 +150,7 @@ fn single_native_dispatch_funnel() {
         violations.is_empty(),
         "\nNative-command `fun` binding found outside `run_native_body` in `commands/pipeline.rs`.\n\
          Only that function may destructure and call native MappableCommand variants.\n\
-         All bookkeeping (jump list, last_command, dot-repeat, paste session) lives\n\
+         All bookkeeping (jump list, dot-repeat, paste session) lives\n\
          there — a second dispatch path silently drops the entire cluster.\n\
          Annotate the violation line (or the line above it) with\n\
          `// single-funnel-exempt: <reason>` only if a deliberate\n\

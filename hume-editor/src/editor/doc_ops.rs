@@ -104,6 +104,7 @@ pub(crate) fn apply_doc_edit(
     let rope_pre = buf_pre.rope().clone();
     let sels = std::mem::take(&mut pane_state[focused_pane_id][buf_id].selections);
     let (new_sels, cs) = buffers.get_mut(buf_id).apply_edit(sels, cmd);
+    buffers.bump_edit_seq();
     pane_state[focused_pane_id][buf_id].selections = new_sels;
     propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
     let text_gen = buffers.get(buf_id).text_gen;
@@ -142,6 +143,7 @@ pub(crate) fn apply_doc_edit_grouped(
     let doc = buffers.get_mut(buf_id);
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     let (new_sels, cs) = doc.apply_edit_grouped(sels, &mut pbs.edit_group, cmd);
+    buffers.bump_edit_seq();
     pbs.selections = new_sels;
     if let Some(anchors) = pbs.pinned_anchors.as_mut() {
         cs.map_positions(anchors, hume_editing::changeset::Assoc::Before);
@@ -177,6 +179,7 @@ pub(crate) fn apply_doc_edit_regrouped(
     let (new_sels, propagation_cs) = buffers
         .get_mut(buf_id)
         .apply_edit_regrouped(&mut pbs.paste_group, cmd);
+    buffers.bump_edit_seq();
     pane_state[focused_pane_id][buf_id].selections = new_sels;
     propagate_cs_to_panes(
         pane_state,
@@ -219,6 +222,7 @@ pub(crate) fn apply_doc_undo(
     let buf_pre = buffers.get(buf_id).text().clone();
     let rope_pre = buf_pre.rope().clone();
     if let Some((new_sels, cs)) = buffers.get_mut(buf_id).undo() {
+        buffers.bump_edit_seq();
         pane_state[focused_pane_id][buf_id].selections = new_sels;
         propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
         let text_gen = buffers.get(buf_id).text_gen;
@@ -246,6 +250,7 @@ pub(crate) fn apply_doc_redo(
     let buf_pre = buffers.get(buf_id).text().clone();
     let rope_pre = buf_pre.rope().clone();
     if let Some((new_sels, cs)) = buffers.get_mut(buf_id).redo() {
+        buffers.bump_edit_seq();
         pane_state[focused_pane_id][buf_id].selections = new_sels;
         propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
         let text_gen = buffers.get(buf_id).text_gen;
@@ -290,10 +295,11 @@ pub(crate) fn begin_edit_group(
     let doc = buffers.get(buf_id);
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     doc.begin_edit_group(&mut pbs.edit_group, sels);
-    // A fresh group never inherits pins (or the select-on-exit flag) from a
-    // previous session (interactive or replay-preopened).
+    // A fresh group never inherits pins (or the select-on-exit/kill-opened
+    // flags) from a previous session (interactive or replay-preopened).
     pbs.pinned_anchors = None;
     pbs.select_on_exit = false;
+    pbs.kill_opened_session = false;
 }
 
 /// Close the current edit group and record it as a single undo step.

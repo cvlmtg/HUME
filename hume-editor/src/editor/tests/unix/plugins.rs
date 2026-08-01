@@ -2253,7 +2253,7 @@ fn core_stdlib_selection_commands() {
 /// A lazy command's first dispatch leaves identical bookkeeping whether
 /// triggered via keypress-style dispatch or the `:` command line — both are
 /// an "outer" `Editor::dispatch` call for the same command name, so both
-/// stamp `last_command`/jump/paste bookkeeping identically.
+/// stamp dot-repeat/jump/paste bookkeeping identically.
 ///
 /// Not compared against a `call!`-from-another-command path: `call!`'s
 /// bookkeeping is deliberately outer-name-wins (see `dispatch.rs`'s
@@ -2264,7 +2264,7 @@ fn core_stdlib_selection_commands() {
 /// asserting behavior the system deliberately does not have.
 ///
 /// Fail oracle: if lazy activation's AFTER-stage bookkeeping (jump/paste/
-/// last_command) diverged between the two entry points — e.g. one skipped
+/// dot-repeat) diverged between the two entry points — e.g. one skipped
 /// the repeatable-action stamp — one of the two snapshots would differ.
 #[test]
 fn lazy_command_first_dispatch_parity_keypress_vs_minibuf() {

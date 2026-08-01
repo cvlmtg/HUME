@@ -10,21 +10,20 @@ HUME has two paste sources: the system clipboard and a kill ring that remembers 
 | `[` | Cycle one step older in the kill ring and re-paste |
 | `]` | Cycle one step newer in the kill ring and re-paste |
 
-With a real selection (more than a single character), `p` and `P` both **replace** it — "after" and "before" only apply when the selection is a bare cursor. The replaced text is thrown away rather than pushed onto the kill ring.
+With a real selection (more than a single character), `p` and `P` **replace** it — unless what you're pasting is already exactly the selected text, in which case they paste right alongside it instead, so pressing `p` again after a paste adds another copy rather than overwriting the first one. "After" and "before" apply on a bare cursor, or once a matching selection has collapsed this way. The replaced text (when something is replaced) is thrown away rather than pushed onto the kill ring.
 
 ## Smart-p paste
 
-`p` and `P` decide what to paste based on the last command:
+`p` and `P` decide what to paste based on whether the buffer has changed since the ring last did:
 
-- **After `d` or `c`** — reads the kill ring head (the most recently killed or changed text).
-- **After a paste-family command** (`p`, `P`, `[`, `]`) — re-pastes the same text again, appending another copy onto the previous paste.
-- **Otherwise** (including after `y`) — reads the system clipboard, falling back to the kill ring head when the clipboard is empty or unavailable.
+- **Nothing edited since the last `d`, `c`, or `y`** — reads the kill ring head (the most recently killed, changed, or yanked text).
+- **Something edited since** — reads the system clipboard, falling back to the kill ring head when the clipboard is empty or unavailable.
 
 Since `y` writes to both the clipboard and the kill ring, `y` then `p` pastes what you just yanked. The exception is yanking to an explicit register (`"0y`): that leaves the clipboard untouched, so a following bare `p` pastes whatever was in the clipboard before. Use `"0p` to read the register back.
 
-`[` and `]` only work inside a **paste session** — one opened by a preceding `p` or `P`. Each cycle replaces the previous paste, and the whole session records as a single undo step. Consecutive `p` presses append copies, each starting a new session and a separate undo step.
+`[` and `]` only work inside a **paste session** — one opened by a preceding `p` or `P`. Each cycle replaces the previous paste, and the whole session records as a single undo step. Consecutive `p` presses append copies (each its own separate undo step) for the same reason pasting over a matching selection does: pasting the same text again lands next to it, not over it.
 
-`p`/`P` run `smart-paste-after`/`smart-paste-before` under the hood. Two plain commands, `paste-after`/`paste-before`, exist alongside them with no key bound by default — always reading the kill-ring head, never falling back to the clipboard, and never appending on a repeat — for keymaps and plugins that want a predictable paste instead of the heuristic. See [GUI-style paste](#gui-style-paste-bundled-plugin) below for a plugin built on them.
+`p`/`P` run `smart-paste-after`/`smart-paste-before` under the hood. Two plain commands, `paste-after`/`paste-before`, exist alongside them with no key bound by default — always reading the kill-ring head, with no clipboard fallback, and always replacing a real selection outright with no same-text check. That predictability is the point: a keymap or a plugin script that selects text and pastes shouldn't have to inspect the selection first to know what will happen. To stack a copy with plain paste, collapse the selection (`;`) before pasting. See [GUI-style paste](#gui-style-paste-bundled-plugin) below for a plugin built on them.
 
 ## Pasting from the terminal
 

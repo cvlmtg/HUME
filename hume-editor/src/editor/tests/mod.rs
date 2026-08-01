@@ -212,8 +212,7 @@ impl Editor {
                 kill_ring: KillRing::new(),
                 clipboard: super::clipboard::SystemClipboard::new_unavailable(),
                 register_prefix: None,
-                last_command: None,
-                last_paste: None,
+                paste_anchor: None,
                 should_quit: false,
                 terminate_exit_code: std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0)),
                 minibuf: None,
@@ -512,8 +511,6 @@ impl Editor {
 /// resets), so it legitimately diverges across paths and cannot be a parity field.
 #[derive(Debug, PartialEq)]
 pub(super) struct BookkeepingSnapshot {
-    /// `ed.state.last_command` — name stamped by `step_stamp_last_command` for smart-p.
-    pub last_command: Option<String>,
     /// `ed.state.last_repeatable_action` — (command, count, char_arg) if set.
     /// `insert_keys` is excluded: it is always empty at dispatch time and only
     /// filled later by `end_insert_session` (a handle_key-tail concern).
@@ -533,7 +530,6 @@ pub(super) struct BookkeepingSnapshot {
 pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
     let pane_id = ed.state.focused_pane_id;
     BookkeepingSnapshot {
-        last_command: ed.state.last_command.as_deref().map(str::to_owned),
         last_repeatable: ed
             .state
             .last_repeatable_action
