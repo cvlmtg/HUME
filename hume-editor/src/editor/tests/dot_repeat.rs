@@ -540,17 +540,14 @@ fn dot_after_find_is_noop() {
 /// A dot-repeated delete is itself a fresh capture: a bare `p` right after
 /// `.` reads what `.` just deleted, not the clipboard.
 ///
-/// This is a deliberate consequence of `PasteStamp` (the smart-paste redo)
-/// having no dot-repeat special case at all — `replay_dot` runs the replayed
-/// edit through the ordinary `commands::run_native_body` → `route_kill` →
-/// `mark_ring_captured` path, which writes the stamp at the replay's own
-/// `BufferStore::edit_seq()` exactly as a live `d` would. The old
-/// `last_command`-based heuristic forced every dot-repeat to the clipboard
-/// unconditionally (`replay_dot` set `last_command = None`); the new model
-/// has no equivalent step to remove, since nothing here treats a replayed
-/// delete differently from a typed one.
+/// This is a deliberate consequence of `PasteStamp` having no dot-repeat
+/// special case at all — `replay_dot` runs the replayed edit through the
+/// ordinary `commands::run_native_body` → `route_kill` → `capture_to_ring`
+/// path, which writes the stamp at the replay's own
+/// `BufferStore::edit_seq()` exactly as a live `d` would: nothing treats a
+/// replayed delete differently from a typed one.
 ///
-/// Fail oracle: make `route_kill`/`mark_ring_captured` skip stamping when
+/// Fail oracle: make `route_kill`/`capture_to_ring` skip stamping when
 /// called from `run_native_body` outside the dispatch pipeline (i.e. during
 /// replay) — the ring head would then be stale by the time `p` reads it and
 /// `p` would fall through to "CLIP" instead.

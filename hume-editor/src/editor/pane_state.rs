@@ -86,14 +86,15 @@ pub(crate) struct PaneBufferState {
     /// `begin_insert_session`'s replay-signal guard — so a flag needed at
     /// exit must survive on state that isn't cleared by that guard.
     pub select_on_exit: bool,
-    /// Whether the open insert session was entered via a kill (`c`). Set only
-    /// by `cmd_change`, for the same reason `select_on_exit` lives here rather
-    /// than on `InsertSession`. Read by `end_insert_session`: every keystroke
-    /// typed during the session bumps `BufferStore::edit_seq`, so the
-    /// `PasteStamp` `cmd_change` wrote (pointing at the just-replaced text)
-    /// goes stale by the time the session closes — refreshing its `seq` here
-    /// is what keeps `c <text> <Esc> p` reading the kill ring instead of the
-    /// clipboard.
+    /// Whether the open insert session was entered via a ring-capturing kill
+    /// (bare or `"k`-prefixed `c` — an explicit-register change writes no
+    /// stamp and must not set this). Set only by `cmd_change`, for the same
+    /// reason `select_on_exit` lives here rather than on `InsertSession`.
+    /// Read by `end_insert_session`: every keystroke typed during the session
+    /// bumps `BufferStore::edit_seq`, so the `PasteStamp` `cmd_change` wrote
+    /// (pointing at the just-replaced text) goes stale by the time the
+    /// session closes — refreshing its `seq` here is what keeps
+    /// `c <text> <Esc> p` reading the kill ring instead of the clipboard.
     pub kill_opened_session: bool,
 }
 

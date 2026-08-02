@@ -54,22 +54,30 @@ impl EditorState {
 
     /// Route a kill (`d`/`c`) yank: bare default and `"k` both go to the kill
     /// ring; any other explicit register prefix routes through `write_register`.
-    pub(super) fn route_kill(&mut self, yanked: Vec<String>) {
+    /// Returns `true` when the yank was captured to the ring (and stamped) —
+    /// `false` for an explicit-register route, which never stamps.
+    pub(super) fn route_kill(&mut self, yanked: Vec<String>) -> bool {
         match self.take_register_prefix() {
             None | Some(hume_ops::register::KILL_RING_REGISTER) => {
-                self.kill_ring.push(yanked);
-                self.mark_ring_captured();
+                self.capture_to_ring(yanked);
+                true
             }
-            Some(reg) => self.write_register(reg, yanked),
+            Some(reg) => {
+                self.write_register(reg, yanked);
+                false
+            }
         }
     }
 
-    /// Record that the kill-ring head is the freshest capture, for a
-    /// following bare paste to read. Call immediately after any
-    /// `kill_ring.push` driven by a bare or `"k`-prefixed yank/delete/change —
-    /// never after a push to an explicit named register, which bare paste
-    /// never reads. See [`super::PasteStamp`]'s doc for the full mechanism.
-    pub(super) fn mark_ring_captured(&mut self) {
+    /// Push a bare or `"k`-prefixed capture onto the kill ring and record it
+    /// as the freshest capture, for a following bare paste to read. Push and
+    /// stamp are one operation — a ring push without the stamp silently
+    /// breaks smart-paste routing, so no call site gets to do them
+    /// separately. Never used for an explicit named register, which bare
+    /// paste never reads. See [`super::PasteStamp`]'s doc for the full
+    /// mechanism.
+    pub(super) fn capture_to_ring(&mut self, yanked: Vec<String>) {
+        self.kill_ring.push(yanked);
         self.paste_stamp = Some(PasteStamp {
             seq: self.buffers.edit_seq(),
             source: PasteSource::Ring(0),
@@ -83,7 +91,7 @@ impl EditorState {
     /// before undo, motions, or the next `p`/`P`.
     ///
     /// Invariant: an open paste session can only exist on the focused (pane,
-    /// buffer) pair — sessions are opened only there (`open_paste_session_and_apply`),
+    /// buffer) pair — sessions are opened only there (`do_paste`),
     /// every focus/buffer switch dispatches through this same commit step first,
     /// mouse handlers never open or switch during a session, and buffer close
     /// clears `paste_group` explicitly. The debug assert below fails fast if that

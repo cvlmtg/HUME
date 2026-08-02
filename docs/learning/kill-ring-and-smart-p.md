@@ -83,15 +83,12 @@ default.
 Motions, searches, and undo/redo don't fit either bucket the way a command
 name would — they're judged by what they actually do to the buffer. A motion
 touches nothing, so it never switches the source; undo and redo *are* edits
-(they change what's on screen), so they do switch it. This replaces the older
-design, which routed by matching the *name* of the previous command against a
-fixed allow-list (`change`, `delete`) — that list needed hand-maintained
-exceptions for `exit-insert` (to not break the swap idiom on `<esc>`) and for
-macro replay and dot-repeat (both forced to the clipboard unconditionally, to
-keep replay deterministic). Judging by buffer state instead of command name
-needs none of that: dot-repeating a delete is itself a fresh capture, so a
-paste right after `.` correctly reads what `.` just deleted — no special case
-required.
+(they change what's on screen), so they do switch it. Judging by buffer state
+rather than by which command ran last is what keeps the rule exception-free:
+there is no allow-list of "kill-like" command names to maintain, and macro
+replay and dot-repeat need no special treatment — dot-repeating a delete is
+itself a fresh capture, so a paste right after `.` correctly reads what `.`
+just deleted.
 
 **Repeat presses still work like a stack.** `xd p p p` produces three copies.
 Each press re-reads the same source fresh; since nothing has changed the

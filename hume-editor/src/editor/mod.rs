@@ -252,7 +252,7 @@ impl ConfigState {
 /// bare `smart-paste-*` falls through to the clipboard instead.
 ///
 /// Written by every capture that pushes onto the kill ring (`d`/`c`/`y`, bare
-/// or `"k`-prefixed — see `EditorState::mark_ring_captured`) and by every
+/// or `"k`-prefixed — see `EditorState::capture_to_ring`) and by every
 /// completed bare paste (plain or smart) and ring cycle (`[`/`]`), each
 /// re-stamping with the *post*-edit `seq` and whatever source it actually
 /// used. The re-stamp on completion is load-bearing, not cosmetic: a paste is

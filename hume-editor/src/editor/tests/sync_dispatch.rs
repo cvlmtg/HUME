@@ -609,7 +609,7 @@ fn steel_call_jump_cmd_records_jump_entry() {
 #[test]
 fn steel_call_paste_then_motion_commits_paste_session() {
     // Seed the kill ring with "hello" — plain paste-after's bare (no "<reg>
-    // prefix) source is always the kill-ring head, with no anchor consultation.
+    // prefix) source is always the kill-ring head, with no stamp consultation.
     let mut ed = editor_from("-[w]>orld\n");
     ed.state.kill_ring.push(vec!["hello".to_owned()]);
 
@@ -1390,7 +1390,7 @@ fn parity_steel_branch_cluster_vs_native() {
     // Fail oracle: delete the `step_paste_commit` call in the Steel BEFORE block
     //   of `Editor::dispatch` → the paste session remains open → assertion fails.
     let mut ed2 = editor_from("-[a]>bc\n");
-    // Seed the kill ring so `p` has something to paste. No anchor is set, but
+    // Seed the kill ring so `p` has something to paste. No stamp is set, but
     // the test harness's clipboard is unavailable, so smart-paste's bare
     // resolution falls back to the ring head regardless.
     ed2.state.kill_ring.push(vec!["X".to_string()]);

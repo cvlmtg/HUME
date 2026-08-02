@@ -11,8 +11,8 @@ correctness depends on a *cluster* of side effects, not just the primary effect.
 The old path kept its inline bookkeeping; the new path was a bare copy of the
 execution match without any of the surrounding bookkeeping.  Tests pinned the
 primary effect (cursor moved, text changed) and stayed green on both paths.  The
-entire cluster (jump list, `last_command`, dot-repeat, paste-session commit,
-register routing) regressed silently on the new path.
+entire cluster (jump list, last-command tracking — since removed, dot-repeat,
+paste-session commit, register routing) regressed silently on the new path.
 
 **Concrete instance:** `b7a5af0` added `run_command_sync` for Steel `(call!)`.
 Cursor/text assertions passed.  Nine bookkeeping regressions shipped.

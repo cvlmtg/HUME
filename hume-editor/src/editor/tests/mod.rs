@@ -483,8 +483,9 @@ impl Editor {
     /// Feed one key exactly as the event loop does (lifecycle.rs:354-402):
     /// dispatch it, refresh the search cache, drain any macro-replay keys it
     /// enqueued, then refresh again. Prefer this over `handle_key` in tests
-    /// whose correctness depends on the per-key ordering — e.g. Smart-p logic
-    /// that reads `last_command`, which an idle drain must not clobber (432c24f).
+    /// whose correctness depends on the per-key ordering — e.g. smart-paste
+    /// tests, where the idle replay drain runs between two keys and must not
+    /// disturb the `PasteStamp` freshness check.
     fn feed_key(&mut self, key: KeyEvent) {
         self.step(key);
     }

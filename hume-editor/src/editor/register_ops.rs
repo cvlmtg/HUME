@@ -31,7 +31,7 @@ pub(crate) enum RegisterPrefix {
 /// - All others (`'0'`–`'9'`, etc.) → in-memory `RegisterSet`.
 ///
 /// The kill-ring register (`'k'`) and black-hole register (`'b'`) are handled
-/// upstream in `resolve_paste_values`; this function is not called for them.
+/// upstream in `resolve_explicit_register`; this function is not called for them.
 pub(crate) fn read_register_text<'a>(
     registers: &'a RegisterSet,
     clipboard: &mut SystemClipboard,
