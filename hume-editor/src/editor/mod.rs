@@ -244,38 +244,6 @@ impl ConfigState {
     }
 }
 
-// ── PasteStamp ──────────────────────────────────────────────────────────────
-
-/// Which source a bare paste (no `"<reg>` prefix) reads, valid only while
-/// [`buffer::store::BufferStore::edit_seq`] is still `seq` — the moment any
-/// buffer is edited (or undone/redone), the stamped `seq` falls behind and a
-/// bare `smart-paste-*` falls through to the clipboard instead.
-///
-/// Written by every capture that pushes onto the kill ring (`d`/`c`/`y`, bare
-/// or `"k`-prefixed — see `EditorState::capture_to_ring`) and by every
-/// completed bare paste (plain or smart) and ring cycle (`[`/`]`), each
-/// re-stamping with the *post*-edit `seq` and whatever source it actually
-/// used. The re-stamp on completion is load-bearing, not cosmetic: a paste is
-/// itself an edit, so without it the stamp a capture wrote would go stale on
-/// the very first paste that reads it, and `d p p p` would paste the kill
-/// once and the clipboard twice. An explicit register read (`"5p`, `"cp`, …)
-/// does not stamp — it is a plain edit as far as this mechanism is concerned.
-#[derive(Debug, Clone, Copy)]
-pub(super) struct PasteStamp {
-    pub(super) seq: u64,
-    pub(super) source: PasteSource,
-}
-
-/// See [`PasteStamp`].
-#[derive(Debug, Clone, Copy)]
-pub(super) enum PasteSource {
-    /// Kill-ring slot (`0` = head). Looked up fresh via `KillRing::slot` at
-    /// read time rather than snapshotting the text, so a stamp always
-    /// reflects the ring's current contents at that slot.
-    Ring(usize),
-    Clipboard,
-}
-
 /// The keymap every session and every `:reload-config` starts from: the
 /// compiled-in trie, plus the kitty-only default binds when the terminal
 /// supports the protocol. Shared by [`ConfigState::new`] (session start /
@@ -323,8 +291,9 @@ pub(crate) struct EditorState {
     pub(super) clipboard: clipboard::SystemClipboard,
     /// State machine for the two-keystroke `"<reg>` register-prefix sequence.
     pub(super) register_prefix: Option<register_ops::RegisterPrefix>,
-    /// Which source a bare paste reads next, and until when — see [`PasteStamp`].
-    pub(super) paste_stamp: Option<PasteStamp>,
+    /// Which source a bare paste reads next, and until when — see
+    /// [`commands::PasteStamp`].
+    pub(super) paste_stamp: Option<commands::PasteStamp>,
     pub(super) should_quit: bool,
     /// Set by the platform terminator thread to the process exit code when a
     /// signal asks the editor to quit — `0` means "no termination requested"

@@ -28,7 +28,7 @@ use super::jump_list::JumpEntry;
 use super::register_ops;
 use super::register_ops::RegisterPrefix;
 use super::search::SearchPattern;
-use super::{EditorState, PasteSource, PasteStamp, Severity};
+use super::{EditorState, Severity};
 use crate::settings::EditorSettings;
 
 // ── EditorState helpers ───────────────────────────────────────────────────────
@@ -69,55 +69,6 @@ impl EditorState {
         }
     }
 
-    /// Push a bare or `"k`-prefixed capture onto the kill ring and record it
-    /// as the freshest capture, for a following bare paste to read. Push and
-    /// stamp are one operation — a ring push without the stamp silently
-    /// breaks smart-paste routing, so no call site gets to do them
-    /// separately. Never used for an explicit named register, which bare
-    /// paste never reads. See [`super::PasteStamp`]'s doc for the full
-    /// mechanism.
-    pub(super) fn capture_to_ring(&mut self, yanked: Vec<String>) {
-        self.kill_ring.push(yanked);
-        self.paste_stamp = Some(PasteStamp {
-            seq: self.buffers.edit_seq(),
-            source: PasteSource::Ring(0),
-        });
-    }
-
-    /// Commit the open paste session on the focused (pane, buffer) pair, if any.
-    ///
-    /// Records exactly one history revision for the entire paste + all cycles.
-    /// Called before any non-`[`/`]` dispatch so the session is committed
-    /// before undo, motions, or the next `p`/`P`.
-    ///
-    /// Invariant: an open paste session can only exist on the focused (pane,
-    /// buffer) pair — sessions are opened only there (`do_paste`),
-    /// every focus/buffer switch dispatches through this same commit step first,
-    /// mouse handlers never open or switch during a session, and buffer close
-    /// clears `paste_group` explicitly. The debug assert below fails fast if that
-    /// invariant is ever violated instead of silently leaving a stray session open.
-    pub(super) fn commit_paste_session(&mut self, view: &EngineView) {
-        let focused = self.focused_pane_id;
-        let buf = focused_buffer_id(self, view);
-
-        debug_assert!(
-            self.panes.state.iter().all(|(pid, inner)| {
-                inner
-                    .iter()
-                    .all(|(bid, pbs)| (pid, bid) == (focused, buf) || pbs.paste_group.is_none())
-            }),
-            "an open paste session exists outside the focused (pane, buffer) pair",
-        );
-
-        if self.panes.state[focused][buf].paste_group.is_none() {
-            return;
-        }
-        let post_sels = self.panes.state[focused][buf].selections.clone();
-        let pbs = &mut self.panes.state[focused][buf];
-        self.buffers
-            .get_mut(buf)
-            .commit_edit_group(&mut pbs.paste_group, post_sels);
-    }
 }
 
 // ── Free helpers for EditorCmd handlers ──────────────────────────────────────
@@ -353,6 +304,7 @@ mod insert_session;
 mod jump;
 mod mode;
 mod pane;
+mod paste;
 mod pipeline;
 mod scroll;
 mod search;
@@ -365,6 +317,7 @@ pub(super) use find::*;
 use insert_session::*;
 pub(super) use jump::*;
 pub(super) use mode::*;
+pub(super) use paste::*;
 pub(super) use scroll::*;
 pub(super) use search::*;
 pub(super) use typed_buffer::*;

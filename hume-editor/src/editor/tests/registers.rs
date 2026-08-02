@@ -930,7 +930,8 @@ fn explicit_register_paste_with_equal_text_replaces() {
 /// so would replace it.
 #[test]
 fn repeat_clipboard_paste_with_dead_clipboard_is_noop() {
-    use crate::editor::{PasteSource, PasteStamp, Severity};
+    use crate::editor::Severity;
+    use crate::editor::commands::{PasteSource, PasteStamp};
 
     let mut ed = editor_from("-[xy]>\n");
     ed.state.clipboard.force_unavailable();
