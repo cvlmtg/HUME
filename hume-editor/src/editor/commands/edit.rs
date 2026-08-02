@@ -260,10 +260,9 @@ fn do_paste(
 ) {
     let ResolvedPaste { values, from, bare } = resolved;
 
+    let pre_sels = sels.clone();
     state.panes.state[focused][buf].selections = sels;
     state.panes.state[focused][buf].paste_before = before;
-
-    let pre_sels = state.panes.state[focused][buf].selections.clone();
     state
         .buffers
         .get(buf)

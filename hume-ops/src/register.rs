@@ -293,14 +293,6 @@ impl KillRing {
     pub fn len(&self) -> usize {
         self.entries.len()
     }
-
-    /// `true` if the ring holds no entries. Pairs with `len` per clippy's
-    /// `len_without_is_empty`; `head()` is the actual production-code check
-    /// for "is there anything to paste" — this exists for `len`'s test callers.
-    #[cfg(any(test, feature = "test-util"))]
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
 }
 
 /// Whether a kill-ring entry is pure whitespace — every string in the entry,
