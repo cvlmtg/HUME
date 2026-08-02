@@ -295,6 +295,74 @@ fn push_consecutive_whitespace_kills_collapse() {
     assert_eq!(ring.head(), Some(vs("x").as_slice()));
 }
 
+// -- push: content dedupe ------------------------------------------------------
+
+#[test]
+fn push_duplicate_head_is_noop() {
+    let mut ring = KillRing::new();
+    ring.push(vs("a"));
+    ring.push(vs("a"));
+    assert_eq!(ring.len(), 1);
+    assert_eq!(ring.head(), Some(vs("a").as_slice()));
+}
+
+#[test]
+fn push_duplicate_deeper_moves_to_front() {
+    let mut ring = KillRing::new();
+    ring.push(vs("a"));
+    ring.push(vs("b"));
+    ring.push(vs("c")); // head = slot 0
+    ring.push(vs("a")); // re-capture: moves to head, no new slot
+    assert_eq!(ring.len(), 3);
+    assert_eq!(ring.slot(0), Some(vs("a").as_slice()));
+    assert_eq!(ring.slot(1), Some(vs("c").as_slice()));
+    assert_eq!(ring.slot(2), Some(vs("b").as_slice()));
+}
+
+#[test]
+fn push_duplicate_at_capacity_does_not_evict() {
+    let mut ring = KillRing::new();
+    for i in 0..KILL_RING_DEPTH {
+        ring.push(vs(&format!("entry{i}")));
+    }
+    ring.push(vs("entry5")); // dedupe is net-zero on length: nothing should fall off
+    assert_eq!(ring.len(), KILL_RING_DEPTH);
+    assert_eq!(ring.head(), Some(vs("entry5").as_slice()));
+    assert_eq!(
+        ring.slot(KILL_RING_DEPTH - 1),
+        Some(vs("entry0").as_slice())
+    );
+}
+
+#[test]
+fn push_duplicate_reclaims_whitespace_head() {
+    // Dedupe must run before the whitespace collapse: removing "a" from slot 2
+    // first, then overwriting the whitespace head with it, leaves one "a" — not
+    // an "a" head plus a surviving older "a" deeper in the ring.
+    let mut ring = KillRing::new();
+    ring.push(vs("a"));
+    ring.push(vs("b"));
+    ring.push(vs(" ")); // head = slot 0, whitespace
+    ring.push(vs("a")); // dedupe removes the old "a", then collapses into " "'s slot
+    assert_eq!(ring.len(), 2);
+    assert_eq!(ring.head(), Some(vs("a").as_slice()));
+    assert_eq!(ring.slot(1), Some(vs("b").as_slice()));
+}
+
+#[test]
+fn push_dedupe_compares_whole_entry() {
+    let mut ring = KillRing::new();
+    ring.push(vec!["a".to_string(), "b".to_string()]);
+    ring.push(vs("a"));
+    ring.push(vec!["a".to_string(), "b".to_string()]); // equal to slot 1, not slot 0
+    assert_eq!(ring.len(), 2);
+    assert_eq!(
+        ring.head(),
+        Some(vec!["a".to_string(), "b".to_string()].as_slice())
+    );
+    assert_eq!(ring.slot(1), Some(vs("a").as_slice()));
+}
+
 // -- seed_cycle ---------------------------------------------------------------
 
 #[test]

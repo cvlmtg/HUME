@@ -37,6 +37,8 @@ Pasting text from outside HUME — your system clipboard via the terminal's own 
 
 When the current kill-ring head is a pure-whitespace entry (only spaces, tabs, and/or newlines), the next delete, change, or yank overwrites that slot in place instead of taking a fresh one. This stops the ring filling up with entries you'd never want to cycle back to. To keep whitespace durably, yank it into a numbered register (`"0`–`"9`).
 
+The ring never holds two identical entries. Deleting, changing, or yanking text that's already in the ring moves that entry back to the front instead of adding a duplicate — so cycling with `[`/`]` never repeats the same text twice.
+
 ## Register prefix (`"`)
 
 Prefix a yank, delete, change, or paste with `"` + a register name to target a specific source or destination:

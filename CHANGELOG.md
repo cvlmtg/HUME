@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- The kill ring now dedupes its entries.
 - Now `paste-before`/`paste-after` commands are "dumb" paste commands. The "smart" ones are `smart-paste-before`/`smart-paste-after`. `paste-before`/`paste-after` are unbound by default.
 - Smart-paste now decides its source by buffer state instead of the previous command's name: the kill ring while nothing has been edited since your last delete/change/yank, the clipboard once something has. Pasting text that matches what's already selected now appends alongside it instead of replacing it.
 - `core:steel-server` no longer flags HUME's own commands and configuration functions as unknown identifiers while you edit `init.scm` or a plugin file.

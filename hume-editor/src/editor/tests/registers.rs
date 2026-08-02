@@ -201,6 +201,23 @@ fn kill_ring_depth_capped_at_ten() {
     assert_eq!(ed.state.kill_ring.len(), 10, "kill ring capped at depth 10");
 }
 
+/// Deleting the same word twice moves the existing ring entry to the head
+/// instead of taking a second slot.
+#[test]
+fn repeated_kill_of_same_word_takes_one_ring_slot() {
+    let mut ed = editor_from("-[foo]> bar foo baz\n");
+    ed.feed_key(key('d')); // delete "foo" on line 1
+    ed.feed_key(key('w')); // land on "bar"
+    ed.feed_key(key('w')); // land on the second "foo"
+    ed.feed_keys([key('m'), key('i'), key('w')]); // narrow to the bare word (whitespace-setting-proof)
+    ed.feed_key(key('d')); // delete it — same text, already in the ring
+    assert_eq!(
+        ed.state.kill_ring.len(),
+        1,
+        "re-killing identical text must not grow the ring"
+    );
+}
+
 /// `"cy` writes clipboard only — no kill-ring push.
 #[test]
 fn explicit_cy_writes_clipboard_only() {

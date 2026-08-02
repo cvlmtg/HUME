@@ -188,7 +188,9 @@ impl RegisterSet {
 ///
 /// Newest entry is always at index 0 (the "head"). Entries are accessed via
 /// `"kp` (head) or by cycling with `[`/`]`. The digit registers `"0`–`"9`
-/// are independent in-memory storage, not aliases for ring slots.
+/// are independent in-memory storage, not aliases for ring slots. The ring
+/// holds no two equal entries — [`KillRing::push`] moves a re-captured entry
+/// to the head instead of duplicating it.
 ///
 /// `cycle` is seeded by the paste command based on origin and persists until
 /// the next paste re-seeds it; a lingering value between sessions is harmless
@@ -213,11 +215,24 @@ impl KillRing {
 
     /// Push a new entry to the head of the ring, evicting the oldest if full.
     ///
+    /// Dedupe: if an equal entry already exists elsewhere in the ring, it is
+    /// removed before insertion — re-capturing the same text moves it to the
+    /// head (a recency refresh) rather than taking a second slot. Checked
+    /// before the whitespace collapse below: collapsing first would write
+    /// `values` into the whitespace head while an equal older entry survived
+    /// deeper in the ring, defeating the dedupe.
+    ///
     /// Whitespace collapse: when the current head is a *pure whitespace* entry
     /// (every string, every char `is_whitespace`), the new entry overwrites
     /// it in place instead of taking a fresh slot. This keeps from filling the
     /// ring with entries you never want to cycle back to.
     pub fn push(&mut self, values: Vec<String>) {
+        if let Some(pos) = self.entries.iter().position(|entry| *entry == values) {
+            if pos == 0 {
+                return;
+            }
+            self.entries.remove(pos);
+        }
         let head_is_ws = self
             .entries
             .front()
