@@ -540,10 +540,10 @@ fn dot_after_find_is_noop() {
 /// A dot-repeated delete is itself a fresh capture: a bare `p` right after
 /// `.` reads what `.` just deleted, not the clipboard.
 ///
-/// This is a deliberate consequence of `PasteAnchor` (the smart-paste redo)
+/// This is a deliberate consequence of `PasteStamp` (the smart-paste redo)
 /// having no dot-repeat special case at all — `replay_dot` runs the replayed
 /// edit through the ordinary `commands::run_native_body` → `route_kill` →
-/// `mark_ring_captured` path, which stamps the anchor at the replay's own
+/// `mark_ring_captured` path, which writes the stamp at the replay's own
 /// `BufferStore::edit_seq()` exactly as a live `d` would. The old
 /// `last_command`-based heuristic forced every dot-repeat to the clipboard
 /// unconditionally (`replay_dot` set `last_command = None`); the new model

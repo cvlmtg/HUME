@@ -336,9 +336,10 @@ fn read_only_buffer_blocks_undo_and_redo() {
 
 /// `p` and `P` (paste) on a read-only view buffer must report "Buffer is
 /// read-only" and leave the buffer content unchanged.
-/// Validity: remove the `focused_buffer_read_only()` guard from `do_paste`
-/// and this test fails (status_msg will not contain the expected message,
-/// and the paste would silently diverge from the read-only contract).
+/// Validity: remove the `focused_buffer_read_only()` guard from
+/// `do_smart_paste` (p/P dispatch through it) and this test fails
+/// (status_msg will not contain the expected message, and the paste would
+/// silently diverge from the read-only contract).
 #[test]
 fn view_buffer_blocks_paste() {
     let mut ed = editor_from("-[h]>ello\n");

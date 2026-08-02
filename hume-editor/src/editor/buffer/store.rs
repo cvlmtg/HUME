@@ -30,10 +30,10 @@ pub(crate) struct BufferStore {
     /// buffer — the `doc_ops` five-function chokepoint is the sole writer.
     /// Unlike `Buffer::text_gen` (per-buffer, bumped by system refreshes too —
     /// `set_view_content`, `reload_from_text`), this is deliberately global
-    /// and edit-only: `PasteAnchor` stamps it so a paste can tell "did
+    /// and edit-only: `PasteStamp` stamps it so a paste can tell "did
     /// anything change, anywhere" without caring which buffer, and a
     /// `:messages` refresh or `:e!` between a kill and a paste must not look
-    /// like an edit. See `PasteAnchor`'s doc for the read side.
+    /// like an edit. See `PasteStamp`'s doc for the read side.
     edit_seq: u64,
 }
 

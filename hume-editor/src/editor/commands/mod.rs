@@ -28,7 +28,7 @@ use super::jump_list::JumpEntry;
 use super::register_ops;
 use super::register_ops::RegisterPrefix;
 use super::search::SearchPattern;
-use super::{AnchorSource, EditorState, PasteAnchor, Severity};
+use super::{EditorState, PasteSource, PasteStamp, Severity};
 use crate::settings::EditorSettings;
 
 // ── EditorState helpers ───────────────────────────────────────────────────────
@@ -68,11 +68,11 @@ impl EditorState {
     /// following bare paste to read. Call immediately after any
     /// `kill_ring.push` driven by a bare or `"k`-prefixed yank/delete/change —
     /// never after a push to an explicit named register, which bare paste
-    /// never reads. See [`super::PasteAnchor`]'s doc for the full mechanism.
+    /// never reads. See [`super::PasteStamp`]'s doc for the full mechanism.
     pub(super) fn mark_ring_captured(&mut self) {
-        self.paste_anchor = Some(PasteAnchor {
+        self.paste_stamp = Some(PasteStamp {
             seq: self.buffers.edit_seq(),
-            source: AnchorSource::Ring(0),
+            source: PasteSource::Ring(0),
         });
     }
 

@@ -141,12 +141,12 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
             std::mem::take(&mut pbs.kill_opened_session),
         )
     };
-    // `cmd_change` stamped `PasteAnchor` right after the deletion, but every
+    // `cmd_change` stamped `PasteStamp` right after the deletion, but every
     // keystroke since has bumped `edit_seq` — refresh the stamp to the
     // session's final `seq` (source unchanged) so `c <text> <Esc> p` still
     // reads the ring. See `PaneBufferState::kill_opened_session`'s doc.
-    if kill_opened && let Some(anchor) = state.paste_anchor.as_mut() {
-        anchor.seq = state.buffers.edit_seq();
+    if kill_opened && let Some(stamp) = state.paste_stamp.as_mut() {
+        stamp.seq = state.buffers.edit_seq();
     }
     let valid_pins = pinned.filter(|a| a.len() == current_selections(state, view).len());
     let spans: Option<Vec<Option<(usize, usize)>>> = valid_pins.map(|anchors| {

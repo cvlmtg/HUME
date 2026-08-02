@@ -244,7 +244,7 @@ impl ConfigState {
     }
 }
 
-// ── PasteAnchor ──────────────────────────────────────────────────────────────
+// ── PasteStamp ──────────────────────────────────────────────────────────────
 
 /// Which source a bare paste (no `"<reg>` prefix) reads, valid only while
 /// [`buffer::store::BufferStore::edit_seq`] is still `seq` — the moment any
@@ -256,19 +256,19 @@ impl ConfigState {
 /// completed bare paste (plain or smart) and ring cycle (`[`/`]`), each
 /// re-stamping with the *post*-edit `seq` and whatever source it actually
 /// used. The re-stamp on completion is load-bearing, not cosmetic: a paste is
-/// itself an edit, so without it the anchor a capture wrote would go stale on
+/// itself an edit, so without it the stamp a capture wrote would go stale on
 /// the very first paste that reads it, and `d p p p` would paste the kill
 /// once and the clipboard twice. An explicit register read (`"5p`, `"cp`, …)
 /// does not stamp — it is a plain edit as far as this mechanism is concerned.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct PasteAnchor {
+pub(super) struct PasteStamp {
     pub(super) seq: u64,
-    pub(super) source: AnchorSource,
+    pub(super) source: PasteSource,
 }
 
-/// See [`PasteAnchor`].
+/// See [`PasteStamp`].
 #[derive(Debug, Clone, Copy)]
-pub(super) enum AnchorSource {
+pub(super) enum PasteSource {
     /// Kill-ring slot (`0` = head). Looked up fresh via `KillRing::slot` at
     /// read time rather than snapshotting the text, so a stamp always
     /// reflects the ring's current contents at that slot.
@@ -323,8 +323,8 @@ pub(crate) struct EditorState {
     pub(super) clipboard: clipboard::SystemClipboard,
     /// State machine for the two-keystroke `"<reg>` register-prefix sequence.
     pub(super) register_prefix: Option<register_ops::RegisterPrefix>,
-    /// Which source a bare paste reads next, and until when — see [`PasteAnchor`].
-    pub(super) paste_anchor: Option<PasteAnchor>,
+    /// Which source a bare paste reads next, and until when — see [`PasteStamp`].
+    pub(super) paste_stamp: Option<PasteStamp>,
     pub(super) should_quit: bool,
     /// Set by the platform terminator thread to the process exit code when a
     /// signal asks the editor to quit — `0` means "no termination requested"

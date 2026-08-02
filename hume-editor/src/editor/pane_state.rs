@@ -90,7 +90,7 @@ pub(crate) struct PaneBufferState {
     /// by `cmd_change`, for the same reason `select_on_exit` lives here rather
     /// than on `InsertSession`. Read by `end_insert_session`: every keystroke
     /// typed during the session bumps `BufferStore::edit_seq`, so the
-    /// `PasteAnchor` `cmd_change` wrote (pointing at the just-replaced text)
+    /// `PasteStamp` `cmd_change` wrote (pointing at the just-replaced text)
     /// goes stale by the time the session closes — refreshing its `seq` here
     /// is what keeps `c <text> <Esc> p` reading the kill ring instead of the
     /// clipboard.

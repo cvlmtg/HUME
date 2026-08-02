@@ -12,7 +12,7 @@ use hume_ops::register::{
 };
 use hume_ops::surround::wrap_each_selection;
 
-use super::super::{AnchorSource, EditorState, PasteAnchor, Severity, doc_ops, register_ops};
+use super::super::{EditorState, PasteSource, PasteStamp, Severity, doc_ops, register_ops};
 use super::{
     apply_focused_edit, apply_focused_edit_grouped, apply_focused_motion, begin_insert_session,
     doc, focused_buffer_id, pin_insert_anchors,
@@ -183,11 +183,12 @@ pub fn cmd_yank(
     Ok(())
 }
 
-/// Smart-paste only: if every selection's current text matches `values`
-/// one-to-one, collapse the selections so the paste below lands next to the
-/// existing text instead of replacing it — repeat-paste ("stack another
-/// copy") and swap-paste ("replace what's different") are the same rule,
-/// decided by content, not by what command ran last.
+/// Smart-paste only — only `do_smart_paste` calls this: if every selection's
+/// current text matches `values` one-to-one, collapse the selections so the
+/// paste below lands next to the existing text instead of replacing it —
+/// repeat-paste ("stack another copy") and swap-paste ("replace what's
+/// different") are the same rule, decided by content, not by what command ran
+/// last.
 ///
 /// Plain paste never calls this — it always replaces a non-collapsed
 /// selection, unconditionally, so a script driving it never has to check
@@ -232,7 +233,7 @@ fn collapse_if_repeat(
 /// Where a completed paste's values came from — drives the two things that
 /// depend on it after the fact: seeding `[`/`]`'s cycle position (`Ring`
 /// seeds it, `Clipboard`/`Other` don't), and, for a bare paste only, stamping
-/// [`PasteAnchor`] (see `do_paste`).
+/// [`PasteStamp`] (see `do_paste`).
 #[derive(Clone, Copy)]
 enum ResolvedFrom {
     /// The kill-ring slot the values came from — `0` = head.
@@ -240,158 +241,38 @@ enum ResolvedFrom {
     Clipboard,
     /// An explicit named/digit register. Never seeds the cycle; never
     /// reachable for a bare paste, so `do_paste` never has to turn this into
-    /// an [`AnchorSource`].
+    /// a [`PasteSource`].
     Other,
 }
 
-/// Core paste implementation, shared by the plain and smart variants.
+/// A resolved paste, ready for [`do_paste`] to execute.
+struct ResolvedPaste {
+    values: Vec<String>,
+    from: ResolvedFrom,
+    /// No `"<reg>` prefix was given — only a bare paste stamps [`PasteStamp`].
+    bare: bool,
+}
+
+/// Core paste implementation, shared by the plain and smart variants: applies
+/// `resolved` at `sels`, opens the paste/ring-cycle session, and stamps
+/// [`PasteStamp`]/seeds the ring cycle for bare pastes. Carries no knowledge
+/// of where `resolved` came from or of the repeat-vs-swap rule — callers
+/// resolve the source and (for smart paste) collapse `sels` before calling in.
 ///
 /// `before`: true for `P` (paste before), false for `p` (paste after).
-/// `smart`: false for `paste-after`/`-before` (bare resolution is always the
-/// kill-ring head — see [`resolve_paste_values`]); true for
-/// `smart-paste-after`/`-before` (bare resolution consults [`PasteAnchor`]).
-fn do_paste(state: &mut EditorState, view: &mut EngineView, before: bool, smart: bool) {
-    if super::focused_buffer_read_only(state, view) {
-        state.report(Severity::Info, "Buffer is read-only".to_string());
-        return;
-    }
-
-    // An explicit register prefix opts out of the anchor entirely — both
-    // reading it (resolve_paste_values, below) and writing it (see
-    // PasteAnchor's doc for why). Peeked before resolve_paste_values consumes
-    // the prefix via take_register_prefix().
-    let bare = state.register_prefix.is_none();
-
-    // Returns None for a no-op paste: black-hole, an empty explicit register,
-    // or (bare) an empty ring and an empty/unavailable clipboard.
-    let Some((values, from)) = resolve_paste_values(state, smart) else {
-        return;
-    };
-
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-
-    // Smart-only: plain paste always replaces a non-collapsed selection,
-    // unconditionally — see collapse_if_repeat's doc.
-    if smart {
-        let text = state.buffers.get(buf).text();
-        let sels = std::mem::take(&mut state.panes.state[focused][buf].selections);
-        state.panes.state[focused][buf].selections =
-            collapse_if_repeat(text, sels, &values, before);
-    }
-
-    state.panes.state[focused][buf].paste_before = before;
-    let anchor_source = bare.then_some(from).and_then(|from| match from {
-        ResolvedFrom::Ring(slot) => Some(AnchorSource::Ring(slot)),
-        ResolvedFrom::Clipboard => Some(AnchorSource::Clipboard),
-        ResolvedFrom::Other => None,
-    });
-    open_paste_session_and_apply(state, focused, buf, before, &values, anchor_source);
-
-    // Every completed paste opens a fresh session (any prior one was already
-    // committed in BEFORE by `step_paste_commit`), so every one reseeds the
-    // cycle — there is no separate "append path" that needs to preserve it.
-    let ring_seed = match from {
-        ResolvedFrom::Ring(slot) => Some(slot),
-        ResolvedFrom::Clipboard | ResolvedFrom::Other => None,
-    };
-    state.kill_ring.seed_cycle(ring_seed);
-}
-
-/// Resolve values for a fresh paste. Returns `None` to signal a no-op paste.
-fn resolve_paste_values(
-    state: &mut EditorState,
-    smart: bool,
-) -> Option<(Vec<String>, ResolvedFrom)> {
-    match state.take_register_prefix() {
-        None if smart => resolve_smart_bare(state),
-        // Plain's bare source is always the kill-ring head, with no clipboard
-        // fallback and no anchor consultation — but `do_paste` still writes
-        // the anchor for it, so an immediately following bare *smart* paste
-        // (no capture in between) continues from the same ring slot instead
-        // of jumping to the clipboard just because a paste is itself an edit.
-        None => {
-            let values = state.kill_ring.head()?.to_vec();
-            Some((values, ResolvedFrom::Ring(0)))
-        }
-        Some(KILL_RING_REGISTER) => {
-            let values = state.kill_ring.head()?.to_vec();
-            Some((values, ResolvedFrom::Ring(0)))
-        }
-        Some(BLACK_HOLE_REGISTER) => None,
-        Some(c) => {
-            // Digits and clipboard. Digits read in-memory RegisterSet (symmetric
-            // with "Ny writes). Clipboard routes through the OS clipboard.
-            let (cow, warn) =
-                register_ops::read_register_text(&state.registers, &mut state.clipboard, c);
-            let values = cow.map(|c| c.to_vec()); // end borrow of state.registers
-            if let Some(w) = warn {
-                state.report(Severity::Warning, w);
-            }
-            Some((values?, ResolvedFrom::Other))
-        }
-    }
-}
-
-/// Bare `smart-paste-*` resolution: the kill-ring slot the anchor points at
-/// while it is still fresh (`PasteAnchor::seq == BufferStore::edit_seq()`),
-/// the clipboard otherwise — falling back to the ring head silently if the
-/// clipboard is unavailable or empty.
-fn resolve_smart_bare(state: &mut EditorState) -> Option<(Vec<String>, ResolvedFrom)> {
-    let fresh_ring_slot = state
-        .paste_anchor
-        .as_ref()
-        .filter(|a| a.seq == state.buffers.edit_seq())
-        .and_then(|a| match a.source {
-            AnchorSource::Ring(slot) => Some(slot),
-            AnchorSource::Clipboard => None,
-        });
-    if let Some(slot) = fresh_ring_slot {
-        let values = state.kill_ring.slot(slot)?.to_vec();
-        return Some((values, ResolvedFrom::Ring(slot)));
-    }
-    // Stale/no anchor, or a fresh anchor pointing at the clipboard (re-read —
-    // the OS clipboard may have changed externally since).
-    let (cow, warn) = register_ops::read_register_text(
-        &state.registers,
-        &mut state.clipboard,
-        CLIPBOARD_REGISTER,
-    );
-    match cow.map(|c| c.to_vec()) {
-        Some(vals) => {
-            if let Some(w) = warn {
-                state.report(Severity::Warning, w);
-            }
-            Some((vals, ResolvedFrom::Clipboard))
-        }
-        None => {
-            // When the clipboard is unavailable, fall back to the ring head
-            // silently. Only emit the warning when the fallback also fails —
-            // otherwise the user sees a warning alongside a successful paste.
-            if let Some(head) = state.kill_ring.head() {
-                return Some((head.to_vec(), ResolvedFrom::Ring(0)));
-            }
-            if let Some(w) = warn {
-                state.report(Severity::Warning, w);
-            }
-            None
-        }
-    }
-}
-
-/// Snapshot the pre-paste selections, open a paste group, and apply one paste
-/// from `values`. If `anchor_source` is `Some`, stamps [`PasteAnchor`] with
-/// the *post*-paste edit sequence so an immediately following bare paste
-/// continues from the same source — see that type's doc for why re-stamping
-/// on completion (not just on capture) is load-bearing.
-fn open_paste_session_and_apply(
+fn do_paste(
     state: &mut EditorState,
     focused: PaneId,
     buf: BufferId,
     before: bool,
-    values: &[String],
-    anchor_source: Option<AnchorSource>,
+    resolved: ResolvedPaste,
+    sels: SelectionSet,
 ) {
+    let ResolvedPaste { values, from, bare } = resolved;
+
+    state.panes.state[focused][buf].selections = sels;
+    state.panes.state[focused][buf].paste_before = before;
+
     let pre_sels = state.panes.state[focused][buf].selections.clone();
     state
         .buffers
@@ -404,14 +285,181 @@ fn open_paste_session_and_apply(
         &mut state.panes.state,
         focused,
         buf,
-        |b, s| paste_fn(b, s, values),
+        |b, s| paste_fn(b, s, &values),
     );
-    if let Some(source) = anchor_source {
-        state.paste_anchor = Some(PasteAnchor {
+
+    // An explicit register prefix opts out of the stamp entirely — see
+    // PasteStamp's doc for why.
+    let stamp_source = bare.then_some(from).and_then(|from| match from {
+        ResolvedFrom::Ring(slot) => Some(PasteSource::Ring(slot)),
+        ResolvedFrom::Clipboard => Some(PasteSource::Clipboard),
+        ResolvedFrom::Other => None,
+    });
+    if let Some(source) = stamp_source {
+        state.paste_stamp = Some(PasteStamp {
             seq: state.buffers.edit_seq(),
             source,
         });
     }
+
+    // Every completed paste opens a fresh session (any prior one was already
+    // committed in BEFORE by `step_paste_commit`), so every one reseeds the
+    // cycle — there is no separate "append path" that needs to preserve it.
+    let ring_seed = match from {
+        ResolvedFrom::Ring(slot) => Some(slot),
+        ResolvedFrom::Clipboard | ResolvedFrom::Other => None,
+    };
+    state.kill_ring.seed_cycle(ring_seed);
+}
+
+/// Resolve values for a fresh paste against an explicit `"<reg>` prefix.
+/// Shared by plain and smart paste — an explicit register bypasses the
+/// smart-paste heuristic entirely, so both variants resolve it identically.
+/// Returns `None` for a no-op paste: black-hole or an empty register.
+fn resolve_explicit_register(state: &mut EditorState, reg: char) -> Option<ResolvedPaste> {
+    let (values, from) = match reg {
+        KILL_RING_REGISTER => (state.kill_ring.head()?.to_vec(), ResolvedFrom::Ring(0)),
+        BLACK_HOLE_REGISTER => return None,
+        c => {
+            // Digits and clipboard. Digits read in-memory RegisterSet (symmetric
+            // with "Ny writes). Clipboard routes through the OS clipboard.
+            let (cow, warn) =
+                register_ops::read_register_text(&state.registers, &mut state.clipboard, c);
+            let values = cow.map(|c| c.to_vec()); // end borrow of state.registers
+            if let Some(w) = warn {
+                state.report(Severity::Warning, w);
+            }
+            (values?, ResolvedFrom::Other)
+        }
+    };
+    Some(ResolvedPaste {
+        values,
+        from,
+        bare: false,
+    })
+}
+
+/// Resolve values for a fresh plain (`paste-after`/`-before`) paste. Returns
+/// `None` to signal a no-op paste.
+fn resolve_plain(state: &mut EditorState) -> Option<ResolvedPaste> {
+    match state.take_register_prefix() {
+        // Bare source is always the kill-ring head, with no clipboard
+        // fallback and no anchor consultation — but `do_paste` still writes
+        // the anchor for it, so an immediately following bare *smart* paste
+        // (no capture in between) continues from the same ring slot instead
+        // of jumping to the clipboard just because a paste is itself an edit.
+        None => Some(ResolvedPaste {
+            values: state.kill_ring.head()?.to_vec(),
+            from: ResolvedFrom::Ring(0),
+            bare: true,
+        }),
+        Some(reg) => resolve_explicit_register(state, reg),
+    }
+}
+
+/// Resolve values for a fresh smart (`smart-paste-after`/`-before`) paste.
+/// Returns `None` to signal a no-op paste.
+fn resolve_smart(state: &mut EditorState) -> Option<ResolvedPaste> {
+    match state.take_register_prefix() {
+        None => resolve_smart_bare(state),
+        Some(reg) => resolve_explicit_register(state, reg),
+    }
+}
+
+/// Bare `smart-paste-*` resolution: the kill-ring slot the stamp points at
+/// while it is still fresh (`PasteStamp::seq == BufferStore::edit_seq()`),
+/// the clipboard otherwise — falling back to the ring head silently if the
+/// clipboard is unavailable or empty.
+fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
+    let fresh_ring_slot = state
+        .paste_stamp
+        .as_ref()
+        .filter(|s| s.seq == state.buffers.edit_seq())
+        .and_then(|s| match s.source {
+            PasteSource::Ring(slot) => Some(slot),
+            PasteSource::Clipboard => None,
+        });
+    if let Some(slot) = fresh_ring_slot {
+        let values = state.kill_ring.slot(slot)?.to_vec();
+        return Some(ResolvedPaste {
+            values,
+            from: ResolvedFrom::Ring(slot),
+            bare: true,
+        });
+    }
+    // Stale/no stamp, or a fresh stamp pointing at the clipboard (re-read —
+    // the OS clipboard may have changed externally since).
+    let (cow, warn) = register_ops::read_register_text(
+        &state.registers,
+        &mut state.clipboard,
+        CLIPBOARD_REGISTER,
+    );
+    match cow.map(|c| c.to_vec()) {
+        Some(values) => {
+            if let Some(w) = warn {
+                state.report(Severity::Warning, w);
+            }
+            Some(ResolvedPaste {
+                values,
+                from: ResolvedFrom::Clipboard,
+                bare: true,
+            })
+        }
+        None => {
+            // When the clipboard is unavailable, fall back to the ring head
+            // silently. Only emit the warning when the fallback also fails —
+            // otherwise the user sees a warning alongside a successful paste.
+            if let Some(head) = state.kill_ring.head() {
+                return Some(ResolvedPaste {
+                    values: head.to_vec(),
+                    from: ResolvedFrom::Ring(0),
+                    bare: true,
+                });
+            }
+            if let Some(w) = warn {
+                state.report(Severity::Warning, w);
+            }
+            None
+        }
+    }
+}
+
+/// Plain paste: resolve from the register (kill-ring head when bare, honoring
+/// `"<reg>` otherwise), then hand off to [`do_paste`] unconditionally —
+/// always replaces a non-collapsed selection. See [`collapse_if_repeat`]'s
+/// doc for why smart paste alone needs the extra step.
+fn do_normal_paste(state: &mut EditorState, view: &mut EngineView, before: bool) {
+    if super::focused_buffer_read_only(state, view) {
+        state.report(Severity::Info, "Buffer is read-only".to_string());
+        return;
+    }
+    let Some(resolved) = resolve_plain(state) else {
+        return;
+    };
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    let sels = std::mem::take(&mut state.panes.state[focused][buf].selections);
+    do_paste(state, focused, buf, before, resolved, sels);
+}
+
+/// Smart paste: resolve from the stamp-driven source (ring while nothing has
+/// been edited since the last capture, clipboard otherwise — see
+/// [`PasteStamp`]), apply the repeat-vs-swap collapse rule to the
+/// selections, then hand off to [`do_paste`].
+fn do_smart_paste(state: &mut EditorState, view: &mut EngineView, before: bool) {
+    if super::focused_buffer_read_only(state, view) {
+        state.report(Severity::Info, "Buffer is read-only".to_string());
+        return;
+    }
+    let Some(resolved) = resolve_smart(state) else {
+        return;
+    };
+    let focused = state.focused_pane_id;
+    let buf = focused_buffer_id(state, view);
+    let text = state.buffers.get(buf).text();
+    let sels = std::mem::take(&mut state.panes.state[focused][buf].selections);
+    let sels = collapse_if_repeat(text, sels, &resolved.values, before);
+    do_paste(state, focused, buf, before, resolved, sels);
 }
 
 /// Paste after the selection: plain paste, kill-ring head by default.
@@ -421,7 +469,7 @@ pub fn cmd_paste_after(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_paste(state, view, false, false);
+    do_normal_paste(state, view, false);
     Ok(())
 }
 
@@ -432,31 +480,31 @@ pub fn cmd_paste_before(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_paste(state, view, true, false);
+    do_normal_paste(state, view, true);
     Ok(())
 }
 
 /// Smart-paste after the selection: ring while nothing has been edited since
-/// the last capture, clipboard otherwise. See [`PasteAnchor`].
+/// the last capture, clipboard otherwise. See [`PasteStamp`].
 pub fn cmd_smart_paste_after(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_paste(state, view, false, true);
+    do_smart_paste(state, view, false);
     Ok(())
 }
 
 /// Smart-paste before the selection: ring while nothing has been edited since
-/// the last capture, clipboard otherwise. See [`PasteAnchor`].
+/// the last capture, clipboard otherwise. See [`PasteStamp`].
 pub fn cmd_smart_paste_before(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_paste(state, view, true, true);
+    do_smart_paste(state, view, true);
     Ok(())
 }
 
@@ -493,12 +541,12 @@ fn do_paste_cycle(
             buf,
             |b, s| paste_fn(b, s, &values),
         );
-        // Cycling always lands on a ring slot — reflect it in the anchor so a
+        // Cycling always lands on a ring slot — reflect it in the stamp so a
         // following bare paste (of either variant) continues from here.
         if let Some(slot) = state.kill_ring.cycle_position() {
-            state.paste_anchor = Some(PasteAnchor {
+            state.paste_stamp = Some(PasteStamp {
                 seq: state.buffers.edit_seq(),
-                source: AnchorSource::Ring(slot),
+                source: PasteSource::Ring(slot),
             });
         }
     }

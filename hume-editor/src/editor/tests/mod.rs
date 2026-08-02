@@ -212,7 +212,7 @@ impl Editor {
                 kill_ring: KillRing::new(),
                 clipboard: super::clipboard::SystemClipboard::new_unavailable(),
                 register_prefix: None,
-                paste_anchor: None,
+                paste_stamp: None,
                 should_quit: false,
                 terminate_exit_code: std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0)),
                 minibuf: None,

@@ -60,7 +60,7 @@ const EDITOR_STATE_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
     ("kill_ring", "preserved"),
     ("clipboard", "preserved"),
     ("register_prefix", "preserved"),
-    ("paste_anchor", "preserved"),
+    ("paste_stamp", "preserved"),
     ("should_quit", "preserved"),
     ("terminate_exit_code", "preserved"),
     ("minibuf", "preserved"),

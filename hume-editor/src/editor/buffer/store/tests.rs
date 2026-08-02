@@ -86,7 +86,7 @@ fn touch_mru_promotes_to_tail() {
 }
 
 /// `edit_seq` starts at 0 and only moves via the explicit bump — nothing else
-/// touches it (see `PasteAnchor`, which relies on this for staleness checks).
+/// touches it (see `PasteStamp`, which relies on this for staleness checks).
 #[test]
 fn edit_seq_starts_at_zero_and_bumps_explicitly() {
     let mut store = BufferStore::new();
@@ -98,7 +98,7 @@ fn edit_seq_starts_at_zero_and_bumps_explicitly() {
 }
 
 /// `Buffer::set_view_content` (`:messages`/`:ls` refresh) is a system refresh,
-/// not a user edit — it must not advance `edit_seq`, or a `PasteAnchor`
+/// not a user edit — it must not advance `edit_seq`, or a `PasteStamp`
 /// stamped by a capture would go stale just from the user glancing at
 /// `:messages` between a kill and a paste.
 ///

@@ -387,14 +387,14 @@ fn mw_wraps_when_auto_pairs_disabled() {
     assert_eq!(state(&ed), "[bar-[]]>\n");
 }
 
-// ── Smart-p: the PasteAnchor mechanism ────────────────────────────────────────
+// ── Smart-p: the PasteStamp mechanism ────────────────────────────────────────
 //
-// A bare paste reads the kill ring while `PasteAnchor::seq` still matches
+// A bare paste reads the kill ring while `PasteStamp::seq` still matches
 // `BufferStore::edit_seq()` — set by every capture that pushes to the ring
 // (`d`/`c`/`y`, bare or `"k`-prefixed) and re-stamped by every completed bare
 // paste and ring cycle. Any edit (or undo/redo), anywhere, moves `edit_seq`
 // past the stamp; a plain motion does not, since it never touches the buffer.
-// See `PasteAnchor`'s doc in `editor/mod.rs`.
+// See `PasteStamp`'s doc in `editor/mod.rs`.
 
 /// `d` then `p` reads from the kill ring (char-swap / dp pattern).
 #[test]
@@ -734,19 +734,19 @@ fn digit_register_roundtrip_inmemory() {
 }
 
 /// An explicit register capture (`"5y`, `"bd`, …) never writes the paste
-/// anchor — only a bare or `"k`-prefixed capture does (see `route_kill` /
+/// stamp — only a bare or `"k`-prefixed capture does (see `route_kill` /
 /// `EditorState::mark_ring_captured`). White-box: checks the field directly.
 #[test]
-fn explicit_register_capture_does_not_write_paste_anchor() {
+fn explicit_register_capture_does_not_write_paste_stamp() {
     let mut ed = editor_from("-[a]>bc\n");
-    assert!(ed.state.paste_anchor.is_none(), "setup: no anchor yet");
+    assert!(ed.state.paste_stamp.is_none(), "setup: no stamp yet");
 
     ed.handle_key(key('"'));
     ed.handle_key(key('5'));
     ed.feed_key(key('y')); // "5y → digit register only
     assert!(
-        ed.state.paste_anchor.is_none(),
-        "\"5y must not write the paste anchor"
+        ed.state.paste_stamp.is_none(),
+        "\"5y must not write the paste stamp"
     );
 
     ed.feed_key(key('l'));
@@ -754,26 +754,26 @@ fn explicit_register_capture_does_not_write_paste_anchor() {
     ed.handle_key(key('b'));
     ed.feed_key(key('d')); // "bd → black hole
     assert!(
-        ed.state.paste_anchor.is_none(),
-        "\"bd must not write the paste anchor"
+        ed.state.paste_stamp.is_none(),
+        "\"bd must not write the paste stamp"
     );
 }
 
 /// An explicit `"kp` still seeds the `[`/`]` cycle (unchanged behaviour), but
-/// — unlike a bare paste — does not stamp the paste anchor: the user asked
+/// — unlike a bare paste — does not write the paste stamp: the user asked
 /// for a specific register, not to arm the heuristic for the next bare paste.
 #[test]
-fn explicit_k_prefix_paste_does_not_write_anchor() {
+fn explicit_k_prefix_paste_does_not_write_stamp() {
     let mut ed = editor_from("-[x]>\n");
     ed.state.kill_ring.push(vec!["RING".to_string()]);
 
     ed.handle_key(key('"'));
     ed.handle_key(key('k'));
-    ed.feed_key(key('p')); // "kp: explicit — must not write the anchor
+    ed.feed_key(key('p')); // "kp: explicit — must not write the stamp
 
     assert!(
-        ed.state.paste_anchor.is_none(),
-        "\"kp must not write the paste anchor"
+        ed.state.paste_stamp.is_none(),
+        "\"kp must not write the paste stamp"
     );
 }
 
