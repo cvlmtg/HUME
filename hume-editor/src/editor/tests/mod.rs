@@ -599,6 +599,7 @@ mod multi_pane;
 mod page_scroll;
 mod pane_focus;
 mod pane_sync;
+mod paste;
 mod per_pane_jumps;
 mod picker;
 mod picker_source_steel;

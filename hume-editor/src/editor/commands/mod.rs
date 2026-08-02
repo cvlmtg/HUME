@@ -68,7 +68,6 @@ impl EditorState {
             }
         }
     }
-
 }
 
 // ── Free helpers for EditorCmd handlers ──────────────────────────────────────
