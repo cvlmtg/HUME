@@ -4,12 +4,12 @@ use hume_scripting::host::PopupKind;
 
 use super::{Editor, Mode};
 
+mod bracketed_paste;
 pub(super) mod command_mode;
 mod execute;
 mod insert;
 mod lazy;
 mod normal;
-mod paste;
 mod search_mode;
 mod select_mode;
 mod widgets;

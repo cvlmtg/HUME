@@ -1,6 +1,6 @@
 // Terminal bracketed-paste (`Event::Paste`) handling: `handle_terminal_paste`
-// in `mappings/paste.rs`. Distinct from the register/kill-ring `p`/`P` paste
-// commands covered in `commands.rs`.
+// in `mappings/bracketed_paste.rs`. Distinct from the register/kill-ring
+// `p`/`P` paste commands covered in `commands/paste.rs`.
 
 use super::*;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};

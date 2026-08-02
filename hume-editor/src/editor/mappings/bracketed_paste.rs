@@ -2,7 +2,7 @@
 //!
 //! Named `handle_terminal_paste` — not `handle_paste` — to stay clearly
 //! distinct from the register/kill-ring `p`/`P` "paste" commands in
-//! `editor::commands::edit`, which are an unrelated feature.
+//! `editor::commands::paste`, which are an unrelated feature.
 
 use std::borrow::Cow;
 
