@@ -38,7 +38,7 @@ mod mock_host {
     #[test]
     fn register_command_overwrites_lazy_stub() {
         let mut mock = MockHost::new();
-        let plugin = hume_scripting::PluginId::parse("core:test").unwrap();
+        let plugin = hume_scripting::attribution::PluginId::parse("core:test").unwrap();
         mock.register_lazy_command("bar", &plugin).unwrap();
         assert!(mock.lazy_command_owner("bar").is_some());
 

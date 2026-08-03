@@ -21,11 +21,12 @@ use std::time::Instant;
 use rustc_hash::FxHashMap;
 
 use hume_engine::pipeline::BufferId;
-use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend, WakeCallback};
+use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend};
 use hume_lsp::client::{LspClient, Outcome, RequestMeta, ServerState};
 use hume_lsp::codec::RequestId;
 #[cfg(test)]
 use hume_lsp::inline::InlineLspBackend;
+use hume_lsp::transport::WakeCallback;
 
 use super::Editor;
 use super::async_source::AsyncSource;

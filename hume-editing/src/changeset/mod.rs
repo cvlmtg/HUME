@@ -673,7 +673,7 @@ impl ChangeSet {
     }
 }
 
-pub mod builder;
+mod builder;
 pub use builder::ChangeSetBuilder;
 
 mod diff_cs;

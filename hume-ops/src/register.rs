@@ -358,7 +358,7 @@ pub fn yank_selections(buf: &Text, sels: &SelectionSet) -> Vec<String> {
 ///
 /// This operates on *register/clipboard text* (paste time), not on a
 /// selection. For the selection-geometry predicate see
-/// `hume_editing::is_selection_linewise`.
+/// `hume_editing::selection::is_selection_linewise`.
 pub fn is_register_linewise(text: &str) -> bool {
     text.ends_with('\n')
 }

@@ -161,7 +161,7 @@ fn allowed_during_plugin_activation_even_though_is_init_is_false() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_activation();
     ctx.plugin_stack
-        .push(crate::PluginId::Core("lsp".to_string()));
+        .push(crate::attribution::PluginId::Core("lsp".to_string()));
     let result = register_lsp_server(
         &mut ctx,
         "rust".into_steelval().unwrap(),

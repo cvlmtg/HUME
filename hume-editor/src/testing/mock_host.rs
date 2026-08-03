@@ -1,4 +1,4 @@
-//! [`MockHost`] — shared [`hume_scripting::EditorHost`] for lib unit tests and
+//! [`MockHost`] — shared [`hume_scripting::host::EditorHost`] for lib unit tests and
 //! integration tests.
 //!
 //! Holds real `EditorSettings` and `Keymap` so tests can assert on
@@ -52,7 +52,7 @@ pub(crate) struct MockHost {
     /// `count` is `None` when the Steel side passed `0` ("no count typed").
     pub(crate) dispatched_native: Vec<(String, Option<usize>, bool, Option<char>)>,
     /// Lazy activation stubs registered via `register_lazy_command`.
-    pub(crate) lazy_cmds: rustc_hash::FxHashMap<String, hume_scripting::PluginId>,
+    pub(crate) lazy_cmds: rustc_hash::FxHashMap<String, hume_scripting::attribution::PluginId>,
 }
 
 impl MockHost {
@@ -263,7 +263,7 @@ impl CommandHost for MockHost {
     fn register_lazy_command(
         &mut self,
         name: &str,
-        plugin: &hume_scripting::PluginId,
+        plugin: &hume_scripting::attribution::PluginId,
     ) -> Result<(), String> {
         // Deliberately permissive, like `register_command` above — collision
         // detection is `CommandRegistry`'s decision; testing it here would be
@@ -274,10 +274,10 @@ impl CommandHost for MockHost {
         self.lazy_cmds.insert(name.to_owned(), plugin.clone());
         Ok(())
     }
-    fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::PluginId> {
+    fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::attribution::PluginId> {
         self.lazy_cmds.get(name).cloned()
     }
-    fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::PluginId) {
+    fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::attribution::PluginId) {
         self.lazy_cmds.retain(|_, p| p != plugin);
     }
 }

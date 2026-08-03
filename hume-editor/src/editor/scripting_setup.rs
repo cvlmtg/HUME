@@ -601,11 +601,11 @@ pub(crate) fn make_init_host<'a>(
 /// friends) to the editor's own. Fully qualified on both sides: this module
 /// works with `crate::editor::keymap::BindMode` too, so importing either name
 /// bare would shadow the other.
-fn to_editor_bind_mode(mode: hume_scripting::BindMode) -> crate::editor::keymap::BindMode {
+fn to_editor_bind_mode(mode: hume_scripting::host::BindMode) -> crate::editor::keymap::BindMode {
     match mode {
-        hume_scripting::BindMode::Normal => crate::editor::keymap::BindMode::Normal,
-        hume_scripting::BindMode::Extend => crate::editor::keymap::BindMode::Extend,
-        hume_scripting::BindMode::Insert => crate::editor::keymap::BindMode::Insert,
+        hume_scripting::host::BindMode::Normal => crate::editor::keymap::BindMode::Normal,
+        hume_scripting::host::BindMode::Extend => crate::editor::keymap::BindMode::Extend,
+        hume_scripting::host::BindMode::Insert => crate::editor::keymap::BindMode::Insert,
     }
 }
 

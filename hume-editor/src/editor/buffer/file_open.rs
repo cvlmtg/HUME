@@ -136,7 +136,8 @@ impl Editor {
     ///
     /// Used by the no-arg `:e`/`:e!` reload branch.
     pub(crate) fn reload_buffer_in_place(&mut self, id: BufferId, mut new_doc: Buffer) {
-        use hume_editing::{Selection, SelectionSet, snap_to_grapheme_boundary};
+        use hume_editing::lines::snap_to_grapheme_boundary;
+        use hume_editing::selection::{Selection, SelectionSet};
 
         // ── Phase 1: capture (line, col) per pane + focused pane's pre_sels ──
         let pane_ids: Vec<PaneId> = self

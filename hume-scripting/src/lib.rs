@@ -44,7 +44,7 @@ pub mod host;
 pub mod json;
 pub(crate) mod keys;
 pub(crate) mod lazy;
-pub mod log;
+mod log;
 // ── Private implementation details ────────────────────────────────────────────
 mod activation;
 mod context;
@@ -57,15 +57,7 @@ pub(crate) mod watchdog;
 
 // ── Public API re-exports ─────────────────────────────────────────────────────
 // Types the editor and editor tests use directly.
-pub use attribution::PluginId;
-pub use builtins::commands::parse_count_extend;
 pub use builtins::ids::SteelBufferId;
-pub use hooks::HookId;
-pub use host::{
-    AsyncProcessHost, BindMode, BufferHost, CommandHost, CompletionHost, CursorHost,
-    DecorationHost, EditHost, EditorHost, LanguageHost, LspHost, OutputHost, PopupKind,
-    SettingsHost, TimerHost, UiHost, unsupported,
-};
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{
@@ -91,8 +83,9 @@ use std::sync::{Arc, atomic::AtomicBool};
 use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
 
-use attribution::PluginStack;
+use attribution::{PluginId, PluginStack};
 use hooks::HookRegistry;
+use host::EditorHost;
 use lazy::{LazyRegistry, PluginState};
 
 // ── ScriptingRegistries ───────────────────────────────────────────────────────

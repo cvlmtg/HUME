@@ -7,7 +7,7 @@ use rustc_hash::FxHashMap;
 use std::ops::Range;
 
 use hume_editing::changeset::ChangeSet;
-use hume_editing::wire_to_char;
+use hume_editing::position_encoding::wire_to_char;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_lsp::sync::wire_version;
@@ -344,7 +344,7 @@ impl Editor {
             .servers
             .get(&server_id)
             .map(|e| e.client.encoding())
-            .unwrap_or(hume_editing::PositionEncoding::Utf16);
+            .unwrap_or(hume_editing::position_encoding::PositionEncoding::Utf16);
         let rope = self.state.buffers.get(bid).text().rope().clone();
 
         let mut stored: Vec<StoredDiag> = parsed

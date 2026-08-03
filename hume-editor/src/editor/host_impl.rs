@@ -360,7 +360,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
     fn register_lazy_command(
         &mut self,
         name: &str,
-        plugin: &hume_scripting::PluginId,
+        plugin: &hume_scripting::attribution::PluginId,
     ) -> Result<(), String> {
         if let Some(MappableCommand::Lazy { plugin: owner, .. }) =
             self.state.config.registry.get_mappable(name)
@@ -383,14 +383,14 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::PluginId> {
+    fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::attribution::PluginId> {
         match self.state.config.registry.get_mappable(name) {
             Some(MappableCommand::Lazy { plugin, .. }) => Some(plugin.clone()),
             _ => None,
         }
     }
 
-    fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::PluginId) {
+    fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::attribution::PluginId) {
         self.state.config.registry.unregister_lazy_stubs_of(plugin);
     }
 

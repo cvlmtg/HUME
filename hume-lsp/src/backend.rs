@@ -8,8 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::codec::Message;
-pub use crate::transport::WakeCallback;
-use crate::transport::{InboundEvent, ServerHandle};
+use crate::transport::{InboundEvent, ServerHandle, WakeCallback};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ServerId(pub u32);

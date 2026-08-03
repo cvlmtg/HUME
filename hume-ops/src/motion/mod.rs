@@ -66,9 +66,9 @@ pub use word::{
 };
 mod paragraph;
 use paragraph::{next_paragraph, prev_paragraph};
-pub mod line_select;
+mod line_select;
 pub use line_select::{cmd_select_line, cmd_select_line_backward};
-pub mod find;
+mod find;
 pub use find::{find_char_backward, find_char_forward};
 
 #[cfg(test)]

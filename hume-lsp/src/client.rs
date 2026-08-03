@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use hume_editing::PositionEncoding;
+use hume_editing::position_encoding::PositionEncoding;
 use lsp_types::{
     ClientCapabilities, ClientInfo, CodeActionClientCapabilities, CodeActionKind,
     CodeActionKindLiteralSupport, CodeActionLiteralSupport, CompletionClientCapabilities,

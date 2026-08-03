@@ -2,7 +2,8 @@
 //! `TextDocumentContentChangeEvent` list. The didChange envelope (document
 //! version, URI) is the editor glue's job — this is pure text math.
 
-use hume_editing::{ChangeSet, Operation, PositionEncoding, char_to_wire};
+use hume_editing::changeset::{ChangeSet, Operation};
+use hume_editing::position_encoding::{PositionEncoding, char_to_wire};
 use lsp_types::{Position, Range, TextDocumentContentChangeEvent};
 use ropey::Rope;
 

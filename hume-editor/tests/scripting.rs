@@ -6,6 +6,7 @@ mod mock_host;
 
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_scripting::EvalWatchdog;
+use hume_scripting::host::BindMode;
 use hume_scripting::*;
 use mock_host::MockHost;
 use std::sync::{

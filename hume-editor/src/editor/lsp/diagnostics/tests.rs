@@ -1,5 +1,5 @@
 use super::*;
-use hume_editing::ChangeSetBuilder;
+use hume_editing::changeset::ChangeSetBuilder;
 use hume_engine::pipeline::EngineView;
 use hume_engine::theme::Theme;
 
