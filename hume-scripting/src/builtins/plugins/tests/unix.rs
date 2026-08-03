@@ -38,11 +38,14 @@ fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
     let mut builtin_names = FxHashSet::default();
     builtin_names.insert("insert-mode".to_string());
 
-    let result = host.eval_source_returning_defs(
-        r#"(declare-plugin "user/test-collision" #:commands '("insert-mode"))"#.to_owned(),
-        builtin_names,
-        &mut NullHost,
-    );
+    let result = host
+        .eval_source_raw(
+            r#"(declare-plugin "user/test-collision" #:commands '("insert-mode"))"#.to_owned(),
+            builtin_names,
+            10_000,
+            &mut NullHost,
+        )
+        .map_err(|e| e.message);
 
     let err = result.expect_err("must error when all entries collide");
     assert!(

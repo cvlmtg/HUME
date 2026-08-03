@@ -7,15 +7,13 @@
 //! doc for why this is a one-shot capture rather than the picker's
 //! line-batch streaming (`picker-source-spawn!`).
 
-use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 
+use super::SteelResult;
 use super::args::{list_to_strings, optional_path_arg, string_arg, usize_arg};
 use super::errors::require_cap;
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(spawn-async! cmd args cwd callback)` — runs `cmd` with `args` (direct
 /// argv, no shell) in `cwd` (`#f` = the editor's own cwd), off the main

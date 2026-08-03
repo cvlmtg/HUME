@@ -1,14 +1,12 @@
 //! Language-identity and grammar Steel builtins.
 
-use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::{Effect, PendingLanguageReg, SteelCtx};
 
+use super::SteelResult;
 use super::args::{list_to_strings, optional_path_arg, optional_string_arg, path_arg, string_arg};
 use super::errors::generic_err;
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(%define-language! name extensions globs shebangs lsp-language-id)` — init-only.
 ///

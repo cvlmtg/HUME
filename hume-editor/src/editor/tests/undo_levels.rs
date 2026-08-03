@@ -83,11 +83,7 @@ fn steel_set_option_applies_undo_levels() {
     host.register_command_names(&name_refs);
 
     let mut init_host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.eval_source_returning_defs(
-        r#"(set-option! "undo-levels" 1)"#.to_owned(),
-        Default::default(),
-        &mut init_host,
-    );
+    let result = host.eval_source(r#"(set-option! "undo-levels" 1)"#, &mut init_host);
     assert!(result.is_ok(), "eval must succeed: {result:?}");
     assert_eq!(ed.state.settings.undo_levels, 1);
 

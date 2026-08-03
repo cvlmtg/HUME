@@ -8,12 +8,11 @@ use steel::rvals::{FromSteelVal, SteelVal};
 use crate::SteelCtx;
 use crate::json::steel_to_json;
 
+use super::SteelResult;
 use super::args::{
     BidArg, TextEditArg, checked_fields, list_items, optional_usize_arg, string_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(%apply-text-edits! bid edits expect-gen)` — `edits`: list of `((start-
 /// line . start-col) (end-line . end-col) text)`, wire positions as dotted

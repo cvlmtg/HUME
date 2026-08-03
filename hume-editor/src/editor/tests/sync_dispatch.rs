@@ -140,9 +140,8 @@ fn call_bang_count_arg_dispatches_synchronously() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
-        r#"(define-command! "move-right-5" "" (lambda () (call! "move-right" 5)))"#.to_owned(),
-        Default::default(),
+    host.eval_source(
+        r#"(define-command! "move-right-5" "" (lambda () (call! "move-right" 5)))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -191,10 +190,8 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
-        r#"(define-command! "move-right-bad" "" (lambda () (call! "move-right" "garbage")))"#
-            .to_owned(),
-        Default::default(),
+    host.eval_source(
+        r#"(define-command! "move-right-bad" "" (lambda () (call! "move-right" "garbage")))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -244,14 +241,12 @@ fn case_b_sync_cursor_read_reflects_motion() {
 
     // Define a command that exercises the sync-read property.
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
+    host.eval_source(
         r#"(define-command! "test-case-b" "Case B probe"
                  (lambda ()
                    (move-down)
                    (when (= (current-line-number) 2)
-                     (move-down))))"#
-            .to_owned(),
-        Default::default(),
+                     (move-down))))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -306,11 +301,9 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
+    host.eval_source(
         r#"(define-command! "steel-dot-repeat" "Repeat last action via Steel"
-                 (lambda () (call! "repeat-last-action")))"#
-            .to_owned(),
-        Default::default(),
+                 (lambda () (call! "repeat-last-action")))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -467,14 +460,12 @@ fn steel_call_native_respects_register_prefix() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
+    host.eval_source(
         // Register '0' is a valid named storage register (digit registers: 0–9).
         r#"(define-command! "yank-to-0" ""
                  (lambda ()
                    (set-register-prefix! "0")
-                   (call! "yank")))"#
-            .to_owned(),
-        Default::default(),
+                   (call! "yank")))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -518,11 +509,9 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
+    host.eval_source(
         r#"(define-command! "steel-delete" ""
-                 (lambda () (call! "delete")))"#
-            .to_owned(),
-        Default::default(),
+                 (lambda () (call! "delete")))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -577,11 +566,9 @@ fn steel_call_jump_cmd_records_jump_entry() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
+    host.eval_source(
         r#"(define-command! "steel-goto-end" ""
-                 (lambda () (call! "goto-last-line")))"#
-            .to_owned(),
-        Default::default(),
+                 (lambda () (call! "goto-last-line")))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -625,13 +612,11 @@ fn steel_call_paste_then_motion_commits_paste_session() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
+    host.eval_source(
         r#"(define-command! "paste-and-move" ""
                  (lambda ()
                    (call! "paste-after")
-                   (call! "move-down")))"#
-            .to_owned(),
-        Default::default(),
+                   (call! "move-down")))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -684,15 +669,13 @@ fn steel_call_source_order_native_after_steel() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
+    host.eval_source(
         r#"(define-command! "steel-move-right" ""
                  (lambda () (call! "move-right")))
                (define-command! "order-test" ""
                  (lambda ()
                    (call! "steel-move-right")
-                   (call! "delete")))"#
-            .to_owned(),
-        Default::default(),
+                   (call! "delete")))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -737,14 +720,12 @@ fn steel_native_via_call_preserves_own_count() {
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     // noop-steel is a no-op plugin command; move-down 3 runs sync via %call-native!.
-    host.eval_source_returning_defs(
+    host.eval_source(
         r#"(define-command! "noop-steel" "" (lambda () #t))
                (define-command! "count-chain-test" ""
                  (lambda ()
                    (call! "noop-steel")
-                   (call! "move-down" 3)))"#
-            .to_owned(),
-        Default::default(),
+                   (call! "move-down" 3)))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -784,14 +765,12 @@ fn steel_unknown_cmd_errors_and_continues() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
+    host.eval_source(
         r#"(define-command! "warn-test" ""
                  (lambda ()
                    (call! "move-right")
                    (call! "this-command-does-not-exist")
-                   (call! "move-right")))"#
-            .to_owned(),
-        Default::default(),
+                   (call! "move-right")))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -887,11 +866,9 @@ fn steel_lambda_receives_count_and_extend() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
+    host.eval_source(
         r#"(define-command! "step-right" ""
-             (lambda (count extend) (call! "move-right" count extend)))"#
-            .to_owned(),
-        Default::default(),
+             (lambda (count extend) (call! "move-right" count extend)))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -955,10 +932,9 @@ fn steel_zero_arity_lambda_ignores_injection() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
+    host.eval_source(
         // 0-arg lambda: always moves right 1.
-        r#"(define-command! "fixed-right" "" (lambda () (call! "move-right")))"#.to_owned(),
-        Default::default(),
+        r#"(define-command! "fixed-right" "" (lambda () (call! "move-right")))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1033,9 +1009,8 @@ fn explicit_minibuf_arg_not_overwritten_by_injection() {
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     // lambda(x): if x is the string "move-right", run move-right; otherwise no-op.
-    host.eval_source_returning_defs(
-        r#"(define-command! "echo-cmd" "" (lambda (x) (when (string? x) (call! x))))"#.to_owned(),
-        Default::default(),
+    host.eval_source(
+        r#"(define-command! "echo-cmd" "" (lambda (x) (when (string? x) (call! x))))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1103,11 +1078,9 @@ fn steel_arity_1_lambda_receives_count_only() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
+    host.eval_source(
         r#"(define-command! "step-count-only" ""
-             (lambda (count) (call! "move-right" count)))"#
-            .to_owned(),
-        Default::default(),
+             (lambda (count) (call! "move-right" count)))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1167,9 +1140,8 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
-        r#"(define-command! "wrap-delete" "" (lambda () (call! "delete")))"#.to_owned(),
-        Default::default(),
+    host.eval_source(
+        r#"(define-command! "wrap-delete" "" (lambda () (call! "delete")))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1229,9 +1201,8 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
     let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
-    host.eval_source_returning_defs(
-        r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#.to_owned(),
-        Default::default(),
+    host.eval_source(
+        r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1280,9 +1251,8 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
     let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
-    host.eval_source_returning_defs(
-        r#"(define-command! "steel-goto-end" "" (lambda () (call! "goto-last-line")))"#.to_owned(),
-        Default::default(),
+    host.eval_source(
+        r#"(define-command! "steel-goto-end" "" (lambda () (call! "goto-last-line")))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1338,10 +1308,8 @@ fn parity_steel_branch_cluster_vs_native() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
     let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
-    host.eval_source_returning_defs(
-        r#"(define-command! "steel-del" "" (lambda () (call! "delete")) #:repeatable #t)"#
-            .to_owned(),
-        Default::default(),
+    host.eval_source(
+        r#"(define-command! "steel-del" "" (lambda () (call! "delete")) #:repeatable #t)"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1418,9 +1386,8 @@ fn parity_steel_branch_cluster_vs_native() {
     // `step_paste_commit`, masking a missing outer commit. A pure Steel no-op
     // (body returns a value without dispatching) isolates the outer BEFORE stage.
     host2
-        .eval_source_returning_defs(
-            r#"(define-command! "pure-noop" "" (lambda () (+ 1 0)))"#.to_owned(),
-            Default::default(),
+        .eval_source(
+            r#"(define-command! "pure-noop" "" (lambda () (+ 1 0)))"#,
             &mut init_host2,
         )
         .expect("define-command! must succeed");
@@ -1470,9 +1437,8 @@ fn parity_extend_exit_keypress_vs_steel() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
     let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
-    host.eval_source_returning_defs(
-        r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#.to_owned(),
-        Default::default(),
+    host.eval_source(
+        r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1523,16 +1489,14 @@ fn plugin_calls_plugin_cursor_read_is_live() {
     // inner-move: plugin command that wraps a single move-down.
     // outer-cmd: calls inner-move (plugin→plugin), reads cursor, conditionally
     //   moves down again if cursor advanced past line 1.
-    host.eval_source_returning_defs(
+    host.eval_source(
         r#"(define-command! "inner-move" ""
                  (lambda () (call! "move-down")))
                (define-command! "outer-cmd" ""
                  (lambda ()
                    (call! "inner-move")
                    (when (> (current-line-number) 1)
-                     (call! "move-down"))))"#
-            .to_owned(),
-        Default::default(),
+                     (call! "move-down"))))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1551,24 +1515,22 @@ fn plugin_calls_plugin_cursor_read_is_live() {
 }
 
 /// Plugin commands registered via `define-command!` are entered into
-/// `ScriptingHost.registries.command_table` inline during eval (by `define_command_inner`).
+/// `ScriptingHost.registries.command_table` inline during eval (by `define_command`).
 ///
 /// `command_table` is what `%lookup-plugin-proc` queries to decide whether to apply
 /// a command inline in Steel. This test confirms the table is populated after
-/// `eval_source_returning_defs` — the precondition for all in-Steel dispatch tests.
+/// `eval_source` — the precondition for all in-Steel dispatch tests.
 ///
-/// Fail oracle: remove the `command_table.insert(…)` line in `define_command_inner`
+/// Fail oracle: remove the `command_table.insert(…)` line in `define_command`
 /// → `command_table` is empty → `%lookup-plugin-proc` always returns `#f` →
 /// `plugin_calls_plugin_cursor_read_is_live` regresses to cursor=1.
 #[test]
 fn command_table_populated_after_define_command() {
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();
-    host.eval_source_returning_defs(
+    host.eval_source(
         r#"(define-command! "ping" "" (lambda () #t))
-               (define-command! "pong" "" (lambda () #t))"#
-            .to_owned(),
-        Default::default(),
+               (define-command! "pong" "" (lambda () #t))"#,
         &mut mock,
     )
     .expect("define-command! must succeed");
@@ -1595,7 +1557,7 @@ fn command_table_populated_after_define_command() {
 /// the command is skipped with a `Warning`, and lines that follow it are applied.
 ///
 /// Three assertions lock in the full behavior:
-/// 1. `eval_source_returning_defs` returns `Ok` (no hard error, no abort).
+/// 1. `eval_source` returns `Ok` (no hard error, no abort).
 /// 2. `history-capacity` set after the native call is applied (eval continued past it).
 /// 3. The cursor did not move (command was skipped, not run).
 ///
@@ -1620,12 +1582,10 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     // Eval as init context: native call in the middle, set-option! after it.
-    let result = host.eval_source_returning_defs(
+    let result = host.eval_source(
         r#"(set-option! "history-capacity" 42)
            (call! "move-right")
-           (set-option! "history-capacity" 77)"#
-            .to_owned(),
-        Default::default(),
+           (set-option! "history-capacity" 77)"#,
         &mut init_host,
     );
 
@@ -1680,7 +1640,7 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(snippet.to_owned(), Default::default(), &mut init_host)
+    host.eval_source(snippet, &mut init_host)
         .expect("Steel snippet must compile and evaluate without error");
 
     ed.scripting = Some(host);
@@ -1927,9 +1887,8 @@ fn keymap_dispatch_arity_over_2_reports_error() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(
-        r#"(define-command! "three-params" "" (lambda (a b c) (+ a b c)))"#.to_owned(),
-        Default::default(),
+    host.eval_source(
+        r#"(define-command! "three-params" "" (lambda (a b c) (+ a b c)))"#,
         &mut init_host,
     )
     .expect("registration must succeed — 3-param lambda is valid for call! use");
@@ -1968,12 +1927,10 @@ fn steel_dispatch_consumes_pending_char() {
     let mut host = ScriptingHost::new();
     host.register_command_names(&name_refs);
     let mut init_host = live_host!(ed);
-    host.eval_source_returning_defs(
+    host.eval_source(
         // Moves the cursor only when a pending char is visible to the body.
         r#"(define-command! "probe-char" ""
-             (lambda () (if (pending-char) (call! "move-right" 1) (+ 1 0))))"#
-            .to_owned(),
-        Default::default(),
+             (lambda () (if (pending-char) (call! "move-right" 1) (+ 1 0))))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -2136,13 +2093,11 @@ fn current_selections_steel_roundtrip() {
     host.register_command_names(&name_refs);
 
     let mut init_host = live_host!(ed);
-    host.eval_source_returning_defs(
+    host.eval_source(
         r#"(define-command! "probe-selections-roundtrip" ""
              (lambda ()
                (unless (equal? (current-selections) (list (list 0 0 #t)))
-                 (call! "delete" 1))))"#
-            .to_owned(),
-        Default::default(),
+                 (call! "delete" 1))))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");

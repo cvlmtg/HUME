@@ -31,13 +31,12 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
+use super::SteelResult;
 use super::errors::generic_err;
 use crate::SteelCtx;
 use crate::attribution::Owner;
 use crate::log::LogLevel;
 use crate::types::SteelCmdDef;
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
@@ -63,17 +62,6 @@ type SteelResult = Result<SteelVal, SteelErr>;
 /// - The same name is already defined by another plugin or in init.scm.
 /// - Called from a command body (only valid during init.scm or plugin load).
 pub(crate) fn define_command(
-    ctx: &mut SteelCtx,
-    name: String,
-    doc: String,
-    proc: SteelVal,
-    repeatable: bool,
-    inline_output: bool,
-) -> SteelResult {
-    define_command_inner(ctx, name, doc, proc, repeatable, inline_output)
-}
-
-fn define_command_inner(
     ctx: &mut SteelCtx,
     name: String,
     doc: String,
@@ -266,7 +254,7 @@ pub(crate) fn parse_count_extend(args: &[SteelVal]) -> Result<(Option<usize>, bo
     }
 }
 
-fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, steel::rerrs::SteelErr> {
+fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, SteelErr> {
     match val {
         SteelVal::ListV(list) => Ok(list.into_iter().collect()),
         other => steel::stop!(TypeMismatch =>

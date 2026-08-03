@@ -3,19 +3,27 @@
 //! completion, edit/navigation primitives, and the minibuffer prompt live in
 //! their own modules — LSP is a client of those, not their owner.
 
-use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::json::json_to_steel;
 use crate::types::{Effect, PendingLspNotify, PendingLspRequest, PendingLspServerOp};
 use crate::{PendingLspServerReg, SteelCtx};
 
+use super::SteelResult;
 use super::args::{
     BidArg, bool_arg, json_params, list_to_env_pairs, list_to_strings, optional_json_arg,
     optional_string_arg, string_arg,
 };
 
-type SteelResult = Result<SteelVal, SteelErr>;
+/// `Some(json)` → decoded to a Steel hashmap; `None` (unresolvable, no
+/// attached server, handshake incomplete, …) → `#f`. Shared by the three
+/// introspection builtins below.
+fn json_or_false(json: Option<serde_json::Value>) -> SteelVal {
+    match json {
+        Some(json) => json_to_steel(&json),
+        None => SteelVal::BoolV(false),
+    }
+}
 
 /// `(%register-lsp-server! language command args root-markers init-options settings env)`
 ///
@@ -193,16 +201,11 @@ pub(crate) fn on_lsp_notification(
 /// `#f` if `server` doesn't resolve or hasn't finished its handshake.
 pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, server: SteelVal) -> SteelResult {
     let server = optional_string_arg(server, "lsp-capabilities server")?;
-    Ok(
-        match ctx
-            .host
+    Ok(json_or_false(
+        ctx.host
             .lsp()
-            .and_then(|lsp| lsp.lsp_capabilities(server.as_deref()))
-        {
-            Some(json) => json_to_steel(&json),
-            None => SteelVal::BoolV(false),
-        },
-    )
+            .and_then(|lsp| lsp.lsp_capabilities(server.as_deref())),
+    ))
 }
 
 /// `(lsp-server-status)` → list of `{"language" "root" "state" "pending"}`.
@@ -294,24 +297,18 @@ pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal
 /// (no attached server, no path, or not shown in any pane).
 pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;
-    Ok(
-        match ctx.host.lsp().and_then(|lsp| lsp.lsp_position_params(id)) {
-            Some(json) => json_to_steel(&json),
-            None => SteelVal::BoolV(false),
-        },
-    )
+    Ok(json_or_false(
+        ctx.host.lsp().and_then(|lsp| lsp.lsp_position_params(id)),
+    ))
 }
 
 /// `(lsp-range-params bid)` → same shape but a `"range"` from the primary
 /// selection.
 pub(crate) fn lsp_range_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;
-    Ok(
-        match ctx.host.lsp().and_then(|lsp| lsp.lsp_range_params(id)) {
-            Some(json) => json_to_steel(&json),
-            None => SteelVal::BoolV(false),
-        },
-    )
+    Ok(json_or_false(
+        ctx.host.lsp().and_then(|lsp| lsp.lsp_range_params(id)),
+    ))
 }
 
 #[cfg(test)]

@@ -682,7 +682,7 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(source.to_owned(), Default::default(), &mut init_host)
+    host.eval_source(source, &mut init_host)
         .expect("Steel eval must succeed in editor_with_steel");
 
     ed.scripting = Some(host);

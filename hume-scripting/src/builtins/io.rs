@@ -54,11 +54,11 @@
 //! forwards to the captured original. See `PRINT_GATE_SHIMS` in
 //! `builtins/mod.rs` for the shim definitions.
 
-use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 
+use super::SteelResult;
 use super::errors::generic_err;
 
 /// Whether it is currently safe to write directly to the real process
@@ -75,7 +75,7 @@ fn stdout_is_safe(ctx: &SteelCtx) -> bool {
 /// the init session, which prints pre-terminal with no bracket to open),
 /// lazily enters the alt-screen bracket on this, the first real write of the
 /// command body.
-pub(crate) fn stdout_gate(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
+pub(crate) fn stdout_gate(ctx: &mut SteelCtx) -> SteelResult {
     if !stdout_is_safe(ctx) {
         return Ok(SteelVal::BoolV(false));
     }

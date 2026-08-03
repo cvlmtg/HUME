@@ -1,16 +1,14 @@
 //! Completion orchestration — session lifecycle for a single in-progress
 //! completion, plus trigger-character registration that feeds it.
 
-use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 use crate::json::{json_to_steel, steel_to_json};
 
+use super::SteelResult;
 use super::args::{BidArg, bool_arg, chars_arg, list_items, string_arg, usize_arg};
 use super::errors::{generic_err, require_cap};
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(register-trigger-chars! source language chars)` — `chars` is a list of
 /// 1-char strings, registered for exactly `(source, language)`. Callable

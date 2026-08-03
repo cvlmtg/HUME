@@ -741,9 +741,8 @@ fn define_command_extend_builtin_removed() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    let result = h.eval_source_returning_defs(
-        r#"(define-command-extend! "ext-cmd" "doc" (lambda () (+ 1 0)))"#.to_owned(),
-        Default::default(),
+    let result = h.eval_source(
+        r#"(define-command-extend! "ext-cmd" "doc" (lambda () (+ 1 0)))"#,
         &mut mock,
     );
     assert!(
@@ -761,11 +760,9 @@ fn define_command_inline_output_sets_flag() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source_returning_defs(
+    h.eval_source(
         r#"(define-command! "inline-cmd" "doc" (lambda () (+ 1 0)) #:inline-output #t)
-           (define-command! "plain-cmd"  "doc" (lambda () (+ 1 0)))"#
-            .to_owned(),
-        Default::default(),
+           (define-command! "plain-cmd"  "doc" (lambda () (+ 1 0)))"#,
         &mut mock,
     )
     .expect("eval should succeed");
@@ -796,11 +793,9 @@ fn define_command_repeatable_sets_flag() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source_returning_defs(
+    h.eval_source(
         r#"(define-command! "rep-cmd"   "doc" (lambda () (+ 1 0)) #:repeatable #t)
-           (define-command! "plain-cmd" "doc" (lambda () (+ 1 0)))"#
-            .to_owned(),
-        Default::default(),
+           (define-command! "plain-cmd" "doc" (lambda () (+ 1 0)))"#,
         &mut mock,
     )
     .expect("eval should succeed");
@@ -828,19 +823,17 @@ fn define_command_repeatable_sets_flag() {
 /// `#:repeatable #t` and `#:inline-output #t` together must raise a Steel error
 /// and must not register the command.
 ///
-/// Fail oracle: remove the mutual-exclusion guard in define_command_inner —
+/// Fail oracle: remove the mutual-exclusion guard in define_command —
 /// the eval would succeed and register the command with both flags set.
 #[test]
 fn repeatable_and_inline_output_mutually_exclusive() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    let result = h.eval_source_returning_defs(
+    let result = h.eval_source(
         r#"(define-command! "bad-cmd" "doc" (lambda () (+ 1 0)) #:repeatable #t #:inline-output #t)"#
-            .to_owned(),
-        Default::default(),
-        &mut mock,
-    );
+            ,
+        &mut mock);
     assert!(
         result.is_err(),
         "#:repeatable + #:inline-output must raise an error; got Ok"
@@ -878,7 +871,7 @@ fn watchdog_cancel_wakes_thread_immediately() {
 
 /// A watchdog with a tiny budget fires and causes (hume/yield!) to abort.
 #[test]
-fn eval_source_returning_defs_watchdog_aborts_runaway() {
+fn eval_source_watchdog_aborts_runaway() {
     let mut h = host();
     let mut mock = MockHost::new();
 
@@ -904,7 +897,7 @@ fn eval_source_returning_defs_watchdog_aborts_runaway() {
         "eval took too long: {:?}",
         start.elapsed()
     );
-    // Flag must be reset after eval_source_returning_defs returns.
+    // Flag must be reset after eval_source_watchdog returns.
     assert!(
         !h.interrupt_flag_for_test().load(Ordering::Relaxed),
         "interrupt_flag must be false after eval returns"

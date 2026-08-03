@@ -399,7 +399,7 @@ fn load_plugin_core_absent_logs_error() {
 /// `define-command!` rejects a name already claimed as a lazy plugin's `Lazy`
 /// stub, even when the eager `define-command!` runs first.
 ///
-/// Fail oracle: remove the `lazy_command_owner` guard from `define_command_inner`
+/// Fail oracle: remove the `lazy_command_owner` guard from `define_command`
 /// → the eager define succeeds, the stub is orphaned, the plugin is stuck
 /// `Declared` and can never load.
 #[test]

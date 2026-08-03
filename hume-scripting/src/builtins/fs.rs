@@ -20,18 +20,18 @@
 
 use std::path::{Path, PathBuf};
 
-use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use crate::SteelCtx;
 
+use super::SteelResult;
 use super::errors::generic_err;
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
 
 /// Shared body for `(data-dir)`/`(runtime-dir)`: return `dir`'s display-form
 /// path as a string, or `#f` if `dir` is `None`.
-fn dir_builtin(dir: Option<&Path>) -> Result<SteelVal, SteelErr> {
+fn dir_builtin(dir: Option<&Path>) -> SteelResult {
     match dir {
         Some(p) => p
             .to_string_lossy()
@@ -48,7 +48,7 @@ fn dir_builtin(dir: Option<&Path>) -> Result<SteelVal, SteelErr> {
 /// The returned path is the display form (no `\\?\` extended-length prefix on
 /// Windows) so Scheme plugins can safely join segments with `(path-join …)`
 /// or, if necessary, plain string concatenation.
-pub(crate) fn data_dir(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
+pub(crate) fn data_dir(ctx: &mut SteelCtx) -> SteelResult {
     dir_builtin(ctx.dirs.data_dir_display.as_deref())
 }
 
@@ -57,7 +57,7 @@ pub(crate) fn data_dir(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
 ///
 /// The returned path is the display form (no `\\?\` extended-length prefix on
 /// Windows).
-pub(crate) fn runtime_dir(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
+pub(crate) fn runtime_dir(ctx: &mut SteelCtx) -> SteelResult {
     dir_builtin(ctx.dirs.runtime_dir_display.as_deref())
 }
 
@@ -72,7 +72,7 @@ pub(crate) fn runtime_dir(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
 ///
 /// No sandbox check — this is a pure string-construction helper that does not
 /// access the filesystem.
-pub(crate) fn path_join(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
+pub(crate) fn path_join(args: &[SteelVal]) -> SteelResult {
     if args.is_empty() {
         steel::stop!(ArityMismatch => "path-join expects at least 1 arg, got 0");
     }
@@ -99,7 +99,7 @@ pub(crate) fn path_join(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 /// renders the same way as paths that came from `buffer-display-path`. No
 /// filesystem access; expects an absolute path — `~`-collapse is a no-op on
 /// relative input.
-pub(crate) fn path_to_display(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
+pub(crate) fn path_to_display(args: &[SteelVal]) -> SteelResult {
     if args.len() != 1 {
         steel::stop!(ArityMismatch => "path->display expects exactly 1 arg, got {}", args.len());
     }

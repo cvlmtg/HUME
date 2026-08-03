@@ -6,10 +6,9 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::host::OptionValue;
 
+use super::SteelResult;
 use super::args::{BidArg, optional_bid_arg};
 use super::errors::generic_err;
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 /// Coerce a Steel string/bool/int settings value to the settings layer's
 /// string wire form. `ctx_name` names the calling builtin in the error.

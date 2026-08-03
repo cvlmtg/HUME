@@ -6,15 +6,13 @@
 //! `init.scm` raises a Steel error instead of returning a meaningless
 //! default.
 
-use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
+use super::SteelResult;
 use super::args::{BidArg, cons_pair, optional_string_arg, usize_arg};
 use super::errors::generic_err;
 use super::ids::{SteelBufferId, SteelPaneId};
 use crate::{SteelCtx, types::Effect};
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 // ── Focus builtins ─────────────────────────────────────────────────────────────
 
@@ -58,10 +56,7 @@ pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
 
 /// `(buffer-path bid)` → absolute path string, or `#f` for unsaved buffers.
 pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let id = bid.0;
-    if !ctx.host.buffers().buffer_exists(id) {
-        steel::stop!(Generic => "buffer-path: invalid buffer id {id:?}");
-    }
+    let id = bid.require_live(ctx, "buffer-path")?;
     match ctx.host.buffers().buffer_path(id) {
         Some(p) => p
             .to_string_lossy()
@@ -76,10 +71,7 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
 /// lexically normalized, UNC-stripped, `~`-collapsed) — print verbatim, or `#f`
 /// for unsaved buffers. Unlike `buffer-path`, never suitable for filesystem ops.
 pub(crate) fn buffer_display_path(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let id = bid.0;
-    if !ctx.host.buffers().buffer_exists(id) {
-        steel::stop!(Generic => "buffer-display-path: invalid buffer id {id:?}");
-    }
+    let id = bid.require_live(ctx, "buffer-display-path")?;
     match ctx.host.buffers().buffer_display_path(id) {
         Some(p) => p.into_steelval().map_err(generic_err),
         None => Ok(SteelVal::BoolV(false)),
@@ -148,10 +140,7 @@ pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// Closes the buffer identified by `bid`. Raises a Steel error for an invalid
 /// or unknown `bid`.
 pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let id = bid.0;
-    if !ctx.host.buffers().buffer_exists(id) {
-        steel::stop!(Generic => "close-buffer!: invalid buffer id {id:?}");
-    }
+    let id = bid.require_live(ctx, "close-buffer!")?;
     let new_live = ctx.host.buffers().close_buffer(id).map_err(generic_err)?;
     ctx.live_focused_buffer_id = new_live;
     Ok(SteelVal::Void)
@@ -163,10 +152,7 @@ pub(crate) fn close_buffer(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
 /// the current position in the jump list. Raises a Steel error for an invalid
 /// or unknown `bid`.
 pub(crate) fn switch_to_buffer(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let target = bid.0;
-    if !ctx.host.buffers().buffer_exists(target) {
-        steel::stop!(Generic => "switch-to-buffer!: invalid buffer id {target:?}");
-    }
+    let target = bid.require_live(ctx, "switch-to-buffer!")?;
     let current = ctx.live_focused_buffer_id;
     ctx.host
         .buffers()
@@ -200,10 +186,7 @@ fn effective_language(
 
 /// `(buffer-language bid)` → string or `#f`.
 pub(crate) fn buffer_language(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let id = bid.0;
-    if !ctx.host.buffers().buffer_exists(id) {
-        steel::stop!(Generic => "buffer-language: invalid buffer id {id:?}");
-    }
+    let id = bid.require_live(ctx, "buffer-language")?;
     let fallback = ctx.host.buffers().buffer_stored_language(id);
     let lang = effective_language(ctx.effects, id, fallback);
     match lang {
@@ -298,11 +281,8 @@ pub(crate) fn set_buffer_language_steel(
     bid: BidArg,
     lang: SteelVal,
 ) -> SteelResult {
-    let id = bid.0;
     let new_lang = optional_string_arg(lang, "set-buffer-language!")?;
-    if !ctx.host.buffers().buffer_exists(id) {
-        steel::stop!(Generic => "set-buffer-language!: invalid buffer id {id:?}");
-    }
+    let id = bid.require_live(ctx, "set-buffer-language!")?;
     let fallback = ctx.host.buffers().buffer_stored_language(id);
     if effective_language(ctx.effects, id, fallback) == new_lang {
         return Ok(SteelVal::Void);

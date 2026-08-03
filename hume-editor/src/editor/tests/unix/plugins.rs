@@ -934,7 +934,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
 /// rollback unregister the native command.
 ///
 /// Flip (either revert triggers this): insert into `command_table`/`cmd_owners`
-/// before `host.register_command` in `define_command_inner`, or revert
+/// before `host.register_command` in `define_command`, or revert
 /// `CommandRegistry::unregister` to an unconditional remove → `move-left`
 /// disappears from the registry and the assertions fire.
 #[test]

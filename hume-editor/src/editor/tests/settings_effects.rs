@@ -22,7 +22,7 @@ fn eval_set_option(ed: &mut Editor, source: &str) -> Result<(), String> {
     let mut host = hume_scripting::ScriptingHost::new();
     host.register_command_names(&name_refs);
     let mut init_host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source_returning_defs(source.to_owned(), Default::default(), &mut init_host)
+    host.eval_source(source, &mut init_host).map(|_| ())
 }
 
 // ── set-option! resyncs derived state (the gap this closes) ────────────────

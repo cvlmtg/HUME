@@ -699,7 +699,7 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
 /// `unregister_lazy_stubs_of` *after* the body completes in
 /// `finish_lazy_activation`).
 ///
-/// Fail oracle: remove the `is_self` exemption from `define_command_inner` →
+/// Fail oracle: remove the `is_self` exemption from `define_command` →
 /// the plugin's `define-command!` call is rejected → activation returns Err.
 #[test]
 fn lazy_plugin_can_define_its_own_activation_command() {

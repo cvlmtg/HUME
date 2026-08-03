@@ -33,11 +33,17 @@ pub(crate) mod ui;
 
 use std::borrow::Cow;
 
+use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
 use steel::steel_vm::register_fn::RegisterFn;
 
 use super::HUME_CTX;
+
+/// The return type of every ctx-taking builtin below. One definition shared
+/// by every `builtins/*.rs` submodule instead of each declaring its own
+/// identical local alias.
+pub(crate) type SteelResult = Result<SteelVal, SteelErr>;
 
 // ── Declarative registration table ───────────────────────────────────────────
 

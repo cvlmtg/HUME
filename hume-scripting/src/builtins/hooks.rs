@@ -1,12 +1,10 @@
 //! `(register-hook! 'hook-name proc)` builtin.
 
-use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
+use super::SteelResult;
 use crate::SteelCtx;
 use crate::hooks::HookId;
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(register-hook! 'name proc)` — register `proc` as a handler for the
 /// named hook.  Must be called during init or plugin load (`EvalMode::Init`,

@@ -49,7 +49,7 @@ pub enum PendingLanguageReg {
 /// One `(register-lsp-server! …)` call queued for the end-of-eval drain.
 ///
 /// `init_options`/`settings` are decoded at the Steel boundary via
-/// [`crate::json::steel_to_json`] — Steel data structures in, real JSON out.
+/// `crate::json::steel_to_json` — Steel data structures in, real JSON out.
 #[derive(Debug)]
 pub struct PendingLspServerReg {
     pub language: String,
@@ -99,7 +99,7 @@ pub struct LspServerStatusEntry {
 ///
 /// `server` is a registered language name, or `None` for "the focused
 /// buffer's attached server". `params` is already decoded to JSON via
-/// [`crate::json::steel_to_json`]; `callback` is the raw Steel closure,
+/// `crate::json::steel_to_json`; `callback` is the raw Steel closure,
 /// delivered `(err result)` through the queued-Steel-call mechanism once the
 /// response (or timeout) arrives.
 pub struct PendingLspRequest {

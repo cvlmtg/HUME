@@ -12,13 +12,12 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::host::PopupKind;
 
+use super::SteelResult;
 use super::args::{
     bool_arg, list_items, list_to_strings, optional_path_arg, optional_string_arg,
     optional_usize_arg, pair_fields, string_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(%show-popup! text anchor kind lang)` — the `show-popup!` Scheme wrapper
 /// supplies `#:anchor`/`#:kind`/`#:lang`'s defaults. `anchor` selects the

@@ -8,9 +8,8 @@ use crate::host::BindMode;
 use crate::keys::parse_key_sequence;
 use crate::{Effect, SteelCtx};
 
+use super::SteelResult;
 use super::errors::generic_err;
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -91,7 +90,9 @@ pub(crate) fn bind_key(
         mode,
         key_str,
         cmd_name,
-        BindKind::Normal { force_extend: false },
+        BindKind::Normal {
+            force_extend: false,
+        },
     )
 }
 
@@ -142,7 +143,14 @@ pub(crate) fn bind_wait_char(
     key_str: String,
     cmd_name: String,
 ) -> SteelResult {
-    bind_inner(ctx, "bind-wait-char!", mode, key_str, cmd_name, BindKind::WaitChar)
+    bind_inner(
+        ctx,
+        "bind-wait-char!",
+        mode,
+        key_str,
+        cmd_name,
+        BindKind::WaitChar,
+    )
 }
 
 #[cfg(test)]

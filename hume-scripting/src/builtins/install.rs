@@ -21,12 +21,12 @@ use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use crate::SteelCtx;
 use crate::log::LogLevel;
 
+use super::SteelResult;
 use super::args::{list_to_strings, optional_path_arg};
 use super::errors::generic_err;
 
@@ -41,7 +41,7 @@ const STALE_INSTALL_LOCK_AGE: Duration = Duration::from_secs(60 * 60);
 /// (`"darwin-arm64"`, `"darwin-x64"`, `"linux-x64"`, `"windows-x64"`), or
 /// `#f` on any other platform/architecture. `#f`, not an error, so
 /// `:lsp-servers` can render "unsupported platform" rather than aborting.
-pub(crate) fn hume_target(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
+pub(crate) fn hume_target(args: &[SteelVal]) -> SteelResult {
     if !args.is_empty() {
         steel::stop!(ArityMismatch => "hume-target expects 0 args, got {}", args.len());
     }
@@ -58,7 +58,7 @@ pub(crate) fn hume_target(args: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 /// on-mismatch lives in Scheme (`lsp/verify-sha256!` in `servers.scm`) —
 /// this is a thin wrapper over the platform tool selection (`shasum`/
 /// `sha256sum`/`certutil`) that a Scheme rewrite would only make worse.
-pub(crate) fn sha256_file(ctx: &mut SteelCtx, path: String) -> Result<SteelVal, SteelErr> {
+pub(crate) fn sha256_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
     ctx.log(LogLevel::Trace, format!("sha256-file: hashing {path}"));
     let digest = hume_platform::process::sha256_file(Path::new(&path))
         .map_err(|e| generic_err(format!("sha256-file: cannot hash '{path}': {e}")))?;
@@ -70,11 +70,7 @@ pub(crate) fn sha256_file(ctx: &mut SteelCtx, path: String) -> Result<SteelVal, 
 /// after success — Mason `.gz` assets are bare server executables).
 ///
 /// On error, any partial `dest` is removed before raising.
-pub(crate) fn unpack_gz(
-    ctx: &mut SteelCtx,
-    src: String,
-    dest: String,
-) -> Result<SteelVal, SteelErr> {
+pub(crate) fn unpack_gz(ctx: &mut SteelCtx, src: String, dest: String) -> SteelResult {
     let src_path = PathBuf::from(&src);
     let dest_path = PathBuf::from(&dest);
 
@@ -106,7 +102,7 @@ pub(crate) fn unpack_zip(
     src: String,
     dest_dir: String,
     bin_path: String,
-) -> Result<SteelVal, SteelErr> {
+) -> SteelResult {
     let src_path = PathBuf::from(&src);
     let dest_path = PathBuf::from(&dest_dir);
     std::fs::create_dir_all(&dest_path).map_err(|e| {
@@ -153,7 +149,7 @@ fn create_lock_file(path: &Path) -> std::io::Result<()> {
 /// # Errors
 /// A live (or indeterminate-age) lock already exists, or the lock file
 /// can't be created/replaced.
-pub(crate) fn acquire_install_lock(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
+pub(crate) fn acquire_install_lock(ctx: &mut SteelCtx) -> SteelResult {
     let lock_path = ctx.dirs.servers_dir()?.join(INSTALL_LOCK_FILE_NAME);
     let Err(create_err) = create_lock_file(&lock_path) else {
         return Ok(SteelVal::Void);
@@ -208,7 +204,7 @@ pub(crate) fn run_inline_output(
     cmd: String,
     args_val: SteelVal,
     cwd_val: SteelVal,
-) -> Result<SteelVal, SteelErr> {
+) -> SteelResult {
     let args = list_to_strings(args_val, "%run-inline-output! args")?;
     let cwd = optional_path_arg(cwd_val, "%run-inline-output! cwd")?;
 
@@ -231,7 +227,7 @@ pub(crate) fn run_inline_output(
 /// `(release-install-lock!)` — remove `<data>/servers/.install-lock`.
 /// Idempotent: a missing lock (already released, or never acquired) is not
 /// an error.
-pub(crate) fn release_install_lock(ctx: &mut SteelCtx) -> Result<SteelVal, SteelErr> {
+pub(crate) fn release_install_lock(ctx: &mut SteelCtx) -> SteelResult {
     let lock_path = ctx.dirs.servers_dir()?.join(INSTALL_LOCK_FILE_NAME);
     match std::fs::remove_file(&lock_path) {
         Ok(()) => Ok(SteelVal::Void),

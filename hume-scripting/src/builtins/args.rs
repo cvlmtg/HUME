@@ -255,6 +255,28 @@ impl FromSteelVal for BidArg {
     }
 }
 
+impl BidArg {
+    /// Checks the wrapped id against `ctx.host.buffers().buffer_exists`,
+    /// returning it unwrapped on success — the shared "does this bid still
+    /// name an open buffer" existence check every mutating buffer builtin
+    /// opens with. `BidArg` itself only validates *type* (that the Steel
+    /// value was a buffer-id at all); this is the *liveness* half.
+    pub(crate) fn require_live(
+        self,
+        ctx: &mut crate::SteelCtx,
+        builtin_name: &str,
+    ) -> Result<BufferId, SteelErr> {
+        if ctx.host.buffers().buffer_exists(self.0) {
+            Ok(self.0)
+        } else {
+            Err(generic_err(format!(
+                "{builtin_name}: invalid buffer id {:?}",
+                self.0
+            )))
+        }
+    }
+}
+
 /// A buffer-id argument that may be `#f` (absent — caller wants the
 /// implicit default, e.g. `get-option`'s focused-buffer fallback).
 pub(crate) fn optional_bid_arg(

@@ -15,12 +15,11 @@ use crate::{
     lazy::PluginState,
 };
 
+use super::SteelResult;
 use super::args::list_to_strings;
 use super::errors::generic_err;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 /// Log an `Error` for a `core:` plugin that is absent from the runtime dir.
 ///

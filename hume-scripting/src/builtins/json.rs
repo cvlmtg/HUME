@@ -7,11 +7,11 @@
 //! generated as a single canonical JSON string rather than a nested
 //! tagged-alist/vector-array Scheme literal.
 
-use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::json::json_to_steel;
 
+use super::SteelResult;
 use super::args::string_arg;
 use super::errors::generic_err;
 
@@ -21,7 +21,7 @@ use super::errors::generic_err;
 /// alike. Raises (does not silently return `#f`) on malformed JSON: a
 /// corrupt seeded data file is a build-time bug, not a runtime condition to
 /// tolerate.
-pub(crate) fn json_parse(s: SteelVal) -> Result<SteelVal, SteelErr> {
+pub(crate) fn json_parse(s: SteelVal) -> SteelResult {
     let s = string_arg(s, "json-parse")?;
     let value: serde_json::Value =
         serde_json::from_str(&s).map_err(|e| generic_err(format!("json-parse: {e}")))?;

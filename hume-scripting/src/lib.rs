@@ -119,7 +119,7 @@ pub(crate) struct ScriptingRegistries {
     /// In-Steel dispatch table: maps activated plugin command name to its Steel
     /// closure for synchronous inline application by `%dispatch-command`.
     ///
-    /// Populated by `define_command_inner` inline during init or plugin activation.
+    /// Populated by `define_command` inline during init or plugin activation.
     /// Consulted by `%lookup-plugin-proc` in both init and command mode.
     pub(crate) command_table: rustc_hash::FxHashMap<String, SteelVal>,
     /// Per-plugin config value passed via `#:config` on `(load-plugin …)` /
@@ -564,18 +564,6 @@ impl ScriptingHost {
         &self.registries.command_table
     }
 
-    #[cfg(any(test, feature = "test-util"))]
-    pub fn eval_source_returning_defs(
-        &mut self,
-        source: String,
-        builtin_names: rustc_hash::FxHashSet<String>,
-        host: &mut dyn EditorHost,
-    ) -> Result<(), String> {
-        self.eval_source_raw(source, builtin_names, 10_000, host)
-            .map(|_| ())
-            .map_err(|e| e.message)
-    }
-
     // ── Eval machinery ────────────────────────────────────────────────────────
 
     /// Evaluate `init.scm` at `path`, giving builtins access to editor state
@@ -737,38 +725,18 @@ impl ScriptingHost {
         focused_buffer_id: hume_engine::pipeline::BufferId,
         host: &'a mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
-        // Collect handler procs before borrowing self mutably for the SteelCtx.
-        let handler_procs: Vec<SteelVal> = self
+        // Every handler gets the same args — pair them up and hand the batch
+        // to run_steel_calls, which already is the general "run these
+        // (proc, args) pairs in one session, first error aborts the rest"
+        // machinery this needs.
+        let calls: Vec<(SteelVal, Vec<SteelVal>)> = self
             .registries
             .hooks
             .handlers_for(hook_id)
             .iter()
-            .map(|e| e.proc.clone())
+            .map(|e| (e.proc.clone(), args.to_vec()))
             .collect();
-        if handler_procs.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let budget_ms = host.settings().steel_command_budget_ms();
-
-        let effects_start = self.effects.len();
-        let result = {
-            let (steel, watchdog, bundle) = self.steel_and_bundle();
-            let mut steel_ctx =
-                SteelCtx::new_command(host, bundle, focused_pane_id, focused_buffer_id, None);
-
-            // Call each handler directly with the arg values — no source
-            // program, no per-fire globals. The first handler error aborts
-            // the remaining handlers.
-            run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
-                for proc in handler_procs {
-                    steel.call_function_with_args(proc, args.to_vec())?;
-                }
-                Ok(())
-            })
-        };
-
-        self.take_eval_effects(effects_start, result)
+        self.run_steel_calls(calls, focused_pane_id, focused_buffer_id, host)
     }
 
     /// Calls each `(proc, args)` pair directly, in order, inside one
@@ -817,39 +785,46 @@ impl ScriptingHost {
 
 #[cfg(any(test, feature = "test-util"))]
 impl ScriptingHost {
+    /// Shared tail for [`eval_source`](Self::eval_source) and
+    /// [`eval_source_watchdog`](Self::eval_source_watchdog): delegates to
+    /// `eval_source_raw` with empty `builtin_names`, at the given budget.
+    fn eval_source_with_budget(
+        &mut self,
+        source: &str,
+        budget_ms: u64,
+        host: &mut dyn EditorHost,
+    ) -> Result<Vec<Effect>, String> {
+        self.eval_source_raw(source.to_owned(), Default::default(), budget_ms, host)
+            .map_err(|e| e.message)
+    }
+
     /// Evaluate a Steel source string directly, without a file.
     ///
-    /// Convenience wrapper for testing.  Delegates to `eval_source_raw` with
-    /// empty `builtin_names` and the default 10-second init budget (harmless
-    /// for normal tests that complete quickly). Returns the effects the eval
-    /// queued, in emission order — same contract as `eval_init`, so a test can
-    /// assert on what a builtin marshalled across the boundary.
+    /// Convenience wrapper for testing, at the default 10-second init budget
+    /// (harmless for normal tests that complete quickly). Returns the
+    /// effects the eval queued, in emission order — same contract as
+    /// `eval_init`, so a test can assert on what a builtin marshalled across
+    /// the boundary.
     pub fn eval_source(
         &mut self,
         source: &str,
         host: &mut dyn EditorHost,
     ) -> Result<Vec<Effect>, String> {
-        self.eval_source_raw(source.to_owned(), Default::default(), 10_000, host)
-            .map_err(|e| e.message)
+        self.eval_source_with_budget(source, 10_000, host)
     }
 
-    /// Like [`eval_source`] but arms a real [`EvalWatchdog`] with the
-    /// given budget.  Used by watchdog-specific tests that need to verify the
-    /// watchdog actually fires rather than pre-setting the interrupt flag.
+    /// Like [`eval_source`](Self::eval_source) but arms a real
+    /// [`EvalWatchdog`] with the given budget.  Used by watchdog-specific
+    /// tests that need to verify the watchdog actually fires rather than
+    /// pre-setting the interrupt flag.
     pub fn eval_source_watchdog(
         &mut self,
         source: &str,
         budget: std::time::Duration,
         host: &mut dyn EditorHost,
     ) -> Result<(), String> {
-        self.eval_source_raw(
-            source.to_owned(),
-            Default::default(),
-            budget.as_millis() as u64,
-            host,
-        )
-        .map(|_| ())
-        .map_err(|e| e.message)
+        self.eval_source_with_budget(source, budget.as_millis() as u64, host)
+            .map(|_| ())
     }
 }
 

@@ -2,14 +2,12 @@
 //! Not LSP-specific (any plugin can debounce/delay work), hence a sibling
 //! module rather than living in `lsp.rs`.
 
-use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 
+use super::SteelResult;
 use super::args::usize_arg;
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(after ms thunk)` → timer id (int). `thunk` is called with no args at
 /// the drain boundary once `ms` milliseconds have passed (never inline —

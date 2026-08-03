@@ -2,16 +2,14 @@
 //! and the diagnostics pull API. Not LSP-specific — any Steel plugin can
 //! populate these — but LSP is the first and heaviest client.
 
-use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 use crate::json::{json_to_steel, steel_to_json};
 
+use super::SteelResult;
 use super::args::{BidArg, cons_pair, int_arg, pair_fields, string_arg, tuple_list, usize_arg};
 use super::errors::{generic_err, require_cap};
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(set-inlay-hints! bid hints)` — `hints`: list of `(position text
 /// 'before|'after)`, `position` a wire `{"line" "character"}` hashmap.

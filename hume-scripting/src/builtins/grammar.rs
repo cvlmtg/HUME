@@ -15,12 +15,12 @@
 
 use std::path::PathBuf;
 
-use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 use crate::log::LogLevel;
 
+use super::SteelResult;
 use super::errors::generic_err;
 
 /// Suffix appended to a grammar-compile failure message when no C compiler
@@ -42,11 +42,7 @@ fn windows_compiler_hint() -> String {
 /// - **Init mode**: logs a Warning on failure and returns `#<void>` — a
 ///   missing `tree-sitter` binary should not abort the editor on startup.
 /// - **Command mode**: raises a Steel error on failure so the user sees it.
-pub(crate) fn compile_grammar(
-    ctx: &mut SteelCtx,
-    src: String,
-    out: String,
-) -> Result<SteelVal, SteelErr> {
+pub(crate) fn compile_grammar(ctx: &mut SteelCtx, src: String, out: String) -> SteelResult {
     let src_path = PathBuf::from(&src);
     let out_path = PathBuf::from(&out);
 

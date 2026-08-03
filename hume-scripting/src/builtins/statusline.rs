@@ -25,15 +25,13 @@
 //! their first character, and the filename is truncated with `…` as a last
 //! resort.  It renders as empty for scratch and synthetic buffers.
 
-use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 
+use super::SteelResult;
 use super::args::list_to_strings;
 use super::errors::generic_err;
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(configure-statusline! left center right)` — configure the three sections
 /// of the statusline.

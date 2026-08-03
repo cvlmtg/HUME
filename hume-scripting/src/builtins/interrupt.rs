@@ -20,12 +20,10 @@
 
 use std::sync::atomic::Ordering;
 
-use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
+use super::SteelResult;
 use crate::SteelCtx;
-
-type SteelResult = Result<SteelVal, SteelErr>;
 
 /// `(hume/yield!)` — check the interrupt flag and abort if it is set.
 ///
