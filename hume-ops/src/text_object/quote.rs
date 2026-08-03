@@ -13,10 +13,6 @@ fn inner_quote(buf: &Text, pos: usize, quote: char) -> Option<(usize, usize)> {
     inner_of_pair(open, close)
 }
 
-fn around_quote(buf: &Text, pos: usize, quote: char) -> Option<(usize, usize)> {
-    find_quote_pair(buf, pos, quote)
-}
-
 macro_rules! quote_cmds {
     ($inner_name:ident, $around_name:ident, $quote:literal) => {
         pub fn $inner_name(
@@ -33,7 +29,7 @@ macro_rules! quote_cmds {
             _count: usize,
             mode: MotionMode,
         ) -> SelectionSet {
-            apply_text_object_by_mode(buf, sels, mode, |b, pos| around_quote(b, pos, $quote))
+            apply_text_object_by_mode(buf, sels, mode, |b, pos| find_quote_pair(b, pos, $quote))
         }
     };
 }

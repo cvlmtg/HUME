@@ -203,21 +203,6 @@ pub fn change_span(buf: &Text, sel: &Selection) -> (usize, usize) {
     (start, stop)
 }
 
-/// Delete the content of each selection, excluding a trailing `\n` — used by `c`.
-fn delete_sel_content(
-    b: &mut hume_editing::changeset::ChangeSetBuilder,
-    buf: &Text,
-    sel: &Selection,
-    new_sels: &mut Vec<Selection>,
-) {
-    let (start, stop) = change_span(buf, sel);
-    b.retain(start - b.old_pos());
-    if stop > start {
-        b.delete(stop - start);
-    }
-    new_sels.push(Selection::collapsed(b.new_pos()));
-}
-
 /// Delete the content of each selection, excluding a trailing `\n` (normal-mode `c`).
 ///
 /// Differs from [`delete_selection`] in one way: if a selection ends on a `\n`
@@ -233,6 +218,11 @@ fn delete_sel_content(
 /// [`change_span`] to extract the same content range for the kill ring.
 pub fn delete_selection_content(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
-        delete_sel_content(b, buf, sel, new_sels);
+        let (start, stop) = change_span(buf, sel);
+        b.retain(start - b.old_pos());
+        if stop > start {
+            b.delete(stop - start);
+        }
+        new_sels.push(Selection::collapsed(b.new_pos()));
     })
 }

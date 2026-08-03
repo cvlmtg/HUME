@@ -22,10 +22,6 @@ fn inner_bracket(buf: &Text, pos: usize, open: char, close: char) -> Option<(usi
     inner_of_pair(open_pos, close_pos)
 }
 
-fn around_bracket(buf: &Text, pos: usize, open: char, close: char) -> Option<(usize, usize)> {
-    find_bracket_pair(buf, pos, open, close)
-}
-
 macro_rules! bracket_cmds {
     ($inner_name:ident, $around_name:ident, $open:literal, $close:literal) => {
         pub fn $inner_name(
@@ -45,7 +41,7 @@ macro_rules! bracket_cmds {
             mode: MotionMode,
         ) -> SelectionSet {
             apply_text_object_by_mode(buf, sels, mode, |b, pos| {
-                around_bracket(b, pos, $open, $close)
+                find_bracket_pair(b, pos, $open, $close)
             })
         }
     };
