@@ -59,7 +59,7 @@ the current line.
 | `Ctrl+x` | Same as `x` but always extends |
 | `Ctrl+X` | Same as `X` but always extends (kitty only) |
 | `S` | Split multi-line selections on newlines |
-| `C` | Copy each selection to the line below |
+| `C` | Copy each selection to the line below (a count prefix copies onto that many lines, e.g. `3C`) |
 | `_` | Trim leading/trailing whitespace from each selection |
 | `,` | Keep only the primary selection |
 | `Ctrl+,` | Remove primary, promote next (kitty only) |

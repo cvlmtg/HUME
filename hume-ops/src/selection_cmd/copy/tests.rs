@@ -123,11 +123,54 @@ fn copy_next_line_count_3_range_selection() {
 
 #[test]
 fn copy_next_line_count_3_multiple_cursors() {
-    // Two cursors on line 0; count=3 gives each 3 copies (6 new selections
-    // total), all landing on the correct columns of lines 1-3.
+    // Two cursors on line 0 at cols 1 and 2; count=3 gives each 3 copies (6
+    // new selections total), landing on the correct columns of lines 1-3.
+    // "f-[o]>-[o]>\nbar\nbaz\nqux\n": f(0) o(1) o(2) \n(3) bar(4-6) \n(7)
+    // baz(8-10) \n(11) qux(12-14) \n(15).
+    // Col 1 → offsets 5, 9, 13 on lines 1-3. Col 2 → offsets 6, 10, 14.
     let (buf, sels) = parse_state("f-[o]>-[o]>\nbar\nbaz\nqux\n");
     let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 3, MotionMode::Move);
     assert_eq!(sels_out.len(), 8); // 2 originals + 2*3 copies
+    let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head()).collect();
+    assert!(heads.contains(&1), "original col-1 cursor");
+    assert!(heads.contains(&2), "original col-2 cursor");
+    assert!(heads.contains(&5), "col-1 copy on line 1");
+    assert!(heads.contains(&6), "col-2 copy on line 1");
+    assert!(heads.contains(&9), "col-1 copy on line 2");
+    assert!(heads.contains(&10), "col-2 copy on line 2");
+    assert!(heads.contains(&13), "col-1 copy on line 3");
+    assert!(heads.contains(&14), "col-2 copy on line 3");
+}
+
+#[test]
+fn copy_next_line_count_3_does_not_equal_three_presses() {
+    // Doc comment on `cmd_copy_selection_on_next_line`: each copy re-derives
+    // its column from the *original* selection, so a short intermediate line
+    // only clamps that one copy instead of collapsing every copy after it.
+    //
+    // "hell-[o]>\nhi\nworld\n": cursor at col 4 of "hello". Only 2 real lines
+    // exist below it ("hi", "world"), so count=3 clamps to 2 copies, same as
+    // `copy_next_line_count_exceeds_buffer_clamps`.
+    //
+    // A press-by-press repeat would clamp col 4 down to col 1 on "hi" (only 2
+    // chars), then carry that clamped col 1 forward onto "world" — landing on
+    // 'o' (offset 10). Re-deriving from the original instead lands the
+    // "world" copy on col 4 directly — 'd' (offset 13).
+    let (buf, sels) = parse_state("hell-[o]>\nhi\nworld\n");
+    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 3, MotionMode::Move);
+    assert_eq!(sels_out.len(), 3); // original + one copy per real line below
+    let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head()).collect();
+    assert!(heads.contains(&4), "original cursor at col 4 of line 0");
+    assert!(
+        heads.contains(&7),
+        "line 1 copy clamped to 'i', last char of \"hi\""
+    );
+    assert!(
+        heads.contains(&13),
+        "line 2 copy re-derives col 4 from the original, landing on 'd' of \"world\" \
+         (offset 13) rather than the col-1-carried-forward offset 10 a press-by-press \
+         repeat would produce"
+    );
 }
 
 #[test]

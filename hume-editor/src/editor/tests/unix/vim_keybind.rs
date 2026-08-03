@@ -172,8 +172,7 @@ fn shift_c_with_selection_copies_to_next_line() {
 
 /// A count prefix always wins over the collapsed-cursor vim gesture, even on
 /// a bare cursor: `1C` duplicates the selection onto the next line instead of
-/// changing to end of line. This is the behavior this plugin change adds —
-/// before it, any count on `C` was silently swallowed by the arity-0 lambda.
+/// changing to end of line.
 #[test]
 fn shift_c_with_count_1_copies_instead_of_changing() {
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[h]>ello\nworld\n");
@@ -200,6 +199,7 @@ fn shift_c_with_count_1_copies_instead_of_changing() {
 /// or not".
 #[test]
 fn shift_c_with_count_3_copies_onto_three_lines() {
+    // "hello\nworld\nfoo\nbar\n": col 0 of each line is offset 0, 6, 12, 16.
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[h]>ello\nworld\nfoo\nbar\n");
     ed.handle_key(key('3'));
     ed.handle_key(key('C'));
@@ -218,6 +218,45 @@ fn shift_c_with_count_3_copies_onto_three_lines() {
         4,
         "count=3 must add one copy per line below, not just one"
     );
+    assert!(heads.contains(&0), "original cursor at col 0 of line 0");
+    assert!(heads.contains(&6), "copy at col 0 of line 1");
+    assert!(heads.contains(&12), "copy at col 0 of line 2");
+    assert!(heads.contains(&16), "copy at col 0 of line 3");
+}
+
+/// `:` invocation hands the typed count over as a string (`ArgSource::Minibuf`
+/// in `hume-editor/src/editor/dispatch.rs`), not the integer that keymap
+/// dispatch supplies — the command must normalize it instead of raising a
+/// type error comparing a string to `0`.
+#[test]
+fn vim_change_to_eol_or_copy_line_typed_with_count_copies() {
+    // "hello\nworld\nfoo\nbar\n": col 0 of each line is offset 0, 6, 12, 16.
+    let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[h]>ello\nworld\nfoo\nbar\n");
+    ed.handle_key(key(':'));
+    for ch in "vim-change-to-eol-or-copy-line 3".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "hello\nworld\nfoo\nbar\n",
+        "buffer must be unchanged"
+    );
+    let heads: Vec<usize> = ed
+        .current_selections()
+        .iter_sorted()
+        .map(|s| s.head())
+        .collect();
+    assert_eq!(
+        heads.len(),
+        4,
+        "typed count=3 must add one copy per line below, same as keymap dispatch"
+    );
+    assert!(heads.contains(&0), "original cursor at col 0 of line 0");
+    assert!(heads.contains(&6), "copy at col 0 of line 1");
+    assert!(heads.contains(&12), "copy at col 0 of line 2");
+    assert!(heads.contains(&16), "copy at col 0 of line 3");
 }
 
 /// A count prefix combined with an already-wide selection still forwards the
@@ -225,6 +264,9 @@ fn shift_c_with_count_3_copies_onto_three_lines() {
 /// than one silently overriding the other.
 #[test]
 fn shift_c_with_count_and_selection_copies_with_count() {
+    // "hello\nworld\nfoo\n": head col 4 ('o') of "hello" copies to "world"
+    // col 4 ('d', offset 10), then to "foo" — col 4 overshoots "foo"'s 3
+    // chars, clamping to its last char ('o', offset 14).
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[hello]>\nworld\nfoo\n");
     ed.handle_key(key('2'));
     ed.handle_key(key('C'));
@@ -242,6 +284,12 @@ fn shift_c_with_count_and_selection_copies_with_count() {
         heads.len(),
         3,
         "count=2 must add two copies of the wide selection, not one"
+    );
+    assert!(heads.contains(&4), "original head at 'o' of \"hello\"");
+    assert!(heads.contains(&10), "copy at 'd' of \"world\"");
+    assert!(
+        heads.contains(&14),
+        "copy clamped to 'o', last char of \"foo\""
     );
 }
 

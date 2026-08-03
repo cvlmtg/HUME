@@ -102,7 +102,7 @@ HUME supports multiple simultaneous selections. Each selection behaves independe
 |--------|-----|--------|
 | Select within selection | `s` | Enter a regex pattern; each selection is filtered to its sub-matches |
 | Split on newlines | `S` | Split multi-line selections into one selection per line |
-| Copy to next line | `C` | Duplicate each selection to the same character column on the line below, adding a multi-cursor. No text is copied — the new selections cover the same column range on the next line. Repeating `C` stacks cursors line by line for column-style editing. HUME has no rectangular/visual-block selection primitive. |
+| Copy to next line | `C` | Duplicate each selection to the same character column on the line below, adding a multi-cursor. No text is copied — the new selections cover the same column range on the next line. A count prefix (e.g. `3C`) copies onto that many lines below in one step; repeating `C` also stacks cursors line by line for column-style editing. HUME has no rectangular/visual-block selection primitive. |
 | Trim whitespace | `_` | Remove leading/trailing whitespace from all selections |
 | Keep primary | `,` | Remove all selections except the primary |
 | Remove primary | `Ctrl+,` | Remove the primary selection, promote next (kitty only) |

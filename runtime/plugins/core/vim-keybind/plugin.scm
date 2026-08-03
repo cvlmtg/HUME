@@ -10,11 +10,24 @@
   ;; count 0 is the dispatcher's spelling of "no count typed" — a count prefix,
   ;; even 1, is an explicit ask for the multicursor copy, so it wins over the
   ;; collapsed-cursor vim gesture and is forwarded verbatim.
+  ;;
+  ;; `:` invocation hands an arity-1 command's typed argument over as a string
+  ;; (ArgSource::Minibuf in hume-editor/src/editor/dispatch.rs), while ordinary
+  ;; key dispatch always supplies an integer — normalize the string case here
+  ;; so `(= count 0)` below doesn't raise a type error. `:` with no argument at
+  ;; all injects an integer 1, so the vim gesture is unreachable from the
+  ;; command line regardless — consistent with "any count means copy".
   (lambda (count)
-    (if (and (= count 0)
-             (call! "stdlib/all-single-char?" (current-selections)))
-        (call! "vim-change-to-eol")
-        (call! "copy-selection-on-next-line" count))))
+    (let ((n (if (string? count)
+                 (or (string->number count)
+                     (error (string-append
+                             "vim-change-to-eol-or-copy-line: count must be a number, got \""
+                             count "\"")))
+                 count)))
+      (if (and (= n 0)
+               (call! "stdlib/all-single-char?" (current-selections)))
+          (call! "vim-change-to-eol")
+          (call! "copy-selection-on-next-line" n)))))
 
 (define-command! "vim-delete-to-eol"
   "Delete from the cursor to the end of the line."

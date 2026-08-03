@@ -50,30 +50,15 @@ pub use sort::{SortOpts, SortRefusal, sort_rows};
 // to produce the inverse transaction. The caller (Document) holds the pre-edit
 // buffer and handles the invert timing constraint.
 
-/// Apply a `(&Text, SelectionSet) -> SelectionSet` command `count` times.
+/// Apply an edit command `count` times, composing all changesets into one.
 ///
-/// This is the count mechanism for selection commands and other operations that
-/// do not produce a ChangeSet. Use [`repeat_edit`] when the composed ChangeSet
-/// is needed for undo/redo bookkeeping via the editor's buffer type.
+/// The command must return `(Text, SelectionSet, ChangeSet)`. The N
+/// changesets are folded with [`ChangeSet::compose`] so the whole repetition
+/// becomes a single undo step when passed to the editor buffer's own
+/// `apply_edit`.
 ///
 /// For motions, count is handled inside `apply_motion` per-selection instead
 /// (prevents premature merging of multi-cursor selections between steps).
-#[cfg(test)]
-pub fn repeat(
-    count: usize,
-    buf: &Text,
-    sels: SelectionSet,
-    cmd: impl Fn(&Text, SelectionSet) -> SelectionSet,
-) -> SelectionSet {
-    (0..count).fold(sels, |s, _| cmd(buf, s))
-}
-
-/// Apply an edit command `count` times, composing all changesets into one.
-///
-/// Like [`repeat`], but the command must return `(Text, SelectionSet,
-/// ChangeSet)`. The N changesets are folded with [`ChangeSet::compose`] so the
-/// whole repetition becomes a single undo step when passed to the editor
-/// buffer's own `apply_edit`.
 ///
 /// If `count == 0`, returns the original state with an identity ChangeSet.
 ///
