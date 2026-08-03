@@ -31,10 +31,10 @@ fn find_char(
     count: usize,
     mode: MotionMode,
     kind: FindKind,
-    find_fn: fn(&Text, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
+    find_fn: fn(&Text, SelectionSet, usize, MotionMode, char, FindKind) -> SelectionSet,
 ) {
     if let Some(ch) = state.pending_char.take() {
-        apply_focused_motion(state, view, |b, s| find_fn(b, s, mode, count, ch, kind));
+        apply_focused_motion(state, view, |b, s| find_fn(b, s, count, mode, ch, kind));
         state.last_find = Some(FindChar { ch, kind });
     }
 }
@@ -111,10 +111,10 @@ fn repeat_find(
     view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-    find_fn: fn(&Text, SelectionSet, MotionMode, usize, char, FindKind) -> SelectionSet,
+    find_fn: fn(&Text, SelectionSet, usize, MotionMode, char, FindKind) -> SelectionSet,
 ) {
     if let Some(FindChar { ch, kind }) = state.last_find {
-        apply_focused_motion(state, view, |b, s| find_fn(b, s, mode, count, ch, kind));
+        apply_focused_motion(state, view, |b, s| find_fn(b, s, count, mode, ch, kind));
     }
 }
 

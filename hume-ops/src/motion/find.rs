@@ -62,8 +62,8 @@ pub(super) fn find_char_on_line_backward(buf: &Text, head: usize, ch: char) -> O
 pub fn find_char_forward(
     buf: &Text,
     sels: SelectionSet,
-    mode: MotionMode,
     count: usize,
+    mode: MotionMode,
     ch: char,
     kind: FindKind,
 ) -> SelectionSet {
@@ -91,8 +91,8 @@ pub fn find_char_forward(
 pub fn find_char_backward(
     buf: &Text,
     sels: SelectionSet,
-    mode: MotionMode,
     count: usize,
+    mode: MotionMode,
     ch: char,
     kind: FindKind,
 ) -> SelectionSet {

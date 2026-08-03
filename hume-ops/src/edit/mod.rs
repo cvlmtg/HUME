@@ -1,6 +1,3 @@
-#[cfg(test)]
-use hume_editing::tab_style::TabStyle;
-
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
