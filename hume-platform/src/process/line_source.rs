@@ -1,6 +1,6 @@
 //! Streaming a child process's stdout into complete lines.
 //!
-//! [`LineSplitter`] is the pure, allocation-light half of the picker's
+//! `LineSplitter` is the pure, allocation-light half of the picker's
 //! external-command source (`picker-source-spawn!`, `hume-editor`'s
 //! `picker_source.rs`): a reader thread
 //! feeds it arbitrary-sized chunks off a pipe, and it yields only complete
@@ -34,14 +34,14 @@ use crate::process::tracked::TrackedChild;
 /// (Windows CRLF output); NUL-delimited streams (`#:nul #t`, e.g.
 /// `git ls-files -z`) do not, since NUL-separated records have no CRLF
 /// convention to strip.
-pub struct LineSplitter {
+struct LineSplitter {
     delim: u8,
     strip_cr: bool,
     carry: Vec<u8>,
 }
 
 impl LineSplitter {
-    pub fn new(delim: u8) -> Self {
+    fn new(delim: u8) -> Self {
         Self {
             delim,
             strip_cr: delim == b'\n',
@@ -52,7 +52,7 @@ impl LineSplitter {
     /// Split `chunk` into complete lines. A line that doesn't end in `delim`
     /// by the end of `chunk` is carried and prefixed onto the next call's
     /// (or [`finish`](Self::finish)'s) output — it never appears here.
-    pub fn push_chunk(&mut self, chunk: &[u8]) -> Vec<String> {
+    fn push_chunk(&mut self, chunk: &[u8]) -> Vec<String> {
         let mut lines = Vec::new();
         let mut start = 0;
         for (i, &byte) in chunk.iter().enumerate() {
@@ -69,7 +69,7 @@ impl LineSplitter {
 
     /// The trailing unterminated line at end-of-stream, if any bytes are
     /// still carried; `None` if the stream ended cleanly on `delim`.
-    pub fn finish(&mut self) -> Option<String> {
+    fn finish(&mut self) -> Option<String> {
         if self.carry.is_empty() {
             None
         } else {
@@ -113,10 +113,6 @@ pub struct SpawnedLineSource {
     child: TrackedChild,
     rx: Option<mpsc::Receiver<Vec<String>>>,
     stderr_rx: Option<mpsc::Receiver<String>>,
-    /// Detached (not joined) on drop — unlike the LSP writer thread, nothing
-    /// here needs to flush before exit, so paying a join's latency on the
-    /// user's Esc keypress would buy nothing.
-    threads: Vec<thread::JoinHandle<()>>,
 }
 
 /// The outcome of a finished [`SpawnedLineSource`]: exit status (`None` only
@@ -148,14 +144,14 @@ pub fn spawn_line_source(
     // process to leak. A thread that already started is not joined here:
     // killing the child closes stdout/stderr, which ends its blocking read.
     let reader_wake = Arc::clone(&wake);
-    let reader = thread::Builder::new()
+    thread::Builder::new()
         .name("hume-line-source-reader".into())
         .spawn(move || {
             let _wake_on_drop = WakeOnDrop(Arc::clone(&reader_wake));
             reader_loop(stdout, delimiter, &tx, &reader_wake);
         })?;
 
-    let stderr_thread = thread::Builder::new()
+    thread::Builder::new()
         .name("hume-line-source-stderr".into())
         .spawn(move || {
             let captured = read_capped(stderr, STDERR_CAPTURE_CAP);
@@ -167,7 +163,6 @@ pub fn spawn_line_source(
         child: TrackedChild::new(child.into_inner()),
         rx: Some(rx),
         stderr_rx: Some(rx_err),
-        threads: vec![reader, stderr_thread],
     })
 }
 
@@ -242,7 +237,6 @@ impl Drop for SpawnedLineSource {
         // rather than joined below.
         self.rx = None;
         self.stderr_rx = None;
-        self.threads.clear();
     }
 }
 

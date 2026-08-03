@@ -331,15 +331,6 @@ pub fn strip_unc_prefix_cow(p: &Path) -> Cow<'_, Path> {
 
 // ── Path safety helpers ───────────────────────────────────────────────────────
 
-/// Returns `true` if `path` contains any `..` (`ParentDir`) components.
-///
-/// Used for write-path operations where the target may not yet exist — we
-/// cannot call `canonicalize` on a non-existent path, so `..` components are
-/// rejected explicitly before a `starts_with` prefix check.
-pub fn has_dotdot(path: &Path) -> bool {
-    path.components().any(|c| c == Component::ParentDir)
-}
-
 /// Make `typed` absolute by joining it against `cwd` when relative, then
 /// normalize `.` and `..` lexically without touching the filesystem.
 ///
@@ -359,8 +350,8 @@ pub fn absolute_unresolved(typed: &Path, cwd: &Path) -> PathBuf {
 /// and `..` components.
 ///
 /// **Not a security substitute for `canonicalize`** (symlinks are not
-/// resolved).  Safe to use only when combined with an explicit `..`-rejection
-/// check via [`has_dotdot`].
+/// resolved).  Safe to use only when combined with an explicit rejection of
+/// `..` (`Component::ParentDir`) components in the untrusted input.
 pub fn normalize_lexical(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {

@@ -105,29 +105,6 @@ fn is_path_sep_regular_chars() {
     assert!(!is_path_sep(' '));
 }
 
-// ── has_dotdot ────────────────────────────────────────────────────────────
-
-#[test]
-fn has_dotdot_detects_bare_parent() {
-    assert!(has_dotdot(Path::new("..")));
-}
-
-#[test]
-fn has_dotdot_detects_mid_path_parent() {
-    assert!(has_dotdot(Path::new("foo/../bar")));
-}
-
-#[test]
-fn has_dotdot_does_not_flag_cur_dir() {
-    assert!(!has_dotdot(Path::new(".")));
-    assert!(!has_dotdot(Path::new("foo/./bar")));
-}
-
-#[test]
-fn has_dotdot_clean_path_is_false() {
-    assert!(!has_dotdot(Path::new("foo/bar/baz")));
-}
-
 // ── normalize_lexical ─────────────────────────────────────────────────────
 
 #[test]
