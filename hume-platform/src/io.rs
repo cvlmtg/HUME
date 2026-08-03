@@ -29,16 +29,24 @@ pub struct FileSignature {
     size: u64,
 }
 
+impl FileSignature {
+    /// Extracts the mtime+size fingerprint from an already-fetched
+    /// `fs::Metadata` — shared by [`read_signature`] and [`read_file_meta`]
+    /// so the fingerprint rule stays defined in one place.
+    fn from_metadata(metadata: &fs::Metadata) -> Self {
+        FileSignature {
+            mtime: metadata.modified().ok(),
+            size: metadata.len(),
+        }
+    }
+}
+
 /// Read a file's current [`FileSignature`] without touching its content.
 ///
 /// No `canonicalize` — callers already hold the resolved path (from an
 /// earlier `read_file_meta`/`read_file`).
 pub fn read_signature(path: &Path) -> io::Result<FileSignature> {
-    let metadata = fs::metadata(path)?;
-    Ok(FileSignature {
-        mtime: metadata.modified().ok(),
-        size: metadata.len(),
-    })
+    Ok(FileSignature::from_metadata(&fs::metadata(path)?))
 }
 
 // ── FileMeta ──────────────────────────────────────────────────────────────────
@@ -102,10 +110,7 @@ impl FileMeta {
 pub fn read_file_meta(path: &Path) -> io::Result<FileMeta> {
     let resolved = fs::canonicalize(path)?;
     let metadata = fs::metadata(&resolved)?;
-    let signature = FileSignature {
-        mtime: metadata.modified().ok(),
-        size: metadata.len(),
-    };
+    let signature = FileSignature::from_metadata(&metadata);
 
     #[cfg(unix)]
     let meta = {

@@ -277,6 +277,23 @@ pub fn split_path_at_sep(s: &str) -> (&str, &str) {
 
 // ── Windows UNC prefix ───────────────────────────────────────────────────────
 
+/// If `p` carries the `\\?\` verbatim **drive** prefix, returns the plain
+/// drive-letter form it strips down to (e.g. `C:\Users\…\hume`).  Verbatim
+/// UNC paths (`\\?\UNC\…`) are left alone — `None` — since they are rare
+/// and the `\\` prefix they'd collapse to is already a valid UNC path.
+/// Shared by [`strip_unc_prefix`] and [`strip_unc_prefix_cow`], which only
+/// differ in whether the caller needs an owned result.
+#[cfg(windows)]
+fn strip_verbatim(p: &Path) -> Option<&str> {
+    const VERBATIM: &str = r"\\?\";
+    match p.to_str() {
+        Some(s) if s.starts_with(VERBATIM) && !s[VERBATIM.len()..].starts_with("UNC\\") => {
+            Some(&s[VERBATIM.len()..])
+        }
+        _ => None,
+    }
+}
+
 /// Strip the `\\?\` extended-length prefix from a Windows path so that the
 /// result is a plain drive-letter path (e.g. `C:\Users\…\hume`).
 ///
@@ -293,12 +310,9 @@ pub fn split_path_at_sep(s: &str) -> (&str, &str) {
 /// On non-Windows targets this is a no-op.
 #[cfg(windows)]
 pub fn strip_unc_prefix(p: PathBuf) -> PathBuf {
-    const VERBATIM: &str = r"\\?\";
-    match p.to_str() {
-        Some(s) if s.starts_with(VERBATIM) && !s[VERBATIM.len()..].starts_with("UNC\\") => {
-            PathBuf::from(&s[VERBATIM.len()..])
-        }
-        _ => p,
+    match strip_verbatim(&p) {
+        Some(s) => PathBuf::from(s),
+        None => p,
     }
 }
 
@@ -314,12 +328,9 @@ pub fn strip_unc_prefix(p: PathBuf) -> PathBuf {
 /// present to strip, which off Windows is every call.
 #[cfg(windows)]
 pub fn strip_unc_prefix_cow(p: &Path) -> Cow<'_, Path> {
-    const VERBATIM: &str = r"\\?\";
-    match p.to_str() {
-        Some(s) if s.starts_with(VERBATIM) && !s[VERBATIM.len()..].starts_with("UNC\\") => {
-            Cow::Owned(PathBuf::from(&s[VERBATIM.len()..]))
-        }
-        _ => Cow::Borrowed(p),
+    match strip_verbatim(p) {
+        Some(s) => Cow::Owned(PathBuf::from(s)),
+        None => Cow::Borrowed(p),
     }
 }
 

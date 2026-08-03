@@ -41,21 +41,16 @@ use crate::process::tracked::TrackedChild;
 /// fine), and exit status (`None` on a stdout read failure/overflow, or if
 /// the capture thread's own exit-status poll errored, or the thread
 /// panicked before sending — the last three vanishingly rare).
+///
+/// Also what the capture thread sends the main thread over the channel —
+/// `status` is `None` there only if the exit-status poll itself errored; a
+/// thread that panics before sending is handled separately, by
+/// [`SpawnedJob::try_take_result`] synthesizing an empty `JobResult` on
+/// channel disconnect.
 pub struct JobResult {
     pub stdout: String,
     pub stderr: String,
     pub status: Option<ExitStatus>,
-}
-
-/// What the capture thread hands to the main thread — stdout, stderr, and
-/// the exit status it already waited for (`status` is `None` only if the
-/// exit-status poll itself errored; a thread that panics before sending is
-/// handled separately, by [`SpawnedJob::try_take_result`] synthesizing an
-/// empty `Captured` on channel disconnect).
-struct Captured {
-    stdout: String,
-    stderr: String,
-    status: Option<ExitStatus>,
 }
 
 /// A running external command whose whole output is being captured to
@@ -69,7 +64,7 @@ struct Captured {
 /// entirely — see `tracked`'s module doc.
 pub struct SpawnedJob {
     child: TrackedChild,
-    rx: Option<mpsc::Receiver<Captured>>,
+    rx: Option<mpsc::Receiver<JobResult>>,
 }
 
 /// Spawns `cmd` with `args` (direct argv, no shell), piped stdio, stdin
@@ -92,7 +87,7 @@ pub fn spawn_job(
     // (the disarmed `ReapOnDrop` guard no longer covers it).
     let child = TrackedChild::new(child.into_inner());
 
-    let (tx, rx) = mpsc::sync_channel::<Captured>(1);
+    let (tx, rx) = mpsc::sync_channel::<JobResult>(1);
 
     let stderr_thread = thread::Builder::new()
         .name("hume-job-stderr".into())
@@ -121,8 +116,8 @@ pub fn spawn_job(
             // failure, and stdout is what most callers actually want.
             let stderr_bytes = stderr_thread.join().unwrap_or_default();
             let status = wait_for_exit(&job_child);
-            let captured = match stdout_result {
-                Ok(stdout_bytes) => Captured {
+            let result = match stdout_result {
+                Ok(stdout_bytes) => JobResult {
                     stdout: String::from_utf8_lossy(&stdout_bytes).into_owned(),
                     stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
                     status,
@@ -130,13 +125,13 @@ pub fn spawn_job(
                 // A truncated stdout is worse than none: hand back the
                 // documented spawn-failure shape (empty stdout, a message
                 // in stderr, no exit code) rather than silently short data.
-                Err(e) => Captured {
+                Err(e) => JobResult {
                     stdout: String::new(),
                     stderr: format!("{job_cmd}: {e}"),
                     status: None,
                 },
             };
-            let _ = tx.send(captured);
+            let _ = tx.send(result);
         })
         .inspect_err(|_| {
             child.reap();
@@ -190,21 +185,17 @@ impl SpawnedJob {
         let Some(rx) = &self.rx else {
             return None;
         };
-        let captured = match rx.try_recv() {
-            Ok(captured) => captured,
+        let result = match rx.try_recv() {
+            Ok(result) => result,
             Err(mpsc::TryRecvError::Empty) => return None,
-            Err(mpsc::TryRecvError::Disconnected) => Captured {
+            Err(mpsc::TryRecvError::Disconnected) => JobResult {
                 stdout: String::new(),
                 stderr: String::new(),
                 status: None,
             },
         };
         self.rx = None;
-        Some(JobResult {
-            stdout: captured.stdout,
-            stderr: captured.stderr,
-            status: captured.status,
-        })
+        Some(result)
     }
 }
 
