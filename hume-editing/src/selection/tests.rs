@@ -15,16 +15,18 @@ fn single_selection_is_primary() {
 #[test]
 fn merge_no_overlap() {
     // Two disjoint selections — should stay separate.
-    let set = SelectionSet::from_vec_unchecked(vec![Selection::new(0, 3), Selection::new(5, 8)], 0)
-        .merge_overlapping();
+    let mut set =
+        SelectionSet::from_vec_unchecked(vec![Selection::new(0, 3), Selection::new(5, 8)], 0);
+    set.merge_overlapping_in_place();
     assert_eq!(set.len(), 2);
 }
 
 #[test]
 fn merge_overlapping_selections() {
     // (anchor=0,head=5) and (anchor=3,head=8) overlap — should merge.
-    let set = SelectionSet::from_vec_unchecked(vec![Selection::new(0, 5), Selection::new(3, 8)], 0)
-        .merge_overlapping();
+    let mut set =
+        SelectionSet::from_vec_unchecked(vec![Selection::new(0, 5), Selection::new(3, 8)], 0);
+    set.merge_overlapping_in_place();
     assert_eq!(set.len(), 1);
     assert_eq!(set.primary().start(), 0);
     assert_eq!(set.primary().end(), 8);
@@ -33,8 +35,9 @@ fn merge_overlapping_selections() {
 #[test]
 fn merge_adjacent_selections() {
     // (anchor=0,head=3) and (anchor=3,head=6) touch at offset 3 — should merge.
-    let set = SelectionSet::from_vec_unchecked(vec![Selection::new(0, 3), Selection::new(3, 6)], 0)
-        .merge_overlapping();
+    let mut set =
+        SelectionSet::from_vec_unchecked(vec![Selection::new(0, 3), Selection::new(3, 6)], 0);
+    set.merge_overlapping_in_place();
     assert_eq!(set.len(), 1);
     assert_eq!(set.primary().start(), 0);
     assert_eq!(set.primary().end(), 6);
@@ -42,47 +45,51 @@ fn merge_adjacent_selections() {
 
 #[test]
 fn merge_duplicate_selections() {
-    let set = SelectionSet::from_vec_unchecked(vec![Selection::new(2, 5), Selection::new(2, 5)], 0)
-        .merge_overlapping();
+    let mut set =
+        SelectionSet::from_vec_unchecked(vec![Selection::new(2, 5), Selection::new(2, 5)], 0);
+    set.merge_overlapping_in_place();
     assert_eq!(set.len(), 1);
 }
 
 #[test]
 fn merge_contained_selection() {
     // (anchor=0,head=8) fully contains (anchor=2,head=5) — should merge.
-    let set = SelectionSet::from_vec_unchecked(vec![Selection::new(0, 8), Selection::new(2, 5)], 0)
-        .merge_overlapping();
+    let mut set =
+        SelectionSet::from_vec_unchecked(vec![Selection::new(0, 8), Selection::new(2, 5)], 0);
+    set.merge_overlapping_in_place();
     assert_eq!(set.len(), 1);
     assert_eq!(set.primary().end(), 8);
 }
 
 #[test]
-fn merge_consuming_clears_horiz_on_extended_selection() {
-    // Consuming merge_overlapping delegates to merge_overlapping_in_place,
-    // so horiz is cleared on merged selections — same as the in-place path.
+fn merge_clears_horiz_on_extended_selection() {
+    // Merging two overlapping selections clears horiz on the result — neither
+    // side's latched column is valid once the head moves to the union boundary.
     let a = Selection::with_horiz(0, 5, 42); // horiz latched
     let b = Selection::with_horiz(3, 8, 99); // horiz latched
-    let set = SelectionSet::from_vec_unchecked(vec![a, b], 0);
+    let mut set = SelectionSet::from_vec_unchecked(vec![a, b], 0);
     // The two selections overlap → they merge into one.
-    let merged = set.merge_overlapping();
-    assert_eq!(merged.len(), 1);
+    set.merge_overlapping_in_place();
+    assert_eq!(set.len(), 1);
     // The merged selection must have horiz cleared — neither side's column is valid.
-    assert_eq!(merged.primary().horiz, None, "merge must clear horiz");
+    assert_eq!(set.primary().horiz, None, "merge must clear horiz");
 }
 
 #[test]
 fn merge_idempotent() {
     // Start with an unmerged overlapping set so the first merge does real work,
     // then verify a second merge is a no-op.
-    let set = SelectionSet::from_vec_unchecked(vec![Selection::new(0, 5), Selection::new(3, 8)], 0)
-        .merge_overlapping();
+    let mut set =
+        SelectionSet::from_vec_unchecked(vec![Selection::new(0, 5), Selection::new(3, 8)], 0);
+    set.merge_overlapping_in_place();
     // The first merge must have reduced the two overlapping selections to one.
     assert_eq!(
         set.len(),
         1,
         "first merge must reduce overlapping selections"
     );
-    let set2 = set.clone().merge_overlapping();
+    let mut set2 = set.clone();
+    set2.merge_overlapping_in_place();
     assert_eq!(
         set, set2,
         "second merge must be a no-op on an already-merged set"
@@ -91,15 +98,15 @@ fn merge_idempotent() {
 
 #[test]
 fn merge_three_into_one() {
-    let set = SelectionSet::from_vec_unchecked(
+    let mut set = SelectionSet::from_vec_unchecked(
         vec![
             Selection::new(0, 4),
             Selection::new(3, 7),
             Selection::new(6, 10),
         ],
         1,
-    )
-    .merge_overlapping();
+    );
+    set.merge_overlapping_in_place();
     assert_eq!(set.len(), 1);
     assert_eq!(set.primary().start(), 0);
     assert_eq!(set.primary().end(), 10);
@@ -110,9 +117,9 @@ fn merge_overlapping_backward_selections() {
     // Two backward selections that overlap: (anchor=8, head=3) and
     // (anchor=10, head=5). After sorting by start(), the merge should
     // produce a single backward selection spanning 3–10.
-    let set =
-        SelectionSet::from_vec_unchecked(vec![Selection::new(8, 3), Selection::new(10, 5)], 0)
-            .merge_overlapping();
+    let mut set =
+        SelectionSet::from_vec_unchecked(vec![Selection::new(8, 3), Selection::new(10, 5)], 0);
+    set.merge_overlapping_in_place();
     assert_eq!(set.len(), 1);
     let s = set.primary();
     assert_eq!(s.start(), 3);
@@ -127,8 +134,9 @@ fn merge_overlapping_backward_selections() {
 #[test]
 fn merge_sorts_unsorted_input() {
     // Pass selections out of order — merge should sort them first.
-    let set = SelectionSet::from_vec_unchecked(vec![Selection::new(5, 8), Selection::new(0, 3)], 0)
-        .merge_overlapping();
+    let mut set =
+        SelectionSet::from_vec_unchecked(vec![Selection::new(5, 8), Selection::new(0, 3)], 0);
+    set.merge_overlapping_in_place();
     assert_eq!(set.len(), 2);
     assert_eq!(set.selections[0].start(), 0);
     assert_eq!(set.selections[1].start(), 5);

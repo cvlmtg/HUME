@@ -133,27 +133,6 @@ impl SelectionSet {
         self
     }
 
-    /// Merge overlapping or adjacent selections and sort by position.
-    ///
-    /// After this call:
-    /// - Selections are sorted ascending by `start()`.
-    /// - No two selections overlap or touch (adjacent = same offset).
-    /// - A merged selection spans the union of the inputs, with head and
-    ///   anchor at the union's boundaries. Its direction follows whichever
-    ///   input had the greater `end()` (the "rightmost extent wins").
-    ///
-    /// The primary index is updated to point at the merged selection that
-    /// contained the original primary.
-    ///
-    /// This is the consuming form of [`merge_overlapping_in_place`][Self::merge_overlapping_in_place];
-    /// both share one implementation so their merge semantics (including the
-    /// `horiz` reset on merged selections) can never drift apart.
-    #[must_use]
-    pub fn merge_overlapping(mut self) -> Self {
-        self.merge_overlapping_in_place();
-        self
-    }
-
     /// Build a `SelectionSet` from a non-empty `Vec<Selection>`, with
     /// `primary` pointing at the given index.
     ///
