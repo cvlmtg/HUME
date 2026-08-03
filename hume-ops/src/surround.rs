@@ -143,11 +143,6 @@ fn select_surround(
         }
     }
 
-    // Clamp in case the primary fell off (shouldn't happen, but be safe).
-    if new_primary >= new_sels.len() {
-        new_primary = 0;
-    }
-
     let result = SelectionSet::from_vec(new_sels, new_primary);
     result.debug_assert_valid(buf);
     result

@@ -11,7 +11,7 @@ use crate::pair::find_bracket_pair;
 /// the pair is empty (no inner content in the inclusive selection model).
 /// Shared with quote.rs's `inner_quote`.
 pub(super) fn inner_of_pair(open: usize, close: usize) -> Option<(usize, usize)> {
-    if open + 1 > close - 1 || close == 0 {
+    if open + 1 > close - 1 {
         return None;
     }
     Some((open + 1, close - 1))
