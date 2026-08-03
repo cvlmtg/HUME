@@ -39,25 +39,14 @@ pub struct ThreadedLspBackend {
 }
 
 impl ThreadedLspBackend {
-    pub fn new() -> Self {
-        Self::with_waker(Arc::new(|| {}))
-    }
-
-    /// Like [`Self::new`], but `wake` is passed to every spawned server's
-    /// reader/stderr threads, so the editor's main loop wakes instead of
-    /// polling for completion.
+    /// `wake` is passed to every spawned server's reader/stderr threads, so
+    /// the editor's main loop wakes instead of polling for completion.
     pub fn with_waker(wake: WakeCallback) -> Self {
         Self {
             servers: rustc_hash::FxHashMap::default(),
             next: 0,
             wake,
         }
-    }
-}
-
-impl Default for ThreadedLspBackend {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -84,7 +73,7 @@ impl LspBackend for ThreadedLspBackend {
 
     fn drain(&mut self) -> Vec<(ServerId, InboundEvent)> {
         let mut out = Vec::new();
-        for (&id, handle) in self.servers.iter_mut() {
+        for (&id, handle) in self.servers.iter() {
             for ev in handle.try_recv_all() {
                 out.push((id, ev));
             }

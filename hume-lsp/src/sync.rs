@@ -107,7 +107,7 @@ pub fn wire_version(text_gen: u64) -> i32 {
 /// (LF-only lines — HUME buffers never contain `\r`, it's normalized away
 /// on load; see `hume_editing::text`).
 #[cfg(any(test, feature = "test-util"))]
-pub fn wire_pos_to_byte(text: &str, pos: Position, enc: PositionEncoding) -> usize {
+fn wire_pos_to_byte(text: &str, pos: Position, enc: PositionEncoding) -> usize {
     let mut line_start = 0usize;
     for _ in 0..pos.line {
         match text[line_start..].find('\n') {

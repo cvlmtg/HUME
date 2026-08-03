@@ -121,20 +121,24 @@ fn classify_notification(method: String, params: serde_json::Value) -> ClientAct
 
 /// Recovers a `$/progress` whose `WorkDoneProgress::Begin` omits the
 /// lsp_types-required `title` — observed from servers that treat it as
-/// optional in practice. Patches a placeholder title into a clone and
-/// re-runs the strict parse, so any *other* off-spec shape (an unkeyable
-/// `token`, an unknown `kind`) still yields `None` and falls through to
-/// `ServerNotification` — unchanged from before this recovery existed.
+/// optional in practice. Checks the shape against the borrowed `params`
+/// first: any other off-spec shape (an unkeyable `token`, an unknown `kind`)
+/// returns `None` without cloning, and falls through to
+/// `ServerNotification`. Only the recoverable shape is cloned, patched with
+/// a placeholder title, and re-parsed.
 fn recover_progress(params: &serde_json::Value) -> Option<lsp_types::ProgressParams> {
     use serde::Deserialize as _;
 
-    let mut patched = params.clone();
-    let value = patched.get_mut("value")?;
-    if value.get("kind").and_then(|k| k.as_str()) == Some("begin") && value.get("title").is_none() {
-        value
-            .as_object_mut()?
-            .insert("title".into(), serde_json::json!("progress"));
+    let value = params.get("value")?;
+    if value.get("kind").and_then(|k| k.as_str()) != Some("begin") || value.get("title").is_some() {
+        return None;
     }
+
+    let mut patched = params.clone();
+    patched
+        .get_mut("value")?
+        .as_object_mut()?
+        .insert("title".into(), serde_json::json!("progress"));
     lsp_types::ProgressParams::deserialize(&patched).ok()
 }
 
@@ -175,14 +179,6 @@ pub enum Outcome {
     TimedOut,
 }
 
-/// Builds the `$/cancelRequest` notification params for `id`. Used by
-/// `send_cancel_notification`, this module's single production caller
-/// (from both the test-only `cancel` and the timeout sweep in
-/// `take_completed`).
-fn cancel_request_params(id: &RequestId) -> serde_json::Value {
-    serde_json::json!({ "id": id })
-}
-
 /// How long `initialize` may go unanswered before the client gives up and
 /// transitions to `Crashed` — deliberately independent of
 /// `lsp.request-timeout-ms` (a per-request setting): a cold server's
@@ -204,10 +200,10 @@ pub struct LspClient {
     caps: Option<ServerCapabilities>,
     /// Negotiated position encoding; UTF-16 until `initialize` proves UTF-8.
     /// A decode-once cache of `caps.position_encoding` — `handle_initialize_
-    /// response` is the only writer of either field, an invariant privacy
-    /// now enforces — kept separate so callers don't re-derive it from the
-    /// raw capability on every position conversion, not an independent fact
-    /// that could drift on its own.
+    /// response` is the only writer of either field, an invariant field
+    /// privacy enforces — kept separate so callers don't re-derive it from
+    /// the raw capability on every position conversion, not an independent
+    /// fact that could drift on its own.
     encoding: PositionEncoding,
     root: PathBuf,
     /// `initializationOptions` for the `initialize` request — set via
@@ -249,7 +245,7 @@ impl LspClient {
             settings: None,
             queued: Vec::new(),
             initialize_id: None,
-            ids: IdAllocator::new(),
+            ids: IdAllocator::default(),
             pending: FxHashMap::default(),
             completed: Vec::new(),
         }
@@ -336,18 +332,17 @@ impl LspClient {
 
     /// Requests currently awaiting a response — the "N in flight" count for
     /// `:lsp-status` and `lsp-server-status`. Includes the in-flight
-    /// `initialize`/`shutdown` handshake requests, since those are now
-    /// ordinary `pending` entries too.
+    /// `initialize`/`shutdown` handshake requests — those are ordinary
+    /// `pending` entries too.
     pub fn pending_count(&self) -> usize {
         self.pending.len()
     }
 
     /// Earliest deadline among pending requests (`initialize`/`shutdown`
     /// included — they are ordinary `pending` entries too). Feeds the
-    /// editor's wake predicate: with completion-driven wakes replacing the
-    /// old poll cadence, this deadline is what keeps the timeout sweep in
-    /// `take_completed` firing promptly even on a server that never
-    /// responds.
+    /// editor's completion-driven wake predicate: this deadline is what
+    /// keeps the timeout sweep in `take_completed` firing promptly even on a
+    /// server that never responds.
     pub fn earliest_deadline(&self) -> Option<Instant> {
         self.pending.values().map(|m| m.deadline).min()
     }
@@ -357,8 +352,7 @@ impl LspClient {
     /// handshake has completed — sends `$/cancelRequest`. A no-op if the
     /// request already completed. Production caller: the editor bridge's
     /// `#:supersede` path (a new request cancels the caller's previous
-    /// still-pending one filed under the same key); also exercised directly
-    /// by the unit tests below.
+    /// still-pending one filed under the same key).
     pub fn cancel(&mut self, backend: &mut dyn LspBackend, id: RequestId) {
         if self.pending.remove(&id).is_some() {
             self.drop_from_queue(&id);
@@ -405,7 +399,7 @@ impl LspClient {
                 self.id,
                 Message::Notification {
                     method: lsp_types::notification::Cancel::METHOD.to_string(),
-                    params: cancel_request_params(id),
+                    params: serde_json::json!({ "id": id }),
                 },
             );
         }
@@ -624,9 +618,9 @@ impl LspClient {
     /// always what actually ends a non-Running client — this is a
     /// best-effort protocol courtesy on top of that, never a substitute
     /// for it, and never a synchronous round-trip. The `shutdown` response
-    /// now correlates through `pending`/`take_completed` like any other
-    /// request; a caller that drops the client immediately (e.g.
-    /// `:lsp-stop`) instead dispatches it as timed out via `drain_pending`.
+    /// correlates through `pending`/`take_completed` like any other request;
+    /// a caller that drops the client immediately (e.g. `:lsp-stop`) instead
+    /// dispatches it as timed out via `drain_pending`.
     pub fn begin_shutdown(&mut self, backend: &mut dyn LspBackend) {
         if self.state == ServerState::Running {
             let id = self.ids.next();

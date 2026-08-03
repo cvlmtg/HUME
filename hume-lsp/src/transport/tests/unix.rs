@@ -7,8 +7,7 @@ use crate::codec::RequestId;
 #[test]
 fn cat_echoes_frames_and_drop_reaps_without_hanging() {
     let root = std::env::current_dir().unwrap();
-    let mut handle =
-        ServerHandle::spawn("/bin/cat", &[], &root, &[], no_op_wake()).expect("spawn cat");
+    let handle = ServerHandle::spawn("/bin/cat", &[], &root, &[], no_op_wake()).expect("spawn cat");
 
     let sent = Message::Request {
         id: RequestId::Int(1),
@@ -70,7 +69,7 @@ fn cat_echo_fires_waker() {
 #[test]
 fn env_reaches_the_spawned_process() {
     let root = std::env::current_dir().unwrap();
-    let mut handle = ServerHandle::spawn(
+    let handle = ServerHandle::spawn(
         "/bin/sh",
         &["-c".to_string(), "printenv HUME_TEST_VAR 1>&2".to_string()],
         &root,
@@ -110,7 +109,7 @@ fn drop_does_not_hang_when_stderr_floods_past_the_bound() {
     // regression this test hangs (caught by the harness's own test
     // timeout); on a correct `Drop` it returns promptly.
     let root = std::env::current_dir().unwrap();
-    let mut handle = ServerHandle::spawn(
+    let handle = ServerHandle::spawn(
         "/bin/sh",
         &["-c".to_string(), "yes flood 1>&2".to_string()],
         &root,

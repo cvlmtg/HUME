@@ -46,6 +46,26 @@ fn uri_to_path_rejects_percent_encoded_traversal_segment() {
     assert!(matches!(uri_to_path(&uri), Err(UriError::Decode(_))));
 }
 
+#[test]
+fn uri_to_path_rejects_dot_dot_segment() {
+    let uri = lsp_types::Uri::from_str("file:///tmp/../etc/passwd").expect("parse");
+    assert!(matches!(uri_to_path(&uri), Err(UriError::Decode(_))));
+}
+
+#[test]
+fn uri_to_path_rejects_percent_encoded_dot_dot_segment() {
+    // "%2E%2E" decodes to "..", same traversal hazard as the literal form —
+    // must be caught after decoding, not before.
+    let uri = lsp_types::Uri::from_str("file:///tmp/%2E%2E/etc/passwd").expect("parse");
+    assert!(matches!(uri_to_path(&uri), Err(UriError::Decode(_))));
+}
+
+#[test]
+fn uri_to_path_rejects_single_dot_segment() {
+    let uri = lsp_types::Uri::from_str("file:///tmp/./passwd").expect("parse");
+    assert!(matches!(uri_to_path(&uri), Err(UriError::Decode(_))));
+}
+
 #[cfg(unix)]
 mod unix;
 #[cfg(windows)]

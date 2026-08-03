@@ -7,7 +7,7 @@ use super::super::*;
 #[test]
 fn start_send_drain_round_trips_through_cat() {
     let root = std::env::current_dir().unwrap();
-    let mut backend = ThreadedLspBackend::new();
+    let mut backend = ThreadedLspBackend::with_waker(Arc::new(|| {}));
     let id = backend
         .start("/bin/cat", &[], &root, &[])
         .expect("spawn cat");

@@ -43,7 +43,7 @@ pub struct ResponseError {
 }
 
 #[derive(Debug)]
-pub enum CodecError {
+pub(crate) enum CodecError {
     Io(std::io::Error),
     /// Clean end-of-stream exactly at a frame boundary — no header bytes
     /// were read yet, so nothing was interrupted mid-flight. Distinguishes
@@ -193,7 +193,7 @@ fn read_bounded_line(r: &mut impl BufRead, max: usize) -> std::io::Result<Option
 /// bytes of body. Blocks until one full frame is available; any error
 /// (I/O, malformed header, truncated body, bad JSON, ambiguous shape) is
 /// fatal for the connection — callers must not attempt to resynchronize.
-pub fn read_message(r: &mut impl BufRead) -> Result<Message, CodecError> {
+pub(crate) fn read_message(r: &mut impl BufRead) -> Result<Message, CodecError> {
     let mut content_length: Option<usize> = None;
     let mut first_line = true;
     loop {
@@ -272,7 +272,7 @@ fn classify(raw: RawMessage) -> Result<Message, CodecError> {
 
 /// Serializes `msg` and writes it with the exact `Content-Length: N\r\n\r\n`
 /// framing — some servers reject a bare `\n\n` terminator.
-pub fn write_message(w: &mut impl Write, msg: &Message) -> std::io::Result<()> {
+pub(crate) fn write_message(w: &mut impl Write, msg: &Message) -> std::io::Result<()> {
     let raw = match msg {
         Message::Request { id, method, params } => RawMessageRef {
             jsonrpc: "2.0",
@@ -315,19 +315,10 @@ pub fn write_message(w: &mut impl Write, msg: &Message) -> std::io::Result<()> {
 }
 
 /// Allocates monotonically increasing integer request ids.
-pub struct IdAllocator(i64);
-
-impl Default for IdAllocator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+#[derive(Default)]
+pub(crate) struct IdAllocator(i64);
 
 impl IdAllocator {
-    pub fn new() -> Self {
-        IdAllocator(0)
-    }
-
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> RequestId {
         self.0 += 1;

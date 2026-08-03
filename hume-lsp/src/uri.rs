@@ -22,10 +22,10 @@ pub enum UriError {
     /// Windows: any other host is instead read as a UNC server name — see
     /// [`uri_to_path`].
     BadAuthority(String),
-    /// The URI's path failed to percent-decode, or a decoded segment
-    /// contains a `/` (always) or — Windows only, where `\` is also a
-    /// separator — a `\` disguising an extra path boundary (rejected
-    /// defensively, see [`uri_to_path`]).
+    /// The URI's path failed to percent-decode, or a decoded segment is a
+    /// traversal component (`.` or `..`) or contains a `/` (always) or —
+    /// Windows only, where `\` is also a separator — a `\` disguising an
+    /// extra path boundary (rejected defensively, see [`uri_to_path`]).
     Decode(String),
 }
 
@@ -66,12 +66,7 @@ pub fn path_to_uri(path: &Path) -> Result<lsp_types::Uri, UriError> {
 
     #[cfg(windows)]
     if let Some((host, rest)) = unc_host_and_rest(stripped) {
-        let normalized = normalize_separators(rest);
-        let with_leading_slash = if normalized.starts_with('/') {
-            normalized
-        } else {
-            format!("/{normalized}")
-        };
+        let with_leading_slash = ensure_leading_slash(normalize_separators(rest));
         let uri_str = format!(
             "file://{}{}",
             percent_encode_path(host),
@@ -81,13 +76,7 @@ pub fn path_to_uri(path: &Path) -> Result<lsp_types::Uri, UriError> {
             .expect("percent-encoded file URI is always syntactically valid"));
     }
 
-    let normalized = normalize_separators(stripped);
-    let with_leading_slash = if normalized.starts_with('/') {
-        normalized
-    } else {
-        format!("/{normalized}")
-    };
-
+    let with_leading_slash = ensure_leading_slash(normalize_separators(stripped));
     let encoded = percent_encode_path(&with_leading_slash);
     let uri_str = format!("file://{encoded}");
     Ok(lsp_types::Uri::from_str(&uri_str)
@@ -106,6 +95,17 @@ fn normalize_separators(s: &str) -> String {
 #[cfg(not(windows))]
 fn normalize_separators(s: &str) -> String {
     s.to_owned()
+}
+
+/// Prefixes `s` with `/` unless it already starts with one — a URI path
+/// component always needs the leading separator, whether it came from a
+/// drive-letter path (`C:/foo` -> `/C:/foo`) or a UNC share's tail.
+fn ensure_leading_slash(s: String) -> String {
+    if s.starts_with('/') {
+        s
+    } else {
+        format!("/{s}")
+    }
 }
 
 /// `\\server\share\rest` or `\\?\UNC\server\share\rest` -> `(server,
@@ -149,6 +149,11 @@ pub fn uri_to_path(uri: &lsp_types::Uri) -> Result<PathBuf, UriError> {
             .decode()
             .into_string()
             .map_err(|e| UriError::Decode(e.to_string()))?;
+        if decoded == "." || decoded == ".." {
+            return Err(UriError::Decode(format!(
+                "segment {decoded:?} is a path traversal component"
+            )));
+        }
         if decoded.contains('/') {
             return Err(UriError::Decode(format!(
                 "segment {decoded:?} decodes to contain a path separator"

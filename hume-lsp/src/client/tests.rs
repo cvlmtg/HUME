@@ -878,7 +878,7 @@ fn cancel_removes_pending_and_sends_cancel_notification() {
     match backend.sent.last() {
         Some((_, Message::Notification { method, params })) => {
             assert_eq!(method, "$/cancelRequest");
-            assert_eq!(params, &cancel_request_params(&id));
+            assert_eq!(params, &serde_json::json!({ "id": id }));
         }
         other => panic!("expected a $/cancelRequest notification, got {other:?}"),
     }
@@ -1026,7 +1026,7 @@ fn take_completed_reports_timeout_and_sends_cancel_request() {
     match backend.sent.last() {
         Some((_, Message::Notification { method, params })) => {
             assert_eq!(method, "$/cancelRequest");
-            assert_eq!(params, &cancel_request_params(&id));
+            assert_eq!(params, &serde_json::json!({ "id": id }));
         }
         other => panic!("expected a $/cancelRequest notification, got {other:?}"),
     }

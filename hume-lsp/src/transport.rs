@@ -19,7 +19,7 @@ use crate::codec::{self, Message};
 /// Called by the reader/stderr threads after posting an event, so the
 /// editor's main loop wakes and drains it instead of rechecking on a poll
 /// cadence. Type-erased to keep `termina`/`ratatui` types out of this
-/// crate's API even though it now depends on `hume-platform` for
+/// crate's API even though it depends on `hume-platform` for
 /// [`TrackedChild`](hume_platform::process::tracked::TrackedChild) —
 /// production wraps `termina::PlatformWaker::wake`.
 pub type WakeCallback = Arc<dyn Fn() + Send + Sync>;
@@ -68,7 +68,7 @@ const STDERR_CHANNEL_BOUND: usize = 256;
 /// force-exit that skips this `Drop` entirely still reaps it — and any
 /// process it spawned in turn (e.g. rust-analyzer's `proc-macro-srv`) — via
 /// `hume-platform`'s `process::tracked`.
-pub struct ServerHandle {
+pub(crate) struct ServerHandle {
     /// Writer thread input; `None` after `Drop` closes it to signal the
     /// writer thread to exit.
     tx: Option<mpsc::Sender<Message>>,
@@ -178,11 +178,11 @@ impl ServerHandle {
     }
 
     /// Drains all events that have arrived since the last call: every
-    /// protocol message/EOF first, then every stderr line — no longer
-    /// strict arrival order across the two source threads (they're on
-    /// separate channels now), but stderr is log-only, so its ordering
-    /// relative to protocol traffic is cosmetic.
-    pub fn try_recv_all(&mut self) -> Vec<InboundEvent> {
+    /// protocol message/EOF first, then every stderr line — not strict
+    /// arrival order across the two source threads (they're on separate
+    /// channels), but stderr is log-only, so its ordering relative to
+    /// protocol traffic is cosmetic.
+    pub fn try_recv_all(&self) -> Vec<InboundEvent> {
         let mut out = Vec::new();
         if let Some(rx) = &self.rx_events {
             while let Ok(ev) = rx.try_recv() {

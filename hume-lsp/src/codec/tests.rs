@@ -296,7 +296,7 @@ fn write_emits_jsonrpc_version_member() {
 
 #[test]
 fn id_allocator_increments() {
-    let mut alloc = IdAllocator::new();
+    let mut alloc = IdAllocator::default();
     assert_eq!(alloc.next(), RequestId::Int(1));
     assert_eq!(alloc.next(), RequestId::Int(2));
     assert_eq!(alloc.next(), RequestId::Int(3));
