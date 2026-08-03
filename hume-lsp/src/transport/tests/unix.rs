@@ -119,10 +119,19 @@ fn drop_does_not_hang_when_stderr_floods_past_the_bound() {
     )
     .expect("spawn sh");
 
-    // Let stderr fill well past STDERR_CHANNEL_BOUND before draining.
-    std::thread::sleep(std::time::Duration::from_millis(50));
+    // Let stderr fill well past STDERR_CHANNEL_BOUND before draining. Poll
+    // instead of a single fixed sleep — a loaded CI runner can take longer
+    // than one short sleep to spawn the child and produce output.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut events = Vec::new();
+    while std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        events = handle.try_recv_all();
+        if events.iter().any(|e| matches!(e, InboundEvent::Stderr(_))) {
+            break;
+        }
+    }
 
-    let events = handle.try_recv_all();
     assert!(
         events.iter().any(|e| matches!(e, InboundEvent::Stderr(_))),
         "expected at least one Stderr event from the flood"
