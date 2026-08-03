@@ -596,7 +596,7 @@ impl ScriptingHost {
         host: &mut dyn EditorHost,
         builtin_names: rustc_hash::FxHashSet<String>,
     ) -> Result<Vec<Effect>, EvalError> {
-        let source = match hume_platform::fs::read_to_string(path) {
+        let source = match std::fs::read_to_string(path) {
             Ok(s) => s,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(format!("reading {}: {e}", path.display()).into()),

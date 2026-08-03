@@ -285,7 +285,7 @@ pub fn typed_tutor(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<
         ));
     };
     let source_path = runtime.join("tutor.rst");
-    let source = hume_platform::fs::canonicalize(&source_path).map_err(|e| {
+    let source = std::fs::canonicalize(&source_path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             CommandError::new(format!(
                 "tutor.rst not found at {} (set HUME_RUNTIME to override)",
@@ -302,7 +302,7 @@ pub fn typed_tutor(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<
     let tmp_dir = std::env::temp_dir().join(format!("hume-{}", std::process::id()));
     std::fs::create_dir_all(&tmp_dir)
         .map_err(|e| CommandError::new(format!("could not create tutor tmp dir: {e}")))?;
-    let canonical_tmp = hume_platform::fs::canonicalize(&tmp_dir)
+    let canonical_tmp = std::fs::canonicalize(&tmp_dir)
         .map_err(|e| CommandError::new(format!("could not canonicalize tutor tmp dir: {e}")))?
         .join("tutor.rst");
 

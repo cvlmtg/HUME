@@ -54,9 +54,9 @@ impl PathCompleter {
 
         let include_hidden = file_prefix.starts_with('.');
 
-        // `hume_platform::fs::read_dir` wraps std::fs::read_dir.  On error (dir
-        // doesn't exist or no permission), return no candidates — not a hard error.
-        let rd = match hume_platform::fs::read_dir(&dir) {
+        // On error (dir doesn't exist or no permission), return no
+        // candidates — not a hard error.
+        let rd = match std::fs::read_dir(&dir) {
             Ok(rd) => rd,
             Err(_) => {
                 return CompletionResult {

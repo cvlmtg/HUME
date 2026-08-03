@@ -286,7 +286,7 @@ fn plugin_dir_for_id(
 /// Probe a path's existence without a pre-flight `.exists()` (avoids TOCTOU).
 /// `NotFound` → `Ok(false)`; other errors propagate.
 fn path_exists(path: &std::path::Path) -> Result<bool, String> {
-    match hume_platform::fs::metadata(path) {
+    match std::fs::metadata(path) {
         Ok(_) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(e) => Err(format!("cannot stat path '{}': {e}", path.display())),

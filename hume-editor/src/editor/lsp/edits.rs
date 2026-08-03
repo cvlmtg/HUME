@@ -342,8 +342,7 @@ fn resolve_or_open(
     view: &mut EngineView,
     path: &std::path::Path,
 ) -> Result<BufferId, String> {
-    let canonical =
-        hume_platform::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let canonical = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let (bid, is_new) =
         crate::editor::buffer::lifecycle::open_or_dedup_and_notify(view, state, &canonical)
             .map_err(|e| format!("{}: {e}", canonical.display()))?;

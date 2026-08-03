@@ -1,15 +1,17 @@
 //! Platform abstraction layer for HUME.
 //!
-//! Consolidates all OS-specific operations so the rest of the codebase never
-//! calls `std::fs`, `std::process::Command`, or terminal escape sequences
-//! directly. Each sub-module is a narrow, auditable surface for one concern:
+//! Home for the codebase's platform-conditional code — terminal control,
+//! process spawning with process-group/reap discipline, and OS-specific
+//! directory/path conventions. Each sub-module is a narrow surface for one
+//! concern:
 //!
 //! - [`terminal`] — raw-mode lifecycle, ratatui `Terminal` type alias,
 //!   cursor shape/colour, kitty keyboard protocol, synchronized updates,
 //!   and the inline-subprocess output flow.
 //! - [`io`] — atomic file writes that preserve permissions and ownership.
-//! - [`fs`] — thin `std::fs` wrappers (the audit allow-list).
-//! - [`process`] — `std::process::Command` wrappers (the audit allow-list).
+//! - [`process`] — process-group-isolated spawning, plus the LSP-server
+//!   install pipeline's platform-specific pieces (compiler selection,
+//!   hashing, archive unpacking).
 //! - [`dirs`] — XDG/platform config, data, home, and runtime directories.
 //! - [`path`] — tilde/env-var expansion and path-separator utilities.
 //!
@@ -21,7 +23,6 @@
 mod unix;
 
 pub mod dirs;
-pub mod fs;
 pub mod io;
 pub mod path;
 pub mod process;
@@ -351,6 +352,39 @@ fn run_probe(ch: &mut impl ProbeChannel) -> std::io::Result<bool> {
     Ok(has_kitty_response(&response) || has_kitty_xtversion(&response))
 }
 
+/// Scans `buf` for complete `ESC [ ? <digits/;>* <final>` replies — the shape
+/// both the kitty-flags response (`ESC[?<n>u`) and the DA1 response
+/// (`ESC[?<n>c`) take — and collects each one's final byte, in order.
+/// Shared by [`has_kitty_response`] and [`has_da1_response`], which differ
+/// only in which final byte they're looking for; both responses may appear
+/// in the same buffer; that's what a match on the other one's final byte
+/// mid-scan is for — it's still a complete sequence, just not the one this
+/// caller wants, so scanning continues past it rather than aborting.
+///
+/// A sequence that runs out of buffer before a final byte arrives is
+/// incomplete and contributes nothing — the scan simply stops there, so a
+/// truncated tail can never fabricate a match.
+#[cfg_attr(not(any(unix, test)), allow(dead_code))]
+fn csi_final_bytes(buf: &[u8]) -> Vec<u8> {
+    let mut finals = Vec::new();
+    let mut i = 0;
+    while i + 2 < buf.len() {
+        if buf[i] == 0x1B && buf[i + 1] == b'[' && buf[i + 2] == b'?' {
+            let mut j = i + 3;
+            while j < buf.len() && matches!(buf[j], b'0'..=b'9' | b';') {
+                j += 1;
+            }
+            if j < buf.len() {
+                finals.push(buf[j]);
+            }
+            i = j + 1;
+        } else {
+            i += 1;
+        }
+    }
+    finals
+}
+
 /// Scan raw terminal response bytes for a kitty keyboard protocol reply.
 ///
 /// Looks for the pattern `ESC [ ? <digits> u` which is the terminal's response
@@ -359,24 +393,7 @@ fn run_probe(ch: &mut impl ProbeChannel) -> std::io::Result<bool> {
 /// both responses may appear in the same buffer.
 #[cfg_attr(not(any(unix, test)), allow(dead_code))]
 fn has_kitty_response(buf: &[u8]) -> bool {
-    let mut i = 0;
-    while i + 2 < buf.len() {
-        if buf[i] == 0x1B && buf[i + 1] == b'[' && buf[i + 2] == b'?' {
-            let mut j = i + 3;
-            while j < buf.len() {
-                match buf[j] {
-                    b'u' => return true, // kitty flags response
-                    b'c' => break,       // DA1 — skip and keep scanning
-                    b'0'..=b'9' | b';' => j += 1,
-                    _ => break, // unexpected byte, abandon sequence
-                }
-            }
-            i = j + 1;
-        } else {
-            i += 1;
-        }
-    }
-    false
+    csi_final_bytes(buf).contains(&b'u')
 }
 
 /// Check XTVERSION response (`ESC P > | <name> ESC \`) against terminals known
@@ -410,23 +427,7 @@ fn has_kitty_xtversion(buf: &[u8]) -> bool {
 /// which signals the terminal has finished responding to all queries.
 #[cfg_attr(not(any(unix, test)), allow(dead_code))]
 fn has_da1_response(buf: &[u8]) -> bool {
-    let mut i = 0;
-    while i + 2 < buf.len() {
-        if buf[i] == 0x1B && buf[i + 1] == b'[' && buf[i + 2] == b'?' {
-            let mut j = i + 3;
-            while j < buf.len() {
-                match buf[j] {
-                    b'c' => return true,
-                    b'0'..=b'9' | b';' => j += 1,
-                    _ => break,
-                }
-            }
-            i = j + 1;
-        } else {
-            i += 1;
-        }
-    }
-    false
+    csi_final_bytes(buf).contains(&b'c')
 }
 
 #[cfg(test)]

@@ -151,7 +151,7 @@ pub fn typed_buffer(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<
 /// cwd, removes `.`/`..`, no filesystem access). The fallback keeps buffers
 /// reachable after their backing file has been deleted.
 fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
-    if let Ok(canonical) = hume_platform::fs::canonicalize(std::path::Path::new(arg))
+    if let Ok(canonical) = std::fs::canonicalize(std::path::Path::new(arg))
         && let Some(bid) = ed.state.buffers.find_by_path(&canonical)
     {
         return Some(bid);

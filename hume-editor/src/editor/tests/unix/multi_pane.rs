@@ -25,7 +25,7 @@ fn vsplit_path_opens_that_buffer() {
 
     // macOS temp paths differ from their canonical form (/var vs /private/var);
     // canonicalize before comparing against the stored buffer path.
-    let canonical = hume_platform::fs::canonicalize(&path).unwrap();
+    let canonical = std::fs::canonicalize(&path).unwrap();
     assert_eq!(
         ed.state.buffers.find_by_path(&canonical),
         Some(bid_b),

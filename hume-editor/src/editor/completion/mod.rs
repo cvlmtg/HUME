@@ -127,7 +127,7 @@ fn theme_name_candidates(prefix: &str) -> Vec<Completion> {
     let mut candidates: Vec<Completion> = Vec::new();
 
     for dir in &super::theme_search_paths() {
-        let entries = match hume_platform::fs::read_dir(dir) {
+        let entries = match std::fs::read_dir(dir) {
             Ok(e) => e,
             Err(_) => continue,
         };

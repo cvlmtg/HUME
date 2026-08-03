@@ -54,22 +54,22 @@ impl ScriptDirs {
         // <data>/servers/
         let data_servers = data_dir.as_ref().and_then(|d| {
             let s = d.join("servers");
-            hume_platform::fs::create_dir_all(&s).ok()?;
-            hume_platform::fs::canonicalize(&s).ok()
+            std::fs::create_dir_all(&s).ok()?;
+            std::fs::canonicalize(&s).ok()
         });
 
         // Canonicalize data_dir for the display form; fall back to raw path
         // when the directory doesn't exist (e.g. sandboxed FS test environments).
         let canonical_data = data_dir
             .clone()
-            .map(|d| hume_platform::fs::canonicalize(&d).unwrap_or(d));
+            .map(|d| std::fs::canonicalize(&d).unwrap_or(d));
         // Display form strips `\\?\` so Scheme can safely concatenate `/`-separated
         // segments on Windows without producing malformed extended-length paths.
         let data_dir_display = canonical_data.map(hume_platform::path::strip_unc_prefix);
 
         let canonical_runtime = runtime_dir
             .clone()
-            .and_then(|rt| hume_platform::fs::canonicalize(&rt).ok());
+            .and_then(|rt| std::fs::canonicalize(&rt).ok());
         let runtime_dir_display = canonical_runtime.map(hume_platform::path::strip_unc_prefix);
 
         Self {

@@ -17,7 +17,7 @@ impl Editor {
     /// `self.state.cwd` and the process cwd so that relative paths in `:e` and
     /// subprocesses resolve consistently.
     pub(in crate::editor) fn set_cwd(&mut self, path: &std::path::Path) -> io::Result<PathBuf> {
-        let canonical = hume_platform::fs::canonicalize(path)?;
+        let canonical = std::fs::canonicalize(path)?;
         if !canonical.is_dir() {
             return Err(io::Error::new(
                 io::ErrorKind::NotADirectory,
@@ -72,7 +72,7 @@ impl Editor {
             path,
             &self.state.cwd,
         ));
-        let canonical = hume_platform::fs::canonicalize(path)?;
+        let canonical = std::fs::canonicalize(path)?;
         let (bid, is_new) = self.open_or_dedup(&canonical)?;
         if is_new {
             self.state

@@ -325,7 +325,7 @@ fn find_theme_file(name: &str, search_paths: &[PathBuf]) -> Result<(PathBuf, Str
             Ok(source) => {
                 // Canonicalize after read — residual race only affects cycle-key
                 // accuracy, not file content. Not a security prefix check.
-                let canonical = hume_platform::fs::canonicalize(&candidate).unwrap_or(candidate);
+                let canonical = std::fs::canonicalize(&candidate).unwrap_or(candidate);
                 return Ok((canonical, source));
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,

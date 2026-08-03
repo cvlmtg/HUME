@@ -81,7 +81,7 @@ pub(crate) fn unpack_gz(
     ctx.log(LogLevel::Trace, format!("unpack-gz: {src} → {dest}"));
 
     if let Err(e) = hume_platform::process::unpack_gz(&src_path, &dest_path) {
-        let _ = hume_platform::fs::remove_file(&dest_path);
+        let _ = std::fs::remove_file(&dest_path);
         steel::stop!(Generic => "unpack-gz: {}", e);
     }
     Ok(SteelVal::Void)
@@ -109,7 +109,7 @@ pub(crate) fn unpack_zip(
 ) -> Result<SteelVal, SteelErr> {
     let src_path = PathBuf::from(&src);
     let dest_path = PathBuf::from(&dest_dir);
-    hume_platform::fs::create_dir_all(&dest_path).map_err(|e| {
+    std::fs::create_dir_all(&dest_path).map_err(|e| {
         generic_err(format!(
             "unpack-zip: cannot create dest dir '{dest_dir}': {e}"
         ))

@@ -190,7 +190,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
 
     // ── Buffer lifecycle ─────────────────────────────────────────────────────
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
-        let canonical = hume_platform::fs::canonicalize(path)
+        let canonical = std::fs::canonicalize(path)
             .map_err(|e| format!("open-buffer!: {}: {e}", path.display()))?;
         // Language detection is deliberately not done here — see
         // `Effect::DetectBufferLanguage`'s doc; the `open-buffer!` builtin
