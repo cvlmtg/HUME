@@ -288,13 +288,9 @@ pub struct ThreadedParseBackend {
 }
 
 impl ThreadedParseBackend {
-    pub fn new() -> Self {
-        Self::with_waker(Arc::new(|| {}))
-    }
-
-    /// Like [`Self::new`], but `wake` is called after every posted result
-    /// (and once more, harmlessly, when the worker thread exits) so the
-    /// editor's main loop wakes instead of polling for completion.
+    /// `wake` is called after every posted result (and once more, harmlessly,
+    /// when the worker thread exits) so the editor's main loop wakes instead
+    /// of polling for completion.
     pub fn with_waker(wake: WakeCallback) -> Self {
         let (tx_req, rx_req) = mpsc::channel::<ParseRequest>();
         let (tx_done, rx_done) = mpsc::channel::<ParseDone>();
@@ -323,12 +319,6 @@ impl ThreadedParseBackend {
             cancel,
             thread: Some(thread),
         }
-    }
-}
-
-impl Default for ThreadedParseBackend {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

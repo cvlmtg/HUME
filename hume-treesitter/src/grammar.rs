@@ -15,7 +15,7 @@ use tree_sitter_language::LanguageFn;
 /// unloaded, so `Language` values derived from this struct are valid
 /// unconditionally, with no lifetime tied to `LoadedGrammar` or any wrapper.
 pub struct LoadedGrammar {
-    pub(crate) language: Language,
+    language: Language,
 }
 
 #[derive(Debug)]
@@ -44,8 +44,6 @@ impl LoadedGrammar {
     ///
     /// Returns [`GrammarLoadError::Dlopen`] if the library cannot be opened,
     /// or [`GrammarLoadError::MissingSymbol`] if the named symbol is absent.
-    ///
-    /// # Safety
     ///
     /// This is genuine FFI — the same character as terminal probing in
     /// `editor/src/os/`. We dlopen a tree-sitter grammar built to the

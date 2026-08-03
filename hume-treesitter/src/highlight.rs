@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use hume_engine::theme::ScopeRegistry;
 use hume_engine::types::ScopeId;
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{Language, Query, QueryCursor};
+use tree_sitter::{Query, QueryCursor};
 
 use crate::layers::{SyntaxLayers, layer_covers_line};
 
@@ -66,21 +66,6 @@ pub struct TreeSitterHighlighter {
 }
 
 impl TreeSitterHighlighter {
-    /// Create a new provider using Helix-style pass-through scope names.
-    ///
-    /// Every tree-sitter capture name (e.g. `"keyword.function"`) is used
-    /// directly as the engine scope name. The theme's dot-notation cascade
-    /// (`keyword.function` → `keyword` → default) handles unknowns. This is
-    /// the standard constructor for Helix-compatible `highlights.scm` queries.
-    pub fn new(
-        language: &Language,
-        query_source: &str,
-        registry: &mut ScopeRegistry,
-    ) -> Result<Self, tree_sitter::QueryError> {
-        let query = Arc::new(Query::new(language, query_source)?);
-        Ok(Self::from_shared_query(query, registry))
-    }
-
     /// Create a provider from a pre-compiled, shared query.
     ///
     /// Use this when the `Query` has already been compiled at language

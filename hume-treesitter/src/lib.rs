@@ -6,7 +6,7 @@
 //! live `Editor`) stays in `hume-editor`; this crate only knows about
 //! buffers, ropes, and grammars.
 
-pub mod edits;
+mod edits;
 pub mod grammar;
 pub mod highlight;
 pub mod injections;
@@ -14,3 +14,6 @@ pub mod layers;
 pub mod parse_worker;
 pub mod registry;
 pub mod syntax;
+
+#[cfg(test)]
+mod test_support;

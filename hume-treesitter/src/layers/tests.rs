@@ -1,23 +1,17 @@
 use std::sync::Arc;
 
 use hume_engine::theme::ScopeRegistry;
-use hume_test_fixtures::{grammar_parser_path, skip_unless_grammars};
+use hume_test_fixtures::skip_unless_grammars;
 
 use super::{SyntaxLayer, layer_covers_line};
-use crate::grammar::LoadedGrammar;
 use crate::highlight::TreeSitterHighlighter;
+use crate::test_support::{open_grammar, range};
 
 // `layer_covers_line` only ever reads `ranges` — the tree's actual
 // content is irrelevant, so every test case shares one parsed layer and
 // just varies `ranges`/`line_start`/`line_end`.
 fn injected_layer(ranges: Vec<tree_sitter::Range>) -> SyntaxLayer {
-    let path = grammar_parser_path("json");
-    assert!(
-        path.exists(),
-        "grammar fixture missing: {}\nrun scripts/fetch-test-grammars.sh from the repo root",
-        path.display()
-    );
-    let grammar = LoadedGrammar::open(&path, "tree_sitter_json").expect("load grammar");
+    let grammar = open_grammar("json", "tree_sitter_json");
     let mut parser = tree_sitter::Parser::new();
     parser
         .set_language(grammar.language())
@@ -34,21 +28,6 @@ fn injected_layer(ranges: Vec<tree_sitter::Range>) -> SyntaxLayer {
         highlighter,
         ranges,
         depth: 1, // an injected layer — depth 0 (root) always short-circuits on empty ranges
-    }
-}
-
-fn range(start: usize, end: usize) -> tree_sitter::Range {
-    tree_sitter::Range {
-        start_byte: start,
-        end_byte: end,
-        start_point: tree_sitter::Point {
-            row: 0,
-            column: start,
-        },
-        end_point: tree_sitter::Point {
-            row: 0,
-            column: end,
-        },
     }
 }
 
@@ -106,7 +85,7 @@ fn injected_layer_binary_search_finds_a_non_first_range() {
     let layer = injected_layer(vec![range(0, 10), range(20, 30), range(40, 50)]);
     assert!(
         layer_covers_line(&layer, 22, 25),
-        "must find the third range, not just check index 0"
+        "must find the second range, not just check index 0"
     );
     assert!(
         !layer_covers_line(&layer, 12, 15),

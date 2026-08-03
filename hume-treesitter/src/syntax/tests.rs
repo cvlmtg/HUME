@@ -1,47 +1,19 @@
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
-use crate::grammar::LoadedGrammar;
-use crate::highlight::TreeSitterHighlighter;
 use hume_editing::changeset::ChangeSetBuilder;
 use hume_editing::text::Text;
 use hume_engine::pipeline::BufferId;
 use hume_engine::providers::SyntaxSpans;
-use hume_engine::theme::ScopeRegistry;
-use slotmap::SlotMap;
 
 use super::Syntax;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParsedLayers};
 use crate::registry::GrammarBundle;
-use hume_test_fixtures::{grammar_parser_path, grammar_query_path, skip_unless_grammars};
-
-fn next_test_config_gen() -> u32 {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static NEXT_GEN: AtomicU32 = AtomicU32::new(0);
-    NEXT_GEN.fetch_add(1, Ordering::Relaxed)
-}
+use crate::test_support::{empty_langs, fresh_bid};
+use hume_test_fixtures::{grammar_query_path, skip_unless_grammars};
 
 fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
-    let path = grammar_parser_path(name);
-    if !path.exists() {
-        panic!(
-            "grammar fixture missing: {}\nrun scripts/fetch-test-grammars.sh from the repo root",
-            path.display()
-        );
-    }
-    let grammar = LoadedGrammar::open(&path, symbol).expect("load grammar");
-    let query = Arc::new(tree_sitter::Query::new(grammar.language(), "").expect("empty query"));
-    let mut registry = ScopeRegistry::new();
-    let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(
-        query,
-        &mut registry,
-    ));
-    Arc::new(GrammarBundle {
-        grammar,
-        highlighter,
-        injections: None,
-        config_gen: next_test_config_gen(),
-    })
+    crate::test_support::make_bundle(name, symbol, "", None)
 }
 
 /// Like `make_bundle`, but with a compiled injections query attached —
@@ -51,68 +23,16 @@ fn make_bundle_with_injections(
     symbol: &str,
     injections_src: &str,
 ) -> Arc<GrammarBundle> {
-    let path = grammar_parser_path(name);
-    if !path.exists() {
-        panic!(
-            "grammar fixture missing: {}\nrun scripts/fetch-test-grammars.sh from the repo root",
-            path.display()
-        );
-    }
-    let grammar = LoadedGrammar::open(&path, symbol).expect("load grammar");
-    let query = Arc::new(tree_sitter::Query::new(grammar.language(), "").expect("empty query"));
-    let mut registry = ScopeRegistry::new();
-    let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(
-        query,
-        &mut registry,
-    ));
-    let injections = Arc::new(
-        tree_sitter::Query::new(grammar.language(), injections_src).expect("compile injections"),
-    );
-    Arc::new(GrammarBundle {
-        grammar,
-        highlighter,
-        injections: Some(crate::injections::InjectionsQuery::new(injections)),
-        config_gen: next_test_config_gen(),
-    })
+    crate::test_support::make_bundle(name, symbol, "", Some(injections_src))
 }
 
 /// Like `make_bundle`, but compiles the grammar's *real* `highlights.scm`
 /// instead of an empty query — needed to assert `spans_for_line` actually
 /// produces scopes, not just that a tree exists.
 fn make_bundle_with_real_highlights(name: &str, symbol: &str) -> Arc<GrammarBundle> {
-    let path = grammar_parser_path(name);
-    if !path.exists() {
-        panic!(
-            "grammar fixture missing: {}\nrun scripts/fetch-test-grammars.sh from the repo root",
-            path.display()
-        );
-    }
-    let grammar = LoadedGrammar::open(&path, symbol).expect("load grammar");
     let highlights_src =
         std::fs::read_to_string(grammar_query_path(name)).expect("highlights.scm should exist");
-    let query = Arc::new(
-        tree_sitter::Query::new(grammar.language(), &highlights_src).expect("compile highlights"),
-    );
-    let mut registry = ScopeRegistry::new();
-    let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(
-        query,
-        &mut registry,
-    ));
-    Arc::new(GrammarBundle {
-        grammar,
-        highlighter,
-        injections: None,
-        config_gen: next_test_config_gen(),
-    })
-}
-
-fn fresh_bid() -> BufferId {
-    let mut sm: SlotMap<BufferId, ()> = SlotMap::with_key();
-    sm.insert(())
-}
-
-fn empty_langs() -> Arc<FxHashMap<String, Arc<GrammarBundle>>> {
-    Arc::new(FxHashMap::default())
+    crate::test_support::make_bundle(name, symbol, &highlights_src, None)
 }
 
 /// Real end-to-end parse via `do_parse`-equivalent: build a `ParseDone`

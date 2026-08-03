@@ -120,7 +120,7 @@ impl std::fmt::Display for RegisterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::GlobBuild(e) => write!(f, "glob set compilation failed: {e}"),
-            Self::GrammarLoad(e) => write!(f, "grammar load failed: {e:?}"),
+            Self::GrammarLoad(e) => write!(f, "grammar load failed: {e}"),
             Self::HighlightsRead(e) => write!(f, "highlights.scm read failed: {e}"),
             Self::QueryBuild(e) => write!(f, "highlight query compilation failed: {e}"),
             Self::InjectionsRead(e) => write!(f, "injections.scm read failed: {e}"),
@@ -354,11 +354,11 @@ impl LanguageRegistry {
         self.deindex(id, &identity);
         self.grammars[id.0 as usize] = None;
         self.lang_order.retain(|&i| i != id);
-        let (compiled, ids) =
-            Self::build_globs(&self.identities, &self.lang_order).unwrap_or_else(|e| {
-                eprintln!("LanguageRegistry::remove: glob rebuild failed: {e}");
-                (GlobSet::empty(), Vec::new())
-            });
+        // Removing a language can only shrink the glob pattern set, so the
+        // NFA size limit that gated the original build cannot newly trigger.
+        let (compiled, ids) = Self::build_globs(&self.identities, &self.lang_order).expect(
+            "glob rebuild after remove cannot exceed the NFA limit — the pattern set only shrank",
+        );
         self.compiled_globs = compiled;
         self.glob_lang_ids = ids;
         self.rebuild_grammar_snapshot();

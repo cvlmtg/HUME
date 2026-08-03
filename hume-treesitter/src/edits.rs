@@ -93,15 +93,13 @@ fn make_input_edit(
 
 /// Compute `new_end_position` for an insertion starting at `(start_row, start_col)`.
 fn new_end_point(start_row: usize, start_col: usize, inserted: &str) -> (usize, usize) {
-    let newline_count = inserted.bytes().filter(|&b| b == b'\n').count();
-    if newline_count == 0 {
-        (start_row, start_col + inserted.len())
-    } else {
+    match inserted.rfind('\n') {
+        None => (start_row, start_col + inserted.len()),
         // Column is the byte count after the last newline in the inserted text.
-        let last_nl = inserted
-            .rfind('\n')
-            .expect("newline_count > 0 checked above");
-        (start_row + newline_count, inserted.len() - last_nl - 1)
+        Some(last_nl) => {
+            let newline_count = inserted.bytes().filter(|&b| b == b'\n').count();
+            (start_row + newline_count, inserted.len() - last_nl - 1)
+        }
     }
 }
 

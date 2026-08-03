@@ -81,6 +81,21 @@ pub struct Syntax {
 }
 
 impl Syntax {
+    /// A fresh, unparsed attachment — no committed layers, no in-flight
+    /// request, generations at zero. Shared by `attach` and `attach_sync`,
+    /// which differ only in how (or whether) the first parse is requested.
+    fn detached(bundle: Arc<GrammarBundle>) -> Self {
+        Self {
+            bundle,
+            layers: None,
+            parsed_gen: 0,
+            tree_gen: 0,
+            pending_edits: Vec::new(),
+            in_flight: None,
+            span_scratch: Mutex::new(FlattenScratch::default()),
+        }
+    }
+
     /// Create a fresh attachment. Empty text short-circuits: `parsed_gen` is
     /// set to `text_gen` immediately, no request is built, `in_flight` stays
     /// `None`. Otherwise returns the initial full-parse request — the caller
@@ -92,15 +107,7 @@ impl Syntax {
         text: &Text,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> (Self, Option<ParseRequest>) {
-        let mut syn = Self {
-            bundle: Arc::clone(&bundle),
-            layers: None,
-            parsed_gen: 0,
-            tree_gen: 0,
-            pending_edits: Vec::new(),
-            in_flight: None,
-            span_scratch: Mutex::new(FlattenScratch::default()),
-        };
+        let mut syn = Self::detached(Arc::clone(&bundle));
 
         if text.len_bytes() == 0 {
             syn.parsed_gen = text_gen;
@@ -135,15 +142,7 @@ impl Syntax {
         text: &Text,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> Self {
-        let mut syn = Self {
-            bundle: Arc::clone(&bundle),
-            layers: None,
-            parsed_gen: 0,
-            tree_gen: 0,
-            pending_edits: Vec::new(),
-            in_flight: None,
-            span_scratch: Mutex::new(FlattenScratch::default()),
-        };
+        let mut syn = Self::detached(Arc::clone(&bundle));
 
         if text.len_bytes() == 0 {
             return syn;
@@ -250,7 +249,7 @@ impl Syntax {
                 .expect("checked non-empty above")
                 .0
                 == text_gen
-            && self.pending_edits.windows(2).all(|w| w[1].0 - w[0].0 <= 1);
+            && self.pending_edits.windows(2).all(|w| w[1].0 <= w[0].0 + 1);
 
         if chain_ok {
             let edits: Vec<tree_sitter::InputEdit> =
@@ -299,12 +298,11 @@ impl Syntax {
             ..
         } = done;
 
-        if self.in_flight == Some(text_gen) && bundle.config_gen == self.bundle.config_gen {
-            self.in_flight = None;
-        }
-
         if bundle.config_gen != self.bundle.config_gen {
-            return;
+            return; // superseded attachment — must not clear the new one's in_flight
+        }
+        if self.in_flight == Some(text_gen) {
+            self.in_flight = None;
         }
         if text_gen != current_text_gen {
             return;
@@ -364,14 +362,17 @@ impl Syntax {
         self.parsed_gen
     }
 
+    #[cfg(any(test, feature = "test-util"))]
     pub fn tree_gen(&self) -> u64 {
         self.tree_gen
     }
 
+    #[cfg(any(test, feature = "test-util"))]
     pub fn pending_edits(&self) -> &[(u64, tree_sitter::InputEdit)] {
         &self.pending_edits
     }
 
+    #[cfg(any(test, feature = "test-util"))]
     pub fn is_in_flight(&self) -> bool {
         self.in_flight.is_some()
     }

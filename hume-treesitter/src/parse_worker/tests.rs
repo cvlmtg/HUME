@@ -1,65 +1,24 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use slotmap::SlotMap;
-
 use rustc_hash::FxHashMap;
 
-use crate::grammar::LoadedGrammar;
-use crate::highlight::TreeSitterHighlighter;
 use hume_engine::pipeline::BufferId;
-use hume_engine::theme::ScopeRegistry;
 
 use super::ParseBackend as _;
 use super::{ParseOutcome, ParseRequest, Text, ThreadedParseBackend, coalesce_one};
 use crate::registry::GrammarBundle;
-use hume_test_fixtures::{grammar_parser_path, skip_unless_grammars};
-
-/// Distinct per call, mirroring `LanguageRegistry`'s `config_gen`
-/// invariant so tests that compare bundles by gen see real identity.
-fn next_test_config_gen() -> u32 {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static NEXT_GEN: AtomicU32 = AtomicU32::new(0);
-    NEXT_GEN.fetch_add(1, Ordering::Relaxed)
-}
+use crate::test_support::{empty_langs, fresh_bid};
+use hume_test_fixtures::skip_unless_grammars;
 
 fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
-    let path = grammar_parser_path(name);
-    if !path.exists() {
-        panic!(
-            "grammar fixture missing: {}\nrun scripts/fetch-test-grammars.sh from the repo root",
-            path.display()
-        );
-    }
-    let grammar = LoadedGrammar::open(&path, symbol).expect("load grammar");
-    let query = Arc::new(tree_sitter::Query::new(grammar.language(), "").expect("empty query"));
-    let mut registry = ScopeRegistry::new();
-    let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(
-        query,
-        &mut registry,
-    ));
-    Arc::new(GrammarBundle {
-        grammar,
-        highlighter,
-        injections: None,
-        config_gen: next_test_config_gen(),
-    })
-}
-
-fn fresh_bid() -> BufferId {
-    let mut sm: SlotMap<BufferId, ()> = SlotMap::with_key();
-    sm.insert(())
-}
-
-fn empty_langs() -> Arc<FxHashMap<String, Arc<GrammarBundle>>> {
-    Arc::new(FxHashMap::default())
+    crate::test_support::make_bundle(name, symbol, "", None)
 }
 
 // ── coalesce_one (pure) ───────────────────────────────────────────────────
 
 #[test]
 fn coalesce_one_keeps_higher_gen() {
-    use rustc_hash::FxHashMap;
     if skip_unless_grammars(&["json"]) {
         return;
     }
@@ -137,7 +96,6 @@ fn coalesce_one_keeps_higher_gen() {
 
 #[test]
 fn coalesce_one_same_gen_different_lang_replaces() {
-    use rustc_hash::FxHashMap;
     if skip_unless_grammars(&["json", "rust"]) {
         return;
     }
@@ -206,7 +164,7 @@ fn coalesce_one_same_gen_different_lang_replaces() {
 fn worker_shutdown_joins_thread() {
     let (tx, rx) = std::sync::mpsc::channel::<()>();
     std::thread::spawn(move || {
-        drop(ThreadedParseBackend::new());
+        drop(ThreadedParseBackend::with_waker(Arc::new(|| {})));
         let _ = tx.send(());
     });
     rx.recv_timeout(Duration::from_secs(1))
@@ -222,7 +180,7 @@ fn worker_language_switch_produces_trees_for_both() {
     }
     let json_bundle = make_bundle("json", "tree_sitter_json");
     let rust_bundle = make_bundle("rust", "tree_sitter_rust");
-    let mut worker = ThreadedParseBackend::new();
+    let mut worker = ThreadedParseBackend::with_waker(Arc::new(|| {}));
     let bid = fresh_bid();
 
     worker.post(ParseRequest {
@@ -268,13 +226,13 @@ fn worker_language_switch_produces_trees_for_both() {
 
 #[test]
 fn parse_completion_fires_waker() {
+    if skip_unless_grammars(&["json"]) {
+        return;
+    }
     let (tx_wake, rx_wake) = std::sync::mpsc::channel::<()>();
     let wake: super::WakeCallback = Arc::new(move || {
         let _ = tx_wake.send(());
     });
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
     let mut worker = ThreadedParseBackend::with_waker(wake);
     let bundle = make_bundle("json", "tree_sitter_json");
 

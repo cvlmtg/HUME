@@ -6,6 +6,37 @@ use hume_treesitter::grammar::LoadedGrammar;
 use hume_treesitter::highlight::{TreeSitterHighlighter, layer_highlights_for_line};
 use hume_treesitter::layers::{SyntaxLayer, SyntaxLayers};
 
+/// Load `name`'s compiled grammar fixture and parse `source` with it —
+/// shared by every test below that needs a working tree.
+fn open_and_parse(
+    name: &str,
+    symbol: &str,
+    source: &str,
+) -> (LoadedGrammar, tree_sitter::Tree, ropey::Rope) {
+    let gpath = grammar_parser_path(name);
+    let grammar = LoadedGrammar::open(&gpath, symbol).expect("open grammar");
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(grammar.language())
+        .expect("set language");
+    let tree = parser.parse(source, None).expect("parse should succeed");
+    let rope = ropey::Rope::from_str(source);
+    (grammar, tree, rope)
+}
+
+/// Compile `query_src` against `grammar`'s language into a highlighter,
+/// interning captures into a fresh [`ScopeRegistry`].
+fn highlighter_for(
+    grammar: &LoadedGrammar,
+    query_src: &str,
+) -> (TreeSitterHighlighter, ScopeRegistry) {
+    let query =
+        Arc::new(tree_sitter::Query::new(grammar.language(), query_src).expect("compile query"));
+    let mut scope_reg = ScopeRegistry::new();
+    let highlighter = TreeSitterHighlighter::from_shared_query(query, &mut scope_reg);
+    (highlighter, scope_reg)
+}
+
 /// Wrap a single parsed tree + highlighter into a one-layer `SyntaxLayers`
 /// (the root layer, whole-buffer `ranges`) and run the real per-line
 /// highlight collection path used by the renderer.
@@ -78,15 +109,11 @@ fn parses_rust_function_signature() {
     if skip_unless_grammars(&["rust"]) {
         return;
     }
-    let gpath = grammar_parser_path("rust");
-    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").unwrap();
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(grammar.language()).unwrap();
-
-    let source = b"fn foo(x: u32) -> u32 { x + 1 }";
-    let tree = parser
-        .parse(source as &[u8], None)
-        .expect("parse should succeed");
+    let (_grammar, tree, _rope) = open_and_parse(
+        "rust",
+        "tree_sitter_rust",
+        "fn foo(x: u32) -> u32 { x + 1 }",
+    );
     let root = tree.root_node();
 
     assert_eq!(root.kind(), "source_file");
@@ -100,15 +127,7 @@ fn parses_json_object() {
     if skip_unless_grammars(&["json"]) {
         return;
     }
-    let gpath = grammar_parser_path("json");
-    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_json").unwrap();
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(grammar.language()).unwrap();
-
-    let source = b"{\"a\":1}";
-    let tree = parser
-        .parse(source as &[u8], None)
-        .expect("parse should succeed");
+    let (_grammar, tree, _rope) = open_and_parse("json", "tree_sitter_json", "{\"a\":1}");
     let root = tree.root_node();
 
     assert!(!root.has_error(), "parse produced errors");
@@ -125,24 +144,11 @@ fn highlights_emit_keyword_event() {
     if skip_unless_grammars(&["rust"]) {
         return;
     }
-    let gpath = grammar_parser_path("rust");
-    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").unwrap();
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(grammar.language()).unwrap();
-
-    let source = b"fn foo() {}\n";
-    let tree = parser
-        .parse(source as &[u8], None)
-        .expect("parse should succeed");
+    let (grammar, tree, rope) = open_and_parse("rust", "tree_sitter_rust", "fn foo() {}\n");
 
     let highlights_source =
         std::fs::read_to_string(grammar_query_path("rust")).expect("highlights.scm should exist");
-    let mut scope_reg = ScopeRegistry::new();
-    let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
-
-    let highlighter =
-        TreeSitterHighlighter::new(grammar.language(), &highlights_source, &mut scope_reg)
-            .expect("highlighter creation should succeed");
+    let (highlighter, scope_reg) = highlighter_for(&grammar, &highlights_source);
 
     let out = highlights_for_line(tree, highlighter, &rope, 0);
 
@@ -167,21 +173,12 @@ fn highlights_for_line_correct_on_nonzero_line() {
     if skip_unless_grammars(&["rust"]) {
         return;
     }
-    let source = b"fn foo() {}\nlet x = 1;\n";
-    let gpath = grammar_parser_path("rust");
-    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").unwrap();
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(grammar.language()).unwrap();
-    let tree = parser.parse(source as &[u8], None).expect("parse");
+    let (grammar, tree, rope) =
+        open_and_parse("rust", "tree_sitter_rust", "fn foo() {}\nlet x = 1;\n");
 
     let highlights_source =
         std::fs::read_to_string(grammar_query_path("rust")).expect("highlights.scm");
-    let mut scope_reg = ScopeRegistry::new();
-    let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
-
-    let highlighter =
-        TreeSitterHighlighter::new(grammar.language(), &highlights_source, &mut scope_reg)
-            .expect("highlighter");
+    let (highlighter, scope_reg) = highlighter_for(&grammar, &highlights_source);
 
     let out = highlights_for_line(tree, highlighter, &rope, 1);
 
@@ -211,20 +208,10 @@ fn highlight_overlap_shorter_wins_at_shared_start() {
     if skip_unless_grammars(&["rust"]) {
         return;
     }
-    let gpath = grammar_parser_path("rust");
-    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").expect("open rust grammar");
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(grammar.language()).unwrap();
-
-    let source = b"fn foo() {}\n";
-    let tree = parser.parse(source as &[u8], None).expect("parse");
+    let (grammar, tree, rope) = open_and_parse("rust", "tree_sitter_rust", "fn foo() {}\n");
 
     let query_src = "(function_item) @function\n\"fn\" @keyword";
-    let mut scope_reg = ScopeRegistry::new();
-    let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
-
-    let highlighter = TreeSitterHighlighter::new(grammar.language(), query_src, &mut scope_reg)
-        .expect("highlighter creation should succeed");
+    let (highlighter, scope_reg) = highlighter_for(&grammar, query_src);
 
     let out = highlights_for_line(tree, highlighter, &rope, 0);
 
@@ -258,20 +245,10 @@ fn highlight_overlap_fully_contained_is_dropped() {
     if skip_unless_grammars(&["json"]) {
         return;
     }
-    let gpath = grammar_parser_path("json");
-    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_json").expect("open json grammar");
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(grammar.language()).unwrap();
-
-    let source = b"\"hello\"\n";
-    let tree = parser.parse(source as &[u8], None).expect("parse");
+    let (grammar, tree, rope) = open_and_parse("json", "tree_sitter_json", "\"hello\"\n");
 
     let query_src = "(string) @string\n(string) @string.duplicate";
-    let mut scope_reg = ScopeRegistry::new();
-    let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
-
-    let highlighter = TreeSitterHighlighter::new(grammar.language(), query_src, &mut scope_reg)
-        .expect("highlighter creation should succeed");
+    let (highlighter, scope_reg) = highlighter_for(&grammar, query_src);
 
     let out = highlights_for_line(tree, highlighter, &rope, 0);
 
@@ -302,24 +279,15 @@ fn highlight_later_pattern_wins_on_same_node() {
     if skip_unless_grammars(&["rust"]) {
         return;
     }
-    let gpath = grammar_parser_path("rust");
-    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").expect("open rust grammar");
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(grammar.language()).unwrap();
-
-    let source = b"fn main() { foo(1); }\n";
-    let tree = parser.parse(source as &[u8], None).expect("parse");
+    let (grammar, tree, rope) =
+        open_and_parse("rust", "tree_sitter_rust", "fn main() { foo(1); }\n");
 
     let query_src = "(identifier) @variable\n(call_expression function: (identifier) @function)";
-    let mut scope_reg = ScopeRegistry::new();
-    let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
-
-    let highlighter = TreeSitterHighlighter::new(grammar.language(), query_src, &mut scope_reg)
-        .expect("highlighter creation should succeed");
+    let (highlighter, scope_reg) = highlighter_for(&grammar, query_src);
 
     let out = highlights_for_line(tree, highlighter, &rope, 0);
 
-    // `foo` is at byte offset 13..16 in `fn main() { foo(1); }`.
+    // `foo` is at byte offset 12..15 in `fn main() { foo(1); }`.
     let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
     let (_, _, scope_id) = *foo_span.unwrap_or_else(|| {
         panic!(
@@ -345,20 +313,11 @@ fn highlight_pattern_order_controls_winner_not_specificity() {
     if skip_unless_grammars(&["rust"]) {
         return;
     }
-    let gpath = grammar_parser_path("rust");
-    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").expect("open rust grammar");
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(grammar.language()).unwrap();
-
-    let source = b"fn main() { foo(1); }\n";
-    let tree = parser.parse(source as &[u8], None).expect("parse");
+    let (grammar, tree, rope) =
+        open_and_parse("rust", "tree_sitter_rust", "fn main() { foo(1); }\n");
 
     let query_src = "(call_expression function: (identifier) @function)\n(identifier) @variable";
-    let mut scope_reg = ScopeRegistry::new();
-    let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
-
-    let highlighter = TreeSitterHighlighter::new(grammar.language(), query_src, &mut scope_reg)
-        .expect("highlighter creation should succeed");
+    let (highlighter, scope_reg) = highlighter_for(&grammar, query_src);
 
     let out = highlights_for_line(tree, highlighter, &rope, 0);
 
@@ -387,21 +346,12 @@ fn highlight_underscore_captures_are_ignored() {
     if skip_unless_grammars(&["rust"]) {
         return;
     }
-    let gpath = grammar_parser_path("rust");
-    let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").expect("open rust grammar");
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(grammar.language()).unwrap();
-
-    let source = b"fn main() { foo(1); }\n";
-    let tree = parser.parse(source as &[u8], None).expect("parse");
+    let (grammar, tree, rope) =
+        open_and_parse("rust", "tree_sitter_rust", "fn main() { foo(1); }\n");
 
     // Only-underscore query: must yield zero spans for `foo`.
     let helper_only_query = "(call_expression function: (identifier) @_helper)";
-    let mut scope_reg = ScopeRegistry::new();
-    let rope = ropey::Rope::from_str(&String::from_utf8_lossy(source));
-    let highlighter =
-        TreeSitterHighlighter::new(grammar.language(), helper_only_query, &mut scope_reg)
-            .expect("highlighter creation should succeed");
+    let (highlighter, _scope_reg) = highlighter_for(&grammar, helper_only_query);
     let out = highlights_for_line(tree.clone(), highlighter, &rope, 0);
     assert!(
         out.is_empty(),
@@ -411,9 +361,7 @@ fn highlight_underscore_captures_are_ignored() {
     // Underscore capture alongside a real one on the same node: the real
     // capture must win, never the (dropped) underscore capture.
     let mixed_query = "(call_expression function: (identifier) @_helper)\n(identifier) @variable";
-    let mut scope_reg = ScopeRegistry::new();
-    let highlighter = TreeSitterHighlighter::new(grammar.language(), mixed_query, &mut scope_reg)
-        .expect("highlighter creation should succeed");
+    let (highlighter, scope_reg) = highlighter_for(&grammar, mixed_query);
     let out = highlights_for_line(tree, highlighter, &rope, 0);
     let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
     let (_, _, scope_id) = *foo_span.unwrap_or_else(|| {

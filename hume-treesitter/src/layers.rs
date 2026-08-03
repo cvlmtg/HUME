@@ -22,7 +22,6 @@ pub struct SyntaxLayer {
 /// injection layer, installed atomically per parse.
 ///
 /// `layers[0]` is always the root layer (`ranges` empty, `depth` 0).
-#[derive(Default)]
 pub struct SyntaxLayers {
     pub layers: Vec<SyntaxLayer>,
 }

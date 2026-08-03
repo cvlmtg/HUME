@@ -1,52 +1,18 @@
 use rustc_hash::FxHashMap;
 use std::sync::atomic::AtomicBool;
 
-use crate::grammar::LoadedGrammar;
-use crate::highlight::TreeSitterHighlighter;
-use hume_engine::theme::ScopeRegistry;
-
 use super::*;
 use crate::registry::GrammarBundle;
-use hume_test_fixtures::{
-    grammar_parser_path, grammar_query_path, skip_unless_file, skip_unless_grammars,
-};
+use hume_test_fixtures::{grammar_query_path, skip_unless_file, skip_unless_grammars};
 
 /// Load a real grammar fixture with an optional custom injections source
 /// (overriding whatever `injections.scm` the fixture ships, if any) —
 /// keeps each test's injection query minimal and self-contained rather
 /// than depending on upstream Helix query wording.
 fn make_bundle(name: &str, symbol: &str, injections_src: Option<&str>) -> Arc<GrammarBundle> {
-    let parser_path = grammar_parser_path(name);
-    let grammar = LoadedGrammar::open(&parser_path, symbol).expect("load grammar");
     let highlights_src =
         std::fs::read_to_string(grammar_query_path(name)).expect("read highlights.scm");
-    let query = Arc::new(
-        tree_sitter::Query::new(grammar.language(), &highlights_src).expect("compile query"),
-    );
-    let mut registry = ScopeRegistry::new();
-    let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(
-        query,
-        &mut registry,
-    ));
-    let injections = injections_src.map(|src| {
-        let q =
-            Arc::new(tree_sitter::Query::new(grammar.language(), src).expect("compile injections"));
-        InjectionsQuery::new(q)
-    });
-    Arc::new(GrammarBundle {
-        grammar,
-        highlighter,
-        injections,
-        config_gen: next_test_config_gen(),
-    })
-}
-
-/// Distinct per call, mirroring `LanguageRegistry`'s `config_gen`
-/// invariant so tests that compare configs by gen see real identity.
-fn next_test_config_gen() -> u32 {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static NEXT_GEN: AtomicU32 = AtomicU32::new(0);
-    NEXT_GEN.fetch_add(1, Ordering::Relaxed)
+    crate::test_support::make_bundle(name, symbol, &highlights_src, injections_src)
 }
 
 fn parse(bundle: &GrammarBundle, source: &str) -> (tree_sitter::Parser, tree_sitter::Tree) {
@@ -98,20 +64,7 @@ fn content_ranges_include_unnamed_children_returns_whole_node() {
 
 // ── normalize_ranges (pure) ───────────────────────────────────────────────
 
-fn range(start: usize, end: usize) -> tree_sitter::Range {
-    tree_sitter::Range {
-        start_byte: start,
-        end_byte: end,
-        start_point: tree_sitter::Point {
-            row: 0,
-            column: start,
-        },
-        end_point: tree_sitter::Point {
-            row: 0,
-            column: end,
-        },
-    }
-}
+use crate::test_support::range;
 
 #[test]
 fn normalize_ranges_drops_zero_width_and_sorts() {

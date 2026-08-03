@@ -18,32 +18,32 @@ use crate::registry::GrammarBundle;
 /// Built once per grammar attach (in `attach_grammar`), shared across every
 /// buffer of that language via `Arc`, mirroring `GrammarBundle.query`.
 pub struct InjectionsQuery {
-    pub query: Arc<tree_sitter::Query>,
+    pub(crate) query: Arc<tree_sitter::Query>,
     /// Capture index for `@injection.content`, if the query defines it.
-    pub content_capture: Option<u32>,
+    pub(crate) content_capture: Option<u32>,
     /// Capture index for `@injection.language`, if the query defines it.
-    pub language_capture: Option<u32>,
+    pub(crate) language_capture: Option<u32>,
     /// Index-aligned with `query.pattern_count()`.
-    pub patterns: Vec<PatternConfig>,
+    pub(crate) patterns: Vec<PatternConfig>,
 }
 
 /// Per-pattern `#set!` properties from an `injections.scm` query.
-pub struct PatternConfig {
+pub(crate) struct PatternConfig {
     /// Static `#set! injection.language "x"` — used when the pattern has no
     /// `@injection.language` capture (e.g. doc-comment content).
-    pub language: Option<String>,
+    pub(crate) language: Option<String>,
     /// `#set! injection.combined` — all matches of this pattern in one buffer
     /// parse as a single layer with multiple included ranges (required by
     /// `markdown.inline`, whose grammar expects the whole document's inline
     /// spans as one tree).
-    pub combined: bool,
+    pub(crate) combined: bool,
     /// `#set! injection.include-unnamed-children` — by default, a content
     /// node's *unnamed* (anonymous/punctuation) children are cut out of the
     /// injected range; this property includes them instead, so the full
     /// node span is injected untouched. Named children are never cut out —
     /// they're meaningful grammar constructs, not delimiters — only unnamed
     /// ones (parens, commas, markers) are excluded by default.
-    pub include_unnamed_children: bool,
+    pub(crate) include_unnamed_children: bool,
 }
 
 impl InjectionsQuery {
@@ -51,7 +51,7 @@ impl InjectionsQuery {
     /// properties (Helix queries carry extras like `injection.filename`) are
     /// silently ignored — only the standard tree-sitter injection convention
     /// is interpreted.
-    pub fn new(query: Arc<tree_sitter::Query>) -> Self {
+    pub(crate) fn new(query: Arc<tree_sitter::Query>) -> Self {
         let content_capture = query.capture_index_for_name("injection.content");
         let language_capture = query.capture_index_for_name("injection.language");
         let patterns = (0..query.pattern_count())
@@ -160,10 +160,12 @@ fn node_text(node: tree_sitter::Node, rope: &ropey::Rope) -> String {
     rope.byte_slice(node.start_byte()..node.end_byte()).into()
 }
 
-/// One resolved (but not yet parsed) injection site: the language to parse
-/// it with and the byte ranges to include.
+/// One resolved (but not yet parsed) injection site: the grammar to parse
+/// it with and the byte ranges to include. Carrying the resolved `bundle`
+/// (not just its name) makes a second, redundant `langs` lookup at
+/// consumption time structurally impossible instead of merely unreachable.
 struct InjectionGroup {
-    language: String,
+    bundle: Arc<GrammarBundle>,
     ranges: Vec<tree_sitter::Range>,
 }
 
@@ -213,13 +215,13 @@ pub(crate) fn resolve_and_parse_injections(
         // Unknown injection language — skip silently. No lazy install: the
         // user opts into grammars explicitly via PLUM. Every entry in `langs`
         // is grammared by construction (it's built from the grammar table).
-        // Checked here, before `combined` insertion, so its FxHashMap only
+        // Resolved here, before `combined` insertion, so its FxHashMap only
         // ever keys on the trusted installed-grammar names — a dynamic
         // `@injection.language` capture is raw buffer text, and unfiltered
         // attacker-chosen keys in an unkeyed hash invite collision DoS.
-        if !langs.contains_key(&language) {
+        let Some(child_bundle) = langs.get(&language) else {
             continue;
-        }
+        };
 
         let Some(content_idx) = inj.content_capture else {
             continue;
@@ -236,15 +238,18 @@ pub(crate) fn resolve_and_parse_injections(
 
         if pattern.combined {
             combined
-                .entry((m.pattern_index, language.clone()))
+                .entry((m.pattern_index, language))
                 .or_insert_with(|| InjectionGroup {
-                    language,
+                    bundle: Arc::clone(child_bundle),
                     ranges: Vec::new(),
                 })
                 .ranges
                 .append(&mut ranges);
         } else {
-            non_combined.push(InjectionGroup { language, ranges });
+            non_combined.push(InjectionGroup {
+                bundle: Arc::clone(child_bundle),
+                ranges,
+            });
         }
     }
 
@@ -258,10 +263,7 @@ pub(crate) fn resolve_and_parse_injections(
         .into_iter()
         .chain(combined.into_iter().map(|(_, g)| g))
     {
-        // Always present — unknown languages were filtered before grouping.
-        let Some(child_bundle) = langs.get(&group.language) else {
-            continue;
-        };
+        let child_bundle = &group.bundle;
         let ranges = normalize_ranges(group.ranges);
         if ranges.is_empty() {
             continue;
