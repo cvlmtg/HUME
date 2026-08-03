@@ -94,7 +94,7 @@ pub fn wrap_each_selection(
 /// Returns `replacement` unchanged when:
 /// - `replacement` is not part of any known pair, or
 /// - `current` is not a known delimiter character.
-pub fn smart_replace_char(replacement: char, current: char, sel_index: usize) -> char {
+pub(crate) fn smart_replace_char(replacement: char, current: char, sel_index: usize) -> char {
     let (open, close) = match pair_for_char(replacement) {
         Some(p) => p,
         None => return replacement,

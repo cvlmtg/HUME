@@ -207,7 +207,7 @@ pub struct KillRing {
 }
 
 /// Maximum number of entries the kill ring retains.
-pub const KILL_RING_DEPTH: usize = 10;
+pub(crate) const KILL_RING_DEPTH: usize = 10;
 
 impl KillRing {
     pub fn new() -> Self {

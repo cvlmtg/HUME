@@ -30,7 +30,7 @@ pub enum FindKind {
 ///
 /// Uses `map` (which always merges) so that selections which converge to the
 /// same position after the motion are automatically merged.
-pub fn apply_motion(
+pub(crate) fn apply_motion(
     buf: &Text,
     sels: SelectionSet,
     mode: MotionMode,
@@ -62,8 +62,8 @@ pub use word::{
     cmd_select_next_uppercase_word, cmd_select_next_uppercase_word_around, cmd_select_next_word,
     cmd_select_next_word_around, cmd_select_prev_uppercase_word,
     cmd_select_prev_uppercase_word_around, cmd_select_prev_word, cmd_select_prev_word_around,
-    prev_word_start,
 };
+pub(crate) use word::prev_word_start;
 mod paragraph;
 use paragraph::{next_paragraph, prev_paragraph};
 mod line_select;

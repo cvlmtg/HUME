@@ -52,7 +52,7 @@ pub(super) fn next_word_start(
 ///
 /// Two-phase backward scan: skip Space/Eol backward, then skip backward while
 /// in the same category, landing on the first char of that group.
-pub fn prev_word_start(
+pub(crate) fn prev_word_start(
     buf: &Text,
     head: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,

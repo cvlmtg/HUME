@@ -42,7 +42,7 @@ pub use word::{
 ///
 /// Uses `map` (which always merges) so that multiple cursors landing on the
 /// same range (e.g., both cursors inside the same bracket pair) are merged.
-pub fn apply_text_object(
+pub(crate) fn apply_text_object(
     buf: &Text,
     sels: SelectionSet,
     text_object: impl Fn(&Text, usize) -> Option<(usize, usize)>,
@@ -67,7 +67,7 @@ pub fn apply_text_object(
 /// 2. If the result is a subset (union doesn't grow), retry from the position just
 ///    past `sel.end()`. For bracket/quote text objects this escapes the current pair
 ///    and causes the search to find the next enclosing pair instead.
-pub fn apply_text_object_extend(
+pub(crate) fn apply_text_object_extend(
     buf: &Text,
     sels: SelectionSet,
     text_object: impl Fn(&Text, usize) -> Option<(usize, usize)>,

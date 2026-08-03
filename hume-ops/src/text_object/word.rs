@@ -388,7 +388,7 @@ pub fn cmd_around_uppercase_word(
 /// Select the word under the cursor (`mm`), covering its surrounding
 /// whitespace per [`expand_word_unit`] — used when `word-selects-whitespace`
 /// is on. Both modes use the same unit; `Extend` unions it with the current
-/// selection via [`apply_text_object_extend`]. Also the body `maw` delegates
+/// selection via `apply_text_object_extend`. Also the body `maw` delegates
 /// to — [`cmd_around_word`] — the two select the same span.
 pub fn cmd_select_word_around(
     buf: &Text,
