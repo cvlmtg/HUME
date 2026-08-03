@@ -5,45 +5,55 @@ use hume_editing::text::Text;
 
 // ── Vertical copy ─────────────────────────────────────────────────────────────
 
-/// Duplicate each selection one line down and add it to the selection set.
+/// Duplicate each selection onto each of the `count` lines below it and add
+/// them to the selection set.
 ///
-/// The copy preserves the column offsets of both `anchor` and `head`,
-/// clamped to the length of the target line and snapped to a grapheme
-/// boundary. If the target line does not exist (i.e., the selection's
-/// bottommost line is the last real line), no copy is added for that
-/// selection.
+/// Each copy preserves the column offsets of both `anchor` and `head`,
+/// clamped to the length of its target line and snapped to a grapheme
+/// boundary. Copying stops early once a target line doesn't exist (i.e. the
+/// selection's bottommost line is the last real line) — a `count` larger than
+/// the remaining lines just clamps at the last one, it doesn't wrap or error.
 ///
-/// The primary advances to the newly added copy of the original primary. If
-/// no copy was added (last-line edge case) the primary stays on the original.
+/// The primary advances to the furthest copy of the original primary (the
+/// same place `count` separate presses of the count-1 command would leave
+/// it). If no copy was added (last-line edge case) the primary stays on the
+/// original.
 pub fn cmd_copy_selection_on_next_line(
     buf: &Text,
     sels: SelectionSet,
-    _count: usize,
+    count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
-    copy_selection_vertically(buf, sels, 1)
+    copy_selection_vertically(buf, sels, 1, count)
 }
 
-/// Duplicate each selection one line up and add it to the selection set.
+/// Duplicate each selection onto each of the `count` lines above it and add
+/// them to the selection set.
 ///
 /// Mirror of [`cmd_copy_selection_on_next_line`] — shifts up instead of down.
 pub fn cmd_copy_selection_on_prev_line(
     buf: &Text,
     sels: SelectionSet,
-    _count: usize,
+    count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
-    copy_selection_vertically(buf, sels, -1)
+    copy_selection_vertically(buf, sels, -1, count)
 }
 
 /// Core implementation for copy-to-next/prev-line. `direction` is `1` for
-/// down and `-1` for up.
-fn copy_selection_vertically(buf: &Text, sels: SelectionSet, direction: isize) -> SelectionSet {
+/// down and `-1` for up; `count` is how many lines in that direction to
+/// duplicate onto.
+fn copy_selection_vertically(
+    buf: &Text,
+    sels: SelectionSet,
+    direction: isize,
+    count: usize,
+) -> SelectionSet {
     let primary_idx = sels.primary_index();
     // Collect originals into `all_sels`. Copies are appended below.
     let mut all_sels: Vec<Selection> = sels.iter_sorted().copied().collect();
     let original_len = all_sels.len();
-    // Index in `all_sels` for the copy of the old primary, if one was added.
+    // Index in `all_sels` for the furthest copy of the old primary, if one was added.
     let mut primary_copy_idx: Option<usize> = None;
 
     for i in 0..original_len {
@@ -57,30 +67,38 @@ fn copy_selection_vertically(buf: &Text, sels: SelectionSet, direction: isize) -
         } else {
             anchor_line.min(head_line) // topmost for "up"
         };
-        let target_outer = outer_line + direction;
 
-        if target_outer < 0 {
-            continue; // would go before the start of the buffer
+        // Walk outward one line at a time, breaking as soon as a target line
+        // falls off the buffer — every further step in that direction would
+        // too, so this is O(lines available), not O(count) even for a
+        // `usize::MAX` count prefix.
+        let mut target_outer = outer_line;
+        for _ in 0..count {
+            target_outer += direction;
+
+            if target_outer < 0 {
+                break; // would go before the start of the buffer
+            }
+            let target_outer_usize = target_outer as usize;
+
+            // The phantom trailing line (line_to_char == len_chars) has no content.
+            if buf.line_to_char(target_outer_usize) >= buf.len_chars() {
+                break;
+            }
+
+            // Shift each endpoint by the same delta.
+            let delta = target_outer - outer_line;
+
+            let new_anchor = column_on_shifted_line(buf, sel.anchor(), anchor_line as usize, delta);
+            let new_head = column_on_shifted_line(buf, sel.head(), head_line as usize, delta);
+
+            let new_sel = Selection::new(new_anchor, new_head);
+
+            if i == primary_idx {
+                primary_copy_idx = Some(all_sels.len());
+            }
+            all_sels.push(new_sel);
         }
-        let target_outer = target_outer as usize;
-
-        // The phantom trailing line (line_to_char == len_chars) has no content.
-        if buf.line_to_char(target_outer) >= buf.len_chars() {
-            continue;
-        }
-
-        // Shift each endpoint by the same delta.
-        let delta = target_outer as isize - outer_line;
-
-        let new_anchor = column_on_shifted_line(buf, sel.anchor(), anchor_line as usize, delta);
-        let new_head = column_on_shifted_line(buf, sel.head(), head_line as usize, delta);
-
-        let new_sel = Selection::new(new_anchor, new_head);
-
-        if i == primary_idx {
-            primary_copy_idx = Some(all_sels.len());
-        }
-        all_sels.push(new_sel);
     }
 
     let desired_primary = primary_copy_idx.unwrap_or(primary_idx);

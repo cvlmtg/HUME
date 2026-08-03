@@ -10,7 +10,7 @@ fn copy_cursor_to_next_line() {
     // "foo\nbar\n" — cursor at column 1 of line 0 ('o').
     // Copy should land at column 1 of line 1 ('a').
     let (buf, sels) = parse_state("f-[o]>o\nbar\n");
-    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 0, MotionMode::Move);
+    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 1, MotionMode::Move);
     assert_eq!(buf.to_string(), "foo\nbar\n"); // buffer unchanged
     assert_eq!(sels_out.len(), 2);
     // Original cursor at offset 1 stays.
@@ -33,7 +33,7 @@ fn copy_cursor_to_next_line() {
 fn copy_to_next_line_on_last_line_is_noop() {
     // Cursor on the last real line — nothing to copy to.
     let (buf, sels) = parse_state("foo\nb-[a]>r\n");
-    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 0, MotionMode::Move);
+    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 1, MotionMode::Move);
     assert_eq!(sels_out.len(), 1); // no copy added
     assert_eq!(sels_out.primary().head(), 5); // cursor unchanged
 }
@@ -43,7 +43,7 @@ fn copy_to_next_line_clamps_column() {
     // "hello\nhi\n" — cursor at column 4 of line 0.
     // Line 1 is "hi\n" (only 2 real chars). Should clamp to last char 'i'.
     let (buf, sels) = parse_state("hell-[o]>\nhi\n");
-    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 0, MotionMode::Move);
+    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 1, MotionMode::Move);
     assert_eq!(sels_out.len(), 2);
     // The copy should land at the last char of "hi" = offset 7.
     // "hello\n" = offsets 0-5, "hi\n" = offsets 6-8.
@@ -59,7 +59,7 @@ fn copy_next_backward_selection() {
     // "foo\nbar\n": f(0),o(1),o(2),\n(3),b(4),a(5),r(6),\n(7).
     // anchor col=2 → line 1 col 2 = offset 6 ('r'). head col=0 → offset 4 ('b').
     let (buf, sels) = parse_state("<[foo]-\nbar\n");
-    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 0, MotionMode::Move);
+    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 1, MotionMode::Move);
     assert_eq!(sels_out.len(), 2);
     // The copy (primary) should be backward: anchor=6, head=4.
     let copy = sels_out.primary();
@@ -77,7 +77,7 @@ fn copy_next_multiple_cursors() {
     // "foo\nbar\n": f(0),o(1),o(2),\n(3),b(4),a(5),r(6),\n(7).
     // Col 1 → offset 5 ('a'), col 2 → offset 6 ('r').
     let (buf, sels) = parse_state("f-[o]>-[o]>\nbar\n");
-    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 0, MotionMode::Move);
+    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 1, MotionMode::Move);
     assert_eq!(sels_out.len(), 4); // 2 originals + 2 copies
     let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head()).collect();
     assert!(heads.contains(&1)); // original col 1
@@ -88,20 +88,64 @@ fn copy_next_multiple_cursors() {
 
 #[test]
 fn copy_next_line_count_3() {
-    // repeat(3, ...) copies the cursor to 3 consecutive lines below.
+    // count=3 copies the cursor onto each of the 3 lines below natively —
+    // no external repeat loop needed.
     // Text: "a\nb\nc\nd\ne\n". Cursor on 'a'(0).
     // After 3 copies: cursors on 'a'(0), 'b'(2), 'c'(4), 'd'(6).
-    use crate::edit::repeat;
     assert_state!(
         "-[a]>\nb\nc\nd\ne\n",
-        |(buf, sels)| repeat(3, &buf, sels, |b, s| cmd_copy_selection_on_next_line(
-            b,
-            s,
-            0,
-            MotionMode::Move
-        )),
+        |(buf, sels)| cmd_copy_selection_on_next_line(&buf, sels, 3, MotionMode::Move),
         "-[a]>\n-[b]>\n-[c]>\n-[d]>\ne\n"
     );
+}
+
+#[test]
+fn copy_next_line_count_exceeds_buffer_clamps() {
+    // Only 2 lines exist below the cursor's line — a count of 10 clamps at
+    // the last real line instead of erroring.
+    assert_state!(
+        "-[a]>\nb\nc\n",
+        |(buf, sels)| cmd_copy_selection_on_next_line(&buf, sels, 10, MotionMode::Move),
+        "-[a]>\n-[b]>\n-[c]>\n"
+    );
+}
+
+#[test]
+fn copy_next_line_count_3_range_selection() {
+    // Forward range selection covering "hello". count=3 duplicates it onto
+    // each of the next 3 lines, each preserving the same column span.
+    assert_state!(
+        "-[hello]>\nworld\nfoo!!\nbar!!\n",
+        |(buf, sels)| cmd_copy_selection_on_next_line(&buf, sels, 3, MotionMode::Move),
+        "-[hello]>\n-[world]>\n-[foo!!]>\n-[bar!!]>\n"
+    );
+}
+
+#[test]
+fn copy_next_line_count_3_multiple_cursors() {
+    // Two cursors on line 0; count=3 gives each 3 copies (6 new selections
+    // total), all landing on the correct columns of lines 1-3.
+    let (buf, sels) = parse_state("f-[o]>-[o]>\nbar\nbaz\nqux\n");
+    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 3, MotionMode::Move);
+    assert_eq!(sels_out.len(), 8); // 2 originals + 2*3 copies
+}
+
+#[test]
+fn copy_next_line_count_3_primary_lands_on_furthest_copy() {
+    // Primary should end on the copy 3 lines down, not the first copy.
+    let (buf, sels) = parse_state("-[a]>\nb\nc\nd\ne\n");
+    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, 3, MotionMode::Move);
+    // "a\nb\nc\nd\ne\n": a(0) b(2) c(4) d(6) e(8). Furthest copy is on 'd'.
+    assert_eq!(sels_out.primary().head(), 6);
+}
+
+#[test]
+fn copy_next_line_count_usize_max_returns_instantly() {
+    // A naive `0..count` loop would hang forever on `usize::MAX`; the target
+    // line runs off the buffer after 4 steps, so this must return instantly.
+    let (buf, sels) = parse_state("-[a]>\nb\nc\nd\ne\n");
+    let sels_out = cmd_copy_selection_on_next_line(&buf, sels, usize::MAX, MotionMode::Move);
+    assert_eq!(sels_out.len(), 5); // original + one copy per remaining line
 }
 
 #[test]
@@ -110,7 +154,7 @@ fn copy_next_line_range_selection() {
     // anchor=6 ('w'), head=10 ('d') — selecting "world". Both selections exist.
     assert_state!(
         "-[hello]>\nworld\n",
-        |(buf, sels)| cmd_copy_selection_on_next_line(&buf, sels, 0, MotionMode::Move),
+        |(buf, sels)| cmd_copy_selection_on_next_line(&buf, sels, 1, MotionMode::Move),
         "-[hello]>\n-[world]>\n"
     );
 }
@@ -121,7 +165,7 @@ fn copy_next_line_range_selection() {
 fn copy_cursor_to_prev_line() {
     // Cursor at column 1 of line 1 ('a' in "bar"). Copy goes to line 0.
     let (buf, sels) = parse_state("foo\nb-[a]>r\n");
-    let sels_out = cmd_copy_selection_on_prev_line(&buf, sels, 0, MotionMode::Move);
+    let sels_out = cmd_copy_selection_on_prev_line(&buf, sels, 1, MotionMode::Move);
     assert_eq!(sels_out.len(), 2);
     // Original at offset 5 (line 1, col 1). New at offset 1 (line 0, col 1).
     let heads: Vec<usize> = sels_out.iter_sorted().map(|s| s.head()).collect();
@@ -137,7 +181,7 @@ fn copy_cursor_to_prev_line() {
 #[test]
 fn copy_to_prev_line_on_first_line_is_noop() {
     let (buf, sels) = parse_state("f-[o]>o\nbar\n");
-    let sels_out = cmd_copy_selection_on_prev_line(&buf, sels, 0, MotionMode::Move);
+    let sels_out = cmd_copy_selection_on_prev_line(&buf, sels, 1, MotionMode::Move);
     assert_eq!(sels_out.len(), 1); // no copy added
 }
 
@@ -148,8 +192,44 @@ fn copy_to_prev_line_clamps_column() {
     // "hi\n" = offsets 0-2, "hello\n" = offsets 3-8.
     // Cursor at col 4 of line 1 = offset 3+4 = 7 ('o').
     let (buf, sels) = parse_state("hi\nhell-[o]>\n");
-    let sels_out = cmd_copy_selection_on_prev_line(&buf, sels, 0, MotionMode::Move);
+    let sels_out = cmd_copy_selection_on_prev_line(&buf, sels, 1, MotionMode::Move);
     assert_eq!(sels_out.len(), 2);
     // Copy should land at last char of "hi" = 'i' at offset 1.
     assert_eq!(sels_out.primary().head(), 1);
+}
+
+#[test]
+fn copy_prev_line_count_3() {
+    // Mirror of copy_next_line_count_3, shifting up instead of down.
+    // Text: "a\nb\nc\nd\ne\n". Cursor on 'e'(8).
+    assert_state!(
+        "a\nb\nc\nd\n-[e]>\n",
+        |(buf, sels)| cmd_copy_selection_on_prev_line(&buf, sels, 3, MotionMode::Move),
+        "a\n-[b]>\n-[c]>\n-[d]>\n-[e]>\n"
+    );
+}
+
+#[test]
+fn copy_prev_line_count_exceeds_buffer_clamps() {
+    // Mirror: only 2 lines exist above the cursor's line.
+    assert_state!(
+        "a\nb\n-[c]>\n",
+        |(buf, sels)| cmd_copy_selection_on_prev_line(&buf, sels, 10, MotionMode::Move),
+        "-[a]>\n-[b]>\n-[c]>\n"
+    );
+}
+
+#[test]
+fn copy_prev_line_count_3_primary_lands_on_furthest_copy() {
+    let (buf, sels) = parse_state("a\nb\nc\nd\n-[e]>\n");
+    let sels_out = cmd_copy_selection_on_prev_line(&buf, sels, 3, MotionMode::Move);
+    // Furthest copy (3 lines up from 'e') is on 'b'.
+    assert_eq!(sels_out.primary().head(), 2);
+}
+
+#[test]
+fn copy_prev_line_count_usize_max_returns_instantly() {
+    let (buf, sels) = parse_state("a\nb\nc\nd\n-[e]>\n");
+    let sels_out = cmd_copy_selection_on_prev_line(&buf, sels, usize::MAX, MotionMode::Move);
+    assert_eq!(sels_out.len(), 5); // original + one copy per remaining line
 }
