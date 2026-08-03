@@ -228,6 +228,15 @@ fn write_sync_reset(out: &mut impl io::Write) -> io::Result<()> {
     out.flush()
 }
 
+fn write_enter_alt_screen(out: &mut impl io::Write) -> io::Result<()> {
+    write!(
+        out,
+        "{}",
+        dec_set(DecPrivateModeCode::ClearAndEnableAlternateScreen)
+    )?;
+    out.flush()
+}
+
 fn write_leave_alt_screen(out: &mut impl io::Write) -> io::Result<()> {
     write!(
         out,
@@ -237,6 +246,29 @@ fn write_leave_alt_screen(out: &mut impl io::Write) -> io::Result<()> {
     out.flush()
 }
 
+/// Runs every step in `steps`, even if an earlier one fails — the goal is to
+/// leave the shell as usable as possible rather than abandon teardown at the
+/// first error. Returns the first error encountered; later ones are silently
+/// discarded. Shared by [`restore`] and [`write_unwind_escapes`], the two
+/// "attempt everything, report the first failure" sequences in this module.
+///
+/// Each element of `steps` is a call expression (e.g. `write_sync_reset(out)`)
+/// already evaluated — and so already run for its side effect — by the time
+/// this function sees it; array elements evaluate left to right, so passing
+/// an array literal here preserves the steps' intended order.
+fn run_all(steps: impl IntoIterator<Item = io::Result<()>>) -> io::Result<()> {
+    let mut first_err: Option<io::Error> = None;
+    for r in steps {
+        if first_err.is_none() {
+            first_err = r.err();
+        }
+    }
+    match first_err {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
+}
+
 /// SSOT byte sequence that undoes every application-level mode [`init`]
 /// turns on: closes any open synchronized-update envelope, disables focus
 /// tracking and bracketed paste, pops the kitty keyboard stack, disables
@@ -244,34 +276,20 @@ fn write_leave_alt_screen(out: &mut impl io::Write) -> io::Result<()> {
 /// [`restore`] and the panic hook installed by [`init`] — the hook can only
 /// write bytes (no raw/cooked mode switch), and termina restores the
 /// platform mode itself right after the hook returns.
-///
-/// Each step is attempted independently, even if an earlier one fails — the
-/// goal is to leave the shell as usable as possible. The first error
-/// encountered is returned; later ones are silently discarded.
 fn write_unwind_escapes(out: &mut impl io::Write) -> io::Result<()> {
-    let mut first_err: Option<io::Error> = None;
-    let mut record = |r: io::Result<()>| {
-        if first_err.is_none() {
-            first_err = r.err();
-        }
-    };
-
-    record(write_sync_reset(out));
-    record(write_focus_disable(out));
-    record(write_paste_disable(out));
-    record(write_kitty_pop(out));
-    record(write_mouse_disable(out));
-    record(write_leave_alt_screen(out));
-    // Second pop. Since `init()` pushes onto the alt screen's stack, the
-    // first pop (above) clears it. This extra pop handles terminals with a
-    // global keyboard stack — a harmless no-op on per-screen-buffer
-    // terminals (WezTerm, kitty).
-    record(write_kitty_pop(out));
-
-    match first_err {
-        Some(e) => Err(e),
-        None => Ok(()),
-    }
+    run_all([
+        write_sync_reset(out),
+        write_focus_disable(out),
+        write_paste_disable(out),
+        write_kitty_pop(out),
+        write_mouse_disable(out),
+        write_leave_alt_screen(out),
+        // Second pop. Since `init()` pushes onto the alt screen's stack, the
+        // first pop (above) clears it. This extra pop handles terminals with
+        // a global keyboard stack — a harmless no-op on per-screen-buffer
+        // terminals (WezTerm, kitty).
+        write_kitty_pop(out),
+    ])
 }
 
 // ── Public terminal lifecycle API ─────────────────────────────────────────────
@@ -354,12 +372,7 @@ pub fn init(
         // (WezTerm, kitty) maintain a per-screen keyboard stack; the push
         // must land on the alternate screen's stack so that key reads
         // (which consult the active screen) pick up the enhanced encoding.
-        write!(
-            term,
-            "{}",
-            dec_set(DecPrivateModeCode::ClearAndEnableAlternateScreen)
-        )?;
-        term.flush()?;
+        write_enter_alt_screen(&mut term)?;
         write_focus_enable(&mut term)?;
         write_paste_enable(&mut term)?;
 
@@ -390,20 +403,7 @@ pub fn init(
 /// a second is silently discarded.
 pub fn restore(term: &SharedTerm) -> io::Result<()> {
     let mut term = term.clone();
-    let mut first_err: Option<io::Error> = None;
-    let mut record = |r: io::Result<()>| {
-        if first_err.is_none() {
-            first_err = r.err();
-        }
-    };
-
-    record(write_unwind_escapes(&mut term));
-    record(term.enter_cooked_mode());
-
-    match first_err {
-        Some(e) => Err(e),
-        None => Ok(()),
-    }
+    run_all([write_unwind_escapes(&mut term), term.enter_cooked_mode()])
 }
 
 /// Emit an OSC 12 sequence to set the terminal cursor colour.
@@ -482,12 +482,7 @@ pub fn begin_synchronized_update(term: &SharedTerm) -> io::Result<()> {
 /// cursor shape, cursor colour). Pairs with [`begin_synchronized_update`].
 pub fn end_synchronized_update(term: &SharedTerm) -> io::Result<()> {
     let mut term = term.clone();
-    write!(
-        term,
-        "{}",
-        dec_reset(DecPrivateModeCode::SynchronizedOutput)
-    )?;
-    term.flush()
+    write_sync_reset(&mut term)
 }
 
 /// Leave the alt-screen and raw mode so subprocess output streams to the user's
@@ -509,12 +504,7 @@ pub fn enter_inline_output(
 ) -> io::Result<()> {
     let mut term = term.clone();
     // Close any open synchronized-output envelope (harmless if none is open).
-    let _ = write!(
-        term,
-        "{}",
-        dec_reset(DecPrivateModeCode::SynchronizedOutput)
-    );
-    let _ = term.flush();
+    let _ = write_sync_reset(&mut term);
     write_focus_disable(&mut term)?;
     write_paste_disable(&mut term)?;
     if kitty_enabled {
@@ -524,12 +514,7 @@ pub fn enter_inline_output(
         write_mouse_disable(&mut term)?;
     }
     term.enter_cooked_mode()?;
-    write!(
-        term,
-        "{}",
-        dec_reset(DecPrivateModeCode::ClearAndEnableAlternateScreen)
-    )?;
-    term.flush()
+    write_leave_alt_screen(&mut term)
 }
 
 /// Re-enter raw mode and the alt-screen after [`enter_inline_output`].
@@ -545,12 +530,7 @@ pub fn leave_inline_output(
 ) -> io::Result<()> {
     let mut term = term.clone();
     term.enter_raw_mode()?;
-    write!(
-        term,
-        "{}",
-        dec_set(DecPrivateModeCode::ClearAndEnableAlternateScreen)
-    )?;
-    term.flush()?;
+    write_enter_alt_screen(&mut term)?;
     write_focus_enable(&mut term)?;
     write_paste_enable(&mut term)?;
     if kitty_enabled {
