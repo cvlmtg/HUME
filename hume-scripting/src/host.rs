@@ -24,7 +24,7 @@ pub enum BindMode {
 /// `hume-editor`'s settings types, so the editor impl converts its own
 /// per-key parser kind (`bool`/`usize`/`from_str`/…) down to one of these
 /// three shapes at the trait boundary.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OptionValue {
     Bool(bool),
     Int(i64),

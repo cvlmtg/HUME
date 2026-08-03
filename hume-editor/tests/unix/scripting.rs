@@ -458,7 +458,8 @@ fn cmd_owners_pre_seeded_before_activation() {
         .expect("init must succeed");
 
     // Plugin has NOT been activated yet — body was not evaluated.
-    let owner = h.cmd_owners_for_test().get("bar").map(|s| s.as_str());
+    let owners = h.cmd_owners_for_test();
+    let owner = owners.get("bar").map(|s| s.as_str());
     assert!(
         owner != Some("hume"),
         "cmd_owners must be pre-seeded with the plugin id, not 'hume'; got: {:?}",

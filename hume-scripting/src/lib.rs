@@ -95,9 +95,11 @@ use lazy::{LazyRegistry, PluginState};
 /// Steel VM (`steel`) and the rest of `ScriptingHost`.
 #[derive(Default)]
 pub(crate) struct ScriptingRegistries {
-    /// Command-to-owner index: maps each Steel-registered command name to a
-    /// display string (`"hume"`, `"user"`, or a plugin id like `"core:plum"`).
-    pub(crate) cmd_owners: rustc_hash::FxHashMap<String, String>,
+    /// Command-to-owner index: maps each Steel-registered command name to
+    /// its owning [`Owner`]. Converted to a display string (`"hume"`,
+    /// `"user"`, or a plugin id like `"core:plum"`) only at the Steel
+    /// boundary (`(command-plugin …)`).
+    pub(crate) cmd_owners: rustc_hash::FxHashMap<String, attribution::Owner>,
     /// Persistent hook registry: handlers registered by `(register-hook! …)`.
     pub(crate) hooks: HookRegistry,
     /// Lazy plugin registry: populated by `%declare-plugin!` during init;
@@ -527,9 +529,16 @@ impl ScriptingHost {
         self.plugin_stack.push(id);
     }
 
+    /// Owner of each Steel-registered command, as the display string
+    /// `(command-plugin …)` would return — `Owner` itself is crate-private,
+    /// so this is the boundary form for the editor crate's test suite.
     #[cfg(any(test, feature = "test-util"))]
-    pub fn cmd_owners_for_test(&self) -> &rustc_hash::FxHashMap<String, String> {
-        &self.registries.cmd_owners
+    pub fn cmd_owners_for_test(&self) -> rustc_hash::FxHashMap<String, String> {
+        self.registries
+            .cmd_owners
+            .iter()
+            .map(|(name, owner)| (name.clone(), owner.to_string()))
+            .collect()
     }
 
     /// Read-only view of the in-Steel plugin dispatch table.

@@ -8,7 +8,12 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
-use crate::{SteelCtx, attribution::PluginId, hooks::HookId, lazy::PluginState};
+use crate::{
+    SteelCtx,
+    attribution::{Owner, PluginId},
+    hooks::HookId,
+    lazy::PluginState,
+};
 
 use super::args::list_to_strings;
 use super::errors::generic_err;
@@ -301,7 +306,7 @@ pub(crate) fn declare_plugin(
     for cmd in &cmd_list {
         ctx.registries
             .cmd_owners
-            .insert(cmd.clone(), plugin_id.to_string());
+            .insert(cmd.clone(), Owner::Plugin(plugin_id.clone()));
     }
 
     ctx.registries
@@ -580,12 +585,12 @@ pub(crate) fn finish_lazy_activation(
     } else {
         fail_plugin_activation(ctx, &id);
         // Roll back any commands the failed body partially registered.
-        let id_str_owned = id.to_string();
+        let owned_by_this_plugin = Owner::Plugin(id.clone());
         let orphans: Vec<String> = ctx
             .registries
             .cmd_owners
             .iter()
-            .filter(|(_, owner)| *owner == &id_str_owned)
+            .filter(|(_, owner)| **owner == owned_by_this_plugin)
             .map(|(name, _)| name.clone())
             .collect();
         for name in orphans {

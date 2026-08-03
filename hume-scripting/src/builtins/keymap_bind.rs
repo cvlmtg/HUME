@@ -29,8 +29,11 @@ fn mode_from_symbol(mode: &SteelVal, fn_name: &str) -> Result<BindMode, SteelErr
     }
 }
 
+/// A WaitChar bind has no `force_extend` notion (see `Effect::BindWaitChar`'s
+/// doc) — carried on the variant, not as a sibling parameter, so the illegal
+/// combination can't be constructed.
 enum BindKind {
-    Normal,
+    Normal { force_extend: bool },
     WaitChar,
 }
 
@@ -41,7 +44,6 @@ fn bind_inner(
     key_str: String,
     cmd_name: String,
     kind: BindKind,
-    force_extend: bool,
 ) -> SteelResult {
     let mode = mode_from_symbol(&mode, fn_name)?;
     let keys = parse_key_sequence(&key_str).map_err(generic_err)?;
@@ -50,7 +52,7 @@ fn bind_inner(
     // above still fails synchronously — a bad mode or key sequence is the
     // script's bug, not a side effect to defer.
     ctx.push_effect(match kind {
-        BindKind::Normal => Effect::BindKey {
+        BindKind::Normal { force_extend } => Effect::BindKey {
             mode,
             keys,
             cmd: cmd_name,
@@ -89,8 +91,7 @@ pub(crate) fn bind_key(
         mode,
         key_str,
         cmd_name,
-        BindKind::Normal,
-        false,
+        BindKind::Normal { force_extend: false },
     )
 }
 
@@ -113,8 +114,7 @@ pub(crate) fn bind_key_extend(
         mode,
         key_str,
         cmd_name,
-        BindKind::Normal,
-        true,
+        BindKind::Normal { force_extend: true },
     )
 }
 
@@ -142,15 +142,7 @@ pub(crate) fn bind_wait_char(
     key_str: String,
     cmd_name: String,
 ) -> SteelResult {
-    bind_inner(
-        ctx,
-        "bind-wait-char!",
-        mode,
-        key_str,
-        cmd_name,
-        BindKind::WaitChar,
-        false,
-    )
+    bind_inner(ctx, "bind-wait-char!", mode, key_str, cmd_name, BindKind::WaitChar)
 }
 
 #[cfg(test)]

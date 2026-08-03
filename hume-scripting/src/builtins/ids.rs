@@ -16,7 +16,7 @@ use steel::{
 // ── Wrapper types ─────────────────────────────────────────────────────────────
 
 /// Opaque Steel handle for a `BufferId`.
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SteelBufferId(pub(crate) BufferId);
 
 impl SteelBufferId {
@@ -27,7 +27,7 @@ impl SteelBufferId {
 }
 
 /// Opaque Steel handle for a `PaneId`.
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct SteelPaneId(pub(crate) PaneId);
 
 impl SteelBufferId {

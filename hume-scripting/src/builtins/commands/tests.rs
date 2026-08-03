@@ -177,9 +177,10 @@ fn command_plugin_unknown_returns_hume() {
 #[test]
 fn command_plugin_known_returns_owner() {
     let mut h = SteelCtxTestHarness::new();
-    h.registries
-        .cmd_owners
-        .insert("my-cmd".to_string(), "core:plum".to_string());
+    h.registries.cmd_owners.insert(
+        "my-cmd".to_string(),
+        Owner::Plugin(crate::attribution::PluginId::Core("plum".to_string())),
+    );
     let mut ctx = h.ctx();
     let result = command_plugin(&mut ctx, "my-cmd".to_string()).unwrap();
     assert_eq!(result, SteelVal::StringV("core:plum".into()));
@@ -275,9 +276,10 @@ fn define_command_dup_names_error_names_existing_owner() {
     h.registries
         .command_table
         .insert("my-cmd".to_string(), SteelVal::BoolV(false));
-    h.registries
-        .cmd_owners
-        .insert("my-cmd".to_string(), "core:plum".to_string());
+    h.registries.cmd_owners.insert(
+        "my-cmd".to_string(),
+        Owner::Plugin(crate::attribution::PluginId::Core("plum".to_string())),
+    );
     let mut ctx = h.ctx_init();
     let err = define_command(
         &mut ctx,

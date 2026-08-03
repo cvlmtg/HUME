@@ -102,12 +102,14 @@ fn define_command_inner(
     // checking cmd_owners here would falsely reject a plugin defining its own
     // activation command.
     if ctx.registries.command_table.contains_key(&name) {
+        // cmd_owners must have an entry whenever command_table does (both are
+        // written together, see the insert pair below) — a miss here would be
+        // a registries-desync bug, not a normal "unknown owner" case.
         let owner = ctx
             .registries
             .cmd_owners
             .get(&name)
-            .map(|s| s.as_str())
-            .unwrap_or("unknown");
+            .expect("command_table entry implies a cmd_owners entry");
         steel::stop!(Generic =>
             "{}: command '{}' is already defined by '{}'", builtin_name, name, owner);
     }
@@ -155,9 +157,7 @@ fn define_command_inner(
         .map_err(generic_err)?;
     let current_owner = ctx.plugin_stack.current_owner();
     ctx.registries.command_table.insert(name.clone(), proc);
-    ctx.registries
-        .cmd_owners
-        .insert(name, current_owner.to_string());
+    ctx.registries.cmd_owners.insert(name, current_owner);
     Ok(SteelVal::Void)
 }
 
@@ -247,9 +247,7 @@ pub(crate) fn lookup_plugin_proc(ctx: &mut SteelCtx, name: String) -> SteelResul
 /// (see `EditorHost::run_command_sync`); every other native command treats
 /// it the same as `Some(1)`. Negative counts still clamp to `Some(1)`.
 ///
-/// Re-exported from the crate root so the editor crate can reuse it when
-/// parsing the count/extend args passed to a native command from Steel.
-pub fn parse_count_extend(args: &[SteelVal]) -> Result<(Option<usize>, bool), String> {
+pub(crate) fn parse_count_extend(args: &[SteelVal]) -> Result<(Option<usize>, bool), String> {
     fn decode(n: isize) -> Option<usize> {
         if n == 0 {
             None
@@ -302,13 +300,8 @@ pub(crate) fn request_wait_char(ctx: &mut SteelCtx, cmd: String) -> SteelResult 
 /// command execution.  Returns `"hume"` for any name not in the owner cache
 /// (unknown commands are implicitly built-in).
 pub(crate) fn command_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    let owner = ctx
-        .registries
-        .cmd_owners
-        .get(&name)
-        .cloned()
-        .unwrap_or_else(|| Owner::Core.to_string());
-    Ok(SteelVal::StringV(owner.into()))
+    let owner = ctx.registries.cmd_owners.get(&name).unwrap_or(&Owner::Core);
+    Ok(SteelVal::StringV(owner.to_string().into()))
 }
 
 /// `(pending-char)` — return the pending character as a one-character string,

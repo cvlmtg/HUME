@@ -244,7 +244,7 @@ pub(crate) fn cons_pair(mut a: SteelVal, mut b: SteelVal) -> Result<SteelVal, St
 /// A decoded `BufferId` argument. Avoids the inline
 /// `downcast_buffer_id(...).ok_or_else(...)` pattern every buffer-touching
 /// builtin would otherwise repeat.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct BidArg(pub(crate) BufferId);
 
 impl FromSteelVal for BidArg {
