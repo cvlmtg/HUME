@@ -138,7 +138,7 @@ fn parse_key_code(key_name: &str) -> Result<KeyCode, String> {
 
 /// Parse a continuous golf-style key stream into a `Vec<KeyEvent>`.
 ///
-/// Unlike [`parse_key_sequence`] (whitespace-separated tokens where space is a
+/// Unlike `parse_key_sequence` (whitespace-separated tokens where space is a
 /// separator), this format is a raw stream where every character is a
 /// keystroke.  Space is a literal `Char(' ')`.
 ///
@@ -146,7 +146,7 @@ fn parse_key_code(key_name: &str) -> Result<KeyCode, String> {
 ///
 /// - Bare printable characters → `Char(c)` each.
 /// - `<name>` → named or modified key, using the same names as
-///   [`parse_key_sequence`] plus the following additions and shorthands:
+///   `parse_key_sequence` plus the following additions and shorthands:
 ///   - `<ret>` → Enter (alias for `<enter>` / `<cr>`).
 ///   - `<lt>` → literal `<`.
 ///   - Short modifier prefixes: `c-` (Ctrl), `a-` (Alt), `s-` (Shift).

@@ -97,8 +97,8 @@ impl LazyRegistry {
 
     /// Drop all activation-map entries owned by `id` (called on load or fail).
     ///
-    /// After `activate_plugin` completes (success or error), the plugin's
-    /// lazy stubs are superseded by real commands or cleaned up entirely.
+    /// After `finish_lazy_activation` completes (success or error), the
+    /// plugin's lazy stubs are superseded by real commands or cleaned up entirely.
     /// Dangling activation entries would re-fire activation, so they must be
     /// removed unconditionally on both code paths. Command stubs are dropped
     /// separately via `CommandHost::unregister_lazy_stubs_of`.
@@ -118,8 +118,8 @@ impl LazyRegistry {
     /// Rows are sorted by plugin id for stable output.  For plugins still in
     /// the `Declared` state (not yet loaded), the pending activation entries are
     /// read from the live maps — exactly the entries the plugin is still waiting
-    /// on.  Once a plugin loads or fails, `activate_plugin` drops its entries
-    /// from the maps, so `Loaded`/`Failed` rows show no activations.
+    /// on.  Once a plugin loads or fails, `finish_lazy_activation` drops its
+    /// entries from the maps, so `Loaded`/`Failed` rows show no activations.
     ///
     /// `lazy_cmds` is the editor's current `Lazy`-stub list (`name`, owning
     /// plugin) — the sole source of pending command activations; this
@@ -183,8 +183,9 @@ impl LazyRegistry {
     /// Invert the live activation maps (plus the caller-supplied `Lazy`-stub
     /// list) to collect the pending entries for `id`.
     ///
-    /// Only meaningful for `Declared` plugins — on load/fail `activate_plugin`
-    /// drops the plugin's entries, so a non-`Declared` id yields nothing.
+    /// Only meaningful for `Declared` plugins — on load/fail
+    /// `finish_lazy_activation` drops the plugin's entries, so a non-`Declared`
+    /// id yields nothing.
     fn pending_activations(&self, id: &PluginId, lazy_cmds: &[(String, PluginId)]) -> String {
         let mut parts = Vec::new();
 

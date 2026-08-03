@@ -32,7 +32,7 @@ pub enum OptionValue {
 }
 
 /// "X: not supported by this host" — the single source for capability-absence
-/// errors, replacing the trait-default bodies the capability-trait split removed.
+/// errors.
 pub fn unsupported(builtin: &str) -> String {
     format!("{builtin}: not supported by this host")
 }
@@ -58,12 +58,12 @@ pub enum PopupKind {
 }
 
 /// The editor interface exposed to scripting builtins during a Steel eval, as
-/// a capability directory: every domain method lives on one of the 12
+/// a capability directory: every domain method lives on one of the 13
 /// capability traits in this module (`BufferHost`, `SettingsHost`,
 /// `LanguageHost`, `CommandHost`, `CursorHost`, `UiHost`, `LspHost`,
 /// `EditHost`, `DecorationHost`, `CompletionHost`, `TimerHost`,
-/// `OutputHost`), reached through an accessor on this trait — `EditorHost`
-/// itself declares no domain methods.
+/// `AsyncProcessHost`, `OutputHost`), reached through an accessor on this
+/// trait — `EditorHost` itself declares no domain methods.
 ///
 /// Implemented by `EditorHostImpl<'a>` in the editor crate (or `MockHost` in
 /// tests). `SteelCtx` holds `host: &'a mut dyn EditorHost`; builtins call
@@ -90,7 +90,7 @@ pub enum PopupKind {
 /// Five accessors are required — `buffers`, `settings`, `language`,
 /// `commands`, `cursor` — because every host has *some* notion of them, even
 /// if minimal (an empty buffer list, a rejecting command registry). The other
-/// seven are optional, returning `Option<&mut dyn CapabilityTrait>`: `None`
+/// eight are optional, returning `Option<&mut dyn CapabilityTrait>`: `None`
 /// means the host has no such capability. Rule for what a `None` becomes at
 /// the call site: a mutating builtin maps it to the `"not supported by this
 /// host"` error via `errors::require_cap` — silently discarding the write

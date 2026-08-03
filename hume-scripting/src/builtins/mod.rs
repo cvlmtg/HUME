@@ -2,7 +2,7 @@
 //!
 //! [`register_all`] registers every builtin on the Steel engine and then evaluates
 //! the Scheme bootstrap that defines `load-plugin` and `declare-plugin`.
-//! This must be called once during [`ScriptingHost::new`] before any
+//! This must be called once during [`crate::ScriptingHost::new`] before any
 //! `eval_init` call.
 
 pub(crate) mod args;
@@ -140,18 +140,6 @@ macro_rules! builtins {
 // lazy-miss path. %begin-lazy-activation returns the require string for
 // Declared plugins, #f otherwise (cycle guard + idempotency).
 //
-// define-command! — register a Steel lambda as a keymap command.
-// Positional: name, doc, proc. Keyword (mutually exclusive):
-//   #:repeatable #t    — `.` replays this command at the new cursor;
-//                        self-contained buffer edits only.
-//   #:inline-output #t — bracket dispatch with an alt-screen exit so shell
-//                        output streams live.
-//
-// register-lsp-server! — queues a last-wins registration, applied (with any
-// already-open matching buffers attached) at the end of the current eval.
-// init-options/settings: Steel data, decoded to JSON at the boundary.
-// #:env: list of ("KEY" . "VALUE") pairs, applied additively at spawn time.
-//
 // lsp-request — generic LSP bridge. server: registered language name, or #f
 // for the focused buffer's attached server. callback: (lambda (err result)),
 // exactly one non-#f. #:allow-stale skips the staleness check. #:supersede
@@ -162,102 +150,12 @@ macro_rules! builtins {
 // any still-pending call from a prior invocation. Pure Scheme, no Rust
 // debouncer.
 //
-// diagnostics-for-buffer — bounded, filtered pull. #:severity: floor symbol
-// ('error 'warning 'info 'hint) or #f for none. #:range: (start . end)
-// dotted-pair char-offset bound, or #f for the whole buffer.
-//
-// apply-text-edits! — one undoable transaction. edits: list of
-// ((start-line . start-col) (end-line . end-col) text), wire positions as
-// dotted pairs. #:expect-generation: staleness tag to check against; #f
-// skips it.
-//
-// apply-workspace-edit! — multi-file engine; reports the modified-buffer
-// count.
-//
-// prompt! — one-shot minibuffer prompt; on-confirm fires once with the
-// confirmed text or #f on cancel. No history/completion — a second prompt!
-// while one is open errors rather than stacking.
-//
-// completion-begin! — starts a session (replacing any open one). items:
-// decoded CompletionItem hashmaps. #:incomplete: server's isIncomplete flag.
-//
-// run-inline-output! — process-group-isolated spawn for #:inline-output
-// commands (see hume-platform::process::run_inline_output for why this
-// can't be Steel's own spawn-process). Blocks; raises on nonzero exit or a
-// signal-killed child. Same contract as plum/run!, so call sites need no
-// manual exit-code checks.
-//
-// show-popup! — text panel, floating or docked. #:anchor: 'cursor (default)
-// floats near the focused pane's cursor; 'bottom docks as a full-width band
-// above the statusline, reserving pane space like the drawer (used for
-// hover content too tall for the cursor layout). #:kind selects the dismiss
-// behavior (default 'sticky): 'sticky is untouched by keys, closed only by
-// on-mode-change or the next show-popup! (signature help); 'scrollable has
-// Ctrl+u/Ctrl+d scroll the popup's content when it overflows one screenful,
-// and every other key — plus Ctrl+u/d with nothing to scroll — closes it
-// (scrollable hover, `gn`/`gp`'s diagnostic overlay). #:lang: syntax-highlight the content like a
-// real buffer when a grammar named #:lang is registered; plain text
-// otherwise (default #f is always plain).
-//
-// show-drawer-list! — pick-list only, no #:lang: rows are plain display
-// strings, never syntax-highlighted (that's the popup's job).
-//
-// picker! — fuzzy-finder panel. items: list of
-// (display . payload) dotted pairs; payload is opaque, handed back to
-// on-select verbatim. Returns a token scoping later picker-push! calls to
-// this session. Allowed from any mode, but closes any open completion
-// session first (one modal owner at a time). on-select fires exactly once:
-// the selected payload on Enter, or #f on Esc, picker-close!, or being
-// replaced by a second picker! call. #:pending marks a picker opened empty
-// with more results still arriving via spawn-async! (surfaced to the UI as
-// a "still populating" indicator, cleared by the first applied push!) — a
-// picker-source-spawn!-backed picker needs no such flag, since an attached
-// source already implies "still populating" on its own.
-//
-// picker-push! — appends items to the open picker, gated by the token
-// open_picker returned. A stale token (picker closed/replaced since) or no
-// open picker is a silent #f, not an error — expected-normal for an async
-// source racing the user. Returns whether the push was applied.
-//
-// picker-source-spawn! — attaches a streaming external-command source
-// to the picker session `token` scopes: direct
-// argv spawn, no shell, stdin closed immediately. Stdout lines flow straight
-// into the store, Rust-side — Steel never sees the bulk output, only
-// whichever single line the user accepts. A stale token or no open picker
-// is a silent #f (same expected-normal-race contract as picker-push!),
-// never an error; a genuine spawn failure (missing binary, bad #:cwd)
-// raises. The child is owned by the picker session: closing or replacing
-// the picker (including a second picker-source-spawn! on the same session)
-// kills it automatically. #:nul splits on NUL instead of newline (for
-// `git ls-files -z`/`fd -0`). No shell means no `cmd | other` pipelines and
-// no Windows quoting hazards, at the cost of the caller building its own
-// argv.
-//
-// picker-close! — ends the open picker, firing on-select with #f. Unlike
-// close-menu!/close-drawer! (which drop the callback), this always invokes
-// it — the picker's exactly-once lifecycle has no "silently dropped"
-// state. Idempotent when no picker is open. #:token, like picker-push!'s,
-// scopes the close to a specific session — Some(t) is a no-op if the open
-// picker isn't the one that opened with token t; omitted/#f closes whatever
-// is open unconditionally, for a synchronous caller (Esc) with no token to
-// check.
-//
-// spawn-async! — generic async subprocess execution: direct argv spawn, no
-// shell, stdin closed immediately, off the main thread. callback fires
-// exactly once, (stdout stderr exit-code), once the child exits — never
-// inline, so typing never stalls waiting for it. Unlike
-// picker-source-spawn!, a spawn failure does not raise: callback still
-// fires, with empty stdout, a message naming cmd in stderr, and exit-code
-// -1 (also the signal-killed-child sentinel) — the same
-// callback-always-fires-exactly-once contract as lsp-request, so a plugin
-// never has to handle failure in two places. Returns a job id for
-// cancel-async!. Unlike picker-source-spawn!'s streaming line batches, the
-// whole output is captured before callback fires — for whole-output
-// consumers (git show, git status) rather than picker-scale enumeration.
-//
-// cancel-async! — kills the job's child and drops its callback without
-// firing it. Idempotent: an already-completed, already-cancelled, or
-// unknown id is a silent no-op, matching cancel-timer!'s contract.
+// run-inline-output! — the Scheme wrapper (see bootstrap.scm) blocks and
+// raises on nonzero exit or a signal-killed child. Same contract as
+// plum/run!, so call sites need no manual exit-code checks. `%run-inline-output!`
+// below is the process-group-isolated spawn behind it (see
+// hume-platform::process::run_inline_output for why this can't be Steel's
+// own spawn-process).
 //
 // Variadic call! macro — desugars to %dispatch-command, the in-VM dispatcher
 // for calls originating inside Steel (call! from a plugin body, or the bare
@@ -269,13 +167,10 @@ macro_rules! builtins {
 // while the Engine is already borrowed. Defined here (not only prelude.scm)
 // so test harnesses without the full prelude still have it.
 //
-// Gated print — capture steel-core's original display*/print* fns and the
-// real stdout port ONCE, before PRINT_GATE_SHIMS redefines the names and
-// before set_prelude_string runs (register_all) — guaranteeing these are the
-// originals.
-//
 // %port-safe? — writing to `port` is TUI-safe unless it IS the real stdout
-// port, in which case defer to the gate. Shared by every shim's
+// port, in which case defer to the gate (see builtins/io.rs's module doc for
+// why steel-core's original print fns are captured before PRINT_GATE_SHIMS
+// redefines the names). Shared by every shim's
 // explicit-port branch.
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
@@ -305,7 +200,7 @@ const PRINT_GATE_SHIMS: &str = include_str!("print_gate_shims.scm");
 
 /// Register all HUME builtins on `steel` and evaluate the Scheme bootstrap.
 ///
-/// Must be called exactly once during [`ScriptingHost::new`], before any
+/// Must be called exactly once during [`crate::ScriptingHost::new`], before any
 /// `eval_init` calls.
 pub(crate) fn register_all(steel: &mut Engine) {
     // Pre-register HUME_CTX so supply_context_arg can generate its wrapper
@@ -371,14 +266,14 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Grammar compilation — sandbox-free, full-trust plugin model. Kept as a
         // Rust builtin only for the Windows compiler-selection dance (see
-        // grammar.rs's module doc); `grammar-output-path` moved to Scheme.
+        // grammar.rs's module doc); `grammar-output-path` is plain Scheme.
         open "compile-grammar!" grammar::compile_grammar(src: String, out: String);
 
         // LSP server install pipeline — sha256 hashing, archive unpacking,
         // platform id, cross-process install lock (see docs/LSP-INSTALL.md).
         // Sandbox-free — full-trust plugin model. `verify-sha256!`/`exe-on-path?`
-        // /`git-clone`/`curl-fetch`/`npm-install!` moved to Scheme + Steel's own
-        // `steel/process` stdlib (`which`, `spawn-process`).
+        // /`git-clone`/`curl-fetch`/`npm-install!` are plain Scheme, atop Steel's
+        // own `steel/process` stdlib (`which`, `spawn-process`).
         open  "sha256-file" install::sha256_file(path: String);
         open  "unpack-gz" install::unpack_gz(src: String, dest: String);
         open  "unpack-zip" install::unpack_zip(src: String, dest_dir: String, bin_path: String);
@@ -491,7 +386,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal);
         cmd "%picker-close!" ui::picker_close(token: SteelVal);
 
-        // Timers — not LSP-specific, but added as part of the LSP work.
+        // Timers — not LSP-specific; any plugin can schedule one.
         cmd "after" timers::after(ms: SteelVal, thunk: SteelVal);
         cmd "cancel-timer!" timers::cancel_timer(id: SteelVal);
 

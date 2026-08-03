@@ -96,7 +96,7 @@ use lazy::{LazyRegistry, PluginState};
 #[derive(Default)]
 pub(crate) struct ScriptingRegistries {
     /// Command-to-owner index: maps each Steel-registered command name to
-    /// its owning [`Owner`]. Converted to a display string (`"hume"`,
+    /// its owning [`attribution::Owner`]. Converted to a display string (`"hume"`,
     /// `"user"`, or a plugin id like `"core:plum"`) only at the Steel
     /// boundary (`(command-plugin …)`).
     pub(crate) cmd_owners: rustc_hash::FxHashMap<String, attribution::Owner>,
@@ -341,7 +341,7 @@ impl ScriptingHost {
     ///
     /// Diffs against a fresh `Engine::new()` so upstream Steel stdlib names
     /// never appear in the output — the server already knows those from its
-    /// own internal engine — then drops anything [`is_internal_name`] flags:
+    /// own internal engine — then drops anything `is_internal_name` flags:
     /// HUME's own naming conventions for "never called by plugin code",
     /// checked against a full, real-world generated list to confirm no
     /// legitimate public name matches any of them.
@@ -515,8 +515,8 @@ impl ScriptingHost {
     }
 
     /// Current plugin activation nesting depth (number of bodies on the call
-    /// stack).  Replaces the retired `activation_depth` field in tests that
-    /// verify `%begin-lazy-activation` / `%finish-lazy-activation` side effects.
+    /// stack). Used by tests that verify `%begin-lazy-activation` /
+    /// `%finish-lazy-activation` side effects.
     #[cfg(any(test, feature = "test-util"))]
     pub fn plugin_stack_depth_for_test(&self) -> usize {
         self.plugin_stack.len()

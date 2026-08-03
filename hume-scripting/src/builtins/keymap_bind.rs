@@ -76,7 +76,7 @@ fn bind_inner(
 /// - `mode` — a symbol: `'normal`, `'extend`, or `'insert`.
 /// - `key-sequence` — a string parsed by [`parse_key_sequence`].
 /// - `command-name` — the canonical command name (must be registered in
-///   the [`CommandRegistry`] at dispatch time; not validated here).
+///   the editor's `CommandRegistry` at dispatch time; not validated here).
 ///
 /// Only valid during `init.scm` or plugin load.
 pub(crate) fn bind_key(

@@ -401,7 +401,7 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
 /// If not yet declared, resolves its path and registers it now: absent on
 /// disk → silent skip + record in `declared_plugins` for PLUM to install on
 /// the next `:plum-install`. If already declared, queues it for activation;
-/// if already `Loaded`/`Failed`, `activate_plugin`'s idempotency guard
+/// if already `Loaded`/`Failed`, `begin_lazy_activation`'s idempotency guard
 /// no-ops it.
 pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) -> SteelResult {
     ensure_top_level(ctx, "load-plugin")?;

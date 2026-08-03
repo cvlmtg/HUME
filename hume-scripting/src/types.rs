@@ -3,7 +3,7 @@ use steel::rvals::SteelVal;
 
 /// A Steel command definition built by `define-command!` during init or plugin load.
 ///
-/// Passed immediately to [`crate::host::EditorHost::register_command`] so the
+/// Passed immediately to [`crate::host::CommandHost::register_command`] so the
 /// editor can insert a `SteelBacked` entry in its `CommandRegistry` inline — no
 /// deferred second pass after a successful eval.
 #[derive(Debug)]

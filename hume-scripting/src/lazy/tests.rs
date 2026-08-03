@@ -167,7 +167,7 @@ fn loaded_plugins_derived_from_state() {
     reg.declare(loaded_id.clone(), Some(fake_path()), vec![], vec![]);
     reg.declare(declared_id.clone(), Some(fake_path()), vec![], vec![]);
 
-    // Manually advance one to Loaded to simulate activate_plugin.
+    // Manually advance one to Loaded to simulate finish_lazy_activation.
     *reg.plugins.get_mut(&loaded_id).unwrap() = PluginState::Loaded;
 
     let loaded: Vec<_> = reg
@@ -249,7 +249,7 @@ fn format_status_loaded_shows_no_triggers() {
     let mut reg = LazyRegistry::default();
     let id = id_user("carol", "eager");
     reg.declare(id.clone(), Some(fake_path()), vec![], vec![]);
-    // Simulate activate_plugin: set Loaded. The editor's Lazy stub for
+    // Simulate finish_lazy_activation: set Loaded. The editor's Lazy stub for
     // "eager-cmd" is gone by now too (unregister_lazy_stubs_of already
     // ran), so the caller passes an empty lazy_cmds — exactly what a real
     // post-activation `:plugin-status` call would see.

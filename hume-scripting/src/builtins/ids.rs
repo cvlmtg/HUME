@@ -105,11 +105,11 @@ pub(crate) fn is_pane_id(val: SteelVal) -> bool {
 }
 
 // ── Value-equality builtins ───────────────────────────────────────────────────
-// `equal?` and hash-keying now compare by value (see the `Custom::equality_hint`
+// `equal?` and hash-keying compare by value (see the `Custom::equality_hint`
 // / `try_as_dyn_hash` impls above) — a SteelBufferId can be used as a hash key
 // and `equal?` returns `#t` for two wrappings of the same BufferId. These
-// builtins are kept as an explicit, type-narrowed alternative for plugin code
-// that only wants to compare ids and reject any other value outright.
+// builtins are an explicit, type-narrowed alternative for plugin code that
+// only wants to compare ids and reject any other value outright.
 
 pub(crate) fn downcast_buffer_id(val: &SteelVal) -> Option<BufferId> {
     if let SteelVal::Custom(v) = val {

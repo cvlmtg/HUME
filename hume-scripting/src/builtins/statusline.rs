@@ -2,9 +2,9 @@
 //!
 //! The statusline is configured declaratively — the user or a plugin passes
 //! three lists of element names (left, center, right) and the builtin forwards
-//! them to the editor via [`EditorHost::configure_statusline`].  The editor
-//! parses the element names and writes them into the settings; the renderer
-//! picks them up the next frame.
+//! them to the editor via [`crate::host::SettingsHost::configure_statusline`].
+//! The editor parses the element names and writes them into the settings;
+//! the renderer picks them up the next frame.
 //!
 //! ## Steel API
 //!

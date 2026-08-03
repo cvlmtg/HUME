@@ -165,7 +165,7 @@ pub(crate) struct PluginStack {
 }
 
 impl PluginStack {
-    /// Push `id` onto the stack when entering a plugin body (via `activate_plugin`).
+    /// Push `id` onto the stack when entering a plugin body (via `begin_lazy_activation`).
     pub(crate) fn push(&mut self, id: PluginId) {
         self.stack.push(id);
     }
