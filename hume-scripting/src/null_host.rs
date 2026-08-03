@@ -244,50 +244,13 @@ impl CommandHost for FailingRegisterHost {
     }
 }
 
-/// Like [`NullHost`] but reports `is_inline_output_command() == true`.
-///
-/// Exercises the `SteelCtx::new_command` wiring that reads the flag off the
-/// host (see `context.rs` tests) without pulling in the editor crate's real
+/// Like [`NullHost`] but reports `is_inline_output_command() == true`, and
+/// counts calls to `ensure_inline_output_screen` — lets a test assert a
+/// builtin opens the inline-output bracket exactly when (and only when) it
+/// has real terminal output to produce, without a real terminal. Exercises
+/// the `SteelCtx::new_command` wiring that reads the flag off the host (see
+/// `context.rs` tests) without pulling in the editor crate's real
 /// `EditorHostImpl`.
-#[derive(Default)]
-pub(crate) struct InlineOutputHost {
-    inner: NullHost,
-}
-
-impl EditorHost for InlineOutputHost {
-    fn cursor(&mut self) -> &mut dyn CursorHost {
-        &mut self.inner
-    }
-    fn commands(&mut self) -> &mut dyn CommandHost {
-        &mut self.inner
-    }
-    fn language(&mut self) -> &mut dyn LanguageHost {
-        &mut self.inner
-    }
-    fn settings(&mut self) -> &mut dyn SettingsHost {
-        &mut self.inner
-    }
-    fn buffers(&mut self) -> &mut dyn BufferHost {
-        &mut self.inner
-    }
-    fn output(&mut self) -> Option<&mut dyn OutputHost> {
-        Some(self)
-    }
-}
-
-impl OutputHost for InlineOutputHost {
-    fn is_inline_output_command(&self) -> bool {
-        true
-    }
-    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
-        Ok(())
-    }
-}
-
-/// Like [`InlineOutputHost`] but also counts calls to
-/// `ensure_inline_output_screen` — lets a test assert a builtin opens the
-/// inline-output bracket exactly when (and only when) it has real terminal
-/// output to produce, without a real terminal.
 #[derive(Default)]
 pub(crate) struct RecordingInlineOutputHost {
     inner: NullHost,

@@ -93,6 +93,7 @@ use lazy::{LazyRegistry, PluginState};
 /// The persistent registry fields bundled as a unit so they can be
 /// borrowed as a single `&mut ScriptingRegistries` — disjoint from the
 /// Steel VM (`steel`) and the rest of `ScriptingHost`.
+#[derive(Default)]
 pub(crate) struct ScriptingRegistries {
     /// Command-to-owner index: maps each Steel-registered command name to a
     /// display string (`"hume"`, `"user"`, or a plugin id like `"core:plum"`).
@@ -197,15 +198,7 @@ impl ScriptingHost {
         builtins::register_all(&mut steel);
         Self {
             steel,
-            registries: ScriptingRegistries {
-                cmd_owners: rustc_hash::FxHashMap::default(),
-                hooks: HookRegistry::default(),
-                lazy_registry: LazyRegistry::default(),
-                declared_plugins: Vec::new(),
-                command_table: rustc_hash::FxHashMap::default(),
-                plugin_configs: rustc_hash::FxHashMap::default(),
-                lsp_notification_handlers: rustc_hash::FxHashMap::default(),
-            },
+            registries: ScriptingRegistries::default(),
             plugin_stack: PluginStack::default(),
             pending_messages: Vec::new(),
             effects: Vec::new(),

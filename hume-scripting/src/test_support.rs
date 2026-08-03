@@ -30,20 +30,35 @@ pub(crate) struct SteelCtxTestHarness {
     pub(crate) interrupt_flag: Arc<AtomicBool>,
 }
 
+/// Builds a [`HostBundle`] from the harness's persistent fields — the shared
+/// tail every `ctx_*` constructor below ends with. A free function (not a
+/// `&mut self` method) because the constructors also need `&mut self.host`
+/// borrowed independently in the same call — same NLL field-split pattern as
+/// `ScriptingHost::steel_and_bundle`.
+fn bundle<'a>(
+    registries: &'a mut ScriptingRegistries,
+    plugin_stack: &'a mut PluginStack,
+    pending_messages: &'a mut Vec<(LogLevel, String)>,
+    effects: &'a mut Vec<QueuedEffect>,
+    dirs: &'a ScriptDirs,
+    interrupt_flag: &Arc<AtomicBool>,
+) -> HostBundle<'a> {
+    HostBundle {
+        registries,
+        plugin_stack,
+        pending_messages,
+        effects,
+        dirs,
+        interrupt_flag: Arc::clone(interrupt_flag),
+    }
+}
+
 impl SteelCtxTestHarness {
     pub(crate) fn new() -> Self {
         Self {
             host: NullHost,
             plugin_stack: PluginStack::default(),
-            registries: ScriptingRegistries {
-                cmd_owners: rustc_hash::FxHashMap::default(),
-                hooks: Default::default(),
-                lazy_registry: Default::default(),
-                declared_plugins: Vec::new(),
-                command_table: rustc_hash::FxHashMap::default(),
-                plugin_configs: rustc_hash::FxHashMap::default(),
-                lsp_notification_handlers: rustc_hash::FxHashMap::default(),
-            },
+            registries: ScriptingRegistries::default(),
             pending_messages: Vec::new(),
             effects: Vec::new(),
             dirs: ScriptDirs::new(None, None),
@@ -64,14 +79,14 @@ impl SteelCtxTestHarness {
         } = self;
         SteelCtx::new_init(
             host,
-            HostBundle {
+            bundle(
                 registries,
                 plugin_stack,
                 pending_messages,
                 effects,
-                dirs: &*dirs,
-                interrupt_flag: Arc::clone(interrupt_flag),
-            },
+                dirs,
+                interrupt_flag,
+            ),
             Default::default(),
         )
     }
@@ -94,14 +109,14 @@ impl SteelCtxTestHarness {
         } = self;
         SteelCtx::new_init(
             host,
-            HostBundle {
+            bundle(
                 registries,
                 plugin_stack,
                 pending_messages,
                 effects,
-                dirs: &*dirs,
-                interrupt_flag: Arc::clone(interrupt_flag),
-            },
+                dirs,
+                interrupt_flag,
+            ),
             Default::default(),
         )
     }
@@ -120,14 +135,14 @@ impl SteelCtxTestHarness {
         } = self;
         SteelCtx::new_activation(
             host,
-            HostBundle {
+            bundle(
                 registries,
                 plugin_stack,
                 pending_messages,
                 effects,
-                dirs: &*dirs,
-                interrupt_flag: Arc::clone(interrupt_flag),
-            },
+                dirs,
+                interrupt_flag,
+            ),
             Default::default(),
         )
     }
@@ -145,14 +160,14 @@ impl SteelCtxTestHarness {
         } = self;
         SteelCtx::new_command(
             host,
-            HostBundle {
+            bundle(
                 registries,
                 plugin_stack,
                 pending_messages,
                 effects,
-                dirs: &*dirs,
-                interrupt_flag: Arc::clone(interrupt_flag),
-            },
+                dirs,
+                interrupt_flag,
+            ),
             PaneId::default(),
             BufferId::default(),
             None,
@@ -161,7 +176,7 @@ impl SteelCtxTestHarness {
 
     /// Build a command-mode `SteelCtx` over a caller-supplied host instead of
     /// the harness's `NullHost` — for tests that need specific host behaviour
-    /// (e.g. [`crate::null_host::InlineOutputHost`]).
+    /// (e.g. [`crate::null_host::RecordingInlineOutputHost`]).
     pub(crate) fn ctx_with_host<'a>(
         &'a mut self,
         host: &'a mut dyn crate::host::EditorHost,
@@ -177,14 +192,14 @@ impl SteelCtxTestHarness {
         } = self;
         SteelCtx::new_command(
             host,
-            HostBundle {
+            bundle(
                 registries,
                 plugin_stack,
                 pending_messages,
                 effects,
-                dirs: &*dirs,
-                interrupt_flag: Arc::clone(interrupt_flag),
-            },
+                dirs,
+                interrupt_flag,
+            ),
             PaneId::default(),
             BufferId::default(),
             None,
