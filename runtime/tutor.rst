@@ -684,34 +684,30 @@ the system) and the KILL RING (internal to the editor).
 5.1 Yank and Paste
 ------------------
 
-``y`` copies the selection but leaves it selected. Because ``p``
-pastes OVER a multi-character selection (replacing it), pressing
-``p`` right after ``y`` silently overwrites the selection with an
-identical copy — it looks like nothing happened.
-
-To paste a separate copy, collapse the selection to a single character
-first with ``;``, then press ``p``. After the first paste, each
-further ``p`` stacks another copy adjacent to it.
+``y`` copies the selection but leaves it selected. When what you're
+about to paste is exactly the selected text — as it is right after a
+``y`` — ``p``/``P`` collapse the selection first and paste alongside
+it instead of replacing it. So pressing ``p`` right after ``y``
+stacks a copy next to the selection, and each further ``p`` adds
+another.
 
 ``d`` and ``c`` remove their text, so the selection is already
-collapsed when you paste — only after ``y`` you need the
-explicit ``;``.
+collapsed by the time you paste — the same bare-cursor paste applies
+there too.
 
 Exercise
 ~~~~~~~~
 
-Navigate to "cache", yank it with ``w y``. Press ``;`` to collapse
-the selection, then ``p`` to paste a copy after it. Press ``p`` again
-to add a second copy:
+Navigate to "cache", yank it with ``w y``. Press ``p`` to paste a
+copy after it. Press ``p`` again to add a second copy:
 
 The build cache speeds up compilation dramatically.
 
 Exercise
 ~~~~~~~~
 
-Select the line below with ``x``, yank with ``y``. Press
-``;`` to collapse the selection, then ``p`` to paste a duplicate
-line below:
+Select the line below with ``x``, yank with ``y``. Press ``p`` to
+paste a duplicate line below:
 
 server.port = 8080
 
@@ -753,6 +749,11 @@ edits like removing a doubled space therefore never bury the kills you
 want to cycle back to. The whitespace is still there to paste right
 after you cut it; it only disappears once the next kill arrives.
 
+The ring also never holds two identical entries. Deleting, changing,
+or yanking text that's already in the ring moves it back to the
+front instead of duplicating it, so cycling with ``[``/``]`` never
+repeats the same text twice.
+
 Exercise
 ~~~~~~~~
 
@@ -777,8 +778,11 @@ Submit the form form draft today.
 This means you can delete something with ``d`` and immediately ``p``
 to paste the deleted text, without switching registers manually.
 
-If the clipboard is empty when ``p`` would read it, it falls back to
-the most recent kill so there is always something to paste.
+If the clipboard is empty the first time ``p`` would read it since
+your last edit, it falls back to the most recent kill so there is
+always something to paste. Pressing ``p`` again right after that
+still reads the clipboard, not the kill ring — it only refuses to
+paste if the clipboard is still empty.
 
 Summary
 -------
@@ -794,8 +798,10 @@ Summary
 +-------+-------------------------------+
 
 ``p`` reads from kill ring while nothing's been edited since ``c`` /
-``d`` / ``y``, from clipboard otherwise. ``y`` leaves the selection —
-press ``;`` to collapse before pasting a copy.
+``d`` / ``y``, from clipboard otherwise. Pasting text that's already
+selected (as it is right after ``y``) appends alongside it instead
+of replacing it, so ``y`` then ``p`` stacks a copy without needing
+to collapse the selection first.
 
 Lesson 6 — Find, Till, and Repeat
 =================================

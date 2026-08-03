@@ -25,6 +25,11 @@ Default HUME behavior (smart-p: kill ring while nothing's been edited since the 
 change/delete/yank, clipboard once something has) is unchanged unless this plugin is
 loaded — loading it replaces the default `p`/`P` bindings outright, not conditionally.
 
+Because each key here always targets one explicit source, pasting the same text twice
+in a row always replaces it rather than stacking a second copy — collapse the selection
+first (`;`) to paste alongside instead. The default (unloaded) `p`/`P` behave differently:
+pasting text that matches the current selection appends next to it automatically.
+
 ## How it works
 
 Each wrapper command calls `set-register-prefix!` (`"k"` for kill-ring head, `"c"` for OS

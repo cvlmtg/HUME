@@ -62,7 +62,7 @@ impl EditorState {
     /// breaks smart-paste routing, so no call site gets to do them
     /// separately. Never used for an explicit named register, which bare
     /// paste never reads. See [`PasteStamp`]'s doc for the full mechanism.
-    pub(in crate::editor) fn capture_to_ring(&mut self, yanked: Vec<String>) {
+    pub(super) fn capture_to_ring(&mut self, yanked: Vec<String>) {
         self.kill_ring.push(yanked);
         self.paste_stamp = Some(PasteStamp {
             seq: self.buffers.edit_seq(),
@@ -82,7 +82,7 @@ impl EditorState {
     /// mouse handlers never open or switch during a session, and buffer close
     /// clears `paste_group` explicitly. The debug assert below fails fast if that
     /// invariant is ever violated instead of silently leaving a stray session open.
-    pub(in crate::editor) fn commit_paste_session(&mut self, view: &EngineView) {
+    pub(super) fn commit_paste_session(&mut self, view: &EngineView) {
         let focused = self.focused_pane_id;
         let buf = focused_buffer_id(self, view);
 

@@ -269,9 +269,10 @@ fn dot_repeats_open_line_below() {
     assert_eq!(ed.doc().text().to_string(), "a\nx\nb\nx\n");
 }
 
-/// `p` (paste-after) is repeatable: the register contents are pasted again.
+/// `p` (smart-paste-after) is repeatable: the register contents are pasted
+/// again.
 #[test]
-fn dot_repeats_paste_after() {
+fn dot_repeats_smart_paste_after() {
     let mut ed = editor_from("-[ab]>cd\n");
 
     // Yank "ab" then delete so we have something to paste.
@@ -283,12 +284,34 @@ fn dot_repeats_paste_after() {
     // Move one char right (off the pasted selection) then repeat.
     ed.feed_key(key('l')); // move right → collapsed cursor after the pasted text
     ed.feed_key(key('.')); // paste again
-    // Just verify no panic and paste happened twice (content contains "ab" twice).
     let buf = ed.doc().text().to_string();
-    let count = buf.matches("ab").count();
-    assert!(
-        count >= 2,
-        "expected at least 2 occurrences of 'ab', got: {buf:?}"
+    assert_eq!(
+        buf.matches("ab").count(),
+        2,
+        "expected exactly 2 occurrences of 'ab', got: {buf:?}"
+    );
+}
+
+/// Plain `paste-after` (unbound by default, dispatched by name) is
+/// repeatable too — `.repeatable()` on its registry entry is a separate
+/// declaration from `smart-paste-after`'s, so a repeat must be verified
+/// independently rather than assumed from the smart variant.
+#[test]
+fn dot_repeats_plain_paste_after() {
+    let mut ed = editor_from("-[ab]>cd\n");
+
+    ed.state.kill_ring.push(vec!["ab".to_string()]);
+    ed.execute_keymap_command("paste-after".into(), Some(1), false, ArgSource::Keymap);
+    // Plain paste never collapses on repeat — move off the pasted text so
+    // the replayed paste lands next to it instead of replacing it.
+    ed.feed_key(key('l'));
+    ed.feed_key(key('.')); // repeat the plain paste
+
+    let buf = ed.doc().text().to_string();
+    assert_eq!(
+        buf.matches("ab").count(),
+        2,
+        "expected exactly 2 occurrences of 'ab', got: {buf:?}"
     );
 }
 
@@ -564,23 +587,18 @@ fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
 
     ed.feed_key(key('d')); // delete "foo" → ring head = ["foo"]
     ed.feed_key(key('w')); // move to "bar"
-    ed.feed_key(key('.')); // repeat; replay_dot fires a fresh delete
-
-    let ring_head = ed
-        .state
-        .kill_ring
-        .head()
-        .expect("dot-repeat of a delete must push to the ring")
-        .to_vec();
+    ed.feed_key(key('.')); // repeat; replay_dot deletes "bar" → ring head = ["bar"]
 
     ed.feed_key(key('p')); // bare p — must read the ring, not the clipboard
     let text = state(&ed);
-    for v in &ring_head {
-        assert!(
-            text.contains(v.as_str()),
-            "p after dot-repeat delete must paste the ring head {v:?}; buf={text:?}"
-        );
-    }
+    // "bar" is independently known from the scenario itself (the `.` replays
+    // a delete on the word we navigated to with `w`) — not read back from
+    // `kill_ring.head()`, so a `.` that fails to push to the ring at all
+    // can't make this pass by accident.
+    assert!(
+        text.contains("bar"),
+        "p after dot-repeat delete must paste the ring head \"bar\"; buf={text:?}"
+    );
     assert!(
         !text.contains("CLIP"),
         "p after dot-repeat delete must not read the clipboard; buf={text:?}"

@@ -19,11 +19,11 @@ With a real selection (more than a single character), `p` and `P` **replace** it
 - **Nothing edited since the last `d`, `c`, or `y`** — reads the kill ring head (the most recently killed, changed, or yanked text).
 - **Something edited since** — reads the system clipboard, falling back to the kill ring head when the clipboard is empty or unavailable.
 
-Since `y` writes to both the clipboard and the kill ring, `y` then `p` pastes what you just yanked. The exception is yanking to an explicit register (`"0y`): that leaves the clipboard untouched, so a following bare `p` pastes whatever was in the clipboard before. Use `"0p` to read the register back.
+Since `y` writes to both the clipboard and the kill ring, `y` then `p` pastes what you just yanked. Yanking to an explicit register instead (`"0y`) leaves both the clipboard and this "what should a bare `p` read" tracking untouched — a following bare `p` behaves exactly as it would have if the `"0y` hadn't happened. Use `"0p` to read the register back.
 
 `[` and `]` only work inside a **paste session** — one opened by a preceding `p` or `P`. Each cycle replaces the previous paste, and the whole session records as a single undo step. Consecutive `p` presses append copies (each its own separate undo step) for the same reason pasting over a matching selection does: pasting the same text again lands next to it, not over it.
 
-`p`/`P` run `smart-paste-after`/`smart-paste-before` under the hood. Two plain commands, `paste-after`/`paste-before`, exist alongside them with no key bound by default — always reading the kill-ring head, with no clipboard fallback, and always replacing a real selection outright with no same-text check. That predictability is the point: a keymap or a plugin script that selects text and pastes shouldn't have to inspect the selection first to know what will happen. To stack a copy with plain paste, collapse the selection (`;`) before pasting. See [GUI-style paste](#gui-style-paste-bundled-plugin) below for a plugin built on them.
+Two plain commands, `paste-after`/`paste-before`, exist alongside `p`/`P` with no key bound by default: they always read the kill-ring head, with no clipboard fallback, and always replace a real selection outright — no same-text check. To stack a copy with plain paste, collapse the selection (`;`) before pasting. See [GUI-style paste](#gui-style-paste-bundled-plugin) below for a plugin built on them.
 
 ## Pasting from the terminal
 
@@ -74,7 +74,7 @@ Two further registers exist but cannot be named through the `"` prefix:
 
 ## GUI-style paste (bundled plugin)
 
-If you'd rather keep the clipboard and the kill ring on separate keys instead of letting `p` choose, load `core:classic-paste`. It binds the plain paste commands: the kill ring on `p` / `P` and the system clipboard on `Ctrl+V` / `Ctrl+Shift+V` (the latter needs the kitty protocol).
+If you'd rather keep the clipboard and the kill ring on separate keys instead of letting `p` choose, load `core:classic-paste`. It rebinds `p` / `P` to always paste from the kill ring, and binds `Ctrl+V` / `Ctrl+Shift+V` to always paste from the system clipboard (the latter needs the kitty protocol).
 
 ```scheme
 (load-plugin "core:classic-paste")

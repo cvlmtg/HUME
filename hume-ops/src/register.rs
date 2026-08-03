@@ -187,10 +187,11 @@ impl RegisterSet {
 /// Bounded ring buffer of deleted / yanked text entries.
 ///
 /// Newest entry is always at index 0 (the "head"). Entries are accessed via
-/// `"kp` (head) or by cycling with `[`/`]`. The digit registers `"0`–`"9`
-/// are independent in-memory storage, not aliases for ring slots. The ring
-/// holds no two equal entries — [`KillRing::push`] moves a re-captured entry
-/// to the head instead of duplicating it.
+/// `"kp` (head), by cycling with `[`/`]`, or by slot (a bare smart paste
+/// resuming from wherever a prior cycle left off). The digit registers
+/// `"0`–`"9` are independent in-memory storage, not aliases for ring slots.
+/// The ring holds no two equal entries — [`KillRing::push`] moves a
+/// re-captured entry to the head instead of duplicating it.
 ///
 /// `cycle` is seeded by the paste command based on origin and persists until
 /// the next paste re-seeds it; a lingering value between sessions is harmless
@@ -249,8 +250,8 @@ impl KillRing {
 
     /// Seed the cycle cursor based on paste origin.
     ///
-    /// Call once per fresh paste:
-    /// - `"kp` / smart-p ring-head paste → `Some(0)`
+    /// Call once per completed paste:
+    /// - ring-sourced paste (`"kp`, or smart-p reading slot `n`) → `Some(n)`
     /// - clipboard / named-register (`"0`–`"9`) paste → `None`
     pub fn seed_cycle(&mut self, pos: Option<usize>) {
         self.cycle = pos;

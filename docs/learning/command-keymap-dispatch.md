@@ -252,8 +252,8 @@ A related invariant is enforced at the dispatch layer: every native command's
 function body must run through one funnel. A test in the suite scans the
 editor's source for any second place that calls a native command's function
 directly, and fails if it finds one. The funnel is where the bookkeeping that
-surrounds every command — dot-repeat, paste-session
-commits, jump-list updates, extend-mode auto-exit — gets applied. Letting a
+surrounds every command — dot-repeat, paste-session commits, jump-list
+updates, extend-mode auto-exit — gets applied. Letting a
 second call site bypass it would mean two paths for the same command, and the
 bookkeeping would silently regress on whichever path skipped the funnel;
 tests that pin the primary effect would stay green either way. The lint makes

@@ -66,6 +66,7 @@ See [Selections](selections.md) for how to create and manage multiple selections
 - [Modes](modes.md) — full description of each mode
 - [Moving Around](moving-around.md) — navigating your file
 - [Editing](editing.md) — edit your file
+- [Copy & Paste](copy-and-paste.md) — yank, paste, and the kill ring
 - [Selections](selections.md) — selecting the text
 - [Files & Buffers](files-and-buffers.md) — opening, saving, and quitting
 - [Key Reference](key-reference.md) — every key by mode

@@ -247,6 +247,80 @@ fn smart_p_after_change_reads_ring() {
     );
 }
 
+/// Negative counterpart to `smart_p_after_change_reads_ring`: an
+/// explicit-register `"5c` <text> `Esc` must NOT resurrect an existing
+/// stamp. `cmd_change` only sets `kill_opened_session` when `route_kill`
+/// reports it actually captured to the ring (`route_kill` returns `false`
+/// for an explicit register) — without that gate, `end_insert_session`
+/// would refresh whatever stale stamp happens to exist, making a later bare
+/// `p` wrongly read `"aaa"` again instead of falling to the clipboard.
+///
+/// Fail oracle: set `kill_opened_session` unconditionally in `cmd_change`
+/// (drop the `if state.route_kill(yanked)` gate) → the stale "aaa" stamp
+/// gets refreshed by the `"5c` session anyway, and `p` pastes "aaa" instead
+/// of "CLIP".
+#[test]
+fn explicit_register_change_does_not_resurrect_stale_stamp() {
+    use hume_ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[aaa]> bbb\n");
+    ed.state
+        .registers
+        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.feed_key(key('d')); // delete "aaa" → ring = ["aaa"], stamp fresh
+    ed.feed_key(key('w')); // motion onto "bbb" — does not touch edit_seq
+
+    ed.feed_key(key('"'));
+    ed.feed_key(key('5'));
+    ed.feed_key(key('c')); // "5c → explicit register, no stamp write
+    ed.feed_key(key('y')); // type replacement — bumps edit_seq, staling the "aaa" stamp
+    ed.feed_key(key_esc()); // exit-insert — must NOT refresh the stale stamp
+
+    ed.feed_key(key('p')); // bare smart-p → stamp stale → clipboard
+    let text = ed.doc().text().to_string();
+    assert!(
+        text.contains("CLIP"),
+        "p after \"5c must read the clipboard, not the stale ring stamp; buf={text:?}"
+    );
+    assert!(
+        !text.contains("aaa"),
+        "p after \"5c must not resurrect the stale \"aaa\" ring stamp; buf={text:?}"
+    );
+}
+
+/// A cursor motion (e.g. an arrow key) *inside* an open kill-opened change
+/// session doesn't stop `end_insert_session` from refreshing the stamp on
+/// exit — `kill_opened_session` is a per-session flag set once by
+/// `cmd_change`, not something an in-session motion can reset, so the
+/// session-final `p` still reads the ring, not the clipboard.
+///
+/// Contrast with `smart_p_after_edit_falls_back_to_clipboard`: a motion
+/// *before* entering Insert (via `i`, no kill involved) never marks the
+/// session kill-opened, so that stamp goes stale as normal.
+#[test]
+fn smart_p_after_change_with_insert_motion_still_reads_ring() {
+    use hume_ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state
+        .registers
+        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.feed_key(key('c')); // change 'a' → ring=["a"], kill-opened session
+    ed.feed_key(key('x')); // type replacement
+    ed.feed_key(key_left()); // arrow-key motion mid-session — bumps edit_seq, does not clear kill_opened_session
+    ed.feed_key(key_esc()); // exit-insert → refreshes the stamp's seq regardless
+    ed.feed_key(key('p')); // smart-p → must still read ring head ("a"), not "CLIP"
+    let text = ed.doc().text().to_string();
+    assert!(
+        text.contains('a'),
+        "p after change-with-in-session-motion must paste ring content ('a')"
+    );
+    assert!(
+        !text.contains("CLIP"),
+        "p after change-with-in-session-motion must not paste clipboard"
+    );
+}
+
 /// `d` then a motion then `p` still reads the ring — motions never touch
 /// `edit_seq`, so they cannot invalidate the stamp; routing is decided by
 /// buffer state alone, never by which commands ran in between.
@@ -314,9 +388,10 @@ fn ky_yank_stamps_the_ring_for_next_paste() {
     ed.feed_key(key('p')); // bare smart-p → stamp still fresh → ring
 
     let buf = ed.doc().text().to_string();
-    assert!(
-        buf.contains("hello"),
-        "p after \"ky must read the ring; buf={buf:?}"
+    assert_eq!(
+        buf.matches("hello").count(),
+        2,
+        "p after \"ky must paste a second 'hello' from the ring; buf={buf:?}"
     );
     assert!(
         !buf.contains("CLIP"),
@@ -334,9 +409,11 @@ fn smart_p_after_bare_yank_pastes_yanked_text() {
     ed.feed_key(key('y'));
     ed.feed_key(key('l'));
     ed.feed_key(key('p'));
-    assert!(
-        ed.doc().text().to_string().contains("hello"),
-        "p after bare y pastes the yanked text"
+    let buf = ed.doc().text().to_string();
+    assert_eq!(
+        buf.matches("hello").count(),
+        2,
+        "p after bare y pastes a second 'hello' alongside the original; buf={buf:?}"
     );
 }
 
@@ -438,6 +515,64 @@ fn undo_after_delete_invalidates_ring_stamp() {
     assert!(
         buf.contains("CLIP"),
         "p after undo must read the clipboard, not the ring; buf={buf:?}"
+    );
+}
+
+/// Same as `undo_after_delete_invalidates_ring_stamp`, but through redo:
+/// `apply_doc_redo` bumps `edit_seq` too (see `doc_ops.rs`), and nothing
+/// re-stamps after a redo, so the stamp stays stale.
+#[test]
+fn redo_after_undo_keeps_ring_stamp_stale() {
+    use hume_ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[ab]>cd\n");
+    ed.state
+        .registers
+        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.feed_key(key('d')); // delete "ab" → ring = ["ab"], stamp fresh
+    ed.feed_key(key('u')); // undo → edit_seq bumps → stamp stale
+    ed.feed_key(key('U')); // redo → edit_seq bumps again → stamp still stale
+    ed.feed_key(key('p')); // bare smart-p → clipboard
+    let buf = ed.doc().text().to_string();
+    assert!(
+        buf.contains("CLIP"),
+        "p after redo must read the clipboard, not the ring; buf={buf:?}"
+    );
+}
+
+/// An edit in a *different* buffer invalidates the stamp too — `edit_seq`
+/// (`BufferStore`) is a single global counter, not per-buffer, so a capture
+/// in buffer A followed by any edit in buffer B (before switching back to A)
+/// stales A's stamp exactly as an edit in A itself would.
+#[test]
+fn edit_in_other_buffer_invalidates_ring_stamp() {
+    use hume_editing::selection::SelectionSet;
+    use hume_editing::text::Text;
+    use hume_ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[ab]>cd\n");
+    ed.state
+        .registers
+        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.feed_key(key('d')); // delete "ab" in buffer A → ring = ["ab"], stamp fresh
+
+    let bid_a = ed.focused_buffer_id();
+    let bid_b = ed.open_buffer(Buffer::new(Text::from("xy\n"), SelectionSet::default()));
+    ed.switch_to_buffer_without_jump(bid_b);
+    // `i`/type/`Esc`, not `d`/`c`/`y` — a capturing edit in B would legitimately
+    // write a *fresh* stamp pointing at B's own capture, which isn't what this
+    // test is isolating: it must be an edit that bumps `edit_seq` without
+    // itself re-stamping, so A's now-stale stamp is the only thing in play.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('z'));
+    ed.feed_key(key_esc()); // bumps the global edit_seq, writes no stamp
+
+    ed.switch_to_buffer_without_jump(bid_a);
+    ed.feed_key(key('p')); // bare smart-p in A → stamp stale → clipboard
+    let buf = ed.doc().text().to_string();
+    assert!(
+        buf.contains("CLIP"),
+        "p in buffer A after an edit in buffer B must read the clipboard, not the ring; buf={buf:?}"
     );
 }
 
@@ -1136,6 +1271,25 @@ fn plain_paste_reads_ring_not_clipboard() {
     );
 }
 
+/// `paste-before` (plain) reads the ring head and inserts before the
+/// selection — same source rule as `paste-after`, opposite side. Every
+/// other plain-paste test in this file dispatches `paste-after`; this one
+/// exercises `cmd_paste_before` directly so a bug isolated to the `before`
+/// path (e.g. `do_paste`'s `before` flag) isn't masked by the `after` tests.
+#[test]
+fn plain_paste_before_reads_ring_head() {
+    let mut ed = editor_from("x-[y]>z\n");
+    ed.state.kill_ring.push(vec!["RING".to_string()]);
+
+    dispatch_command(&mut ed, "paste-before");
+
+    let buf = ed.doc().text().to_string();
+    assert_eq!(
+        buf, "xRINGyz\n",
+        "plain paste-before must insert before 'y'"
+    );
+}
+
 /// Two consecutive plain pastes replace, never stack — plain paste is dumb
 /// by design: it always replaces a non-collapsed selection, with no
 /// equal-text check at all (that's smart-paste-only; see `collapse_if_repeat`'s
@@ -1210,6 +1364,26 @@ fn plain_paste_black_hole_is_noop() {
         ed.doc().text().to_string(),
         "x\n",
         "\"b + plain paste must be a no-op"
+    );
+}
+
+/// `"b` (black hole) on a *smart* paste is a no-op too — `resolve_smart`
+/// routes an explicit register through `resolve_explicit_register`, the same
+/// path plain paste uses, so black-hole shortcuts identically for both.
+/// `plain_paste_black_hole_is_noop` above covers the plain path only.
+#[test]
+fn smart_paste_black_hole_is_noop() {
+    let mut ed = editor_from("-[x]>\n");
+    ed.state.kill_ring.push(vec!["RING".to_string()]);
+
+    ed.handle_key(key('"'));
+    ed.handle_key(key('b'));
+    ed.feed_key(key('p')); // "bp → smart-paste-after, black hole
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "x\n",
+        "\"b + smart paste must be a no-op"
     );
 }
 

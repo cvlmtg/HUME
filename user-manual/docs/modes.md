@@ -57,7 +57,7 @@ Some Normal-mode keys wait for a second key before doing anything. Either they o
 | Match WORD | `M M` | Select the WORD under the cursor — see [Selections](selections.md) |
 | View | `z` + key | Scroll the view to a position — see [Moving Around](moving-around.md) |
 | Pane | `Ctrl+p` + key | Move focus between panes — see [Key Reference](key-reference.md) |
-| Register | `"` + char | Target a specific register for yank, paste, or delete — see [Editing](editing.md) |
+| Register | `"` + char | Target a specific register for yank, paste, or delete — see [Copy & Paste](copy-and-paste.md#register-prefix) |
 
 ### Keys that take a character
 

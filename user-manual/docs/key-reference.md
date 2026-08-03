@@ -92,8 +92,8 @@ Text objects (use the `m` prefix):
 | `d` | Delete selection (to kill ring) |
 | `c` | Change (delete + Insert mode) |
 | `y` | Yank (clipboard + kill ring) |
-| `p` | Paste after (smart source) |
-| `P` | Paste before |
+| `p` | Smart-paste after — see [Copy & Paste](copy-and-paste.md) |
+| `P` | Smart-paste before |
 | `[` / `]` | Cycle kill ring older / newer and re-paste (only after a `p`/`P`) |
 | `r` + char | Replace every selected character (line endings are left alone). `Enter`/`Tab` count as the character, replacing with a newline/tab |
 | `J` | Join the selected lines into one |

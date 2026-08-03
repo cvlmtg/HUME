@@ -111,9 +111,13 @@ to every selection in the set simultaneously. The *primary* is just the
    - **Cursor** (`anchor == head`, a fresh 1-char selection): insert the
      register contents *after* or *before* the cursor char. Same as Vim's `p`/`P`.
    - **Explicit selection** (more than 1 char, created intentionally): *replace*
-     the selected text with the register contents. Displaced text is not written
-     back to the register — the kill ring already holds the selection's history,
-     so the user can reach it via `"kp` (head) or by cycling with `[`/`]`.
+     the selected text with the register contents — unless that text is
+     already exactly what's about to be pasted, in which case the selection
+     collapses first and the paste lands next to it instead of over it (see
+     the kill-ring article's "repeat vs. swap" for why). Displaced text is
+     not written back to the register — the kill ring already holds the
+     selection's history, so the user can reach it via `"kp` (head) or by
+     cycling with `[`/`]`.
 
    The selection state already encodes whether the user made an intentional
    selection — no separate command needed. HUME avoids the Vim `"0` register
