@@ -32,9 +32,9 @@ pub fn line_end_exclusive(buf: &Text, line: usize) -> usize {
 /// exclusive end if the whole line is whitespace (including empty lines,
 /// where that end is `line_start`). Always within `[line_start, line_end]`.
 ///
-/// Single source of truth for "where does leading whitespace end":
-/// [`leading_whitespace`] copies the slice up to it, and the editor's
-/// dedent-on-Backspace gate consults it so the two agree on the boundary.
+/// Single source of truth for "where does leading whitespace end": the
+/// editor's auto-indent-on-Enter and dedent-on-Backspace paths both consult
+/// it so they agree on the boundary.
 ///
 /// Leading whitespace is always ASCII (`' '`/`'\t'`), and those are single
 /// bytes in UTF-8, so a byte-level scan of the rope slice advances char-by-char
@@ -58,19 +58,6 @@ pub fn leading_whitespace_end(buf: &Text, line: usize) -> usize {
         }
     }
     line_start + n
-}
-
-/// The leading whitespace (spaces and tabs) of `line`, as an owned string.
-///
-/// Returns `""` when the line has no leading whitespace or is empty. The
-/// returned string is suitable for re-insertion (e.g. auto-indent on Enter
-/// copies the current line's leading whitespace onto the new line). Built on
-/// [`leading_whitespace_end`], the shared definition of where leading
-/// whitespace ends.
-pub fn leading_whitespace(buf: &Text, line: usize) -> String {
-    let line_start = buf.line_to_char(line);
-    let end = leading_whitespace_end(buf, line);
-    buf.slice(line_start..end).to_string()
 }
 
 /// Snap `target` back to the nearest grapheme boundary at or before it,

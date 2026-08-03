@@ -205,7 +205,7 @@ fn incremental_tree_matches_full_reparse() {
         .to_sexp();
 
     // Full reparse of the same source bytes that the incremental parse used.
-    let source = ed.state.buffers.get(bid).text().to_bytes();
+    let source = ed.state.buffers.get(bid).text().to_string().into_bytes();
     let parser_path = grammar_parser_path("json");
     let grammar = LoadedGrammar::open(&parser_path, "tree_sitter_json").expect("load json grammar");
     let mut parser = tree_sitter::Parser::new();

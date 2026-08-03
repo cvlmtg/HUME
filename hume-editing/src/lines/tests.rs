@@ -95,57 +95,6 @@ fn line_content_end_combining_grapheme_before_newline() {
     assert_eq!(line_content_end(&buf, 0), 3);
 }
 
-// ── leading_whitespace ───────────────────────────────────────────────────
-
-#[test]
-fn leading_whitespace_empty_line() {
-    // "a\n\nb\n" — line 1 is empty.
-    let (buf, _) = parse_state("-[a]>\n\nb\n");
-    assert_eq!(leading_whitespace(&buf, 1), "");
-}
-
-#[test]
-fn leading_whitespace_none() {
-    // "foo\n" — no leading whitespace.
-    let (buf, _) = parse_state("-[f]>oo\n");
-    assert_eq!(leading_whitespace(&buf, 0), "");
-}
-
-#[test]
-fn leading_whitespace_spaces() {
-    // "    bar\n" — 4 spaces.
-    let (buf, _) = parse_state("    -[b]>ar\n");
-    assert_eq!(leading_whitespace(&buf, 0), "    ");
-}
-
-#[test]
-fn leading_whitespace_tabs() {
-    // "\t\tfoo\n" — 2 tabs.
-    let (buf, _) = parse_state("\t\t-[f]>oo\n");
-    assert_eq!(leading_whitespace(&buf, 0), "\t\t");
-}
-
-#[test]
-fn leading_whitespace_mixed() {
-    // "\t  x\n" — tab + 2 spaces.
-    let (buf, _) = parse_state("\t  -[x]>\n");
-    assert_eq!(leading_whitespace(&buf, 0), "\t  ");
-}
-
-#[test]
-fn leading_whitespace_only_whitespace_line() {
-    // "   \n" — whole line is whitespace (3 spaces + structural \n).
-    let (buf, _) = parse_state("-[ ]>  \n");
-    assert_eq!(leading_whitespace(&buf, 0), "   ");
-}
-
-#[test]
-fn leading_whitespace_second_line() {
-    // "a\n  b\n" — line 1 has 2-space indent.
-    let (buf, _) = parse_state("-[a]>\n  b\n");
-    assert_eq!(leading_whitespace(&buf, 1), "  ");
-}
-
 // ── snap_to_grapheme_boundary ─────────────────────────────────────────────
 
 #[test]

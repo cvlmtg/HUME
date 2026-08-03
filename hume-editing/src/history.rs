@@ -19,16 +19,6 @@ use crate::transaction::Transaction;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RevisionId(pub(crate) usize);
 
-impl RevisionId {
-    /// Construct a `RevisionId` from a raw arena index.
-    ///
-    /// Prefer [`History::root_id`] for the root and reserve this for
-    /// external code that must name a specific revision (e.g. tests).
-    pub fn new(id: usize) -> Self {
-        Self(id)
-    }
-}
-
 // ── Revision ──────────────────────────────────────────────────────────────────
 
 /// A single node in the undo tree.
@@ -378,9 +368,7 @@ impl History {
     /// Parent of a revision. `None` for the root or for an id that is out of
     /// bounds or has been evicted by `undo-levels` trimming.
     ///
-    /// Using `.get` instead of direct indexing closes the panic vector that
-    /// would exist if a caller fabricated a `RevisionId` with an arbitrary
-    /// value via [`RevisionId::new`], and also lets callers safely query a
+    /// Using `.get` instead of direct indexing lets callers safely query a
     /// stale (evicted) id without panicking.
     pub fn parent(&self, id: RevisionId) -> Option<RevisionId> {
         self.revisions.get(&id)?.parent
