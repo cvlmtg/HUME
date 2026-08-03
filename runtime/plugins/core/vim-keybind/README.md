@@ -30,10 +30,11 @@ activates it. Loading it eagerly guarantees it's already up before this check ru
 | `o` (Extend mode) | flip-selections                    | `Ctrl+e`           |
 |-------------------|------------------------------------|--------------------|
 
-\* `C` is context-sensitive: on a bare cursor it's vim's change-to-end-of-line; with a real
-(multi-char) selection already active, it instead falls back to HUME's native
-`copy-selection-on-next-line`, so that command stays reachable without giving up vim muscle
-memory for the common (bare-cursor) case.
+\* `C` is context-sensitive: a bare `C` on a collapsed cursor is vim's change-to-end-of-line;
+a real (multi-char) selection already active, or *any* count prefix (`1C`, `3C`, …), instead
+falls back to HUME's native `copy-selection-on-next-line` (with the count forwarded, so `3C`
+duplicates onto the 3 lines below), so that command stays fully reachable without giving up
+vim muscle memory for the common (bare-cursor, no-count) case.
 
 `o` restores vim's visual-mode "flip the selection" gesture in Extend mode. HUME's native
 `Ctrl+e` already flips in any mode — including Normal — and works on legacy terminals, so `o`
@@ -44,7 +45,7 @@ is purely a muscle-memory alias, not new capability.
 | Key                | Value     | Effect                                                                 |
 |---------------------|-----------|--------------------------------------------------------------------------|
 | `"change-to-eol"`  | `'on`     | `C` always changes to end of line, ignoring any active selection.         |
-| `"change-to-eol"`  | `'smart` (default) | `C` is context-sensitive: bare cursor changes to EOL, real selection copies to next line. |
+| `"change-to-eol"`  | `'smart` (default) | `C` is context-sensitive: bare cursor with no count changes to EOL; a real selection or any count prefix copies to the next (or `n`) line(s). |
 | `"change-to-eol"`  | `'off`    | `C` is left unbound; HUME's default `copy-selection-on-next-line` stays reachable on `C`. |
 
 ```scheme
@@ -58,11 +59,12 @@ and never rely on the multicursor copy behavior.
 
 ## How it works
 
-`vim-change-to-eol-or-copy-line` reads `(current-selections)` and calls
-`stdlib/all-single-char?` via `call!` to tell a bare cursor from a real selection — this is
-why `core:stdlib` must load first. On a bare cursor it delegates to
-`vim-change-to-eol` (`goto-line-end` extend, then `change`); otherwise it calls
-`copy-selection-on-next-line` directly.
+`vim-change-to-eol-or-copy-line` takes the injected `count` (`0` when no count was typed) and,
+only when it's `0`, calls `stdlib/all-single-char?` via `call!` to tell a bare cursor from a
+real selection — this is why `core:stdlib` must load first. On a bare cursor with no count it
+delegates to `vim-change-to-eol` (`goto-line-end` extend, then `change`); any count prefix, or
+a real selection with no count, calls `copy-selection-on-next-line` directly with the count
+forwarded.
 
 Dot-repeat needs no `#:repeatable` annotation on the wrapper commands: `change` and `delete`
 are natively repeatable and capture the preceding `goto-line-end` (extend) step themselves,

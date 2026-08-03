@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- `core:vim-keybind`'s `C` (default `'smart` config) now takes `copy-selection-on-next-line` with any count prefix (e.g. `3C` duplicates onto the 3 lines below), not just when a real selection is already active.
 - The kill ring now dedupes its entries.
 - `p`/`P` now run new `smart-paste-after`/`smart-paste-before` commands. The old `paste-after`/`paste-before` still exist for scripting but are unbound by default and no longer have any smart-paste behavior: bare, they always read the kill-ring head with no clipboard fallback, and always replace a selection outright.
 - Smart-paste now decides its source by buffer state instead of the previous command's name: the kill ring while nothing has been edited since your last delete/change/yank, the clipboard once something has. Pasting text that matches what's already selected now appends alongside it instead of replacing it.

@@ -170,6 +170,81 @@ fn shift_c_with_selection_copies_to_next_line() {
     assert_eq!(ed.state.mode, Mode::Normal);
 }
 
+/// A count prefix always wins over the collapsed-cursor vim gesture, even on
+/// a bare cursor: `1C` duplicates the selection onto the next line instead of
+/// changing to end of line. This is the behavior this plugin change adds —
+/// before it, any count on `C` was silently swallowed by the arity-0 lambda.
+#[test]
+fn shift_c_with_count_1_copies_instead_of_changing() {
+    let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[h]>ello\nworld\n");
+    ed.handle_key(key('1'));
+    ed.handle_key(key('C'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "hello\nworld\n",
+        "buffer must be unchanged — a count prefix must not trigger the change-to-eol branch"
+    );
+    let heads: Vec<usize> = ed
+        .current_selections()
+        .iter_sorted()
+        .map(|s| s.head())
+        .collect();
+    assert_eq!(heads.len(), 2, "copy-selection-on-next-line adds a cursor");
+    assert!(heads.contains(&0), "original cursor stays at col 0 line 0");
+    assert!(heads.contains(&6), "new cursor lands at col 0 line 1");
+    assert_eq!(ed.state.mode, Mode::Normal);
+}
+
+/// `3C` on a bare cursor forwards the count to `copy-selection-on-next-line`,
+/// duplicating onto all three lines below — not just gating on "count present
+/// or not".
+#[test]
+fn shift_c_with_count_3_copies_onto_three_lines() {
+    let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[h]>ello\nworld\nfoo\nbar\n");
+    ed.handle_key(key('3'));
+    ed.handle_key(key('C'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "hello\nworld\nfoo\nbar\n",
+        "buffer must be unchanged"
+    );
+    let heads: Vec<usize> = ed
+        .current_selections()
+        .iter_sorted()
+        .map(|s| s.head())
+        .collect();
+    assert_eq!(
+        heads.len(),
+        4,
+        "count=3 must add one copy per line below, not just one"
+    );
+}
+
+/// A count prefix combined with an already-wide selection still forwards the
+/// count — the wide-selection fallback and the count fallback compose rather
+/// than one silently overriding the other.
+#[test]
+fn shift_c_with_count_and_selection_copies_with_count() {
+    let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[hello]>\nworld\nfoo\n");
+    ed.handle_key(key('2'));
+    ed.handle_key(key('C'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "hello\nworld\nfoo\n",
+        "buffer must be unchanged"
+    );
+    let heads: Vec<usize> = ed
+        .current_selections()
+        .iter_sorted()
+        .map(|s| s.head())
+        .collect();
+    assert_eq!(
+        heads.len(),
+        3,
+        "count=2 must add two copies of the wide selection, not one"
+    );
+}
+
 /// `C` shadows the default `copy-selection-on-next-line` binding while the
 /// plugin is loaded — the multicursor command stays reachable by name.
 #[test]

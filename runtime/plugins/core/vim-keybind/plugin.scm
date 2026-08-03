@@ -6,12 +6,15 @@
   (lambda () (call! "goto-line-end" 1 #t) (call! "change")))
 
 (define-command! "vim-change-to-eol-or-copy-line"
-  "Bare cursor: change to end of line (vim C). Real selection: copy it to the next line."
-  (lambda ()
-    (let ((sels (current-selections)))
-      (if (call! "stdlib/all-single-char?" sels)
-          (call! "vim-change-to-eol")
-          (call! "copy-selection-on-next-line")))))
+  "Bare C on a collapsed cursor: change to end of line (vim C). With a count, or on a real selection: copy the selection onto the line(s) below."
+  ;; count 0 is the dispatcher's spelling of "no count typed" — a count prefix,
+  ;; even 1, is an explicit ask for the multicursor copy, so it wins over the
+  ;; collapsed-cursor vim gesture and is forwarded verbatim.
+  (lambda (count)
+    (if (and (= count 0)
+             (call! "stdlib/all-single-char?" (current-selections)))
+        (call! "vim-change-to-eol")
+        (call! "copy-selection-on-next-line" count))))
 
 (define-command! "vim-delete-to-eol"
   "Delete from the cursor to the end of the line."

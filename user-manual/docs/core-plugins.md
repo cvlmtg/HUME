@@ -107,7 +107,7 @@ Vim muscle memory: `$`, `^`, `0`, `G` (last line), `C` and `D` (change/delete to
 
 Must be loaded eagerly, and `core:stdlib` must be loaded eagerly before it.
 
-By default (`'smart`), `C` is context-sensitive: on a bare cursor it changes to end of line as in vim, but with a real selection it runs HUME's own `copy-selection-on-next-line`, so that command stays reachable. Change this with `#:config`:
+By default (`'smart`), `C` is context-sensitive: on a bare cursor with no count it changes to end of line as in vim, but with a real selection, or any count prefix (e.g. `3C`), it runs HUME's own `copy-selection-on-next-line`, so that command stays fully reachable. Change this with `#:config`:
 
 ```scheme
 (load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'on))
