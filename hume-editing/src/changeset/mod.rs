@@ -182,9 +182,11 @@ impl<'a> PosMapCursor<'a> {
     /// Map `pos` from old-doc to new-doc space. `pos` must be `>=` every
     /// position passed to a prior call on this cursor — see struct docs.
     ///
-    /// Body mirrors [`ChangeSet::map_pos`] exactly; the only difference is
-    /// that the walk resumes from `(idx, old, new)` instead of restarting at
-    /// op 0, since ops fully behind a past query can never matter again.
+    /// Walks forward from `(idx, old, new)` — wherever the previous call left
+    /// off — rather than restarting at op 0, since ops fully behind a past
+    /// query can never matter again for a non-decreasing sequence of queries.
+    /// [`ChangeSet::map_pos`] is a one-shot convenience built on top of this:
+    /// it opens a fresh cursor and delegates a single query to it.
     pub fn map(&mut self, pos: usize, assoc: Assoc) -> usize {
         while self.idx < self.ops.len() {
             match &self.ops[self.idx] {

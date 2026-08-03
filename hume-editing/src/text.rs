@@ -5,8 +5,12 @@ use std::ops::Range;
 /// Whether the original file used LF or CRLF line endings.
 ///
 /// Stored in the buffer so we can write the file back with the same endings.
-/// Internally, all buffer content is normalized to LF — `\r` is never present
-/// in the rope after loading.
+/// Internally, `\r\n` pairs are normalized to `\n` (see [`normalize_crlf`]) —
+/// but a bare `\r` (old Mac) is left as-is, and because the strip is a single
+/// forward pass, an input like `"\r\r\n"` still leaves a literal `\r\n` in the
+/// rope (the first `\r` isn't followed by `\n` so it's kept; only the second
+/// `\r` pairs with the following `\n`). `\r` is therefore not guaranteed absent
+/// from the rope after loading.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LineEnding {
     /// Unix / macOS (default)

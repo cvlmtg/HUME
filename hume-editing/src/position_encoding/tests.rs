@@ -81,7 +81,32 @@ fn char_to_wire_minimum_buffer_is_a_bare_newline() {
     assert_eq!(char_to_wire(&text, 1, PositionEncoding::Utf8), (1, 0));
 }
 
-// ── wire_to_char ─────────────────────────────────────────────────────────
+// ── CRLF line terminator ─────────────────────────────────────────────────
+//
+// `hume_editing::text::Text` normalizes `\r\n` to `\n` on load, but a `\r\n`
+// can still reach a live rope in one edge case: `Text::from`'s single-pass
+// CRLF strip leaves a literal `\r\n` behind when the input has a bare `\r`
+// immediately before a `\r\n` pair (e.g. `"\r\r\n"` → `"\r\n"` — see
+// `text::tests::from_str_cr_then_crlf_leaves_bare_cr`). These functions take
+// a raw `&Rope`, not a `&Text`, so a `\r\n`-bearing rope is constructed
+// directly here rather than routing through that edge case.
+
+#[test]
+fn line_content_end_stops_before_crlf_not_just_lf() {
+    // "ab\r\ncd\n": line 0's terminator is the 2-char "\r\n" pair, not a bare
+    // '\n'. content_end must land on the '\r' (char 2), one further back than
+    // it would for a plain '\n' terminator (which would land on char 3) —
+    // this is `line_content_end_char`'s CRLF-aware `next_start - 2` branch,
+    // not the "\n"-only `next_start - 1` branch.
+    let text = Rope::from_str("ab\r\ncd\n");
+    for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
+        assert_eq!(
+            wire_to_char(&text, 0, 9_999, enc),
+            2,
+            "character past line end must clamp before the \\r, not the \\n, for {enc:?}"
+        );
+    }
+}
 
 #[test]
 fn wire_to_char_matches_char_to_wire_for_exact_positions() {

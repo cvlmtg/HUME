@@ -63,6 +63,18 @@ fn from_str_bare_cr_preserved() {
 }
 
 #[test]
+fn from_str_cr_then_crlf_leaves_bare_cr() {
+    // "\r\r\n": normalize_crlf is a single forward pass, so the first '\r' is
+    // not itself followed by '\n' (its lookahead is the second '\r') and is
+    // pushed as-is; only the second '\r' pairs with the following '\n' and is
+    // dropped. The rope therefore still contains a literal "\r\n" — this is
+    // the case that disproves "content is always \r-free after loading".
+    let buf = Text::from("\r\r\n");
+    assert_eq!(buf.to_string(), "\r\n");
+    assert_eq!(buf.line_ending(), LineEnding::CrLf);
+}
+
+#[test]
 fn from_str_trailing_newline() {
     // A trailing newline creates an extra empty line.
     let buf = Text::from("hello\n");

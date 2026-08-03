@@ -16,6 +16,15 @@
 //! set during a reload is ~2× the buffer. The win is in what survives in the
 //! history tree afterwards.
 //!
+//! There's a further transient cost this module doesn't avoid: `diff_lines`'s
+//! `LineHunk`s already own a `String` copy of every changed line (each
+//! non-`Equal` `LineHunkKind` carries its payload), and [`build_changesets`]
+//! discards those copies immediately, re-slicing the same lines from `old`/
+//! `new` instead. So a reload's changed lines are materialized twice over —
+//! deliberate, since `diff_lines`'s hunk payloads are also the public API
+//! `docs/GIT-DIFF.md` builds on, but worth knowing when reasoning about this
+//! module's memory story.
+//!
 //! The helper takes `&Text` on both sides and returns the two `ChangeSet`s; it
 //! does not mutate either buffer. The caller still owns the text swap.
 
