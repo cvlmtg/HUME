@@ -155,7 +155,7 @@ impl History {
         self.scratch = None;
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn entries(&self) -> &VecDeque<String> {
         &self.entries
     }

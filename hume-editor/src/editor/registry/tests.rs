@@ -340,6 +340,7 @@ fn runtime_register_typed_and_lookup() {
         doc: Cow::Borrowed("A dummy Steel typed command for testing."),
         aliases: &["stc"],
         fun: dummy_typed,
+        completer: None,
     });
 
     assert_eq!(reg.len(), before + 1);

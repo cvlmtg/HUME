@@ -1,18 +1,22 @@
 use std::borrow::Cow;
 
 use crate::editor::commands::*;
-use crate::editor::registry::{CommandRegistry, TypedCommand};
+use crate::editor::registry::{ArgCompleter, CommandRegistry, TypedCommand};
 
 impl CommandRegistry {
     pub(super) fn register_typed_commands(&mut self) {
         // ── Typed commands (`:` command line) ─────────────────────────────────
         macro_rules! typed_cmd {
             ($name:literal, $doc:literal, $aliases:expr, $fun:expr) => {
+                typed_cmd!($name, $doc, $aliases, $fun, completer: None)
+            };
+            ($name:literal, $doc:literal, $aliases:expr, $fun:expr, completer: $completer:expr) => {
                 self.register_typed(TypedCommand {
                     name: Cow::Borrowed($name),
                     doc: Cow::Borrowed($doc),
                     aliases: $aliases,
                     fun: $fun,
+                    completer: $completer,
                 })
             };
         }
@@ -24,12 +28,19 @@ impl CommandRegistry {
             &["qa"],
             typed_quit_all
         );
-        typed_cmd!("write", "Write changes to disk.", &["w"], typed_write);
+        typed_cmd!(
+            "write",
+            "Write changes to disk.",
+            &["w"],
+            typed_write,
+            completer: Some(ArgCompleter::Path { dirs_only: false })
+        );
         typed_cmd!(
             "write-quit",
             "Write changes and quit.",
             &["wq"],
-            typed_write_quit
+            typed_write_quit,
+            completer: Some(ArgCompleter::Path { dirs_only: false })
         );
         typed_cmd!(
             "write-all",
@@ -47,7 +58,8 @@ impl CommandRegistry {
             "set",
             "Set a configuration value: :set global|buffer|pane key=value.",
             &[],
-            typed_set
+            typed_set,
+            completer: Some(ArgCompleter::Set)
         );
         typed_cmd!(
             "messages",
@@ -65,7 +77,8 @@ impl CommandRegistry {
             "edit",
             "Open a file or reload current file.",
             &["e"],
-            typed_edit
+            typed_edit,
+            completer: Some(ArgCompleter::Path { dirs_only: false })
         );
         typed_cmd!(
             "checktime",
@@ -107,7 +120,8 @@ impl CommandRegistry {
             "theme",
             "Load a theme by name: :theme <name>. No arg shows current theme.",
             &[],
-            typed_theme
+            typed_theme,
+            completer: Some(ArgCompleter::Theme)
         );
         typed_cmd!(
             "theme-debug",
@@ -119,7 +133,8 @@ impl CommandRegistry {
             "change-directory",
             "Change the working directory.",
             &["cd"],
-            typed_cd
+            typed_cd,
+            completer: Some(ArgCompleter::Path { dirs_only: true })
         );
         typed_cmd!(
             "print-working-directory",
@@ -139,7 +154,13 @@ impl CommandRegistry {
             &["plugins"],
             typed_plugin_status
         );
-        typed_cmd!("buffer", "Switch to an open buffer.", &["b"], typed_buffer);
+        typed_cmd!(
+            "buffer",
+            "Switch to an open buffer.",
+            &["b"],
+            typed_buffer,
+            completer: Some(ArgCompleter::Buffer)
+        );
         typed_cmd!(
             "version",
             "Print the editor version.",

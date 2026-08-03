@@ -223,10 +223,9 @@ impl LspState {
         Self::with_backend(backend)
     }
 
-    /// Reach the raw backend directly. Test-only in practice (the scripted
-    /// round-trip test): production code goes through `drain_lsp`'s direct
-    /// field access instead.
-    #[allow(dead_code)]
+    /// Reach the raw backend directly. Test-only: production code goes
+    /// through `drain_lsp`'s direct field access instead.
+    #[cfg(test)]
     pub(crate) fn backend_mut(&mut self) -> &mut dyn LspBackend {
         self.backend.as_mut()
     }

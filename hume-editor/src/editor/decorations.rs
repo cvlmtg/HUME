@@ -28,9 +28,7 @@ pub(crate) struct InlayHintEntry {
     pub(crate) before: bool,
 }
 
-/// One `(set-signs! …)` entry: a gutter marker on `line` (0-indexed). No
-/// reader until the sign-column provider.
-#[allow(dead_code)]
+/// One `(set-signs! …)` entry: a gutter marker on `line` (0-indexed).
 pub(crate) struct SignEntry {
     pub(crate) line: usize,
     pub(crate) text: String,

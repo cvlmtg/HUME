@@ -116,6 +116,7 @@ fn command_completer_non_ascii_name_does_not_panic() {
         doc: Cow::Borrowed(""),
         aliases: &[],
         fun: noop,
+        completer: None,
     });
     let store = crate::editor::buffer::store::BufferStore::new();
     let dir = tempfile::tempdir().unwrap();

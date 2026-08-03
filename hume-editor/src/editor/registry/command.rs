@@ -411,6 +411,21 @@ impl MappableCommand {
 
 // ── TypedCommand ──────────────────────────────────────────────────────────────
 
+/// Which argument completer a typed command's `:` command-line argument uses,
+/// if any. Declared alongside the command name in `typed_cmd!` so renaming a
+/// command can't silently desync it from the completion dispatch in
+/// `command_mode.rs`, which reads this instead of re-matching on the name.
+pub(crate) enum ArgCompleter {
+    /// Path completion. `dirs_only` restricts candidates to directories
+    /// (`:change-directory`); `false` covers files too (`:edit`/`:write`).
+    Path {
+        dirs_only: bool,
+    },
+    Buffer,
+    Theme,
+    Set,
+}
+
 /// A command invocable from the `:` command line.
 ///
 /// Typed commands have a canonical name and optional short aliases. They are
@@ -435,4 +450,6 @@ pub(crate) struct TypedCommand {
     /// The function to execute. Receives the editor, an optional argument
     /// (e.g. a file path), and whether `!` was appended.
     pub fun: fn(&mut super::super::Editor, Option<&str>, bool) -> Result<(), CommandError>,
+    /// Argument completer for this command's `:` command-line argument, if any.
+    pub completer: Option<ArgCompleter>,
 }

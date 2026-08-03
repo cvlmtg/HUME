@@ -57,7 +57,7 @@ impl Editor {
         use slotmap::SecondaryMap;
         use std::collections::VecDeque;
 
-        let startup_cwd = std::env::current_dir().unwrap_or_default();
+        let startup_cwd = std::env::current_dir()?;
         let mut doc = match file_path {
             Some(ref path) => Buffer::from_file(path)?,
             None => Buffer::new(Text::empty(), SelectionSet::single(Selection::collapsed(0))),
@@ -202,7 +202,7 @@ impl Editor {
                 dispatching_typed_command: false,
                 is_replaying: false,
                 mouse_drag_anchor: None,
-                cwd: std::env::current_dir().unwrap_or_default(),
+                cwd: startup_cwd,
                 lsp_completion_dismiss_pending: false,
                 completion_menu_view,
                 minibuf_completion_view,

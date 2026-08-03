@@ -228,6 +228,7 @@ impl Editor {
             BufferNameCompleter, CommandCompleter, Completer, CompletionResult,
             MinibufCompletionState, PathCompleter, SetCompleter, ThemeCompleter,
         };
+        use crate::editor::registry::ArgCompleter;
 
         let result: CompletionResult = {
             // Split input into (cmd_raw, arg) to determine the completer.
@@ -242,27 +243,28 @@ impl Editor {
                     CommandCompleter.complete(&input, cursor, &ctx)
                 }
                 Some((cmd_raw, _)) => {
-                    // Resolve alias → canonical name.
+                    // Resolve alias → command, and its declared argument completer.
                     let cmd = cmd_raw.strip_suffix('!').unwrap_or(cmd_raw);
-                    let canonical = self
+                    let completer = self
                         .state
                         .config
                         .registry
                         .get_typed(cmd)
-                        .map(|tc| tc.name.as_ref());
-                    match canonical {
-                        Some("edit" | "write" | "write-quit") => {
-                            PathCompleter { dirs_only: false }.complete(&input, cursor, &ctx)
+                        .and_then(|tc| tc.completer.as_ref());
+                    match completer {
+                        Some(ArgCompleter::Path { dirs_only }) => PathCompleter {
+                            dirs_only: *dirs_only,
                         }
-                        Some("change-directory") => {
-                            PathCompleter { dirs_only: true }.complete(&input, cursor, &ctx)
+                        .complete(&input, cursor, &ctx),
+                        Some(ArgCompleter::Buffer) => {
+                            BufferNameCompleter.complete(&input, cursor, &ctx)
                         }
-                        Some("buffer") => BufferNameCompleter.complete(&input, cursor, &ctx),
-                        Some("theme") => ThemeCompleter.complete(&input, cursor, &ctx),
-                        Some("set") => SetCompleter.complete(&input, cursor, &ctx),
-                        // `:bd` ignores its argument; skip completion to
-                        // avoid a misleading pick-then-close-current-buffer UX.
-                        _ => return,
+                        Some(ArgCompleter::Theme) => ThemeCompleter.complete(&input, cursor, &ctx),
+                        Some(ArgCompleter::Set) => SetCompleter.complete(&input, cursor, &ctx),
+                        // No completer declared — e.g. `:bd` ignores its argument;
+                        // skip completion to avoid a misleading
+                        // pick-then-close-current-buffer UX.
+                        None => return,
                     }
                 }
             }

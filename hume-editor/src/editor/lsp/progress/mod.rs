@@ -47,7 +47,7 @@ pub(super) struct ProgressTask {
     // percentage (`introspect::LspActivity::Progress` carries no title).
     // Kept so the `$/progress` begin/report merge machine has something to
     // assert against in tests, via `LspState::progress_title_for_test`.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) title: String,
     pub(crate) percentage: Option<u32>,
 }
@@ -76,6 +76,7 @@ impl Editor {
                     entry.progress.push((
                         token,
                         ProgressTask {
+                            #[cfg(test)]
                             title: begin.title,
                             percentage: begin.percentage,
                         },

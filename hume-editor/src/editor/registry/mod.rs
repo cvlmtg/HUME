@@ -37,7 +37,7 @@ use std::borrow::Cow;
 mod command;
 mod defaults;
 
-pub(crate) use command::{CmdMeta, EditorCmdFn, MappableCommand, TypedCommand};
+pub(crate) use command::{ArgCompleter, CmdMeta, EditorCmdFn, MappableCommand, TypedCommand};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

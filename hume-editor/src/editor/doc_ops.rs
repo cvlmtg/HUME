@@ -61,6 +61,37 @@ fn record_lsp_edits(
     }
 }
 
+/// Shared post-mutation bookkeeping for every text-mutating path: bump the
+/// edit seq, write `new_sels` back, propagate `cs` to sibling panes, and feed
+/// both the syntax and LSP/decoration remap streams. A path that forgets one
+/// of these steps would silently drift decorations or leave a stale syntax
+/// tree, with no compile error — so this is the one place that sequence is
+/// spelled out.
+///
+/// The first five parameters are the same threading quintet every function
+/// in this file already receives; the last four are each caller's own
+/// pre/post-edit state. Bundling either group into a struct would only move
+/// the field list, not shrink it.
+#[allow(clippy::too_many_arguments)]
+fn finish_edit(
+    buffers: &mut BufferStore,
+    decorations: &DecorationStores,
+    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    focused_pane_id: PaneId,
+    buf_id: BufferId,
+    new_sels: SelectionSet,
+    cs: &ChangeSet,
+    buf_pre: &Text,
+    rope_pre: &ropey::Rope,
+) {
+    buffers.bump_edit_seq();
+    pane_state[focused_pane_id][buf_id].selections = new_sels;
+    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, cs, buf_pre);
+    let text_gen = buffers.get(buf_id).text_gen;
+    record_syntax_edits(buffers, buf_id, text_gen, cs, rope_pre);
+    record_lsp_edits(buffers, decorations, buf_id, text_gen, cs, rope_pre);
+}
+
 /// Apply an edit to the focused buffer and propagate the resulting
 /// `ChangeSet` to all other panes viewing the same buffer.
 ///
@@ -104,12 +135,17 @@ pub(crate) fn apply_doc_edit(
     let rope_pre = buf_pre.rope().clone();
     let sels = std::mem::take(&mut pane_state[focused_pane_id][buf_id].selections);
     let (new_sels, cs) = buffers.get_mut(buf_id).apply_edit(sels, cmd);
-    buffers.bump_edit_seq();
-    pane_state[focused_pane_id][buf_id].selections = new_sels;
-    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
-    let text_gen = buffers.get(buf_id).text_gen;
-    record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
-    record_lsp_edits(buffers, decorations, buf_id, text_gen, &cs, &rope_pre);
+    finish_edit(
+        buffers,
+        decorations,
+        pane_state,
+        focused_pane_id,
+        buf_id,
+        new_sels,
+        &cs,
+        &buf_pre,
+        &rope_pre,
+    );
 }
 
 /// Apply a grouped edit (inside an insert session) to the focused buffer.
@@ -143,15 +179,20 @@ pub(crate) fn apply_doc_edit_grouped(
     let doc = buffers.get_mut(buf_id);
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     let (new_sels, cs) = doc.apply_edit_grouped(sels, &mut pbs.edit_group, cmd);
-    buffers.bump_edit_seq();
-    pbs.selections = new_sels;
     if let Some(anchors) = pbs.pinned_anchors.as_mut() {
         cs.map_positions(anchors, hume_editing::changeset::Assoc::Before);
     }
-    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
-    let text_gen = buffers.get(buf_id).text_gen;
-    record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
-    record_lsp_edits(buffers, decorations, buf_id, text_gen, &cs, &rope_pre);
+    finish_edit(
+        buffers,
+        decorations,
+        pane_state,
+        focused_pane_id,
+        buf_id,
+        new_sels,
+        &cs,
+        &buf_pre,
+        &rope_pre,
+    );
     cs
 }
 
@@ -179,23 +220,15 @@ pub(crate) fn apply_doc_edit_regrouped(
     let (new_sels, propagation_cs) = buffers
         .get_mut(buf_id)
         .apply_edit_regrouped(&mut pbs.paste_group, cmd);
-    buffers.bump_edit_seq();
-    pane_state[focused_pane_id][buf_id].selections = new_sels;
-    propagate_cs_to_panes(
+    finish_edit(
+        buffers,
+        decorations,
         pane_state,
         focused_pane_id,
         buf_id,
+        new_sels,
         &propagation_cs,
         &buf_pre,
-    );
-    let text_gen = buffers.get(buf_id).text_gen;
-    record_syntax_edits(buffers, buf_id, text_gen, &propagation_cs, &rope_pre);
-    record_lsp_edits(
-        buffers,
-        decorations,
-        buf_id,
-        text_gen,
-        &propagation_cs,
         &rope_pre,
     );
 }
@@ -222,12 +255,17 @@ pub(crate) fn apply_doc_undo(
     let buf_pre = buffers.get(buf_id).text().clone();
     let rope_pre = buf_pre.rope().clone();
     if let Some((new_sels, cs)) = buffers.get_mut(buf_id).undo() {
-        buffers.bump_edit_seq();
-        pane_state[focused_pane_id][buf_id].selections = new_sels;
-        propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
-        let text_gen = buffers.get(buf_id).text_gen;
-        record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
-        record_lsp_edits(buffers, decorations, buf_id, text_gen, &cs, &rope_pre);
+        finish_edit(
+            buffers,
+            decorations,
+            pane_state,
+            focused_pane_id,
+            buf_id,
+            new_sels,
+            &cs,
+            &buf_pre,
+            &rope_pre,
+        );
     }
 }
 
@@ -250,12 +288,17 @@ pub(crate) fn apply_doc_redo(
     let buf_pre = buffers.get(buf_id).text().clone();
     let rope_pre = buf_pre.rope().clone();
     if let Some((new_sels, cs)) = buffers.get_mut(buf_id).redo() {
-        buffers.bump_edit_seq();
-        pane_state[focused_pane_id][buf_id].selections = new_sels;
-        propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &cs, &buf_pre);
-        let text_gen = buffers.get(buf_id).text_gen;
-        record_syntax_edits(buffers, buf_id, text_gen, &cs, &rope_pre);
-        record_lsp_edits(buffers, decorations, buf_id, text_gen, &cs, &rope_pre);
+        finish_edit(
+            buffers,
+            decorations,
+            pane_state,
+            focused_pane_id,
+            buf_id,
+            new_sels,
+            &cs,
+            &buf_pre,
+            &rope_pre,
+        );
     }
 }
 
