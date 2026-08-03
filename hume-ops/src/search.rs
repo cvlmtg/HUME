@@ -76,21 +76,21 @@ pub fn find_next_match(
     match direction {
         SearchDirection::Forward => {
             // Primary: search from_byte..end
-            if let Some(m) = search_first_in(buf, regex, from_byte..total_bytes) {
-                return Some(m);
+            if let Some((s, e)) = search_match_in(buf, regex, from_byte..total_bytes, false) {
+                return Some((s, e, false));
             }
             // Wrap: search 0..from_byte
-            if let Some((s, e, _)) = search_first_in(buf, regex, 0..from_byte) {
+            if let Some((s, e)) = search_match_in(buf, regex, 0..from_byte, false) {
                 return Some((s, e, true));
             }
         }
         SearchDirection::Backward => {
             // Primary: search 0..from_byte, take the last match
-            if let Some(m) = search_last_in(buf, regex, 0..from_byte) {
-                return Some(m);
+            if let Some((s, e)) = search_match_in(buf, regex, 0..from_byte, true) {
+                return Some((s, e, false));
             }
             // Wrap: search from_byte..end, take the last match
-            if let Some((s, e, _)) = search_last_in(buf, regex, from_byte..total_bytes) {
+            if let Some((s, e)) = search_match_in(buf, regex, from_byte..total_bytes, true) {
                 return Some((s, e, true));
             }
         }
@@ -244,49 +244,37 @@ pub fn find_match_from_cache(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Find the first non-zero-width match in `byte_range`, returning
-/// `Some((start_char, end_char_inclusive, false))` or `None`.
-fn search_first_in(
-    buf: &Text,
-    regex: &Regex,
-    byte_range: std::ops::Range<usize>,
-) -> Option<(usize, usize, bool)> {
-    if byte_range.is_empty() {
-        return None;
-    }
-    let cursor = RopeyCursor::new(buf.full_slice());
-    let mut input = Input::new(cursor);
-    input.set_range(byte_range);
-    let m = regex.find(input).filter(|m| m.start() < m.end())?;
-    let start = buf.byte_to_char(m.start());
-    let end_incl = buf.byte_to_char(m.end()) - 1;
-    Some((start, end_incl, false))
-}
-
-/// Find the last non-zero-width match in `byte_range`, returning
-/// `Some((start_char, end_char_inclusive, false))` or `None`.
+/// Find a non-zero-width match in `byte_range`, returning
+/// `Some((start_char, end_char_inclusive))` or `None`.
 ///
-/// Implemented by collecting all matches and taking the last one — correct and
-/// simple, acceptable for typical buffer sizes. A reverse-DFA approach could be
+/// `take_last`: `false` takes the first match found (forward search);
+/// `true` scans every match in the range and takes the last one —
+/// implemented by collecting all matches, which is correct and simple,
+/// acceptable for typical buffer sizes. A reverse-DFA approach could be
 /// added later for very large files.
-fn search_last_in(
+fn search_match_in(
     buf: &Text,
     regex: &Regex,
     byte_range: std::ops::Range<usize>,
-) -> Option<(usize, usize, bool)> {
+    take_last: bool,
+) -> Option<(usize, usize)> {
     if byte_range.is_empty() {
         return None;
     }
     let cursor = RopeyCursor::new(buf.full_slice());
     let mut input = Input::new(cursor);
     input.set_range(byte_range);
-    let m = regex
-        .find_iter(input)
-        .filter(|m| m.start() < m.end())
-        .last()?;
+    let m = if take_last {
+        regex
+            .find_iter(input)
+            .filter(|m| m.start() < m.end())
+            .last()?
+    } else {
+        regex.find(input).filter(|m| m.start() < m.end())?
+    };
     let start = buf.byte_to_char(m.start());
     let end_incl = buf.byte_to_char(m.end()) - 1;
-    Some((start, end_incl, false))
+    Some((start, end_incl))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

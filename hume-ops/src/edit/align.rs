@@ -161,19 +161,6 @@ pub fn align_selections(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, C
 
     // ── Pass 3: apply ──────────────────────────────────────────────────────────
 
-    // Precompute a directive for each selection (in sorted / apply_edit order).
-    enum Directive {
-        Align(usize), // target column for this selection's anchor
-        Passthrough,  // extras + multiline: shift by accumulated edit delta only
-    }
-    let directives: Vec<Directive> = meta
-        .iter()
-        .map(|m| match m.slot {
-            Some(slot) => Directive::Align(targets[slot]),
-            None => Directive::Passthrough,
-        })
-        .collect();
-
     // `line_shift` tracks the net chars inserted/removed on the current line so
     // far, converting original-buffer anchor columns to post-edit columns.
     // Spaces and tabs are each 1 grapheme = 1 column, so chars == columns here.
@@ -192,10 +179,11 @@ pub fn align_selections(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, C
             line_shift = 0;
         }
 
-        match &directives[i] {
-            Directive::Passthrough => {
-                // Retain up to sel_start, capture the global delta (from all edits
-                // before this position), retain the content, push shifted selection.
+        match meta[i].slot {
+            None => {
+                // Extras + multiline: retain up to sel_start, capture the global
+                // delta (from all edits before this position), retain the
+                // content, push shifted selection.
                 b.retain(sel_start - b.old_pos());
                 let delta = b.new_pos() as isize - b.old_pos() as isize;
                 b.retain(content_len);
@@ -203,12 +191,13 @@ pub fn align_selections(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, C
                 let new_head = (sel.head() as isize + delta) as usize;
                 new_sels.push(Selection::new(new_anchor, new_head));
             }
-            Directive::Align(target) => {
+            Some(slot) => {
+                let target = targets[slot];
                 // Adjust the original anchor column by the net shift from earlier
                 // edits on this line to get the current anchor column.
                 let acol_orig = grapheme_col_in_line(buf, start_line, sel.anchor());
                 let acol_now = (acol_orig as isize + line_shift).max(0) as usize;
-                let amount = *target as isize - acol_now as isize;
+                let amount = target as isize - acol_now as isize;
 
                 if amount > 0 {
                     b.retain(sel_start - b.old_pos());

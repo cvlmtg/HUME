@@ -14,10 +14,7 @@ enum CaseTransform {
     Lower,
     Upper,
     /// Title Case: uppercase the first letter of each word, lowercase the
-    /// rest. A "word" is a maximal run of alphanumeric graphemes — this is
-    /// the simplest definition that gives sensible results without a full
-    /// word-motion classifier, though it means an apostrophe counts as a
-    /// word break (`don't` → `Don'T`).
+    /// rest. See [`capitalize_words`] for what counts as a word.
     Capitalize,
 }
 

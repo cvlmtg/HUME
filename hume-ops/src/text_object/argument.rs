@@ -81,12 +81,14 @@ fn which_segment(segments: &[(usize, usize)], pos: usize) -> Option<usize> {
     None
 }
 
-/// Inner argument: the text of the comma-separated item at `pos`, with leading
-/// and trailing whitespace trimmed.
+/// Resolve `pos` to its enclosing bracket pair's comma segments and the
+/// index of the segment containing (or, on a comma gap, following) it.
 ///
-/// Works for function arguments `foo(a, b)`, array items `[1, 2]`, object
-/// fields `{x: 1, y: 2}`, and any comma-separated list inside brackets.
-fn inner_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
+/// Shared prelude for [`inner_argument`] and [`around_argument`]: locate the
+/// tightest bracket pair, nudge `pos` off the bracket itself when it sits on
+/// one, split the content into comma segments, and resolve which segment
+/// `pos` falls in.
+fn locate_argument(buf: &Text, pos: usize) -> Option<(Vec<(usize, usize)>, usize)> {
     let (open_pos, close_pos) = find_tightest_bracket_pair(buf, pos)?;
 
     // Nudge: if the cursor is on a bracket itself, step into the content zone.
@@ -104,15 +106,20 @@ fn inner_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
     }
 
     let idx = which_segment(&segments, pos)?;
-    let (raw_start, raw_end) = segments[idx];
+    Some((segments, idx))
+}
 
-    // Trim leading whitespace. next_grapheme_boundary is required here because
-    // `start` is a text position — raw `+= 1` would mis-step on multi-byte clusters.
+/// Trim leading and trailing whitespace from a raw segment span. Returns
+/// `None` if the segment is entirely whitespace.
+///
+/// `next_grapheme_boundary`/`prev_grapheme_boundary` are required here
+/// because `start`/`end` are text positions — raw `+= 1`/`-= 1` would
+/// mis-step on multi-byte clusters.
+fn trim_segment(buf: &Text, (raw_start, raw_end): (usize, usize)) -> Option<(usize, usize)> {
     let mut start = raw_start;
     while start <= raw_end && matches!(buf.char_at(start), Some(' ' | '\t' | '\n' | '\r')) {
         start = next_grapheme_boundary(buf, start);
     }
-    // Trim trailing whitespace.
     let mut end = raw_end;
     while end > start && matches!(buf.char_at(end), Some(' ' | '\t' | '\n' | '\r')) {
         end = prev_grapheme_boundary(buf, end);
@@ -125,6 +132,16 @@ fn inner_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
     Some((start, end))
 }
 
+/// Inner argument: the text of the comma-separated item at `pos`, with leading
+/// and trailing whitespace trimmed.
+///
+/// Works for function arguments `foo(a, b)`, array items `[1, 2]`, object
+/// fields `{x: 1, y: 2}`, and any comma-separated list inside brackets.
+fn inner_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
+    let (segments, idx) = locate_argument(buf, pos)?;
+    trim_segment(buf, segments[idx])
+}
+
 /// Around argument: the item plus its separator comma, so that deleting around
 /// leaves a clean, properly-spaced list.
 ///
@@ -135,30 +152,14 @@ fn inner_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
 /// - **Non-first arg**: extend start back to include the preceding comma,
 ///   so `delete(around bbb)` in `foo(aaa, bbb)` yields `foo(aaa)`.
 fn around_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
-    let (open_pos, close_pos) = find_tightest_bracket_pair(buf, pos)?;
-
-    // Nudge cursor off the bracket itself.
-    let pos = if pos == open_pos {
-        open_pos + 1
-    } else if pos == close_pos {
-        close_pos.saturating_sub(1)
-    } else {
-        pos
-    };
-
-    let segments = find_comma_segments(buf, open_pos, close_pos);
-    if segments.is_empty() {
-        return None;
-    }
-
-    let idx = which_segment(&segments, pos)?;
-    let (raw_start, raw_end) = segments[idx];
+    let (segments, idx) = locate_argument(buf, pos)?;
 
     if segments.len() == 1 {
         // Only argument — no separator to eat; same as inner.
-        return inner_argument(buf, pos);
+        return trim_segment(buf, segments[idx]);
     }
 
+    let (raw_start, raw_end) = segments[idx];
     if idx == 0 {
         // First arg: eat the trailing comma and skip whitespace to the start
         // of the next argument's content, so no orphan space is left behind.
