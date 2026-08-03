@@ -31,6 +31,83 @@ fn log_absent_core(ctx: &mut SteelCtx, name: &str, verb: &str) {
     );
 }
 
+/// Logs the "plugin file absent on disk" outcome, per plugin kind: `core:`
+/// plugins go through [`log_absent_core`] (typo or broken `HUME_RUNTIME` —
+/// never installed by PLUM); `user/repo` plugins log a softer Info (not yet
+/// installed — PLUM will fetch it on `:plum-install`).
+///
+/// Shared by `declare_plugin` and `begin_manifest_declare`'s identical
+/// absent-on-disk fork.
+fn log_absent_plugin(ctx: &mut SteelCtx, plugin_id: &PluginId, name: &str, verb: &str) {
+    match plugin_id {
+        PluginId::Core(_) => log_absent_core(ctx, name, verb),
+        PluginId::User { .. } => ctx.log(
+            crate::log::LogLevel::Info,
+            format!("{verb}: '{name}' not found on disk; install and reload to activate."),
+        ),
+    }
+}
+
+/// PLUM compat: records `name` in `declared_plugins` if not already present
+/// (case-insensitive), regardless of whether the plugin resolves on disk —
+/// PLUM reads this list to know what to install on `:plum-install`.
+///
+/// Shared by `declare_plugin`, `load_plugin`, and `begin_manifest_declare`.
+fn record_declared(ctx: &mut SteelCtx, name: &str) {
+    if !ctx
+        .registries
+        .declared_plugins
+        .iter()
+        .any(|d| d.eq_ignore_ascii_case(name))
+    {
+        ctx.registries.declared_plugins.push(name.to_string());
+    }
+}
+
+/// Shared idempotency rule for both `declare-plugin` forms (regular and the
+/// manifest zero-trigger fallback): `Loaded` → soft error, else first
+/// declaration wins. Returns `true` if the caller should short-circuit
+/// immediately (with its own success sentinel — `declare_plugin` and
+/// `begin_manifest_declare` return different `SteelVal`s on this path).
+fn already_declared(ctx: &mut SteelCtx, plugin_id: &PluginId, name: &str) -> bool {
+    match ctx.registries.lazy_registry.plugins.get(plugin_id) {
+        Some(PluginState::Loaded) => {
+            ctx.log(
+                crate::log::LogLevel::Error,
+                format!("declare-plugin: '{name}' is already loaded; ignoring declare"),
+            );
+            true
+        }
+        Some(_) => true, // Declared/Loading/Failed: first wins
+        None => false,
+    }
+}
+
+/// Builds `(require "<abs path>")`, rejecting a path containing `"` (which
+/// can't be embedded in a Steel string literal) and escaping backslashes so
+/// Windows paths (`C:\Users\…`) survive embedding — `\U` etc. are invalid
+/// Steel escapes.
+///
+/// `kind` names what `path` is, for the error message (`"plugin"` /
+/// `"plugin manifest"`). `on_unquotable` runs (for its side effect only)
+/// before the shared error is raised — `begin_lazy_activation` uses it to
+/// mark the plugin `Failed` first; `begin_manifest_declare` has no
+/// plugin-stack state to unwind yet, so passes a no-op.
+fn require_program_for_path(
+    path: &std::path::Path,
+    kind: &str,
+    on_unquotable: impl FnOnce(),
+) -> Result<String, SteelErr> {
+    let abs_str = path.to_string_lossy();
+    if abs_str.contains('"') {
+        on_unquotable();
+        steel::stop!(Generic =>
+            "{} path contains '\"' — cannot embed in require: {}", kind, path.display());
+    }
+    let escaped = abs_str.replace('\\', "\\\\");
+    Ok(format!("(require \"{escaped}\")"))
+}
+
 /// Gate for plugin-registration verbs (`load-plugin`, `declare-plugin`).
 ///
 /// Both verbs are valid only at the top level of `init.scm` — i.e. only
@@ -97,19 +174,8 @@ pub(crate) fn declare_plugin(
         )));
     }
 
-    // If the plugin is already in the registry, decide by state:
-    // - Loaded: soft error (prior load-plugin contradicts this declare).
-    // - Declared/Loading/Failed: silent no-op (first declaration wins; idempotency).
-    match ctx.registries.lazy_registry.plugins.get(&plugin_id) {
-        Some(PluginState::Loaded) => {
-            ctx.log(
-                crate::log::LogLevel::Error,
-                format!("declare-plugin: '{name}' is already loaded; ignoring declare"),
-            );
-            return Ok(SteelVal::Void);
-        }
-        Some(_) => return Ok(SteelVal::Void), // Declared/Loading/Failed: first wins
-        None => {}
+    if already_declared(ctx, &plugin_id, &name) {
+        return Ok(SteelVal::Void);
     }
 
     // First declaration wins for config too, matching the state no-op above:
@@ -128,15 +194,7 @@ pub(crate) fn declare_plugin(
             .insert(plugin_id.clone(), config);
     }
 
-    // PLUM compat: declared_plugins always records every declared plugin.
-    if !ctx
-        .registries
-        .declared_plugins
-        .iter()
-        .any(|d| d.eq_ignore_ascii_case(&name))
-    {
-        ctx.registries.declared_plugins.push(name.clone());
-    }
+    record_declared(ctx, &name);
 
     let cmd_list = list_to_strings(commands, "declare-plugin commands")?;
     let evt_strs = list_to_strings(events, "declare-plugin events")?;
@@ -194,15 +252,7 @@ pub(crate) fn declare_plugin(
     // plugins, so it can't catch the error.  `declared_plugins` is already
     // recorded above for PLUM.
     let Some(path) = path else {
-        match &plugin_id {
-            PluginId::Core(_) => log_absent_core(ctx, &name, "declare-plugin"),
-            PluginId::User { .. } => ctx.log(
-                crate::log::LogLevel::Info,
-                format!(
-                    "declare-plugin: '{name}' not found on disk; install and reload to activate."
-                ),
-            ),
-        }
+        log_absent_plugin(ctx, &plugin_id, &name, "declare-plugin");
         return Ok(SteelVal::Void);
     };
 
@@ -371,15 +421,7 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
         );
     }
 
-    // PLUM compat: record name regardless of disk presence.
-    if !ctx
-        .registries
-        .declared_plugins
-        .iter()
-        .any(|d| d.eq_ignore_ascii_case(&name))
-    {
-        ctx.registries.declared_plugins.push(name.clone());
-    }
+    record_declared(ctx, &name);
 
     if !ctx.registries.lazy_registry.plugins.contains_key(&id) {
         let path = resolve_path_for_name(
@@ -460,16 +502,9 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
             MAX_ACTIVATION_DEPTH, id_str);
     }
 
-    let abs_str = path.to_string_lossy();
-    if abs_str.contains('"') {
+    let require_program = require_program_for_path(&path, "plugin", || {
         fail_plugin_activation(ctx, &id);
-        steel::stop!(Generic =>
-            "plugin path contains '\"' — cannot embed in require: {}", path.display());
-    }
-    // Escape backslashes so Windows paths (e.g. `C:\Users\…`) survive
-    // embedding inside a Steel string literal — `\U` etc. are invalid escapes.
-    let escaped = abs_str.replace('\\', "\\\\");
-    let require_program = format!("(require \"{escaped}\")");
+    })?;
 
     ctx.registries
         .lazy_registry
@@ -608,29 +643,13 @@ pub(crate) fn begin_manifest_declare(
 
     let plugin_id = PluginId::parse(&name).map_err(generic_err)?;
 
-    // Same idempotency rule as %declare-plugin!: Loaded → soft error, else first wins.
-    match ctx.registries.lazy_registry.plugins.get(&plugin_id) {
-        Some(PluginState::Loaded) => {
-            ctx.log(
-                crate::log::LogLevel::Error,
-                format!("declare-plugin: '{name}' is already loaded; ignoring declare"),
-            );
-            return Ok(SteelVal::BoolV(false));
-        }
-        Some(_) => return Ok(SteelVal::BoolV(false)), // Declared/Loading/Failed: first wins
-        None => {}
+    if already_declared(ctx, &plugin_id, &name) {
+        return Ok(SteelVal::BoolV(false));
     }
 
-    // PLUM compat: declared_plugins always records every declared plugin, even
-    // when manifest resolution below can't find a file to evaluate.
-    if !ctx
-        .registries
-        .declared_plugins
-        .iter()
-        .any(|d| d.eq_ignore_ascii_case(&name))
-    {
-        ctx.registries.declared_plugins.push(name.clone());
-    }
+    // Recorded even when manifest resolution below can't find a file to
+    // evaluate.
+    record_declared(ctx, &name);
 
     let Some(dir) = plugin_dir_for_id(
         &plugin_id,
@@ -640,15 +659,7 @@ pub(crate) fn begin_manifest_declare(
         return Ok(SteelVal::BoolV(false));
     };
     if !path_exists(&dir).map_err(generic_err)? {
-        match &plugin_id {
-            PluginId::Core(_) => log_absent_core(ctx, &name, "declare-plugin"),
-            PluginId::User { .. } => ctx.log(
-                crate::log::LogLevel::Info,
-                format!(
-                    "declare-plugin: '{name}' not found on disk; install and reload to activate."
-                ),
-            ),
-        }
+        log_absent_plugin(ctx, &plugin_id, &name, "declare-plugin");
         return Ok(SteelVal::BoolV(false));
     }
 
@@ -660,16 +671,7 @@ pub(crate) fn begin_manifest_declare(
         )));
     }
 
-    let abs_str = manifest_path.to_string_lossy();
-    if abs_str.contains('"') {
-        return Err(generic_err(format!(
-            "plugin manifest path contains '\"' — cannot embed in require: {}",
-            manifest_path.display()
-        )));
-    }
-    // Escape backslashes so Windows paths survive embedding in a Steel string literal.
-    let escaped = abs_str.replace('\\', "\\\\");
-    let require_program = format!("(require \"{escaped}\")");
+    let require_program = require_program_for_path(&manifest_path, "plugin manifest", || {})?;
 
     // Store the user's #:config now, before evaluating manifest.scm, so the
     // or_insert guard in declare_plugin (fired by the manifest's own
