@@ -105,6 +105,34 @@ impl<'a> PaneCanvas<'a> {
     }
 }
 
+/// Resolve a gutter cell's scope to a style, layered over the row's
+/// background (cursorline tint or pane bg, whichever `row_bg` already
+/// resolved to). Shared by `compose_gutter`'s per-cell loop and its
+/// leftover-width blank fill so the two resolution paths can't drift.
+///
+/// `GutterScope::Name` is the slow by-string path (static builtins);
+/// `Id` is the fast O(1) path for providers that intern at construction
+/// (e.g. `SignSource`). Gutter rendering is ~100 calls/frame either way,
+/// so the difference is negligible here.
+///
+/// Cursorline/pane bg is the base; the gutter scope style layers on top.
+/// If the scope defines its own bg, it wins; otherwise the row bg shows
+/// through.
+fn gutter_cell_style(
+    scope: crate::providers::GutterScope,
+    theme: &crate::theme::Theme,
+    row_bg: Option<ratatui::style::Color>,
+) -> ratatui::style::Style {
+    let scope_style: ratatui::style::Style = match scope {
+        crate::providers::GutterScope::Name(name) => theme.resolve_by_name(name).into(),
+        crate::providers::GutterScope::Id(id) => theme.resolve(id).into(),
+    };
+    match row_bg {
+        Some(bg) => ratatui::style::Style::default().bg(bg).patch(scope_style),
+        None => scope_style,
+    }
+}
+
 /// Write one row's gutter cells (all columns) at screen row `y`.
 ///
 /// Shared by `compose_row` (real buffer/wrap/virtual rows) and
@@ -155,26 +183,15 @@ fn compose_gutter(
         let n_cells = cells.len().max(1);
         let usable_per_cell = col_width.saturating_sub(1) / n_cells as u16;
         let mut last_scope: crate::providers::GutterScope =
-            crate::providers::GutterScope::Name(crate::types::Scope("ui.linenr"));
+            crate::providers::GutterScope::Name(crate::providers::DEFAULT_GUTTER_SCOPE);
         for (cell_idx, cell) in cells.iter().enumerate() {
             let is_last = cell_idx == cells.len() - 1;
             let text = cell.as_str();
-            // `GutterScope::Name` is the slow by-string path (static builtins);
-            // `Id` is the fast O(1) path for providers that intern at
-            // construction (e.g. `SignSource`). Gutter rendering is ~100
-            // calls/frame either way, so the difference is negligible here.
-            let scope_style: ratatui::style::Style = match cell.scope {
-                crate::providers::GutterScope::Name(name) => {
-                    compose_ctx.theme.resolve_by_name(name).into()
-                }
-                crate::providers::GutterScope::Id(id) => compose_ctx.theme.resolve(id).into(),
-            };
-            // Cursorline/pane bg is the base; the gutter scope style layers on top.
-            // If the scope defines its own bg, it wins; otherwise the row bg shows through.
-            let style = match row_bg.or(compose_ctx.pane_bg) {
-                Some(bg) => ratatui::style::Style::default().bg(bg).patch(scope_style),
-                None => scope_style,
-            };
+            let style = gutter_cell_style(
+                cell.scope,
+                compose_ctx.theme,
+                row_bg.or(compose_ctx.pane_bg),
+            );
 
             // Right-align within usable width. `usable_per_cell` bounds how
             // much of `text` may be written: a builtin column (only
@@ -222,16 +239,11 @@ fn compose_gutter(
         // unpainted and `gutter_x` short of the column boundary for any
         // non-first column with uneven leftover.
         if gutter_x < col_start + col_width {
-            let last_style: ratatui::style::Style = match last_scope {
-                crate::providers::GutterScope::Name(name) => {
-                    compose_ctx.theme.resolve_by_name(name).into()
-                }
-                crate::providers::GutterScope::Id(id) => compose_ctx.theme.resolve(id).into(),
-            };
-            let style = match row_bg.or(compose_ctx.pane_bg) {
-                Some(bg) => ratatui::style::Style::default().bg(bg).patch(last_style),
-                None => last_style,
-            };
+            let style = gutter_cell_style(
+                last_scope,
+                compose_ctx.theme,
+                row_bg.or(compose_ctx.pane_bg),
+            );
             while gutter_x < col_start + col_width {
                 canvas.set_cell(gutter_x, y, " ", style);
                 gutter_x += 1;

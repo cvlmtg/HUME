@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::str::FromStr;
 
-use crate::providers::{GutterCell, GutterCellContent, GutterColumn};
+use crate::providers::{DEFAULT_GUTTER_SCOPE, GutterCell, GutterCellContent, GutterColumn};
 use crate::types::{RowKind, Scope};
 
 // ---------------------------------------------------------------------------
@@ -105,13 +105,13 @@ impl GutterColumn for LineNumberColumn {
         let primary_head_line = ctx.primary_head_line;
         let cell = match kind {
             RowKind::Filler | RowKind::Virtual { .. } | RowKind::Wrap { .. } => {
-                GutterCell::blank(Scope("ui.linenr"))
+                GutterCell::blank(DEFAULT_GUTTER_SCOPE)
             }
             RowKind::LineStart { line_idx } => {
                 let scope = if line_idx == primary_head_line {
                     Scope("ui.linenr.selected")
                 } else {
-                    Scope("ui.linenr")
+                    DEFAULT_GUTTER_SCOPE
                 };
 
                 let display_num = match self.style {

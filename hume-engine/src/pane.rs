@@ -413,14 +413,16 @@ impl Pane {
     /// Line index of the primary selection head, resolved via the rope.
     ///
     /// Called once per frame from the pipeline — O(log n) rope lookup.
-    /// Panics in debug builds if the pane has no selections.
+    /// Panics (debug and release) if the pane has no selections — a `Pane`
+    /// with an empty `SelectionSet` is a violated invariant, not a
+    /// recoverable case, so this fails loudly rather than defaulting to
+    /// char 0 and hiding the bug.
     pub fn primary_head_line(&self, rope: &Rope) -> usize {
-        debug_assert!(!self.selections.is_empty(), "pane has no selections");
         let head_char = self
             .selections
             .get(self.primary_idx)
-            .map(|s| s.head)
-            .unwrap_or(0);
+            .expect("pane has no selections — SelectionSet invariant requires at least one")
+            .head;
         debug_assert!(
             head_char <= rope.len_chars(),
             "stale selection mirror: head {head_char} beyond rope len {} — \

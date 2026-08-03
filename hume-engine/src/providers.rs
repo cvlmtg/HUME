@@ -132,6 +132,13 @@ pub struct GutterCell {
     pub scope: GutterScope,
 }
 
+/// Default/blank gutter scope — the fallback every built-in gutter column
+/// (line numbers, unfilled sign slots) renders under when it has nothing
+/// more specific to say. One source so the literal can't drift between
+/// `builtins::line_number`, `builtins::sign_column`, and `render`'s own
+/// fallback in `compose_gutter`.
+pub(crate) const DEFAULT_GUTTER_SCOPE: Scope = Scope("ui.linenr");
+
 /// A gutter cell's scope: either a name (`Scope`, resolved via
 /// `Theme::resolve_by_name` — the slow "by string" path static builtins like
 /// `LineNumberColumn` use) or an already-interned `ScopeId` (the fast O(1)

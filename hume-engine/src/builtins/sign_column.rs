@@ -1,7 +1,9 @@
 use std::any::Any;
 use std::borrow::Cow;
 
-use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterRowCtx, ProviderId};
+use crate::providers::{
+    DEFAULT_GUTTER_SCOPE, GutterCell, GutterCellContent, GutterColumn, GutterRowCtx, ProviderId,
+};
 use crate::types::{RowKind, ScopeId};
 
 /// Default configured width of a `SignColumn`: one sign cell plus one column
@@ -123,7 +125,7 @@ impl GutterColumn for SignColumn {
             // Wrap/Virtual/Filler rows never carry a sign — one blank cell
             // per configured slot so `compose_gutter`'s cell count matches
             // the column's width.
-            return vec![GutterCell::blank(crate::types::Scope("ui.linenr")); max_signs];
+            return vec![GutterCell::blank(DEFAULT_GUTTER_SCOPE); max_signs];
         };
         if max_signs == 0 {
             return Vec::new();
@@ -163,9 +165,8 @@ impl GutterColumn for SignColumn {
         // Pad any unused slots with blanks so the cell count equals the
         // configured sign slots — `compose_gutter` relies on this to lay
         // out the column at its full width.
-        let blank_scope = crate::types::Scope("ui.linenr");
         while cells.len() < max_signs {
-            cells.push(GutterCell::blank(blank_scope));
+            cells.push(GutterCell::blank(DEFAULT_GUTTER_SCOPE));
         }
         cells
     }
