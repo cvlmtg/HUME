@@ -9,7 +9,7 @@ use crate::SteelCtx;
 use crate::json::{json_to_steel, steel_to_json};
 
 use super::args::{BidArg, cons_pair, int_arg, pair_fields, string_arg, tuple_list, usize_arg};
-use super::errors::generic_err;
+use super::errors::{generic_err, require_cap};
 
 type SteelResult = Result<SteelVal, SteelErr>;
 
@@ -48,9 +48,7 @@ pub(crate) fn set_inlay_hints(ctx: &mut SteelCtx, bid: BidArg, hints: SteelVal) 
             Ok((position_json, text, before))
         },
     )?;
-    if let Some(decorations) = ctx.host.decorations() {
-        decorations.set_inlay_hints(id, parsed);
-    }
+    require_cap(ctx.host.decorations(), "set-inlay-hints!")?.set_inlay_hints(id, parsed);
     Ok(SteelVal::Void)
 }
 
@@ -77,9 +75,7 @@ pub(crate) fn set_signs(
             ))
         },
     )?;
-    if let Some(decorations) = ctx.host.decorations() {
-        decorations.set_signs(source, id, parsed);
-    }
+    require_cap(ctx.host.decorations(), "set-signs!")?.set_signs(source, id, parsed);
     Ok(SteelVal::Void)
 }
 
@@ -108,9 +104,8 @@ pub(crate) fn set_virtual_lines(
             Ok((line, text, scope))
         },
     )?;
-    if let Some(decorations) = ctx.host.decorations() {
-        decorations.set_virtual_lines(source, id, parsed);
-    }
+    require_cap(ctx.host.decorations(), "set-virtual-lines!")?
+        .set_virtual_lines(source, id, parsed);
     Ok(SteelVal::Void)
 }
 
@@ -136,9 +131,8 @@ pub(crate) fn set_inline_diagnostics(
             ))
         },
     )?;
-    if let Some(decorations) = ctx.host.decorations() {
-        decorations.set_inline_diagnostics(id, parsed);
-    }
+    require_cap(ctx.host.decorations(), "set-inline-diagnostics!")?
+        .set_inline_diagnostics(id, parsed);
     Ok(SteelVal::Void)
 }
 
@@ -164,9 +158,8 @@ pub(crate) fn set_extra_highlights(
             ))
         },
     )?;
-    if let Some(decorations) = ctx.host.decorations() {
-        decorations.set_extra_highlights(source, id, parsed);
-    }
+    require_cap(ctx.host.decorations(), "set-extra-highlights!")?
+        .set_extra_highlights(source, id, parsed);
     Ok(SteelVal::Void)
 }
 
@@ -219,3 +212,6 @@ pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult 
         SteelVal::IntV(warnings as isize),
     )
 }
+
+#[cfg(test)]
+mod tests;

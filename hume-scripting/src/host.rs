@@ -91,9 +91,13 @@ pub enum PopupKind {
 /// `commands`, `cursor` — because every host has *some* notion of them, even
 /// if minimal (an empty buffer list, a rejecting command registry). The other
 /// seven are optional, returning `Option<&mut dyn CapabilityTrait>`: `None`
-/// means the host has no such capability, and the one call site per method
-/// maps that to the same behavior the pre-split trait-default body produced
-/// (a `"not supported by this host"` error, or a benign empty/no-op value).
+/// means the host has no such capability. Rule for what a `None` becomes at
+/// the call site: a mutating builtin maps it to the `"not supported by this
+/// host"` error via `errors::require_cap` — silently discarding the write
+/// would report success for a mutation that never happened. A silent no-op is
+/// reserved for calls whose own contract is already idempotent regardless of
+/// host support (e.g. `cancel-timer!`/`cancel-async!` on an id that was never
+/// scheduled).
 pub trait EditorHost {
     // ── Optional capability accessors ────────────────────────────────────────
     /// Cursor-anchored popup / selection menu / bottom drawer / minibuffer
