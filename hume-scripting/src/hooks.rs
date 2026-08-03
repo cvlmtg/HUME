@@ -89,12 +89,12 @@ const HOOKS: &[(HookId, &str)] = &[
 
 impl HookId {
     /// Map a Steel symbol name to a `HookId`.
-    pub fn from_symbol(s: &str) -> Option<Self> {
+    pub(crate) fn from_symbol(s: &str) -> Option<Self> {
         HOOKS.iter().find(|(_, name)| *name == s).map(|(id, _)| *id)
     }
 
     /// All valid hook names as an iterator, for error messages.
-    pub fn all_names() -> impl Iterator<Item = &'static str> {
+    pub(crate) fn all_names() -> impl Iterator<Item = &'static str> {
         HOOKS.iter().map(|(_, name)| *name)
     }
 

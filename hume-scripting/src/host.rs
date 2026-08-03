@@ -33,7 +33,7 @@ pub enum OptionValue {
 
 /// "X: not supported by this host" — the single source for capability-absence
 /// errors.
-pub fn unsupported(builtin: &str) -> String {
+pub(crate) fn unsupported(builtin: &str) -> String {
     format!("{builtin}: not supported by this host")
 }
 

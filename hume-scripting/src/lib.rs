@@ -64,7 +64,15 @@ pub use types::{
     Effect, EvalError, LspServerStatusEntry, PendingLanguageReg, PendingLspNotify,
     PendingLspRequest, PendingLspServerOp, PendingLspServerReg, SteelCmdDef, SteelCmdResult,
 };
+// Test-only external visibility: the editor's own test suite arms/cancels a
+// real watchdog directly (hume-editor/tests/scripting.rs) rather than
+// through a ScriptingHost eval entry point. Outside test/test-util builds,
+// `EvalWatchdog` is still needed unqualified below (the `watchdog` field,
+// `steel_and_bundle`'s signature) — just not re-exported past this crate.
+#[cfg(any(test, feature = "test-util"))]
 pub use watchdog::EvalWatchdog;
+#[cfg(not(any(test, feature = "test-util")))]
+use watchdog::EvalWatchdog;
 
 // ── Internal re-exports (within-crate use) ────────────────────────────────────
 pub(crate) use activation::run_steel_session;
@@ -280,6 +288,7 @@ impl ScriptingHost {
 ///   same test-runner thread, so its exact numbering isn't stable across
 ///   runs — see `docs/LESSONS.md`'s L8). HUME itself never registers a
 ///   `#`-prefixed name.
+#[cfg(any(test, feature = "test-util"))]
 fn is_internal_name(name: &str) -> bool {
     name.starts_with('%')
         || name.starts_with('#')
@@ -353,6 +362,10 @@ impl ScriptingHost {
     /// simultaneously — `parking_lot`'s `RwLock` is not reentrant): globals
     /// first, then macros, each collected into an owned `Vec` before the
     /// guard drops.
+    ///
+    /// Only called by the editor's `hume-globals.scm` drift test — no
+    /// production caller.
+    #[cfg(any(test, feature = "test-util"))]
     pub fn host_global_names(&self) -> Vec<String> {
         let baseline = Engine::new();
         let baseline_globals: rustc_hash::FxHashSet<String> = baseline
@@ -517,15 +530,15 @@ impl ScriptingHost {
     /// Current plugin activation nesting depth (number of bodies on the call
     /// stack). Used by tests that verify `%begin-lazy-activation` /
     /// `%finish-lazy-activation` side effects.
-    #[cfg(any(test, feature = "test-util"))]
-    pub fn plugin_stack_depth_for_test(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn plugin_stack_depth_for_test(&self) -> usize {
         self.plugin_stack.len()
     }
 
     /// Push a fake plugin id onto the attribution stack.  Used by tests that
     /// need to pre-seed the stack depth before calling `%begin-lazy-activation`.
-    #[cfg(any(test, feature = "test-util"))]
-    pub fn push_plugin_for_test(&mut self, id: attribution::PluginId) {
+    #[cfg(test)]
+    pub(crate) fn push_plugin_for_test(&mut self, id: attribution::PluginId) {
         self.plugin_stack.push(id);
     }
 

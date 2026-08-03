@@ -73,7 +73,7 @@ fn number_to_steel(n: &serde_json::Number) -> SteelVal {
 /// Converts a `SteelVal` into the equivalent `serde_json::Value`. Fails on
 /// values with no JSON representation (functions, ports, custom types, …) —
 /// the error names the offending kind rather than silently producing `null`.
-pub fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
+pub(crate) fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
     match v {
         SteelVal::Void => Ok(serde_json::Value::Null),
         SteelVal::BoolV(b) => Ok(serde_json::Value::Bool(*b)),

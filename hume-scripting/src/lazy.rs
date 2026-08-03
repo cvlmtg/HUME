@@ -18,7 +18,7 @@ use super::hooks::HookId;
 
 /// Lifecycle state of a declared plugin.
 #[derive(Debug)]
-pub enum PluginState {
+pub(crate) enum PluginState {
     /// Declared and located on disk, waiting for activation.
     Declared { path: PathBuf },
     /// Body is currently being evaluated.  Prevents re-entrant activation
@@ -42,14 +42,14 @@ pub enum PluginState {
 /// editor's `CommandRegistry` (a `Lazy` stub), so dispatch finds the owning
 /// plugin without any key-specific machinery or a parallel map here.
 #[derive(Debug, Default)]
-pub struct LazyRegistry {
+pub(crate) struct LazyRegistry {
     /// Per-plugin lifecycle state.  Only plugins whose path was resolved at
     /// declaration time appear here; absent-path plugins are silently skipped.
-    pub plugins: FxHashMap<PluginId, PluginState>,
+    pub(crate) plugins: FxHashMap<PluginId, PluginState>,
     /// 1:many map: hook event → plugins that activate on that event.
-    pub activation_events: FxHashMap<HookId, Vec<PluginId>>,
+    pub(crate) activation_events: FxHashMap<HookId, Vec<PluginId>>,
     /// 1:many map: language name → plugins that activate when the language is set.
-    pub activation_languages: FxHashMap<String, Vec<PluginId>>,
+    pub(crate) activation_languages: FxHashMap<String, Vec<PluginId>>,
 }
 
 impl LazyRegistry {
@@ -65,7 +65,7 @@ impl LazyRegistry {
     ///   entries NOT recorded (an absent plugin can never activate, so dangling
     ///   entries would be dead weight until `:reload-config`).
     /// - All plugins are inserted as `Declared`; they activate when an entry is exercised.
-    pub fn declare(
+    pub(crate) fn declare(
         &mut self,
         id: PluginId,
         path: Option<PathBuf>,
@@ -127,7 +127,7 @@ impl LazyRegistry {
     ///
     /// Returns `""` if no plugins are declared; the caller reports "No plugins
     /// declared" rather than opening an empty scratch view.
-    pub fn format_status(&self, lazy_cmds: &[(String, PluginId)]) -> String {
+    pub(crate) fn format_status(&self, lazy_cmds: &[(String, PluginId)]) -> String {
         if self.plugins.is_empty() {
             return String::new();
         }
