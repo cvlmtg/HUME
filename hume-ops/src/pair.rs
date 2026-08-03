@@ -29,7 +29,12 @@ pub(crate) fn scan_left_for_open(buf: &Text, pos: usize, open: char, close: char
 }
 
 /// Scan right from `pos` (exclusive) to find an unmatched `close` bracket.
-pub(crate) fn scan_right_for_close(buf: &Text, pos: usize, open: char, close: char) -> Option<usize> {
+pub(crate) fn scan_right_for_close(
+    buf: &Text,
+    pos: usize,
+    open: char,
+    close: char,
+) -> Option<usize> {
     let mut depth = 0usize;
     for (i, ch) in buf.chars_at(pos) {
         if ch == open {

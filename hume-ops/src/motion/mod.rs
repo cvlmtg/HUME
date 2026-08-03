@@ -58,12 +58,12 @@ use line::{
     move_up_inner,
 };
 mod word;
+pub(crate) use word::prev_word_start;
 pub use word::{
     cmd_select_next_uppercase_word, cmd_select_next_uppercase_word_around, cmd_select_next_word,
     cmd_select_next_word_around, cmd_select_prev_uppercase_word,
     cmd_select_prev_uppercase_word_around, cmd_select_prev_word, cmd_select_prev_word_around,
 };
-pub(crate) use word::prev_word_start;
 mod paragraph;
 use paragraph::{next_paragraph, prev_paragraph};
 mod line_select;
