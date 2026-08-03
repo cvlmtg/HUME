@@ -14,8 +14,8 @@ pub(super) fn goto_line_start(buf: &Text, head: usize) -> usize {
 /// On an empty line (containing only `\n`), the cursor stays on the newline —
 /// there is no other character to land on.
 pub(super) fn goto_line_end(buf: &Text, head: usize) -> usize {
-    // The core logic lives in helpers::line_content_end, which is also used by
-    // selection_cmd.rs — one implementation, two callers.
+    // The core logic lives in hume_editing::lines::line_content_end, which is
+    // also used by selection_cmd.rs — one implementation, two callers.
     line_content_end(buf, buf.char_to_line(head))
 }
 

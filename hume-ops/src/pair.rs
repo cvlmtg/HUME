@@ -12,7 +12,6 @@ use hume_editing::text::Text;
 // ---------------------------------------------------------------------------
 
 /// Scan left from `pos` (exclusive) to find an unmatched `open` bracket.
-/// `depth` is the pre-loaded nesting depth (pass 0 when starting fresh).
 pub fn scan_left_for_open(buf: &Text, pos: usize, open: char, close: char) -> Option<usize> {
     let mut depth = 0usize;
     let mut cursor = buf.chars_at(pos);

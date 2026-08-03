@@ -308,9 +308,7 @@ impl KillRing {
     ///
     /// No `is_empty` companion: every test caller checks a specific count
     /// (e.g. depth-capping), never emptiness — `head()` is the actual
-    /// production-code check for "is there anything to paste". An `is_empty`
-    /// added for clippy's `len_without_is_empty` had zero callers and was
-    /// removed as dead code; re-adding it would just resurrect that.
+    /// production-code check for "is there anything to paste".
     #[cfg(any(test, feature = "test-util"))]
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {

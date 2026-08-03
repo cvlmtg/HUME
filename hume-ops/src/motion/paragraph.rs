@@ -9,8 +9,9 @@ use hume_editing::text::Text;
 /// 1. Skip non-empty lines (the current paragraph).
 /// 2. Skip empty lines (the gap after the paragraph).
 ///
-/// Lands on the first char of the next paragraph, or `len_chars()` if there is
-/// no paragraph below (EOF). At EOF already: no-op.
+/// Lands on the first char of the next paragraph, or the buffer's last valid
+/// position (the structural trailing `\n`) if there is no paragraph below
+/// (EOF). At EOF already: no-op.
 pub(super) fn next_paragraph(buf: &Text, head: usize) -> usize {
     let mut line = buf.char_to_line(head);
     let total = buf.len_lines();

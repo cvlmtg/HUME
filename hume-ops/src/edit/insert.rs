@@ -108,13 +108,12 @@ fn line_context_if_unconsumed(
 /// Returns `true` (and emits `retain` + `delete` into `b`) when `sel` is
 /// collapsed, its line is blank-indented, and `line_start` has not already
 /// been passed by a prior selection's edits in this pass (`line_start >=
-/// b.old_pos()`) — that last check is what fix #1 in the code review added:
-/// two cursors can land on the *same* blank line (one mid-whitespace, one on
-/// the trailing `\n`), and the first cursor's delete can advance `old_pos()`
-/// past this cursor's `line_start`, which would otherwise underflow the
-/// `retain`. When that happens, the caller falls back to its non-blank arm
-/// instead (retaining forward to its own position, which is always safe
-/// since `pos >= b.old_pos()` per [`line_context_if_unconsumed`]).
+/// b.old_pos()`): two cursors can land on the *same* blank line (one
+/// mid-whitespace, one on the trailing `\n`), and the first cursor's delete
+/// can advance `old_pos()` past this cursor's `line_start`, which would
+/// otherwise underflow the `retain`. When that happens, the caller falls back
+/// to its non-blank arm instead (retaining forward to its own position, which
+/// is always safe since `pos >= b.old_pos()` per [`line_context_if_unconsumed`]).
 fn try_trim_blank_line(
     b: &mut ChangeSetBuilder,
     buf: &Text,
@@ -203,8 +202,7 @@ pub fn clear_blank_line_indent(buf: Text, sels: SelectionSet) -> (Text, Selectio
         }
 
         // Non-collapsed selections are never trimmed: identity edit that
-        // preserves anchor and head (rather than collapsing to head, a prior
-        // bug — code review fix #5). `start < b.old_pos()` can only happen if
+        // preserves anchor and head. `start < b.old_pos()` can only happen if
         // a prior collapsed cursor's blank-line trim reached into this
         // selection's own line; fall back to landing the cursor at
         // `new_pos()` rather than underflowing the retain.

@@ -153,14 +153,6 @@ motion_cmd!(/// Move or extend cursors down one line, preserving the char-offset
     cmd_move_down, move_down_inner(None));
 motion_cmd!(/// Move or extend cursors up one line, preserving the char-offset column.
     cmd_move_up, move_up_inner(None));
-// `w` / `W` jump to the next word/WORD and select it as a fresh forward
-// selection (anchor = word start, head = word end). `b` / `B` do the same
-// for the previous word. This replaces Helix's "extend from current position"
-// semantics: every motion re-anchors rather than growing a drag selection.
-//
-// `e` / `E` are removed — they were only needed to compensate for `w` landing
-// on the first char of the next word. With the new model, `w` already selects
-// the whole word so `e` is redundant.
 
 // Paragraph motions.
 motion_cmd!(/// Move or extend cursors to the start of the next paragraph (`]p`).

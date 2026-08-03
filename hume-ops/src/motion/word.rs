@@ -375,9 +375,8 @@ pub(super) fn apply_word_select(
 /// one space (e.g. "one two" → "one " and " two"), but since only the
 /// anchor's own unit is ever expanded for the comparison, that overlap never
 /// causes a position to be double-counted. A forward-growing target never
-/// needs expanding — its `head` already lands on its own last char, which is
-/// exactly why `around` on `Move` needed the reversion this replaces:
-/// leading units end at the word, not in trailing whitespace.
+/// needs expanding — its `head` already lands on its own last char: leading
+/// units end at the word, not in trailing whitespace.
 ///
 /// Because a target unit can only lie entirely beyond, entirely behind, or
 /// exactly on the anchor's unit (units never partially overlap once the
