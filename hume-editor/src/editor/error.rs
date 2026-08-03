@@ -8,16 +8,16 @@ use std::fmt;
 /// failure such as "no match", "unsaved changes", or an I/O error during a
 /// file write.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CommandError(String);
+pub(crate) struct CommandError(String);
 
 impl CommandError {
     /// Construct a `CommandError` from any string-like value.
-    pub fn new(msg: impl Into<String>) -> Self {
+    pub(crate) fn new(msg: impl Into<String>) -> Self {
         Self(msg.into())
     }
 
     /// The human-readable error message.
-    pub fn message(&self) -> &str {
+    pub(crate) fn message(&self) -> &str {
         &self.0
     }
 }

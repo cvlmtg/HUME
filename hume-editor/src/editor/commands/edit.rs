@@ -22,7 +22,7 @@ use crate::editor::error::CommandError;
 ///
 /// **Bare default** (no `"<reg>` prefix): pushes to the kill ring only.
 /// **Explicit register**: routes through `write_register`.
-pub fn cmd_delete(
+pub(crate) fn cmd_delete(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -45,7 +45,7 @@ pub fn cmd_delete(
 /// Unlike `d`, a trailing `\n` at the end of a selection is not deleted — `c`
 /// clears line content but keeps the line. The yank is trimmed accordingly so
 /// the kill-ring entry matches what was removed (no trailing `\n`).
-pub fn cmd_change(
+pub(crate) fn cmd_change(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -107,7 +107,7 @@ pub fn cmd_change(
 /// stashed insertion, or if a later mutation (any edit, undo, or redo) has
 /// moved the buffer's `text_gen` past the stamp — see
 /// [`crate::editor::buffer::LastInsert`].
-pub fn cmd_select_last_insertion(
+pub(crate) fn cmd_select_last_insertion(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -156,7 +156,7 @@ pub fn cmd_select_last_insertion(
 ///
 /// **Bare default**: writes to the system clipboard AND pushes to the kill ring.
 /// **Explicit register**: routes through `write_register`.
-pub fn cmd_yank(
+pub(crate) fn cmd_yank(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -178,7 +178,7 @@ pub fn cmd_yank(
     Ok(())
 }
 
-pub fn cmd_undo(
+pub(crate) fn cmd_undo(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -202,7 +202,7 @@ pub fn cmd_undo(
     Ok(())
 }
 
-pub fn cmd_redo(
+pub(crate) fn cmd_redo(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -229,7 +229,7 @@ pub fn cmd_redo(
 // ── Replace / surround ────────────────────────────────────────────────────────
 
 /// Replace every character in each selection with the next typed character.
-pub fn cmd_replace(
+pub(crate) fn cmd_replace(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -242,7 +242,7 @@ pub fn cmd_replace(
 }
 
 /// Join lines inside each selection and select the inserted spaces.
-pub fn cmd_join_lines_select_spaces(
+pub(crate) fn cmd_join_lines_select_spaces(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -253,7 +253,7 @@ pub fn cmd_join_lines_select_spaces(
 }
 
 /// Align each selection's anchor to the primary selection's anchor column.
-pub fn cmd_align_selections(
+pub(crate) fn cmd_align_selections(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -264,7 +264,7 @@ pub fn cmd_align_selections(
 }
 
 /// Wrap every selection with a pair determined by the next typed character.
-pub fn cmd_surround_add(
+pub(crate) fn cmd_surround_add(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,

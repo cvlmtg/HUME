@@ -39,7 +39,7 @@ fn find_char(
     }
 }
 
-pub fn cmd_find_forward(
+pub(crate) fn cmd_find_forward(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -55,7 +55,7 @@ pub fn cmd_find_forward(
     );
     Ok(())
 }
-pub fn cmd_find_backward(
+pub(crate) fn cmd_find_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -71,7 +71,7 @@ pub fn cmd_find_backward(
     );
     Ok(())
 }
-pub fn cmd_till_forward(
+pub(crate) fn cmd_till_forward(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -87,7 +87,7 @@ pub fn cmd_till_forward(
     );
     Ok(())
 }
-pub fn cmd_till_backward(
+pub(crate) fn cmd_till_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -118,7 +118,7 @@ fn repeat_find(
     }
 }
 
-pub fn cmd_repeat_find_forward(
+pub(crate) fn cmd_repeat_find_forward(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -127,7 +127,7 @@ pub fn cmd_repeat_find_forward(
     repeat_find(state, view, count, mode, find_char_forward);
     Ok(())
 }
-pub fn cmd_repeat_find_backward(
+pub(crate) fn cmd_repeat_find_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,

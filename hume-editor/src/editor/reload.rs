@@ -334,7 +334,7 @@ impl Editor {
 /// stay empty simply because reload never causes the transition that hook
 /// is gated on. See `Editor::resync_config_state`'s doc for why this is
 /// scoped to a replay rather than a literal LSP close+reopen.
-pub fn typed_reload_config(
+pub(crate) fn typed_reload_config(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,

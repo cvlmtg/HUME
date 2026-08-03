@@ -13,7 +13,7 @@ use crate::editor::error::CommandError;
 // avoid a runtime string lookup; not the `cmd_visual_move_*` wrappers, since a
 // scroll count is always a display-row count, never "N buffer lines").
 
-pub fn cmd_page_down(
+pub(crate) fn cmd_page_down(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -23,7 +23,7 @@ pub fn cmd_page_down(
     apply_visual_vertical(state, view, count, true, mode, VerticalUnit::ScreenRow);
     Ok(())
 }
-pub fn cmd_page_up(
+pub(crate) fn cmd_page_up(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -33,7 +33,7 @@ pub fn cmd_page_up(
     apply_visual_vertical(state, view, count, false, mode, VerticalUnit::ScreenRow);
     Ok(())
 }
-pub fn cmd_half_page_down(
+pub(crate) fn cmd_half_page_down(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -43,7 +43,7 @@ pub fn cmd_half_page_down(
     apply_visual_vertical(state, view, count, true, mode, VerticalUnit::ScreenRow);
     Ok(())
 }
-pub fn cmd_half_page_up(
+pub(crate) fn cmd_half_page_up(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -68,7 +68,7 @@ fn cmd_view_scroll_to_row(state: &mut EditorState, view: &mut EngineView, target
     super::super::scroll::scroll_cursor_to_row(viewport, &mut rm, cursor_char, target_row);
 }
 
-pub fn cmd_view_center(
+pub(crate) fn cmd_view_center(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -79,7 +79,7 @@ pub fn cmd_view_center(
     Ok(())
 }
 
-pub fn cmd_view_top(
+pub(crate) fn cmd_view_top(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -89,7 +89,7 @@ pub fn cmd_view_top(
     Ok(())
 }
 
-pub fn cmd_view_bottom(
+pub(crate) fn cmd_view_bottom(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,

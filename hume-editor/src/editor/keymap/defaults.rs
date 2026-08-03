@@ -449,7 +449,7 @@ impl Keymap {
     /// Bind the default keys that are only delivered under the kitty keyboard
     /// protocol. Call this once after the kitty probe succeeds so the binds
     /// exist only when the terminal can actually produce them.
-    pub fn apply_kitty_defaults(&mut self) {
+    pub(crate) fn apply_kitty_defaults(&mut self) {
         // Ctrl+; mirrors `;` but collapses to the anchor (the word's first char for
         // forward selections).
         self.normal

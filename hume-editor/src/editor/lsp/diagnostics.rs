@@ -32,7 +32,7 @@ impl DiagSeverity {
     /// The wire-format strings `FromStr` accepts — the single source
     /// `:set global lsp.diagnostics-severity-floor=<Tab>` completion mirrors,
     /// so the two can never drift out of sync (same convention as `TabStyle`).
-    pub const VALUES: &'static [&'static str] = &["error", "warning", "info", "hint"];
+    pub(crate) const VALUES: &'static [&'static str] = &["error", "warning", "info", "hint"];
 }
 
 impl std::fmt::Display for DiagSeverity {

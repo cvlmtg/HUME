@@ -26,7 +26,7 @@ use crate::editor::error::CommandError;
 ///
 /// Snapshots the current selections for cancel-restore, then opens the
 /// mini-buffer with the `/` prompt.
-pub fn cmd_search_forward(
+pub(crate) fn cmd_search_forward(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -49,7 +49,7 @@ pub fn cmd_search_forward(
 }
 
 /// Enter backward search mode.
-pub fn cmd_search_backward(
+pub(crate) fn cmd_search_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -76,7 +76,7 @@ pub fn cmd_search_backward(
 /// `anchor = Some(a)` — extend mode: keep the caller's anchor, move head to
 /// the match edge that faces the search direction.
 /// `anchor = None` — move mode: cover the matched text exactly.
-pub fn search_sel(
+pub(crate) fn search_sel(
     start: usize,
     end_incl: usize,
     anchor: Option<usize>,
@@ -222,7 +222,7 @@ fn search_jump(
 }
 
 /// Clear the active search regex and dismiss all match highlights.
-pub fn cmd_clear_search(
+pub(crate) fn cmd_clear_search(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -233,7 +233,7 @@ pub fn cmd_clear_search(
     Ok(())
 }
 
-pub fn cmd_search_next(
+pub(crate) fn cmd_search_next(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -241,7 +241,7 @@ pub fn cmd_search_next(
 ) -> Result<(), CommandError> {
     search_jump(state, view, count, SearchDirection::Forward, mode)
 }
-pub fn cmd_search_prev(
+pub(crate) fn cmd_search_prev(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -252,7 +252,7 @@ pub fn cmd_search_prev(
 
 // ── Select all matches ────────────────────────────────────────────────────────
 
-pub fn cmd_select_all_matches(
+pub(crate) fn cmd_select_all_matches(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -282,7 +282,7 @@ pub fn cmd_select_all_matches(
 
 // ── Select within (s) ────────────────────────────────────────────────────────
 
-pub fn cmd_select_within(
+pub(crate) fn cmd_select_within(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -308,7 +308,7 @@ pub fn cmd_select_within(
 
 // ── Search word under cursor (*) ─────────────────────────────────────────────
 
-pub fn cmd_search_word_under_cursor(
+pub(crate) fn cmd_search_word_under_cursor(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -360,7 +360,7 @@ pub fn cmd_search_word_under_cursor(
 /// `*`, no whole-word anchors and no word expansion. Selects the exact text
 /// the user already highlighted, so `n`/`N` cycle its other occurrences
 /// (Helix's `search_selection`).
-pub fn cmd_search_selection(
+pub(crate) fn cmd_search_selection(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,

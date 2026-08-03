@@ -32,7 +32,11 @@ fn stale_write_block(meta: &FileMeta) -> Option<&'static str> {
 
 // ── Typed file commands ───────────────────────────────────────────────────────
 
-pub fn typed_quit(ed: &mut Editor, _arg: Option<&str>, force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_quit(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    force: bool,
+) -> Result<(), CommandError> {
     // Multiple panes open: `:q` closes the focused pane, not the editor. The
     // buffer stays open in the buffer list (no edits lost), so no dirty check —
     // that guard belongs to the single-pane path below, which actually quits.
@@ -65,7 +69,7 @@ pub fn typed_quit(ed: &mut Editor, _arg: Option<&str>, force: bool) -> Result<()
     Ok(())
 }
 
-pub fn typed_quit_all(
+pub(crate) fn typed_quit_all(
     ed: &mut Editor,
     _arg: Option<&str>,
     force: bool,
@@ -96,11 +100,15 @@ pub fn typed_quit_all(
     Ok(())
 }
 
-pub fn typed_write(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_write(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    force: bool,
+) -> Result<(), CommandError> {
     write_file(ed, arg, force)
 }
 
-pub fn typed_write_quit(
+pub(crate) fn typed_write_quit(
     ed: &mut Editor,
     arg: Option<&str>,
     force: bool,
@@ -119,7 +127,7 @@ pub fn typed_write_quit(
     }
 }
 
-pub fn typed_toggle_soft_wrap(
+pub(crate) fn typed_toggle_soft_wrap(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -140,7 +148,11 @@ pub fn typed_toggle_soft_wrap(
     Ok(())
 }
 
-pub fn typed_set(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_set(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
     use crate::settings::{LANGUAGE_KEY, Scope};
 
     const USAGE: &str = "Usage: :set global|buffer|pane key=value";
@@ -392,7 +404,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
     }
 }
 
-pub fn typed_write_all(
+pub(crate) fn typed_write_all(
     ed: &mut Editor,
     _arg: Option<&str>,
     force: bool,

@@ -10,7 +10,7 @@ use crate::editor::error::CommandError;
 
 // ── Misc ──────────────────────────────────────────────────────────────────────
 
-pub fn cmd_quit(
+pub(crate) fn cmd_quit(
     state: &mut EditorState,
     _view: &mut EngineView,
     _count: usize,
@@ -41,7 +41,7 @@ fn apply_jump_nav(
     }
 }
 
-pub fn cmd_jump_backward(
+pub(crate) fn cmd_jump_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -56,7 +56,7 @@ pub fn cmd_jump_backward(
     Ok(())
 }
 
-pub fn cmd_jump_forward(
+pub(crate) fn cmd_jump_forward(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -79,7 +79,7 @@ pub fn cmd_jump_forward(
 /// records the pre-switch state for all `is_jump=true` commands. Using the
 /// `_with_jump` variant here would push twice, corrupting the jump list on the
 /// second Ctrl+O.
-pub fn cmd_goto_alternate_file(
+pub(crate) fn cmd_goto_alternate_file(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -158,7 +158,7 @@ fn focus_in_direction(
     Ok(())
 }
 
-pub fn cmd_pane_focus_next(
+pub(crate) fn cmd_pane_focus_next(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -176,7 +176,7 @@ pub fn cmd_pane_focus_next(
     Ok(())
 }
 
-pub fn cmd_pane_focus_left(
+pub(crate) fn cmd_pane_focus_left(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -185,7 +185,7 @@ pub fn cmd_pane_focus_left(
     focus_in_direction(state, view, Dir::Left)
 }
 
-pub fn cmd_pane_focus_right(
+pub(crate) fn cmd_pane_focus_right(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -194,7 +194,7 @@ pub fn cmd_pane_focus_right(
     focus_in_direction(state, view, Dir::Right)
 }
 
-pub fn cmd_pane_focus_up(
+pub(crate) fn cmd_pane_focus_up(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -203,7 +203,7 @@ pub fn cmd_pane_focus_up(
     focus_in_direction(state, view, Dir::Up)
 }
 
-pub fn cmd_pane_focus_down(
+pub(crate) fn cmd_pane_focus_down(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -217,7 +217,7 @@ pub fn cmd_pane_focus_down(
 /// `Ctrl+p s` — split the focused pane, stacking the new pane below it, onto
 /// the same buffer. Keymap-bound sibling of the typed `:split` (which also
 /// accepts an optional path argument); shares its core via `split_pane_onto`.
-pub fn cmd_split_pane(
+pub(crate) fn cmd_split_pane(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -229,7 +229,7 @@ pub fn cmd_split_pane(
 
 /// `Ctrl+p v` — split the focused pane side by side, onto the same buffer.
 /// Keymap-bound sibling of the typed `:vsplit`.
-pub fn cmd_vsplit_pane(
+pub(crate) fn cmd_vsplit_pane(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -241,7 +241,7 @@ pub fn cmd_vsplit_pane(
 
 /// `Ctrl+p c` — close the focused pane, collapsing the split onto its sibling.
 /// No-ops with a warning when only one pane remains (`:q` owns quitting).
-pub fn cmd_close_pane(
+pub(crate) fn cmd_close_pane(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,

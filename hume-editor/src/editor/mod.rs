@@ -41,7 +41,7 @@ mod dispatch;
 pub(crate) mod doc_ops;
 pub(crate) mod fuzzy;
 pub(crate) mod jump_list;
-pub mod keymap;
+pub(crate) mod keymap;
 #[cfg(test)]
 mod lints;
 pub(crate) mod lsp;

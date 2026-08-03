@@ -54,6 +54,7 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
         "whitespace-space" | "whitespace-tab" => WhitespaceRender::VALUES,
         "whitespace-newline" => SHOW_NEWLINE_VALUES,
         "signcolumn" => SignColumnConfig::VALUES,
+        "lsp.diagnostics-severity-floor" => crate::editor::lsp::diagnostics::DiagSeverity::VALUES,
         _ => return None,
     })
 }

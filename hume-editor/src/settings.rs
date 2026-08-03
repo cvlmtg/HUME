@@ -163,7 +163,7 @@ impl FromStr for SignColumnConfig {
 /// straight to the live `Pane` in `typed_file::typed_set`, bypassing both of
 /// the above.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Scope {
+pub(crate) enum Scope {
     Global,
     Buffer,
     Pane,
@@ -172,12 +172,12 @@ pub enum Scope {
 impl Scope {
     /// Every scope, in the order `:set`'s scope-phase completion offers them
     /// (alphabetical, applied by the caller).
-    pub const ALL: &'static [Scope] = &[Scope::Global, Scope::Buffer, Scope::Pane];
+    pub(crate) const ALL: &'static [Scope] = &[Scope::Global, Scope::Buffer, Scope::Pane];
 
     /// The wire-format string for this scope — the single source `Display`
     /// delegates to and completion/error messages format with, so the two
     /// can never drift out of sync.
-    pub const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Scope::Global => "global",
             Scope::Buffer => "buffer",
@@ -433,7 +433,7 @@ macro_rules! define_settings {
         ///
         /// Returns `Err(message)` on unknown key, a global-only key, or an
         /// invalid value.
-        pub fn write_buffer(key: &str, value: &str, overrides: &mut BufferOverrides) -> Result<(), String> {
+        pub(crate) fn write_buffer(key: &str, value: &str, overrides: &mut BufferOverrides) -> Result<(), String> {
             match key {
                 $( $bkey => { overrides.$bname = Some(parse_setting!(value, key, $bparser)?); } )*
                 $( $skey => { overrides.$sfield = Some(parse_setting!(value, key, $sparser)?); } )*

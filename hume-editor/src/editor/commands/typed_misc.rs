@@ -13,7 +13,7 @@ use hume_ops::edit::{SortOpts, SortRefusal, sort_rows};
 /// Displays all logged warnings, errors, and trace entries accumulated during
 /// the session. Cursor starts at the last entry (most recent). Dismiss with
 /// `:bd` or switch away with `:b#`.
-pub fn typed_messages(
+pub(crate) fn typed_messages(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -42,7 +42,7 @@ pub fn typed_messages(
 /// Each row shows: 1-based index, current (`%`) / alternate (`#`) marker,
 /// dirty (`+`) flag, short name, and home-shortened absolute path.
 /// Cursor is placed on the row corresponding to the currently focused buffer.
-pub fn typed_list_buffers(
+pub(crate) fn typed_list_buffers(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -100,7 +100,7 @@ pub fn typed_list_buffers(
 
 /// `:plugin-status` / `:plugins` — show all declared plugins, their load
 /// state, and (for still-waiting plugins) which activation entries they are waiting on.
-pub fn typed_plugin_status(
+pub(crate) fn typed_plugin_status(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -126,12 +126,20 @@ pub fn typed_plugin_status(
 /// With no `path`, the new pane views the same buffer as the focused one.
 /// With `path`, the new pane views that file instead (opened via the usual
 /// dedup-on-canonical-path rule — see [`open_path_arg`]).
-pub fn typed_split(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_split(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
     split_focused_pane(ed, arg, Direction::Vertical)
 }
 
 /// `:vsplit [path]` — split the focused pane side by side.
-pub fn typed_vsplit(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_vsplit(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
     split_focused_pane(ed, arg, Direction::Horizontal)
 }
 
@@ -178,7 +186,11 @@ fn open_path_arg(ed: &mut Editor, path_str: &str) -> Result<BufferId, CommandErr
 /// On success the engine view's theme is replaced; the next `prepare_frame`
 /// re-bakes it (see `Theme::bake_if_stale`). On failure a warning is shown and
 /// the current theme is left unchanged.
-pub fn typed_theme(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_theme(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
     let Some(name) = arg.map(str::trim).filter(|s| !s.is_empty()) else {
         let current: &str = if ed.state.settings.theme.is_empty() {
             super::DEFAULT_THEME_LABEL
@@ -197,7 +209,7 @@ pub fn typed_theme(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(
 ///
 /// Reports the scope name, resolution chain, and final fg/bg/modifiers for
 /// the cursor, selection, and cursorline scopes from the active theme.
-pub fn typed_theme_debug(
+pub(crate) fn typed_theme_debug(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -268,7 +280,7 @@ pub fn typed_theme_debug(
     Ok(())
 }
 
-pub fn typed_version(
+pub(crate) fn typed_version(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -277,7 +289,11 @@ pub fn typed_version(
     Ok(())
 }
 
-pub fn typed_tutor(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_tutor(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
     // Resolve the install source. Fail fast on missing runtime or file.
     let Some(runtime) = hume_platform::dirs::runtime_dir() else {
         return Err(CommandError::new(
@@ -331,7 +347,7 @@ pub fn typed_tutor(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<
 /// The pre-jump position is recorded in the jump list so `Ctrl+o` returns here.
 /// `:42` is accepted as shorthand (the command-mode dispatcher intercepts bare
 /// digit strings and routes them here before the normal registry lookup).
-pub fn typed_goto_line(
+pub(crate) fn typed_goto_line(
     ed: &mut Editor,
     arg: Option<&str>,
     _force: bool,
@@ -401,7 +417,11 @@ fn parse_sort_flags(arg: Option<&str>) -> Result<SortOpts, CommandError> {
 /// rows themselves, closer to `sort -k`. See `hume_ops::edit::sort` for the
 /// full semantics (grouping, numeric auto-detection, selection remapping)
 /// and its rejection of Kakoune's `|sort` too.
-pub fn typed_sort(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_sort(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    force: bool,
+) -> Result<(), CommandError> {
     if force {
         return Err(CommandError::new(
             "`:sort` takes no `!` — use `-r` to reverse",

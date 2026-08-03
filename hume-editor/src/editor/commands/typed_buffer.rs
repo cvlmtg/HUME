@@ -15,7 +15,11 @@ use crate::editor::error::CommandError;
 /// Dedup uses `find_by_path` (canonical path comparison). `force` (`!` suffix)
 /// only takes effect in the no-arg reload branch: it discards unsaved changes
 /// and re-reads the file from disk. When a path is given, `force` is unused.
-pub fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_edit(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    force: bool,
+) -> Result<(), CommandError> {
     use std::path::Path;
 
     if let Some(path_str) = arg {
@@ -67,7 +71,7 @@ pub fn typed_edit(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(),
 /// changed; otherwise reports/prompts exactly like any other trigger — see
 /// `Editor::check_all_disk_state`. `force` has no effect: force accepting a
 /// reload is what the confirm's `[r]eload` choice (or `:e!`) is for.
-pub fn typed_checktime(
+pub(crate) fn typed_checktime(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -81,7 +85,11 @@ pub fn typed_checktime(
 /// - No arg: change to `$HOME`.
 /// - `path` given: `~` / env-var expansion applied first; relative paths
 ///   resolve against the current process cwd (which mirrors `editor.cwd`).
-pub fn typed_cd(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_cd(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
     let target = match arg.map(str::trim).filter(|s| !s.is_empty()) {
         Some(s) => {
             let expanded = hume_platform::path::expand(s);
@@ -101,7 +109,11 @@ pub fn typed_cd(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), 
 }
 
 /// `:pwd` / `:print-working-directory` — display the current working directory.
-pub fn typed_pwd(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_pwd(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
     ed.report(
         Severity::Info,
         hume_platform::path::display_form(&ed.state.cwd),
@@ -113,7 +125,7 @@ pub fn typed_pwd(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<()
 ///
 /// If the buffer is dirty and `force` is false, returns an error.
 /// If it is the only buffer, it is replaced with a scratch buffer.
-pub fn typed_buffer_delete(
+pub(crate) fn typed_buffer_delete(
     ed: &mut Editor,
     _arg: Option<&str>,
     force: bool,
@@ -137,7 +149,11 @@ pub fn typed_buffer_delete(
 ///
 /// The `force` flag is accepted syntactically but has no effect — there is
 /// nothing to force on a plain buffer switch.
-pub fn typed_buffer(ed: &mut Editor, arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_buffer(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
     let arg = arg.ok_or_else(|| CommandError::new("usage: :b <name|#|index>"))?;
     let bid = resolve_buffer_arg(ed, arg)?;
     ed.enter_buffer_with_jump(bid);
@@ -257,14 +273,22 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
 }
 
 /// `:bnext` / `:bn` — switch to the next buffer in open-order.
-pub fn typed_bnext(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_bnext(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
     let target = ed.state.buffers.next(ed.focused_buffer_id());
     ed.enter_buffer_with_jump(target);
     Ok(())
 }
 
 /// `:bprev` / `:bp` — switch to the previous buffer in open-order.
-pub fn typed_bprev(ed: &mut Editor, _arg: Option<&str>, _force: bool) -> Result<(), CommandError> {
+pub(crate) fn typed_bprev(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
     let target = ed.state.buffers.prev(ed.focused_buffer_id());
     ed.enter_buffer_with_jump(target);
     Ok(())

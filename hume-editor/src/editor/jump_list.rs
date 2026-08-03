@@ -24,7 +24,7 @@ pub(crate) const DEFAULT_JUMP_LIST_CAPACITY: usize = 100;
 
 /// A single saved cursor position in the jump list.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct JumpEntry {
+pub(crate) struct JumpEntry {
     /// Buffer this position belongs to — needed for cross-buffer Ctrl+O/I.
     pub buffer_id: BufferId,
     /// Full selection state at the moment of the jump.
@@ -36,7 +36,7 @@ pub struct JumpEntry {
 impl JumpEntry {
     /// Build a jump entry from the current selection state, deriving
     /// `primary_line` from the buffer so callers don't have to.
-    pub fn new(selections: SelectionSet, buf: &Text, buffer_id: BufferId) -> Self {
+    pub(crate) fn new(selections: SelectionSet, buf: &Text, buffer_id: BufferId) -> Self {
         let primary_line = buf.char_to_line(selections.primary().head());
         Self {
             buffer_id,
@@ -49,7 +49,7 @@ impl JumpEntry {
     ///
     /// Used at call sites that capture the cursor *before* a motion runs, so
     /// `primary_line` is already known and no buffer reference is needed.
-    pub fn from_pre_motion(
+    pub(crate) fn from_pre_motion(
         pre_primary: Selection,
         primary_line: usize,
         buffer_id: BufferId,
@@ -69,7 +69,7 @@ impl JumpEntry {
 /// decrements cursor; navigating forward increments it. A new `push` truncates
 /// any forward history (entries after cursor) before appending.
 #[derive(Debug, Clone)]
-pub struct JumpList {
+pub(crate) struct JumpList {
     entries: VecDeque<JumpEntry>,
     /// Current position. `cursor == entries.len()` means "at the present".
     cursor: usize,
@@ -86,7 +86,7 @@ impl JumpList {
     /// parser (`usize_nonzero`) already rejects `0` for `jump-list-capacity`
     /// before it can reach here; this just makes the trap loud if that
     /// guard is ever bypassed (a test constructing a `JumpList` directly).
-    pub fn new(capacity: usize) -> Self {
+    pub(crate) fn new(capacity: usize) -> Self {
         debug_assert!(capacity > 0, "JumpList capacity must be non-zero");
         Self {
             entries: VecDeque::new(),
@@ -100,7 +100,7 @@ impl JumpList {
     /// `hume_editing::history::UndoTree::set_undo_levels`): lowering the cap
     /// does not retroactively trim existing entries. No cursor adjustment is
     /// needed here, since no entries are removed by this call.
-    pub fn set_capacity(&mut self, capacity: usize) {
+    pub(crate) fn set_capacity(&mut self, capacity: usize) {
         debug_assert!(capacity > 0, "JumpList capacity must be non-zero");
         self.capacity = capacity;
     }
@@ -109,7 +109,7 @@ impl JumpList {
     /// last entry by line number, and caps the list at `self.capacity` — a
     /// `while`, not an `if`, so a `set_capacity` shrink of any size converges
     /// to the new cap in this one call rather than one entry per push.
-    pub fn push(&mut self, entry: JumpEntry) {
+    pub(crate) fn push(&mut self, entry: JumpEntry) {
         self.entries.truncate(self.cursor);
 
         // Deduplicate: same line AND same buffer — cross-buffer same-line entries are distinct.
@@ -132,7 +132,7 @@ impl JumpList {
     /// Remove all entries for `id`. Adjusts the cursor so its relative position
     /// in the remaining entries is preserved; clamps to `entries.len()` if the
     /// cursor falls past the end (which means "at the present").
-    pub fn prune_buffer(&mut self, id: BufferId) {
+    pub(crate) fn prune_buffer(&mut self, id: BufferId) {
         let removed_before = self
             .entries
             .iter()
@@ -149,7 +149,7 @@ impl JumpList {
     /// Navigate backward. If at the present, saves `current` first so that
     /// `forward()` can return to it. Returns the entry to restore, or `None`
     /// if the list is empty / already at the oldest entry.
-    pub fn backward(&mut self, current: JumpEntry) -> Option<&JumpEntry> {
+    pub(crate) fn backward(&mut self, current: JumpEntry) -> Option<&JumpEntry> {
         if self.entries.is_empty() {
             return None;
         }
@@ -181,7 +181,7 @@ impl JumpList {
 
     /// Navigate forward. Returns the next entry, or `None` if already at the
     /// present.
-    pub fn forward(&mut self) -> Option<&JumpEntry> {
+    pub(crate) fn forward(&mut self) -> Option<&JumpEntry> {
         if self.cursor + 1 >= self.entries.len() {
             return None;
         }
