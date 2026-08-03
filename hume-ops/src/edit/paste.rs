@@ -143,7 +143,7 @@ fn paste_impl(
 }
 
 /// Paste `values` after/onto each selection (normal-mode `p`). See
-/// [`paste_impl`] for the cursor/non-collapsed × charwise/linewise matrix;
+/// `paste_impl` for the cursor/non-collapsed × charwise/linewise matrix;
 /// the replaced selection is discarded and not written to any register.
 ///
 /// **Multi-cursor:** `values.len() == sels.len()` → N-to-N (each selection
@@ -159,7 +159,7 @@ pub fn paste_after(
 
 /// Paste `values` before/onto each selection (normal-mode `P`) — mirrors
 /// [`paste_after`]; the before/after distinction only applies to cursor
-/// selections (see [`paste_impl`]'s matrix). An empty `values` slice is a
+/// selections (see `paste_impl`'s matrix). An empty `values` slice is a
 /// no-op.
 pub fn paste_before(
     buf: Text,

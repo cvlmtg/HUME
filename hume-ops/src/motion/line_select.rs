@@ -94,12 +94,12 @@ fn move_select_line(buf: &Text, sel: Selection) -> Selection {
 
 /// Select or extend to the full line (`x` / `x` in extend mode): branches on `mode`.
 ///
-/// `Move` — replays [`move_select_line`] `count` times, so `3x` moves to the
+/// `Move` — replays `move_select_line` `count` times, so `3x` moves to the
 /// 3rd line the same way pressing `x` three times would, ending on a single
 /// line (not growing to span all of them).
 ///
 /// `Extend` — grows or shrinks toward covering one more line downward, `count`
-/// times; see [`extend_line_span`].
+/// times; see `extend_line_span`.
 pub fn cmd_select_line(
     buf: &Text,
     sels: SelectionSet,
@@ -135,12 +135,12 @@ fn move_select_line_backward(buf: &Text, sel: Selection) -> Selection {
 
 /// Select or extend to the full line backward (`X` / `X` in extend mode): branches on `mode`.
 ///
-/// `Move` — replays [`move_select_line_backward`] `count` times, so `3X`
+/// `Move` — replays `move_select_line_backward` `count` times, so `3X`
 /// moves to the 3rd line up the same way pressing `X` three times would,
 /// ending on a single line (not growing to span all of them).
 ///
 /// `Extend` — grows or shrinks toward covering one more line upward, `count`
-/// times; see [`extend_line_span`].
+/// times; see `extend_line_span`.
 pub fn cmd_select_line_backward(
     buf: &Text,
     sels: SelectionSet,
