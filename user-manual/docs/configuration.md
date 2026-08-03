@@ -210,7 +210,7 @@ A key string is a **whitespace-separated** list of tokens. Each token is `[modif
 
 | Component | Values |
 |-----------|--------|
-| Modifiers | `ctrl-`, `shift-`, `alt-` (case-insensitive, repeatable, any order) |
+| Modifiers | `ctrl-`/`c-`, `shift-`/`s-`, `alt-`/`a-` (case-insensitive, repeatable, any order, short and long forms may be mixed) |
 | Named keys | `space`, `tab`, `enter` / `return` / `cr` / `ret`, `esc` / `escape`, `lt` (`<`), `backspace` / `bs`, `delete` / `del`, `insert` / `ins`, `home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`, `f1`–`f12` |
 | Single char | Any single Unicode character; case is preserved (`"G"` and `"g"` are distinct) |
 

@@ -112,6 +112,22 @@ fn alt_modifier() {
 }
 
 #[test]
+fn short_modifiers_in_key_sequence() {
+    assert_eq!(parse("c-x").unwrap(), vec![ctrl(KeyCode::Char('x'))]);
+    assert_eq!(parse("a-b").unwrap(), vec![alt(KeyCode::Char('b'))]);
+    assert_eq!(parse("s-tab").unwrap(), vec![shift(KeyCode::BackTab)]);
+}
+
+#[test]
+fn mixed_long_and_short_modifiers() {
+    let expected = vec![KeyEvent::new(
+        KeyCode::Char('k'),
+        Modifiers::CONTROL | Modifiers::SHIFT,
+    )];
+    assert_eq!(parse("c-shift-k").unwrap(), expected);
+}
+
+#[test]
 fn ctrl_shift_combo() {
     let expected = vec![KeyEvent::new(
         KeyCode::Char('k'),

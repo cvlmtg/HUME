@@ -10,7 +10,8 @@
 //! A key string is a whitespace-separated list of key tokens; each token has
 //! the form `[modifier-]* key_name`.
 //!
-//! - Modifiers: `ctrl-`, `shift-`, `alt-` (case-insensitive; order doesn't matter)
+//! - Modifiers: `ctrl-`/`c-`, `shift-`/`s-`, `alt-`/`a-` (case-insensitive;
+//!   order doesn't matter; short and long forms may be mixed)
 //! - Named keys: `esc`, `tab`, `enter`, `space`, `backspace`, `delete`, `insert`,
 //!   `home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`, `f1`–`f12`
 //! - Single character: any single Unicode character (e.g. `f`, `G`, `<`, `>`)
@@ -33,9 +34,9 @@ use termina::event::{KeyCode, KeyEvent, Modifiers};
 /// Parse a key-sequence string into a `Vec<KeyEvent>`.
 ///
 /// The string is a whitespace-separated list of key tokens.  Each token has
-/// the form `[modifier-]* key_name` where modifiers are `ctrl-`, `shift-`,
-/// or `alt-` (case-insensitive) and `key_name` is either a named key or a
-/// single Unicode character.
+/// the form `[modifier-]* key_name` where modifiers are `ctrl-`/`c-`,
+/// `shift-`/`s-`, or `alt-`/`a-` (case-insensitive) and `key_name` is either
+/// a named key or a single Unicode character.
 ///
 /// Returns an error string if the sequence is empty or any token is
 /// unrecognised.
@@ -47,35 +48,44 @@ pub(crate) fn parse_key_sequence(s: &str) -> Result<Vec<KeyEvent>, String> {
     s.split_whitespace().map(parse_single_key).collect()
 }
 
-/// Parse a single key token (no spaces) into a [`KeyEvent`].
-fn parse_single_key(token: &str) -> Result<KeyEvent, String> {
-    // Lowercase a copy for modifier-prefix stripping; key name is recovered
-    // from the original token so that single-char case is preserved
-    // ("G" stays 'G', not 'g').
-    let lower = token.to_ascii_lowercase();
-    let mut modifiers = Modifiers::NONE;
-    let mut rest_lower = lower.as_str();
+/// Modifier prefixes accepted before a key name, in both the long form
+/// (`bind-key!`) and the short golf form (inside `<…>`).  No long form starts
+/// with a short one (`"ctrl-"` does not begin `"c-"`), so match order carries
+/// no meaning.
+const MODIFIER_PREFIXES: &[(&str, Modifiers)] = &[
+    ("ctrl-", Modifiers::CONTROL),
+    ("c-", Modifiers::CONTROL),
+    ("shift-", Modifiers::SHIFT),
+    ("s-", Modifiers::SHIFT),
+    ("alt-", Modifiers::ALT),
+    ("a-", Modifiers::ALT),
+];
 
-    // Strip all modifier prefixes — order doesn't matter.
-    loop {
-        if let Some(tail) = rest_lower.strip_prefix("ctrl-") {
-            modifiers |= Modifiers::CONTROL;
-            rest_lower = tail;
-        } else if let Some(tail) = rest_lower.strip_prefix("shift-") {
-            modifiers |= Modifiers::SHIFT;
-            rest_lower = tail;
-        } else if let Some(tail) = rest_lower.strip_prefix("alt-") {
-            modifiers |= Modifiers::ALT;
-            rest_lower = tail;
-        } else {
-            break;
-        }
+/// Split a key token into its modifier set and the key name that follows.
+///
+/// The name is returned as a slice of the *original* `token` so single-char
+/// case survives (`"G"` stays `'G'`, not `'g'`).
+fn split_modifiers(token: &str) -> (Modifiers, &str) {
+    let lower = token.to_ascii_lowercase();
+    let mut rest = lower.as_str();
+    let mut modifiers = Modifiers::NONE;
+
+    while let Some((modifier, tail)) = MODIFIER_PREFIXES
+        .iter()
+        .find_map(|(prefix, m)| rest.strip_prefix(prefix).map(|t| (*m, t)))
+    {
+        modifiers |= modifier;
+        rest = tail;
     }
 
-    // Recover the original-case key name by measuring how many bytes the
-    // modifier prefixes consumed from the start of `token`.
-    let consumed = token.len() - rest_lower.len();
-    let key_name = &token[consumed..];
+    // `to_ascii_lowercase` preserves byte length, so bytes consumed from
+    // `lower` index the same point in `token`.
+    (modifiers, &token[token.len() - rest.len()..])
+}
+
+/// Parse a single key token (no spaces) into a [`KeyEvent`].
+fn parse_single_key(token: &str) -> Result<KeyEvent, String> {
+    let (modifiers, key_name) = split_modifiers(token);
 
     if key_name.is_empty() {
         return Err(format!(
@@ -145,12 +155,10 @@ fn parse_key_code(key_name: &str) -> Result<KeyCode, String> {
 /// ## Format
 ///
 /// - Bare printable characters → `Char(c)` each.
-/// - `<name>` → named or modified key, using the same names as
-///   `parse_key_sequence` plus the following additions and shorthands:
+/// - `<name>` → named or modified key, using the same names and modifier
+///   prefixes (short or long) as `parse_key_sequence`, plus:
 ///   - `<ret>` → Enter (alias for `<enter>` / `<cr>`).
 ///   - `<lt>` → literal `<`.
-///   - Short modifier prefixes: `c-` (Ctrl), `a-` (Alt), `s-` (Shift).
-///   - Long forms also accepted: `ctrl-`, `alt-`, `shift-`.
 ///
 /// ## Examples
 ///
@@ -176,7 +184,7 @@ pub fn parse_key_stream(s: &str) -> Result<Vec<KeyEvent>, String> {
                 .position(|&b| b == b'>')
                 .ok_or_else(|| format!("unclosed '<' at position {i}"))?;
             let inner = &s[start..start + close];
-            keys.push(parse_stream_token(inner)?);
+            keys.push(parse_single_key(inner)?);
             i = start + close + 1; // advance past '>'
         } else {
             // Literal character — may be multi-byte UTF-8.
@@ -189,56 +197,6 @@ pub fn parse_key_stream(s: &str) -> Result<Vec<KeyEvent>, String> {
         }
     }
     Ok(keys)
-}
-
-/// Parse the content inside `<…>` from a golf key stream.
-///
-/// Expands the short modifier prefixes `c-`, `a-`, `s-` to the long forms
-/// (`ctrl-`, `alt-`, `shift-`) that [`parse_single_key`] understands, then
-/// delegates.  `<lt>` is handled before expansion as it would otherwise be
-/// mistaken for a single-char key.
-fn parse_stream_token(inner: &str) -> Result<KeyEvent, String> {
-    // `<lt>` is the self-escape for a literal '<'.  Handle it first because
-    // it is two characters and would fall through to parse_single_key as an
-    // unknown name otherwise.
-    if inner.eq_ignore_ascii_case("lt") {
-        return Ok(KeyEvent::new(KeyCode::Char('<'), Modifiers::NONE));
-    }
-    let expanded = expand_short_modifiers(inner);
-    parse_single_key(&expanded)
-}
-
-/// Expand short modifier prefixes used in golf `<…>` notation to the long
-/// forms that [`parse_single_key`] expects.
-///
-/// `c-` → `ctrl-`, `a-` → `alt-`, `s-` → `shift-`.  The key-name portion
-/// (everything after all modifiers) is preserved with its original case so
-/// that `<c-X>` maps to `Ctrl+X` rather than `Ctrl+x`.
-fn expand_short_modifiers(token: &str) -> String {
-    let lower = token.to_ascii_lowercase();
-    let mut lo = lower.as_str();
-    let mut orig = token;
-    let mut result = String::new();
-
-    loop {
-        if lo.starts_with("c-") {
-            result.push_str("ctrl-");
-            lo = &lo[2..];
-            orig = &orig[2..];
-        } else if lo.starts_with("a-") {
-            result.push_str("alt-");
-            lo = &lo[2..];
-            orig = &orig[2..];
-        } else if lo.starts_with("s-") {
-            result.push_str("shift-");
-            lo = &lo[2..];
-            orig = &orig[2..];
-        } else {
-            break;
-        }
-    }
-    result.push_str(orig);
-    result
 }
 
 /// Terminal input reports Shift+Tab as `BackTab`, not `Tab | SHIFT`.
