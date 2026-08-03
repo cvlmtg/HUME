@@ -185,6 +185,13 @@ pub fn grapheme_col_in_line(buf: &Text, line_idx: usize, char_pos: usize) -> usi
     grapheme_count(buf, buf.line_to_char(line_idx), char_pos)
 }
 
+/// Columns a `\t` at display column `col` occupies — the distance to the next
+/// tab stop of width `tw`. Always in `[1, tw]`: a tab already sitting on a stop
+/// advances a full `tw` rather than zero.
+fn tab_advance(col: usize, tw: usize) -> usize {
+    tw - col % tw
+}
+
 /// 0-based display column of `char_pos` within line `line_idx`, with `\t`
 /// expanded to tab stops of width `tab_width`.
 ///
@@ -216,11 +223,11 @@ pub fn display_col_in_line(buf: &Text, line_idx: usize, char_pos: usize, tab_wid
             break;
         }
         let ch = buf.char_at(pos);
-        if ch == Some('\t') {
-            col = (col / tw + 1) * tw;
+        col += if ch == Some('\t') {
+            tab_advance(col, tw)
         } else {
-            col += 1;
-        }
+            1
+        };
         pos = next;
     }
     col
@@ -260,7 +267,11 @@ pub fn char_pos_at_display_col(
         if ch == Some('\n') {
             break; // end of line — never walk onto the next line
         }
-        let w = if ch == Some('\t') { tw - (col % tw) } else { 1 };
+        let w = if ch == Some('\t') {
+            tab_advance(col, tw)
+        } else {
+            1
+        };
         if col + w > target_col {
             break; // this grapheme would overshoot — stop here
         }
