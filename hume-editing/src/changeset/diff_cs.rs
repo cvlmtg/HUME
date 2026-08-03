@@ -73,12 +73,18 @@ pub fn changesets_from_line_diff_with_deadline(
     let diff = diff_lines_with_deadline(&old_tokens, &new_tokens, deadline);
 
     debug_assert_eq!(
-        *old_offsets.last().unwrap(),
+        old_offsets
+            .last()
+            .copied()
+            .expect("lines_keep_newline always pushes the trailing sentinel"),
         old.len_chars(),
         "old token char count must equal rope len_chars",
     );
     debug_assert_eq!(
-        *new_offsets.last().unwrap(),
+        new_offsets
+            .last()
+            .copied()
+            .expect("lines_keep_newline always pushes the trailing sentinel"),
         new.len_chars(),
         "new token char count must equal rope len_chars",
     );
