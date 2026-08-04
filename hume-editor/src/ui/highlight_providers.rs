@@ -57,7 +57,7 @@ impl HighlightSource for SharedHighlighter {
         _ctx: &SourceContext,
         out: &mut Vec<(usize, usize, ScopeId)>,
     ) {
-        let data = self.data.read_unpoisoned();
+        let data = self.data.read_or_panic();
         // Data is sorted by line_idx (search matches) or tiny (bracket match),
         // so binary-search to the first entry for this line.
         let start = data.partition_point(|&(l, _, _)| l < line_idx);
@@ -98,7 +98,7 @@ impl HighlightSource for ScopedHighlighter {
         _ctx: &SourceContext,
         out: &mut Vec<(usize, usize, ScopeId)>,
     ) {
-        let data = self.data.read_unpoisoned();
+        let data = self.data.read_or_panic();
         let start = data.partition_point(|&(l, _, _, _)| l < line_idx);
         for &(l, byte_start, byte_end, scope) in &data[start..] {
             if l != line_idx {

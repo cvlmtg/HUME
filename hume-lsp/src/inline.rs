@@ -70,6 +70,15 @@ impl InlineLspBackend {
         backend.respond_to("initialize", default_initialize_result());
         backend
     }
+
+    /// Any undrained event? Test-only introspection — not part of
+    /// `LspBackend` (production has no cheap way to peek an `mpsc::Receiver`
+    /// without consuming it; wake-up in production is arrival-driven via
+    /// `WakeCallback`, not this kind of poll).
+    #[cfg(test)]
+    pub(crate) fn has_pending(&self) -> bool {
+        !self.queue.is_empty()
+    }
 }
 
 impl Default for InlineLspBackend {

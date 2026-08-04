@@ -47,11 +47,11 @@ pub(crate) struct MinibufCompletionOverlay {
 
 impl OverlayProvider for MinibufCompletionOverlay {
     fn is_active(&self) -> bool {
-        self.data.read_unpoisoned().is_some()
+        self.data.read_or_panic().is_some()
     }
 
     fn render(&self, pane_area: Rect, theme: &Theme, buf: &mut ScreenBuf) {
-        let guard = self.data.read_unpoisoned();
+        let guard = self.data.read_or_panic();
         let Some(view) = guard.as_ref() else { return };
 
         if view.rows.is_empty() {

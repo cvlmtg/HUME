@@ -16,11 +16,7 @@ impl Editor {
         // Skip the write-lock when both sides are already None — common case
         // while no popup is open.
         if self.state.minibuf_completion.is_none()
-            && self
-                .state
-                .minibuf_completion_view
-                .read_unpoisoned()
-                .is_none()
+            && self.state.minibuf_completion_view.read_or_panic().is_none()
         {
             return;
         }
@@ -45,7 +41,7 @@ impl Editor {
                 border: self.state.settings.popup_border,
             }
         });
-        *self.state.minibuf_completion_view.write_unpoisoned() = view;
+        *self.state.minibuf_completion_view.write_or_panic() = view;
     }
 
     /// The focused pane's primary cursor position — the anchor char for
@@ -123,11 +119,11 @@ impl Editor {
             self.state.config.popup.as_ref().map(|m| &m.layout),
             Some(crate::ui::popup::PopupLayout::Cursor)
         );
-        if !is_cursor && self.state.popup_view.read_unpoisoned().is_none() {
+        if !is_cursor && self.state.popup_view.read_or_panic().is_none() {
             return;
         }
         if !is_cursor {
-            *self.state.popup_view.write_unpoisoned() = None;
+            *self.state.popup_view.write_or_panic() = None;
             return;
         }
 
@@ -160,7 +156,7 @@ impl Editor {
             })
         });
 
-        *self.state.popup_view.write_unpoisoned() = resolved;
+        *self.state.popup_view.write_or_panic() = resolved;
     }
 
     /// Resolve (or reuse the cached) wrap+highlight of the open popup's text
@@ -226,11 +222,11 @@ impl Editor {
             self.state.config.popup.as_ref().map(|m| &m.layout),
             Some(crate::ui::popup::PopupLayout::Docked)
         );
-        if !is_docked && self.state.popup_band_view.read_unpoisoned().is_none() {
+        if !is_docked && self.state.popup_band_view.read_or_panic().is_none() {
             return;
         }
         if !is_docked {
-            *self.state.popup_band_view.write_unpoisoned() = None;
+            *self.state.popup_band_view.write_or_panic() = None;
             return;
         }
 
@@ -254,7 +250,7 @@ impl Editor {
             }
         });
 
-        *self.state.popup_band_view.write_unpoisoned() = resolved;
+        *self.state.popup_band_view.write_or_panic() = resolved;
     }
 
     /// Write the current menu content into the shared `PopupState` Arc so
@@ -263,7 +259,7 @@ impl Editor {
     /// (no word-wrap: menu entries are short labels, not prose) and
     /// `selected` marks the highlighted row.
     pub(super) fn sync_menu_view(&self, ctx: &mut RenderContext) {
-        if self.state.config.menu.is_none() && self.state.menu_view.read_unpoisoned().is_none() {
+        if self.state.config.menu.is_none() && self.state.menu_view.read_or_panic().is_none() {
             return;
         }
 
@@ -293,7 +289,7 @@ impl Editor {
             })
         });
 
-        *self.state.menu_view.write_unpoisoned() = resolved;
+        *self.state.menu_view.write_or_panic() = resolved;
     }
 
     /// Write the LSP completion menu into the shared `PopupState` Arc —
@@ -307,7 +303,7 @@ impl Editor {
     /// after step 9 runs.
     pub(super) fn sync_completion_menu_view(&self, ctx: &mut RenderContext) {
         if self.lsp.completion.is_none()
-            && self.state.completion_menu_view.read_unpoisoned().is_none()
+            && self.state.completion_menu_view.read_or_panic().is_none()
         {
             return;
         }
@@ -357,7 +353,7 @@ impl Editor {
             })
         });
 
-        *self.state.completion_menu_view.write_unpoisoned() = resolved;
+        *self.state.completion_menu_view.write_or_panic() = resolved;
     }
 
     /// Write the open picker session into the shared `PickerViewState` Arc
@@ -373,8 +369,7 @@ impl Editor {
     /// resize between the last keystroke and this frame self-heals here
     /// rather than leaving a stale scroll offset from a taller frame.
     pub(super) fn sync_picker_view(&mut self) {
-        if self.state.config.picker.is_none() && self.state.picker_view.read_unpoisoned().is_none()
-        {
+        if self.state.config.picker.is_none() && self.state.picker_view.read_or_panic().is_none() {
             return;
         }
 
@@ -403,7 +398,7 @@ impl Editor {
             _ => None,
         };
 
-        *self.state.picker_view.write_unpoisoned() = resolved;
+        *self.state.picker_view.write_or_panic() = resolved;
     }
 }
 

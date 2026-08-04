@@ -217,6 +217,20 @@ fn around_argument_nested() {
     );
 }
 
+#[test]
+fn around_argument_single_on_outer_bracket_descends_into_nested() {
+    // Cursor on the outer open bracket of `foo((a))`: the outer pair has a
+    // single (only) argument, which is itself a bracketed pair. The single-
+    // argument branch re-resolves through inner_argument rather than
+    // trimming the outer segment as-is, so it descends into the nested pair
+    // and selects `a`, not `(a)`.
+    assert_state!(
+        "foo-[(]>(a))\n",
+        |(buf, sels)| cmd_around_argument(&buf, sels, 0, MotionMode::Move),
+        "foo((-[a]>))\n"
+    );
+}
+
 // ── extend mode ───────────────────────────────────────────────────────────
 
 #[test]

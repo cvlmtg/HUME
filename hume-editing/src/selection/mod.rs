@@ -16,7 +16,7 @@ use crate::text::Text;
 /// 3. No two selections overlap. Adjacent selections (where one ends exactly
 ///    where the next begins) are merged.
 ///
-/// Invariants 2 and 3 are enforced by [`SelectionSet::merge_overlapping`],
+/// Invariants 2 and 3 are enforced by [`SelectionSet::merge_overlapping_in_place`],
 /// which must be called after any operation that might violate them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectionSet {

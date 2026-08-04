@@ -5,16 +5,16 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 /// poisoned lock would itself be a bug worth crashing on, not a recoverable
 /// error. This states that assumption once instead of at each call site.
 pub(crate) trait LockExt<T> {
-    fn read_unpoisoned(&self) -> RwLockReadGuard<'_, T>;
-    fn write_unpoisoned(&self) -> RwLockWriteGuard<'_, T>;
+    fn read_or_panic(&self) -> RwLockReadGuard<'_, T>;
+    fn write_or_panic(&self) -> RwLockWriteGuard<'_, T>;
 }
 
 impl<T> LockExt<T> for RwLock<T> {
-    fn read_unpoisoned(&self) -> RwLockReadGuard<'_, T> {
+    fn read_or_panic(&self) -> RwLockReadGuard<'_, T> {
         self.read().expect("RwLock not poisoned")
     }
 
-    fn write_unpoisoned(&self) -> RwLockWriteGuard<'_, T> {
+    fn write_or_panic(&self) -> RwLockWriteGuard<'_, T> {
         self.write().expect("RwLock not poisoned")
     }
 }

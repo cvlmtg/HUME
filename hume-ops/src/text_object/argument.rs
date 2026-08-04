@@ -87,8 +87,11 @@ fn which_segment(segments: &[(usize, usize)], pos: usize) -> Option<usize> {
 /// Shared prelude for [`inner_argument`] and [`around_argument`]: locate the
 /// tightest bracket pair, nudge `pos` off the bracket itself when it sits on
 /// one, split the content into comma segments, and resolve which segment
-/// `pos` falls in.
-fn locate_argument(buf: &Text, pos: usize) -> Option<(Vec<(usize, usize)>, usize)> {
+/// `pos` falls in. Returns the nudged `pos` too — `around_argument`'s
+/// only-argument case re-enters [`inner_argument`] with it, which lets that
+/// case descend into a nested bracket pair instead of trimming the segment
+/// already resolved against the outer one.
+fn locate_argument(buf: &Text, pos: usize) -> Option<(Vec<(usize, usize)>, usize, usize)> {
     let (open_pos, close_pos) = find_tightest_bracket_pair(buf, pos)?;
 
     // Nudge: if the cursor is on a bracket itself, step into the content zone.
@@ -106,7 +109,7 @@ fn locate_argument(buf: &Text, pos: usize) -> Option<(Vec<(usize, usize)>, usize
     }
 
     let idx = which_segment(&segments, pos)?;
-    Some((segments, idx))
+    Some((segments, idx, pos))
 }
 
 /// Trim leading and trailing whitespace from a raw segment span. Returns
@@ -138,7 +141,7 @@ fn trim_segment(buf: &Text, (raw_start, raw_end): (usize, usize)) -> Option<(usi
 /// Works for function arguments `foo(a, b)`, array items `[1, 2]`, object
 /// fields `{x: 1, y: 2}`, and any comma-separated list inside brackets.
 fn inner_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
-    let (segments, idx) = locate_argument(buf, pos)?;
+    let (segments, idx, _) = locate_argument(buf, pos)?;
     trim_segment(buf, segments[idx])
 }
 
@@ -152,11 +155,14 @@ fn inner_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
 /// - **Non-first arg**: extend start back to include the preceding comma,
 ///   so `delete(around bbb)` in `foo(aaa, bbb)` yields `foo(aaa)`.
 fn around_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
-    let (segments, idx) = locate_argument(buf, pos)?;
+    let (segments, idx, nudged_pos) = locate_argument(buf, pos)?;
 
     if segments.len() == 1 {
-        // Only argument — no separator to eat; same as inner.
-        return trim_segment(buf, segments[idx]);
+        // Only argument — no separator to eat; same as inner. Re-enter
+        // inner_argument (rather than trimming `segments[idx]` directly) so
+        // a cursor on the outer bracket of `foo((a))` still resolves to the
+        // nested pair's argument, not the whole `(a)` outer segment.
+        return inner_argument(buf, nudged_pos);
     }
 
     let (raw_start, raw_end) = segments[idx];

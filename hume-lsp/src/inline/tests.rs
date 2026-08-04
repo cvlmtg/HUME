@@ -18,6 +18,7 @@ fn respond_to_delivers_on_next_drain_not_inline() {
     // `send` never returns the response directly — it only becomes
     // observable through a later `drain()` call, matching the discipline
     // callers depend on (they never get answers synchronously).
+    assert!(backend.has_pending());
     let events = backend.drain();
     assert_eq!(events.len(), 1);
     match &events[0] {
@@ -32,6 +33,7 @@ fn respond_to_delivers_on_next_drain_not_inline() {
         _ => panic!("expected a Response event"),
     }
     // Drained once — second drain is empty.
+    assert!(!backend.has_pending());
     assert!(backend.drain().is_empty());
 }
 

@@ -44,7 +44,7 @@ impl SharedSignSource {
 impl SignSource for SharedSignSource {
     fn signs_for_line(&self, line_idx: usize, _ctx: &GutterRowCtx) -> Vec<Sign> {
         self.data
-            .read_unpoisoned()
+            .read_or_panic()
             .get(&line_idx)
             .cloned()
             .unwrap_or_default()

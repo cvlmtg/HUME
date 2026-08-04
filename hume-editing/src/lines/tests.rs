@@ -62,6 +62,47 @@ fn line_end_exclusive_empty_line_between() {
     assert_eq!(line_end_exclusive(&buf, 1), 3);
 }
 
+// ── leading_whitespace_end ────────────────────────────────────────────────
+
+#[test]
+fn leading_whitespace_end_none() {
+    // "foo\n" — no leading whitespace, end is the line start.
+    let (buf, _) = parse_state("-[f]>oo\n");
+    assert_eq!(leading_whitespace_end(&buf, 0), 0);
+}
+
+#[test]
+fn leading_whitespace_end_tabs() {
+    // "\t\tfoo\n" — 2 tabs, end is char 2 ('f').
+    let (buf, _) = parse_state("\t\t-[f]>oo\n");
+    assert_eq!(leading_whitespace_end(&buf, 0), 2);
+}
+
+#[test]
+fn leading_whitespace_end_mixed() {
+    // "\t  x\n" — tab + 2 spaces, end is char 3 ('x').
+    let (buf, _) = parse_state("\t  -[x]>\n");
+    assert_eq!(leading_whitespace_end(&buf, 0), 3);
+}
+
+#[test]
+fn leading_whitespace_end_whitespace_only_line() {
+    // "   \n" — whole line is whitespace; end is the line's exclusive end
+    // (the '\n', offset 3), not the buffer end.
+    let (buf, _) = parse_state("-[ ]>  \n");
+    let line_start = buf.line_to_char(0);
+    assert_eq!(leading_whitespace_end(&buf, 0), line_start + 3);
+}
+
+#[test]
+fn leading_whitespace_end_empty_line_equals_line_start() {
+    // "a\n\nb\n" — line 1 is empty ("\n" only); end equals line_start (no
+    // whitespace to skip, not line_start + 1).
+    let (buf, _) = parse_state("-[a]>\n\nb\n");
+    let line_start = buf.line_to_char(1);
+    assert_eq!(leading_whitespace_end(&buf, 1), line_start);
+}
+
 // ── line_content_end ──────────────────────────────────────────────────────
 
 #[test]

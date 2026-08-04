@@ -28,7 +28,7 @@ impl VirtualLineSource for PaneVirtualLines {
         _content_width: u16,
         out: &mut Vec<VirtualLine>,
     ) {
-        let guard = self.data.read_unpoisoned();
+        let guard = self.data.read_or_panic();
         for line in visible_lines {
             if let Some(lines) = guard.get(&line) {
                 out.extend(lines.iter().cloned());

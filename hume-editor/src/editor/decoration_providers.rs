@@ -79,7 +79,7 @@ impl Editor {
             else {
                 continue;
             };
-            let mut data = search_arc.write_unpoisoned();
+            let mut data = search_arc.write_or_panic();
             data.clear();
             // Hidden in Insert mode — matches aren't actionable while typing and
             // clutter the view. Same pattern as bracket match highlights below.
@@ -120,7 +120,7 @@ impl Editor {
         // pane last had focus, so moving focus away must blank the old one.
         for &(pid, _) in &panes {
             if let Some(r) = self.state.panes.render.get(pid) {
-                r.highlights.bracket.write_unpoisoned().clear();
+                r.highlights.bracket.write_or_panic().clear();
             }
         }
         if !in_insert {
@@ -153,7 +153,7 @@ impl Editor {
                         // Single-char match: byte_end = byte + utf8 length of the char.
                         let ch_len = buf.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
                         bracket_arc
-                            .write_unpoisoned()
+                            .write_or_panic()
                             .push((line, byte, byte + ch_len));
                     }
                 }
@@ -232,7 +232,7 @@ impl Editor {
                             &mut raw,
                         );
                     }
-                    let mut data = diag_arc.write_unpoisoned();
+                    let mut data = diag_arc.write_or_panic();
                     data.clear();
                     flatten_priority_overlaps(&mut raw, &mut data);
                 }
@@ -245,7 +245,7 @@ impl Editor {
                         // order (first source registered wins).
                         push_priority_highlight_lines(text, start, end, 0, scope, &mut raw);
                     }
-                    let mut data = extra_arc.write_unpoisoned();
+                    let mut data = extra_arc.write_or_panic();
                     data.clear();
                     flatten_priority_overlaps(&mut raw, &mut data);
                 }
@@ -334,7 +334,7 @@ impl Editor {
                 }
             }
             {
-                let mut guard = diag_map.write_unpoisoned();
+                let mut guard = diag_map.write_or_panic();
                 guard.clear();
                 for (line, severity) in diag_best {
                     guard.insert(
@@ -389,7 +389,7 @@ impl Editor {
                     .push((text, scope, priority));
             }
             {
-                let mut guard = plugin_map.write_unpoisoned();
+                let mut guard = plugin_map.write_or_panic();
                 guard.clear();
                 for (line, mut entries) in plugin_all {
                     entries.sort_by_key(|e| std::cmp::Reverse(e.2));
@@ -415,8 +415,8 @@ impl Editor {
             // plugin_map above only hold visible-line entries — a sign elsewhere
             // in the buffer, scrolled out of view, does not keep the column open).
             let has_signs = {
-                let diag_empty = diag_map.read_unpoisoned().is_empty();
-                let plugin_empty = plugin_map.read_unpoisoned().is_empty();
+                let diag_empty = diag_map.read_or_panic().is_empty();
+                let plugin_empty = plugin_map.read_or_panic().is_empty();
                 !(diag_empty && plugin_empty)
             };
             let width = match signcolumn.mode {
@@ -463,7 +463,7 @@ impl Editor {
         if !self.state.settings.lsp_inlay_hints {
             for &(pid, _) in &panes {
                 if let Some(r) = self.state.panes.render.get(pid) {
-                    r.inlay_hints.write_unpoisoned().clear();
+                    r.inlay_hints.write_or_panic().clear();
                 }
             }
             return;
@@ -508,7 +508,7 @@ impl Editor {
                 });
             }
 
-            *map.write_unpoisoned() = by_line;
+            *map.write_or_panic() = by_line;
         }
     }
 
@@ -578,7 +578,7 @@ impl Editor {
                 });
             }
 
-            *map.write_unpoisoned() = by_line;
+            *map.write_or_panic() = by_line;
         }
     }
 
@@ -662,7 +662,7 @@ impl Editor {
                 });
             }
 
-            *map.write_unpoisoned() = by_line;
+            *map.write_or_panic() = by_line;
             self.virtual_lines_synced.insert(pid, current_gen);
         }
     }

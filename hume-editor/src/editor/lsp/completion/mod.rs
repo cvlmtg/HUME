@@ -258,7 +258,7 @@ pub(crate) fn clear_completion_menu(state: &mut EditorState, lsp: Option<&mut Ls
     if let Some(lsp) = lsp {
         clear_completion_state(lsp);
     }
-    *state.completion_menu_view.write_unpoisoned() = None;
+    *state.completion_menu_view.write_or_panic() = None;
 }
 
 impl Editor {

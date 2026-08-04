@@ -182,7 +182,7 @@ impl Editor {
                 let Some(pair) = self
                     .state
                     .popup_view
-                    .read_unpoisoned()
+                    .read_or_panic()
                     .as_ref()
                     .map(|s| (s.outer_h.saturating_sub(2) as usize, s.lines.len()))
                 else {
@@ -194,7 +194,7 @@ impl Editor {
                 let Some(total) = self
                     .state
                     .popup_band_view
-                    .read_unpoisoned()
+                    .read_or_panic()
                     .as_ref()
                     .map(|s| s.lines.len())
                 else {

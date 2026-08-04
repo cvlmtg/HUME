@@ -149,7 +149,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
 }
 
 /// At the top of the document, the viewport can't move — and per
-/// `mouse_scroll_up`'s own `vp_before != vp_after` guard, the cursor must
+/// `mouse_scroll`'s own `vp_before != vp_after` guard, the cursor must
 /// stay put too, not silently drift up on every wheel tick.
 #[test]
 fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {

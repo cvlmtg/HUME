@@ -255,11 +255,11 @@ pub(crate) struct PopupOverlay {
 
 impl OverlayProvider for PopupOverlay {
     fn is_active(&self) -> bool {
-        self.data.read_unpoisoned().is_some()
+        self.data.read_or_panic().is_some()
     }
 
     fn render(&self, pane_rect: Rect, theme: &Theme, buf: &mut ScreenBuf) {
-        let guard = self.data.read_unpoisoned();
+        let guard = self.data.read_or_panic();
         let Some(state) = guard.as_ref() else { return };
         if state.lines.is_empty() {
             return;
@@ -343,7 +343,7 @@ pub(crate) fn band_capacity(lines: usize, max: u16) -> u16 {
 
 impl BottomBandProvider for PopupBandWidget {
     fn height(&self, max: u16) -> u16 {
-        let guard = self.data.read_unpoisoned();
+        let guard = self.data.read_or_panic();
         guard
             .as_ref()
             .map_or(0, |s| band_capacity(s.lines.len(), max))
@@ -353,7 +353,7 @@ impl BottomBandProvider for PopupBandWidget {
         if area.height == 0 {
             return;
         }
-        let guard = self.data.read_unpoisoned();
+        let guard = self.data.read_or_panic();
         let Some(state) = guard.as_ref() else { return };
         let style = theme.resolve_by_name(Scope("ui.popup")).into();
         let scroll_style = theme.resolve_by_name(Scope("ui.popup.scroll")).into();

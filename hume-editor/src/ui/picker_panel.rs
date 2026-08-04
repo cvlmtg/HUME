@@ -290,11 +290,11 @@ pub(crate) struct PickerOverlay {
 
 impl OverlayProvider for PickerOverlay {
     fn is_active(&self) -> bool {
-        self.data.read_unpoisoned().is_some()
+        self.data.read_or_panic().is_some()
     }
 
     fn render(&self, pane_rect: Rect, theme: &Theme, buf: &mut ScreenBuf) {
-        let guard = self.data.read_unpoisoned();
+        let guard = self.data.read_or_panic();
         let Some(state) = guard.as_ref() else {
             return;
         };

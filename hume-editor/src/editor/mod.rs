@@ -503,7 +503,7 @@ impl EditorState {
                 selected: d.selected,
                 scroll: d.scroll,
             });
-        *self.drawer_view.write_unpoisoned() = resolved;
+        *self.drawer_view.write_or_panic() = resolved;
     }
 
     /// Every source registered for `(ch, language)` — `OnTriggerChar`'s fire

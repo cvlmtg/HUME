@@ -623,7 +623,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         // matches `clear_completion_menu`'s scope even though `completion`
         // itself is already `None` here (via `take` above).
         crate::editor::lsp::completion::clear_completion_state(lsp);
-        *self.state.completion_menu_view.write_unpoisoned() = None;
+        *self.state.completion_menu_view.write_or_panic() = None;
         session.accept(self.state, lsp, idx)
     }
 
