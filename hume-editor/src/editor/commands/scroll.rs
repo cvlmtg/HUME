@@ -13,15 +13,26 @@ use crate::editor::error::CommandError;
 // avoid a runtime string lookup; not the `cmd_visual_move_*` wrappers, since a
 // scroll count is always a display-row count, never "N buffer lines").
 
+fn scroll_page(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    mode: MotionMode,
+    half: bool,
+    down: bool,
+) -> Result<(), CommandError> {
+    let height = viewport(state, view).height as usize;
+    let count = if half { (height / 2).max(1) } else { height };
+    apply_visual_vertical(state, view, count, down, mode, VerticalUnit::ScreenRow);
+    Ok(())
+}
+
 pub(crate) fn cmd_page_down(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let count = viewport(state, view).height as usize;
-    apply_visual_vertical(state, view, count, true, mode, VerticalUnit::ScreenRow);
-    Ok(())
+    scroll_page(state, view, mode, false, true)
 }
 pub(crate) fn cmd_page_up(
     state: &mut EditorState,
@@ -29,9 +40,7 @@ pub(crate) fn cmd_page_up(
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let count = viewport(state, view).height as usize;
-    apply_visual_vertical(state, view, count, false, mode, VerticalUnit::ScreenRow);
-    Ok(())
+    scroll_page(state, view, mode, false, false)
 }
 pub(crate) fn cmd_half_page_down(
     state: &mut EditorState,
@@ -39,9 +48,7 @@ pub(crate) fn cmd_half_page_down(
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let count = (viewport(state, view).height as usize / 2).max(1);
-    apply_visual_vertical(state, view, count, true, mode, VerticalUnit::ScreenRow);
-    Ok(())
+    scroll_page(state, view, mode, true, true)
 }
 pub(crate) fn cmd_half_page_up(
     state: &mut EditorState,
@@ -49,9 +56,7 @@ pub(crate) fn cmd_half_page_up(
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let count = (viewport(state, view).height as usize / 2).max(1);
-    apply_visual_vertical(state, view, count, false, mode, VerticalUnit::ScreenRow);
-    Ok(())
+    scroll_page(state, view, mode, true, false)
 }
 
 // ── View-trie scroll (zz / zt / zb) ───────────────────────────────────────────

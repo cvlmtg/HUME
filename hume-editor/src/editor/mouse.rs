@@ -47,8 +47,8 @@ impl Editor {
             MouseEventKind::Up(MouseButton::Left) => {
                 self.state.mouse_drag_anchor = None;
             }
-            MouseEventKind::ScrollUp => self.mouse_scroll_up(),
-            MouseEventKind::ScrollDown => self.mouse_scroll_down(),
+            MouseEventKind::ScrollUp => self.mouse_scroll(false),
+            MouseEventKind::ScrollDown => self.mouse_scroll(true),
             _ => {}
         }
         // A click can exit Insert (`mouse_left_down`'s `end_insert_session`)
@@ -124,7 +124,7 @@ impl Editor {
 
     // ── Scroll ────────────────────────────────────────────────────────────────
 
-    fn mouse_scroll_up(&mut self) {
+    fn mouse_scroll(&mut self, down: bool) {
         let scroll_lines = self.state.settings.mouse_scroll_lines;
         let vp_before = {
             let vp = &self.view.panes[self.state.focused_pane_id].viewport;
@@ -138,52 +138,24 @@ impl Editor {
                 &mut self.view.panes[self.state.focused_pane_id],
                 &mut self.state.motion_format_scratch,
             );
-            scroll_viewport_up(viewport, &mut rm, scroll_lines);
+            if down {
+                scroll_viewport_down(viewport, &mut rm, scroll_lines);
+            } else {
+                scroll_viewport_up(viewport, &mut rm, scroll_lines);
+            }
         }
         let vp_after = {
             let vp = &self.view.panes[self.state.focused_pane_id].viewport;
             (vp.top_line, vp.top_row_offset)
         };
-        // Only move cursors if the viewport actually moved (file may already be at top).
+        // Only move cursors if the viewport actually moved (file may already be
+        // at the top, or may fit entirely in the pane).
         if vp_before != vp_after {
             apply_visual_vertical(
                 &mut self.state,
                 &mut self.view,
                 scroll_lines,
-                false,
-                MotionMode::Move,
-                VerticalUnit::ScreenRow,
-            );
-        }
-    }
-
-    fn mouse_scroll_down(&mut self) {
-        let scroll_lines = self.state.settings.mouse_scroll_lines;
-        let vp_before = {
-            let vp = &self.view.panes[self.state.focused_pane_id].viewport;
-            (vp.top_line, vp.top_row_offset)
-        };
-        {
-            let buf_id = self.focused_buffer_id();
-            let (mut rm, viewport) = pane_row_map_mut(
-                self.state.buffers.get(buf_id),
-                &self.state.settings,
-                &mut self.view.panes[self.state.focused_pane_id],
-                &mut self.state.motion_format_scratch,
-            );
-            scroll_viewport_down(viewport, &mut rm, scroll_lines);
-        }
-        let vp_after = {
-            let vp = &self.view.panes[self.state.focused_pane_id].viewport;
-            (vp.top_line, vp.top_row_offset)
-        };
-        // Only move cursors if the viewport actually moved (file may fit entirely in the pane).
-        if vp_before != vp_after {
-            apply_visual_vertical(
-                &mut self.state,
-                &mut self.view,
-                scroll_lines,
-                true,
+                down,
                 MotionMode::Move,
                 VerticalUnit::ScreenRow,
             );

@@ -19,6 +19,17 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 
+/// Shared signature of [`apply_doc_undo`] and [`apply_doc_redo`] — lets a
+/// caller (e.g. `commands/edit.rs`'s `history_step`) pick one by function
+/// pointer instead of duplicating the call site per direction.
+pub(crate) type ApplyDocFn = fn(
+    &mut BufferStore,
+    &DecorationStores,
+    &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    PaneId,
+    BufferId,
+);
+
 /// No-op when `buf_id` has no grammar attached (`syntax` is `None`).
 /// Called immediately after every text mutation.
 fn record_syntax_edits(

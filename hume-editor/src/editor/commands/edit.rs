@@ -1,5 +1,6 @@
 use hume_engine::pipeline::EngineView;
 
+use crate::editor::buffer::Buffer;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_ops::MotionMode;
 use hume_ops::edit::{
@@ -178,20 +179,25 @@ pub(crate) fn cmd_yank(
     Ok(())
 }
 
-pub(crate) fn cmd_undo(
+/// Step the undo/redo history `count` times, stopping (with a status report)
+/// as soon as `can` returns false — shared by `cmd_undo`/`cmd_redo`, which
+/// differ only in direction.
+fn history_step(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
-    _mode: MotionMode,
+    can: fn(&Buffer) -> bool,
+    apply: doc_ops::ApplyDocFn,
+    exhausted_msg: &str,
 ) -> Result<(), CommandError> {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
     for _ in 0..count {
-        if !state.buffers.get(buf).can_undo() {
-            state.report(Severity::Info, "Already at oldest change".to_string());
+        if !can(state.buffers.get(buf)) {
+            state.report(Severity::Info, exhausted_msg.to_string());
             break;
         }
-        doc_ops::apply_doc_undo(
+        apply(
             &mut state.buffers,
             &state.config.decorations,
             &mut state.panes.state,
@@ -202,28 +208,36 @@ pub(crate) fn cmd_undo(
     Ok(())
 }
 
+pub(crate) fn cmd_undo(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    history_step(
+        state,
+        view,
+        count,
+        Buffer::can_undo,
+        doc_ops::apply_doc_undo,
+        "Already at oldest change",
+    )
+}
+
 pub(crate) fn cmd_redo(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
-    let buf = focused_buffer_id(state, view);
-    for _ in 0..count {
-        if !state.buffers.get(buf).can_redo() {
-            state.report(Severity::Info, "Already at newest change".to_string());
-            break;
-        }
-        doc_ops::apply_doc_redo(
-            &mut state.buffers,
-            &state.config.decorations,
-            &mut state.panes.state,
-            focused,
-            buf,
-        );
-    }
-    Ok(())
+    history_step(
+        state,
+        view,
+        count,
+        Buffer::can_redo,
+        doc_ops::apply_doc_redo,
+        "Already at newest change",
+    )
 }
 
 // ── Replace / surround ────────────────────────────────────────────────────────
