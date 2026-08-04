@@ -88,6 +88,18 @@ pub(crate) struct CompletionResult {
     pub candidates: Vec<Completion>,
 }
 
+impl CompletionResult {
+    /// Sort `candidates` by display text and wrap for `span_start` — every
+    /// completer does this immediately before returning.
+    fn sorted(span_start: usize, mut candidates: Vec<Completion>) -> Self {
+        candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
+        Self {
+            span_start,
+            candidates,
+        }
+    }
+}
+
 /// A completion source for a specific context (command name, path, buffer name).
 pub(crate) trait Completer {
     /// Return sorted candidates for the token at `cursor` in `input`.

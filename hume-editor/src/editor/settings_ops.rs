@@ -18,6 +18,7 @@ use hume_engine::pipeline::{BufferId, EngineView};
 
 use crate::editor::EditorState;
 use crate::editor::theme;
+use crate::settings::THEME_KEY;
 
 /// Write a global setting and resync every piece of derived state that
 /// depends on it.
@@ -29,7 +30,7 @@ pub(crate) fn apply_global(
 ) -> Result<(), String> {
     // Theme is the only effect that can fail after a successful write, so it's
     // the only one that needs a value to roll back to.
-    let prev_theme = (key == "theme").then(|| state.settings.theme.clone());
+    let prev_theme = (key == THEME_KEY).then(|| state.settings.theme.clone());
 
     crate::settings::write_global(key, value, &mut state.settings)?;
 
@@ -105,7 +106,7 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, key: &st
             }
             true
         }
-        "theme" if !state.settings.theme.is_empty() => theme::load_theme_by_name(
+        THEME_KEY if !state.settings.theme.is_empty() => theme::load_theme_by_name(
             view,
             &mut state.message_log,
             &mut state.status_msg,
@@ -114,7 +115,7 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, key: &st
         // Empty theme (cleared, or never set): nothing to load, and this
         // must not fall through to the `_` arm below — "theme" declares
         // `resync: true`, so the debug_assert there would fire.
-        "theme" => true,
+        THEME_KEY => true,
         _ => {
             debug_assert!(
                 !crate::settings::has_declared_resync(key),

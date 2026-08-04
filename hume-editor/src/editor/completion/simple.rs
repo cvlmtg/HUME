@@ -74,7 +74,7 @@ impl Completer for BufferNameCompleter {
             *name_count.entry(base).or_insert(0) += 1;
         }
 
-        let mut candidates: Vec<Completion> = ctx
+        let candidates: Vec<Completion> = ctx
             .buffers
             .iter()
             .filter_map(|(_, buf)| {
@@ -102,11 +102,7 @@ impl Completer for BufferNameCompleter {
             })
             .collect();
 
-        candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
-        CompletionResult {
-            span_start: arg_start,
-            candidates,
-        }
+        CompletionResult::sorted(arg_start, candidates)
     }
 }
 
@@ -122,12 +118,8 @@ pub(crate) struct ThemeCompleter;
 impl Completer for ThemeCompleter {
     fn complete(&self, input: &str, cursor: usize, _ctx: &CompletionCtx<'_>) -> CompletionResult {
         let (arg_start, prefix) = arg_prefix(input, cursor);
-        let mut candidates = theme_name_candidates(prefix);
-        candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
-        CompletionResult {
-            span_start: arg_start,
-            candidates,
-        }
+        let candidates = theme_name_candidates(prefix);
+        CompletionResult::sorted(arg_start, candidates)
     }
 }
 

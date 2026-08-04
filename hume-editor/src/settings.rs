@@ -212,6 +212,17 @@ impl FromStr for Scope {
 /// on the literal.
 pub(crate) const LANGUAGE_KEY: &str = "language";
 
+/// The `:set`/completion key for the active theme — declared as a
+/// `define_settings!` entry (below), but also matched directly at a few
+/// non-macro call sites (`typed_theme`, completion, `resync_derived_state`'s
+/// theme-reload branch), so this constant keeps those literals from drifting
+/// off the macro's own key string.
+pub(crate) const THEME_KEY: &str = "theme";
+
+/// Same rationale as [`THEME_KEY`], for `wrap-mode`'s non-macro call sites
+/// (completion, `typed_set`'s pane-scope handler).
+pub(crate) const WRAP_MODE_KEY: &str = "wrap-mode";
+
 // ── Parser helper ─────────────────────────────────────────────────────────────
 
 /// Dispatch from a parser-kind token to the actual parse call.

@@ -5,6 +5,7 @@ use super::super::Editor;
 use super::super::Severity;
 use crate::editor::error::CommandError;
 use crate::editor::settings_ops;
+use crate::settings::WRAP_MODE_KEY;
 
 /// Shared by every stale-write refusal — `write_buffer_by_id`'s no-arg `:w`
 /// path and `write_file`'s save-as-in-disguise path (see `targets_own_file`
@@ -237,7 +238,7 @@ pub(crate) fn typed_set(
             // `every_pane_scoped_key_has_a_typed_set_arm`
             // (`settings/tests.rs`) fails immediately if one is added
             // without a matching arm.
-            if key == "wrap-mode" {
+            if key == WRAP_MODE_KEY {
                 use std::str::FromStr;
                 let mode =
                     hume_engine::pane::WrapMode::from_str(value).map_err(CommandError::new)?;

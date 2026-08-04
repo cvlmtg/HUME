@@ -58,15 +58,10 @@ impl PathCompleter {
         // candidates — not a hard error.
         let rd = match std::fs::read_dir(&dir) {
             Ok(rd) => rd,
-            Err(_) => {
-                return CompletionResult {
-                    span_start: arg_start,
-                    candidates: vec![],
-                };
-            }
+            Err(_) => return CompletionResult::sorted(arg_start, vec![]),
         };
 
-        let mut candidates: Vec<Completion> = rd
+        let candidates: Vec<Completion> = rd
             .filter_map(|entry| entry.ok())
             .filter_map(|entry| {
                 let name = entry.file_name().to_string_lossy().into_owned();
@@ -91,11 +86,7 @@ impl PathCompleter {
             })
             .collect();
 
-        candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
-        CompletionResult {
-            span_start: arg_start,
-            candidates,
-        }
+        CompletionResult::sorted(arg_start, candidates)
     }
 }
 

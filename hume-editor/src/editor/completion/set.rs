@@ -3,7 +3,8 @@ use hume_engine::pane::{WhitespaceRender, WrapMode};
 
 use super::{Completer, Completion, CompletionCtx, CompletionResult, theme_name_candidates};
 use crate::settings::{
-    LANGUAGE_KEY, SHOW_NEWLINE_VALUES, Scope, SignColumnConfig, all_setting_keys, setting_scopes,
+    LANGUAGE_KEY, SHOW_NEWLINE_VALUES, Scope, SignColumnConfig, THEME_KEY, WRAP_MODE_KEY,
+    all_setting_keys, setting_scopes,
 };
 use hume_editing::tab_style::TabStyle;
 
@@ -50,7 +51,7 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
     Some(match key {
         "tab-style" => TabStyle::VALUES,
         "line-number-style" => LineNumberStyle::VALUES,
-        "wrap-mode" => WrapMode::VALUES,
+        WRAP_MODE_KEY => WrapMode::VALUES,
         "whitespace-space" | "whitespace-tab" => WhitespaceRender::VALUES,
         "whitespace-newline" => SHOW_NEWLINE_VALUES,
         "signcolumn" => SignColumnConfig::VALUES,
@@ -61,12 +62,8 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
 
 /// Phase 1: completing the scope token (`global`/`buffer`/`pane`).
 fn complete_set_scope(prefix: &str, span_start: usize) -> CompletionResult {
-    let mut candidates = prefix_completions(Scope::ALL.iter().map(|s| s.as_str()), prefix);
-    candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
-    CompletionResult {
-        span_start,
-        candidates,
-    }
+    let candidates = prefix_completions(Scope::ALL.iter().map(|s| s.as_str()), prefix);
+    CompletionResult::sorted(span_start, candidates)
 }
 
 /// Phase 2: completing the key. Surface every declared key whose scopes
@@ -76,22 +73,15 @@ fn complete_set_scope(prefix: &str, span_start: usize) -> CompletionResult {
 /// key that doesn't accept it.
 fn complete_set_key(scope: &str, rest: &str, span_start: usize) -> CompletionResult {
     let Ok(scope) = scope.parse::<Scope>() else {
-        return CompletionResult {
-            span_start,
-            candidates: Vec::new(),
-        };
+        return CompletionResult::sorted(span_start, Vec::new());
     };
     let scope_keys = all_setting_keys()
         .iter()
         .copied()
         .filter(|k| setting_scopes(k).contains(&scope));
     let language = (scope == Scope::Buffer).then_some(LANGUAGE_KEY);
-    let mut candidates = prefix_completions(scope_keys.chain(language), rest);
-    candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
-    CompletionResult {
-        span_start,
-        candidates,
-    }
+    let candidates = prefix_completions(scope_keys.chain(language), rest);
+    CompletionResult::sorted(span_start, candidates)
 }
 
 /// Phase 3: completing the value. Static enum/bool lists come from
@@ -113,7 +103,7 @@ fn complete_set_value(
     // generic gate below. An unparseable `scope` token falls through both
     // branches to the same empty result as a real key rejecting that scope.
     let scope = scope.parse::<Scope>().ok();
-    let mut candidates = if key == LANGUAGE_KEY {
+    let candidates = if key == LANGUAGE_KEY {
         if scope == Some(Scope::Buffer) {
             prefix_completions(ctx.languages.iter_names(), value_prefix)
         } else {
@@ -123,16 +113,12 @@ fn complete_set_value(
         Vec::new()
     } else if let Some(values) = static_value_candidates(key) {
         prefix_completions(values.iter().copied(), value_prefix)
-    } else if key == "theme" {
+    } else if key == THEME_KEY {
         theme_name_candidates(value_prefix)
     } else {
         Vec::new()
     };
-    candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
-    CompletionResult {
-        span_start,
-        candidates,
-    }
+    CompletionResult::sorted(span_start, candidates)
 }
 
 impl Completer for SetCompleter {
@@ -140,10 +126,7 @@ impl Completer for SetCompleter {
         let up_to = &input[..cursor.min(input.len())];
         // Argument region begins after the command word ("set ").
         let Some(arg_start) = up_to.find(' ').map(|i| i + 1) else {
-            return CompletionResult {
-                span_start: up_to.len(),
-                candidates: Vec::new(),
-            };
+            return CompletionResult::sorted(up_to.len(), Vec::new());
         };
         let arg = up_to[arg_start..].trim_start();
 

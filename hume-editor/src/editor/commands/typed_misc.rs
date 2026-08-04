@@ -4,6 +4,7 @@ use super::super::Editor;
 use super::super::Severity;
 use super::current_jump_entry;
 use crate::editor::error::CommandError;
+use crate::settings::THEME_KEY;
 use hume_ops::edit::{SortOpts, SortRefusal, sort_rows};
 
 // ── Message log ──────────────────────────────────────────────────────────────
@@ -201,7 +202,7 @@ pub(crate) fn typed_theme(
         ed.report(Severity::Info, format!("Current theme: {current}"));
         return Ok(());
     };
-    crate::editor::settings_ops::apply_global(&mut ed.state, &mut ed.view, "theme", name)
+    crate::editor::settings_ops::apply_global(&mut ed.state, &mut ed.view, THEME_KEY, name)
         .map_err(CommandError::new)
 }
 
