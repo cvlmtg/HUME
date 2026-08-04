@@ -219,13 +219,14 @@ fn before_virtual_line_skipped_one_row_at_a_time() {
     );
 
     // Offset 4 is past the end of a 4-row block: not an address in the
-    // document, so it clamps to the block's last row. `scroll::clamp_viewport_top`
-    // resolves the same state the same way — which is the point. The renderer
-    // used to treat an over-large offset as rows-to-skip and carry over into
-    // line 1 while the clamp said line 0's last row, so the two halves
-    // disagreed about one viewport state; both now read the address the same
-    // way, and production never gets here anyway (the clamp runs every frame
+    // document, so it clamps to the block's last row — the same address
+    // `scroll::clamp_viewport_top` resolves to, which is the point (production
+    // never reaches this case directly, since the clamp runs every frame
     // before render).
+    //
+    // Fail oracle: treating an over-large offset as rows-to-skip instead of
+    // clamping would carry over into line 1, disagreeing with the clamp's
+    // own "line 0's last row" answer.
     let past_end = render_wrapped_pane_with_virtual_line(4, VirtualLineAnchor::Before(0));
     assert_eq!(
         cell_symbol(&past_end, 0, 0),

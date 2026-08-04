@@ -571,24 +571,21 @@ impl<'a> RowMap<'a> {
                     .char_offset
             }
             ColTarget::NearestContent => {
-                // Which cells are eligible landing spots, by content type:
-                // - `Grapheme`/`WidthContinuation`: real content, always eligible.
-                // - `Empty` (the EOL sentinel) has a buffer position but is not
-                //   content, so it only answers when nothing else can (an
-                //   empty line) — gated on `admit_eol`.
-                // - `Virtual` (an inline-insert cell) carries the `char_offset`
-                //   of the *real* grapheme it precedes — a column elsewhere on
-                //   the row minimising distance against it would land on a
-                //   character this cell isn't at, so it's excluded outright
-                //   rather than merely deprioritised.
-                // - `Indicator` also covers tab/space glyphs, which *are* real
-                //   content — except the newline indicator (`whitespace-newline`),
-                //   which shares the EOL sentinel's column and must be excluded
-                //   the same way. Singled out by `byte_range`: unlike a
-                //   tab/space indicator (real bytes in the line), the newline
-                //   indicator's `byte_range` is empty, exactly like the EOL
-                //   sentinel it's drawn on top of (`format.rs`'s
-                //   newline-indicator push).
+                // Eligibility by content type: `Grapheme`/`WidthContinuation`
+                // are real content, always eligible. `Empty` (EOL sentinel)
+                // has a buffer position but isn't content, so it only
+                // answers when nothing else can (an empty line) — gated on
+                // `admit_eol`. `Virtual` (inline-insert) carries the real
+                // grapheme's `char_offset` it precedes, so minimising
+                // distance against it elsewhere on the row would land on a
+                // character that cell isn't at — excluded outright, not just
+                // deprioritised. `Indicator` covers tab/space glyphs, which
+                // *are* real content, except the newline indicator, which
+                // shares the EOL sentinel's column and must be excluded the
+                // same way — singled out by `byte_range` being empty, just
+                // like the sentinel it's drawn on top of (`format.rs`'s
+                // newline-indicator push).
+                //
                 // An exhaustive match (not a chain of exclusion filters) so a
                 // future `CellContent` variant forces a decision here instead
                 // of silently defaulting to eligible.

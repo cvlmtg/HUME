@@ -828,10 +828,9 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
 
 #[test]
 fn no_window_caller_reaches_true_column_past_former_u16_ceiling() {
-    // `current_col`/`Grapheme::col` are `u32`, so a line past the old
-    // `u16::MAX` (65,535) column ceiling no longer saturates — the column at
-    // the end of a 70,000-char pure-ASCII line is its true (unclamped) char
-    // index, not a clipped 65,535. Independent oracle: every char is 1
+    // `current_col`/`Grapheme::col` are `u32`: the column at the end of a
+    // 70,000-char pure-ASCII line is its true (unclamped) char index, never
+    // saturating at `u16::MAX` (65,535). Independent oracle: every char is 1
     // column wide, so col == index.
     let text: String = "a".repeat(70_000);
     let (rows, graphemes) = do_format_windowed(&text, WrapMode::None, None);
