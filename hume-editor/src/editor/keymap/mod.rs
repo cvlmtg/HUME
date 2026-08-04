@@ -394,11 +394,7 @@ impl Keymap {
             !keys.is_empty(),
             "bind_wait_char_user called with empty key sequence"
         );
-        let trie = match mode {
-            BindMode::Normal => &mut self.normal,
-            BindMode::Extend => &mut self.extend,
-            BindMode::Insert => &mut self.insert,
-        };
+        let trie = self.trie_mut(mode);
         trie.bind_wait_char_sequence(
             keys,
             WaitCharPending {
@@ -427,11 +423,7 @@ impl Keymap {
             !keys.is_empty(),
             "bind_user_with_extend called with empty key sequence"
         );
-        let trie = match mode {
-            BindMode::Normal => &mut self.normal,
-            BindMode::Extend => &mut self.extend,
-            BindMode::Insert => &mut self.insert,
-        };
+        let trie = self.trie_mut(mode);
         trie.bind_sequence(
             keys,
             KeymapCommand {
@@ -445,12 +437,28 @@ impl Keymap {
     ///
     /// No-op if the sequence is not bound or any intermediate node is missing.
     pub(crate) fn unbind_user(&mut self, mode: BindMode, keys: &[KeyEvent]) {
-        let trie = match mode {
+        let trie = self.trie_mut(mode);
+        trie.remove_sequence(keys);
+    }
+
+    /// The trie for `mode`, mutably.
+    fn trie_mut(&mut self, mode: BindMode) -> &mut KeyTrie {
+        match mode {
             BindMode::Normal => &mut self.normal,
             BindMode::Extend => &mut self.extend,
             BindMode::Insert => &mut self.insert,
-        };
-        trie.remove_sequence(keys);
+        }
+    }
+
+    /// The trie for `mode`. Test-only: production code only ever needs
+    /// mutable access via [`Self::trie_mut`].
+    #[cfg(test)]
+    fn trie(&self, mode: BindMode) -> &KeyTrie {
+        match mode {
+            BindMode::Normal => &self.normal,
+            BindMode::Extend => &self.extend,
+            BindMode::Insert => &self.insert,
+        }
     }
 
     /// Return the command name and `force_extend` flag for `keys` in `mode`,
@@ -461,11 +469,7 @@ impl Keymap {
         mode: BindMode,
         keys: &[KeyEvent],
     ) -> Option<(String, bool)> {
-        let trie = match mode {
-            BindMode::Normal => &self.normal,
-            BindMode::Extend => &self.extend,
-            BindMode::Insert => &self.insert,
-        };
+        let trie = self.trie(mode);
         match trie.walk(keys) {
             WalkResult::Leaf(cmd) => Some((cmd.name.into_owned(), cmd.force_extend)),
             _ => None,
