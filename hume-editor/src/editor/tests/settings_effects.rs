@@ -422,7 +422,7 @@ fn set_buffer_option_from_hook_writes_target_override() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert_eq!(ed.state.buffers.get(bid).overrides.tab_width, Some(8));
     assert_eq!(
@@ -432,7 +432,7 @@ fn set_buffer_option_from_hook_writes_target_override() {
 }
 
 /// The hook's `bid` argument, not the focused buffer, is the write target —
-/// pins the distinction that `drain_hooks` runs with the *focused* buffer as
+/// pins the distinction that `drain_events` runs with the *focused* buffer as
 /// scripting context while the hook's own `bid` may name a background
 /// buffer.
 ///
@@ -452,7 +452,7 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
 
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid2, Some(lang));
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert_eq!(ed.state.buffers.get(bid2).overrides.tab_width, Some(8));
     assert_eq!(
@@ -486,7 +486,7 @@ fn get_option_explicit_bid_reads_hook_target_not_focused_buffer() {
 
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid2, Some(lang));
-    ed.drain_hooks();
+    ed.drain_events();
 
     let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert_eq!(
@@ -519,7 +519,7 @@ fn set_buffer_option_global_only_key_errors_from_hook() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert_eq!(
         ed.state.settings.scrolloff, 3,

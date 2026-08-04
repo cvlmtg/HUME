@@ -65,7 +65,7 @@ impl Editor {
                 Some(TimerPayload::SteelThunk(thunk)) => self.queue_steel_call(thunk, Vec::new()),
                 Some(TimerPayload::ViewportDebounce(pane_id)) => {
                     self.viewport_debounce.remove(&pane_id);
-                    self.fire_hook_viewport_change(pane_id);
+                    self.queue_viewport_change(pane_id);
                 }
                 None => {}
             }

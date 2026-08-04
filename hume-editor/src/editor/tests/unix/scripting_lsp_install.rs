@@ -1128,7 +1128,7 @@ fn plum_alone_does_not_expose_lsp_status_stop_restart() {
 
 // ── Discovery hint ────────────────────────────────────────────────────────────
 //
-// `ed.set_buffer_language` + `ed.drain_hooks()` is not a `:`-typed command
+// `ed.set_buffer_language` + `ed.drain_events()` is not a `:`-typed command
 // dispatch — it is the same path a buffer opened via a CLI argument at
 // startup takes. These tests therefore also cover that the hook body's
 // ctx-gated `lsp-registered-for-language?` call is safe outside a typed
@@ -1144,7 +1144,7 @@ fn discovery_hint_fires_once_for_an_installable_unregistered_language() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_hooks();
+    ed.drain_events();
 
     let log = ed.state.message_log.format_for_display();
     assert_eq!(
@@ -1159,10 +1159,10 @@ fn discovery_hint_fires_once_for_an_installable_unregistered_language() {
 
     // Revisit the same language later in the session — must not repeat.
     ed.set_buffer_language(bid, None);
-    ed.drain_hooks();
+    ed.drain_events();
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_hooks();
+    ed.drain_events();
     let log2 = ed.state.message_log.format_for_display();
     assert_eq!(
         log2.matches("run :lsp-install").count(),
@@ -1183,7 +1183,7 @@ fn discovery_hint_does_not_fire_for_a_blocked_server() {
     // suggest a command that would fail.
     let lang = ed.state.config.languages.intern("go");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_hooks();
+    ed.drain_events();
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -1213,7 +1213,7 @@ fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("systemverilog");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_hooks();
+    ed.drain_events();
 
     unsafe {
         std::env::set_var("PATH", original_path);
@@ -1239,7 +1239,7 @@ fn discovery_hint_fires_for_cargo_kind_now_installable() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("pest");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_hooks();
+    ed.drain_events();
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -1270,7 +1270,7 @@ fn discovery_hint_does_not_fire_for_cargo_kind_when_cargo_missing_from_path() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("pest");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_hooks();
+    ed.drain_events();
 
     unsafe {
         std::env::set_var("PATH", original_path);
@@ -1300,7 +1300,7 @@ fn discovery_hint_does_not_fire_when_already_registered() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_hooks();
+    ed.drain_events();
 
     let log = ed.state.message_log.format_for_display();
     assert!(

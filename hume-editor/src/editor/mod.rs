@@ -153,14 +153,14 @@ pub(crate) struct ConfigState {
     /// Steel-writable decoration stores (inlay hints, signs, virtual
     /// lines, extra highlights) — the render providers read these.
     pub(crate) decorations: decorations::DecorationStores,
-    /// Hooks enqueued during command dispatch, drained by `Editor::drain_hooks`
-    /// after each command. The unified firing path — `fire_hook_silent` pushes
+    /// Hooks enqueued during command dispatch, drained by `Editor::drain_events`
+    /// after each command. The unified firing path — `queue_event` pushes
     /// here; no hook fires inline during command execution.
-    pub(crate) pending_hooks: Vec<(hume_scripting::hooks::HookId, Vec<steel::rvals::SteelVal>)>,
+    pub(crate) pending_events: Vec<(hume_scripting::hooks::HookId, Vec<steel::rvals::SteelVal>)>,
     /// Rust-side completions that must reach a *specific* Steel closure
     /// rather than every handler for a hook id: an `lsp-request` callback,
     /// a timer thunk, a prompt callback. Queued (never evaluated
-    /// inline — same discipline as `pending_hooks`) by whichever completion
+    /// inline — same discipline as `pending_events`) by whichever completion
     /// fires, drained by `Editor::drain_pending_steel_calls`.
     pub(crate) pending_steel_calls: Vec<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)>,
     /// Buffers awaiting language detection, drained by
@@ -230,7 +230,7 @@ impl ConfigState {
             languages: LanguageRegistry::new(),
             trigger_chars: rustc_hash::FxHashMap::default(),
             decorations: decorations::DecorationStores::reset(prior_virtual_lines_generation),
-            pending_hooks: Vec::new(),
+            pending_events: Vec::new(),
             pending_steel_calls: Vec::new(),
             pending_language_detection: Vec::new(),
             async_jobs: rustc_hash::FxHashMap::default(),
@@ -401,7 +401,7 @@ pub(crate) struct EditorState {
     pub(super) dispatching_typed_command: bool,
     /// `true` while draining the replay queue.
     pub(super) is_replaying: bool,
-    /// Set for the duration of `Editor::handle_event`'s post-dispatch
+    /// Set for the duration of `Editor::handle_input`'s post-dispatch
     /// check whenever that same event logged a new warning or error —
     /// read only by `can_open_confirm`, so a command's own failure message
     /// (`:qa` naming the first dirty buffer) can't be silently replaced by
@@ -417,10 +417,10 @@ pub(crate) struct EditorState {
     /// `Editor`/`LspState`), but the LSP completion session it must dismiss
     /// now lives on `LspState`. Consumed (session + ui + view all cleared)
     /// by `Editor::take_pending_lsp_completion_dismiss`, called
-    /// unconditionally from `handle_key`, `handle_mouse`, `drain_hooks`, and
+    /// unconditionally from `handle_key`, `handle_mouse`, `drain_events`, and
     /// `drain_pending_steel_calls` — the last of which `prepare_frame` also
     /// calls every frame, so no separate render-time call is needed. Same
-    /// deferral channel philosophy as `pending_hooks`.
+    /// deferral channel philosophy as `pending_events`.
     pub(super) lsp_completion_dismiss_pending: bool,
     /// Shared view for the LSP completion menu — reuses the popup/selection
     /// menu's generic
@@ -534,7 +534,7 @@ impl EditorState {
     /// Single write path for all mode transitions.
     ///
     /// Captures the old mode, writes the new one, and enqueues `OnModeChange`
-    /// for firing by `Editor::drain_hooks` after the command returns. The
+    /// for firing by `Editor::drain_events` after the command returns. The
     /// no-op guard prevents spurious hook fires when mode is already correct.
     ///
     /// The `mode` field is private so the compiler enforces that every
@@ -566,7 +566,7 @@ impl EditorState {
             .into_steelval()
             .expect("mode str into_steelval");
         self.config
-            .pending_hooks
+            .pending_events
             .push((HookId::OnModeChange, vec![old_val, new_val]));
     }
 }
@@ -699,8 +699,8 @@ impl Editor {
     /// Set the editing mode. The cursor shape reflecting the new mode will be
     /// emitted after the current frame's draw call.
     ///
-    /// Enqueues `OnModeChange` through the unified `pending_hooks` channel
-    /// (same path as the `EditorCmd` handlers); `drain_hooks` fires it after
+    /// Enqueues `OnModeChange` through the unified `pending_events` channel
+    /// (same path as the `EditorCmd` handlers); `drain_events` fires it after
     /// the current dispatch completes.
     ///
     /// For Insert mode entry and exit use `begin_insert_session` and

@@ -319,7 +319,7 @@ pub(crate) fn range_params(
 }
 
 /// `pane`'s visible `(first_line, last_line)` span, clamped to a buffer of
-/// `total_lines` — the single computation shared by `fire_hook_viewport_change`
+/// `total_lines` — the single computation shared by `queue_viewport_change`
 /// (pane -> its own range, for the `on-viewport-change` hook payload) and
 /// [`viewport_range`] (buffer -> the pane showing it, for the synchronous
 /// `(viewport-range bid)` builtin, which wraps this pair in a dotted-pair

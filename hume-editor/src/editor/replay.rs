@@ -7,7 +7,7 @@
 //! keys through the normal event path.
 
 use std::borrow::Cow;
-use termina::event::{Event, KeyEvent};
+use termina::event::{Event as TerminalEvent, KeyEvent};
 
 use super::dispatch::{ArgSource, CmdCtx};
 use super::registry::MappableCommand;
@@ -288,7 +288,7 @@ impl Editor {
         let saved_action = self.state.last_repeatable_action.take();
         self.state.is_replaying = true;
         while let Some(key) = self.state.replay_queue.pop_front() {
-            self.handle_event(Event::Key(key));
+            self.handle_input(TerminalEvent::Key(key));
             if self.state.should_quit {
                 break;
             }

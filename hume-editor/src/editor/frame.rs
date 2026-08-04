@@ -123,7 +123,7 @@ impl Editor {
     /// Drop `viewport_debounce`/`last_viewport_key`/`virtual_lines_synced`
     /// entries whose pane no longer exists in `self.view.panes`. A pending
     /// debounce timer is cancelled outright (its `TimerPayload` no-ops via
-    /// `fire_hook_viewport_change`'s own liveness check anyway, but there is
+    /// `queue_viewport_change`'s own liveness check anyway, but there is
     /// no reason to let it sit in the wheel until it fires).
     fn prune_closed_pane_caches(&mut self) {
         let panes = &self.view.panes;

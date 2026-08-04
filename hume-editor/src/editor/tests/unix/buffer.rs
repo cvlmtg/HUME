@@ -256,7 +256,7 @@ fn buffer_switch_to_deleted_file_by_path() {
 
     // Via `type_cmd_event`, not `execute_typed`: a *moving* `:b` only
     // switches inside `enter_buffer_with_jump` and relies on
-    // `Editor::handle_event`'s tail check for the disk check itself.
+    // `Editor::handle_input`'s tail check for the disk check itself.
     type_cmd_event(&mut ed, &format!(":b {}", canonical.display()));
     assert_eq!(
         ed.doc().path(),

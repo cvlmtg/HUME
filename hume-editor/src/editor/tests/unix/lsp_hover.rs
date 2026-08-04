@@ -97,10 +97,10 @@ fn run_hover(ed: &mut Editor) {
     // drains hooks after every keystroke, well before any network response
     // could land. Draining hooks only at the end would incorrectly replay
     // those stale mode changes after the popup is shown, closing it.
-    ed.drain_hooks();
+    ed.drain_events();
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
-    ed.drain_hooks();
+    ed.drain_events();
 }
 
 #[test]
@@ -390,19 +390,19 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
     // as the real interactive loop would (after every keystroke) — well
     // before the async response arrives, so lsp-hover's close-on-mode-
     // change dismiss can't replay against a popup that isn't open yet.
-    ed.drain_hooks();
+    ed.drain_events();
 
     // Bump the buffer's text_gen between send and drain — without
     // #:allow-stale this response would be dropped.
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key('X'));
     ed.feed_key(key_esc());
-    ed.drain_hooks();
+    ed.drain_events();
 
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
-    ed.drain_hooks();
+    ed.drain_events();
     let mut ctx = RenderContext::new();
     ed.prepare_frame(80, 25, &mut ctx);
 

@@ -80,7 +80,7 @@ fn setup(
     for action in actions {
         ed.dispatch_lsp_action(sid2, action);
     }
-    ed.drain_hooks(); // on-lsp-attach registers trigger chars
+    ed.drain_events(); // on-lsp-attach registers trigger chars
 
     (ed, guard, requests)
 }
@@ -100,7 +100,7 @@ fn position_after_foo(ed: &mut Editor) {
 
 fn type_char_and_settle(ed: &mut Editor, ch: char) {
     ed.feed_key(key(ch));
-    ed.drain_hooks(); // on-trigger-char fires, schedules the debounce timer
+    ed.drain_events(); // on-trigger-char fires, schedules the debounce timer
     std::thread::sleep(Duration::from_millis(250));
     ed.drain_async_sources(); // debounce timer fires, sends the request
     ed.drain_lsp(); // scripted response arrives
@@ -158,10 +158,10 @@ fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     position_after_foo(&mut ed);
 
     ed.lsp_stop(Some("rust"));
-    ed.drain_hooks(); // on-lsp-detach clears *sighelp-chars*
+    ed.drain_events(); // on-lsp-detach clears *sighelp-chars*
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     let before_log_len = ed.state.message_log.entries().count();
     type_char_and_settle(&mut ed, '(');
 
@@ -188,7 +188,7 @@ fn trigger_char_after_debounce_shows_signature_with_marked_param() {
     position_after_foo(&mut ed);
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     type_char_and_settle(&mut ed, '(');
 
     assert_eq!(
@@ -214,7 +214,7 @@ fn comma_advances_the_marked_parameter() {
     });
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     type_char_and_settle(&mut ed, '(');
 
     type_char_and_settle(&mut ed, ',');
@@ -245,7 +245,7 @@ fn close_paren_closes_the_popup_without_a_request() {
     ed.state.settings.auto_pairs_enabled = false;
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     type_char_and_settle(&mut ed, '(');
     assert!(
         !popup_lines(&mut ed).is_empty(),
@@ -254,7 +254,7 @@ fn close_paren_closes_the_popup_without_a_request() {
     let requests_before_close = requests.borrow().len();
 
     ed.feed_key(key(')'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.drain_pending_steel_calls();
 
     assert!(popup_lines(&mut ed).is_empty(), "')' must close the popup");
@@ -278,7 +278,7 @@ fn esc_closes_via_the_shared_mode_change_handler() {
     });
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     type_char_and_settle(&mut ed, '(');
     assert!(
         !popup_lines(&mut ed).is_empty(),
@@ -286,7 +286,7 @@ fn esc_closes_via_the_shared_mode_change_handler() {
     );
 
     ed.feed_key(key_esc());
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert!(popup_lines(&mut ed).is_empty(), "Esc must close the popup");
 }
@@ -304,16 +304,16 @@ fn rapid_trigger_chars_coalesce_to_one_request() {
     });
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
 
     // Three trigger chars back to back, no settling in between — each
     // (re)schedules the same 150ms debounce, cancelling the last.
     ed.feed_key(key('('));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key(','));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key(','));
-    ed.drain_hooks();
+    ed.drain_events();
 
     std::thread::sleep(Duration::from_millis(250));
     ed.drain_async_sources();
@@ -345,7 +345,7 @@ fn null_response_closes_the_popup() {
     });
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     type_char_and_settle(&mut ed, '(');
     assert!(
         !popup_lines(&mut ed).is_empty(),
@@ -382,7 +382,7 @@ fn offset_form_parameter_label_marks_the_correct_slice() {
     });
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     type_char_and_settle(&mut ed, '(');
 
     assert_eq!(
@@ -419,7 +419,7 @@ fn offset_form_label_with_an_astral_char_marks_the_correct_slice() {
     });
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     type_char_and_settle(&mut ed, '(');
 
     assert_eq!(

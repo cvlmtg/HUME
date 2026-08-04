@@ -13,7 +13,7 @@ use crate::editor::commands::open_pane;
 fn exit_insert_via_esc_fires_on_mode_change() {
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
-    use termina::event::Event;
+    use termina::event::Event as TerminalEvent;
 
     // Two-char buffer; cursor starts at col 0.
     let mut ed = editor_from("-[a]>b\n");
@@ -27,16 +27,16 @@ fn exit_insert_via_esc_fires_on_mode_change() {
     .unwrap();
     ed.scripting = Some(host);
 
-    // Enter Insert via `i` (no step-back on exit). Use handle_event so the
+    // Enter Insert via `i` (no step-back on exit). Use handle_input so the
     // Normal→Insert hook is drained before we capture the before state.
-    ed.handle_event(Event::Key(key('i')));
+    ed.handle_input(TerminalEvent::Key(key('i')));
     assert_eq!(ed.state.mode, Mode::Insert, "must be in Insert after `i`");
 
     let before = state(&ed);
 
-    // Exit via Esc. handle_event drains hooks after dispatch, so the
+    // Exit via Esc. handle_input drains hooks after dispatch, so the
     // on-mode-change handler fires within this call.
-    ed.handle_event(Event::Key(key_esc()));
+    ed.handle_input(TerminalEvent::Key(key_esc()));
 
     assert_eq!(ed.state.mode, Mode::Normal, "must be Normal after Esc");
     assert_ne!(
@@ -54,7 +54,7 @@ fn exit_insert_via_esc_fires_on_mode_change() {
 fn mouse_click_in_insert_fires_on_mode_change() {
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
-    use termina::event::Event;
+    use termina::event::Event as TerminalEvent;
 
     let mut ed = editor_from("-[a]>b\n");
     ed.view.panes[ed.state.focused_pane_id].viewport =
@@ -87,7 +87,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
         row: 0,
         modifiers: termina::event::Modifiers::NONE,
     };
-    ed.handle_event(Event::Mouse(click));
+    ed.handle_input(TerminalEvent::Mouse(click));
 
     assert_eq!(ed.state.mode, Mode::Normal, "must be Normal after click");
     assert_ne!(
@@ -104,7 +104,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
 /// livelocking the editor.  The watchdog only bounds each individual eval,
 /// not the re-drain loop.
 ///
-/// Fail oracle: remove the `MAX_HOOK_DRAIN_HOOKS` cap from `drain_hooks` →
+/// Fail oracle: remove the `MAX_EVENT_DRAIN` cap from `drain_events` →
 /// this test never returns.
 #[test]
 fn hook_feedback_loop_is_cut_off_by_drain_cap() {
@@ -128,7 +128,7 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("aaa");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_hooks(); // must return, not hang
+    ed.drain_events(); // must return, not hang
 
     assert!(
         ed.state
@@ -138,7 +138,7 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
         "drain cap must log an Error naming the hook cascade"
     );
     assert!(
-        ed.state.config.pending_hooks.is_empty(),
+        ed.state.config.pending_events.is_empty(),
         "pending hooks must be dropped when the cap fires"
     );
 }
@@ -154,7 +154,7 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
 /// re-enqueue `OnLanguageSet` — independent of what the previous invocation
 /// left behind.
 ///
-/// Fail oracle: cap `drain_hooks` on pass count instead of total hooks
+/// Fail oracle: cap `drain_events` on pass count instead of total hooks
 /// processed → this test times out instead of returning.
 #[test]
 fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
@@ -178,7 +178,7 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("start");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_hooks(); // must return promptly, not after 2^100 evals
+    ed.drain_events(); // must return promptly, not after 2^100 evals
 
     assert!(
         ed.state
@@ -188,21 +188,21 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
         "drain cap must log an Error naming the hook cascade"
     );
     assert!(
-        ed.state.config.pending_hooks.is_empty(),
+        ed.state.config.pending_events.is_empty(),
         "pending hooks must be dropped when the cap fires"
     );
 }
 
 // ── Startup hook drain ────────────────────────────────────────────────────────
 
-/// `fire_hook_silent` only enqueues; hooks must be drained explicitly via
-/// `drain_hooks()` before the event loop or they silently defer.
+/// `queue_event` only enqueues; hooks must be drained explicitly via
+/// `drain_events()` before the event loop or they silently defer.
 ///
 /// This covers the `lib.rs::run()` path: `init_scripting` + `open_extra_files`
 /// enqueue `OnBufferOpen`/`OnLanguageSet` hooks (before the terminal is even
-/// initialized); the explicit `drain_hooks()` after startup is what fires them.
+/// initialized); the explicit `drain_events()` after startup is what fires them.
 ///
-/// Fail oracle: remove `editor.drain_hooks()` from `lib.rs::run()` — hooks
+/// Fail oracle: remove `editor.drain_events()` from `lib.rs::run()` — hooks
 /// silently defer. This test catches the missing-drain regression.
 #[test]
 fn startup_hooks_require_explicit_drain() {
@@ -226,21 +226,21 @@ fn startup_hooks_require_explicit_drain() {
     // Simulate what open_extra_files / init_scripting do: enqueue the hook.
     let bid = ed.focused_buffer_id();
     let val = SteelBufferId::new(bid).into_steel_val();
-    ed.fire_hook_silent(HookId::OnBufferOpen, &[val]);
+    ed.queue_event(HookId::OnBufferOpen, &[val]);
 
     // Hook is enqueued but has not fired yet.
     assert!(
-        !ed.state.config.pending_hooks.is_empty(),
-        "pending_hooks must be queued after fire_hook_silent — drain_hooks not called yet"
+        !ed.state.config.pending_events.is_empty(),
+        "pending_events must be queued after queue_event — drain_events not called yet"
     );
 
     let before = state(&ed);
 
-    // drain_hooks fires the enqueued hooks.
-    ed.drain_hooks();
+    // drain_events fires the enqueued hooks.
+    ed.drain_events();
     assert!(
-        ed.state.config.pending_hooks.is_empty(),
-        "pending_hooks must be empty after drain_hooks"
+        ed.state.config.pending_events.is_empty(),
+        "pending_events must be empty after drain_events"
     );
     assert_ne!(
         state(&ed),
@@ -292,11 +292,11 @@ fn on_buffer_open_queued_after_on_language_set() {
     doc.set_path(Some(std::path::PathBuf::from("/tmp/foo.rs")));
     ed.open_buffer(doc);
 
-    // Inspect the queue before draining — drain_hooks would empty it.
+    // Inspect the queue before draining — drain_events would empty it.
     let hook_order: Vec<HookId> = ed
         .state
         .config
-        .pending_hooks
+        .pending_events
         .iter()
         .map(|(id, _)| *id)
         .collect();
@@ -309,7 +309,7 @@ fn on_buffer_open_queued_after_on_language_set() {
 
 // ── Hook (call! …) dispatch ───────────────────────────────────────────────────
 
-/// `fire_hook_silent` must dispatch commands called by `(call! …)` inside hook bodies.
+/// `queue_event` must dispatch commands called by `(call! …)` inside hook bodies.
 #[test]
 fn hook_call_is_dispatched() {
     use crate::testing::MockHost;
@@ -332,8 +332,8 @@ fn hook_call_is_dispatched() {
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
     let val = SteelBufferId::new(bid).into_steel_val();
-    ed.fire_hook_silent(HookId::OnBufferOpen, &[val]);
-    ed.drain_hooks();
+    ed.queue_event(HookId::OnBufferOpen, &[val]);
+    ed.drain_events();
 
     assert_ne!(
         state(&ed),

@@ -786,20 +786,20 @@ fn steel_unknown_cmd_errors_and_continues() {
     );
 }
 
-/// **Finding 6 — mouse input drains pending hooks via `handle_event`**: any hooks that
-/// are sitting in `state.config.pending_hooks` before a mouse event must be drained by
-/// `handle_event`, which is the single interactive drain choke point.
+/// **Finding 6 — mouse input drains pending hooks via `handle_input`**: any hooks that
+/// are sitting in `state.config.pending_events` before a mouse event must be drained by
+/// `handle_input`, which is the single interactive drain choke point.
 ///
-/// Setup: a hook is seeded directly into `pending_hooks` via `fire_hook_silent`.
-/// No scripting host is needed — `drain_hooks` skips hooks with no registered handlers
+/// Setup: a hook is seeded directly into `pending_events` via `queue_event`.
+/// No scripting host is needed — `drain_events` skips hooks with no registered handlers
 /// while still clearing the queue.
 ///
-/// Fail oracle: remove `self.drain_hooks()` from `handle_event`
-/// → `pending_hooks` is non-empty after the click (the pending hook was never cleared).
+/// Fail oracle: remove `self.drain_events()` from `handle_input`
+/// → `pending_events` is non-empty after the click (the pending hook was never cleared).
 #[test]
 fn mouse_click_drains_hooks_immediately() {
     use hume_scripting::hooks::HookId;
-    use termina::event::Event;
+    use termina::event::Event as TerminalEvent;
 
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(
         hume_editing::text::Text::from("hello\n"),
@@ -811,27 +811,27 @@ fn mouse_click_drains_hooks_immediately() {
         hume_engine::pane::ViewportState::new(80, 24);
 
     // Seed a pending hook (OnBufferSave with no args — no handler registered, so
-    // drain_hooks skips the Steel call but still removes it from the queue).
-    ed.fire_hook_silent(HookId::OnBufferSave, &[]);
+    // drain_events skips the Steel call but still removes it from the queue).
+    ed.queue_event(HookId::OnBufferSave, &[]);
     assert!(
-        !ed.state.config.pending_hooks.is_empty(),
-        "pending_hooks must be non-empty before the event — drain has not run yet"
+        !ed.state.config.pending_events.is_empty(),
+        "pending_events must be non-empty before the event — drain has not run yet"
     );
 
-    // Simulate a left-click at (0, 0) via handle_event so the drain choke point runs.
+    // Simulate a left-click at (0, 0) via handle_input so the drain choke point runs.
     let click = termina::event::MouseEvent {
         kind: termina::event::MouseEventKind::Down(termina::event::MouseButton::Left),
         column: 0,
         row: 0,
         modifiers: termina::event::Modifiers::NONE,
     };
-    ed.handle_event(Event::Mouse(click));
+    ed.handle_input(TerminalEvent::Mouse(click));
 
-    // drain_hooks ran at the tail of handle_event — all pending hooks must be gone.
+    // drain_events ran at the tail of handle_input — all pending hooks must be gone.
     assert!(
-        ed.state.config.pending_hooks.is_empty(),
-        "pending_hooks must be empty after handle_event; got {:?}",
-        ed.state.config.pending_hooks
+        ed.state.config.pending_events.is_empty(),
+        "pending_events must be empty after handle_input; got {:?}",
+        ed.state.config.pending_events
     );
 }
 

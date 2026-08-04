@@ -74,7 +74,7 @@ fn fire_viewport_change(ed: &mut Editor) {
     let mut ctx = RenderContext::new();
     ed.prepare_frame(80, 25, &mut ctx);
     let pid = ed.state.focused_pane_id;
-    ed.fire_hook_viewport_change(pid);
+    ed.queue_viewport_change(pid);
 }
 
 /// The debounced thunk itself is only *queued* by `drain_due_timers`
@@ -87,7 +87,7 @@ fn fire_viewport_change(ed: &mut Editor) {
 /// response callback. `prepare_frame` does exactly this pair internally
 /// every real frame; a test not calling it needs the pair explicitly.
 fn settle_after_debounce(ed: &mut Editor) {
-    ed.drain_hooks();
+    ed.drain_events();
     std::thread::sleep(Duration::from_millis(300));
     ed.drain_async_sources();
     ed.drain_lsp();
@@ -234,7 +234,7 @@ fn diagnostics_changed_also_refreshes_hints() {
         sid,
         serde_json::from_value(serde_json::json!({"uri": hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&file).unwrap()).unwrap().as_str(), "diagnostics": []})).unwrap(),
     );
-    ed.fire_hook_diagnostics_changed(bid);
+    ed.queue_diagnostics_changed(bid);
     settle_after_debounce(&mut ed);
 
     assert_eq!(
@@ -278,7 +278,7 @@ fn hidden_buffer_skips_diagnostics_triggered_refresh() {
         sid,
         serde_json::from_value(serde_json::json!({"uri": hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&file).unwrap()).unwrap().as_str(), "diagnostics": []})).unwrap(),
     );
-    ed.fire_hook_diagnostics_changed(bid);
+    ed.queue_diagnostics_changed(bid);
     settle_after_debounce(&mut ed);
 
     assert_eq!(
@@ -315,7 +315,7 @@ fn an_empty_response_clears_previously_stored_hints() {
 
     // Viewport is already known; on-diagnostics-changed alone re-triggers
     // the debounced refresh without moving anything.
-    ed.fire_hook_diagnostics_changed(bid);
+    ed.queue_diagnostics_changed(bid);
     settle_after_debounce(&mut ed);
 
     assert_eq!(
@@ -408,8 +408,8 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
 
     // Both fires land inside the same 200ms debounce window — no settle in
     // between.
-    ed.fire_hook_diagnostics_changed(bid_a);
-    ed.fire_hook_diagnostics_changed(bid_b);
+    ed.queue_diagnostics_changed(bid_a);
+    ed.queue_diagnostics_changed(bid_b);
     settle_after_debounce(&mut ed);
 
     let sent_to = |sid: ServerId| {
@@ -502,7 +502,7 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
 
     // Buffer A (focused, server A, no inlayHintProvider) never changes
     // focus — the viewport event below is for the background pane only.
-    ed.fire_hook_viewport_change(pane_b);
+    ed.queue_viewport_change(pane_b);
     settle_after_debounce(&mut ed);
 
     let sent_to_b = requests

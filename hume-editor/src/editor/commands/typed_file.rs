@@ -271,7 +271,7 @@ fn serialize_buffer(ed: &Editor, bid: BufferId) -> (String, usize) {
 fn mark_written_and_synced(ed: &mut Editor, bid: BufferId, line_count: usize, retried: bool) {
     ed.state.buffers.get_mut(bid).mark_saved();
     ed.report(write_severity(retried), write_msg(line_count, retried));
-    ed.fire_hook_buffer_save(bid);
+    ed.queue_buffer_save(bid);
     // Flush any didChange already queued for this buffer first — a
     // save-triggered server action (e.g. lint-on-save) must see a
     // document state at least as current as the file just written,

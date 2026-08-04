@@ -73,7 +73,7 @@ impl Editor {
             }
         }
         let bid_val = SteelBufferId::new(bid).into_steel_val();
-        self.fire_hook_silent(HookId::OnLanguageSet, &[bid_val, lang_val]);
+        self.queue_event(HookId::OnLanguageSet, &[bid_val, lang_val]);
         // Wire up (or tear down) tree-sitter highlighting for this buffer.
         self.setup_buffer_syntax(bid);
         // Spawn-or-attach an LSP server for this buffer's (possibly new)
@@ -108,7 +108,7 @@ impl Editor {
     /// Also fires `OnBufferOpen` for each buffer, after its `OnLanguageSet`
     /// (queued by `detect_and_set_language` above) — `open_buffer_and_notify`
     /// itself doesn't fire it, since both hooks share the FIFO
-    /// `pending_hooks` queue and plugins registering both handlers expect
+    /// `pending_events` queue and plugins registering both handlers expect
     /// `on-language-set` to run first.
     ///
     /// Takes the queue before iterating, not `while let Some(bid) =
@@ -154,7 +154,7 @@ impl Editor {
                 }
                 self.state.buffers.get_mut(bid).open_hook_pending = false;
                 let val = SteelBufferId::new(bid).into_steel_val();
-                self.fire_hook_silent(HookId::OnBufferOpen, &[val]);
+                self.queue_event(HookId::OnBufferOpen, &[val]);
             }
         }
     }

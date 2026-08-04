@@ -259,7 +259,7 @@ impl Editor {
             .get(&server_id)
             .is_some_and(|e| e.client.state() == hume_lsp::client::ServerState::Running)
         {
-            self.fire_hook_lsp_attach(bid, &language);
+            self.queue_lsp_attach(bid, &language);
         }
     }
 
@@ -348,10 +348,10 @@ impl Editor {
             self.clear_completion_menu();
         }
         for bid in diag_touched {
-            self.fire_hook_diagnostics_changed(bid);
+            self.queue_diagnostics_changed(bid);
         }
         for bid in bids {
-            self.fire_hook_lsp_detach(bid, &language);
+            self.queue_lsp_detach(bid, &language);
         }
     }
 

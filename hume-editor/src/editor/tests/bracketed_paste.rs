@@ -1,14 +1,14 @@
-// Terminal bracketed-paste (`Event::Paste`) handling: `handle_terminal_paste`
+// Terminal bracketed-paste (`TerminalEvent::Paste`) handling: `handle_terminal_paste`
 // in `mappings/bracketed_paste.rs`. Distinct from the register/kill-ring
 // `p`/`P` paste commands covered in `commands/paste.rs`.
 
 use super::*;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
 use pretty_assertions::assert_eq;
-use termina::event::Event;
+use termina::event::Event as TerminalEvent;
 
 fn paste(ed: &mut Editor, text: &str) {
-    ed.handle_event(Event::Paste(text.to_string()));
+    ed.handle_input(TerminalEvent::Paste(text.to_string()));
 }
 
 fn begin_completion_session(ed: &mut Editor, items: &[&str]) {

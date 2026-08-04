@@ -21,7 +21,7 @@ use hume_test_fixtures::testing::{parse_state, serialize_state};
 use hume_treesitter::parse_worker::InlineParseBackend;
 use slotmap::SecondaryMap;
 use termina::event::{
-    Event, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind,
+    Event as TerminalEvent, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 
 use super::{Editor, Mode, Severity};
@@ -95,8 +95,8 @@ fn key_left() -> KeyEvent {
 
 /// A left-button-down mouse event at the given screen coordinates. Shared by
 /// `mouse.rs` and `disk_change.rs` (click-to-focus's buffer-enter disk check).
-fn mouse_left_down(col: u16, row: u16) -> Event {
-    Event::Mouse(MouseEvent {
+fn mouse_left_down(col: u16, row: u16) -> TerminalEvent {
+    TerminalEvent::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: col,
         row,
@@ -114,7 +114,7 @@ fn type_cmd(ed: &mut Editor, cmd: &str) {
     ed.feed_key(key_enter());
 }
 
-/// `type_cmd`'s twin, routed through `handle_event` (see `Editor::feed_event`)
+/// `type_cmd`'s twin, routed through `handle_input` (see `Editor::feed_event`)
 /// instead of `feed_key`/`step`. Use when the test needs the buffer-enter
 /// disk check to run on the command's own dispatch, not just its keystrokes.
 fn type_cmd_event(ed: &mut Editor, cmd: &str) {
@@ -520,12 +520,12 @@ impl Editor {
         }
     }
 
-    /// Feed one key through `handle_event`, the interactive input boundary —
+    /// Feed one key through `handle_input`, the interactive input boundary —
     /// unlike `feed_key`/`step`, which deliberately bypass it (see
-    /// `Editor::handle_event`'s doc). Needed by tests covering the
+    /// `Editor::handle_input`'s doc). Needed by tests covering the
     /// buffer-enter disk check on focus change, which only runs here.
     fn feed_event(&mut self, key: KeyEvent) {
-        self.handle_event(Event::Key(key));
+        self.handle_input(TerminalEvent::Key(key));
     }
 }
 
@@ -593,9 +593,9 @@ mod commands;
 mod completion;
 mod disk_change;
 mod dot_repeat;
+mod events;
 mod file_io;
 mod find;
-mod hooks;
 mod incremental_parse;
 mod injections_editor;
 mod jump_list;

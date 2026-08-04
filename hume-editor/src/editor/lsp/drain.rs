@@ -64,7 +64,7 @@ impl Editor {
             }
         }
         for bid in touched {
-            self.fire_hook_diagnostics_changed(bid);
+            self.queue_diagnostics_changed(bid);
         }
 
         let now = Instant::now();
@@ -185,7 +185,7 @@ impl Editor {
                         .map(|(bid, _)| bid)
                         .collect();
                     for bid in bids {
-                        self.fire_hook_lsp_attach(bid, &lang);
+                        self.queue_lsp_attach(bid, &lang);
                     }
                 }
             }
@@ -233,7 +233,7 @@ impl Editor {
                 // before dispatch, so this arm only fires for a test or any
                 // future caller that dispatches one directly.
                 if let Some(bid) = self.ingest_publish_diagnostics(server_id, params) {
-                    self.fire_hook_diagnostics_changed(bid);
+                    self.queue_diagnostics_changed(bid);
                 }
             }
             ClientAction::Progress(params) => {

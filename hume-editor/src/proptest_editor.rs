@@ -1,6 +1,6 @@
 //! Property-based fuzz test for the full `Editor` key-handling pipeline.
 //!
-//! Feeds random sequences of plausible key events to `Editor::handle_event` and
+//! Feeds random sequences of plausible key events to `Editor::handle_input` and
 //! asserts that no sequence ever panics or leaves the editor in an invalid state.
 //!
 //! This complements the `proptest_doc` tests (which target `Text` and pure
@@ -9,7 +9,7 @@
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-    use termina::event::{Event, KeyCode, KeyEvent, Modifiers};
+    use termina::event::{Event as TerminalEvent, KeyCode, KeyEvent, Modifiers};
 
     use crate::editor::Editor;
     use crate::editor::buffer::Buffer;
@@ -147,7 +147,7 @@ mod tests {
             keys in arb_key_sequence(60),
         ) {
             for key in &keys {
-                ed.handle_event(Event::Key(key.to_key_event()));
+                ed.handle_input(TerminalEvent::Key(key.to_key_event()));
                 assert_editor_invariants(&ed);
             }
         }
@@ -160,7 +160,7 @@ mod tests {
             keys in arb_key_sequence(200),
         ) {
             for key in &keys {
-                ed.handle_event(Event::Key(key.to_key_event()));
+                ed.handle_input(TerminalEvent::Key(key.to_key_event()));
             }
             // Check invariants only at the end for speed — panics during the
             // loop are still caught by proptest as failures.

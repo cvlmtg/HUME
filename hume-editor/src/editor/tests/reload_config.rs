@@ -696,9 +696,9 @@ fn resync_refires_lsp_attach_for_a_running_server() {
     // `complete_handshake`'s `BecameRunning` arm already queued an
     // `OnLspAttach` for this attachment, with no scripting host yet to
     // handle it — drop it, mirroring what `reset_config_state`'s
-    // `pending_hooks.clear()` does to any hook queued before a reload, so
+    // `pending_events.clear()` does to any hook queued before a reload, so
     // only `resync_config_state`'s own fire is under test below.
-    ed.state.config.pending_hooks.clear();
+    ed.state.config.pending_events.clear();
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -714,7 +714,7 @@ fn resync_refires_lsp_attach_for_a_running_server() {
     let snapshot =
         ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
     ed.resync_config_state(&snapshot);
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert_ne!(
         state(&ed),
@@ -746,7 +746,7 @@ fn resync_does_not_refire_attach_for_a_starting_server() {
     let snapshot =
         ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
     ed.resync_config_state(&snapshot);
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert_eq!(
         state(&ed),
@@ -776,7 +776,7 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
     .unwrap();
     assert!(is_new, "sanity: this must be a genuinely new buffer");
     ed.detect_pending_languages();
-    ed.drain_hooks();
+    ed.drain_events();
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -796,7 +796,7 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
     let snapshot =
         ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
     ed.resync_config_state(&snapshot);
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert_eq!(
         ed.state.buffers.get(first_bid).overrides.tab_width,
@@ -861,10 +861,10 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
     .unwrap();
     assert!(is_new, "sanity: this must be a genuinely new buffer");
     // Mirrors `apply_script_effects`'s own tail call — the ordinary open
-    // path's `OnBufferOpen` fire, enqueued (not yet executed: `fire_hook_silent`
-    // only pushes onto `pending_hooks`) here rather than via a real eval.
+    // path's `OnBufferOpen` fire, enqueued (not yet executed: `queue_event`
+    // only pushes onto `pending_events`) here rather than via a real eval.
     ed.detect_pending_languages();
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert_eq!(
         ed.state.buffers.get(new_bid).overrides.tab_width,
@@ -878,7 +878,7 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
     );
 
     ed.resync_config_state(&snapshot);
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert_eq!(
         ed.state.buffers.get(old_bid).overrides.tab_width,
@@ -911,7 +911,7 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
         .set_path(Some(canonical.clone()));
     let sid = wire_starting_server(&mut ed, "rust");
     complete_handshake(&mut ed, sid);
-    ed.state.config.pending_hooks.clear(); // see resync_refires_lsp_attach_for_a_running_server's comment
+    ed.state.config.pending_events.clear(); // see resync_refires_lsp_attach_for_a_running_server's comment
 
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
     let parsed: lsp_types::PublishDiagnosticsParams = serde_json::from_value(serde_json::json!({
@@ -957,7 +957,7 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
     let snapshot =
         ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
     ed.resync_config_state(&snapshot);
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert_eq!(
         ed.state.config.decorations.signs_for("diag", bid).len(),
@@ -989,7 +989,7 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
         .set_path(Some(canonical.clone()));
     let sid = wire_starting_server(&mut ed, "rust");
     complete_handshake(&mut ed, sid);
-    ed.state.config.pending_hooks.clear(); // see resync_refires_lsp_attach_for_a_running_server's comment
+    ed.state.config.pending_events.clear(); // see resync_refires_lsp_attach_for_a_running_server's comment
 
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
     let parsed: lsp_types::PublishDiagnosticsParams = serde_json::from_value(serde_json::json!({
@@ -1057,7 +1057,7 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
     let snapshot =
         ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
     ed.resync_config_state(&snapshot);
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert_eq!(
         ed.state.config.decorations.signs_for("diag", bid).len(),
@@ -1095,7 +1095,7 @@ fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
     .unwrap();
     assert!(is_new, "sanity: this must be a genuinely new buffer");
     ed.detect_pending_languages();
-    ed.drain_hooks();
+    ed.drain_events();
     open_pane(&mut ed.state, &mut ed.view, second_bid);
 
     let mut host = ScriptingHost::new();
@@ -1111,7 +1111,7 @@ fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
     let snapshot =
         ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
     ed.resync_config_state(&snapshot);
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert_eq!(
         ed.state.buffers.get(first_bid).overrides.tab_width,
@@ -1146,7 +1146,7 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
     )
     .unwrap();
     ed.detect_pending_languages();
-    ed.drain_hooks();
+    ed.drain_events();
     open_pane(&mut ed.state, &mut ed.view, second_bid);
 
     let mut host = ScriptingHost::new();
@@ -1163,7 +1163,7 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
     // during this same reload.
     let snapshot = ReloadSnapshot::for_test([first_bid], &ed.state.buffers);
     ed.resync_config_state(&snapshot);
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert_eq!(
         ed.state.buffers.get(first_bid).overrides.tab_width,

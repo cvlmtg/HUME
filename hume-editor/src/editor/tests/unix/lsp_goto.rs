@@ -85,10 +85,10 @@ fn run_goto(ed: &mut Editor, cmd: &str) {
     // Drain the Command-mode entry/exit's on-mode-change hooks now (mirrors
     // the real interactive loop, which drains after every keystroke) before
     // the async response arrives — same ordering fix as lsp_hover.rs.
-    ed.drain_hooks();
+    ed.drain_events();
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
-    ed.drain_hooks();
+    ed.drain_events();
 }
 
 fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {

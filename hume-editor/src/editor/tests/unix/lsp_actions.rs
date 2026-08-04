@@ -90,7 +90,7 @@ fn setup_with_capabilities(
 
 fn run_actions(ed: &mut Editor) {
     type_cmd(ed, ":lsp-code-actions");
-    ed.drain_hooks();
+    ed.drain_events();
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
 }

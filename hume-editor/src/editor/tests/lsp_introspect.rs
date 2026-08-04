@@ -348,8 +348,8 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
     ed.scripting = Some(host);
 
     let pid = ed.state.focused_pane_id;
-    ed.fire_hook_viewport_change(pid);
-    ed.drain_hooks();
+    ed.queue_viewport_change(pid);
+    ed.drain_events();
 
     let host = ed.scripting.take().unwrap();
     let fired = run_probe(

@@ -208,7 +208,7 @@ impl Editor {
                         .language
                         .map(|id| self.state.config.languages.name_of(id).to_owned());
                     for source in self.state.trigger_sources_for(ch, language.as_deref()) {
-                        self.fire_hook_trigger_char(buf, ch, &source);
+                        self.queue_trigger_char(buf, ch, &source);
                     }
                 }
             }
@@ -421,7 +421,7 @@ impl Editor {
         if incomplete {
             let bid_val = SteelBufferId::new(bid).into_steel_val();
             let text_val = steel::rvals::SteelVal::StringV(text.into());
-            self.fire_hook_silent(HookId::OnCompletionRefilter, &[bid_val, text_val]);
+            self.queue_event(HookId::OnCompletionRefilter, &[bid_val, text_val]);
         }
         self.lsp.completion_ui = None;
     }

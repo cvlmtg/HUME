@@ -289,7 +289,7 @@ impl Editor {
         // the didChange above; nothing republishes decorations on its own,
         // so they simply stay cleared until a plugin sets them again.
         if self.lsp.remove_buffer_diagnostics(id) {
-            self.fire_hook_diagnostics_changed(id);
+            self.queue_diagnostics_changed(id);
         }
         self.state.config.decorations.remove_buffer(id);
 
@@ -400,9 +400,9 @@ impl Editor {
     ///
     /// Runs the buffer-enter disk check itself only when `target` is already
     /// focused (`:e` re-targeting the current file): that's a buffer-enter
-    /// with no focus diff for `Editor::handle_event`'s tail check to
+    /// with no focus diff for `Editor::handle_input`'s tail check to
     /// observe, so nothing else would ever check it. When `target` differs,
-    /// this only switches — `handle_event`'s own check runs once dispatch
+    /// this only switches — `handle_input`'s own check runs once dispatch
     /// returns and sees the diff, so the two calls stay mutually exclusive
     /// instead of both stat-ing the same target.
     ///

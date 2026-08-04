@@ -34,7 +34,7 @@ use super::{Editor, Mode};
 impl Editor {
     /// Dispatch a [`MouseEvent`] to the appropriate handler.
     ///
-    /// Hook draining happens in the caller (`handle_event`) — this method only
+    /// Hook draining happens in the caller (`handle_input`) — this method only
     /// performs the dispatch.
     pub(super) fn handle_mouse(&mut self, mouse: MouseEvent) {
         match mouse.kind {

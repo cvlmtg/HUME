@@ -262,7 +262,7 @@ pub(crate) fn close_buffer_and_notify(
         let val = SteelBufferId::new(id).into_steel_val();
         state
             .config
-            .pending_hooks
+            .pending_events
             .push((HookId::OnBufferClose, vec![val]));
     }
     new_focused

@@ -70,10 +70,10 @@ fn setup(
 
 fn run_references(ed: &mut Editor) {
     type_cmd(ed, ":lsp-references");
-    ed.drain_hooks();
+    ed.drain_events();
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
-    ed.drain_hooks();
+    ed.drain_events();
 }
 
 fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {

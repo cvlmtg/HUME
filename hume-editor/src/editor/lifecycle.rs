@@ -2,7 +2,7 @@ use std::io;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use termina::event::{Event, KeyEvent, KeyEventKind};
+use termina::event::{Event as TerminalEvent, KeyEvent, KeyEventKind};
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, RenderContext};
 use hume_engine::types::EditorMode;
@@ -265,7 +265,7 @@ impl Editor {
     ///
     /// This is the single, non-test path for feeding one keystroke to the editor
     /// from outside the interactive event loop (e.g. headless key-runner).  The
-    /// interactive loop handles hook draining itself via [`Self::handle_event`]; here
+    /// interactive loop handles hook draining itself via [`Self::handle_input`]; here
     /// we use [`Self::handle_key`] directly so the caller doesn't need a scripting host.
     pub(crate) fn step(&mut self, key: KeyEvent) {
         self.handle_key(key);
@@ -283,11 +283,11 @@ impl Editor {
     ///
     /// Also the single place that runs the buffer-enter disk check for a
     /// focus change: the snapshot is taken before dispatch and compared after
-    /// `drain_hooks`, so a hook-driven `switch-to-buffer!` is covered along
+    /// `drain_events`, so a hook-driven `switch-to-buffer!` is covered along
     /// with every keymap/mouse path, instead of each needing its own call —
     /// see `check_focus_change_disk_state`. `Editor::step` (the headless
     /// key-runner) skips this boundary on its own dispatch, but its
-    /// `drain_replay_queue` re-enters `handle_event` per replayed key, so a
+    /// `drain_replay_queue` re-enters `handle_input` per replayed key, so a
     /// check still runs for a buffer switch made from a macro — never
     /// opening a confirm there, since `can_open_confirm`'s `!is_replaying`
     /// guard applies. That same function's `message_logged_this_event`
@@ -296,16 +296,16 @@ impl Editor {
     /// losing it to an unrelated disk prompt — the check still runs and
     /// still warns, so landing on a stale buffer this way is never
     /// completely silent.
-    pub(crate) fn handle_event(&mut self, ev: Event) {
+    pub(crate) fn handle_input(&mut self, ev: TerminalEvent) {
         let focused_before = self.focused_buffer_id();
         let totals_before = self.state.message_log.totals();
         match ev {
-            Event::Key(k) => self.handle_key(k),
-            Event::Mouse(m) => self.handle_mouse(m),
-            Event::Paste(s) => self.handle_terminal_paste(s),
+            TerminalEvent::Key(k) => self.handle_key(k),
+            TerminalEvent::Mouse(m) => self.handle_mouse(m),
+            TerminalEvent::Paste(s) => self.handle_terminal_paste(s),
             _ => {}
         }
-        self.drain_hooks();
+        self.drain_events();
         self.state.message_logged_this_event = self.state.message_log.totals() != totals_before;
         self.check_focus_change_disk_state(focused_before);
         self.state.message_logged_this_event = false;
@@ -426,7 +426,7 @@ impl Editor {
             // paints the complete frame — clear + cells + cursor shape in one shot.
             let _ = hume_platform::terminal::end_synchronized_update(&shared);
 
-            // ── 3. Event ──────────────────────────────────────────────────────
+            // ── 3. TerminalEvent ──────────────────────────────────────────────────────
             // Blocks until a matching event is available, a wake from a
             // background thread (parse worker, LSP transport, SIGWINCH — the
             // reader's source routes it internally), or the nearest async
@@ -445,19 +445,19 @@ impl Editor {
                 // Release events arrive only with kitty keyboard protocol
                 // (REPORT_EVENT_TYPES flag). Ignore them — we act on Press and
                 // Repeat (held key). Without kitty all events are Press anyway.
-                Event::Key(key) if key.kind != KeyEventKind::Release => {
-                    self.handle_event(Event::Key(key));
+                TerminalEvent::Key(key) if key.kind != KeyEventKind::Release => {
+                    self.handle_input(TerminalEvent::Key(key));
                     self.sync_search_cache();
                 }
-                Event::Key(_) => {}
-                Event::Mouse(mouse) => {
-                    self.handle_event(Event::Mouse(mouse));
+                TerminalEvent::Key(_) => {}
+                TerminalEvent::Mouse(mouse) => {
+                    self.handle_input(TerminalEvent::Mouse(mouse));
                 }
-                Event::Paste(text) => {
-                    self.handle_event(Event::Paste(text));
+                TerminalEvent::Paste(text) => {
+                    self.handle_input(TerminalEvent::Paste(text));
                     self.sync_search_cache();
                 }
-                Event::WindowResized(_) => {
+                TerminalEvent::WindowResized(_) => {
                     // Drain any additional resize events that are already queued
                     // so a drag (which emits one event per delta) collapses into a
                     // single render on the next iteration. Viewport dimensions are
@@ -466,27 +466,27 @@ impl Editor {
                     // inline so they are never lost.
                     while reader.poll(Some(Duration::ZERO), |_| true)? {
                         match reader.read(|_| true)? {
-                            Event::WindowResized(_) => continue,
+                            TerminalEvent::WindowResized(_) => continue,
                             // A window manager can resize and refocus in the
                             // same gesture (snapping a tile, say) — the
                             // `_ => break` catch-all below would otherwise
                             // swallow this without running the disk check.
-                            Event::FocusIn => {
+                            TerminalEvent::FocusIn => {
                                 self.check_all_disk_state(DiskCheckTrigger::Ambient);
                                 break;
                             }
-                            Event::Key(key) if key.kind != KeyEventKind::Release => {
-                                self.handle_event(Event::Key(key));
+                            TerminalEvent::Key(key) if key.kind != KeyEventKind::Release => {
+                                self.handle_input(TerminalEvent::Key(key));
                                 self.sync_search_cache();
                                 break;
                             }
-                            Event::Key(_) => break,
-                            Event::Mouse(mouse) => {
-                                self.handle_event(Event::Mouse(mouse));
+                            TerminalEvent::Key(_) => break,
+                            TerminalEvent::Mouse(mouse) => {
+                                self.handle_input(TerminalEvent::Mouse(mouse));
                                 break;
                             }
-                            Event::Paste(text) => {
-                                self.handle_event(Event::Paste(text));
+                            TerminalEvent::Paste(text) => {
+                                self.handle_input(TerminalEvent::Paste(text));
                                 self.sync_search_cache();
                                 break;
                             }
@@ -498,7 +498,7 @@ impl Editor {
                 // trigger points (alongside buffer-enter and `:checktime`) —
                 // see `Editor::check_all_disk_state`. `FocusOut` needs no
                 // handling: there's nothing to check until focus returns.
-                Event::FocusIn => self.check_all_disk_state(DiskCheckTrigger::Ambient),
+                TerminalEvent::FocusIn => self.check_all_disk_state(DiskCheckTrigger::Ambient),
                 // CSI/OSC/DCS protocol responses: nothing in the run loop
                 // needs them. The `|_| true` filter guarantees they can't
                 // pile up unread in the reader's buffer either way.

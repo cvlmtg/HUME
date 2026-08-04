@@ -20,7 +20,7 @@ use hume_engine::providers::{
 };
 use hume_engine::types::ScopeId;
 use ratatui::layout::Rect;
-use termina::event::{Event, MouseEvent, MouseEventKind};
+use termina::event::{Event as TerminalEvent, MouseEvent, MouseEventKind};
 
 /// Emits one `Before(0)` virtual row, texted "V".
 struct OneBeforeLine;
@@ -118,7 +118,7 @@ fn mouse_wheel_moves_one_row_at_a_time_through_a_before_block() {
     ed.view.panes[ed.state.focused_pane_id].viewport.height = 2;
 
     let scroll_down = || {
-        Event::Mouse(MouseEvent {
+        TerminalEvent::Mouse(MouseEvent {
             kind: MouseEventKind::ScrollDown,
             column: 0,
             row: 0,
@@ -133,7 +133,7 @@ fn mouse_wheel_moves_one_row_at_a_time_through_a_before_block() {
         "sanity: starts at block row 0"
     );
 
-    ed.handle_event(scroll_down());
+    ed.handle_input(scroll_down());
     assert_eq!(ed.viewport().top_line, 0);
     assert_eq!(
         ed.viewport().top_row_offset,
@@ -141,7 +141,7 @@ fn mouse_wheel_moves_one_row_at_a_time_through_a_before_block() {
         "one notch skips exactly the virtual row, not the whole 2-row block"
     );
 
-    ed.handle_event(scroll_down());
+    ed.handle_input(scroll_down());
     assert_eq!(
         ed.viewport().top_line,
         1,

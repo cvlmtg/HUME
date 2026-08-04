@@ -86,7 +86,7 @@ fn setup(
 
 fn run_rename(ed: &mut Editor) {
     type_cmd(ed, ":lsp-rename");
-    ed.drain_hooks();
+    ed.drain_events();
 }
 
 #[test]

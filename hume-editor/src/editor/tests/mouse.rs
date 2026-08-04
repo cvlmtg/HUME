@@ -1,10 +1,10 @@
 use super::*;
 use hume_editing::selection::Selection;
 use pretty_assertions::assert_eq;
-use termina::event::{Event, Modifiers, MouseButton, MouseEvent, MouseEventKind};
+use termina::event::{Event as TerminalEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
-fn mouse_drag(col: u16, row: u16) -> Event {
-    Event::Mouse(MouseEvent {
+fn mouse_drag(col: u16, row: u16) -> TerminalEvent {
+    TerminalEvent::Mouse(MouseEvent {
         kind: MouseEventKind::Drag(MouseButton::Left),
         column: col,
         row,
@@ -35,7 +35,7 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
 
     // Click on 'd' (line 2, column 1, no gutter in test harness) to exit
     // Insert mode via the mouse.
-    ed.handle_event(mouse_left_down(1, 2));
+    ed.handle_input(mouse_left_down(1, 2));
 
     assert_eq!(ed.state.mode, Mode::Normal);
     // The blank line's "  " is trimmed on exit (buffer shrinks to
@@ -55,8 +55,8 @@ fn drag_extends_selection_from_click_anchor() {
     let mut ed = editor_from("-[0]>123456789\n");
     ed.view.last_pane_area = ratatui::layout::Rect::new(0, 0, 80, 24);
 
-    ed.handle_event(mouse_left_down(0, 0)); // anchor at char 0
-    ed.handle_event(mouse_drag(4, 0)); // head at char 4 ('4')
+    ed.handle_input(mouse_left_down(0, 0)); // anchor at char 0
+    ed.handle_input(mouse_drag(4, 0)); // head at char 4 ('4')
 
     let sel = ed.current_selections().primary();
     assert_eq!(sel.anchor(), 0);
@@ -80,14 +80,14 @@ fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
 
     // Click pane B (right half, gutter 4): screen col 57 = rect.x(50) +
     // gutter(4) + content col 3 (see vsplit_click_... below for the geometry).
-    ed.handle_event(mouse_left_down(57, 0));
+    ed.handle_input(mouse_left_down(57, 0));
     assert_eq!(ed.state.focused_pane_id, pid_b);
     let head_after_click = ed.current_selections().primary().head();
 
     // Drag to col 0 — inside pane A's rect (x ∈ [0, 49)), left of pane B's
     // own rect.x (50). Without the rect.contains guard, `col - rect.x`
     // underflows a u16 subtraction.
-    ed.handle_event(mouse_drag(0, 0));
+    ed.handle_input(mouse_drag(0, 0));
 
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -119,7 +119,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     let head = ed.doc().text().line_to_char(10);
     ed.set_current_selections(SelectionSet::single(Selection::collapsed(head)));
 
-    ed.handle_event(Event::Mouse(MouseEvent {
+    ed.handle_input(TerminalEvent::Mouse(MouseEvent {
         kind: MouseEventKind::ScrollUp,
         column: 0,
         row: 0,
@@ -146,7 +146,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
 fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
-    ed.handle_event(Event::Mouse(MouseEvent {
+    ed.handle_input(TerminalEvent::Mouse(MouseEvent {
         kind: MouseEventKind::ScrollUp,
         column: 0,
         row: 0,
@@ -197,7 +197,7 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
 
     // Click pane A (unfocused, left half): screen col 7 = rect.x(0) +
     // gutter(0) + content col 7 → the '7' in "0123456789...".
-    ed.handle_event(mouse_left_down(7, 0));
+    ed.handle_input(mouse_left_down(7, 0));
     assert_eq!(
         ed.state.focused_pane_id, pid_a,
         "click in pane A must move focus there"
@@ -207,7 +207,7 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
 
     // Click pane B (now unfocused, right half): screen col 57 = rect.x(50)
     // + gutter(4) + content col 3 → the '3'.
-    ed.handle_event(mouse_left_down(57, 0));
+    ed.handle_input(mouse_left_down(57, 0));
     assert_eq!(
         ed.state.focused_pane_id, pid_b,
         "click in pane B must move focus back there"
@@ -221,7 +221,7 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
 
     // Click the statusline (row 24 — usable pane height is 24 after the
     // statusline reservation, so row 24 is outside every pane's rect).
-    ed.handle_event(mouse_left_down(10, 24));
+    ed.handle_input(mouse_left_down(10, 24));
     assert_eq!(
         ed.state.focused_pane_id, pid_b,
         "a click outside every pane rect must not move focus"
@@ -257,7 +257,7 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
     // Absolute row 15 = pane B's rect.y(12) + relative row 3 → buffer line 3
     // ("DDDD"). Column 6 = gutter(4) + content col 2 → 'D' (any content col
     // 0..3 lands on 'D' — the whole line is the same character).
-    ed.handle_event(mouse_left_down(6, 15));
+    ed.handle_input(mouse_left_down(6, 15));
 
     let sel = ed.state.panes.state[pid_b][bid].selections.primary();
     assert_eq!(

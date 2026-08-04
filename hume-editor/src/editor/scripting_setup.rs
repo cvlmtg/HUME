@@ -9,14 +9,14 @@ use steel::rvals::SteelVal;
 use super::reload::ReloadSnapshot;
 use super::{Editor, Severity, host_impl::EditorHostImpl};
 
-/// Upper bound on total hooks processed per `drain_hooks` boundary.
+/// Upper bound on total hooks processed per `drain_events` boundary.
 ///
 /// Bounding *passes* instead of total work would still let an amplifying
 /// cascade (a handler that enqueues more hooks than it received) blow up the
 /// batch size geometrically pass over pass — few passes, but exponential
 /// total evals. Counting total hooks processed bounds both that shape and the
 /// constant-width ping-pong loop; unreachable in any legitimate configuration.
-const MAX_HOOK_DRAIN_HOOKS: usize = 1000;
+const MAX_EVENT_DRAIN: usize = 1000;
 
 impl Editor {
     /// Apply every effect a Steel eval queued, in the exact order the
@@ -26,7 +26,7 @@ impl Editor {
     /// `apply_pending_language_regs` call so a large run (e.g.
     /// `languages.scm`'s ~700 `define-language!` calls) rebuilds the glob
     /// matcher once, not once per entry; every other effect kind applies one
-    /// at a time. Shared tail for `call_steel_cmd`'s call site, `drain_hooks`,
+    /// at a time. Shared tail for `call_steel_cmd`'s call site, `drain_events`,
     /// `drain_pending_steel_calls`, and `init_scripting`.
     ///
     /// Finishes by draining `state.config.pending_language_detection` — covers every
@@ -142,47 +142,47 @@ impl Editor {
         }
     }
 
-    // ── Hook firing ──────────────────────────────────────────────────────────
+    // ── Event queueing ───────────────────────────────────────────────────────
 
     /// Fire `OnBufferSave` hooks for `bid`. Both `:w` write paths in
     /// `commands.rs` share this rather than duplicating the arg construction.
-    pub(super) fn fire_hook_buffer_save(&mut self, bid: BufferId) {
+    pub(super) fn queue_buffer_save(&mut self, bid: BufferId) {
         let val = SteelBufferId::new(bid).into_steel_val();
-        self.fire_hook_silent(HookId::OnBufferSave, &[val]);
+        self.queue_event(HookId::OnBufferSave, &[val]);
     }
 
     /// Fire `OnLspAttach (bid server-name)` — called both when a buffer
     /// attaches to an already-Running server (`lsp_attach_buffer`) and, for
     /// every buffer already attached, when a Starting client reaches
     /// Running (`dispatch_lsp_action`'s `BecameRunning` arm).
-    pub(super) fn fire_hook_lsp_attach(&mut self, bid: BufferId, server_name: &str) {
+    pub(super) fn queue_lsp_attach(&mut self, bid: BufferId, server_name: &str) {
         let bid_val = SteelBufferId::new(bid).into_steel_val();
         let name_val = SteelVal::StringV(server_name.into());
-        self.fire_hook_silent(HookId::OnLspAttach, &[bid_val, name_val]);
+        self.queue_event(HookId::OnLspAttach, &[bid_val, name_val]);
     }
 
     /// Fire `OnLspDetach (bid server-name)` — called from `lsp_stop_one` for
     /// every buffer that was attached to the server being stopped, right
     /// after `buf.lsp_server` is cleared.
-    pub(super) fn fire_hook_lsp_detach(&mut self, bid: BufferId, server_name: &str) {
+    pub(super) fn queue_lsp_detach(&mut self, bid: BufferId, server_name: &str) {
         let bid_val = SteelBufferId::new(bid).into_steel_val();
         let name_val = SteelVal::StringV(server_name.into());
-        self.fire_hook_silent(HookId::OnLspDetach, &[bid_val, name_val]);
+        self.queue_event(HookId::OnLspDetach, &[bid_val, name_val]);
     }
 
     /// Fire `OnDiagnosticsChanged (bid)` — payload-free signal, once per
     /// buffer a `publishDiagnostics` drain batch actually touched
     /// (`drain_lsp`). Handlers pull via `(diagnostics-for-buffer bid …)`.
-    pub(super) fn fire_hook_diagnostics_changed(&mut self, bid: BufferId) {
+    pub(super) fn queue_diagnostics_changed(&mut self, bid: BufferId) {
         let val = SteelBufferId::new(bid).into_steel_val();
-        self.fire_hook_silent(HookId::OnDiagnosticsChanged, &[val]);
+        self.queue_event(HookId::OnDiagnosticsChanged, &[val]);
     }
 
     /// Fire `OnViewportChange (bid first-line last-line)` for `pane_id` —
     /// called only when its debounce timer actually fires (`timer_bridge`),
     /// reading the pane's *current* bounds rather than whatever they were
     /// when the timer was armed. A no-op if the pane closed in the meantime.
-    pub(super) fn fire_hook_viewport_change(&mut self, pane_id: hume_engine::pipeline::PaneId) {
+    pub(super) fn queue_viewport_change(&mut self, pane_id: hume_engine::pipeline::PaneId) {
         let Some(pane) = self.view.panes.get(pane_id) else {
             return;
         };
@@ -190,7 +190,7 @@ impl Editor {
         let total_lines = self.state.buffers.get(bid).text().len_lines();
         let (first_line, last_line) = super::lsp::introspect::pane_visible_range(pane, total_lines);
         let bid_val = SteelBufferId::new(bid).into_steel_val();
-        self.fire_hook_silent(
+        self.queue_event(
             HookId::OnViewportChange,
             &[
                 bid_val,
@@ -204,59 +204,57 @@ impl Editor {
     /// `ch` has already been inserted into `bid` (mappings/insert.rs), once
     /// per source registered for `ch` under `bid`'s language via
     /// `(register-trigger-chars! source language chars)`.
-    pub(super) fn fire_hook_trigger_char(&mut self, bid: BufferId, ch: char, source: &str) {
+    pub(super) fn queue_trigger_char(&mut self, bid: BufferId, ch: char, source: &str) {
         let bid_val = SteelBufferId::new(bid).into_steel_val();
         let ch_val = SteelVal::StringV(ch.to_string().into());
         let source_val = SteelVal::StringV(source.into());
-        self.fire_hook_silent(HookId::OnTriggerChar, &[bid_val, ch_val, source_val]);
+        self.queue_event(HookId::OnTriggerChar, &[bid_val, ch_val, source_val]);
     }
 
-    /// Fire all Steel handlers for `hook_id`, passing `args` to each.
-    ///
     /// Enqueue `hook_id` to fire after the current command returns.
     ///
-    /// The unified hook-firing path: all hook scheduling goes through
-    /// `state.config.pending_hooks`; `Editor::drain_hooks` does the actual Steel eval.
+    /// The unified event-queueing path: all hook scheduling goes through
+    /// `state.config.pending_events`; `Editor::drain_events` does the actual Steel eval.
     /// This prevents re-entrant Steel calls during command execution and gives
     /// a single drain point for both the keypress and sync-Steel paths.
-    pub(super) fn fire_hook_silent(&mut self, hook_id: HookId, args: &[steel::rvals::SteelVal]) {
+    pub(super) fn queue_event(&mut self, hook_id: HookId, args: &[steel::rvals::SteelVal]) {
         self.state
             .config
-            .pending_hooks
+            .pending_events
             .push((hook_id, args.to_vec()));
     }
 
-    /// Fire every hook in `state.config.pending_hooks`, draining the queue.
+    /// Fire every hook in `state.config.pending_events`, draining the queue.
     ///
-    /// Called once per interactive input event by `handle_event` (the single
+    /// Called once per interactive input event by `handle_input` (the single
     /// interactive drain boundary), and once at startup in `lib.rs` before the
     /// event loop begins. Inner hook handlers may enqueue more hooks; the outer
     /// loop re-drains until the queue is empty — capped at
-    /// [`MAX_HOOK_DRAIN_HOOKS`] total hooks processed (not passes) so neither a
+    /// [`MAX_EVENT_DRAIN`] total hooks processed (not passes) so neither a
     /// constant-width ping-pong loop (e.g. two `on-language-set` handlers
     /// flipping `set-buffer-language!` between two values) nor an amplifying
     /// cascade (a handler that enqueues more hooks than it received, doubling
     /// the batch pass over pass) can livelock the editor.  The watchdog only
     /// bounds each individual eval, not this loop.
-    pub(crate) fn drain_hooks(&mut self) {
+    pub(crate) fn drain_events(&mut self) {
         // Any mode change queued between the last consumption point and now
         // (a hook handler earlier this same batch, or something that ran
-        // before `drain_hooks` was even called) must not survive into the
+        // before `drain_events` was even called) must not survive into the
         // handler calls below. Unconditional, at the top, so no early-return
         // branch below can skip it.
         self.take_pending_lsp_completion_dismiss();
         let mut total_processed = 0usize;
-        while !self.state.config.pending_hooks.is_empty() {
-            let hooks = std::mem::take(&mut self.state.config.pending_hooks);
+        while !self.state.config.pending_events.is_empty() {
+            let hooks = std::mem::take(&mut self.state.config.pending_events);
             total_processed += hooks.len();
-            if total_processed > MAX_HOOK_DRAIN_HOOKS {
-                // `hooks` was just drained from `pending_hooks` above, so
+            if total_processed > MAX_EVENT_DRAIN {
+                // `hooks` was just drained from `pending_events` above, so
                 // nothing has been re-enqueued yet — it's the entire drop.
                 let dropped = hooks.len();
                 self.report(
                     Severity::Error,
                     format!(
-                        "hook cascade exceeded {MAX_HOOK_DRAIN_HOOKS} total drained hook(s) — \
+                        "hook cascade exceeded {MAX_EVENT_DRAIN} total drained hook(s) — \
                          dropping {dropped} pending hook(s); handler feedback loop?"
                     ),
                 );
@@ -310,7 +308,7 @@ impl Editor {
     /// naturally re-triggering, so a single pass is enough — anything a
     /// callback itself queues lands in next frame's drain, not this one).
     pub(crate) fn drain_pending_steel_calls(&mut self) {
-        // Same reasoning as the top of `drain_hooks` — unconditional so no
+        // Same reasoning as the top of `drain_events` — unconditional so no
         // early-return branch below can skip it. `prepare_frame` calls this
         // every frame, so no separate render-time consumption is needed.
         self.take_pending_lsp_completion_dismiss();

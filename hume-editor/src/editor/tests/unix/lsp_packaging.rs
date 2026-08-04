@@ -47,10 +47,10 @@ const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin "core:stdlib")
 ///
 /// The handshake below (draining the backend's `initialize` response and
 /// dispatching `BecameRunning`) fires `on-lsp-attach` *before* `ed.scripting`
-/// is even assigned. That's fine: `fire_hook_silent` only pushes onto
-/// `state.config.pending_hooks`, which lives on `Editor::state` independent of
+/// is even assigned. That's fine: `queue_event` only pushes onto
+/// `state.config.pending_events`, which lives on `Editor::state` independent of
 /// `scripting` — the queued hook survives host installation and is still
-/// there for a later `ed.drain_hooks()` to process against the real host.
+/// there for a later `ed.drain_events()` to process against the real host.
 fn setup_declared(
     file_dir: &Path,
     tmp: &Path,
@@ -163,10 +163,10 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
     // drain sequence `lsp_hover.rs`'s `run_hover` uses for an eagerly-loaded
     // plugin is enough here too.
     type_cmd(&mut ed, ":lsp-hover");
-    ed.drain_hooks();
+    ed.drain_events();
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
-    ed.drain_hooks();
+    ed.drain_events();
 
     // `show-popup!` only populates `popup_view` once a frame resolves its
     // anchor (`lsp_popup.rs`'s `show_popup_populates_the_view_after_a_frame`).
@@ -184,7 +184,7 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
 /// The `on-lsp-attach` event alone — with no `:`-command ever dispatched —
 /// activates the declared `core:lsp` plugin. Unlike the command-dispatch test
 /// above, nothing here touches a lazy command stub, so the only thing that
-/// can flip `Declared` to `Loaded` is `drain_hooks`'s
+/// can flip `Declared` to `Loaded` is `drain_events`'s
 /// `activate_lazy_event_plugins(OnLspAttach)` picking up the hook that
 /// `setup_declared`'s handshake already queued.
 ///
@@ -213,7 +213,7 @@ fn attach_event_alone_activates_the_declared_plugin() {
          on-lsp-attach hook can flip it here"
     );
 
-    ed.drain_hooks();
+    ed.drain_events();
 
     assert_eq!(
         ed.scripting.as_ref().unwrap().plugin_status(&id),
@@ -237,7 +237,7 @@ fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
         |_backend, _sid| {},
     );
 
-    ed.drain_hooks();
+    ed.drain_events();
 
     let id = PluginId::parse("core:lsp").unwrap();
     assert_eq!(
@@ -296,7 +296,7 @@ fn every_default_lsp_binding_dispatches_without_error() {
         ed.state.status_msg = None;
         ed.handle_key(key(first));
         ed.handle_key(key(second));
-        ed.drain_hooks();
+        ed.drain_events();
         ed.drain_lsp();
         ed.drain_pending_steel_calls();
         if let Some(msg) = &ed.state.status_msg {

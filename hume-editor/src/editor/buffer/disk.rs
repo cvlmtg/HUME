@@ -260,14 +260,14 @@ impl Editor {
     /// for — same hazard class as Insert/Command, just inside Normal mode.
     ///
     /// Macro replay: `drain_replay_queue` feeds every queued key straight
-    /// back through `handle_event`, so each one is already spoken for in
+    /// back through `handle_input`, so each one is already spoken for in
     /// exactly the sense `pending_keys` is — the confirm intercept sits above
     /// mode dispatch and would eat the next replayed key, truncating the
     /// macro at whatever point a file happened to change on disk. A change
     /// hit during replay warns instead, and the deferred prompt arrives on
     /// the next real buffer-enter, same as a mode-blocked one.
     ///
-    /// Fresh message this event: `Editor::handle_event` sets
+    /// Fresh message this event: `Editor::handle_input` sets
     /// `message_logged_this_event` for the duration of its post-dispatch
     /// focus-change check whenever that same event logged a new warning or
     /// error — a command that fails after moving focus (`:qa` naming the

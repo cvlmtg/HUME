@@ -280,7 +280,7 @@ fn did_save_and_did_close_each_fire_once() {
 }
 
 /// Regression: `:e!` under macro replay — an edit queued but not yet
-/// drained (`drain_replay_queue` loops `handle_event` with no `drain_lsp`
+/// drained (`drain_replay_queue` loops `handle_input` with no `drain_lsp`
 /// between keys), immediately followed by a reload in the same window.
 /// Before the fix, the reload's whole-document `didChange` (at the new,
 /// higher version) reached the wire ahead of the still-queued incremental

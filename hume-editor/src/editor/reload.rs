@@ -120,7 +120,7 @@ impl Editor {
 
         // ── Steel values rooted in the outgoing engine ──
         //
-        // `pending_hooks`, `pending_steel_calls`, and the five overlay
+        // `pending_events`, `pending_steel_calls`, and the five overlay
         // models (popup/menu/drawer/picker/confirm) all drop below when
         // `self.state.config = ConfigState::new(…)` runs — nothing here
         // reads any of them in between, so there's nothing to clear early.
@@ -244,7 +244,7 @@ impl Editor {
     ///
     /// Batched, not interleaved per buffer the way a real reopen would fire
     /// these: every `OnLspAttach` runs, then every `OnBufferOpen`, then every
-    /// `OnDiagnosticsChanged`/`OnViewportChange`. `pending_hooks` is FIFO, so
+    /// `OnDiagnosticsChanged`/`OnViewportChange`. `pending_events` is FIFO, so
     /// each buffer's *own* hooks still fire in the same relative order a real
     /// open would use — only the cross-buffer interleaving differs.
     pub(crate) fn resync_config_state(&mut self, snapshot: &ReloadSnapshot) {
@@ -255,7 +255,7 @@ impl Editor {
             .filter(|(bid, _)| snapshot.survives(*bid, &self.state.buffers))
             .collect();
         for (bid, language) in &running_attachments {
-            self.fire_hook_lsp_attach(*bid, language);
+            self.queue_lsp_attach(*bid, language);
         }
 
         let open_bids: Vec<BufferId> = self
@@ -267,7 +267,7 @@ impl Editor {
             .collect();
         for bid in open_bids {
             let val = SteelBufferId::new(bid).into_steel_val();
-            self.fire_hook_silent(HookId::OnBufferOpen, &[val]);
+            self.queue_event(HookId::OnBufferOpen, &[val]);
         }
 
         // Diagnostics: pull-style hook, re-reads the surviving
@@ -283,7 +283,7 @@ impl Editor {
             .filter(|&bid| snapshot.survives(bid, &self.state.buffers))
             .collect();
         for bid in diagnostic_bids {
-            self.fire_hook_diagnostics_changed(bid);
+            self.queue_diagnostics_changed(bid);
         }
 
         // Inlay hints (and anything else `on-viewport-change`-gated, e.g.
@@ -301,7 +301,7 @@ impl Editor {
             .map(|(pid, _)| pid)
             .collect();
         for pane_id in panes_on_surviving_buffers {
-            self.fire_hook_viewport_change(pane_id);
+            self.queue_viewport_change(pane_id);
         }
     }
 }
@@ -361,9 +361,9 @@ pub(crate) fn typed_reload_config(
     ed.resync_config_state(&snapshot);
     // Drained here, inside the accounting window, rather than left for the
     // next interactive event: `resync_config_state` only *enqueues* its
-    // hooks (`fire_hook_silent`), and a handler error from one of them is
+    // hooks (`queue_event`), and a handler error from one of them is
     // exactly the kind of failure "Config reloaded" must not paper over.
-    ed.drain_hooks();
+    ed.drain_events();
     let (errors_after, warnings_after) = ed.state.message_log.totals();
     if errors_after == errors_before && warnings_after == warnings_before {
         ed.report(Severity::Info, "Config reloaded".to_string());

@@ -400,7 +400,7 @@ impl CompletionSession {
         let item_val = json_to_steel(&item.raw);
         state
             .config
-            .pending_hooks
+            .pending_events
             .push((HookId::OnCompletionAccept, vec![bid_val, item_val]));
 
         if !item.has_additional_text_edits {

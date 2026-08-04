@@ -79,7 +79,7 @@ fn select_full_line_1(ed: &mut Editor) {
 
 fn run_fmt(ed: &mut Editor) {
     type_cmd(ed, ":lsp-fmt");
-    ed.drain_hooks();
+    ed.drain_events();
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
 }
@@ -225,8 +225,8 @@ fn loading_the_plugin_registers_no_save_hook() {
     let before = ed.doc().text().to_string();
 
     let bid = ed.focused_buffer_id();
-    ed.fire_hook_buffer_save(bid);
-    ed.drain_hooks();
+    ed.queue_buffer_save(bid);
+    ed.drain_events();
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
 

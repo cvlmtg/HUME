@@ -56,7 +56,7 @@ Editor                         // thin app shell: lifecycle + three subtrees
 Everything a command can read or mutate lives on `EditorState`: buffers, mode,
 pending input, registers, kill ring, settings, command registry, keymap, search
 state, per-pane bookkeeping (`panes: PaneView`), the deferred-hook channel
-(`pending_hooks`), and so on. The struct definition
+(`pending_events`), and so on. The struct definition
 (`hume-editor/src/editor/mod.rs`) is the authoritative field list.
 
 Two kinds of state deliberately stay on the outer `Editor` instead:
@@ -107,7 +107,7 @@ fresh eval, no deferral. The routing lives in Steel (`%dispatch-command`).
 |---|---|
 | Motion / Selection / Edit | **sync** |
 | EditorCmd | **sync** |
-| EditorCmd that fires a hook | command **sync**; handler pushes to `EditorState::pending_hooks`; `drain_hooks` fires after the input event completes (semantic defer — see D5) |
+| EditorCmd that fires a hook | command **sync**; handler pushes to `ConfigState::pending_events`; `drain_events` fires after the input event completes (semantic defer — see D5) |
 | TypedCommand (`:` commands) | **sync** — but stays on `fn(&mut Editor, …)`, not Steel-dispatchable (see D7) |
 | SteelBacked (activated plugin) | **sync** — `%dispatch-command` applies the closure inline via `(apply proc args)` |
 | Lazy | **defer** — needs a fresh eval to activate |
@@ -198,9 +198,9 @@ guarantee of the hook model ("when X happens, then do Y"), not a consequence of 
 borrow architecture. Even if re-entrancy were fully solved mechanically, hooks must
 not fire mid-command. **Do not optimize hooks to fire inline.** This decision is locked.
 
-Hooks travel via the `EditorState::pending_hooks` single channel. Every producer routes
-here — `fire_hook_silent`, `enqueue_mode_change`, buffer open/close/save, language-set.
-`drain_hooks` fires the queue from one interactive choke point — `handle_event`, which
+Hooks travel via the `ConfigState::pending_events` single channel. Every producer routes
+here — `queue_event`, mode change, buffer open/close/save, language-set.
+`drain_events` fires the queue from one interactive choke point — `handle_input`, which
 all key and mouse input (including macro replay) routes through — plus a one-time
 startup drain (`lib.rs`) before the event loop.
 
@@ -236,7 +236,7 @@ Alias: `EditorCmdFn` type alias in `hume-editor/src/editor/registry/command.rs`.
 
 Handlers needing no viewport access bind the view parameter as `_view`. All handlers
 are synchronous and Steel-eval-safe. `run_command_sync` dispatches them, reports
-errors, and returns. Hook channel is `EditorState::pending_hooks` (D5).
+errors, and returns. Hook channel is `ConfigState::pending_events` (D5).
 
 **`TypedCommand`** (`fn(&mut Editor, Option<&str>, bool) -> Result<…>`) **deliberately
 stays on `fn(&mut Editor, …)`**, for three reasons:

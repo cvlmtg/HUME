@@ -74,7 +74,7 @@ fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> (Editor, RealRuntime
 
 fn run(ed: &mut Editor, cmd: &str) {
     type_cmd(ed, cmd);
-    ed.drain_hooks();
+    ed.drain_events();
     ed.drain_pending_steel_calls();
 }
 

@@ -38,8 +38,8 @@ fn publish_diagnostics_notification(uri: &str, diags: &[DiagFixture]) -> hume_ls
 /// Plugin load happens *before* `drain_lsp()` (unlike
 /// `lsp_diagnostics_nav.rs`'s otherwise-identical `setup`) — the inline
 /// summary is driven by `on-diagnostics-changed`, which is a queued hook
-/// (`fire_hook_silent` → `pending_hooks`, actually invoked by
-/// `drain_hooks()`): the handler must be registered by `(load-plugin
+/// (`queue_event` → `pending_events`, actually invoked by
+/// `drain_events()`): the handler must be registered by `(load-plugin
 /// "core:lsp")` before that queued hook is drained, or the first batch's
 /// summary never renders. Nav-only tests don't need this ordering since
 /// `goto-next-diagnostic`/`:diagnostics` pull `diagnostics-for-buffer`
@@ -73,14 +73,14 @@ fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> (Editor, RealRuntime
     ed.scripting = Some(host);
 
     ed.drain_lsp();
-    ed.drain_hooks();
+    ed.drain_events();
 
     (ed, guard)
 }
 
 fn run(ed: &mut Editor, cmd: &str) {
     type_cmd(ed, cmd);
-    ed.drain_hooks();
+    ed.drain_events();
     ed.drain_pending_steel_calls();
 }
 

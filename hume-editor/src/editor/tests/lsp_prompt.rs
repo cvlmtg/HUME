@@ -122,7 +122,7 @@ fn prompt_mode_round_trips_and_fires_on_mode_change() {
 
     let before = state(&ed);
     type_cmd(&mut ed, ":go");
-    ed.drain_hooks();
+    ed.drain_events();
     assert_eq!(
         ed.state.mode(),
         hume_engine::types::EditorMode::Command,
@@ -136,7 +136,7 @@ fn prompt_mode_round_trips_and_fires_on_mode_change() {
 
     ed.feed_key(key_esc());
     ed.drain_pending_steel_calls();
-    ed.drain_hooks();
+    ed.drain_events();
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
     assert_ne!(
         state(&ed),

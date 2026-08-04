@@ -156,7 +156,7 @@ fn unactioned_change_does_not_refire_until_a_further_change_happens() {
 /// with no check at all, so the target buffer's disk state stayed `InSync`
 /// no matter what changed externally. Driven via `type_cmd_event`, not
 /// `type_cmd`: a *moving* `:bp` only switches inside `enter_buffer_with_jump`
-/// itself (see its doc) and relies on `Editor::handle_event`'s tail check to
+/// itself (see its doc) and relies on `Editor::handle_input`'s tail check to
 /// run the disk check once dispatch returns.
 #[test]
 fn bnext_and_bprev_run_the_buffer_enter_disk_check() {
@@ -190,7 +190,7 @@ fn bnext_and_bprev_run_the_buffer_enter_disk_check() {
 /// nothing new to report and stay silent — silently breaking the promise.
 /// The final `:b #` is driven via `type_cmd_event`: a *moving* `:b` only
 /// switches inside `enter_buffer_with_jump` and relies on
-/// `Editor::handle_event`'s tail check for the disk check itself.
+/// `Editor::handle_input`'s tail check for the disk check itself.
 #[test]
 fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
     let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -785,10 +785,10 @@ fn confirm_does_not_open_mid_pending_key_sequence() {
 // `enter_buffer_with_jump` only covers `:e`/`:b`/`:bn`/`:bp`. Every other way
 // the focused pane can land on a different buffer — closing a buffer or a
 // pane, cycling pane focus, clicking into another pane — runs through
-// `Editor::handle_event`'s tail check instead, since the commands behind
+// `Editor::handle_input`'s tail check instead, since the commands behind
 // those are `EditorCmdFn`-shaped and cannot call `Editor` methods themselves.
 // These tests drive input via `feed_event`/`type_cmd_event` (routed through
-// `handle_event`), not the usual `feed_key`/`type_cmd`, since that is the
+// `handle_input`), not the usual `feed_key`/`type_cmd`, since that is the
 // one boundary the new check runs at.
 
 /// Two panes side by side: the left pane keeps viewing A, the right
@@ -817,7 +817,7 @@ fn two_panes_with_b_focused() -> (
 /// (B) and reveals A, which must re-prompt for its own already-warned
 /// change.
 ///
-/// Fail oracle: before the `handle_event`-tail check, `:q` → `Editor::
+/// Fail oracle: before the `handle_input`-tail check, `:q` → `Editor::
 /// close_buffer` → `lifecycle::close_buffer` → `switch_pane_to_buffer` moved
 /// the focused pane onto A with no `BufferEnter` check anywhere on the path,
 /// so A's already-warned `Changed` state was never re-surfaced and the
@@ -979,7 +979,7 @@ fn pane_focus_cycling_prompts_the_buffer_it_lands_on() {
 /// A click into another pane (`mouse_left_down`'s click-to-focus) is the
 /// same bare `focused_pane_id` assignment and never touches `handle_key` at
 /// all — a chokepoint placed only in `handle_key`/`handle_mouse` would have
-/// to duplicate itself to cover this; `handle_event` covers both for free.
+/// to duplicate itself to cover this; `handle_input` covers both for free.
 #[test]
 fn clicking_into_another_pane_prompts_that_panes_buffer() {
     let (mut ed, tmp_a, _tmp_b_guard, bid_a, bid_b) = two_panes_with_b_focused();
@@ -994,7 +994,7 @@ fn clicking_into_another_pane_prompts_that_panes_buffer() {
     // char-offset resolution (`mouse_left_down`, `mouse.rs`).
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.prepare_frame(100, 25, &mut ctx);
-    ed.handle_event(mouse_left_down(0, 0));
+    ed.handle_input(mouse_left_down(0, 0));
 
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
@@ -1229,7 +1229,7 @@ fn macro_replay_onto_an_already_warned_stale_buffer_still_warns() {
 /// retrying with `:qa!`).
 ///
 /// Fail oracle: without the `message_logged_this_event` guard in
-/// `can_open_confirm` (set by `Editor::handle_event` for the duration of its
+/// `can_open_confirm` (set by `Editor::handle_input` for the duration of its
 /// post-dispatch focus-change check), the focus diff `typed_quit_all`
 /// produces would still let `check_buffer_disk_state` open a reload confirm
 /// over the "Unsaved changes" error — the second assertion below
@@ -1479,7 +1479,7 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     // it regardless of gutter width (see `clicking_into_another_pane_prompts_that_panes_buffer`).
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.prepare_frame(100, 25, &mut ctx);
-    ed.handle_event(mouse_left_down(0, 0));
+    ed.handle_input(mouse_left_down(0, 0));
 
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(

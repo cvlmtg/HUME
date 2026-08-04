@@ -75,7 +75,7 @@ fn setup(
     for action in actions {
         ed.dispatch_lsp_action(sid2, action);
     }
-    ed.drain_hooks(); // on-lsp-attach registers trigger chars
+    ed.drain_events(); // on-lsp-attach registers trigger chars
 
     (ed, guard, requests)
 }
@@ -87,7 +87,7 @@ fn full_completion_caps() -> serde_json::Value {
 }
 
 fn settle(ed: &mut Editor) {
-    ed.drain_hooks();
+    ed.drain_events();
     ed.drain_lsp();
     ed.drain_pending_steel_calls();
 }
@@ -119,7 +119,7 @@ fn trigger_char_fires_the_completion_request() {
     );
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key('.'));
     settle(&mut ed);
 
@@ -141,7 +141,7 @@ fn ctrl_space_fires_completion_trigger() {
     );
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
 
@@ -161,7 +161,7 @@ fn capability_gated_no_completion_provider_sends_no_request() {
     );
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
 
@@ -184,7 +184,7 @@ fn null_response_opens_no_session() {
     );
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
     assert!(
@@ -255,7 +255,7 @@ fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
     );
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
 
@@ -319,7 +319,7 @@ fn typing_after_an_accept_with_additional_text_edits_composes_into_the_same_grou
     );
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
     ed.feed_key(key_enter());
@@ -393,7 +393,7 @@ fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
     );
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
     ed.feed_key(key_enter());
@@ -459,7 +459,7 @@ fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
     );
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
     ed.feed_key(key_enter());
@@ -528,7 +528,7 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
     );
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
     // `key_enter()` runs accept synchronously (main edit lands, resolve
@@ -593,7 +593,7 @@ fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
     );
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
     // `key_enter()`'s keybinding dispatch runs `accept_completion_selection`
@@ -651,7 +651,7 @@ fn resolve_does_not_apply_anything_after_lsp_stop() {
     );
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
     ed.feed_key(key_enter()); // main edit lands, resolve request sent
@@ -693,7 +693,7 @@ fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_
         },
     );
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
 
@@ -737,7 +737,7 @@ fn null_resolve_response_is_a_clean_no_op() {
         },
     );
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
 
@@ -781,7 +781,7 @@ fn resolve_not_sent_when_the_item_already_has_additional_text_edits() {
         },
     );
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
 
@@ -821,7 +821,7 @@ fn refilter_on_incomplete_session_re_requests() {
         },
     );
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
     assert_eq!(request_count(&requests, "textDocument/completion"), 1);
@@ -853,7 +853,7 @@ fn refilter_on_complete_session_does_not_re_request() {
         },
     );
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
     assert_eq!(request_count(&requests, "textDocument/completion"), 1);
@@ -888,10 +888,10 @@ fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     );
 
     ed.lsp_stop(Some("rust"));
-    ed.drain_hooks(); // on-lsp-detach clears *completion-chars*
+    ed.drain_events(); // on-lsp-detach clears *completion-chars*
 
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     let before = ed.state.status_msg.clone();
     ed.feed_key(key('.'));
     settle(&mut ed);
@@ -925,7 +925,7 @@ fn detach_dismisses_an_open_completion_session_for_that_buffer() {
         },
     );
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
     assert!(
@@ -963,7 +963,7 @@ fn snippet_item_lands_as_stripped_plain_text() {
         },
     );
     ed.feed_key(key('i'));
-    ed.drain_hooks();
+    ed.drain_events();
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
 
