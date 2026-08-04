@@ -349,8 +349,7 @@ fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
 /// always replaces a non-collapsed selection. See [`collapse_if_repeat`]'s
 /// doc for why smart paste alone needs the extra step.
 fn do_normal_paste(state: &mut EditorState, view: &mut EngineView, before: bool) {
-    if super::focused_buffer_read_only(state, view) {
-        state.report(Severity::Info, "Buffer is read-only".to_string());
+    if super::refuse_if_read_only(state, view) {
         return;
     }
     let Some(resolved) = resolve_plain(state) else {
@@ -368,8 +367,7 @@ fn do_normal_paste(state: &mut EditorState, view: &mut EngineView, before: bool)
 /// selections (bare paste only — see [`collapse_if_repeat`]), then hand off
 /// to [`do_paste`].
 fn do_smart_paste(state: &mut EditorState, view: &mut EngineView, before: bool) {
-    if super::focused_buffer_read_only(state, view) {
-        state.report(Severity::Info, "Buffer is read-only".to_string());
+    if super::refuse_if_read_only(state, view) {
         return;
     }
     let Some(resolved) = resolve_smart(state) else {

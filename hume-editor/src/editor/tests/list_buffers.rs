@@ -336,7 +336,7 @@ fn read_only_buffer_blocks_undo_and_redo() {
 
 /// `p` and `P` (paste) on a read-only view buffer must report "Buffer is
 /// read-only" and leave the buffer content unchanged.
-/// Validity: remove the `focused_buffer_read_only()` guard from
+/// Validity: remove the `refuse_if_read_only()` guard from
 /// `do_smart_paste` (p/P dispatch through it) and this test fails
 /// (status_msg will not contain the expected message, and the paste would
 /// silently diverge from the read-only contract).
@@ -377,6 +377,150 @@ fn view_buffer_blocks_paste() {
         ed.state.status_msg.as_deref(),
         Some("Buffer is read-only"),
         "P must report 'Buffer is read-only'"
+    );
+}
+
+/// `d` on a read-only view buffer must report "Buffer is read-only", leave
+/// the buffer content unchanged, and must not push anything onto the kill
+/// ring.
+///
+/// Validity: drop the `refuse_if_read_only()` guard from `cmd_delete` and this
+/// test fails — the ring head becomes the (refused) delete's yank instead of
+/// the pre-existing one.
+#[test]
+fn read_only_buffer_blocks_delete_kill() {
+    let mut ed = editor_from("-[hell]>o\n");
+
+    // Populate the ring from the writable buffer.
+    ed.handle_key(key('y'));
+    let ring_before = ed.state.kill_ring.head().map(<[String]>::to_vec);
+    let ring_len_before = ed.state.kill_ring.len();
+
+    ed.report(Severity::Warning, "test message".to_string());
+    ed.execute_typed("messages", None).unwrap();
+    assert!(ed.doc().is_read_only());
+    let content_before = ed.doc().text().to_string();
+
+    ed.handle_key(key('d'));
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        content_before,
+        "d must not mutate a read-only buffer"
+    );
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Buffer is read-only"),
+        "d must report 'Buffer is read-only'"
+    );
+    assert_eq!(
+        ed.state.kill_ring.head().map(<[String]>::to_vec),
+        ring_before,
+        "a refused d must not change the kill ring head"
+    );
+    assert_eq!(
+        ed.state.kill_ring.len(),
+        ring_len_before,
+        "a refused d must not push a new entry onto the kill ring"
+    );
+}
+
+/// `c` on a read-only view buffer must report "Buffer is read-only", leave
+/// the buffer content and mode unchanged, and must not push anything onto
+/// the kill ring or touch the paste stamp.
+///
+/// Validity: drop the `refuse_if_read_only()` guard from `cmd_change` and this
+/// test fails — the ring head becomes the (refused) change's yank and the
+/// editor drops into Insert mode.
+#[test]
+fn read_only_buffer_blocks_change_kill() {
+    let mut ed = editor_from("-[hell]>o\n");
+
+    ed.handle_key(key('y'));
+    let ring_before = ed.state.kill_ring.head().map(<[String]>::to_vec);
+    let stamp_before = ed.state.paste_stamp;
+
+    ed.report(Severity::Warning, "test message".to_string());
+    ed.execute_typed("messages", None).unwrap();
+    assert!(ed.doc().is_read_only());
+    let content_before = ed.doc().text().to_string();
+
+    ed.handle_key(key('c'));
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        content_before,
+        "c must not mutate a read-only buffer"
+    );
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Buffer is read-only"),
+        "c must report 'Buffer is read-only'"
+    );
+    assert_eq!(
+        ed.state.mode,
+        Mode::Normal,
+        "a refused c must not enter Insert mode"
+    );
+    assert_eq!(
+        ed.state.kill_ring.head().map(<[String]>::to_vec),
+        ring_before,
+        "a refused c must not change the kill ring head"
+    );
+    assert_eq!(
+        format!("{:?}", ed.state.paste_stamp),
+        format!("{stamp_before:?}"),
+        "a refused c must not touch the paste stamp"
+    );
+}
+
+/// A refused `"a` + `d` on a read-only buffer must not leave register `a`
+/// populated, and must not leave the `"<reg>` prefix armed for the next
+/// command.
+///
+/// Validity: drop the `state.register_prefix = None` line from
+/// `refuse_if_read_only()` and this test fails — the prefix survives and
+/// silently redirects the next yank/kill into register `a`.
+#[test]
+fn read_only_refusal_clears_register_prefix_on_delete() {
+    let mut ed = editor_from("-[hell]>o\n");
+
+    ed.execute_typed("ls", None).unwrap();
+    assert!(ed.doc().is_read_only());
+
+    ed.handle_key(key('"'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('d'));
+
+    assert!(
+        reg(&ed, 'a').is_empty(),
+        "a refused \"ad must not write register 'a'"
+    );
+    assert!(
+        ed.state.register_prefix.is_none(),
+        "a refused \"ad must not leave the register prefix armed"
+    );
+}
+
+/// A refused `"a` + `p` on a read-only buffer must not leave the `"<reg>`
+/// prefix armed for the next command.
+///
+/// Validity: drop the `state.register_prefix = None` line from
+/// `refuse_if_read_only()` and this test fails — the prefix survives.
+#[test]
+fn read_only_refusal_clears_register_prefix_on_paste() {
+    let mut ed = editor_from("-[hell]>o\n");
+
+    ed.execute_typed("ls", None).unwrap();
+    assert!(ed.doc().is_read_only());
+
+    ed.handle_key(key('"'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('p'));
+
+    assert!(
+        ed.state.register_prefix.is_none(),
+        "a refused \"ap must not leave the register prefix armed"
     );
 }
 

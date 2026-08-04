@@ -6,13 +6,12 @@ use hume_engine::pipeline::EngineView;
 
 use crate::editor::buffer::LastInsert;
 use crate::editor::replay::InsertSession;
-use crate::editor::{EditorState, Mode, Severity};
+use crate::editor::{EditorState, Mode};
 use hume_ops::edit::clear_blank_line_indent;
 
 use super::{
     apply_focused_edit_grouped, apply_focused_motion, begin_edit_group_current,
-    commit_edit_group_current, current_selections, doc, focused_buffer_id,
-    focused_buffer_read_only,
+    commit_edit_group_current, current_selections, doc, focused_buffer_id, refuse_if_read_only,
 };
 
 /// `true` when the focused (pane, buffer) has an open edit group.
@@ -70,8 +69,7 @@ pub(super) fn pin_insert_anchors(state: &mut EditorState, view: &EngineView) {
 /// if an edit group is already open, recording is suppressed but the mode
 /// change still happens.
 pub(super) fn begin_insert_session(state: &mut EditorState, view: &EngineView) {
-    if focused_buffer_read_only(state, view) {
-        state.report(Severity::Info, "Buffer is read-only".to_string());
+    if refuse_if_read_only(state, view) {
         return;
     }
     // Guard is load-bearing for dot-repeat replay: `replay_dot` opens

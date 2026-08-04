@@ -29,6 +29,9 @@ pub(crate) fn cmd_delete(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    if super::refuse_if_read_only(state, view) {
+        return Ok(());
+    }
     let yanked = yank_selections(
         super::doc(state, view).text(),
         super::current_selections(state, view),
@@ -52,6 +55,9 @@ pub(crate) fn cmd_change(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    if super::refuse_if_read_only(state, view) {
+        return Ok(());
+    }
     let yanked = {
         let doc = super::doc(state, view);
         let sels = super::current_selections(state, view);
@@ -85,9 +91,7 @@ pub(crate) fn cmd_change(
     // explicit-register change (`"5c`) writes no stamp, and refreshing
     // whatever stale stamp might pre-exist would wrongly resurrect it. Lives
     // on `PaneBufferState`, not `InsertSession`, for the same reason
-    // `select_on_exit` does (see its doc): a no-op on a read-only buffer,
-    // where `begin_insert_session` refused and no group opened, since
-    // `end_insert_session` never runs to read it back.
+    // `select_on_exit` does (see its doc).
     if state.route_kill(yanked) {
         let pid = state.focused_pane_id;
         let bid = focused_buffer_id(state, view);

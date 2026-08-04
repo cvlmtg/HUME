@@ -138,9 +138,19 @@ pub(super) fn apply_focused_edit_grouped(
     );
 }
 
-/// `true` when the focused buffer is read-only.
-pub(super) fn focused_buffer_read_only(state: &EditorState, view: &EngineView) -> bool {
-    doc(state, view).is_read_only()
+/// Refuse an edit-mode command on a read-only buffer: report why and return
+/// `true` so the caller can bail out.
+///
+/// Clearing `register_prefix` is part of the refusal: the command consumed the
+/// `"<reg>` keystrokes, so leaving the prefix armed would silently redirect the
+/// *next* yank/kill into that register.
+pub(super) fn refuse_if_read_only(state: &mut EditorState, view: &EngineView) -> bool {
+    if !doc(state, view).is_read_only() {
+        return false;
+    }
+    state.register_prefix = None;
+    state.report(Severity::Info, "Buffer is read-only".to_string());
+    true
 }
 
 /// Focused pane's selections for the current buffer.
