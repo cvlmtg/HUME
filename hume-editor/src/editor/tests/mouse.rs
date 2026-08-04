@@ -3,15 +3,6 @@ use hume_editing::selection::Selection;
 use pretty_assertions::assert_eq;
 use termina::event::{Event, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
-fn mouse_left_down(col: u16, row: u16) -> Event {
-    Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Left),
-        column: col,
-        row,
-        modifiers: Modifiers::NONE,
-    })
-}
-
 fn mouse_drag(col: u16, row: u16) -> Event {
     Event::Mouse(MouseEvent {
         kind: MouseEventKind::Drag(MouseButton::Left),

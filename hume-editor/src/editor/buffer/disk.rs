@@ -197,12 +197,28 @@ impl Editor {
     /// mode alone doesn't rule out a live overlay underneath. The confirm
     /// intercept sits above all three (`mappings/mod.rs`), so without this
     /// check an ambient trigger could silently steal every key from a picker
-    /// still on screen — one modal owner at a time.
+    /// still on screen — one modal owner at a time. A confirm already open is
+    /// one of those owners itself: opening a second would replace the
+    /// first's model outright, retiring an unanswered question and
+    /// re-pointing the next keystroke at a different action than the one on
+    /// screen when the user started reaching for it. In practice this makes
+    /// the `enter_buffer_with_jump` / `check_focus_change_disk_state` overlap
+    /// on a moving `:e`/`:b`/`:bn`/`:bp` provably a no-op rather than merely
+    /// benign: the first call opens the confirm, the second finds it already
+    /// live and leaves it alone.
     ///
     /// Pending keys: a non-empty `pending_keys` (mid multi-key sequence, e.g.
     /// `d` waiting for its motion) or a pending `wait_char` (e.g. `f` waiting
     /// for its target char) means the very next keystroke is already spoken
     /// for — same hazard class as Insert/Command, just inside Normal mode.
+    ///
+    /// Macro replay: `drain_replay_queue` feeds every queued key straight
+    /// back through `handle_event`, so each one is already spoken for in
+    /// exactly the sense `pending_keys` is — the confirm intercept sits above
+    /// mode dispatch and would eat the next replayed key, truncating the
+    /// macro at whatever point a file happened to change on disk. A change
+    /// hit during replay warns instead, and the deferred prompt arrives on
+    /// the next real buffer-enter, same as a mode-blocked one.
     fn can_open_confirm(&self) -> bool {
         let mode_ok = match self.state.mode() {
             Mode::Normal | Mode::Extend => true,
@@ -210,11 +226,13 @@ impl Editor {
             Mode::Insert | Mode::Search | Mode::Select => false,
         };
         mode_ok
+            && self.state.config.confirm.is_none()
             && self.state.config.picker.is_none()
             && self.state.config.menu.is_none()
             && self.state.config.drawer.is_none()
             && self.state.pending_keys.is_empty()
             && self.state.wait_char.is_none()
+            && !self.state.is_replaying
     }
 
     /// Check every open buffer. Called from ambient trigger points (terminal
@@ -225,6 +243,36 @@ impl Editor {
         let ids: Vec<BufferId> = self.state.buffers.iter().map(|(id, _)| id).collect();
         for id in ids {
             self.check_buffer_disk_state(id, DiskCheckTrigger::Ambient);
+        }
+    }
+
+    /// Run the buffer-enter disk check when the interactive event that just
+    /// finished left the focused pane on a different buffer than `before`.
+    ///
+    /// The `BufferEnter` counterpart to [`Self::check_all_disk_state`]'s
+    /// ambient sweep: that one answers "did anything change while I was
+    /// away", this one answers "did I just land somewhere I owe an answer
+    /// about". It is why `:q`/`:bd` revealing the MRU replacement, a pane
+    /// close collapsing onto its sibling, pane focus cycling, and a click
+    /// into another pane all honour the "asked about on its own next
+    /// buffer-enter" promise without any of them naming the disk check — the
+    /// commands behind them are `EditorCmdFn`-shaped (`&mut EditorState`, no
+    /// `&mut Editor`, deliberately so) and structurally cannot call it
+    /// themselves. An opt-in call per command is also what let the close path
+    /// be missed in the first place.
+    ///
+    /// Deliberately a *diff*, not a hook on every switch primitive: it fires
+    /// only for a focus change an interactive event actually produced, so
+    /// `prepare_frame`'s async Steel drain and queued picker callbacks keep
+    /// the non-interactive exemption `enter_buffer_with_jump` documents —
+    /// there is no keystroke on its way in to answer a prompt those would
+    /// open. That is also why this can't replace `enter_buffer_with_jump`'s
+    /// own call: `:e` re-targeting the file already focused is a
+    /// buffer-enter with no diff to observe.
+    pub(in crate::editor) fn check_focus_change_disk_state(&mut self, before: BufferId) {
+        let now = self.focused_buffer_id();
+        if now != before {
+            self.check_buffer_disk_state(now, DiskCheckTrigger::BufferEnter);
         }
     }
 
@@ -266,11 +314,14 @@ impl Editor {
     /// dispatch. `reload_buffer_in_place`'s focused-pane assumption
     /// (`.expect("focused pane must view the reloaded buffer")`) would panic
     /// if that happened, so this bails with a warning instead of reloading a
-    /// buffer that quietly isn't focused anymore. `try_get` still guards a
-    /// non-interactive *close* of `bid` (a Steel hook, a
-    /// `:reload-config`-triggered reset, both of which also drop the
-    /// confirm itself) — that degrades to a silent no-op, since there is no
-    /// buffer left to warn about.
+    /// buffer that quietly isn't focused anymore. `try_get` is belt-and-
+    /// braces against a non-interactive *close* of `bid` racing the confirm:
+    /// `close_buffer_and_notify` already retires a confirm that names the
+    /// buffer it's closing, and `:reload-config` rebuilds `ConfigState`
+    /// wholesale, so in practice `bid` never goes missing out from under an
+    /// answered confirm — but if some future path ever closed a buffer
+    /// without going through either, this degrades to a silent no-op instead
+    /// of a panic, since there is no buffer left to warn about.
     pub(in crate::editor) fn reload_buffer_from_disk(&mut self, bid: BufferId) {
         let Some(buf) = self.state.buffers.try_get(bid) else {
             return;

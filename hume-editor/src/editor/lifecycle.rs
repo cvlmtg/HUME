@@ -274,7 +274,16 @@ impl Editor {
     /// Hooks enqueued during dispatch (mode changes, `:write`, buffer open/close,
     /// language set) fire once at the tail, never mid-event. New input paths must
     /// route through this method so they cannot accidentally skip the drain.
+    ///
+    /// Also the single place that runs the buffer-enter disk check for a
+    /// focus change: the snapshot is taken before dispatch and compared after
+    /// `drain_hooks`, so a hook-driven `switch-to-buffer!` is covered along
+    /// with every keymap/mouse path, instead of each needing its own call —
+    /// see `check_focus_change_disk_state`. `Editor::step` (the headless
+    /// key-runner) deliberately bypasses this boundary and so never opens a
+    /// confirm — there is no interactive user on the other end to answer one.
     pub(crate) fn handle_event(&mut self, ev: Event) {
+        let focused_before = self.focused_buffer_id();
         match ev {
             Event::Key(k) => self.handle_key(k),
             Event::Mouse(m) => self.handle_mouse(m),
@@ -282,6 +291,7 @@ impl Editor {
             _ => {}
         }
         self.drain_hooks();
+        self.check_focus_change_disk_state(focused_before);
     }
 
     /// Run the editor event loop until the user quits.

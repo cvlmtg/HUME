@@ -229,6 +229,22 @@ pub(crate) fn close_buffer_and_notify(
         lsp.remove_buffer_diagnostics(id);
     }
     state.config.decorations.remove_buffer(id);
+    // A reload confirm naming `id` would otherwise outlive its subject: the
+    // slot is freed below, or — in the last-buffer branch — reused in place
+    // for a fresh scratch, so `reload_buffer_from_disk` would bail on
+    // `try_get` or on the scratch's missing path and the user's `r` would do
+    // nothing. Retire the question rather than leave one that can't be
+    // answered; with `can_open_confirm`'s `confirm.is_none()` guard, leaving
+    // it would also block every later prompt until some stray key happened
+    // to dismiss it.
+    if state
+        .config
+        .confirm
+        .as_ref()
+        .is_some_and(|c| c.targets_buffer(id))
+    {
+        state.config.confirm = None;
+    }
     // Read before the slot is freed by `close_buffer` below.
     let open_announced = !state.buffers.get(id).open_hook_pending;
     let new_focused = close_buffer(

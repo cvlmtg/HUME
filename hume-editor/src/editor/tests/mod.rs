@@ -20,7 +20,9 @@ use hume_ops::search::SearchDirection;
 use hume_test_fixtures::testing::{parse_state, serialize_state};
 use hume_treesitter::parse_worker::InlineParseBackend;
 use slotmap::SecondaryMap;
-use termina::event::{KeyCode, KeyEvent, Modifiers};
+use termina::event::{
+    Event, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 
 use super::{Editor, Mode, Severity};
 
@@ -91,6 +93,17 @@ fn key_left() -> KeyEvent {
     KeyEvent::new(KeyCode::Left, Modifiers::NONE)
 }
 
+/// A left-button-down mouse event at the given screen coordinates. Shared by
+/// `mouse.rs` and `disk_change.rs` (click-to-focus's buffer-enter disk check).
+fn mouse_left_down(col: u16, row: u16) -> Event {
+    Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: col,
+        row,
+        modifiers: Modifiers::NONE,
+    })
+}
+
 /// Type a colon command into the editor via `handle_key`, going through the
 /// mini-buffer path (and thus `%`/`#` expansion). Useful when testing typed
 /// commands that must be verified end-to-end through the keymap dispatcher.
@@ -99,6 +112,16 @@ fn type_cmd(ed: &mut Editor, cmd: &str) {
         ed.feed_key(key(ch));
     }
     ed.feed_key(key_enter());
+}
+
+/// `type_cmd`'s twin, routed through `handle_event` (see `Editor::feed_event`)
+/// instead of `feed_key`/`step`. Use when the test needs the buffer-enter
+/// disk check to run on the command's own dispatch, not just its keystrokes.
+fn type_cmd_event(ed: &mut Editor, cmd: &str) {
+    for ch in cmd.chars() {
+        ed.feed_event(key(ch));
+    }
+    ed.feed_event(key_enter());
 }
 
 fn reg(ed: &Editor, name: char) -> Vec<String> {
@@ -494,6 +517,14 @@ impl Editor {
         for k in keys {
             self.feed_key(k);
         }
+    }
+
+    /// Feed one key through `handle_event`, the interactive input boundary —
+    /// unlike `feed_key`/`step`, which deliberately bypass it (see
+    /// `Editor::handle_event`'s doc). Needed by tests covering the
+    /// buffer-enter disk check on focus change, which only runs here.
+    fn feed_event(&mut self, key: KeyEvent) {
+        self.handle_event(Event::Key(key));
     }
 }
 

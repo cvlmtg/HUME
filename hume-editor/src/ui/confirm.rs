@@ -42,6 +42,19 @@ pub(crate) struct ConfirmModel {
 }
 
 impl ConfirmModel {
+    /// Whether answering this confirm would act on `id` — i.e. whether `id`
+    /// disappearing leaves the question unanswerable. Read by
+    /// `buffer::lifecycle::close_buffer_and_notify`, which retires such a
+    /// confirm rather than leaving one on screen whose only possible outcome
+    /// is a silent no-op. A `match`, not a `matches!`, so the next `action`
+    /// variant this module gains is forced to decide here rather than
+    /// defaulting to "unaffected".
+    pub(crate) fn targets_buffer(&self, id: BufferId) -> bool {
+        match self.action {
+            ConfirmAction::ReloadBuffer(bid) => bid == id,
+        }
+    }
+
     /// The line to paint in the statusline row: prompt text followed by
     /// each choice as `[key]label`.
     pub(crate) fn render_line(&self) -> String {
