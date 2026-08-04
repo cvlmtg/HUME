@@ -9,6 +9,7 @@ use hume_engine::types::EditorMode;
 
 use hume_platform::terminal::{SharedTerm, Term};
 
+use super::buffer::DiskCheckTrigger;
 use super::{Editor, Mode};
 
 impl Editor {
@@ -201,6 +202,7 @@ impl Editor {
                 skip_macro_record: false,
                 dispatching_typed_command: false,
                 is_replaying: false,
+                message_logged_this_event: false,
                 mouse_drag_anchor: None,
                 cwd: startup_cwd,
                 lsp_completion_dismiss_pending: false,
@@ -287,14 +289,18 @@ impl Editor {
     /// opens a confirm there: `can_open_confirm`'s `!is_replaying` guard
     /// keeps a live macro from having its next key eaten by one.
     ///
-    /// Skipped entirely (not just the confirm) when dispatch logged a new
-    /// warning or error: a command that fails after moving focus — `:qa`
-    /// landing on the first dirty buffer to report "Unsaved changes" is the
-    /// motivating case — needs its own message to stay on screen and its own
-    /// next keystroke to answer it, not have both replaced by an unrelated
-    /// disk prompt. `disk_state` is untouched either way, so the check still
-    /// runs, and still prompts, on the next trigger that doesn't collide with
-    /// a fresh error.
+    /// Only the *confirm* is skipped (not the check, not its warn fallback)
+    /// when dispatch logged a new warning or error: a command that fails
+    /// after moving focus — `:qa` landing on the first dirty buffer to
+    /// report "Unsaved changes" is the motivating case — needs its own
+    /// message to stay on screen and its own next keystroke to answer it,
+    /// not have it replaced by an unrelated disk prompt. The check still
+    /// runs and still warns instead — see `can_open_confirm`'s
+    /// `message_logged_this_event` clause — so landing on a stale buffer
+    /// this way is never completely silent, matching the mode-blocked and
+    /// macro-replay cases. `disk_state` is untouched either way, so the
+    /// confirm itself still opens on the next trigger that doesn't collide
+    /// with a fresh message.
     pub(crate) fn handle_event(&mut self, ev: Event) {
         let focused_before = self.focused_buffer_id();
         let totals_before = self.state.message_log.totals();
@@ -305,9 +311,9 @@ impl Editor {
             _ => {}
         }
         self.drain_hooks();
-        if self.state.message_log.totals() == totals_before {
-            self.check_focus_change_disk_state(focused_before);
-        }
+        self.state.message_logged_this_event = self.state.message_log.totals() != totals_before;
+        self.check_focus_change_disk_state(focused_before);
+        self.state.message_logged_this_event = false;
     }
 
     /// Run the editor event loop until the user quits.
@@ -471,7 +477,7 @@ impl Editor {
                             // `_ => break` catch-all below would otherwise
                             // swallow this without running the disk check.
                             Event::FocusIn => {
-                                self.check_all_disk_state();
+                                self.check_all_disk_state(DiskCheckTrigger::Ambient);
                                 break;
                             }
                             Event::Key(key) if key.kind != KeyEventKind::Release => {
@@ -497,7 +503,7 @@ impl Editor {
                 // trigger points (alongside buffer-enter and `:checktime`) —
                 // see `Editor::check_all_disk_state`. `FocusOut` needs no
                 // handling: there's nothing to check until focus returns.
-                Event::FocusIn => self.check_all_disk_state(),
+                Event::FocusIn => self.check_all_disk_state(DiskCheckTrigger::Ambient),
                 // CSI/OSC/DCS protocol responses: nothing in the run loop
                 // needs them. The `|_| true` filter guarantees they can't
                 // pile up unread in the reader's buffer either way.

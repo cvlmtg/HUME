@@ -401,6 +401,13 @@ pub(crate) struct EditorState {
     pub(super) dispatching_typed_command: bool,
     /// `true` while draining the replay queue.
     pub(super) is_replaying: bool,
+    /// Set for the duration of `Editor::handle_event`'s post-dispatch
+    /// check whenever that same event logged a new warning or error —
+    /// read only by `can_open_confirm`, so a command's own failure message
+    /// (`:qa` naming the first dirty buffer) can't be silently replaced by
+    /// an unrelated disk-change confirm opened by the focus move that
+    /// triggered it. Always `false` outside that window.
+    pub(super) message_logged_this_event: bool,
     /// Anchor char offset set on mouse-left-down when `mouse_select` is enabled.
     pub(super) mouse_drag_anchor: Option<usize>,
     /// Current working directory. Set at startup; updated by `:cd`.

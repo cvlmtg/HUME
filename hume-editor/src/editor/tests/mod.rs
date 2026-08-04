@@ -283,6 +283,7 @@ impl Editor {
                 skip_macro_record: false,
                 dispatching_typed_command: false,
                 is_replaying: false,
+                message_logged_this_event: false,
                 mouse_drag_anchor: None,
                 cwd: std::env::temp_dir(),
                 lsp_completion_dismiss_pending: false,

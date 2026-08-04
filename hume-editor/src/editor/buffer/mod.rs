@@ -11,15 +11,19 @@ use hume_editing::text::Text;
 use hume_platform::io::FileMeta;
 
 mod disk;
-// Production reaches these only via `super::disk::{DiskCheckTrigger,
-// DiskState}` from sibling buffer submodules (`file_open::
-// enter_buffer_with_jump`, `Buffer::disk_state`'s field type) — this
-// re-export exists only so test code (a different module tree) can pass a
-// trigger to `check_buffer_disk_state` directly, or inject a `DiskState`
-// value to test the state machine without depending on filesystem mtime
-// precision.
+// Sibling buffer submodules (`file_open::enter_buffer_with_jump`,
+// `Buffer::disk_state`'s field type) reach `disk::{DiskCheckTrigger,
+// DiskState}` via `super::disk::` instead, staying inside the `buffer`
+// module tree. `DiskCheckTrigger` is re-exported unconditionally because
+// `commands::typed_buffer::typed_checktime`, outside the tree, needs
+// `DiskCheckTrigger::Explicit` to name its own trigger; `DiskState` stays
+// `#[cfg(test)]`-only since only test code (a different module tree
+// entirely, passing a trigger to `check_buffer_disk_state` directly or
+// injecting a `DiskState` value to test the state machine without depending
+// on filesystem mtime precision) needs it outside `buffer` itself.
+pub(crate) use disk::DiskCheckTrigger;
 #[cfg(test)]
-pub(crate) use disk::{DiskCheckTrigger, DiskState};
+pub(crate) use disk::DiskState;
 mod file_open;
 pub(crate) mod lifecycle;
 pub(crate) mod store;

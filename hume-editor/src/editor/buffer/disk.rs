@@ -55,12 +55,16 @@ pub(crate) enum DiskState {
     InSync,
     /// Changed externally; carries the signature that was reported.
     Changed(hume_platform::io::FileSignature),
-    /// Changed externally, and the user answered the reload confirm with
-    /// "keep" (or otherwise dismissed it) — carries the signature that was
-    /// declined. Still stale (`Buffer::is_disk_stale` treats this the same
-    /// as `Changed`, so `:w` keeps refusing until reload or `!`), but never
-    /// re-prompts or re-warns for *this* signature; a further external
-    /// change (a different signature) is a fresh `Changed` and asks again.
+    /// Changed externally, and the user explicitly answered the reload
+    /// confirm with "keep" — carries the signature that was declined. Still
+    /// stale (`stale_write_block`, not this state, is what `:w` actually
+    /// re-checks, so it keeps refusing until reload or `!` regardless), and
+    /// never re-prompts or re-warns for *this* signature on `Ambient`/
+    /// `BufferEnter` — but a direct `:checktime` (`DiskCheckTrigger::
+    /// Explicit`) still warns, since a decline silences the automatic
+    /// nagging, not a check the user just asked for. A further external
+    /// change (a different signature) is a fresh `Changed` and asks again on
+    /// every trigger.
     Declined(hume_platform::io::FileSignature),
     /// The backing file no longer exists.
     Vanished,
@@ -68,12 +72,11 @@ pub(crate) enum DiskState {
 
 /// Which trigger ran a disk check — decides whether a `Changed` state that
 /// was already reported should re-fire.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum DiskCheckTrigger {
-    /// Terminal focus, `:checktime`, return from an inline shell command. A
-    /// state already reported (by an earlier ambient check, or by this same
-    /// buffer having been entered before) must stay silent — nothing new to
-    /// say.
+    /// Terminal focus, return from an inline shell command. A state already
+    /// reported (by an earlier ambient check, or by this same buffer having
+    /// been entered before) must stay silent — nothing new to say.
     Ambient,
     /// Switching the focused pane onto this buffer (`:e`, `:b`, `:bn`,
     /// `:bp`, …). Delivers on the documented "asked about on its own next
@@ -82,6 +85,14 @@ pub(crate) enum DiskCheckTrigger {
     /// still prompt now that the user has actually landed on it, even
     /// though nothing changed on disk since that warning.
     BufferEnter,
+    /// `:checktime` — a direct "check now" request, not a background poll.
+    /// Behaves exactly like `Ambient` (an already-reported `Changed`/
+    /// `Vanished` state stays silent) except for `Declined`: a decline
+    /// silences the *automatic* nagging on `Ambient`/`BufferEnter`, but a
+    /// check the user just asked for on purpose must never come back
+    /// silent — see the `Changed` arm's `Declined` branch in
+    /// `check_buffer_disk_state`.
+    Explicit,
 }
 
 impl Editor {
@@ -124,21 +135,23 @@ impl Editor {
     /// there's no legitimate case to carve out, only live typing to protect.
     ///
     /// A `Changed`/`Vanished` state already reported stays silent on a
-    /// further `Ambient` check — "don't nag again for the same thing" — but
-    /// a `BufferEnter` check always prompts a pending `Changed` on the
-    /// focused, `autoread`-on, prompt-eligible buffer regardless: that is
-    /// the "asked about on its own next buffer-enter" deferred prompt the
-    /// earlier warning promised. For a buffer that's prompt-eligible
-    /// (focused, `autoread` on) but currently blocked from actually opening
-    /// one (mode, an overlay, `pending_keys`, mid macro-replay), a
+    /// further `Ambient`/`Explicit` check — "don't nag again for the same
+    /// thing" — but a `BufferEnter` check always prompts a pending `Changed`
+    /// on the focused, `autoread`-on, prompt-eligible buffer regardless:
+    /// that is the "asked about on its own next buffer-enter" deferred
+    /// prompt the earlier warning promised. For a buffer that's
+    /// prompt-eligible (focused, `autoread` on) but currently blocked from
+    /// actually opening one (mode, an overlay, `pending_keys`, mid
+    /// macro-replay, a fresh message from this same event), a
     /// `BufferEnter` still warns even if the same signature already warned
     /// once — landing on a stale buffer must never be completely silent,
     /// only a *repeat* `Ambient` recheck of the same already-reported
-    /// signature stays quiet. `Declined` (the user answered "keep") is the
-    /// one state that never re-fires for its own signature on either
-    /// trigger — see `Editor::decline_disk_change`. `FileMeta::signature`
-    /// (the write baseline `disk_change_for` compares against) is untouched
-    /// by any of this, so a *further* external change still reads as fresh.
+    /// signature stays quiet. `Declined` (the user answered "keep") never
+    /// re-fires for its own signature on `Ambient`/`BufferEnter`, but does
+    /// warn on `Explicit` — see `Editor::decline_disk_change` and
+    /// `DiskCheckTrigger::Explicit`. `FileMeta::signature` (the write
+    /// baseline `disk_change_for` compares against) is untouched by any of
+    /// this, so a *further* external change still reads as fresh.
     pub(in crate::editor) fn check_buffer_disk_state(
         &mut self,
         bid: BufferId,
@@ -159,10 +172,7 @@ impl Editor {
                 buf.disk_state = DiskState::Vanished;
                 if !already_reported {
                     let name = self.state.buffers.get(bid).display_name();
-                    self.report(
-                        Severity::Warning,
-                        format!("{name}: file no longer exists on disk"),
-                    );
+                    self.report_disk_state(format!("{name}: file no longer exists on disk"));
                 }
             }
             DiskChange::Changed(sig) => {
@@ -172,7 +182,16 @@ impl Editor {
                     // The user already answered "keep" for this exact
                     // signature — leave `Declined` in place (not `Changed`)
                     // so a re-run of this same arm still recognises it as
-                    // answered, and say nothing further.
+                    // answered. `Ambient`/`BufferEnter` say nothing further;
+                    // `Explicit` (`:checktime`, a direct "check now"
+                    // request — see `DiskCheckTrigger::Explicit`) still
+                    // warns, since a decline silences the *automatic*
+                    // nagging, not a check the user just asked for on
+                    // purpose.
+                    if trigger == DiskCheckTrigger::Explicit {
+                        let name = self.state.buffers.get(bid).display_name();
+                        self.report_disk_state(format!("{name}: file has changed on disk"));
+                    }
                     return;
                 }
                 let already_reported =
@@ -190,12 +209,27 @@ impl Editor {
                 if promptable && self.can_open_confirm() && (is_buffer_enter || !already_reported) {
                     self.open_disk_change_confirm(bid, &name, dirty);
                 } else if !already_reported || (is_buffer_enter && promptable) {
-                    self.report(
-                        Severity::Warning,
-                        format!("{name}: file has changed on disk"),
-                    );
+                    self.report_disk_state(format!("{name}: file has changed on disk"));
                 }
             }
+        }
+    }
+
+    /// Report a disk-state warning, honouring `message_logged_this_event`: if
+    /// this same interactive event already logged its own warning or error
+    /// (e.g. `:qa` naming the first dirty buffer, right before the focus move
+    /// that landed on it triggers this check — see `can_open_confirm`'s doc),
+    /// that message already owns the status line, so this lands in
+    /// `:messages` only rather than displacing it. Otherwise behaves exactly
+    /// like `Editor::report`. Every disk-state warning goes through this, not
+    /// `report` directly, so the "never completely silent" guarantee holds
+    /// without the confirm-blocked case silently overwriting an unrelated
+    /// message.
+    fn report_disk_state(&mut self, text: String) {
+        if self.state.message_logged_this_event {
+            self.state.message_log.push(Severity::Warning, text);
+        } else {
+            self.report(Severity::Warning, text);
         }
     }
 
@@ -242,6 +276,15 @@ impl Editor {
     /// macro at whatever point a file happened to change on disk. A change
     /// hit during replay warns instead, and the deferred prompt arrives on
     /// the next real buffer-enter, same as a mode-blocked one.
+    ///
+    /// Fresh message this event: `Editor::handle_event` sets
+    /// `message_logged_this_event` for the duration of its post-dispatch
+    /// focus-change check whenever that same event logged a new warning or
+    /// error — a command that fails after moving focus (`:qa` naming the
+    /// first dirty buffer) needs its own message to stay on screen, not
+    /// have it replaced by an unrelated disk-change confirm. Only the
+    /// confirm is blocked; `check_buffer_disk_state`'s warn fallback still
+    /// runs, so this never goes fully silent.
     fn can_open_confirm(&self) -> bool {
         let mode_ok = match self.state.mode() {
             Mode::Normal | Mode::Extend => true,
@@ -256,16 +299,23 @@ impl Editor {
             && self.state.pending_keys.is_empty()
             && self.state.wait_char.is_none()
             && !self.state.is_replaying
+            && !self.state.message_logged_this_event
     }
 
-    /// Check every open buffer. Called from ambient trigger points (terminal
-    /// focus, return from an inline shell command, `:checktime`) — never
-    /// `BufferEnter`, since no single buffer among many is "the one being
-    /// entered".
-    pub(crate) fn check_all_disk_state(&mut self) {
+    /// Check every open buffer against `trigger` — `Ambient` for terminal
+    /// focus and return from an inline shell command, `Explicit` for
+    /// `:checktime` — never `BufferEnter`, since no single buffer among many
+    /// is "the one being entered".
+    pub(crate) fn check_all_disk_state(&mut self, trigger: DiskCheckTrigger) {
+        debug_assert_ne!(
+            trigger,
+            DiskCheckTrigger::BufferEnter,
+            "check_all_disk_state has no single buffer to call BufferEnter for; \
+             use check_buffer_disk_state or check_focus_change_disk_state instead"
+        );
         let ids: Vec<BufferId> = self.state.buffers.iter().map(|(id, _)| id).collect();
         for id in ids {
-            self.check_buffer_disk_state(id, DiskCheckTrigger::Ambient);
+            self.check_buffer_disk_state(id, trigger);
         }
     }
 
@@ -320,8 +370,10 @@ impl Editor {
     }
 
     /// Record that the user declined to reload `bid` for the disk change
-    /// currently pending on it — the confirm's `[k]eep` choice (or any other
-    /// dismissal, `handle_confirm_key`'s safe default). Only meaningful while
+    /// currently pending on it — the confirm's `[k]eep` choice specifically
+    /// (`handle_confirm_key` calls this only for that choice; `Esc` or any
+    /// other key dismisses the confirm without answering it, leaving the
+    /// question open for the next `BufferEnter`). Only meaningful while
     /// `disk_state` is still `Changed`; a state that moved on before the user
     /// answered (reload happened another way, the file reverted) has nothing
     /// to decline. `try_get`, not `get_mut`: same belt-and-braces as

@@ -147,18 +147,22 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     // frozen editor. Errors are collected rather than propagated immediately
     // (`run_all`'s "attempt everything, report the first failure" discipline,
     // `hume_platform::terminal`) so a dead pty here doesn't skip the graceful
-    // LSP shutdown that follows. `restore_for_exit` (not a bare
-    // `terminal::restore`) is the one function allowed to write these bytes —
-    // it gates on `claim_exit`, the process-wide single-restorer race with
-    // the terminator thread's `force_exit`, so a second thread mid-teardown
-    // at the same moment can't interleave a second copy of the same escape
-    // sequences into this one's. Calling it first, while there's the most of
-    // `QUIT_GRACE` left, also minimizes how often this thread is the one that
-    // loses that race and parks here instead of returning: if it does, the
-    // terminator thread's `force_exit` already reaped every tracked child
-    // (including attached LSP servers) via `kill_tracked_children` before
-    // ever attempting its own claim, so the graceful shutdown below would
-    // have found nothing left to shut down gracefully regardless.
+    // LSP shutdown that follows. The cursor shape/colour resets below are
+    // unconditional and idempotent regardless of who else is tearing down at
+    // the same moment, so they need no gate; `restore_for_exit` (not a bare
+    // `terminal::restore`) is the one function allowed to write the
+    // alt-screen-leave/raw-mode-restore/kitty-keyboard-pop sequence that
+    // follows them — it gates on `claim_exit`, the process-wide
+    // single-restorer race with the terminator thread's `force_exit`, so a
+    // second thread mid-teardown at the same moment can't interleave a
+    // second copy of that sequence into this one's. Calling it first, while
+    // there's the most of `QUIT_GRACE` left, also minimizes how often this
+    // thread is the one that loses that race and parks here instead of
+    // returning: if it does, the terminator thread's `force_exit` already
+    // reaped every tracked child (including attached LSP servers) via
+    // `kill_tracked_children` before ever attempting its own claim, so the
+    // graceful shutdown below would have found nothing left to shut down
+    // gracefully regardless.
     let mut restore_err = hume_platform::terminal::reset_cursor_shape(&shared).err();
     let _ = hume_platform::terminal::set_cursor_color(&shared, false); // emits reset sequence
     if let Err(e) = hume_platform::restore_for_exit(&shared) {

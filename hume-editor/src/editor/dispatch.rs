@@ -6,6 +6,7 @@
 //! path, which additionally needs `self.scripting`, `self.lsp`, and the
 //! timer bridge — fields only reachable through `&mut Editor`.
 
+use super::buffer::DiskCheckTrigger;
 use super::registry::MappableCommand;
 use super::{Editor, InlineOutputDispatch, Severity, commands};
 
@@ -304,7 +305,7 @@ impl Editor {
             self.state.force_full_redraw = true;
         }
         if armed_or_entered {
-            self.check_all_disk_state();
+            self.check_all_disk_state(DiskCheckTrigger::Ambient);
         }
 
         let (wait_char_cmd, effects) = match result {

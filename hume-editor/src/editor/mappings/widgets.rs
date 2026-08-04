@@ -13,12 +13,15 @@ use super::super::Editor;
 impl Editor {
     /// Handles one key while a native confirm overlay
     /// ([`crate::ui::confirm::ConfirmModel`]) is open. Always consumes —
-    /// full-modal, like the picker. `choices[0]`'s key runs `action`; every
-    /// other key (including `Esc`) dismisses without running it, the safe
-    /// default — and, for a disk-change confirm, records the dismissal as a
-    /// decline (`Editor::decline_disk_change`) so `check_buffer_disk_state`
-    /// doesn't reopen the same question for the same on-disk signature on
-    /// the next buffer-enter.
+    /// full-modal, like the picker. `choices[0]`'s key runs `action`;
+    /// `choices[1]`'s key (currently always "keep", set by
+    /// `open_disk_change_confirm`) records an explicit decline
+    /// (`Editor::decline_disk_change`) so `check_buffer_disk_state` doesn't
+    /// reopen the same question for the same on-disk signature. Every other
+    /// key — `Esc`, or a stray keystroke that happens to land here — is a
+    /// plain dismissal: it answers neither choice, leaving the question open
+    /// for the next `BufferEnter`, exactly as if the confirm had never
+    /// opened.
     pub(super) fn handle_confirm_key(&mut self, key: KeyEvent) {
         let confirm = self
             .state
@@ -27,19 +30,17 @@ impl Editor {
             .take()
             .expect("checked by the caller above");
 
-        let accept = confirm
+        let matched = confirm
             .choices
-            .first()
-            .is_some_and(|c| key.code == KeyCode::Char(c.key));
+            .iter()
+            .position(|c| key.code == KeyCode::Char(c.key));
 
         match confirm.action {
-            ConfirmAction::ReloadBuffer(bid) => {
-                if accept {
-                    self.reload_buffer_from_disk(bid);
-                } else {
-                    self.decline_disk_change(bid);
-                }
-            }
+            ConfirmAction::ReloadBuffer(bid) => match matched {
+                Some(0) => self.reload_buffer_from_disk(bid),
+                Some(1) => self.decline_disk_change(bid),
+                _ => {}
+            },
         }
     }
 

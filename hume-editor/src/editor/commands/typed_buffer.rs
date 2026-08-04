@@ -2,6 +2,7 @@ use hume_engine::pipeline::BufferId;
 
 use super::super::Editor;
 use super::super::Severity;
+use crate::editor::buffer::DiskCheckTrigger;
 use crate::editor::error::CommandError;
 
 // ── Multi-buffer typed commands ───────────────────────────────────────────────
@@ -68,15 +69,18 @@ pub(crate) fn typed_edit(
 /// `:checktime` — check every open buffer against its backing file, right
 /// now, without waiting for the next automatic trigger (terminal focus,
 /// buffer-enter, return from an inline shell command). Silent when nothing
-/// changed; otherwise reports/prompts exactly like any other trigger — see
-/// `Editor::check_all_disk_state`. `force` has no effect: force accepting a
+/// changed; otherwise reports/prompts like any other trigger, with one
+/// exception: a buffer whose change the user already declined (`[k]eep`)
+/// still gets a warning here — a direct "check now" request must never come
+/// back silent just because an earlier prompt was dismissed — see
+/// `DiskCheckTrigger::Explicit`. `force` has no effect: force accepting a
 /// reload is what the confirm's `[r]eload` choice (or `:e!`) is for.
 pub(crate) fn typed_checktime(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    ed.check_all_disk_state();
+    ed.check_all_disk_state(DiskCheckTrigger::Explicit);
     Ok(())
 }
 

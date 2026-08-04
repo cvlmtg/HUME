@@ -90,6 +90,7 @@ const EDITOR_STATE_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
     ("skip_macro_record", "preserved"),
     ("dispatching_typed_command", "preserved"),
     ("is_replaying", "preserved"),
+    ("message_logged_this_event", "preserved"),
     ("mouse_drag_anchor", "preserved"),
     ("cwd", "preserved"),
     ("lsp_completion_dismiss_pending", "preserved"),

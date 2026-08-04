@@ -1228,11 +1228,16 @@ fn macro_replay_onto_an_already_warned_stale_buffer_still_warns() {
 /// it, and must not steal the keystroke meant to answer the error (e.g.
 /// retrying with `:qa!`).
 ///
-/// Fail oracle: without the `message_log.totals()` guard in
-/// `Editor::handle_event`, the focus diff `typed_quit_all` produces would
-/// still run `check_focus_change_disk_state`, which would open a reload
-/// confirm over the "Unsaved changes" error — the first assertion below
-/// would find `status_msg` naming the disk change instead.
+/// Fail oracle: without the `message_logged_this_event` guard in
+/// `can_open_confirm` (set by `Editor::handle_event` for the duration of its
+/// post-dispatch focus-change check), the focus diff `typed_quit_all`
+/// produces would still let `check_buffer_disk_state` open a reload confirm
+/// over the "Unsaved changes" error — the second assertion below
+/// (`confirm.is_none()`) would fail. `open_disk_change_confirm` never writes
+/// `status_msg`, so the first assertion doesn't distinguish the two cases;
+/// it documents the desired behaviour, not this guard specifically — see
+/// `quit_all_focus_move_still_logs_the_disk_change_without_shadowing_the_error`
+/// for the guard that does.
 #[test]
 fn quit_all_error_is_not_shadowed_by_a_disk_confirm() {
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -1266,6 +1271,50 @@ fn quit_all_error_is_not_shadowed_by_a_disk_confirm() {
     assert!(
         ed.state.config.confirm.is_none(),
         "no reload confirm may shadow the :qa error"
+    );
+}
+
+/// The disk change blocked by `quit_all_error_is_not_shadowed_by_a_disk_confirm`
+/// must not vanish outright — it lands in `:messages` (bumping the warning
+/// total) without touching `status_msg`, so `:qa`'s own error keeps the
+/// status line but the change is still discoverable, matching every other
+/// blocked-confirm case (mode-blocked, mid-replay).
+///
+/// Fail oracle: without `report_disk_state` falling back to
+/// `message_log.push` (log-only) instead of `Editor::report` (which also
+/// writes `status_msg`) whenever `message_logged_this_event` is set, this
+/// warning would either clobber `status_msg` (breaking the sibling test) or
+/// — if suppressed outright instead — never increment the warning total at
+/// all, and the final assertion here would fail.
+#[test]
+fn quit_all_focus_move_still_logs_the_disk_change_without_shadowing_the_error() {
+    let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid_a = ed.focused_buffer_id();
+    ed.handle_key(key('i'));
+    ed.handle_key(key('!'));
+    ed.handle_key(key_esc());
+
+    let (tmp_b, _tmp_b_guard) = temp_file("world\n");
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.display()));
+
+    rewrite_externally(&tmp_a, "hello, externally changed!\n");
+    let (_, warnings_before) = ed.state.message_log.totals();
+
+    type_cmd_event(&mut ed, ":qa");
+
+    assert_eq!(ed.focused_buffer_id(), bid_a, "setup: :qa lands on A");
+    let (_, warnings_after) = ed.state.message_log.totals();
+    assert_eq!(
+        warnings_after,
+        warnings_before + 1,
+        "the blocked disk-change warning must still land in :messages"
+    );
+    assert!(
+        ed.state
+            .status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("Unsaved changes")),
+        "status_msg must still be :qa's own error, not the disk warning"
     );
 }
 
@@ -1320,6 +1369,78 @@ fn declined_confirm_does_not_reopen_on_later_focus_change() {
         ed.state.config.confirm.is_some(),
         "a further external change must still prompt"
     );
+}
+
+/// A decline silences the *automatic* nagging (`Ambient`/`BufferEnter`), but
+/// a direct `:checktime` — a check the user asked for on purpose — must
+/// still say something about it. Without this, a buffer with no further
+/// focus changes or terminal-focus events to trigger on could sit silently
+/// out of sync with disk indefinitely, with only `:w`'s bare refusal (no
+/// explanation) as a clue.
+///
+/// Fail oracle: without the `DiskCheckTrigger::Explicit` branch in the
+/// `Changed` arm's `Declined` early-return, `:checktime` here would find
+/// `declined` true and return before reporting anything — the final
+/// assertion (`warnings_after == warnings_before + 1`) would fail.
+#[test]
+fn declined_change_still_warns_on_explicit_checktime() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid = ed.focused_buffer_id();
+    rewrite_externally(&tmp, "hello, externally changed!\n");
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+    assert!(ed.state.config.confirm.is_some(), "setup: confirm opens");
+
+    ed.feed_event(key('k'));
+    assert!(ed.state.config.confirm.is_none(), "setup: declined");
+
+    // Ambient stays silent for the declined signature.
+    let (_, warnings_before) = ed.state.message_log.totals();
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+    let (_, warnings_mid) = ed.state.message_log.totals();
+    assert_eq!(warnings_mid, warnings_before, "setup: Ambient stays silent");
+
+    // :checktime — a direct request — still warns, and still doesn't prompt.
+    type_cmd(&mut ed, ":checktime");
+    let (_, warnings_after) = ed.state.message_log.totals();
+    assert_eq!(
+        warnings_after,
+        warnings_before + 1,
+        ":checktime must still warn about a declined change, not stay silent forever"
+    );
+    assert!(
+        ed.state.config.confirm.is_none(),
+        ":checktime must warn, not reopen the confirm the user already answered"
+    );
+}
+
+/// `Declined` only silences the *specific declined signature*'s `Changed`
+/// report — it must not swallow an unrelated later `Vanished` warning for
+/// the same buffer.
+///
+/// Fail oracle: if the `Declined` short-circuit lived above the match on
+/// `DiskChange` instead of inside the `Changed` arm alone, a stale guard
+/// would suppress the `Vanished` warning too — the final assertion would
+/// fail.
+#[test]
+fn declined_change_then_vanished_file_still_warns() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid = ed.focused_buffer_id();
+    rewrite_externally(&tmp, "hello, externally changed!\n");
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+    ed.feed_event(key('k'));
+    assert!(ed.state.config.confirm.is_none(), "setup: declined");
+
+    std::fs::remove_file(&tmp).unwrap();
+    let (_, warnings_before) = ed.state.message_log.totals();
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+    let (_, warnings_after) = ed.state.message_log.totals();
+
+    assert_eq!(
+        warnings_after,
+        warnings_before + 1,
+        "a declined Changed signature must not swallow a later Vanished warning"
+    );
+    assert_eq!(ed.state.buffers.get(bid).disk_state, DiskState::Vanished);
 }
 
 /// A confirm left open for a buffer the user just clicked away from
