@@ -27,6 +27,7 @@ Thumbs.db
 /tests/fixtures/grammars/
 
 # Planning docs (local only, never committed)
+/SPEC.md
 
 # insta pending-snapshot files (created when a snapshot mismatches during review)
 **/.*.pending-snap

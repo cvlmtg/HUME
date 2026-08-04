@@ -398,3 +398,52 @@ recheck cycle failed the drift test it was meant to satisfy.
 
 **Files:** `hume-scripting/src/lib.rs` (`ScriptingHost::host_global_names`'s
 `!n.starts_with('#')` filter).
+
+---
+
+## L9 — Proposed an Nth call site instead of questioning the pattern (2026-08)
+
+**Root cause:** Asked to fix "the disk-stale check doesn't run when a fuzzy
+picker switches buffers", the investigation correctly found the mechanism (the
+check rides a hand-rolled focus diff in `handle_event`, which picker accepts
+bypass because the callback is queued and runs a frame later in
+`prepare_frame`). The proposed fix was to add the diff at a second place.
+
+That would have been the **fourth** site performing the same check: the
+`handle_event` diff, `enter_buffer_with_jump`'s already-focused special case,
+and two `check_all_disk_state` calls in `run`. Each of the three existing ones
+had a reasoned doc comment justifying itself, which made adding a fourth feel
+like following the established pattern rather than compounding a defect.
+
+The user rejected the framing outright. The real defect was that "the focused
+buffer changed" was not an event at all — every consumer hand-rolled its own
+detection. Once it became one event with one raise site, the picker bug
+disappeared as a consequence rather than as a fix, and a second, larger bug
+surfaced on the way: hooks raised by async work (`drain_lsp`,
+`drain_due_timers`, queued Steel callbacks) were never drained on the frame
+path, so they waited for the next keystroke — forever, on an idle editor.
+
+**Prevention rules:**
+
+1. **Adding the Nth call site to a repeated pattern is a design smell,
+   proportional to N.** At N≥3, stop and ask whether the thing being repeated
+   should be a first-class concept. A fix that reads as "one more place that
+   remembers to do X" is a fix that the next feature will also have to
+   remember.
+2. **Well-reasoned doc comments on each duplicate site are not evidence the
+   duplication is sound.** They are evidence someone justified each step
+   locally. Read them as a list of workarounds, and check whether they are all
+   working around the same missing abstraction.
+3. **When a value is a derived join of independently-written fields, it has no
+   write-site chokepoint and never will.** `focused_buffer_id()` is
+   `panes[focused_pane_id].buffer_id` — one field with 1 writer, another with
+   5, and a focus move changes the result while writing neither. Notification
+   for such a value must be a diff at an observation point, not a hook on a
+   setter. Establish which kind of value it is *before* designing the
+   notification.
+4. **Two queues drained by two different rules will diverge.** The Steel-call
+   queue drained once per frame in `prepare_frame`; the hook queue drained to
+   fixpoint in `handle_event`. Nothing enforced that a producer in one phase
+   had a consumer in the same phase. Prefer one queue with one rule; if two
+   are genuinely needed, write the test that proves work queued by either is
+   drained on every path.
