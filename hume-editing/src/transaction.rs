@@ -7,13 +7,14 @@ use crate::text::Text;
 ///
 /// This is the unit of editing: every user action (insert, delete, motion
 /// that modifies text) produces a `Transaction`. `selection` is always the
-/// **post-apply** selection — where the cursors land *after* applying
-/// `changes` to the document. This invariant holds for both forward and
-/// inverse Transactions.
+/// **post-apply** selection — where cursors land *after* applying `changes`
+/// — for both forward and inverse Transactions.
 ///
 /// ## Undo pattern
 ///
-/// At edit time, build **two** Transactions from the same `ChangeSet`:
+/// Build **two** Transactions from the same `ChangeSet`, inverting before
+/// applying since `invert` reads the original rope to reconstruct deleted
+/// text:
 ///
 /// ```text
 /// let inv_cs = cs.invert(&old_buf);          // must happen BEFORE apply
@@ -23,11 +24,9 @@ use crate::text::Text;
 /// let inverse = Transaction::new(inv_cs, pre_edit_sels);   // push to undo stack
 /// ```
 ///
-/// The inverse Transaction's `selection` is the pre-edit selection because
-/// that is where cursors land after applying the inverse changeset. The
-/// history manager stores `inverse`; applying it later restores both text
-/// and cursor state in one step. `invert` reads the original rope to
-/// reconstruct deleted text, hence the BEFORE-apply ordering above.
+/// The inverse's `selection` is the pre-edit selection, since that's where
+/// cursors land after applying it — the history manager stores `inverse`
+/// and applying it later restores text and cursor state in one step.
 ///
 #[derive(Debug, Clone)]
 pub struct Transaction {

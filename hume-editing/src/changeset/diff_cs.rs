@@ -8,22 +8,15 @@
 //! `Retain(n)` ops carrying no payload.
 //!
 //! Memory cost of the *stored* inverse ≈ size of the changed lines only, not
-//! the full buffer. This is what lets `:e!` reload record a normal undo step
-//! without forcing a coarse delete-all + insert-all that doubles buffer memory.
-//!
-//! Note this is about the retained undo step, not peak cost: building the diff
-//! materializes both sides into contiguous `String`s, so the transient working
-//! set during a reload is ~2× the buffer. The win is in what survives in the
-//! history tree afterwards.
-//!
-//! There's a further transient cost this module doesn't avoid: `diff_lines`'s
-//! `LineHunk`s already own a `String` copy of every changed line (each
-//! non-`Equal` `LineHunkKind` carries its payload), and [`build_changesets`]
-//! discards those copies immediately, re-slicing the same lines from `old`/
-//! `new` instead. So a reload's changed lines are materialized twice over —
-//! deliberate, since `diff_lines`'s hunk payloads are also the public API
-//! `docs/GIT-DIFF.md` builds on, but worth knowing when reasoning about this
-//! module's memory story.
+//! the full buffer — this is what lets `:e!` reload record a normal undo step
+//! without a coarse delete-all + insert-all that doubles buffer memory. Peak
+//! cost during the reload is higher: building the diff materializes both
+//! sides into contiguous `String`s (~2× the buffer), and changed lines get
+//! materialized a further time over when [`build_changesets`] re-slices them
+//! from `old`/`new` instead of reusing `diff_lines`'s own `LineHunk` copies —
+//! deliberate, since those hunk payloads are also the public API
+//! `docs/GIT-DIFF.md` builds on. None of this affects what survives in the
+//! history tree afterwards, which is just the changed lines.
 //!
 //! The helper takes `&Text` on both sides and returns the two `ChangeSet`s; it
 //! does not mutate either buffer. The caller still owns the text swap.
