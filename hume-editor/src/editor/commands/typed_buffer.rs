@@ -12,10 +12,14 @@ use crate::editor::error::CommandError;
 /// - No `path`: reload current file from disk (`:e!` discards unsaved changes).
 /// - `path` given and already open: switch to the existing buffer.
 /// - `path` given and not open: read from disk, open a new buffer, switch to it.
+///   A `path` that doesn't exist on disk opens an empty buffer bound to it
+///   instead of erroring — `:w` creates the file (Vim's `:e newfile` semantics).
 ///
-/// Dedup uses `find_by_path` (canonical path comparison). `force` (`!` suffix)
-/// only takes effect in the no-arg reload branch: it discards unsaved changes
-/// and re-reads the file from disk. When a path is given, `force` is unused.
+/// Dedup uses `find_by_path` (canonical path comparison, or best-effort for a
+/// not-yet-existing path — see `Editor::resolve_buffer_path`). `force` (`!`
+/// suffix) only takes effect in the no-arg reload branch: it discards unsaved
+/// changes and re-reads the file from disk. When a path is given, `force` is
+/// unused.
 pub(crate) fn typed_edit(
     ed: &mut Editor,
     arg: Option<&str>,
@@ -37,9 +41,15 @@ pub(crate) fn typed_edit(
             .resolve_open_path(path_str)
             .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
         if is_new {
-            let name = ed.state.buffers.get(bid).display_name();
+            let buf = ed.state.buffers.get(bid);
+            let name = buf.display_name();
+            let msg = if buf.is_new_file() {
+                format!("{name} [new file]")
+            } else {
+                format!("Opened {name}")
+            };
             ed.switch_to_buffer_with_jump(bid);
-            ed.report(Severity::Info, format!("Opened {name}"));
+            ed.report(Severity::Info, msg);
         } else if bid != ed.focused_buffer_id() {
             ed.switch_to_buffer_with_jump(bid);
         }
@@ -166,18 +176,14 @@ pub(crate) fn typed_buffer(
 
 /// Find an open buffer matching a path argument.
 ///
-/// Tries `fs::canonicalize` first (resolves symlinks, requires the file to
-/// exist), then falls back to `std::path::absolute` (pure lexical: joins with
-/// cwd, removes `.`/`..`, no filesystem access). The fallback keeps buffers
-/// reachable after their backing file has been deleted.
+/// Uses the same resolution `resolve_open_path` uses to open one
+/// (`Editor::resolve_buffer_path`), so a path that doesn't yet exist on disk
+/// still matches an already-open new-file buffer instead of opening a
+/// duplicate, and a path whose backing file has since been deleted still
+/// matches the buffer that was reading it.
 fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
-    if let Ok(canonical) = std::fs::canonicalize(std::path::Path::new(arg))
-        && let Some(bid) = ed.state.buffers.find_by_path(&canonical)
-    {
-        return Some(bid);
-    }
-    let abs = std::path::absolute(arg).ok()?;
-    ed.state.buffers.find_by_path(&abs)
+    let resolved = Editor::resolve_buffer_path(std::path::Path::new(arg), &ed.state.cwd);
+    ed.state.buffers.find_by_path(&resolved)
 }
 
 /// Resolve a `:b` argument to a `BufferId`.  See [`typed_buffer`] for the

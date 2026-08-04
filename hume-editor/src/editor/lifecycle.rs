@@ -60,7 +60,20 @@ impl Editor {
 
         let startup_cwd = std::env::current_dir()?;
         let mut doc = match file_path {
-            Some(ref path) => Buffer::from_file(path)?,
+            Some(ref path) => match Buffer::from_file(path) {
+                // Missing file, valid basename: `hume newfile.txt` opens an
+                // empty buffer bound to the path instead of exiting — same
+                // `:w`-creates-it semantics as `:e` on a missing file (see
+                // `Editor::open_or_dedup`).
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                    let resolved = Editor::resolve_buffer_path(path, &startup_cwd);
+                    if resolved.file_name().is_none() {
+                        return Err(e);
+                    }
+                    Buffer::new_file(resolved)
+                }
+                other => other?,
+            },
             None => Buffer::new(Text::empty(), SelectionSet::single(Selection::collapsed(0))),
         };
         // Record the user-typed path (symlinks unresolved) for user-facing display,

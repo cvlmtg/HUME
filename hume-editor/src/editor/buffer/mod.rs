@@ -220,6 +220,26 @@ impl Buffer {
         Ok(buf)
     }
 
+    /// Empty buffer bound to a path that doesn't exist on disk yet — `:e` on
+    /// a missing file, matching Vim's `:e newfile` semantics: `:w` creates it
+    /// (see `is_new_file`, `write_buffer_by_id`'s `file_meta.is_none()`
+    /// branch). `file_meta` stays `None` until that first write; `path` is
+    /// set so the buffer participates in `find_by_path` dedup and displays
+    /// its intended name.
+    pub(crate) fn new_file(path: PathBuf) -> Self {
+        let mut buf = Self::new(Text::empty(), SelectionSet::default());
+        buf.set_path(Some(path));
+        buf
+    }
+
+    /// `true` for a buffer bound to a path with no backing file yet — opened
+    /// via [`Self::new_file`], not yet written. `path.is_some()` alone isn't
+    /// enough (a normal file has that too); `file_meta` is the SSOT for
+    /// "has this buffer ever touched disk" — see the field doc.
+    pub(crate) fn is_new_file(&self) -> bool {
+        self.path.is_some() && self.file_meta.is_none()
+    }
+
     /// Empty scratch buffer (single structural `\n`, no path, default overrides).
     ///
     /// Used when closing the last buffer to keep the "always ≥1 buffer open"

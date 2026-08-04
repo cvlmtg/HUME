@@ -38,55 +38,68 @@ fn vsplit_path_opens_that_buffer() {
     }
 }
 
-/// `:split <missing-path>` reports the path exactly as the user typed it, not
-/// its tilde-expanded form — a symlinked or relative path resolved to an
-/// unrecognizable absolute path would otherwise make the error more
-/// confusing, not less.
+/// `:split <missing-path>` opens a new-file buffer bound to the path (same
+/// `:e`-on-a-missing-file semantics as `Editor::resolve_open_path`) in the new
+/// pane, with the display path exactly as the user typed it, not its
+/// tilde-expanded form — a symlinked or relative path resolved to an
+/// unrecognizable absolute path would otherwise be more confusing, not less.
 ///
 /// Uses a `~`-prefixed path rather than a plain relative one: `expand()` is a
 /// no-op on inputs with no `~`/env-var sigil, so a plain relative path (e.g.
 /// `./foo.txt`) round-trips identically through both "show what was typed"
 /// and "show the expanded-but-unresolved path" — it can't tell the two
 /// implementations apart. Only an input `expand()` actually rewrites, like
-/// `~/...`, can prove which one the error message is built from.
+/// `~/...`, can prove which one the display path is built from.
 #[test]
-fn split_missing_file_error_shows_raw_typed_path() {
+fn split_missing_file_opens_new_file_with_raw_typed_display_path() {
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
     let mut ed = editor_from("-[h]>ello\n");
-    let err = ed
-        .execute_typed("split", Some("~/no-such-file-xyz.txt"))
-        .unwrap_err();
-    assert!(
-        err.message().starts_with("~/no-such-file-xyz.txt: "),
-        "error must lead with the raw typed path, got: {}",
-        err.message()
+    let bid_a = ed.focused_buffer_id();
+
+    ed.execute_typed("split", Some("~/no-such-file-xyz.txt"))
+        .unwrap();
+
+    let bid_b = ed.focused_buffer_id();
+    assert_ne!(bid_b, bid_a, "new pane views the new-file buffer");
+    let buf = ed.state.buffers.get(bid_b);
+    assert!(buf.is_new_file());
+    assert_eq!(
+        buf.display_path(),
+        Some("~/no-such-file-xyz.txt"),
+        "display path must be the raw typed (collapsed) form"
     );
-    assert!(
-        !err.message().contains(&home.to_string_lossy().to_string()),
-        "error must not leak the expanded $HOME path, got: {}",
-        err.message()
+    assert_eq!(
+        buf.path(),
+        Some(home.join("no-such-file-xyz.txt").as_path()),
+        "path must resolve against the expanded $HOME, even though display doesn't show it"
     );
 }
 
-/// Same guarantee as `split_missing_file_error_shows_raw_typed_path`, for
-/// `:vsplit`. Both commands share `open_path_arg`, but each has its own
+/// Same guarantee as `split_missing_file_opens_new_file_with_raw_typed_display_path`,
+/// for `:vsplit`. Both commands share `open_path_arg`, but each has its own
 /// dispatch entry point (`typed_split`/`typed_vsplit`), so both are covered.
 #[test]
-fn vsplit_missing_file_error_shows_raw_typed_path() {
+fn vsplit_missing_file_opens_new_file_with_raw_typed_display_path() {
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
     let mut ed = editor_from("-[h]>ello\n");
-    let err = ed
-        .execute_typed("vsplit", Some("~/no-such-file-xyz.txt"))
-        .unwrap_err();
-    assert!(
-        err.message().starts_with("~/no-such-file-xyz.txt: "),
-        "error must lead with the raw typed path, got: {}",
-        err.message()
+    let bid_a = ed.focused_buffer_id();
+
+    ed.execute_typed("vsplit", Some("~/no-such-file-xyz.txt"))
+        .unwrap();
+
+    let bid_b = ed.focused_buffer_id();
+    assert_ne!(bid_b, bid_a, "new pane views the new-file buffer");
+    let buf = ed.state.buffers.get(bid_b);
+    assert!(buf.is_new_file());
+    assert_eq!(
+        buf.display_path(),
+        Some("~/no-such-file-xyz.txt"),
+        "display path must be the raw typed (collapsed) form"
     );
-    assert!(
-        !err.message().contains(&home.to_string_lossy().to_string()),
-        "error must not leak the expanded $HOME path, got: {}",
-        err.message()
+    assert_eq!(
+        buf.path(),
+        Some(home.join("no-such-file-xyz.txt").as_path()),
+        "path must resolve against the expanded $HOME, even though display doesn't show it"
     );
 }
 

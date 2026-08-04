@@ -31,16 +31,68 @@ impl Editor {
 
     // ── Buffer choke-points ───────────────────────────────────────────────────
 
-    /// Dedup-open a canonicalized path: returns `(id, false)` if already open,
+    /// Resolve a typed path to the canonical form used as buffer identity
+    /// (`BufferStore::find_by_path`) and, on save, as `FileMeta::resolved_path`.
+    ///
+    /// Canonicalizing the whole path requires the file to exist. When it
+    /// doesn't, canonicalize the parent instead and re-append the basename —
+    /// this still resolves symlinks in the parent chain (e.g. `/tmp` →
+    /// `/private/tmp` on macOS), so a new-file buffer opened via
+    /// `/tmp/x.txt` keys identically to one opened via its canonical form,
+    /// and to the `FileMeta` `:w` produces once the file is written. Falls
+    /// back to the lexically-normalized path only when the parent doesn't
+    /// exist either (nested missing directories) — `open_or_dedup`'s
+    /// `NotFound` branch still opens the buffer; only identity across
+    /// re-typed forms is imprecise in that case.
+    ///
+    /// An associated function, not a `&self` method: `Editor::open` needs it
+    /// during construction, before `self` exists, passing its local
+    /// `startup_cwd` instead of `self.state.cwd`.
+    pub(in crate::editor) fn resolve_buffer_path(
+        typed: &std::path::Path,
+        cwd: &std::path::Path,
+    ) -> PathBuf {
+        let lexical = hume_platform::path::absolute_unresolved(typed, cwd);
+        if let Ok(canonical) = std::fs::canonicalize(&lexical) {
+            return canonical;
+        }
+        match (lexical.parent(), lexical.file_name()) {
+            (Some(parent), Some(name)) => std::fs::canonicalize(parent)
+                .map(|p| p.join(name))
+                .unwrap_or(lexical),
+            _ => lexical,
+        }
+    }
+
+    /// Dedup-open a resolved path: returns `(id, false)` if already open,
     /// `(id, true)` if newly opened (including `OnBufferOpen` hook fire).
+    ///
+    /// `resolved` is canonical when the file exists, or the best-effort form
+    /// [`resolve_buffer_path`] produces when it doesn't (parent canonicalized,
+    /// basename appended lexically) — `find_by_path` compares whichever form
+    /// was stored, so dedup still works once the file is later created and
+    /// reopened via its now-canonicalizable path.
     pub(in crate::editor) fn open_or_dedup(
         &mut self,
-        canonical: &std::path::Path,
+        resolved: &std::path::Path,
     ) -> std::io::Result<(BufferId, bool)> {
-        if let Some(existing) = self.state.buffers.find_by_path(canonical) {
+        if let Some(existing) = self.state.buffers.find_by_path(resolved) {
             return Ok((existing, false));
         }
-        Ok((self.open_buffer(Buffer::from_file(canonical)?), true))
+        let buf = match Buffer::from_file(resolved) {
+            // Missing file, valid basename: `:e`/`:split`/CLI open an empty
+            // buffer bound to the path instead of erroring — `:w` creates it
+            // (see `Buffer::new_file`, `write_buffer_by_id`). A path with no
+            // basename (`/`, `..`) falls through to the `?` below and errors
+            // as before — `Buffer::set_path` would panic on it in debug.
+            Err(e)
+                if e.kind() == std::io::ErrorKind::NotFound && resolved.file_name().is_some() =>
+            {
+                Buffer::new_file(resolved.to_path_buf())
+            }
+            other => other?,
+        };
+        Ok((self.open_buffer(buf), true))
     }
 
     /// Open additional files without switching focus; errors are logged as warnings.
@@ -56,10 +108,13 @@ impl Editor {
     }
 
     /// Resolve a path argument to an open buffer, opening the file if it isn't
-    /// already open. Shared sequence: `expand` → `absolute_unresolved` +
-    /// `display_form` (display path) → `canonicalize` → `open_or_dedup` →
-    /// `set_display_path` if new (overwriting `Buffer::from_file`'s
-    /// canonical-derived default with the typed-derived form).
+    /// already open — reading it if it exists, or opening an empty
+    /// [`Buffer::new_file`] bound to the path if it doesn't (see
+    /// `resolve_buffer_path`). Shared sequence: `expand` →
+    /// `absolute_unresolved` + `display_form` (display path) →
+    /// `resolve_buffer_path` → `open_or_dedup` → `set_display_path` if new
+    /// (overwriting `Buffer::from_file`'s canonical-derived default with the
+    /// typed-derived form).
     /// Errors propagate as raw `io::Error`; callers format with whichever path
     /// string suits their reporting.
     pub(in crate::editor) fn resolve_open_path(
@@ -72,8 +127,8 @@ impl Editor {
             path,
             &self.state.cwd,
         ));
-        let canonical = std::fs::canonicalize(path)?;
-        let (bid, is_new) = self.open_or_dedup(&canonical)?;
+        let resolved = Self::resolve_buffer_path(path, &self.state.cwd);
+        let (bid, is_new) = self.open_or_dedup(&resolved)?;
         if is_new {
             self.state
                 .buffers

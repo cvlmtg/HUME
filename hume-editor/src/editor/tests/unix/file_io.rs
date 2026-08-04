@@ -64,45 +64,152 @@ fn edit_deleted_file_with_open_buffer_switches_and_warns() {
 }
 
 #[test]
-fn edit_deleted_file_with_no_buffer_errors() {
+fn edit_deleted_file_with_no_buffer_reopens_as_new_file() {
     let dir = safe_tempdir();
     let path = dir.path().join("never_opened.txt");
     // Path never existed — no buffer open for it.
     let mut ed = editor_from("-[h]>ello\n");
-    let err = ed
-        .execute_typed("e", Some(path.to_str().unwrap()))
-        .unwrap_err();
+    ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+
+    let canonical_dir = std::fs::canonicalize(dir.path()).unwrap();
+    assert_eq!(
+        ed.doc().path(),
+        Some(canonical_dir.join("never_opened.txt").as_path()),
+        ":e <missing-path> must open a buffer bound to the path"
+    );
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\n",
+        "new-file buffer must start empty (just the structural trailing newline)"
+    );
     assert!(
-        err.to_string().contains("No such file") || err.to_string().contains("os error"),
-        "must error with ENOENT when no buffer is open, got: {err}"
+        !ed.doc().is_dirty(),
+        "an untouched new-file buffer is clean"
+    );
+    assert!(
+        ed.doc().is_new_file(),
+        "buffer must be flagged as not-yet-written"
     );
 }
 
-/// `:e <missing-path>` reports the path exactly as the user typed it, not its
-/// tilde-expanded form — matches `:split`/`:vsplit`
-/// (`split_missing_file_error_shows_raw_typed_path` in `multi_pane.rs`), which
-/// both share `Editor::resolve_open_path`.
+/// `:e <missing-path>` opens a buffer whose display path is exactly the path
+/// the user typed, `~`-collapsed — not its tilde-expanded `$HOME` form.
+/// Matches `:split`/`:vsplit`
+/// (`split_missing_file_opens_new_file_with_raw_typed_display_path` in
+/// `multi_pane.rs`), which both share `Editor::resolve_open_path`.
 ///
 /// Uses a `~`-prefixed path rather than a plain relative one: `expand()` is a
 /// no-op on inputs with no `~`/env-var sigil, so a plain relative path can't
-/// distinguish "show what was typed" from "show the expanded-but-unresolved
+/// distinguish "typed-derived display form" from "expanded-but-unresolved
 /// path". Only an input `expand()` actually rewrites, like `~/...`, proves
-/// which one the error message is built from.
+/// which one the display path is built from.
 #[test]
-fn edit_missing_file_error_shows_raw_typed_path() {
+fn edit_missing_file_shows_raw_typed_display_path() {
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
     let mut ed = editor_from("-[h]>ello\n");
-    let err = ed
-        .execute_typed("e", Some("~/no-such-file-xyz.txt"))
-        .unwrap_err();
+    ed.execute_typed("e", Some("~/no-such-file-xyz.txt"))
+        .unwrap();
+    assert_eq!(
+        ed.doc().display_path(),
+        Some("~/no-such-file-xyz.txt"),
+        "display path must be the raw typed (collapsed) form"
+    );
+    let msg = ed.state.status_msg.as_deref().unwrap_or("");
     assert!(
-        err.to_string().starts_with("~/no-such-file-xyz.txt: "),
-        "error must lead with the raw typed path, got: {err}"
+        msg.contains("[new file]"),
+        "status message must flag the buffer as new, got: {msg:?}"
     );
     assert!(
-        !err.to_string()
-            .contains(&home.to_string_lossy().to_string()),
-        "error must not leak the expanded $HOME path, got: {err}"
+        !msg.contains(&home.to_string_lossy().to_string()),
+        "status message must not leak the expanded $HOME path, got: {msg:?}"
+    );
+}
+
+#[test]
+fn edit_missing_file_then_write_creates_it() {
+    let dir = safe_tempdir();
+    let path = dir.path().join("created.txt");
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+    assert!(!path.exists(), "opening must not touch disk");
+
+    ed.handle_key(key('i'));
+    for ch in "hello".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_esc());
+    ed.execute_typed("w", None).unwrap();
+
+    assert!(
+        !ed.doc().is_new_file(),
+        "buffer must be a real file post-write"
+    );
+    assert!(!ed.doc().is_dirty());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello\n");
+
+    // A second write (now a normal existing-file save) must still succeed.
+    ed.handle_key(key('a'));
+    ed.handle_key(key('!'));
+    ed.handle_key(key_esc());
+    ed.execute_typed("w", None).unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello!\n");
+}
+
+#[test]
+fn edit_missing_file_twice_dedupes() {
+    let dir = safe_tempdir();
+    let path = dir.path().join("dedup.txt");
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+    let bid = ed.focused_buffer_id();
+    ed.execute_typed("b", Some("*scratch*")).unwrap();
+
+    ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid,
+        "second :e on the same missing path must switch to the same buffer"
+    );
+    assert_eq!(ed.state.buffers.len(), 2, "no duplicate buffer opened");
+}
+
+#[test]
+fn write_missing_parent_dir_errors_and_leaves_buffer_pending() {
+    let dir = safe_tempdir();
+    let path = dir.path().join("no-such-subdir").join("file.txt");
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+
+    let err = ed.execute_typed("w", None).unwrap_err();
+    assert!(
+        err.message().contains("No such file") || err.message().contains("os error"),
+        "missing parent dir must surface at write time, got: {}",
+        err.message()
+    );
+    assert!(
+        ed.doc().is_new_file(),
+        "a failed write must not mark the buffer as saved to disk"
+    );
+    assert!(!path.exists());
+}
+
+#[test]
+fn edit_directory_path_still_errors() {
+    let dir = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    let err = ed
+        .execute_typed("e", Some(dir.path().to_str().unwrap()))
+        .unwrap_err();
+    assert!(
+        err.message().contains("Is a directory") || err.message().contains("os error"),
+        "opening a directory must still error, not silently open a new-file buffer, got: {}",
+        err.message()
     );
 }
 
@@ -162,6 +269,26 @@ fn open_extra_files_opens_all_paths() {
     assert!(
         ed.state.buffers.find_by_path(&canonical2).is_some(),
         "second file must be present in the buffer store"
+    );
+}
+
+/// `hume newfile.txt` (the *first* CLI file argument, `Editor::open`'s own
+/// `Buffer::from_file(path)?` branch — distinct from `open_extra_files`,
+/// which only handles trailing args) must open a new-file buffer instead of
+/// exiting on ENOENT.
+#[test]
+fn startup_with_missing_first_file_opens_new_file_buffer() {
+    let dir = safe_tempdir();
+    let path = dir.path().join("startup_new.txt");
+
+    let ed = Editor::open(Some(path.clone()), std::sync::Arc::new(|| {})).unwrap();
+
+    assert_eq!(ed.state.buffers.len(), 1);
+    assert!(ed.doc().is_new_file());
+    let canonical_dir = std::fs::canonicalize(dir.path()).unwrap();
+    assert_eq!(
+        ed.doc().path(),
+        Some(canonical_dir.join("startup_new.txt").as_path())
     );
 }
 
@@ -352,45 +479,49 @@ fn wa_skips_read_only_dirty_buffer() {
 }
 
 #[test]
-fn open_extra_files_nonexistent_logs_warning() {
+fn open_extra_files_nonexistent_opens_new_file_buffer() {
     let f1 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
 
     let mut ed = Editor::open(Some(canonical.clone()), std::sync::Arc::new(|| {})).unwrap();
-    let nonexistent = std::path::PathBuf::from("/tmp/hume_test_nonexistent_xyz_404.txt");
+    let dir = safe_tempdir();
+    let nonexistent = dir.path().join("hume_test_nonexistent_xyz_404.txt");
+    let canonical_dir = std::fs::canonicalize(dir.path()).unwrap();
 
     ed.open_extra_files(std::slice::from_ref(&nonexistent));
 
     assert_eq!(
         ed.state.buffers.len(),
-        1,
-        "failed open must not add a buffer"
+        2,
+        "a trailing missing CLI path must open a new-file buffer, not warn"
     );
-    // Full path, not just the basename: a message that dropped the directory
-    // (or substituted some other representation ending in the same filename)
-    // would still satisfy a basename-only `contains` check.
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&canonical_dir.join("hume_test_nonexistent_xyz_404.txt"))
+        .expect("new-file buffer must be findable by its resolved path");
+    assert!(ed.state.buffers.get(bid).is_new_file());
     assert!(
-        ed.state.message_log.entries().any(|e| {
-            e.severity == crate::editor::message_log::Severity::Warning
-                && e.text
-                    .starts_with(&format!("Failed to open {}: ", nonexistent.display()))
-        }),
-        "a warning must be logged for the missing file, with its full path"
+        !ed.state
+            .message_log
+            .entries()
+            .any(|e| e.text.contains("Failed to open")),
+        "must not warn for a missing path — it opens instead"
     );
 }
 
-/// `open_extra_files`'s warning must echo the `PathBuf` it was given verbatim
-/// (`path.display()` in `open_extra_files`, not anything derived from the
-/// internal `expand()`/canonicalize sequence `resolve_open_path` runs).
+/// The new-file buffer's display path must be the `PathBuf` `open_extra_files`
+/// was given, not anything derived from the internal `expand()`/canonicalize
+/// sequence `resolve_open_path` runs.
 ///
 /// A tilde-literal input is required to prove this: `expand()` is a no-op on
 /// inputs with no `~`/env-var sigil, so a plain absolute path (as in
-/// `open_extra_files_nonexistent_logs_warning` above) can't tell "warns with
-/// the raw arg" apart from "warns with an internally-expanded/resolved
-/// path" — both would render identically for such input.
+/// `open_extra_files_nonexistent_opens_new_file_buffer` above) can't tell
+/// "typed-derived display form" apart from "expanded-but-unresolved path" —
+/// both would render identically for such input.
 #[test]
-fn open_extra_files_warns_with_untransformed_path() {
+fn open_extra_files_new_file_shows_untransformed_display_path() {
     let f1 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
@@ -403,25 +534,16 @@ fn open_extra_files_warns_with_untransformed_path() {
 
     ed.open_extra_files(&[tilde_path]);
 
-    assert!(
-        ed.state.message_log.entries().any(|e| {
-            e.severity == crate::editor::message_log::Severity::Warning
-                && e.text
-                    .starts_with("Failed to open ~/hume-test-no-such-file-xyz.txt: ")
-        }),
-        "warning must echo the raw tilde path, not its expanded $HOME form, got: {:?}",
-        ed.state
-            .message_log
-            .entries()
-            .map(|e| e.text.clone())
-            .collect::<Vec<_>>()
-    );
-    assert!(
-        ed.state
-            .message_log
-            .entries()
-            .all(|e| !e.text.contains(&home.to_string_lossy().to_string())),
-        "warning must not leak the expanded $HOME path"
+    assert_eq!(ed.state.buffers.len(), 2);
+    let display = ed
+        .state
+        .buffers
+        .find_by_path(&home.join("hume-test-no-such-file-xyz.txt"))
+        .map(|bid| ed.state.buffers.get(bid).display_path().unwrap().to_owned());
+    assert_eq!(
+        display.as_deref(),
+        Some("~/hume-test-no-such-file-xyz.txt"),
+        "display path must be the raw typed (collapsed) form, not the expanded $HOME one"
     );
 }
 

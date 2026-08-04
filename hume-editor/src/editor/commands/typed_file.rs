@@ -281,7 +281,15 @@ fn mark_written_and_synced(ed: &mut Editor, bid: BufferId, line_count: usize, re
 }
 
 /// Write a specific buffer to its file path. No save-as — only writes to the
-/// buffer's own `file_meta` path. Used by `:wa` and the no-arg path of `:w`.
+/// buffer's own path. Used by `:wa` and the no-arg path of `:w`.
+///
+/// `file_meta` (not `path`) is the SSOT for "has this buffer ever touched
+/// disk" (see `Buffer::is_new_file`): a buffer with a `path` but no
+/// `file_meta` is a `Buffer::new_file` (`:e` on a path that didn't exist yet)
+/// and takes the create branch below instead of `write_file_atomic`, which
+/// needs an existing baseline to atomically replace. `path` with no
+/// `file_meta` at all is `"no file name"` only for genuinely pathless scratch
+/// buffers.
 fn write_buffer_by_id(
     ed: &mut Editor,
     bid: BufferId,
@@ -293,9 +301,29 @@ fn write_buffer_by_id(
     if buf.is_read_only() {
         return Err(CommandError::new("Buffer is read-only"));
     }
-    let Some(meta) = buf.file_meta.as_mut() else {
-        return Err(CommandError::new("no file name"));
-    };
+    if buf.file_meta.is_none() {
+        let Some(path) = buf.path().map(std::path::Path::to_path_buf) else {
+            return Err(CommandError::new("no file name"));
+        };
+        return match hume_platform::io::write_file_new(&content, &path) {
+            Ok(meta) => {
+                // No `set_path` here, unlike the save-as branch below: `path`
+                // was already resolved (parent canonicalized) by
+                // `Editor::resolve_buffer_path` when the buffer was opened,
+                // so `meta.resolved_path()` is already identical — calling
+                // `set_path` would only re-derive `display_path` from the
+                // canonical form and stomp the typed-derived one `:e` set.
+                ed.state.buffers.get_mut(bid).file_meta = Some(meta);
+                mark_written_and_synced(ed, bid, line_count, false);
+                Ok(())
+            }
+            Err(e) => Err(CommandError::new(e.to_string())),
+        };
+    }
+    let meta = buf
+        .file_meta
+        .as_mut()
+        .expect("checked file_meta.is_none() above");
     if !force && let Some(msg) = stale_write_block(meta) {
         return Err(CommandError::new(msg));
     }
