@@ -1,7 +1,7 @@
 use super::*;
 use pretty_assertions::assert_eq;
 
-// ── Phase 6 — BufferStore + buffer choke-points ───────────────────────────────
+// ── BufferStore + buffer choke-points ─────────────────────────────────────────
 
 use crate::editor::commands::open_pane;
 use crate::editor::doc_ops;

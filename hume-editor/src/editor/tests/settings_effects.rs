@@ -121,11 +121,10 @@ fn set_option_applies_jump_list_capacity() {
 
 /// `mouse-enabled`/`mouse-select` are terminal modes applied once at startup
 /// (`hume_platform::terminal::init`, called from `hume-editor/src/lib.rs`
-/// before entering the event loop) — there is no other write side. Before
-/// `resync_mouse_mode` existed, `:set global mouse-enabled=false` changed
-/// `EditorSettings` but the terminal kept reporting mouse events until
-/// restart. `prepare_frame` now calls `resync_mouse_mode` every frame, which
-/// re-applies the terminal mode whenever it drifts from `state.settings`.
+/// before entering the event loop) — there is no other write side.
+/// `prepare_frame` calls `resync_mouse_mode` every frame, re-applying the
+/// terminal mode whenever it drifts from `state.settings`, so `:set global
+/// mouse-enabled=false` takes effect without restarting.
 ///
 /// No `SharedTerm` exists in test `Editor`s (`Editor::for_testing`/`open`
 /// both seed `terminal: None`), so this can't assert on emitted escape

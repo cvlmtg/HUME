@@ -7,8 +7,9 @@ fn host() -> ScriptingHost {
 
 // ── Steel file-module isolation + prelude macro visibility ────────────────
 //
-// Two properties of steel-core's module system required by the plugins branch:
-//  1. Private helpers are isolated across modules (foundation of plan A).
+// Two properties of steel-core's module system the plugin loading pipeline
+// relies on:
+//  1. Private helpers are isolated across modules.
 //  2. A define-syntax macro defined globally (as the prelude does) is visible
 //     inside a subsequently required module body.
 //
@@ -155,7 +156,7 @@ fn global_define_syntax_is_visible_inside_required_module() {
     );
 }
 
-// ── Phase 0 lazy plugin loading ───────────────────────────────────────────
+// ── Lazy plugin loading ───────────────────────────────────────────────────
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals.
@@ -352,7 +353,7 @@ fn eager_plugin_body_error_aborts_init() {
     );
 }
 
-// ── Phase 1 lazy plugin loading — command activations ────────────────────────
+// ── Lazy plugin loading — command activations ─────────────────────────────────
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals.

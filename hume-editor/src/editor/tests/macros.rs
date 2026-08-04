@@ -805,14 +805,8 @@ fn dot_inside_macro_replay_fires_drain() {
         .registers
         .write_macro('q', vec![key('d'), key('.')]);
 
-    // Replay: qq + drain.
-    // drain_replay_queue:
-    //   1. saves last_repeatable_action (None at this point)
-    //   2. handle_key('d') → deletes 'a', stamps last_repeatable_action="delete"
-    //   3. handle_key('.') → cmd_repeat sees the in-loop action, sets pending_repeat;
-    //      replay_dot fires at THIS handle_key's tail (inside the loop),
-    //      replaying delete on 'b'.
-    //   4. restores last_repeatable_action = None
+    // Replay: qq + drain — see the fail oracle above for what each replayed
+    // key does inside `drain_replay_queue`'s loop.
     ed.handle_key(key('q'));
     ed.handle_key(key('q'));
     ed.drain_replay_queue();

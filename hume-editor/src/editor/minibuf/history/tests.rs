@@ -265,8 +265,8 @@ fn shrink_then_raise_with_no_push_between_resurrects_every_entry() {
 
 #[test]
 fn set_capacity_shrink_converges_on_a_duplicate_push() {
-    // Fail oracle: the consecutive-duplicate branch used to `return` before
-    // the trim loop, so a shrink only converged on a push that landed a
+    // Fail oracle: if the consecutive-duplicate branch returned before the
+    // trim loop, a shrink would only converge on a push that landed a
     // genuinely new entry — never on a resubmission of the same entry.
     let mut h = h(10);
     h.push("a".into());

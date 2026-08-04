@@ -1,21 +1,21 @@
 use super::*;
 use pretty_assertions::assert_eq;
 
-// ── Pane selection sync (Bug 3) ──────────────────────────────────────────────
+// ── Pane selection sync ───────────────────────────────────────────────────────
 //
 // The engine pane's `selections` field must stay in sync with `doc.sels()` so
 // the renderer always shows the correct cursor. `sync_all_pane_mirrors` is
 // called once per frame in the run loop; these tests call it explicitly (as
 // the run loop would) and verify the pane reflects the post-operation state.
 
-/// Return the pane's primary cursor as an absolute char offset — the engine's
-/// representation after Phase 2 unified the selection types.
+/// Return the pane's primary cursor as an absolute char offset.
 fn pane_head(ed: &Editor) -> usize {
     ed.view.panes[ed.state.focused_pane_id].selections[0].head
 }
 
-/// After `c` (change): the selection is deleted and Insert mode entered.
-/// Before the fix, the pane still held the pre-deletion selection after `c`.
+/// After `c` (change): the selection is deleted and Insert mode entered — the
+/// pane must reflect the post-deletion cursor, not the stale pre-deletion
+/// selection.
 #[test]
 fn pane_selections_synced_after_change_command() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -34,8 +34,8 @@ fn pane_selections_synced_after_change_command() {
     );
 }
 
-/// After typing a character in Insert mode: the pane cursor must advance.
-/// Before the fix, `apply_edit_grouped` never called `sync_all_pane_mirrors`.
+/// After typing a character in Insert mode: the pane cursor must advance,
+/// which requires `apply_edit_grouped` to call `sync_all_pane_mirrors`.
 #[test]
 fn pane_selections_synced_after_insert_typing() {
     let mut ed = editor_from("-[a]>b\n");
@@ -52,8 +52,8 @@ fn pane_selections_synced_after_insert_typing() {
     );
 }
 
-/// After `Esc` (exit Insert): pane must reflect the final cursor position.
-/// Before the fix, `end_insert_session` never called `sync_all_pane_mirrors`.
+/// After `Esc` (exit Insert): pane must reflect the final cursor position,
+/// which requires `end_insert_session` to call `sync_all_pane_mirrors`.
 #[test]
 fn pane_selections_synced_after_exit_insert() {
     let mut ed = editor_from("ab-[c]>\n");
@@ -72,10 +72,12 @@ fn pane_selections_synced_after_exit_insert() {
 }
 
 /// When the primary selection is NOT the earliest in the document,
-/// `pane.selections[0]` must still be the primary (not the earliest).
+/// `pane.primary_idx` must still identify the actual primary (not the
+/// earliest).
 ///
-/// Before the fix, `sync_all_pane_mirrors` used `iter_sorted()`, which lost
-/// primary info, so the engine always treated the earliest selection as primary.
+/// Fail oracle: iterating sorted-by-position instead of preserving
+/// `primary_idx` would make the engine treat the earliest selection as
+/// primary regardless of which one actually is.
 #[test]
 fn pane_selections_primary_is_first_even_when_not_earliest() {
     use hume_editing::selection::{Selection, SelectionSet};
@@ -113,8 +115,9 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
 }
 
 /// Backward selections (head < anchor) can cause start()-order to differ from
-/// head-order. Before the fix, pane selections were passed in start()-order, which
-/// triggered the engine's `debug_assert!(selections sorted by head)`.
+/// head-order. Fail oracle: passing pane selections in start()-order instead
+/// of head-order would trip the engine's `debug_assert!(selections sorted by
+/// head)`.
 ///
 /// Reproduction: two selections where their start() order differs from head order:
 ///   A: anchor=10, head=3  → start()=3, head=3   (backward)

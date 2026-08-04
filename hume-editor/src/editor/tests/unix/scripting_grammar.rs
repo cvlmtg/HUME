@@ -243,7 +243,6 @@ fn install_real_json_grammar_e2e() {
     let ext = hume_test_fixtures::grammar_platform_ext();
     let out_path = data_dir.join("grammars").join(format!("json.{ext}"));
 
-    // Step 1: git clone --filter=blob:none
     let status = git_clone_rev_for_test(url, &src_dir, rev);
     match &status {
         Err(e) => panic!("git_clone_rev failed: {e}"),
@@ -252,13 +251,11 @@ fn install_real_json_grammar_e2e() {
     }
     assert!(src_dir.exists(), "clone must create src dir");
 
-    // Step 2: tree-sitter build
     let status = hume_platform::process::tree_sitter_build(&src_dir, &out_path)
         .expect("tree_sitter_build must not fail to spawn");
     assert!(status.success(), "tree-sitter build failed");
     assert!(out_path.exists(), "compiled grammar must exist after build");
 
-    // Step 3: register-grammar! via editor scripting
     let hl_path = src_dir.join("highlights.scm");
     // Fetch highlights query via curl, using the helix commit pinned in the catalog.
     let pin = helix_pin();

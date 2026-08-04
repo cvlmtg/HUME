@@ -213,24 +213,23 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
 }
 
 /// A buffer opened by a lazy `#:languages` plugin's activation body during
-/// `:reload-config`'s own `init_scripting()` call — the actual place
-/// `open-buffer!` is callable mid-reload (`init.scm`'s own top level runs in
-/// `EvalMode::Init`, which the builtin rejects) — must not get
-/// `OnBufferOpen` fired twice: once by the ordinary open path
-/// (`activate_and_register`'s own `apply_script_effects` → `detect_pending_languages`,
-/// nested inside the same `detect_and_set_language` call that activated the
-/// plugin, so it runs before `init_scripting` even returns) and again by
-/// `resync_config_state`'s blanket re-fire loop, which runs after.
+/// `:reload-config`'s own `init_scripting()` call must not get
+/// `OnBufferOpen` fired twice — see the portable `tests/reload_config.rs`'s
+/// `resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload`
+/// for why `open-buffer!` is callable here at all (`EvalMode::Init` normally
+/// rejects it). Here the double-fire risk is the ordinary open path
+/// (`activate_and_register`'s own `apply_script_effects` →
+/// `detect_pending_languages`, nested inside the same `detect_and_set_language`
+/// call that activated the plugin, so it runs before `init_scripting` even
+/// returns) against `resync_config_state`'s blanket re-fire loop, which runs
+/// after.
 ///
 /// `:reload-config` is dispatched as the *first* `init_scripting()` call (no
 /// prior one) so the plugin's `open-buffer!` genuinely opens a new buffer
 /// here rather than deduping against one from an earlier init.
 ///
-/// Counts via a `tab-width` override incremented once per fire — the same
-/// technique the portable `tests/reload_config.rs`'s
-/// `resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload`
-/// uses; a plain "did it fire at all" check can't distinguish once from
-/// twice.
+/// Counts via a `tab-width` override incremented once per fire — a plain
+/// "did it fire at all" check can't distinguish once from twice.
 #[test]
 fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
     let file_tmp = safe_tempdir();

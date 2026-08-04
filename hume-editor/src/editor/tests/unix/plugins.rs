@@ -2248,7 +2248,7 @@ fn core_stdlib_selection_commands() {
     );
 }
 
-// ── Retrospective issue 2: one registry, one dispatcher — new coverage ───────
+// ── One registry, one dispatcher: lazy-activation dispatch parity ───────────
 
 /// A lazy command's first dispatch leaves identical bookkeeping whether
 /// triggered via keypress-style dispatch or the `:` command line — both are

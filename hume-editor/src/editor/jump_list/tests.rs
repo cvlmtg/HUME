@@ -137,8 +137,8 @@ fn set_capacity_defers_trim_to_next_push() {
 
 #[test]
 fn set_capacity_shrink_converges_on_a_deduplicated_push() {
-    // Fail oracle: the dedup branch used to `return` before the trim loop,
-    // so a shrink only converged on a push that landed a genuinely new
+    // Fail oracle: if the dedup branch returned before the trim loop, a
+    // shrink would only converge on a push that landed a genuinely new
     // entry — never on one that overwrote the last entry in place.
     let mut jl = JumpList::new(10);
     for i in 0..5 {

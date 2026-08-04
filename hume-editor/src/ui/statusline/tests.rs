@@ -569,12 +569,11 @@ fn shorten_path_unix_sep_ignores_backslash() {
 
 // ── statusline_display_path (label fallback for path-less buffers) ────────
 //
-// Regression: the statusline's FilePath element used to render "" for
-// scratch/synthetic buffers because it only consulted display_path()/path(),
-// never the buffer's label — even though `:ls` (typed_misc.rs) always showed
-// their name via the label-aware display_name(). Independent oracle: the
-// expected strings below are the literal names the bug report asked for
-// (`*scratch*`, `[buffers]`), not derived from display_name()'s own logic.
+// Regression: consulting only display_path()/path() renders "" for
+// scratch/synthetic buffers — the label-aware display_name() (same as `:ls`
+// in typed_misc.rs) is required for their name to show. Independent oracle:
+// the expected strings below are literal names (`*scratch*`, `[buffers]`),
+// not derived from display_name()'s own logic.
 
 #[test]
 fn statusline_display_path_scratch_buffer_shows_scratch_name() {

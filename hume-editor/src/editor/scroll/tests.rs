@@ -590,10 +590,10 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
     }
 }
 
-/// One frame resolves the cursor's line once. Modelled as the two halves that
-/// used to hold separate row maps over the same scratch: the scroll step
+/// One frame resolves the cursor's line once, shared between the scroll step
 /// (`lifecycle::scroll_into_view`) and the terminal-cursor placement the draw
-/// path asks for. In `WrapMode::None` `block` never formats, so `locate` is
+/// path asks for — both read the same `RowMap` rather than each formatting
+/// their own. In `WrapMode::None` `block` never formats, so `locate` is
 /// the only thing that can move the counter — making 1 a derived expectation,
 /// not a measured one.
 #[test]
@@ -619,10 +619,10 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
         "the scroll step must resolve the cursor with a single format"
     );
 
-    // ...and the cell it produced is the one the discarded second row map
-    // used to compute, so nothing was traded away for that saving. Runs after
-    // the count above: re-deriving is exactly the second format being ruled
-    // out, so it has to stay on this side of the assertion.
+    // ...and the cell it produced is the one a *second* row map would also
+    // compute, so nothing is traded away by sharing it. Runs after the count
+    // above: re-deriving is exactly the second format being ruled out, so it
+    // has to stay on this side of the assertion.
     let mut s = FormatScratch::new();
     let walked = cursor::screen_pos(
         &v,

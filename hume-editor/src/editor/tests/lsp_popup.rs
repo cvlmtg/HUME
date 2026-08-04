@@ -412,9 +412,10 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     // frame, but that clamp writes only into the view copy, never back into
     // the model. If the popup's visible window grows without a scroll key
     // touching the model (e.g. the terminal resizes taller), the model can
-    // hold a scroll value now far beyond the shrunk `max_scroll`. Ctrl+u
-    // used to subtract from that stale value directly, which could still
-    // land above the new `max_scroll` — visibly no-op on the first press.
+    // hold a scroll value now far beyond the shrunk `max_scroll`. Fail
+    // oracle: subtracting from that stale value directly, without first
+    // clamping it to the current `max_scroll`, could still land above it —
+    // visibly a no-op on the first Ctrl+u press.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let tall = (0..40)
