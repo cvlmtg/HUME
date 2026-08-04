@@ -154,7 +154,10 @@ fn unactioned_change_does_not_refire_until_a_further_change_happens() {
 /// Fail oracle: before `enter_buffer_with_jump` wired the check into these
 /// commands, `:bnext`/`:bprev` called `switch_to_buffer_with_jump` directly
 /// with no check at all, so the target buffer's disk state stayed `InSync`
-/// no matter what changed externally.
+/// no matter what changed externally. Driven via `type_cmd_event`, not
+/// `type_cmd`: a *moving* `:bp` only switches inside `enter_buffer_with_jump`
+/// itself (see its doc) and relies on `Editor::handle_event`'s tail check to
+/// run the disk check once dispatch returns.
 #[test]
 fn bnext_and_bprev_run_the_buffer_enter_disk_check() {
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -169,7 +172,7 @@ fn bnext_and_bprev_run_the_buffer_enter_disk_check() {
     rewrite_externally(&tmp_a, "hello, externally changed!\n");
 
     // With only two buffers open, either direction lands back on A.
-    type_cmd(&mut ed, ":bp");
+    type_cmd_event(&mut ed, ":bp");
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
         ed.state.config.confirm.is_some(),
@@ -185,6 +188,9 @@ fn bnext_and_bprev_run_the_buffer_enter_disk_check() {
 /// Fail oracle: if `BufferEnter` deduped an already-reported `Changed` state
 /// exactly like `Ambient` does, `:b #` landing on the buffer would find
 /// nothing new to report and stay silent — silently breaking the promise.
+/// The final `:b #` is driven via `type_cmd_event`: a *moving* `:b` only
+/// switches inside `enter_buffer_with_jump` and relies on
+/// `Editor::handle_event`'s tail check for the disk check itself.
 #[test]
 fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
     let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -215,7 +221,7 @@ fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
     assert!(ed.state.config.confirm.is_none());
 
     // Enter B via :b — the deferred prompt must appear now.
-    type_cmd(&mut ed, ":b #");
+    type_cmd_event(&mut ed, ":b #");
     assert_eq!(ed.focused_buffer_id(), bid_b);
     assert!(
         ed.state.config.confirm.is_some(),
@@ -1152,5 +1158,214 @@ fn confirm_does_not_open_during_macro_replay() {
     assert!(
         ed.state.config.confirm.is_some(),
         "the deferred prompt must arrive once replay is over"
+    );
+}
+
+/// A macro that lands on a buffer whose change was already warned about
+/// *before* the macro ever ran must still say something — going completely
+/// silent would leave the user editing content that no longer matches disk
+/// with no indication anywhere until `:w` refuses.
+///
+/// Fail oracle: with only the `!already_reported` warn clause (no
+/// `is_buffer_enter && promptable` fallback), `already_reported` is already
+/// `true` from the pre-replay ambient check below, so the replay-triggered
+/// `BufferEnter` check would find nothing new to say and stay silent — the
+/// final assertion would fail.
+#[test]
+fn macro_replay_onto_an_already_warned_stale_buffer_still_warns() {
+    let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid_a = ed.focused_buffer_id();
+    let (tmp_b, _tmp_b_guard) = temp_file("world\n");
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.display()));
+    let bid_b = ed.focused_buffer_id();
+    type_cmd(&mut ed, ":b #");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid_a,
+        "setup: back on A, B is the alternate"
+    );
+
+    // Record a macro into register 'q' that switches to the alternate (B).
+    ed.handle_key(key('Q'));
+    ed.handle_key(key('Q'));
+    for ch in ":b #".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    ed.handle_key(key('Q'));
+
+    // Back on A so the replay below has somewhere to switch away from.
+    type_cmd(&mut ed, ":b #");
+    assert_eq!(ed.focused_buffer_id(), bid_a);
+
+    // B changes externally and is warned about once, ambiently, *before*
+    // replay ever runs — `already_reported` is true by the time replay hits.
+    rewrite_externally(&tmp_b, "world, externally changed!\n");
+    ed.check_buffer_disk_state(bid_b, DiskCheckTrigger::Ambient);
+    let (_, warnings_before) = ed.state.message_log.totals();
+
+    ed.handle_key(key('q'));
+    ed.handle_key(key('q'));
+    ed.drain_replay_queue();
+
+    let (_, warnings_after) = ed.state.message_log.totals();
+    assert_eq!(ed.focused_buffer_id(), bid_b);
+    assert!(
+        ed.state.config.confirm.is_none(),
+        "no confirm may open mid-replay"
+    );
+    assert_eq!(
+        warnings_after,
+        warnings_before + 1,
+        "landing on an already-warned stale buffer during replay must still \
+         warn, not go completely silent"
+    );
+}
+
+/// A command that fails after moving focus (`:qa` jumping to the first
+/// dirty buffer to name it in its error) must keep its own error on screen —
+/// a reload confirm for that same buffer's external change must not replace
+/// it, and must not steal the keystroke meant to answer the error (e.g.
+/// retrying with `:qa!`).
+///
+/// Fail oracle: without the `message_log.totals()` guard in
+/// `Editor::handle_event`, the focus diff `typed_quit_all` produces would
+/// still run `check_focus_change_disk_state`, which would open a reload
+/// confirm over the "Unsaved changes" error — the first assertion below
+/// would find `status_msg` naming the disk change instead.
+#[test]
+fn quit_all_error_is_not_shadowed_by_a_disk_confirm() {
+    let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid_a = ed.focused_buffer_id();
+    ed.handle_key(key('i'));
+    ed.handle_key(key('!'));
+    ed.handle_key(key_esc());
+    assert!(ed.doc().is_dirty(), "setup: A is dirty");
+
+    let (tmp_b, _tmp_b_guard) = temp_file("world\n");
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.display()));
+    assert_ne!(ed.focused_buffer_id(), bid_a, "setup: B is focused, clean");
+
+    rewrite_externally(&tmp_a, "hello, externally changed!\n");
+
+    type_cmd_event(&mut ed, ":qa");
+
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid_a,
+        "setup: :qa must jump to the dirty buffer to name it"
+    );
+    assert!(
+        ed.state
+            .status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("Unsaved changes")),
+        "the :qa error must stay on screen, got: {:?}",
+        ed.state.status_msg
+    );
+    assert!(
+        ed.state.config.confirm.is_none(),
+        "no reload confirm may shadow the :qa error"
+    );
+}
+
+/// Declining a reload confirm (`[k]eep`) must not reopen the identical
+/// question on a later, unrelated focus change — only a further external
+/// change (a new signature) should ask again. See `DiskState::Declined`.
+///
+/// Fail oracle: without recording the decline, cycling away and back would
+/// still find `disk_state` at `Changed` for the same signature, and the
+/// `BufferEnter` re-prompt rule would reopen the confirm — the middle
+/// assertion below would fail.
+#[test]
+fn declined_confirm_does_not_reopen_on_later_focus_change() {
+    let (mut ed, tmp_a, _tmp_b_guard, bid_a, bid_b) = two_panes_with_b_focused();
+    assert_eq!(ed.focused_buffer_id(), bid_b, "setup: right pane focused");
+
+    rewrite_externally(&tmp_a, "hello, externally changed!\n");
+
+    // Cycle onto A: the deferred prompt opens for the first time.
+    ed.feed_event(key_ctrl('p'));
+    ed.feed_event(key('p'));
+    assert_eq!(ed.focused_buffer_id(), bid_a);
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "setup: A's confirm opens"
+    );
+
+    // Decline it.
+    ed.feed_event(key('k'));
+    assert!(ed.state.config.confirm.is_none());
+
+    // Cycle away to B and back to A: must stay silent for the same change.
+    ed.feed_event(key_ctrl('p'));
+    ed.feed_event(key('p'));
+    assert_eq!(ed.focused_buffer_id(), bid_b);
+    ed.feed_event(key_ctrl('p'));
+    ed.feed_event(key('p'));
+    assert_eq!(ed.focused_buffer_id(), bid_a);
+    assert!(
+        ed.state.config.confirm.is_none(),
+        "a declined change must not re-prompt on a later, unrelated focus change"
+    );
+
+    // A further external change (a different signature) still asks again.
+    rewrite_externally(&tmp_a, "hello, changed again!\n");
+    ed.feed_event(key_ctrl('p'));
+    ed.feed_event(key('p'));
+    ed.feed_event(key_ctrl('p'));
+    ed.feed_event(key('p'));
+    assert_eq!(ed.focused_buffer_id(), bid_a);
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "a further external change must still prompt"
+    );
+}
+
+/// A confirm left open for a buffer the user just clicked away from
+/// (`handle_mouse` has no confirm-key intercept, unlike `handle_key`) must
+/// be retired rather than left on screen pointing at a pane no longer in
+/// view — and the buffer the click actually landed on must get its own
+/// deferred prompt, not be blocked by the stale one.
+///
+/// Fail oracle: without `check_focus_change_disk_state` retiring a confirm
+/// that no longer targets the newly-focused buffer, the assertion below
+/// would still find B's confirm naming B, blocking A's own prompt via
+/// `can_open_confirm`'s `confirm.is_none()` gate.
+#[test]
+fn mouse_click_into_another_pane_retires_a_stale_confirm() {
+    let (mut ed, tmp_a, tmp_b_guard, bid_a, bid_b) = two_panes_with_b_focused();
+    assert_eq!(ed.focused_buffer_id(), bid_b, "setup: right pane focused");
+
+    rewrite_externally(&tmp_a, "hello, externally changed!\n");
+    ed.check_buffer_disk_state(bid_a, DiskCheckTrigger::Ambient);
+    assert!(
+        ed.state.config.confirm.is_none(),
+        "setup: A is not focused yet"
+    );
+
+    rewrite_externally(&tmp_b_guard, "world, externally changed!\n");
+    ed.check_buffer_disk_state(bid_b, DiskCheckTrigger::Ambient);
+    assert!(
+        matches!(
+            ed.state.config.confirm.as_ref().unwrap().action,
+            crate::ui::confirm::ConfirmAction::ReloadBuffer(id) if id == bid_b
+        ),
+        "setup: B's own confirm is open"
+    );
+
+    // 100×25, 0.5 split: pane A (left) spans x ∈ [0, 49); col 0 lands inside
+    // it regardless of gutter width (see `clicking_into_another_pane_prompts_that_panes_buffer`).
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.prepare_frame(100, 25, &mut ctx);
+    ed.handle_event(mouse_left_down(0, 0));
+
+    assert_eq!(ed.focused_buffer_id(), bid_a);
+    assert!(
+        matches!(
+            ed.state.config.confirm.as_ref().unwrap().action,
+            crate::ui::confirm::ConfirmAction::ReloadBuffer(id) if id == bid_a
+        ),
+        "B's orphaned confirm must be retired and A's own prompt opened in its place"
     );
 }

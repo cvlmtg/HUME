@@ -12,8 +12,8 @@ use hume_ops::surround::wrap_each_selection;
 
 use super::super::{EditorState, Severity, doc_ops};
 use super::{
-    apply_focused_edit, apply_focused_edit_grouped, apply_focused_motion, begin_insert_session,
-    doc, focused_buffer_id, pin_insert_anchors,
+    apply_focused_edit, apply_focused_edit_grouped, apply_focused_motion,
+    begin_insert_session_preserving_register, doc, focused_buffer_id, pin_insert_anchors,
 };
 use crate::editor::error::CommandError;
 
@@ -68,7 +68,10 @@ pub(crate) fn cmd_change(
             })
             .collect::<Vec<_>>()
     };
-    begin_insert_session(state, view);
+    // Preserving, not `begin_insert_session`: `c` is itself a register-
+    // consuming operator (see `state.route_kill` below) — clearing the
+    // prefix here would consume it a step too early.
+    begin_insert_session_preserving_register(state, view);
     apply_focused_edit_grouped(state, view, delete_selection_content);
     pin_insert_anchors(state, view);
     // Auto-select the typed replacement on exit only when the setting is on

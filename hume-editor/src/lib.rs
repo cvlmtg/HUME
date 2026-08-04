@@ -140,18 +140,45 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
         kitty_enabled,
     )?;
     let result = editor.run(&mut term);
-    // Dropped before the exit claim below, not left to the function's own
-    // scope-end order: `restore_for_exit` may lose its race with the
-    // terminator thread's `force_exit` and park forever (see its doc), so
-    // this thread's Drop-owned teardown (each attached LSP server's
-    // `WRITER_FLUSH_GRACE`) must run first rather than risk never running.
+    // Restore the terminal (cursor shape/colour, leave alt-screen, cooked
+    // mode) before the LSP grace window below, not after: `lsp_shutdown_all`
+    // can take up to `SHUTDOWN_GRACE` per server, and every millisecond of
+    // that is otherwise spent sitting in the alternate screen, reading as a
+    // frozen editor. Errors are collected rather than propagated immediately
+    // (`run_all`'s "attempt everything, report the first failure" discipline,
+    // `hume_platform::terminal`) so a dead pty here doesn't skip the graceful
+    // LSP shutdown that follows. `restore_for_exit` (not a bare
+    // `terminal::restore`) is the one function allowed to write these bytes —
+    // it gates on `claim_exit`, the process-wide single-restorer race with
+    // the terminator thread's `force_exit`, so a second thread mid-teardown
+    // at the same moment can't interleave a second copy of the same escape
+    // sequences into this one's. Calling it first, while there's the most of
+    // `QUIT_GRACE` left, also minimizes how often this thread is the one that
+    // loses that race and parks here instead of returning: if it does, the
+    // terminator thread's `force_exit` already reaped every tracked child
+    // (including attached LSP servers) via `kill_tracked_children` before
+    // ever attempting its own claim, so the graceful shutdown below would
+    // have found nothing left to shut down gracefully regardless.
+    let mut restore_err = hume_platform::terminal::reset_cursor_shape(&shared).err();
+    let _ = hume_platform::terminal::set_cursor_color(&shared, false); // emits reset sequence
+    if let Err(e) = hume_platform::restore_for_exit(&shared) {
+        restore_err.get_or_insert(e);
+    }
+    // Give every running LSP server a chance to exit cleanly (shutdown
+    // request, then exit notification) before the process ends —
+    // ServerHandle::drop would otherwise SIGKILL them.
+    editor.lsp_shutdown_all(editor::Editor::SHUTDOWN_GRACE);
+    // Explicit, not left to the function's own scope-end order: the signal
+    // exit branch below calls `std::process::exit`, which runs no
+    // destructors, so leaving this to an implicit end-of-scope drop would
+    // skip each attached LSP server's `WRITER_FLUSH_GRACE` teardown whenever
+    // that branch is taken.
     drop(editor);
-    let restored = hume_platform::restore_for_exit(&shared);
 
     let code = terminate.load(std::sync::atomic::Ordering::Acquire);
     if code != 0 {
         // Killed by a signal, not by `:q` — exit with the terminator's own
-        // code rather than propagating `restored`/`result`: on a genuine
+        // code rather than propagating `restore_err`/`result`: on a genuine
         // terminal hangup (e.g. SIGHUP with the pty already gone) every
         // teardown write fails with `EIO`, and surfacing that as a `?`
         // instead of the signal's exit code would print an error to a
@@ -160,6 +187,8 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     }
 
     // Not a signal exit — an `EIO` here is a real, reportable failure.
-    restored?;
+    if let Some(e) = restore_err {
+        return Err(e.into());
+    }
     Ok(result?)
 }

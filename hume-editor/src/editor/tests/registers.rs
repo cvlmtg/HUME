@@ -46,6 +46,38 @@ fn register_prefix_clears_after_one_operation() {
     assert_eq!(reg(&ed, '5'), &["hell"], "register '5' unchanged");
 }
 
+/// `i` (and `a`/`o`) don't consume a `"<reg>` prefix the way an operator
+/// like `d`/`c`/`p` does — matching Vim, where a register spec applies to
+/// the operator immediately after it, not to entering Insert mode.
+/// `begin_insert_session` clears the prefix itself, unconditionally, so a
+/// subsequent operator after Insert exits never silently redirects into a
+/// register the user armed before an insert they didn't mean it for — and
+/// so a writable buffer agrees with a read-only one, which already cleared
+/// it via `refuse_if_read_only`.
+///
+/// Fail oracle: without the unconditional clear at the top of
+/// `begin_insert_session` (only `refuse_if_read_only`'s clear, reached only
+/// on a read-only buffer), this test's `d` would land in register `3`
+/// instead of the kill ring on this writable buffer.
+#[test]
+fn insert_session_clears_register_prefix_on_a_writable_buffer() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.handle_key(key('"'));
+    ed.handle_key(key('3'));
+    ed.handle_key(key('i'));
+    ed.handle_key(key_esc());
+    ed.handle_key(key('d'));
+
+    assert!(
+        reg(&ed, '3').is_empty(),
+        "\"3i<Esc>d must not route the delete into register '3'"
+    );
+    assert!(
+        ed.state.kill_ring.head().is_some(),
+        "the delete must fall back to the kill ring"
+    );
+}
+
 /// `Esc` after `"` cancels the prefix — the next `y` writes to clipboard + ring.
 #[test]
 fn esc_cancels_register_prefix() {

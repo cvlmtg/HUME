@@ -141,9 +141,12 @@ pub(super) fn apply_focused_edit_grouped(
 /// Refuse an edit-mode command on a read-only buffer: report why and return
 /// `true` so the caller can bail out.
 ///
-/// Clearing `register_prefix` is part of the refusal: the command consumed the
-/// `"<reg>` keystrokes, so leaving the prefix armed would silently redirect the
-/// *next* yank/kill into that register.
+/// Clearing `register_prefix` is part of the refusal: for `d`/`c`/`p`, the
+/// command consumed the `"<reg>` keystrokes, so leaving the prefix armed
+/// would silently redirect the *next* yank/kill into that register. (Insert
+/// session entry clears the prefix itself before ever reaching here, for a
+/// different reason — see `begin_insert_session` — so this is a no-op on
+/// that path, not a second clear of the same kind.)
 pub(super) fn refuse_if_read_only(state: &mut EditorState, view: &EngineView) -> bool {
     if !doc(state, view).is_read_only() {
         return false;

@@ -280,10 +280,24 @@ impl Editor {
     /// `drain_hooks`, so a hook-driven `switch-to-buffer!` is covered along
     /// with every keymap/mouse path, instead of each needing its own call —
     /// see `check_focus_change_disk_state`. `Editor::step` (the headless
-    /// key-runner) deliberately bypasses this boundary and so never opens a
-    /// confirm — there is no interactive user on the other end to answer one.
+    /// key-runner) calls `handle_key` directly and so skips this boundary on
+    /// its own dispatch — but it also drains macro replay through
+    /// `drain_replay_queue`, which re-enters `handle_event` per replayed key,
+    /// so a check *does* run for a buffer switch made from a macro. It never
+    /// opens a confirm there: `can_open_confirm`'s `!is_replaying` guard
+    /// keeps a live macro from having its next key eaten by one.
+    ///
+    /// Skipped entirely (not just the confirm) when dispatch logged a new
+    /// warning or error: a command that fails after moving focus — `:qa`
+    /// landing on the first dirty buffer to report "Unsaved changes" is the
+    /// motivating case — needs its own message to stay on screen and its own
+    /// next keystroke to answer it, not have both replaced by an unrelated
+    /// disk prompt. `disk_state` is untouched either way, so the check still
+    /// runs, and still prompts, on the next trigger that doesn't collide with
+    /// a fresh error.
     pub(crate) fn handle_event(&mut self, ev: Event) {
         let focused_before = self.focused_buffer_id();
+        let totals_before = self.state.message_log.totals();
         match ev {
             Event::Key(k) => self.handle_key(k),
             Event::Mouse(m) => self.handle_mouse(m),
@@ -291,7 +305,9 @@ impl Editor {
             _ => {}
         }
         self.drain_hooks();
-        self.check_focus_change_disk_state(focused_before);
+        if self.state.message_log.totals() == totals_before {
+            self.check_focus_change_disk_state(focused_before);
+        }
     }
 
     /// Run the editor event loop until the user quits.
@@ -507,26 +523,12 @@ impl Editor {
                 break;
             }
         }
-        // Restore the terminal (cursor shape/colour, leave alt-screen, cooked
-        // mode) before the LSP grace window below, not after: `lsp_shutdown_all`
-        // can take up to `SHUTDOWN_GRACE` per server, and every millisecond of
-        // that is otherwise spent sitting in the alternate screen, reading as a
-        // frozen editor. Errors are collected rather than propagated
-        // immediately (`run_all`'s "attempt everything, report the first
-        // failure" discipline, `hume_platform::terminal`) so a dead pty here
-        // doesn't skip the graceful LSP shutdown that follows.
-        let mut restore_err = hume_platform::terminal::reset_cursor_shape(&shared).err();
-        let _ = hume_platform::terminal::set_cursor_color(&shared, false); // emits reset sequence
-        if let Err(e) = hume_platform::terminal::restore(&shared) {
-            restore_err.get_or_insert(e);
-        }
-        // Give every running LSP server a chance to exit cleanly (shutdown
-        // request, then exit notification) before the process ends —
-        // ServerHandle::drop would otherwise SIGKILL them.
-        self.lsp_shutdown_all(Self::SHUTDOWN_GRACE);
-        match restore_err {
-            Some(e) => Err(e),
-            None => Ok(()),
-        }
+        // Terminal restore and LSP shutdown happen in `hume_editor::run`,
+        // after this returns: `restore_for_exit` is the one function allowed
+        // to write the unwind escape sequences (it gates on `claim_exit`, the
+        // process-wide single-restorer race with the terminator thread — see
+        // its doc), so writing them here too would double every escape that
+        // isn't idempotent, notably the kitty keyboard-stack pop.
+        Ok(())
     }
 }

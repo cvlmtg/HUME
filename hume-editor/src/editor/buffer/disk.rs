@@ -35,9 +35,11 @@ pub(crate) enum DiskChange {
 /// A buffer's disk state as of the last check. `InSync` and "stale" aren't
 /// the only two states worth distinguishing — `Changed` also carries the
 /// signature that was reported, so a later check can tell "the same change I
-/// already warned about" from "something changed again", and `Vanished` is
-/// kept apart from `Changed` since there is no signature to recreate-and-
-/// compare for a deleted file.
+/// already warned about" from "something changed again", `Declined` is kept
+/// apart from `Changed` so an explicit "keep" answer stays answered instead
+/// of coming back on the next `BufferEnter`, and `Vanished` is kept apart
+/// from both since there is no signature to recreate-and-compare for a
+/// deleted file.
 ///
 /// Deliberately never written by [`Editor::check_buffer_disk_state`] into
 /// `FileMeta::signature` — that field stays the write baseline
@@ -53,6 +55,13 @@ pub(crate) enum DiskState {
     InSync,
     /// Changed externally; carries the signature that was reported.
     Changed(hume_platform::io::FileSignature),
+    /// Changed externally, and the user answered the reload confirm with
+    /// "keep" (or otherwise dismissed it) — carries the signature that was
+    /// declined. Still stale (`Buffer::is_disk_stale` treats this the same
+    /// as `Changed`, so `:w` keeps refusing until reload or `!`), but never
+    /// re-prompts or re-warns for *this* signature; a further external
+    /// change (a different signature) is a fresh `Changed` and asks again.
+    Declined(hume_platform::io::FileSignature),
     /// The backing file no longer exists.
     Vanished,
 }
@@ -117,14 +126,19 @@ impl Editor {
     /// A `Changed`/`Vanished` state already reported stays silent on a
     /// further `Ambient` check — "don't nag again for the same thing" — but
     /// a `BufferEnter` check always prompts a pending `Changed` on the
-    /// focused, `autoread`-on, prompt-eligible-mode buffer regardless: that
-    /// is the "asked about on its own next buffer-enter" deferred prompt
-    /// the earlier warning promised, and it covers a mode-blocked report
-    /// the same way it covers a non-focused one — a plain `Ambient` recheck
-    /// stays silent for either until something *else* changes, only a
-    /// `BufferEnter` forces the question back open. `FileMeta::signature` (the write
-    /// baseline `disk_change_for` compares against) is untouched either
-    /// way, so a *further* external change still reads as `Changed`.
+    /// focused, `autoread`-on, prompt-eligible buffer regardless: that is
+    /// the "asked about on its own next buffer-enter" deferred prompt the
+    /// earlier warning promised. For a buffer that's prompt-eligible
+    /// (focused, `autoread` on) but currently blocked from actually opening
+    /// one (mode, an overlay, `pending_keys`, mid macro-replay), a
+    /// `BufferEnter` still warns even if the same signature already warned
+    /// once — landing on a stale buffer must never be completely silent,
+    /// only a *repeat* `Ambient` recheck of the same already-reported
+    /// signature stays quiet. `Declined` (the user answered "keep") is the
+    /// one state that never re-fires for its own signature on either
+    /// trigger — see `Editor::decline_disk_change`. `FileMeta::signature`
+    /// (the write baseline `disk_change_for` compares against) is untouched
+    /// by any of this, so a *further* external change still reads as fresh.
     pub(in crate::editor) fn check_buffer_disk_state(
         &mut self,
         bid: BufferId,
@@ -153,6 +167,14 @@ impl Editor {
             }
             DiskChange::Changed(sig) => {
                 let buf = self.state.buffers.get_mut(bid);
+                let declined = matches!(buf.disk_state, DiskState::Declined(prev) if prev == sig);
+                if declined {
+                    // The user already answered "keep" for this exact
+                    // signature — leave `Declined` in place (not `Changed`)
+                    // so a re-run of this same arm still recognises it as
+                    // answered, and say nothing further.
+                    return;
+                }
                 let already_reported =
                     matches!(buf.disk_state, DiskState::Changed(prev) if prev == sig);
                 buf.disk_state = DiskState::Changed(sig);
@@ -162,14 +184,12 @@ impl Editor {
                 let dirty = buf.is_dirty();
                 let autoread = buf.overrides.autoread(&self.state.settings);
                 let focused = bid == self.focused_buffer_id();
+                let promptable = focused && autoread;
+                let is_buffer_enter = trigger == DiskCheckTrigger::BufferEnter;
 
-                if focused
-                    && autoread
-                    && self.can_open_confirm()
-                    && (trigger == DiskCheckTrigger::BufferEnter || !already_reported)
-                {
+                if promptable && self.can_open_confirm() && (is_buffer_enter || !already_reported) {
                     self.open_disk_change_confirm(bid, &name, dirty);
-                } else if !already_reported {
+                } else if !already_reported || (is_buffer_enter && promptable) {
                     self.report(
                         Severity::Warning,
                         format!("{name}: file has changed on disk"),
@@ -201,11 +221,14 @@ impl Editor {
     /// one of those owners itself: opening a second would replace the
     /// first's model outright, retiring an unanswered question and
     /// re-pointing the next keystroke at a different action than the one on
-    /// screen when the user started reaching for it. In practice this makes
-    /// the `enter_buffer_with_jump` / `check_focus_change_disk_state` overlap
-    /// on a moving `:e`/`:b`/`:bn`/`:bp` provably a no-op rather than merely
-    /// benign: the first call opens the confirm, the second finds it already
-    /// live and leaves it alone.
+    /// screen when the user started reaching for it. `check_focus_change_disk_state`
+    /// retires a confirm that no longer targets the buffer focus just landed
+    /// on before it ever reaches this check, but only for *interactive*
+    /// moves — a non-interactive one (Steel/LSP `switch-to-buffer!`, which
+    /// deliberately never runs through that chokepoint at all, see its own
+    /// doc) has no such retirement, so this guard is still what keeps an
+    /// unrelated buffer's check from replacing a still-open confirm out from
+    /// under the user in that case.
     ///
     /// Pending keys: a non-empty `pending_keys` (mid multi-key sequence, e.g.
     /// `d` waiting for its motion) or a pending `wait_char` (e.g. `f` waiting
@@ -269,10 +292,47 @@ impl Editor {
     /// open. That is also why this can't replace `enter_buffer_with_jump`'s
     /// own call: `:e` re-targeting the file already focused is a
     /// buffer-enter with no diff to observe.
+    ///
+    /// Also retires a confirm that no longer targets `now`: `handle_key`'s
+    /// confirm intercept only sees *keys*, so a mouse click that moves focus
+    /// (`handle_mouse` has no such intercept) can land here with a confirm
+    /// still open for the buffer just left. Left alone, that confirm would be
+    /// unanswerable — `reload_buffer_from_disk`'s focused-buffer guard would
+    /// refuse it — and, worse, would block `now`'s own prompt via
+    /// `can_open_confirm`'s `confirm.is_none()` check. Retiring it (not
+    /// declining it) leaves the old buffer's `disk_state` exactly as
+    /// `Changed` as it was, so the "asked about on its own next buffer-enter"
+    /// promise still holds next time focus actually returns there.
     pub(in crate::editor) fn check_focus_change_disk_state(&mut self, before: BufferId) {
         let now = self.focused_buffer_id();
         if now != before {
+            if self
+                .state
+                .config
+                .confirm
+                .as_ref()
+                .is_some_and(|c| !c.targets_buffer(now))
+            {
+                self.state.config.confirm = None;
+            }
             self.check_buffer_disk_state(now, DiskCheckTrigger::BufferEnter);
+        }
+    }
+
+    /// Record that the user declined to reload `bid` for the disk change
+    /// currently pending on it — the confirm's `[k]eep` choice (or any other
+    /// dismissal, `handle_confirm_key`'s safe default). Only meaningful while
+    /// `disk_state` is still `Changed`; a state that moved on before the user
+    /// answered (reload happened another way, the file reverted) has nothing
+    /// to decline. `try_get`, not `get_mut`: same belt-and-braces as
+    /// `reload_buffer_from_disk` against a non-interactive close of `bid`
+    /// racing the confirm — see that method's doc.
+    pub(in crate::editor) fn decline_disk_change(&mut self, bid: BufferId) {
+        let Some(buf) = self.state.buffers.try_get_mut(bid) else {
+            return;
+        };
+        if let DiskState::Changed(sig) = buf.disk_state {
+            buf.disk_state = DiskState::Declined(sig);
         }
     }
 

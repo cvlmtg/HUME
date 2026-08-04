@@ -331,10 +331,16 @@ impl Editor {
     }
 
     /// Switch the focused pane to `target` (recording a jump, same as
-    /// [`Self::switch_to_buffer_with_jump`]) and run the buffer-enter disk
-    /// check — the `:e`/`:b`/`:bn`/`:bp` entry point for external-change
-    /// detection. Checks even when `target` is already focused (e.g. `:e`
-    /// re-targeting the current file), matching those commands' own history.
+    /// [`Self::switch_to_buffer_with_jump`]) — the `:e`/`:b`/`:bn`/`:bp`
+    /// entry point for external-change detection.
+    ///
+    /// Runs the buffer-enter disk check itself only when `target` is already
+    /// focused (`:e` re-targeting the current file): that's a buffer-enter
+    /// with no focus diff for `Editor::handle_event`'s tail check to
+    /// observe, so nothing else would ever check it. When `target` differs,
+    /// this only switches — `handle_event`'s own check runs once dispatch
+    /// returns and sees the diff, so the two calls stay mutually exclusive
+    /// instead of both stat-ing the same target.
     ///
     /// Deliberately not folded into `switch_to_buffer_with_jump` itself: that
     /// primitive is also reached from non-interactive callers (Steel's
@@ -343,10 +349,11 @@ impl Editor {
     /// focused-buffer contract. Only genuinely interactive buffer-enter
     /// commands call this.
     pub(in crate::editor) fn enter_buffer_with_jump(&mut self, target: BufferId) {
-        if target != self.focused_buffer_id() {
+        if target == self.focused_buffer_id() {
+            self.check_buffer_disk_state(target, super::disk::DiskCheckTrigger::BufferEnter);
+        } else {
             self.switch_to_buffer_with_jump(target);
         }
-        self.check_buffer_disk_state(target, super::disk::DiskCheckTrigger::BufferEnter);
     }
 
     /// Open or refresh a read-only view buffer (`:messages`, `:ls`, `:plugin-status`).

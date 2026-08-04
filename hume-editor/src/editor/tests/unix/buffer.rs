@@ -254,8 +254,10 @@ fn buffer_switch_to_deleted_file_by_path() {
     drop(t1);
     assert!(!canonical.exists(), "precondition: file must be gone");
 
-    ed.execute_typed("b", Some(canonical.to_str().unwrap()))
-        .unwrap();
+    // Via `type_cmd_event`, not `execute_typed`: a *moving* `:b` only
+    // switches inside `enter_buffer_with_jump` and relies on
+    // `Editor::handle_event`'s tail check for the disk check itself.
+    type_cmd_event(&mut ed, &format!(":b {}", canonical.display()));
     assert_eq!(
         ed.doc().path(),
         Some(canonical.as_path()),
@@ -282,7 +284,9 @@ fn buffer_switch_to_deleted_file_by_basename() {
     drop(t1);
 
     let basename = canonical.file_name().unwrap().to_str().unwrap();
-    ed.execute_typed("b", Some(basename)).unwrap();
+    // Via `type_cmd_event`, not `execute_typed`: see the comment in
+    // `buffer_switch_to_deleted_file_by_path`.
+    type_cmd_event(&mut ed, &format!(":b {basename}"));
     assert_eq!(
         ed.doc().path(),
         Some(canonical.as_path()),

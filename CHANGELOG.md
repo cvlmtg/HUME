@@ -23,6 +23,8 @@
 - Fixed a bug where opening a `.tsx`/`.jsx` file made the language server log an "Invalid languageId" warning.
 - `:messages` entries are now colored by severity.
 - Quitting with an attached language server no longer leaves the screen frozen in the alternate screen while it shuts down: the terminal is restored first.
+- Fixed a bug where `d`/`c`/`p` on a read-only buffer could still overwrite the kill ring, paste stamp, or a named register before refusing the edit.
+- The external-change reload prompt now also appears when a changed buffer becomes focused via `:q`, `:bd`, a pane close, pane-focus cycling, or a click into another pane — not just `:e`/`:b`/`:bn`/`:bp`. Answering `[k]eep` now silences that prompt until the file changes again, instead of reopening it on the next focus change.
 
 ## [0.10.0] - 2026-07-24
 

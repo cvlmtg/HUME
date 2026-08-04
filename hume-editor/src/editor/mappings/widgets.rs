@@ -15,7 +15,10 @@ impl Editor {
     /// ([`crate::ui::confirm::ConfirmModel`]) is open. Always consumes —
     /// full-modal, like the picker. `choices[0]`'s key runs `action`; every
     /// other key (including `Esc`) dismisses without running it, the safe
-    /// default.
+    /// default — and, for a disk-change confirm, records the dismissal as a
+    /// decline (`Editor::decline_disk_change`) so `check_buffer_disk_state`
+    /// doesn't reopen the same question for the same on-disk signature on
+    /// the next buffer-enter.
     pub(super) fn handle_confirm_key(&mut self, key: KeyEvent) {
         let confirm = self
             .state
@@ -29,9 +32,13 @@ impl Editor {
             .first()
             .is_some_and(|c| key.code == KeyCode::Char(c.key));
 
-        if accept {
-            match confirm.action {
-                ConfirmAction::ReloadBuffer(bid) => self.reload_buffer_from_disk(bid),
+        match confirm.action {
+            ConfirmAction::ReloadBuffer(bid) => {
+                if accept {
+                    self.reload_buffer_from_disk(bid);
+                } else {
+                    self.decline_disk_change(bid);
+                }
             }
         }
     }

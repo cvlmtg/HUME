@@ -474,13 +474,17 @@ fn read_only_buffer_blocks_change_kill() {
     );
 }
 
-/// A refused `"a` + `d` on a read-only buffer must not leave register `a`
+/// A refused `"3` + `d` on a read-only buffer must not leave register `3`
 /// populated, and must not leave the `"<reg>` prefix armed for the next
-/// command.
+/// command. `3`, not `a`: `a` is not a valid register name
+/// (`is_valid_register_name` accepts only `0`–`9`, `k`, `c`, `b`), so
+/// `mappings/normal.rs` would already have dropped the prefix on `"a` alone
+/// — a register that never armed can't tell this test whether the refusal
+/// itself cleared anything.
 ///
 /// Validity: drop the `state.register_prefix = None` line from
 /// `refuse_if_read_only()` and this test fails — the prefix survives and
-/// silently redirects the next yank/kill into register `a`.
+/// silently redirects the next yank/kill into register `3`.
 #[test]
 fn read_only_refusal_clears_register_prefix_on_delete() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -489,21 +493,22 @@ fn read_only_refusal_clears_register_prefix_on_delete() {
     assert!(ed.doc().is_read_only());
 
     ed.handle_key(key('"'));
-    ed.handle_key(key('a'));
+    ed.handle_key(key('3'));
     ed.handle_key(key('d'));
 
     assert!(
-        reg(&ed, 'a').is_empty(),
-        "a refused \"ad must not write register 'a'"
+        reg(&ed, '3').is_empty(),
+        "a refused \"3d must not write register '3'"
     );
     assert!(
         ed.state.register_prefix.is_none(),
-        "a refused \"ad must not leave the register prefix armed"
+        "a refused \"3d must not leave the register prefix armed"
     );
 }
 
-/// A refused `"a` + `p` on a read-only buffer must not leave the `"<reg>`
-/// prefix armed for the next command.
+/// A refused `"3` + `p` on a read-only buffer must not leave the `"<reg>`
+/// prefix armed for the next command. `3`, not `a`: see the comment on
+/// `read_only_refusal_clears_register_prefix_on_delete`.
 ///
 /// Validity: drop the `state.register_prefix = None` line from
 /// `refuse_if_read_only()` and this test fails — the prefix survives.
@@ -515,7 +520,7 @@ fn read_only_refusal_clears_register_prefix_on_paste() {
     assert!(ed.doc().is_read_only());
 
     ed.handle_key(key('"'));
-    ed.handle_key(key('a'));
+    ed.handle_key(key('3'));
     ed.handle_key(key('p'));
 
     assert!(

@@ -95,11 +95,11 @@ impl Editor {
     }
 
     /// [`lsp_shutdown_all`](Self::lsp_shutdown_all)'s production grace
-    /// window — the value `run`'s post-loop teardown actually uses; tests
-    /// pass their own to exercise the zero- and long-window edges.
-    /// `hume_platform::QUIT_GRACE` is sized against this constant — keep the
-    /// two in step.
-    pub(in crate::editor) const SHUTDOWN_GRACE: Duration = Duration::from_millis(500);
+    /// window — the value `hume_editor::run`'s post-loop teardown actually
+    /// uses; tests pass their own to exercise the zero- and long-window
+    /// edges. `hume_platform::QUIT_GRACE` is sized against this constant —
+    /// keep the two in step.
+    pub(crate) const SHUTDOWN_GRACE: Duration = Duration::from_millis(500);
 
     /// Graceful shutdown on quit: `begin_shutdown` (shutdown request, then
     /// exit notification) for every Running client, then a bounded grace
@@ -112,7 +112,7 @@ impl Editor {
     /// Events drained during the grace window are otherwise discarded — a
     /// lingering response or stderr line has nowhere useful to go while the
     /// editor is tearing down.
-    pub(in crate::editor) fn lsp_shutdown_all(&mut self, grace: Duration) {
+    pub(crate) fn lsp_shutdown_all(&mut self, grace: Duration) {
         if self.lsp.servers.is_empty() {
             return;
         }

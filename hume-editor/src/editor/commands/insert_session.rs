@@ -65,10 +65,28 @@ pub(super) fn pin_insert_anchors(state: &mut EditorState, view: &EngineView) {
 
 /// Enter Insert mode as a repeatable insert action.
 ///
-/// No-op (with a warning) if the focused buffer is read-only. Replay-signal:
-/// if an edit group is already open, recording is suppressed but the mode
-/// change still happens.
+/// No-op (with a warning) if the focused buffer is read-only. Clears any
+/// pending `"<reg>` prefix: `i`/`a`/`o` aren't operators, so a register spec
+/// typed just before one names nothing to write into (unlike `d`/`c`/`p`,
+/// which `refuse_if_read_only` clears it for on the assumption the command
+/// consumed it) — cleared unconditionally so a read-only refusal and a
+/// normal session agree, matching Vim, where the spec applies only to the
+/// operator immediately after `"`.
+///
+/// `cmd_change` (`c`) is the one caller for which this would be wrong: it's
+/// itself a genuine register-consuming operator that delegates its mode
+/// switch here before its own `state.route_kill` reads the prefix — see
+/// [`begin_insert_session_preserving_register`], which it calls instead.
 pub(super) fn begin_insert_session(state: &mut EditorState, view: &EngineView) {
+    state.register_prefix = None;
+    begin_insert_session_preserving_register(state, view);
+}
+
+/// [`begin_insert_session`] without clearing `register_prefix` first — for a
+/// caller that is itself about to consume it. Do not call this for a plain
+/// `i`/`a`/`o` entry; use [`begin_insert_session`], which clears the prefix
+/// as those commands require.
+pub(super) fn begin_insert_session_preserving_register(state: &mut EditorState, view: &EngineView) {
     if refuse_if_read_only(state, view) {
         return;
     }
