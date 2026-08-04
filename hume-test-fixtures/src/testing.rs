@@ -90,22 +90,9 @@ fn char_count(s: &str) -> usize {
 /// descriptive message if the string contains no selection markers, or if a
 /// marker is malformed (e.g. a `-[` with no matching `]>`).
 pub fn parse_state(input: &str) -> (Text, SelectionSet) {
-    // We scan the input one char at a time, building up:
-    //   - `text`:       the raw buffer content (markers removed)
-    //   - `selections`: the parsed Selection values
-    //
-    // State machine:
-    //   Normal           — outside any selection marker
-    //   InForward(pos)   — inside -[…]>, anchor recorded at `pos`
-    //   InBackward(pos)  — inside <[…]-, head recorded at `pos`
-    //
-    // Two-char tokens (recognised by peeking one char ahead):
-    //   `-[`  — open forward selection (anchor at current char_count)
-    //   `]>`  — close forward selection (head = char_count - 1)
-    //   `<[`  — open backward selection (head at current char_count)
-    //   `]-`  — close backward selection (anchor = char_count - 1)
-    //
-    // Any char that does not start a two-char token is appended to `text`.
+    // Single pass, tracking whether we're inside `-[…]>` or `<[…]-` (see
+    // `State` below). Any char not starting one of the four two-char tokens
+    // (recognised by peeking one char ahead) is literal text.
 
     let mut text = String::with_capacity(input.len());
     let mut selections: Vec<Selection> = Vec::new();
