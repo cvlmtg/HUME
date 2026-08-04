@@ -129,21 +129,14 @@ impl Editor {
         self.state.report(severity, text);
     }
 
-    /// Take a persistent queue off the scripting host, or an empty `Vec` if
-    /// scripting isn't initialized. Collecting into an owned `Vec` first
-    /// (rather than draining in place) satisfies the borrow checker at every
-    /// call site, which also needs `&mut self` to apply what's taken.
-    fn take_from_host<T>(
-        &mut self,
-        taker: impl FnOnce(&mut hume_scripting::ScriptingHost) -> Vec<T>,
-    ) -> Vec<T> {
-        self.scripting.as_mut().map(taker).unwrap_or_default()
-    }
-
     /// Drain any pending `(log! …)` messages from the scripting host and
-    /// report each one.
+    /// report each one. No-op if scripting isn't initialized.
     pub(crate) fn flush_script_messages(&mut self) {
-        let msgs = self.take_from_host(hume_scripting::ScriptingHost::take_pending_messages);
+        let msgs = self
+            .scripting
+            .as_mut()
+            .map(hume_scripting::ScriptingHost::take_pending_messages)
+            .unwrap_or_default();
         for (level, text) in msgs {
             self.report(log_level_to_severity(level), text);
         }
@@ -614,7 +607,8 @@ pub(crate) fn log_level_to_severity(level: hume_scripting::LogLevel) -> Severity
 ///
 /// Config themes (user-defined) are listed before runtime themes (bundled) so
 /// that user overrides shadow built-in ones. Both `theme::load_theme_by_name`
-/// and [`ThemeCompleter`] use this list as the single source of truth.
+/// and [`crate::editor::completion::ThemeCompleter`] use this list as the
+/// single source of truth.
 pub(super) fn theme_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     if let Some(cfg) = hume_platform::dirs::config_dir() {

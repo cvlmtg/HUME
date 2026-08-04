@@ -253,7 +253,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     // execute_keymap_command when kitty_enabled is true. Commands without an
     // extend variant in the registry are suppressed (no-op). In legacy mode
     // these are a silent no-op.
-    // See `handle_normal` in mappings.rs for the normalisation logic.
+    // See `handle_normal` in `mappings/normal.rs` for the normalisation logic.
     // Ctrl+w is a kitty one-shot extend for `select-next-word`. The pane prefix is Ctrl+p.
 
     // ── Word motion ───────────────────────────────────────────────────────────

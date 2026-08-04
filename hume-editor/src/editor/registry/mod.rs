@@ -4,9 +4,9 @@
 //!
 //! - [`MappableCommand`] — bindable to keys. The keymap trie stores command
 //!   *names*; the registry resolves them to `MappableCommand` values at
-//!   dispatch time inside `execute_keymap_command` (`editor/mappings.rs`).
+//!   dispatch time inside `execute_keymap_command` (`mappings/execute.rs`).
 //! - [`TypedCommand`] — invocable from the `:` command line. The dispatcher
-//!   in `execute_command` (`editor/mappings.rs`) calls
+//!   in `execute_command` (`mappings/command_mode.rs`) calls
 //!   [`CommandRegistry::get_typed`] to resolve name or alias to a
 //!   `TypedCommand`.
 //!
@@ -62,10 +62,10 @@ fn ci_get<'a, V>(map: &'a FxHashMap<Cow<'static, str>, V>, name: &str) -> Option
 /// Built once via [`CommandRegistry::with_defaults`] and stored on the editor.
 ///
 /// - **Mappable commands** are bound to keys. The keymap dispatcher
-///   (`execute_keymap_command` in `editor/mappings.rs`) resolves them via
+///   (`execute_keymap_command` in `mappings/execute.rs`) resolves them via
 ///   [`Self::get_mappable`].
 /// - **Typed commands** are invoked from the `:` command line. The dispatcher
-///   (`execute_command` in `editor/mappings.rs`) resolves them via
+///   (`execute_command` in `mappings/command_mode.rs`) resolves them via
 ///   [`Self::get_typed`]. Aliases are supported via [`Self::alias_map`].
 /// - The `:` command line also falls back to **mappable commands** when no
 ///   typed command matches — any mappable command can be invoked by name
@@ -155,7 +155,7 @@ impl CommandRegistry {
     /// Look up a mappable command by exact name.
     ///
     /// Returns `None` if the name is unknown or resolves to a typed command.
-    /// Used by `execute_keymap_command` in `editor/mappings.rs`.
+    /// Used by `execute_keymap_command` in `mappings/execute.rs`.
     ///
     /// Exact-only: mappable commands are resolved from key bindings, not
     /// user-typed names, so there is no user typo to tolerate and case-folding
@@ -172,7 +172,7 @@ impl CommandRegistry {
     ///
     /// Returns `None` if the name is unknown or resolves to a mappable command.
     /// The `:` command dispatcher falls back to [`Self::get_mappable`] when
-    /// this returns `None` — see `execute_command` in `editor/mappings.rs`.
+    /// this returns `None` — see `execute_command` in `mappings/command_mode.rs`.
     pub(crate) fn get_typed(&self, name: &str) -> Option<&TypedCommand> {
         let canonical = ci_get(&self.alias_map, name)
             .map(|c| c.as_ref())

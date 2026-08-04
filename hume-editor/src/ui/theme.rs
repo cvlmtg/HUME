@@ -1,6 +1,6 @@
 use ratatui::style::Style;
 
-/// Resolved statusline color slots, read from the active engine [`Theme`].
+/// Resolved statusline color slots, read from the active engine [`hume_engine::theme::Theme`].
 ///
 /// Covers only the statusline row; all other UI surfaces (cursor, selection,
 /// gutter, completion popup) are styled directly by the engine via scope
@@ -90,7 +90,7 @@ impl EditorColors {
 // (HUME's signature theme).
 const DEFAULT_THEME_TOML: &str = include_str!("../../../runtime/themes/sand.toml");
 
-/// Parse and return the default engine [`Theme`] from the embedded TOML.
+/// Parse and return the default engine [`hume_engine::theme::Theme`] from the embedded TOML.
 ///
 /// The content is `runtime/themes/sand.toml`, embedded at compile time via
 /// `include_str!` — editing that file requires a rebuild to take effect.

@@ -115,7 +115,7 @@ impl Editor {
     /// Reload buffer `id` with `new_doc`'s content in place, preserving the
     /// undo tree and the primary cursor line/column across the reload.
     ///
-    /// Unlike [`replace_buffer_in_place`](Self::replace_buffer_in_place) (which
+    /// Unlike `replace_buffer_in_place` (which
     /// swaps the whole `Buffer` and discards `History`), this delegates to
     /// [`Buffer::reload_from_text`] — see its doc for the history/undo mechanics.
     ///

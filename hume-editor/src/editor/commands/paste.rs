@@ -24,7 +24,7 @@ use crate::editor::error::CommandError;
 // ── PasteStamp ──────────────────────────────────────────────────────────────
 
 /// Which source a bare paste (no `"<reg>` prefix) reads, valid only while
-/// [`buffer::store::BufferStore::edit_seq`] is still `seq` — the moment any
+/// [`crate::editor::buffer::store::BufferStore::edit_seq`] is still `seq` — the moment any
 /// buffer is edited (or undone/redone), the stamped `seq` falls behind and a
 /// bare `smart-paste-*` falls through to the clipboard instead.
 ///

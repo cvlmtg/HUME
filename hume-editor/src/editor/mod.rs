@@ -451,8 +451,9 @@ pub(crate) struct EditorState {
     /// can in principle show at once — the menu paints on top).
     pub(crate) menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
     /// Shared drawer-overlay view: written every frame by `prepare_frame`
-    /// (self-healing — see `sync_drawer_view`'s doc for why this changed
-    /// from an on-mutation-only write), read by `DrawerWidget`.
+    /// (self-healing against a direct `self.state.config.drawer = None` that
+    /// bypasses the mutation-site sync — see `sync_drawer_view`'s doc), read
+    /// by `DrawerWidget`.
     pub(crate) drawer_view: Arc<RwLock<Option<crate::ui::drawer::DrawerViewState>>>,
     /// Shared picker-overlay view: written per-frame by `sync_picker_view`
     /// (geometry depends on the current panes region, like popup/menu, not
@@ -695,9 +696,9 @@ impl Editor {
     /// (same path as the `EditorCmd` handlers); `drain_hooks` fires it after
     /// the current dispatch completes.
     ///
-    /// For Insert mode entry and exit use [`begin_insert_session`] and
-    /// [`end_insert_session`] instead — they manage the undo group and
-    /// dot-repeat recording alongside the mode change.
+    /// For Insert mode entry and exit use `begin_insert_session` and
+    /// [`crate::editor::commands::end_insert_session`] instead — they manage
+    /// the undo group and dot-repeat recording alongside the mode change.
     pub(super) fn set_mode(&mut self, mode: Mode) {
         self.state.set_mode(mode);
     }

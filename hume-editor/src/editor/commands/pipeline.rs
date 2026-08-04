@@ -25,7 +25,7 @@ use super::{current_selections, doc, focused_buffer_id};
 /// never propagated.
 ///
 /// Called by both the unified pipeline ([`run_dispatch_pipeline`]) and the
-/// dot-repeat replay path ([`Editor::replay_dot`]).
+/// dot-repeat replay path ([`crate::editor::Editor::replay_dot`]).
 ///
 /// The single writer of `state.explicit_count`: `count` is `None` for a bare
 /// keyboard press (no count typed) or for a Steel `call!` that explicitly asked

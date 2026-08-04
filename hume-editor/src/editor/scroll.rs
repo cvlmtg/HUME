@@ -15,8 +15,10 @@ use hume_engine::rows::{RowMap, RowPos};
 /// The viewport's top display row as a row address.
 ///
 /// `ViewportState`'s `top_line`/`top_row_offset` pair *is* a `RowPos` — this
-/// and [`set_top`] are the only two places that spelling is converted, so no
-/// caller re-derives what `top_row_offset` counts.
+/// and [`set_top`] are this module's conversion points, so no caller in
+/// `editor/` re-derives what `top_row_offset` counts. `hume-engine`'s
+/// `pane_render` does its own equivalent conversion on the render path,
+/// independently of this module.
 pub(super) fn top_pos(viewport: &ViewportState) -> RowPos {
     RowPos::new(viewport.top_line, viewport.top_row_offset as usize)
 }

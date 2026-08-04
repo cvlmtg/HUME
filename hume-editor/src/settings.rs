@@ -9,17 +9,17 @@
 //!
 //! [`EditorSettings`] holds concrete values for every setting; its [`Default`]
 //! reproduces today's hardcoded defaults. [`BufferOverrides`] lives on each
-//! [`crate::editor::buffer::Text`] and stores `Option<T>` per overridable
-//! setting (`None` = inherit from global), resolved at call time via its
-//! accessor methods — no pre-merged copy is kept.
+//! `Buffer` and stores `Option<T>` per overridable setting (`None` = inherit
+//! from global), resolved at call time via its accessor methods — no
+//! pre-merged copy is kept.
 //!
 //! ## Adding a setting
 //!
-//! Most settings are defined in one [`define_settings!`] invocation that
+//! Most settings are defined in one `define_settings!` invocation that
 //! generates [`EditorSettings`], [`BufferOverrides`], their `Default` impls,
-//! accessors, and the [`write_global`]/[`write_buffer`]/`setting_scopes`
+//! accessors, and the [`write_global`]/`write_buffer`/`setting_scopes`
 //! dispatch — a simple setting needs one macro entry and nothing else.
-//! `scope: [...]` is the SSOT for which [`Scope`] variants a key accepts;
+//! `scope: [...]` is the SSOT for which `Scope` variants a key accepts;
 //! `typed_set` looks it up via `setting_scopes(key)` rather than
 //! special-casing per key. `Scope::Pane` needs a matching `if key == "..."`
 //! write arm in `typed_set` regardless of macro section placement, since
@@ -388,7 +388,7 @@ macro_rules! define_settings {
         /// means "inherit from the global [`EditorSettings`]".
         ///
         /// Resolution is always lazy: call the accessor (e.g.
-        /// [`Self::tab_width`]) with a `&EditorSettings` reference.
+        /// `tab_width`) with a `&EditorSettings` reference.
         #[derive(Default)]
         pub struct BufferOverrides {
             $( pub $bname: Option<$btype>, )*
@@ -414,7 +414,7 @@ macro_rules! define_settings {
         /// This is the raw field write only — some settings have derived
         /// state that must be resynced after a successful write (declared
         /// via `resync: true` above). Production code must go through
-        /// [`crate::editor::settings_ops::apply_global`], which wraps this
+        /// `crate::editor::settings_ops::apply_global`, which wraps this
         /// and runs those effects; calling this directly would silently skip
         /// them.
         ///
@@ -513,8 +513,8 @@ macro_rules! define_settings {
 
         // ── setting_scopes ──────────────────────────────────────────────────────
 
-        /// The [`Scope`]s a setting accepts, as declared by its `scope: [...]`
-        /// list in the [`define_settings!`] invocation below. Empty for any
+        /// The `Scope`s a setting accepts, as declared by its `scope: [...]`
+        /// list in the `define_settings!` invocation below. Empty for any
         /// key not declared there — notably `"language"`, which has no
         /// generic storage and is handled entirely by `typed_set`'s own
         /// special case, never through this table.

@@ -55,10 +55,11 @@ pub(crate) struct LastInsert {
 ///
 /// ## Edit API
 ///
-/// All text mutations go through [`apply_edit`] or [`apply_edit_grouped`].
-/// Both take the acting pane's `SelectionSet` as a parameter, return the
-/// post-edit `SelectionSet` + a `ChangeSet` for propagation to non-acting panes,
-/// and handle undo bookkeeping internally.
+/// All text mutations funnel through [`Self::set_text`]; see its doc for the
+/// full call-site list. The three higher-level entry points (`apply_edit`,
+/// `apply_edit_grouped`, `apply_edit_regrouped`) each return the post-edit
+/// `SelectionSet` + a `ChangeSet` for propagation to non-acting panes, and
+/// handle undo bookkeeping internally.
 pub(crate) struct Buffer {
     text: Text,
     history: History,
@@ -116,9 +117,10 @@ pub(crate) struct Buffer {
     /// Display name used for synthetic, path-less view buffers (e.g. `"[messages]"`).
     /// Shown in the statusline and `:ls` instead of `*scratch*`.
     pub(crate) label: Option<String>,
-    /// The LSP server this buffer is attached to, if any (set once by
+    /// The LSP server this buffer is attached to, if any. Set by
     /// `Editor::lsp_attach_buffer`; `None` for unnamed buffers, buffers with
-    /// no registered server, or before the open-time attach attempt runs).
+    /// no registered server, before the open-time attach attempt runs, or
+    /// after the attached server is detached.
     pub(crate) lsp_server: Option<hume_lsp::backend::ServerId>,
     /// Text mutations queued for `textDocument/didChange` conversion, in
     /// order. Recorded at the same chokepoint as tree-sitter's pending

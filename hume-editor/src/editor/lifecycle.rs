@@ -259,8 +259,8 @@ impl Editor {
     ///
     /// This is the single, non-test path for feeding one keystroke to the editor
     /// from outside the interactive event loop (e.g. headless key-runner).  The
-    /// interactive loop handles hook draining itself via [`handle_event`]; here
-    /// we use [`handle_key`] directly so the caller doesn't need a scripting host.
+    /// interactive loop handles hook draining itself via [`Self::handle_event`]; here
+    /// we use [`Self::handle_key`] directly so the caller doesn't need a scripting host.
     pub(crate) fn step(&mut self, key: KeyEvent) {
         self.handle_key(key);
         self.sync_search_cache();

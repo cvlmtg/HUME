@@ -11,9 +11,9 @@
 //! - **Wait-for-char bindings**: f/t/F/T/r consume the *next* character as
 //!   an argument rather than a fixed trie branch.
 //!
-//! The dispatcher in `mappings.rs` walks the trie on each keypress, accumulates
-//! a numeric count prefix, and executes [`KeymapCommand`] values via the
-//! [`CommandRegistry`].
+//! The dispatcher in `mappings/execute.rs` walks the trie on each keypress,
+//! accumulates a numeric count prefix, and executes [`KeymapCommand`] values
+//! via the [`crate::editor::registry::CommandRegistry`].
 //!
 //! # Extend-mode duality
 //!

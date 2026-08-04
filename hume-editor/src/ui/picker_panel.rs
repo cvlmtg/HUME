@@ -9,7 +9,7 @@
 //! conflicting scroll model. The only thing shared is the border-drawing
 //! routine itself, [`super::menu_box::draw_box_border`].
 //!
-//! Write side ([`Editor::sync_picker_view`]) resolves geometry once per
+//! Write side (`Editor::sync_picker_view`) resolves geometry once per
 //! frame against the current panes region and writes a [`PickerViewState`]
 //! snapshot; [`PickerOverlay`] only paints it — same split as
 //! [`super::popup::PopupOverlay`].
