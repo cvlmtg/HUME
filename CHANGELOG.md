@@ -22,6 +22,7 @@
 - `mouse-enabled`/`mouse-select` and `jump-list-capacity` now apply immediately when changed with `:set`, instead of only at startup.
 - Fixed a bug where opening a `.tsx`/`.jsx` file made the language server log an "Invalid languageId" warning.
 - `:messages` entries are now colored by severity.
+- Quitting with an attached language server no longer leaves the screen frozen in the alternate screen while it shuts down: the terminal is restored first.
 
 ## [0.10.0] - 2026-07-24
 

@@ -497,13 +497,26 @@ impl Editor {
                 break;
             }
         }
+        // Restore the terminal (cursor shape/colour, leave alt-screen, cooked
+        // mode) before the LSP grace window below, not after: `lsp_shutdown_all`
+        // can take up to `SHUTDOWN_GRACE` per server, and every millisecond of
+        // that is otherwise spent sitting in the alternate screen, reading as a
+        // frozen editor. Errors are collected rather than propagated
+        // immediately (`run_all`'s "attempt everything, report the first
+        // failure" discipline, `hume_platform::terminal`) so a dead pty here
+        // doesn't skip the graceful LSP shutdown that follows.
+        let mut restore_err = hume_platform::terminal::reset_cursor_shape(&shared).err();
+        let _ = hume_platform::terminal::set_cursor_color(&shared, false); // emits reset sequence
+        if let Err(e) = hume_platform::terminal::restore(&shared) {
+            restore_err.get_or_insert(e);
+        }
         // Give every running LSP server a chance to exit cleanly (shutdown
         // request, then exit notification) before the process ends —
         // ServerHandle::drop would otherwise SIGKILL them.
         self.lsp_shutdown_all(Self::SHUTDOWN_GRACE);
-        // Restore the user's default cursor shape and colour before returning to the shell.
-        hume_platform::terminal::reset_cursor_shape(&shared)?;
-        let _ = hume_platform::terminal::set_cursor_color(&shared, false); // emits reset sequence
-        Ok(())
+        match restore_err {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
     }
 }
