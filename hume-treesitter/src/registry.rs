@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use globset::{GlobSet, GlobSetBuilder};
+use globset::{Glob, GlobSet, GlobSetBuilder};
 
 use crate::grammar::LoadedGrammar;
 use crate::highlight::TreeSitterHighlighter;
@@ -28,9 +28,11 @@ pub struct LanguageId(u32);
 #[derive(Debug, Default)]
 pub struct LanguageIdentity {
     pub extensions: Vec<String>,
-    /// Raw glob patterns (e.g. `"Makefile"`, `"*.{ts,tsx}"`). Stored for
-    /// round-trip / debug; the compiled matcher lives on `LanguageRegistry`.
-    pub globs: Vec<String>,
+    /// Parsed glob patterns (e.g. `"Makefile"`, `"*.{ts,tsx}"`) — validated at
+    /// registration, so an uncompilable pattern can never reach here. Source
+    /// text is recoverable via `Glob::glob()`. The combined matcher across all
+    /// languages lives on `LanguageRegistry` (`compiled_globs`).
+    pub globs: Vec<Glob>,
     /// Shebang substrings to match (e.g. `"python"`, `"node"`).
     pub shebangs: Vec<String>,
     /// Override for the wire `languageId` sent to language servers, when it
@@ -223,7 +225,7 @@ impl LanguageRegistry {
         &mut self,
         name: &str,
         extensions: &[&str],
-        globs: &[&str],
+        globs: &[Glob],
         shebangs: &[&str],
         lsp_language_id: Option<&str>,
     ) -> Result<LanguageId, RegisterError> {
@@ -247,7 +249,7 @@ impl LanguageRegistry {
         &mut self,
         name: &str,
         extensions: &[&str],
-        globs: &[&str],
+        globs: &[Glob],
         shebangs: &[&str],
         lsp_language_id: Option<&str>,
     ) -> LanguageId {
@@ -257,7 +259,7 @@ impl LanguageRegistry {
         }
         let new_identity = LanguageIdentity {
             extensions: extensions.iter().map(|s| s.to_string()).collect(),
-            globs: globs.iter().map(|s| s.to_string()).collect(),
+            globs: globs.to_vec(),
             shebangs: shebangs.iter().map(|s| s.to_string()).collect(),
             lsp_language_id: lsp_language_id.map(str::to_owned),
         };
@@ -354,13 +356,12 @@ impl LanguageRegistry {
         self.deindex(id, &identity);
         self.grammars[id.0 as usize] = None;
         self.lang_order.retain(|&i| i != id);
-        // Removing a language can only shrink the glob pattern set, so the
-        // NFA size limit that gated the original build cannot newly trigger.
-        let (compiled, ids) = Self::build_globs(&self.identities, &self.lang_order).expect(
-            "glob rebuild after remove cannot exceed the NFA limit — the pattern set only shrank",
-        );
-        self.compiled_globs = compiled;
-        self.glob_lang_ids = ids;
+        // Only reachable if the set already failed to compile before this remove:
+        // `rebuild_glob_set` is fail-soft in production (see `apply_pending_language_regs`),
+        // so registry state can sit above the NFA limit, and dropping one language need not
+        // bring it back under. Test-only helper — panicking is the right signal.
+        self.rebuild_glob_set()
+            .expect("glob rebuild after remove — glob set was already over the NFA limit");
         self.rebuild_grammar_snapshot();
         Some(identity)
     }
@@ -477,9 +478,8 @@ impl LanguageRegistry {
         let mut ids = Vec::new();
         for &lang_id in lang_order {
             if let Some(Some(identity)) = identities.get(lang_id.0 as usize) {
-                for pattern in &identity.globs {
-                    let glob = globset::Glob::new(pattern)?;
-                    builder.add(glob);
+                for glob in &identity.globs {
+                    builder.add(glob.clone());
                     ids.push(lang_id);
                 }
             }

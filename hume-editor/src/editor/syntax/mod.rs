@@ -182,10 +182,10 @@ impl Editor {
                 } => {
                     let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
                     let shebangs_ref: Vec<&str> = shebangs.iter().map(String::as_str).collect();
-                    let mut valid_globs: Vec<&str> = Vec::with_capacity(globs.len());
+                    let mut valid_globs: Vec<globset::Glob> = Vec::with_capacity(globs.len());
                     for g in &globs {
                         match globset::Glob::new(g) {
-                            Ok(_) => valid_globs.push(g.as_str()),
+                            Ok(glob) => valid_globs.push(glob),
                             Err(e) => self.state.message_log.push(
                                 super::Severity::Warning,
                                 format!("define-language! '{}': invalid glob '{}': {}", name, g, e),

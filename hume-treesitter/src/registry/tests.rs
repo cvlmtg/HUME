@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use globset::Glob;
+
 use super::{LanguageRegistry, detect_language};
 use hume_engine::theme::ScopeRegistry;
 use hume_test_fixtures::{grammar_parser_path, grammar_query_path, skip_unless_grammars};
@@ -11,6 +13,15 @@ fn write_temp_scm(src: &str) -> (tempfile::TempDir, std::path::PathBuf) {
     let path = dir.path().join("injections.scm");
     std::fs::write(&path, src).unwrap();
     (dir, path)
+}
+
+/// Parse each pattern into a `Glob`, panicking on a malformed test fixture —
+/// `register_identity` takes pre-parsed globs, so invalid syntax is now a
+/// caller bug, not a runtime error to test for.
+fn globs(pats: &[&str]) -> Vec<Glob> {
+    pats.iter()
+        .map(|p| Glob::new(p).expect("test glob must compile"))
+        .collect()
 }
 
 #[test]
@@ -147,22 +158,16 @@ fn register_identity_then_by_name_returns_entry() {
 }
 
 #[test]
-fn register_identity_with_invalid_glob_errors() {
-    let mut reg = LanguageRegistry::new();
-    let err = reg
-        .register_identity("broken", &[], &["["], &[], None)
-        .expect_err("unterminated character class must fail glob compilation");
-    assert!(
-        matches!(err, super::RegisterError::GlobBuild(_)),
-        "expected GlobBuild error, got: {err:?}"
-    );
-}
-
-#[test]
 fn register_identity_with_globs_lookup() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[], None)
-        .unwrap();
+    reg.register_identity(
+        "makefile",
+        &[],
+        &globs(&["Makefile", "GNUmakefile"]),
+        &[],
+        None,
+    )
+    .unwrap();
     let matches = reg.compiled_globs().matches(Path::new("Makefile"));
     assert!(!matches.is_empty(), "Makefile should match registered glob");
     let name = reg.glob_lang_id(matches[0]).map(|id| reg.name_of(id));
@@ -178,7 +183,7 @@ fn register_identity_with_globs_lookup() {
 #[test]
 fn remove_clears_glob_and_shebang_entries() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("python", &["py"], &["*.py"], &["python"], None)
+    reg.register_identity("python", &["py"], &globs(&["*.py"]), &["python"], None)
         .unwrap();
     assert!(reg.by_extension("py").is_some());
     assert!(reg.by_shebang("python").is_some());
@@ -345,8 +350,14 @@ fn detect_language_by_extension() {
 #[test]
 fn detect_language_by_glob() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[], None)
-        .unwrap();
+    reg.register_identity(
+        "makefile",
+        &[],
+        &globs(&["Makefile", "GNUmakefile"]),
+        &[],
+        None,
+    )
+    .unwrap();
     let id = detect_language(Some(Path::new("/project/Makefile")), None, &reg);
     assert_eq!(id, reg.id_of("makefile"));
     let no_match = detect_language(Some(Path::new("/project/other")), None, &reg);
@@ -361,7 +372,7 @@ fn detect_language_glob_beats_extension() {
     reg.register_identity(
         "tsconfig",
         &[],
-        &["tsconfig.json", "*.config.json"],
+        &globs(&["tsconfig.json", "*.config.json"]),
         &[],
         None,
     )
@@ -378,9 +389,9 @@ fn detect_language_glob_beats_extension() {
 #[test]
 fn detect_language_glob_tiebreak_last_registered_wins() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("generic-json", &[], &["*.json"], &[], None)
+    reg.register_identity("generic-json", &[], &globs(&["*.json"]), &[], None)
         .unwrap();
-    reg.register_identity("strict-json", &[], &["*.json"], &[], None)
+    reg.register_identity("strict-json", &[], &globs(&["*.json"]), &[], None)
         .unwrap();
     assert_eq!(
         detect_language(Some(Path::new("config.json")), None, &reg),
@@ -388,9 +399,9 @@ fn detect_language_glob_tiebreak_last_registered_wins() {
     );
 
     let mut reg2 = LanguageRegistry::new();
-    reg2.register_identity("strict-json", &[], &["*.json"], &[], None)
+    reg2.register_identity("strict-json", &[], &globs(&["*.json"]), &[], None)
         .unwrap();
-    reg2.register_identity("generic-json", &[], &["*.json"], &[], None)
+    reg2.register_identity("generic-json", &[], &globs(&["*.json"]), &[], None)
         .unwrap();
     assert_eq!(
         detect_language(Some(Path::new("config.json")), None, &reg2),
