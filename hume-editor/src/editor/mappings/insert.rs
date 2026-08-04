@@ -186,7 +186,6 @@ impl Editor {
                         && self.should_skip_close(ch)
                     {
                         // Asymmetric close (e.g. `)`) when cursor is already on it.
-                        // NLL: `ap_pairs` last used in the condition above; borrow ends here.
                         doc_ops::apply_doc_motion(
                             &self.state.buffers,
                             &mut self.state.panes.state,
@@ -255,7 +254,6 @@ impl Editor {
                     // isn't in leading ws, the whole batch falls back.
                     self.apply_insert_edit(move |b, s| dedent_tab_backward(b, s, tw));
                 } else if ap_enabled && self.is_between_pair(ap_pairs) {
-                    // NLL: `ap_pairs` last used in the condition above; borrow ends here.
                     self.apply_insert_edit(delete_pair);
                 } else {
                     self.apply_insert_edit(delete_char_backward);
@@ -440,8 +438,7 @@ impl Editor {
     /// space or tab — so a cursor on the first content char (right after the
     /// indent) also qualifies, matching the dedent-to-prev-tab-stop behaviour
     /// of modern editors. The boundary itself comes from the shared
-    /// [`leading_whitespace_end`] primitive, so this gate and
-    /// [`hume_editing::lines::leading_whitespace`] agree on what counts.
+    /// [`leading_whitespace_end`] primitive.
     fn should_dedent_backspace(&self) -> bool {
         let buf = self.doc().text();
         self.current_selections().iter_sorted().all(|sel| {
@@ -453,8 +450,8 @@ impl Editor {
             let line_start = buf.line_to_char(line_idx);
             // `p > line_start` rules out col 0 (nothing to dedent). `p <=
             // leading_whitespace_end` keeps the all-or-nothing "in leading ws"
-            // rule from the byte-scan version: at exactly the end the cursor
-            // sits on the first content char and still qualifies.
+            // rule: at exactly the end the cursor sits on the first content
+            // char and still qualifies.
             p > line_start && p <= leading_whitespace_end(buf, line_idx)
         })
     }

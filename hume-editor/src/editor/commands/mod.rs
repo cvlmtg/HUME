@@ -330,9 +330,8 @@ pub(super) use typed_misc::*;
 // them. pane.rs and pipeline.rs export nothing else siblings need, so both are
 // re-exported explicitly instead of via glob. The items below ARE called
 // directly by `dispatch.rs`, `replay.rs`, `mappings/insert.rs`, `host_impl.rs`,
-// `editor/mod.rs`, and the `editor::tests` tree — they need the same
-// `pub(in editor)` breadth this whole module used to have when they lived
-// directly in this file.
+// `editor/mod.rs`, and the `editor::tests` tree — they need `pub(in editor)`
+// breadth.
 pub(in crate::editor) use insert_session::end_insert_session;
 use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
 pub(in crate::editor) use pane::{fits_split, split_pane_onto};

@@ -1,9 +1,9 @@
 //! Free functions for applying a setting change — the single production path.
 //!
-//! Extracted from `impl Editor` so the same logic can be called by both the
-//! `Editor` methods (`:set`, `:theme`) and the Steel builtins (`set-option!`,
-//! which receives individual `&mut` references via `SteelCtx`/`EditorHostImpl`
-//! rather than a whole `&mut Editor`).
+//! Free functions (not `impl Editor` methods) so the same logic can be
+//! called by both the `Editor` methods (`:set`, `:theme`) and the Steel
+//! builtins (`set-option!`, which receives individual `&mut` references via
+//! `SteelCtx`/`EditorHostImpl` rather than a whole `&mut Editor`).
 //!
 //! [`apply_global`]/[`apply_buffer`] are the only places production code
 //! should write a setting: they write the raw value via

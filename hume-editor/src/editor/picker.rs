@@ -31,7 +31,7 @@ pub(crate) struct PickerItem {
 
 /// Rust-side store for one open picker: items, query, ranked indices,
 /// selection, scroll, and a stale-push guard token. Steel drives it through
-/// `picker!`/`picker-push!`/`picker-close!` (B4); this module has no
+/// `picker!`/`picker-push!`/`picker-close!`; this module has no
 /// Steel-facing surface of its own.
 pub(crate) struct PickerSession {
     /// Append-only while the picker is open.
@@ -76,8 +76,8 @@ static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 impl PickerSession {
     /// Opens empty — the caller's initial item list (from `picker!`) arrives
-    /// through the same `push` path as any later batch, matching B6's "open
-    /// empty, then attach source" composition.
+    /// through the same `push` path as any later batch: open empty, then
+    /// attach a source.
     pub(crate) fn new(on_select: SteelVal, prompt: String, pending: bool) -> Self {
         Self {
             items: Vec::new(),
@@ -245,8 +245,8 @@ impl PickerSession {
     }
 
     /// Display strings of up to `rows` items starting at `scroll`, in ranked
-    /// order — the window B3 paints. The selected row's on-screen position
-    /// is `selected - scroll`.
+    /// order — the window the picker panel paints. The selected row's
+    /// on-screen position is `selected - scroll`.
     pub(crate) fn window(&self, rows: usize) -> impl Iterator<Item = &str> + '_ {
         self.filtered
             .iter()
@@ -263,16 +263,17 @@ impl PickerSession {
             .map(|&idx| &self.items[idx as usize].payload)
     }
 
-    /// Cheap `Rc` clone — B3/B4 fire this via `queue_steel_call` on
-    /// accept/dismiss; the store itself never invokes it.
+    /// Cheap `Rc` clone — the accept/dismiss dispatch fires this via
+    /// `queue_steel_call`; the store itself never invokes it.
     pub(crate) fn on_select(&self) -> &SteelVal {
         &self.on_select
     }
 
     /// The only place ranking happens; every mutator above routes through
-    /// this. Resets `selected`/`scroll` to `0` on every rerank — per the
-    /// design doc, a stale selection surviving a rerank is worse than
-    /// landing back on the top row.
+    /// this. Resets `selected`/`scroll` to `0` on every rerank — a stale
+    /// selection surviving a rerank (now pointing at a different item, or
+    /// one no longer in the filtered set) is worse than landing back on the
+    /// top row.
     fn rerank(&mut self) {
         if self.query.is_empty() {
             // Insertion order by construction — avoids relying on nucleo's

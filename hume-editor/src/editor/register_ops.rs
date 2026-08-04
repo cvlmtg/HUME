@@ -1,9 +1,9 @@
 //! Free functions for register and clipboard operations.
 //!
-//! Extracted from `impl Editor` so the same logic can be called by both the
-//! `Editor` methods (thin delegators) and command bodies that hold disjoint
-//! borrows from other `Editor` fields — avoiding the whole-struct `&mut self`
-//! lock that forces callers to clone captured text.
+//! Free functions (not `impl Editor` methods) so the same logic can be
+//! called by both the `Editor` methods (thin delegators) and command bodies
+//! that hold disjoint borrows from other `Editor` fields — avoiding the
+//! whole-struct `&mut self` lock that forces callers to clone captured text.
 //!
 //! Each function that may emit a clipboard warning returns `Option<String>`
 //! (the warning message). Callers report it via `ed.report(Severity::Warning, …)`.

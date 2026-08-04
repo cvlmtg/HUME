@@ -92,7 +92,7 @@ pub(crate) fn cmd_goto_alternate_file(
     Ok(())
 }
 
-// ── Pane focus (M10/T4) ──────────────────────────────────────────────────────
+// ── Pane focus ───────────────────────────────────────────────────────────────
 
 /// Directional neighbour selection for pane focus.
 enum Dir {

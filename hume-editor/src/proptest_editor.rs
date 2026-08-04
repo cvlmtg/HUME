@@ -1,11 +1,11 @@
-/// Property-based fuzz test for the full `Editor` key-handling pipeline.
-///
-/// Feeds random sequences of plausible key events to `Editor::handle_event` and
-/// asserts that no sequence ever panics or leaves the editor in an invalid state.
-///
-/// This complements the `proptest_doc` tests (which target `Text` and pure
-/// ops) by exercising the whole editor: mode transitions, minibuffer, search,
-/// select-within, undo/redo, and multi-cursor, all interacting.
+//! Property-based fuzz test for the full `Editor` key-handling pipeline.
+//!
+//! Feeds random sequences of plausible key events to `Editor::handle_event` and
+//! asserts that no sequence ever panics or leaves the editor in an invalid state.
+//!
+//! This complements the `proptest_doc` tests (which target `Text` and pure
+//! ops) by exercising the whole editor: mode transitions, minibuffer, search,
+//! select-within, undo/redo, and multi-cursor, all interacting.
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;

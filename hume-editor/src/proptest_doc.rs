@@ -1,14 +1,15 @@
-/// Property-based tests for Text-level invariants.
-///
-/// These tests complement the unit tests in individual modules and the
-/// ChangeSet-level proptests in `changeset.rs`. They verify that:
-///
-/// 1. Any sequence of edit operations + undo/redo never corrupts the buffer
-///    or desynchronises the selection set.
-/// 2. Any sequence of pure operations (motions, text objects, selection
-///    commands) never violates the buffer or selection invariants.
-/// 3. Specific undo/redo properties hold (undo reverses an edit, undo+redo
-///    is identity, N edits then N undos restores the original state).
+//! Property-based tests for Text-level invariants.
+//!
+//! These tests complement the unit tests in individual modules and the
+//! ChangeSet-level proptests in `hume-editing/src/changeset/`. They verify
+//! that:
+//!
+//! 1. Any sequence of edit operations + undo/redo never corrupts the buffer
+//!    or desynchronises the selection set.
+//! 2. Any sequence of pure operations (motions, text objects, selection
+//!    commands) never violates the buffer or selection invariants.
+//! 3. Specific undo/redo properties hold (undo reverses an edit, undo+redo
+//!    is identity, N edits then N undos restores the original state).
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;

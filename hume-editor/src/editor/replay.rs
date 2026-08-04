@@ -213,10 +213,8 @@ impl Editor {
             );
         }
 
-        // Restore the edit's own char arg.
         self.state.pending_char = action.char_arg;
 
-        // Run the edit body.
         match &edit_cmd {
             MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
                 let ctx = CmdCtx {
@@ -265,7 +263,6 @@ impl Editor {
             }
         }
 
-        // Close the edit group.
         if self.state.mode() == Mode::Insert {
             self.end_insert_session();
         } else {
