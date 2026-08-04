@@ -162,18 +162,10 @@ impl SettingsHost for MockHost {
         center: Vec<String>,
         right: Vec<String>,
     ) -> Result<(), String> {
-        use hume::ui::statusline::{StatusElement, StatusLineConfig};
-        let parse = |list: Vec<String>, section: &str| -> Result<Vec<StatusElement>, String> {
-            list.iter()
-                .map(|s| {
-                    s.parse::<StatusElement>()
-                        .map_err(|e| format!("configure-statusline! {section}: {e}"))
-                })
-                .collect()
-        };
-        let left = parse(left, "left")?;
-        let center = parse(center, "center")?;
-        let right = parse(right, "right")?;
+        use hume::ui::statusline::{StatusLineConfig, parse_statusline_section};
+        let left = parse_statusline_section(left, "left")?;
+        let center = parse_statusline_section(center, "center")?;
+        let right = parse_statusline_section(right, "right")?;
         self.settings.statusline = StatusLineConfig {
             left,
             center,

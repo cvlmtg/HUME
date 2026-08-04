@@ -182,6 +182,24 @@ pub struct StatusLineConfig {
     pub right: Vec<StatusElement>,
 }
 
+/// Parse one `configure-statusline!` section (`left`/`center`/`right`) from
+/// its wire-format element names, labeling a parse failure with which
+/// section it came from. Shared by the production host and the test mock —
+/// `mock_host.rs` is `#[path]`-included into external integration-test
+/// crates, so this must be `pub` like `StatusElement`/`StatusLineConfig`
+/// themselves.
+pub fn parse_statusline_section(
+    list: Vec<String>,
+    section: &str,
+) -> Result<Vec<StatusElement>, String> {
+    list.iter()
+        .map(|s| {
+            s.parse::<StatusElement>()
+                .map_err(|e| format!("configure-statusline! {section}: {e}"))
+        })
+        .collect()
+}
+
 impl Default for StatusLineConfig {
     fn default() -> Self {
         Self {

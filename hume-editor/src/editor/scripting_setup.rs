@@ -96,6 +96,27 @@ impl Editor {
         self.detect_pending_languages();
     }
 
+    /// Shared `Ok`/`Err` handling for every scripting eval that returns
+    /// `Result<Vec<Effect>, EvalError>`: apply the effects either way (an
+    /// `EvalError` still carries whatever committed before the error), and
+    /// on `Err`, report `{err_prefix}{message}`. `err_prefix` distinguishes
+    /// which eval failed (a hook, a queued call, `init.scm`, a `runtime/`
+    /// file) in the reported message; pass `""` for a caller with nothing to
+    /// prefix.
+    pub(crate) fn apply_script_result(
+        &mut self,
+        result: Result<Vec<Effect>, hume_scripting::EvalError>,
+        err_prefix: &str,
+    ) {
+        match result {
+            Ok(effects) => self.apply_script_effects(effects),
+            Err(e) => {
+                self.apply_script_effects(e.effects);
+                self.report(Severity::Error, format!("{err_prefix}{}", e.message));
+            }
+        }
+    }
+
     // ── Message reporting ─────────────────────────────────────────────────────
 
     /// Report a message, routing it based on severity:
@@ -263,26 +284,18 @@ impl Editor {
                 let bid = self.focused_buffer_id();
                 let result = {
                     let host_scr = self.scripting.as_mut().expect("checked above");
-                    let mut impl_host = EditorHostImpl {
-                        state: &mut self.state,
-                        view: &mut self.view,
-                        lsp: Some(&mut self.lsp),
-                        timers: Some(super::timer_bridge::TimerHandle {
-                            wheel: &mut self.timer_wheel,
-                            payloads: &mut self.timer_payloads,
-                        }),
-                        terminal: self.terminal.as_ref(),
-                    };
+                    let mut impl_host = EditorHostImpl::full(
+                        &mut self.state,
+                        &mut self.view,
+                        &mut self.lsp,
+                        &mut self.timer_wheel,
+                        &mut self.timer_payloads,
+                        self.terminal.as_ref(),
+                    );
                     host_scr.fire_hook(hook_id, &args, pid, bid, &mut impl_host)
                 };
                 self.flush_script_messages();
-                match result {
-                    Ok(effects) => self.apply_script_effects(effects),
-                    Err(e) => {
-                        self.apply_script_effects(e.effects);
-                        self.report(Severity::Error, format!("hook error: {}", e.message));
-                    }
-                }
+                self.apply_script_result(result, "hook error: ");
             }
         }
     }
@@ -318,26 +331,18 @@ impl Editor {
             return;
         };
         let result = {
-            let mut impl_host = EditorHostImpl {
-                state: &mut self.state,
-                view: &mut self.view,
-                lsp: Some(&mut self.lsp),
-                timers: Some(super::timer_bridge::TimerHandle {
-                    wheel: &mut self.timer_wheel,
-                    payloads: &mut self.timer_payloads,
-                }),
-                terminal: self.terminal.as_ref(),
-            };
+            let mut impl_host = EditorHostImpl::full(
+                &mut self.state,
+                &mut self.view,
+                &mut self.lsp,
+                &mut self.timer_wheel,
+                &mut self.timer_payloads,
+                self.terminal.as_ref(),
+            );
             host_scr.run_steel_calls(calls, pid, bid, &mut impl_host)
         };
         self.flush_script_messages();
-        match result {
-            Ok(effects) => self.apply_script_effects(effects),
-            Err(e) => {
-                self.apply_script_effects(e.effects);
-                self.report(Severity::Error, format!("steel call error: {}", e.message));
-            }
-        }
+        self.apply_script_result(result, "steel call error: ");
         // A call just run above (an LSP-request callback, a timer thunk) can
         // itself dispatch a command that exits Insert, setting the flag the
         // top-of-function consumption already passed. Consume it again so
@@ -429,13 +434,7 @@ impl Editor {
                 let mut ih = make_init_host(&mut self.state, &mut self.view);
                 host.eval_init(&init_path, init_budget, &mut ih, builtin_names)
             };
-            match result {
-                Ok(effects) => self.apply_script_effects(effects),
-                Err(e) => {
-                    self.apply_script_effects(e.effects);
-                    self.report(Severity::Error, format!("init.scm: {}", e.message));
-                }
-            }
+            self.apply_script_result(result, "init.scm: ");
         }
         // Snapshot language activation entries for the post-init lint below —
         // every eval's effects (identities, grammars, LSP server ops) are
@@ -572,16 +571,7 @@ impl Editor {
             let mut ih = make_init_host(&mut self.state, &mut self.view);
             host.eval_init(&path, init_budget, &mut ih, builtin_names)
         };
-        match result {
-            Ok(effects) => self.apply_script_effects(effects),
-            Err(e) => {
-                self.apply_script_effects(e.effects);
-                self.report(
-                    Severity::Error,
-                    format!("runtime/{rel_path}: {}", e.message),
-                );
-            }
-        }
+        self.apply_script_result(result, &format!("runtime/{rel_path}: "));
     }
 }
 

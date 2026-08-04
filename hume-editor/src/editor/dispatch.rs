@@ -7,7 +7,7 @@
 //! timer bridge — fields only reachable through `&mut Editor`.
 
 use super::registry::MappableCommand;
-use super::{Editor, InlineOutputDispatch, Severity, commands, timer_bridge};
+use super::{Editor, InlineOutputDispatch, Severity, commands};
 
 // ── Command dispatch context ──────────────────────────────────────────────────
 
@@ -251,16 +251,14 @@ impl Editor {
             return false;
         };
         let result = {
-            let mut impl_host = crate::editor::host_impl::EditorHostImpl {
-                state: &mut self.state,
-                view: &mut self.view,
-                lsp: Some(&mut self.lsp),
-                timers: Some(timer_bridge::TimerHandle {
-                    wheel: &mut self.timer_wheel,
-                    payloads: &mut self.timer_payloads,
-                }),
-                terminal: self.terminal.as_ref(),
-            };
+            let mut impl_host = crate::editor::host_impl::EditorHostImpl::full(
+                &mut self.state,
+                &mut self.view,
+                &mut self.lsp,
+                &mut self.timer_wheel,
+                &mut self.timer_payloads,
+                self.terminal.as_ref(),
+            );
             scripting.call_steel_cmd(
                 name,
                 char_arg,

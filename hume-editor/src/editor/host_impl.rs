@@ -18,7 +18,7 @@ use crate::editor::lsp::LspState;
 use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
 use crate::lock_ext::LockExt;
-use crate::ui::statusline::{StatusElement, StatusLineConfig};
+use crate::ui::statusline::StatusLineConfig;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
     EditHost, EditorHost, LanguageHost, LspHost, OptionValue, OutputHost, PopupKind, SettingsHost,
@@ -42,10 +42,11 @@ pub(crate) struct EditorHostImpl<'a> {
     /// shared-borrow shape doesn't fit; `TimerHandle` bundles the two
     /// `&mut` pieces this needs.
     pub(crate) timers: Option<TimerHandle<'a>>,
-    /// `Some` only at the one call site that can reach
-    /// [`OutputHost::ensure_inline_output_screen`] (command dispatch) — `None`
-    /// everywhere else. `state.inline_output` only ever reaches `Armed` from
-    /// that same call site, so `ensure_inline_output_screen`'s early return
+    /// `Some` at the three call sites that thread every capability
+    /// (command dispatch, hook fire, queued-call drain) — `None` everywhere
+    /// else. Only [`OutputHost::ensure_inline_output_screen`] (reachable
+    /// from command dispatch) actually reads it; `state.inline_output` only
+    /// ever reaches `Armed` from that same call site, so its early return
     /// guarantees this is never read as `None` when it matters.
     pub(crate) terminal: Option<&'a hume_platform::terminal::SharedTerm>,
 }
@@ -60,6 +61,34 @@ impl<'a> EditorHostImpl<'a> {
             lsp: None,
             timers: None,
             terminal: None,
+        }
+    }
+
+    /// Constructor for the three call sites that thread every capability:
+    /// command dispatch, hook fire, and queued-call drain. Takes the fields
+    /// already split out (rather than `&mut Editor`) because each call site
+    /// holds a simultaneous disjoint borrow of `self.scripting` — passing
+    /// `self` as a whole would conflict with that borrow.
+    pub(in crate::editor) fn full(
+        state: &'a mut EditorState,
+        view: &'a mut EngineView,
+        lsp: &'a mut LspState,
+        timer_wheel: &'a mut super::timers::TimerWheel,
+        timer_payloads: &'a mut rustc_hash::FxHashMap<
+            super::timers::TimerId,
+            super::timer_bridge::TimerPayload,
+        >,
+        terminal: Option<&'a hume_platform::terminal::SharedTerm>,
+    ) -> Self {
+        Self {
+            state,
+            view,
+            lsp: Some(lsp),
+            timers: Some(TimerHandle {
+                wheel: timer_wheel,
+                payloads: timer_payloads,
+            }),
+            terminal,
         }
     }
 
@@ -267,18 +296,10 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         // through `write_global` like every other setting — see
         // `settings_ops::apply_global`'s doc for why a raw field write must
         // not bypass it.
-        let parse = |list: Vec<String>, section: &str| -> Result<Vec<StatusElement>, String> {
-            list.iter()
-                .map(|s| {
-                    s.parse::<StatusElement>()
-                        .map_err(|e| format!("configure-statusline! {section}: {e}"))
-                })
-                .collect()
-        };
         let cfg = StatusLineConfig {
-            left: parse(left, "left")?,
-            center: parse(center, "center")?,
-            right: parse(right, "right")?,
+            left: crate::ui::statusline::parse_statusline_section(left, "left")?,
+            center: crate::ui::statusline::parse_statusline_section(center, "center")?,
+            right: crate::ui::statusline::parse_statusline_section(right, "right")?,
         };
         let wire = crate::settings::format_statusline(&cfg);
 

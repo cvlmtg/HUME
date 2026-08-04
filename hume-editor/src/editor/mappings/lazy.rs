@@ -22,13 +22,7 @@ impl Editor {
             let mut ih = make_init_host(&mut self.state, &mut self.view);
             host.activate_plugin_inline(plugin, init_budget, &mut ih, &self.builtin_cmd_names)
         };
-        match result {
-            Ok(effects) => self.apply_script_effects(effects),
-            Err(e) => {
-                self.apply_script_effects(e.effects);
-                self.report(Severity::Error, e.message);
-            }
-        }
+        self.apply_script_result(result, "");
     }
 
     /// Activate `plugin`, emit a `Severity::Trace` message if it transitioned
