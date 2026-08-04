@@ -53,6 +53,11 @@ fn vsplit_path_opens_that_buffer() {
 #[test]
 fn split_missing_file_opens_new_file_with_raw_typed_display_path() {
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
+    // `resolve_buffer_path` canonicalizes the *parent* dir when the file
+    // itself doesn't exist — canonicalize `home` here too, or this
+    // assertion can fail on a platform/CI layout where $HOME is itself a
+    // symlink.
+    let canonical_home = std::fs::canonicalize(&home).unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     let bid_a = ed.focused_buffer_id();
 
@@ -70,8 +75,28 @@ fn split_missing_file_opens_new_file_with_raw_typed_display_path() {
     );
     assert_eq!(
         buf.path(),
-        Some(home.join("no-such-file-xyz.txt").as_path()),
+        Some(canonical_home.join("no-such-file-xyz.txt").as_path()),
         "path must resolve against the expanded $HOME, even though display doesn't show it"
+    );
+}
+
+/// `:split <dir>` must still error, not silently open a new-file buffer —
+/// mirrors `edit_directory_path_still_errors` in `file_io.rs`. Also proves
+/// the error echoes the raw typed path (`~`), not its expanded `$HOME` form.
+#[test]
+fn split_directory_path_still_errors_with_raw_typed_path() {
+    let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
+    let mut ed = editor_from("-[h]>ello\n");
+    let err = ed.execute_typed("split", Some("~")).unwrap_err();
+    assert!(
+        err.message().starts_with("~: "),
+        "error must lead with the raw typed path, got: {}",
+        err.message()
+    );
+    assert!(
+        !err.message().contains(&home.to_string_lossy().to_string()),
+        "error must not leak the expanded $HOME path, got: {}",
+        err.message()
     );
 }
 
@@ -81,6 +106,9 @@ fn split_missing_file_opens_new_file_with_raw_typed_display_path() {
 #[test]
 fn vsplit_missing_file_opens_new_file_with_raw_typed_display_path() {
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
+    // See `split_missing_file_opens_new_file_with_raw_typed_display_path`'s
+    // comment: `resolve_buffer_path` canonicalizes the parent dir.
+    let canonical_home = std::fs::canonicalize(&home).unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     let bid_a = ed.focused_buffer_id();
 
@@ -98,8 +126,27 @@ fn vsplit_missing_file_opens_new_file_with_raw_typed_display_path() {
     );
     assert_eq!(
         buf.path(),
-        Some(home.join("no-such-file-xyz.txt").as_path()),
+        Some(canonical_home.join("no-such-file-xyz.txt").as_path()),
         "path must resolve against the expanded $HOME, even though display doesn't show it"
+    );
+}
+
+/// Same guarantee as `split_directory_path_still_errors_with_raw_typed_path`,
+/// for `:vsplit`.
+#[test]
+fn vsplit_directory_path_still_errors_with_raw_typed_path() {
+    let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
+    let mut ed = editor_from("-[h]>ello\n");
+    let err = ed.execute_typed("vsplit", Some("~")).unwrap_err();
+    assert!(
+        err.message().starts_with("~: "),
+        "error must lead with the raw typed path, got: {}",
+        err.message()
+    );
+    assert!(
+        !err.message().contains(&home.to_string_lossy().to_string()),
+        "error must not leak the expanded $HOME path, got: {}",
+        err.message()
     );
 }
 

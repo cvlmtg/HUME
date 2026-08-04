@@ -395,14 +395,20 @@ fn goto_to_an_unopened_file_detects_its_language() {
     );
 }
 
+/// A target whose path genuinely can't be opened (here: it's a directory,
+/// not a file — `Buffer::from_file_or_new` only tolerates `NotFound`) must
+/// still error and leave the cursor untouched.
 #[test]
-fn nonexistent_target_errors_without_moving_the_cursor() {
+fn goto_target_is_directory_errors_without_moving_the_cursor() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let (file, _uri) = write_fixture_file(file_dir.path());
-    let bogus_uri = "file:///nonexistent/path/that/does/not/exist.rs";
+    let dir_uri = hume_lsp::uri::path_to_uri(&std::fs::canonicalize(tmp.path()).unwrap())
+        .unwrap()
+        .as_str()
+        .to_string();
     let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
-        backend.respond_to("textDocument/definition", loc(bogus_uri, 0, 0));
+        backend.respond_to("textDocument/definition", loc(&dir_uri, 0, 0));
     });
     let before = state(&ed);
 
@@ -413,6 +419,41 @@ fn nonexistent_target_errors_without_moving_the_cursor() {
     assert!(
         msg.to_lowercase().contains("error") || msg.to_lowercase().contains("goto-location"),
         "expected an error message, got {msg:?}"
+    );
+}
+
+/// A target whose file doesn't exist yet (but whose path is otherwise valid)
+/// must open a new-file buffer and jump to it — the same `:e newfile.txt`
+/// tolerance `resolve_or_open` shares with `Editor::resolve_open_path` via
+/// `Buffer::from_file_or_new`, not an error. Covers a server-driven
+/// definition/rename that points at a file it expects the client to create.
+#[test]
+fn goto_missing_target_opens_new_file_buffer_and_jumps_to_it() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, _uri) = write_fixture_file(file_dir.path());
+    let missing = file_dir.path().join("not_yet_created.rs");
+    let missing_uri = format!("file://{}", missing.display());
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to("textDocument/definition", loc(&missing_uri, 0, 0));
+    });
+    let start_bid = ed.focused_buffer_id();
+
+    run_goto(&mut ed, ":lsp-goto-definition");
+
+    assert_ne!(
+        ed.focused_buffer_id(),
+        start_bid,
+        "goto must have switched to the new-file buffer"
+    );
+    assert!(
+        ed.doc().is_new_file(),
+        "target buffer must be a pending new-file buffer, not an error"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        !msg.to_lowercase().contains("error"),
+        "must not report an error, got {msg:?}"
     );
 }
 

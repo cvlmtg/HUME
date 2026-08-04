@@ -13,6 +13,10 @@ Tab completion is available for file paths.
 
 `:e` with no argument reloads the current file from disk. If the file has been modified HUME will not reload it, unless you use `:e!`.
 
+### New files
+
+`:e filename` on a path that doesn't exist yet opens an empty buffer bound to it instead of failing — the file is created the first time you save, with `:w`. Until then, `:e` with no argument does nothing on that buffer: there's nothing on disk yet to reload. `:wa` saves it along with any other modified buffer. If something else creates a file at that path before you save, `:w` refuses to overwrite it — add `!` (`:w!`) to save anyway.
+
 ### External changes
 
 If something else changes a file you have open — another program, a formatter, `git checkout` — HUME notices the next time you switch back to its window, switch to that buffer, or run `:checktime`, and asks whether to reload. Answering yes replaces the buffer's content but keeps it undoable (`u` brings back what you had). Answering no leaves the buffer as-is; the file stays flagged as changed until you reload it or explicitly overwrite it.

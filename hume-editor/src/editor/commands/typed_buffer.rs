@@ -10,6 +10,8 @@ use crate::editor::error::CommandError;
 /// `:e [path]` — open a file in the current window.
 ///
 /// - No `path`: reload current file from disk (`:e!` discards unsaved changes).
+///   On a new-file buffer (`:e` on a path that doesn't exist yet, not written
+///   since) this is a no-op — there is nothing on disk to reload from.
 /// - `path` given and already open: switch to the existing buffer.
 /// - `path` given and not open: read from disk, open a new buffer, switch to it.
 ///   A `path` that doesn't exist on disk opens an empty buffer bound to it
@@ -62,6 +64,18 @@ pub(crate) fn typed_edit(
         let Some(path) = ed.doc().path().map(Path::to_path_buf) else {
             return Err(CommandError::new("no file name"));
         };
+        // Nothing on disk to reload from yet — a reload here would just be a
+        // no-op, so short-circuit before the dirty check rather than making
+        // the user add `!` to force a reload that would discard edits for no
+        // reason. Checked before the dirty gate deliberately.
+        if ed.doc().is_new_file() {
+            let name = ed.doc().display_name();
+            ed.report(
+                Severity::Info,
+                format!("{name}: new file, nothing to reload"),
+            );
+            return Ok(());
+        }
         if ed.doc().is_dirty() && !force {
             return Err(CommandError::new("unsaved changes (use :e! to force)"));
         }
@@ -181,9 +195,25 @@ pub(crate) fn typed_buffer(
 /// still matches an already-open new-file buffer instead of opening a
 /// duplicate, and a path whose backing file has since been deleted still
 /// matches the buffer that was reading it.
+///
+/// Falls back to the plain lexical-absolute form (no `canonicalize` at all)
+/// when that first lookup misses: a new-file buffer opened while an
+/// intermediate directory in its path was missing is keyed by
+/// `resolve_buffer_path`'s fully-lexical fallback at that time (see its
+/// doc); once the directory appears, re-resolving the same typed string
+/// canonicalizes further and no longer matches the stored key. Skipped when
+/// the two forms already agree — the common case needs no second lookup.
 fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
-    let resolved = Editor::resolve_buffer_path(std::path::Path::new(arg), &ed.state.cwd);
-    ed.state.buffers.find_by_path(&resolved)
+    let arg_path = std::path::Path::new(arg);
+    let resolved = Editor::resolve_buffer_path(arg_path, &ed.state.cwd);
+    if let Some(bid) = ed.state.buffers.find_by_path(&resolved) {
+        return Some(bid);
+    }
+    let lexical = hume_platform::path::absolute_unresolved(arg_path, &ed.state.cwd);
+    if lexical != resolved {
+        return ed.state.buffers.find_by_path(&lexical);
+    }
+    None
 }
 
 /// Resolve a `:b` argument to a `BufferId`.  See [`typed_buffer`] for the

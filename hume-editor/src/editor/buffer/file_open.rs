@@ -72,37 +72,46 @@ impl Editor {
     /// basename appended lexically) — `find_by_path` compares whichever form
     /// was stored, so dedup still works once the file is later created and
     /// reopened via its now-canonicalizable path.
+    ///
+    /// Thin wrapper over [`lifecycle::open_or_dedup_and_notify`] — the actual
+    /// dedup-and-missing-file logic lives there so Steel's `open-buffer!` and
+    /// LSP goto/workspace-edit share it too; this only adds the
+    /// `&Editor`-only language detection a genuinely new buffer needs.
     pub(in crate::editor) fn open_or_dedup(
         &mut self,
         resolved: &std::path::Path,
     ) -> std::io::Result<(BufferId, bool)> {
-        if let Some(existing) = self.state.buffers.find_by_path(resolved) {
-            return Ok((existing, false));
+        let (bid, is_new) =
+            lifecycle::open_or_dedup_and_notify(&mut self.view, &mut self.state, resolved)?;
+        if is_new {
+            // Steel eval capability only `&mut Editor` has — see
+            // `open_buffer_and_notify`'s doc for why detection can't live there.
+            self.detect_pending_languages();
         }
-        let buf = match Buffer::from_file(resolved) {
-            // Missing file, valid basename: `:e`/`:split`/CLI open an empty
-            // buffer bound to the path instead of erroring — `:w` creates it
-            // (see `Buffer::new_file`, `write_buffer_by_id`). A path with no
-            // basename (`/`, `..`) falls through to the `?` below and errors
-            // as before — `Buffer::set_path` would panic on it in debug.
-            Err(e)
-                if e.kind() == std::io::ErrorKind::NotFound && resolved.file_name().is_some() =>
-            {
-                Buffer::new_file(resolved.to_path_buf())
-            }
-            other => other?,
-        };
-        Ok((self.open_buffer(buf), true))
+        Ok((bid, is_new))
     }
 
-    /// Open additional files without switching focus; errors are logged as warnings.
+    /// Open additional files without switching focus; errors are logged as
+    /// warnings. A path that doesn't exist opens a new-file buffer instead
+    /// of erroring (see `resolve_open_path`) and reports Info `[new file]`,
+    /// matching `:e` — otherwise a mistyped trailing CLI argument would
+    /// silently open an empty buffer with no feedback at all.
     pub(crate) fn open_extra_files(&mut self, paths: &[PathBuf]) {
         for path in paths {
-            if let Err(e) = self.try_open_extra(path) {
-                self.report(
-                    Severity::Warning,
-                    format!("Failed to open {}: {e}", path.display()),
-                );
+            match self.try_open_extra(path) {
+                Ok((bid, is_new)) => {
+                    let buf = self.state.buffers.get(bid);
+                    if is_new && buf.is_new_file() {
+                        let name = buf.display_name();
+                        self.report(Severity::Info, format!("{name} [new file]"));
+                    }
+                }
+                Err(e) => {
+                    self.report(
+                        Severity::Warning,
+                        format!("Failed to open {}: {e}", path.display()),
+                    );
+                }
             }
         }
     }
@@ -138,9 +147,8 @@ impl Editor {
         Ok((bid, is_new))
     }
 
-    fn try_open_extra(&mut self, path: &std::path::Path) -> io::Result<()> {
-        self.resolve_open_path(&path.to_string_lossy())?;
-        Ok(())
+    fn try_open_extra(&mut self, path: &std::path::Path) -> io::Result<(BufferId, bool)> {
+        self.resolve_open_path(&path.to_string_lossy())
     }
 
     /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's

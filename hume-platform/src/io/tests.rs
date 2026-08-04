@@ -63,3 +63,86 @@ fn write_file_atomic_refreshes_signature_so_self_write_is_not_a_change() {
     let on_disk = read_signature(&path).unwrap();
     assert_eq!(meta.signature(), on_disk);
 }
+
+#[test]
+#[cfg(unix)]
+fn write_file_new_through_dangling_symlink_creates_target_leaves_link() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target.txt");
+    let link = dir.path().join("link.txt");
+    symlink(&target, &link).unwrap(); // target does not exist yet — dangling
+
+    let meta = write_file_new("hello\n", &link).unwrap();
+
+    assert!(
+        !target.is_symlink() && target.exists(),
+        "target must be a real file"
+    );
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "hello\n");
+    assert_eq!(
+        meta.resolved_path(),
+        std::fs::canonicalize(&target).unwrap(),
+        "FileMeta must key on the resolved target, not the link"
+    );
+    assert!(
+        std::fs::symlink_metadata(&link).unwrap().is_symlink(),
+        "the symlink itself must survive the write"
+    );
+    assert_eq!(
+        std::fs::read_link(&link).unwrap(),
+        target,
+        "the symlink must still point at the same target"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn write_file_new_through_symlink_chain_follows_to_final_target() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("final.txt");
+    let middle = dir.path().join("middle.txt");
+    let link = dir.path().join("link.txt");
+    symlink(&target, &middle).unwrap();
+    symlink(&middle, &link).unwrap();
+
+    write_file_new("chain\n", &link).unwrap();
+
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "chain\n");
+    assert!(std::fs::symlink_metadata(&middle).unwrap().is_symlink());
+    assert!(std::fs::symlink_metadata(&link).unwrap().is_symlink());
+}
+
+#[test]
+#[cfg(unix)]
+fn write_file_new_symlink_cycle_errors_instead_of_looping() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().unwrap();
+    let a = dir.path().join("a.txt");
+    let b = dir.path().join("b.txt");
+    symlink(&b, &a).unwrap();
+    symlink(&a, &b).unwrap();
+
+    let Err(err) = write_file_new("x\n", &a) else {
+        panic!("a symlink cycle must error, not succeed");
+    };
+    assert!(
+        err.to_string().contains("levels of symbolic links"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn write_file_new_on_plain_missing_path_is_unaffected() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("plain.txt");
+
+    let meta = write_file_new("hi\n", &path).unwrap();
+
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hi\n");
+    assert_eq!(meta.resolved_path(), std::fs::canonicalize(&path).unwrap());
+}

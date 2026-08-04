@@ -313,6 +313,52 @@ fn steel_open_buffer_detects_language() {
     );
 }
 
+/// `(open-buffer! path)` on a path that doesn't exist yet must open an empty
+/// new-file buffer, the same tolerance `:e` has (`host_impl::open_buffer`
+/// shares `Editor::resolve_buffer_path` / `Buffer::from_file_or_new` with
+/// `:e` for exactly this reason) — not error out the way a hard
+/// `std::fs::canonicalize` would.
+#[test]
+fn steel_open_buffer_missing_path_opens_new_file() {
+    let dir = safe_tempdir();
+    let target = dir.path().join("not-yet-created.txt");
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        format!(
+            r#"(define-command! "go" "" (lambda () (open-buffer! "{}")))"#,
+            target.display()
+        ),
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let mut host = ScriptingHost::new();
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed");
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":go");
+
+    assert!(
+        !ed.state
+            .message_log
+            .entries()
+            .any(|e| e.text.contains("open-buffer!")),
+        "must not error for a missing path — it opens instead"
+    );
+    let canonical_dir = dir.path().canonicalize().unwrap();
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&canonical_dir.join("not-yet-created.txt"))
+        .expect("open-buffer! must have opened a new-file buffer");
+    assert!(ed.state.buffers.get(bid).is_new_file());
+}
+
 // ── open+close in one eval fires neither hook ──────────────────────────────
 
 /// `(open-buffer! path)` queues `bid` onto `pending_language_detection`

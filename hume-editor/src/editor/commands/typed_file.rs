@@ -305,16 +305,38 @@ fn write_buffer_by_id(
         let Some(path) = buf.path().map(std::path::Path::to_path_buf) else {
             return Err(CommandError::new("no file name"));
         };
-        return match hume_platform::io::write_file_new(&content, &path) {
-            Ok(meta) => {
-                // No `set_path` here, unlike the save-as branch below: `path`
-                // was already resolved (parent canonicalized) by
-                // `Editor::resolve_buffer_path` when the buffer was opened,
-                // so `meta.resolved_path()` is already identical — calling
-                // `set_path` would only re-derive `display_path` from the
-                // canonical form and stomp the typed-derived one `:e` set.
-                ed.state.buffers.get_mut(bid).file_meta = Some(meta);
-                mark_written_and_synced(ed, bid, line_count, false);
+        // Stat fresh rather than assuming the path is still missing: a
+        // new-file buffer carries no baseline to compare against
+        // (`stale_write_block` needs a `FileMeta`, which this buffer has
+        // none of), so a file that appeared since `:e` would otherwise be
+        // silently clobbered by `write_file_new`. Same
+        // stat-at-write-time reasoning as `stale_write_block`, just
+        // discovered via existence instead of a signature mismatch.
+        let write_result = match hume_platform::io::read_file_meta(&path) {
+            Ok(_) if !force => return Err(CommandError::new(STALE_WRITE_MSG)),
+            // Forced: write through `write_file_atomic`, not
+            // `write_file_new` — the file now exists, so its
+            // permissions/ownership/symlink target should be preserved
+            // like any other overwrite, not replaced with new-file defaults.
+            Ok(mut meta) => hume_platform::io::write_file_atomic(&content, &mut meta, force)
+                .map(|retried| (meta, retried)),
+            Err(_) => hume_platform::io::write_file_new(&content, &path).map(|meta| (meta, false)),
+        };
+        return match write_result {
+            Ok((meta, retried)) => {
+                // Re-key: `path` was `resolve_buffer_path`'s best-effort form
+                // (parent canonicalized, or fully lexical when even the
+                // parent didn't exist yet) — `meta.resolved_path()` is the
+                // fully resolved post-write truth, which can differ, and
+                // must become the buffer's identity so `find_by_path` dedup
+                // keeps working. `display_path` is preserved across the
+                // `set_path` re-derivation, matching the save-as branch below.
+                let display_path = ed.state.buffers.get(bid).display_path().map(str::to_owned);
+                let buf = ed.state.buffers.get_mut(bid);
+                buf.set_path(Some(meta.resolved_path().to_path_buf()));
+                buf.set_display_path(display_path);
+                buf.file_meta = Some(meta);
+                mark_written_and_synced(ed, bid, line_count, retried);
                 Ok(())
             }
             Err(e) => Err(CommandError::new(e.to_string())),
@@ -391,11 +413,15 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                 // buffer's own baseline is already a stat-at-write-time
                 // check — no cached flag, no second syscall needed.
                 let targets_own_file = ed.doc().path() == Some(meta.resolved_path());
-                let own_baseline_differs = ed
-                    .doc()
-                    .file_meta
-                    .as_ref()
-                    .is_some_and(|own| own.signature() != meta.signature());
+                // A new-file buffer (`file_meta: None`) has no baseline at
+                // all — if this write targets its own path and a file now
+                // exists there, that content was never read by this buffer,
+                // so it counts as "differs" the same as a genuine signature
+                // mismatch would.
+                let own_baseline_differs = match ed.doc().file_meta.as_ref() {
+                    Some(own) => own.signature() != meta.signature(),
+                    None => true,
+                };
                 if targets_own_file && !force && own_baseline_differs {
                     return Err(CommandError::new(STALE_WRITE_MSG));
                 }
@@ -445,7 +471,14 @@ pub(crate) fn typed_write_all(
         // Skip read-only buffers; write_buffer_by_id would error and abort the
         // whole batch after partial saves. A read-only dirty buffer is unusual
         // (only set-text can do it), but handle it gracefully.
-        .filter(|(_, buf)| buf.is_dirty() && buf.file_meta.is_some() && !buf.is_read_only())
+        //
+        // `path().is_some()`, not `file_meta.is_some()`: a new-file buffer
+        // (`:e` on a missing path, not yet written) has a path but no
+        // `file_meta` — `write_buffer_by_id`'s create branch handles it, so
+        // excluding it here would make `:wa` silently skip a buffer it's
+        // fully capable of writing. Only genuinely pathless buffers (scratch,
+        // synthetic views) are excluded.
+        .filter(|(_, buf)| buf.is_dirty() && buf.path().is_some() && !buf.is_read_only())
         .map(|(id, _)| id)
         .collect();
 

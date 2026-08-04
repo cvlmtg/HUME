@@ -255,16 +255,54 @@ pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io:
 
 // ── write_file_new ────────────────────────────────────────────────────────────
 
+/// Follows a chain of symlinks lexically until reaching a path with nothing
+/// backing it — the write target for [`write_file_new`].
+///
+/// Not `canonicalize`: that requires every component (including the final
+/// one) to exist, which is exactly false for a dangling symlink's target.
+/// A `path` that isn't a symlink at all resolves in one `symlink_metadata`
+/// call. Bounded to `SYMLOOP_MAX` (Linux's own limit) hops so a symlink cycle
+/// errors instead of looping forever.
+fn resolve_symlink_target(path: &Path) -> io::Result<PathBuf> {
+    const MAX_HOPS: u32 = 40;
+    let mut current = path.to_path_buf();
+    for _ in 0..MAX_HOPS {
+        match fs::symlink_metadata(&current) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(current),
+            Err(e) => return Err(e),
+            Ok(meta) if !meta.is_symlink() => return Ok(current),
+            Ok(_) => {
+                let link_target = fs::read_link(&current)?;
+                current = if link_target.is_absolute() {
+                    link_target
+                } else {
+                    current.parent().unwrap_or(Path::new(".")).join(link_target)
+                };
+            }
+        }
+    }
+    Err(io::Error::other("too many levels of symbolic links"))
+}
+
 /// Write `content` to a **new** file at `path`, creating it with default
 /// permissions (0o644 on Unix, inherited from the temp file on Windows).
 ///
 /// Uses the same temp-file + rename strategy as [`write_file_atomic`] so the
 /// file is never partially visible even for a new path.
 ///
+/// If `path` is a dangling symlink, writes through it to the link's target
+/// instead of replacing the link itself with a regular file — matching
+/// [`FileMeta::resolved_path`]'s guarantee for the existing-file case (see
+/// its doc). `path` may also point through a chain of missing intermediate
+/// directories in the *target's* path; that still surfaces as the same I/O
+/// error `tempfile::NamedTempFile::new_in` would give for a plain missing
+/// parent.
+///
 /// Returns the `FileMeta` for the newly created file, suitable for storing on
 /// the `Editor` so that subsequent `:w` (no argument) targets the same path.
 pub fn write_file_new(content: &str, path: &Path) -> io::Result<FileMeta> {
-    let dir = path.parent().unwrap_or(Path::new("."));
+    let target = resolve_symlink_target(path)?;
+    let dir = target.parent().unwrap_or(Path::new("."));
 
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
     io::Write::write_all(&mut tmp, content.as_bytes())?;
@@ -277,10 +315,10 @@ pub fn write_file_new(content: &str, path: &Path) -> io::Result<FileMeta> {
             .set_permissions(fs::Permissions::from_mode(0o644))?;
     }
 
-    tmp.persist(path).map_err(|e| e.error)?;
+    tmp.persist(&target).map_err(|e| e.error)?;
 
     // Read back the metadata now that the file exists on disk.
-    read_file_meta(path)
+    read_file_meta(&target)
 }
 
 #[cfg(test)]

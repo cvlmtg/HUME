@@ -82,21 +82,22 @@ pub(crate) fn open_buffer_and_notify(
 }
 
 /// Dedup-open a file path: if already open returns `(existing_id, false)`,
-/// otherwise reads the file and allocates via [`open_buffer_and_notify`]
-/// (which seeds the `undo-levels` cap from `state.settings`), returning
-/// `(new_id, true)`. Dedup-opening an already-open path enqueues no hook and
-/// detects no language — matching `Editor::open_buffer`'s "every call is a
-/// genuinely new buffer" contract. The caller is responsible for any other
-/// post-open work (pane switching).
+/// otherwise reads the file (or opens an empty new-file buffer if it doesn't
+/// exist yet — see `Buffer::from_file_or_new`) and allocates via
+/// [`open_buffer_and_notify`] (which seeds the `undo-levels` cap from
+/// `state.settings`), returning `(new_id, true)`. Dedup-opening an
+/// already-open path enqueues no hook and detects no language — matching
+/// `Editor::open_buffer`'s "every call is a genuinely new buffer" contract.
+/// The caller is responsible for any other post-open work (pane switching).
 pub(crate) fn open_or_dedup_and_notify(
     ev: &mut EngineView,
     state: &mut EditorState,
-    canonical: &std::path::Path,
+    resolved: &std::path::Path,
 ) -> std::io::Result<(BufferId, bool)> {
-    if let Some(existing) = state.buffers.find_by_path(canonical) {
+    if let Some(existing) = state.buffers.find_by_path(resolved) {
         return Ok((existing, false));
     }
-    let doc = Buffer::from_file(canonical)?;
+    let doc = Buffer::from_file_or_new(resolved, &state.cwd)?;
     Ok((open_buffer_and_notify(ev, state, doc), true))
 }
 

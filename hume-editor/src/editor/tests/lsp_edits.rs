@@ -341,6 +341,10 @@ fn apply_workspace_edit_mixed_open_and_unopened_files() {
     );
 }
 
+/// The invalid entry is a directory, not a missing path: `resolve_or_open`
+/// tolerates a missing path (opens a new-file buffer, same as `:e`), so only
+/// a target that genuinely can't be opened — `Buffer::from_file_or_new` only
+/// tolerates `NotFound` — still triggers this abort.
 #[test]
 fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
     let tmp = safe_tempdir();
@@ -348,7 +352,10 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
     std::fs::write(&ok_path, "abcdef\n").unwrap();
     let ok_canonical = std::fs::canonicalize(&ok_path).unwrap();
     let ok_uri = hume_lsp::uri::path_to_uri(&ok_canonical).unwrap();
-    let missing_uri = hume_lsp::uri::path_to_uri(&tmp.path().join("does-not-exist.txt")).unwrap();
+    let invalid_dir = tmp.path().join("a_directory");
+    std::fs::create_dir(&invalid_dir).unwrap();
+    let invalid_uri =
+        hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&invalid_dir).unwrap()).unwrap();
 
     let mut ed = editor_from("-[x]>\n");
     run(
@@ -359,7 +366,7 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
                  (apply-workspace-edit!
                    (hash "documentChanges"
                      (list
-                       ; The missing file is listed FIRST — documentChanges is an
+                       ; The invalid entry is listed FIRST — documentChanges is an
                        ; ordered list (unlike `changes`' hashmap), so validation
                        ; reaches it before ever touching the valid file.
                        (hash "textDocument" (hash "uri" {:?} "version" void)
@@ -370,7 +377,7 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
                              "edits" (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
                                                             "end" (hash "line" 0 "character" 1))
                                             "newText" "Z"))))))))"#,
-            missing_uri.as_str(),
+            invalid_uri.as_str(),
             ok_uri.as_str()
         ),
     );
@@ -383,7 +390,7 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
     );
     assert!(
         ed.state.buffers.find_by_path(&ok_canonical).is_none(),
-        "the valid file must not even have been opened — validation stopped at the missing file first"
+        "the valid file must not even have been opened — validation stopped at the invalid entry first"
     );
 }
 
@@ -531,15 +538,22 @@ fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
     );
 }
 
+/// A directory target genuinely can't be opened (`Buffer::from_file_or_new`
+/// only tolerates `NotFound`, not `IsADirectory`) — a plain missing path
+/// would not do here: `resolve_or_open` shares `:e`'s tolerance for those
+/// (see `goto_missing_path_opens_new_file_buffer` below).
 #[test]
-fn goto_location_nonexistent_path_errors_with_no_jump_entry() {
+fn goto_location_directory_target_errors_with_no_jump_entry() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
+    let dir_target = tmp.path().to_str().unwrap().to_owned();
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
-             (goto-location! (list "/no/such/file-ever.txt" 0 0))))"#,
+        &format!(
+            r#"(define-command! "go" "" (lambda ()
+             (goto-location! (list "{dir_target}" 0 0))))"#
+        ),
     );
     let before = state(&ed);
     type_cmd(&mut ed, ":go");
@@ -548,6 +562,36 @@ fn goto_location_nonexistent_path_errors_with_no_jump_entry() {
     // No jump entry means Ctrl+o has nothing to do — state stays put.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
+}
+
+/// `(goto-location! (list path line col))` on a path that doesn't exist yet
+/// must open a new-file buffer and jump to it, the same tolerance `:e` has —
+/// `resolve_path_or_uri` shares `Editor::resolve_open_path`'s
+/// `Buffer::from_file_or_new` chokepoint.
+#[test]
+fn goto_missing_path_opens_new_file_buffer() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let target = tmp.path().join("not-yet-created.txt");
+    let target_str = target.to_str().unwrap().to_owned();
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "go" "" (lambda ()
+             (goto-location! (list "{target_str}" 0 0))))"#
+        ),
+    );
+    let start_bid = ed.focused_buffer_id();
+
+    type_cmd(&mut ed, ":go");
+
+    assert_ne!(
+        ed.focused_buffer_id(),
+        start_bid,
+        "goto must have switched to the new-file buffer"
+    );
+    assert!(ed.doc().is_new_file());
 }
 
 // ── selection-spans-full-line? ───────────────────────────────────────────────

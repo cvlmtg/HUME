@@ -220,15 +220,16 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
 
     // ── Buffer lifecycle ─────────────────────────────────────────────────────
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
-        let canonical = std::fs::canonicalize(path)
-            .map_err(|e| format!("open-buffer!: {}: {e}", path.display()))?;
+        // `resolve_buffer_path`, not a hard `canonicalize`: a missing path is
+        // openable here exactly like `:e` on one — see `Buffer::from_file_or_new`.
+        let resolved = crate::editor::Editor::resolve_buffer_path(path, &self.state.cwd);
         // Language detection is deliberately not done here — see
         // `Effect::DetectBufferLanguage`'s doc; the `open-buffer!` builtin
         // queues it once this returns.
         let (bid, _is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
-            self.view, self.state, &canonical,
+            self.view, self.state, &resolved,
         )
-        .map_err(|e| format!("open-buffer!: {}: {e}", canonical.display()))?;
+        .map_err(|e| format!("open-buffer!: {}: {e}", resolved.display()))?;
         Ok(bid)
     }
     fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {

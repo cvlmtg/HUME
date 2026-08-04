@@ -342,10 +342,14 @@ fn resolve_or_open(
     view: &mut EngineView,
     path: &std::path::Path,
 ) -> Result<BufferId, String> {
-    let canonical = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    // `resolve_buffer_path`, not a hard `canonicalize`: a server-driven
+    // rename or workspace edit may target a file that doesn't exist yet —
+    // openable here exactly like `:e` on a missing path (see
+    // `Buffer::from_file_or_new`).
+    let resolved = Editor::resolve_buffer_path(path, &state.cwd);
     let (bid, is_new) =
-        crate::editor::buffer::lifecycle::open_or_dedup_and_notify(view, state, &canonical)
-            .map_err(|e| format!("{}: {e}", canonical.display()))?;
+        crate::editor::buffer::lifecycle::open_or_dedup_and_notify(view, state, &resolved)
+            .map_err(|e| format!("{}: {e}", resolved.display()))?;
     if is_new {
         let display = hume_platform::path::display_form(&hume_platform::path::absolute_unresolved(
             path, &state.cwd,

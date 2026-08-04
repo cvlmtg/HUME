@@ -240,6 +240,34 @@ impl Buffer {
         self.path.is_some() && self.file_meta.is_none()
     }
 
+    /// Load a file from disk, or open an empty [`Self::new_file`] buffer
+    /// bound to `path` if it doesn't exist yet (Vim's `:e newfile`
+    /// semantics — `:w` creates it). `cwd` feeds `Editor::resolve_buffer_path`
+    /// on the missing-file branch, so the buffer's identity matches whatever
+    /// form the caller resolved `path` to.
+    ///
+    /// The single decision point for "is a missing path openable", shared by
+    /// every open chokepoint — `Editor::open_or_dedup`,
+    /// `lifecycle::open_or_dedup_and_notify` (Steel `open-buffer!`, LSP
+    /// goto/workspace-edit), and `Editor::open`'s first-CLI-arg case — so
+    /// they can't diverge on tolerance the way `:e` and `open-buffer!` did
+    /// before this existed.
+    ///
+    /// A path with no basename (`/`, `..`) still errors — `Buffer::set_path`
+    /// would panic on it in debug.
+    pub(crate) fn from_file_or_new(path: &Path, cwd: &Path) -> io::Result<Self> {
+        match Self::from_file(path) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                let resolved = crate::editor::Editor::resolve_buffer_path(path, cwd);
+                if resolved.file_name().is_none() {
+                    return Err(e);
+                }
+                Ok(Self::new_file(resolved))
+            }
+            other => other,
+        }
+    }
+
     /// Empty scratch buffer (single structural `\n`, no path, default overrides).
     ///
     /// Used when closing the last buffer to keep the "always ≥1 buffer open"
