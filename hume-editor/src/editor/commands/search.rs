@@ -6,7 +6,6 @@ use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::word::{CharClass, classify_char, is_word_boundary};
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
-use hume_ops::register::SEARCH_REGISTER;
 use hume_ops::search::{
     SearchDirection, compile_search_regex, escape_regex, find_all_matches, find_match_from_cache,
     find_next_match,
@@ -99,14 +98,14 @@ fn ensure_search_regex(state: &mut EditorState, view: &EngineView) -> bool {
     if search_pattern(state, view).is_some() {
         return true;
     }
-    let pattern = state
+    let Some(pattern) = state
         .registers
-        .read(SEARCH_REGISTER)
-        .and_then(|r| r.as_text().and_then(|v| v.first()).cloned())
-        .unwrap_or_default();
-    if pattern.is_empty() {
+        .search_register()
+        .filter(|p| !p.is_empty())
+        .map(str::to_owned)
+    else {
         return false;
-    }
+    };
     match compile_search_regex(&pattern) {
         Some(r) => {
             let bid = focused_buffer_id(state, view);
@@ -399,9 +398,7 @@ fn set_search_pattern(
     let Some(regex) = compile_search_regex(&pattern) else {
         return Ok(());
     };
-    state
-        .registers
-        .write_text(SEARCH_REGISTER, vec![pattern.clone()]);
+    state.registers.set_search_register(pattern.clone());
     state.search.direction = SearchDirection::Forward;
     let bid = focused_buffer_id(state, view);
     state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {

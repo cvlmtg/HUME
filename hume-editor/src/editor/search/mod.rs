@@ -1,13 +1,15 @@
-//! Search state: per-buffer and per-pane tiers.
+//! Search state: per-buffer, per-pane, and cross-buffer tiers.
 //!
 //! Three-tier split:
 //! - [`SearchPattern`] + [`SearchMatches`] live on `Buffer` (shared by all panes viewing it).
 //! - [`SearchCursor`] lives on [`crate::editor::pane_state::PaneBufferState`] (per-pane).
+//! - The last search pattern string also lives in the `'s'` register
+//!   (`RegisterSet::search_register`), independent of any buffer — it seeds
+//!   a fresh buffer's compiled pattern the first time `n`/`N` runs there.
 //!
-//! [`SearchState`] retains only the session-level interaction fields that are
-//! not tied to a buffer: the current direction and whether the search was
-//! started from Extend mode. Everything else (regex, matches, match count)
-//! lives in the per-buffer / per-pane tier.
+//! [`SearchState`] retains only the session-level interaction field that is
+//! not tied to a buffer: the current direction. Everything else (regex,
+//! matches, match count) lives in the per-buffer / per-pane tier above.
 
 pub(crate) mod ops;
 

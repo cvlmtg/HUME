@@ -19,7 +19,7 @@ impl Editor {
                 // Keep the selections that live preview already set.
                 let pid = self.state.focused_pane_id;
                 self.state.panes.transient[pid].pre_select_sels = None;
-                // Do NOT write to SEARCH_REGISTER or clear search state —
+                // Do NOT write to the search register or clear search state —
                 // select-within is a selection op, not a search. The previous
                 // search pattern and its highlights should be preserved so that
                 // n/N continues to navigate the original search.

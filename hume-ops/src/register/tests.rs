@@ -101,6 +101,28 @@ fn text_overwrites_macro_last_write_wins() {
 }
 
 #[test]
+fn search_register_round_trip() {
+    let mut regs = RegisterSet::new();
+    regs.set_search_register("hello".to_string());
+    assert_eq!(regs.search_register(), Some("hello"));
+}
+
+#[test]
+fn search_register_none_when_unset() {
+    let regs = RegisterSet::new();
+    assert_eq!(regs.search_register(), None);
+}
+
+#[test]
+fn search_register_none_when_slot_holds_macro() {
+    use termina::event::{KeyCode, Modifiers};
+    let mut regs = RegisterSet::new();
+    let keys = vec![KeyEvent::new(KeyCode::Char('j'), Modifiers::NONE)];
+    regs.write_macro(SEARCH_REGISTER, keys);
+    assert_eq!(regs.search_register(), None);
+}
+
+#[test]
 fn constants_have_expected_values() {
     // Document the register name choices so a future reader sees them tested.
     assert_eq!(BLACK_HOLE_REGISTER, 'b');

@@ -35,8 +35,10 @@ pub const KILL_RING_REGISTER: char = 'k';
 pub const BLACK_HOLE_REGISTER: char = 'b';
 
 /// The search register (`s`) — holds the last search pattern.
-/// Written by the search command; readable for paste into the command line.
-pub const SEARCH_REGISTER: char = 's';
+/// Written on search confirm and by `*`/Ctrl+/; read only to reseed a
+/// buffer's compiled pattern. Not addressable via the `"` prefix — go
+/// through [`RegisterSet::search_register`] / [`RegisterSet::set_search_register`].
+pub(crate) const SEARCH_REGISTER: char = 's';
 
 /// The default macro register (`q`).
 /// `QQ` starts/stops recording into this register; `qq` replays from it.
@@ -179,6 +181,20 @@ impl RegisterSet {
 
     pub fn set_clipboard_blob(&mut self, blob: String) {
         self.clipboard_blob = Some(blob);
+    }
+
+    /// The last search pattern, or `None` when unset (or when the slot was
+    /// overwritten with a macro). Single-source for the `'s'` register's
+    /// one-string-in-a-`Vec` encoding — callers deal in `&str`.
+    pub fn search_register(&self) -> Option<&str> {
+        self.read(SEARCH_REGISTER)
+            .and_then(Register::as_text)
+            .and_then(|v| v.first())
+            .map(String::as_str)
+    }
+
+    pub fn set_search_register(&mut self, pattern: String) {
+        self.write_text(SEARCH_REGISTER, vec![pattern]);
     }
 }
 

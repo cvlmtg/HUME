@@ -31,9 +31,7 @@ impl Editor {
                     self.state.history.get_mut(k).push(pattern.clone());
                 }
                 // Persist pattern in 's' register for future n/N.
-                self.state
-                    .registers
-                    .write_text(hume_ops::register::SEARCH_REGISTER, vec![pattern]);
+                self.state.registers.set_search_register(pattern);
                 // Record the pre-search position in the jump list before
                 // discarding it — the search moved the cursor to the match.
                 let pid = self.state.focused_pane_id;

@@ -40,14 +40,11 @@ fn select_all_matches_no_search_is_noop() {
     assert_eq!(state(&ed), original);
 }
 
-/// `select-all-matches` falls back to SEARCH_REGISTER when regex is cleared.
+/// `select-all-matches` falls back to the search register when regex is cleared.
 #[test]
 fn select_all_matches_uses_search_register_fallback() {
-    use hume_ops::register::SEARCH_REGISTER;
     let mut ed = editor_from("-[ab cd ab]>\n");
-    ed.state
-        .registers
-        .write_text(SEARCH_REGISTER, vec!["ab".to_string()]);
+    ed.state.registers.set_search_register("ab".to_string());
     // No live regex — forces register fallback.
     assert!(ed.search_pattern().is_none());
 
