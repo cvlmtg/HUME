@@ -12,6 +12,7 @@ use self::replay::{InsertSession, MacroPending, PendingRepeat, RepeatableAction,
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::PaneView;
+use crate::lock_ext::LockExt;
 use crate::settings::EditorSettings;
 use hume_editing::selection::SelectionSet;
 use hume_ops::register::{KillRing, RegisterSet};
@@ -501,7 +502,7 @@ impl EditorState {
                 selected: d.selected,
                 scroll: d.scroll,
             });
-        *self.drawer_view.write().expect("RwLock not poisoned") = resolved;
+        *self.drawer_view.write_unpoisoned() = resolved;
     }
 
     /// Every source registered for `(ch, language)` — `OnTriggerChar`'s fire

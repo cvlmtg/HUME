@@ -11,6 +11,8 @@ use rustc_hash::FxHashMap;
 use std::ops::Range;
 use std::sync::{Arc, RwLock};
 
+use crate::lock_ext::LockExt;
+
 use hume_engine::providers::{VirtualLine, VirtualLineSource};
 
 pub(crate) type VirtualLineMap = Arc<RwLock<FxHashMap<usize, Vec<VirtualLine>>>>;
@@ -26,7 +28,7 @@ impl VirtualLineSource for PaneVirtualLines {
         _content_width: u16,
         out: &mut Vec<VirtualLine>,
     ) {
-        let guard = self.data.read().expect("RwLock not poisoned");
+        let guard = self.data.read_unpoisoned();
         for line in visible_lines {
             if let Some(lines) = guard.get(&line) {
                 out.extend(lines.iter().cloned());

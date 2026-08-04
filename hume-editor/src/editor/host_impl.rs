@@ -17,6 +17,7 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use crate::editor::lsp::LspState;
 use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
+use crate::lock_ext::LockExt;
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
@@ -601,11 +602,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         // matches `clear_completion_menu`'s scope even though `completion`
         // itself is already `None` here (via `take` above).
         crate::editor::lsp::completion::clear_completion_state(lsp);
-        *self
-            .state
-            .completion_menu_view
-            .write()
-            .expect("RwLock not poisoned") = None;
+        *self.state.completion_menu_view.write_unpoisoned() = None;
         session.accept(self.state, lsp, idx)
     }
 

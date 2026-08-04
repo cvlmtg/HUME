@@ -5,6 +5,7 @@
 use hume_engine::pipeline::RenderContext;
 
 use super::Editor;
+use crate::lock_ext::LockExt;
 
 impl Editor {
     /// Write the current completion state into the shared `MinibufCompletionView` Arc
@@ -18,8 +19,7 @@ impl Editor {
             && self
                 .state
                 .minibuf_completion_view
-                .read()
-                .expect("RwLock not poisoned")
+                .read_unpoisoned()
                 .is_none()
         {
             return;
@@ -45,11 +45,7 @@ impl Editor {
                 border: self.state.settings.popup_border,
             }
         });
-        *self
-            .state
-            .minibuf_completion_view
-            .write()
-            .expect("RwLock not poisoned") = view;
+        *self.state.minibuf_completion_view.write_unpoisoned() = view;
     }
 
     /// The focused pane's primary cursor position — the anchor char for
@@ -127,18 +123,11 @@ impl Editor {
             self.state.config.popup.as_ref().map(|m| &m.layout),
             Some(crate::ui::popup::PopupLayout::Cursor)
         );
-        if !is_cursor
-            && self
-                .state
-                .popup_view
-                .read()
-                .expect("RwLock not poisoned")
-                .is_none()
-        {
+        if !is_cursor && self.state.popup_view.read_unpoisoned().is_none() {
             return;
         }
         if !is_cursor {
-            *self.state.popup_view.write().expect("RwLock not poisoned") = None;
+            *self.state.popup_view.write_unpoisoned() = None;
             return;
         }
 
@@ -171,7 +160,7 @@ impl Editor {
             })
         });
 
-        *self.state.popup_view.write().expect("RwLock not poisoned") = resolved;
+        *self.state.popup_view.write_unpoisoned() = resolved;
     }
 
     /// Resolve (or reuse the cached) wrap+highlight of the open popup's text
@@ -237,22 +226,11 @@ impl Editor {
             self.state.config.popup.as_ref().map(|m| &m.layout),
             Some(crate::ui::popup::PopupLayout::Docked)
         );
-        if !is_docked
-            && self
-                .state
-                .popup_band_view
-                .read()
-                .expect("RwLock not poisoned")
-                .is_none()
-        {
+        if !is_docked && self.state.popup_band_view.read_unpoisoned().is_none() {
             return;
         }
         if !is_docked {
-            *self
-                .state
-                .popup_band_view
-                .write()
-                .expect("RwLock not poisoned") = None;
+            *self.state.popup_band_view.write_unpoisoned() = None;
             return;
         }
 
@@ -276,11 +254,7 @@ impl Editor {
             }
         });
 
-        *self
-            .state
-            .popup_band_view
-            .write()
-            .expect("RwLock not poisoned") = resolved;
+        *self.state.popup_band_view.write_unpoisoned() = resolved;
     }
 
     /// Write the current menu content into the shared `PopupState` Arc so
@@ -289,14 +263,7 @@ impl Editor {
     /// (no word-wrap: menu entries are short labels, not prose) and
     /// `selected` marks the highlighted row.
     pub(super) fn sync_menu_view(&self, ctx: &mut RenderContext) {
-        if self.state.config.menu.is_none()
-            && self
-                .state
-                .menu_view
-                .read()
-                .expect("RwLock not poisoned")
-                .is_none()
-        {
+        if self.state.config.menu.is_none() && self.state.menu_view.read_unpoisoned().is_none() {
             return;
         }
 
@@ -326,7 +293,7 @@ impl Editor {
             })
         });
 
-        *self.state.menu_view.write().expect("RwLock not poisoned") = resolved;
+        *self.state.menu_view.write_unpoisoned() = resolved;
     }
 
     /// Write the LSP completion menu into the shared `PopupState` Arc —
@@ -340,12 +307,7 @@ impl Editor {
     /// after step 9 runs.
     pub(super) fn sync_completion_menu_view(&self, ctx: &mut RenderContext) {
         if self.lsp.completion.is_none()
-            && self
-                .state
-                .completion_menu_view
-                .read()
-                .expect("RwLock not poisoned")
-                .is_none()
+            && self.state.completion_menu_view.read_unpoisoned().is_none()
         {
             return;
         }
@@ -395,11 +357,7 @@ impl Editor {
             })
         });
 
-        *self
-            .state
-            .completion_menu_view
-            .write()
-            .expect("RwLock not poisoned") = resolved;
+        *self.state.completion_menu_view.write_unpoisoned() = resolved;
     }
 
     /// Write the open picker session into the shared `PickerViewState` Arc
@@ -415,13 +373,7 @@ impl Editor {
     /// resize between the last keystroke and this frame self-heals here
     /// rather than leaving a stale scroll offset from a taller frame.
     pub(super) fn sync_picker_view(&mut self) {
-        if self.state.config.picker.is_none()
-            && self
-                .state
-                .picker_view
-                .read()
-                .expect("RwLock not poisoned")
-                .is_none()
+        if self.state.config.picker.is_none() && self.state.picker_view.read_unpoisoned().is_none()
         {
             return;
         }
@@ -451,7 +403,7 @@ impl Editor {
             _ => None,
         };
 
-        *self.state.picker_view.write().expect("RwLock not poisoned") = resolved;
+        *self.state.picker_view.write_unpoisoned() = resolved;
     }
 }
 

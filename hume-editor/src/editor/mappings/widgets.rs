@@ -5,6 +5,7 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
+use crate::lock_ext::LockExt;
 use crate::ui::confirm::ConfirmAction;
 
 use super::super::Editor;
@@ -181,8 +182,7 @@ impl Editor {
                 let Some(pair) = self
                     .state
                     .popup_view
-                    .read()
-                    .expect("RwLock not poisoned")
+                    .read_unpoisoned()
                     .as_ref()
                     .map(|s| (s.outer_h.saturating_sub(2) as usize, s.lines.len()))
                 else {
@@ -194,8 +194,7 @@ impl Editor {
                 let Some(total) = self
                     .state
                     .popup_band_view
-                    .read()
-                    .expect("RwLock not poisoned")
+                    .read_unpoisoned()
                     .as_ref()
                     .map(|s| s.lines.len())
                 else {

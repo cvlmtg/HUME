@@ -25,6 +25,8 @@
 
 use std::sync::{Arc, RwLock};
 
+use crate::lock_ext::LockExt;
+
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 
@@ -60,7 +62,7 @@ pub(crate) struct DrawerWidget {
 
 impl BottomBandProvider for DrawerWidget {
     fn height(&self, max: u16) -> u16 {
-        let guard = self.data.read().expect("RwLock not poisoned");
+        let guard = self.data.read_unpoisoned();
         guard
             .as_ref()
             .map_or(0, |s| (s.rows.len() as u16 + 1).min(max))
@@ -70,7 +72,7 @@ impl BottomBandProvider for DrawerWidget {
         if area.height == 0 {
             return;
         }
-        let guard = self.data.read().expect("RwLock not poisoned");
+        let guard = self.data.read_unpoisoned();
         let Some(state) = guard.as_ref() else { return };
 
         let style = theme.resolve_by_name(Scope("ui.drawer")).into();

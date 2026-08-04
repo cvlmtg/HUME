@@ -11,6 +11,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 
 use super::LspState;
 use crate::editor::{Editor, EditorState};
+use crate::lock_ext::LockExt;
 
 pub(crate) use item::StoredCompletionItem;
 
@@ -257,10 +258,7 @@ pub(crate) fn clear_completion_menu(state: &mut EditorState, lsp: Option<&mut Ls
     if let Some(lsp) = lsp {
         clear_completion_state(lsp);
     }
-    *state
-        .completion_menu_view
-        .write()
-        .expect("RwLock not poisoned") = None;
+    *state.completion_menu_view.write_unpoisoned() = None;
 }
 
 impl Editor {

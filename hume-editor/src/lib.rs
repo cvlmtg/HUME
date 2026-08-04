@@ -1,6 +1,7 @@
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("HUME_VERSION_SUFFIX"));
 
 pub(crate) mod editor;
+mod lock_ext;
 pub mod settings;
 pub mod ui;
 

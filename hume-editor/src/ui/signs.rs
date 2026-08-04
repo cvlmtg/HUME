@@ -9,6 +9,8 @@
 use rustc_hash::FxHashMap;
 use std::sync::{Arc, RwLock};
 
+use crate::lock_ext::LockExt;
+
 use hume_engine::builtins::sign_column::{Sign, SignSource};
 use hume_engine::providers::GutterRowCtx;
 
@@ -42,8 +44,7 @@ impl SharedSignSource {
 impl SignSource for SharedSignSource {
     fn signs_for_line(&self, line_idx: usize, _ctx: &GutterRowCtx) -> Vec<Sign> {
         self.data
-            .read()
-            .expect("RwLock not poisoned")
+            .read_unpoisoned()
             .get(&line_idx)
             .cloned()
             .unwrap_or_default()

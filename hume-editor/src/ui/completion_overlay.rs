@@ -8,6 +8,8 @@
 
 use std::sync::{Arc, RwLock};
 
+use crate::lock_ext::LockExt;
+
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -45,11 +47,11 @@ pub(crate) struct MinibufCompletionOverlay {
 
 impl OverlayProvider for MinibufCompletionOverlay {
     fn is_active(&self) -> bool {
-        self.data.read().expect("RwLock not poisoned").is_some()
+        self.data.read_unpoisoned().is_some()
     }
 
     fn render(&self, pane_area: Rect, theme: &Theme, buf: &mut ScreenBuf) {
-        let guard = self.data.read().expect("RwLock not poisoned");
+        let guard = self.data.read_unpoisoned();
         let Some(view) = guard.as_ref() else { return };
 
         if view.rows.is_empty() {

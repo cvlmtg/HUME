@@ -5,6 +5,8 @@
 use rustc_hash::FxHashMap;
 use std::sync::{Arc, RwLock};
 
+use crate::lock_ext::LockExt;
+
 use hume_engine::providers::{InlineDecoration, InlineInsert};
 
 pub(crate) type InlayHintMap = Arc<RwLock<FxHashMap<usize, Vec<InlineInsert>>>>;
@@ -15,12 +17,7 @@ pub(crate) struct InlayHintProvider {
 
 impl InlineDecoration for InlayHintProvider {
     fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<InlineInsert>) {
-        if let Some(hints) = self
-            .data
-            .read()
-            .expect("RwLock not poisoned")
-            .get(&line_idx)
-        {
+        if let Some(hints) = self.data.read_unpoisoned().get(&line_idx) {
             out.extend(hints.iter().cloned());
         }
     }

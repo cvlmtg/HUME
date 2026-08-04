@@ -9,6 +9,7 @@ use hume_engine::types::EditorMode;
 
 use super::Editor;
 use crate::editor::lsp::diagnostics::DiagSeverity;
+use crate::lock_ext::LockExt;
 use hume_editing::lines::line_end_exclusive;
 use hume_ops::pair::find_bracket_pair;
 
@@ -78,7 +79,7 @@ impl Editor {
             else {
                 continue;
             };
-            let mut data = search_arc.write().expect("RwLock not poisoned");
+            let mut data = search_arc.write_unpoisoned();
             data.clear();
             // Hidden in Insert mode — matches aren't actionable while typing and
             // clutter the view. Same pattern as bracket match highlights below.
@@ -119,11 +120,7 @@ impl Editor {
         // pane last had focus, so moving focus away must blank the old one.
         for &(pid, _) in &panes {
             if let Some(r) = self.state.panes.render.get(pid) {
-                r.highlights
-                    .bracket
-                    .write()
-                    .expect("RwLock not poisoned")
-                    .clear();
+                r.highlights.bracket.write_unpoisoned().clear();
             }
         }
         if !in_insert {
@@ -155,11 +152,9 @@ impl Editor {
                         let (line, byte) = char_to_line_byte(buf, match_pos);
                         // Single-char match: byte_end = byte + utf8 length of the char.
                         let ch_len = buf.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
-                        bracket_arc.write().expect("RwLock not poisoned").push((
-                            line,
-                            byte,
-                            byte + ch_len,
-                        ));
+                        bracket_arc
+                            .write_unpoisoned()
+                            .push((line, byte, byte + ch_len));
                     }
                 }
             }
@@ -237,7 +232,7 @@ impl Editor {
                             &mut raw,
                         );
                     }
-                    let mut data = diag_arc.write().expect("RwLock not poisoned");
+                    let mut data = diag_arc.write_unpoisoned();
                     data.clear();
                     flatten_priority_overlaps(&mut raw, &mut data);
                 }
@@ -250,7 +245,7 @@ impl Editor {
                         // order (first source registered wins).
                         push_priority_highlight_lines(text, start, end, 0, scope, &mut raw);
                     }
-                    let mut data = extra_arc.write().expect("RwLock not poisoned");
+                    let mut data = extra_arc.write_unpoisoned();
                     data.clear();
                     flatten_priority_overlaps(&mut raw, &mut data);
                 }
@@ -339,7 +334,7 @@ impl Editor {
                 }
             }
             {
-                let mut guard = diag_map.write().expect("RwLock not poisoned");
+                let mut guard = diag_map.write_unpoisoned();
                 guard.clear();
                 for (line, severity) in diag_best {
                     guard.insert(
@@ -394,7 +389,7 @@ impl Editor {
                     .push((text, scope, priority));
             }
             {
-                let mut guard = plugin_map.write().expect("RwLock not poisoned");
+                let mut guard = plugin_map.write_unpoisoned();
                 guard.clear();
                 for (line, mut entries) in plugin_all {
                     entries.sort_by_key(|e| std::cmp::Reverse(e.2));
@@ -420,8 +415,8 @@ impl Editor {
             // plugin_map above only hold visible-line entries — a sign elsewhere
             // in the buffer, scrolled out of view, does not keep the column open).
             let has_signs = {
-                let diag_empty = diag_map.read().expect("RwLock not poisoned").is_empty();
-                let plugin_empty = plugin_map.read().expect("RwLock not poisoned").is_empty();
+                let diag_empty = diag_map.read_unpoisoned().is_empty();
+                let plugin_empty = plugin_map.read_unpoisoned().is_empty();
                 !(diag_empty && plugin_empty)
             };
             let width = match signcolumn.mode {
@@ -468,7 +463,7 @@ impl Editor {
         if !self.state.settings.lsp_inlay_hints {
             for &(pid, _) in &panes {
                 if let Some(r) = self.state.panes.render.get(pid) {
-                    r.inlay_hints.write().expect("RwLock not poisoned").clear();
+                    r.inlay_hints.write_unpoisoned().clear();
                 }
             }
             return;
@@ -513,7 +508,7 @@ impl Editor {
                 });
             }
 
-            *map.write().expect("RwLock not poisoned") = by_line;
+            *map.write_unpoisoned() = by_line;
         }
     }
 
@@ -583,7 +578,7 @@ impl Editor {
                 });
             }
 
-            *map.write().expect("RwLock not poisoned") = by_line;
+            *map.write_unpoisoned() = by_line;
         }
     }
 
@@ -667,7 +662,7 @@ impl Editor {
                 });
             }
 
-            *map.write().expect("RwLock not poisoned") = by_line;
+            *map.write_unpoisoned() = by_line;
             self.virtual_lines_synced.insert(pid, current_gen);
         }
     }

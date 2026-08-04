@@ -11,6 +11,8 @@
 
 use std::sync::{Arc, RwLock};
 
+use crate::lock_ext::LockExt;
+
 use hume_engine::providers::{HighlightSource, HighlightTier, SourceContext};
 use hume_engine::types::ScopeId;
 
@@ -55,7 +57,7 @@ impl HighlightSource for SharedHighlighter {
         _ctx: &SourceContext,
         out: &mut Vec<(usize, usize, ScopeId)>,
     ) {
-        let data = self.data.read().expect("RwLock not poisoned");
+        let data = self.data.read_unpoisoned();
         // Data is sorted by line_idx (search matches) or tiny (bracket match),
         // so binary-search to the first entry for this line.
         let start = data.partition_point(|&(l, _, _)| l < line_idx);
@@ -96,7 +98,7 @@ impl HighlightSource for ScopedHighlighter {
         _ctx: &SourceContext,
         out: &mut Vec<(usize, usize, ScopeId)>,
     ) {
-        let data = self.data.read().expect("RwLock not poisoned");
+        let data = self.data.read_unpoisoned();
         let start = data.partition_point(|&(l, _, _, _)| l < line_idx);
         for &(l, byte_start, byte_end, scope) in &data[start..] {
             if l != line_idx {

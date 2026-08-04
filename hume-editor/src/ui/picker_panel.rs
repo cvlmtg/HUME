@@ -16,6 +16,8 @@
 //!
 use std::sync::{Arc, RwLock};
 
+use crate::lock_ext::LockExt;
+
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -288,11 +290,11 @@ pub(crate) struct PickerOverlay {
 
 impl OverlayProvider for PickerOverlay {
     fn is_active(&self) -> bool {
-        self.data.read().expect("RwLock not poisoned").is_some()
+        self.data.read_unpoisoned().is_some()
     }
 
     fn render(&self, pane_rect: Rect, theme: &Theme, buf: &mut ScreenBuf) {
-        let guard = self.data.read().expect("RwLock not poisoned");
+        let guard = self.data.read_unpoisoned();
         let Some(state) = guard.as_ref() else {
             return;
         };
