@@ -524,10 +524,10 @@ fn newline_indent_trims_blank_line_cursor_mid_whitespace() {
 
 #[test]
 fn newline_indent_trim_blank_false_preserves_pre_existing_blank_line() {
-    // `trim_blank = false` (the first Enter on a line that was already blank
-    // before this insert session touched it — code review fix #3): the
-    // pre-existing whitespace is left alone; only the *new* line gets a
-    // copied indent, same as the non-blank-line case.
+    // `trim_blank = false`: the first Enter on a line that was already blank
+    // before this insert session touched it leaves the pre-existing
+    // whitespace alone; only the *new* line gets a copied indent, same as
+    // the non-blank-line case.
     assert_state!(
         "x\n  -[\n]>",
         |(buf, sels)| insert_newline_indent(buf, sels, false),
@@ -637,10 +637,9 @@ fn clear_blank_line_indent_second_cursor_on_blank_line_newline_no_underflow() {
 fn clear_blank_line_indent_preserves_non_collapsed_selection() {
     // One collapsed cursor on a blank indented line, plus a non-collapsed
     // selection elsewhere: the blank line is trimmed as usual, but the
-    // other selection's anchor/head must both survive — not collapse to
-    // its head, which was the prior bug (code review fix #5). "foo\n \n
-    // bar\n" (line1 is a single-space blank line); selection B covers "ar"
-    // in "bar" on line2.
+    // other selection's anchor and head must both survive, not collapse to
+    // its head. "foo\n \nbar\n" (line1 is a single-space blank line);
+    // selection B covers "ar" in "bar" on line2.
     assert_state!(
         "foo\n-[ ]>\nb-[ar]>\n",
         |(buf, sels)| clear_blank_line_indent(buf, sels),

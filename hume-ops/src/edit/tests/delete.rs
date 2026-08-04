@@ -138,18 +138,12 @@ fn dedent_two_cursors_same_line_target_overlap() {
 
 #[test]
 fn dedent_two_cursors_same_line_same_target() {
-    // Two cursors whose natural tab-stop targets collide on the SAME position.
-    // This tests the `target.max(b.old_pos()) >= p` guard that prevents a
-    // zero-length or inverted delete when the second cursor is at old_pos.
-    //
-    // "    \n" (4 spaces): cursor 0 at col 4 (on '\n'), cursor 1 at col 4 (on '\n').
-    // This is a degenerate case — SelectionSet prevents duplicate positions, so
-    // instead: cursor 0 at col 3 (char 3), cursor 1 at col 4 (char 4, '\n').
-    //
-    // Cursor 0: col 3, prev_stop = 0, target = 0. Delete chars 0..3 (3 spaces). old_pos=3.
-    // Cursor 1: col 4 ('\n', char 4). prev_stop = floor(3/4)*4 = 0. target=0.
-    //   Clamped: max(0,3) = 3. 3 < 4 → delete chars 3..4 (1 space).
-    // Result: '\n' only. Both cursors at position 0.
+    // Two cursors whose natural tab-stop targets collide on the SAME
+    // position (col 3 and col 4 on a 4-space indent — SelectionSet prevents
+    // duplicate positions, so the two land one apart). Tests the
+    // `target.max(b.old_pos()) >= p` guard that prevents a zero-length or
+    // inverted delete when the second cursor sits at the first cursor's
+    // old_pos.
     //
     // Independent oracle: all 4 spaces deleted.
     assert_state!(
