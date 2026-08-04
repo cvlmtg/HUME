@@ -123,20 +123,16 @@ macro_rules! builtins {
 /// native/unknown → `%call-native!`.
 //
 // declare-plugin — manifest; entries forwarded to %declare-plugin!. A
-// zero-trigger call (no #:commands/#:events/#:languages) instead evaluates
-// <plugin-dir>/manifest.scm for its own default entries (see
+// zero-trigger call (no #:commands/#:events/#:languages) evaluates
+// <plugin-dir>/manifest.scm instead for its default entries (see
 // %begin-manifest-declare!); caller's #:config wins over the manifest's.
-// Known limitation, left as-is: a caller's with-handler around a
-// zero-trigger call can hit steel-core 0.8.2's "no open continuation" panic
-// if manifest.scm raises (same footgun as %activate-plugin-inline; see
+// Known limitation, left as-is pending an upstream steel-core fix: a
+// zero-trigger call inside an outer with-handler can hit the "no open
+// continuation" panic documented at
 // known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack
-// in lib.rs). `error` panics identically; `dynamic-wind` avoids the panic but
-// its cleanup thunk skips across an outer handler's unwind (see
-// known_limitation_dynamic_wind_cleanup_does_not_run_across_an_outer_handlers_unwind),
-// leaving manifest_resolving stuck for the rest of the session. Swallowing
-// the error would break declare-plugin's tested propagate-to-caller contract
-// (4 tests in builtins/plugins/tests.rs, via .expect_err). Pending an
-// upstream steel-core fix.
+// (lib.rs) if manifest.scm raises — swallowing the error instead would break
+// declare-plugin's tested propagate-to-caller contract (4 tests in
+// builtins/plugins/tests.rs, via .expect_err).
 //
 // load-plugin — eager init-context activation; declares/resolves then
 // delegates to %activate-plugin-inline. Valid only during init.scm /

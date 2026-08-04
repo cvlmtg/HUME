@@ -526,42 +526,36 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 /// transitions the plugin to `Loaded`/`Failed`; `drop_activations_for` runs
 /// on both paths to clean up expired activation entries.
 ///
-/// On failure, rolls back everything the partially-evaluated body registered,
-/// so a `Failed` plugin leaves no live footprint:
-///   - commands (`define-command!`): removed from `command_table`,
-///     `cmd_owners`, and the editor's `CommandRegistry` — Steel globals
-///     defined before the error stay in the VM's symbol table but are
-///     unreachable through HUME's dispatch;
-///   - hooks (`register-hook!`): every handler tagged with this plugin's id
-///     is dropped via `HookRegistry::remove_owned_by`, so a `Failed`
-///     plugin's hooks stop firing;
-///   - key bindings (`bind-key!` / `bind-key-extend!` / `bind-wait-char!` /
-///     `unbind-key!`): these queue an `Effect::BindKey`/`BindWaitChar`/
-///     `UnbindKey` rather than mutating the keymap inline, so
-///     `ctx.pop_effect_marks(success)` below drops a failed body's binds
-///     along with everything else it queued — no ledger, no unbind pass, no
-///     owner tag needed. A plugin that would have shadowed an existing
-///     binding and then fails leaves that binding untouched, since the
-///     shadowing bind was never applied in the first place.
+/// On failure, rolls back everything the partially-evaluated body
+/// registered, so a `Failed` plugin leaves no live footprint: commands
+/// (`define-command!`) are removed from `command_table`, `cmd_owners`, and
+/// the editor's `CommandRegistry` (Steel globals defined before the error
+/// stay in the VM's symbol table but are unreachable through HUME's
+/// dispatch); hooks (`register-hook!`) tagged with this plugin's id are
+/// dropped via `HookRegistry::remove_owned_by`; key bindings (`bind-key!` /
+/// `bind-key-extend!` / `bind-wait-char!` / `unbind-key!`) queue an
+/// `Effect::BindKey`/`BindWaitChar`/`UnbindKey` rather than mutating the
+/// keymap inline, so `ctx.pop_effect_marks(success)` below drops a failed
+/// body's binds along with everything else it queued — a plugin that would
+/// have shadowed an existing binding and then fails leaves that binding
+/// untouched, since the shadowing bind was never applied.
 ///
-/// `ctx.pop_effect_marks(success)` does the same for every queued side effect
-/// (`register-lsp-server!`, `define-language!`, LSP requests, grammar
-/// sweeps) queued via `mark_effects` — with one exception: an effect already
-/// committed by an activation nested *inside* this body (i.e. this body
-/// itself called into another plugin's inline activation, which finished
-/// successfully) survives this failure too, because that nested plugin's
-/// `Loaded` state is never rolled back either. See `pop_effect_marks`.
+/// `ctx.pop_effect_marks(success)` does the same for every other queued side
+/// effect (`register-lsp-server!`, `define-language!`, LSP requests, grammar
+/// sweeps) — with one exception: an effect already committed by an
+/// activation nested *inside* this body survives this failure too, since
+/// that nested plugin's `Loaded` state is never rolled back either. See
+/// `pop_effect_marks`.
 ///
-/// Hooks need none of that committed-flag machinery, and cannot use it:
-/// `HookRegistry` lives inside `ScriptingHost`, but `Editor::init_scripting`
-/// holds the host in a local until well after it applies every startup eval's
-/// effects — an editor-applied `Effect::RegisterHook` would find `scripting ==
-/// None` and silently drop every hook `init.scm` registered. So
-/// `register-hook!` mutates the persistent registry the instant the builtin
-/// runs, tagged with a static owner set once at registration, and rollback
-/// removes entries *by identity* (`owner == this id`) rather than by
-/// eval-scoped position — a nested plugin's own entries (a different owner)
-/// are simply never matched.
+/// Hooks can't use that committed-flag machinery: `HookRegistry` lives
+/// inside `ScriptingHost`, but `Editor::init_scripting` holds the host in a
+/// local until well after it applies every startup eval's effects — an
+/// editor-applied `Effect::RegisterHook` would find `scripting == None` and
+/// silently drop every hook `init.scm` registered. So `register-hook!`
+/// mutates the persistent registry the instant the builtin runs, tagged
+/// with a static owner set once at registration, and rollback removes
+/// entries *by identity* (`owner == this id`) — a nested plugin's own
+/// entries (a different owner) are never matched.
 pub(crate) fn finish_lazy_activation(
     ctx: &mut SteelCtx,
     id_str: String,

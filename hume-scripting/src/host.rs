@@ -88,16 +88,15 @@ pub enum PopupKind {
 /// mid-eval (e.g. after `switch-to-buffer!`).
 ///
 /// Five accessors are required — `buffers`, `settings`, `language`,
-/// `commands`, `cursor` — because every host has *some* notion of them, even
-/// if minimal (an empty buffer list, a rejecting command registry). The other
-/// eight are optional, returning `Option<&mut dyn CapabilityTrait>`: `None`
-/// means the host has no such capability. Rule for what a `None` becomes at
-/// the call site: a mutating builtin maps it to the `"not supported by this
-/// host"` error via `errors::require_cap` — silently discarding the write
-/// would report success for a mutation that never happened. A silent no-op is
-/// reserved for calls whose own contract is already idempotent regardless of
-/// host support (e.g. `cancel-timer!`/`cancel-async!` on an id that was never
-/// scheduled).
+/// `commands`, `cursor` — since every host has *some* notion of them, even
+/// if minimal (an empty buffer list, a rejecting command registry). The
+/// other eight are optional (`Option<&mut dyn CapabilityTrait>`): `None`
+/// means the host has no such capability. A mutating builtin maps `None` to
+/// the `"not supported by this host"` error via `errors::require_cap` —
+/// silently discarding the write would report success for a mutation that
+/// never happened. A silent no-op is reserved for calls whose own contract
+/// is already idempotent regardless of host support (e.g.
+/// `cancel-timer!`/`cancel-async!` on an id that was never scheduled).
 pub trait EditorHost {
     // ── Optional capability accessors ────────────────────────────────────────
     /// Cursor-anchored popup / selection menu / bottom drawer / minibuffer

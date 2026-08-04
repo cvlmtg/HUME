@@ -196,13 +196,12 @@ fn set_buffer_option_language_key_errors() {
     );
 }
 
-/// `set-buffer-option!` no longer pre-validates `bid` itself — that check
-/// used to duplicate `EditorHostImpl::set_buffer_option`'s own `try_get`
-/// guard (the actually load-bearing one, since it's what prevents a panic
-/// on a stale id — see `host_set_buffer_option_invalid_bid_errors` in
-/// `hume-editor/src/editor/tests/settings_effects.rs`). Any bid, valid or
-/// not, now reaches the host unconditionally; whatever the host returns for
-/// an unrecognized one is forwarded verbatim.
+/// `set-buffer-option!` forwards any `bid`, valid or not, to the host
+/// unconditionally — the load-bearing validation is
+/// `EditorHostImpl::set_buffer_option`'s own `try_get` guard, which prevents
+/// a panic on a stale id (see `host_set_buffer_option_invalid_bid_errors` in
+/// `hume-editor/src/editor/tests/settings_effects.rs`). Whatever the host
+/// returns for an unrecognized bid is forwarded verbatim.
 ///
 /// Fail oracle: reintroduce a `buffer_exists` check in the builtin body →
 /// this call would fail with the builtin's own "invalid buffer id" instead

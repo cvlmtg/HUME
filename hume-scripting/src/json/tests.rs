@@ -51,7 +51,7 @@ fn round_trips_u64_range_integers_exactly_via_bignum() {
         matches!(steel, SteelVal::BigNum(_)),
         "expected BigNum for a u64-range integer, got {steel:?}"
     );
-    // The float fallback this replaces would have rounded u64::MAX to
+    // Fail oracle: an f64 fallback would round u64::MAX to
     // 18446744073709551616.0 (f64 can't represent every u64 exactly) —
     // confirm the round trip lands on the exact original value, not that.
     assert_eq!(
