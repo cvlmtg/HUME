@@ -7,7 +7,7 @@
 //!
 //! - **Single-key bindings**: most keys (h/j/k/l, d, y, etc.)
 //! - **Multi-key sequences**: `m` → `i`/`a` → object char (text objects);
-//!   future `g` → second key (goto commands).
+//!   `g` → second key (goto commands).
 //! - **Wait-for-char bindings**: f/t/F/T/r consume the *next* character as
 //!   an argument rather than a fixed trie branch.
 //!

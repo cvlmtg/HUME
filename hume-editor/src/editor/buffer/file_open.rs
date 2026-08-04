@@ -194,9 +194,10 @@ impl Editor {
         let post_sels = SelectionSet::single(Selection::collapsed(focused_post_head));
 
         // ── Phase 2b: history-preserving reload ──────────────────────────────
-        // Refresh `file_meta` so save-time permission/ownership checks see the
-        // current on-disk metadata (the whole-Buffer swap this replaces also
-        // picked up the fresh `from_file` metadata).
+        // Refresh `file_meta` so save-time permission/ownership checks see
+        // the current on-disk metadata — `reload_from_text` only replaces
+        // the buffer's text, not its `file_meta`, so this must be set
+        // explicitly.
         let new_text = new_doc.text().clone();
         let new_file_meta = std::mem::take(&mut new_doc.file_meta);
         drop(new_doc);

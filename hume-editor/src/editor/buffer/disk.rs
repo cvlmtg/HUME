@@ -121,18 +121,9 @@ impl Editor {
     /// `Vanished` always just warns, once — there is nothing to reload
     /// from, so never prompt, and a state already reported must not
     /// re-warn on every later trigger. `Changed` on the *focused* buffer
-    /// opens a reload confirm when its `autoread` setting is on and the
-    /// editor is in a mode that can show one; every other case (a
-    /// non-focused buffer, `autoread` off, or a mode-blocked one) only
-    /// warns. A confirm can open in `Normal`/`Extend` unconditionally, and
-    /// in `Command` only while `dispatching_typed_command` is set — that is
-    /// the difference between `:e`/`:b`/`:bn`/`:bp`/`:checktime` opening one
-    /// as their own direct result (safe: the command line was already
-    /// submitted) and an ambient check landing while the user is still
-    /// typing an unsubmitted `:`/`/` line (unsafe: would steal the next
-    /// keystroke and hide the in-progress line). `Insert`/`Search`/`Select`
-    /// never allow one — nothing dispatches a command under those modes, so
-    /// there's no legitimate case to carve out, only live typing to protect.
+    /// opens a reload confirm when its `autoread` setting is on and
+    /// [`Self::can_open_confirm`] allows one; every other case (a
+    /// non-focused buffer, `autoread` off, or a blocked confirm) only warns.
     ///
     /// A `Changed`/`Vanished` state already reported stays silent on a
     /// further `Ambient`/`Explicit` check — "don't nag again for the same
@@ -141,17 +132,16 @@ impl Editor {
     /// that is the "asked about on its own next buffer-enter" deferred
     /// prompt the earlier warning promised. For a buffer that's
     /// prompt-eligible (focused, `autoread` on) but currently blocked from
-    /// actually opening one (mode, an overlay, `pending_keys`, mid
-    /// macro-replay, a fresh message from this same event), a
-    /// `BufferEnter` still warns even if the same signature already warned
-    /// once — landing on a stale buffer must never be completely silent,
-    /// only a *repeat* `Ambient` recheck of the same already-reported
-    /// signature stays quiet. `Declined` (the user answered "keep") never
-    /// re-fires for its own signature on `Ambient`/`BufferEnter`, but does
-    /// warn on `Explicit` — see `Editor::decline_disk_change` and
-    /// `DiskCheckTrigger::Explicit`. `FileMeta::signature` (the write
-    /// baseline `disk_change_for` compares against) is untouched by any of
-    /// this, so a *further* external change still reads as fresh.
+    /// actually opening one, a `BufferEnter` still warns even if the same
+    /// signature already warned once — landing on a stale buffer must never
+    /// be completely silent, only a *repeat* `Ambient` recheck of the same
+    /// already-reported signature stays quiet. `Declined` (the user
+    /// answered "keep") never re-fires for its own signature on
+    /// `Ambient`/`BufferEnter`, but does warn on `Explicit` — see
+    /// `Editor::decline_disk_change` and `DiskCheckTrigger::Explicit`.
+    /// `FileMeta::signature` (the write baseline `disk_change_for` compares
+    /// against) is untouched by any of this, so a *further* external change
+    /// still reads as fresh.
     pub(in crate::editor) fn check_buffer_disk_state(
         &mut self,
         bid: BufferId,

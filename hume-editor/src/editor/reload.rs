@@ -227,18 +227,16 @@ impl Editor {
     /// `snapshot` — captured by `reset_config_state` before this reload's
     /// reset ran — filters every loop below to buffers that (a) predate this
     /// reload and (b) are still the *same* buffer instance, per
-    /// `Buffer::replace_stamp`. Without (a), a buffer that `init.scm` itself
-    /// opens while re-running (a session-restore plugin, a first-run
-    /// `open-buffer!`) would double-fire: the ordinary open path
+    /// `Buffer::replace_stamp`. Without (a): the ordinary open path
     /// (`detect_pending_languages`, run inside `init_scripting` before this
-    /// function is even called) already fires its hooks once for a
-    /// genuinely new buffer, and by the time this function runs that
-    /// buffer's `open_hook_pending` is already `false` again — the same as
-    /// every buffer that predates the reload — so nothing per-buffer is left
-    /// to tell the two cases apart except this snapshot. Without (b), a bid
-    /// whose only buffer `init.scm` closed (reusing the slot in place for a
-    /// fresh scratch — see `close_buffer`) would have its pre-reload hooks
-    /// replayed against unrelated scratch content.
+    /// function is called) already fires hooks once for a genuinely new
+    /// buffer, and by the time this function runs its `open_hook_pending` is
+    /// already `false` again, same as every pre-reload buffer — so a buffer
+    /// `init.scm` itself opens while re-running (a session-restore plugin, a
+    /// first-run `open-buffer!`) would double-fire without this filter.
+    /// Without (b): a bid whose only buffer `init.scm` closed (reusing the
+    /// slot in place for a fresh scratch — see `close_buffer`) would have
+    /// its pre-reload hooks replayed against unrelated scratch content.
     ///
     /// No `OnBufferClose` counterpart: that hook would have to run against
     /// the outgoing engine, before the reset, tearing down state the reset

@@ -282,25 +282,16 @@ impl Editor {
     /// `drain_hooks`, so a hook-driven `switch-to-buffer!` is covered along
     /// with every keymap/mouse path, instead of each needing its own call —
     /// see `check_focus_change_disk_state`. `Editor::step` (the headless
-    /// key-runner) calls `handle_key` directly and so skips this boundary on
-    /// its own dispatch — but it also drains macro replay through
-    /// `drain_replay_queue`, which re-enters `handle_event` per replayed key,
-    /// so a check *does* run for a buffer switch made from a macro. It never
-    /// opens a confirm there: `can_open_confirm`'s `!is_replaying` guard
-    /// keeps a live macro from having its next key eaten by one.
-    ///
-    /// Only the *confirm* is skipped (not the check, not its warn fallback)
-    /// when dispatch logged a new warning or error: a command that fails
-    /// after moving focus — `:qa` landing on the first dirty buffer to
-    /// report "Unsaved changes" is the motivating case — needs its own
-    /// message to stay on screen and its own next keystroke to answer it,
-    /// not have it replaced by an unrelated disk prompt. The check still
-    /// runs and still warns instead — see `can_open_confirm`'s
-    /// `message_logged_this_event` clause — so landing on a stale buffer
-    /// this way is never completely silent, matching the mode-blocked and
-    /// macro-replay cases. `disk_state` is untouched either way, so the
-    /// confirm itself still opens on the next trigger that doesn't collide
-    /// with a fresh message.
+    /// key-runner) skips this boundary on its own dispatch, but its
+    /// `drain_replay_queue` re-enters `handle_event` per replayed key, so a
+    /// check still runs for a buffer switch made from a macro — never
+    /// opening a confirm there, since `can_open_confirm`'s `!is_replaying`
+    /// guard applies. That same function's `message_logged_this_event`
+    /// clause is why a command that fails after moving focus (`:qa` landing
+    /// on the first dirty buffer) keeps its own message on screen instead of
+    /// losing it to an unrelated disk prompt — the check still runs and
+    /// still warns, so landing on a stale buffer this way is never
+    /// completely silent.
     pub(crate) fn handle_event(&mut self, ev: Event) {
         let focused_before = self.focused_buffer_id();
         let totals_before = self.state.message_log.totals();

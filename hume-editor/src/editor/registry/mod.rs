@@ -23,13 +23,15 @@
 //!
 //! # Mappable command variants
 //!
-//! 1. **Motion** — pure `fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet`
-//! 2. **Selection** — pure `fn(&Text, SelectionSet, MotionMode) -> SelectionSet`
-//! 3. **Edit** — pure `fn(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet)`
-//! 4. **EditorCmd** — `fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>`
-//!    for composite/side-effectful operations (mode changes, registers, undo
-//!    groups, parameterized motions). Implemented in `editor/commands/`; stored
-//!    and dispatched as a function pointer exactly like the other variants.
+//! [`MappableCommand`] has four native shapes — see its own variant docs for
+//! exact signatures:
+//! 1. **Motion** — pure, repeats `count` times over a `SelectionSet`.
+//! 2. **Selection** — pure, same shape without the repeat semantics.
+//! 3. **Edit** — pure, takes/returns `Text` — never extendable.
+//! 4. **EditorCmd** — side-effectful, for composite operations (mode
+//!    changes, registers, undo groups, parameterized motions). Implemented
+//!    in `editor/commands/`; stored and dispatched as a function pointer
+//!    exactly like the other variants.
 
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;

@@ -302,8 +302,8 @@ macro_rules! option_value {
 ///   derived-state effect beyond the raw field write (see
 ///   `editor::settings_ops::apply_global`'s doc).
 /// - `buffer { … }` — per-buffer-overridable settings with a `:set` key;
-///   same format (no `resync:` — no buffer-scoped key needs one today; add
-///   the clause to this section's grammar first if one ever does)
+///   same format (no `resync:` clause — no buffer-scoped key currently
+///   needs one)
 /// - `extra_global { … }` — extra fields on `EditorSettings` only, no `:set`
 ///   key; format: `field: Type = default;`
 /// - `extra_buffer { … }` — extra fields on both structs, no `:set` key;
