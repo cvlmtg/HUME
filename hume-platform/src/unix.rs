@@ -58,47 +58,41 @@ impl super::ProbeChannel for TtyChannel {
 // Two independent reasons the process should tear down the terminal and
 // exit, unified onto one thread:
 //
-// - SIGINT/SIGTERM/SIGHUP/SIGQUIT arrive normally. Delivered via a
-//   `signal_hook` self-pipe — the same technique `termina` itself already
-//   uses internally for SIGWINCH (`event/source/unix.rs`): the real signal
-//   handler only writes one byte to a pipe, and this thread's `select`
-//   treats that pipe exactly like any other fd it's waiting on.
-// - A pty teardown (e.g. `vhs` closing the master after a recording) is not
-//   guaranteed to deliver SIGHUP at all — hume is rarely the session leader
-//   of the tty it runs under. Left undetected, the tty read fd sits at
-//   permanent EOF, which termina maps to `Ok(None)` (not an error, not an
-//   event), so `EventReader::poll`'s idle (no-timeout) wait spins inside
-//   termina forever without ever returning to the editor's run loop. No fix
-//   is possible from inside that loop, so this thread also watches
-//   `/dev/tty` directly on its own independent fd, when one is available —
-//   see below.
+// - SIGINT/SIGTERM/SIGHUP/SIGQUIT, delivered via a `signal_hook` self-pipe
+//   — the same technique `termina` uses internally for SIGWINCH
+//   (`event/source/unix.rs`): the signal handler just writes one byte to a
+//   pipe, and this thread's `select` treats that pipe like any other fd.
+// - A pty teardown (e.g. `vhs` closing the master after a recording) isn't
+//   guaranteed to deliver SIGHUP — hume is rarely the session leader of its
+//   tty. Undetected, the tty read fd sits at permanent EOF, which termina
+//   maps to `Ok(None)` rather than an error, so `EventReader::poll`'s idle
+//   wait spins forever without returning to the run loop. This thread
+//   watches `/dev/tty` directly on its own fd (when one is available) to
+//   catch that case from outside the stuck loop.
 //
-// Whichever fires first wins, but the two paths diverge after that: a
-// signal can still ask the main loop to quit gracefully (its event reader
-// is alive), while a hangup cannot (the reader is pinned at tty EOF and
-// will never see a wake) and force-exits immediately. See `Trigger`. Once a
-// signal has fired, the thread stops watching the tty for the rest of the
-// grace window — a hangup arriving in that window is not observed, so the
-// main loop can spin until the grace deadline force-exits it. Bounded (by
-// `QUIT_GRACE`) and rare (both would have to happen within the same
-// window), so left as-is rather than plumbed through as a third state.
+// Whichever fires first wins; the two paths diverge after that — a signal
+// can still ask the main loop to quit gracefully (its reader is alive),
+// while a hangup force-exits immediately (the reader is pinned at tty EOF
+// and will never wake). See `Trigger`. Once a signal fires, the thread stops
+// watching the tty for the rest of the grace window: a hangup landing in
+// that window goes unobserved and the main loop just spins until the grace
+// deadline force-exits it. Bounded and rare enough to leave as-is rather
+// than plumb through as a third state.
 //
-// One invariant governs `spawn_terminator`'s setup order: a replaced signal
-// disposition must exist only while something is able to act on it.
-// `signal_hook` offers no way to restore a disposition once replaced —
-// `unregister` removes a callback without touching `SIG_DFL`, so a signal
-// that arrives afterward is silently swallowed forever, not delivered
-// (documented in `signal-hook-registry`'s own source). That rules out
-// "register, then unregister on failure" as a way to recover. Two
-// mechanisms enforce the invariant instead: the draining thread is spawned
-// *before* any disposition is replaced, so a spawn failure leaves the
-// kernel's defaults untouched; and a `register_conditional_shutdown`
-// fallback, armed the instant the thread stops draining (return or panic),
-// covers the thread-dies-later case that ordering alone can't reach. The
-// tty is watched on a best-effort basis throughout — opening it, and every
-// I/O error on it afterward, degrades to "no hangup watch" rather than
-// touching signal service, since a process with no controlling terminal
-// has nothing to lose there but must still be killable.
+// Setup order enforces one invariant: a replaced signal disposition must
+// exist only while something can act on it. `signal_hook` has no way to
+// restore a disposition once replaced (`unregister` drops the callback
+// without touching `SIG_DFL`, so a later signal is silently swallowed —
+// documented in `signal-hook-registry`'s source), ruling out
+// register-then-unregister-on-failure as a recovery path. Two mechanisms
+// cover it instead: the draining thread spawns *before* any disposition is
+// replaced, so a spawn failure leaves kernel defaults untouched; and a
+// `register_conditional_shutdown` fallback, armed the instant the thread
+// stops draining (return or panic), covers the thread-dies-later case. The
+// tty watch itself is best-effort throughout — every failure on it degrades
+// to "no hangup watch" rather than touching signal handling, since a
+// process with no controlling terminal has nothing to lose there but must
+// still be killable.
 
 /// Signals that ask the process to terminate. SIGQUIT is included so `kill
 /// -QUIT` restores the terminal (raw mode, alt screen) before exiting,

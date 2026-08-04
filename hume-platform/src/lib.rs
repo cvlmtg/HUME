@@ -76,19 +76,17 @@ fn claim_exit() -> bool {
 ///
 /// The terminator thread ([`spawn_terminator`]'s force-exit arms) and the
 /// main thread (`hume-editor`'s `run`, after its own graceful shutdown) can
-/// both reach an exit path once [`QUIT_GRACE`] elapses: `QUIT_GRACE`'s own
-/// doc comment acknowledges its budget is sized to just barely exceed the
-/// main thread's worst-case teardown, so with enough attached LSP servers
-/// the two windows overlap. Without a single winner, both would write the
-/// terminal-restore escape sequences to the same [`terminal::SharedTerm`]
-/// and both would call `process::exit` — interleaved restores can leave the
-/// shell in the alternate screen or raw mode, and a second `exit` re-enters
-/// the same atexit/TLS teardown.
+/// both reach an exit path once [`QUIT_GRACE`] elapses — its budget is sized
+/// to just barely exceed the main thread's worst-case teardown, so with
+/// enough attached LSP servers the two windows overlap. Without a single
+/// winner, both would write terminal-restore sequences to the same
+/// [`terminal::SharedTerm`] and both would call `process::exit` —
+/// interleaved restores can leave the shell in the alt screen or raw mode,
+/// and a second `exit` re-enters the same atexit/TLS teardown.
 ///
-/// A caller that loses the race parks forever rather than returning: it has
-/// nothing left to do once another thread is committed to tearing the
-/// process down, and returning here would race that thread's own
-/// `process::exit` on which one actually observes to run last.
+/// A caller that loses the race parks forever: it has nothing left to do
+/// once another thread is committed to tearing the process down, and
+/// returning would race that thread's own `process::exit`.
 pub fn restore_for_exit(term: &terminal::SharedTerm) -> std::io::Result<()> {
     if !claim_exit() {
         loop {
@@ -117,45 +115,26 @@ fn force_exit(term: &terminal::SharedTerm, code: i32) -> ! {
 /// Spawn a background watcher that terminates the process on: Ctrl+C, `kill
 /// <pid>` (SIGINT/SIGTERM/SIGHUP/SIGQUIT) on Unix, Ctrl+Break and
 /// console-close on Windows, and — Unix only — the controlling terminal
-/// hanging up with no signal delivered at all.
-///
-/// That last case is why this isn't just a signal handler: hume is rarely
-/// the session leader of the tty it runs under, so a pty teardown (e.g. a
-/// recording tool tearing down after capture) does not reliably deliver
-/// SIGHUP. Without an independent watch on the terminal itself, the event
-/// reader's idle wait spins at 100% CPU forever instead of returning, since
-/// the underlying read primitive maps EOF to "no event" rather than an
-/// error.
+/// hanging up with no signal delivered at all. Not a plain signal handler:
+/// hume is rarely the session leader of its tty, so a pty teardown (e.g. a
+/// recording tool closing after capture) doesn't reliably deliver SIGHUP,
+/// and without an independent watch the event reader's idle wait spins at
+/// 100% CPU forever instead of returning (the read primitive maps EOF to
+/// "no event", not an error). See [`unix::spawn_terminator`] for how Unix
+/// multiplexes both wake sources on one thread.
 ///
 /// `request_quit` is called with the exit code the process should use —
-/// `128 + signo` on Unix, or 130 on Windows, where `ctrlc` doesn't expose
-/// which control event fired — and routes termination through the editor's
-/// normal quit path (graceful LSP `shutdown`) rather than tearing the
-/// terminal down from this thread directly. This thread then waits up to
-/// [`QUIT_GRACE`] for the main loop to exit the process itself before
-/// force-restoring and exiting with that same code anyway. A pty hangup
-/// can't take this route at all: the tty is already gone, which pins the
-/// main loop's own event reader in an internal spin that never observes a
-/// wake, so `request_quit` is never called — this thread force-exits with
-/// 130 immediately instead.
-///
-/// On Unix this is one thread multiplexing two wake sources with a single
-/// `select`: a `signal_hook` self-pipe (SIGINT/SIGTERM/SIGHUP/SIGQUIT) and a
-/// dedicated `/dev/tty` fd (hangup), best-effort — a process with no
-/// controlling terminal gets signal handling with no hangup watch rather
-/// than losing both — the same pattern `termina` itself uses internally for
-/// `SIGWINCH`. On Windows it's `ctrlc`'s dedicated worker thread, which
-/// already covers everything Windows needs.
-///
-/// A signal disposition is only ever replaced once something is able to act
-/// on it: the Unix thread is spawned before any signal is registered, and a
-/// `register_conditional_shutdown` fallback still terminates the process
-/// (without a graceful LSP shutdown or terminal restore) if that thread is
-/// ever lost — see `unix::spawn_terminator`'s module-level comment for why.
+/// `128 + signo` on Unix, 130 on Windows (`ctrlc` doesn't expose which
+/// control event fired) — and routes through the editor's normal quit path
+/// (graceful LSP `shutdown`) rather than tearing the terminal down here.
+/// This thread then waits up to [`QUIT_GRACE`] for the main loop to exit on
+/// its own before force-restoring and exiting with that code anyway. A pty
+/// hangup can't take this route: the main loop's event reader is pinned at
+/// tty EOF and never wakes, so this thread force-exits with 130 immediately.
 ///
 /// In raw mode the kernel does not deliver SIGINT for Ctrl+C (ISIG is
 /// cleared), so on Unix this primarily covers `kill <pid>` and pty teardown
-/// — SIGINT is still registered for the rare case something re-enables ISIG.
+/// — SIGINT stays registered for the rare case something re-enables ISIG.
 pub fn spawn_terminator(
     term: terminal::SharedTerm,
     request_quit: impl Fn(i32) + Send + 'static,
@@ -307,20 +286,18 @@ trait ProbeChannel {
 /// Writes three queries — `\x1B[?u` (kitty flags), `\x1B[>q` (XTVERSION),
 /// `\x1B[c` (DA1 sentinel) — then reads replies until DA1 arrives or the
 /// deadline expires, and classifies via [`has_kitty_response`] /
-/// [`has_kitty_xtversion`]. A single 500 ms overall deadline bounds the whole
+/// [`has_kitty_xtversion`]. A single 500 ms deadline bounds the whole
 /// exchange; local terminals reply in single-digit ms, slow/remote ones get
 /// one generous budget rather than per-read timeouts.
 ///
-/// Assumes terminal replies arrive in order: DA1 is the last response the
-/// terminal sends to our three-query burst, so stopping at the first complete
-/// DA1 is safe. Terminals that reordered DA1 ahead of an earlier kitty/XTVERSION
-/// reply would cause us to miss it and report `false` — no known terminal does
-/// this, but it is the assumption the early-stop rests on.
+/// Assumes replies arrive in order, so stopping at the first complete DA1 —
+/// the terminal's last response to the three-query burst — is safe. A
+/// terminal that reordered DA1 ahead of an earlier reply would be missed and
+/// reported `false`; no known terminal does this.
 ///
-/// `Ok(0)` from the channel (clean EOF) breaks the loop and reports `false` —
-/// the terminal went away without answering, so kitty is unavailable. An `Err`
-/// from `read` or `wait_until` is a permanent channel failure and propagates to
-/// the caller, which surfaces it to the user rather than degrading silently.
+/// Clean EOF (`Ok(0)`) breaks the loop and reports `false` — the terminal
+/// went away without answering. Any other `Err` is a permanent channel
+/// failure and propagates to the caller rather than degrading silently.
 #[cfg_attr(not(any(unix, test)), allow(dead_code))]
 fn run_probe(ch: &mut impl ProbeChannel) -> std::io::Result<bool> {
     ch.write_all(b"\x1B[?u\x1B[>q\x1B[c")?;
@@ -333,8 +310,6 @@ fn run_probe(ch: &mut impl ProbeChannel) -> std::io::Result<bool> {
         if !ch.wait_until(deadline)? {
             break; // timeout
         }
-        // Ok(0) = clean EOF: terminal closed the channel mid-probe — stop
-        // and report unsupported. Err = permanent failure; propagate.
         let n = match ch.read(&mut buf) {
             Ok(0) => break,
             Err(e) => return Err(e),
@@ -354,16 +329,15 @@ fn run_probe(ch: &mut impl ProbeChannel) -> std::io::Result<bool> {
 
 /// Scans `buf` for complete `ESC [ ? <digits/;>* <final>` replies — the shape
 /// both the kitty-flags response (`ESC[?<n>u`) and the DA1 response
-/// (`ESC[?<n>c`) take — and collects each one's final byte, in order.
-/// Shared by [`has_kitty_response`] and [`has_da1_response`], which differ
-/// only in which final byte they're looking for; both responses may appear
-/// in the same buffer; that's what a match on the other one's final byte
-/// mid-scan is for — it's still a complete sequence, just not the one this
-/// caller wants, so scanning continues past it rather than aborting.
+/// (`ESC[?<n>c`) take — and collects each one's final byte, in order. Shared
+/// by [`has_kitty_response`] and [`has_da1_response`], which only differ in
+/// which final byte they look for; a match on the *other* byte mid-scan is
+/// still a complete sequence, so scanning continues past it rather than
+/// aborting.
 ///
 /// A sequence that runs out of buffer before a final byte arrives is
-/// incomplete and contributes nothing — the scan simply stops there, so a
-/// truncated tail can never fabricate a match.
+/// incomplete and contributes nothing — a truncated tail can never
+/// fabricate a match.
 #[cfg_attr(not(any(unix, test)), allow(dead_code))]
 fn csi_final_bytes(buf: &[u8]) -> Vec<u8> {
     let mut finals = Vec::new();

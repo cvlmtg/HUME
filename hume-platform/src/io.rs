@@ -156,46 +156,38 @@ pub fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
 
 // ── write_file_atomic ─────────────────────────────────────────────────────────
 
-/// Write `content` atomically to the path recorded in `meta`.
+/// Write `content` atomically to the path recorded in `meta`. Returns `true`
+/// when the chmod-retry path below was taken, `false` on a plain successful
+/// write.
 ///
-/// Strategy:
-/// 1. Create a temp file **in the same directory** as the target — required for
-///    `rename(2)` to stay on the same filesystem.
-/// 2. Write content.
-/// 3. Restore permissions **before** the rename — the file must never be
-///    transiently visible with wrong mode bits.
-/// 4. Restore ownership via `fchown` (Unix only, best-effort — only succeeds
-///    when running as root or as the file's owner).
-/// 5. Rename onto the target.
+/// The temp file is created in the target's own directory, so `rename(2)`
+/// stays on one filesystem; permissions are restored *before* the rename so
+/// the file is never transiently visible with the wrong mode bits. Ownership
+/// (`fchown`, Unix) is best-effort — it only succeeds as root or as the owner.
 ///
-/// When `force` is `true` and the rename fails with `PermissionDenied`, the
-/// function clears the readonly attribute on the target file and retries once.
-/// The old inode (transiently made writable) is unlinked by the rename, so no
-/// permission-restore step is needed — the new inode already carries
-/// `meta.permissions` (set on the temp file in step 3). Returns `true` when
-/// the chmod-retry path was taken, `false` on a plain successful write.
+/// `force` retries once after a `PermissionDenied` rename by clearing the
+/// target's readonly attribute. The rename unlinks the old, transiently
+/// writable inode, so nothing needs restoring on the new one — it already
+/// carries `meta.permissions`.
 ///
-/// **Atomicity:** on POSIX (macOS, Linux) `rename(2)` is a single syscall —
-/// the target either has the old content or the new content, never a partial
-/// write. On Windows, `tempfile::persist` uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`,
-/// which is not crash-atomic for file replacement (no equivalent of POSIX
-/// `rename` exists on Windows without the deprecated transactional NTFS).
-/// This is the best available option on Windows.
+/// **Atomicity:** guaranteed on POSIX, where `rename(2)` is one syscall. On
+/// Windows `tempfile::persist` uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`,
+/// which is not crash-atomic for file replacement — the best available
+/// option without the deprecated transactional NTFS.
 ///
-/// On success, re-stats the target and refreshes `meta.signature` — the
-/// `rename(2)` swaps in a fresh inode, which always changes mtime, so
-/// without this refresh the editor's own save would look like an external
-/// change on the very next disk-state check. Takes `meta` by `&mut` so this
-/// refresh can't be forgotten at a call site.
+/// On success, re-stats the target to refresh `meta.signature`: the rename
+/// swaps in a fresh inode with a new mtime, so without this refresh the
+/// editor's own save looks like an external change on the very next
+/// disk-state check. `meta` is `&mut` so the refresh can't be forgotten at a
+/// call site.
 ///
-/// A failure to re-stat does *not* fail the write: the content is already
-/// durably on disk by this point, so surfacing an error here would report a
-/// successful save as failed — the caller would never mark the buffer
-/// saved, `:q` would keep refusing to quit, and no `didSave` would fire,
-/// all while the new content sits on disk. Leaving `meta.signature` stale
-/// instead biases the next disk-state check toward a spurious "changed"
-/// report, never toward silently missing a real one — the same bias
-/// `read_file`'s doc already accepts for a race on the read side.
+/// A failed re-stat does *not* fail the write — the content is already
+/// durable, and surfacing an error here would report a successful save as
+/// failed (buffer never marked saved, `:q` keeps refusing, no `didSave`
+/// fires) while the new content sits on disk regardless. A stale signature
+/// only biases the next disk-state check toward a spurious "changed", never
+/// toward missing a real one — the same bias `read_file`'s doc accepts for
+/// the read-side race.
 pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io::Result<bool> {
     let target = &meta.resolved_path;
     let dir = target.parent().unwrap_or(Path::new("."));
@@ -206,14 +198,12 @@ pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io:
     // Set permissions before rename — the window with wrong perms is zero.
     tmp.as_file().set_permissions(meta.permissions.clone())?;
 
-    // Restore ownership. fchown requires root or matching uid to succeed;
-    // we silently ignore errors so a non-privileged user can still save their
-    // own files even if the group-change portion is rejected.
+    // fchown requires root or matching uid to succeed; ignore errors so a
+    // non-privileged user can still save their own files even if the
+    // group-change portion is rejected.
     #[cfg(unix)]
     {
         use nix::unistd::{Gid, Uid, fchown};
-        // Best-effort: succeeds only as root or matching uid; ignore errors so
-        // a non-privileged user can still save their own files.
         let _ = fchown(
             tmp.as_file(),
             Some(Uid::from_raw(meta.uid)),

@@ -153,25 +153,20 @@ fn choose_windows_compiler(exists: impl Fn(&str) -> bool) -> Option<WindowsCompi
 ///
 /// `gcc` is a single executable name, so it passes straight through as
 /// `CC`/`CXX` — the `cc` crate never adds `--target` for GNU-family
-/// compilers (cross toolchains are selected by binary name, not by flag), so
-/// there's nothing to strip.
+/// compilers, so there's nothing to strip.
 ///
 /// `clang` and `zig` both get `.cmd` wrappers instead of a bare executable
-/// name, for two different reasons:
-///
-/// - **Both** need `--target` stripped (see `target_stripping_wrapper_script`)
-///   — the `cc` crate detects both as clang-family and force-feeds them the
-///   host's LLVM triple, which is wrong for any install not paired with
-///   MSVC.
-/// - **`zig` additionally** can't be named directly in `CC`, because its
-///   C/C++ compilers aren't standalone executables — they're invoked as
-///   `zig cc` / `zig c++`, and passing `CC="zig cc"` relies on the `cc` crate
-///   splitting the value on whitespace and re-assembling wrapper + args —
-///   behavior that has changed across `cc` crate versions and is broken in
-///   at least one still in the wild (it drops the `cc`/`c++` argument, so
-///   flags like `-O2` go straight to `zig`, which rejects them as an unknown
-///   top-level command). The wrapper sidesteps this too: `CC`/`CXX` point at
-///   a single filesystem token, no splitting involved.
+/// name. Both need `--target` stripped (see
+/// `target_stripping_wrapper_script`) — the `cc` crate detects both as
+/// clang-family and force-feeds them the host's LLVM triple, wrong for any
+/// install not paired with MSVC. `zig` additionally can't be named directly
+/// in `CC`, since its C/C++ compilers are invoked as `zig cc` / `zig c++`,
+/// not standalone executables — `CC="zig cc"` relies on the `cc` crate
+/// splitting on whitespace and reassembling wrapper + args, which has
+/// changed across `cc` crate versions and is broken in at least one still in
+/// the wild (drops the `cc`/`c++` argument, so flags like `-O2` go straight
+/// to `zig` as an unknown top-level command). The wrapper sidesteps this:
+/// `CC`/`CXX` point at one filesystem token, no splitting involved.
 #[cfg(windows)]
 fn compiler_env_vars(compiler: WindowsCompiler) -> io::Result<(String, String)> {
     match compiler {
@@ -506,27 +501,25 @@ pub fn no_windows_compiler_found() -> bool {
 /// concept.
 ///
 /// Pair with [`tracked::TrackedChild::new`] for a long-lived child: a group
-/// leader is what lets [`tracked::kill_tracked_children`] reach the child's
-/// own children with one `killpg` (rust-analyzer's `proc-macro-srv`, build
-/// scripts, ...) instead of leaving them orphaned the way a direct kill of
-/// just the tracked pid would. [`NewProcessGroup`]'s other use — Ctrl+C
-/// isolation for `run_inline_output`'s short-lived children — doesn't need
-/// this: a plain `.status()` call has nothing to track and Ctrl+C isolation
-/// alone only needed the trait, not this wrapper.
+/// leader lets [`tracked::kill_tracked_children`] reach the child's own
+/// children with one `killpg` (rust-analyzer's `proc-macro-srv`, build
+/// scripts, ...) instead of leaving them orphaned. [`NewProcessGroup`]'s
+/// other use — Ctrl+C isolation for `run_inline_output`'s short-lived
+/// children — doesn't need this wrapper, just the trait: a plain `.status()`
+/// call has nothing to track.
 ///
-/// Accepted trade-off: leaving the foreground process group costs these
-/// children the kernel's SIGHUP on pty teardown (only the foreground group
-/// gets one) — covered instead by the LSP `processId` convention and by
-/// stdin EOF for everything else.
+/// Trade-off: leaving the foreground process group costs these children the
+/// kernel's SIGHUP on pty teardown (only the foreground group gets one) —
+/// covered instead by the LSP `processId` convention and stdin EOF for
+/// everything else.
 ///
 /// `process_group(0)` runs `setpgid(0, 0)` from the child's own pre-exec
-/// hook, which races the parent: this function hasn't returned yet when
-/// that hook runs, but a caller receiving the `Child` back and immediately
-/// registering/signalling it could still be racing a child that hasn't
-/// exec'd. The parent-side `setpgid(pid, pid)` below closes that race —
-/// idempotent, and `EACCES` here just means the child's own call won first
-/// — the same fix already applied in this crate's own
-/// `sigint_to_child_group_does_not_kill_hume` test.
+/// hook, racing the parent: this function hasn't returned when that hook
+/// runs, so a caller that registers/signals the returned `Child` right away
+/// could still be racing a child that hasn't exec'd. The parent-side
+/// `setpgid(pid, pid)` below closes that race — idempotent, and `EACCES`
+/// here just means the child's own call won first (see
+/// `sigint_to_child_group_does_not_kill_hume`).
 pub fn spawn_in_own_group(command: &mut Command) -> io::Result<std::process::Child> {
     let child = command.new_process_group().spawn()?;
     #[cfg(unix)]
