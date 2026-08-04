@@ -22,28 +22,23 @@ use crate::editor::error::CommandError;
 // Vertical movement
 // ---------------------------------------------------------------------------
 
-/// Which display rows a vertical move charges to its budget.
-#[derive(Copy, Clone)]
-enum RowBudget {
-    /// Only content rows — virtual rows are neither a cost nor a landing spot,
-    /// so a `VirtualLineSource`'s rows never swallow a `j`/`k` keystroke.
-    ContentOnly,
-    /// Every display row, virtual ones included. For callers whose `count` is
-    /// already a display-row measurement of something else — the mouse wheel's
-    /// or page-scroll's own viewport delta — which it has to track 1:1 so the
-    /// cursor stays at roughly the same relative screen row.
-    EveryRow,
-}
-
 /// Move `head` by `count` display rows, landing on the last content row
 /// reached (or staying put if the document's edge came first).
+///
+/// `content_only`: when `true`, only content rows count against `count` —
+/// virtual rows are neither a cost nor a landing spot, so a
+/// `VirtualLineSource`'s rows never swallow a `j`/`k` keystroke. When
+/// `false`, every display row counts, virtual ones included — for callers
+/// whose `count` is already a display-row measurement of something else
+/// (the mouse wheel's or page-scroll's own viewport delta), which it has to
+/// track 1:1 so the cursor stays at roughly the same relative screen row.
 fn move_vertical(
     rm: &mut RowMap<'_>,
     head: usize,
     down: bool,
     count: usize,
     target_col: u32,
-    budget: RowBudget,
+    content_only: bool,
 ) -> usize {
     let start = rm.locate_row(head);
     let mut pos = start;
@@ -59,9 +54,8 @@ fn move_vertical(
         if is_content {
             last_content = pos;
         }
-        match budget {
-            RowBudget::ContentOnly if !is_content => {}
-            _ => remaining -= 1,
+        if !content_only || is_content {
+            remaining -= 1;
         }
     }
 
@@ -112,11 +106,7 @@ pub(super) fn apply_visual_vertical(
         apply_focused_motion(state, view, |b, s| motion(b, s, count, mode));
         return;
     }
-    let budget = if matches!(unit, VerticalUnit::ScreenRow) {
-        RowBudget::EveryRow
-    } else {
-        RowBudget::ContentOnly
-    };
+    let content_only = !matches!(unit, VerticalUnit::ScreenRow);
 
     let buf_id = focused_buffer_id(state, view);
     let target_cols = &mut state.visual_move_target_cols;
@@ -149,7 +139,8 @@ pub(super) fn apply_visual_vertical(
             let mut col_iter = target_cols.iter();
             sels.map(|sel| {
                 let &target_col = col_iter.next().expect("one column per selection");
-                let head = move_vertical(&mut rm, sel.head(), down, count, target_col, budget);
+                let head =
+                    move_vertical(&mut rm, sel.head(), down, count, target_col, content_only);
                 let anchor = if mode == MotionMode::Extend {
                     sel.anchor()
                 } else {

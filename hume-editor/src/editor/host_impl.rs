@@ -208,7 +208,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         self.buffer(id)?.display_path().map(str::to_owned)
     }
     fn buffer_display_name(&self, id: BufferId) -> Option<String> {
-        self.buffer(id).map(|buf| buf.display_name().to_owned())
+        self.buffer(id).map(|buf| buf.display_name())
     }
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
         self.buffer(id).map(|buf| buf.is_dirty())

@@ -275,13 +275,6 @@ impl Editor {
             .unwrap_or_else(|| "lsp".to_string())
     }
 
-    /// The registered language for `server_id` — the "server name" the
-    /// Steel surface deals in, since that's what `register-lsp-server!` and
-    /// `lsp-request`'s `server` argument both use.
-    pub(super) fn lsp_server_language(&self, server_id: ServerId) -> Option<String> {
-        introspect::server_language(&self.lsp, server_id)
-    }
-
     /// `textDocument/publishDiagnostics`, `$/progress`, `window/logMessage`,
     /// and `window/showMessage` never reach here — `hume-lsp` classifies
     /// them into typed `ClientAction` variants, handled directly in
@@ -309,7 +302,10 @@ impl Editor {
             );
             return;
         }
-        let server_val = match self.lsp_server_language(server_id) {
+        // The registered language is the "server name" the Steel surface deals
+        // in, since that's what `register-lsp-server!` and `lsp-request`'s
+        // `server` argument both use.
+        let server_val = match introspect::server_language(&self.lsp, server_id) {
             Some(lang) => steel::rvals::SteelVal::StringV(lang.into()),
             None => steel::rvals::SteelVal::BoolV(false),
         };
