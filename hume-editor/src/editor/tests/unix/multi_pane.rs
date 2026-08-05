@@ -150,16 +150,17 @@ fn vsplit_directory_path_still_errors_with_raw_typed_path() {
     );
 }
 
-/// `:vsplit <path>` onto a different buffer starts fresh from the global
-/// `EditorSettings::wrap_mode`, ignoring the source pane's (unrelated) mode.
+/// `:vsplit <path>` onto a different buffer starts fresh and unpinned — no
+/// snapshot of the source pane's (unrelated) mode — so its effective mode
+/// reads through to the global default.
 #[test]
-fn new_file_split_reads_global_wrap_mode() {
+fn new_file_split_has_no_override_and_reads_the_global_default() {
     let (path, _tmp_path) = temp_file("other file\n");
 
     let mut ed = editor_from("-[h]>ello\n");
     let pid_a = ed.state.focused_pane_id;
     let bid_a = ed.focused_buffer_id();
-    ed.view.panes[pid_a].wrap_mode = hume_engine::pane::WrapMode::None;
+    ed.view.panes[pid_a].wrap_mode = Some(hume_engine::pane::WrapMode::None);
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Soft { width: 40 };
 
     ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
@@ -169,9 +170,18 @@ fn new_file_split_reads_global_wrap_mode() {
     assert_ne!(bid_b, bid_a, "sanity: new pane views a different buffer");
 
     assert_eq!(
-        ed.view.panes[pid_b].wrap_mode,
+        ed.view.panes[pid_b].wrap_mode, None,
+        "new-file split starts unpinned, not seeded with the source pane's mode"
+    );
+    let doc = ed.state.buffers.get(bid_b);
+    assert_eq!(
+        crate::editor::commands::effective_wrap_mode(
+            doc,
+            &ed.state.settings,
+            &ed.view.panes[pid_b]
+        ),
         hume_engine::pane::WrapMode::Soft { width: 40 },
-        "new-file split reads the global default, not the source pane's mode"
+        "new-file split's effective mode reads the global default"
     );
 }
 

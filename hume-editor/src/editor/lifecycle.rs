@@ -125,7 +125,6 @@ impl Editor {
             &menu_view,
             &completion_menu_view,
             &picker_view,
-            settings.wrap_mode,
             buffer_id,
         );
         let pane_id = engine_view.panes.insert(pane);

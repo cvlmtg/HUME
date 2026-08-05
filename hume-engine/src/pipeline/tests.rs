@@ -71,7 +71,7 @@ fn virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
     let rope = ropey::Rope::from_str("z\n");
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
-    let mut pane = Pane::new(bid, WrapMode::None);
+    let mut pane = Pane::new(bid);
     pane.viewport = crate::pane::ViewportState::new(20, 5);
     pane.providers
         .add_virtual_line_source(Box::new(ScopedVirtualLine { scope: hint_scope }));
@@ -154,7 +154,7 @@ fn render_wrapped_pane_with_virtual_line(
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
 
-    let mut pane = Pane::new(bid, WrapMode::Soft { width: 4 });
+    let mut pane = Pane::new(bid);
     pane.viewport = crate::pane::ViewportState::new(10, 6);
     pane.viewport.top_row_offset = top_row_offset;
     pane.providers
@@ -300,7 +300,7 @@ fn render_pane_with_n_before_lines(
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
 
-    let mut pane = Pane::new(bid, WrapMode::Soft { width: 10 });
+    let mut pane = Pane::new(bid);
     pane.viewport = crate::pane::ViewportState::new(10, height);
     pane.viewport.top_row_offset = top_row_offset;
     pane.providers
@@ -410,7 +410,7 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
     let rope = ropey::Rope::from_str("a\n");
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
-    let mut pane = Pane::new(bid, WrapMode::None);
+    let mut pane = Pane::new(bid);
     pane.viewport = crate::pane::ViewportState::new(10, 3);
     pane.providers
         .add_gutter_column(Box::new(ProviderIdReportingGutter));
@@ -463,7 +463,7 @@ fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
 
-    let mut pane = Pane::new(bid, WrapMode::Soft { width: 20 });
+    let mut pane = Pane::new(bid);
     pane.viewport = crate::pane::ViewportState::new(20, 4);
 
     let theme = Theme::default();
@@ -506,7 +506,7 @@ fn scrolled_pane_renders_from_top_line_onward() {
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
 
-    let mut pane = Pane::new(bid, WrapMode::None);
+    let mut pane = Pane::new(bid);
     pane.viewport = crate::pane::ViewportState::new(20, 5);
     pane.viewport.top_line = 1;
 
@@ -573,7 +573,7 @@ fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
 
-    let mut pane = Pane::new(bid, WrapMode::None);
+    let mut pane = Pane::new(bid);
     pane.viewport = crate::pane::ViewportState::new(20, 3); // 1 real row + 2 filler rows
     pane.providers.add_gutter_column(Box::new(MarkerGutter));
 

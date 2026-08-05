@@ -4,16 +4,14 @@
 
 A **buffer** is the text and its editing history — the thing you'd call "the
 file" in casual conversation. A **pane** is a live view onto exactly one
-buffer: a rectangle of the screen with its own scroll position, its own
-selections, and its own idea of whether long lines should wrap. Several panes
-can point at the same buffer at once — split a window and both halves show
-the same file, but each half can be scrolled to a different part of it and
-have a different cursor.
+buffer: a rectangle of the screen with its own scroll position and its own
+selections. Several panes can point at the same buffer at once — split a
+window and both halves show the same file, but each half can be scrolled to
+a different part of it and have a different cursor.
 
 This separation matters because "where the cursor is" and "what the text
 says" are different kinds of fact. The text belongs to the buffer; the
-cursor, scroll offset, and wrap setting belong to whichever pane you're
-looking at.
+cursor and scroll offset belong to whichever pane you're looking at.
 
 ## What lives on a pane, not the buffer
 
@@ -26,13 +24,18 @@ Each pane owns:
   it last scrolled to in *every* buffer it has shown, so switching a pane
   back to a buffer it displayed earlier restores the old scroll position
   instead of resetting to the top.
-- **Wrap mode** — whether long lines soft-wrap, and how. This is a view
-  property, not a document one: one pane can show a file wrapped while
-  another pane, split from it, shows the same file unwrapped.
+- **Wrap-mode override** — whether long lines soft-wrap, and how, normally
+  comes from the file (or the editor-wide default). A pane can optionally
+  pin its own wrap style instead, taking precedence over that: two panes on
+  the same buffer wrap the same way by default, but once one overrides it,
+  they can wrap independently — one pane can show a file wrapped while
+  another, split from it, shows the same file unwrapped.
 
-None of this is buffer state. A buffer holds text and undo history and
-nothing about how it's currently being looked at; a pane holds exactly the
-"how it's being looked at" half.
+None of this is buffer state, wrap-mode's own default included — a buffer
+holds text, undo history, and its own settings (like its default wrap
+style), but nothing about how any particular pane is currently looking at
+it; a pane holds exactly that "how it's being looked at" half, including
+whichever setting it chooses to override.
 
 ## Keeping panes in sync
 
@@ -71,9 +74,9 @@ not in the buffer or the layout tree's own data.
 Splitting the focused pane creates a new pane next to it — vertically
 (side-by-side, left and right) or horizontally (stacked, top and bottom) —
 viewing the same buffer the original pane was showing. The new pane inherits
-the source pane's current view state (scroll position, wrap mode) as its
-starting point, then diverges independently from there as you scroll or
-re-wrap it.
+the source pane's current view state (scroll position, and any wrap-mode
+override it had) as its starting point, then diverges independently from
+there as you scroll or re-wrap it.
 
 ---
 

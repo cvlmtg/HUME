@@ -229,23 +229,16 @@ fn wrap_mode_is_wrapping() {
     assert!(WrapMode::Soft { width: 0 }.is_wrapping());
 }
 
-// ── Pane::new / saved_wrap_mode seeding ─────────────────────────────────
+// ── Pane::new / wrap-mode override seeding ───────────────────────────────
 
 #[test]
-fn pane_new_wrapping_seed_becomes_its_own_saved_wrap_mode() {
-    let pane = Pane::new(BufferId::default(), WrapMode::Soft { width: 0 });
-    assert_eq!(pane.wrap_mode, WrapMode::Soft { width: 0 });
-    assert_eq!(pane.saved_wrap_mode, WrapMode::Soft { width: 0 });
-}
-
-#[test]
-fn pane_new_none_seed_defaults_saved_wrap_mode_to_indent() {
-    let pane = Pane::new(BufferId::default(), WrapMode::None);
-    assert_eq!(pane.wrap_mode, WrapMode::None);
-    // saved_wrap_mode must never be None — it's the restore target for a
-    // future toggle-on, so a pane seeded off still has something to fall
-    // back to.
-    assert_eq!(pane.saved_wrap_mode, WrapMode::Indent { width: 0 });
+fn pane_new_has_no_wrap_override_and_nothing_to_restore() {
+    // A fresh pane inherits the buffer/global setting (no pane-level pin)
+    // and has never been toggled off, so there is no `:wrap` restore target
+    // yet — see `hume-editor`'s `pane_state::toggle_focused_wrap`.
+    let pane = Pane::new(BufferId::default());
+    assert_eq!(pane.wrap_mode, None);
+    assert_eq!(pane.saved_wrap_mode, None);
 }
 
 // ── remember_scroll / recall_scroll ─────────────────────────────────────
@@ -262,7 +255,7 @@ fn fresh_buffer_id() -> BufferId {
 #[test]
 fn recall_scroll_clamps_top_line_to_the_buffers_current_last_content_line() {
     let bid = fresh_buffer_id();
-    let mut pane = Pane::new(bid, WrapMode::None);
+    let mut pane = Pane::new(bid);
 
     // Save a scroll position deep into a buffer that was, at the time, tall.
     pane.viewport.top_line = 100;
@@ -282,7 +275,7 @@ fn recall_scroll_clamps_top_line_to_the_buffers_current_last_content_line() {
 #[test]
 fn recall_scroll_leaves_an_in_range_top_line_untouched() {
     let bid = fresh_buffer_id();
-    let mut pane = Pane::new(bid, WrapMode::None);
+    let mut pane = Pane::new(bid);
 
     pane.viewport.top_line = 4;
     pane.remember_scroll();
@@ -311,7 +304,7 @@ fn make_pane_at_char(head_char: usize) -> Pane {
             anchor: head_char,
             head: head_char,
         }],
-        ..Pane::new(crate::pipeline::BufferId::default(), WrapMode::default())
+        ..Pane::new(crate::pipeline::BufferId::default())
     }
 }
 

@@ -16,7 +16,7 @@ use std::sync::{Arc, RwLock};
 
 use hume_engine::builtins::line_number::LineNumberColumn;
 use hume_engine::builtins::sign_column::SignColumn;
-use hume_engine::pane::{Pane, WrapMode};
+use hume_engine::pane::Pane;
 use hume_engine::pipeline::BufferId;
 use hume_engine::providers::{HighlightTier, ProviderSet};
 use hume_engine::theme::ScopeRegistry;
@@ -77,7 +77,6 @@ pub(crate) fn build_pane(
     menu_view: &Arc<RwLock<Option<popup::PopupState>>>,
     completion_menu_view: &Arc<RwLock<Option<popup::PopupState>>>,
     picker_view: &Arc<RwLock<Option<picker_panel::PickerViewState>>>,
-    wrap_mode: WrapMode,
     buffer_id: BufferId,
 ) -> (Pane, PaneRenderHandles) {
     let bracket_scope = registry.intern("ui.cursor.match");
@@ -167,7 +166,7 @@ pub(crate) fn build_pane(
 
     let pane = Pane {
         providers,
-        ..Pane::new(buffer_id, wrap_mode)
+        ..Pane::new(buffer_id)
     };
     (
         pane,

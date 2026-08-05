@@ -1048,16 +1048,16 @@ fn quit_in_grid_promotes_correct_sibling() {
     }
 }
 
-// ── wrap_mode: per-pane SSOT (M10 T6) ──────────────────────────────────────────
+// ── wrap_mode: pane override → buffer override → global (M11) ─────────────────
 
 /// A same-buffer split (`:split` with no path) inherits the source pane's
-/// live `wrap_mode` — not the global default. This lets a `:wrap`-toggled
+/// live override — not the global default. This lets a `:wrap`-toggled
 /// pane pass its mode on to a split of itself.
 #[test]
-fn same_buffer_split_inherits_source_pane_wrap_mode() {
+fn same_buffer_split_inherits_source_panes_wrap_override() {
     let mut ed = editor_from("-[h]>ello\n");
     let pid_a = ed.state.focused_pane_id;
-    ed.view.panes[pid_a].wrap_mode = hume_engine::pane::WrapMode::Soft { width: 40 };
+    ed.view.panes[pid_a].wrap_mode = Some(hume_engine::pane::WrapMode::Soft { width: 40 });
     // Global default deliberately differs, to prove it is NOT the source.
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::None;
 
@@ -1066,22 +1066,44 @@ fn same_buffer_split_inherits_source_pane_wrap_mode() {
 
     assert_eq!(
         ed.view.panes[pid_b].wrap_mode,
-        hume_engine::pane::WrapMode::Soft { width: 40 },
-        "same-buffer split inherits the source pane's live wrap_mode"
+        Some(hume_engine::pane::WrapMode::Soft { width: 40 }),
+        "same-buffer split inherits the source pane's live override"
     );
 }
 
-/// `:wrap` toggles only the focused pane's `wrap_mode` — a sibling pane on
-/// the same buffer is untouched. `wrap_mode` lives on `Pane`, not on the
-/// buffer, so two panes viewing the same buffer can wrap independently.
+/// The other half of the split-inheritance contract: a source pane with *no*
+/// pane-level override (still inheriting from the buffer/global setting)
+/// splits into a pane that is likewise unpinned — not one frozen at
+/// whichever mode the source happened to resolve to. The new pane keeps
+/// following later `:set buffer`/`:set global wrap-mode=…` changes, same as
+/// the pane it split from.
+#[test]
+fn same_buffer_split_of_an_unpinned_pane_stays_unpinned() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+    assert_eq!(ed.view.panes[pid_a].wrap_mode, None, "sanity: unpinned");
+
+    ed.execute_typed("split", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+
+    assert_eq!(
+        ed.view.panes[pid_b].wrap_mode, None,
+        "split of an unpinned pane is itself unpinned, not frozen at the \
+         resolved mode"
+    );
+}
+
+/// `:wrap` toggles only the focused pane's override — a sibling pane on the
+/// same buffer is untouched. The override lives on `Pane`, not on the
+/// buffer, so two panes viewing the same buffer can wrap independently once
+/// one is pinned.
 #[test]
 fn wrap_toggle_affects_only_focused_pane() {
     let mut ed = editor_from("-[h]>ello\n");
+    // Global is resolved lazily on every read, so this reaches pid_a's
+    // effective mode retroactively — no pane pin needed for A to start off.
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::None;
     let pid_a = ed.state.focused_pane_id;
-    // A was already constructed before the settings write above (which only
-    // seeds panes created from here on) — pin its baseline explicitly.
-    ed.view.panes[pid_a].wrap_mode = hume_engine::pane::WrapMode::None;
 
     ed.execute_typed("split", None).unwrap();
     let pid_b = ed.state.focused_pane_id;
@@ -1094,12 +1116,23 @@ fn wrap_toggle_affects_only_focused_pane() {
     // Focus is on B (the new pane) after :split — toggle wrap there.
     ed.execute_typed("wrap", None).unwrap();
 
+    let doc = ed.state.buffers.get(ed.view.panes[pid_a].buffer_id);
     assert!(
-        ed.view.panes[pid_b].wrap_mode.is_wrapping(),
+        crate::editor::commands::effective_wrap_mode(
+            doc,
+            &ed.state.settings,
+            &ed.view.panes[pid_b]
+        )
+        .is_wrapping(),
         "B: wrap toggled on"
     );
     assert!(
-        !ed.view.panes[pid_a].wrap_mode.is_wrapping(),
+        !crate::editor::commands::effective_wrap_mode(
+            doc,
+            &ed.state.settings,
+            &ed.view.panes[pid_a]
+        )
+        .is_wrapping(),
         "A: unaffected by B's toggle, despite sharing a buffer"
     );
 }

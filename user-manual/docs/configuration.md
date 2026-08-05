@@ -11,7 +11,7 @@ HUME reads persistent configuration from:
 
 If the file does not exist, HUME starts with defaults. If it fails partway through, the error is reported in `:messages` and everything up to that point stays applied — so a broken line late in the file leaves you half-configured rather than back at defaults. Fix it and run `:reload-config` to re-run the file without restarting.
 
-`:reload-config` starts from a clean slate: every option, key binding, hook, command, and plugin goes back to its default first, then the file runs again — so removing a line from `init.scm` and reloading does undo what it did. Any `:set global`/`:set buffer`/`:theme` change you made during the session is discarded too, not just what `init.scm` set, with two exceptions: a pane-scoped `:set pane wrap-mode=…`, which stays as you left it (panes are editing state, not config), and an explicit `:set buffer language=<name>`, which is restored after the reload rather than discarded — detection can't reconstruct it on its own (that's exactly why you had to set it explicitly), so losing it on every reload would be more surprising than keeping it. If the file fails partway through this time, you're left with defaults plus whatever ran before the error, same as at startup.
+`:reload-config` starts from a clean slate: every option, key binding, hook, command, and plugin goes back to its default first, then the file runs again — so removing a line from `init.scm` and reloading does undo what it did. Any `:set global`/`:set buffer`/`:theme` change you made during the session is discarded too, not just what `init.scm` set, with two exceptions: a pane-scoped `:set pane` override, which stays as you left it (panes are editing state, not config), and an explicit `:set buffer language=<name>`, which is restored after the reload rather than discarded — detection can't reconstruct it on its own (that's exactly why you had to set it explicitly), so losing it on every reload would be more surprising than keeping it. If the file fails partway through this time, you're left with defaults plus whatever ran before the error, same as at startup.
 
 Buffers stay open and language servers stay attached across a reload — it behaves as if every open file were closed and reopened. Completion triggers, inline diagnostics, and any per-language setup your config applies (e.g. from `on-language-set`) come back too, without restarting the language server or losing your place in the file.
 
@@ -31,7 +31,7 @@ The `:set` command takes a scope and a `key=value` pair. The scope is required:
 :set pane <option>=<value>       override for the current pane only (view-scoped settings)
 ```
 
-For a buffer option (the [Buffer options](#buffer-options) table below), `:set global` takes effect immediately in every buffer that has no override of its own — not just newly opened ones. `wrap-mode`, the one option `:set pane` accepts, works differently: a `:set global wrap-mode=…` only seeds *new* panes; panes already open keep whatever wrap mode they already had (see [Text wrap](#text-wrap)).
+For a buffer option (the [Buffer options](#buffer-options) table below), `:set global` takes effect immediately in every buffer that has no override of its own — not just newly opened ones. `wrap-mode` additionally accepts `:set pane`, which pins one pane's wrap style above both the buffer and global setting (see [Text wrap](#text-wrap)).
 
 Changes apply to the current session and are not persisted — for persistent configuration, use `init.scm` (below).
 
@@ -55,7 +55,7 @@ Sets the global default. The value is a string, boolean, or integer. Callable fr
 (get-option bid "option-name")
 ```
 
-Returns the effective value of an option: called with just an option name, the focused buffer's override if one is set, else the global default. Pass a buffer id first (e.g. inside an `on-language-set` hook, whose handler receives the buffer id as an argument) to read that buffer's value instead of the focused one. Errors on an unknown option name; `language` has no getter — read it with `(buffer-language bid)` instead.
+Returns the effective value of an option: called with just an option name, the focused buffer's override if one is set, else the global default. Pass a buffer id first (e.g. inside an `on-language-set` hook, whose handler receives the buffer id as an argument) to read that buffer's value instead of the focused one. Errors on an unknown option name; `language` has no getter — read it with `(buffer-language bid)` instead. For `wrap-mode`, this reads the buffer/global level only — a pane pinned with `:set pane wrap-mode=…` can show a different style than what `get-option` reports.
 
 ```scheme
 (get-option "tab-width")       ; the focused buffer's effective tab-width
@@ -64,7 +64,7 @@ Returns the effective value of an option: called with just an option name, the f
 
 ## Global options
 
-Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All of these are global-only except `wrap-mode`, which also accepts a per-pane override — see its row below and [Text wrap](#text-wrap).
+Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All of these are global-only.
 
 For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `1`/`0`; from Scheme, pass `#t`/`#f`.
 
@@ -90,7 +90,6 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 | `lsp.diagnostics-severity-floor` | `error` \| `warning` \| `info` \| `hint` | `hint` | Lowest diagnostic severity to display |
 | `lsp.request-timeout-ms` | integer ≥ 1 | `10000` | How long to wait for a language-server reply |
 | `lsp.viewport-debounce-ms` | integer ≥ 1 | `150` | Delay before re-requesting hints after scrolling |
-| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping for new panes. `N` is the wrap column (`0` or omitted = pane content width). See [Text wrap](#text-wrap) for per-pane overrides and the `:wrap` toggle |
 
 ## Buffer options
 
@@ -100,6 +99,7 @@ These options have a global default that every buffer without its own override r
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping. `N` is the wrap column (`0` or omitted = pane content width). Also accepts `:set pane wrap-mode=<value>` to pin one pane above the buffer/global setting — see [Text wrap](#text-wrap) |
 | `tab-width` | integer, 1–255 | `4` | Spaces per indent level |
 | `indent-guides` | bool | `#t` | Draw vertical guides at each indentation level |
 | `tab-style` | `hard` \| `soft` | `hard` | What `Tab` inserts: `hard` = literal `\t`; `soft` = spaces to next tab stop |
@@ -116,13 +116,13 @@ These options have a global default that every buffer without its own override r
 
 ## Text wrap
 
-Text wrap is controlled by a global option, a per-pane override, and a per-pane toggle command.
+Text wrap is controlled by three layers — a global default, a per-buffer override, and a per-pane pin — plus a per-pane toggle command.
 
-- `wrap-mode` is the **global option** that sets the default wrap *style* for newly opened panes. Set it in config or with `:set global wrap-mode=<value>`.
-- `:set pane wrap-mode=<value>` overrides the style for the pane you're currently in, live, without affecting other panes or the global default.
-- `:wrap` (alias of `:toggle-soft-wrap`) **toggles** wrapping on or off for the current pane. Turning it off disables wrapping entirely; turning it back on restores whichever style the pane was last wrapping with — whatever `:set pane wrap-mode=…` set, or otherwise the global `wrap-mode`.
+- `wrap-mode` is a **buffer option** (see [Buffer options](#buffer-options)): set a global default with `:set global wrap-mode=<value>` or `set-option!`, or override one buffer with `:set buffer wrap-mode=<value>` or `(set-buffer-option! bid "wrap-mode" value)`. To wrap by file type — markdown but not source code, say — set it per language from an `on-language-set` hook (see [Plugins](plugins.md)).
+- `:set pane wrap-mode=<value>` pins the style for the pane you're currently in, live, above both the buffer and global setting, without affecting other panes on the same buffer.
+- `:wrap` (alias of `:toggle-soft-wrap`) **toggles** wrapping on or off for the current pane. Turning it off pins the pane to no wrap; turning it back on restores whatever it was doing before — the buffer/global setting, if the pane wasn't pinned, or the exact style you pinned it to with `:set pane wrap-mode=…`.
 
-`wrap-mode` is a per-pane view setting rather than a per-buffer one: two panes showing the same buffer may wrap independently — set the global default with `:set global wrap-mode=<value>` or `set-option!`, or override one pane with `:set pane wrap-mode=<value>`; there is no `:set buffer wrap-mode=...`.
+Two panes showing the same buffer can still wrap independently once one of them is pinned with `:set pane` or `:wrap` — that's what the per-pane layer is for.
 
 Accepted values:
 

@@ -46,18 +46,22 @@ impl Editor {
     ///
     /// Returns `(PaneRenderSettings, gutter_w)`. Single source of truth for
     /// wrap_mode / tab_width / whitespace settings across all render paths.
-    /// `tab_width` / `whitespace` resolve from that pane's buffer overrides
-    /// (document facts); `wrap_mode` resolves from the pane itself — its SSOT
-    /// is `Pane::wrap_mode`, not the buffer. `mode` is a per-focus fact: only
-    /// the focused pane owns the real terminal cursor, so it alone gets the
-    /// live editor mode; other panes are forced to a block-cursor mode so
-    /// their fake cursor stays visible instead of turning transparent.
+    /// `tab_width`, `whitespace`, and `wrap_mode` all resolve from that
+    /// pane's buffer overrides against the global settings — `wrap_mode`
+    /// additionally checks the pane's own override first (see
+    /// `commands::effective_wrap_mode`), since two panes on the same buffer
+    /// may wrap differently once `:wrap`/`:set pane wrap-mode=…` pins one.
+    /// `mode` is a per-focus fact: only the focused pane owns the real
+    /// terminal cursor, so it alone gets the live editor mode; other panes
+    /// are forced to a block-cursor mode so their fake cursor stays visible
+    /// instead of turning transparent.
     pub(super) fn resolve_pane_settings(&self, pid: PaneId) -> (PaneRenderSettings, u16) {
         let pane = &self.view.panes[pid];
         let doc = self.state.buffers.get(pane.buffer_id);
         let len_lines = doc.text().len_lines();
         let gutter_w = super::cursor::gutter_width(pane.providers.gutter_columns(), len_lines);
-        let wrap_mode = pane.wrap_mode.resolve(pane.content_width(len_lines));
+        let wrap_mode = super::commands::effective_wrap_mode(doc, &self.state.settings, pane)
+            .resolve(pane.content_width(len_lines));
         let tab_width = doc.overrides.tab_width(&self.state.settings);
         let whitespace = doc.overrides.whitespace(&self.state.settings);
         let show_indent_guides = doc.overrides.show_indent_guides(&self.state.settings);

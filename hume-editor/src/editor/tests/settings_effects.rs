@@ -433,6 +433,40 @@ fn set_buffer_option_from_hook_writes_target_override() {
     );
 }
 
+/// The feature this scope layer exists for: setting wrap-mode per file type
+/// from an `on-language-set` hook via `set-buffer-option!`. The open pane
+/// (never explicitly `:wrap`'d or `:set pane`'d) picks up the change
+/// immediately — resolution is lazy (pane → buffer → global), not a seed
+/// applied only to panes opened afterward.
+///
+/// Fail oracle: if `wrap-mode` were still global-only (its pre-buffer-scope
+/// shape), `set-buffer-option!` would error before either assertion below
+/// is ever reached.
+#[test]
+fn set_buffer_option_wrap_mode_from_hook_changes_the_open_pane() {
+    let mut ed = editor_from("-[a]>b\n");
+    crate::editor::tests::language::attach_host(
+        &mut ed,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "wrap-mode" "word")))"#,
+    );
+    assert_eq!(
+        ed.focused_wrap_mode(),
+        hume_engine::pane::WrapMode::Indent { width: 0 },
+        "sanity: default before the hook fires"
+    );
+
+    let bid = ed.focused_buffer_id();
+    let lang = ed.state.config.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang));
+    ed.settle();
+
+    assert_eq!(
+        ed.focused_wrap_mode(),
+        hume_engine::pane::WrapMode::Word { width: 0 },
+        "the open pane follows the hook's buffer-scoped write"
+    );
+}
+
 /// The hook's `bid` argument, not the focused buffer, is the write target —
 /// pins the distinction that `settle` runs with the *focused* buffer as
 /// scripting context while the hook's own `bid` may name a background

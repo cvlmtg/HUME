@@ -267,6 +267,12 @@ A few more examples:
   (lambda (bid lang)
     (when (equal? lang "markdown")
       (set-buffer-option! bid "tab-width" 2))))
+
+; word-wrap Markdown buffers, leave source code unwrapped
+(register-hook! 'on-language-set
+  (lambda (bid lang)
+    (when (equal? lang "markdown")
+      (set-buffer-option! bid "wrap-mode" "word"))))
 ```
 
 ### Default activation

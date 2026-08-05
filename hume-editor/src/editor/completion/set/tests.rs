@@ -56,7 +56,7 @@ fn set_completer_keys_for_global_scope() {
     );
     assert!(
         names.contains(&"wrap-mode"),
-        "global+pane key should appear"
+        "global+buffer+pane key should appear"
     );
     assert!(names.contains(&"statusline"), "hand-listed global key");
     assert!(!names.contains(&"language"), "language has no global scope");
@@ -69,6 +69,10 @@ fn set_completer_keys_for_buffer_scope_includes_language() {
     let names = names_of(&result);
     assert!(names.contains(&"language"), "language is buffer-only");
     assert!(names.contains(&"tab-width"), "buffer-overridable key");
+    assert!(
+        names.contains(&"wrap-mode"),
+        "wrap-mode is buffer-overridable too, not just global+pane"
+    );
     assert!(
         !names.contains(&"scrolloff"),
         "global-only key must not appear under buffer scope"

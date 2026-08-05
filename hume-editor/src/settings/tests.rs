@@ -585,10 +585,10 @@ fn set_buffer_tab_style() {
 }
 
 #[test]
-fn set_buffer_wrap_mode_rejected_as_global_only() {
-    // wrap-mode is global-only: it seeds new panes' `Pane::wrap_mode`, the
-    // live per-pane SSOT — there is no buffer-scoped override anymore.
-    assert!(buffer("wrap-mode", "none").is_err());
+fn set_buffer_wrap_mode() {
+    let global = EditorSettings::default();
+    let ov = buffer("wrap-mode", "none").unwrap();
+    assert_eq!(ov.wrap_mode(&global), WrapMode::None);
 }
 
 #[test]
@@ -874,6 +874,37 @@ fn every_pane_scoped_key_has_a_typed_set_arm() {
         "typed_file::typed_set's Scope::Pane match only has an arm for \
          \"wrap-mode\" — a new pane-scoped key here needs a matching arm \
          added there too"
+    );
+}
+
+/// Scope is a lattice, not a set of alternatives: a pane override is the
+/// narrowest place a setting can be pinned, so anything settable there must
+/// also be settable for a whole buffer and for the whole editor. Without the
+/// buffer rung, a per-language `on-language-set` hook (`set-buffer-option!`)
+/// can't reach a pane-scoped setting at all — which is exactly the gap
+/// `wrap-mode` used to have (`scope: [Scope::Global, Scope::Pane]`, no
+/// `Scope::Buffer`) before it grew a buffer rung.
+///
+/// Fail oracle: change any entry's `scope:` list to
+/// `[Scope::Global, Scope::Pane]` (wrap-mode's own pre-buffer-scope shape) —
+/// this test fails naming that key and its missing `buffer` rung.
+#[test]
+fn every_pane_scoped_key_is_also_buffer_and_global_scoped() {
+    let missing: Vec<String> = all_setting_keys()
+        .iter()
+        .copied()
+        .filter(|k| setting_scopes(k).contains(&Scope::Pane))
+        .flat_map(|k| {
+            let scopes = setting_scopes(k);
+            [Scope::Buffer, Scope::Global]
+                .into_iter()
+                .filter(move |s| !scopes.contains(s))
+                .map(move |s| format!("'{k}' is pane-scoped but has no {} scope", s.as_str()))
+        })
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "every pane-scoped key must also be buffer- and global-scoped: {missing:?}"
     );
 }
 

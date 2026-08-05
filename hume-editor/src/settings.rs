@@ -160,8 +160,10 @@ impl FromStr for SignColumnConfig {
 /// [`write_global`]). `Buffer` overrides a setting for the active buffer only
 /// (written to [`BufferOverrides`] via [`write_buffer`]). `Pane` has no
 /// generic storage at all — the sole pane-scoped key (`wrap-mode`) writes
-/// straight to the live `Pane` in `typed_file::typed_set`, bypassing both of
-/// the above.
+/// straight to the live `Pane` in `typed_file::typed_set`, a third, narrower
+/// rung *on top of* `Buffer`/`Global` rather than a bypass of them: a pane
+/// with no pane-level override still resolves through the buffer/global
+/// chain (see `commands::effective_wrap_mode`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Scope {
     Global,
@@ -651,20 +653,20 @@ define_settings! {
         "lsp.inlay-hints" => lsp_inlay_hints: bool = false,
             scope: [Scope::Global],
             parser: bool;
-        // Global-only *storage*: seeds new panes' `Pane::wrap_mode` at creation
-        // time (`hume-engine`'s `Pane` is the live SSOT — see
-        // `commands::open_pane`). A same-buffer `:split`/`:vsplit` overrides
-        // that seed with the source pane's live wrap mode instead (see
-        // `commands::split_pane_onto`). Not per-buffer: wrap is a view
-        // property, and two panes on the same buffer may wrap differently.
-        // `scope` below additionally allows `Scope::Pane` — `:set pane
-        // wrap-mode=…` (see `typed_file::typed_set`) writes straight to the
-        // live `Pane`, a separate path from `write_global`/this table.
-        "wrap-mode" => wrap_mode: WrapMode = hume_engine::pane::DEFAULT_WRAP_STYLE,
-            scope: [Scope::Global, Scope::Pane],
-            parser: from_str;
     }
     buffer {
+        // A buffer-overridable setting like any other (e.g. from an
+        // `on-language-set` hook, for a per-filetype default), plus a third,
+        // narrower rung: `scope` below additionally allows `Scope::Pane` —
+        // `:set pane wrap-mode=…` (see `typed_file::typed_set`) writes
+        // straight to the live `Pane`'s override, a separate path from
+        // `write_global`/`write_buffer`, since wrap is also a view property
+        // (two panes on the same buffer may wrap differently once one is
+        // pinned — see `commands::effective_wrap_mode`, the pane → buffer →
+        // global resolver every render/motion path reads through).
+        "wrap-mode" => wrap_mode: WrapMode = hume_engine::pane::DEFAULT_WRAP_STYLE,
+            scope: [Scope::Global, Scope::Buffer, Scope::Pane],
+            parser: from_str;
         "tab-width" => tab_width: u8 = 4,
             scope: [Scope::Global, Scope::Buffer],
             parser: tab_width;

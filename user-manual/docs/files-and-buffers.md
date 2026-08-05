@@ -50,7 +50,7 @@ Closing the last remaining buffer leaves an empty scratch buffer rather than exi
 
 ## Splits and panes
 
-A **pane** is a viewport onto a buffer. A buffer is the open file itself; a pane is where you view it — two panes can show the same buffer at once, each scrolled and wrapped independently.
+A **pane** is a viewport onto a buffer. A buffer is the open file itself; a pane is where you view it — two panes can show the same buffer at once, each with its own scroll position and, if pinned, its own wrap style.
 
 | Command | Aliases | Effect |
 |---------|---------|--------|
@@ -71,7 +71,7 @@ Splitting is refused with a message when the pane is already too small to divide
 
 `:q` is pane-aware: with multiple panes open it closes the focused pane and leaves the buffer in the buffer list. With a single pane it closes the current buffer and moves you to another one, quitting HUME only when there's nothing left to go back to. Unsaved changes block it — use `:q!` to discard them.
 
-A divider is drawn between panes (controlled by the `pane-dividers` option, on by default), and the pane without focus is dimmed. Soft wrap is per-pane, so two panes on the same buffer can wrap independently: `:wrap` toggles it on/off for the focused pane, and `:set pane wrap-mode=<value>` changes its style directly — see [Text wrap](configuration.md#text-wrap).
+A divider is drawn between panes (controlled by the `pane-dividers` option, on by default), and the pane without focus is dimmed. Wrap normally follows the buffer/global setting, but it can be pinned per pane: `:wrap` toggles it on/off for the focused pane, and `:set pane wrap-mode=<value>` pins its style directly, so two panes on the same buffer can wrap independently once pinned — see [Text wrap](configuration.md#text-wrap).
 
 ## Saving
 

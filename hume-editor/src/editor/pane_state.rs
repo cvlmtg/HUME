@@ -177,55 +177,104 @@ pub(crate) struct PaneView {
 impl Editor {
     // ── Pane-state accessors ──────────────────────────────────────────────────
 
-    /// The focused pane's wrap mode. `Pane::wrap_mode` is the SSOT (a view
-    /// property, not a document one — two panes on the same buffer may wrap
-    /// differently); this is the raw (unresolved sentinel) value.
+    /// The focused pane's effective wrap mode: pane override → buffer
+    /// override → global default (see `commands::effective_wrap_mode`).
     pub(crate) fn focused_wrap_mode(&self) -> hume_engine::pane::WrapMode {
-        self.view.panes[self.state.focused_pane_id].wrap_mode
+        let pane = &self.view.panes[self.state.focused_pane_id];
+        let doc = self.state.buffers.get(pane.buffer_id);
+        super::commands::effective_wrap_mode(doc, &self.state.settings, pane)
     }
 
-    /// Apply `mode` as the focused pane's wrap mode — the shared path behind
-    /// both `:wrap` and `:set pane wrap-mode=…`.
+    /// Pin the focused pane's wrap mode to `mode` — the write path behind
+    /// `:set pane wrap-mode=…`.
     ///
-    /// Setting a wrapping mode also updates `saved_wrap_mode` (the restore
-    /// target for a future `:wrap` toggle-on) and, on any actual mode
-    /// change, zeroes horizontal scroll (meaningless once wrapped — and
-    /// already 0 on every other transition, so this only has a visible
-    /// effect off→on). Setting `WrapMode::None` stashes the pane's current
-    /// wrap mode into `saved_wrap_mode` first, preserving the toggle
-    /// invariant that it's never `None`.
-    pub(crate) fn apply_focused_wrap_mode(&mut self, mode: hume_engine::pane::WrapMode) {
-        use hume_engine::pane::WrapMode;
-        let now_wrapping = mode.is_wrapping();
-        let pane = &mut self.view.panes[self.state.focused_pane_id];
-        let was_wrapping = pane.wrap_mode.is_wrapping();
-        let mode_changed = mode != pane.wrap_mode;
-        if now_wrapping {
-            pane.wrap_mode = mode;
-            pane.saved_wrap_mode = mode;
-        } else {
-            if was_wrapping {
-                pane.saved_wrap_mode = pane.wrap_mode;
-            }
-            pane.wrap_mode = WrapMode::None;
+    /// Always writes an explicit override, even `WrapMode::None` (an
+    /// explicit "don't wrap" pin): `:set pane` is itself an explicit pane
+    /// action, so from here on this pane stops following `:set buffer`/
+    /// `:set global wrap-mode=…` until `:wrap`, another `:set pane`, or
+    /// `:reload-config` changes it again.
+    ///
+    /// `saved_wrap_mode` (the `:wrap` toggle-on restore target) is synced to
+    /// this pin only when `mode` itself wraps — pinning *off* deliberately
+    /// leaves it alone, so whatever `saved_wrap_mode` already pointed at (a
+    /// prior wrapping pin, or "was inheriting") survives as the toggle-on
+    /// target instead of being erased by this pin.
+    ///
+    /// Zeroes horizontal scroll (meaningless once wrapped) on any actual
+    /// change to the pane's *effective* mode — see `toggle_focused_wrap`'s
+    /// doc for the full rationale, shared by both functions.
+    pub(crate) fn set_focused_wrap_override(&mut self, mode: hume_engine::pane::WrapMode) {
+        let before = self.focused_wrap_mode();
+        let pid = self.state.focused_pane_id;
+        let pane = &mut self.view.panes[pid];
+        pane.wrap_mode = Some(mode);
+        if mode.is_wrapping() {
+            pane.saved_wrap_mode = Some(mode);
         }
-        // Horizontal scroll is meaningless once wrapped, so an actual mode
-        // change zeroes it. `top_row_offset`, by contrast, addresses a row
-        // inside `top_line`'s whole visual block (`before` + content rows +
-        // `after`) in *either* wrap mode (`scroll::set_top` writes it
-        // unconditionally) — a mode change can leave it past the new
-        // block's row count (off→on starts a narrower block; on→on
-        // width/style changes can shrink it), and that out-of-range case is
-        // exactly what `scroll::clamp_viewport_top` repairs once per pane
-        // per frame, so there is no need to throw the address away here.
-        // What clamping *cannot* catch: only `content` changes with wrap
-        // mode, so an offset that addressed an `after` row in no-wrap can
-        // still be in range once wrapping grows `content` — landing on a
-        // wrap row of the line's own text instead of the virtual row it
-        // used to point at. Silent, not a bug this function fixes.
-        if mode_changed {
+        if mode != before {
             self.viewport_mut().horizontal_offset = 0;
         }
+    }
+
+    /// Toggle the focused pane's wrapping on/off — the write path behind
+    /// `:wrap`/`:toggle-soft-wrap`. Returns the new wrapping state.
+    ///
+    /// Turning wrapping *off* stashes the pane's current override into
+    /// `saved_wrap_mode` — `None` if it was inheriting from the buffer/global
+    /// setting, `Some(m)` if it was explicitly pinned to `m` — then pins the
+    /// pane to `WrapMode::None`.
+    ///
+    /// Turning wrapping back *on* restores that provenance rather than a
+    /// frozen resolved value: a pane that was inheriting goes back to
+    /// inheriting, so it keeps following later `:set buffer`/`:set global`
+    /// changes instead of getting stuck on whatever style happened to be
+    /// active at toggle-off time; a pane that was explicitly pinned goes
+    /// back to that exact pin. If restoring "inheriting" wouldn't actually
+    /// wrap (the buffer/global setting is `none`, or this pane has never
+    /// wrapped before), falls back to pinning `DEFAULT_WRAP_STYLE` — `:wrap`
+    /// must always visibly wrap, never silently no-op.
+    ///
+    /// Toggling always flips whether the pane is actually wrapping (off→on
+    /// is guaranteed to end up wrapping, by the fallback above; on→off
+    /// always ends at `WrapMode::None`), so horizontal scroll — meaningless
+    /// once wrapped — is unconditionally zeroed. This is a real write, not
+    /// just belt-and-suspenders: `scroll::ensure_cursor_visible_horizontal`
+    /// also zeroes it for any wrapping pane on the next frame, but only a
+    /// frame later, and code reading the viewport between this call and the
+    /// next render (including several existing tests) expects it already
+    /// zero.
+    ///
+    /// `top_row_offset`, by contrast, is left alone here on purpose: it
+    /// addresses a row inside `top_line`'s whole visual block (`before` +
+    /// content rows + `after`) in *either* wrap mode (`scroll::set_top`
+    /// writes it unconditionally) — a mode change can leave it past the new
+    /// block's row count (off→on starts a narrower block; on→on width/style
+    /// changes can shrink it), and that out-of-range case is exactly what
+    /// `scroll::clamp_viewport_top` repairs once per pane per frame, so
+    /// there's no need to throw the address away here. What clamping
+    /// *cannot* catch: only a `content`-side change (not this function)
+    /// grows the block, so an offset that addressed an `after` row in
+    /// no-wrap can still be in range once wrapping grows `content` —
+    /// landing on a wrap row of the line's own text instead of the virtual
+    /// row it used to point at. Silent, not a bug this function fixes.
+    pub(crate) fn toggle_focused_wrap(&mut self) -> bool {
+        use hume_engine::pane::{DEFAULT_WRAP_STYLE, WrapMode};
+
+        let pid = self.state.focused_pane_id;
+        let now_wrapping = if self.focused_wrap_mode().is_wrapping() {
+            let pane = &mut self.view.panes[pid];
+            pane.saved_wrap_mode = pane.wrap_mode;
+            pane.wrap_mode = Some(WrapMode::None);
+            false
+        } else {
+            self.view.panes[pid].wrap_mode = self.view.panes[pid].saved_wrap_mode;
+            if !self.focused_wrap_mode().is_wrapping() {
+                self.view.panes[pid].wrap_mode = Some(DEFAULT_WRAP_STYLE);
+            }
+            true
+        };
+        self.viewport_mut().horizontal_offset = 0;
+        now_wrapping
     }
 }
 

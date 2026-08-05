@@ -213,6 +213,21 @@ fn format_overrides(doc: &Buffer, settings: &EditorSettings) -> (u8, WhitespaceC
     )
 }
 
+/// `pane`'s effective wrap mode: pane override → buffer override → global
+/// default. `Pane::wrap_mode` is `Some` only once `:wrap` or `:set pane
+/// wrap-mode=…` has pinned this pane; until then it inherits whatever the
+/// buffer (or, failing that, the global) resolves to — the single place this
+/// three-way precedence is applied, mirrored by [`format_overrides`] for
+/// `tab_width`/`whitespace`, which only ever have two levels.
+pub(super) fn effective_wrap_mode(
+    doc: &Buffer,
+    settings: &EditorSettings,
+    pane: &Pane,
+) -> hume_engine::pane::WrapMode {
+    pane.wrap_mode
+        .unwrap_or_else(|| doc.overrides.wrap_mode(settings))
+}
+
 /// A [`RowMap`] over `pane`'s view of `doc` — the display-row list every
 /// scroll, cursor and movement consumer reads instead of walking rows itself.
 ///
@@ -228,7 +243,7 @@ pub(super) fn pane_row_map<'a>(
     let (tab_width, whitespace) = format_overrides(doc, settings);
     RowMap::new(
         doc.text().rope(),
-        pane.wrap_mode,
+        effective_wrap_mode(doc, settings, pane),
         tab_width,
         whitespace,
         &pane.providers,
@@ -249,7 +264,7 @@ pub(super) fn pane_row_map_mut<'a>(
 ) -> (RowMap<'a>, &'a mut ViewportState) {
     let (tab_width, whitespace) = format_overrides(doc, settings);
     // Both need the whole pane, so they are read before it is split.
-    let wrap_mode = pane.wrap_mode;
+    let wrap_mode = effective_wrap_mode(doc, settings, pane);
     let content_width = pane.content_width(doc.text().len_lines());
     let rm = RowMap::new(
         doc.text().rope(),

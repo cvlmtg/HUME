@@ -133,18 +133,8 @@ pub(crate) fn typed_toggle_soft_wrap(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    use hume_engine::pane::WrapMode;
-    let currently_wrapping = ed.focused_wrap_mode().is_wrapping();
-    let target = if currently_wrapping {
-        WrapMode::None
-    } else {
-        // saved_wrap_mode is always a wrapping variant — restores whatever
-        // mode this pane last wrapped with (its `:set pane` value, or the
-        // global seed), instead of hardcoding one.
-        ed.view.panes[ed.state.focused_pane_id].saved_wrap_mode
-    };
-    ed.apply_focused_wrap_mode(target);
-    let state = if currently_wrapping { "off" } else { "on" };
+    let now_wrapping = ed.toggle_focused_wrap();
+    let state = if now_wrapping { "on" } else { "off" };
     ed.report(Severity::Info, format!("Soft wrap {state}"));
     Ok(())
 }
@@ -242,7 +232,7 @@ pub(crate) fn typed_set(
                 use std::str::FromStr;
                 let mode =
                     hume_engine::pane::WrapMode::from_str(value).map_err(CommandError::new)?;
-                ed.apply_focused_wrap_mode(mode);
+                ed.set_focused_wrap_override(mode);
                 return Ok(());
             }
             unreachable!("'{key}' has scope Pane in setting_scopes() but no pane handler here")

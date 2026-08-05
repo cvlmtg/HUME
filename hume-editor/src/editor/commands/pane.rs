@@ -33,7 +33,6 @@ pub(in crate::editor) fn open_pane(
         &state.menu_view,
         &state.completion_menu_view,
         &state.picker_view,
-        state.settings.wrap_mode,
         buffer_id,
     );
     let pid = view.panes.insert(pane);
