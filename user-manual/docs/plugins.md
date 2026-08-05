@@ -247,7 +247,7 @@ For lazy plugins, declare the events that should trigger activation via `#:event
 
 `set-option!` works from a hook or command handler too, not just at the top level of your plugin — it changes the *global* default, so use it there when that's really what you want.
 
-For a per-buffer override, `(set-buffer-option! buffer-id "option" value)` sets an option just on the buffer named by `buffer-id`, which also works from hook and command bodies (see [Buffer options](configuration.md#buffer-options) for the list of settable options). Pass the buffer id the hook itself hands you rather than assuming the buffer you're editing — a hook can fire for a buffer other than the one you're currently focused on. `language` isn't an option; set it with `set-buffer-language!` instead. To read a specific buffer's options back the same way, pass its id first: `(get-option buffer-id "option")` (see [Configuration](configuration.md#reading-options-from-steel)).
+For a per-buffer override, `(set-buffer-option! buffer-id "option" value)` sets an option just on the buffer named by `buffer-id`, which also works from hook and command bodies (see [Buffer options](configuration.md#buffer-options) for the list of settable options). Pass the buffer id the hook itself hands you rather than assuming the buffer you're editing — a hook can fire for a buffer other than the one you're currently focused on. `language` isn't an option; set it with `set-buffer-language!` instead. To read a specific buffer's options back the same way, see [Reading options from Steel](#reading-options-from-steel) below.
 
 A few more examples:
 
@@ -261,18 +261,20 @@ A few more examples:
   (lambda (bid)
     (let ((errs (diagnostics-for-buffer bid #:severity 'error)))
       (log! 'info (string-append (to-string (length errs)) " errors")))))
+```
 
-; 2-space indentation for Markdown buffers
-(register-hook! 'on-language-set
-  (lambda (bid lang)
-    (when (equal? lang "markdown")
-      (set-buffer-option! bid "tab-width" 2))))
+### Reading options from Steel
 
-; word-wrap Markdown buffers, leave source code unwrapped
-(register-hook! 'on-language-set
-  (lambda (bid lang)
-    (when (equal? lang "markdown")
-      (set-buffer-option! bid "wrap-mode" "word"))))
+```scheme
+(get-option "option-name")
+(get-option bid "option-name")
+```
+
+Returns the effective value of an option: called with just an option name, the focused buffer's override if one is set, else the global default. Pass a buffer id first (e.g. inside an `on-language-set` hook, whose handler receives the buffer id as an argument) to read that buffer's value instead of the focused one. Errors on an unknown option name; `language` has no getter — read it with `(buffer-language bid)` instead. For `wrap-mode`, this reads the buffer/global level only — a pane pinned with `:set pane wrap-mode=…` can show a different style than what `get-option` reports.
+
+```scheme
+(get-option "tab-width")       ; the focused buffer's effective tab-width
+(get-option bid "tab-width")   ; bid's effective tab-width
 ```
 
 ### Default activation

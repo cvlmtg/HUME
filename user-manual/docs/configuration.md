@@ -48,18 +48,20 @@ Sets the global default. The value is a string, boolean, or integer. Callable fr
 (set-option! "tab-width" 2)
 ```
 
-### Reading options from Steel
+`init.scm` is a real Scheme program, not a flat list of settings, so you can react to what's being opened rather than only set fixed defaults. The most common case is configuring an option per file type: register an `on-language-set` handler and call `(set-buffer-option! bid "option" value)` to override just that buffer (see [Hooks](plugins.md#hooks) for the full hook API):
 
 ```scheme
-(get-option "option-name")
-(get-option bid "option-name")
-```
+; 2-space indentation for Markdown buffers
+(register-hook! 'on-language-set
+  (lambda (bid lang)
+    (when (equal? lang "markdown")
+      (set-buffer-option! bid "tab-width" 2))))
 
-Returns the effective value of an option: called with just an option name, the focused buffer's override if one is set, else the global default. Pass a buffer id first (e.g. inside an `on-language-set` hook, whose handler receives the buffer id as an argument) to read that buffer's value instead of the focused one. Errors on an unknown option name; `language` has no getter — read it with `(buffer-language bid)` instead. For `wrap-mode`, this reads the buffer/global level only — a pane pinned with `:set pane wrap-mode=…` can show a different style than what `get-option` reports.
-
-```scheme
-(get-option "tab-width")       ; the focused buffer's effective tab-width
-(get-option bid "tab-width")   ; bid's effective tab-width
+; word-wrap Markdown buffers, leave source code unwrapped
+(register-hook! 'on-language-set
+  (lambda (bid lang)
+    (when (equal? lang "markdown")
+      (set-buffer-option! bid "wrap-mode" "word"))))
 ```
 
 ## Global options
