@@ -425,7 +425,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
     type_cmd(&mut ed, ":go");
     // Hooks queued during dispatch fire on an explicit drain, not automatically
     // (`Editor::step`, which `type_cmd` rides, deliberately doesn't drain).
-    ed.drain_events();
+    ed.settle();
 
     assert_eq!(
         ed.lsp.diagnostic_counts_for_test(bid),

@@ -61,7 +61,7 @@ fn close_drawer_drops_the_callback_without_invoking_it() {
     assert!(ed.state.config.drawer.is_none());
     assert!(ed.state.drawer_view.read().unwrap().is_none());
     assert!(
-        ed.state.config.pending_steel_calls.is_empty(),
+        ed.state.config.pending_work.is_empty(),
         "close_drawer must not queue the callback"
     );
 }
@@ -75,7 +75,7 @@ fn esc_calls_back_with_false_and_closes() {
     arm_three_items(&mut ed, tmp.path());
 
     ed.feed_key(key_esc());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
     assert!(ed.state.config.drawer.is_none());
@@ -91,7 +91,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
     arm_three_items(&mut ed, tmp.path());
 
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "0");
     assert!(
         ed.state.config.drawer.is_some(),
@@ -102,7 +102,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
     // (cloned, not consumed by the first Enter).
     ed.feed_key(key_down());
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
     assert!(ed.state.config.drawer.is_some());
 }
@@ -118,7 +118,7 @@ fn selection_clamps_at_the_top() {
     ed.feed_key(key_up());
     ed.feed_key(key_up());
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "0");
 }
 
@@ -132,7 +132,7 @@ fn selection_clamps_at_the_bottom() {
         ed.feed_key(key_down());
     }
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "2",
@@ -150,7 +150,7 @@ fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
 
     let head_before = ed.current_selections().primary().head();
     ed.feed_key(key('l')); // move-right — not one of the drawer's keys
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(
         ed.state.config.drawer.is_some(),
@@ -188,7 +188,9 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
     // Populate `last_terminal_area` before any key handling needs it — the
     // scroll clamp reads it to agree with what the engine will next paint.
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 10, &mut ctx);
+    ed.sync_viewport_dims(40, 10);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     type_cmd(&mut ed, ":go");
 
     // capacity = min(20 items + 1, 10 rows / 2 = 5) = 5; visible_rows = 4.
@@ -232,7 +234,9 @@ fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
     // Populate `last_terminal_area` before any key handling needs it — the
     // scroll clamp reads it to agree with what the engine will next paint.
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 10, &mut ctx);
+    ed.sync_viewport_dims(40, 10);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     type_cmd(ed, ":go");
 }
 
@@ -320,7 +324,7 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
     type_cmd(&mut ed, ":go");
 
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     let head = ed.current_selections().primary().head();
     let bid = ed.focused_buffer_id();
@@ -356,7 +360,9 @@ fn drawer_renders_under_the_pane_with_selected_row_highlighted() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 10, &mut ctx);
+    ed.sync_viewport_dims(40, 10);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     use ratatui::layout::Rect;
     let rect = Rect::new(0, 0, 40, 10);

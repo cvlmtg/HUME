@@ -52,7 +52,9 @@ fn open_test_picker_with_prompt(ed: &mut Editor, items: &[&str], prompt: &str) {
 /// (paging, scroll clamping, the synced view).
 fn frame(ed: &mut Editor, width: u16, height: u16) {
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(width, height, &mut ctx);
+    ed.sync_viewport_dims(width, height);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 }
 
 fn payload_str(v: &SteelVal) -> &str {
@@ -232,8 +234,8 @@ fn enter_fires_on_select_with_payload_and_closes() {
         ed.state.config.picker.is_none(),
         "picker must close on Enter"
     );
-    assert_eq!(ed.state.config.pending_steel_calls.len(), 1);
-    let (proc, args) = &ed.state.config.pending_steel_calls[0];
+    assert_eq!(pending_calls(&ed).len(), 1);
+    let (proc, args) = pending_calls(&ed)[0];
     assert_eq!(callback_name(proc), "cb");
     assert_eq!(args.len(), 1);
     assert_eq!(payload_str(&args[0]), "one", "top-ranked item's payload");
@@ -245,7 +247,7 @@ fn enter_fires_on_select_with_payload_and_closes() {
     ed.feed_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "Xabc\n");
     assert_eq!(
-        ed.state.config.pending_steel_calls.len(),
+        pending_calls(&ed).len(),
         1,
         "no second callback should have fired from unrelated typing"
     );
@@ -258,8 +260,8 @@ fn esc_fires_false_and_closes() {
     ed.feed_key(key_esc());
 
     assert!(ed.state.config.picker.is_none());
-    assert_eq!(ed.state.config.pending_steel_calls.len(), 1);
-    let (proc, args) = &ed.state.config.pending_steel_calls[0];
+    assert_eq!(pending_calls(&ed).len(), 1);
+    let (proc, args) = pending_calls(&ed)[0];
     assert_eq!(callback_name(proc), "cb");
     assert_eq!(args, &vec![SteelVal::BoolV(false)]);
 
@@ -281,7 +283,7 @@ fn enter_with_no_match_dismisses_with_false() {
 
     ed.feed_key(key_enter());
     assert!(ed.state.config.picker.is_none());
-    let (_, args) = &ed.state.config.pending_steel_calls[0];
+    let (_, args) = pending_calls(&ed)[0];
     assert_eq!(args, &vec![SteelVal::BoolV(false)]);
 }
 
@@ -325,14 +327,14 @@ fn open_over_open_picker_fires_old_callback_with_false() {
     open_test_picker_with_callback(&mut ed, &["one"], marker("first"));
     open_test_picker_with_callback(&mut ed, &["two"], marker("second"));
 
-    assert_eq!(ed.state.config.pending_steel_calls.len(), 1);
-    let (proc, args) = &ed.state.config.pending_steel_calls[0];
+    assert_eq!(pending_calls(&ed).len(), 1);
+    let (proc, args) = pending_calls(&ed)[0];
     assert_eq!(callback_name(proc), "first");
     assert_eq!(args, &vec![SteelVal::BoolV(false)]);
 
     ed.feed_key(key_esc());
-    assert_eq!(ed.state.config.pending_steel_calls.len(), 2);
-    let (proc, args) = &ed.state.config.pending_steel_calls[1];
+    assert_eq!(pending_calls(&ed).len(), 2);
+    let (proc, args) = pending_calls(&ed)[1];
     assert_eq!(callback_name(proc), "second");
     assert_eq!(args, &vec![SteelVal::BoolV(false)]);
 }
@@ -450,7 +452,9 @@ fn snapshot_picker_over_populated_buffer_empty_query() {
     open_test_picker(&mut ed, &["alpha", "beta", "gamma"]);
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 12, &mut ctx);
+    ed.sync_viewport_dims(40, 12);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);
@@ -465,7 +469,9 @@ fn snapshot_picker_after_filtering_query() {
     ed.feed_key(key('p'));
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 12, &mut ctx);
+    ed.sync_viewport_dims(40, 12);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);
@@ -480,12 +486,16 @@ fn snapshot_picker_scrolled_with_selection_highlight() {
     open_test_picker(&mut ed, &refs);
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 12, &mut ctx);
+    ed.sync_viewport_dims(40, 12);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     for _ in 0..15 {
         ed.feed_key(key_down());
     }
 
-    ed.prepare_frame(40, 12, &mut ctx);
+    ed.sync_viewport_dims(40, 12);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);
@@ -501,7 +511,9 @@ fn snapshot_picker_no_match_state() {
     }
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 12, &mut ctx);
+    ed.sync_viewport_dims(40, 12);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);
@@ -515,7 +527,9 @@ fn snapshot_picker_with_prompt() {
     ed.feed_key(key('a'));
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 12, &mut ctx);
+    ed.sync_viewport_dims(40, 12);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);

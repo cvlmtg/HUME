@@ -587,8 +587,9 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         ) else {
             // Benign race: the async completion response landed after the
             // user switched away from `bid`'s pane. Not an error — raising
-            // here would abort the whole drain_pending_steel_calls batch and
-            // drop every other queued LSP callback/timer this frame.
+            // here would abort the whole `run_call_batch` this `Call` was
+            // batched into and drop every other queued LSP callback/timer
+            // batched alongside it.
             self.state.report(
                 Severity::Trace,
                 "completion-begin!: buffer not shown in focused pane — ignored".to_string(),
@@ -718,22 +719,23 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
             // child produces (the sentinel `%run-inline-output!` already
             // uses — a real exit code can never be -1, it's u8-wide).
             Err(e) => {
-                self.state.config.pending_steel_calls.push((
+                self.state.queue_steel_call(
                     callback,
                     vec![
                         steel::rvals::SteelVal::StringV("".into()),
                         steel::rvals::SteelVal::StringV(format!("cannot run '{cmd}': {e}").into()),
                         steel::rvals::SteelVal::IntV(-1),
                     ],
-                ));
+                );
                 // The `Ok` arm needs no wake: the job thread wakes the loop
                 // itself on completion. This callback has no background
-                // thread behind it, so without this it would sit unfired
-                // until something else happens to wake the loop — e.g.
-                // never, if `spawn-async!` was itself called from inside a
-                // queued Steel callback (`prepare_frame`'s
-                // `drain_pending_steel_calls` won't re-drain what it pushes
-                // to mid-drain).
+                // thread behind it — `settle()`'s fixpoint (unlike the old
+                // single-pass `drain_pending_steel_calls`) does pick it up
+                // within the same `settle()` call even when `spawn-async!`
+                // was itself invoked from a queued Steel callback, but this
+                // wake is kept anyway: cheap, harmless if the loop is already
+                // awake, and the one thing standing between "unfired" and
+                // "fired eventually" if that invariant ever changes.
                 (self.state.wake)();
             }
         }

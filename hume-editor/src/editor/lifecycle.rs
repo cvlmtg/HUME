@@ -264,9 +264,12 @@ impl Editor {
     /// macro replay, sync again.
     ///
     /// This is the single, non-test path for feeding one keystroke to the editor
-    /// from outside the interactive event loop (e.g. headless key-runner).  The
-    /// interactive loop handles hook draining itself via [`Self::handle_input`]; here
-    /// we use [`Self::handle_key`] directly so the caller doesn't need a scripting host.
+    /// from outside the interactive event loop (e.g. headless key-runner). Unlike
+    /// [`Self::handle_input`], `step` does not call [`Self::settle`] — the caller
+    /// (`hume_editor::run_keys`) calls it once per key itself, mirroring how the
+    /// interactive loop settles once per iteration rather than once per input
+    /// handler. Here we use [`Self::handle_key`] directly so the caller doesn't
+    /// need a scripting host.
     pub(crate) fn step(&mut self, key: KeyEvent) {
         self.handle_key(key);
         self.sync_search_cache();
@@ -274,18 +277,23 @@ impl Editor {
         self.sync_search_cache();
     }
 
-    /// Single interactive input boundary: dispatch one terminal event and drain hooks.
+    /// Single interactive input boundary: dispatch one terminal event.
     ///
-    /// All interactive input flows through here — key events and mouse events alike.
-    /// Hooks enqueued during dispatch (mode changes, `:write`, buffer open/close,
-    /// language set) fire once at the tail, never mid-event. New input paths must
-    /// route through this method so they cannot accidentally skip the drain.
+    /// All interactive input flows through here — key events and mouse events
+    /// alike. Unlike before the `settle()` merge (SPEC.md §3), this no longer
+    /// drains queued work itself — `Editor::run`'s loop calls `settle()` once
+    /// per iteration, at the top, so it covers both a command dispatched here
+    /// and any async work that arrived without any input at all. New input
+    /// paths should still route through this method for the disk check below.
     ///
     /// Also the single place that runs the buffer-enter disk check for a
-    /// focus change: the snapshot is taken before dispatch and compared after
-    /// `drain_events`, so a hook-driven `switch-to-buffer!` is covered along
-    /// with every keymap/mouse path, instead of each needing its own call —
-    /// see `check_focus_change_disk_state`. `Editor::step` (the headless
+    /// focus change made *during dispatch itself* (a keymap command or mouse
+    /// click that switches buffers): the snapshot is taken before dispatch
+    /// and compared right after. A focus change made by a *hook* handler
+    /// queued here is caught one `settle()` later, at the top of the next
+    /// loop iteration, rather than in this same call — narrower than before
+    /// the merge, closed by C5's focus diff living inside `settle()`'s own
+    /// fixpoint (SPEC.md §4, not yet landed). `Editor::step` (the headless
     /// key-runner) skips this boundary on its own dispatch, but its
     /// `drain_replay_queue` re-enters `handle_input` per replayed key, so a
     /// check still runs for a buffer switch made from a macro — never
@@ -305,7 +313,6 @@ impl Editor {
             TerminalEvent::Paste(s) => self.handle_terminal_paste(s),
             _ => {}
         }
-        self.drain_events();
         self.state.message_logged_this_event = self.state.message_log.totals() != totals_before;
         self.check_focus_change_disk_state(focused_before);
         self.state.message_logged_this_event = false;
@@ -314,10 +321,22 @@ impl Editor {
     /// Run the editor event loop until the user quits.
     ///
     /// Each iteration:
-    /// 1. Prepare the frame: sync all editor state to the engine pane.
+    /// 1. Sync viewport geometry, settle (drain async sources and the merged
+    ///    work queue to quiescence — see `Editor::settle`'s doc; this is
+    ///    what closes the stranded-events bug, SPEC.md §3), observe
+    ///    `should_quit`, then prepare the frame: sync all editor state to
+    ///    the engine pane.
     /// 2. Render.
     /// 3. Block until the next terminal event.
     /// 4. Dispatch the event.
+    ///
+    /// **Invariant not independently unit-testable** (SPEC.md §7): `settle()`
+    /// always runs, and `should_quit` is always observed, before this loop's
+    /// `prepare_frame`/draw. `run` itself needs a live terminal and event
+    /// reader, so this is verified by this function's own structure below
+    /// plus `tests/events.rs`' `:wq`-fires-`OnBufferSave` regression test,
+    /// which covers the drain but not the loop ordering — recorded here
+    /// rather than faked with a shape-assertion test.
     pub(crate) fn run(&mut self, term: &mut Term) -> io::Result<()> {
         // Marks that this Editor now owns the terminal — dispatch's
         // inline-output bracket (mod.rs) checks this to skip alt-screen
@@ -359,9 +378,26 @@ impl Editor {
                 let _ = term.clear();
             }
 
-            // ── 1. Prepare frame (single sync point) ─────────────────────────
+            // ── 1. Sync geometry, then settle (single sync point) ────────────
+            // `sync_viewport_dims` must run before `settle`: `drain_due_timers`
+            // fires `OnViewportChange` off each pane's *current* bounds, and
+            // this is what makes them current before that drain runs.
             let size = term.size()?;
-            self.prepare_frame(size.width, size.height, &mut ctx);
+            self.sync_viewport_dims(size.width, size.height);
+            self.settle();
+            // NEW observation point, downstream of `settle()`. `should_quit`
+            // is also checked after dispatch below (`:508`, `continue` rather
+            // than `break`) — that keeps the loop going for exactly one more
+            // iteration, which reaches `settle()` here before this check
+            // breaks it. That's what makes `:wq` correct: it queues
+            // `OnBufferSave` and sets `should_quit` in the same dispatch, and
+            // without this second pass through `settle()` the hook would
+            // never fire — the old code observed `should_quit` immediately
+            // after dispatch, before any drain ran.
+            if self.state.should_quit {
+                break;
+            }
+            self.prepare_frame(&mut ctx);
 
             // ── 2. Render ─────────────────────────────────────────────────────
             // Compute terminal cursor position before the draw closure to avoid
@@ -433,7 +469,7 @@ impl Editor {
             // source's deadline — whichever comes first. Idle (no deadline)
             // blocks indefinitely, so we never burn CPU while the editor is
             // at rest. `Ok(false)` covers both a timeout and a waker
-            // interrupt — either way, loop back to the top: `prepare_frame`
+            // interrupt — either way, loop back to the top: `settle()`
             // drains every async source regardless of why we woke, and
             // `term.size()` re-reads the viewport (covers SIGWINCH).
             match reader.poll(self.wake_timeout(), |_| true) {
@@ -505,8 +541,14 @@ impl Editor {
                 _ => {}
             }
 
+            // Not a `break`: this loop's top now owns the one quit-observation
+            // point that runs after `settle()` (see this function's doc) —
+            // breaking here instead would strand a hook a quitting dispatch
+            // just queued (`:wq`'s `OnBufferSave`). `continue` still skips
+            // `drain_replay_queue` below, which is what this check is really
+            // for: a macro containing `:q` must not keep replaying past the quit.
             if self.state.should_quit {
-                break;
+                continue;
             }
 
             // ── 4. Drain macro replay queue ───────────────────────────────────
@@ -520,9 +562,6 @@ impl Editor {
             // cache only changes when the buffer revision changes, so calling
             // it per-key would redundantly clone the regex on every iteration.
             self.sync_search_cache();
-            if self.state.should_quit {
-                break;
-            }
         }
         // Terminal restore and LSP shutdown happen in `hume_editor::run`,
         // after this returns: `restore_for_exit` is the one function allowed

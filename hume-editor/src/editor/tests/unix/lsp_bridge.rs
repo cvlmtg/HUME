@@ -44,7 +44,7 @@ fn supersede_cancels_the_prior_request_under_the_same_key() {
 
     type_cmd(&mut ed, ":test-cmd");
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -132,7 +132,7 @@ fn callback_fires_normally_without_an_intervening_edit() {
     let before = state(&ed);
     type_cmd(&mut ed, ":test-cmd");
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_ne!(
         state(&ed),
@@ -172,7 +172,7 @@ fn stale_response_is_dropped_without_allow_stale() {
 
     let before = state(&ed);
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(
         state(&ed),
@@ -210,7 +210,7 @@ fn allow_stale_delivers_despite_buffer_moving_on() {
 
     let before = state(&ed);
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_ne!(
         state(&ed),

@@ -132,7 +132,7 @@ impl Editor {
             Some(s) => steel::rvals::SteelVal::StringV(s.into()),
             None => steel::rvals::SteelVal::BoolV(false),
         };
-        self.queue_steel_call(callback, vec![arg]);
+        self.state.queue_steel_call(callback, vec![arg]);
         self.set_mode(Mode::Normal);
         self.close_minibuf();
     }

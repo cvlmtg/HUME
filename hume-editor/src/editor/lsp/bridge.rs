@@ -81,7 +81,9 @@ impl Editor {
         let callback_for_send = req.callback.clone();
         let lsp_callback: super::LspCallback = Box::new(move |editor, outcome| {
             let (err, result) = outcome_to_steel(outcome);
-            editor.queue_steel_call(callback_for_send, vec![err, result]);
+            editor
+                .state
+                .queue_steel_call(callback_for_send, vec![err, result]);
         });
         let meta = RequestMeta {
             method: req.method.clone(),
@@ -113,7 +115,7 @@ impl Editor {
     /// otherwise never fire at all. Keeps the documented `(err result)`
     /// contract (exactly one non-`#f`) true even on this early-failure path.
     fn fail_lsp_request_callback(&mut self, callback: SteelVal, message: &str) {
-        self.queue_steel_call(
+        self.state.queue_steel_call(
             callback,
             vec![
                 SteelVal::StringV(message.to_string().into()),

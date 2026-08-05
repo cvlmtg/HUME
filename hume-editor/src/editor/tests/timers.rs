@@ -19,7 +19,7 @@ fn after_fires_once_past_its_deadline() {
 
     type_cmd(&mut ed, ":start");
     ed.drain_async_sources();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(
         state(&ed),
@@ -43,7 +43,7 @@ fn a_timer_not_yet_due_does_not_fire() {
 
     type_cmd(&mut ed, ":start");
     ed.drain_async_sources();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(
         state(&ed),
@@ -69,7 +69,7 @@ fn cancel_timer_before_it_fires_prevents_the_thunk() {
 
     type_cmd(&mut ed, ":start-and-cancel");
     ed.drain_async_sources();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(
         state(&ed),
@@ -94,7 +94,7 @@ fn debounce_collapses_a_rapid_burst_into_one_trailing_call() {
 
     type_cmd(&mut ed, ":burst");
     ed.drain_async_sources();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(
         state(&ed),
@@ -125,7 +125,7 @@ fn debounce_shares_one_pending_timer_across_all_keys() {
 
     type_cmd(&mut ed, ":burst");
     ed.drain_async_sources();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -155,7 +155,7 @@ fn debounce_by_keys_pending_timers_independently() {
 
     type_cmd(&mut ed, ":burst");
     ed.drain_async_sources();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     let log = ed.state.message_log.format_for_display();
     assert_eq!(
@@ -191,7 +191,7 @@ fn an_erroring_thunk_lands_in_the_message_log_and_the_wheel_survives() {
     // batch" semantics (same `run_steel_calls`).
     type_cmd(&mut ed, ":boom");
     ed.drain_async_sources();
-    ed.drain_pending_steel_calls(); // must not panic
+    ed.settle(); // must not panic
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -203,7 +203,7 @@ fn an_erroring_thunk_lands_in_the_message_log_and_the_wheel_survives() {
     // normally — the wheel/thunk table weren't left in a broken state.
     type_cmd(&mut ed, ":start");
     ed.drain_async_sources();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(
         state(&ed),

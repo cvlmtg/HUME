@@ -372,7 +372,7 @@ fn steel_open_buffer_missing_path_opens_new_file() {
 /// heard opened.
 ///
 /// Fail oracle: drop the `open_announced` gate in `close_buffer_and_notify`
-/// (queue `OnBufferClose` unconditionally) — `pending_events` gains an
+/// (queue `OnBufferClose` unconditionally) — `pending_work` gains an
 /// `OnBufferClose` entry after `:go`, with no matching `OnBufferOpen`.
 #[test]
 fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
@@ -409,7 +409,16 @@ fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
         "close-buffer! must have closed the just-opened buffer"
     );
 
-    let pending = &ed.state.config.pending_events;
+    let pending: Vec<&EditorEvent> = ed
+        .state
+        .config
+        .pending_work
+        .iter()
+        .filter_map(|w| match w {
+            crate::editor::event::PendingWork::Event(e) => Some(e),
+            crate::editor::event::PendingWork::Call(..) => None,
+        })
+        .collect();
     assert!(
         !pending
             .iter()

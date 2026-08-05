@@ -1,7 +1,9 @@
 //! Per-frame preparation: pane-mirror sync, scroll, and render plumbing.
 //!
-//! `prepare_frame` is the single per-frame entry point `run`/`render_to_buf`
-//! call; everything else here is a step it drives or a helper those steps share.
+//! `sync_viewport_dims` (geometry) → `Editor::settle` (advance state) →
+//! `prepare_frame` (render prep) is the sequence every frame producer —
+//! `Editor::run`'s loop, `render_to_buf` — calls in that order; everything
+//! else here is a step `prepare_frame` drives or a helper those steps share.
 
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, PaneId, PaneRenderSettings, RenderContext};
@@ -108,14 +110,17 @@ impl Editor {
 
     /// Render the current frame into a ratatui `Buffer` without a live terminal.
     ///
-    /// Calls `prepare_frame` so pane mirrors are synced and parse trees are up
-    /// to date before rendering.  Used by snapshot tests to lock down styled
-    /// output without a live terminal.
+    /// Calls `sync_viewport_dims` + `settle` + `prepare_frame` — the same
+    /// three-step sequence `Editor::run`'s loop uses — so pane mirrors are
+    /// synced and parse trees are up to date before rendering. Used by
+    /// snapshot tests to lock down styled output without a live terminal.
     #[cfg(test)]
     pub(crate) fn render_to_buf(&mut self, rect: ratatui::layout::Rect) -> ratatui::buffer::Buffer {
         let mut buf = ratatui::buffer::Buffer::empty(rect);
         let mut ctx = RenderContext::new();
-        self.prepare_frame(rect.width, rect.height, &mut ctx);
+        self.sync_viewport_dims(rect.width, rect.height);
+        self.settle();
+        self.prepare_frame(&mut ctx);
         self.render_into(rect, &mut buf, &mut ctx);
         buf
     }
@@ -167,27 +172,65 @@ impl Editor {
         self.applied_mouse_mode = desired;
     }
 
+    /// Sync every pane's viewport dimensions and the frame's geometry
+    /// snapshot from the terminal size — the one step that needs the raw
+    /// `(width, height)`, so it's split out from `prepare_frame` and called
+    /// separately, *before* `Editor::settle()`.
+    ///
+    /// Must run before `settle()`: `drain_due_timers` fires `OnViewportChange`
+    /// off each pane's *current* bounds (`timer_bridge.rs`), so the bounds
+    /// have to be current before that drain runs, not after.
+    pub(super) fn sync_viewport_dims(&mut self, terminal_width: u16, terminal_height: u16) {
+        // Shared rect list every per-pane step below drives off — partitioned
+        // through the same `EngineView::pane_area` that `render` uses, so
+        // viewport dims and drawn rects never disagree even when a tab bar is
+        // present.
+        let terminal_area = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: terminal_width,
+            height: terminal_height,
+        };
+        let pane_area = self.view.pane_area(terminal_area);
+        let reserve_seam = self.state.settings.pane_dividers;
+        let mut rects = Vec::new();
+        self.view
+            .layout
+            .collect_rects_into(pane_area, reserve_seam, &mut rects);
+
+        for &(pid, rect) in &rects {
+            let vp = &mut self.view.panes[pid].viewport;
+            vp.width = rect.width;
+            vp.height = rect.height;
+        }
+
+        // Stored so pane-focus/split commands, which have no terminal handle
+        // between frames, can recompute geometry from these via
+        // `EngineView::pane_rects`/`pane_rect` rather than trusting a stored
+        // rect list.
+        self.view.last_pane_area = pane_area;
+        self.view.last_terminal_area = terminal_area;
+        self.view.reserve_seam = reserve_seam;
+    }
+
     /// Prepare the engine pane for rendering by syncing all editor-authoritative
     /// state in one place, once per frame.
     ///
     /// `sync_all_pane_mirrors` is the **single sync point** for `pane.selections`
     /// and `pane.primary_idx` — it covers every pane in one pass.  No other code
     /// path writes those fields.  It, and the scroll pass right after it, run
-    /// *after* the async/Steel drains (step 2) since those can switch a pane's
-    /// `buffer_id` (picker accept, LSP goto-definition) or move its selections
-    /// (timer/LSP callbacks) — syncing or scrolling any earlier would use a
-    /// stale selection head against the pane's new buffer, which can be out of
-    /// bounds for that rope, or leave the new buffer's cursor unvalidated
-    /// against the viewport for a frame. Highlight and statusline shared
-    /// buffers are also written here, immediately before every `render()` call.
-    /// Mode and display settings are resolved lazily via the
-    /// `get_pane_settings` closure passed to `render()`.
-    pub(super) fn prepare_frame(
-        &mut self,
-        terminal_width: u16,
-        terminal_height: u16,
-        ctx: &mut RenderContext,
-    ) {
+    /// *after* `Editor::settle()` (called by every caller of this function,
+    /// immediately before it — see `settle`'s doc) since a settled drain can
+    /// switch a pane's `buffer_id` (picker accept, LSP goto-definition) or
+    /// move its selections (timer/LSP callbacks) — syncing or scrolling any
+    /// earlier would use a stale selection head against the pane's new
+    /// buffer, which can be out of bounds for that rope, or leave the new
+    /// buffer's cursor unvalidated against the viewport for a frame.
+    /// Highlight and statusline shared buffers are also written here,
+    /// immediately before every `render()` call. Mode and display settings
+    /// are resolved lazily via the `get_pane_settings` closure passed to
+    /// `render()`.
+    pub(super) fn prepare_frame(&mut self, ctx: &mut RenderContext) {
         // A `RenderContext` is allocated once and reused for every frame, so
         // last frame's cursor cell would otherwise be indistinguishable from
         // one step 6 resolved this frame. Cleared here, filled there.
@@ -210,9 +253,10 @@ impl Editor {
         self.resync_mouse_mode();
 
         // Re-bake the theme if any scope was interned since the last bake —
-        // catches up on interning from the *previous* frame or from command
-        // dispatch between frames (e.g. `:theme`). This frame's own steps
-        // (2, 5, 7 below) can themselves intern new scopes — extra
+        // catches up on interning from the *previous* frame, from command
+        // dispatch between frames (e.g. `:theme`), or from the `settle()`
+        // call every caller makes immediately before this one. This frame's
+        // own steps (5, 7 below) can themselves intern new scopes — extra
         // highlights, inline diagnostics, virtual lines, a newly attached
         // grammar's capture names — so a second `bake_if_stale` runs at the
         // very end of this function, right before `render_into` gets to
@@ -220,45 +264,12 @@ impl Editor {
         // resolved by that same frame's render is past the end of `baked`.
         self.view.theme.bake_if_stale(&self.view.registry);
 
-        // Shared rect list every per-pane step below drives off — partitioned
-        // through the same `EngineView::pane_area` that `render` uses, so
-        // viewport dims and drawn rects never disagree even when a tab bar is
-        // present.
-        let terminal_area = ratatui::layout::Rect {
-            x: 0,
-            y: 0,
-            width: terminal_width,
-            height: terminal_height,
-        };
-        let pane_area = self.view.pane_area(terminal_area);
-        let reserve_seam = self.state.settings.pane_dividers;
-        let mut rects = Vec::new();
-        self.view
-            .layout
-            .collect_rects_into(pane_area, reserve_seam, &mut rects);
-
-        // 1. Sync viewport dimensions for every pane.
-        for &(pid, rect) in &rects {
-            let vp = &mut self.view.panes[pid].viewport;
-            vp.width = rect.width;
-            vp.height = rect.height;
-        }
-
-        // 2. Drain completed async work (parse results, LSP), then evaluate
-        //    any Steel calls that work queued (LSP request/timer callbacks).
-        //    `drain_pending_steel_calls` also unconditionally consumes any
-        //    deferred LSP-completion dismissal (`set_mode`'s Insert-exit arm)
-        //    — this is what makes step 10's `sync_completion_menu_view` below
-        //    always see an up-to-date session, with no separate call needed.
-        self.drain_async_sources();
-        self.drain_pending_steel_calls();
-
         // 3. Sync line-number style provider for every pane (depends on that
-        //    pane's own buffer overrides). Must run after step 2: the drains
-        //    can switch a pane's `buffer_id` (picker accept, LSP
-        //    goto-definition), so syncing any earlier would apply the
+        //    pane's own buffer overrides). Must run after `settle()`: a
+        //    settled drain can switch a pane's `buffer_id` (picker accept,
+        //    LSP goto-definition), so syncing any earlier would apply the
         //    just-left buffer's style to the pane's new buffer for a frame.
-        //    Iterates a fresh pane-id snapshot (not the frame-start `rects`)
+        //    Iterates a fresh pane-id snapshot (not a frame-start rect list)
         //    since a drained callback may have closed a pane.
         for pid in self.view.panes.keys().collect::<Vec<_>>() {
             let buf_id = self.view.panes[pid].buffer_id;
@@ -273,11 +284,11 @@ impl Editor {
                 .sync_line_number_style(ln_style);
         }
 
-        // 4. Sync selection mirrors for every pane. Must run after step 2:
-        //    the drains can switch a pane's `buffer_id` (picker accept, LSP
-        //    goto-definition) or move its selections (timer/LSP callbacks),
-        //    and render (right after this function returns) reads this
-        //    mirror against the pane's *current* buffer.
+        // 4. Sync selection mirrors for every pane. Must run after
+        //    `settle()`: a settled drain can switch a pane's `buffer_id`
+        //    (picker accept, LSP goto-definition) or move its selections
+        //    (timer/LSP callbacks), and render (right after this function
+        //    returns) reads this mirror against the pane's *current* buffer.
         self.sync_all_pane_mirrors();
 
         // 5. Sync everything that decides row counts/columns for step 6's
@@ -309,13 +320,14 @@ impl Editor {
         self.update_inline_diagnostics_providers();
 
         // 6. Scroll every pane so its primary cursor stays visible. Must run
-        //    after step 2: the drains can switch a pane's `buffer_id` mid-frame
-        //    (picker accept, LSP goto-definition), and this reads buffer_id/
-        //    rope/cursor together from SSOT, so it always scrolls the pane's
-        //    *current* buffer instead of leaving a just-switched-to buffer's
-        //    cursor unvalidated against the viewport for a frame. Iterates a
-        //    fresh pane-id snapshot (not the frame-start `rects`) since a
-        //    drained callback may have closed a pane.
+        //    after `settle()`: a settled drain can switch a pane's `buffer_id`
+        //    mid-frame (picker accept, LSP goto-definition), and this reads
+        //    buffer_id/rope/cursor together from SSOT, so it always scrolls
+        //    the pane's *current* buffer instead of leaving a just-switched-to
+        //    buffer's cursor unvalidated against the viewport for a frame.
+        //    Iterates a fresh pane-id snapshot (not `sync_viewport_dims`'
+        //    frame-start rect list) since a drained callback may have closed
+        //    a pane.
         let scrolloff = self.state.settings.scrolloff;
         let pane_ids: Vec<PaneId> = self.view.panes.keys().collect();
         for pid in pane_ids {
@@ -342,10 +354,10 @@ impl Editor {
             // *result*, not part of computing what to render — the hook
             // itself never fires from here, only the coalescer timer gets
             // (re)armed; the actual fire happens later via the async-source
-            // drain, same as every other timer. Arming here (after step 2's
-            // drain) means a change detected this frame is picked up by
-            // *next* frame's drain — one frame later than when this ran
-            // pre-drain, immaterial for any nonzero debounce interval.
+            // drain, same as every other timer. Arming here (after
+            // `settle()`'s drain) means a change detected this frame is
+            // picked up by *next* frame's drain — one frame later than when
+            // this ran pre-drain, immaterial for any nonzero debounce interval.
             let viewport = &self.view.panes[pid].viewport;
             let key = (viewport.top_line, viewport.height);
             if self.last_viewport_key.insert(pid, key) != Some(key) {
@@ -362,21 +374,12 @@ impl Editor {
         // 8. Sync completion-popup view to the shared Arc for `MinibufCompletionOverlay`.
         self.sync_minibuf_completion_view();
 
-        // 9. Store the terminal area + divider setting: pane-focus/split
-        //    commands have no terminal handle between frames, so they
-        //    recompute geometry from these via `EngineView::pane_rects`/
-        //    `pane_rect` rather than trusting a stored rect list.
-        self.view.last_pane_area = pane_area;
-        self.view.last_terminal_area = terminal_area;
-        self.view.reserve_seam = reserve_seam;
-
         // 10. Sync the popup-, menu-, LSP-completion-menu-, and
-        //     picker-overlay views. Deliberately *after* step 9: their
-        //     geometry needs the focused pane's current-frame rect via
-        //     `EngineView::pane_rect` (popup/menu/completion) or
-        //     `last_pane_area` directly (picker), which reads `last_pane_area`
-        //     — calling this any earlier would position against last frame's
-        //     geometry.
+        //     picker-overlay views. Their geometry needs the focused pane's
+        //     current-frame rect via `EngineView::pane_rect` (popup/menu/
+        //     completion) or `last_pane_area` directly (picker) — both
+        //     written by `sync_viewport_dims`, called by every caller of
+        //     this function before it.
         self.sync_popup_view(ctx);
         self.sync_popup_band_view();
         self.sync_menu_view(ctx);

@@ -90,9 +90,9 @@ fn setup_with_capabilities(
 
 fn run_actions(ed: &mut Editor) {
     type_cmd(ed, ":lsp-code-actions");
-    ed.drain_events();
+    ed.settle();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 }
 
 fn menu_items(ed: &Editor) -> Vec<String> {
@@ -184,7 +184,7 @@ fn selecting_an_edit_action_applies_it() {
 
     run_actions(&mut ed);
     ed.handle_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(
         ed.doc().text().to_string(),
@@ -220,9 +220,9 @@ fn selecting_a_command_action_runs_the_full_server_loop() {
 
     run_actions(&mut ed);
     ed.handle_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
     let _ = sid;
 
     assert_eq!(
@@ -333,9 +333,9 @@ fn selecting_an_unresolved_action_sends_resolve_then_applies_it() {
 
     run_actions(&mut ed);
     ed.handle_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     last_request_params(&requests, "codeAction/resolve");
     assert_eq!(
@@ -364,7 +364,7 @@ fn selecting_an_unresolved_action_without_resolve_support_reports_it() {
 
     run_actions(&mut ed);
     ed.handle_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(
         requests
@@ -408,9 +408,9 @@ fn selecting_an_unresolved_action_whose_resolve_is_still_bare_reports_it_once() 
 
     run_actions(&mut ed);
     ed.handle_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     let resolve_requests = requests
         .borrow()
@@ -448,9 +448,9 @@ fn selecting_an_unresolved_action_whose_resolve_errors_reports_it() {
 
     run_actions(&mut ed);
     ed.handle_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     let errors: Vec<String> = ed
         .state

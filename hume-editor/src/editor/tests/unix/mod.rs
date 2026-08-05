@@ -21,13 +21,13 @@ use std::time::{Duration, Instant};
 // single drain call — a background thread's result can land on any frame,
 // so CI scheduling jitter would flake a "drain once and assert" test.
 
-/// Drains async sources and their queued Steel callbacks in a bounded loop
-/// until `until` returns true.
+/// Drains async sources and their queued Steel callbacks/events in a bounded
+/// loop until `until` returns true. `settle()` already covers both (see its
+/// doc), so this is a single call, not two.
 fn drain_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
-        ed.drain_async_sources();
-        ed.drain_pending_steel_calls();
+        ed.settle();
         if until(ed) {
             return;
         }
@@ -36,9 +36,10 @@ fn drain_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
     }
 }
 
-/// Same loop as [`drain_until`], but skips `drain_pending_steel_calls` — for
-/// tests that drive the Rust-level registry directly, with no Steel VM in
-/// play.
+/// Same loop as [`drain_until`], but calls `drain_async_sources` directly
+/// instead of `settle()` — for tests that drive the Rust-level registry
+/// directly, with no Steel VM in play, where settling the (empty) work queue
+/// on top would be pointless.
 fn drain_sources_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {

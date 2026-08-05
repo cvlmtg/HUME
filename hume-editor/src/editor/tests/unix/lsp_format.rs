@@ -79,9 +79,9 @@ fn select_full_line_1(ed: &mut Editor) {
 
 fn run_fmt(ed: &mut Editor) {
     type_cmd(ed, ":lsp-fmt");
-    ed.drain_events();
+    ed.settle();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 }
 
 fn text_edit(sl: u64, sc: u64, el: u64, ec: u64, new_text: &str) -> serde_json::Value {
@@ -226,9 +226,9 @@ fn loading_the_plugin_registers_no_save_hook() {
 
     let bid = ed.focused_buffer_id();
     ed.queue_buffer_save(bid);
-    ed.drain_events();
+    ed.settle();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(
         ed.doc().text().to_string(),

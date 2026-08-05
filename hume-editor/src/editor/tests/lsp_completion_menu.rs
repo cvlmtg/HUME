@@ -64,7 +64,9 @@ fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
     begin_session(&mut ed, &items);
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 6, &mut ctx);
+    ed.sync_viewport_dims(40, 6);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let pane_rect = ed
         .view
@@ -93,7 +95,9 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(20, 8, &mut ctx);
+    ed.sync_viewport_dims(20, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let pane_rect = ed
         .view
@@ -128,7 +132,9 @@ fn menu_appears_with_top_items_after_begin() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 8, &mut ctx);
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
     insta::assert_snapshot!(snap);
 }
@@ -415,7 +421,9 @@ fn mode_change_outside_key_dispatch_dismisses_the_session_by_the_next_frame() {
     assert!(ed.state.lsp_completion_dismiss_pending);
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 8, &mut ctx);
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     assert!(
         ed.lsp.completion.is_none(),
@@ -602,7 +610,9 @@ fn stale_anchor_after_a_buffer_reload_skips_render_instead_of_panicking() {
     ed.reload_buffer_in_place(bid, replacement);
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 8, &mut ctx); // must not panic
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx); // must not panic
 
     assert!(
         ed.state.completion_menu_view.read().unwrap().is_none(),
@@ -632,7 +642,9 @@ fn stale_anchor_after_switching_focus_to_another_buffer_skips_render() {
     ed.switch_to_buffer_with_jump(other);
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 8, &mut ctx); // must not panic
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx); // must not panic
 
     assert!(
         ed.state.completion_menu_view.read().unwrap().is_none(),
@@ -669,7 +681,9 @@ fn completion_popup_anchor_matches_an_independent_screen_pos_walk_when_wrapped()
     // the cursor nor clamps the position, so the popup's (x, y) is exactly
     // (anchor_x, anchor_y + 1) — letting this test check the anchor cell
     // itself without reimplementing that geometry logic.
-    ed.prepare_frame(80, 24, &mut ctx);
+    ed.sync_viewport_dims(80, 24);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let (x, y) = {
         let view = ed.state.completion_menu_view.read().unwrap();

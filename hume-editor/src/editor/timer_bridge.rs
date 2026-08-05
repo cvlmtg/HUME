@@ -62,7 +62,9 @@ impl Editor {
         let due = self.timer_wheel.take_due(std::time::Instant::now());
         for id in due {
             match self.timer_payloads.remove(&id) {
-                Some(TimerPayload::SteelThunk(thunk)) => self.queue_steel_call(thunk, Vec::new()),
+                Some(TimerPayload::SteelThunk(thunk)) => {
+                    self.state.queue_steel_call(thunk, Vec::new())
+                }
                 Some(TimerPayload::ViewportDebounce(pane_id)) => {
                     self.viewport_debounce.remove(&pane_id);
                     self.queue_viewport_change(pane_id);

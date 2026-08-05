@@ -178,7 +178,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
 
     let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {})).unwrap();
     ed.init_scripting(&mut Default::default());
-    ed.drain_events();
+    ed.settle();
 
     let bid = ed.focused_buffer_id();
     assert_eq!(
@@ -189,7 +189,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
 
     fixture.write_init(init_scm);
     type_cmd(&mut ed, ":reload-config");
-    ed.drain_events();
+    ed.settle();
 
     assert_eq!(
         ed.state.buffers.get(bid).overrides.tab_width,
@@ -264,7 +264,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
 
     let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {})).unwrap();
     type_cmd(&mut ed, ":reload-config");
-    ed.drain_events();
+    ed.settle();
 
     let companion_bid = ed
         .state

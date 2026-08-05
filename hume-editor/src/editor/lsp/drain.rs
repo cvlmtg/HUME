@@ -311,7 +311,8 @@ impl Editor {
         };
         let params_val = hume_scripting::json::json_to_steel(&params);
         for handler in handlers {
-            self.queue_steel_call(handler, vec![server_val.clone(), params_val.clone()]);
+            self.state
+                .queue_steel_call(handler, vec![server_val.clone(), params_val.clone()]);
         }
     }
 

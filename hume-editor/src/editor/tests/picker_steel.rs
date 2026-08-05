@@ -85,12 +85,14 @@ fn end_to_end_accept_fires_payload_then_normal_editing_resumes() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 12, &mut ctx);
+    ed.sync_viewport_dims(40, 12);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     ed.feed_key(key('t'));
     ed.feed_key(key('w'));
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "p2");
     assert!(ed.state.config.picker.is_none());
@@ -101,7 +103,7 @@ fn end_to_end_accept_fires_payload_then_normal_editing_resumes() {
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
     ed.feed_key(key_esc());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(
         ed.state.status_msg.is_none(),
@@ -150,7 +152,7 @@ fn picker_push_bang_applies_matching_token_and_rejects_stale_or_no_picker() {
     );
 
     ed.feed_key(key_esc());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert!(ed.state.config.picker.is_none());
 
     call(&mut ed, "push-real");
@@ -180,16 +182,16 @@ fn opening_a_second_picker_fires_the_first_callback_with_false_exactly_once() {
     call(&mut ed, "go-b");
 
     assert_eq!(
-        ed.state.config.pending_steel_calls.len(),
+        pending_calls(&ed).len(),
         1,
         "replacing the open picker must queue exactly one callback (the old one, with #f)"
     );
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "A: #false");
 
     ed.state.status_msg = None;
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "B: pb");
     assert!(ed.state.config.picker.is_none());
 }
@@ -212,16 +214,16 @@ fn picker_close_bang_fires_false_once_and_is_idempotent() {
 
     call(&mut ed, "close-it");
     assert!(ed.state.config.picker.is_none());
-    assert_eq!(ed.state.config.pending_steel_calls.len(), 1);
+    assert_eq!(pending_calls(&ed).len(), 1);
 
     call(&mut ed, "close-it");
     assert_eq!(
-        ed.state.config.pending_steel_calls.len(),
+        pending_calls(&ed).len(),
         1,
         "closing an already-closed picker must not queue a second callback"
     );
 
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
 
     // LESSONS.md L4: keep interacting past the terminal action.
@@ -229,7 +231,7 @@ fn picker_close_bang_fires_false_once_and_is_idempotent() {
     ed.feed_key(key('i'));
     ed.feed_key(key('Z'));
     ed.feed_key(key_esc());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(
         ed.state.status_msg.is_none(),
@@ -265,7 +267,7 @@ fn picker_close_bang_with_a_stale_token_leaves_a_later_picker_open() {
     // Replaces A with B — A's on-select already fired (with #f) and drained
     // below, same as `opening_a_second_picker_fires_the_first_callback...`.
     call(&mut ed, "go-b");
-    ed.drain_pending_steel_calls();
+    ed.settle();
     ed.state.status_msg = None;
 
     // A's stale token must not touch B's picker, even though B is what's
@@ -281,7 +283,7 @@ fn picker_close_bang_with_a_stale_token_leaves_a_later_picker_open() {
     );
 
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "B: pb",
@@ -368,7 +370,7 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
     let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
     let _ = ed.render_to_buf(rect);
 
-    // Accept: close_picker queues on_select onto pending_steel_calls.
+    // Accept: close_picker queues on_select as a PendingWork::Call.
     ed.feed_key(key_enter());
 
     // The next prepare_frame drains the callback (switching the pane to the
@@ -421,7 +423,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
     let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
     let _ = ed.render_to_buf(rect);
 
-    // Accept: close_picker queues on_select onto pending_steel_calls.
+    // Accept: close_picker queues on_select as a PendingWork::Call.
     ed.feed_key(key_enter());
 
     // The next prepare_frame drains the callback (switch + goto-last-line on
@@ -481,12 +483,12 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.picker_close(None);
     assert!(ed.state.config.picker.is_none());
-    assert_eq!(ed.state.config.pending_steel_calls.len(), 1);
+    assert_eq!(pending_calls(&ed).len(), 1);
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.picker_close(None);
     assert_eq!(
-        ed.state.config.pending_steel_calls.len(),
+        pending_calls(&ed).len(),
         1,
         "closing with no picker open must be a no-op"
     );
@@ -515,7 +517,7 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
         ed.state.config.picker.is_some(),
         "a mismatched token must not close the open picker"
     );
-    assert!(ed.state.config.pending_steel_calls.is_empty());
+    assert!(pending_calls(&ed).is_empty());
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.picker_close(Some(token));

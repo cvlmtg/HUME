@@ -786,18 +786,23 @@ fn steel_unknown_cmd_errors_and_continues() {
     );
 }
 
-/// **Finding 6 — mouse input drains pending hooks via `handle_input`**: any hooks that
-/// are sitting in `state.config.pending_events` before a mouse event must be drained by
-/// `handle_input`, which is the single interactive drain choke point.
+/// **Finding 6, updated for the `settle()` merge (SPEC.md §3) — mouse input no
+/// longer drains pending work itself; `Editor::run`'s loop does, once per
+/// iteration, via `settle()`.** Before the merge, `handle_input` was the
+/// single interactive drain choke point, so a hook seeded before a mouse
+/// click was gone by the time `handle_input` returned. After the merge, the
+/// drain moved to the top of the run loop (so it also covers async work that
+/// arrives without any input at all — the bug this rebuild fixes) and
+/// `handle_input` no longer drains.
 ///
-/// Setup: a hook is seeded directly into `pending_events` via `queue_event`.
-/// No scripting host is needed — `drain_events` skips hooks with no registered handlers
-/// while still clearing the queue.
+/// Setup: a hook is seeded directly into `pending_work` via `queue_event`.
+/// No scripting host is needed — `settle()` skips hooks with no registered
+/// handlers while still clearing the queue.
 ///
-/// Fail oracle: remove `self.drain_events()` from `handle_input`
-/// → `pending_events` is non-empty after the click (the pending hook was never cleared).
+/// Fail oracle: reintroduce a drain call inside `handle_input` → the first
+/// assertion (still queued right after the click) fails.
 #[test]
-fn mouse_click_drains_hooks_immediately() {
+fn mouse_click_leaves_hook_queued_until_the_next_settle() {
     use crate::editor::event::EditorEvent;
     use termina::event::Event as TerminalEvent;
 
@@ -811,16 +816,17 @@ fn mouse_click_drains_hooks_immediately() {
         hume_engine::pane::ViewportState::new(80, 24);
 
     // Seed a pending hook (OnBufferSave — no handler registered, so
-    // drain_events skips the Steel call but still removes it from the queue).
+    // settle() skips the Steel call but still removes it from the queue).
     let bid = ed.focused_buffer_id();
     ed.state
         .queue_event(EditorEvent::OnBufferSave { buffer: bid });
     assert!(
-        !ed.state.config.pending_events.is_empty(),
-        "pending_events must be non-empty before the event — drain has not run yet"
+        !ed.state.config.pending_work.is_empty(),
+        "pending_work must be non-empty before the event — drain has not run yet"
     );
 
-    // Simulate a left-click at (0, 0) via handle_input so the drain choke point runs.
+    // Simulate a left-click at (0, 0). handle_input dispatches it but no
+    // longer drains — the hook must still be queued right after.
     let click = termina::event::MouseEvent {
         kind: termina::event::MouseEventKind::Down(termina::event::MouseButton::Left),
         column: 0,
@@ -828,12 +834,18 @@ fn mouse_click_drains_hooks_immediately() {
         modifiers: termina::event::Modifiers::NONE,
     };
     ed.handle_input(TerminalEvent::Mouse(click));
-
-    // drain_events ran at the tail of handle_input — all pending hooks must be gone.
     assert!(
-        ed.state.config.pending_events.is_empty(),
-        "pending_events must be empty after handle_input; got {:?}",
-        ed.state.config.pending_events
+        !ed.state.config.pending_work.is_empty(),
+        "handle_input must not drain pending_work — that's settle()'s job now"
+    );
+
+    // The next `settle()` (what `Editor::run`'s loop calls once per
+    // iteration) is what actually clears it.
+    ed.settle();
+    assert!(
+        ed.state.config.pending_work.is_empty(),
+        "pending_work must be empty after settle(); got {:?}",
+        ed.state.config.pending_work
     );
 }
 

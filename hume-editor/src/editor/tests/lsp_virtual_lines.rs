@@ -50,7 +50,9 @@ fn virtual_line_renders_after_its_anchor_line() {
     let _ = bid;
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 8, &mut ctx);
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
     insta::assert_snapshot!(snap);
 }
@@ -90,7 +92,9 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 8, &mut ctx);
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
     insta::assert_snapshot!(snap);
 }
@@ -111,7 +115,9 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 8, &mut ctx);
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let pid = ed.state.focused_pane_id;
     let has_line_before = ed
         .state
@@ -133,7 +139,9 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
         .config
         .decorations
         .set_virtual_lines("linter".to_string(), bid, vec![]);
-    ed.prepare_frame(40, 8, &mut ctx);
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let has_line_after = ed
         .state
         .panes

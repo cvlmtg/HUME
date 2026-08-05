@@ -86,7 +86,7 @@ fn setup(
 
 fn run_rename(ed: &mut Editor) {
     type_cmd(ed, ":lsp-rename");
-    ed.drain_events();
+    ed.settle();
 }
 
 #[test]
@@ -124,9 +124,9 @@ fn cancel_sends_no_rename_request() {
 
     run_rename(&mut ed);
     ed.feed_key(key_esc());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(
         ed.doc().text().to_string(),
@@ -155,9 +155,9 @@ fn null_result_reports_nothing_to_rename() {
     run_rename(&mut ed);
     ed.feed_key(key('X'));
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
@@ -197,9 +197,9 @@ fn multi_file_workspace_edit_applies_and_logs_the_summary() {
     // exact new name doesn't matter, only that it's non-empty so `when
     // new-name` fires.
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(
         ed.doc().text().to_string(),
@@ -218,7 +218,7 @@ fn multi_file_workspace_edit_applies_and_logs_the_summary() {
 /// `buffer::lifecycle::open_or_dedup_and_notify`, which can't detect language
 /// inline (see that function's doc) — it queues the buffer onto
 /// `EditorState.pending_language_detection`, drained at the tail of
-/// `apply_script_effects` once this eval (reached via `drain_pending_steel_calls`,
+/// `apply_script_effects` once this eval (reached via `settle`'s `Call` arm,
 /// the rename response callback) returns.
 ///
 /// Fail oracle: revert `resolve_or_open` to call the bare (pre-fix)
@@ -261,9 +261,9 @@ fn multi_file_workspace_edit_detects_language_of_the_newly_opened_file() {
 
     run_rename(&mut ed);
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     let bid = ed
         .state

@@ -188,7 +188,7 @@ fn lazy_plugin_defined_language_is_registered_on_activation() {
 /// buffer no longer holds the value it's about to fire `OnLanguageSet` for,
 /// and bail out rather than enqueue a second, stale hook.
 ///
-/// Flip: without the re-entrancy guard, `pending_events` holds two
+/// Flip: without the re-entrancy guard, `pending_work` holds two
 /// `OnLanguageSet` entries (python, then a stale rust) instead of one.
 #[test]
 fn set_buffer_language_reentrant_activation_uses_final_value() {
@@ -206,20 +206,29 @@ fn set_buffer_language_reentrant_activation_uses_final_value() {
         ed.state.config.languages.id_of("python"),
         "the plugin's own set-buffer-language! call inside its activation body must win"
     );
+    let queued_events: Vec<&EditorEvent> = ed
+        .state
+        .config
+        .pending_work
+        .iter()
+        .filter_map(|w| match w {
+            crate::editor::event::PendingWork::Event(e) => Some(e),
+            crate::editor::event::PendingWork::Call(..) => None,
+        })
+        .collect();
     assert_eq!(
-        ed.state.config.pending_events.len(),
+        queued_events.len(),
         1,
-        "exactly one OnLanguageSet hook must be queued, not a stale duplicate; got: {:?}",
-        ed.state.config.pending_events
+        "exactly one OnLanguageSet hook must be queued, not a stale duplicate; got: {queued_events:?}"
     );
     assert!(
         matches!(
-            &ed.state.config.pending_events[0],
+            queued_events[0],
             EditorEvent::OnLanguageSet { language, .. } if language.as_deref() == Some("python")
         ),
         "the queued OnLanguageSet hook must carry the final ('python') value, not the stale \
          ('rust') one that triggered activation; got: {:?}",
-        ed.state.config.pending_events[0]
+        queued_events[0]
     );
 }
 
@@ -554,7 +563,7 @@ fn event_trigger_activates_on_first_fire() {
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
     ed.queue_buffer_save(bid);
-    ed.drain_events();
+    ed.settle();
 
     assert_ne!(
         state(&ed),
@@ -598,7 +607,7 @@ fn event_trigger_idempotent_on_second_fire() {
     let bid = ed.focused_buffer_id();
 
     ed.queue_buffer_save(bid); // first fire — activates
-    ed.drain_events();
+    ed.settle();
     assert!(
         ed.scripting
             .as_ref()
@@ -610,7 +619,7 @@ fn event_trigger_idempotent_on_second_fire() {
 
     let after_first = state(&ed);
     ed.queue_buffer_save(bid); // second fire — handler runs, no re-activation
-    ed.drain_events();
+    ed.settle();
 
     assert_ne!(
         state(&ed),
@@ -678,7 +687,7 @@ fn event_trigger_one_to_many_activates_all() {
     };
     let bid = ed.focused_buffer_id();
     ed.queue_buffer_save(bid);
-    ed.drain_events();
+    ed.settle();
 
     assert!(
         matches!(
@@ -726,7 +735,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
     let bid = ed.focused_buffer_id();
 
     ed.queue_buffer_save(bid); // first fire — activates → body fails
-    ed.drain_events();
+    ed.settle();
 
     assert!(
         matches!(
@@ -753,7 +762,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
 
     let msg_count = ed.state.message_log.entries().count();
     ed.queue_buffer_save(bid); // second fire — no retry
-    ed.drain_events();
+    ed.settle();
 
     assert!(
         matches!(
@@ -1122,7 +1131,7 @@ fn language_trigger_activates_on_set() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_events();
+    ed.settle();
 
     assert_ne!(
         state(&ed),
@@ -1167,7 +1176,7 @@ fn language_trigger_idempotent_on_round_trip() {
 
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang)); // first set — activates
-    ed.drain_events();
+    ed.settle();
     assert!(
         ed.scripting
             .as_ref()
@@ -1180,10 +1189,10 @@ fn language_trigger_idempotent_on_round_trip() {
     let after_first = state(&ed);
     let lang = ed.state.config.languages.intern("toml");
     ed.set_buffer_language(bid, Some(lang)); // round-trip out
-    ed.drain_events();
+    ed.settle();
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang)); // round-trip back — handler runs, no re-activation
-    ed.drain_events();
+    ed.settle();
 
     assert_ne!(
         state(&ed),
@@ -1355,7 +1364,7 @@ fn language_wildcard_trigger_activates_on_any_language() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("toml");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_events();
+    ed.settle();
 
     assert_ne!(
         state(&ed),

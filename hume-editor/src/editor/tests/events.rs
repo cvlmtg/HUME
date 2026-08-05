@@ -8,7 +8,10 @@ use crate::editor::commands::open_pane;
 /// directly, bypassing the funnel, so the hook never reached script handlers.
 ///
 /// Verification: install an `on-mode-change` handler that calls `move-right`;
-/// the cursor advances only if the hook fired.
+/// the cursor advances only if the hook fired. Since C4, `handle_input` no
+/// longer drains itself (that moved to `Editor::run`'s loop, see
+/// `Editor::settle`'s doc) — an explicit `settle()` after dispatch is what
+/// now fires the queued hook.
 #[test]
 fn exit_insert_via_esc_fires_on_mode_change() {
     use crate::testing::MockHost;
@@ -27,16 +30,17 @@ fn exit_insert_via_esc_fires_on_mode_change() {
     .unwrap();
     ed.scripting = Some(host);
 
-    // Enter Insert via `i` (no step-back on exit). Use handle_input so the
-    // Normal→Insert hook is drained before we capture the before state.
+    // Enter Insert via `i` via handle_input + settle(), draining the
+    // Normal→Insert hook before we capture the before state.
     ed.handle_input(TerminalEvent::Key(key('i')));
+    ed.settle();
     assert_eq!(ed.state.mode, Mode::Insert, "must be in Insert after `i`");
 
     let before = state(&ed);
 
-    // Exit via Esc. handle_input drains hooks after dispatch, so the
-    // on-mode-change handler fires within this call.
+    // Exit via Esc, then settle() to drain the queued on-mode-change hook.
     ed.handle_input(TerminalEvent::Key(key_esc()));
+    ed.settle();
 
     assert_eq!(ed.state.mode, Mode::Normal, "must be Normal after Esc");
     assert_ne!(
@@ -49,7 +53,12 @@ fn exit_insert_via_esc_fires_on_mode_change() {
 /// A left mouse click while in Insert mode must fire `OnModeChange` exactly
 /// once for the Insert→Normal transition. The click path calls
 /// `end_insert_session`, which goes through the funnel on its own — a
-/// separate `set_mode(Normal)` after it would double-fire the hook.
+/// separate `set_mode(Normal)` after it would double-fire the hook. Since
+/// C4, `handle_input` no longer drains itself — the `settle()` below is what
+/// fires the queued hook. The click itself also repositions the cursor, so
+/// the `state()` diff alone doesn't distinguish "hook fired" from "click
+/// moved the cursor" — the mode assertion just above it is the load-bearing
+/// check for the hook actually having run at all.
 #[test]
 fn mouse_click_in_insert_fires_on_mode_change() {
     use crate::testing::MockHost;
@@ -88,6 +97,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
         modifiers: termina::event::Modifiers::NONE,
     };
     ed.handle_input(TerminalEvent::Mouse(click));
+    ed.settle();
 
     assert_eq!(ed.state.mode, Mode::Normal, "must be Normal after click");
     assert_ne!(
@@ -104,7 +114,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
 /// livelocking the editor.  The watchdog only bounds each individual eval,
 /// not the re-drain loop.
 ///
-/// Fail oracle: remove the `MAX_EVENT_DRAIN` cap from `drain_events` →
+/// Fail oracle: remove the `MAX_EVENT_DRAIN` cap from `settle` →
 /// this test never returns.
 #[test]
 fn hook_feedback_loop_is_cut_off_by_drain_cap() {
@@ -128,7 +138,7 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("aaa");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_events(); // must return, not hang
+    ed.settle(); // must return, not hang
 
     assert!(
         ed.state
@@ -138,7 +148,7 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
         "drain cap must log an Error naming the hook cascade"
     );
     assert!(
-        ed.state.config.pending_events.is_empty(),
+        ed.state.config.pending_work.is_empty(),
         "pending hooks must be dropped when the cap fires"
     );
 }
@@ -154,7 +164,7 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
 /// re-enqueue `OnLanguageSet` — independent of what the previous invocation
 /// left behind.
 ///
-/// Fail oracle: cap `drain_events` on pass count instead of total hooks
+/// Fail oracle: cap `settle` on pass count instead of total hooks
 /// processed → this test times out instead of returning.
 #[test]
 fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
@@ -178,7 +188,7 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("start");
     ed.set_buffer_language(bid, Some(lang));
-    ed.drain_events(); // must return promptly, not after 2^100 evals
+    ed.settle(); // must return promptly, not after 2^100 evals
 
     assert!(
         ed.state
@@ -188,7 +198,7 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
         "drain cap must log an Error naming the hook cascade"
     );
     assert!(
-        ed.state.config.pending_events.is_empty(),
+        ed.state.config.pending_work.is_empty(),
         "pending hooks must be dropped when the cap fires"
     );
 }
@@ -196,16 +206,20 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
 // ── Startup hook drain ────────────────────────────────────────────────────────
 
 /// `queue_event` only enqueues; hooks must be drained explicitly via
-/// `drain_events()` before the event loop or they silently defer.
+/// `settle()` or they silently defer.
 ///
-/// This covers the `lib.rs::run()` path: `init_scripting` + `open_extra_files`
-/// enqueue `OnBufferOpen`/`OnLanguageSet` hooks (before the terminal is even
-/// initialized); the explicit `drain_events()` after startup is what fires them.
+/// `lib.rs::run()` no longer has its own separate startup drain call
+/// (SPEC.md §3 removed it as redundant): `init_scripting` + `open_extra_files`
+/// enqueue `OnBufferOpen`/`OnLanguageSet` hooks before the terminal is even
+/// initialized, and the *first* iteration of `Editor::run`'s loop is what
+/// fires them, via its own `settle()` call — the same one that fires
+/// everything else. This test pins the underlying property `settle()` relies
+/// on: `queue_event` alone never fires a handler.
 ///
-/// Fail oracle: remove `editor.drain_events()` from `lib.rs::run()` — hooks
-/// silently defer. This test catches the missing-drain regression.
+/// Fail oracle: skip calling `settle()` after `queue_event` — the handler
+/// never runs, and `pending_work` never empties.
 #[test]
-fn startup_hooks_require_explicit_drain() {
+fn queued_hooks_require_explicit_settle() {
     use crate::editor::event::EditorEvent;
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
@@ -229,17 +243,17 @@ fn startup_hooks_require_explicit_drain() {
 
     // Hook is enqueued but has not fired yet.
     assert!(
-        !ed.state.config.pending_events.is_empty(),
-        "pending_events must be queued after queue_event — drain_events not called yet"
+        !ed.state.config.pending_work.is_empty(),
+        "pending_work must be queued after queue_event — settle() not called yet"
     );
 
     let before = state(&ed);
 
-    // drain_events fires the enqueued hooks.
-    ed.drain_events();
+    // settle() fires the enqueued hooks.
+    ed.settle();
     assert!(
-        ed.state.config.pending_events.is_empty(),
-        "pending_events must be empty after drain_events"
+        ed.state.config.pending_work.is_empty(),
+        "pending_work must be empty after settle()"
     );
     assert_ne!(
         state(&ed),
@@ -263,7 +277,6 @@ fn startup_hooks_require_explicit_drain() {
 #[test]
 fn on_buffer_open_queued_after_on_language_set() {
     use crate::editor::buffer::Buffer;
-    use crate::editor::event::EditorEvent;
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
 
@@ -291,13 +304,16 @@ fn on_buffer_open_queued_after_on_language_set() {
     doc.set_path(Some(std::path::PathBuf::from("/tmp/foo.rs")));
     ed.open_buffer(doc);
 
-    // Inspect the queue before draining — drain_events would empty it.
+    // Inspect the queue before draining — settle() would empty it.
     let hook_order: Vec<&str> = ed
         .state
         .config
-        .pending_events
+        .pending_work
         .iter()
-        .filter_map(EditorEvent::name)
+        .filter_map(|w| match w {
+            crate::editor::event::PendingWork::Event(e) => e.name(),
+            crate::editor::event::PendingWork::Call(..) => None,
+        })
         .collect();
     assert_eq!(
         hook_order,
@@ -331,7 +347,7 @@ fn hook_call_is_dispatched() {
     let bid = ed.focused_buffer_id();
     ed.state
         .queue_event(EditorEvent::OnBufferOpen { buffer: bid });
-    ed.drain_events();
+    ed.settle();
 
     assert_ne!(
         state(&ed),
@@ -362,5 +378,293 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
     assert!(
         !engine_pane.selections.is_empty(),
         "non-focused pane engine selections must be synced after edit"
+    );
+}
+
+// ── C4: settle(), merged queue, loop restructure (SPEC.md §3) ────────────────
+
+/// **The stranded-events bug, executable.** An event raised from async
+/// work — here, `queue_diagnostics_changed`, the same call `drain_lsp` makes
+/// when a `publishDiagnostics` batch lands — must fire once `settle()` runs,
+/// even with **no input dispatched at all**. Before the merge, the drain
+/// only ran inside `handle_input`; `Ok(false) => continue` in `Editor::run`'s
+/// poll skipped it entirely, so a diagnostics batch landing while the user
+/// sat idle (or an `(after 0 …)` timer firing between keystrokes) never
+/// reached its handler — not late, never.
+///
+/// Fail oracle: move the drain back into `handle_input` (equivalently: make
+/// `settle()`'s merged fixpoint a no-op unless a keystroke just ran) → the
+/// handler never fires, since this test dispatches nothing at all.
+#[test]
+fn event_raised_from_async_work_fires_on_settle_with_no_input() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-diagnostics-changed (lambda (bid) (call! "move-right")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+
+    let before = state(&ed);
+    let bid = ed.focused_buffer_id();
+
+    // The async producer's raise call — mirrors what `drain_lsp` does when a
+    // `publishDiagnostics` batch lands. No key, mouse, or paste event
+    // anywhere in this test.
+    ed.queue_diagnostics_changed(bid);
+    ed.settle();
+
+    assert_ne!(
+        state(&ed),
+        before,
+        "on-diagnostics-changed handler must have run from settle() alone, with no input"
+    );
+}
+
+/// **FIFO order preserved across item kinds.** `queue_buffer_save` queues an
+/// *event* synchronously, mid-dispatch — before `settle()` even starts —
+/// while two zero-delay timers each queue a *call*, but only once
+/// `settle()`'s own `drain_async_sources` runs. They must fire in exactly
+/// the order they entered the merged queue: the event first (already
+/// queued before `settle()` began), then the two calls in arm order — not
+/// "every call before every event" or vice versa. Pins the merge's core
+/// guarantee (SPEC.md §3): one FIFO queue, drained front-to-back, not the
+/// old two-queue, two-drain-site split.
+///
+/// Fail oracle: drain every queued `Event` before any `Call` (or vice
+/// versa) instead of popping the merged queue in insertion order → the
+/// trace log below no longer matches `["event", "call-a", "call-b"]`.
+#[test]
+fn fifo_order_preserved_across_call_and_event_items() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = hume_scripting::ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (log! 'trace "event")))
+           (define-command! "start" "" (lambda ()
+             (after 0 (lambda () (log! 'trace "call-a")))
+             (after 0 (lambda () (log! 'trace "call-b")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":start");
+
+    // Queued synchronously, right here — before settle() runs at all, so
+    // this event is already at the front of pending_work by the time the
+    // two timers convert to queued calls inside settle()'s own drain.
+    let bid = ed.focused_buffer_id();
+    ed.queue_buffer_save(bid);
+
+    ed.settle();
+
+    let order: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert_eq!(
+        order,
+        vec!["event", "call-a", "call-b"],
+        "merged queue must drain in exact insertion order"
+    );
+}
+
+/// **Fixpoint within one `settle()` call.** A handler that itself queues
+/// another event (`on-language-set`'s handler calling `set-buffer-language!`
+/// exactly once, not repeatedly) must see that second event drained in the
+/// *same* `settle()` call — not deferred to the next frame or keystroke.
+/// Bounded counterpart to the cascade-cap tests below: exactly two fires,
+/// not a runaway loop.
+///
+/// Fail oracle: revert `settle`'s inner loop to a single pass over one
+/// snapshot (the pre-merge `drain_pending_steel_calls` shape) → the second,
+/// handler-queued fire is left in `pending_work` after this `settle()` call
+/// returns, and the buffer's language stays at the first-fire value.
+#[test]
+fn handler_queued_event_drains_within_the_same_settle_call() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-language-set
+             (lambda (bid lang)
+               (log! 'trace (to-string "fired:" lang))
+               (if (equal? lang "first") (set-buffer-language! bid "second") (begin))))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+
+    let bid = ed.focused_buffer_id();
+    let lang = ed.state.config.languages.intern("first");
+    ed.set_buffer_language(bid, Some(lang));
+    ed.settle();
+
+    let fires: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert_eq!(
+        fires,
+        vec!["fired: first", "fired: second"],
+        "the handler-queued second OnLanguageSet must drain within the same settle() call"
+    );
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.config.languages.id_of("second"),
+        "final language must reflect the handler-queued transition"
+    );
+}
+
+/// **`prepare_frame` no longer drains.** Queuing an event and calling only
+/// `sync_viewport_dims` + `prepare_frame` (skipping `settle()`) must leave it
+/// queued; a following `settle()` call is what fires it. Pins §3's
+/// separation of concerns: draining moved entirely out of the per-frame
+/// render-prep path.
+///
+/// Fail oracle: reintroduce a drain call inside `prepare_frame` → the first
+/// assertion below fails (the handler already ran before `settle()` was
+/// ever called).
+#[test]
+fn prepare_frame_alone_does_not_drain_pending_work() {
+    use crate::testing::MockHost;
+    use hume_engine::pipeline::RenderContext;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+
+    let before = state(&ed);
+    let bid = ed.focused_buffer_id();
+    ed.queue_buffer_save(bid);
+
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.prepare_frame(&mut ctx);
+
+    assert_eq!(
+        state(&ed),
+        before,
+        "prepare_frame alone must not drain pending_work"
+    );
+    assert!(
+        !ed.state.config.pending_work.is_empty(),
+        "the queued hook must still be pending after prepare_frame alone"
+    );
+
+    ed.settle();
+    assert_ne!(
+        state(&ed),
+        before,
+        "settle() must fire the hook prepare_frame left untouched"
+    );
+}
+
+/// **`:wq` fires `OnBufferSave`.** Regression guard for the quit-path
+/// restructure: `Editor::run`'s loop observes `should_quit` right after
+/// `settle()`, and the post-dispatch check that used to `break` immediately
+/// now `continue`s instead — specifically so a hook queued by the same
+/// dispatch that set `should_quit` (`:wq`'s `OnBufferSave`) survives to be
+/// drained by the loop's *next* iteration before it actually exits. `run`
+/// itself needs a live terminal to drive (see its own doc), so this pins the
+/// drain half of that guarantee directly: dispatch `:wq`, then `settle()`,
+/// and confirm both the hook ran and `should_quit` is set.
+///
+/// Fail oracle: observe `should_quit` before the hook gets a chance to
+/// drain (the pre-C4 shape) → a `:wq` that also sets `should_quit` in the
+/// same dispatch would never fire its `OnBufferSave` handler.
+#[test]
+fn wq_fires_on_buffer_save_before_quitting() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let (mut ed, _tmp) = editor_with_file("-[a]>b\n", "a\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (log! 'trace "saved")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":wq");
+    assert!(ed.state.should_quit, "sanity: :wq must set should_quit");
+
+    ed.settle();
+
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Trace && e.text == "saved"),
+        "on-buffer-save must fire for :wq, even though should_quit is already set"
+    );
+}
+
+/// **Headless path.** `Editor::step` dispatches a key but does not itself
+/// settle — `hume_editor::run_keys`' loop calls `settle()` once per key,
+/// separately (this branch's chosen split from SPEC.md §3's sketch; see
+/// `Editor::step`'s doc). Pins that split: a `step()`-queued event must not
+/// have fired yet, and only fires once `settle()` runs, mirroring exactly
+/// what `run_keys` does after every `step()`.
+///
+/// Fail oracle: fold `settle()` into `step()` itself → the first assertion
+/// (still pending right after `step`) fails.
+#[test]
+fn headless_step_then_settle_fires_a_queued_hook() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-mode-change (lambda (old new) (call! "move-right")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+
+    let before = state(&ed);
+
+    // Entering Insert queues OnModeChange; `step` dispatches the key but
+    // never drains, before or after C4.
+    ed.step(key('i'));
+    assert_eq!(ed.state.mode, Mode::Insert, "sanity: `i` must enter Insert");
+    assert!(
+        !ed.state.config.pending_work.is_empty(),
+        "step() must not drain — the OnModeChange hook must still be queued"
+    );
+
+    // Mirrors what run_keys' loop does after every step().
+    ed.settle();
+    assert_ne!(
+        state(&ed),
+        before,
+        "settle() must fire the OnModeChange handler step() left queued"
     );
 }

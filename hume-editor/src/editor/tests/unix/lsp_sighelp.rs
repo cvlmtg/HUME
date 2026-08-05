@@ -80,7 +80,7 @@ fn setup(
     for action in actions {
         ed.dispatch_lsp_action(sid2, action);
     }
-    ed.drain_events(); // on-lsp-attach registers trigger chars
+    ed.settle(); // on-lsp-attach registers trigger chars
 
     (ed, guard, requests)
 }
@@ -100,16 +100,18 @@ fn position_after_foo(ed: &mut Editor) {
 
 fn type_char_and_settle(ed: &mut Editor, ch: char) {
     ed.feed_key(key(ch));
-    ed.drain_events(); // on-trigger-char fires, schedules the debounce timer
+    ed.settle(); // on-trigger-char fires, schedules the debounce timer
     std::thread::sleep(Duration::from_millis(250));
     ed.drain_async_sources(); // debounce timer fires, sends the request
     ed.drain_lsp(); // scripted response arrives
-    ed.drain_pending_steel_calls(); // callback runs, shows/updates the popup
+    ed.settle(); // callback runs, shows/updates the popup
 }
 
 fn popup_lines(ed: &mut Editor) -> Vec<String> {
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     ed.state
         .popup_view
         .read()
@@ -158,10 +160,10 @@ fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     position_after_foo(&mut ed);
 
     ed.lsp_stop(Some("rust"));
-    ed.drain_events(); // on-lsp-detach clears *sighelp-chars*
+    ed.settle(); // on-lsp-detach clears *sighelp-chars*
 
     ed.feed_key(key('i'));
-    ed.drain_events();
+    ed.settle();
     let before_log_len = ed.state.message_log.entries().count();
     type_char_and_settle(&mut ed, '(');
 
@@ -188,7 +190,7 @@ fn trigger_char_after_debounce_shows_signature_with_marked_param() {
     position_after_foo(&mut ed);
 
     ed.feed_key(key('i'));
-    ed.drain_events();
+    ed.settle();
     type_char_and_settle(&mut ed, '(');
 
     assert_eq!(
@@ -214,7 +216,7 @@ fn comma_advances_the_marked_parameter() {
     });
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_events();
+    ed.settle();
     type_char_and_settle(&mut ed, '(');
 
     type_char_and_settle(&mut ed, ',');
@@ -245,7 +247,7 @@ fn close_paren_closes_the_popup_without_a_request() {
     ed.state.settings.auto_pairs_enabled = false;
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_events();
+    ed.settle();
     type_char_and_settle(&mut ed, '(');
     assert!(
         !popup_lines(&mut ed).is_empty(),
@@ -254,8 +256,7 @@ fn close_paren_closes_the_popup_without_a_request() {
     let requests_before_close = requests.borrow().len();
 
     ed.feed_key(key(')'));
-    ed.drain_events();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(popup_lines(&mut ed).is_empty(), "')' must close the popup");
     assert_eq!(
@@ -278,7 +279,7 @@ fn esc_closes_via_the_shared_mode_change_handler() {
     });
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_events();
+    ed.settle();
     type_char_and_settle(&mut ed, '(');
     assert!(
         !popup_lines(&mut ed).is_empty(),
@@ -286,7 +287,7 @@ fn esc_closes_via_the_shared_mode_change_handler() {
     );
 
     ed.feed_key(key_esc());
-    ed.drain_events();
+    ed.settle();
 
     assert!(popup_lines(&mut ed).is_empty(), "Esc must close the popup");
 }
@@ -304,21 +305,21 @@ fn rapid_trigger_chars_coalesce_to_one_request() {
     });
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_events();
+    ed.settle();
 
     // Three trigger chars back to back, no settling in between — each
     // (re)schedules the same 150ms debounce, cancelling the last.
     ed.feed_key(key('('));
-    ed.drain_events();
+    ed.settle();
     ed.feed_key(key(','));
-    ed.drain_events();
+    ed.settle();
     ed.feed_key(key(','));
-    ed.drain_events();
+    ed.settle();
 
     std::thread::sleep(Duration::from_millis(250));
     ed.drain_async_sources();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     let sighelp_requests = requests
         .borrow()
@@ -345,7 +346,7 @@ fn null_response_closes_the_popup() {
     });
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_events();
+    ed.settle();
     type_char_and_settle(&mut ed, '(');
     assert!(
         !popup_lines(&mut ed).is_empty(),
@@ -382,7 +383,7 @@ fn offset_form_parameter_label_marks_the_correct_slice() {
     });
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_events();
+    ed.settle();
     type_char_and_settle(&mut ed, '(');
 
     assert_eq!(
@@ -419,7 +420,7 @@ fn offset_form_label_with_an_astral_char_marks_the_correct_slice() {
     });
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
-    ed.drain_events();
+    ed.settle();
     type_char_and_settle(&mut ed, '(');
 
     assert_eq!(

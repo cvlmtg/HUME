@@ -73,7 +73,9 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
 
     let pid = ed.state.focused_pane_id;
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     DiagCtx {
         _file_dir: file_dir,
@@ -184,7 +186,9 @@ fn gutter_width_collapses_under_auto_mode_with_no_signs() {
     let bid = c.ed.focused_buffer_id();
     c.ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("auto".parse().unwrap());
     let mut ctx = RenderContext::new();
-    c.ed.prepare_frame(80, 25, &mut ctx);
+    c.ed.sync_viewport_dims(80, 25);
+    c.ed.settle();
+    c.ed.prepare_frame(&mut ctx);
     assert_eq!(
         sign_column_width(&c.ed, c.pid),
         0,
@@ -208,7 +212,9 @@ fn gutter_width_always_2_is_3_cells_wide() {
     let bid = c.ed.focused_buffer_id();
     c.ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:2".parse().unwrap());
     let mut ctx = RenderContext::new();
-    c.ed.prepare_frame(80, 25, &mut ctx);
+    c.ed.sync_viewport_dims(80, 25);
+    c.ed.settle();
+    c.ed.prepare_frame(&mut ctx);
     assert_eq!(
         sign_column_width(&c.ed, c.pid),
         3,
@@ -222,7 +228,9 @@ fn gutter_width_auto_2_expands_when_signs_exist() {
     let bid = c.ed.focused_buffer_id();
     c.ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("auto:2".parse().unwrap());
     let mut ctx = RenderContext::new();
-    c.ed.prepare_frame(80, 25, &mut ctx);
+    c.ed.sync_viewport_dims(80, 25);
+    c.ed.settle();
+    c.ed.prepare_frame(&mut ctx);
     assert_eq!(
         sign_column_width(&c.ed, c.pid),
         3,
@@ -254,7 +262,9 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
 
     let pid = ed.state.focused_pane_id;
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let signs = plugin_signs(&ed, pid);
     assert_eq!(signs.len(), 1);
@@ -294,7 +304,9 @@ fn two_plugin_sources_on_the_same_line_keep_the_higher_priority_first() {
 
     let pid = ed.state.focused_pane_id;
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let signs = plugin_signs(&ed, pid);
     assert_eq!(signs.len(), 1, "one line, one merged entry across sources");
@@ -346,7 +358,9 @@ fn two_plugin_sources_at_equal_priority_resolve_by_source_name() {
 
     let pid = ed.state.focused_pane_id;
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let signs = plugin_signs(&ed, pid);
     let line_signs = &signs[&0];
@@ -391,7 +405,9 @@ fn wider_signcolumn_keeps_multiple_signs_per_line() {
 
     let pid = ed.state.focused_pane_id;
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let signs = plugin_signs(&ed, pid);
     let line_signs = &signs[&0];
@@ -435,7 +451,9 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
     type_cmd(&mut c.ed, ":arm");
 
     let mut ctx = RenderContext::new();
-    c.ed.prepare_frame(80, 25, &mut ctx);
+    c.ed.sync_viewport_dims(80, 25);
+    c.ed.settle();
+    c.ed.prepare_frame(&mut ctx);
 
     let rope = c.ed.state.buffers.get(bid).text().rope().clone();
     let gutter_ctx = hume_engine::providers::GutterRowCtx {
@@ -526,7 +544,9 @@ fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
 
     let pid = ed.state.focused_pane_id;
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx); // must not panic
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx); // must not panic
 
     let signs = diag_signs(&ed, pid);
     assert!(

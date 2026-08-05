@@ -516,7 +516,7 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
              (log! 'info (hash-ref item "extra"))))"#,
     );
     type_cmd(&mut ed, ":go");
-    ed.drain_events();
+    ed.settle();
     assert_eq!(
         ed.doc().text().to_string(),
         "hellocdef\n",
@@ -532,7 +532,7 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
 
 #[test]
 fn accept_with_no_hook_registered_still_applies_the_edit() {
-    // Fail oracle for the hook wiring: if `push` onto `pending_events` panicked
+    // Fail oracle for the hook wiring: if `push` onto `pending_work` panicked
     // or the accept path never returned `Ok`, this would fail even with zero
     // handlers registered.
     let tmp = safe_tempdir();
@@ -547,7 +547,7 @@ fn accept_with_no_hook_registered_still_applies_the_edit() {
              (completion-accept! 0)))"#,
     );
     type_cmd(&mut ed, ":go");
-    ed.drain_events();
+    ed.settle();
     assert_eq!(ed.doc().text().to_string(), "hellocdef\n");
 }
 
@@ -568,7 +568,7 @@ fn refilter_fires_on_completion_refilter_only_when_incomplete() {
     type_cmd(&mut ed, ":go");
     ed.feed_key(key('i'));
     ed.feed_key(key('f'));
-    ed.drain_events();
+    ed.settle();
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "refilter:f",
@@ -593,7 +593,7 @@ fn refilter_does_not_fire_when_the_session_is_complete() {
     type_cmd(&mut ed, ":go");
     ed.feed_key(key('i'));
     ed.feed_key(key('f'));
-    ed.drain_events();
+    ed.settle();
     assert_ne!(
         ed.state.status_msg.clone().unwrap_or_default(),
         "should-not-fire",
@@ -637,9 +637,9 @@ fn scripted_1k_item_session_stays_under_the_p8_budget() {
 /// `completion-begin!` for a buffer that isn't shown in the focused pane —
 /// the normal shape of an async LSP completion response landing after the
 /// user switched panes — must be a benign no-op (Trace log, no session
-/// created), not an error: an error here would abort the whole
-/// `drain_pending_steel_calls` batch and drop every other queued
-/// callback/timer for the frame.
+/// created), not an error: an error here would abort the whole `Call` batch
+/// this callback was drained in and drop every other queued callback/timer
+/// batched alongside it.
 #[test]
 fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op() {
     use crate::editor::commands::open_pane;

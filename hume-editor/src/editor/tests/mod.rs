@@ -48,6 +48,22 @@ fn state(ed: &Editor) -> String {
     serialize_state(ed.doc().text(), ed.current_selections())
 }
 
+/// Every queued `PendingWork::Call` in `pending_work`, in FIFO order,
+/// ignoring any interleaved `Event` items — mirrors the pre-C4
+/// `pending_steel_calls` queue for tests that assert on specific queued
+/// callbacks (an `lsp-request`/timer/prompt/menu/drawer/picker callback).
+fn pending_calls(ed: &Editor) -> Vec<(&steel::rvals::SteelVal, &Vec<steel::rvals::SteelVal>)> {
+    ed.state
+        .config
+        .pending_work
+        .iter()
+        .filter_map(|w| match w {
+            crate::editor::event::PendingWork::Call(proc, args) => Some((proc, args)),
+            crate::editor::event::PendingWork::Event(_) => None,
+        })
+        .collect()
+}
+
 /// A normal (no modifier) character key event.
 fn key(ch: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE)

@@ -5,11 +5,11 @@ use hume_engine::pipeline::BufferId;
 use hume_scripting::Effect;
 use steel::rvals::SteelVal;
 
-use super::event::EditorEvent;
+use super::event::{EditorEvent, PendingWork};
 use super::reload::ReloadSnapshot;
 use super::{Editor, Severity, host_impl::EditorHostImpl};
 
-/// Upper bound on total hooks processed per `drain_events` boundary.
+/// Upper bound on total work items processed per `settle()` boundary.
 ///
 /// Bounding *passes* instead of total work would still let an amplifying
 /// cascade (a handler that enqueues more hooks than it received) blow up the
@@ -26,8 +26,8 @@ impl Editor {
     /// `apply_pending_language_regs` call so a large run (e.g.
     /// `languages.scm`'s ~700 `define-language!` calls) rebuilds the glob
     /// matcher once, not once per entry; every other effect kind applies one
-    /// at a time. Shared tail for `call_steel_cmd`'s call site, `drain_events`,
-    /// `drain_pending_steel_calls`, and `init_scripting`.
+    /// at a time. Shared tail for `call_steel_cmd`'s call site, `settle`,
+    /// and `init_scripting`.
     ///
     /// Finishes by draining `state.config.pending_language_detection` — covers every
     /// buffer a disjoint-borrow Steel path opened via `buffer::lifecycle::
@@ -210,106 +210,132 @@ impl Editor {
         });
     }
 
-    /// Fire every hook in `state.config.pending_events`, draining the queue.
+    /// Advance editor state to quiescence: drain completed async work (parse
+    /// results, LSP responses, timer fires — `drain_async_sources`), then
+    /// drain `state.config.pending_work` to a fixpoint.
     ///
-    /// Called once per interactive input event by `handle_input` (the single
-    /// interactive drain boundary), and once at startup in `lib.rs` before the
-    /// event loop begins. Inner hook handlers may enqueue more hooks; the outer
-    /// loop re-drains until the queue is empty — capped at
-    /// [`MAX_EVENT_DRAIN`] total hooks processed (not passes) so neither a
-    /// constant-width ping-pong loop (e.g. two `on-language-set` handlers
-    /// flipping `set-buffer-language!` between two values) nor an amplifying
-    /// cascade (a handler that enqueues more hooks than it received, doubling
-    /// the batch pass over pass) can livelock the editor.  The watchdog only
+    /// This is the single consumer of the merged work queue (SPEC.md §3): a
+    /// `Call` (an `lsp-request` callback, a timer thunk, a prompt/menu/
+    /// drawer/picker callback) and an `Event` (fired to every handler
+    /// registered for its name) drain in the exact order they were queued —
+    /// grouped only where that's free, i.e. a contiguous run of `Call`s
+    /// shares one Steel session, matching `run_steel_calls`' existing
+    /// batching. A handler that queues more work is picked up within the
+    /// same `settle()` call, not the next frame.
+    ///
+    /// Takes no arguments, so it's callable without a terminal — the
+    /// headless path (`hume_editor::run_keys`) and `render_to_buf` both call
+    /// it directly, alongside `Editor::run`'s loop and `:reload-config`'s
+    /// `resync_config_state` call site (deliberately kept separate — see its
+    /// doc).
+    ///
+    /// Capped at [`MAX_EVENT_DRAIN`] total items processed (not passes), so
+    /// neither a constant-width ping-pong loop (two `on-language-set`
+    /// handlers flipping a value between two settings) nor an amplifying
+    /// cascade (a handler that queues more work than it received, doubling
+    /// the batch pass over pass) can livelock the editor. The watchdog only
     /// bounds each individual eval, not this loop.
-    pub(crate) fn drain_events(&mut self) {
+    pub(crate) fn settle(&mut self) {
+        self.drain_async_sources();
         // Any mode change queued between the last consumption point and now
-        // (a hook handler earlier this same batch, or something that ran
-        // before `drain_events` was even called) must not survive into the
-        // handler calls below. Unconditional, at the top, so no early-return
-        // branch below can skip it.
+        // (a handler earlier this same batch, or something that ran before
+        // `settle` was even called) must not survive into the handler calls
+        // below. Unconditional, at the top, so no early-return branch below
+        // can skip it.
         self.take_pending_lsp_completion_dismiss();
         let mut total_processed = 0usize;
-        while !self.state.config.pending_events.is_empty() {
-            let hooks = std::mem::take(&mut self.state.config.pending_events);
-            total_processed += hooks.len();
+        while !self.state.config.pending_work.is_empty() {
+            let batch = std::mem::take(&mut self.state.config.pending_work);
+            total_processed += batch.len();
             if total_processed > MAX_EVENT_DRAIN {
-                // `hooks` was just drained from `pending_events` above, so
+                // `batch` was just drained from `pending_work` above, so
                 // nothing has been re-enqueued yet — it's the entire drop.
-                let dropped = hooks.len();
+                let dropped = batch.len();
                 self.report(
                     Severity::Error,
                     format!(
-                        "hook cascade exceeded {MAX_EVENT_DRAIN} total drained hook(s) — \
-                         dropping {dropped} pending hook(s); handler feedback loop?"
+                        "hook cascade exceeded {MAX_EVENT_DRAIN} total drained work item(s) — \
+                         dropping {dropped} pending item(s); handler feedback loop?"
                     ),
                 );
                 return;
             }
-            for event in hooks {
-                // Internal-only events (no Steel name) skip lazy activation
-                // and firing entirely — there is nothing for Steel to react to.
-                let Some(name) = event.name() else {
-                    continue;
-                };
-                // Activate lazy event plugins first so their register-hook! calls
-                // land before the has_hook_handlers check below.
-                self.activate_lazy_event_plugins(name);
-                if self
-                    .scripting
-                    .as_ref()
-                    .is_none_or(|h| !h.has_hook_handlers(name))
-                {
-                    continue;
+            self.run_pending_batch(batch);
+        }
+        // A call/handler just run above (an LSP-request callback, a timer
+        // thunk, a hook) can itself dispatch a command that exits Insert,
+        // setting the flag the top-of-function consumption already passed.
+        // Consume it again so `prepare_frame`'s later
+        // `sync_completion_menu_view` never repaints a session `set_mode`
+        // asked to close mid-drain.
+        self.take_pending_lsp_completion_dismiss();
+    }
+
+    /// Run one snapshot of `pending_work` in queued order: event handlers
+    /// fire one event at a time, and a contiguous run of `Call`s batches
+    /// into one Steel session before the next `Event` (or end of batch).
+    fn run_pending_batch(&mut self, mut items: std::collections::VecDeque<PendingWork>) {
+        while let Some(item) = items.pop_front() {
+            match item {
+                PendingWork::Event(event) => self.fire_one_event(event),
+                PendingWork::Call(proc, args) => {
+                    let mut calls = vec![(proc, args)];
+                    while matches!(items.front(), Some(PendingWork::Call(..))) {
+                        let Some(PendingWork::Call(proc, args)) = items.pop_front() else {
+                            unreachable!("front() just confirmed a Call variant")
+                        };
+                        calls.push((proc, args));
+                    }
+                    self.run_call_batch(calls);
                 }
-                // Built only once a handler is confirmed registered — an event
-                // nobody subscribes to never allocates a `SteelVal`.
-                let args = event.steel_args();
-                let pid = self.state.focused_pane_id;
-                let bid = self.focused_buffer_id();
-                let result = {
-                    let host_scr = self.scripting.as_mut().expect("checked above");
-                    let mut impl_host = EditorHostImpl::full(
-                        &mut self.state,
-                        &mut self.view,
-                        &mut self.lsp,
-                        &mut self.timer_wheel,
-                        &mut self.timer_payloads,
-                        self.terminal.as_ref(),
-                    );
-                    host_scr.fire_hook(name, &args, pid, bid, &mut impl_host)
-                };
-                self.flush_script_messages();
-                self.apply_script_result(result, "hook error: ");
             }
         }
     }
 
-    /// Queue `(proc, args)` for evaluation at the next drain boundary —
-    /// never called inline (LSP dispatch, timer fire, and minibuffer key
-    /// handling all detect their completion from inside a borrow that can't
-    /// re-enter Steel). Shared delivery mechanism for the `lsp-request`
-    /// callback, timer thunks, and the prompt callback.
-    pub(crate) fn queue_steel_call(&mut self, proc: SteelVal, args: Vec<SteelVal>) {
-        self.state.config.pending_steel_calls.push((proc, args));
-    }
-
-    /// Drain `state.config.pending_steel_calls`, evaluating each queued call in one
-    /// Steel session. Called once per frame from `prepare_frame` — the
-    /// per-frame cadence LSP responses and timer fires already drain on, so
-    /// a completion queued this frame runs before the next render rather
-    /// than waiting for the next keystroke (unlike hooks, nothing here is
-    /// naturally re-triggering, so a single pass is enough — anything a
-    /// callback itself queues lands in next frame's drain, not this one).
-    pub(crate) fn drain_pending_steel_calls(&mut self) {
-        // Same reasoning as the top of `drain_events` — unconditional so no
-        // early-return branch below can skip it. `prepare_frame` calls this
-        // every frame, so no separate render-time consumption is needed.
-        self.take_pending_lsp_completion_dismiss();
-        let calls = std::mem::take(&mut self.state.config.pending_steel_calls);
-        if calls.is_empty() {
+    /// Fire every handler registered for one `EditorEvent`, if any are —
+    /// the per-item body of `settle`'s `Event` arm.
+    fn fire_one_event(&mut self, event: EditorEvent) {
+        // Internal-only events (no Steel name) skip lazy activation and
+        // firing entirely — there is nothing for Steel to react to.
+        let Some(name) = event.name() else {
+            return;
+        };
+        // Activate lazy event plugins first so their register-hook! calls
+        // land before the has_hook_handlers check below.
+        self.activate_lazy_event_plugins(name);
+        if self
+            .scripting
+            .as_ref()
+            .is_none_or(|h| !h.has_hook_handlers(name))
+        {
             return;
         }
+        // Built only once a handler is confirmed registered — an event
+        // nobody subscribes to never allocates a `SteelVal`.
+        let args = event.steel_args();
+        let pid = self.state.focused_pane_id;
+        let bid = self.focused_buffer_id();
+        let result = {
+            let host_scr = self.scripting.as_mut().expect("checked above");
+            let mut impl_host = EditorHostImpl::full(
+                &mut self.state,
+                &mut self.view,
+                &mut self.lsp,
+                &mut self.timer_wheel,
+                &mut self.timer_payloads,
+                self.terminal.as_ref(),
+            );
+            host_scr.fire_hook(name, &args, pid, bid, &mut impl_host)
+        };
+        self.flush_script_messages();
+        self.apply_script_result(result, "hook error: ");
+    }
+
+    /// Run one contiguous run of queued `Call` items in a single Steel
+    /// session — the per-batch body of `settle`'s `Call` arm. Preserves
+    /// `run_steel_calls`' existing "one session, first error aborts the
+    /// rest" semantics for calls that were queued back-to-back.
+    fn run_call_batch(&mut self, calls: Vec<(SteelVal, Vec<SteelVal>)>) {
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
         let Some(host_scr) = self.scripting.as_mut() else {
@@ -328,12 +354,6 @@ impl Editor {
         };
         self.flush_script_messages();
         self.apply_script_result(result, "steel call error: ");
-        // A call just run above (an LSP-request callback, a timer thunk) can
-        // itself dispatch a command that exits Insert, setting the flag the
-        // top-of-function consumption already passed. Consume it again so
-        // `prepare_frame`'s later `sync_completion_menu_view` never repaints a
-        // session `set_mode` asked to close mid-drain.
-        self.take_pending_lsp_completion_dismiss();
     }
 
     // ── Scripting ─────────────────────────────────────────────────────────────

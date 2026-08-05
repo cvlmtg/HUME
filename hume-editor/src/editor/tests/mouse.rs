@@ -76,7 +76,9 @@ fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
     let pid_b = ed.state.focused_pane_id; // vsplit focuses the new (right) pane
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.prepare_frame(100, 25, &mut ctx);
+    ed.sync_viewport_dims(100, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     // Click pane B (right half, gutter 4): screen col 57 = rect.x(50) +
     // gutter(4) + content col 3 (see vsplit_click_... below for the geometry).
@@ -189,7 +191,9 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
     let bid = ed.view.panes[pid_a].buffer_id; // vsplit shares the source buffer
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.prepare_frame(100, 25, &mut ctx);
+    ed.sync_viewport_dims(100, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let head = |ed: &Editor, pid| ed.state.panes.state[pid][bid].selections.primary().head();
     assert_eq!(head(&ed, pid_a), 0, "sanity: both panes start at char 0");
@@ -252,7 +256,9 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
     let bid = ed.view.panes[pid_b].buffer_id;
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     // Absolute row 15 = pane B's rect.y(12) + relative row 3 → buffer line 3
     // ("DDDD"). Column 6 = gutter(4) + content col 2 → 'D' (any content col

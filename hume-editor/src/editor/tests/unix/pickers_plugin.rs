@@ -115,7 +115,7 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
         ed.feed_key(key(ch));
     }
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(ed.state.config.picker.is_none());
     let bid = ed.focused_buffer_id();
@@ -153,7 +153,7 @@ fn files_picker_esc_dismisses_cleanly() {
     });
 
     ed.feed_key(key_esc());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(ed.state.config.picker.is_none());
     assert_eq!(
@@ -207,7 +207,7 @@ fn files_picker_fd_branch_spawns_given_binary() {
     );
 
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     let bid = ed.focused_buffer_id();
     let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
     assert!(path.ends_with("one.txt"), "got {path:?}");
@@ -368,7 +368,7 @@ fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory()
     );
 
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(ed.state.config.picker.is_none());
     let bid = ed.focused_buffer_id();
@@ -410,7 +410,7 @@ fn git_modified_picker_row_and_accept_handle_path_with_space() {
     );
 
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(ed.state.config.picker.is_none());
     let bid = ed.focused_buffer_id();
@@ -457,7 +457,7 @@ fn git_modified_picker_accept_resolves_nested_relative_path() {
     );
 
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(ed.state.config.picker.is_none());
     let bid = ed.focused_buffer_id();
@@ -685,7 +685,7 @@ fn git_modified_picker_esc_dismisses_cleanly() {
     );
 
     ed.feed_key(key_esc());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(ed.state.config.picker.is_none());
     assert!(
@@ -751,7 +751,7 @@ fn buffers_picker_lists_switches_and_disambiguates() {
         ed.feed_key(key(ch));
     }
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(ed.state.config.picker.is_none());
     let bid = ed.focused_buffer_id();
@@ -773,7 +773,7 @@ fn buffers_picker_esc_is_a_no_op() {
     assert!(ed.state.config.picker.is_some());
 
     ed.feed_key(key_esc());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(ed.state.config.picker.is_none());
     assert_eq!(ed.focused_buffer_id(), starting_bid);

@@ -117,7 +117,9 @@ fn messages_spans_reach_the_pane_extra_highlight_arc() {
     ed.execute_typed("messages", None).unwrap();
     let pid = ed.state.focused_pane_id;
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let warn_badge = scope(&ed, "diagnostic.warning.message");
     let warn_text = scope(&ed, "diagnostic.warning.message-text");

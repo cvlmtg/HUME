@@ -74,8 +74,7 @@ fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> (Editor, RealRuntime
 
 fn run(ed: &mut Editor, cmd: &str) {
     type_cmd(ed, cmd);
-    ed.drain_events();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 }
 
 fn set_cursor(ed: &mut Editor, char_offset: usize) {
@@ -246,7 +245,7 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
 
     ed.handle_key(key('j'));
     ed.handle_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert_eq!(
         ed.current_selections().primary().head(),
         9,

@@ -72,28 +72,31 @@ fn setup(
 
 fn fire_viewport_change(ed: &mut Editor) {
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let pid = ed.state.focused_pane_id;
     ed.queue_viewport_change(pid);
 }
 
-/// The debounced thunk itself is only *queued* by `drain_due_timers`
-/// (`queue_steel_call`) — actually running it, and thus actually sending
-/// the wire request, waits for `drain_pending_steel_calls`. That call's own
-/// `apply_script_effects` (via `send_one_lsp_request`) sends the request and
-/// the scripted backend auto-queues its response synchronously, but nothing
-/// drains *that* within the same call — an extra `drain_lsp` +
-/// `drain_pending_steel_calls` round is needed to actually invoke the
-/// response callback. `prepare_frame` does exactly this pair internally
-/// every real frame; a test not calling it needs the pair explicitly.
+/// Two `settle()` rounds after the sleep, not one — `settle()`'s own
+/// `drain_async_sources` runs once, at its top, before its fixpoint drains
+/// `pending_work`:
+/// - **Round 1** picks up the now-due debounce timer (`drain_due_timers`
+///   queues the thunk via `queue_steel_call`), and the same call's fixpoint
+///   runs it immediately — sending the wire request. The scripted backend
+///   auto-queues its response synchronously, but this round's
+///   `drain_async_sources` already ran, so it isn't seen yet.
+/// - **Round 2**'s `drain_async_sources` is what picks the response up (via
+///   `drain_lsp`), and its fixpoint runs the response callback.
+///
+/// `Editor::run`'s loop does exactly this over two real frames; a test not
+/// driving that loop needs the two `settle()` calls explicitly.
 fn settle_after_debounce(ed: &mut Editor) {
-    ed.drain_events();
+    ed.settle();
     std::thread::sleep(Duration::from_millis(300));
-    ed.drain_async_sources();
-    ed.drain_lsp();
-    ed.drain_pending_steel_calls();
-    ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
+    ed.settle();
 }
 
 fn request_count(requests: &RequestLog, method: &str) -> usize {
@@ -404,7 +407,9 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
     ed.state.settings.lsp_inlay_hints = true;
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     // Both fires land inside the same 200ms debounce window — no settle in
     // between.

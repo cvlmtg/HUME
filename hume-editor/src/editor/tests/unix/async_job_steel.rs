@@ -83,7 +83,7 @@ fn missing_binary_fires_the_callback_with_code_negative_one() {
     // A spawn failure fires its callback synchronously, inside
     // `spawn-async!` itself — no `drain_async_sources` needed, only the
     // queued-call drain.
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "-1");
 }
@@ -105,7 +105,7 @@ fn empty_cmd_fires_the_callback_instead_of_raising() {
     call(&mut ed, "go");
     // Same "fires synchronously inside spawn-async!" shape as the missing-
     // binary case above — no `drain_async_sources` needed.
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
@@ -188,7 +188,7 @@ fn cancel_async_prevents_the_callback_and_kills_the_child() {
     assert!(!alive, "cancel-async! must kill its job's child");
 
     ed.drain_async_sources();
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert!(
         ed.state.status_msg.is_none(),
         "a cancelled job's callback must never fire"

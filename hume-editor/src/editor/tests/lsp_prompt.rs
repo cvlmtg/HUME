@@ -28,7 +28,7 @@ fn prompt_confirm_calls_callback_with_typed_text() {
     ed.feed_key(key('h'));
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "hi");
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
@@ -49,7 +49,7 @@ fn prompt_esc_calls_callback_with_false_exactly_once() {
 
     ed.feed_key(key('h'));
     ed.feed_key(key_esc());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
     assert!(ed.state.minibuf.is_none());
@@ -79,7 +79,7 @@ fn prompt_prefill_is_visible_and_editable() {
     ed.feed_key(key_backspace());
     ed.feed_key(key('a'));
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "ola");
 }
 
@@ -122,7 +122,7 @@ fn prompt_mode_round_trips_and_fires_on_mode_change() {
 
     let before = state(&ed);
     type_cmd(&mut ed, ":go");
-    ed.drain_events();
+    ed.settle();
     assert_eq!(
         ed.state.mode(),
         hume_engine::types::EditorMode::Command,
@@ -135,8 +135,7 @@ fn prompt_mode_round_trips_and_fires_on_mode_change() {
     );
 
     ed.feed_key(key_esc());
-    ed.drain_pending_steel_calls();
-    ed.drain_events();
+    ed.settle();
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
     assert_ne!(
         state(&ed),

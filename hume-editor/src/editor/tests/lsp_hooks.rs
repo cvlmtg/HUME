@@ -57,7 +57,7 @@ fn on_lsp_attach_fires_for_buffers_attached_before_the_handshake_completes() {
 
     let before = state(&ed);
     complete_handshake(&mut ed, sid);
-    ed.drain_events();
+    ed.settle();
 
     assert_ne!(
         state(&ed),
@@ -97,7 +97,7 @@ fn on_lsp_detach_fires_with_the_language_when_a_server_is_stopped() {
 
     let before = state(&ed);
     ed.lsp_stop(Some("rust"));
-    ed.drain_events();
+    ed.settle();
 
     assert_ne!(
         state(&ed),
@@ -136,14 +136,14 @@ fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
     ed.scripting = Some(host);
 
     complete_handshake(&mut ed, sid);
-    ed.drain_events();
+    ed.settle();
 
     let mut plain = editor_from("-[a]>bcdef\n");
     ed.feed_key(key('i'));
-    ed.drain_events();
+    ed.settle();
     plain.feed_key(key('i'));
     ed.feed_key(key('.'));
-    ed.drain_events();
+    ed.settle();
     plain.feed_key(key('.'));
     assert_ne!(
         state(&ed),
@@ -219,7 +219,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
             ed.dispatch_lsp_action(sid, action);
         }
     }
-    ed.drain_events();
+    ed.settle();
 
     // Buffer A ("rust", registered "."): "," must not fire, "." must.
     // Parallel plain editor (no hook) isolates "did the extra move fire"
@@ -228,10 +228,10 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
     ed.switch_to_buffer_without_jump(bid_a);
     let mut plain_a = editor_from("-[a]>bcdef\n");
     ed.feed_key(key('i'));
-    ed.drain_events();
+    ed.settle();
     plain_a.feed_key(key('i'));
     ed.feed_key(key(','));
-    ed.drain_events();
+    ed.settle();
     plain_a.feed_key(key(','));
     assert_eq!(
         state(&ed),
@@ -239,7 +239,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
         "\",\" is unregistered for \"rust\" and must not fire"
     );
     ed.feed_key(key('.'));
-    ed.drain_events();
+    ed.settle();
     plain_a.feed_key(key('.'));
     assert_ne!(
         state(&ed),
@@ -247,7 +247,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
         "\".\" is registered for \"rust\" and must fire the extra move"
     );
     ed.feed_key(key_esc());
-    ed.drain_events();
+    ed.settle();
 
     // Buffer B ("python", registered ","): "." must not fire, "," must —
     // proving "python"'s attach registering under the same "test" source
@@ -259,10 +259,10 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
         SelectionSet::single(Selection::collapsed(0)),
     ));
     ed.feed_key(key('i'));
-    ed.drain_events();
+    ed.settle();
     plain_b.feed_key(key('i'));
     ed.feed_key(key('.'));
-    ed.drain_events();
+    ed.settle();
     plain_b.feed_key(key('.'));
     assert_eq!(
         state(&ed),
@@ -270,7 +270,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
         "\".\" is unregistered for \"python\" and must not fire"
     );
     ed.feed_key(key(','));
-    ed.drain_events();
+    ed.settle();
     plain_b.feed_key(key(','));
     assert_ne!(
         state(&ed),
@@ -322,7 +322,7 @@ fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
     ed.scripting = Some(host);
 
     ed.drain_lsp();
-    ed.drain_events();
+    ed.settle();
     // Exactly one fire (one move-right), not zero (dropped) or two (one per
     // publish) — the two coalesced publishes must yield one hook call.
     assert_eq!(
@@ -333,7 +333,7 @@ fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
 
     // A second drain (nothing new queued) must not fire again.
     ed.drain_lsp();
-    ed.drain_events();
+    ed.settle();
     assert_eq!(
         state(&ed),
         "a-[b]>cdef\n",
@@ -363,7 +363,7 @@ fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
     ed.debounce_viewport_change(pane_id);
 
     ed.drain_async_sources();
-    ed.drain_events();
+    ed.settle();
 
     assert_eq!(
         state(&ed),
@@ -399,7 +399,7 @@ fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertio
     let mut plain = editor_from("-[a]>bcdef\n");
 
     ed.feed_key(key('i'));
-    ed.drain_events();
+    ed.settle();
     plain.feed_key(key('i'));
     assert_eq!(
         state(&ed),
@@ -408,7 +408,7 @@ fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertio
     );
 
     ed.feed_key(key('x'));
-    ed.drain_events();
+    ed.settle();
     plain.feed_key(key('x'));
     assert_eq!(
         state(&ed),
@@ -417,7 +417,7 @@ fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertio
     );
 
     ed.feed_key(key('.'));
-    ed.drain_events();
+    ed.settle();
     plain.feed_key(key('.'));
     assert_ne!(
         state(&ed),

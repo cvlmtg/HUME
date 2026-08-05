@@ -33,7 +33,9 @@ fn build_2x2() -> (Editor, [PaneId; 4]) {
         .layout
         .split_leaf(pid_b, pid_d, Direction::Horizontal, 0.5); // b | d (bottom row)
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(100, 51, &mut ctx); // cache: DFS order a, c, b, d
+    ed.sync_viewport_dims(100, 51);
+    ed.settle();
+    ed.prepare_frame(&mut ctx); // cache: DFS order a, c, b, d
     (ed, [pid_a, pid_c, pid_b, pid_d])
 }
 
@@ -104,7 +106,9 @@ fn t4_tie_break_uses_center_distance_not_origin() {
         .layout
         .split_leaf(pid_b, pid_c, Direction::Vertical, 0.3); // b (top, short) / c (bottom, tall)
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(100, 51, &mut ctx);
+    ed.sync_viewport_dims(100, 51);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     ed.state.focused_pane_id = pid_a;
     cmd_pane_focus_right(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();

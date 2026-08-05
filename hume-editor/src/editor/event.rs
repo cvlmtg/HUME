@@ -231,6 +231,23 @@ impl EditorEvent {
     }
 }
 
+/// One item of deferred Steel work, queued by a raise site and drained by
+/// `Editor::settle()` in FIFO order — the merge that closes the stranded-
+/// events bug (SPEC.md §3): a `Call` and an `Event` queued in the same batch
+/// now drain in insertion order, in one fixpoint, instead of two queues
+/// drained at two different points of the run loop.
+#[derive(Debug)]
+pub(crate) enum PendingWork {
+    /// A specific Steel closure already captured by the raise site — an
+    /// `lsp-request` callback, a timer thunk, a prompt/menu/drawer/picker
+    /// callback. Delivered to exactly that closure, not to every handler for
+    /// a name.
+    Call(SteelVal, Vec<SteelVal>),
+    /// An editor event to fire by name at drain time. Args are built by
+    /// `steel_args()` only if a handler is actually registered.
+    Event(EditorEvent),
+}
+
 fn mode_name(m: Mode) -> &'static str {
     match m {
         Mode::Normal => "normal",

@@ -35,7 +35,9 @@ fn full_message_reaches_the_render_provider_untruncated() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(60, 8, &mut ctx);
+    ed.sync_viewport_dims(60, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let pid = ed.state.focused_pane_id;
     let by_line = ed
         .state

@@ -43,7 +43,9 @@ fn after_hint_renders_dimmed_immediately_after_its_char() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 8, &mut ctx);
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
     insta::assert_snapshot!(snap);
 }
@@ -65,7 +67,9 @@ fn before_hint_renders_immediately_before_its_char() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 8, &mut ctx);
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
     insta::assert_snapshot!(snap);
 }
@@ -108,7 +112,9 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(10, 4, &mut ctx);
+    ed.sync_viewport_dims(10, 4);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_selections().primary().head();
@@ -149,7 +155,9 @@ fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 8, &mut ctx);
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
     insta::assert_snapshot!(snap);
 }
@@ -176,7 +184,9 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
     type_cmd(&mut ed, ":set global wrap-mode=soft");
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(20, 8, &mut ctx);
+    ed.sync_viewport_dims(20, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 20, 8));
     insta::assert_snapshot!(snap);
 }
@@ -197,7 +207,9 @@ fn clearing_the_store_removes_the_hint_next_frame() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 8, &mut ctx);
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let pid = ed.state.focused_pane_id;
     let has_hint_before = ed
         .state
@@ -213,7 +225,9 @@ fn clearing_the_store_removes_the_hint_next_frame() {
     assert!(has_hint_before, "sanity: hint present before clearing");
 
     ed.state.config.decorations.set_inlay_hints(bid, vec![]);
-    ed.prepare_frame(40, 8, &mut ctx);
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let has_hint_after = ed
         .state
         .panes
@@ -250,7 +264,9 @@ fn setting_off_renders_nothing_even_with_hints_in_the_store() {
     );
     let pid = ed.state.focused_pane_id;
     let has_hint = |ed: &mut Editor, ctx: &mut RenderContext| {
-        ed.prepare_frame(40, 8, ctx);
+        ed.sync_viewport_dims(40, 8);
+        ed.settle();
+        ed.prepare_frame(ctx);
         ed.state
             .panes
             .render

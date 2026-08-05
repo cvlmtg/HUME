@@ -85,7 +85,9 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let rows = styled_rows(&ed).expect("markdown popup must resolve styled rows");
     assert_eq!(rows.len(), 1, "single-line content wraps to one row");
@@ -166,7 +168,9 @@ fn docked_popup_highlights_when_the_grammar_is_registered() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let rows = band_styled_rows(&ed).expect("docked markdown popup must resolve styled rows");
     assert_eq!(rows.len(), 1, "single-line content wraps to one row");
@@ -208,7 +212,9 @@ fn docked_popup_survives_a_multiline_capture_node() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 10, &mut ctx);
+    ed.sync_viewport_dims(40, 10);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     use ratatui::layout::Rect;
     let rect = Rect::new(0, 0, 40, 10);
@@ -238,7 +244,9 @@ fn popup_without_markdown_flag_stays_plain_even_with_the_grammar_registered() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     assert!(
         styled_rows(&ed).is_none(),
         "plain popup must not populate styled_rows"
@@ -264,7 +272,9 @@ fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     assert!(
         styled_rows(&ed).is_none(),
         "grammar-absent fallback must not populate styled_rows"

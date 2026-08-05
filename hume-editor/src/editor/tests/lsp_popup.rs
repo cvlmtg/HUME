@@ -50,7 +50,9 @@ fn show_popup_populates_the_view_after_a_frame() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let (lines, _, _) = popup_view(&ed).expect("popup must be showing after a frame");
     assert_eq!(lines, vec!["hello"]);
@@ -68,11 +70,15 @@ fn close_popup_clears_the_view() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     assert!(popup_view(&ed).is_some(), "sanity: showing");
 
     type_cmd(&mut ed, ":gone");
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     assert!(
         popup_view(&ed).is_none(),
         "must be cleared after close-popup!"
@@ -92,7 +98,9 @@ fn show_popup_replaces_not_stacks() {
     type_cmd(&mut ed, ":arm-first");
     type_cmd(&mut ed, ":arm-second");
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let (lines, _, _) = popup_view(&ed).unwrap();
     assert_eq!(lines, vec!["second"]);
@@ -138,7 +146,9 @@ fn docked_popup_resolves_into_the_band_view_not_the_cursor_overlay() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     assert_eq!(popup_band_lines(&ed), Some(vec!["hello".to_string()]));
     assert!(
@@ -159,11 +169,15 @@ fn close_popup_clears_the_band_view_too() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     assert!(popup_band_lines(&ed).is_some(), "sanity: showing");
 
     type_cmd(&mut ed, ":gone");
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     assert!(
         popup_band_lines(&ed).is_none(),
         "must be cleared after close-popup!"
@@ -190,13 +204,17 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
     // after the 2-cell frame) — well under the 30 lines, so scrolling has
     // somewhere to go.
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 10, &mut ctx);
+    ed.sync_viewport_dims(80, 10);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let before = state(&ed);
     assert_eq!(ed.state.config.popup.as_ref().expect("shown").scroll, 0);
 
     ed.feed_key(key_ctrl('d'));
-    ed.prepare_frame(80, 10, &mut ctx);
+    ed.sync_viewport_dims(80, 10);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let scroll_after_down = ed
         .state
         .config
@@ -215,7 +233,9 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
     );
 
     ed.feed_key(key_ctrl('u'));
-    ed.prepare_frame(80, 10, &mut ctx);
+    ed.sync_viewport_dims(80, 10);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let scroll_after_up = ed
         .state
         .config
@@ -240,7 +260,9 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     assert!(popup_band_lines(&ed).is_some(), "sanity: showing");
     let head_before = ed.current_selections().primary().head();
 
@@ -293,7 +315,9 @@ fn popup_wraps_to_the_pane_width_and_anchors_below_the_cursor() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(20, 25, &mut ctx);
+    ed.sync_viewport_dims(20, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let (lines, x, y) = popup_view(&ed).unwrap();
     assert!(
@@ -326,17 +350,23 @@ fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(20, 25, &mut ctx);
+    ed.sync_viewport_dims(20, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let first = popup_view_lines_arc(&ed).expect("popup must be showing after a frame");
 
-    ed.prepare_frame(20, 25, &mut ctx);
+    ed.sync_viewport_dims(20, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let second = popup_view_lines_arc(&ed).expect("popup must still be showing");
     assert!(
         Arc::ptr_eq(&first, &second),
         "wrap must not be recomputed across frames at an unchanged max_width"
     );
 
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let third = popup_view_lines_arc(&ed).expect("popup must still be showing");
     assert!(
         !Arc::ptr_eq(&second, &third),
@@ -363,7 +393,9 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let before = state(&ed);
     assert_eq!(
@@ -373,7 +405,9 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     );
 
     ed.feed_key(key_ctrl('d'));
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let scroll_after_down = ed
         .state
         .config
@@ -392,7 +426,9 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     );
 
     ed.feed_key(key_ctrl('u'));
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let scroll_after_up = ed
         .state
         .config
@@ -431,7 +467,9 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     // Force a stale scroll far beyond what a much taller frame's window
     // will allow, standing in for a scroll set before the terminal grew.
@@ -439,7 +477,9 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
 
     // Grow the frame: more visible rows, so `max_scroll` shrinks well below
     // the stale value set above.
-    ed.prepare_frame(80, 80, &mut ctx);
+    ed.sync_viewport_dims(80, 80);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let max_scroll_before_key = {
         let guard = ed.state.popup_view.read().unwrap();
         let view = guard.as_ref().expect("popup still open");
@@ -452,7 +492,9 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     );
 
     ed.feed_key(key_ctrl('u'));
-    ed.prepare_frame(80, 80, &mut ctx);
+    ed.sync_viewport_dims(80, 80);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     let scroll_after_up = ed
         .state
         .config
@@ -479,7 +521,9 @@ fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     assert!(popup_view(&ed).is_some(), "sanity: showing");
     let head_before = ed.current_selections().primary().head();
 
@@ -513,7 +557,9 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let before = state(&ed);
     ed.feed_key(key_ctrl('d'));

@@ -200,7 +200,7 @@ fn struct_field_names_handles_wrapped_generics_and_attributes() {
         pub(crate) inline_output_entered: bool,
         pub(crate) minibuf_completion_view:
             Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>>,
-        pub(super) pending_events: Vec<crate::editor::event::EditorEvent>,
+        pub(super) pending_work: VecDeque<crate::editor::event::PendingWork>,
         pub(in crate::editor) completion: Option<completion::CompletionSession>,
     "#;
     assert_eq!(
@@ -209,7 +209,7 @@ fn struct_field_names_handles_wrapped_generics_and_attributes() {
             "buffers",
             "inline_output_entered",
             "minibuf_completion_view",
-            "pending_events",
+            "pending_work",
             "completion",
         ]
     );

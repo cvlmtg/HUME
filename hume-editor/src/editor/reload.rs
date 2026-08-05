@@ -119,8 +119,8 @@ impl Editor {
 
         // ── Steel values rooted in the outgoing engine ──
         //
-        // `pending_events`, `pending_steel_calls`, and the five overlay
-        // models (popup/menu/drawer/picker/confirm) all drop below when
+        // `pending_work` and the five overlay models
+        // (popup/menu/drawer/picker/confirm) all drop below when
         // `self.state.config = ConfigState::new(…)` runs — nothing here
         // reads any of them in between, so there's nothing to clear early.
         // `PickerSession::source` (if a picker was open) kills any streaming
@@ -243,7 +243,7 @@ impl Editor {
     ///
     /// Batched, not interleaved per buffer the way a real reopen would fire
     /// these: every `OnLspAttach` runs, then every `OnBufferOpen`, then every
-    /// `OnDiagnosticsChanged`/`OnViewportChange`. `pending_events` is FIFO, so
+    /// `OnDiagnosticsChanged`/`OnViewportChange`. `pending_work` is FIFO, so
     /// each buffer's *own* hooks still fire in the same relative order a real
     /// open would use — only the cross-buffer interleaving differs.
     pub(crate) fn resync_config_state(&mut self, snapshot: &ReloadSnapshot) {
@@ -358,11 +358,13 @@ pub(crate) fn typed_reload_config(
     ed.scripting = None;
     ed.init_scripting(&mut snapshot);
     ed.resync_config_state(&snapshot);
-    // Drained here, inside the accounting window, rather than left for the
-    // next interactive event: `resync_config_state` only *enqueues* its
-    // hooks (`queue_event`), and a handler error from one of them is
-    // exactly the kind of failure "Config reloaded" must not paper over.
-    ed.drain_events();
+    // Settled here, inside the accounting window, rather than left for the
+    // next loop iteration: `resync_config_state` only *enqueues* its hooks
+    // (`queue_event`), and a handler error from one of them is exactly the
+    // kind of failure "Config reloaded" must not paper over. A second,
+    // deliberately separate `settle()` call site from `Editor::run`'s loop —
+    // see `settle`'s own doc.
+    ed.settle();
     let (errors_after, warnings_after) = ed.state.message_log.totals();
     if errors_after == errors_before && warnings_after == warnings_before {
         ed.report(Severity::Info, "Config reloaded".to_string());

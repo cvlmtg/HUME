@@ -338,18 +338,15 @@ pub(crate) fn open_picker(
 /// `Editor::reset_config_state` is a second, deliberate exit from this
 /// "fires exactly once" contract: its wholesale `ConfigState` rebuild drops
 /// `state.config.picker` directly (never calling this function) along with
-/// the `pending_steel_calls` queue this function would have pushed the
-/// callback onto — the outgoing engine that owns the callback is seconds
-/// from being dropped, so firing it would be observable to nothing.
+/// the `pending_work` queue this function would have pushed the callback
+/// onto — the outgoing engine that owns the callback is seconds from being
+/// dropped, so firing it would be observable to nothing.
 pub(crate) fn close_picker(state: &mut super::EditorState, payload: SteelVal) -> bool {
     let Some(session) = state.config.picker.take() else {
         return false;
     };
     let callback = session.on_select().clone();
-    state
-        .config
-        .pending_steel_calls
-        .push((callback, vec![payload]));
+    state.queue_steel_call(callback, vec![payload]);
     true
 }
 

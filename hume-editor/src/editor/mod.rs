@@ -154,17 +154,14 @@ pub(crate) struct ConfigState {
     /// Steel-writable decoration stores (inlay hints, signs, virtual
     /// lines, extra highlights) — the render providers read these.
     pub(crate) decorations: decorations::DecorationStores,
-    /// Events enqueued during command dispatch, drained by `Editor::drain_events`
-    /// after each command. The unified firing path — `EditorState::queue_event`
-    /// pushes here; no hook fires inline during command execution. `steel_args()`
-    /// converts each event's payload to `SteelVal`s at drain, not here.
-    pub(crate) pending_events: Vec<event::EditorEvent>,
-    /// Rust-side completions that must reach a *specific* Steel closure
-    /// rather than every handler for a hook id: an `lsp-request` callback,
-    /// a timer thunk, a prompt callback. Queued (never evaluated
-    /// inline — same discipline as `pending_events`) by whichever completion
-    /// fires, drained by `Editor::drain_pending_steel_calls`.
-    pub(crate) pending_steel_calls: Vec<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)>,
+    /// Deferred Steel work — events enqueued during command dispatch
+    /// (`EditorState::queue_event`) and specific-closure completions
+    /// (`EditorState::queue_steel_call`: an `lsp-request` callback, a timer
+    /// thunk, a prompt callback) — drained in FIFO order by `Editor::settle`.
+    /// One queue, not two: see `event::PendingWork`'s doc for why the merge
+    /// matters. No work item is ever evaluated inline during command
+    /// execution or a completion callback.
+    pub(crate) pending_work: VecDeque<event::PendingWork>,
     /// Buffers awaiting language detection, drained by
     /// `Editor::detect_pending_languages`. Detection needs `self.scripting`
     /// (lazy-plugin activation), which the disjoint-borrow buffer-open
@@ -185,10 +182,10 @@ pub(crate) struct ConfigState {
     /// than reusing either) since a job id is neither.
     pub(crate) next_async_job_id: u64,
     /// The `(prompt! …)` callback — persists for as long as `minibuf` holds
-    /// the prompt session (unlike `pending_steel_calls`, which drains the
-    /// same frame it's pushed to). `handle_command`'s Confirm/Cancel arms
-    /// take this and push exactly one `(callback text-or-#f)` call onto
-    /// `pending_steel_calls`.
+    /// the prompt session (unlike a queued `PendingWork::Call`, which drains
+    /// the same `settle()` it's pushed to). `handle_command`'s Confirm/Cancel
+    /// arms take this and queue exactly one `(callback text-or-#f)` call via
+    /// `queue_steel_call`.
     pub(crate) steel_prompt_callback: Option<steel::rvals::SteelVal>,
     /// `(show-popup! text)`'s raw content — resolved into a positioned
     /// `PopupState` each frame by `Editor::sync_popup_view` (geometry needs
@@ -232,8 +229,7 @@ impl ConfigState {
             languages: LanguageRegistry::new(),
             trigger_chars: rustc_hash::FxHashMap::default(),
             decorations: decorations::DecorationStores::reset(prior_virtual_lines_generation),
-            pending_events: Vec::new(),
-            pending_steel_calls: Vec::new(),
+            pending_work: VecDeque::new(),
             pending_language_detection: Vec::new(),
             async_jobs: rustc_hash::FxHashMap::default(),
             next_async_job_id: 0,
@@ -419,10 +415,10 @@ pub(crate) struct EditorState {
     /// `Editor`/`LspState`), but the LSP completion session it must dismiss
     /// now lives on `LspState`. Consumed (session + ui + view all cleared)
     /// by `Editor::take_pending_lsp_completion_dismiss`, called
-    /// unconditionally from `handle_key`, `handle_mouse`, `drain_events`, and
-    /// `drain_pending_steel_calls` — the last of which `prepare_frame` also
-    /// calls every frame, so no separate render-time call is needed. Same
-    /// deferral channel philosophy as `pending_events`.
+    /// unconditionally from `handle_key`, `handle_mouse`, and (top and tail)
+    /// `Editor::settle` — the latter is called every frame by every settle
+    /// site, so no separate render-time call is needed. Same deferral
+    /// channel philosophy as `pending_work`.
     pub(super) lsp_completion_dismiss_pending: bool,
     /// Shared view for the LSP completion menu — reuses the popup/selection
     /// menu's generic
@@ -536,8 +532,8 @@ impl EditorState {
     /// Single write path for all mode transitions.
     ///
     /// Captures the old mode, writes the new one, and enqueues `OnModeChange`
-    /// for firing by `Editor::drain_events` after the command returns. The
-    /// no-op guard prevents spurious hook fires when mode is already correct.
+    /// for firing by `Editor::settle` at the next drain. The no-op guard
+    /// prevents spurious hook fires when mode is already correct.
     ///
     /// The `mode` field is private so the compiler enforces that every
     /// transition goes through here.
@@ -567,7 +563,28 @@ impl EditorState {
     /// `self.state.queue_event(…)` from `Editor` methods and directly, like
     /// `set_mode` above, from methods that only hold `&mut EditorState`.
     pub(crate) fn queue_event(&mut self, event: event::EditorEvent) {
-        self.config.pending_events.push(event);
+        self.config
+            .pending_work
+            .push_back(event::PendingWork::Event(event));
+    }
+
+    /// Queue `(proc, args)` for evaluation at the next drain boundary —
+    /// never called inline (LSP dispatch, timer fire, and minibuffer key
+    /// handling all detect their completion from inside a borrow that can't
+    /// re-enter Steel). Shared delivery mechanism for the `lsp-request`
+    /// callback, timer thunks, and the prompt/menu/drawer/picker callbacks.
+    /// Lives on `EditorState` (not `Editor`) so `picker::close_picker` and
+    /// `EditorHostImpl`'s spawn-failure arm — which only hold `&mut
+    /// EditorState` — can reach it too, the same reason `queue_event` lives
+    /// here.
+    pub(crate) fn queue_steel_call(
+        &mut self,
+        proc: steel::rvals::SteelVal,
+        args: Vec<steel::rvals::SteelVal>,
+    ) {
+        self.config
+            .pending_work
+            .push_back(event::PendingWork::Call(proc, args));
     }
 }
 
@@ -688,9 +705,9 @@ impl Editor {
     /// Set the editing mode. The cursor shape reflecting the new mode will be
     /// emitted after the current frame's draw call.
     ///
-    /// Enqueues `OnModeChange` through the unified `pending_events` channel
-    /// (same path as the `EditorCmd` handlers); `drain_events` fires it after
-    /// the current dispatch completes.
+    /// Enqueues `OnModeChange` through the unified `pending_work` channel
+    /// (same path as the `EditorCmd` handlers); `settle` fires it at the
+    /// next drain.
     ///
     /// For Insert mode entry and exit use `begin_insert_session` and
     /// [`crate::editor::commands::end_insert_session`] instead — they manage

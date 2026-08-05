@@ -76,7 +76,7 @@ impl Editor {
                     .take()
                     .expect("checked by the caller above");
                 let idx = steel::rvals::SteelVal::IntV(menu.selected as isize);
-                self.queue_steel_call(menu.callback, vec![idx]);
+                self.state.queue_steel_call(menu.callback, vec![idx]);
                 true
             }
             KeyCode::Escape => {
@@ -86,7 +86,8 @@ impl Editor {
                     .menu
                     .take()
                     .expect("checked by the caller above");
-                self.queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+                self.state
+                    .queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
                 true
             }
             _ => {
@@ -96,7 +97,8 @@ impl Editor {
                     .menu
                     .take()
                     .expect("checked by the caller above");
-                self.queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+                self.state
+                    .queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
                 false
             }
         }
@@ -154,12 +156,13 @@ impl Editor {
                 let drawer = self.state.config.drawer.as_ref().expect("checked above");
                 let idx = steel::rvals::SteelVal::IntV(drawer.selected as isize);
                 let callback = drawer.callback.clone();
-                self.queue_steel_call(callback, vec![idx]);
+                self.state.queue_steel_call(callback, vec![idx]);
                 true
             }
             KeyCode::Escape => {
                 let drawer = self.state.config.drawer.take().expect("checked above");
-                self.queue_steel_call(drawer.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+                self.state
+                    .queue_steel_call(drawer.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
                 self.state.sync_drawer_view();
                 true
             }

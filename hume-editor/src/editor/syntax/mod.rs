@@ -103,9 +103,9 @@ impl Editor {
     ///
     /// Also fires `OnBufferOpen` for each buffer, after its `OnLanguageSet`
     /// (queued by `detect_and_set_language` above) — `open_buffer_and_notify`
-    /// itself doesn't fire it, since both hooks share the FIFO
-    /// `pending_events` queue and plugins registering both handlers expect
-    /// `on-language-set` to run first.
+    /// itself doesn't fire it, since both hooks share the FIFO `pending_work`
+    /// queue and plugins registering both handlers expect `on-language-set`
+    /// to run first.
     ///
     /// Takes the queue before iterating, not `while let Some(bid) =
     /// queue.pop()`: detecting a language can activate a lazy plugin, whose

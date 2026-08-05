@@ -51,7 +51,7 @@ impl Editor {
                 .remove(&id)
                 .expect("just found by get_mut above");
             let code = result.status.and_then(|s| s.code()).unwrap_or(-1);
-            self.queue_steel_call(
+            self.state.queue_steel_call(
                 pending.callback,
                 vec![
                     SteelVal::StringV(result.stdout.into()),

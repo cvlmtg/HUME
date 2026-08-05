@@ -43,9 +43,11 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
     drain_until_picker_total(&mut ed, 3);
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 12, &mut ctx);
+    ed.sync_viewport_dims(40, 12);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     ed.feed_key(key_enter()); // top-ranked row (insertion order, empty query) is "a"
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
@@ -134,7 +136,7 @@ fn picker_close_kills_the_source_child() {
     ed.state.status_msg = None;
     let started = Instant::now();
     ed.feed_key(key_esc());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     // `sleep 30` makes a broken kill observable two ways: the liveness
     // check below (a wait()-only Drop still reaps it, just 30s later) AND —
     // the check that actually catches that case fast — Esc itself must not
@@ -165,7 +167,7 @@ fn picker_close_kills_the_source_child() {
     ed.feed_key(key('i'));
     ed.feed_key(key('Z'));
     ed.feed_key(key_esc());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     let bid = ed.focused_buffer_id();
     let text = ed.state.buffers.get(bid).text().to_string();
     assert!(

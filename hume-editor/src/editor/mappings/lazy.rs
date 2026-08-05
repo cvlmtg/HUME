@@ -87,8 +87,9 @@ impl Editor {
     /// Activate every still-`Declared` lazy plugin registered for the event
     /// named `name`.
     ///
-    /// Called by `drain_events` for each queued hook, before the handler check,
-    /// so a plugin's `register-hook!` handlers are installed before the hook fires.
+    /// Called by `settle`'s `Event` arm for each queued event, before the
+    /// handler check, so a plugin's `register-hook!` handlers are installed
+    /// before the hook fires.
     pub(in super::super) fn activate_lazy_event_plugins(&mut self, name: &str) {
         let pending = match self.scripting.as_ref() {
             Some(host) => {

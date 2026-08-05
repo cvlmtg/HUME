@@ -63,20 +63,42 @@
       [(= n 2) (%get-option (cadr args) (car args))]
       [else (error "get-option: expected (get-option key) or (get-option bid key)")])))
 
+;; Each armed timer only clears/consumes `pending`'s slot if it's still the
+;; entry stored there when it fires — checked via `my-id`, a box the timer's
+;; own closure captures so it can compare "am I still the current one" at
+;; fire time. Without this: two calls close enough together that the first
+;; timer is already popped-and-queued (due, but not yet *run*) when the
+;; second call's `cancel-timer!` targets it — a no-op, the id no longer
+;; exists in the wheel — leave the second call's freshly armed timer's id
+;; written into `pending`. The first timer's queued call then runs anyway
+;; (it was already dequeued, nothing retroactively cancels that) and
+;; unconditionally clears `pending` on the way out, wiping the second
+;; timer's id out from under it — orphaned, no longer cancellable by any
+;; future call, but still ticking: it fires later regardless, on its own
+;; original schedule, sending a stray duplicate. Racing two calls into the
+;; same fixpoint drain is exactly what a merged, always-draining `settle()`
+;; makes routine (hume-editor's C4), so this is no longer a corner case.
 (define (debounce ms proc)
   (let ((pending (box #f)))
     (lambda args
       (let ((prev (unbox pending)))
         (when prev (cancel-timer! prev)))
-      (set-box! pending (after ms (lambda () (apply proc args)))))))
+      (let ((my-id (box #f)))
+        (set-box! my-id
+          (after ms (lambda ()
+                      (when (equal? (unbox pending) (unbox my-id))
+                        (set-box! pending #f))
+                      (apply proc args))))
+        (set-box! pending (unbox my-id))))))
 
 ;; debounce-by — like `debounce`, but keyed per first-argument value instead
 ;; of one shared pending timer: a call keyed `k1` never cancels a call keyed
-;; `k2`. Same trailing-edge semantics per key. Relies on the calling
-;; convention already used everywhere `debounce` wraps a single-bid handler
-;; (`(lambda (bid) ...)`) — the key is `(car args)`, not a separate keyfn
-;; argument, so swapping `debounce` for `debounce-by` at an existing call
-;; site needs no other change.
+;; `k2`. Same trailing-edge semantics per key, and the same current-entry
+;; check `debounce` uses (see its comment) against races within one key.
+;; Relies on the calling convention already used everywhere `debounce` wraps
+;; a single-bid handler (`(lambda (bid) ...)`) — the key is `(car args)`,
+;; not a separate keyfn argument, so swapping `debounce` for `debounce-by`
+;; at an existing call site needs no other change.
 (define (debounce-by ms proc)
   (let ((pending (box (hash))))
     (lambda args
@@ -84,11 +106,15 @@
              (table (unbox pending)))
         (when (hash-contains? table key)
           (cancel-timer! (hash-ref table key)))
-        (set-box! pending
-          (hash-insert (unbox pending) key
+        (let ((my-id (box #f)))
+          (set-box! my-id
             (after ms (lambda ()
-                        (set-box! pending (hash-remove (unbox pending) key))
-                        (apply proc args)))))))))
+                        (let ((table (unbox pending)))
+                          (when (and (hash-contains? table key)
+                                     (equal? (hash-ref table key) (unbox my-id)))
+                            (set-box! pending (hash-remove table key))))
+                        (apply proc args))))
+          (set-box! pending (hash-insert (unbox pending) key (unbox my-id))))))))
 
 (define (diagnostics-for-buffer bid #:severity [severity #f] #:range [range #f])
   (%diagnostics-for-buffer bid severity range))

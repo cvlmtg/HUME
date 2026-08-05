@@ -70,10 +70,9 @@ fn setup(
 
 fn run_references(ed: &mut Editor) {
     type_cmd(ed, ":lsp-references");
-    ed.drain_events();
+    ed.settle();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
-    ed.drain_events();
+    ed.settle();
 }
 
 fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
@@ -119,7 +118,7 @@ fn enter_jumps_and_drawer_stays_open() {
     run_references(&mut ed);
     ed.handle_key(key('j'));
     ed.handle_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(
         ed.doc()

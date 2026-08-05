@@ -36,7 +36,7 @@ fn select_second_item_calls_back_with_index_1() {
 
     ed.feed_key(key('j'));
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
     assert!(
@@ -53,7 +53,7 @@ fn esc_calls_back_with_false() {
 
     ed.feed_key(key('j'));
     ed.feed_key(key_esc());
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
     assert!(ed.state.config.menu.is_none());
@@ -69,7 +69,7 @@ fn selection_clamps_at_the_top() {
     ed.feed_key(key('k'));
     ed.feed_key(key('k'));
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "0",
@@ -88,7 +88,7 @@ fn selection_clamps_at_the_bottom() {
         ed.feed_key(key('j'));
     }
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "2",
@@ -104,7 +104,7 @@ fn arrow_keys_also_move_the_selection() {
 
     ed.feed_key(key_down());
     ed.feed_key(key_enter());
-    ed.drain_pending_steel_calls();
+    ed.settle();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
 }
 
@@ -119,7 +119,7 @@ fn stray_key_dismisses_the_menu_and_still_executes() {
     // 'l' (move-right) is not one of the menu's intercepted keys.
     let head_before = ed.current_selections().primary().head();
     ed.feed_key(key('l'));
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert!(
         ed.state.config.menu.is_none(),
@@ -158,7 +158,7 @@ fn close_menu_drops_the_callback_without_invoking_it() {
 
     assert!(ed.state.config.menu.is_none());
     assert!(
-        ed.state.config.pending_steel_calls.is_empty(),
+        ed.state.config.pending_work.is_empty(),
         "close_menu must not queue the callback"
     );
 }
@@ -218,7 +218,9 @@ fn selected_row_renders_with_the_menu_selected_scope() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(40, 10, &mut ctx);
+    ed.sync_viewport_dims(40, 10);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     use ratatui::layout::Rect;
     let rect = Rect::new(0, 0, 40, 10);

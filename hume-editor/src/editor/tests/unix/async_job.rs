@@ -34,16 +34,14 @@ fn end_to_end_drain_delivers_the_full_result_exactly_once() {
     let args = vec!["-c".to_string(), "printf 'hi'".to_string()];
     let id = spawn_async(&mut ed, "sh", args, SteelVal::BoolV(false));
 
-    drain_sources_until(&mut ed, |ed| {
-        !ed.state.config.pending_steel_calls.is_empty()
-    });
+    drain_sources_until(&mut ed, |ed| !ed.state.config.pending_work.is_empty());
 
     assert!(
         !ed.state.config.async_jobs.contains_key(&id),
         "a completed job must be removed from the registry"
     );
-    assert_eq!(ed.state.config.pending_steel_calls.len(), 1);
-    let (_, call_args) = &ed.state.config.pending_steel_calls[0];
+    assert_eq!(pending_calls(&ed).len(), 1);
+    let (_, call_args) = pending_calls(&ed)[0];
     assert_eq!(
         call_args,
         &vec![
@@ -54,9 +52,9 @@ fn end_to_end_drain_delivers_the_full_result_exactly_once() {
     );
 
     // Draining again must not re-queue the same completion.
-    ed.state.config.pending_steel_calls.clear();
+    ed.state.config.pending_work.clear();
     ed.drain_async_sources();
-    assert!(ed.state.config.pending_steel_calls.is_empty());
+    assert!(ed.state.config.pending_work.is_empty());
 }
 
 #[test]
@@ -65,11 +63,9 @@ fn nonzero_exit_and_stderr_reach_the_callback() {
     let args = vec!["-c".to_string(), "echo boom >&2; exit 3".to_string()];
     spawn_async(&mut ed, "sh", args, SteelVal::BoolV(false));
 
-    drain_sources_until(&mut ed, |ed| {
-        !ed.state.config.pending_steel_calls.is_empty()
-    });
+    drain_sources_until(&mut ed, |ed| !ed.state.config.pending_work.is_empty());
 
-    let (_, call_args) = &ed.state.config.pending_steel_calls[0];
+    let (_, call_args) = pending_calls(&ed)[0];
     assert_eq!(call_args[1], SteelVal::StringV("boom\n".into()));
     assert_eq!(call_args[2], SteelVal::IntV(3));
 }
@@ -87,8 +83,8 @@ fn missing_binary_fires_the_callback_synchronously_with_code_negative_one() {
     // No drain needed — a spawn failure fires its callback immediately,
     // inside `spawn_async` itself.
     assert!(!ed.state.config.async_jobs.contains_key(&id));
-    assert_eq!(ed.state.config.pending_steel_calls.len(), 1);
-    let (_, call_args) = &ed.state.config.pending_steel_calls[0];
+    assert_eq!(pending_calls(&ed).len(), 1);
+    let (_, call_args) = pending_calls(&ed)[0];
     assert_eq!(call_args[0], SteelVal::StringV("".into()));
     assert_eq!(call_args[2], SteelVal::IntV(-1));
     let SteelVal::StringV(stderr) = &call_args[1] else {
@@ -132,7 +128,7 @@ fn cancel_kills_the_child_and_drops_the_callback_without_firing_it() {
     // Draining after cancel must never fire the dropped callback.
     ed.drain_async_sources();
     assert!(
-        ed.state.config.pending_steel_calls.is_empty(),
+        ed.state.config.pending_work.is_empty(),
         "a cancelled job's callback must never fire"
     );
 }
@@ -141,5 +137,5 @@ fn cancel_kills_the_child_and_drops_the_callback_without_firing_it() {
 fn cancel_on_an_unknown_id_is_a_silent_no_op() {
     let mut ed = editor_from("-[a]>bc\n");
     EditorHostImpl::new(&mut ed.state, &mut ed.view).cancel_async(999);
-    assert!(ed.state.config.pending_steel_calls.is_empty());
+    assert!(ed.state.config.pending_work.is_empty());
 }

@@ -94,7 +94,7 @@ fn requests_without_a_supersede_key_do_not_cancel_each_other() {
 
     type_cmd(&mut ed, ":test-cmd");
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -170,7 +170,7 @@ fn response_delivers_decoded_result_to_callback() {
     let before = state(&ed);
     type_cmd(&mut ed, ":test-cmd");
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_ne!(
         state(&ed),
@@ -201,7 +201,7 @@ fn protocol_error_delivers_err_hashmap_to_callback() {
     let before = state(&ed);
     type_cmd(&mut ed, ":test-cmd");
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_ne!(
         state(&ed),
@@ -233,7 +233,7 @@ fn timeout_delivers_err_string_timeout_to_callback() {
     let before = state(&ed);
     type_cmd(&mut ed, ":test-cmd");
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_ne!(
         state(&ed),
@@ -271,7 +271,7 @@ fn on_lsp_notification_fires_the_registered_handler() {
 
     let before = state(&ed);
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_ne!(
         state(&ed),
@@ -335,7 +335,7 @@ fn callback_calling_lsp_request_does_not_reenter_synchronously() {
     let start = state(&ed);
     type_cmd(&mut ed, ":test-cmd");
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
     let after_first = state(&ed);
     assert_ne!(start, after_first, "first callback must have fired exactly");
 
@@ -343,7 +343,7 @@ fn callback_calling_lsp_request_does_not_reenter_synchronously() {
     // cannot have been answered (let alone re-entrantly evaluated) within
     // the same drain/eval pass that sent it.
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
     let after_second = state(&ed);
     assert_ne!(
         after_first, after_second,
@@ -371,7 +371,7 @@ fn callback_error_lands_in_message_log_not_a_crash() {
 
     type_cmd(&mut ed, ":test-cmd");
     ed.drain_lsp();
-    ed.drain_pending_steel_calls(); // must not panic
+    ed.settle(); // must not panic
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -462,7 +462,7 @@ fn lsp_request_with_unknown_server_reports_an_error_and_fires_callback_with_err(
     let before = state(&ed);
     type_cmd(&mut ed, ":test-cmd");
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_ne!(
         state(&ed),
@@ -506,7 +506,7 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
     let before = state(&ed);
     type_cmd(&mut ed, ":test-cmd");
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
+    ed.settle();
 
     assert_ne!(
         state(&ed),

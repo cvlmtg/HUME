@@ -97,10 +97,9 @@ fn run_hover(ed: &mut Editor) {
     // drains hooks after every keystroke, well before any network response
     // could land. Draining hooks only at the end would incorrectly replay
     // those stale mode changes after the popup is shown, closing it.
-    ed.drain_events();
+    ed.settle();
     ed.drain_lsp();
-    ed.drain_pending_steel_calls();
-    ed.drain_events();
+    ed.settle();
 }
 
 #[test]
@@ -124,7 +123,9 @@ fn popup_shows_the_fixture_content() {
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     assert_eq!(
         popup_lines(&ed),
@@ -148,7 +149,9 @@ fn null_result_logs_and_shows_no_popup() {
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     assert!(
         popup_lines(&ed).is_none(),
@@ -176,7 +179,9 @@ fn error_reports_via_the_message_log() {
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     assert!(
         popup_lines(&ed).is_none(),
@@ -214,7 +219,9 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     // 50 lines overflows to the docked layout (`popup_lines` only reads the
     // cursor-anchored view) — assert on the band view instead, mirroring
     // `tall_content_docks_instead_of_using_the_drawer`.
@@ -278,7 +285,9 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     assert!(popup_lines(&ed).is_some(), "sanity: popup shown");
 
     let head_before = ed.current_selections().primary().head();
@@ -315,7 +324,9 @@ fn tall_content_docks_instead_of_using_the_drawer() {
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     assert!(
         popup_lines(&ed).is_none(),
@@ -386,25 +397,26 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
     );
 
     type_cmd(&mut ed, ":lsp-hover");
-    // Drain the Command-mode entry/exit's on-mode-change hooks now, exactly
-    // as the real interactive loop would (after every keystroke) — well
-    // before the async response arrives, so lsp-hover's close-on-mode-
-    // change dismiss can't replay against a popup that isn't open yet.
-    ed.drain_events();
 
     // Bump the buffer's text_gen between send and drain — without
-    // #:allow-stale this response would be dropped.
+    // #:allow-stale this response would be dropped. No settle() call until
+    // after the edit: settle() now unconditionally drains LSP too (the
+    // settle() merge, SPEC.md §3) — draining any earlier would deliver the
+    // response (and run lsp-hover's close-on-mode-change dismiss) before
+    // the edit ever happens, defeating the "intervening edit" this test
+    // means to exercise. The `i`/`X`/Esc mode-change hooks below simply
+    // accumulate in `pending_work`, unfired, until the one settle() call at
+    // the end — by which point no popup exists yet for a dismiss to race
+    // against, which is what the old multi-settle staging was working
+    // around.
     ed.feed_key(key('i'));
-    ed.drain_events();
     ed.feed_key(key('X'));
     ed.feed_key(key_esc());
-    ed.drain_events();
 
-    ed.drain_lsp();
-    ed.drain_pending_steel_calls();
-    ed.drain_events();
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     assert_eq!(
         popup_lines(&ed),

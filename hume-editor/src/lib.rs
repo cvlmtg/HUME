@@ -51,6 +51,11 @@ pub fn run_keys(
 
     for key in parsed {
         editor.step(key);
+        // `step` only dispatches the key; `settle()` is what drains the
+        // queued work (hooks, LSP/timer callbacks) that dispatch enqueues —
+        // mirrors `Editor::run`'s interactive loop, where the loop settles
+        // and the input handler doesn't (see `Editor::settle`'s doc).
+        editor.settle();
         if editor.state.should_quit {
             break;
         }
@@ -128,10 +133,11 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     editor.init_scripting(&mut Default::default());
     // Open remaining paths after scripting init so OnBufferOpen hooks fire.
     editor.open_extra_files(rest);
-    // Drain hooks queued during init (OnBufferOpen, OnLanguageSet, etc.) before
-    // entering the event loop. queue_event only enqueues; without an explicit
-    // drain here they would silently defer to the first keypress.
-    editor.drain_events();
+    // No explicit startup drain: work queued during init (OnBufferOpen,
+    // OnLanguageSet, etc.) sits in `pending_work` until `Editor::run`'s loop
+    // reaches its first `settle()` — which now runs before the first
+    // `should_quit` check and the first frame, so nothing is lost by leaving
+    // it queued here.
 
     let mut term = hume_platform::terminal::init(
         &shared,

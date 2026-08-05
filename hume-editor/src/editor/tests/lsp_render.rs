@@ -96,7 +96,9 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
 
     let pid = ed.state.focused_pane_id;
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     DiagCtx {
         _file_dir: file_dir,
@@ -164,7 +166,9 @@ fn severity_floor_hides_less_severe_diagnostics() {
     )
     .unwrap();
     let mut ctx = RenderContext::new();
-    c.ed.prepare_frame(80, 25, &mut ctx);
+    c.ed.sync_viewport_dims(80, 25);
+    c.ed.settle();
+    c.ed.prepare_frame(&mut ctx);
 
     assert_eq!(
         diagnostics_arc(&c.ed, c.pid),
@@ -212,14 +216,18 @@ fn diagnostics_stay_visible_in_insert_mode() {
 
     c.ed.feed_key(key('i'));
     let mut ctx = RenderContext::new();
-    c.ed.prepare_frame(80, 25, &mut ctx);
+    c.ed.sync_viewport_dims(80, 25);
+    c.ed.settle();
+    c.ed.prepare_frame(&mut ctx);
     assert!(
         !diagnostics_arc(&c.ed, c.pid).is_empty(),
         "diagnostics must stay visible in Insert mode"
     );
 
     c.ed.feed_key(key_esc());
-    c.ed.prepare_frame(80, 25, &mut ctx);
+    c.ed.sync_viewport_dims(80, 25);
+    c.ed.settle();
+    c.ed.prepare_frame(&mut ctx);
     assert!(
         !diagnostics_arc(&c.ed, c.pid).is_empty(),
         "still visible back in Normal mode"
@@ -246,7 +254,9 @@ fn extra_highlight_gets_its_runtime_interned_scope() {
 
     let pid = ed.state.focused_pane_id;
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let unused_scope = scope(&ed, "unused");
     assert_eq!(
@@ -277,7 +287,9 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
 
     let pid = ed.state.focused_pane_id;
     let mut ctx = RenderContext::new();
-    ed.prepare_frame(80, 25, &mut ctx);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
 
     let spans = extra_arc(&ed, pid);
     assert_eq!(spans.len(), 2);
