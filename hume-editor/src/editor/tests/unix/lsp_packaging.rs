@@ -1,7 +1,6 @@
-// Packaging: lazy `declare-plugin` activation,
-// the goto-trie keybindings bound in `plugin.scm`, and the commented
-// `init.scm.example` LSP block. Loads the real shipped `core:lsp` plugin
-// in place (`RealRuntimeGuard`).
+// Packaging: lazy `declare-plugin` activation, and the goto-trie keybindings
+// bound in `plugin.scm`. Loads the real shipped `core:lsp` plugin in place
+// (`RealRuntimeGuard`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -308,34 +307,5 @@ fn every_default_lsp_binding_dispatches_without_error() {
             );
         }
     }
-    drop(guard);
-}
-
-/// The commented LSP block in `runtime/init.scm.example` (uncommented) is
-/// valid `init.scm` source — a stale block (typo, removed builtin, wrong
-/// keyword arg) would fail `eval_init` here instead of silently rotting
-/// since nothing else ever evaluates commented-out example code.
-///
-/// Flip: introducing a typo into the block below (not the real file — this
-/// is a literal copy for isolation) reliably fails `eval_init`.
-#[test]
-fn commented_init_example_block_is_valid_source() {
-    let tmp = safe_tempdir();
-    let guard = RealRuntimeGuard::new();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin "core:stdlib")
-(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
-(declare-plugin "core:lsp"
-  #:events '(on-lsp-attach)
-  #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
-               "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
-               "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"))"#,
-        tmp.path(),
-    );
     drop(guard);
 }

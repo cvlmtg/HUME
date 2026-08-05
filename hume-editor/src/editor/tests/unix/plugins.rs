@@ -2421,3 +2421,71 @@ fn plugin_status_shows_pending_command_from_live_registry_stubs() {
         ":plugin-status must show the pending cmd:bar entry for user/tp; got: {out:?}"
     );
 }
+
+// ── runtime/init.scm.example coverage ────────────────────────────────────────
+
+/// Path to the shipped example config, the same file a fresh install's
+/// `:help`/README points users to copy to `~/.config/hume/init.scm`.
+const INIT_SCM_EXAMPLE_PATH: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime/init.scm.example");
+
+/// The real, shipped `runtime/init.scm.example` evaluates cleanly end to end
+/// against the real runtime — a removed builtin or a renamed keyword arg
+/// (exactly this commit's kind of change) fails here, not first when a user
+/// copies the example and starts HUME.
+///
+/// Fail oracle: rename a keyword arg in `runtime/init.scm.example` (e.g.
+/// `#:events` to `#:event`) → `eval_init` fails and this test catches it.
+#[test]
+fn init_scm_example_is_valid_source() {
+    let example =
+        std::fs::read_to_string(INIT_SCM_EXAMPLE_PATH).expect("init.scm.example must be readable");
+    let tmp = safe_tempdir();
+    let guard = RealRuntimeGuard::new();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(&mut ed, &mut host, &example, tmp.path());
+    drop(guard);
+}
+
+/// Every commented-out `(...)` sample in `runtime/init.scm.example` — the
+/// optional plugins and the `set-option!`/`bind-key!` samples in its trailing
+/// comment block — is valid `init.scm` source on its own, evaluated one at a
+/// time appended to the real (active) file content. One at a time, not all
+/// together: the file's own comment warns several of the optional plugins
+/// rebind the same keys, so a user enables a subset, not all of them at once.
+///
+/// Fail oracle: introduce a typo into one of the commented samples → its
+/// `eval_init` call fails and this test catches it. The `found > 0` assertion
+/// guards against a rewrite of the example silently dropping every commented
+/// sample and turning this into a no-op that always passes.
+#[test]
+fn init_scm_example_commented_code_is_valid_source() {
+    let example =
+        std::fs::read_to_string(INIT_SCM_EXAMPLE_PATH).expect("init.scm.example must be readable");
+
+    let mut found = 0;
+    for line in example.lines() {
+        let mut rest = line.trim_start();
+        while let Some(r) = rest.strip_prefix(';') {
+            rest = r;
+        }
+        let sample = rest.trim_start();
+        if !sample.starts_with('(') {
+            continue;
+        }
+        found += 1;
+
+        let source = format!("{example}\n{sample}");
+        let tmp = safe_tempdir();
+        let guard = RealRuntimeGuard::new();
+        let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+        let mut host = ScriptingHost::new();
+        eval_with_real_host(&mut ed, &mut host, &source, tmp.path());
+        drop(guard);
+    }
+    assert!(
+        found > 0,
+        "expected at least one commented-out code sample in init.scm.example"
+    );
+}
