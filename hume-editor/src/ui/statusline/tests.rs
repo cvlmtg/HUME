@@ -232,6 +232,81 @@ fn line_ending_element_crlf() {
     insta::assert_snapshot!(text, @"CRLF");
 }
 
+// ── Position element ──────────────────────────────────────────────────────
+
+fn test_editor_with_text_and_cursor(s: &str, head: usize) -> crate::editor::Editor {
+    use crate::editor::buffer::Buffer;
+    use hume_editing::{
+        selection::{Selection, SelectionSet},
+        text::Text,
+    };
+    let text = Text::from(s);
+    let sels = SelectionSet::single(Selection::collapsed(head));
+    crate::editor::Editor::for_testing(Buffer::new(text, sels))
+}
+
+#[test]
+fn position_element_single_line_pads_to_min_field() {
+    let ed = test_editor_with_text("hello\n");
+    let colors = crate::ui::theme::EditorColors::default();
+    let (text, _) = render_element(StatusElement::Position, &ed, &colors, "");
+    insta::assert_snapshot!(text, @"    1:1");
+}
+
+#[test]
+fn position_element_two_digit_row_stays_in_min_field() {
+    // 14 empty lines, then a 3-char line so the cursor lands at line 14, col 3.
+    let s = format!("{}abc\n", "\n".repeat(13));
+    let head = 13 + 2; // start of line 14 (char 13) + 2 chars ('a','b') before 'c'
+    let ed = test_editor_with_text_and_cursor(&s, head);
+    let colors = crate::ui::theme::EditorColors::default();
+    let (text, _) = render_element(StatusElement::Position, &ed, &colors, "");
+    insta::assert_snapshot!(text, @"   14:3");
+}
+
+#[test]
+fn position_element_three_digit_row_and_col() {
+    // 142 empty lines, then a 49-char line (line 143), then 7 more empty
+    // lines so the buffer has 150 lines total; cursor lands at line 143, col 49.
+    let s = format!("{}{}\n{}", "\n".repeat(142), "a".repeat(49), "\n".repeat(7));
+    let head = 142 + 48; // start of line 143 (char 142) + 48 chars before the 49th 'a'
+    let ed = test_editor_with_text_and_cursor(&s, head);
+    let colors = crate::ui::theme::EditorColors::default();
+    let (text, _) = render_element(StatusElement::Position, &ed, &colors, "");
+    insta::assert_snapshot!(text, @" 143:49");
+}
+
+#[test]
+fn position_element_widens_field_past_1000_lines() {
+    let s = "\n".repeat(1000);
+    let ed = test_editor_with_text_and_cursor(&s, 0);
+    let colors = crate::ui::theme::EditorColors::default();
+    let (text, _) = render_element(StatusElement::Position, &ed, &colors, "");
+    insta::assert_snapshot!(text, @"     1:1");
+}
+
+#[test]
+fn position_element_width_stable_across_row_digit_growth() {
+    // Cursor on line 9 vs line 10 must render to the same width, so
+    // downstream statusline elements (e.g. FilePath) don't shift.
+    let s = "\n".repeat(20);
+    let colors = crate::ui::theme::EditorColors::default();
+
+    let ed9 = test_editor_with_text_and_cursor(&s, 8); // line 9
+    let spans9 = pad_left(
+        render_section(&[StatusElement::Position], &ed9, &colors, ""),
+        &colors,
+    );
+
+    let ed10 = test_editor_with_text_and_cursor(&s, 9); // line 10
+    let spans10 = pad_left(
+        render_section(&[StatusElement::Position], &ed10, &colors, ""),
+        &colors,
+    );
+
+    assert_eq!(section_width(&spans9), section_width(&spans10));
+}
+
 // ── Cwd element ───────────────────────────────────────────────────────────
 
 #[test]

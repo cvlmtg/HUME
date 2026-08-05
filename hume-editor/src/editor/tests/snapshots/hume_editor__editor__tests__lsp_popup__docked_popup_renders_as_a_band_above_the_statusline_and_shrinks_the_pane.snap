@@ -11,4 +11,4 @@ expression: snap
 <fg=#d0d0d0,bg=#282832>┌──────────────────────────────────────┐</>
 <fg=#d0d0d0,bg=#282832>│docked hover text                     │</>
 <fg=#d0d0d0,bg=#282832>└──────────────────────────────────────┘</>
-<fg=#000000,bg=#ffffff> 1:1 *scratch*                    </><fg=#808080,bg=#ffffff>│</><fg=#000000,bg=#ffffff> NOR</>
+<fg=#000000,bg=#ffffff>     1:1 *scratch*                </><fg=#808080,bg=#ffffff>│</><fg=#000000,bg=#ffffff> NOR</>
