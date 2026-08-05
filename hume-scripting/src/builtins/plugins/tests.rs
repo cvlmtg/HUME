@@ -1,5 +1,15 @@
 use super::*;
 
+/// Eval `src` against a fresh host and return the error it must produce.
+fn declare_err(src: &str) -> String {
+    use crate::ScriptingHost;
+    use crate::null_host::LazyStubHost;
+    let mut host = ScriptingHost::new();
+    let mut editor_host = LazyStubHost::default();
+    host.eval_source(src, &mut editor_host)
+        .expect_err("expected declare-plugin to error")
+}
+
 #[test]
 fn parse_core_plugin_name() {
     let id = PluginId::parse("core:helix-surround").unwrap();
@@ -208,24 +218,16 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
 // ── Decode errors name the builtin ─────────────────────────────────────────
 
 /// `declare-plugin`'s argument decoders must name the builtin in their error,
-/// matching every other builtin's naming idiom.
+/// matching every other builtin's naming idiom, with one spelling
+/// (`#:commands`/`#:events`/`#:languages`) shared by all three.
 ///
-/// Fail oracle: revert the `ctx_name` args back to bare `"commands"` →
-/// the assertion on the `declare-plugin` prefix fails.
+/// Fail oracle: revert the label args back to bare `"commands"` →
+/// the assertion on the `declare-plugin #:commands` prefix fails.
 #[test]
 fn declare_plugin_bad_commands_names_the_builtin() {
-    use crate::ScriptingHost;
-    use crate::null_host::LazyStubHost;
-    let mut host = ScriptingHost::new();
-    let mut editor_host = LazyStubHost::default();
-    let err = host
-        .eval_source(
-            r#"(declare-plugin "user/tp" #:commands '(1))"#,
-            &mut editor_host,
-        )
-        .expect_err("non-string #:commands entry must be rejected");
+    let err = declare_err(r#"(declare-plugin "user/tp" #:commands '(1))"#);
     assert!(
-        err.contains("declare-plugin commands"),
+        err.contains("declare-plugin #:commands"),
         "error must name the builtin; got: {err}"
     );
 }
@@ -233,16 +235,8 @@ fn declare_plugin_bad_commands_names_the_builtin() {
 /// Same naming requirement for an unknown `#:events` hook name.
 #[test]
 fn declare_plugin_unknown_hook_names_the_builtin() {
-    use crate::ScriptingHost;
-    use crate::null_host::LazyStubHost;
-    let mut host = ScriptingHost::new();
-    let mut editor_host = LazyStubHost::default();
-    let err = host
-        .eval_source(
-            r#"(declare-plugin "user/tp" #:commands '("c") #:events '(not-a-real-hook))"#,
-            &mut editor_host,
-        )
-        .expect_err("unknown hook name must be rejected");
+    let err =
+        declare_err(r#"(declare-plugin "user/tp" #:commands '("c") #:events '(not-a-real-hook))"#);
     assert!(
         err.contains("declare-plugin #:events"),
         "error must name the builtin; got: {err}"
@@ -256,19 +250,46 @@ fn declare_plugin_unknown_hook_names_the_builtin() {
 /// `list_to_strings` → the string entry is accepted and this test fails.
 #[test]
 fn declare_plugin_rejects_string_event_names() {
+    let err = declare_err(r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#);
+    assert!(
+        err.contains("expected an event-name symbol"),
+        "error must name the expected form; got: {err}"
+    );
+}
+
+/// A `#:events` entry rejected for being unknown/malformed must leave no
+/// trace in `declared_plugins`/`plugin_configs` — PLUM reads the former to
+/// decide what to install, and a name that appears there with no matching
+/// `LazyRegistry` entry can never be reconciled short of a restart.
+///
+/// Fail oracle: move the decode back below the `plugin_configs`
+/// write/`record_declared` call → this test fails because the name is
+/// recorded despite the rejection.
+#[test]
+fn declare_plugin_rejected_events_records_nothing() {
     use crate::ScriptingHost;
     use crate::null_host::LazyStubHost;
     let mut host = ScriptingHost::new();
     let mut editor_host = LazyStubHost::default();
-    let err = host
-        .eval_source(
-            r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#,
-            &mut editor_host,
-        )
-        .expect_err("a string #:events entry must be rejected");
+    host.eval_source(
+        r#"(declare-plugin "user/tp" #:events '(not-a-real-hook))"#,
+        &mut editor_host,
+    )
+    .expect_err("unknown hook name must be rejected");
+
     assert!(
-        err.contains("expected an event-name symbol"),
-        "error must name the expected form; got: {err}"
+        !host
+            .registries
+            .declared_plugins
+            .iter()
+            .any(|d| d == "user/tp"),
+        "a rejected declaration must not be recorded for PLUM: {:?}",
+        host.registries.declared_plugins
+    );
+    let id = PluginId::parse("user/tp").unwrap();
+    assert!(
+        !host.registries.plugin_configs.contains_key(&id),
+        "a rejected declaration must not leave a stored config behind"
     );
 }
 

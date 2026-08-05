@@ -130,6 +130,18 @@ fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
     }
 }
 
+/// Error label for a `declare-plugin` keyword-argument decode.
+///
+/// Inside manifest resolution the offending code is the *plugin's*
+/// `manifest.scm`, not the user's `init.scm` that the init-eval error prefix
+/// will otherwise imply — so name it, and the plugin, explicitly.
+fn declare_arg_label(ctx: &SteelCtx, keyword: &str) -> String {
+    match &ctx.manifest_resolving {
+        Some(id) => format!("declare-plugin {keyword} in manifest.scm for '{id}'"),
+        None => format!("declare-plugin {keyword}"),
+    }
+}
+
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
 /// `(%declare-plugin! name commands events languages config)` — Rust primitive
@@ -148,16 +160,18 @@ fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
 /// never be activated.
 ///
 /// - Validates `name`; aborts init on malformed names.
+/// - Parses and validates activation entry lists *before* recording any
+///   state, so a malformed entry leaves `declared_plugins`/`plugin_configs`
+///   untouched. `#:events` entries are symbols, decoded and validated
+///   against the host's `known_event_names()` via `hooks::event_name_arg`
+///   (this crate has no compiled-in list of its own) — the same decoder
+///   `register-hook!` uses, so the two verbs can't drift on accepted form.
+///   `#:commands`/`#:languages` stay open strings.
+/// - Stores `config` (the `#:config` value, first-wins) so the body can read
+///   it back via `(plugin-config)` whenever activation eventually runs it.
 /// - Records into `declared_plugins` for PLUM compat.
-/// - Parses activation entry lists; `#:events` entries are symbols, decoded
-///   and validated against the host's `known_event_names()` via
-///   `hooks::event_name_arg` (this crate has no compiled-in list of its
-///   own) — the same decoder `register-hook!` uses, so the two verbs can't
-///   drift on accepted form. `#:commands`/`#:languages` stay open strings.
 /// - Filters colliding command entries (logs `Severity::Error`, continues).
 /// - Registers the plugin in `LazyRegistry`.
-/// - Stores `config` (the `#:config` value, first-wins) so the body can read it
-///   back via `(plugin-config)` whenever activation eventually runs it.
 pub(crate) fn declare_plugin(
     ctx: &mut SteelCtx,
     name: String,
@@ -185,30 +199,16 @@ pub(crate) fn declare_plugin(
         return Ok(SteelVal::Void);
     }
 
-    // First declaration wins for config too, matching the state no-op above:
-    // stored now so it is already in place by the time activation runs the body.
-    // Inside manifest resolution, the user's #:config was already stored by
-    // %begin-manifest-declare! before manifest.scm ran — that must win over the
-    // manifest's own default, so use or_insert instead of an unconditional overwrite.
-    if ctx.manifest_resolving.is_some() {
-        ctx.registries
-            .plugin_configs
-            .entry(plugin_id.clone())
-            .or_insert(config);
-    } else {
-        ctx.registries
-            .plugin_configs
-            .insert(plugin_id.clone(), config);
-    }
-
-    record_declared(ctx, &name);
-
-    let cmd_list = list_to_strings(commands, "declare-plugin commands")?;
-    let evt_list: Vec<String> = list_items(events, "declare-plugin #:events")?
+    // Decode and validate every activation-entry list before recording any state
+    // below — a malformed entry must leave `declared_plugins`/`plugin_configs`
+    // untouched, or PLUM would list a plugin the lazy registry never learns about.
+    let cmd_list = list_to_strings(commands, &declare_arg_label(ctx, "#:commands"))?;
+    let evt_label = declare_arg_label(ctx, "#:events");
+    let evt_list: Vec<String> = list_items(events, &evt_label)?
         .iter()
-        .map(|v| super::hooks::event_name_arg(ctx, v, "declare-plugin #:events"))
+        .map(|v| super::hooks::event_name_arg(ctx, v, &evt_label))
         .collect::<Result<_, _>>()?;
-    let lang_list = list_to_strings(languages, "declare-plugin languages")?;
+    let lang_list = list_to_strings(languages, &declare_arg_label(ctx, "#:languages"))?;
 
     // Malformed name (not a collision) → hard error, same rule as
     // define-command!.  A name that can't survive quoting is a typo — this
@@ -232,6 +232,24 @@ pub(crate) fn declare_plugin(
              Add #:commands/#:events/#:languages, or use (load-plugin \"{name}\") for eager loading."
         )));
     }
+
+    // First declaration wins for config too, matching the state no-op above:
+    // stored now so it is already in place by the time activation runs the body.
+    // Inside manifest resolution, the user's #:config was already stored by
+    // %begin-manifest-declare! before manifest.scm ran — that must win over the
+    // manifest's own default, so use or_insert instead of an unconditional overwrite.
+    if ctx.manifest_resolving.is_some() {
+        ctx.registries
+            .plugin_configs
+            .entry(plugin_id.clone())
+            .or_insert(config);
+    } else {
+        ctx.registries
+            .plugin_configs
+            .insert(plugin_id.clone(), config);
+    }
+
+    record_declared(ctx, &name);
 
     let path = resolve_path_for_name(
         &name,

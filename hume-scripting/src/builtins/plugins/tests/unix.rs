@@ -324,6 +324,40 @@ fn manifest_declaring_different_plugin_name_errors() {
     );
 }
 
+/// A malformed activation entry inside a manifest.scm's own `declare-plugin`
+/// call must name `manifest.scm` and the plugin — the user's `init.scm` only
+/// contains the bare zero-trigger declare, so a bare `declare-plugin #:events`
+/// error would point at a line that doesn't exist in their config.
+///
+/// Fail oracle: drop the `manifest_resolving` arm from `declare_arg_label` →
+/// the error reads bare `declare-plugin #:events` and the second assertion
+/// fails.
+#[test]
+fn manifest_bad_events_names_manifest_scm_and_plugin() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("badevt");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
+    std::fs::write(
+        plugin_dir.join("manifest.scm"),
+        br#"(declare-plugin "user/badevt" #:events '("on-buffer-save"))"#,
+    )
+    .unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+
+    let result = host.eval_source(r#"(declare-plugin "user/badevt")"#, &mut NullHost);
+    let err = result.expect_err("a string #:events entry in manifest.scm must be rejected");
+    assert!(
+        err.contains("manifest.scm") && err.contains("user/badevt"),
+        "error must name manifest.scm and the plugin it belongs to, not init.scm; got: {err}"
+    );
+}
+
 /// A manifest.scm whose own `declare-plugin` call is itself zero-trigger must
 /// error immediately instead of recursing into manifest resolution again.
 ///
