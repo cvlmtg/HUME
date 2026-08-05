@@ -508,7 +508,7 @@ fn declared_plugins_includes_core_plugins() {
     let mut mock = MockHost::new();
 
     h.eval_source(
-        r#"(declare-plugin "core:lsp" #:events '("on-lsp-attach"))"#,
+        r#"(declare-plugin "core:lsp" #:events '(on-lsp-attach))"#,
         &mut mock,
     )
     .unwrap();
@@ -1328,7 +1328,7 @@ fn register_hook_unknown_name_errors() {
             &mut mock,
         )
         .unwrap_err();
-    assert!(err.contains("unknown hook"), "got: {err}");
+    assert!(err.contains("unknown event"), "got: {err}");
 }
 
 #[test]

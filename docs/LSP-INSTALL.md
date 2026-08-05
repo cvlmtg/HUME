@@ -272,7 +272,7 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   the rescan directly as `:lsp-rescan-servers`, for servers installed out-of-band (not
   through `:lsp-install`).
   **Caveat for a lazily-declared `core:lsp`** (see `runtime/plugins/core/lsp/README.md`'s
-  own copy for the short version): a manifest keyed only on `#:events '("on-lsp-attach")`
+  own copy for the short version): a manifest keyed only on `#:events '(on-lsp-attach)`
   can never activate on its own — nothing is registered yet, so nothing attaches, so the
   event that would trigger activation never fires. Load `core:lsp` eagerly, declare it with
   `#:languages` (activation triggered by opening a matching file), or declare it with

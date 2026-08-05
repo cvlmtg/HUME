@@ -15,7 +15,7 @@ use crate::{
 };
 
 use super::SteelResult;
-use super::args::list_to_strings;
+use super::args::{list_items, list_to_strings};
 use super::errors::generic_err;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -149,8 +149,11 @@ fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
 ///
 /// - Validates `name`; aborts init on malformed names.
 /// - Records into `declared_plugins` for PLUM compat.
-/// - Parses activation entry lists; validates event names against the host's
-///   `known_event_names()` (this crate has no compiled-in list of its own).
+/// - Parses activation entry lists; `#:events` entries are symbols, decoded
+///   and validated against the host's `known_event_names()` via
+///   `hooks::event_name_arg` (this crate has no compiled-in list of its
+///   own) — the same decoder `register-hook!` uses, so the two verbs can't
+///   drift on accepted form. `#:commands`/`#:languages` stay open strings.
 /// - Filters colliding command entries (logs `Severity::Error`, continues).
 /// - Registers the plugin in `LazyRegistry`.
 /// - Stores `config` (the `#:config` value, first-wins) so the body can read it
@@ -201,7 +204,10 @@ pub(crate) fn declare_plugin(
     record_declared(ctx, &name);
 
     let cmd_list = list_to_strings(commands, "declare-plugin commands")?;
-    let evt_strs = list_to_strings(events, "declare-plugin events")?;
+    let evt_list: Vec<String> = list_items(events, "declare-plugin #:events")?
+        .iter()
+        .map(|v| super::hooks::event_name_arg(ctx, v, "declare-plugin #:events"))
+        .collect::<Result<_, _>>()?;
     let lang_list = list_to_strings(languages, "declare-plugin languages")?;
 
     // Malformed name (not a collision) → hard error, same rule as
@@ -214,22 +220,6 @@ pub(crate) fn declare_plugin(
                 "declare-plugin: command name '{}' must not contain '\"' or '\\'", cmd);
         }
     }
-
-    let known_events = ctx.host.events().known_event_names();
-    let evt_list: Vec<String> = evt_strs
-        .iter()
-        .map(|s| {
-            if known_events.contains(&s.as_str()) {
-                Ok(s.clone())
-            } else {
-                let valid = known_events.join(", ");
-                Err(generic_err(format!(
-                    "declare-plugin events: unknown hook '{}'; valid: {}",
-                    s, valid
-                )))
-            }
-        })
-        .collect::<Result<_, _>>()?;
 
     // Hard error: nothing declared at all. Checked against the raw (unfiltered)
     // lists, before path resolution — collision filtering only happens once the

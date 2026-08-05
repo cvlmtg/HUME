@@ -54,7 +54,7 @@ manifest's defaults — e.g. restrict activation to specific languages instead o
 Any explicit `#:commands`/`#:events`/`#:languages` bypasses the manifest entirely — the
 list above is exactly what `manifest.scm` declares by default, so start from it and trim.
 
-**Caveat**: a manifest keyed only on `#:events '("on-lsp-attach")` can never activate on
+**Caveat**: a manifest keyed only on `#:events '(on-lsp-attach)` can never activate on
 its own — nothing is registered yet, so nothing attaches, so the event never fires. Load
 `core:lsp` eagerly, add `#:languages` naming the languages you want servers installed
 for, or add the four `lsp-*` install commands to `#:commands` as above, so typing one of

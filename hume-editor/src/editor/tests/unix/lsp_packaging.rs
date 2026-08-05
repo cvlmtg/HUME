@@ -19,7 +19,7 @@ use hume_scripting::attribution::PluginId;
 
 const DECLARE_LSP: &str = r#"(load-plugin "core:stdlib")
 (declare-plugin "core:lsp"
-  #:events '("on-lsp-attach")
+  #:events '(on-lsp-attach)
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
@@ -31,7 +31,7 @@ const DECLARE_LSP: &str = r#"(load-plugin "core:stdlib")
 /// `attach_event_does_not_activate_a_plugin_declared_for_a_different_event`).
 const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin "core:stdlib")
 (declare-plugin "core:lsp"
-  #:events '("on-buffer-save")
+  #:events '(on-buffer-save)
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
@@ -330,7 +330,7 @@ fn commented_init_example_block_is_valid_source() {
         r#"(load-plugin "core:stdlib")
 (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
 (declare-plugin "core:lsp"
-  #:events '("on-lsp-attach")
+  #:events '(on-lsp-attach)
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"

@@ -239,13 +239,36 @@ fn declare_plugin_unknown_hook_names_the_builtin() {
     let mut editor_host = LazyStubHost::default();
     let err = host
         .eval_source(
-            r#"(declare-plugin "user/tp" #:commands '("c") #:events '("not-a-real-hook"))"#,
+            r#"(declare-plugin "user/tp" #:commands '("c") #:events '(not-a-real-hook))"#,
             &mut editor_host,
         )
         .expect_err("unknown hook name must be rejected");
     assert!(
-        err.contains("declare-plugin events"),
+        err.contains("declare-plugin #:events"),
         "error must name the builtin; got: {err}"
+    );
+}
+
+/// `#:events` entries are symbols, not strings — same rule `register-hook!`
+/// enforces. A string entry hard-errors instead of being silently accepted.
+///
+/// Fail oracle: revert `declare_plugin`'s `#:events` decode back to
+/// `list_to_strings` → the string entry is accepted and this test fails.
+#[test]
+fn declare_plugin_rejects_string_event_names() {
+    use crate::ScriptingHost;
+    use crate::null_host::LazyStubHost;
+    let mut host = ScriptingHost::new();
+    let mut editor_host = LazyStubHost::default();
+    let err = host
+        .eval_source(
+            r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#,
+            &mut editor_host,
+        )
+        .expect_err("a string #:events entry must be rejected");
+    assert!(
+        err.contains("expected an event-name symbol"),
+        "error must name the expected form; got: {err}"
     );
 }
 

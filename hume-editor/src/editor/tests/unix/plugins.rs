@@ -536,7 +536,7 @@ fn event_trigger_activates_on_first_fire() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#,
+        r#"(declare-plugin "user/tp" #:events '(on-buffer-save))"#,
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
     );
     let id = PluginId::User {
@@ -597,7 +597,7 @@ fn event_trigger_idempotent_on_second_fire() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#,
+        r#"(declare-plugin "user/tp" #:events '(on-buffer-save))"#,
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
     );
     let id = PluginId::User {
@@ -635,7 +635,7 @@ fn event_trigger_idempotent_on_second_fire() {
     );
 }
 
-/// 1:many: two plugins both declare `#:events '("on-buffer-save")`; a single
+/// 1:many: two plugins both declare `#:events '(on-buffer-save)`; a single
 /// fire activates both.
 ///
 /// Flip: if only the first plugin in the activation Vec were activated, the second
@@ -662,8 +662,8 @@ fn event_trigger_one_to_many_activates_all() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(declare-plugin \"user/tp\"  #:events '(\"on-buffer-save\"))\n\
-         (declare-plugin \"user/tp2\" #:events '(\"on-buffer-save\"))",
+        "(declare-plugin \"user/tp\"  #:events '(on-buffer-save))\n\
+         (declare-plugin \"user/tp2\" #:events '(on-buffer-save))",
     )
     .unwrap();
 
@@ -725,7 +725,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
     use crate::editor::Severity;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#,
+        r#"(declare-plugin "user/tp" #:events '(on-buffer-save))"#,
         r#"(error "intentional plugin failure")"#,
     );
     let id = PluginId::User {

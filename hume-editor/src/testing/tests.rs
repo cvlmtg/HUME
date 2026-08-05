@@ -13,7 +13,7 @@ mod mock_host {
     /// Fail oracle: add an `EditorEvent` variant without updating
     /// `MOCK_HOST_EVENT_NAMES` → this fails instead of every affected
     /// `MockHost`-based `register-hook!` test failing with a confusing
-    /// "unknown hook" error.
+    /// "unknown event" error.
     #[test]
     fn mock_host_event_names_match_the_real_event_set() {
         assert_eq!(

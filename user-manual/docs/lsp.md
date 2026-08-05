@@ -45,7 +45,7 @@ exactly what you list instead of the defaults:
 ```
 
 ::: warning
-`#:events '("on-lsp-attach")` by itself never activates on its own — nothing
+`#:events '(on-lsp-attach)` by itself never activates on its own — nothing
 is registered yet, so nothing attaches, so the event that would trigger activation never
 fires. List the languages you want servers for in `#:languages`, list the `lsp-*`
 commands in `#:commands` (as above), or load `core:lsp` eagerly — any one of these gets

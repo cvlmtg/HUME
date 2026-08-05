@@ -78,7 +78,7 @@ The manifest contains three optional lists:
 | Keyword | Meaning |
 |---------|---------|
 | `#:commands` | Command names the plugin will register |
-| `#:events` | Lifecycle hooks that should trigger loading |
+| `#:events` | Lifecycle hooks that should trigger loading — a list of quoted symbols |
 | `#:languages` | Buffer language names that should trigger loading |
 
 When one of those entries is exercised for the first time — a listed command is
@@ -111,10 +111,12 @@ implementation.
 ```
 
 **`#:events`** defers loading until a lifecycle hook fires. Useful for plugins that
-react to buffer events globally (not just for a specific language):
+react to buffer events globally (not just for a specific language). Hook names are
+symbols, the same form `register-hook!` takes — not strings, unlike `#:commands` and
+`#:languages`:
 
 ```scheme
-(declare-plugin "alice/autosave" #:events '("on-buffer-open"))
+(declare-plugin "alice/autosave" #:events '(on-buffer-open))
 ; body runs the first time any buffer is opened
 ```
 
@@ -131,7 +133,7 @@ The special name `"*"` is an any-language wildcard: the body runs the first time
 buffer's language is set to *anything* — for plugins that work with every language
 rather than a list they could enumerate.
 
-Use `#:languages` rather than `#:events '("on-language-set")` when you only care about
+Use `#:languages` rather than `#:events '(on-language-set)` when you only care about
 one language. A `on-language-set` event fires for *every* language, so a Rust plugin
 declared that way would load the moment you open a PHP file. `#:languages` names only the
 languages you care about, keeping the plugin dormant until one of them appears.
@@ -253,7 +255,7 @@ dependent plugin is activated.
 ```scheme
 ; init.scm — declare dependencies before dependents
 (load-plugin "alice/formatter")
-(declare-plugin "bob/on-save-format" #:events '("on-buffer-save"))
+(declare-plugin "bob/on-save-format" #:events '(on-buffer-save))
 ```
 
 `:plugin-status` (alias `:plugins`) lists every declared plugin with its current state

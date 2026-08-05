@@ -31,7 +31,10 @@ fn register_hook_non_symbol_arg_errors() {
         SteelVal::StringV("on-buffer-open".into()), // should be a symbol
         SteelVal::BoolV(true),
     );
-    assert!(result.is_err(), "register-hook! must reject a string name");
+    let msg = result
+        .expect_err("register-hook! must reject a string name")
+        .to_string();
+    assert!(msg.contains("expected an event-name symbol"), "got: {msg}");
 }
 
 /// `register-hook!` errors for an unknown hook name.
@@ -53,8 +56,8 @@ fn register_hook_unknown_hook_name_errors() {
     );
     let msg = result.unwrap_err().to_string();
     assert!(
-        msg.contains("unknown hook"),
-        "error must mention 'unknown hook'; got: {msg}"
+        msg.contains("unknown event"),
+        "error must mention 'unknown event'; got: {msg}"
     );
     assert!(
         msg.contains("on-buffer-open"),

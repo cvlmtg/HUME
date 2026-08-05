@@ -59,7 +59,7 @@ There are two ways to bring a plugin into the editor from `init.scm`:
 A lazy plugin needs at least one activation entry, or it could never activate. Declare them yourself:
 
 - **`#:commands`** — command names the plugin provides. HUME creates placeholder stubs so the names appear in `:` Tab completion immediately; the first dispatch triggers real definition.
-- **`#:events`** — lifecycle hooks that trigger loading (e.g., `'on-buffer-open`).
+- **`#:events`** — lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
 - **`#:languages`** — buffer language names that trigger loading.
 
 ...or, if the plugin ships its own defaults, leave all three off:
