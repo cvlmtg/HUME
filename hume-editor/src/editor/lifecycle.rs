@@ -459,7 +459,7 @@ impl Editor {
             // paints the complete frame — clear + cells + cursor shape in one shot.
             let _ = hume_platform::terminal::end_synchronized_update(&shared);
 
-            // ── 3. TerminalEvent ──────────────────────────────────────────────────────
+            // ── 3. Terminal event ─────────────────────────────────────────────
             // Blocks until a matching event is available, a wake from a
             // background thread (parse worker, LSP transport, SIGWINCH — the
             // reader's source routes it internally), or the nearest async

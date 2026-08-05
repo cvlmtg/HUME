@@ -145,8 +145,12 @@ impl Editor {
 
     // ── Event queueing ───────────────────────────────────────────────────────
 
-    /// Fire `OnBufferSave` hooks for `bid`. Both `:w` write paths in
-    /// `commands.rs` share this rather than duplicating the raise call.
+    /// Queue `OnBufferSave` for `bid`. One production caller
+    /// (`commands/typed_file.rs`'s `mark_written_and_synced`, shared by
+    /// every `:w`-family command); kept as a named seam anyway since tests
+    /// across `unix/plugins.rs`, `unix/lsp_format.rs`, and this file's own
+    /// `events.rs` call it directly to raise the event without dispatching
+    /// a real write.
     pub(super) fn queue_buffer_save(&mut self, bid: BufferId) {
         self.state
             .queue_event(EditorEvent::OnBufferSave { buffer: bid });
@@ -158,16 +162,6 @@ impl Editor {
     /// Running (`dispatch_lsp_action`'s `BecameRunning` arm).
     pub(super) fn queue_lsp_attach(&mut self, bid: BufferId, server_name: &str) {
         self.state.queue_event(EditorEvent::OnLspAttach {
-            buffer: bid,
-            server: server_name.to_owned(),
-        });
-    }
-
-    /// Fire `OnLspDetach (bid server-name)` — called from `lsp_stop_one` for
-    /// every buffer that was attached to the server being stopped, right
-    /// after `buf.lsp_server` is cleared.
-    pub(super) fn queue_lsp_detach(&mut self, bid: BufferId, server_name: &str) {
-        self.state.queue_event(EditorEvent::OnLspDetach {
             buffer: bid,
             server: server_name.to_owned(),
         });
@@ -196,18 +190,6 @@ impl Editor {
             buffer: bid,
             first_line,
             last_line,
-        });
-    }
-
-    /// Fire `OnTriggerChar (bid char-string source)` — Insert mode, after
-    /// `ch` has already been inserted into `bid` (mappings/insert.rs), once
-    /// per source registered for `ch` under `bid`'s language via
-    /// `(register-trigger-chars! source language chars)`.
-    pub(super) fn queue_trigger_char(&mut self, bid: BufferId, ch: char, source: &str) {
-        self.state.queue_event(EditorEvent::OnTriggerChar {
-            buffer: bid,
-            ch,
-            source: source.to_owned(),
         });
     }
 
@@ -268,8 +250,8 @@ impl Editor {
                 self.report(
                     Severity::Error,
                     format!(
-                        "hook cascade exceeded {MAX_EVENT_DRAIN} total drained work item(s) — \
-                         dropping {dropped} pending item(s); handler feedback loop?"
+                        "event/callback cascade exceeded {MAX_EVENT_DRAIN} total drained work \
+                         item(s) — dropping {dropped} pending item(s); handler feedback loop?"
                     ),
                 );
                 self.state.message_logged_this_input = false;
@@ -355,11 +337,7 @@ impl Editor {
     /// Fire every handler registered for one `EditorEvent`, if any are —
     /// the per-item body of `settle`'s `Event` arm.
     fn fire_one_event(&mut self, event: EditorEvent) {
-        // Internal-only events (no Steel name) skip lazy activation and
-        // firing entirely — there is nothing for Steel to react to.
-        let Some(name) = event.name() else {
-            return;
-        };
+        let name = event.name();
         // Activate lazy event plugins first so their register-hook! calls
         // land before the has_hook_handlers check below.
         self.activate_lazy_event_plugins(name);

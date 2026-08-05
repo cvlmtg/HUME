@@ -1,8 +1,26 @@
 // ── mock_host self-tests ─────────────────────────────────────────────────
 
 mod mock_host {
-    use super::super::mock_host::MockHost;
+    use super::super::mock_host::{MOCK_HOST_EVENT_NAMES, MockHost};
     use hume_scripting::host::{CommandHost, LanguageHost};
+
+    /// `MOCK_HOST_EVENT_NAMES` is a hand-written mirror of `EditorEvent`'s
+    /// Steel-visible names (see its doc) because the integration-test build
+    /// can't reach the real `pub(crate)` list — but this lib-unit-test build
+    /// can, so pin the two together here. Only covers this build; the
+    /// integration-test build can still drift silently, same as before.
+    ///
+    /// Fail oracle: add an `EditorEvent` variant without updating
+    /// `MOCK_HOST_EVENT_NAMES` → this fails instead of every affected
+    /// `MockHost`-based `register-hook!` test failing with a confusing
+    /// "unknown hook" error.
+    #[test]
+    fn mock_host_event_names_match_the_real_event_set() {
+        assert_eq!(
+            MOCK_HOST_EVENT_NAMES.to_vec(),
+            crate::editor::event::known_event_names(),
+        );
+    }
 
     fn cmd_def(name: &str) -> hume_scripting::SteelCmdDef {
         hume_scripting::SteelCmdDef {

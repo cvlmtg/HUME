@@ -42,10 +42,14 @@ use hume_scripting::host::{
 /// Mirrors `hume::editor::event`'s Steel-visible event names by hand — that
 /// module is `pub(crate)`, unreachable from the `tests/scripting.rs`
 /// integration crate this file is also spliced into via `#[path]`, so this
-/// list can't delegate to the real one. Same trade-off this file already
-/// accepts for every other capability: a faithful mirror, kept in sync by
-/// hand, not shared code.
-const MOCK_HOST_EVENT_NAMES: &[&str] = &[
+/// list can't delegate to the real one there. Same trade-off this file
+/// already accepts for every other capability: a faithful mirror, kept in
+/// sync by hand, not shared code. The lib-unit-test build (`testing/mod.rs`'s
+/// `mod mock_host`) *can* reach the real list, so
+/// `testing::tests::mock_host::mock_host_event_names_match_the_real_event_set`
+/// asserts the two stay equal — it just can't run from the integration-test
+/// build, where this drifting silently is the risk this comment describes.
+pub(super) const MOCK_HOST_EVENT_NAMES: &[&str] = &[
     "on-buffer-open",
     "on-buffer-close",
     "on-buffer-save",

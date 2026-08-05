@@ -144,7 +144,8 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
         ed.state
             .message_log
             .entries()
-            .any(|e| e.severity == Severity::Error && e.text.contains("hook cascade exceeded")),
+            .any(|e| e.severity == Severity::Error
+                && e.text.contains("event/callback cascade exceeded")),
         "drain cap must log an Error naming the hook cascade"
     );
     assert!(
@@ -194,7 +195,8 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
         ed.state
             .message_log
             .entries()
-            .any(|e| e.severity == Severity::Error && e.text.contains("hook cascade exceeded")),
+            .any(|e| e.severity == Severity::Error
+                && e.text.contains("event/callback cascade exceeded")),
         "drain cap must log an Error naming the hook cascade"
     );
     assert!(
@@ -311,7 +313,7 @@ fn on_buffer_open_queued_after_on_language_set() {
         .pending_work
         .iter()
         .filter_map(|w| match w {
-            crate::editor::event::PendingWork::Event(e) => e.name(),
+            crate::editor::event::PendingWork::Event(e) => Some(e.name()),
             crate::editor::event::PendingWork::Call(..) => None,
         })
         .collect();

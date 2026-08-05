@@ -207,7 +207,11 @@ impl Editor {
                         .language
                         .map(|id| self.state.config.languages.name_of(id).to_owned());
                     for source in self.state.trigger_sources_for(ch, language.as_deref()) {
-                        self.queue_trigger_char(buf, ch, &source);
+                        self.state.queue_event(EditorEvent::OnTriggerChar {
+                            buffer: buf,
+                            ch,
+                            source,
+                        });
                     }
                 }
             }

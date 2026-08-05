@@ -86,10 +86,7 @@ fn all_variants() -> Vec<EditorEvent> {
 #[test]
 fn every_variant_has_a_name_and_matches_the_known_names_table() {
     let variants = all_variants();
-    let names: Vec<&str> = variants
-        .iter()
-        .map(|e| e.name().expect("variant must have a name"))
-        .collect();
+    let names: Vec<&str> = variants.iter().map(|e| e.name()).collect();
 
     for name in &names {
         assert!(

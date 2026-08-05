@@ -289,11 +289,21 @@ impl Editor {
     /// left to answer it with, so it must never open; warning instead, with
     /// the deferred prompt still arriving on the next real buffer-enter, is
     /// what `can_open_confirm`'s "Macro replay" doc paragraph documents.
+    ///
+    /// `message_logged_this_input` is OR'd back in, not left to whatever the
+    /// last replayed key's own `handle_input` set it to: the triggering
+    /// dispatch (e.g. the register char after `@`, which populated
+    /// `replay_queue` in the first place) may itself have logged a message
+    /// moments before this function was even called, and each iteration of
+    /// the loop below overwrites the flag from its own totals diff — losing
+    /// `report_disk_state`'s shadowing guard for that earlier message if a
+    /// stale-buffer warning fires from this function's own `settle()`.
     pub(crate) fn drain_replay_queue(&mut self) {
         if self.state.replay_queue.is_empty() {
             return;
         }
         let saved_action = self.state.last_repeatable_action.take();
+        let message_already_logged = self.state.message_logged_this_input;
         self.state.is_replaying = true;
         while let Some(key) = self.state.replay_queue.pop_front() {
             self.handle_input(TerminalEvent::Key(key));
@@ -301,6 +311,7 @@ impl Editor {
                 break;
             }
         }
+        self.state.message_logged_this_input |= message_already_logged;
         self.settle();
         self.state.is_replaying = false;
         self.state.last_repeatable_action = saved_action;

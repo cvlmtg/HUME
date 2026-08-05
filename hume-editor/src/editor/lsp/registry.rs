@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::BufferId;
 
+use crate::editor::event::EditorEvent;
 use crate::editor::{Editor, Severity};
 
 /// A `register-lsp-server!`-registered language name — the key
@@ -351,7 +352,10 @@ impl Editor {
             self.queue_diagnostics_changed(bid);
         }
         for bid in bids {
-            self.queue_lsp_detach(bid, &language);
+            self.state.queue_event(EditorEvent::OnLspDetach {
+                buffer: bid,
+                server: language.clone(),
+            });
         }
     }
 

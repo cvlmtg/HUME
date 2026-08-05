@@ -1225,6 +1225,72 @@ fn macro_replay_onto_an_already_warned_stale_buffer_still_warns() {
     );
 }
 
+/// A message already on screen when a macro replay starts must still shadow
+/// the disk-change warning `drain_replay_queue`'s own trailing `settle()`
+/// produces — even though every key `handle_key` dispatches clears
+/// `status_msg` at its own start (see `mappings/mod.rs`), so the sentinel
+/// message itself is long gone from `status_msg` by the time the replayed
+/// keys finish; what must survive is the *shadowing flag*, not the message
+/// text. Without it, `report_disk_state` falls back to `Editor::report`
+/// (loud — sets `status_msg`) instead of a silent `message_log` push,
+/// clobbering whatever the last replayed key left in `status_msg` with the
+/// disk warning's own text. No built-in mapping both logs a message and
+/// enqueues a replay in the same dispatch today, so this drives
+/// `EditorState` directly rather than through a real key.
+///
+/// Fail oracle: drop the `message_already_logged` save/restore in
+/// `drain_replay_queue` → `status_msg` ends up as `"world: file has changed
+/// on disk"` instead of staying `None` (what `:b #`'s own `Enter` dispatch
+/// leaves it as, since a successful `:b` reports nothing on its own).
+#[test]
+fn message_logged_before_a_macro_replay_survives_its_trailing_settle() {
+    let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid_a = ed.focused_buffer_id();
+    let (tmp_b, _tmp_b_guard) = temp_file("world\n");
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.display()));
+    let bid_b = ed.focused_buffer_id();
+    type_cmd(&mut ed, ":b #");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid_a,
+        "setup: back on A, B is the alternate"
+    );
+
+    rewrite_externally(&tmp_b, "world, externally changed!\n");
+
+    // Simulate a dispatch that both logged its own message and populated
+    // `replay_queue` — the effect a hypothetical mapping doing both in one
+    // `handle_input` call would leave behind.
+    ed.report(Severity::Warning, "sentinel message".to_string());
+    ed.state.message_logged_this_input = true;
+    for ch in ":b #".chars() {
+        ed.state.replay_queue.push_back(key(ch));
+    }
+    ed.state.replay_queue.push_back(key_enter());
+
+    let (_, warnings_before) = ed.state.message_log.totals();
+    ed.drain_replay_queue();
+
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid_b,
+        "setup: the replayed `:b #` must have switched onto stale B"
+    );
+    let (_, warnings_after) = ed.state.message_log.totals();
+    assert_eq!(
+        warnings_after,
+        warnings_before + 1,
+        "B's stale-file warning must still land in :messages"
+    );
+    assert_eq!(
+        ed.state.status_msg, None,
+        "the disk warning must land in :messages only (report_disk_state's \
+         silent-push branch), not overwrite status_msg via Editor::report — \
+         status_msg must stay whatever the last replayed key (`:b #`'s own \
+         Enter, which reports nothing on success) left it as"
+    );
+}
+
 /// A command that fails after moving focus (`:qa` jumping to the first
 /// dirty buffer to name it in its error) must keep its own error on screen —
 /// a reload confirm for that same buffer's external change must not replace

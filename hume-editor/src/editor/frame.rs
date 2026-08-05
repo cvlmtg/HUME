@@ -233,7 +233,7 @@ impl Editor {
     pub(super) fn prepare_frame(&mut self, ctx: &mut RenderContext) {
         // A `RenderContext` is allocated once and reused for every frame, so
         // last frame's cursor cell would otherwise be indistinguishable from
-        // one step 6 resolved this frame. Cleared here, filled there.
+        // one step 4 resolved this frame. Cleared here, filled there.
         ctx.cursor_screen = None;
 
         // Reclaim viewport-debounce/scroll-key/virtual-line-sync cache
@@ -256,7 +256,7 @@ impl Editor {
         // catches up on interning from the *previous* frame, from command
         // dispatch between frames (e.g. `:theme`), or from the `settle()`
         // call every caller makes immediately before this one. This frame's
-        // own steps (5, 7 below) can themselves intern new scopes — extra
+        // own steps (3, 5 below) can themselves intern new scopes — extra
         // highlights, inline diagnostics, virtual lines, a newly attached
         // grammar's capture names — so a second `bake_if_stale` runs at the
         // very end of this function, right before `render_into` gets to
@@ -264,7 +264,7 @@ impl Editor {
         // resolved by that same frame's render is past the end of `baked`.
         self.view.theme.bake_if_stale(&self.view.registry);
 
-        // 3. Sync line-number style provider for every pane (depends on that
+        // 1. Sync line-number style provider for every pane (depends on that
         //    pane's own buffer overrides). Must run after `settle()`: a
         //    settled drain can switch a pane's `buffer_id` (picker accept,
         //    LSP goto-definition), so syncing any earlier would apply the
@@ -284,32 +284,32 @@ impl Editor {
                 .sync_line_number_style(ln_style);
         }
 
-        // 4. Sync selection mirrors for every pane. Must run after
+        // 2. Sync selection mirrors for every pane. Must run after
         //    `settle()`: a settled drain can switch a pane's `buffer_id`
         //    (picker accept, LSP goto-definition) or move its selections
         //    (timer/LSP callbacks), and render (right after this function
         //    returns) reads this mirror against the pane's *current* buffer.
         self.sync_all_pane_mirrors();
 
-        // 5. Sync everything that decides row counts/columns for step 6's
+        // 3. Sync everything that decides row counts/columns for step 4's
         //    `RowMap`-driven scroll, in this order because none of them
         //    depends on this frame's viewport (a gutter/decoration change
         //    must be visible to the scroll math that positions the cursor
         //    against it, not just to the renderer one step later):
-        //      5a. gutter sign data (diagnostics + plugin signs) — decides
+        //      3a. gutter sign data (diagnostics + plugin signs) — decides
         //          gutter width, which decides `Pane::content_width`, which
         //          decides the wrap column.
-        //      5b/5c/5d. inlay hints / virtual lines / end-of-line
+        //      3b/3c/3d. inlay hints / virtual lines / end-of-line
         //          diagnostic summaries — each a `RowMap` provider
         //          (`inline_decorations` or `virtual_lines`) that
         //          `RowMap::format_line`/`block` reads, so they change wrap
         //          row counts and columns the moment they appear.
-        //    Tradeoff: 5a/5b/5d scope their own work to
+        //    Tradeoff: 3a/3b/3d scope their own work to
         //    `visible_char_range`/`visible_line_range`, which read
-        //    `viewport.top_line` — so a same-frame scroll (step 6) can leave
+        //    `viewport.top_line` — so a same-frame scroll (step 4) can leave
         //    a newly-exposed line's hints/signs unsynced until next frame.
         //    That's a one-frame cosmetic lag that self-corrects; syncing
-        //    after scroll instead would let step 6's `RowMap` see row
+        //    after scroll instead would let step 4's `RowMap` see row
         //    counts/columns the providers haven't caught up to yet — the
         //    scroll/render/caret disagreement this ordering avoids.
         //    `update_virtual_line_providers` has no viewport dependency, so
@@ -319,7 +319,7 @@ impl Editor {
         self.update_virtual_line_providers();
         self.update_inline_diagnostics_providers();
 
-        // 6. Scroll every pane so its primary cursor stays visible. Must run
+        // 4. Scroll every pane so its primary cursor stays visible. Must run
         //    after `settle()`: a settled drain can switch a pane's `buffer_id`
         //    mid-frame (picker accept, LSP goto-definition), and this reads
         //    buffer_id/rope/cursor together from SSOT, so it always scrolls
@@ -365,28 +365,28 @@ impl Editor {
             }
         }
 
-        // 7. Sync highlight data (search matches, bracket matches, diagnostic
+        // 5. Sync highlight data (search matches, bracket matches, diagnostic
         //    underlines, extra highlights) to shared Arc buffers read by the
         //    highlight providers during rendering. Render-only — no `RowMap`
         //    consumer reads highlight scope, only the cell's styling.
         self.update_highlight_providers();
 
-        // 8. Sync completion-popup view to the shared Arc for `MinibufCompletionOverlay`.
+        // 6. Sync completion-popup view to the shared Arc for `MinibufCompletionOverlay`.
         self.sync_minibuf_completion_view();
 
-        // 10. Sync the popup-, menu-, LSP-completion-menu-, and
-        //     picker-overlay views. Their geometry needs the focused pane's
-        //     current-frame rect via `EngineView::pane_rect` (popup/menu/
-        //     completion) or `last_pane_area` directly (picker) — both
-        //     written by `sync_viewport_dims`, called by every caller of
-        //     this function before it.
+        // 7. Sync the popup-, menu-, LSP-completion-menu-, and
+        //    picker-overlay views. Their geometry needs the focused pane's
+        //    current-frame rect via `EngineView::pane_rect` (popup/menu/
+        //    completion) or `last_pane_area` directly (picker) — both
+        //    written by `sync_viewport_dims`, called by every caller of
+        //    this function before it.
         self.sync_popup_view(ctx);
         self.sync_popup_band_view();
         self.sync_menu_view(ctx);
         self.sync_completion_menu_view(ctx);
         self.sync_picker_view();
         // The drawer has no cursor-relative geometry, so it doesn't need
-        // step 10's ordering — but it's synced here unconditionally anyway
+        // step 7's ordering — but it's synced here unconditionally anyway
         // (self-healing), on top of every direct mutation-site call, so the
         // view can never drift from `state.config.drawer` for a frame. See
         // `EditorState::sync_drawer_view`'s doc.
