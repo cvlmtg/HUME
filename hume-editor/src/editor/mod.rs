@@ -154,10 +154,11 @@ pub(crate) struct ConfigState {
     /// Steel-writable decoration stores (inlay hints, signs, virtual
     /// lines, extra highlights) — the render providers read these.
     pub(crate) decorations: decorations::DecorationStores,
-    /// Hooks enqueued during command dispatch, drained by `Editor::drain_events`
-    /// after each command. The unified firing path — `queue_event` pushes
-    /// here; no hook fires inline during command execution.
-    pub(crate) pending_events: Vec<(event::EditorEvent, Vec<steel::rvals::SteelVal>)>,
+    /// Events enqueued during command dispatch, drained by `Editor::drain_events`
+    /// after each command. The unified firing path — `EditorState::queue_event`
+    /// pushes here; no hook fires inline during command execution. `steel_args()`
+    /// converts each event's payload to `SteelVal`s at drain, not here.
+    pub(crate) pending_events: Vec<event::EditorEvent>,
     /// Rust-side completions that must reach a *specific* Steel closure
     /// rather than every handler for a hook id: an `lsp-request` callback,
     /// a timer thunk, a prompt callback. Queued (never evaluated
@@ -541,8 +542,6 @@ impl EditorState {
     /// The `mode` field is private so the compiler enforces that every
     /// transition goes through here.
     pub(crate) fn set_mode(&mut self, new: Mode) {
-        use event::EditorEvent;
-        use steel::rvals::IntoSteelVal;
         let old = self.mode;
         if old == new {
             return;
@@ -560,26 +559,15 @@ impl EditorState {
             self.lsp_completion_dismiss_pending = true;
         }
         self.mode = new;
-        let old_val = mode_name(old)
-            .into_steelval()
-            .expect("mode str into_steelval");
-        let new_val = mode_name(new)
-            .into_steelval()
-            .expect("mode str into_steelval");
-        self.config
-            .pending_events
-            .push((EditorEvent::OnModeChange, vec![old_val, new_val]));
+        self.queue_event(event::EditorEvent::OnModeChange { from: old, to: new });
     }
-}
 
-fn mode_name(m: Mode) -> &'static str {
-    match m {
-        Mode::Normal => "normal",
-        Mode::Insert => "insert",
-        Mode::Extend => "extend",
-        Mode::Command => "command",
-        Mode::Search => "search",
-        Mode::Select => "select",
+    /// Enqueue `event` to fire after the current command returns — the
+    /// single raise path every event goes through, reached as
+    /// `self.state.queue_event(…)` from `Editor` methods and directly, like
+    /// `set_mode` above, from methods that only hold `&mut EditorState`.
+    pub(crate) fn queue_event(&mut self, event: event::EditorEvent) {
+        self.config.pending_events.push(event);
     }
 }
 

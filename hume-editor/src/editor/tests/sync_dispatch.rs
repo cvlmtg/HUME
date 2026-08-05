@@ -810,9 +810,11 @@ fn mouse_click_drains_hooks_immediately() {
     ed.view.panes[ed.state.focused_pane_id].viewport =
         hume_engine::pane::ViewportState::new(80, 24);
 
-    // Seed a pending hook (OnBufferSave with no args — no handler registered, so
+    // Seed a pending hook (OnBufferSave — no handler registered, so
     // drain_events skips the Steel call but still removes it from the queue).
-    ed.queue_event(EditorEvent::OnBufferSave, &[]);
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .queue_event(EditorEvent::OnBufferSave { buffer: bid });
     assert!(
         !ed.state.config.pending_events.is_empty(),
         "pending_events must be non-empty before the event — drain has not run yet"

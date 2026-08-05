@@ -2,7 +2,6 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::lines::leading_whitespace_end;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
-use hume_scripting::SteelBufferId;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::super::dispatch::ArgSource;
@@ -419,9 +418,10 @@ impl Editor {
         // `isIncomplete` — a complete list needs no re-request, so a normal
         // session stays hook-silent on every keystroke.
         if incomplete {
-            let bid_val = SteelBufferId::new(bid).into_steel_val();
-            let text_val = steel::rvals::SteelVal::StringV(text.into());
-            self.queue_event(EditorEvent::OnCompletionRefilter, &[bid_val, text_val]);
+            self.state.queue_event(EditorEvent::OnCompletionRefilter {
+                buffer: bid,
+                filter_text: text,
+            });
         }
         self.lsp.completion_ui = None;
     }

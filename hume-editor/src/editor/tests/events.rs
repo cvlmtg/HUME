@@ -209,7 +209,6 @@ fn startup_hooks_require_explicit_drain() {
     use crate::editor::event::EditorEvent;
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
-    use hume_scripting::SteelBufferId;
 
     let mut ed = editor_from("-[a]>b\n");
 
@@ -225,8 +224,8 @@ fn startup_hooks_require_explicit_drain() {
 
     // Simulate what open_extra_files / init_scripting do: enqueue the hook.
     let bid = ed.focused_buffer_id();
-    let val = SteelBufferId::new(bid).into_steel_val();
-    ed.queue_event(EditorEvent::OnBufferOpen, &[val]);
+    ed.state
+        .queue_event(EditorEvent::OnBufferOpen { buffer: bid });
 
     // Hook is enqueued but has not fired yet.
     assert!(
@@ -293,16 +292,16 @@ fn on_buffer_open_queued_after_on_language_set() {
     ed.open_buffer(doc);
 
     // Inspect the queue before draining — drain_events would empty it.
-    let hook_order: Vec<EditorEvent> = ed
+    let hook_order: Vec<&str> = ed
         .state
         .config
         .pending_events
         .iter()
-        .map(|(id, _)| *id)
+        .filter_map(EditorEvent::name)
         .collect();
     assert_eq!(
         hook_order,
-        vec![EditorEvent::OnLanguageSet, EditorEvent::OnBufferOpen],
+        vec!["on-language-set", "on-buffer-open"],
         "on-language-set must be queued before on-buffer-open; got {hook_order:?}"
     );
 }
@@ -315,7 +314,6 @@ fn hook_call_is_dispatched() {
     use crate::editor::event::EditorEvent;
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
-    use hume_scripting::SteelBufferId;
 
     // Build a two-character buffer so move-right has room; cursor at col 0.
     let mut ed = editor_from("-[a]>b\n");
@@ -331,8 +329,8 @@ fn hook_call_is_dispatched() {
 
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
-    let val = SteelBufferId::new(bid).into_steel_val();
-    ed.queue_event(EditorEvent::OnBufferOpen, &[val]);
+    ed.state
+        .queue_event(EditorEvent::OnBufferOpen { buffer: bid });
     ed.drain_events();
 
     assert_ne!(

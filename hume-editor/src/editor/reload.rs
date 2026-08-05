@@ -8,7 +8,6 @@
 //! `typed_reload_config`.
 
 use hume_engine::pipeline::BufferId;
-use hume_scripting::SteelBufferId;
 
 use super::event::EditorEvent;
 use super::{Editor, Severity};
@@ -266,8 +265,8 @@ impl Editor {
             .filter(|&id| snapshot.survives(id, &self.state.buffers))
             .collect();
         for bid in open_bids {
-            let val = SteelBufferId::new(bid).into_steel_val();
-            self.queue_event(EditorEvent::OnBufferOpen, &[val]);
+            self.state
+                .queue_event(EditorEvent::OnBufferOpen { buffer: bid });
         }
 
         // Diagnostics: pull-style hook, re-reads the surviving

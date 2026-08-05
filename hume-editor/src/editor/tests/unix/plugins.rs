@@ -212,13 +212,14 @@ fn set_buffer_language_reentrant_activation_uses_final_value() {
         "exactly one OnLanguageSet hook must be queued, not a stale duplicate; got: {:?}",
         ed.state.config.pending_events
     );
-    let (event, args) = &ed.state.config.pending_events[0];
-    assert_eq!(*event, EditorEvent::OnLanguageSet);
     assert!(
-        matches!(&args[1], steel::rvals::SteelVal::StringV(s) if s.as_str() == "python"),
+        matches!(
+            &ed.state.config.pending_events[0],
+            EditorEvent::OnLanguageSet { language, .. } if language.as_deref() == Some("python")
+        ),
         "the queued OnLanguageSet hook must carry the final ('python') value, not the stale \
          ('rust') one that triggered activation; got: {:?}",
-        args[1]
+        ed.state.config.pending_events[0]
     );
 }
 

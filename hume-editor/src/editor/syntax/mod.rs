@@ -9,11 +9,9 @@ mod parse;
 
 use hume_engine::pipeline::BufferId;
 use hume_treesitter::registry::{LanguageId, detect_language};
-use steel::rvals::IntoSteelVal as _;
 
 use super::Editor;
 use super::event::EditorEvent;
-use hume_scripting::SteelBufferId;
 
 impl Editor {
     /// Set the language identity for buffer `bid`, via plain detection —
@@ -52,10 +50,6 @@ impl Editor {
             return;
         }
         let lang_name = new_lang.map(|id| self.state.config.languages.name_of(id).to_owned());
-        let lang_val = match lang_name.as_deref() {
-            Some(name) => name.into_steelval().expect("str into_steelval"),
-            None => false.into_steelval().expect("bool into_steelval"),
-        };
         self.state.buffers.get_mut(bid).language = new_lang;
         // Activate language-matched plugins after the write so handlers are
         // registered in time for the OnLanguageSet fire below.
@@ -72,8 +66,10 @@ impl Editor {
                 return;
             }
         }
-        let bid_val = SteelBufferId::new(bid).into_steel_val();
-        self.queue_event(EditorEvent::OnLanguageSet, &[bid_val, lang_val]);
+        self.state.queue_event(EditorEvent::OnLanguageSet {
+            buffer: bid,
+            language: lang_name,
+        });
         // Wire up (or tear down) tree-sitter highlighting for this buffer.
         self.setup_buffer_syntax(bid);
         // Spawn-or-attach an LSP server for this buffer's (possibly new)
@@ -153,8 +149,8 @@ impl Editor {
                     self.detect_and_set_language(bid);
                 }
                 self.state.buffers.get_mut(bid).open_hook_pending = false;
-                let val = SteelBufferId::new(bid).into_steel_val();
-                self.queue_event(EditorEvent::OnBufferOpen, &[val]);
+                self.state
+                    .queue_event(EditorEvent::OnBufferOpen { buffer: bid });
             }
         }
     }

@@ -12,7 +12,6 @@
 use slotmap::SecondaryMap;
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
-use hume_scripting::SteelBufferId;
 
 use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
@@ -259,11 +258,7 @@ pub(crate) fn close_buffer_and_notify(
     );
     if open_announced {
         // Fire with the ID that was closed, not the new current buffer.
-        let val = SteelBufferId::new(id).into_steel_val();
-        state
-            .config
-            .pending_events
-            .push((EditorEvent::OnBufferClose, vec![val]));
+        state.queue_event(EditorEvent::OnBufferClose { buffer: id });
     }
     new_focused
 }

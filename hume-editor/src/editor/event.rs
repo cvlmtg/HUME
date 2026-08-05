@@ -1,19 +1,45 @@
 //! `EditorEvent` — the editor's own vocabulary of "something happened worth
-//! telling subscribers about". SSOT for which events exist and their
-//! Steel-facing names; `hume-scripting` never compiles in this type, only
-//! the `&str` names produced here (see `hume_scripting::host::EventHost`).
+//! telling subscribers about". SSOT for which events exist, their typed Rust
+//! payloads, and their Steel-facing names/arg shapes; `hume-scripting` never
+//! compiles in this type, only the `&str` names and `SteelVal` args produced
+//! here (see `hume_scripting::host::EventHost`).
 
-/// Identifier for each editor event plugins can observe.
+use hume_engine::pipeline::BufferId;
+use hume_scripting::SteelBufferId;
+use hume_scripting::json::json_to_steel;
+use steel::rvals::SteelVal;
+
+use super::Mode;
+
+/// Something that happened in the editor, carrying whatever payload its
+/// Steel handlers (and, for a growing subset, Rust-side reactions) need.
+///
+/// `steel_args` is the single place a variant's fields become `SteelVal`s —
+/// see its doc for why arg construction lives there and not at the raise
+/// site.
 // All variants share the `On` prefix, matching the `on-buffer-open` Steel naming
 // convention. The lint wants dissimilar prefixes; we intentionally override it.
 #[allow(clippy::enum_variant_names)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum EditorEvent {
-    OnBufferOpen,
-    OnBufferClose,
-    OnBufferSave,
-    OnModeChange,
+    OnBufferOpen {
+        buffer: BufferId,
+    },
+    OnBufferClose {
+        buffer: BufferId,
+    },
+    OnBufferSave {
+        buffer: BufferId,
+    },
+    OnModeChange {
+        from: Mode,
+        to: Mode,
+    },
     /// Fires on every language transition (including round-trips and clears).
+    /// `language` is the resolved name at raise time, not a `LanguageId` —
+    /// the id is a registry index and `:reload-config` can rebuild the
+    /// registry before this drains, so resolving early is the only
+    /// consistent read.
     ///
     /// **For lazy-loading:** use `#:languages` in `declare-plugin` instead.
     /// `#:languages` *activates* the plugin on the *first* matching transition;
@@ -21,88 +47,191 @@ pub(crate) enum EditorEvent {
     /// subsequent transition. Using `on-language-set` as a `#:events` activation
     /// entry would activate the plugin on *any* language transition, not just the
     /// ones it cares about.
-    OnLanguageSet,
+    OnLanguageSet {
+        buffer: BufferId,
+        language: Option<String>,
+    },
     /// Fires when an LSP client reaches `Running` for a buffer attached to
     /// it — once per already-attached buffer at that moment, and again for
     /// any buffer that attaches later while the server stays Running.
-    /// Args: `(bid server-name)`.
-    OnLspAttach,
+    OnLspAttach {
+        buffer: BufferId,
+        server: String,
+    },
     /// Fires once per buffer detached by `:lsp-stop`/`:lsp-restart`, right
     /// after `buf.lsp_server` is cleared — the counterpart to `OnLspAttach`,
     /// so a plugin holding buffer-scoped state derived from that server
     /// (e.g. inlay hints) can clear it instead of leaving it to drift with
-    /// no server left to keep it in sync. Args: `(bid server-name)`.
-    OnLspDetach,
+    /// no server left to keep it in sync.
+    OnLspDetach {
+        buffer: BufferId,
+        server: String,
+    },
     /// Fires once per drain batch that ingested at least one
-    /// `publishDiagnostics` for `bid` — payload-free signal by design; pull
-    /// via `(diagnostics-for-buffer bid …)`. Args: `(bid)`.
-    OnDiagnosticsChanged,
+    /// `publishDiagnostics` for `buffer` — payload-free signal by design;
+    /// pull via `(diagnostics-for-buffer bid …)`.
+    OnDiagnosticsChanged {
+        buffer: BufferId,
+    },
     /// Fires after scroll/resize resolves a pane's viewport, debounced
-    /// (`lsp.viewport-debounce-ms`) so a scroll burst fires once. Args:
-    /// `(bid first-line last-line)`.
-    OnViewportChange,
+    /// (`lsp.viewport-debounce-ms`) so a scroll burst fires once.
+    OnViewportChange {
+        buffer: BufferId,
+        first_line: usize,
+        last_line: usize,
+    },
     /// Fires in Insert mode after a registered trigger char (see
     /// `register-trigger-chars!`) has been inserted into the buffer — once
     /// per source registered for that char under the buffer's language, so
-    /// two sources sharing a char each get their own fire. Args: `(bid
-    /// char-string source)`.
-    OnTriggerChar,
+    /// two sources sharing a char each get their own fire.
+    OnTriggerChar {
+        buffer: BufferId,
+        ch: char,
+        source: String,
+    },
     /// Fires after `completion-accept!` applies the item's main `textEdit`
     /// (or `insertText` fallback), `additionalTextEdits`, and (if needed)
     /// `completionItem/resolve` — Rust owns all three atomically, so this is
     /// a plain extension point for anything the completion store doesn't
     /// itself parse (e.g. `command`), not a place that needs to apply edits.
-    /// Args: `(bid item)`, `item` the accepted `CompletionItem`'s raw JSON
-    /// decoded via `json_to_steel`.
-    OnCompletionAccept,
+    /// `item` is the accepted `CompletionItem`'s raw JSON.
+    OnCompletionAccept {
+        buffer: BufferId,
+        item: serde_json::Value,
+    },
     /// Fires from the Insert-mode per-keystroke refilter path, but only when
     /// the open session's `isIncomplete` flag is set — a bounded,
-    /// user-intent-adjacent window, not an unconditional
-    /// per-keystroke hook. Args: `(bid filter-text)`.
-    OnCompletionRefilter,
+    /// user-intent-adjacent window, not an unconditional per-keystroke hook.
+    OnCompletionRefilter {
+        buffer: BufferId,
+        filter_text: String,
+    },
 }
-
-/// Single source of truth: `(EditorEvent variant, Steel symbol name)` pairs.
-/// Non-exhaustive over variants by construction — a variant with no entry
-/// here is internal-only, never reaching Steel (see `EditorEvent::name`).
-const EDITOR_EVENT_NAMES: &[(EditorEvent, &str)] = &[
-    (EditorEvent::OnBufferOpen, "on-buffer-open"),
-    (EditorEvent::OnBufferClose, "on-buffer-close"),
-    (EditorEvent::OnBufferSave, "on-buffer-save"),
-    (EditorEvent::OnModeChange, "on-mode-change"),
-    (EditorEvent::OnLanguageSet, "on-language-set"),
-    (EditorEvent::OnLspAttach, "on-lsp-attach"),
-    (EditorEvent::OnLspDetach, "on-lsp-detach"),
-    (EditorEvent::OnDiagnosticsChanged, "on-diagnostics-changed"),
-    (EditorEvent::OnViewportChange, "on-viewport-change"),
-    (EditorEvent::OnTriggerChar, "on-trigger-char"),
-    (EditorEvent::OnCompletionAccept, "on-completion-accept"),
-    (EditorEvent::OnCompletionRefilter, "on-completion-refilter"),
-];
 
 impl EditorEvent {
     /// The Steel symbol name for this event, or `None` if it's internal-only
-    /// (raised and reacted to entirely on the Rust side — no `#[allow]`
-    /// variant exists yet, but the drain loop already handles the case).
-    pub(crate) fn name(self) -> Option<&'static str> {
-        EDITOR_EVENT_NAMES
-            .iter()
-            .find(|(e, _)| *e == self)
-            .map(|(_, name)| *name)
+    /// (raised and reacted to entirely on the Rust side — no variant exists
+    /// yet, but the drain loop already handles the case). An exhaustive
+    /// `match` rather than a table lookup: every variant's name is
+    /// compiler-checked, not just checked by a test.
+    pub(crate) fn name(&self) -> Option<&'static str> {
+        Some(match self {
+            EditorEvent::OnBufferOpen { .. } => "on-buffer-open",
+            EditorEvent::OnBufferClose { .. } => "on-buffer-close",
+            EditorEvent::OnBufferSave { .. } => "on-buffer-save",
+            EditorEvent::OnModeChange { .. } => "on-mode-change",
+            EditorEvent::OnLanguageSet { .. } => "on-language-set",
+            EditorEvent::OnLspAttach { .. } => "on-lsp-attach",
+            EditorEvent::OnLspDetach { .. } => "on-lsp-detach",
+            EditorEvent::OnDiagnosticsChanged { .. } => "on-diagnostics-changed",
+            EditorEvent::OnViewportChange { .. } => "on-viewport-change",
+            EditorEvent::OnTriggerChar { .. } => "on-trigger-char",
+            EditorEvent::OnCompletionAccept { .. } => "on-completion-accept",
+            EditorEvent::OnCompletionRefilter { .. } => "on-completion-refilter",
+        })
+    }
+
+    /// The single definition of every event's Steel arg shape — the SSOT
+    /// `user-manual/docs/plugins.md`'s hook table is checked against, and
+    /// the only place `IntoSteelVal`/`json_to_steel` is invoked for events.
+    /// Called at drain, after the `has_hook_handlers` early-exit, so an
+    /// event nobody subscribes to never allocates a `SteelVal`.
+    pub(crate) fn steel_args(&self) -> Vec<SteelVal> {
+        match self {
+            EditorEvent::OnBufferOpen { buffer }
+            | EditorEvent::OnBufferClose { buffer }
+            | EditorEvent::OnBufferSave { buffer }
+            | EditorEvent::OnDiagnosticsChanged { buffer } => {
+                vec![SteelBufferId::new(*buffer).into_steel_val()]
+            }
+            EditorEvent::OnModeChange { from, to } => {
+                vec![
+                    SteelVal::StringV(mode_name(*from).into()),
+                    SteelVal::StringV(mode_name(*to).into()),
+                ]
+            }
+            EditorEvent::OnLanguageSet { buffer, language } => {
+                let lang_val = match language {
+                    Some(name) => SteelVal::StringV(name.as_str().into()),
+                    None => SteelVal::BoolV(false),
+                };
+                vec![SteelBufferId::new(*buffer).into_steel_val(), lang_val]
+            }
+            EditorEvent::OnLspAttach { buffer, server }
+            | EditorEvent::OnLspDetach { buffer, server } => {
+                vec![
+                    SteelBufferId::new(*buffer).into_steel_val(),
+                    SteelVal::StringV(server.as_str().into()),
+                ]
+            }
+            EditorEvent::OnViewportChange {
+                buffer,
+                first_line,
+                last_line,
+            } => {
+                vec![
+                    SteelBufferId::new(*buffer).into_steel_val(),
+                    SteelVal::IntV(*first_line as isize),
+                    SteelVal::IntV(*last_line as isize),
+                ]
+            }
+            EditorEvent::OnTriggerChar { buffer, ch, source } => {
+                vec![
+                    SteelBufferId::new(*buffer).into_steel_val(),
+                    SteelVal::StringV(ch.to_string().into()),
+                    SteelVal::StringV(source.as_str().into()),
+                ]
+            }
+            EditorEvent::OnCompletionAccept { buffer, item } => {
+                vec![
+                    SteelBufferId::new(*buffer).into_steel_val(),
+                    json_to_steel(item),
+                ]
+            }
+            EditorEvent::OnCompletionRefilter {
+                buffer,
+                filter_text,
+            } => {
+                vec![
+                    SteelBufferId::new(*buffer).into_steel_val(),
+                    SteelVal::StringV(filter_text.as_str().into()),
+                ]
+            }
+        }
+    }
+}
+
+fn mode_name(m: Mode) -> &'static str {
+    match m {
+        Mode::Normal => "normal",
+        Mode::Insert => "insert",
+        Mode::Extend => "extend",
+        Mode::Command => "command",
+        Mode::Search => "search",
+        Mode::Select => "select",
     }
 }
 
 /// Every Steel-visible event name — backs `EventHost::known_event_names`,
 /// consulted by `register-hook!` and `declare-plugin`'s `#:events` to
 /// validate names without `hume-scripting` compiling in `EditorEvent`.
-///
-/// Returns an owned `Vec` rather than a `&'static` slice: deriving a
-/// name-only static slice from `EDITOR_EVENT_NAMES` needs const-eval
-/// gymnastics, and a second parallel const would itself be a SSOT
-/// violation. Both callers are config-time only, so one small alloc per
-/// validation is free.
+const EVENT_NAMES: &[&str] = &[
+    "on-buffer-open",
+    "on-buffer-close",
+    "on-buffer-save",
+    "on-mode-change",
+    "on-language-set",
+    "on-lsp-attach",
+    "on-lsp-detach",
+    "on-diagnostics-changed",
+    "on-viewport-change",
+    "on-trigger-char",
+    "on-completion-accept",
+    "on-completion-refilter",
+];
+
 pub(crate) fn known_event_names() -> Vec<&'static str> {
-    EDITOR_EVENT_NAMES.iter().map(|(_, name)| *name).collect()
+    EVENT_NAMES.to_vec()
 }
 
 #[cfg(test)]

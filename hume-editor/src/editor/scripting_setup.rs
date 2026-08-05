@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use hume_engine::pipeline::BufferId;
 
 use hume_scripting::Effect;
-use hume_scripting::SteelBufferId;
 use steel::rvals::SteelVal;
 
 use super::event::EditorEvent;
@@ -146,10 +145,10 @@ impl Editor {
     // ── Event queueing ───────────────────────────────────────────────────────
 
     /// Fire `OnBufferSave` hooks for `bid`. Both `:w` write paths in
-    /// `commands.rs` share this rather than duplicating the arg construction.
+    /// `commands.rs` share this rather than duplicating the raise call.
     pub(super) fn queue_buffer_save(&mut self, bid: BufferId) {
-        let val = SteelBufferId::new(bid).into_steel_val();
-        self.queue_event(EditorEvent::OnBufferSave, &[val]);
+        self.state
+            .queue_event(EditorEvent::OnBufferSave { buffer: bid });
     }
 
     /// Fire `OnLspAttach (bid server-name)` — called both when a buffer
@@ -157,26 +156,28 @@ impl Editor {
     /// every buffer already attached, when a Starting client reaches
     /// Running (`dispatch_lsp_action`'s `BecameRunning` arm).
     pub(super) fn queue_lsp_attach(&mut self, bid: BufferId, server_name: &str) {
-        let bid_val = SteelBufferId::new(bid).into_steel_val();
-        let name_val = SteelVal::StringV(server_name.into());
-        self.queue_event(EditorEvent::OnLspAttach, &[bid_val, name_val]);
+        self.state.queue_event(EditorEvent::OnLspAttach {
+            buffer: bid,
+            server: server_name.to_owned(),
+        });
     }
 
     /// Fire `OnLspDetach (bid server-name)` — called from `lsp_stop_one` for
     /// every buffer that was attached to the server being stopped, right
     /// after `buf.lsp_server` is cleared.
     pub(super) fn queue_lsp_detach(&mut self, bid: BufferId, server_name: &str) {
-        let bid_val = SteelBufferId::new(bid).into_steel_val();
-        let name_val = SteelVal::StringV(server_name.into());
-        self.queue_event(EditorEvent::OnLspDetach, &[bid_val, name_val]);
+        self.state.queue_event(EditorEvent::OnLspDetach {
+            buffer: bid,
+            server: server_name.to_owned(),
+        });
     }
 
     /// Fire `OnDiagnosticsChanged (bid)` — payload-free signal, once per
     /// buffer a `publishDiagnostics` drain batch actually touched
     /// (`drain_lsp`). Handlers pull via `(diagnostics-for-buffer bid …)`.
     pub(super) fn queue_diagnostics_changed(&mut self, bid: BufferId) {
-        let val = SteelBufferId::new(bid).into_steel_val();
-        self.queue_event(EditorEvent::OnDiagnosticsChanged, &[val]);
+        self.state
+            .queue_event(EditorEvent::OnDiagnosticsChanged { buffer: bid });
     }
 
     /// Fire `OnViewportChange (bid first-line last-line)` for `pane_id` —
@@ -190,15 +191,11 @@ impl Editor {
         let bid = pane.buffer_id;
         let total_lines = self.state.buffers.get(bid).text().len_lines();
         let (first_line, last_line) = super::lsp::introspect::pane_visible_range(pane, total_lines);
-        let bid_val = SteelBufferId::new(bid).into_steel_val();
-        self.queue_event(
-            EditorEvent::OnViewportChange,
-            &[
-                bid_val,
-                SteelVal::IntV(first_line as isize),
-                SteelVal::IntV(last_line as isize),
-            ],
-        );
+        self.state.queue_event(EditorEvent::OnViewportChange {
+            buffer: bid,
+            first_line,
+            last_line,
+        });
     }
 
     /// Fire `OnTriggerChar (bid char-string source)` — Insert mode, after
@@ -206,23 +203,11 @@ impl Editor {
     /// per source registered for `ch` under `bid`'s language via
     /// `(register-trigger-chars! source language chars)`.
     pub(super) fn queue_trigger_char(&mut self, bid: BufferId, ch: char, source: &str) {
-        let bid_val = SteelBufferId::new(bid).into_steel_val();
-        let ch_val = SteelVal::StringV(ch.to_string().into());
-        let source_val = SteelVal::StringV(source.into());
-        self.queue_event(EditorEvent::OnTriggerChar, &[bid_val, ch_val, source_val]);
-    }
-
-    /// Enqueue `event` to fire after the current command returns.
-    ///
-    /// The unified event-queueing path: all hook scheduling goes through
-    /// `state.config.pending_events`; `Editor::drain_events` does the actual Steel eval.
-    /// This prevents re-entrant Steel calls during command execution and gives
-    /// a single drain point for both the keypress and sync-Steel paths.
-    pub(super) fn queue_event(&mut self, event: EditorEvent, args: &[steel::rvals::SteelVal]) {
-        self.state
-            .config
-            .pending_events
-            .push((event, args.to_vec()));
+        self.state.queue_event(EditorEvent::OnTriggerChar {
+            buffer: bid,
+            ch,
+            source: source.to_owned(),
+        });
     }
 
     /// Fire every hook in `state.config.pending_events`, draining the queue.
@@ -261,7 +246,7 @@ impl Editor {
                 );
                 return;
             }
-            for (event, args) in hooks {
+            for event in hooks {
                 // Internal-only events (no Steel name) skip lazy activation
                 // and firing entirely — there is nothing for Steel to react to.
                 let Some(name) = event.name() else {
@@ -277,6 +262,9 @@ impl Editor {
                 {
                     continue;
                 }
+                // Built only once a handler is confirmed registered — an event
+                // nobody subscribes to never allocates a `SteelVal`.
+                let args = event.steel_args();
                 let pid = self.state.focused_pane_id;
                 let bid = self.focused_buffer_id();
                 let result = {
