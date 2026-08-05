@@ -1,7 +1,8 @@
 //! Property-based fuzz test for the full `Editor` key-handling pipeline.
 //!
-//! Feeds random sequences of plausible key events to `Editor::handle_input` and
-//! asserts that no sequence ever panics or leaves the editor in an invalid state.
+//! Feeds random sequences of plausible key events to `Editor::handle_input`,
+//! settling after each one (mirroring `Editor::run`'s loop), and asserts that
+//! no sequence ever panics or leaves the editor in an invalid state.
 //!
 //! This complements the `proptest_doc` tests (which target `Text` and pure
 //! ops) by exercising the whole editor: mode transitions, minibuffer, search,
@@ -148,6 +149,7 @@ mod tests {
         ) {
             for key in &keys {
                 ed.handle_input(TerminalEvent::Key(key.to_key_event()));
+                ed.settle();
                 assert_editor_invariants(&ed);
             }
         }
@@ -161,6 +163,7 @@ mod tests {
         ) {
             for key in &keys {
                 ed.handle_input(TerminalEvent::Key(key.to_key_event()));
+                ed.settle();
             }
             // Check invariants only at the end for speed — panics during the
             // loop are still caught by proptest as failures.
