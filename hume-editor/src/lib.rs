@@ -60,6 +60,12 @@ pub fn run_keys(
             break;
         }
     }
+    // One more pass after the loop: `drain_async_sources` runs once per
+    // `settle()` call, outside its fixpoint (see that doc), so a timer a
+    // handler armed *during* the last key's own settle only converts to
+    // due work on the next call — with no further key to trigger one, it
+    // would otherwise never fire.
+    editor.settle();
 
     let content = editor.doc().text().to_string();
     std::fs::write(&output, content)?;

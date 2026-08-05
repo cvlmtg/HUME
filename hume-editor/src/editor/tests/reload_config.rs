@@ -729,15 +729,15 @@ fn resync_refires_lsp_attach_for_a_running_server() {
 /// `OnLspAttach` once `BecameRunning` runs (`dispatch_lsp_action`), and
 /// firing it again from resync would double it.
 ///
-/// Checked by inspecting `pending_work` directly, never via `settle()`:
-/// `wire_starting_server` pre-queues the mock backend's `initialize`
-/// response but this test deliberately never drives it to `BecameRunning`
-/// (unlike `complete_handshake`, which the "refires for a Running server"
-/// test above calls) — so it's still sitting undrained in the backend.
-/// `settle()` unconditionally drains LSP now (the `settle()` merge, SPEC.md
-/// §3), and would complete that handshake for real, firing `OnLspAttach`
-/// via the legitimate `BecameRunning` path and confounding "resync fired
-/// it" with "the handshake genuinely completed here."
+/// Drained with `drain_pending_work()`, never `settle()`: `settle()` also
+/// runs `drain_async_sources` first, which would drive the mock backend's
+/// pre-queued `initialize` response to completion for real — this test
+/// deliberately never does that (unlike `complete_handshake`, which the
+/// "refires for a Running server" test above calls) — firing `OnLspAttach`
+/// via the legitimate `BecameRunning` path and confounding "resync fired it"
+/// with "the handshake genuinely completed here." `drain_pending_work()`
+/// drains only `resync_config_state`'s own queued hooks, leaving the
+/// backend's response untouched.
 #[test]
 fn resync_does_not_refire_attach_for_a_starting_server() {
     let tmp = safe_tempdir();
@@ -753,22 +753,17 @@ fn resync_does_not_refire_attach_for_a_starting_server() {
         tmp.path(),
     );
     ed.scripting = Some(host);
+    let before = state(&ed);
 
     let snapshot =
         ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
     ed.resync_config_state(&snapshot);
+    ed.drain_pending_work();
 
-    let queued_attach = ed.state.config.pending_work.iter().any(|w| {
-        matches!(
-            w,
-            crate::editor::event::PendingWork::Event(
-                crate::editor::event::EditorEvent::OnLspAttach { server, .. }
-            ) if server == "rust"
-        )
-    });
-    assert!(
-        !queued_attach,
-        "a Starting server's attach must not be queued by resync_config_state"
+    assert_eq!(
+        state(&ed),
+        before,
+        "a Starting server's attach must not fire on resync"
     );
 }
 

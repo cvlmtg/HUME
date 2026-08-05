@@ -208,16 +208,50 @@ impl Editor {
     ///
     /// Takes no arguments, so it's callable without a terminal — the
     /// headless path (`hume_editor::run_keys`) and `render_to_buf` both call
-    /// it directly, alongside `Editor::run`'s loop and `:reload-config`'s
-    /// `resync_config_state` call site (deliberately kept separate — see its
-    /// doc).
+    /// it directly, alongside `Editor::run`'s loop.
     ///
-    /// Capped at [`MAX_EVENT_DRAIN`] total items processed (not passes), so
-    /// neither a constant-width ping-pong loop (two `on-language-set`
-    /// handlers flipping a value between two settings) nor an amplifying
-    /// cascade (a handler that queues more work than it received, doubling
-    /// the batch pass over pass) can livelock the editor. The watchdog only
-    /// bounds each individual eval, not this loop.
+    /// `drain_async_sources` runs once, *outside* [`Self::drain_pending_work`]'s
+    /// fixpoint, deliberately: a timer thunk that re-arms itself
+    /// (`(after 0 (lambda () (after 0 …)))`) would otherwise never leave the
+    /// loop — each firing converts straight back into a due timer the same
+    /// pass would immediately redrain. Outside the fixpoint, a re-arm is
+    /// picked up on the *next* `settle()` instead, one frame later, which
+    /// bounds it. `:reload-config`'s `resync_config_state` call site drains
+    /// only `drain_pending_work` for exactly this reason — see its doc.
+    pub(crate) fn settle(&mut self) {
+        self.drain_async_sources();
+        // Any mode change queued between the last consumption point and now
+        // (a handler earlier this same batch, or something that ran before
+        // `settle` was even called) must not survive into the handler calls
+        // below. Unconditional, at the top, so no early-return branch below
+        // can skip it.
+        self.take_pending_lsp_completion_dismiss();
+        if self.drain_pending_work() {
+            // A call/handler just run above (an LSP-request callback, a
+            // timer thunk, a hook) can itself dispatch a command that exits
+            // Insert, setting the flag the top-of-function consumption
+            // already passed. Consume it again so `prepare_frame`'s later
+            // `sync_completion_menu_view` never repaints a session
+            // `set_mode` asked to close mid-drain.
+            self.take_pending_lsp_completion_dismiss();
+            // The span `Editor::handle_input` opened ("this input's own
+            // dispatch just logged a message") closes here, now that this
+            // settle() has run the buffer-enter disk check that span exists
+            // to protect against — see `EditorState::message_logged_this_input`'s
+            // doc.
+            self.state.message_logged_this_input = false;
+        }
+        // On abort, both consumes above are skipped: a mode change or
+        // message mid-drain defers one frame to the next `settle()`'s
+        // top-of-fn consume rather than being lost — see
+        // `drain_pending_work`'s abort branch.
+    }
+
+    /// Fixpoint over `state.config.pending_work` only — no async sources.
+    /// The loop body of `settle`, split out so `:reload-config`'s accounting
+    /// window (`typed_reload_config`) can drain exactly the config's own
+    /// queued hooks without an unrelated LSP/parse/timer message landing
+    /// inside it and being mistaken for a reload failure.
     ///
     /// Also the single observation point for `OnBufferEnter` (SPEC.md §4):
     /// `detect_buffer_enter` runs at the top of every pass, not just once
@@ -227,19 +261,23 @@ impl Editor {
     /// "queue empty" — a pass that only detects a focus change still has
     /// work to do (queuing and then draining `OnBufferEnter`) even though
     /// `pending_work` was empty when the pass began.
-    pub(crate) fn settle(&mut self) {
-        self.drain_async_sources();
-        // Any mode change queued between the last consumption point and now
-        // (a handler earlier this same batch, or something that ran before
-        // `settle` was even called) must not survive into the handler calls
-        // below. Unconditional, at the top, so no early-return branch below
-        // can skip it.
-        self.take_pending_lsp_completion_dismiss();
+    ///
+    /// Capped at [`MAX_EVENT_DRAIN`] total items processed (not passes), so
+    /// neither a constant-width ping-pong loop (two `on-language-set`
+    /// handlers flipping a value between two settings) nor an amplifying
+    /// cascade (a handler that queues more work than it received, doubling
+    /// the batch pass over pass) can livelock the editor. The watchdog only
+    /// bounds each individual eval, not this loop.
+    ///
+    /// Returns `false` if the cap aborted the drain with work still
+    /// unprocessed, so callers can skip whatever follow-up assumes a clean
+    /// quiescent state.
+    pub(super) fn drain_pending_work(&mut self) -> bool {
         let mut total_processed = 0usize;
         loop {
             self.detect_buffer_enter();
             if self.state.config.pending_work.is_empty() {
-                break;
+                return true;
             }
             let batch = std::mem::take(&mut self.state.config.pending_work);
             total_processed += batch.len();
@@ -255,27 +293,24 @@ impl Editor {
                     ),
                 );
                 self.state.message_logged_this_input = false;
-                // Skips the tail `take_pending_lsp_completion_dismiss()`
-                // below — a mode change mid-drain that set the flag on this
-                // pass defers one frame to the next `settle()`'s top-of-fn
-                // consume (`:255`) rather than being lost, since the flag
-                // itself isn't cleared here.
-                return;
+                // `detect_buffer_enter` already advanced `last_entered_buffer`
+                // to the buffer this dropped batch's `OnBufferEnter` (if any)
+                // was raised for — undo that so the next `settle()` observes
+                // the diff again and re-raises it, instead of the buffer-enter
+                // disk check being lost for good because the baseline already
+                // matches. Only when the batch actually held one: resetting
+                // unconditionally would re-raise (and re-check) a buffer whose
+                // event already fired earlier in this same drop.
+                if batch
+                    .iter()
+                    .any(|w| matches!(w, PendingWork::Event(EditorEvent::OnBufferEnter { .. })))
+                {
+                    self.state.last_entered_buffer = None;
+                }
+                return false;
             }
             self.run_pending_batch(batch);
         }
-        // A call/handler just run above (an LSP-request callback, a timer
-        // thunk, a hook) can itself dispatch a command that exits Insert,
-        // setting the flag the top-of-function consumption already passed.
-        // Consume it again so `prepare_frame`'s later
-        // `sync_completion_menu_view` never repaints a session `set_mode`
-        // asked to close mid-drain.
-        self.take_pending_lsp_completion_dismiss();
-        // The span `Editor::handle_input` opened ("this input's own dispatch
-        // just logged a message") closes here, now that this settle() has
-        // run the buffer-enter disk check that span exists to protect
-        // against — see `EditorState::message_logged_this_input`'s doc.
-        self.state.message_logged_this_input = false;
     }
 
     /// Observation point for `focused_buffer_id()` — a derived join of

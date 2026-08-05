@@ -358,13 +358,16 @@ pub(crate) fn typed_reload_config(
     ed.scripting = None;
     ed.init_scripting(&mut snapshot);
     ed.resync_config_state(&snapshot);
-    // Settled here, inside the accounting window, rather than left for the
+    // Drained here, inside the accounting window, rather than left for the
     // next loop iteration: `resync_config_state` only *enqueues* its hooks
     // (`queue_event`), and a handler error from one of them is exactly the
-    // kind of failure "Config reloaded" must not paper over. A second,
-    // deliberately separate `settle()` call site from `Editor::run`'s loop —
-    // see `settle`'s own doc.
-    ed.settle();
+    // kind of failure "Config reloaded" must not paper over.
+    //
+    // `drain_pending_work`, not `settle`: `settle` also runs
+    // `drain_async_sources` first, which would pull in an unrelated LSP/
+    // parse/timer message that happens to arrive at this moment and count it
+    // against this reload's own errors/warnings delta — see `settle`'s doc.
+    ed.drain_pending_work();
     let (errors_after, warnings_after) = ed.state.message_log.totals();
     if errors_after == errors_before && warnings_after == warnings_before {
         ed.report(Severity::Info, "Config reloaded".to_string());

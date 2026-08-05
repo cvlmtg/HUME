@@ -51,8 +51,9 @@ impl Editor {
             .map(|wake| wake.saturating_duration_since(now))
     }
 
-    /// Named drain phase for completed async work, called once per frame from
-    /// `prepare_frame`.
+    /// Named drain phase for completed async work. Sole caller is
+    /// `Editor::settle`, once per call and outside its `pending_work`
+    /// fixpoint — see that function's doc for why.
     pub(super) fn drain_async_sources(&mut self) {
         self.reparse_stale_buffers();
         self.drain_due_timers();
