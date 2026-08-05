@@ -229,6 +229,8 @@ Available hooks and their lambda signatures:
 | `on-buffer-open` | A buffer is opened | `(buffer-id)` |
 | `on-buffer-close` | A buffer is about to close | `(buffer-id)` |
 | `on-buffer-save` | A buffer is saved | `(buffer-id)` |
+| `on-buffer-enter` | The focused buffer changes | `(buffer-id)` |
+| `on-focus-gained` | The terminal regains focus | `()` |
 | `on-mode-change` | The editor mode changes | `(old new)` — mode strings |
 | `on-language-set` | A buffer's language is detected or changed | `(buffer-id lang)` — `lang` is a string or `#f` |
 | `on-diagnostics-changed` | A buffer's LSP diagnostics change | `(buffer-id)` — pull details with `diagnostics-for-buffer` |

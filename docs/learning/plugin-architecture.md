@@ -143,6 +143,8 @@ The full set of lifecycle hooks, for reference:
 | `on-buffer-open` | A buffer is opened |
 | `on-buffer-close` | A buffer is closed |
 | `on-buffer-save` | A buffer is written to disk |
+| `on-buffer-enter` | The focused buffer changes |
+| `on-focus-gained` | The terminal regains focus |
 | `on-mode-change` | The editor mode changes (e.g. entering insert) |
 | `on-language-set` | A buffer's language is set or cleared |
 | `on-lsp-attach` | A language server attaches to a buffer |
@@ -153,10 +155,15 @@ The full set of lifecycle hooks, for reference:
 | `on-completion-accept` | A completion candidate was accepted |
 | `on-completion-refilter` | An incomplete completion list needs a fresh request as typing continues |
 
-All hooks fire at the tail of an event dispatch, never mid-dispatch. If a
-single event triggers several hooks, they are queued and drained together
-after the dispatch completes — plugins observe the editor in a stable state,
-not mid-edit.
+Hooks never fire mid-command. Whatever triggers one — a command you ran, a
+language server responding, a timer, the terminal regaining focus — queues
+it, and the editor drains the queue once it reaches a stable point: after
+your command finishes, or, for background triggers, the next time the editor
+checks in on its own. If a handler itself does something that would trigger
+another hook (switching buffers from inside an `on-buffer-save` handler, say),
+that hook queues too and drains in the same pass — you never need an extra
+keypress to see the cascade finish. Plugins always observe the editor in a
+stable state, not mid-edit.
 
 One caveat: the named language must already be known to the editor when a buffer is
 opened. If a plugin is the sole definer of its own activation language — registering it

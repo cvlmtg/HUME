@@ -12,7 +12,7 @@
 - [ ] Class A docked panes — fixed-row-count `LayoutTree` variant alongside ratio-based splits. Clients: quickfix list, LSP references/diagnostics, embedded terminal/REPL, build/test runner, `:help` pager, DAP debugger views. Deferred until the first concrete client is scoped.
 - [ ] Wire remaining Class B drawer clients — `:ls`, `:messages`, notifications, command/search history pagers onto the existing bottom-drawer primitive.
 - [ ] Wrap indicator — configurable char prepended to continuation rows in soft-wrap mode.
-- [ ] `on-buffer-switch` hook + per-buffer keymaps (Steel).
+- [ ] Per-buffer keymaps (Steel) — `on-buffer-enter` already exists to key off of.
 - [ ] `:e <new-path>` touch-or-open — create empty buffer bound to path when file doesn't exist; first `:w` writes it.
 - [ ] `:e` binary / huge-file y/n confirm — binary-sniff + size threshold. The reusable confirm-overlay primitive this needs (`ui::confirm`) already exists, built for the disk-change reload prompt.
 - [ ] Streaming load for huge files — chunked read replacing single blocking full-file read.

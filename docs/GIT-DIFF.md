@@ -137,8 +137,8 @@ the merge it would be avoiding.
 | `vim.diff` (line Myers) | ✅ `diff_lines` exists (`hume-editing/src/diff.rs:149`), not exposed to Steel | Steel builtin wrapper, plus a buffer-native `(diff-buffer-lines bid ref-text)` variant so the plugin never has to round-trip the live buffer through Steel just to diff it (Phase 2) |
 | word-diff Myers (in *Lua*) | ✅ `diff_words` exists (`hume-editing/src/diff.rs:254`), grapheme-safe, zero production callers today | Steel builtin wrapper (Phase 2) |
 | `nvim_buf_get_lines` (live text) | ❌ no buffer-text read — the biggest gap for general-purpose Steel scripts (the diff plugin itself sidesteps this via `diff-buffer-lines`, but other consumers still need it) | buffer-text builtins (Phase 4.2) |
-| `autocmd TextChanged` | ❌ no on-edit hook (12-entry `HOOKS` table, none fire on edit) | `on-text-changed` hook (Phase 4.1) |
-| `autocmd BufWritePost` | ✅ `on-buffer-save` (`hooks.rs:78`) | reuse |
+| `autocmd TextChanged` | ❌ no on-edit hook (14-entry `EditorEvent` set, none fire on edit) | `on-text-changed` hook (Phase 4.1) |
+| `autocmd BufWritePost` | ✅ `on-buffer-save` (`hume-editor/src/editor/event.rs`) | reuse |
 | `vim.uv` timer (debounce) | ✅ `(after ms thunk)` / `(cancel-timer! id)` / `debounce`, timer wheel in `editor/timers.rs` | reuse — nothing to build |
 | `vim.system` (async git) | ✅ shipped — `(spawn-async! cmd args cwd callback)` / `(cancel-async! id)`, one-shot capture, exactly-once callback, never inline (`hume-scripting/src/builtins/process.rs`) | reuse — nothing to build |
 | `nvim_buf_set_extmark` (virt_lines_above / inline hl / hl_eol) | ⚠️ **partial.** Engine-side `VirtualLineAnchor::Before/After` and per-segment `ScopeId` styling both exist (`hume-engine/src/providers.rs:202-228`), but the Steel bridge (`Editor::update_virtual_line_providers`, `hume-editor/src/editor/lifecycle.rs:1613-1671`) hardcodes `VirtualLineAnchor::After` and a single whole-line segment — **`Before` and per-segment scopes are unreachable from Steel today.** `set-extra-highlights!`/`set-signs!` are unaffected. | extend `set-virtual-lines!` (or add a variant) to accept an anchor + segment list (Phase 4.5); plus a **line-background** (full-row tint) decoration kind (Phase 3.2 + 4.4) |
@@ -415,11 +415,12 @@ Each is general-purpose. Registered through `register_all`
 (`hume-scripting/src/builtins/mod.rs`) and, where they touch editor state, the `EditorHost`
 trait (`hume-scripting/src/host.rs`).
 
-1. **`on-text-changed` hook.** Missing — current `HOOKS` table
-   (`hume-scripting/src/hooks.rs:75-88`) has 12 entries (`on-buffer-open`, `on-buffer-close`,
-   `on-buffer-save`, `on-mode-change`, `on-language-set`, `on-lsp-attach`, `on-lsp-detach`,
-   `on-diagnostics-changed`, `on-viewport-change`, `on-trigger-char`, `on-completion-accept`,
-   `on-completion-refilter`) and none fire on edit. Add `HookId::OnTextChanged` + Steel name;
+1. **`on-text-changed` hook.** Missing — current `EditorEvent` set
+   (`hume-editor/src/editor/event.rs`) has 14 variants (`on-buffer-open`, `on-buffer-close`,
+   `on-buffer-save`, `on-buffer-enter`, `on-focus-gained`, `on-mode-change`, `on-language-set`,
+   `on-lsp-attach`, `on-lsp-detach`, `on-diagnostics-changed`, `on-viewport-change`,
+   `on-trigger-char`, `on-completion-accept`, `on-completion-refilter`) and none fire on edit.
+   Add `EditorEvent::OnTextChanged` + Steel name;
    fire from the edit-apply path — `apply_edit`/`apply_edit_grouped`/`apply_edit_regrouped`
    on `Buffer` (`hume-editor/src/editor/buffer/mod.rs:457,477,507`), called from
    `hume-editor/src/editor/doc_ops.rs:106,137,171`, all routing through `set_text`
@@ -663,7 +664,7 @@ store) + theme `diff.*` `bg` values in all four themes.**
   `hume-engine/src/render.rs`
   (`fill_row_bg` method `:96`, free fn `:559`, consumers at `:122,174,231,276,294`),
   `hume-engine/src/types.rs` (`Grapheme.scope` `:160`).
-- **Steel surface**: `hume-scripting/src/hooks.rs:75-88` (HOOKS table, 12 entries, no
+- **Steel surface**: `hume-editor/src/editor/event.rs` (`EditorEvent`, 14 variants, no
   `on-text-changed` yet), `host.rs:409-465` (`DecorationHost`, already implemented — extend,
   don't rebuild), `builtins/buffers.rs` (add text-read builtins), `builtins/timers.rs`
   (existing `after`/`cancel-timer!`/`debounce` — reuse), `hume-editor/src/editor/decorations.rs`

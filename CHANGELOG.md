@@ -24,7 +24,8 @@
 - `:messages` entries are now colored by severity.
 - Quitting with an attached language server no longer leaves the screen frozen in the alternate screen while it shuts down: the terminal is restored first.
 - Fixed a bug where `d`/`c`/`p` on a read-only buffer could still overwrite the kill ring or a named register before refusing the edit.
-- The external-change reload prompt now also appears when a changed buffer becomes focused via `:q`, `:bd`, a pane close, pane-focus cycling, or a click into another pane. Answering `[k]eep` now silences that prompt until the file changes again, instead of reopening it on the next focus change; `:checktime` still warns about it, so a declined change is never silent forever.
+- The external-change reload prompt now also appears when a changed buffer becomes focused via `:q`, `:bd`, a pane close, pane-focus cycling, a click into another pane, a fuzzy-picker accept, or any other non-interactive buffer switch (e.g. LSP goto-definition). Answering `[k]eep` now silences that prompt until the file changes again, instead of reopening it on the next focus change; `:checktime` still warns about it, so a declined change is never silent forever.
+- New `on-buffer-enter` and `on-focus-gained` hooks: the former fires whenever the focused buffer changes, the latter when the terminal regains focus.
 
 ## [0.10.0] - 2026-07-24
 
