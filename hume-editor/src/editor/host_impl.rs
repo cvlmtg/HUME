@@ -192,7 +192,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
 }
 
 impl<'a> EventHost for EditorHostImpl<'a> {
-    fn known_event_names(&self) -> Vec<&'static str> {
+    fn known_event_names(&self) -> &'static [&'static str] {
         super::event::known_event_names()
     }
 }

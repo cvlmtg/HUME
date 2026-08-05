@@ -17,7 +17,7 @@ mod mock_host {
     #[test]
     fn mock_host_event_names_match_the_real_event_set() {
         assert_eq!(
-            MOCK_HOST_EVENT_NAMES.to_vec(),
+            MOCK_HOST_EVENT_NAMES,
             crate::editor::event::known_event_names(),
         );
     }

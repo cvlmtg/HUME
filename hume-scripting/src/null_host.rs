@@ -57,8 +57,8 @@ impl EditorHost for NullHost {
 }
 
 impl EventHost for NullHost {
-    fn known_event_names(&self) -> Vec<&'static str> {
-        NULL_HOST_EVENT_NAMES.to_vec()
+    fn known_event_names(&self) -> &'static [&'static str] {
+        NULL_HOST_EVENT_NAMES
     }
 }
 

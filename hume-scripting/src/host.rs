@@ -172,7 +172,7 @@ pub trait EditorHost {
 /// validate against this instead of a static match.
 pub trait EventHost {
     /// Every Steel-visible event name this host can raise.
-    fn known_event_names(&self) -> Vec<&'static str>;
+    fn known_event_names(&self) -> &'static [&'static str];
 }
 
 /// Live cursor/selection reads — accessed through [`EditorHost::cursor`].

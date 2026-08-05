@@ -124,8 +124,8 @@ impl EditorHost for MockHost {
 }
 
 impl EventHost for MockHost {
-    fn known_event_names(&self) -> Vec<&'static str> {
-        MOCK_HOST_EVENT_NAMES.to_vec()
+    fn known_event_names(&self) -> &'static [&'static str] {
+        MOCK_HOST_EVENT_NAMES
     }
 }
 

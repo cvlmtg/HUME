@@ -279,8 +279,8 @@ fn mode_name(m: Mode) -> &'static str {
     }
 }
 
-pub(crate) fn known_event_names() -> Vec<&'static str> {
-    EVENT_NAMES.to_vec()
+pub(crate) fn known_event_names() -> &'static [&'static str] {
+    EVENT_NAMES
 }
 
 #[cfg(test)]
