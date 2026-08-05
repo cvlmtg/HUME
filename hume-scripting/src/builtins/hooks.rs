@@ -10,8 +10,7 @@ use crate::SteelCtx;
 ///
 /// Shared by `register-hook!` and `declare-plugin`'s `#:events` — the two
 /// verbs that name an event — so the accepted form and the error text can't
-/// drift apart the way they used to (one took symbols only, the other took
-/// strings or symbols).
+/// drift apart between them.
 ///
 /// Symbol, not string: the event set is closed and host-defined, same rule
 /// as `bind-key!`'s mode argument. `#:commands` / `#:languages` stay
