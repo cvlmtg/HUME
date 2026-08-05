@@ -9,7 +9,7 @@ use hume_engine::types::EditorMode;
 
 use hume_platform::terminal::{SharedTerm, Term};
 
-use super::buffer::DiskCheckTrigger;
+use super::event::EditorEvent;
 use super::{Editor, Mode};
 
 impl Editor {
@@ -206,7 +206,8 @@ impl Editor {
                 skip_macro_record: false,
                 dispatching_typed_command: false,
                 is_replaying: false,
-                message_logged_this_event: false,
+                message_logged_this_input: false,
+                last_entered_buffer: None,
                 mouse_drag_anchor: None,
                 cwd: startup_cwd,
                 lsp_completion_dismiss_pending: false,
@@ -265,11 +266,13 @@ impl Editor {
     ///
     /// This is the single, non-test path for feeding one keystroke to the editor
     /// from outside the interactive event loop (e.g. headless key-runner). Unlike
-    /// [`Self::handle_input`], `step` does not call [`Self::settle`] — the caller
-    /// (`hume_editor::run_keys`) calls it once per key itself, mirroring how the
+    /// [`Self::handle_input`], `step` does not itself call [`Self::settle`] — the
+    /// caller (`hume_editor::run_keys`) calls it once per key, mirroring how the
     /// interactive loop settles once per iteration rather than once per input
-    /// handler. Here we use [`Self::handle_key`] directly so the caller doesn't
-    /// need a scripting host.
+    /// handler. The one exception is [`Self::drain_replay_queue`], which settles
+    /// internally so a macro's buffer-enter diff is observed before its
+    /// `is_replaying` guard drops — see that function's doc. Here we use
+    /// [`Self::handle_key`] directly so the caller doesn't need a scripting host.
     pub(crate) fn step(&mut self, key: KeyEvent) {
         self.handle_key(key);
         self.sync_search_cache();
@@ -280,42 +283,36 @@ impl Editor {
     /// Single interactive input boundary: dispatch one terminal event.
     ///
     /// All interactive input flows through here — key events and mouse events
-    /// alike. Unlike before the `settle()` merge (SPEC.md §3), this no longer
-    /// drains queued work itself — `Editor::run`'s loop calls `settle()` once
-    /// per iteration, at the top, so it covers both a command dispatched here
-    /// and any async work that arrived without any input at all. New input
-    /// paths should still route through this method for the disk check below.
+    /// alike. This no longer drains queued work itself, nor diffs focus
+    /// itself (SPEC.md §4): `Editor::run`'s loop calls `settle()` once per
+    /// iteration, at the top, and `settle()`'s own fixpoint is where a focus
+    /// change made here — or by a hook handler, or by non-interactive Steel/
+    /// LSP code — is observed and turned into `OnBufferEnter`. New input
+    /// paths should still route through here: it's what marks
+    /// `message_logged_this_input` for `settle()`'s disk check to honour
+    /// below.
     ///
-    /// Also the single place that runs the buffer-enter disk check for a
-    /// focus change made *during dispatch itself* (a keymap command or mouse
-    /// click that switches buffers): the snapshot is taken before dispatch
-    /// and compared right after. A focus change made by a *hook* handler
-    /// queued here is caught one `settle()` later, at the top of the next
-    /// loop iteration, rather than in this same call — narrower than before
-    /// the merge, closed by C5's focus diff living inside `settle()`'s own
-    /// fixpoint (SPEC.md §4, not yet landed). `Editor::step` (the headless
-    /// key-runner) skips this boundary on its own dispatch, but its
-    /// `drain_replay_queue` re-enters `handle_input` per replayed key, so a
-    /// check still runs for a buffer switch made from a macro — never
-    /// opening a confirm there, since `can_open_confirm`'s `!is_replaying`
-    /// guard applies. That same function's `message_logged_this_event`
-    /// clause is why a command that fails after moving focus (`:qa` landing
-    /// on the first dirty buffer) keeps its own message on screen instead of
-    /// losing it to an unrelated disk prompt — the check still runs and
-    /// still warns, so landing on a stale buffer this way is never
-    /// completely silent.
+    /// Sets `message_logged_this_input` whenever this dispatch itself logged
+    /// a new warning or error — a command that fails after moving focus
+    /// (`:qa` landing on the first dirty buffer) must keep its own message on
+    /// screen instead of losing it to an unrelated disk-change confirm the
+    /// next `settle()` might open. `settle()` clears the flag once that
+    /// drain has run; see `EditorState::message_logged_this_input`'s doc for
+    /// why the window spans both calls.
     pub(crate) fn handle_input(&mut self, ev: TerminalEvent) {
-        let focused_before = self.focused_buffer_id();
         let totals_before = self.state.message_log.totals();
         match ev {
             TerminalEvent::Key(k) => self.handle_key(k),
             TerminalEvent::Mouse(m) => self.handle_mouse(m),
             TerminalEvent::Paste(s) => self.handle_terminal_paste(s),
+            // Regaining focus is one of the external-file-change check's
+            // trigger points (alongside buffer-enter and `:checktime`) — see
+            // `DiskCheckTrigger::Ambient`. `FocusOut` needs no handling:
+            // there's nothing to check until focus returns.
+            TerminalEvent::FocusIn => self.state.queue_event(EditorEvent::OnFocusGained),
             _ => {}
         }
-        self.state.message_logged_this_event = self.state.message_log.totals() != totals_before;
-        self.check_focus_change_disk_state(focused_before);
-        self.state.message_logged_this_event = false;
+        self.state.message_logged_this_input = self.state.message_log.totals() != totals_before;
     }
 
     /// Run the editor event loop until the user quits.
@@ -506,9 +503,9 @@ impl Editor {
                             // A window manager can resize and refocus in the
                             // same gesture (snapping a tile, say) — the
                             // `_ => break` catch-all below would otherwise
-                            // swallow this without running the disk check.
+                            // swallow this without raising `OnFocusGained`.
                             TerminalEvent::FocusIn => {
-                                self.check_all_disk_state(DiskCheckTrigger::Ambient);
+                                self.handle_input(TerminalEvent::FocusIn);
                                 break;
                             }
                             TerminalEvent::Key(key) if key.kind != KeyEventKind::Release => {
@@ -530,11 +527,10 @@ impl Editor {
                         }
                     }
                 }
-                // Regaining focus is one of the external-file-change check's
-                // trigger points (alongside buffer-enter and `:checktime`) —
-                // see `Editor::check_all_disk_state`. `FocusOut` needs no
-                // handling: there's nothing to check until focus returns.
-                TerminalEvent::FocusIn => self.check_all_disk_state(DiskCheckTrigger::Ambient),
+                // Regaining focus raises `OnFocusGained` (see `handle_input`,
+                // which is what actually queues it) — the external-file-change
+                // sweep is that event's Rust reaction, not a direct call here.
+                TerminalEvent::FocusIn => self.handle_input(TerminalEvent::FocusIn),
                 // CSI/OSC/DCS protocol responses: nothing in the run loop
                 // needs them. The `|_| true` filter guarantees they can't
                 // pile up unread in the reader's buffer either way.

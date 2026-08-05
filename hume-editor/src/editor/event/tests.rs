@@ -13,6 +13,8 @@ fn _exhaustiveness_check(event: EditorEvent) {
         EditorEvent::OnBufferOpen { .. }
         | EditorEvent::OnBufferClose { .. }
         | EditorEvent::OnBufferSave { .. }
+        | EditorEvent::OnBufferEnter { .. }
+        | EditorEvent::OnFocusGained
         | EditorEvent::OnModeChange { .. }
         | EditorEvent::OnLanguageSet { .. }
         | EditorEvent::OnLspAttach { .. }
@@ -35,6 +37,8 @@ fn all_variants() -> Vec<EditorEvent> {
         EditorEvent::OnBufferOpen { buffer },
         EditorEvent::OnBufferClose { buffer },
         EditorEvent::OnBufferSave { buffer },
+        EditorEvent::OnBufferEnter { buffer },
+        EditorEvent::OnFocusGained,
         EditorEvent::OnModeChange {
             from: Mode::Insert,
             to: Mode::Normal,
@@ -155,12 +159,22 @@ fn buffer_only_events_carry_one_buffer_id_arg() {
         EditorEvent::OnBufferOpen { buffer },
         EditorEvent::OnBufferClose { buffer },
         EditorEvent::OnBufferSave { buffer },
+        EditorEvent::OnBufferEnter { buffer },
         EditorEvent::OnDiagnosticsChanged { buffer },
     ] {
         let args = event.steel_args();
         assert_eq!(args.len(), 1, "{event:?} must carry exactly one arg");
         assert_steel_buffer_id(&args, 0, buffer);
     }
+}
+
+#[test]
+fn on_focus_gained_carries_no_args() {
+    assert_eq!(
+        EditorEvent::OnFocusGained.steel_args().len(),
+        0,
+        "on-focus-gained is payload-free — it sweeps every buffer, not one"
+    );
 }
 
 #[test]

@@ -31,6 +31,23 @@ pub(crate) enum EditorEvent {
     OnBufferSave {
         buffer: BufferId,
     },
+    /// Fires when the focused pane's buffer changes — a diff taken inside
+    /// `Editor::settle()`'s fixpoint against `EditorState::last_entered_buffer`,
+    /// not a hook on any individual switch primitive. `focused_buffer_id()` is
+    /// a derived join of `focused_pane_id` (5 write sites) and `pane.buffer_id`
+    /// (1 write site), so no write site can serve as a chokepoint — see
+    /// SPEC.md §4. Fires once at startup (the initial buffer entering focus)
+    /// and once more per subsequent switch, coalescing a pane-focus move and a
+    /// buffer switch in the same `settle()` pass into a single event.
+    OnBufferEnter {
+        buffer: BufferId,
+    },
+    /// Fires when the terminal regains focus, or the editor otherwise regains
+    /// control of it (return from an inline shell command) — every open
+    /// buffer may have changed while the editor wasn't watching, not just the
+    /// focused one. Payload-free by design: contrast `OnBufferEnter`, which
+    /// names the one buffer that changed focus.
+    OnFocusGained,
     OnModeChange {
         from: Mode,
         to: Mode,
@@ -149,6 +166,8 @@ editor_event_names! {
     OnBufferOpen => "on-buffer-open",
     OnBufferClose => "on-buffer-close",
     OnBufferSave => "on-buffer-save",
+    OnBufferEnter => "on-buffer-enter",
+    OnFocusGained => "on-focus-gained",
     OnModeChange => "on-mode-change",
     OnLanguageSet => "on-language-set",
     OnLspAttach => "on-lsp-attach",
@@ -171,9 +190,11 @@ impl EditorEvent {
             EditorEvent::OnBufferOpen { buffer }
             | EditorEvent::OnBufferClose { buffer }
             | EditorEvent::OnBufferSave { buffer }
+            | EditorEvent::OnBufferEnter { buffer }
             | EditorEvent::OnDiagnosticsChanged { buffer } => {
                 vec![SteelBufferId::new(*buffer).into_steel_val()]
             }
+            EditorEvent::OnFocusGained => vec![],
             EditorEvent::OnModeChange { from, to } => {
                 vec![
                     SteelVal::StringV(mode_name(*from).into()),

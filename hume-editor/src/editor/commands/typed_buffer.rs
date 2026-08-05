@@ -35,7 +35,7 @@ pub(crate) fn typed_edit(
         // If a buffer is already open for this path, switch without re-reading.
         // Matches Vim semantics and covers the deleted-from-disk case.
         if let Some(bid) = find_buffer_by_path_arg(ed, expanded.as_ref()) {
-            ed.enter_buffer_with_jump(bid);
+            ed.enter_buffer(bid);
             return Ok(());
         }
 
@@ -52,8 +52,8 @@ pub(crate) fn typed_edit(
             };
             ed.switch_to_buffer_with_jump(bid);
             ed.report(Severity::Info, msg);
-        } else if bid != ed.focused_buffer_id() {
-            ed.switch_to_buffer_with_jump(bid);
+        } else {
+            ed.enter_buffer(bid);
         }
         Ok(())
     } else {
@@ -184,7 +184,7 @@ pub(crate) fn typed_buffer(
 ) -> Result<(), CommandError> {
     let arg = arg.ok_or_else(|| CommandError::new("usage: :b <name|#|index>"))?;
     let bid = resolve_buffer_arg(ed, arg)?;
-    ed.enter_buffer_with_jump(bid);
+    ed.enter_buffer(bid);
     Ok(())
 }
 
@@ -319,7 +319,7 @@ pub(crate) fn typed_bnext(
     _force: bool,
 ) -> Result<(), CommandError> {
     let target = ed.state.buffers.next(ed.focused_buffer_id());
-    ed.enter_buffer_with_jump(target);
+    ed.enter_buffer(target);
     Ok(())
 }
 
@@ -330,6 +330,6 @@ pub(crate) fn typed_bprev(
     _force: bool,
 ) -> Result<(), CommandError> {
     let target = ed.state.buffers.prev(ed.focused_buffer_id());
-    ed.enter_buffer_with_jump(target);
+    ed.enter_buffer(target);
     Ok(())
 }

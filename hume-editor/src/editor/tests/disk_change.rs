@@ -997,6 +997,7 @@ fn clicking_into_another_pane_prompts_that_panes_buffer() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
     ed.handle_input(mouse_left_down(0, 0));
+    ed.settle();
 
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
@@ -1230,7 +1231,7 @@ fn macro_replay_onto_an_already_warned_stale_buffer_still_warns() {
 /// it, and must not steal the keystroke meant to answer the error (e.g.
 /// retrying with `:qa!`).
 ///
-/// Fail oracle: without the `message_logged_this_event` guard in
+/// Fail oracle: without the `message_logged_this_input` guard in
 /// `can_open_confirm` (set by `Editor::handle_input` for the duration of its
 /// post-dispatch focus-change check), the focus diff `typed_quit_all`
 /// produces would still let `check_buffer_disk_state` open a reload confirm
@@ -1284,7 +1285,7 @@ fn quit_all_error_is_not_shadowed_by_a_disk_confirm() {
 ///
 /// Fail oracle: without `report_disk_state` falling back to
 /// `message_log.push` (log-only) instead of `Editor::report` (which also
-/// writes `status_msg`) whenever `message_logged_this_event` is set, this
+/// writes `status_msg`) whenever `message_logged_this_input` is set, this
 /// warning would either clobber `status_msg` (breaking the sibling test) or
 /// — if suppressed outright instead — never increment the warning total at
 /// all, and the final assertion here would fail.
@@ -1484,6 +1485,7 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
     ed.handle_input(mouse_left_down(0, 0));
+    ed.settle();
 
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
@@ -1492,5 +1494,193 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
             crate::ui::confirm::ConfirmAction::ReloadBuffer(id) if id == bid_a
         ),
         "B's orphaned confirm must be retired and A's own prompt opened in its place"
+    );
+}
+
+// ── OnBufferEnter / OnFocusGained (SPEC.md §4, C5) ────────────────────────────
+
+/// The originating bug, end to end: a picker accept switching onto a buffer
+/// whose backing file changed externally must open the reload confirm. Built
+/// on `tests/picker_steel.rs`'s harness — a picker's `on_select` callback
+/// queues as a `PendingWork::Call`, drained by the next `render_to_buf`
+/// (`settle()` internally), same as `on-buffer-enter`.
+///
+/// Fail oracle: pre-C5 code — the picker path never ran through
+/// `enter_buffer_with_jump` (a fuzzy picker doesn't dispatch `:e`/`:b`) or
+/// `handle_input`'s tail check (the switch happens a frame later, inside the
+/// drain), so `ed.state.config.confirm` stays `None`.
+#[test]
+fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+
+    let target = tmp.path().join("target.md");
+    std::fs::write(&target, "hi\n").unwrap();
+    let path = target.to_string_lossy().replace('\\', "/");
+
+    // Open the target buffer up front so its stored signature reflects the
+    // pre-change content — the picker below switches onto this *already-open*
+    // buffer without re-reading, matching a buffer-switcher picker (not a
+    // file-opener, which would read the post-change content fresh and never
+    // see a mismatch).
+    let bid = ed.resolve_open_path(&path).unwrap().0;
+    ed.settle();
+
+    // File changes on disk while the buffer stays open in the background.
+    rewrite_externally(&target, "hi, externally changed!\n");
+
+    let mut host = hume_scripting::ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        &format!(
+            r#"(define-command! "go" "" (lambda ()
+                 (picker! (list (cons "target" "{path}"))
+                   (lambda (p) (when p (switch-to-buffer! (open-buffer! p)))))))"#
+        ),
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":go");
+    assert!(ed.state.config.picker.is_some(), "sanity: picker open");
+
+    let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
+    let _ = ed.render_to_buf(rect);
+
+    // Accept: close_picker queues on_select as a PendingWork::Call.
+    ed.feed_key(key_enter());
+
+    // The next render_to_buf drains the callback (switching to the stale
+    // buffer) and settles — settle()'s OnBufferEnter diff must observe the
+    // switch and run the disk check in the same drain.
+    let _ = ed.render_to_buf(rect);
+
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid,
+        "sanity: picker accept switched onto the target buffer"
+    );
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "picker accept onto an externally-changed buffer must open the reload confirm \
+         — the originating bug this refactor fixes"
+    );
+}
+
+/// A non-interactive `switch-to-buffer!` — Steel's builtin, LSP goto-
+/// definition, any async callback — onto a stale buffer must open the reload
+/// confirm too. Before C5 this path ran no check at all: the deleted
+/// `enter_buffer_with_jump` was only reachable from typed commands, and
+/// `switch_to_buffer_with_jump` (what non-interactive callers use) never
+/// called it.
+///
+/// Fail oracle: gate the reaction on `Editor::handle_input`'s dispatch
+/// somehow surviving instead of living in `settle()`'s own diff → a switch
+/// with no interactive dispatch behind it never reaches the check.
+#[test]
+fn non_interactive_switch_to_buffer_onto_a_stale_buffer_opens_the_reload_confirm() {
+    let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid_a = ed.focused_buffer_id();
+
+    let (tmp_b, _tmp_b_guard) = temp_file("world\n");
+    let bid_b = ed.resolve_open_path(tmp_b.to_str().unwrap()).unwrap().0;
+    ed.settle();
+    assert_ne!(bid_a, bid_b, "setup: two distinct buffers, A still focused");
+
+    rewrite_externally(&tmp_b, "world, externally changed!\n");
+
+    // The non-interactive primitive: Steel's `switch-to-buffer!` and every
+    // LSP goto-definition call go through exactly this, never a typed
+    // command.
+    ed.switch_to_buffer_with_jump(bid_b);
+    ed.settle();
+
+    assert_eq!(ed.focused_buffer_id(), bid_b);
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "a non-interactive switch onto a stale buffer must still prompt"
+    );
+}
+
+/// `OnFocusGained`'s reaction is `check_all_disk_state(Ambient)` — a sweep
+/// over every open buffer, not just the focused one.
+///
+/// Fail oracle: wire the reaction to a single-buffer check on the focused
+/// buffer instead → the non-focused buffer's warning never fires.
+#[test]
+fn focus_gained_sweeps_every_open_buffer_not_just_the_focused_one() {
+    use termina::event::Event as TerminalEvent;
+
+    let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid_a = ed.focused_buffer_id();
+
+    let (tmp_b, _tmp_b_guard) = temp_file("world\n");
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.display()));
+    let bid_b = ed.focused_buffer_id();
+    assert_ne!(bid_a, bid_b, "setup: B is now focused, A is not");
+
+    // A, the non-focused buffer, changes externally.
+    rewrite_externally(&tmp_a, "hello, externally changed!\n");
+    let (_, warnings_before) = ed.state.message_log.totals();
+
+    ed.handle_input(TerminalEvent::FocusIn);
+    ed.settle();
+
+    let (_, warnings_after) = ed.state.message_log.totals();
+    assert_eq!(
+        warnings_after,
+        warnings_before + 1,
+        "OnFocusGained's sweep must warn for A even though B is focused"
+    );
+    assert!(
+        ed.state.config.confirm.is_none(),
+        "A is not focused, so an ambient check only warns — never opens a confirm"
+    );
+}
+
+/// `:b <other>` onto a stale buffer must run the disk check exactly once —
+/// pinning against a double-check regression from a direct call surviving
+/// alongside `settle()`'s event-driven diff (SPEC.md §4). A second run would
+/// find the confirm already open (`can_open_confirm`'s `confirm.is_none()`
+/// guard blocks it) and fall through to `report_disk_state`'s warn fallback
+/// instead — an extra `:messages` entry alongside the confirm.
+///
+/// Fail oracle: leave a direct `check_buffer_disk_state`/
+/// `enter_buffer_disk_check` call wired in at the `:b` command itself,
+/// alongside the diff → `warnings_after` is one higher than
+/// `warnings_before`.
+#[test]
+fn switching_onto_a_stale_buffer_checks_disk_state_exactly_once() {
+    let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid_a = ed.focused_buffer_id();
+
+    let (tmp_b, _tmp_b_guard) = temp_file("world\n");
+    type_cmd(&mut ed, &format!(":e {}", tmp_b.display()));
+    let bid_b = ed.focused_buffer_id();
+    assert_ne!(bid_a, bid_b, "setup: two distinct buffers, B focused");
+
+    type_cmd(&mut ed, ":b #");
+    assert_eq!(ed.focused_buffer_id(), bid_a, "setup: back on A");
+
+    rewrite_externally(&tmp_b, "world, externally changed!\n");
+    let (_, warnings_before) = ed.state.message_log.totals();
+
+    type_cmd_event(&mut ed, ":b #");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid_b,
+        "setup: switched onto stale B"
+    );
+
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "sanity: the switch onto B must open the reload confirm"
+    );
+    let (_, warnings_after) = ed.state.message_log.totals();
+    assert_eq!(
+        warnings_after, warnings_before,
+        "the disk check must run exactly once — a second run would find the \
+         confirm already open and fall back to warning instead"
     );
 }

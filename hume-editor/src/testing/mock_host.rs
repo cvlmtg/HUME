@@ -49,6 +49,8 @@ const MOCK_HOST_EVENT_NAMES: &[&str] = &[
     "on-buffer-open",
     "on-buffer-close",
     "on-buffer-save",
+    "on-buffer-enter",
+    "on-focus-gained",
     "on-mode-change",
     "on-language-set",
     "on-lsp-attach",

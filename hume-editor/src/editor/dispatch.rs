@@ -6,7 +6,7 @@
 //! path, which additionally needs `self.scripting`, `self.lsp`, and the
 //! timer bridge — fields only reachable through `&mut Editor`.
 
-use super::buffer::DiskCheckTrigger;
+use super::event::EditorEvent;
 use super::registry::MappableCommand;
 use super::{Editor, InlineOutputDispatch, Severity, commands};
 
@@ -305,7 +305,11 @@ impl Editor {
             self.state.force_full_redraw = true;
         }
         if armed_or_entered {
-            self.check_all_disk_state(DiskCheckTrigger::Ambient);
+            // The editor genuinely regained the terminal — same trigger class
+            // as `TerminalEvent::FocusIn`, so it raises the same event rather
+            // than sweeping directly; the reaction is `OnFocusGained`'s Rust
+            // handler in `Editor::react_to_event`.
+            self.state.queue_event(EditorEvent::OnFocusGained);
         }
 
         let (wait_char_cmd, effects) = match result {

@@ -394,28 +394,20 @@ impl Editor {
         );
     }
 
-    /// Switch the focused pane to `target` (recording a jump, same as
-    /// [`Self::switch_to_buffer_with_jump`]) — the `:e`/`:b`/`:bn`/`:bp`
-    /// entry point for external-change detection.
+    /// Switch the focused pane to `target`, or no-op if it's already focused
+    /// — the `:e`/`:b`/`:bn`/`:bp` entry point. Unlike
+    /// `switch_to_buffer_with_jump`, safe to call with a target that might
+    /// already be the focused buffer: that primitive's `push()` truncates
+    /// forward jump history unconditionally, so a same-buffer call would
+    /// corrupt it for nothing.
     ///
-    /// Runs the buffer-enter disk check itself only when `target` is already
-    /// focused (`:e` re-targeting the current file): that's a buffer-enter
-    /// with no focus diff for `Editor::handle_input`'s tail check to
-    /// observe, so nothing else would ever check it. When `target` differs,
-    /// this only switches — `handle_input`'s own check runs once dispatch
-    /// returns and sees the diff, so the two calls stay mutually exclusive
-    /// instead of both stat-ing the same target.
-    ///
-    /// Deliberately not folded into `switch_to_buffer_with_jump` itself: that
-    /// primitive is also reached from non-interactive callers (Steel's
-    /// `switch-to-buffer!`, and the LSP/async paths that go through it) where
-    /// opening a modal confirm would violate `reload_buffer_from_disk`'s
-    /// focused-buffer contract. Only genuinely interactive buffer-enter
-    /// commands call this.
-    pub(in crate::editor) fn enter_buffer_with_jump(&mut self, target: BufferId) {
-        if target == self.focused_buffer_id() {
-            self.check_buffer_disk_state(target, super::disk::DiskCheckTrigger::BufferEnter);
-        } else {
+    /// External-change detection no longer lives here (SPEC.md §4): every
+    /// genuine switch this produces raises `EditorEvent::OnBufferEnter`,
+    /// observed by `Editor::settle`'s diff regardless of caller — interactive
+    /// or not. A no-op call raises nothing, matching Vim's `BufEnter`, which
+    /// doesn't re-fire for re-entering the buffer you're already viewing.
+    pub(in crate::editor) fn enter_buffer(&mut self, target: BufferId) {
+        if target != self.focused_buffer_id() {
             self.switch_to_buffer_with_jump(target);
         }
     }

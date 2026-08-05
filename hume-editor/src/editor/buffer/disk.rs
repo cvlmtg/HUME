@@ -205,7 +205,7 @@ impl Editor {
         }
     }
 
-    /// Report a disk-state warning, honouring `message_logged_this_event`: if
+    /// Report a disk-state warning, honouring `message_logged_this_input`: if
     /// this same interactive event already logged its own warning or error
     /// (e.g. `:qa` naming the first dirty buffer, right before the focus move
     /// that landed on it triggers this check — see `can_open_confirm`'s doc),
@@ -216,7 +216,7 @@ impl Editor {
     /// without the confirm-blocked case silently overwriting an unrelated
     /// message.
     fn report_disk_state(&mut self, text: String) {
-        if self.state.message_logged_this_event {
+        if self.state.message_logged_this_input {
             self.state.message_log.push(Severity::Warning, text);
         } else {
             self.report(Severity::Warning, text);
@@ -245,36 +245,36 @@ impl Editor {
     /// one of those owners itself: opening a second would replace the
     /// first's model outright, retiring an unanswered question and
     /// re-pointing the next keystroke at a different action than the one on
-    /// screen when the user started reaching for it. `check_focus_change_disk_state`
+    /// screen when the user started reaching for it. `Editor::enter_buffer_disk_check`
     /// retires a confirm that no longer targets the buffer focus just landed
-    /// on before it ever reaches this check, but only for *interactive*
-    /// moves — a non-interactive one (Steel/LSP `switch-to-buffer!`, which
-    /// deliberately never runs through that chokepoint at all, see its own
-    /// doc) has no such retirement, so this guard is still what keeps an
-    /// unrelated buffer's check from replacing a still-open confirm out from
-    /// under the user in that case.
+    /// on before it ever reaches this check — for *every* switch, interactive
+    /// or not (a Steel/LSP `switch-to-buffer!` included, now that both run
+    /// through the same `OnBufferEnter` reaction) — so this guard only needs
+    /// to cover a *different* buffer's check racing a still-open, still-valid
+    /// confirm.
     ///
     /// Pending keys: a non-empty `pending_keys` (mid multi-key sequence, e.g.
     /// `d` waiting for its motion) or a pending `wait_char` (e.g. `f` waiting
     /// for its target char) means the very next keystroke is already spoken
     /// for — same hazard class as Insert/Command, just inside Normal mode.
     ///
-    /// Macro replay: `drain_replay_queue` feeds every queued key straight
-    /// back through `handle_input`, so each one is already spoken for in
-    /// exactly the sense `pending_keys` is — the confirm intercept sits above
-    /// mode dispatch and would eat the next replayed key, truncating the
-    /// macro at whatever point a file happened to change on disk. A change
-    /// hit during replay warns instead, and the deferred prompt arrives on
-    /// the next real buffer-enter, same as a mode-blocked one.
+    /// Macro replay: `Editor::drain_replay_queue` calls `settle()` once,
+    /// after the whole macro has run and while `is_replaying` is still
+    /// `true` — so any buffer-enter diff the macro produced is observed and
+    /// warns instead of prompting, and nothing ever opens a confirm the user
+    /// can no longer answer with a queued replay key. The deferred prompt
+    /// still arrives on the next real buffer-enter, same as any other
+    /// blocked case.
     ///
-    /// Fresh message this event: `Editor::handle_input` sets
-    /// `message_logged_this_event` for the duration of its post-dispatch
-    /// focus-change check whenever that same event logged a new warning or
-    /// error — a command that fails after moving focus (`:qa` naming the
-    /// first dirty buffer) needs its own message to stay on screen, not
-    /// have it replaced by an unrelated disk-change confirm. Only the
-    /// confirm is blocked; `check_buffer_disk_state`'s warn fallback still
-    /// runs, so this never goes fully silent.
+    /// Fresh message this input: `Editor::handle_input` sets
+    /// `message_logged_this_input` right after dispatch whenever that input
+    /// logged a new warning or error; `Editor::settle` clears it once its own
+    /// drain (including the buffer-enter disk check) has run — a command
+    /// that fails after moving focus (`:qa` naming the first dirty buffer)
+    /// needs its own message to stay on screen, not have it replaced by an
+    /// unrelated disk-change confirm. Only the confirm is blocked;
+    /// `check_buffer_disk_state`'s warn fallback still runs, so this never
+    /// goes fully silent.
     fn can_open_confirm(&self) -> bool {
         let mode_ok = match self.state.mode() {
             Mode::Normal | Mode::Extend => true,
@@ -289,7 +289,7 @@ impl Editor {
             && self.state.pending_keys.is_empty()
             && self.state.wait_char.is_none()
             && !self.state.is_replaying
-            && !self.state.message_logged_this_event
+            && !self.state.message_logged_this_input
     }
 
     /// Check every open buffer against `trigger` — `Ambient` for terminal
@@ -301,7 +301,7 @@ impl Editor {
             trigger,
             DiskCheckTrigger::BufferEnter,
             "check_all_disk_state has no single buffer to call BufferEnter for; \
-             use check_buffer_disk_state or check_focus_change_disk_state instead"
+             use check_buffer_disk_state or enter_buffer_disk_check instead"
         );
         let ids: Vec<BufferId> = self.state.buffers.iter().map(|(id, _)| id).collect();
         for id in ids {
@@ -309,54 +309,37 @@ impl Editor {
         }
     }
 
-    /// Run the buffer-enter disk check when the interactive event that just
-    /// finished left the focused pane on a different buffer than `before`.
+    /// Run the buffer-enter disk check for `entered` — the Rust reaction to
+    /// `EditorEvent::OnBufferEnter` (SPEC.md §4), called from
+    /// `Editor::react_to_event` inside `settle`'s fixpoint. `OnBufferEnter`
+    /// is itself a diff against `EditorState::last_entered_buffer`
+    /// (`Editor::detect_buffer_enter`), so every focus-changing path —
+    /// `:e`/`:b`/`:bn`/`:bp`, a picker accept, LSP goto-definition, pane
+    /// close/split/cycling, a mouse click into another pane, a Steel/LSP
+    /// `switch-to-buffer!` — reaches this the same way, with no per-command
+    /// wiring.
     ///
-    /// The `BufferEnter` counterpart to [`Self::check_all_disk_state`]'s
-    /// ambient sweep: that one answers "did anything change while I was
-    /// away", this one answers "did I just land somewhere I owe an answer
-    /// about". It is why `:q`/`:bd` revealing the MRU replacement, a pane
-    /// close collapsing onto its sibling, pane focus cycling, and a click
-    /// into another pane all honour the "asked about on its own next
-    /// buffer-enter" promise without any of them naming the disk check — the
-    /// commands behind them are `EditorCmdFn`-shaped (`&mut EditorState`, no
-    /// `&mut Editor`, deliberately so) and structurally cannot call it
-    /// themselves. An opt-in call per command is also what let the close path
-    /// be missed in the first place.
-    ///
-    /// Deliberately a *diff*, not a hook on every switch primitive: it fires
-    /// only for a focus change an interactive event actually produced, so
-    /// `prepare_frame`'s async Steel drain and queued picker callbacks keep
-    /// the non-interactive exemption `enter_buffer_with_jump` documents —
-    /// there is no keystroke on its way in to answer a prompt those would
-    /// open. That is also why this can't replace `enter_buffer_with_jump`'s
-    /// own call: `:e` re-targeting the file already focused is a
-    /// buffer-enter with no diff to observe.
-    ///
-    /// Also retires a confirm that no longer targets `now`: `handle_key`'s
-    /// confirm intercept only sees *keys*, so a mouse click that moves focus
-    /// (`handle_mouse` has no such intercept) can land here with a confirm
-    /// still open for the buffer just left. Left alone, that confirm would be
-    /// unanswerable — `reload_buffer_from_disk`'s focused-buffer guard would
-    /// refuse it — and, worse, would block `now`'s own prompt via
-    /// `can_open_confirm`'s `confirm.is_none()` check. Retiring it (not
-    /// declining it) leaves the old buffer's `disk_state` exactly as
-    /// `Changed` as it was, so the "asked about on its own next buffer-enter"
-    /// promise still holds next time focus actually returns there.
-    pub(in crate::editor) fn check_focus_change_disk_state(&mut self, before: BufferId) {
-        let now = self.focused_buffer_id();
-        if now != before {
-            if self
-                .state
-                .config
-                .confirm
-                .as_ref()
-                .is_some_and(|c| !c.targets_buffer(now))
-            {
-                self.state.config.confirm = None;
-            }
-            self.check_buffer_disk_state(now, DiskCheckTrigger::BufferEnter);
+    /// Also retires a confirm that no longer targets `entered`: nothing
+    /// guarantees the buffer a still-open confirm targets stays focused (a
+    /// mouse click has no confirm intercept at all; a handler-driven switch
+    /// runs mid-`settle`). Left alone, that confirm would be unanswerable —
+    /// `reload_buffer_from_disk`'s focused-buffer guard would refuse it —
+    /// and would block `entered`'s own prompt via `can_open_confirm`'s
+    /// `confirm.is_none()` check. Retiring it (not declining it) leaves the
+    /// old buffer's `disk_state` exactly as `Changed` as it was, so the
+    /// "asked about on its own next buffer-enter" promise still holds next
+    /// time focus actually returns there.
+    pub(in crate::editor) fn enter_buffer_disk_check(&mut self, entered: BufferId) {
+        if self
+            .state
+            .config
+            .confirm
+            .as_ref()
+            .is_some_and(|c| !c.targets_buffer(entered))
+        {
+            self.state.config.confirm = None;
         }
+        self.check_buffer_disk_state(entered, DiskCheckTrigger::BufferEnter);
     }
 
     /// Record that the user declined to reload `bid` for the disk change

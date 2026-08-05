@@ -5,6 +5,7 @@ use hume_engine::pipeline::BufferId;
 use hume_scripting::Effect;
 use steel::rvals::SteelVal;
 
+use super::buffer::DiskCheckTrigger;
 use super::event::{EditorEvent, PendingWork};
 use super::reload::ReloadSnapshot;
 use super::{Editor, Severity, host_impl::EditorHostImpl};
@@ -235,6 +236,15 @@ impl Editor {
     /// cascade (a handler that queues more work than it received, doubling
     /// the batch pass over pass) can livelock the editor. The watchdog only
     /// bounds each individual eval, not this loop.
+    ///
+    /// Also the single observation point for `OnBufferEnter` (SPEC.md §4):
+    /// `detect_buffer_enter` runs at the top of every pass, not just once
+    /// before the loop, so a handler-driven `switch-to-buffer!` is caught by
+    /// the very next pass instead of waiting a frame, and the loop's exit
+    /// condition is "queue empty **and** focus stable" rather than just
+    /// "queue empty" — a pass that only detects a focus change still has
+    /// work to do (queuing and then draining `OnBufferEnter`) even though
+    /// `pending_work` was empty when the pass began.
     pub(crate) fn settle(&mut self) {
         self.drain_async_sources();
         // Any mode change queued between the last consumption point and now
@@ -244,7 +254,11 @@ impl Editor {
         // can skip it.
         self.take_pending_lsp_completion_dismiss();
         let mut total_processed = 0usize;
-        while !self.state.config.pending_work.is_empty() {
+        loop {
+            self.detect_buffer_enter();
+            if self.state.config.pending_work.is_empty() {
+                break;
+            }
             let batch = std::mem::take(&mut self.state.config.pending_work);
             total_processed += batch.len();
             if total_processed > MAX_EVENT_DRAIN {
@@ -258,6 +272,7 @@ impl Editor {
                          dropping {dropped} pending item(s); handler feedback loop?"
                     ),
                 );
+                self.state.message_logged_this_input = false;
                 return;
             }
             self.run_pending_batch(batch);
@@ -269,6 +284,28 @@ impl Editor {
         // `sync_completion_menu_view` never repaints a session `set_mode`
         // asked to close mid-drain.
         self.take_pending_lsp_completion_dismiss();
+        // The span `Editor::handle_input` opened ("this input's own dispatch
+        // just logged a message") closes here, now that this settle() has
+        // run the buffer-enter disk check that span exists to protect
+        // against — see `EditorState::message_logged_this_input`'s doc.
+        self.state.message_logged_this_input = false;
+    }
+
+    /// Observation point for `focused_buffer_id()` — a derived join of
+    /// `focused_pane_id` (5 write sites) and `pane.buffer_id` (1 write
+    /// site), so it has no write-site chokepoint to hang a raise on
+    /// (SPEC.md §4, `docs/LESSONS.md` L9). Diffed against
+    /// `EditorState::last_entered_buffer` every pass of `settle`'s loop
+    /// rather than once before it, so a pane-focus move and a buffer switch
+    /// in the same pass coalesce into one event, and a handler that itself
+    /// switches buffers is caught by the very next pass.
+    fn detect_buffer_enter(&mut self) {
+        let now = self.focused_buffer_id();
+        if self.state.last_entered_buffer != Some(now) {
+            self.state.last_entered_buffer = Some(now);
+            self.state
+                .queue_event(EditorEvent::OnBufferEnter { buffer: now });
+        }
     }
 
     /// Run one snapshot of `pending_work` in queued order: event handlers
@@ -277,7 +314,10 @@ impl Editor {
     fn run_pending_batch(&mut self, mut items: std::collections::VecDeque<PendingWork>) {
         while let Some(item) = items.pop_front() {
             match item {
-                PendingWork::Event(event) => self.fire_one_event(event),
+                PendingWork::Event(event) => {
+                    self.react_to_event(&event);
+                    self.fire_one_event(event);
+                }
                 PendingWork::Call(proc, args) => {
                     let mut calls = vec![(proc, args)];
                     while matches!(items.front(), Some(PendingWork::Call(..))) {
@@ -289,6 +329,21 @@ impl Editor {
                     self.run_call_batch(calls);
                 }
             }
+        }
+    }
+
+    /// Editor-internal reactions to an event — the Rust counterpart to Steel
+    /// handlers, and the only `match` over `EditorEvent` that drives editor
+    /// behaviour (SPEC.md §4). Runs unconditionally, before `fire_one_event`
+    /// and its `has_hook_handlers` early-exit: unlike a Steel handler, a
+    /// Rust reaction has no registration to short-circuit on, and editor
+    /// behaviour must not depend on whether a plugin happens to be
+    /// installed.
+    fn react_to_event(&mut self, event: &EditorEvent) {
+        match event {
+            EditorEvent::OnBufferEnter { buffer } => self.enter_buffer_disk_check(*buffer),
+            EditorEvent::OnFocusGained => self.check_all_disk_state(DiskCheckTrigger::Ambient),
+            _ => {}
         }
     }
 

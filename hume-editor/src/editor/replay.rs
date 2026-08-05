@@ -281,6 +281,14 @@ impl Editor {
     /// would already be `true` and would fail to suppress it).
     ///
     /// Saves and restores `last_repeatable_action` so replay does not corrupt dot-repeat.
+    ///
+    /// The trailing `settle()` runs *before* `is_replaying` clears, not after
+    /// — deliberately, so a buffer-enter diff the macro produced is observed
+    /// while `can_open_confirm`'s `!is_replaying` guard still holds. A
+    /// confirm the macro just finished producing would have no queued key
+    /// left to answer it with, so it must never open; warning instead, with
+    /// the deferred prompt still arriving on the next real buffer-enter, is
+    /// what `can_open_confirm`'s "Macro replay" doc paragraph documents.
     pub(crate) fn drain_replay_queue(&mut self) {
         if self.state.replay_queue.is_empty() {
             return;
@@ -293,6 +301,7 @@ impl Editor {
                 break;
             }
         }
+        self.settle();
         self.state.is_replaying = false;
         self.state.last_repeatable_action = saved_action;
     }

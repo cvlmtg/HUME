@@ -299,7 +299,8 @@ impl Editor {
                 skip_macro_record: false,
                 dispatching_typed_command: false,
                 is_replaying: false,
-                message_logged_this_event: false,
+                message_logged_this_input: false,
+                last_entered_buffer: None,
                 mouse_drag_anchor: None,
                 cwd: std::env::temp_dir(),
                 lsp_completion_dismiss_pending: false,
@@ -538,10 +539,15 @@ impl Editor {
 
     /// Feed one key through `handle_input`, the interactive input boundary —
     /// unlike `feed_key`/`step`, which deliberately bypass it (see
-    /// `Editor::handle_input`'s doc). Needed by tests covering the
-    /// buffer-enter disk check on focus change, which only runs here.
+    /// `Editor::handle_input`'s doc) — then `settle()`, mirroring
+    /// `Editor::run`'s loop (dispatch at the bottom of one iteration, settle
+    /// at the top of the next). Needed by tests covering the buffer-enter
+    /// disk check on focus change: that check is `OnBufferEnter`'s Rust
+    /// reaction (SPEC.md §4), observed by `settle`'s own diff, not by
+    /// `handle_input` itself.
     fn feed_event(&mut self, key: KeyEvent) {
         self.handle_input(TerminalEvent::Key(key));
+        self.settle();
     }
 }
 

@@ -32,8 +32,19 @@ fn edit_existing_buffer_switches_without_reread() {
     );
 }
 
+/// `:e <path>` re-targeting the buffer it's already focused on is a no-op
+/// switch (SPEC.md §4, C5): it raises no `OnBufferEnter` and runs no disk
+/// check, matching Vim (`:e` doesn't re-fire `BufEnter` for the buffer
+/// you're already on). Deleting the file externally and re-`:e`-ing it while
+/// still focused therefore stays silent — the deferred warning still
+/// arrives on the next *genuine* buffer-enter.
+///
+/// Fail oracle: if a no-op `:e` ran a disk check unconditionally (as
+/// `enter_buffer_with_jump`'s deleted special case used to), the first
+/// assertion below would already see the "no longer exists" warning before
+/// any real focus change occurred.
 #[test]
-fn edit_deleted_file_with_open_buffer_switches_and_warns() {
+fn edit_deleted_file_on_already_focused_buffer_is_silent_until_a_real_buffer_enter() {
     let dir = safe_tempdir();
     let path = dir.path().join("deleted.txt");
     std::fs::write(&path, "content\n").unwrap();
@@ -46,6 +57,7 @@ fn edit_deleted_file_with_open_buffer_switches_and_warns() {
     std::fs::remove_file(&canonical).unwrap();
     assert!(!canonical.exists(), "precondition: file must be gone");
 
+    ed.state.status_msg = None;
     ed.execute_typed("e", Some(canonical.to_str().unwrap()))
         .unwrap();
     assert_eq!(
@@ -54,11 +66,28 @@ fn edit_deleted_file_with_open_buffer_switches_and_warns() {
         ":e <deleted-path> must switch to the open buffer"
     );
     assert!(
+        ed.state.status_msg.is_none(),
+        "a no-op :e on the already-focused buffer must not run a disk check, got: {:?}",
+        ed.state.status_msg.as_deref()
+    );
+
+    // A genuine buffer-enter — switch away, then back — still surfaces it.
+    let scratch = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
+    ed.switch_to_buffer_with_jump(scratch);
+    ed.settle();
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&canonical)
+        .expect("deleted file's buffer stays open");
+    ed.switch_to_buffer_with_jump(bid);
+    ed.settle();
+    assert!(
         ed.state
             .status_msg
             .as_deref()
             .is_some_and(|m| m.contains("no longer exists")),
-        "must warn that the file is gone, got: {:?}",
+        "the deferred warning must arrive on a genuine buffer-enter, got: {:?}",
         ed.state.status_msg.as_deref()
     );
 }
