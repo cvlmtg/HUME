@@ -13,11 +13,11 @@ use slotmap::SecondaryMap;
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_scripting::SteelBufferId;
-use hume_scripting::hooks::HookId;
 
 use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
+use crate::editor::event::EditorEvent;
 use crate::editor::jump_list::{JumpEntry, JumpList};
 use crate::editor::lsp::LspState;
 use crate::editor::pane_state::{self, PaneBufferState};
@@ -263,7 +263,7 @@ pub(crate) fn close_buffer_and_notify(
         state
             .config
             .pending_events
-            .push((HookId::OnBufferClose, vec![val]));
+            .push((EditorEvent::OnBufferClose, vec![val]));
     }
     new_focused
 }

@@ -21,8 +21,8 @@ use crate::lock_ext::LockExt;
 use crate::ui::statusline::StatusLineConfig;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
-    EditHost, EditorHost, LanguageHost, LspHost, OptionValue, OutputHost, PopupKind, SettingsHost,
-    TimerHost, UiHost,
+    EditHost, EditorHost, EventHost, LanguageHost, LspHost, OptionValue, OutputHost, PopupKind,
+    SettingsHost, TimerHost, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -185,6 +185,15 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
     fn buffers(&mut self) -> &mut dyn BufferHost {
         self
+    }
+    fn events(&mut self) -> &mut dyn EventHost {
+        self
+    }
+}
+
+impl<'a> EventHost for EditorHostImpl<'a> {
+    fn known_event_names(&self) -> Vec<&'static str> {
+        super::event::known_event_names()
     }
 }
 

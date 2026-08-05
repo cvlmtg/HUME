@@ -19,10 +19,18 @@ use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::attribution::PluginId;
 use crate::host::{
-    BufferHost, CommandHost, CursorHost, EditorHost, LanguageHost, OptionValue, OutputHost,
-    SettingsHost,
+    BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
+    OutputHost, SettingsHost,
 };
 use crate::types::SteelCmdDef;
+
+/// Event names `NullHost` reports as known — the names scripting-crate unit
+/// tests actually register (`on-buffer-open`, `on-buffer-save`), plus one
+/// synthetic name (`on-stub-only`) the editor never defines. That divergence
+/// from the editor's real event set is deliberate: it's the independent
+/// oracle proving `register-hook!`/`declare-plugin` validate through
+/// `EditorHost::events()` rather than a compiled-in table.
+const NULL_HOST_EVENT_NAMES: &[&str] = &["on-buffer-open", "on-buffer-save", "on-stub-only"];
 
 #[derive(Default)]
 pub(crate) struct NullHost;
@@ -42,6 +50,15 @@ impl EditorHost for NullHost {
     }
     fn buffers(&mut self) -> &mut dyn BufferHost {
         self
+    }
+    fn events(&mut self) -> &mut dyn EventHost {
+        self
+    }
+}
+
+impl EventHost for NullHost {
+    fn known_event_names(&self) -> Vec<&'static str> {
+        NULL_HOST_EVENT_NAMES.to_vec()
     }
 }
 
@@ -206,6 +223,9 @@ impl EditorHost for FailingRegisterHost {
     fn buffers(&mut self) -> &mut dyn BufferHost {
         &mut self.inner
     }
+    fn events(&mut self) -> &mut dyn EventHost {
+        &mut self.inner
+    }
 }
 
 impl CommandHost for FailingRegisterHost {
@@ -273,6 +293,9 @@ impl EditorHost for RecordingInlineOutputHost {
     fn buffers(&mut self) -> &mut dyn BufferHost {
         &mut self.inner
     }
+    fn events(&mut self) -> &mut dyn EventHost {
+        &mut self.inner
+    }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         Some(self)
     }
@@ -320,6 +343,9 @@ impl EditorHost for LazyStubHost {
         &mut self.inner
     }
     fn buffers(&mut self) -> &mut dyn BufferHost {
+        &mut self.inner
+    }
+    fn events(&mut self) -> &mut dyn EventHost {
         &mut self.inner
     }
 }

@@ -2,10 +2,11 @@ use std::path::PathBuf;
 
 use hume_engine::pipeline::BufferId;
 
+use hume_scripting::Effect;
 use hume_scripting::SteelBufferId;
-use hume_scripting::{Effect, hooks::HookId};
 use steel::rvals::SteelVal;
 
+use super::event::EditorEvent;
 use super::reload::ReloadSnapshot;
 use super::{Editor, Severity, host_impl::EditorHostImpl};
 
@@ -148,7 +149,7 @@ impl Editor {
     /// `commands.rs` share this rather than duplicating the arg construction.
     pub(super) fn queue_buffer_save(&mut self, bid: BufferId) {
         let val = SteelBufferId::new(bid).into_steel_val();
-        self.queue_event(HookId::OnBufferSave, &[val]);
+        self.queue_event(EditorEvent::OnBufferSave, &[val]);
     }
 
     /// Fire `OnLspAttach (bid server-name)` — called both when a buffer
@@ -158,7 +159,7 @@ impl Editor {
     pub(super) fn queue_lsp_attach(&mut self, bid: BufferId, server_name: &str) {
         let bid_val = SteelBufferId::new(bid).into_steel_val();
         let name_val = SteelVal::StringV(server_name.into());
-        self.queue_event(HookId::OnLspAttach, &[bid_val, name_val]);
+        self.queue_event(EditorEvent::OnLspAttach, &[bid_val, name_val]);
     }
 
     /// Fire `OnLspDetach (bid server-name)` — called from `lsp_stop_one` for
@@ -167,7 +168,7 @@ impl Editor {
     pub(super) fn queue_lsp_detach(&mut self, bid: BufferId, server_name: &str) {
         let bid_val = SteelBufferId::new(bid).into_steel_val();
         let name_val = SteelVal::StringV(server_name.into());
-        self.queue_event(HookId::OnLspDetach, &[bid_val, name_val]);
+        self.queue_event(EditorEvent::OnLspDetach, &[bid_val, name_val]);
     }
 
     /// Fire `OnDiagnosticsChanged (bid)` — payload-free signal, once per
@@ -175,7 +176,7 @@ impl Editor {
     /// (`drain_lsp`). Handlers pull via `(diagnostics-for-buffer bid …)`.
     pub(super) fn queue_diagnostics_changed(&mut self, bid: BufferId) {
         let val = SteelBufferId::new(bid).into_steel_val();
-        self.queue_event(HookId::OnDiagnosticsChanged, &[val]);
+        self.queue_event(EditorEvent::OnDiagnosticsChanged, &[val]);
     }
 
     /// Fire `OnViewportChange (bid first-line last-line)` for `pane_id` —
@@ -191,7 +192,7 @@ impl Editor {
         let (first_line, last_line) = super::lsp::introspect::pane_visible_range(pane, total_lines);
         let bid_val = SteelBufferId::new(bid).into_steel_val();
         self.queue_event(
-            HookId::OnViewportChange,
+            EditorEvent::OnViewportChange,
             &[
                 bid_val,
                 SteelVal::IntV(first_line as isize),
@@ -208,20 +209,20 @@ impl Editor {
         let bid_val = SteelBufferId::new(bid).into_steel_val();
         let ch_val = SteelVal::StringV(ch.to_string().into());
         let source_val = SteelVal::StringV(source.into());
-        self.queue_event(HookId::OnTriggerChar, &[bid_val, ch_val, source_val]);
+        self.queue_event(EditorEvent::OnTriggerChar, &[bid_val, ch_val, source_val]);
     }
 
-    /// Enqueue `hook_id` to fire after the current command returns.
+    /// Enqueue `event` to fire after the current command returns.
     ///
     /// The unified event-queueing path: all hook scheduling goes through
     /// `state.config.pending_events`; `Editor::drain_events` does the actual Steel eval.
     /// This prevents re-entrant Steel calls during command execution and gives
     /// a single drain point for both the keypress and sync-Steel paths.
-    pub(super) fn queue_event(&mut self, hook_id: HookId, args: &[steel::rvals::SteelVal]) {
+    pub(super) fn queue_event(&mut self, event: EditorEvent, args: &[steel::rvals::SteelVal]) {
         self.state
             .config
             .pending_events
-            .push((hook_id, args.to_vec()));
+            .push((event, args.to_vec()));
     }
 
     /// Fire every hook in `state.config.pending_events`, draining the queue.
@@ -260,14 +261,19 @@ impl Editor {
                 );
                 return;
             }
-            for (hook_id, args) in hooks {
+            for (event, args) in hooks {
+                // Internal-only events (no Steel name) skip lazy activation
+                // and firing entirely — there is nothing for Steel to react to.
+                let Some(name) = event.name() else {
+                    continue;
+                };
                 // Activate lazy event plugins first so their register-hook! calls
                 // land before the has_hook_handlers check below.
-                self.activate_lazy_event_plugins(hook_id);
+                self.activate_lazy_event_plugins(name);
                 if self
                     .scripting
                     .as_ref()
-                    .is_none_or(|h| !h.has_hook_handlers(hook_id))
+                    .is_none_or(|h| !h.has_hook_handlers(name))
                 {
                     continue;
                 }
@@ -283,7 +289,7 @@ impl Editor {
                         &mut self.timer_payloads,
                         self.terminal.as_ref(),
                     );
-                    host_scr.fire_hook(hook_id, &args, pid, bid, &mut impl_host)
+                    host_scr.fire_hook(name, &args, pid, bid, &mut impl_host)
                 };
                 self.flush_script_messages();
                 self.apply_script_result(result, "hook error: ");

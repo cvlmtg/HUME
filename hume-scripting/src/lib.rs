@@ -30,7 +30,8 @@
 //!
 //! ## Modules
 //! - `attribution.rs`: plugin attribution types (`PluginId`, `Owner`, `PluginStack`).
-//! - `hooks.rs`: `HookRegistry` + typed `HookId` enum.
+//! - `hooks.rs`: `HookRegistry`, name-keyed — this crate has no compiled-in
+//!   knowledge of which event names exist, only what `EditorHost` reports.
 //! - `host.rs`: `EditorHost` trait + `BindMode` — the editor-domain interface.
 //! - `log.rs`: `LogLevel` — severity enum that doesn't depend on the editor crate.
 //! - `builtins/`: `set-option!`, `bind-key!`, `define-command!`, multi-buffer ops,
@@ -39,7 +40,7 @@
 // ── Public submodules ─────────────────────────────────────────────────────────
 pub mod attribution;
 pub(crate) mod builtins;
-pub mod hooks;
+pub(crate) mod hooks;
 pub mod host;
 pub mod json;
 pub(crate) mod keys;
@@ -405,9 +406,9 @@ impl ScriptingHost {
         std::mem::take(&mut self.pending_messages)
     }
 
-    /// Returns `true` if no handlers are registered for `hook_id`.
-    pub fn has_hook_handlers(&self, hook_id: hooks::HookId) -> bool {
-        !self.registries.hooks.is_empty_for(hook_id)
+    /// Returns `true` if at least one handler is registered for `name`.
+    pub fn has_hook_handlers(&self, name: &str) -> bool {
+        !self.registries.hooks.is_empty_for(name)
     }
 
     /// Handlers registered for `method`, or empty if none. Cloned (Steel
@@ -431,12 +432,12 @@ impl ScriptingHost {
         self.registries.lazy_registry.activation_languages.clone()
     }
 
-    /// Plugin ids that should be activated when `hook_id` fires.
-    pub fn activation_event_plugins(&self, hook_id: hooks::HookId) -> Vec<attribution::PluginId> {
+    /// Plugin ids that should be activated when the event named `name` fires.
+    pub fn activation_event_plugins(&self, name: &str) -> Vec<attribution::PluginId> {
         self.registries
             .lazy_registry
             .activation_events
-            .get(&hook_id)
+            .get(name)
             .cloned()
             .unwrap_or_default()
     }
@@ -709,17 +710,17 @@ impl ScriptingHost {
         })
     }
 
-    /// Fire all registered handlers for `hook_id`, passing `args` to each.
+    /// Fire all registered handlers for `name`, passing `args` to each.
     ///
     /// Handlers are called in registration order inside a single
     /// `with_mut_reference` session so they have full access to HUME builtins
     /// (`current-buffer`, `call!`, etc.).
     ///
     /// Returns immediately (no Steel engine call, no watchdog) if no handlers are
-    /// registered for `hook_id`.
+    /// registered for `name`.
     pub fn fire_hook<'a>(
         &'a mut self,
-        hook_id: hooks::HookId,
+        name: &str,
         args: &[SteelVal],
         focused_pane_id: hume_engine::pipeline::PaneId,
         focused_buffer_id: hume_engine::pipeline::BufferId,
@@ -732,7 +733,7 @@ impl ScriptingHost {
         let calls: Vec<(SteelVal, Vec<SteelVal>)> = self
             .registries
             .hooks
-            .handlers_for(hook_id)
+            .handlers_for(name)
             .iter()
             .map(|e| (e.proc.clone(), args.to_vec()))
             .collect();

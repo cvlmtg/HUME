@@ -35,8 +35,30 @@
 
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_scripting::host::{
-    BufferHost, CommandHost, CursorHost, EditorHost, LanguageHost, OptionValue, SettingsHost,
+    BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
+    SettingsHost,
 };
+
+/// Mirrors `hume::editor::event`'s Steel-visible event names by hand — that
+/// module is `pub(crate)`, unreachable from the `tests/scripting.rs`
+/// integration crate this file is also spliced into via `#[path]`, so this
+/// list can't delegate to the real one. Same trade-off this file already
+/// accepts for every other capability: a faithful mirror, kept in sync by
+/// hand, not shared code.
+const MOCK_HOST_EVENT_NAMES: &[&str] = &[
+    "on-buffer-open",
+    "on-buffer-close",
+    "on-buffer-save",
+    "on-mode-change",
+    "on-language-set",
+    "on-lsp-attach",
+    "on-lsp-detach",
+    "on-diagnostics-changed",
+    "on-viewport-change",
+    "on-trigger-char",
+    "on-completion-accept",
+    "on-completion-refilter",
+];
 
 pub(crate) struct MockHost {
     pub(crate) settings: hume::settings::EditorSettings,
@@ -89,6 +111,15 @@ impl EditorHost for MockHost {
     }
     fn buffers(&mut self) -> &mut dyn BufferHost {
         self
+    }
+    fn events(&mut self) -> &mut dyn EventHost {
+        self
+    }
+}
+
+impl EventHost for MockHost {
+    fn known_event_names(&self) -> Vec<&'static str> {
+        MOCK_HOST_EVENT_NAMES.to_vec()
     }
 }
 

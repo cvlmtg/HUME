@@ -206,10 +206,10 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
 /// silently defer. This test catches the missing-drain regression.
 #[test]
 fn startup_hooks_require_explicit_drain() {
+    use crate::editor::event::EditorEvent;
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
     use hume_scripting::SteelBufferId;
-    use hume_scripting::hooks::HookId;
 
     let mut ed = editor_from("-[a]>b\n");
 
@@ -226,7 +226,7 @@ fn startup_hooks_require_explicit_drain() {
     // Simulate what open_extra_files / init_scripting do: enqueue the hook.
     let bid = ed.focused_buffer_id();
     let val = SteelBufferId::new(bid).into_steel_val();
-    ed.queue_event(HookId::OnBufferOpen, &[val]);
+    ed.queue_event(EditorEvent::OnBufferOpen, &[val]);
 
     // Hook is enqueued but has not fired yet.
     assert!(
@@ -264,9 +264,9 @@ fn startup_hooks_require_explicit_drain() {
 #[test]
 fn on_buffer_open_queued_after_on_language_set() {
     use crate::editor::buffer::Buffer;
+    use crate::editor::event::EditorEvent;
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
-    use hume_scripting::hooks::HookId;
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
@@ -293,7 +293,7 @@ fn on_buffer_open_queued_after_on_language_set() {
     ed.open_buffer(doc);
 
     // Inspect the queue before draining — drain_events would empty it.
-    let hook_order: Vec<HookId> = ed
+    let hook_order: Vec<EditorEvent> = ed
         .state
         .config
         .pending_events
@@ -302,7 +302,7 @@ fn on_buffer_open_queued_after_on_language_set() {
         .collect();
     assert_eq!(
         hook_order,
-        vec![HookId::OnLanguageSet, HookId::OnBufferOpen],
+        vec![EditorEvent::OnLanguageSet, EditorEvent::OnBufferOpen],
         "on-language-set must be queued before on-buffer-open; got {hook_order:?}"
     );
 }
@@ -312,10 +312,10 @@ fn on_buffer_open_queued_after_on_language_set() {
 /// `queue_event` must dispatch commands called by `(call! …)` inside hook bodies.
 #[test]
 fn hook_call_is_dispatched() {
+    use crate::editor::event::EditorEvent;
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
     use hume_scripting::SteelBufferId;
-    use hume_scripting::hooks::HookId;
 
     // Build a two-character buffer so move-right has room; cursor at col 0.
     let mut ed = editor_from("-[a]>b\n");
@@ -332,7 +332,7 @@ fn hook_call_is_dispatched() {
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
     let val = SteelBufferId::new(bid).into_steel_val();
-    ed.queue_event(HookId::OnBufferOpen, &[val]);
+    ed.queue_event(EditorEvent::OnBufferOpen, &[val]);
     ed.drain_events();
 
     assert_ne!(

@@ -160,7 +160,7 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
     host.registries.lazy_registry.declare(
         id.clone(),
         Some(path),
-        vec![HookId::OnBufferSave],
+        vec!["on-buffer-save".to_string()],
         vec!["rust".to_string()],
     );
 
@@ -182,7 +182,7 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
         host.registries
             .lazy_registry
             .activation_events
-            .get(&HookId::OnBufferSave)
+            .get("on-buffer-save")
             .map(|plugins| !plugins.contains(&id))
             .unwrap_or(true),
         "Failed plugin's event-activation entry must be dropped, not leaked"

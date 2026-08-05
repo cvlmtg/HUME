@@ -3,10 +3,10 @@ use hume_editing::lines::leading_whitespace_end;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 use hume_scripting::SteelBufferId;
-use hume_scripting::hooks::HookId;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::super::dispatch::ArgSource;
+use super::super::event::EditorEvent;
 use super::super::keymap::WalkResult;
 use super::super::registry::MappableCommand;
 use super::super::replay::InsertInput;
@@ -421,7 +421,7 @@ impl Editor {
         if incomplete {
             let bid_val = SteelBufferId::new(bid).into_steel_val();
             let text_val = steel::rvals::SteelVal::StringV(text.into());
-            self.queue_event(HookId::OnCompletionRefilter, &[bid_val, text_val]);
+            self.queue_event(EditorEvent::OnCompletionRefilter, &[bid_val, text_val]);
         }
         self.lsp.completion_ui = None;
     }

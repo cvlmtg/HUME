@@ -1,5 +1,4 @@
 use super::*;
-use crate::hooks::HookId;
 use crate::test_support::SteelCtxTestHarness;
 
 /// `register-hook!` is blocked in plain command mode (init/plugin-load only).
@@ -37,8 +36,8 @@ fn register_hook_non_symbol_arg_errors() {
 
 /// `register-hook!` errors for an unknown hook name.
 ///
-/// Fail oracle: remove the HookId lookup guard → typos silently register
-/// a hook that is never fired.
+/// Fail oracle: remove the `known_event_names()` lookup guard → typos
+/// silently register a hook that is never fired.
 #[test]
 fn register_hook_unknown_hook_name_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -76,12 +75,12 @@ fn register_hook_valid_in_init_mode() {
         assert!(result.is_ok(), "register-hook! must succeed in init mode");
     }
     assert_eq!(
-        h.registries.hooks.handlers_for(HookId::OnBufferSave).len(),
+        h.registries.hooks.handlers_for("on-buffer-save").len(),
         1,
         "one handler must be registered for on-buffer-save"
     );
     assert!(
-        h.registries.hooks.handlers_for(HookId::OnBufferSave)[0]
+        h.registries.hooks.handlers_for("on-buffer-save")[0]
             .owner
             .is_none(),
         "a top-level (non-plugin) registration must have no owner"
@@ -108,10 +107,47 @@ fn register_hook_valid_during_plugin_load() {
             "register-hook! must succeed during plugin load"
         );
     }
-    assert!(!h.registries.hooks.is_empty_for(HookId::OnBufferOpen));
+    assert!(!h.registries.hooks.is_empty_for("on-buffer-open"));
     assert_eq!(
-        h.registries.hooks.handlers_for(HookId::OnBufferOpen)[0].owner,
+        h.registries.hooks.handlers_for("on-buffer-open")[0].owner,
         Some(PluginId::parse("core:myplugin").unwrap()),
         "a plugin-body registration must be attributed to the currently-executing plugin"
+    );
+}
+
+/// Validation is genuinely host-driven, not a compiled-in table:
+/// `NullHost`'s known-names fixture deliberately diverges from the editor's
+/// real event set (see `NULL_HOST_EVENT_NAMES`'s doc comment) — it includes
+/// a synthetic `on-stub-only` name the editor never defines, and omits real
+/// editor events like `on-lsp-attach`. `register-hook!` must follow the
+/// host's list exactly in both directions.
+///
+/// Fail oracle: if `register_hook` consulted a compiled-in name list instead
+/// of `ctx.host.events().known_event_names()`, `on-stub-only` would be
+/// rejected (it's not a real `EditorEvent`) and `on-lsp-attach` would be
+/// accepted (it is) — both assertions below would flip.
+#[test]
+fn register_hook_validates_against_the_host_not_a_compiled_in_table() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+
+    let stub_only = register_hook(
+        &mut ctx,
+        SteelVal::SymbolV("on-stub-only".into()),
+        SteelVal::BoolV(true),
+    );
+    assert!(
+        stub_only.is_ok(),
+        "a name absent from the editor but present on the host must be accepted"
+    );
+
+    let real_editor_event = register_hook(
+        &mut ctx,
+        SteelVal::SymbolV("on-lsp-attach".into()),
+        SteelVal::BoolV(true),
+    );
+    assert!(
+        real_editor_event.is_err(),
+        "a real editor event name absent from the host's list must still be rejected"
     );
 }

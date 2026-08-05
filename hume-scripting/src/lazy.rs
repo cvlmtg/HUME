@@ -12,7 +12,6 @@ use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 
 use super::attribution::PluginId;
-use super::hooks::HookId;
 
 // ── PluginState ───────────────────────────────────────────────────────────────
 
@@ -46,8 +45,8 @@ pub(crate) struct LazyRegistry {
     /// Per-plugin lifecycle state.  Only plugins whose path was resolved at
     /// declaration time appear here; absent-path plugins are silently skipped.
     pub(crate) plugins: FxHashMap<PluginId, PluginState>,
-    /// 1:many map: hook event → plugins that activate on that event.
-    pub(crate) activation_events: FxHashMap<HookId, Vec<PluginId>>,
+    /// 1:many map: event name → plugins that activate on that event.
+    pub(crate) activation_events: FxHashMap<String, Vec<PluginId>>,
     /// 1:many map: language name → plugins that activate when the language is set.
     pub(crate) activation_languages: FxHashMap<String, Vec<PluginId>>,
 }
@@ -69,7 +68,7 @@ impl LazyRegistry {
         &mut self,
         id: PluginId,
         path: Option<PathBuf>,
-        events: Vec<HookId>,
+        events: Vec<String>,
         languages: Vec<String>,
     ) {
         if self.plugins.contains_key(&id) {
@@ -203,7 +202,7 @@ impl LazyRegistry {
             .activation_events
             .iter()
             .filter(|(_, ps)| ps.contains(id))
-            .map(|(h, _)| h.symbol())
+            .map(|(name, _)| name.as_str())
             .collect();
         evts.sort_unstable();
         if !evts.is_empty() {

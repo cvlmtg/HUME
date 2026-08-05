@@ -44,7 +44,7 @@ fn declare_absent_path_records_no_triggers() {
     reg.declare(
         id_core("missing"),
         None,
-        vec![HookId::OnBufferOpen],
+        vec!["on-buffer-open".to_string()],
         vec!["rust".to_string()],
     );
     assert!(reg.activation_events.is_empty());
@@ -60,14 +60,14 @@ fn duplicate_declare_is_noop() {
     reg.declare(
         id.clone(),
         Some(fake_path()),
-        vec![HookId::OnBufferSave],
+        vec!["on-buffer-save".to_string()],
         vec![],
     );
     // Second declare with a different path and an additional activation entry — both ignored.
     reg.declare(
         id.clone(),
         Some(PathBuf::from("/other/plugin.scm")),
-        vec![HookId::OnBufferOpen],
+        vec!["on-buffer-open".to_string()],
         vec![],
     );
     // State unchanged from first declare.
@@ -75,7 +75,7 @@ fn duplicate_declare_is_noop() {
     // Second declare's event entry not recorded.
     assert!(
         !reg.activation_events
-            .get(&HookId::OnBufferOpen)
+            .get("on-buffer-open")
             .is_some_and(|ps| ps.contains(&id)),
         "second declare's activation entry must not be recorded"
     );
@@ -100,16 +100,16 @@ fn activation_events_are_one_to_many() {
     reg.declare(
         a.clone(),
         Some(fake_path()),
-        vec![HookId::OnBufferSave],
+        vec!["on-buffer-save".to_string()],
         vec![],
     );
     reg.declare(
         b.clone(),
         Some(fake_path()),
-        vec![HookId::OnBufferSave],
+        vec!["on-buffer-save".to_string()],
         vec![],
     );
-    let handlers = &reg.activation_events[&HookId::OnBufferSave];
+    let handlers = &reg.activation_events["on-buffer-save"];
     assert_eq!(
         handlers.len(),
         2,
@@ -149,11 +149,11 @@ fn multiple_events_for_one_plugin() {
     reg.declare(
         id.clone(),
         Some(fake_path()),
-        vec![HookId::OnBufferOpen, HookId::OnBufferSave],
+        vec!["on-buffer-open".to_string(), "on-buffer-save".to_string()],
         vec![],
     );
-    assert!(reg.activation_events[&HookId::OnBufferOpen].contains(&id));
-    assert!(reg.activation_events[&HookId::OnBufferSave].contains(&id));
+    assert!(reg.activation_events["on-buffer-open"].contains(&id));
+    assert!(reg.activation_events["on-buffer-save"].contains(&id));
 }
 
 // ── Loaded-plugins derivation (used by (loaded-plugins) builtin) ──────
@@ -199,7 +199,7 @@ fn format_status_waiting_with_triggers() {
     reg.declare(
         id.clone(),
         Some(fake_path()),
-        vec![HookId::OnBufferSave],
+        vec!["on-buffer-save".to_string()],
         vec!["rust".to_string()],
     );
     let lazy_cmds = vec![("my-cmd".to_string(), id)];

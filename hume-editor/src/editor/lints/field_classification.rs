@@ -200,7 +200,7 @@ fn struct_field_names_handles_wrapped_generics_and_attributes() {
         pub(crate) inline_output_entered: bool,
         pub(crate) minibuf_completion_view:
             Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>>,
-        pub(super) pending_events: Vec<(hume_scripting::hooks::HookId, Vec<steel::rvals::SteelVal>)>,
+        pub(super) pending_events: Vec<(crate::editor::event::EditorEvent, Vec<steel::rvals::SteelVal>)>,
         pub(in crate::editor) completion: Option<completion::CompletionSession>,
     "#;
     assert_eq!(

@@ -1,8 +1,9 @@
 use super::*;
 use crate::editor::dispatch::ArgSource;
+use crate::editor::event::EditorEvent;
 use crate::editor::registry::MappableCommand;
 use crate::editor::scripting_setup::make_init_host;
-use hume_scripting::{PluginStatus, ScriptingHost, hooks::HookId};
+use hume_scripting::{PluginStatus, ScriptingHost};
 
 // ── Phase 1 lazy plugin loading — editor-level tests ─────────────────────────
 
@@ -211,8 +212,8 @@ fn set_buffer_language_reentrant_activation_uses_final_value() {
         "exactly one OnLanguageSet hook must be queued, not a stale duplicate; got: {:?}",
         ed.state.config.pending_events
     );
-    let (hook_id, args) = &ed.state.config.pending_events[0];
-    assert_eq!(*hook_id, HookId::OnLanguageSet);
+    let (event, args) = &ed.state.config.pending_events[0];
+    assert_eq!(*event, EditorEvent::OnLanguageSet);
     assert!(
         matches!(&args[1], steel::rvals::SteelVal::StringV(s) if s.as_str() == "python"),
         "the queued OnLanguageSet hook must carry the final ('python') value, not the stale \
@@ -544,7 +545,7 @@ fn event_trigger_activates_on_first_fire() {
         !ed.scripting
             .as_ref()
             .unwrap()
-            .activation_event_plugins(HookId::OnBufferSave)
+            .activation_event_plugins("on-buffer-save")
             .is_empty(),
         "activation_events must be populated before first fire"
     );
@@ -570,7 +571,7 @@ fn event_trigger_activates_on_first_fire() {
         ed.scripting
             .as_ref()
             .unwrap()
-            .activation_event_plugins(HookId::OnBufferSave)
+            .activation_event_plugins("on-buffer-save")
             .is_empty(),
         "activation_events must be cleared after plugin loads"
     );
@@ -601,7 +602,7 @@ fn event_trigger_idempotent_on_second_fire() {
         ed.scripting
             .as_ref()
             .unwrap()
-            .activation_event_plugins(HookId::OnBufferSave)
+            .activation_event_plugins("on-buffer-save")
             .is_empty(),
         "activation_events must be empty after first fire"
     );
@@ -696,7 +697,7 @@ fn event_trigger_one_to_many_activates_all() {
         ed.scripting
             .as_ref()
             .unwrap()
-            .activation_event_plugins(HookId::OnBufferSave)
+            .activation_event_plugins("on-buffer-save")
             .is_empty(),
         "activation_events must be fully cleared after both plugins load"
     );
@@ -737,7 +738,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
         ed.scripting
             .as_ref()
             .unwrap()
-            .activation_event_plugins(HookId::OnBufferSave)
+            .activation_event_plugins("on-buffer-save")
             .is_empty(),
         "activation_events must be cleared even after failure"
     );
@@ -1075,7 +1076,7 @@ fn plugin_hook_rolled_back_on_failed_activation() {
         !ed.scripting
             .as_ref()
             .unwrap()
-            .has_hook_handlers(HookId::OnBufferSave),
+            .has_hook_handlers("on-buffer-save"),
         "the failed plugin's register-hook! must not survive rollback"
     );
 }

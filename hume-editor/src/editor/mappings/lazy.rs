@@ -84,17 +84,15 @@ impl Editor {
         }
     }
 
-    /// Activate every still-`Declared` lazy plugin registered for `hook_id`.
+    /// Activate every still-`Declared` lazy plugin registered for the event
+    /// named `name`.
     ///
     /// Called by `drain_events` for each queued hook, before the handler check,
     /// so a plugin's `register-hook!` handlers are installed before the hook fires.
-    pub(in super::super) fn activate_lazy_event_plugins(
-        &mut self,
-        hook_id: hume_scripting::hooks::HookId,
-    ) {
+    pub(in super::super) fn activate_lazy_event_plugins(&mut self, name: &str) {
         let pending = match self.scripting.as_ref() {
             Some(host) => {
-                let plugins = host.activation_event_plugins(hook_id);
+                let plugins = host.activation_event_plugins(name);
                 if plugins.is_empty() {
                     return;
                 }
@@ -102,7 +100,7 @@ impl Editor {
             }
             None => return,
         };
-        self.activate_pending_plugins(pending, &format!("by event '{}'", hook_id.symbol()));
+        self.activate_pending_plugins(pending, &format!("by event '{name}'"));
     }
 
     /// Activate every still-`Declared` lazy plugin registered for language `lang`.

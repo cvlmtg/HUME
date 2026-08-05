@@ -273,6 +273,9 @@ impl crate::host::EditorHost for RecordingBufferOptionHost {
     fn buffers(&mut self) -> &mut dyn crate::host::BufferHost {
         self
     }
+    fn events(&mut self) -> &mut dyn crate::host::EventHost {
+        &mut self.inner
+    }
 }
 
 impl crate::host::BufferHost for RecordingBufferOptionHost {

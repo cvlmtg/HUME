@@ -376,7 +376,7 @@ fn steel_open_buffer_missing_path_opens_new_file() {
 /// `OnBufferClose` entry after `:go`, with no matching `OnBufferOpen`.
 #[test]
 fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
-    use hume_scripting::hooks::HookId;
+    use crate::editor::event::EditorEvent;
 
     let dir = safe_tempdir();
     let target = dir.path().join("target.txt");
@@ -409,7 +409,7 @@ fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
         "close-buffer! must have closed the just-opened buffer"
     );
 
-    let hook_ids: Vec<HookId> = ed
+    let hook_ids: Vec<EditorEvent> = ed
         .state
         .config
         .pending_events
@@ -417,11 +417,11 @@ fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
         .map(|(id, _)| *id)
         .collect();
     assert!(
-        !hook_ids.contains(&HookId::OnBufferOpen),
+        !hook_ids.contains(&EditorEvent::OnBufferOpen),
         "a buffer closed before its deferred OnBufferOpen fired must not announce open; got {hook_ids:?}"
     );
     assert!(
-        !hook_ids.contains(&HookId::OnBufferClose),
+        !hook_ids.contains(&EditorEvent::OnBufferClose),
         "a buffer that never announced OnBufferOpen must not announce OnBufferClose either; got {hook_ids:?}"
     );
 }

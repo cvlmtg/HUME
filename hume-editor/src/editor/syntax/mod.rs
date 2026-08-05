@@ -12,8 +12,8 @@ use hume_treesitter::registry::{LanguageId, detect_language};
 use steel::rvals::IntoSteelVal as _;
 
 use super::Editor;
+use super::event::EditorEvent;
 use hume_scripting::SteelBufferId;
-use hume_scripting::hooks::HookId;
 
 impl Editor {
     /// Set the language identity for buffer `bid`, via plain detection —
@@ -73,7 +73,7 @@ impl Editor {
             }
         }
         let bid_val = SteelBufferId::new(bid).into_steel_val();
-        self.queue_event(HookId::OnLanguageSet, &[bid_val, lang_val]);
+        self.queue_event(EditorEvent::OnLanguageSet, &[bid_val, lang_val]);
         // Wire up (or tear down) tree-sitter highlighting for this buffer.
         self.setup_buffer_syntax(bid);
         // Spawn-or-attach an LSP server for this buffer's (possibly new)
@@ -154,7 +154,7 @@ impl Editor {
                 }
                 self.state.buffers.get_mut(bid).open_hook_pending = false;
                 let val = SteelBufferId::new(bid).into_steel_val();
-                self.queue_event(HookId::OnBufferOpen, &[val]);
+                self.queue_event(EditorEvent::OnBufferOpen, &[val]);
             }
         }
     }

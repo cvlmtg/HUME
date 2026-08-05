@@ -591,8 +591,6 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
 /// `finish_lazy_activation`, `has_hook_handlers` comes back `true`.
 #[test]
 fn hook_registered_before_failure_is_rolled_back() {
-    use crate::hooks::HookId;
-
     let dir = TempDir::new().unwrap();
     let path = write_plugin(
         &dir,
@@ -618,7 +616,7 @@ fn hook_registered_before_failure_is_rolled_back() {
         "plugin must be Failed after mid-body error"
     );
     assert!(
-        !host.has_hook_handlers(HookId::OnBufferSave),
+        !host.has_hook_handlers("on-buffer-save"),
         "a Failed plugin's hook must not survive rollback"
     );
 }
@@ -633,7 +631,6 @@ fn hook_registered_before_failure_is_rolled_back() {
 /// would be wrongly removed too.
 #[test]
 fn nested_activation_hook_survives_enclosing_plugin_failure() {
-    use crate::hooks::HookId;
     use crate::host::EditorHost;
     use crate::null_host::LazyStubHost;
 
@@ -686,7 +683,7 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
         "C must be Loaded — its activation succeeded before B's own failure"
     );
     assert!(
-        host.has_hook_handlers(HookId::OnBufferSave),
+        host.has_hook_handlers("on-buffer-save"),
         "C's hook must survive B's failure — rollback is scoped to B's own id"
     );
 }

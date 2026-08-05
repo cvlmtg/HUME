@@ -40,6 +40,7 @@ pub(crate) mod cursor;
 pub(crate) mod decorations;
 mod dispatch;
 pub(crate) mod doc_ops;
+pub(crate) mod event;
 pub(crate) mod fuzzy;
 pub(crate) mod jump_list;
 pub(crate) mod keymap;
@@ -156,7 +157,7 @@ pub(crate) struct ConfigState {
     /// Hooks enqueued during command dispatch, drained by `Editor::drain_events`
     /// after each command. The unified firing path — `queue_event` pushes
     /// here; no hook fires inline during command execution.
-    pub(crate) pending_events: Vec<(hume_scripting::hooks::HookId, Vec<steel::rvals::SteelVal>)>,
+    pub(crate) pending_events: Vec<(event::EditorEvent, Vec<steel::rvals::SteelVal>)>,
     /// Rust-side completions that must reach a *specific* Steel closure
     /// rather than every handler for a hook id: an `lsp-request` callback,
     /// a timer thunk, a prompt callback. Queued (never evaluated
@@ -540,7 +541,7 @@ impl EditorState {
     /// The `mode` field is private so the compiler enforces that every
     /// transition goes through here.
     pub(crate) fn set_mode(&mut self, new: Mode) {
-        use hume_scripting::hooks::HookId;
+        use event::EditorEvent;
         use steel::rvals::IntoSteelVal;
         let old = self.mode;
         if old == new {
@@ -567,7 +568,7 @@ impl EditorState {
             .expect("mode str into_steelval");
         self.config
             .pending_events
-            .push((HookId::OnModeChange, vec![old_val, new_val]));
+            .push((EditorEvent::OnModeChange, vec![old_val, new_val]));
     }
 }
 

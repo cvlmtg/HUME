@@ -11,7 +11,6 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use crate::{
     SteelCtx,
     attribution::{Owner, PluginId},
-    hooks::HookId,
     lazy::PluginState,
 };
 
@@ -150,7 +149,8 @@ fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
 ///
 /// - Validates `name`; aborts init on malformed names.
 /// - Records into `declared_plugins` for PLUM compat.
-/// - Parses activation entry lists; converts event names to `HookId` variants.
+/// - Parses activation entry lists; validates event names against the host's
+///   `known_event_names()` (this crate has no compiled-in list of its own).
 /// - Filters colliding command entries (logs `Severity::Error`, continues).
 /// - Registers the plugin in `LazyRegistry`.
 /// - Stores `config` (the `#:config` value, first-wins) so the body can read it
@@ -215,16 +215,19 @@ pub(crate) fn declare_plugin(
         }
     }
 
-    let evt_list: Vec<HookId> = evt_strs
+    let known_events = ctx.host.events().known_event_names();
+    let evt_list: Vec<String> = evt_strs
         .iter()
         .map(|s| {
-            HookId::from_symbol(s).ok_or_else(|| {
-                let valid = HookId::all_names().collect::<Vec<_>>().join(", ");
-                generic_err(format!(
+            if known_events.contains(&s.as_str()) {
+                Ok(s.clone())
+            } else {
+                let valid = known_events.join(", ");
+                Err(generic_err(format!(
                     "declare-plugin events: unknown hook '{}'; valid: {}",
                     s, valid
-                ))
-            })
+                )))
+            }
         })
         .collect::<Result<_, _>>()?;
 

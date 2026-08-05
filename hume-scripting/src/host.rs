@@ -159,6 +159,20 @@ pub trait EditorHost {
     /// Buffer/pane enumeration, reads, lifecycle, and viewport geometry —
     /// required: every host has some notion (even if empty) of open buffers.
     fn buffers(&mut self) -> &mut dyn BufferHost;
+    /// Event-name introspection — required: every host has some notion (even
+    /// if empty) of which event names it can raise.
+    fn events(&mut self) -> &mut dyn EventHost;
+}
+
+/// Event-name introspection — accessed through [`EditorHost::events`].
+///
+/// The name-based boundary this crate is built on: `hume-scripting` has no
+/// compiled-in knowledge of which event names exist (that's the editor's
+/// `EditorEvent`), so `register-hook!` and `declare-plugin`'s `#:events`
+/// validate against this instead of a static match.
+pub trait EventHost {
+    /// Every Steel-visible event name this host can raise.
+    fn known_event_names(&self) -> Vec<&'static str>;
 }
 
 /// Live cursor/selection reads — accessed through [`EditorHost::cursor`].

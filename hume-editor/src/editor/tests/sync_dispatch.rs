@@ -798,7 +798,7 @@ fn steel_unknown_cmd_errors_and_continues() {
 /// → `pending_events` is non-empty after the click (the pending hook was never cleared).
 #[test]
 fn mouse_click_drains_hooks_immediately() {
-    use hume_scripting::hooks::HookId;
+    use crate::editor::event::EditorEvent;
     use termina::event::Event as TerminalEvent;
 
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(
@@ -812,7 +812,7 @@ fn mouse_click_drains_hooks_immediately() {
 
     // Seed a pending hook (OnBufferSave with no args — no handler registered, so
     // drain_events skips the Steel call but still removes it from the queue).
-    ed.queue_event(HookId::OnBufferSave, &[]);
+    ed.queue_event(EditorEvent::OnBufferSave, &[]);
     assert!(
         !ed.state.config.pending_events.is_empty(),
         "pending_events must be non-empty before the event — drain has not run yet"

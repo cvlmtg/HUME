@@ -4,15 +4,14 @@ use steel::rvals::SteelVal;
 
 use super::SteelResult;
 use crate::SteelCtx;
-use crate::hooks::HookId;
 
 /// `(register-hook! 'name proc)` — register `proc` as a handler for the
 /// named hook.  Must be called during init or plugin load (`EvalMode::Init`,
 /// `PluginLoad`, or `PluginActivation`).
 ///
-/// `name` must be a symbol matching one of the known hook names:
-/// `on-buffer-open`, `on-buffer-close`, `on-buffer-save`, `on-mode-change`,
-/// `on-language-set`.
+/// `name` must be a symbol matching one of the host's known event names
+/// (`ctx.host.events().known_event_names()`) — this crate has no compiled-in
+/// list of its own; the editor is the authority on which events exist.
 ///
 /// `on-language-set` fires `(lambda (bid lang-or-#f) …)` on every language
 /// transition.  For lazy-loaded language plugins the typical pattern is:
@@ -24,17 +23,17 @@ pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) 
         SteelVal::SymbolV(s) => s.to_string(),
         _ => steel::stop!(TypeMismatch => "register-hook!: expected a symbol, got {:?}", name),
     };
-    let hook_id = match HookId::from_symbol(&name_str) {
-        Some(id) => id,
-        None => steel::stop!(
+    let known = ctx.host.events().known_event_names();
+    if !known.contains(&name_str.as_str()) {
+        steel::stop!(
             Generic =>
             "register-hook!: unknown hook '{}'; known hooks: {}",
             name_str,
-            HookId::all_names().collect::<Vec<_>>().join(", ")
-        ),
-    };
+            known.join(", ")
+        );
+    }
     let owner = ctx.plugin_stack.current().cloned();
-    ctx.registries.hooks.register(hook_id, owner, proc);
+    ctx.registries.hooks.register(&name_str, owner, proc);
     Ok(SteelVal::Void)
 }
 

@@ -1135,7 +1135,6 @@ fn call_bang_arity_mismatch_surfaces_steel_error() {
 // ── register-hook! / fire_hook ────────────────────────────────────────────
 
 use hume_scripting::SteelBufferId;
-use hume_scripting::hooks::HookId;
 
 #[test]
 fn register_hook_fires_on_buffer_open() {
@@ -1149,14 +1148,8 @@ fn register_hook_fires_on_buffer_open() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
-    h.fire_hook(
-        HookId::OnBufferOpen,
-        &[val],
-        PaneId::default(),
-        bid,
-        &mut mock,
-    )
-    .unwrap();
+    h.fire_hook("on-buffer-open", &[val], PaneId::default(), bid, &mut mock)
+        .unwrap();
     let msgs = h.take_pending_messages();
     assert!(
         msgs.iter().any(|(_, m)| m.contains("move-right")),
@@ -1177,14 +1170,8 @@ fn register_hook_fires_on_buffer_close() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
-    h.fire_hook(
-        HookId::OnBufferClose,
-        &[val],
-        PaneId::default(),
-        bid,
-        &mut mock,
-    )
-    .unwrap();
+    h.fire_hook("on-buffer-close", &[val], PaneId::default(), bid, &mut mock)
+        .unwrap();
     let msgs = h.take_pending_messages();
     assert!(
         msgs.iter().any(|(_, m)| m.contains("move-left")),
@@ -1205,14 +1192,8 @@ fn register_hook_fires_on_buffer_save() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
-    h.fire_hook(
-        HookId::OnBufferSave,
-        &[val],
-        PaneId::default(),
-        bid,
-        &mut mock,
-    )
-    .unwrap();
+    h.fire_hook("on-buffer-save", &[val], PaneId::default(), bid, &mut mock)
+        .unwrap();
     let msgs = h.take_pending_messages();
     assert!(
         msgs.iter().any(|(_, m)| m.contains("move-right")),
@@ -1237,7 +1218,7 @@ fn register_hook_fires_on_mode_change() {
     let old_val = "normal".into_steelval().unwrap();
     let new_val = "insert".into_steelval().unwrap();
     h.fire_hook(
-        HookId::OnModeChange,
+        "on-mode-change",
         &[old_val, new_val],
         PaneId::default(),
         BufferId::default(),
@@ -1259,7 +1240,7 @@ fn register_hook_no_fire_if_no_handlers() {
 
     // No handlers registered — fire_hook must succeed without dispatching anything.
     h.fire_hook(
-        HookId::OnBufferOpen,
+        "on-buffer-open",
         &[],
         PaneId::default(),
         BufferId::default(),
@@ -1289,14 +1270,8 @@ fn register_hook_multiple_handlers_all_fire() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelBufferId::new(bid).into_steel_val();
-    h.fire_hook(
-        HookId::OnBufferSave,
-        &[val],
-        PaneId::default(),
-        bid,
-        &mut mock,
-    )
-    .unwrap();
+    h.fire_hook("on-buffer-save", &[val], PaneId::default(), bid, &mut mock)
+        .unwrap();
     let msgs = h.take_pending_messages();
     let warned: Vec<&str> = msgs
         .iter()
@@ -1374,7 +1349,7 @@ fn fire_hook_globals_cleared_between_fires() {
     let old_val = "normal".into_steelval().unwrap();
     let new_val = "insert".into_steelval().unwrap();
     h.fire_hook(
-        HookId::OnModeChange,
+        "on-mode-change",
         &[old_val.clone(), new_val],
         PaneId::default(),
         BufferId::default(),
@@ -1391,7 +1366,7 @@ fn fire_hook_globals_cleared_between_fires() {
     // Second fire with different args — any stale first-fire arg would give a wrong result.
     let new_val2 = "normal".into_steelval().unwrap();
     h.fire_hook(
-        HookId::OnModeChange,
+        "on-mode-change",
         &[old_val, new_val2],
         PaneId::default(),
         BufferId::default(),

@@ -4,11 +4,11 @@
 
 use hume_editing::changeset::Assoc;
 use hume_editing::position_encoding::wire_to_char;
-use hume_scripting::hooks::HookId;
 use hume_scripting::json::json_to_steel;
 
 use super::CompletionSession;
 use super::item::{StoredCompletionItem, parse_additional_text_edits_lenient};
+use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{LspCallback, LspState, edits, introspect};
 use crate::editor::{EditorState, Severity};
 use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors, word_start_before};
@@ -401,7 +401,7 @@ impl CompletionSession {
         state
             .config
             .pending_events
-            .push((HookId::OnCompletionAccept, vec![bid_val, item_val]));
+            .push((EditorEvent::OnCompletionAccept, vec![bid_val, item_val]));
 
         if !item.has_additional_text_edits {
             self.maybe_send_resolve(state, lsp, item, rope_pre, accept_cs, encoding);

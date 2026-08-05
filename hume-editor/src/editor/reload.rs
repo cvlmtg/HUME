@@ -9,8 +9,8 @@
 
 use hume_engine::pipeline::BufferId;
 use hume_scripting::SteelBufferId;
-use hume_scripting::hooks::HookId;
 
+use super::event::EditorEvent;
 use super::{Editor, Severity};
 use crate::editor::error::CommandError;
 
@@ -267,7 +267,7 @@ impl Editor {
             .collect();
         for bid in open_bids {
             let val = SteelBufferId::new(bid).into_steel_val();
-            self.queue_event(HookId::OnBufferOpen, &[val]);
+            self.queue_event(EditorEvent::OnBufferOpen, &[val]);
         }
 
         // Diagnostics: pull-style hook, re-reads the surviving
