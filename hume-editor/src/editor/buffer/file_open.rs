@@ -401,11 +401,19 @@ impl Editor {
     /// forward jump history unconditionally, so a same-buffer call would
     /// corrupt it for nothing.
     ///
-    /// External-change detection no longer lives here (SPEC.md §4): every
-    /// genuine switch this produces raises `EditorEvent::OnBufferEnter`,
-    /// observed by `Editor::settle`'s diff regardless of caller — interactive
-    /// or not. A no-op call raises nothing, matching Vim's `BufEnter`, which
-    /// doesn't re-fire for re-entering the buffer you're already viewing.
+    /// External-change detection no longer lives here: every genuine switch
+    /// this produces raises `EditorEvent::OnBufferEnter`, observed by
+    /// `Editor::settle`'s diff regardless of caller — interactive or not. A
+    /// no-op call raises nothing, matching Vim's `BufEnter`, which doesn't
+    /// re-fire for re-entering the buffer you're already viewing.
+    ///
+    /// Accepted cost of that parity: `:e`/`:b`/`:bn`/`:bp` re-targeting the
+    /// already-focused buffer runs no disk stat at all — it's genuinely a
+    /// no-op, not a deferred one. An external change to that file still
+    /// surfaces the moment any of terminal `FocusIn`, a genuine buffer-enter
+    /// (switch away and back), or `:checktime` runs — see
+    /// `Editor::enter_buffer_disk_check`'s doc for the full list of paths
+    /// that *do* stat.
     pub(in crate::editor) fn enter_buffer(&mut self, target: BufferId) {
         if target != self.focused_buffer_id() {
             self.switch_to_buffer_with_jump(target);

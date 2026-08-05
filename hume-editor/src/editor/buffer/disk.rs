@@ -333,6 +333,12 @@ impl Editor {
     /// `switch-to-buffer!` — reaches this the same way, with no per-command
     /// wiring.
     ///
+    /// Deliberately excluded: `:e`/`:b`/`:bn`/`:bp` re-targeting the buffer
+    /// already focused. `Editor::enter_buffer` no-ops for that case — no
+    /// switch, no diff, nothing for `detect_buffer_enter` to observe — matching
+    /// Vim's `BufEnter`, which doesn't re-fire for re-entering the buffer
+    /// you're already viewing. See its doc for the accepted cost.
+    ///
     /// Also retires a confirm that no longer targets `entered`: nothing
     /// guarantees the buffer a still-open confirm targets stays focused (a
     /// mouse click has no confirm intercept at all; a handler-driven switch
