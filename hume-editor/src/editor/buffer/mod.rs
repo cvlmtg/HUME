@@ -11,7 +11,7 @@ use hume_editing::text::Text;
 use hume_platform::io::FileMeta;
 
 mod disk;
-// Sibling buffer submodules (`file_open::enter_buffer_with_jump`,
+// Sibling buffer submodules (`file_open::enter_buffer`,
 // `Buffer::disk_state`'s field type) reach `disk::{DiskCheckTrigger,
 // DiskState}` via `super::disk::` instead, staying inside the `buffer`
 // module tree. `DiskCheckTrigger` is re-exported unconditionally because

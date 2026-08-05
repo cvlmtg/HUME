@@ -254,9 +254,9 @@ fn buffer_switch_to_deleted_file_by_path() {
     drop(t1);
     assert!(!canonical.exists(), "precondition: file must be gone");
 
-    // Via `type_cmd_event`, not `execute_typed`: a *moving* `:b` only
-    // switches inside `enter_buffer_with_jump` and relies on
-    // `Editor::handle_input`'s tail check for the disk check itself.
+    // Via `type_cmd_event`, not `execute_typed`: the disk check is
+    // `OnBufferEnter`'s Rust reaction, observed only once `Editor::settle()`
+    // runs its focus diff after the switch.
     type_cmd_event(&mut ed, &format!(":b {}", canonical.display()));
     assert_eq!(
         ed.doc().path(),

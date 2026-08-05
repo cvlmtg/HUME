@@ -151,13 +151,13 @@ fn unactioned_change_does_not_refire_until_a_further_change_happens() {
 /// an externally-changed buffer this way must not silently show stale
 /// content with `:w` free to clobber the external edit.
 ///
-/// Fail oracle: before `enter_buffer_with_jump` wired the check into these
-/// commands, `:bnext`/`:bprev` called `switch_to_buffer_with_jump` directly
-/// with no check at all, so the target buffer's disk state stayed `InSync`
-/// no matter what changed externally. Driven via `type_cmd_event`, not
-/// `type_cmd`: a *moving* `:bp` only switches inside `enter_buffer_with_jump`
-/// itself (see its doc) and relies on `Editor::handle_input`'s tail check to
-/// run the disk check once dispatch returns.
+/// Fail oracle: without `Editor::enter_buffer` routing `:bnext`/`:bprev`
+/// through `switch_to_buffer_with_jump` and queuing `OnBufferEnter`, the
+/// target buffer's disk state stays `InSync` no matter what changed
+/// externally. Driven via `type_cmd_event`, not `type_cmd`: the check is
+/// `OnBufferEnter`'s Rust reaction, observed only once `Editor::settle()`
+/// runs its focus diff — `type_cmd_event` settles after the command,
+/// `type_cmd` does not.
 #[test]
 fn bnext_and_bprev_run_the_buffer_enter_disk_check() {
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -188,9 +188,9 @@ fn bnext_and_bprev_run_the_buffer_enter_disk_check() {
 /// Fail oracle: if `BufferEnter` deduped an already-reported `Changed` state
 /// exactly like `Ambient` does, `:b #` landing on the buffer would find
 /// nothing new to report and stay silent — silently breaking the promise.
-/// The final `:b #` is driven via `type_cmd_event`: a *moving* `:b` only
-/// switches inside `enter_buffer_with_jump` and relies on
-/// `Editor::handle_input`'s tail check for the disk check itself.
+/// The final `:b #` is driven via `type_cmd_event`: the disk check is
+/// `OnBufferEnter`'s Rust reaction, observed only once `Editor::settle()`
+/// runs its focus diff after the switch.
 #[test]
 fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
     let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -779,17 +779,17 @@ fn confirm_does_not_open_mid_pending_key_sequence() {
     assert!(ed.state.config.confirm.is_none());
 }
 
-// ── `check_focus_change_disk_state`: closing/cycling/clicking reveals a
+// ── `OnBufferEnter`'s disk check: closing/cycling/clicking reveals a
 //    buffer with a deferred change ──────────────────────────────────────────
 //
-// `enter_buffer_with_jump` only covers `:e`/`:b`/`:bn`/`:bp`. Every other way
-// the focused pane can land on a different buffer — closing a buffer or a
-// pane, cycling pane focus, clicking into another pane — runs through
-// `Editor::handle_input`'s tail check instead, since the commands behind
-// those are `EditorCmdFn`-shaped and cannot call `Editor` methods themselves.
-// These tests drive input via `feed_event`/`type_cmd_event` (routed through
-// `handle_input`), not the usual `feed_key`/`type_cmd`, since that is the
-// one boundary the new check runs at.
+// The check is `OnBufferEnter`'s Rust reaction (`Editor::react_to_event`),
+// raised by `Editor::settle()`'s own diff against `focused_buffer_id()` — not
+// wired per command. Closing a buffer or a pane, cycling pane focus, and
+// clicking into another pane all move focus with no write to `buffer_id`
+// itself, so a diff taken inside `settle()`'s fixpoint is what catches them,
+// not a call any of those commands makes. These tests drive input via
+// `feed_event`/`type_cmd_event`, which call `settle()` after dispatch, not
+// the usual `feed_key`/`type_cmd`, which leave it queued.
 
 /// Two panes side by side: the left pane keeps viewing A, the right
 /// (focused) pane is retargeted onto B. `:vsplit` with no argument inherits
@@ -1452,10 +1452,11 @@ fn declined_change_then_vanished_file_still_warns() {
 /// view — and the buffer the click actually landed on must get its own
 /// deferred prompt, not be blocked by the stale one.
 ///
-/// Fail oracle: without `check_focus_change_disk_state` retiring a confirm
-/// that no longer targets the newly-focused buffer, the assertion below
-/// would still find B's confirm naming B, blocking A's own prompt via
-/// `can_open_confirm`'s `confirm.is_none()` gate.
+/// Fail oracle: without `enter_buffer_disk_check` (`OnBufferEnter`'s Rust
+/// reaction) retiring a confirm that no longer targets the newly-focused
+/// buffer, the assertion below would still find B's confirm naming B,
+/// blocking A's own prompt via `can_open_confirm`'s `confirm.is_none()`
+/// gate.
 #[test]
 fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     let (mut ed, tmp_a, tmp_b_guard, bid_a, bid_b) = two_panes_with_b_focused();
