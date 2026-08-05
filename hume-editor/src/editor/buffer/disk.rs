@@ -258,9 +258,9 @@ impl Editor {
     /// for its target char) means the very next keystroke is already spoken
     /// for — same hazard class as Insert/Command, just inside Normal mode.
     ///
-    /// Macro replay: `Editor::drain_replay_queue` calls `settle()` once,
-    /// after the whole macro has run and while `is_replaying` is still
-    /// `true` — so any buffer-enter diff the macro produced is observed and
+    /// Macro replay: `Editor::drain_replay_queue` calls `settle()` after
+    /// every replayed key, all of it while `is_replaying` is still `true` —
+    /// so any buffer-enter diff a replayed key produces is observed and
     /// warns instead of prompting, and nothing ever opens a confirm the user
     /// can no longer answer with a queued replay key. The deferred prompt
     /// still arrives on the next real buffer-enter, same as any other

@@ -273,7 +273,8 @@ impl Editor {
         self.state.last_repeatable_action = Some(action);
     }
 
-    /// Drain the macro replay queue, executing each key in order.
+    /// Drain the macro replay queue, executing each key in order and
+    /// settling after each one.
     ///
     /// Sets `is_replaying` for the duration so that `Q`/`q` intercepts inside
     /// replayed keys cannot start nested recording or replay sessions — including
@@ -282,22 +283,25 @@ impl Editor {
     ///
     /// Saves and restores `last_repeatable_action` so replay does not corrupt dot-repeat.
     ///
-    /// The trailing `settle()` runs *before* `is_replaying` clears, not after
-    /// — deliberately, so a buffer-enter diff the macro produced is observed
-    /// while `can_open_confirm`'s `!is_replaying` guard still holds. A
-    /// confirm the macro just finished producing would have no queued key
-    /// left to answer it with, so it must never open; warning instead, with
-    /// the deferred prompt still arriving on the next real buffer-enter, is
-    /// what `can_open_confirm`'s "Macro replay" doc paragraph documents.
+    /// Settling once per replayed key, not once after the whole queue, keeps
+    /// a macro's own hooks in the loop: a plugin that reconfigures the buffer
+    /// on `on-buffer-open` (indent width, a language keymap) must see that
+    /// reaction run before the macro's remaining keys type into the buffer,
+    /// the same as it would if those keys were typed by hand. `is_replaying`
+    /// stays `true` across every one of these settles, so `can_open_confirm`'s
+    /// `!is_replaying` guard still blocks a confirm the macro would have no
+    /// queued key left to answer — see that guard's "Macro replay" doc
+    /// paragraph. The deferred prompt still arrives on the next real
+    /// buffer-enter.
     ///
-    /// `message_logged_this_input` is OR'd back in, not left to whatever the
-    /// last replayed key's own `handle_input` set it to: the triggering
-    /// dispatch (e.g. the register char after `@`, which populated
-    /// `replay_queue` in the first place) may itself have logged a message
-    /// moments before this function was even called, and each iteration of
-    /// the loop below overwrites the flag from its own totals diff — losing
+    /// `message_logged_this_input` is OR'd back in every iteration, not left
+    /// to whatever the just-replayed key's own `handle_input` set it to: the
+    /// triggering dispatch (e.g. the register char after `@`, which
+    /// populated `replay_queue` in the first place) may itself have logged a
+    /// message moments before this function was even called, and each
+    /// settle() call clears the flag at its own end — losing
     /// `report_disk_state`'s shadowing guard for that earlier message if a
-    /// stale-buffer warning fires from this function's own `settle()`.
+    /// stale-buffer warning fires from a later key's settle.
     pub(crate) fn drain_replay_queue(&mut self) {
         if self.state.replay_queue.is_empty() {
             return;
@@ -307,12 +311,12 @@ impl Editor {
         self.state.is_replaying = true;
         while let Some(key) = self.state.replay_queue.pop_front() {
             self.handle_input(TerminalEvent::Key(key));
+            self.state.message_logged_this_input |= message_already_logged;
+            self.settle();
             if self.state.should_quit {
                 break;
             }
         }
-        self.state.message_logged_this_input |= message_already_logged;
-        self.settle();
         self.state.is_replaying = false;
         self.state.last_repeatable_action = saved_action;
     }

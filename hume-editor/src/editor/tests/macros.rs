@@ -937,3 +937,57 @@ fn macro_replay_resolves_non_conformant_shift_delivery_like_clean_press() {
         "cursor position must match"
     );
 }
+
+/// A hook a macro's own early key queues must run before the macro's later
+/// keys dispatch — `drain_replay_queue` settles after every replayed key,
+/// not once after the whole queue, so a replayed `@q` matches typing the
+/// same keys by hand.
+///
+/// `i` queues `OnModeChange` (deferred — fired by the next `settle()`, not
+/// synchronously); the hook it drives writes a buffer-scoped `tab-style`
+/// override that the very next key, `<tab>`, reads. `recorded` replays the
+/// macro in one shot; `direct` uses `feed_event` to mirror `Editor::run`'s
+/// loop (dispatch, then settle, per key) — the independent oracle for what
+/// "typed by hand" produces.
+///
+/// Fail oracle: revert `drain_replay_queue` to settle once at the end of the
+/// loop instead of once per key — `recorded`'s `<tab>` would then dispatch
+/// while `tab-style` is still the compiled-in default (`Hard`), inserting a
+/// literal `\t` where `direct` inserts spaces, and the final `assert_eq!`
+/// fails.
+#[test]
+fn macro_replay_runs_a_replayed_keys_own_hook_before_the_next_replayed_key() {
+    use crate::editor::tests::language::attach_host;
+
+    const HOOK: &str = r#"(register-hook! 'on-mode-change (lambda (from to)
+        (when (equal? to "insert")
+          (set-buffer-option! (current-buffer) "tab-style" "soft"))))"#;
+
+    let mut recorded = editor_from("-[a]>b\n");
+    attach_host(&mut recorded, HOOK);
+    recorded
+        .state
+        .registers
+        .write_macro('q', vec![key('i'), key_tab(), key_esc()]);
+    recorded.handle_key(key('q'));
+    recorded.handle_key(key('q'));
+    recorded.drain_replay_queue();
+
+    let mut direct = editor_from("-[a]>b\n");
+    attach_host(&mut direct, HOOK);
+    direct.feed_event(key('i'));
+    direct.feed_event(key_tab());
+    direct.feed_event(key_esc());
+
+    assert_eq!(
+        state(&recorded),
+        state(&direct),
+        "replaying a macro must match typing the same keys by hand"
+    );
+    assert!(
+        !recorded.doc().text().to_string().contains('\t'),
+        "the on-mode-change hook must have applied soft tab-style before \
+         <tab> dispatched during replay, got: {:?}",
+        recorded.doc().text().to_string()
+    );
+}
