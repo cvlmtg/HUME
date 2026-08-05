@@ -3,30 +3,6 @@ use steel::rvals::SteelVal;
 
 use super::*;
 
-/// Never called — its only purpose is the exhaustive `match`: adding an
-/// `EditorEvent` variant without extending this list is a compile error, not
-/// a runtime `.expect()` panic the first time something raises the new
-/// event. Keep in lockstep with `all_variants` below.
-#[allow(dead_code)]
-fn _exhaustiveness_check(event: EditorEvent) {
-    match event {
-        EditorEvent::OnBufferOpen { .. }
-        | EditorEvent::OnBufferClose { .. }
-        | EditorEvent::OnBufferSave { .. }
-        | EditorEvent::OnBufferEnter { .. }
-        | EditorEvent::OnFocusGained
-        | EditorEvent::OnModeChange { .. }
-        | EditorEvent::OnLanguageSet { .. }
-        | EditorEvent::OnLspAttach { .. }
-        | EditorEvent::OnLspDetach { .. }
-        | EditorEvent::OnDiagnosticsChanged { .. }
-        | EditorEvent::OnViewportChange { .. }
-        | EditorEvent::OnTriggerChar { .. }
-        | EditorEvent::OnCompletionAccept { .. }
-        | EditorEvent::OnCompletionRefilter { .. } => {}
-    }
-}
-
 /// One sample per variant — a `const` slice is impossible once variants
 /// carry `String`/`serde_json::Value` payloads, unlike the old fieldless
 /// enum. Field values are distinctive (not defaults) so the shape tests
@@ -108,20 +84,6 @@ fn every_variant_has_a_name_and_matches_the_known_names_table() {
         sorted.len(),
         names.len(),
         "two variants share the same Steel name"
-    );
-}
-
-#[test]
-fn known_event_names_has_no_duplicates_and_matches_variant_count() {
-    let names = known_event_names();
-    assert_eq!(names.len(), all_variants().len());
-    let mut sorted = names.clone();
-    sorted.sort_unstable();
-    sorted.dedup();
-    assert_eq!(
-        sorted.len(),
-        names.len(),
-        "EVENT_NAMES has a duplicate symbol name"
     );
 }
 

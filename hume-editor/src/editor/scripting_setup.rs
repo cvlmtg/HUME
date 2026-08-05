@@ -361,11 +361,27 @@ impl Editor {
     /// Rust reaction has no registration to short-circuit on, and editor
     /// behaviour must not depend on whether a plugin happens to be
     /// installed.
+    ///
+    /// No `_` catch-all, deliberately: this is the one match where forgetting
+    /// a variant changes editor behaviour, not just a hook payload, so a new
+    /// `EditorEvent` with no reaction wired must fail to compile here rather
+    /// than silently doing nothing.
     fn react_to_event(&mut self, event: &EditorEvent) {
         match event {
             EditorEvent::OnBufferEnter { buffer } => self.enter_buffer_disk_check(*buffer),
             EditorEvent::OnFocusGained => self.check_all_disk_state(DiskCheckTrigger::Ambient),
-            _ => {}
+            EditorEvent::OnBufferOpen { .. }
+            | EditorEvent::OnBufferClose { .. }
+            | EditorEvent::OnBufferSave { .. }
+            | EditorEvent::OnModeChange { .. }
+            | EditorEvent::OnLanguageSet { .. }
+            | EditorEvent::OnLspAttach { .. }
+            | EditorEvent::OnLspDetach { .. }
+            | EditorEvent::OnDiagnosticsChanged { .. }
+            | EditorEvent::OnViewportChange { .. }
+            | EditorEvent::OnTriggerChar { .. }
+            | EditorEvent::OnCompletionAccept { .. }
+            | EditorEvent::OnCompletionRefilter { .. } => {}
         }
     }
 
