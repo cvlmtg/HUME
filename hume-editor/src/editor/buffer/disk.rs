@@ -196,7 +196,10 @@ impl Editor {
                 let promptable = focused && autoread;
                 let is_buffer_enter = trigger == DiskCheckTrigger::BufferEnter;
 
-                if promptable && self.can_open_confirm() && (is_buffer_enter || !already_reported) {
+                if promptable
+                    && self.can_open_confirm(trigger)
+                    && (is_buffer_enter || !already_reported)
+                {
                     self.open_disk_change_confirm(bid, &name, dirty);
                 } else if !already_reported || (is_buffer_enter && promptable) {
                     self.report_disk_state(format!("{name}: file has changed on disk"));
@@ -266,16 +269,27 @@ impl Editor {
     /// still arrives on the next real buffer-enter, same as any other
     /// blocked case.
     ///
-    /// Fresh message this input: `Editor::handle_input` sets
-    /// `message_logged_this_input` right after dispatch whenever that input
-    /// logged a new warning or error; `Editor::settle` clears it once its own
-    /// drain (including the buffer-enter disk check) has run — a command
-    /// that fails after moving focus (`:qa` naming the first dirty buffer)
-    /// needs its own message to stay on screen, not have it replaced by an
-    /// unrelated disk-change confirm. Only the confirm is blocked;
+    /// Fresh message this input, `BufferEnter` only: `Editor::handle_input`
+    /// sets `message_logged_this_input` right after dispatch whenever that
+    /// input logged a new warning or error; `Editor::settle` clears it once
+    /// its own drain (including the buffer-enter disk check) has run — a
+    /// command that fails after moving focus (`:qa` naming the first dirty
+    /// buffer) needs its own message to stay on screen, not have it replaced
+    /// by an unrelated disk-change confirm. Only the confirm is blocked;
     /// `check_buffer_disk_state`'s warn fallback still runs, so this never
     /// goes fully silent.
-    fn can_open_confirm(&self) -> bool {
+    ///
+    /// `Ambient` is deliberately exempt: `run_steel_command` queues
+    /// `OnFocusGained` for an inline-output command that regained the
+    /// terminal, and that command may itself have just logged its own
+    /// warning (a non-zero exit, a lint note) — the same dispatch that set
+    /// the flag is what caused the disk change this Ambient sweep is
+    /// checking for, not an unrelated one, so it must not shadow this
+    /// confirm the way a genuinely unrelated buffer-enter would. `Explicit`
+    /// (`:checktime`) runs synchronously during dispatch, before
+    /// `handle_input` even assigns the flag, so the trigger never observes
+    /// it either way.
+    fn can_open_confirm(&self, trigger: DiskCheckTrigger) -> bool {
         let mode_ok = match self.state.mode() {
             Mode::Normal | Mode::Extend => true,
             Mode::Command => self.state.dispatching_typed_command,
@@ -289,7 +303,7 @@ impl Editor {
             && self.state.pending_keys.is_empty()
             && self.state.wait_char.is_none()
             && !self.state.is_replaying
-            && !self.state.message_logged_this_input
+            && (trigger != DiskCheckTrigger::BufferEnter || !self.state.message_logged_this_input)
     }
 
     /// Check every open buffer against `trigger` — `Ambient` for terminal

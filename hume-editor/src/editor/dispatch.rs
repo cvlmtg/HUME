@@ -308,7 +308,13 @@ impl Editor {
             // The editor genuinely regained the terminal — same trigger class
             // as `TerminalEvent::FocusIn`, so it raises the same event rather
             // than sweeping directly; the reaction is `OnFocusGained`'s Rust
-            // handler in `Editor::react_to_event`.
+            // handler in `Editor::react_to_event`. That reaction runs inside
+            // the next `settle()`, after `message_logged_this_input` has
+            // already been set from this same dispatch's own message-log
+            // delta — `can_open_confirm`'s message-shadow clause is scoped to
+            // `DiskCheckTrigger::BufferEnter` for exactly this reason, so a
+            // warning this command logged itself can't suppress the reload
+            // confirm its own subprocess just caused.
             self.state.queue_event(EditorEvent::OnFocusGained);
         }
 

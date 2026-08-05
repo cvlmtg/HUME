@@ -1751,3 +1751,70 @@ fn switching_onto_a_stale_buffer_checks_disk_state_exactly_once() {
          confirm already open and fall back to warning instead"
     );
 }
+
+// ── Inline-output disk sweep (dispatch.rs's `OnFocusGained`) ─────────────────
+
+/// An `#:inline-output` command that both rewrites the focused file (a
+/// formatter, a `git checkout` wrapper) *and* logs its own warning (a
+/// non-zero exit, a lint note) must still open the reload confirm — its own
+/// warning must not shadow the very disk change it caused.
+///
+/// `can_open_confirm`'s message-shadow clause exists to protect the
+/// `BufferEnter` case (`:qa` landing on a dirty buffer): a command's own
+/// failure message must survive an *unrelated* buffer-enter check that
+/// happens to run right after. The `Ambient` sweep this test exercises is
+/// never unrelated — it exists because of this exact command — so it must be
+/// exempt.
+///
+/// Fail oracle: apply the message-shadow clause unconditionally (drop the
+/// `trigger != DiskCheckTrigger::BufferEnter` guard) — `message_logged_this_input`
+/// is `true` from this dispatch's own `log!` warning by the time the queued
+/// `OnFocusGained` reaction runs in the next `settle()`, so `confirm` would
+/// stay `None` and only a `:messages` line would appear.
+#[test]
+fn inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm() {
+    use crate::editor::keymap::BindMode;
+    use crate::editor::scripting_setup::make_init_host;
+    use hume_scripting::ScriptingHost;
+
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    // No real terminal in this harness — Armed (not Headless) is what makes
+    // `run_steel_command` queue `OnFocusGained` at all; only `Entered` (which
+    // this command's body never reaches, since it only logs) needs one.
+    ed.tui_active = true;
+
+    let mut host = ScriptingHost::new();
+    {
+        let mut init_host = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_source(
+            r#"(define-command! "lint-and-fix" "doc"
+                 (lambda () (log! 'warn "lint: 1 issue auto-fixed")) #:inline-output #t)"#,
+            &mut init_host,
+        )
+        .expect("eval failed");
+    }
+    ed.scripting = Some(host);
+    ed.state.config.keymap.bind_user_with_extend(
+        BindMode::Normal,
+        &[key('\\')],
+        "lint-and-fix".into(),
+        false,
+    );
+
+    // The command's own subprocess rewrote the focused file while it ran.
+    rewrite_externally(&tmp, "hello, world!\n");
+
+    ed.feed_event(key('\\'));
+
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.text.contains("lint: 1 issue auto-fixed")),
+        "sanity: the command's own warning must have logged"
+    );
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "the reload confirm must open despite the command's own warning"
+    );
+}
