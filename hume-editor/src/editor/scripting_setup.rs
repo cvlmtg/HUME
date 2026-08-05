@@ -273,6 +273,11 @@ impl Editor {
                     ),
                 );
                 self.state.message_logged_this_input = false;
+                // Skips the tail `take_pending_lsp_completion_dismiss()`
+                // below — a mode change mid-drain that set the flag on this
+                // pass defers one frame to the next `settle()`'s top-of-fn
+                // consume (`:255`) rather than being lost, since the flag
+                // itself isn't cleared here.
                 return;
             }
             self.run_pending_batch(batch);

@@ -485,3 +485,67 @@ fn each_command_sends_its_own_method() {
         );
     }
 }
+
+/// A goto-definition landing on a different, unopened file is a
+/// non-interactive `switch-to-buffer!` (via `goto-location!`) — SPEC.md §7's
+/// C5 table names this write path specifically, since it never runs through
+/// `type_cmd`/`feed_key` at all; the switch happens inside `drain_lsp`'s
+/// response handling. Must raise exactly one `OnBufferEnter`, same as every
+/// other focus-changing action.
+///
+/// Fail oracle: `goto-location!`'s buffer switch bypassing `settle()`'s
+/// diff (a direct raise wired only into typed/keyed commands) would leave
+/// the trace log empty; a duplicate raise on the same switch would produce
+/// more than one entry.
+#[test]
+fn goto_into_another_file_raises_exactly_one_on_buffer_enter() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, _uri) = write_fixture_file(file_dir.path());
+    let other_file = file_dir.path().join("other.rs");
+    std::fs::write(&other_file, "fn other() {}\n").unwrap();
+    let other_canonical = std::fs::canonicalize(&other_file).unwrap();
+    let other_uri = hume_lsp::uri::path_to_uri(&other_canonical)
+        .unwrap()
+        .as_str()
+        .to_string();
+
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), move |backend, _sid| {
+        backend.respond_to("textDocument/definition", loc(&other_uri, 0, 3));
+    });
+
+    // Drain the startup OnBufferEnter (no handler registered yet, so
+    // nothing gets logged for it) before installing the counting handler.
+    ed.settle();
+    let mut host = ed.scripting.take().expect("setup() installs a host");
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-buffer-enter (lambda (bid) (log! 'trace "entered")))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    run_goto(&mut ed, ":lsp-goto-definition");
+
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&other_canonical)
+        .expect("goto-location! must have opened and switched to the target file");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid,
+        "sanity: the goto must have landed on the other file"
+    );
+    let entered = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace && e.text == "entered")
+        .count();
+    assert_eq!(
+        entered, 1,
+        "a goto-definition switch into another file must raise exactly one OnBufferEnter"
+    );
+}

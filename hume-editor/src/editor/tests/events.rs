@@ -426,19 +426,25 @@ fn event_raised_from_async_work_fires_on_settle_with_no_input() {
     );
 }
 
-/// **FIFO order preserved across item kinds.** `queue_buffer_save` queues an
-/// *event* synchronously, mid-dispatch — before `settle()` even starts —
-/// while two zero-delay timers each queue a *call*, but only once
-/// `settle()`'s own `drain_async_sources` runs. They must fire in exactly
-/// the order they entered the merged queue: the event first (already
-/// queued before `settle()` began), then the two calls in arm order — not
-/// "every call before every event" or vice versa. Pins the merge's core
+/// **FIFO order preserved across item kinds.** A prompt confirm queues a
+/// *call* synchronously, mid-dispatch (`finish_steel_prompt`'s
+/// `queue_steel_call`); `queue_buffer_save` then queues an *event*
+/// synchronously right after it, still before `settle()` starts; two
+/// zero-delay timers each queue a further *call*, but only once `settle()`'s
+/// own `drain_async_sources` runs. They must fire in exactly the order they
+/// entered the merged queue — `Call, Event, Call, Call` — not "every call
+/// before every event" or vice versa: either inversion would still put the
+/// two timer calls after the leading call/event pair, so a naive by-kind
+/// grouping (`["call-0","call-a","call-b","event"]` or
+/// `["event","call-0","call-a","call-b"]`) reads differently from the
+/// correct FIFO trace and is caught either way. Pins the merge's core
 /// guarantee (SPEC.md §3): one FIFO queue, drained front-to-back, not the
 /// old two-queue, two-drain-site split.
 ///
-/// Fail oracle: drain every queued `Event` before any `Call` (or vice
+/// Fail oracle: drain every queued `Call` before any `Event` (or vice
 /// versa) instead of popping the merged queue in insertion order → the
-/// trace log below no longer matches `["event", "call-a", "call-b"]`.
+/// trace log below no longer matches
+/// `["call-0", "event", "call-a", "call-b"]`.
 #[test]
 fn fifo_order_preserved_across_call_and_event_items() {
     let tmp = safe_tempdir();
@@ -448,6 +454,8 @@ fn fifo_order_preserved_across_call_and_event_items() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-buffer-save (lambda (bid) (log! 'trace "event")))
+           (define-command! "arm" "" (lambda ()
+             (prompt! "x" (lambda (s) (log! 'trace "call-0")))))
            (define-command! "start" "" (lambda ()
              (after 0 (lambda () (log! 'trace "call-a")))
              (after 0 (lambda () (log! 'trace "call-b")))))"#,
@@ -456,10 +464,16 @@ fn fifo_order_preserved_across_call_and_event_items() {
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":start");
+    type_cmd(&mut ed, ":arm");
+    assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Command);
 
-    // Queued synchronously, right here — before settle() runs at all, so
-    // this event is already at the front of pending_work by the time the
-    // two timers convert to queued calls inside settle()'s own drain.
+    // Confirming the prompt queues its callback as a `Call` synchronously,
+    // inside this very `feed_key` — before settle() runs at all.
+    ed.feed_key(key_enter());
+
+    // Queued synchronously too, right after the call above — both are at
+    // the front of pending_work by the time the two timers convert to
+    // queued calls inside settle()'s own drain.
     let bid = ed.focused_buffer_id();
     ed.queue_buffer_save(bid);
 
@@ -474,7 +488,7 @@ fn fifo_order_preserved_across_call_and_event_items() {
         .collect();
     assert_eq!(
         order,
-        vec!["event", "call-a", "call-b"],
+        vec!["call-0", "event", "call-a", "call-b"],
         "merged queue must drain in exact insertion order"
     );
 }
@@ -806,6 +820,70 @@ fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buff
     assert_eq!(ed.focused_buffer_id(), buf2);
 }
 
+/// The mixed case §4 actually names: a pass that changes **both**
+/// `focused_pane_id` (a bare field write, like pane-focus cycling) *and*
+/// `pane.buffer_id` (like a buffer switch) before any `settle()` runs must
+/// still coalesce into a single `OnBufferEnter` for wherever focus ends up
+/// — `focused_buffer_id()` is one join evaluated once per pass, not two
+/// independent things to diff separately.
+///
+/// Fail oracle: a raise site tied to either write individually (instead of
+/// the derived-join diff at `settle()`'s single observation point) would
+/// fire twice here — once for the pane move, once for the buffer switch.
+#[test]
+fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
+    use crate::editor::buffer::Buffer;
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-buffer-enter (lambda (bid) (log! 'trace "entered")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+
+    ed.settle();
+    let baseline = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace)
+        .count();
+    assert_eq!(baseline, 1, "sanity: the startup buffer fires once");
+
+    let pid_a = ed.state.focused_pane_id;
+    let bid = ed.focused_buffer_id();
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
+    let buf2 = ed.open_buffer(Buffer::scratch());
+
+    // Bare `focused_pane_id` write (no settle() in between)...
+    ed.state.focused_pane_id = pid_b;
+    // ...then a `pane.buffer_id` write on the pane that write just focused.
+    ed.switch_to_buffer_with_jump(buf2);
+    assert_ne!(pid_a, pid_b, "sanity: a genuinely different pane");
+
+    ed.settle();
+
+    let total = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace)
+        .count();
+    assert_eq!(
+        total,
+        baseline + 1,
+        "a pane-focus move and a buffer switch in the same pass must coalesce \
+         into a single OnBufferEnter"
+    );
+    assert_eq!(ed.state.focused_pane_id, pid_b);
+    assert_eq!(ed.focused_buffer_id(), buf2);
+}
+
 /// A handler that itself calls `switch-to-buffer!` re-triggers the diff on
 /// the *next pass of the same `settle()` call* — not a frame later. Needs
 /// the real host (`switch-to-buffer!`/`open-buffer!` are gated to
@@ -899,5 +977,78 @@ fn on_focus_gained_fires_from_handle_input_and_settle_with_no_args() {
             .entries()
             .any(|e| e.severity == Severity::Trace && e.text == "focus-gained"),
         "on-focus-gained must fire after handle_input(FocusIn) + settle()"
+    );
+}
+
+/// **Exactly one `OnBufferEnter` per focus-changing action.** Pane-focus
+/// cycling and a mouse click into another pane both move focus with no
+/// write to `pane.buffer_id` at all — `focused_pane_id` is the only field
+/// that changes. Counting fires (not just checking a confirm opened, which
+/// a duplicate fire would still satisfy) pins that `settle()`'s diff raises
+/// exactly one event per action, not once per write site it happens to
+/// coalesce.
+///
+/// Fail oracle: a second raise site parallel to `detect_buffer_enter` (or
+/// `detect_buffer_enter` re-firing on a pass where focus didn't actually
+/// change again) would bump either count above 1.
+#[test]
+fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
+    use hume_scripting::ScriptingHost;
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    type_cmd(&mut ed, ":vsplit");
+    let path_b = tmp.path().join("b.txt");
+    std::fs::write(&path_b, "world\n").unwrap();
+    type_cmd(&mut ed, &format!(":e {}", path_b.display()));
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-buffer-enter (lambda (bid) (log! 'trace "entered")))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    // Settle the setup switches above, and establish pane geometry once —
+    // `mouse_left_down` needs real pane rects, and rects don't depend on
+    // which pane is focused, so one `prepare_frame` call covers both
+    // actions below.
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.sync_viewport_dims(100, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    let count = |ed: &Editor| {
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace)
+            .count()
+    };
+
+    // `:e` left the right pane (B) focused. Ctrl+p p, with only two panes,
+    // cycles focus onto the left pane (A) — a bare `focused_pane_id` write,
+    // never touching `buffer_id`.
+    let before = count(&ed);
+    ed.feed_event(key_ctrl('p'));
+    ed.feed_event(key('p'));
+    assert_eq!(
+        count(&ed) - before,
+        1,
+        "pane-focus cycling must raise exactly one OnBufferEnter"
+    );
+
+    // Now A (left) is focused. Click into the right pane (B) — the same
+    // bare `focused_pane_id` write, via `handle_input`'s mouse arm instead
+    // of the keymap.
+    let before = count(&ed);
+    ed.handle_input(mouse_left_down(60, 0));
+    ed.settle();
+    assert_eq!(
+        count(&ed) - before,
+        1,
+        "a mouse click into another pane must raise exactly one OnBufferEnter"
     );
 }

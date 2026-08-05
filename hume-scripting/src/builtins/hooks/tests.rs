@@ -56,6 +56,10 @@ fn register_hook_unknown_hook_name_errors() {
         msg.contains("unknown hook"),
         "error must mention 'unknown hook'; got: {msg}"
     );
+    assert!(
+        msg.contains("on-buffer-open"),
+        "error must list the valid names (from NULL_HOST_EVENT_NAMES); got: {msg}"
+    );
 }
 
 /// `register-hook!` in init mode with a valid name registers the handler.
