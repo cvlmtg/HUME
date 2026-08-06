@@ -182,11 +182,11 @@ Every Steel-visible surface the LSP platform introduces — the lookup table for
 | `(after ms thunk)` → timer id; `(cancel-timer! id)` | builtin | B4 |
 | `(debounce ms proc)` → debounced proc, one shared pending timer across all calls | builtin (bootstrap wrapper over `after`) | B4 |
 | `(debounce-by ms proc)` → debounced proc keyed per `(car args)` — independent pending timer per key, so a call keyed `k2` never cancels a still-pending call keyed `k1` | builtin (bootstrap wrapper over `after`) | B4 |
-| `(set-inlay-hints! bid hints)` | builtin | B5 |
-| `(set-signs! source bid signs)` | builtin | B5 |
+| `(set-inlay-hints! source bid hints)` — `hints`: `(offset text 'before\|'after)`, `offset` a char offset (`lsp-position->offset` converts an LSP wire position first); gained `source` and moved off wire positions per SPEC.md §6 | builtin | B5 |
+| `(set-signs! source bid signs)` — `signs`: `(line text scope priority)`, `line` converts to that line's line-start char offset (and remaps through edits) at the host boundary per SPEC.md §6 | builtin | B5 |
 | `(set-virtual-lines! source bid lines)` — each entry a hashmap, `'line`/`'text` required, `'anchor` (`'before`/`'after`, default `'after`), `'scope`, `'segments` (list of `(start end scope)` char ranges into `text`) optional; segments added in GIT-DIFF Phase 4.5, flipped byte→char offsets per SPEC.md §5a.2 | builtin | B5 |
-| `(set-inline-diagnostics! bid lines)` — each entry `(line text scope)`; one owner per buffer (no `source` arg, unlike `set-virtual-lines!`) — text spliced at end-of-line via a second `InlineDecoration` provider, same shape as U9's inlay hints | builtin | U8 |
-| `(set-extra-highlights! source bid spans)` | builtin | B5 |
+| `(set-eol-text! source bid lines)` — each entry `(line text scope)`; text spliced at end-of-line via a second `InlineDecoration` provider, same shape as U9's inlay hints. Was `(set-inline-diagnostics! bid lines)` — renamed and gained `source` (unified store, SPEC.md §6): never diagnostics-specific, the diagnostics plugin is just its first client | builtin | U8 |
+| `(set-extra-highlights! source bid spans)` — `spans`: `(start end scope)` char range, validated non-empty and in-bounds at the host boundary per SPEC.md §6 | builtin | B5 |
 | `(diagnostics-for-buffer bid #:severity floor #:range (start . end))` | builtin | B5 |
 | `(diagnostic-counts bid)` → `(errors . warnings)` | builtin | B5 |
 | `(apply-text-edits! bid edits #:expect-generation gen)` — `edits`: list of `((start-line . start-col) (end-line . end-col) text)` | builtin | B6 |

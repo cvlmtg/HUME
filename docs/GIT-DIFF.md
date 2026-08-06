@@ -99,9 +99,10 @@ the merge it would be avoiding.
   `runtime/plugins/core/lsp/inlay.scm` (`debounce-by`). Only background-job execution
   (async git) is missing — timers themselves are not.
 - **A generic, Steel-writable decoration API**: `DecorationHost`
-  (`hume-scripting/src/host.rs:409-465`) exposes `set-inlay-hints!`, `set-signs!`,
-  `set-virtual-lines!`, `set-extra-highlights!`, `set-inline-diagnostics!`, backed by
-  `DecorationStores` (`hume-editor/src/editor/decorations.rs`), source-namespaced. See
+  (`hume-scripting/src/host.rs`) exposes `set-inlay-hints!`, `set-signs!`,
+  `set-virtual-lines!`, `set-extra-highlights!`, `set-eol-text!` (was
+  `set-inline-diagnostics!`), backed by `DecorationStores`
+  (`hume-editor/src/editor/decorations.rs`), source-namespaced. See
   Phase 4.4/4.5 for the remaining gaps (line-background tint; virtual-line anchor/segments).
 - **`VirtualLine` already carries per-segment styling — engine-side only.** `VirtualLine.segments:
   Vec<(Range<usize>, ScopeId)>` (`hume-engine/src/providers.rs:228`) and `Grapheme.scope:
@@ -468,13 +469,15 @@ trait (`hume-scripting/src/host.rs`).
    way `runtime/plugins/core/plum/lib.scm:33` wraps sync `spawn-process` for clone/pull.
 
 4. **Decoration API — extend, don't rebuild.** `DecorationHost`
-   (`hume-scripting/src/host.rs:409-465`, seven methods: `set_inlay_hints`, `set_signs`,
-   `set_virtual_lines`, `set_extra_highlights`, `set_inline_diagnostics`,
+   (`hume-scripting/src/host.rs`, seven methods: `set_inlay_hints`, `set_signs`,
+   `set_virtual_lines`, `set_extra_highlights`, `set_eol_text`,
    `diagnostics_for_buffer`, `diagnostic_counts`) is backed by `DecorationStores`
-   (`hume-editor/src/editor/decorations.rs:73-89` — five source-namespaced maps:
-   `inlay_hints`, `signs`, `virtual_lines`, `extra_highlights`; plus single-owner
-   `inline_diagnostics` and a `virtual_lines_generation` counter). Cross-check against the
-   nvim extmark uses:
+   (`hume-editor/src/editor/decorations.rs` — **unified 2026-08-07**, SPEC.md's
+   unified-store item: one generic `SourceStore<T>` instantiated per kind, all five
+   uniformly per-source-keyed and char-offset-positioned, one store-wide `generation`
+   counter). `set-inline-diagnostics!` is now `set-eol-text!` (never
+   diagnostics-specific — the diagnostics plugin is its first client, not its owner).
+   Cross-check against the nvim extmark uses:
    - **span highlight** (char-relative range + scope) — already covered by
      `set-extra-highlights!` (`ExtraHighlightEntry { start, end, scope }`,
      `decorations.rs:75-79`, char offsets matching `diff_words`' `WordHunk` ranges).
@@ -507,11 +510,13 @@ trait (`hume-scripting/src/host.rs`).
      semantics. Dirty tracking: covered by SPEC §6's store-wide generation; the payload is
      small enough that per-frame sync is fine — no dedicated gate needed. See Phase 3.2 for
      the `row_bg`/precedence contract this kind renders through.
-   - **Risk note:** `docs/ROADMAP.md` lists an open, not-yet-started item — "Unified
-     decoration system — single trait replacing the separate gutter/highlight/virtual-line/
-     overlay provider traits; post-LSP, once the surface is stable." Building the new line-bg
-     kind now means it rides on the current `DecorationStores` shape and may need adjustment
-     when that unification lands. Not a blocker, just a known future churn point.
+   - **Risk note (partially resolved 2026-08-07):** the store-side half of `docs/ROADMAP.md`'s
+     unified-decoration-system item has now landed (SPEC.md), so the line-bg kind's store
+     shape above rides on the current, already-unified `SourceStore<T>` — no further store-side
+     churn expected. The engine-side half (a single `DecorationSource` trait replacing
+     `HighlightSource`/`VirtualLineSource`/`InlineDecoration`, SPEC.md §2/§6) is still open;
+     building the line-bg kind's engine variant before that lands would still be a future
+     churn point.
 
 5. **`set-virtual-lines!` anchor + per-segment scopes — ✅ shipped, needed by Phase 5b.**
    Was a verified plan-vs-code gap: the engine type
