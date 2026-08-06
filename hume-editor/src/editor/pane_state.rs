@@ -185,20 +185,23 @@ impl Editor {
         super::commands::effective_wrap_mode(doc, &self.state.settings, pane)
     }
 
-    /// Pin the focused pane's wrap mode to `mode` — the write path behind
-    /// `:set pane wrap-mode=…`.
+    /// Pin the focused pane's wrap mode to `mode`, for the buffer it
+    /// currently views — the write path behind `:set pane wrap-mode=…`.
     ///
     /// Always writes an explicit override, even `WrapMode::None` (an
     /// explicit "don't wrap" pin): `:set pane` is itself an explicit pane
     /// action, so from here on this pane stops following `:set buffer`/
-    /// `:set global wrap-mode=…` until `:wrap`, another `:set pane`, or
-    /// `:reload-config` changes it again.
+    /// `:set global wrap-mode=…` *for this buffer* until `:wrap` or another
+    /// `:set pane` changes it again — there is no command that clears the
+    /// pin back to inheriting. The pin lives in `Pane::wraps`, keyed by
+    /// buffer (see `WrapOverride`), so it does not follow the pane to a
+    /// buffer it switches to next; switching back to this buffer restores it.
     ///
-    /// `saved_wrap_mode` (the `:wrap` toggle-on restore target) is synced to
-    /// this pin only when `mode` itself wraps — pinning *off* deliberately
-    /// leaves it alone, so whatever `saved_wrap_mode` already pointed at (a
-    /// prior wrapping pin, or "was inheriting") survives as the toggle-on
-    /// target instead of being erased by this pin.
+    /// `WrapOverride::saved` (the `:wrap` toggle-on restore target) is synced
+    /// to this pin only when `mode` itself wraps — pinning *off* deliberately
+    /// leaves it alone, so whatever `saved` already pointed at (a prior
+    /// wrapping pin, or "was inheriting") survives as the toggle-on target
+    /// instead of being erased by this pin.
     ///
     /// Zeroes horizontal scroll (meaningless once wrapped) on any actual
     /// change to the pane's *effective* mode — see `toggle_focused_wrap`'s
@@ -207,22 +210,27 @@ impl Editor {
         let before = self.focused_wrap_mode();
         let pid = self.state.focused_pane_id;
         let pane = &mut self.view.panes[pid];
-        pane.wrap_mode = Some(mode);
+        let mut wrap = pane.wrap();
+        wrap.mode = Some(mode);
         if mode.is_wrapping() {
-            pane.saved_wrap_mode = Some(mode);
+            wrap.saved = Some(mode);
         }
+        pane.set_wrap(wrap);
         if mode != before {
             self.viewport_mut().horizontal_offset = 0;
         }
     }
 
-    /// Toggle the focused pane's wrapping on/off — the write path behind
-    /// `:wrap`/`:toggle-soft-wrap`. Returns the new wrapping state.
+    /// Toggle the focused pane's wrapping on/off, for the buffer it
+    /// currently views — the write path behind `:wrap`/`:toggle-soft-wrap`.
+    /// Returns the new wrapping state.
     ///
     /// Turning wrapping *off* stashes the pane's current override into
-    /// `saved_wrap_mode` — `None` if it was inheriting from the buffer/global
-    /// setting, `Some(m)` if it was explicitly pinned to `m` — then pins the
-    /// pane to `WrapMode::None`.
+    /// `WrapOverride::saved` — `None` if it was inheriting from the
+    /// buffer/global setting, `Some(m)` if it was explicitly pinned to `m` —
+    /// then pins the pane to `WrapMode::None`. Like `set_focused_wrap_override`,
+    /// this writes to `Pane::wraps` keyed by the current buffer, so it does
+    /// not follow the pane to a buffer it switches to next.
     ///
     /// Turning wrapping back *on* restores that provenance rather than a
     /// frozen resolved value: a pane that was inheriting goes back to
@@ -231,8 +239,11 @@ impl Editor {
     /// active at toggle-off time; a pane that was explicitly pinned goes
     /// back to that exact pin. If restoring "inheriting" wouldn't actually
     /// wrap (the buffer/global setting is `none`, or this pane has never
-    /// wrapped before), falls back to pinning `DEFAULT_WRAP_STYLE` — `:wrap`
-    /// must always visibly wrap, never silently no-op.
+    /// wrapped before), falls back to pinning the *configured* global style
+    /// (`EditorSettings::wrap_mode`) if that wraps, else `DEFAULT_WRAP_STYLE`
+    /// — `:wrap` must always visibly wrap, never silently no-op, but must
+    /// not override a deliberate global `none` with a style the user never
+    /// asked for.
     ///
     /// Toggling always flips whether the pane is actually wrapping (off→on
     /// is guaranteed to end up wrapping, by the fallback above; on→off
@@ -263,13 +274,27 @@ impl Editor {
         let pid = self.state.focused_pane_id;
         let now_wrapping = if self.focused_wrap_mode().is_wrapping() {
             let pane = &mut self.view.panes[pid];
-            pane.saved_wrap_mode = pane.wrap_mode;
-            pane.wrap_mode = Some(WrapMode::None);
+            let mut wrap = pane.wrap();
+            wrap.saved = wrap.mode;
+            wrap.mode = Some(WrapMode::None);
+            pane.set_wrap(wrap);
             false
         } else {
-            self.view.panes[pid].wrap_mode = self.view.panes[pid].saved_wrap_mode;
+            let pane = &mut self.view.panes[pid];
+            let mut wrap = pane.wrap();
+            wrap.mode = wrap.saved;
+            pane.set_wrap(wrap);
             if !self.focused_wrap_mode().is_wrapping() {
-                self.view.panes[pid].wrap_mode = Some(DEFAULT_WRAP_STYLE);
+                let global = self.state.settings.wrap_mode;
+                let fallback = if global.is_wrapping() {
+                    global
+                } else {
+                    DEFAULT_WRAP_STYLE
+                };
+                let pane = &mut self.view.panes[pid];
+                let mut wrap = pane.wrap();
+                wrap.mode = Some(fallback);
+                pane.set_wrap(wrap);
             }
             true
         };

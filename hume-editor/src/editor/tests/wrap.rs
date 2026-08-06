@@ -74,8 +74,8 @@ fn typed_set_pane_wrap_mode_updates_pane_and_saved() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "pane wrap-mode=word").expect(":set pane wrap-mode=word failed");
     let pane = focused_pane(&ed);
-    assert_eq!(pane.wrap_mode, Some(WrapMode::Word { width: 0 }));
-    assert_eq!(pane.saved_wrap_mode, Some(WrapMode::Word { width: 0 }));
+    assert_eq!(pane.wrap().mode, Some(WrapMode::Word { width: 0 }));
+    assert_eq!(pane.wrap().saved, Some(WrapMode::Word { width: 0 }));
 }
 
 #[test]
@@ -84,10 +84,10 @@ fn typed_set_pane_wrap_mode_none_leaves_saved_wrapping() {
     run_set(&mut ed, "pane wrap-mode=word").expect(":set pane wrap-mode=word failed");
     run_set(&mut ed, "pane wrap-mode=none").expect(":set pane wrap-mode=none failed");
     let pane = focused_pane(&ed);
-    assert_eq!(pane.wrap_mode, Some(WrapMode::None));
+    assert_eq!(pane.wrap().mode, Some(WrapMode::None));
     // saved_wrap_mode must never collapse to a non-wrapping value — it's
     // still the restore target for a future `:wrap` toggle-on.
-    assert_eq!(pane.saved_wrap_mode, Some(WrapMode::Word { width: 0 }));
+    assert_eq!(pane.wrap().saved, Some(WrapMode::Word { width: 0 }));
 }
 
 #[test]
@@ -165,7 +165,7 @@ fn wrap_mode_resolves_pane_over_buffer_over_global() {
 fn set_buffer_wrap_mode_reaches_a_pane_with_no_override() {
     let mut ed = editor_from("-[a]>b\n");
     assert_eq!(
-        focused_pane(&ed).wrap_mode,
+        focused_pane(&ed).wrap().mode,
         None,
         "sanity: pane starts unpinned"
     );
@@ -244,11 +244,11 @@ fn wrap_toggle_restores_configured_mode_not_hardcoded_indent() {
     run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
 
     ed.execute_typed("wrap", None).unwrap(); // off
-    assert_eq!(focused_pane(&ed).wrap_mode, Some(WrapMode::None));
+    assert_eq!(focused_pane(&ed).wrap().mode, Some(WrapMode::None));
 
     ed.execute_typed("wrap", None).unwrap(); // on
     assert_eq!(
-        focused_pane(&ed).wrap_mode,
+        focused_pane(&ed).wrap().mode,
         Some(WrapMode::Soft { width: 0 })
     );
 }
@@ -261,7 +261,7 @@ fn wrap_toggle_after_set_pane_word_restores_word() {
     ed.execute_typed("wrap", None).unwrap(); // off
     ed.execute_typed("wrap", None).unwrap(); // on
     assert_eq!(
-        focused_pane(&ed).wrap_mode,
+        focused_pane(&ed).wrap().mode,
         Some(WrapMode::Word { width: 0 })
     );
 }
@@ -269,21 +269,51 @@ fn wrap_toggle_after_set_pane_word_restores_word() {
 /// A pane that was never explicitly configured (no pane pin, and the
 /// buffer/global setting it's inheriting doesn't wrap) falls back to
 /// `Indent` on toggle-on — `:wrap` must always visibly wrap, never silently
-/// no-op just because there was nothing to restore.
+/// no-op just because there was nothing to restore. `Indent` is the
+/// last-resort fallback here specifically because the global itself is
+/// `none` — there is no configured style to reach for instead.
 #[test]
 fn wrap_toggle_on_falls_back_to_indent_for_never_configured_pane() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "global wrap-mode=none").expect("set global failed");
     assert_eq!(
-        focused_pane(&ed).wrap_mode,
+        focused_pane(&ed).wrap().mode,
         None,
         "sanity: pane is unpinned"
     );
 
     ed.execute_typed("wrap", None).unwrap(); // on
     assert_eq!(
-        focused_pane(&ed).wrap_mode,
+        focused_pane(&ed).wrap().mode,
         Some(WrapMode::Indent { width: 0 })
+    );
+}
+
+/// The other half of the fallback: when the global itself is configured to a
+/// wrapping style, toggle-on must reach for *that* — not the hardcoded
+/// `Indent` default — for a pane whose inherited mode doesn't wrap (here, a
+/// buffer override pins `none` while global says `word`).
+#[test]
+fn wrap_toggle_on_falls_back_to_the_configured_global_style_not_indent() {
+    let mut ed = editor_from("-[a]>b\n");
+    run_set(&mut ed, "global wrap-mode=word").expect("set global failed");
+    run_set(&mut ed, "buffer wrap-mode=none").expect("set buffer failed");
+    assert_eq!(
+        focused_pane(&ed).wrap().mode,
+        None,
+        "sanity: pane is unpinned"
+    );
+    assert_eq!(
+        ed.focused_wrap_mode(),
+        WrapMode::None,
+        "sanity: inherited (buffer-overridden) mode doesn't wrap"
+    );
+
+    ed.execute_typed("wrap", None).unwrap(); // on
+    assert_eq!(
+        focused_pane(&ed).wrap().mode,
+        Some(WrapMode::Word { width: 0 }),
+        "falls back to the configured global style, not the hardcoded Indent default"
     );
 }
 
@@ -300,7 +330,7 @@ fn wrap_toggle_off_then_on_restores_inheritance_not_a_pin() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "buffer wrap-mode=word").expect("set buffer failed");
     assert_eq!(
-        focused_pane(&ed).wrap_mode,
+        focused_pane(&ed).wrap().mode,
         None,
         "sanity: unpinned, inheriting the buffer override"
     );
@@ -308,7 +338,7 @@ fn wrap_toggle_off_then_on_restores_inheritance_not_a_pin() {
     ed.execute_typed("wrap", None).unwrap(); // off
     ed.execute_typed("wrap", None).unwrap(); // on
     assert_eq!(
-        focused_pane(&ed).wrap_mode,
+        focused_pane(&ed).wrap().mode,
         None,
         "toggling back on restores inheritance, not a pin to \"word\""
     );
@@ -332,7 +362,7 @@ fn wrap_toggle_off_then_on_restores_an_explicit_pane_pin() {
     ed.execute_typed("wrap", None).unwrap(); // off
     ed.execute_typed("wrap", None).unwrap(); // on
     assert_eq!(
-        focused_pane(&ed).wrap_mode,
+        focused_pane(&ed).wrap().mode,
         Some(WrapMode::Soft { width: 0 }),
         "toggling back on restores the explicit pin, ignoring the buffer's \"word\""
     );
@@ -345,7 +375,10 @@ fn wrap_toggle_on_zeroes_horizontal_offset_only() {
     let mut ed = editor_from("-[a]>b\n");
     {
         let pane = &mut ed.view.panes[ed.state.focused_pane_id];
-        pane.wrap_mode = Some(WrapMode::None);
+        pane.set_wrap(hume_engine::pane::WrapOverride {
+            mode: Some(WrapMode::None),
+            saved: None,
+        });
         pane.viewport.horizontal_offset = 12;
         pane.viewport.top_row_offset = 3;
     }
@@ -356,6 +389,41 @@ fn wrap_toggle_on_zeroes_horizontal_offset_only() {
         pane.viewport.top_row_offset, 3,
         "top_row_offset is a row address valid in either wrap mode — a mode \
          change must not discard it"
+    );
+}
+
+/// `:set pane wrap-mode=…`'s half of the same horizontal-offset rule
+/// (`set_focused_wrap_override`, forked from `toggle_focused_wrap` in the
+/// same commit): zeroes horizontal scroll when the pin actually changes the
+/// pane's *effective* mode.
+#[test]
+fn set_pane_wrap_mode_zeroes_horizontal_offset_on_an_effective_change() {
+    let mut ed = editor_from("-[a]>b\n");
+    run_set(&mut ed, "global wrap-mode=none").expect("set global failed");
+    ed.viewport_mut().horizontal_offset = 12;
+
+    run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
+    assert_eq!(
+        focused_pane(&ed).viewport.horizontal_offset,
+        0,
+        "none → soft is an effective-mode change, so horizontal scroll is zeroed"
+    );
+}
+
+/// The other half: pinning a pane to the mode it already effectively has
+/// (no visible change) must *not* zero horizontal scroll — the offset stays
+/// meaningful because the pane never stopped being unwrapped.
+#[test]
+fn set_pane_wrap_mode_leaves_horizontal_offset_when_effective_mode_is_unchanged() {
+    let mut ed = editor_from("-[a]>b\n");
+    run_set(&mut ed, "global wrap-mode=none").expect("set global failed");
+    ed.viewport_mut().horizontal_offset = 12;
+
+    run_set(&mut ed, "pane wrap-mode=none").expect(":set pane wrap-mode=none failed");
+    assert_eq!(
+        focused_pane(&ed).viewport.horizontal_offset,
+        12,
+        "none → none is not an effective-mode change, so horizontal scroll survives"
     );
 }
 
@@ -375,7 +443,7 @@ fn wrap_toggle_off_leaves_top_row_offset_for_the_next_frame_to_clamp() {
     }
     ed.execute_typed("wrap", None).unwrap(); // off
     let pane = focused_pane(&ed);
-    assert_eq!(pane.wrap_mode, Some(WrapMode::None));
+    assert_eq!(pane.wrap().mode, Some(WrapMode::None));
     assert_eq!(
         pane.viewport.top_row_offset, 3,
         "toggle_focused_wrap itself must not reset a still-unvalidated offset"
@@ -407,7 +475,7 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_row_offset_for_the_next_f
     }
     run_set(&mut ed, "pane wrap-mode=soft:20").expect(":set pane wrap-mode=soft:20 failed");
     let pane = focused_pane(&ed);
-    assert_eq!(pane.wrap_mode, Some(WrapMode::Soft { width: 20 }));
+    assert_eq!(pane.wrap().mode, Some(WrapMode::Soft { width: 20 }));
     assert_eq!(
         pane.viewport.top_row_offset, 3,
         "the raw offset survives the width change untouched"
@@ -464,7 +532,7 @@ fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block()
 
     ed.execute_typed("wrap", None).unwrap(); // off
     let pane = focused_pane(&ed);
-    assert_eq!(pane.wrap_mode, Some(WrapMode::None));
+    assert_eq!(pane.wrap().mode, Some(WrapMode::None));
     assert_eq!(
         pane.viewport.top_row_offset, 1,
         "still-valid address inside the Before block must not be discarded"
@@ -481,11 +549,134 @@ fn split_inherits_source_panes_saved_wrap_mode() {
     ed.execute_typed("split", None).unwrap();
 
     assert_eq!(
-        focused_pane(&ed).wrap_mode,
+        focused_pane(&ed).wrap().mode,
         Some(WrapMode::Word { width: 0 })
     );
     assert_eq!(
-        focused_pane(&ed).saved_wrap_mode,
+        focused_pane(&ed).wrap().saved,
         Some(WrapMode::Word { width: 0 })
+    );
+}
+
+// ── Render path ───────────────────────────────────────────────────────────────
+
+/// The render path's own resolve call (`Editor::resolve_pane_settings`, which
+/// `frame.rs` renders through) must apply the same pane → buffer → global
+/// precedence `effective_wrap_mode` does elsewhere, not a two-rung
+/// pane → global shortcut that skips the buffer rung. Asserting a
+/// `WrapMode::None` result (no width to resolve) catches a dropped buffer
+/// rung directly — unlike assertions that read the resolver's own return
+/// value, which would keep passing even if `frame.rs` stopped calling it.
+#[test]
+fn resolve_pane_settings_honours_the_buffer_rung() {
+    let mut ed = editor_from("-[a]>b\n");
+    // Global default (Indent) wraps; only a buffer override can produce None.
+    run_set(&mut ed, "buffer wrap-mode=none").expect("set buffer failed");
+    let pid = ed.state.focused_pane_id;
+    let (settings, _gutter_w) = ed.resolve_pane_settings(pid);
+    assert_eq!(
+        settings.wrap_mode,
+        WrapMode::None,
+        "the render path must resolve the buffer override, not just pane → global"
+    );
+}
+
+// ── Per-(pane, buffer) memory ────────────────────────────────────────────────
+//
+// A pane's wrap pin (`:wrap`/`:set pane`) lives in `Pane::wraps`, keyed by
+// buffer — the same lifetime `saved_scrolls` already gives scroll position.
+// This is what lets a per-filetype `on-language-set` default reach a pane
+// that toggled wrap off in an earlier, unrelated buffer.
+
+fn open_second_buffer(ed: &mut Editor) -> BufferId {
+    let buf = Text::from("other buffer\n");
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(0));
+    let bid = ed.open_buffer(Buffer::new(buf, sels));
+    ed.switch_to_buffer_with_jump(bid);
+    bid
+}
+
+/// `:wrap` off pins the pane for the buffer it was toggled in. Switching to
+/// another buffer in the same pane must not carry that pin along — the new
+/// buffer resolves through its own buffer/global chain, which is exactly
+/// what lets a per-language `on-language-set` default apply there.
+#[test]
+fn wrap_off_pin_does_not_follow_a_buffer_switch() {
+    let mut ed = editor_from("-[a]>b\n");
+    let bid_first = ed.focused_buffer_id();
+    ed.execute_typed("wrap", None).unwrap(); // off
+    assert_eq!(focused_pane(&ed).wrap().mode, Some(WrapMode::None));
+
+    open_second_buffer(&mut ed);
+    assert_ne!(
+        ed.focused_buffer_id(),
+        bid_first,
+        "sanity: switched buffers"
+    );
+    assert_eq!(
+        focused_pane(&ed).wrap().mode,
+        None,
+        "the new buffer is unpinned — it did not inherit the old buffer's off pin"
+    );
+    assert_eq!(
+        ed.focused_wrap_mode(),
+        WrapMode::Indent { width: 0 },
+        "the new buffer resolves through its own buffer/global chain"
+    );
+}
+
+/// Switching back to the first buffer restores its pin — the pane remembers
+/// it, it doesn't just forget it forever on switch-away.
+#[test]
+fn wrap_off_pin_is_restored_on_switching_back() {
+    let mut ed = editor_from("-[a]>b\n");
+    let bid_first = ed.focused_buffer_id();
+    ed.execute_typed("wrap", None).unwrap(); // off
+    assert_eq!(focused_pane(&ed).wrap().mode, Some(WrapMode::None));
+
+    open_second_buffer(&mut ed);
+    ed.switch_to_buffer_with_jump(bid_first);
+    assert_eq!(
+        focused_pane(&ed).wrap().mode,
+        Some(WrapMode::None),
+        "switching back to the first buffer restores its pin"
+    );
+}
+
+/// `:set pane wrap-mode=…` pins for the buffer it was set on — it does not
+/// leak into a different buffer shown by the same pane.
+#[test]
+fn set_pane_wrap_mode_pin_does_not_leak_to_another_buffer() {
+    let mut ed = editor_from("-[a]>b\n");
+    run_set(&mut ed, "pane wrap-mode=word").expect(":set pane wrap-mode=word failed");
+
+    open_second_buffer(&mut ed);
+    assert_eq!(
+        focused_pane(&ed).wrap().mode,
+        None,
+        "a pin set on one buffer does not apply to a different buffer"
+    );
+}
+
+/// Closing a buffer drops the pane's wrap-mode memory for it — the same
+/// cleanup `forget_buffer` already does for `saved_scrolls`.
+#[test]
+fn closing_a_buffer_drops_its_wrap_override() {
+    let mut ed = editor_from("-[a]>b\n");
+    let bid_first = ed.focused_buffer_id();
+    ed.execute_typed("wrap", None).unwrap(); // off, pins bid_first
+    let bid_second = open_second_buffer(&mut ed);
+
+    ed.close_buffer(bid_first);
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid_second,
+        "sanity: closing bid_first leaves the pane on the other open buffer"
+    );
+
+    let pid = ed.state.focused_pane_id;
+    assert!(
+        !ed.view.panes[pid].wraps.contains_key(bid_first),
+        "the closed buffer's wrap override is dropped, not leaked in the map forever"
     );
 }

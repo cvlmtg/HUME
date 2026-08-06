@@ -50,7 +50,10 @@ fn editor_with_before_line() -> Editor {
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     let pid = ed.state.focused_pane_id;
-    ed.view.panes[pid].wrap_mode = Some(WrapMode::Soft { width: 0 });
+    ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(WrapMode::Soft { width: 0 }),
+        saved: None,
+    });
     ed.view.panes[pid]
         .providers
         .add_virtual_line_source(Box::new(OneBeforeLine));
@@ -192,7 +195,10 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
     for wrap in [WrapMode::None, WrapMode::Soft { width: 0 }] {
         let mut ed = Editor::for_testing(Buffer::new(buf.clone(), sels.clone()));
         let pid = ed.state.focused_pane_id;
-        ed.view.panes[pid].wrap_mode = Some(wrap);
+        ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
+            mode: Some(wrap),
+            saved: None,
+        });
         ed.view.panes[pid]
             .providers
             .add_virtual_line_source(Box::new(MultiAfterLine(1, 3)));
@@ -255,7 +261,10 @@ fn screen_pos_counts_an_inline_hints_extra_wrap_row() {
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     ed.state.settings.scrolloff = 0;
     let pid = ed.state.focused_pane_id;
-    ed.view.panes[pid].wrap_mode = Some(WrapMode::Soft { width: 0 });
+    ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(WrapMode::Soft { width: 0 }),
+        saved: None,
+    });
     let scope = ed.view.registry.intern("ui.virtual_text");
     ed.view.panes[pid]
         .providers

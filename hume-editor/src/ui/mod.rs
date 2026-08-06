@@ -49,8 +49,10 @@ pub(crate) struct PaneRenderHandles {
 
 /// Build a new pane viewing `buffer_id`: sign column, line-number gutter,
 /// bracket-match/search-match/diagnostic/extra-highlight sources, inlay-hint
-/// decoration, virtual-line source, completion/hover/selection-menu/LSP
-/// overlays, and `wrap_mode` seeded from the caller's current settings.
+/// decoration, virtual-line source, and completion/hover/selection-menu/LSP
+/// overlays. Wrap mode is not seeded here — the new pane starts with no
+/// override for any buffer (`Pane::new`'s empty `wraps` map) and resolves it
+/// lazily on every read (`commands::effective_wrap_mode`).
 ///
 /// Returns the pane with its freshly-allocated [`PaneRenderHandles`] — every
 /// pane gets its own buffers (never shared), so each pane's decorations come

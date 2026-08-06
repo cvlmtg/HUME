@@ -160,7 +160,10 @@ fn new_file_split_has_no_override_and_reads_the_global_default() {
     let mut ed = editor_from("-[h]>ello\n");
     let pid_a = ed.state.focused_pane_id;
     let bid_a = ed.focused_buffer_id();
-    ed.view.panes[pid_a].wrap_mode = Some(hume_engine::pane::WrapMode::None);
+    ed.view.panes[pid_a].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::None),
+        saved: None,
+    });
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Soft { width: 40 };
 
     ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
@@ -170,7 +173,8 @@ fn new_file_split_has_no_override_and_reads_the_global_default() {
     assert_ne!(bid_b, bid_a, "sanity: new pane views a different buffer");
 
     assert_eq!(
-        ed.view.panes[pid_b].wrap_mode, None,
+        ed.view.panes[pid_b].wrap().mode,
+        None,
         "new-file split starts unpinned, not seeded with the source pane's mode"
     );
     let doc = ed.state.buffers.get(bid_b);

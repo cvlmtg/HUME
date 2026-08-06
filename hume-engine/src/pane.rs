@@ -84,10 +84,45 @@ pub enum WrapMode {
 
 /// The wrapping style used whenever a "sensible default" wrapping mode is
 /// needed but nothing more specific applies: `EditorSettings::wrap_mode`'s
-/// own default, and the fallback `hume-editor`'s `pane_state::toggle_focused_wrap`
-/// pins to when `:wrap` turns wrapping on but neither a saved pane pin nor
-/// the inherited buffer/global setting would actually wrap.
+/// own default, and the last-resort fallback `hume-editor`'s
+/// `pane_state::toggle_focused_wrap` pins to when `:wrap` turns wrapping on
+/// but neither a saved pane pin nor the configured global style would
+/// actually wrap.
 pub const DEFAULT_WRAP_STYLE: WrapMode = WrapMode::Indent { width: 0 };
+
+/// A pane's wrap-mode override for one buffer — the value type of
+/// `Pane::wraps`.
+///
+/// Kept per (pane, buffer) rather than flat on `Pane` so the pin follows the
+/// pane's *view of that buffer*, not the pane itself: switching to another
+/// buffer resolves through that buffer's own override/global chain (letting
+/// e.g. a per-language `on-language-set` default take effect), and switching
+/// back restores this pane's pin for it, the same lifetime `ScrollPosition`
+/// already has via `saved_scrolls`.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct WrapOverride {
+    /// `None` means no override — the effective mode falls back to the
+    /// buffer's, then the global default (`hume-editor`'s
+    /// `commands::effective_wrap_mode` is the resolver — `hume-engine` has
+    /// no dependency on `hume-editor` and so cannot resolve that chain
+    /// itself). Stored raw (the `width: 0` sentinel unresolved) when `Some`;
+    /// call `WrapMode::resolve(content_width)` on the resolved mode since
+    /// content width depends on live pane geometry.
+    pub mode: Option<WrapMode>,
+    /// The *override* to restore when `:wrap` turns wrapping back on for
+    /// this buffer — provenance, not a resolved value: `None` means the pane
+    /// was inheriting (from the buffer/global setting) when it was last
+    /// turned off, so toggling back on returns it to inheriting; `Some(m)`
+    /// means it was explicitly pinned to `m` (`:set pane wrap-mode=…`), so
+    /// toggling back on restores that exact pin. Never `Some(WrapMode::None)`
+    /// — that would make toggle-on a no-op. Written by both
+    /// `hume-editor`'s `pane_state::toggle_focused_wrap` (the toggle-off
+    /// stash and the "inheriting but the inherited mode doesn't wrap"
+    /// fallback) and `pane_state::set_focused_wrap_override` (synced to the
+    /// pin whenever it wraps); copied across a same-buffer split by
+    /// `inherit_view_state`.
+    pub saved: Option<WrapMode>,
+}
 
 impl FromStr for WrapMode {
     type Err = String;
@@ -308,32 +343,18 @@ pub struct Pane {
     pub primary_idx: usize,
     /// Registered providers for this pane.
     pub providers: ProviderSet,
-    /// This pane's wrap-mode *override* — a view property, not a document
-    /// one: two panes on the same buffer may wrap differently. `None` means
-    /// no override; the effective mode falls back to the buffer's, then the
-    /// global default (`hume-editor`'s `commands::effective_wrap_mode` is
-    /// the resolver — `hume-engine` has no dependency on `hume-editor` and
-    /// so cannot resolve that chain itself). Stored raw (the `width: 0`
-    /// sentinel unresolved) when `Some`; call `WrapMode::resolve(content_width)`
-    /// on the resolved mode since content width depends on live pane geometry.
-    pub wrap_mode: Option<WrapMode>,
-    /// The *override* to restore when `:wrap` turns wrapping back on —
-    /// provenance, not a resolved value: `None` means the pane was inheriting
-    /// (from the buffer/global setting) when it was last turned off, so
-    /// toggling back on returns it to inheriting; `Some(m)` means it was
-    /// explicitly pinned to `m` (`:set pane wrap-mode=…`), so toggling back
-    /// on restores that exact pin. Never `Some(WrapMode::None)` — that would
-    /// make toggle-on a no-op. `hume-editor`'s `pane_state::toggle_focused_wrap`
-    /// is the sole writer and the only place this invariant is maintained,
-    /// including its "inheriting but the inherited mode doesn't wrap" fallback.
-    pub saved_wrap_mode: Option<WrapMode>,
+    /// This pane's wrap-mode override, per buffer it has shown — a view
+    /// property, not a document one: two panes on the same buffer may wrap
+    /// differently, and this pane may pin a different style per buffer. See
+    /// [`WrapOverride`]. Read/written through [`Pane::wrap`]/[`Pane::set_wrap`]
+    /// rather than directly, mirroring `saved_scrolls`/`remember_scroll`.
+    pub wraps: SecondaryMap<BufferId, WrapOverride>,
 }
 
 impl Pane {
-    /// Create a new pane viewing `buffer_id`, with no wrap-mode override —
-    /// it inherits the buffer's/global's effective mode until `:wrap` or
-    /// `:set pane wrap-mode=…` pins one. `saved_wrap_mode` starts `None`
-    /// (nothing to restore: this pane has never been toggled off).
+    /// Create a new pane viewing `buffer_id`, with no wrap-mode override for
+    /// any buffer — it inherits each buffer's/the global's effective mode
+    /// until `:wrap` or `:set pane wrap-mode=…` pins one for that buffer.
     ///
     /// Callers that need custom providers should use `Pane { providers, ..Pane::new(bid) }`.
     pub fn new(buffer_id: BufferId) -> Self {
@@ -344,8 +365,7 @@ impl Pane {
             selections: vec![Selection { anchor: 0, head: 0 }],
             primary_idx: 0,
             providers: ProviderSet::new(),
-            wrap_mode: None,
-            saved_wrap_mode: None,
+            wraps: SecondaryMap::new(),
         }
     }
 
@@ -362,13 +382,23 @@ impl Pane {
             selections: _,  // engine render copy, repopulated every frame
             primary_idx: _, // ditto
             providers: _,   // allocated per pane in build_pane
-            wrap_mode,
-            saved_wrap_mode,
+            wraps,
         } = src;
         self.viewport = viewport.clone();
         self.saved_scrolls = saved_scrolls.clone();
-        self.wrap_mode = *wrap_mode;
-        self.saved_wrap_mode = *saved_wrap_mode;
+        self.wraps = wraps.clone();
+    }
+
+    /// This pane's wrap-mode override for the buffer it currently views —
+    /// `WrapOverride::default()` (no override, nothing to restore) if this
+    /// pane has never pinned or toggled wrap for that buffer.
+    pub fn wrap(&self) -> WrapOverride {
+        self.wraps.get(self.buffer_id).copied().unwrap_or_default()
+    }
+
+    /// Write this pane's wrap-mode override for the buffer it currently views.
+    pub fn set_wrap(&mut self, wrap: WrapOverride) {
+        self.wraps.insert(self.buffer_id, wrap);
     }
 
     /// Width available for text after subtracting the gutter, clamped to at least 1.
@@ -409,9 +439,11 @@ impl Pane {
         self.viewport.horizontal_offset = sp.horizontal_offset;
     }
 
-    /// Drop the saved scroll entry for `id` (called when the buffer is closed).
+    /// Drop the saved scroll and wrap-mode override entries for `id` (called
+    /// when the buffer is closed).
     pub fn forget_buffer(&mut self, id: BufferId) {
         self.saved_scrolls.remove(id);
+        self.wraps.remove(id);
     }
 
     /// Line index of the primary selection head, resolved via the rope.

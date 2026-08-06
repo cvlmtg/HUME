@@ -1057,7 +1057,10 @@ fn quit_in_grid_promotes_correct_sibling() {
 fn same_buffer_split_inherits_source_panes_wrap_override() {
     let mut ed = editor_from("-[h]>ello\n");
     let pid_a = ed.state.focused_pane_id;
-    ed.view.panes[pid_a].wrap_mode = Some(hume_engine::pane::WrapMode::Soft { width: 40 });
+    ed.view.panes[pid_a].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::Soft { width: 40 }),
+        saved: None,
+    });
     // Global default deliberately differs, to prove it is NOT the source.
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::None;
 
@@ -1065,7 +1068,7 @@ fn same_buffer_split_inherits_source_panes_wrap_override() {
     let pid_b = ed.state.focused_pane_id;
 
     assert_eq!(
-        ed.view.panes[pid_b].wrap_mode,
+        ed.view.panes[pid_b].wrap().mode,
         Some(hume_engine::pane::WrapMode::Soft { width: 40 }),
         "same-buffer split inherits the source pane's live override"
     );
@@ -1081,13 +1084,14 @@ fn same_buffer_split_inherits_source_panes_wrap_override() {
 fn same_buffer_split_of_an_unpinned_pane_stays_unpinned() {
     let mut ed = editor_from("-[h]>ello\n");
     let pid_a = ed.state.focused_pane_id;
-    assert_eq!(ed.view.panes[pid_a].wrap_mode, None, "sanity: unpinned");
+    assert_eq!(ed.view.panes[pid_a].wrap().mode, None, "sanity: unpinned");
 
     ed.execute_typed("split", None).unwrap();
     let pid_b = ed.state.focused_pane_id;
 
     assert_eq!(
-        ed.view.panes[pid_b].wrap_mode, None,
+        ed.view.panes[pid_b].wrap().mode,
+        None,
         "split of an unpinned pane is itself unpinned, not frozen at the \
          resolved mode"
     );

@@ -214,18 +214,20 @@ fn format_overrides(doc: &Buffer, settings: &EditorSettings) -> (u8, WhitespaceC
     )
 }
 
-/// `pane`'s effective wrap mode: pane override → buffer override → global
-/// default. `Pane::wrap_mode` is `Some` only once `:wrap` or `:set pane
-/// wrap-mode=…` has pinned this pane; until then it inherits whatever the
-/// buffer (or, failing that, the global) resolves to — the single place this
-/// three-way precedence is applied, mirrored by [`format_overrides`] for
+/// `pane`'s effective wrap mode for the buffer it currently views: pane
+/// override → buffer override → global default. `Pane::wrap().mode` is
+/// `Some` only once `:wrap` or `:set pane wrap-mode=…` has pinned this pane
+/// for this buffer; until then it inherits whatever the buffer (or, failing
+/// that, the global) resolves to — the single place this three-way
+/// precedence is applied, mirrored by [`format_overrides`] for
 /// `tab_width`/`whitespace`, which only ever have two levels.
 pub(super) fn effective_wrap_mode(
     doc: &Buffer,
     settings: &EditorSettings,
     pane: &Pane,
 ) -> hume_engine::pane::WrapMode {
-    pane.wrap_mode
+    pane.wrap()
+        .mode
         .unwrap_or_else(|| doc.overrides.wrap_mode(settings))
 }
 

@@ -237,8 +237,9 @@ fn pane_new_has_no_wrap_override_and_nothing_to_restore() {
     // and has never been toggled off, so there is no `:wrap` restore target
     // yet — see `hume-editor`'s `pane_state::toggle_focused_wrap`.
     let pane = Pane::new(BufferId::default());
-    assert_eq!(pane.wrap_mode, None);
-    assert_eq!(pane.saved_wrap_mode, None);
+    let wrap = pane.wrap();
+    assert_eq!(wrap.mode, None);
+    assert_eq!(wrap.saved, None);
 }
 
 // ── remember_scroll / recall_scroll ─────────────────────────────────────

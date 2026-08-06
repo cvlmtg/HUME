@@ -668,7 +668,10 @@ fn completion_popup_anchor_matches_an_independent_screen_pos_walk_when_wrapped()
     // Explicit non-zero width, independent of the terminal size passed to
     // `prepare_frame` below, so the cursor lands several wrap rows into the
     // line regardless of pane width.
-    ed.view.panes[pid].wrap_mode = Some(WrapMode::Soft { width: 6 });
+    ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(WrapMode::Soft { width: 6 }),
+        saved: None,
+    });
 
     ed.feed_key(key('i'));
     for ch in "abcdefghijklmnopqrstuvwxyz0123456789".chars() {

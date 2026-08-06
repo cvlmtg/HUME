@@ -29,7 +29,10 @@ Each pane owns:
   pin its own wrap style instead, taking precedence over that: two panes on
   the same buffer wrap the same way by default, but once one overrides it,
   they can wrap independently — one pane can show a file wrapped while
-  another, split from it, shows the same file unwrapped.
+  another, split from it, shows the same file unwrapped. Like scroll
+  position, a pane remembers its override separately for every buffer it has
+  shown — pinning one buffer's wrap style doesn't affect how the pane looks
+  at a different buffer, and switching back to the pinned buffer restores it.
 
 None of this is buffer state, wrap-mode's own default included — a buffer
 holds text, undo history, and its own settings (like its default wrap

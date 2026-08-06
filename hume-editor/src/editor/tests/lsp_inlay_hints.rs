@@ -101,7 +101,10 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
         hume_editing::selection::Selection::collapsed(4), // 'b', line 2
     ));
     let pid = ed.state.focused_pane_id;
-    ed.view.panes[pid].wrap_mode = Some(hume_engine::pane::WrapMode::Soft { width: 3 });
+    ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::Soft { width: 3 }),
+        saved: None,
+    });
     ed.state.config.decorations.set_inlay_hints(
         bid,
         vec![InlayHintEntry {

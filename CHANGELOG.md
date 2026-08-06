@@ -27,7 +27,7 @@
 - Fixed a bug where `d`/`c`/`p` on a read-only buffer could still overwrite the kill ring or a named register before refusing the edit.
 - The external-change reload prompt now also appears when a changed buffer becomes focused via `:q`, `:bd`, a pane close, pane-focus cycling, a click into another pane, a fuzzy-picker accept, or any other non-interactive buffer switch (e.g. LSP goto-definition). Answering `[k]eep` now silences that prompt until the file changes again, instead of reopening it on the next focus change; `:checktime` still warns about it, so a declined change is never silent forever.
 - New `on-buffer-enter` and `on-focus-gained` hooks: the former fires whenever the focused buffer changes, the latter when the terminal regains focus.
-- `wrap-mode` is now a buffer option: set it per file type from an `on-language-set` hook, or globally. `:set global wrap-mode=…` now applies to buffers that are already open, not just ones opened afterward; `:set pane wrap-mode=…` still pins a single pane above both.
+- `wrap-mode` is now a buffer option: set it per file type from an `on-language-set` hook, or globally. `:set global wrap-mode=…` now applies to buffers that are already open, not just ones opened afterward; `:set pane wrap-mode=…` and `:wrap` still pin a single pane above both, but now remember that pin separately for each buffer the pane shows — switching to another buffer resolves that buffer's own setting instead of carrying the pin along, and switching back restores it. `:wrap` turning wrapping back on, with nothing to restore, now falls back to the configured global style instead of always hardcoding `indent`.
 
 ## [0.10.0] - 2026-07-24
 

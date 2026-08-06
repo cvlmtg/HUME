@@ -19,7 +19,10 @@ fn page_test_editor() -> Editor {
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     // Pin the pane so it doesn't inherit whatever the default buffer/global
     // wrap-mode happens to be — these tests need no-wrap regardless.
-    ed.view.panes[ed.state.focused_pane_id].wrap_mode = Some(hume_engine::pane::WrapMode::None);
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::None),
+        saved: None,
+    });
     ed
 }
 

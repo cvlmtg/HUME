@@ -33,8 +33,10 @@ fn visual_test_editor(head: usize) -> Editor {
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     // Pin to 76-column indent-wrap so the char-offset expectations in the tests
     // are stable regardless of terminal size.
-    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
-        Some(hume_engine::pane::WrapMode::Indent { width: 76 });
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
+        saved: None,
+    });
     ed
 }
 
@@ -177,7 +179,10 @@ fn visual_preferred_col_reset_on_horizontal_motion() {
 fn visual_move_no_wrap_content_row_is_a_buffer_line() {
     let mut ed = visual_test_editor(0);
     // Pin off, overriding `visual_test_editor`'s indent-wrap pin.
-    ed.view.panes[ed.state.focused_pane_id].wrap_mode = Some(hume_engine::pane::WrapMode::None);
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::None),
+        saved: None,
+    });
 
     ed.handle_key(key('j'));
     assert_eq!(
@@ -263,7 +268,10 @@ fn no_wrap_bare_j_and_screen_row_scroll_agree_on_display_column() {
         let buf = Text::from(content);
         let sels = SelectionSet::single(Selection::collapsed(1)); // 'f', display col 4
         let mut ed = Editor::for_testing(Buffer::new(buf, sels));
-        ed.view.panes[ed.state.focused_pane_id].wrap_mode = Some(hume_engine::pane::WrapMode::None);
+        ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+            mode: Some(hume_engine::pane::WrapMode::None),
+            saved: None,
+        });
         ed
     };
 
@@ -352,8 +360,10 @@ fn visual_move_per_selection_sticky_col() {
         1, // primary is B
     );
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
-    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
-        Some(hume_engine::pane::WrapMode::Indent { width: 76 });
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
+        saved: None,
+    });
 
     // j: each cursor should use its own column, not the primary's.
     ed.handle_key(key('j'));
@@ -454,8 +464,10 @@ fn word_wrap_editor() -> Editor {
     let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
-    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
-        Some(hume_engine::pane::WrapMode::Indent { width: 76 });
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
+        saved: None,
+    });
     ed
 }
 
@@ -575,8 +587,10 @@ fn select_word_nearest_does_not_absorb_previous_row_whitespace() {
     let buf = Text::from("hello wordB\n");
     let sels = SelectionSet::single(Selection::collapsed(8)); // 'r' inside "wordB"
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
-    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
-        Some(hume_engine::pane::WrapMode::Indent { width: 6 });
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::Indent { width: 6 }),
+        saved: None,
+    });
 
     ed.execute_keymap_command(
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
@@ -616,8 +630,10 @@ fn select_word_absorbs_previous_row_whitespace_unlike_nearest_on_line() {
     let buf = Text::from("hello wordB\n");
     let sels = SelectionSet::single(Selection::collapsed(8)); // 'r' inside "wordB"
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
-    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
-        Some(hume_engine::pane::WrapMode::Indent { width: 6 });
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::Indent { width: 6 }),
+        saved: None,
+    });
 
     ed.execute_keymap_command(
         std::borrow::Cow::Borrowed("select-word"),
@@ -801,8 +817,10 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
     let buf = Text::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
-    ed.view.panes[ed.state.focused_pane_id].wrap_mode =
-        Some(hume_engine::pane::WrapMode::Indent { width: 76 });
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
+        saved: None,
+    });
 
     let mut host = ScriptingHost::new();
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
