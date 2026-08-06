@@ -14,7 +14,13 @@ const outDir = process.env.DOCS_OUT ?? '.vitepress/dist'
 const base = process.env.DOCS_BASE ?? '/HUME/'
 const releaseTag = process.env.DOCS_RELEASE_TAG ?? 'latest release'
 
-const root = fileURLToPath(new URL('.', import.meta.url))
+// The channel you're currently on links internally (base-relative, correct
+// in dev and in either deployed build); the other channel has no local
+// build to point at, so it always links to the deployed site.
+const releaseLink = channel === 'release' ? '/' : 'https://cvlmtg.github.io/HUME/'
+const nightlyLink = channel === 'nightly' ? '/' : 'https://cvlmtg.github.io/HUME/nightly/'
+
+const root = fileURLToPath(new URL('..', import.meta.url))
 
 // The release build pairs main's sidebar (this file) with an older tag's
 // docs/, so a page added since the tag would otherwise dangle. Prune it.
@@ -59,8 +65,8 @@ export default defineConfig({
       {
         text: channel === 'release' ? releaseTag : 'nightly',
         items: [
-          { text: releaseTag, link: 'https://cvlmtg.github.io/HUME/', target: '_self', noIcon: true },
-          { text: 'nightly', link: 'https://cvlmtg.github.io/HUME/nightly/', target: '_self', noIcon: true },
+          { text: releaseTag, link: releaseLink, target: '_self', noIcon: true },
+          { text: 'nightly', link: nightlyLink, target: '_self', noIcon: true },
         ],
       },
     ],

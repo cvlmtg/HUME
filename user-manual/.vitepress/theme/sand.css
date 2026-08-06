@@ -179,8 +179,26 @@
   white-space: nowrap;
 }
 
-/* Nightly-channel banner (theme/Layout.vue), pinned above the nav bar. */
+/* Nightly-channel banner (theme/Layout.vue). VitePress positions the nav bar,
+   sidebar and content with `--vp-layout-top-height` (default 0px) as the
+   reserved space at the top of the viewport — the banner must be `fixed`
+   above that reserved band (using the theme's own unused
+   `--vp-z-index-layout-top`), not laid out in flow, or it paints underneath
+   the nav bar's `position: fixed` stacking context regardless of DOM order. */
+:root { --hume-banner-height: 40px; }
+@media (max-width: 640px) { :root { --hume-banner-height: 60px; } }
+:root:has(.nightly-banner) { --vp-layout-top-height: var(--hume-banner-height); }
+
 .nightly-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--vp-z-index-layout-top);
+  height: var(--hume-banner-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: var(--vp-custom-block-info-bg);
   color: var(--vp-custom-block-info-text);
   border-bottom: 1px solid var(--vp-custom-block-info-border);
