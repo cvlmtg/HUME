@@ -604,9 +604,10 @@ impl Editor {
     /// (`runtime_scope`) is costlier to redo unconditionally every frame.
     /// Called from `prepare_frame`'s step 5, *before* scrolling, no
     /// viewport dependency to make stale.
-    /// Every entry becomes an `After(line)` virtual line — no `Before`
-    /// anchoring in v1 (inline diagnostics render below
-    /// the line they annotate).
+    ///
+    /// Each entry becomes `Before(line)` or `After(line)` per its `before`
+    /// flag, and its `segments` are gap-filled with its base scope so the
+    /// engine always sees full byte coverage — see `gap_fill_segments`.
     pub(super) fn update_virtual_line_providers(&mut self) {
         use hume_engine::providers::{VirtualLine, VirtualLineAnchor};
 
@@ -636,35 +637,70 @@ impl Editor {
             // Collected into an owned Vec first: `self.runtime_scope` needs
             // `&mut self`, which can't overlap with the immutable borrow
             // `virtual_lines_for_buffer` holds on `self.state.config.decorations`.
-            let entries: Vec<(usize, String, Option<String>)> = self
+            let entries: Vec<crate::editor::decorations::VirtualLineEntry> = self
                 .state
                 .config
                 .decorations
                 .virtual_lines_for_buffer(bid)
-                .map(|e| (e.line, e.text.clone(), e.scope.clone()))
+                .cloned()
                 .collect();
 
             let mut by_line: rustc_hash::FxHashMap<usize, Vec<VirtualLine>> =
                 rustc_hash::FxHashMap::default();
-            for (line, text, scope_name) in entries {
-                let scope = match scope_name {
-                    Some(name) => self.runtime_scope(&name),
+            for entry in entries {
+                let base = match &entry.scope {
+                    Some(name) => self.runtime_scope(name),
                     None => fallback_scope,
                 };
-                let text_len = text.len();
-                by_line.entry(line).or_default().push(VirtualLine {
-                    anchor: VirtualLineAnchor::After(line),
+                let segments = self.gap_fill_segments(&entry.segments, entry.text.len(), base);
+                let anchor = if entry.before {
+                    VirtualLineAnchor::Before(entry.line)
+                } else {
+                    VirtualLineAnchor::After(entry.line)
+                };
+                by_line.entry(entry.line).or_default().push(VirtualLine {
+                    anchor,
                     // Overwritten by the engine at collection time with the
                     // registration-assigned id (see `ProviderSet::add_virtual_line_source`).
                     provider_id: 0,
-                    text,
-                    segments: vec![(0, text_len, scope)],
+                    text: entry.text,
+                    segments,
                 });
             }
 
             *map.write_or_panic() = by_line;
             self.virtual_lines_synced.insert(pid, current_gen);
         }
+    }
+
+    /// Fills the gaps `segments` (already sorted, non-overlapping, in-bounds —
+    /// guaranteed by the Steel boundary) leaves in `0..text_len` with `base`,
+    /// so the engine always receives full byte coverage instead of falling
+    /// back to `ui.virtual_text` per uncovered byte. No segments → exactly
+    /// one segment spanning the whole text, matching the pre-segments
+    /// behavior byte-for-byte. `>`/`max` (not `!=`) keep this total even if a
+    /// hand-built store entry ever violated the invariant — the engine
+    /// re-sorts at intake regardless (`RowMap::block`).
+    fn gap_fill_segments(
+        &mut self,
+        segments: &[(usize, usize, String)],
+        text_len: usize,
+        base: hume_engine::types::ScopeId,
+    ) -> Vec<(usize, usize, hume_engine::types::ScopeId)> {
+        let mut out = Vec::with_capacity(segments.len() * 2 + 1);
+        let mut cursor = 0usize;
+        for (start, end, name) in segments {
+            let scope = self.runtime_scope(name);
+            if *start > cursor {
+                out.push((cursor, *start, base));
+            }
+            out.push((*start, *end, scope));
+            cursor = cursor.max(*end);
+        }
+        if cursor < text_len {
+            out.push((cursor, text_len, base));
+        }
+        out
     }
 }
 

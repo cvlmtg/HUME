@@ -844,17 +844,17 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         &mut self,
         source: String,
         bid: BufferId,
-        lines: Vec<(usize, String, Option<String>)>,
+        lines: Vec<hume_scripting::VirtualLineSpec>,
     ) {
         let entries = lines
             .into_iter()
-            .map(
-                |(line, text, scope)| crate::editor::decorations::VirtualLineEntry {
-                    line,
-                    text,
-                    scope,
-                },
-            )
+            .map(|spec| crate::editor::decorations::VirtualLineEntry {
+                line: spec.line,
+                text: spec.text,
+                before: spec.before,
+                scope: spec.scope,
+                segments: spec.segments,
+            })
             .collect();
         self.state
             .config

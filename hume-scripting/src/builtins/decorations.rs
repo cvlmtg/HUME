@@ -2,13 +2,17 @@
 //! and the diagnostics pull API. Not LSP-specific — any Steel plugin can
 //! populate these — but LSP is the first and heaviest client.
 
+use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 use crate::json::{json_to_steel, steel_to_json};
+use crate::types::VirtualLineSpec;
 
 use super::SteelResult;
-use super::args::{BidArg, cons_pair, int_arg, pair_fields, string_arg, tuple_list, usize_arg};
+use super::args::{
+    BidArg, cons_pair, int_arg, list_items, pair_fields, string_arg, tuple_list, usize_arg,
+};
 use super::errors::{generic_err, require_cap};
 
 /// `(set-inlay-hints! bid hints)` — `hints`: list of `(position text
@@ -77,8 +81,12 @@ pub(crate) fn set_signs(
     Ok(SteelVal::Void)
 }
 
-/// `(set-virtual-lines! source bid lines)` — `lines`: list of `(line text)`
-/// or `(line text scope)`.
+/// `(set-virtual-lines! source bid lines)` — `lines`: list of hashmaps, each
+/// with required `'line`/`'text`, plus optional `'anchor` (`'before` or
+/// `'after`, default `'after`), `'scope` (whole-line base style — `ui.virtual`
+/// fallback when absent), and `'segments` (list of `(start end scope)` byte
+/// ranges into `text`, styling only the covered bytes; bytes outside every
+/// segment keep `'scope`'s style).
 pub(crate) fn set_virtual_lines(
     ctx: &mut SteelCtx,
     source: SteelVal,
@@ -87,24 +95,122 @@ pub(crate) fn set_virtual_lines(
 ) -> SteelResult {
     let source = string_arg(source, "set-virtual-lines! source")?;
     let id = bid.0;
-    let parsed = tuple_list(
-        lines,
-        "set-virtual-lines! lines",
-        2..=3,
-        "(line text) or (line text scope)",
-        |fields| {
-            let line = usize_arg(fields[0].clone(), "set-virtual-lines! line")?;
-            let text = string_arg(fields[1].clone(), "set-virtual-lines! text")?;
-            let scope = fields
-                .get(2)
-                .map(|v| string_arg(v.clone(), "set-virtual-lines! scope"))
-                .transpose()?;
-            Ok((line, text, scope))
-        },
-    )?;
+    let parsed = virtual_line_specs(lines, "set-virtual-lines!")?;
     require_cap(ctx.host.decorations(), "set-virtual-lines!")?
         .set_virtual_lines(source, id, parsed);
     Ok(SteelVal::Void)
+}
+
+const VIRTUAL_LINE_KEYS: &[&str] = &["line", "text", "anchor", "scope", "segments"];
+
+/// Decodes `lines` into `VirtualLineSpec`s. Each entry is a hashmap, not the
+/// old positional `(line text scope)` list this replaces — free to break: no
+/// `.scm` plugin calls this builtin yet, only Rust tests. Guarantees the
+/// contract `VirtualLineSpec`'s doc promises (segments sorted, non-overlapping,
+/// non-empty, in-bounds, char-boundary-aligned), so nothing downstream
+/// re-validates.
+fn virtual_line_specs(lines: SteelVal, name: &str) -> Result<Vec<VirtualLineSpec>, SteelErr> {
+    list_items(lines, &format!("{name} lines"))?
+        .into_iter()
+        .map(|entry| virtual_line_spec(entry, name))
+        .collect()
+}
+
+fn virtual_line_spec(entry: SteelVal, name: &str) -> Result<VirtualLineSpec, SteelErr> {
+    let SteelVal::HashMapV(map) = &entry else {
+        steel::stop!(TypeMismatch =>
+            "{}: each entry must be a hashmap with 'line and 'text keys \
+             (plus optional 'anchor/'scope/'segments)", name);
+    };
+    for (key, _) in map.iter() {
+        let SteelVal::SymbolV(key_name) = key else {
+            steel::stop!(Generic => "{}: hashmap key must be a symbol, got {:?}", name, key);
+        };
+        if !VIRTUAL_LINE_KEYS.contains(&key_name.as_str()) {
+            steel::stop!(Generic =>
+                "{}: unknown key '{}, expected one of {:?}", name, key_name, VIRTUAL_LINE_KEYS);
+        }
+    }
+    let field = |k: &str| map.get(&SteelVal::SymbolV(k.into())).cloned();
+
+    let line = field("line").ok_or_else(|| generic_err(format!("{name}: missing 'line")))?;
+    let line = usize_arg(line, &format!("{name} line"))?;
+
+    let text = field("text").ok_or_else(|| generic_err(format!("{name}: missing 'text")))?;
+    let text = string_arg(text, &format!("{name} text"))?;
+
+    let before = match field("anchor") {
+        None => false,
+        Some(SteelVal::SymbolV(s)) if s.as_str() == "before" => true,
+        Some(SteelVal::SymbolV(s)) if s.as_str() == "after" => false,
+        Some(_) => steel::stop!(Generic => "{}: 'anchor must be 'before or 'after", name),
+    };
+
+    let scope = field("scope")
+        .map(|v| string_arg(v, &format!("{name} scope")))
+        .transpose()?;
+
+    let segments = match field("segments") {
+        None => Vec::new(),
+        Some(v) => virtual_line_segments(v, &text, name)?,
+    };
+
+    Ok(VirtualLineSpec {
+        line,
+        text,
+        before,
+        scope,
+        segments,
+    })
+}
+
+/// Decodes and validates `'segments`: each a `(start end scope)` byte range
+/// into `text`. Sorts by `start`, then checks in one pass — in-bounds,
+/// char-boundary-aligned, non-empty, non-overlapping — the exact invariant
+/// `VirtualLineSpec::segments` documents.
+fn virtual_line_segments(
+    segments: SteelVal,
+    text: &str,
+    name: &str,
+) -> Result<Vec<(usize, usize, String)>, SteelErr> {
+    let mut segments = tuple_list(
+        segments,
+        &format!("{name} segments"),
+        3..=3,
+        "(start end scope)",
+        |fields| {
+            let start = usize_arg(fields[0].clone(), &format!("{name} segment start"))?;
+            let end = usize_arg(fields[1].clone(), &format!("{name} segment end"))?;
+            let scope = string_arg(fields[2].clone(), &format!("{name} segment scope"))?;
+            Ok((start, end, scope))
+        },
+    )?;
+    segments.sort_by_key(|(start, _, _)| *start);
+
+    let mut prev_end = 0usize;
+    for (start, end, _) in &segments {
+        if start >= end {
+            steel::stop!(Generic =>
+                "{} segments: segment ({}, {}) must have start < end", name, start, end);
+        }
+        if *end > text.len() {
+            steel::stop!(Generic =>
+                "{} segments: segment end {} is past text's byte length {}", name, end, text.len());
+        }
+        if !text.is_char_boundary(*start) || !text.is_char_boundary(*end) {
+            steel::stop!(Generic =>
+                "{} segments: segment ({}, {}) is not aligned to a char boundary in text",
+                name, start, end);
+        }
+        if *start < prev_end {
+            steel::stop!(Generic =>
+                "{} segments: segments must not overlap (segment starting at {} \
+                 overlaps the previous one ending at {})", name, start, prev_end);
+        }
+        prev_end = *end;
+    }
+
+    Ok(segments)
 }
 
 /// `(set-inline-diagnostics! bid lines)` — `lines`: list of `(line text

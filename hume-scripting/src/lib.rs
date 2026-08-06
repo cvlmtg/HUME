@@ -64,6 +64,7 @@ pub use log::LogLevel;
 pub use types::{
     Effect, EvalError, LspServerStatusEntry, PendingLanguageReg, PendingLspNotify,
     PendingLspRequest, PendingLspServerOp, PendingLspServerReg, SteelCmdDef, SteelCmdResult,
+    VirtualLineSpec,
 };
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than

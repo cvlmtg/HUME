@@ -13,7 +13,7 @@
 | 4.2 — buffer-text reads | ⬜ |
 | 4.3 — async git | ✅ subsumed by Phase 1 |
 | 4.4 — line-bg decoration kind | ⬜ |
-| 4.5 — `set-virtual-lines!` `Before` anchor + per-segment scopes | ⬜ **new — needed by 5b, see "Two contradictions" below** |
+| 4.5 — `set-virtual-lines!` `Before` anchor + per-segment scopes | ✅ shipped |
 | 5a — the plugin: state/fetch/debounce/init + gutter signs | ⬜ not to be built yet |
 | 5b — virtual deleted lines (+ word-del highlights inside them) | ⬜ not to be built yet |
 | 5c — full-row background tint | ⬜ not to be built yet |
@@ -141,7 +141,7 @@ the merge it would be avoiding.
 | `autocmd BufWritePost` | ✅ `on-buffer-save` (`hume-editor/src/editor/event.rs`) | reuse |
 | `vim.uv` timer (debounce) | ✅ `(after ms thunk)` / `(cancel-timer! id)` / `debounce`, timer wheel in `editor/timers.rs` | reuse — nothing to build |
 | `vim.system` (async git) | ✅ shipped — `(spawn-async! cmd args cwd callback)` / `(cancel-async! id)`, one-shot capture, exactly-once callback, never inline (`hume-scripting/src/builtins/process.rs`) | reuse — nothing to build |
-| `nvim_buf_set_extmark` (virt_lines_above / inline hl / hl_eol) | ⚠️ **partial.** Engine-side `VirtualLineAnchor::Before/After` and per-segment `ScopeId` styling both exist (`hume-engine/src/providers.rs:202-228`), but the Steel bridge (`Editor::update_virtual_line_providers`, `hume-editor/src/editor/lifecycle.rs:1613-1671`) hardcodes `VirtualLineAnchor::After` and a single whole-line segment — **`Before` and per-segment scopes are unreachable from Steel today.** `set-extra-highlights!`/`set-signs!` are unaffected. | extend `set-virtual-lines!` (or add a variant) to accept an anchor + segment list (Phase 4.5); plus a **line-background** (full-row tint) decoration kind (Phase 3.2 + 4.4) |
+| `nvim_buf_set_extmark` (virt_lines_above / inline hl / hl_eol) | ✅ **shipped (Phase 4.5).** `set-virtual-lines!` now accepts `'anchor`/`'segments` reaching the engine's `VirtualLineAnchor::Before/After` and per-segment `ScopeId` styling (`hume-engine/src/providers.rs:208-251`) via the Steel bridge (`Editor::update_virtual_line_providers`, `hume-editor/src/editor/decoration_providers.rs`). `set-extra-highlights!`/`set-signs!` unaffected. | still needed: a **line-background** (full-row tint) decoration kind (Phase 3.2 + 4.4) |
 | highlight groups | ⚠️ `diff.*` scopes now exist in **all four** bundled themes, but **`fg`-only** — no `bg` for the line/word tint | add `bg` (and `.word` variants) to all four themes |
 
 ## Goals
@@ -362,17 +362,18 @@ Styled virtual lines and a generic plugin highlight tier already exist at the en
 Only the full-row background is an actual engine-side gap (the Steel bridge for virtual
 lines has its own gap — see Phase 4.5).
 
-1. **Styled virtual lines — already done, engine-side.** `VirtualLine.segments: Vec<(Range<usize>,
-   ScopeId)>` (`hume-engine/src/providers.rs:228`) and `Grapheme.scope: Option<ScopeId>`
+1. **Styled virtual lines — done, engine-side and Steel-side.** `VirtualLine.segments:
+   Vec<(usize, usize, ScopeId)>` (`hume-engine/src/providers.rs:250`, byte offsets into
+   `VirtualLine.text`) and `Grapheme.scope: Option<ScopeId>`
    (`hume-engine/src/types.rs:160`) already exist; `rows::RowMap` segments the row and
    `hume-engine/src/pipeline/pane_render.rs` resolves each grapheme's scope via
    `theme.resolve(id)`. Red, struck deleted lines + word-del highlighting inside
    them are representable at this layer with the current API — no engine change needed here.
-   (Steel cannot reach this yet — Phase 4.5.)
+   Reachable from Steel since Phase 4.5 shipped (`set-virtual-lines!`'s `'segments`).
 
 2. **Provider-driven full-row background.** A real gap, still the one piece of Phase 3 to
    build. Full-width tint has exactly **one** hardcoded producer:
-   `hume-engine/src/pipeline/pane_render.rs:326-330` sets `row_bg = is_head_line ?
+   `hume-engine/src/pipeline/pane_render.rs:148-151` sets `row_bg = is_head_line ?
    theme.ui.cursorline.bg : None`, consumed in `render.rs` at `:122, 174, 231, 276, 294`
    plus the fill helpers at `:96-97` (method) and `:559` (free fn). Generalize the `row_bg`
    decision so a provider can request an edge-to-edge background for a line
@@ -473,34 +474,26 @@ trait (`hume-scripting/src/host.rs`).
      kind now means it rides on the current `DecorationStores` shape and may need adjustment
      when that unification lands. Not a blocker, just a known future churn point.
 
-5. **`set-virtual-lines!` anchor + per-segment scopes — new, needed by Phase 5b.**
-   **Verified plan-vs-code gap**, not previously called out: the engine type
-   (`VirtualLine { anchor, provider_id, text, segments }`, `hume-engine/src/providers.rs:228`)
-   supports `Before`/`After` anchoring and per-segment `ScopeId` styling, but the Steel bridge
-   flattens both away. `Editor::update_virtual_line_providers`
-   (`hume-editor/src/editor/lifecycle.rs:1613-1671`) does this, verbatim:
-   ```rust
-   by_line.entry(line).or_default().push(VirtualLine {
-       anchor: VirtualLineAnchor::After(line),   // hardcoded
-       provider_id: 0,
-       text,
-       segments: vec![(0..text_len, scope)],     // hardcoded, whole-line
-   });
-   ```
-   and the store it reads from, `VirtualLineEntry` (`hume-editor/src/editor/decorations.rs:44-49`),
-   carries only `scope: Option<String>` for the whole line — its own doc comment concedes it
-   "predate[s] a segmented-styling API". Concretely, this means:
-   - **Deleted lines can only render below the deletion point, never above.** A block deleted
-     at the top of the visible range (or above line 0) has nowhere correct to anchor.
-   - **A deleted line cannot have word-level highlighting inside it** — no way to mark which
+5. **`set-virtual-lines!` anchor + per-segment scopes — ✅ shipped, needed by Phase 5b.**
+   Was a verified plan-vs-code gap: the engine type
+   (`VirtualLine { anchor, provider_id, text, segments: Vec<(usize, usize, ScopeId)> }`,
+   `hume-engine/src/providers.rs:234-251`) supported `Before`/`After` anchoring and
+   per-segment `ScopeId` styling, but the Steel bridge
+   (`Editor::update_virtual_line_providers`, `hume-editor/src/editor/decoration_providers.rs`
+   — not `lifecycle.rs:1613-1671` as this doc previously said) flattened both away, hardcoding
+   `VirtualLineAnchor::After(line)` and one whole-text segment. Concretely, that meant:
+   - Deleted lines could only render below the deletion point, never above — a block deleted
+     at the top of the visible range (or above line 0) had nowhere correct to anchor.
+   - A deleted line couldn't have word-level highlighting inside it — no way to mark which
      words were the actual removed tokens versus context.
 
-   Fix: extend `set-virtual-lines!`'s per-entry shape (or add a new builtin) to accept an
-   optional anchor (`'before` / `'after`, default `'after` for backward compatibility) and a
-   list of `(start end scope)` segments instead of one line-level scope, then thread both
-   through `VirtualLineEntry` and `update_virtual_line_providers`. Scoped to Phase 4.5,
-   gating Phase 5b only — Phase 5a (signs) and Phase 5c (line background) don't touch this
-   API at all.
+   Fix landed: `set-virtual-lines!` entries are now hashmaps taking an optional `'anchor`
+   (`'before`/`'after`, default `'after`) and `'segments` (list of `(start end scope)` byte
+   ranges into `text`, layered over `'scope`'s whole-line base — the bridge gap-fills
+   uncovered bytes), threaded through `VirtualLineEntry` and `update_virtual_line_providers`.
+   Breaking change (old `(line text)`/`(line text scope)` entries are rejected) — acceptable
+   since no `.scm` plugin called this builtin yet. Scoped to Phase 4.5, gating Phase 5b only —
+   Phase 5a (signs) and Phase 5c (line background) don't touch this API at all.
 
 ---
 
@@ -669,10 +662,10 @@ store) + theme `diff.*` `bg` values in all four themes.**
   don't rebuild), `builtins/buffers.rs` (add text-read builtins), `builtins/timers.rs`
   (existing `after`/`cancel-timer!`/`debounce` — reuse), `hume-editor/src/editor/decorations.rs`
   (`DecorationStores` — add line-bg kind; extend `VirtualLineEntry` for Phase 4.5).
-- **Virtual-line bridge (Phase 4.5 — new)**: `hume-editor/src/editor/lifecycle.rs:1613-1671`
-  (`update_virtual_line_providers` — hardcodes `After` + whole-line segment, both to be made
-  configurable), `hume-editor/src/editor/decorations.rs:41-49` (`VirtualLineEntry` — add
-  anchor + segment list).
+- **Virtual-line bridge (Phase 4.5 — ✅ shipped)**: `hume-editor/src/editor/decoration_providers.rs`
+  (`update_virtual_line_providers`, now anchor- and segment-aware; not `lifecycle.rs` — that
+  was always the wrong path for this function), `hume-editor/src/editor/decorations.rs`
+  (`VirtualLineEntry` — carries `before` + `segments`).
 - **Editor glue**: `hume-editor/src/editor/doc_ops.rs:106,137,171` + `buffer/mod.rs:261`
   (`set_text` — fire `on-text-changed` here), `hume-editor/src/ui/highlight_providers.rs:40,82`
   (native-only decoration precedent, superseded by `DecorationHost` for Steel-facing work),

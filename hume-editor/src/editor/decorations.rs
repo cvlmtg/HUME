@@ -1,8 +1,10 @@
 //! Steel-writable decoration stores: inlay hints, gutter signs, virtual
 //! lines, inline diagnostics, and extra highlights. Not LSP-specific (any
-//! plugin can set them) — LSP is their first client, not their owner. The
-//! render providers read these fresh every frame; nothing here needs a
-//! dirty-tracking generation counter.
+//! plugin can set them) — LSP is their first client, not their owner. Most
+//! render providers read these fresh every frame; `virtual_lines` is the
+//! exception — resolving each entry's scope is costly enough that its
+//! per-pane sync gates on `virtual_lines_generation` instead (see that
+//! field's doc).
 //!
 //! `inlay_hints` / `inline_diagnostics` are keyed by `BufferId` alone (one
 //! owner per buffer, always replaced wholesale by the next
@@ -36,15 +38,25 @@ pub(crate) struct SignEntry {
     pub(crate) priority: i64,
 }
 
-/// One `(set-virtual-lines! …)` entry: a synthetic line of text rendered
-/// after buffer `line` (0-indexed). `scope` styles the whole line
-/// (`ui.virtual` fallback when absent) — inlay hints and this both
-/// predate a segmented-styling API, so a whole-line scope is what the
-/// landed store can express.
+/// One `(set-virtual-lines! …)` entry: a synthetic line of text anchored to
+/// buffer `line` (0-indexed) — rendered after it, or before when `before` is
+/// set. `scope` styles bytes `segments` doesn't cover (`ui.virtual` fallback
+/// when both are absent); `segments` are `(byte_start, byte_end, scope_name)`
+/// ranges into `text`, already sorted/non-overlapping/in-bounds — guaranteed
+/// by the Steel boundary (`virtual_line_specs` in
+/// `hume-scripting`'s `builtins/decorations.rs`), same shape as
+/// `hume_scripting::VirtualLineSpec`. Kept as a separate type rather than
+/// reusing that one directly: this store stays line-indexed today, but
+/// SPEC.md §6 plans migrating it to char offsets while the Steel surface
+/// keeps line numbers — `host_impl.rs`'s explicit field-by-field map is where
+/// that conversion will land.
+#[derive(Clone)]
 pub(crate) struct VirtualLineEntry {
     pub(crate) line: usize,
     pub(crate) text: String,
+    pub(crate) before: bool,
     pub(crate) scope: Option<String>,
+    pub(crate) segments: Vec<(usize, usize, String)>,
 }
 
 /// One `(set-inline-diagnostics! …)` entry: text appended at the end of

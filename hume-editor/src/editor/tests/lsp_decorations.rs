@@ -241,7 +241,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
         r#"(define-command! "arm-hints-a" "" (lambda ()
              (set-signs! "linter" (current-buffer) (list (list 0 "!" "error" 10)))
              (set-signs! "vcs" (current-buffer) (list (list 0 "+" "added" 5)))
-             (set-virtual-lines! "linter" (current-buffer) (list (list 0 "note: …")))
+             (set-virtual-lines! "linter" (current-buffer) (list (hash 'line 0 'text "note: …")))
              (set-extra-highlights! "linter" (current-buffer) (list (list 0 3 "unused")))))
            (define-command! "clear-linter-signs" "" (lambda ()
              (set-signs! "linter" (current-buffer) '())))"#,
@@ -303,6 +303,41 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
         ed.state.config.decorations.signs_for("vcs", bid).len(),
         1,
         "clearing one source must not affect another source's signs"
+    );
+}
+
+#[test]
+fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdef\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm" "" (lambda ()
+             (set-virtual-lines! "git-diff" (current-buffer)
+               (list (hash 'line 3 'anchor 'before 'text "- let x = 5" 'scope "diff.minus"
+                           'segments (list (list 2 5 "keyword")))))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    let vlines = ed
+        .state
+        .config
+        .decorations
+        .virtual_lines_for("git-diff", bid);
+    assert_eq!(vlines.len(), 1);
+    assert_eq!(vlines[0].line, 3);
+    assert_eq!(vlines[0].text, "- let x = 5");
+    assert!(vlines[0].before, "'anchor 'before must set before: true");
+    assert_eq!(vlines[0].scope.as_deref(), Some("diff.minus"));
+    assert_eq!(
+        vlines[0].segments,
+        vec![(2, 5, "keyword".to_string())],
+        "segments must reach the store verbatim (already sorted/validated at the Steel boundary)"
     );
 }
 

@@ -46,6 +46,28 @@ pub enum PendingLanguageReg {
     },
 }
 
+/// One `(set-virtual-lines! …)` entry, decoded from its Steel hashmap shape
+/// (`hume-scripting/src/builtins/decorations.rs`'s `virtual_line_specs`),
+/// which guarantees: `segments` sorted by `start`, non-overlapping,
+/// non-empty, `start < end <= text.len()`, both ends on a `text` char
+/// boundary. The host boundary (`DecorationHost::set_virtual_lines`) trusts
+/// this — see that trait method's doc for why.
+#[derive(Debug, Clone)]
+pub struct VirtualLineSpec {
+    pub line: usize,
+    pub text: String,
+    /// `true` for `'anchor 'before` (render above `line`), `false` for the
+    /// default `'after`.
+    pub before: bool,
+    /// Whole-line base style; bytes not covered by `segments` fall back to
+    /// this (or `ui.virtual` if also absent).
+    pub scope: Option<String>,
+    /// `(byte_start, byte_end, scope_name)` into `text`, styling only the
+    /// covered bytes — the bridge (`Editor::update_virtual_line_providers`)
+    /// gap-fills the rest with `scope`.
+    pub segments: Vec<(usize, usize, String)>,
+}
+
 /// One `(register-lsp-server! …)` call queued for the end-of-eval drain.
 ///
 /// `init_options`/`settings` are decoded at the Steel boundary via

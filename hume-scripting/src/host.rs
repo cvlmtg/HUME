@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::attribution::PluginId;
-use crate::types::SteelCmdDef;
+use crate::types::{SteelCmdDef, VirtualLineSpec};
 
 /// Key-binding mode, as recognised by `bind-key!`/`unbind-key!`.
 ///
@@ -451,15 +451,11 @@ pub trait DecorationHost {
     );
 
     /// `(set-virtual-lines! source bid lines)` — replaces `source`'s virtual
-    /// lines for `bid` wholesale. Each entry is `(line, text)` or `(line
-    /// text scope)` — `scope` styles the whole line (`ui.virtual` fallback
-    /// when absent).
-    fn set_virtual_lines(
-        &mut self,
-        source: String,
-        bid: BufferId,
-        lines: Vec<(usize, String, Option<String>)>,
-    );
+    /// lines for `bid` wholesale. Each `VirtualLineSpec` is already validated
+    /// and its `segments` sorted/non-overlapping — the Steel boundary
+    /// (`virtual_line_specs` in `hume-scripting`'s `builtins/decorations.rs`)
+    /// guarantees this, so no caller of this trait method needs to re-check.
+    fn set_virtual_lines(&mut self, source: String, bid: BufferId, lines: Vec<VirtualLineSpec>);
 
     /// `(set-extra-highlights! source bid spans)` — replaces `source`'s
     /// extra highlights for `bid` wholesale. Each entry is `(start, end,

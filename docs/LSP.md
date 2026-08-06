@@ -182,7 +182,7 @@ Every Steel-visible surface the LSP platform introduces — the lookup table for
 | `(debounce-by ms proc)` → debounced proc keyed per `(car args)` — independent pending timer per key, so a call keyed `k2` never cancels a still-pending call keyed `k1` | builtin (bootstrap wrapper over `after`) | B4 |
 | `(set-inlay-hints! bid hints)` | builtin | B5 |
 | `(set-signs! source bid signs)` | builtin | B5 |
-| `(set-virtual-lines! source bid lines)` — each entry `(line text)` or `(line text scope)`, `scope` added in U8b | builtin | B5 |
+| `(set-virtual-lines! source bid lines)` — each entry a hashmap, `'line`/`'text` required, `'anchor` (`'before`/`'after`, default `'after`), `'scope`, `'segments` (list of `(start end scope)` byte ranges into `text`) optional; segments added in GIT-DIFF Phase 4.5 | builtin | B5 |
 | `(set-inline-diagnostics! bid lines)` — each entry `(line text scope)`; one owner per buffer (no `source` arg, unlike `set-virtual-lines!`) — text spliced at end-of-line via a second `InlineDecoration` provider, same shape as U9's inlay hints | builtin | U8 |
 | `(set-extra-highlights! source bid spans)` | builtin | B5 |
 | `(diagnostics-for-buffer bid #:severity floor #:range (start . end))` | builtin | B5 |
