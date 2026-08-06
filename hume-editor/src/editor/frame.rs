@@ -439,7 +439,7 @@ impl Editor {
     /// on this `Editor`. Off the event loop this must stay `false` for every
     /// `#:inline-output #t` command dispatched, output or not — see
     /// `tui_active` on `Editor`.
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(crate) fn inline_output_entered(&self) -> bool {
         self.state.inline_output_entered
     }

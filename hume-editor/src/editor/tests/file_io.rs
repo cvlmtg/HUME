@@ -1,3 +1,4 @@
+#[cfg(unix)]
 use hume_engine::pipeline::BufferId;
 
 use super::*;
@@ -55,6 +56,7 @@ fn insert_at_selection_start_collapsed() {
 // ── :wa (write all) ────────────────────────────────────────────────────────────
 
 /// Make the focused buffer dirty by inserting 'x' at cursor.
+#[cfg(unix)]
 pub(super) fn dirty_focused(ed: &mut Editor) {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
@@ -63,6 +65,7 @@ pub(super) fn dirty_focused(ed: &mut Editor) {
 
 /// Create a temp file and open it as one more buffer. The buffer starts clean
 /// (same content as the file). Caller must dirty it themselves after switching.
+#[cfg(unix)]
 pub(super) fn open_file_buffer(ed: &mut Editor, content: &str) -> (tempfile::TempPath, BufferId) {
     let (buf, tmp_path) = file_buffer(content);
     let bid = ed.open_buffer(buf);

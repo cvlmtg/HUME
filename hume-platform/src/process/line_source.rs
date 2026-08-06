@@ -278,7 +278,6 @@ fn reader_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Instant;
 
     #[test]
     fn splits_multiple_lines_in_one_chunk() {
@@ -363,6 +362,7 @@ mod tests {
     mod unix {
         use super::*;
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::time::Instant;
 
         fn no_op_wake() -> WakeCallback {
             Arc::new(|| {})

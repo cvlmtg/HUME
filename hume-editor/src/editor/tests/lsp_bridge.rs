@@ -1,8 +1,10 @@
 // Generic LSP bridge: lsp-request, lsp-notify,
 // on-lsp-notification, delivered through the queued-Steel-call mechanism.
 
+#[cfg(unix)]
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::rc::Rc;
 
 use super::*;
@@ -12,6 +14,7 @@ use hume_lsp::client::{LspClient, ServerState};
 use hume_lsp::codec::Message;
 use hume_lsp::inline::InlineLspBackend;
 use hume_lsp::test_util::{NotificationLog, RecordingLspBackend, RequestLog};
+#[cfg(unix)]
 use hume_lsp::transport::InboundEvent;
 use hume_scripting::ScriptingHost;
 
@@ -386,11 +389,13 @@ fn callback_error_lands_in_message_log_not_a_crash() {
 /// in two separate logs, which can't answer "did the didChange reach the
 /// wire before this request" ordering bug: only a single combined
 /// log can.
+#[cfg(unix)]
 pub(super) struct OrderedLogBackend {
     inner: InlineLspBackend,
     log: Rc<RefCell<Vec<String>>>,
 }
 
+#[cfg(unix)]
 impl OrderedLogBackend {
     pub(super) fn new() -> (Self, Rc<RefCell<Vec<String>>>) {
         let log = Rc::new(RefCell::new(Vec::new()));
@@ -408,6 +413,7 @@ impl OrderedLogBackend {
     }
 }
 
+#[cfg(unix)]
 impl LspBackend for OrderedLogBackend {
     fn start(
         &mut self,

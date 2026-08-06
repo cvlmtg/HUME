@@ -296,7 +296,7 @@ impl LspState {
     /// unregistered or registered with no settings — lets tests assert the
     /// Steel-to-JSON settings conversion without reaching into the private
     /// `configs` map directly.
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(crate) fn config_settings_for_test(&self, language: &str) -> Option<serde_json::Value> {
         self.configs.get(language).and_then(|c| c.settings.clone())
     }
@@ -305,7 +305,7 @@ impl LspState {
     /// catalog registers the same blob under both keywords (see
     /// `core:lsp/registration.scm`), so a test asserting the conversion
     /// needs both, not just `settings`.
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(crate) fn config_init_options_for_test(&self, language: &str) -> Option<serde_json::Value> {
         self.configs
             .get(language)

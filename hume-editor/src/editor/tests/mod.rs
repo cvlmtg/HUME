@@ -426,6 +426,7 @@ impl Editor {
 
 // Process cwd is global state. Any test that calls `set_current_dir` must hold
 // this mutex for its entire duration so tests do not race on cwd.
+#[cfg(unix)]
 static CWD_MUTEX: Mutex<()> = Mutex::new(());
 
 // ── HUME_RUNTIME guard ────────────────────────────────────────────────────────
@@ -499,11 +500,13 @@ fn file_buffer(content: &str) -> (Buffer, tempfile::TempPath) {
 }
 
 /// Acquire the cwd lock, save the current directory, and restore it on drop.
+#[cfg(unix)]
 struct CwdGuard {
     saved: PathBuf,
     _lock: std::sync::MutexGuard<'static, ()>,
 }
 
+#[cfg(unix)]
 impl CwdGuard {
     fn new() -> Self {
         let lock = CWD_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -512,6 +515,7 @@ impl CwdGuard {
     }
 }
 
+#[cfg(unix)]
 impl Drop for CwdGuard {
     fn drop(&mut self) {
         let _ = std::env::set_current_dir(&self.saved);

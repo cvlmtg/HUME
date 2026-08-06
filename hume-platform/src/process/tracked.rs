@@ -125,7 +125,7 @@ impl ChildRegistry {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     fn live_count(&self) -> usize {
         lock_recovering(&self.entries)
             .iter()

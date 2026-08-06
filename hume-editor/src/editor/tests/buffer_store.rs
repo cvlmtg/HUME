@@ -431,6 +431,7 @@ fn find_by_path_leaves_verbatim_unc_paths_alone() {
 }
 
 /// Move the focused pane's primary cursor to `head` for the focused buffer.
+#[cfg(unix)]
 pub(super) fn set_cursor(ed: &mut Editor, head: usize) {
     use hume_editing::selection::Selection;
     let focused = ed.state.focused_pane_id;

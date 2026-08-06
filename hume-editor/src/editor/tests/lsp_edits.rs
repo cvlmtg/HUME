@@ -552,7 +552,7 @@ fn goto_location_directory_target_errors_with_no_jump_entry() {
         tmp.path(),
         &format!(
             r#"(define-command! "go" "" (lambda ()
-             (goto-location! (list "{dir_target}" 0 0))))"#
+             (goto-location! (list {dir_target:?} 0 0))))"#
         ),
     );
     let before = state(&ed);
@@ -579,7 +579,7 @@ fn goto_missing_path_opens_new_file_buffer() {
         tmp.path(),
         &format!(
             r#"(define-command! "go" "" (lambda ()
-             (goto-location! (list "{target_str}" 0 0))))"#
+             (goto-location! (list {target_str:?} 0 0))))"#
         ),
     );
     let start_bid = ed.focused_buffer_id();

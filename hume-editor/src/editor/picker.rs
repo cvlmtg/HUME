@@ -155,7 +155,7 @@ impl PickerSession {
         self.source.take()
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(crate) fn has_source(&self) -> bool {
         self.source.is_some()
     }
@@ -163,7 +163,7 @@ impl PickerSession {
     /// The attached source's OS pid, for tests that verify kill-on-close
     /// against an independent liveness check rather than the handle's own
     /// state.
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(crate) fn source_pid_for_test(&self) -> Option<u32> {
         self.source.as_ref().map(SpawnedLineSource::pid)
     }
