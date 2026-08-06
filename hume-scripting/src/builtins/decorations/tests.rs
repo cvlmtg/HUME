@@ -121,7 +121,7 @@ fn virtual_line_spec_decodes_every_field() {
             list(vec![seg(0, 1, "diff.minus"), seg(2, 5, "keyword")]),
         ),
     ]);
-    let specs = virtual_line_specs(list(vec![entry]), "test").unwrap();
+    let specs = virtual_line_specs(list(vec![entry])).unwrap();
     assert_eq!(specs.len(), 1);
     let spec = &specs[0];
     assert_eq!(spec.line, 12);
@@ -143,7 +143,7 @@ fn virtual_line_spec_defaults_anchor_to_after_and_scope_to_none() {
         ("line", SteelVal::IntV(0)),
         ("text", SteelVal::StringV("x".into())),
     ]);
-    let specs = virtual_line_specs(list(vec![entry]), "test").unwrap();
+    let specs = virtual_line_specs(list(vec![entry])).unwrap();
     let spec = &specs[0];
     assert!(!spec.before, "default anchor must be 'after");
     assert_eq!(spec.scope, None);
@@ -160,7 +160,7 @@ fn virtual_line_spec_sorts_segments() {
         ("text", SteelVal::StringV("abcdef".into())),
         ("segments", list(vec![seg(4, 6, "b"), seg(0, 2, "a")])),
     ]);
-    let specs = virtual_line_specs(list(vec![entry]), "test").unwrap();
+    let specs = virtual_line_specs(list(vec![entry])).unwrap();
     assert_eq!(
         specs[0].segments,
         vec![(0, 2, "a".to_string()), (4, 6, "b".to_string())],
@@ -176,7 +176,7 @@ fn virtual_line_spec_rejects_positional_list_entry() {
         SteelVal::StringV("text".into()),
         SteelVal::StringV("scope".into()),
     ]);
-    let err = virtual_line_specs(list(vec![old_shape]), "test")
+    let err = virtual_line_specs(list(vec![old_shape]))
         .unwrap_err()
         .to_string();
     assert!(err.contains("hashmap"), "got: {err}");
@@ -189,16 +189,20 @@ fn virtual_line_spec_rejects_unknown_key() {
         ("text", SteelVal::StringV("x".into())),
         ("segment", list(vec![])), // typo for 'segments
     ]);
-    let err = virtual_line_specs(list(vec![entry]), "test")
+    let err = virtual_line_specs(list(vec![entry]))
         .unwrap_err()
         .to_string();
-    assert!(err.contains("segment"), "got: {err}");
+    // Not `err.contains("segment")`: the message always also prints the
+    // expected-keys list, which contains "segments" — a substring of
+    // "segment" — so that assertion would pass regardless of which key was
+    // actually blamed. Assert on the phrase naming the offending key instead.
+    assert!(err.contains("unknown key 'segment,"), "got: {err}");
 }
 
 #[test]
 fn virtual_line_spec_rejects_missing_line() {
     let entry = hashmap(vec![("text", SteelVal::StringV("x".into()))]);
-    let err = virtual_line_specs(list(vec![entry]), "test")
+    let err = virtual_line_specs(list(vec![entry]))
         .unwrap_err()
         .to_string();
     assert!(err.contains("'line"), "got: {err}");
@@ -207,7 +211,7 @@ fn virtual_line_spec_rejects_missing_line() {
 #[test]
 fn virtual_line_spec_rejects_missing_text() {
     let entry = hashmap(vec![("line", SteelVal::IntV(0))]);
-    let err = virtual_line_specs(list(vec![entry]), "test")
+    let err = virtual_line_specs(list(vec![entry]))
         .unwrap_err()
         .to_string();
     assert!(err.contains("'text"), "got: {err}");
@@ -220,7 +224,7 @@ fn virtual_line_spec_rejects_bad_anchor_symbol() {
         ("text", SteelVal::StringV("x".into())),
         ("anchor", SteelVal::SymbolV("above".into())),
     ]);
-    let err = virtual_line_specs(list(vec![entry]), "test")
+    let err = virtual_line_specs(list(vec![entry]))
         .unwrap_err()
         .to_string();
     assert!(err.contains("'before"), "got: {err}");
@@ -234,7 +238,7 @@ fn virtual_line_spec_rejects_segment_end_past_text_len() {
         ("text", SteelVal::StringV("ab".into())),
         ("segments", list(vec![seg(0, 5, "x")])),
     ]);
-    let err = virtual_line_specs(list(vec![entry]), "test")
+    let err = virtual_line_specs(list(vec![entry]))
         .unwrap_err()
         .to_string();
     assert!(err.contains("byte length"), "got: {err}");
@@ -247,7 +251,7 @@ fn virtual_line_spec_rejects_zero_length_segment() {
         ("text", SteelVal::StringV("abcdef".into())),
         ("segments", list(vec![seg(2, 2, "x")])),
     ]);
-    let err = virtual_line_specs(list(vec![entry]), "test")
+    let err = virtual_line_specs(list(vec![entry]))
         .unwrap_err()
         .to_string();
     assert!(err.contains("start < end"), "got: {err}");
@@ -260,7 +264,7 @@ fn virtual_line_spec_rejects_overlapping_segments() {
         ("text", SteelVal::StringV("abcdef".into())),
         ("segments", list(vec![seg(0, 3, "a"), seg(2, 5, "b")])),
     ]);
-    let err = virtual_line_specs(list(vec![entry]), "test")
+    let err = virtual_line_specs(list(vec![entry]))
         .unwrap_err()
         .to_string();
     assert!(err.contains("overlap"), "got: {err}");
@@ -275,10 +279,44 @@ fn virtual_line_spec_rejects_non_char_boundary_segment() {
         ("text", SteelVal::StringV("é".into())),
         ("segments", list(vec![seg(1, 2, "x")])),
     ]);
-    let err = virtual_line_specs(list(vec![entry]), "test")
+    let err = virtual_line_specs(list(vec![entry]))
         .unwrap_err()
         .to_string();
-    assert!(err.contains("char boundary"), "got: {err}");
+    assert!(err.contains("grapheme-cluster boundary"), "got: {err}");
+}
+
+#[test]
+fn virtual_line_spec_rejects_segment_splitting_a_grapheme_cluster() {
+    // "e" (1 byte) + combining acute accent U+0301 (2 bytes) is one grapheme
+    // cluster spanning bytes 0..3. Byte 1 is a *char* boundary (it falls
+    // between the two `char`s) but not a *grapheme* boundary — the engine
+    // (`rows.rs`'s `segment_virtual_row`) resolves scope once per cluster at
+    // its start byte, so a segment edge here would silently mis-apply
+    // instead of erroring under a mere `is_char_boundary` check.
+    let entry = hashmap(vec![
+        ("line", SteelVal::IntV(0)),
+        ("text", SteelVal::StringV("e\u{301}".into())),
+        ("segments", list(vec![seg(0, 1, "x")])),
+    ]);
+    let err = virtual_line_specs(list(vec![entry]))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("grapheme-cluster boundary"), "got: {err}");
+}
+
+#[test]
+fn virtual_line_spec_rejects_control_character_in_text() {
+    // A virtual line renders as a single row (`rows.rs`'s
+    // `segment_virtual_row`); a raw newline would become one garbled
+    // `CellContent::Virtual` cell instead of splitting the row.
+    let entry = hashmap(vec![
+        ("line", SteelVal::IntV(0)),
+        ("text", SteelVal::StringV("- deleted a\n- deleted b".into())),
+    ]);
+    let err = virtual_line_specs(list(vec![entry]))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("control character"), "got: {err}");
 }
 
 #[test]
@@ -291,7 +329,7 @@ fn virtual_line_spec_rejects_segment_with_wrong_arity() {
             list(vec![list(vec![SteelVal::IntV(0), SteelVal::IntV(1)])]),
         ),
     ]);
-    let err = virtual_line_specs(list(vec![entry]), "test")
+    let err = virtual_line_specs(list(vec![entry]))
         .unwrap_err()
         .to_string();
     assert!(err.contains("(start end scope)"), "got: {err}");

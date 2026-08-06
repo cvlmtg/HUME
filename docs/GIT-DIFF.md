@@ -489,8 +489,9 @@ trait (`hume-scripting/src/host.rs`).
 
    Fix landed: `set-virtual-lines!` entries are now hashmaps taking an optional `'anchor`
    (`'before`/`'after`, default `'after`) and `'segments` (list of `(start end scope)` byte
-   ranges into `text`, layered over `'scope`'s whole-line base — the bridge gap-fills
-   uncovered bytes), threaded through `VirtualLineEntry` and `update_virtual_line_providers`.
+   ranges into `text` — the covered bytes render with the segment's scope instead of
+   `'scope`'s, not layered with it; the bridge gap-fills uncovered bytes with `'scope`),
+   threaded through `VirtualLineEntry` and `update_virtual_line_providers`.
    Breaking change (old `(line text)`/`(line text scope)` entries are rejected) — acceptable
    since no `.scm` plugin called this builtin yet. Scoped to Phase 4.5, gating Phase 5b only —
    Phase 5a (signs) and Phase 5c (line background) don't touch this API at all.

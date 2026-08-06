@@ -980,6 +980,68 @@ fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
     );
 }
 
+/// `virtual_lines_synced`'s cache key must include the pane's buffer, not
+/// just `decorations.virtual_lines_generation()` — a generation-only key
+/// would keep a pane mirroring its *previous* buffer's virtual lines after a
+/// switch, since switching a buffer doesn't bump the generation.
+#[test]
+fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
+    use crate::editor::decorations::VirtualLineEntry;
+    use crate::lock_ext::LockExt;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let bid_a = ed.focused_buffer_id();
+    // `editor_from`'s bootstrap pane is built via `Pane::new` directly, with
+    // no `panes.render` entry (see `Editor::for_testing`'s comment) — only
+    // `open_pane` seeds one, so this test opens a second pane rather than
+    // using the bootstrap one.
+    let pid = open_pane(&mut ed.state, &mut ed.view, bid_a);
+    ed.switch_focused_pane(pid);
+
+    ed.state.config.decorations.set_virtual_lines(
+        "test".to_string(),
+        bid_a,
+        vec![VirtualLineEntry {
+            line: 0,
+            text: "deleted".to_string(),
+            before: false,
+            scope: None,
+            segments: Vec::new(),
+        }],
+    );
+
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
+
+    let virtual_lines_arc = ed
+        .state
+        .panes
+        .render
+        .get(pid)
+        .unwrap()
+        .virtual_lines
+        .clone();
+    assert!(
+        virtual_lines_arc.read_or_panic().contains_key(&0),
+        "sanity: pane A mirrors buffer A's virtual line at line 0"
+    );
+
+    // Switch the same pane to a fresh buffer with no virtual lines set.
+    let bid_b = ed.open_buffer(Buffer::scratch());
+    ed.switch_to_buffer_with_jump(bid_b);
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
+
+    assert!(
+        virtual_lines_arc.read_or_panic().is_empty(),
+        "after switching to buffer B, the pane must no longer mirror buffer \
+         A's virtual lines — a generation-only sync gate would leave line 0 \
+         populated with A's stale entry"
+    );
+}
+
 /// Closing one leaf of a 2×2 grid promotes the correct sibling and leaves the
 /// other three panes untouched. Independent oracle: the expected post-close
 /// shape (`Split{Leaf(A), Split{B, C}}`) is derived from how the grid was

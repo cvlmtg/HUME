@@ -4,6 +4,7 @@
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::SteelCtx;
 use crate::json::{json_to_steel, steel_to_json};
@@ -95,64 +96,75 @@ pub(crate) fn set_virtual_lines(
 ) -> SteelResult {
     let source = string_arg(source, "set-virtual-lines! source")?;
     let id = bid.0;
-    let parsed = virtual_line_specs(lines, "set-virtual-lines!")?;
-    require_cap(ctx.host.decorations(), "set-virtual-lines!")?
-        .set_virtual_lines(source, id, parsed);
+    let parsed = virtual_line_specs(lines)?;
+    require_cap(ctx.host.decorations(), SET_VIRTUAL_LINES)?.set_virtual_lines(source, id, parsed);
     Ok(SteelVal::Void)
 }
 
 const VIRTUAL_LINE_KEYS: &[&str] = &["line", "text", "anchor", "scope", "segments"];
+const SET_VIRTUAL_LINES: &str = "set-virtual-lines!";
 
 /// Decodes `lines` into `VirtualLineSpec`s. Each entry is a hashmap, not the
 /// old positional `(line text scope)` list this replaces — free to break: no
 /// `.scm` plugin calls this builtin yet, only Rust tests. Guarantees the
 /// contract `VirtualLineSpec`'s doc promises (segments sorted, non-overlapping,
-/// non-empty, in-bounds, char-boundary-aligned), so nothing downstream
-/// re-validates.
-fn virtual_line_specs(lines: SteelVal, name: &str) -> Result<Vec<VirtualLineSpec>, SteelErr> {
-    list_items(lines, &format!("{name} lines"))?
+/// non-empty, in-bounds, grapheme-cluster-boundary-aligned), so nothing
+/// downstream re-validates.
+fn virtual_line_specs(lines: SteelVal) -> Result<Vec<VirtualLineSpec>, SteelErr> {
+    list_items(lines, "set-virtual-lines! lines")?
         .into_iter()
-        .map(|entry| virtual_line_spec(entry, name))
+        .map(virtual_line_spec)
         .collect()
 }
 
-fn virtual_line_spec(entry: SteelVal, name: &str) -> Result<VirtualLineSpec, SteelErr> {
+fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
     let SteelVal::HashMapV(map) = &entry else {
         steel::stop!(TypeMismatch =>
             "{}: each entry must be a hashmap with 'line and 'text keys \
-             (plus optional 'anchor/'scope/'segments)", name);
+             (plus optional 'anchor/'scope/'segments)", SET_VIRTUAL_LINES);
     };
     for (key, _) in map.iter() {
         let SteelVal::SymbolV(key_name) = key else {
-            steel::stop!(Generic => "{}: hashmap key must be a symbol, got {:?}", name, key);
+            steel::stop!(Generic =>
+                "{}: hashmap key must be a symbol, got {:?}", SET_VIRTUAL_LINES, key);
         };
         if !VIRTUAL_LINE_KEYS.contains(&key_name.as_str()) {
             steel::stop!(Generic =>
-                "{}: unknown key '{}, expected one of {:?}", name, key_name, VIRTUAL_LINE_KEYS);
+                "{}: unknown key '{}, expected one of {:?}",
+                SET_VIRTUAL_LINES, key_name, VIRTUAL_LINE_KEYS);
         }
     }
     let field = |k: &str| map.get(&SteelVal::SymbolV(k.into())).cloned();
 
-    let line = field("line").ok_or_else(|| generic_err(format!("{name}: missing 'line")))?;
-    let line = usize_arg(line, &format!("{name} line"))?;
+    let line =
+        field("line").ok_or_else(|| generic_err(format!("{SET_VIRTUAL_LINES}: missing 'line")))?;
+    let line = usize_arg(line, "set-virtual-lines! line")?;
 
-    let text = field("text").ok_or_else(|| generic_err(format!("{name}: missing 'text")))?;
-    let text = string_arg(text, &format!("{name} text"))?;
+    let text =
+        field("text").ok_or_else(|| generic_err(format!("{SET_VIRTUAL_LINES}: missing 'text")))?;
+    let text = string_arg(text, "set-virtual-lines! text")?;
+    if let Some(c) = text.chars().find(|c| c.is_control()) {
+        steel::stop!(Generic =>
+            "{}: 'text contains control character {:?} — virtual lines render as a \
+             single row, so text must not contain newlines or other control characters",
+            SET_VIRTUAL_LINES, c);
+    }
 
     let before = match field("anchor") {
         None => false,
         Some(SteelVal::SymbolV(s)) if s.as_str() == "before" => true,
         Some(SteelVal::SymbolV(s)) if s.as_str() == "after" => false,
-        Some(_) => steel::stop!(Generic => "{}: 'anchor must be 'before or 'after", name),
+        Some(_) => steel::stop!(Generic =>
+            "{}: 'anchor must be 'before or 'after", SET_VIRTUAL_LINES),
     };
 
     let scope = field("scope")
-        .map(|v| string_arg(v, &format!("{name} scope")))
+        .map(|v| string_arg(v, "set-virtual-lines! scope"))
         .transpose()?;
 
     let segments = match field("segments") {
         None => Vec::new(),
-        Some(v) => virtual_line_segments(v, &text, name)?,
+        Some(v) => virtual_line_segments(v, &text)?,
     };
 
     Ok(VirtualLineSpec {
@@ -166,46 +178,67 @@ fn virtual_line_spec(entry: SteelVal, name: &str) -> Result<VirtualLineSpec, Ste
 
 /// Decodes and validates `'segments`: each a `(start end scope)` byte range
 /// into `text`. Sorts by `start`, then checks in one pass — in-bounds,
-/// char-boundary-aligned, non-empty, non-overlapping — the exact invariant
-/// `VirtualLineSpec::segments` documents.
+/// grapheme-cluster-boundary-aligned, non-empty, non-overlapping — the exact
+/// invariant `VirtualLineSpec::segments` documents.
+///
+/// Grapheme boundaries, not merely char boundaries: the engine
+/// (`hume-engine/src/rows.rs`'s `segment_virtual_row`) resolves each virtual
+/// grapheme's scope once per cluster, at the cluster's start byte. A segment
+/// edge that splits a multi-codepoint cluster (e.g. `e` + combining acute)
+/// would still pass a char-boundary check, but the engine's per-cluster
+/// lookup would either paint the whole cluster with a segment that only
+/// claimed part of it, or miss a segment that only claimed part of it — both
+/// silent. Char boundaries are a strict subset of grapheme boundaries, so
+/// this check subsumes the old one.
 fn virtual_line_segments(
     segments: SteelVal,
     text: &str,
-    name: &str,
 ) -> Result<Vec<(usize, usize, String)>, SteelErr> {
     let mut segments = tuple_list(
         segments,
-        &format!("{name} segments"),
+        "set-virtual-lines! segments",
         3..=3,
         "(start end scope)",
         |fields| {
-            let start = usize_arg(fields[0].clone(), &format!("{name} segment start"))?;
-            let end = usize_arg(fields[1].clone(), &format!("{name} segment end"))?;
-            let scope = string_arg(fields[2].clone(), &format!("{name} segment scope"))?;
+            let start = usize_arg(fields[0].clone(), "set-virtual-lines! segment start")?;
+            let end = usize_arg(fields[1].clone(), "set-virtual-lines! segment end")?;
+            let scope = string_arg(fields[2].clone(), "set-virtual-lines! segment scope")?;
             Ok((start, end, scope))
         },
     )?;
     segments.sort_by_key(|(start, _, _)| *start);
 
+    // Every cluster start, plus the end-of-text position — sorted, since
+    // `grapheme_indices` yields ascending byte offsets. Built once per entry
+    // rather than re-walking `text` on every boundary check below.
+    let boundaries: Vec<usize> = text
+        .grapheme_indices(true)
+        .map(|(i, _)| i)
+        .chain(std::iter::once(text.len()))
+        .collect();
+    let grapheme_boundary = |byte_offset: usize| boundaries.binary_search(&byte_offset).is_ok();
+
     let mut prev_end = 0usize;
     for (start, end, _) in &segments {
         if start >= end {
             steel::stop!(Generic =>
-                "{} segments: segment ({}, {}) must have start < end", name, start, end);
+                "{} segments: segment ({}, {}) must have start < end",
+                SET_VIRTUAL_LINES, start, end);
         }
         if *end > text.len() {
             steel::stop!(Generic =>
-                "{} segments: segment end {} is past text's byte length {}", name, end, text.len());
+                "{} segments: segment end {} is past text's byte length {}",
+                SET_VIRTUAL_LINES, end, text.len());
         }
-        if !text.is_char_boundary(*start) || !text.is_char_boundary(*end) {
+        if !grapheme_boundary(*start) || !grapheme_boundary(*end) {
             steel::stop!(Generic =>
-                "{} segments: segment ({}, {}) is not aligned to a char boundary in text",
-                name, start, end);
+                "{} segments: segment ({}, {}) is not aligned to a grapheme-cluster \
+                 boundary in text", SET_VIRTUAL_LINES, start, end);
         }
         if *start < prev_end {
             steel::stop!(Generic =>
                 "{} segments: segments must not overlap (segment starting at {} \
-                 overlaps the previous one ending at {})", name, start, prev_end);
+                 overlaps the previous one ending at {})", SET_VIRTUAL_LINES, start, prev_end);
         }
         prev_end = *end;
     }

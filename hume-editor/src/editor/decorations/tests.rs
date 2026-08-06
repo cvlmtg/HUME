@@ -55,3 +55,40 @@ fn signs_for_buffer_does_not_leak_another_buffers_entries() {
         "only buffer b's signs must be returned for b"
     );
 }
+
+fn virtual_line(line: usize) -> VirtualLineEntry {
+    VirtualLineEntry {
+        line,
+        text: "x".to_string(),
+        before: false,
+        scope: None,
+        segments: Vec::new(),
+    }
+}
+
+#[test]
+fn remove_buffer_bumps_virtual_lines_generation() {
+    // A pane's `virtual_lines_synced` cache keys on
+    // `(BufferId, virtual_lines_generation())` (`decoration_providers.rs`).
+    // `remove_buffer` mutates the `virtual_lines` map without going through
+    // `set_virtual_lines`, so if it didn't also bump the generation, a pane
+    // reloading the same buffer would see an unchanged cache key and keep
+    // mirroring the just-removed (pre-reload) virtual lines forever.
+    let mut store = DecorationStores::default();
+    let (a, _b) = make_two_bids();
+    store.set_virtual_lines("git-diff".to_string(), a, vec![virtual_line(0)]);
+    let generation_after_set = store.virtual_lines_generation();
+
+    store.remove_buffer(a);
+
+    assert_ne!(
+        store.virtual_lines_generation(),
+        generation_after_set,
+        "remove_buffer must bump virtual_lines_generation so panes mirroring \
+         the cleared buffer resync instead of keeping stale entries"
+    );
+    assert!(
+        store.virtual_lines_for("git-diff", a).is_empty(),
+        "remove_buffer must still clear the entries themselves"
+    );
+}

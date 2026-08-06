@@ -281,15 +281,21 @@ impl DecorationStores {
     }
 
     /// Drops every entry for `bid`, across every source and every store —
-    /// called when the buffer is closed. `BufferId` is a versioned slotmap
-    /// key, so a future slot reuse can never alias with the closed buffer's
-    /// stale entries; this is a memory-leak fix, not a correctness one.
+    /// called when the buffer is closed, or reloaded from disk while keeping
+    /// the same `BufferId`. `BufferId` is a versioned slotmap key, so a
+    /// future slot reuse can never alias with the closed buffer's stale
+    /// entries — but a *reload* keeps the same key, so clearing
+    /// `virtual_lines` without bumping `virtual_lines_generation` would leave
+    /// a pane's `virtual_lines_synced` entry looking still-current: it would
+    /// keep mirroring the pre-reload virtual lines at now-meaningless line
+    /// anchors. The bump forces every pane on `bid` to resync.
     pub(crate) fn remove_buffer(&mut self, bid: BufferId) {
         self.inlay_hints.remove(&bid);
         self.signs.remove(&bid);
         self.virtual_lines.remove(&bid);
         self.extra_highlights.remove(&bid);
         self.inline_diagnostics.remove(&bid);
+        self.virtual_lines_generation += 1;
     }
 
     /// Remaps `bid`'s inlay hints and extra highlights through `cs` — the

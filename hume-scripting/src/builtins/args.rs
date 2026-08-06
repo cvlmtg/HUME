@@ -185,10 +185,14 @@ pub(crate) fn checked_fields(
 }
 
 /// Decodes a Steel list of fixed-arity tuples into `Vec<T>` — the shared
-/// skeleton every decoration setter (`set-signs!`, `set-virtual-lines!`, …)
-/// opens with: unpack the outer list, check each entry's arity against
-/// `shape`, then hand the checked, index-safe slice to `row` for
-/// field-specific decoding.
+/// skeleton every tuple-shaped decoration setter (`set-signs!`,
+/// `set-extra-highlights!`, `set-inline-diagnostics!`, and
+/// `set-virtual-lines!`'s inner `'segments` list, …) opens with: unpack the
+/// outer list, check each entry's arity against `shape`, then hand the
+/// checked, index-safe slice to `row` for field-specific decoding.
+/// `set-virtual-lines!`'s own outer `lines` list is hashmap-shaped instead
+/// (`virtual_line_specs` in `builtins/decorations.rs`) and doesn't go
+/// through this.
 pub(crate) fn tuple_list<T>(
     val: SteelVal,
     ctx_name: &str,

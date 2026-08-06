@@ -1,7 +1,6 @@
 # Changelog
 
 ## Unreleased
-- **Breaking**: `set-virtual-lines!` entries are now hashmaps instead of `(line text)`/`(line text scope)` lists: `(hash 'line n 'text "…" 'anchor 'before|'after 'scope "…" 'segments (list (list start end scope) …))`, with `'line`/`'text` required and everything else optional. This adds `'anchor` (render the line above or below its buffer line, default `'after`) and `'segments` (per-byte-range styling inside the virtual line's text, layered over `'scope`'s whole-line base) — capabilities the rendering engine already supported but no Steel plugin could reach.
 - **Breaking**: `declare-plugin`'s `#:events` entries must now be symbols (e.g. `'(on-buffer-save)`), matching `register-hook!`. The string form (`'("on-buffer-save")`) that older releases accepted is now rejected.
 - `C` now honours a count prefix: `3C` duplicates each selection onto the 3 lines below in one step instead of ignoring the count and copying onto just one.
 - `core:vim-keybind`'s `C` (default `'smart` config) now takes `copy-selection-on-next-line` with any count prefix, not just when a real selection is already active.

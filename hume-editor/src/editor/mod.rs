@@ -628,12 +628,14 @@ pub(crate) struct Editor {
     /// scroll step compares against this to detect a real viewport change
     /// worth debouncing, rather than firing every frame regardless.
     last_viewport_key: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (usize, u16)>,
-    /// `decorations.virtual_lines_generation()` as of each pane's last
-    /// mirror into its `PaneVirtualLines` Arc — `prepare_frame`
-    /// compares against this to skip the rebuild on frames where the store
-    /// didn't change, since this runs in scroll/cursor math too, not just
-    /// render.
-    virtual_lines_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, u64>,
+    /// `(buffer_id, decorations.virtual_lines_generation())` as of each
+    /// pane's last mirror into its `PaneVirtualLines` Arc — `prepare_frame`
+    /// compares against this to skip the rebuild on frames where neither the
+    /// store nor the pane's buffer changed, since this runs in scroll/cursor
+    /// math too, not just render. The buffer id is part of the key so a pane
+    /// switching buffers always rebuilds, even on an unchanged generation —
+    /// otherwise it would keep mirroring the previous buffer's virtual lines.
+    virtual_lines_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
     /// LSP backend + client state: threaded in production,
     /// synchronous-inline in tests, mirroring `parse_worker` above.
     lsp: lsp::LspState,

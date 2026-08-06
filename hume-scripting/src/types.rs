@@ -49,9 +49,12 @@ pub enum PendingLanguageReg {
 /// One `(set-virtual-lines! …)` entry, decoded from its Steel hashmap shape
 /// (`hume-scripting/src/builtins/decorations.rs`'s `virtual_line_specs`),
 /// which guarantees: `segments` sorted by `start`, non-overlapping,
-/// non-empty, `start < end <= text.len()`, both ends on a `text` char
-/// boundary. The host boundary (`DecorationHost::set_virtual_lines`) trusts
-/// this — see that trait method's doc for why.
+/// non-empty, `start < end <= text.len()`, both ends on a `text`
+/// grapheme-cluster boundary (not merely a char boundary — the engine
+/// resolves each virtual grapheme's scope once per cluster, so a segment
+/// edge splitting a cluster would silently over-extend or never apply). The
+/// host boundary (`DecorationHost::set_virtual_lines`) trusts this — see that
+/// trait method's doc for why.
 #[derive(Debug, Clone)]
 pub struct VirtualLineSpec {
     pub line: usize,

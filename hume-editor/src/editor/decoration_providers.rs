@@ -600,10 +600,10 @@ impl Editor {
     /// Arc — a `RowMap::block` provider, so this feeds row *counts* the same
     /// way inlay hints/inline diagnostics feed wrap columns. Unlike those two,
     /// this only rebuilds when `decorations.virtual_lines_generation()`
-    /// changed since the pane's last sync, since resolving each entry's scope
-    /// (`runtime_scope`) is costlier to redo unconditionally every frame.
-    /// Called from `prepare_frame`'s step 5, *before* scrolling, no
-    /// viewport dependency to make stale.
+    /// changed since the pane's last sync, or the pane's buffer changed,
+    /// since resolving each entry's scope (`runtime_scope`) is costlier to
+    /// redo unconditionally every frame. Called from `prepare_frame`'s step
+    /// 5, *before* scrolling, no viewport dependency to make stale.
     ///
     /// Each entry becomes `Before(line)` or `After(line)` per its `before`
     /// flag, and its `segments` are gap-filled with its base scope so the
@@ -621,7 +621,7 @@ impl Editor {
 
         let fallback_scope = self.virtual_text_fallback_scope();
         for &(pid, bid) in &panes {
-            if self.virtual_lines_synced.get(&pid) == Some(&current_gen) {
+            if self.virtual_lines_synced.get(&pid) == Some(&(bid, current_gen)) {
                 continue;
             }
             let Some(map) = self
@@ -669,18 +669,24 @@ impl Editor {
             }
 
             *map.write_or_panic() = by_line;
-            self.virtual_lines_synced.insert(pid, current_gen);
+            self.virtual_lines_synced.insert(pid, (bid, current_gen));
         }
     }
 
     /// Fills the gaps `segments` (already sorted, non-overlapping, in-bounds —
-    /// guaranteed by the Steel boundary) leaves in `0..text_len` with `base`,
-    /// so the engine always receives full byte coverage instead of falling
-    /// back to `ui.virtual_text` per uncovered byte. No segments → exactly
-    /// one segment spanning the whole text, matching the pre-segments
-    /// behavior byte-for-byte. `>`/`max` (not `!=`) keep this total even if a
-    /// hand-built store entry ever violated the invariant — the engine
-    /// re-sorts at intake regardless (`RowMap::block`).
+    /// guaranteed by the Steel boundary, `virtual_line_segments` in
+    /// `hume-scripting`'s `builtins/decorations.rs`) leaves in `0..text_len`
+    /// with `base`, so the engine always receives full byte coverage instead
+    /// of falling back to `ui.virtual_text` per uncovered byte. No segments →
+    /// exactly one segment spanning the whole text, matching the
+    /// pre-segments behavior byte-for-byte.
+    ///
+    /// A non-sorted or overlapping `segments` here is a caller bug, not a
+    /// runtime condition to tolerate: `RowMap::block` only *sorts* the
+    /// output by `start` (it does not merge or reject overlaps), so
+    /// silently emitting overlapping ranges here would still reach
+    /// `IntervalCursor`, whose non-overlap precondition it violates —
+    /// producing a wrong-scope render rather than an error.
     fn gap_fill_segments(
         &mut self,
         segments: &[(usize, usize, String)],
@@ -690,12 +696,16 @@ impl Editor {
         let mut out = Vec::with_capacity(segments.len() * 2 + 1);
         let mut cursor = 0usize;
         for (start, end, name) in segments {
+            debug_assert!(
+                *start >= cursor,
+                "gap_fill_segments: caller-guaranteed sorted/non-overlapping segments violated"
+            );
             let scope = self.runtime_scope(name);
             if *start > cursor {
                 out.push((cursor, *start, base));
             }
             out.push((*start, *end, scope));
-            cursor = cursor.max(*end);
+            cursor = *end;
         }
         if cursor < text_len {
             out.push((cursor, text_len, base));
