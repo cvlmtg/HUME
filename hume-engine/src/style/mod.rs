@@ -1,4 +1,4 @@
-mod highlight;
+pub(crate) mod highlight;
 use highlight::HighlightStack;
 pub use highlight::TierBufs;
 pub(crate) use highlight::rebuild_tier_bufs;

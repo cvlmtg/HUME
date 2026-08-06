@@ -236,12 +236,18 @@ pub struct VirtualLine {
     pub anchor: VirtualLineAnchor,
     pub provider_id: ProviderId,
     pub text: String,
-    /// Byte ranges into `text`, each tagged with the `ScopeId` its graphemes
-    /// should resolve to. Bytes not covered by any segment get no scope
-    /// (the render stage falls back to `ui.virtual_text`). Segments must
-    /// have been interned via `ScopeRegistry` before the first render (same
-    /// contract as `HighlightSource`).
-    pub segments: Vec<(Range<usize>, ScopeId)>,
+    /// `(byte_start, byte_end, scope_id)` offsets into `text`, each naming the
+    /// scope its graphemes should resolve to. Bytes not covered by any
+    /// segment get no scope (the render stage falls back to
+    /// `ui.virtual_text`). Scopes must have been interned via `ScopeRegistry`
+    /// before the first render (same contract as `HighlightSource`).
+    ///
+    /// Same span shape as `HighlightSource`/`SyntaxSpans`: sorted by
+    /// `byte_start`, non-overlapping. Providers are plugin code, so the
+    /// engine does not trust this — it re-sorts at intake (`RowMap::block`)
+    /// before resolving scopes with a monotonic cursor, the same posture
+    /// `rebuild_tier_bufs` takes for highlight spans.
+    pub segments: Vec<(usize, usize, ScopeId)>,
 }
 
 /// Produces virtual display rows (inline diagnostics, code lenses, git blame).

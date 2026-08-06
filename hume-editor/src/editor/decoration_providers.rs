@@ -658,7 +658,7 @@ impl Editor {
                     // registration-assigned id (see `ProviderSet::add_virtual_line_source`).
                     provider_id: 0,
                     text,
-                    segments: vec![(0..text_len, scope)],
+                    segments: vec![(0, text_len, scope)],
                 });
             }
 

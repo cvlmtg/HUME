@@ -38,7 +38,7 @@ impl crate::providers::VirtualLineSource for ScopedVirtualLine {
                 text: "H~".to_string(),
                 // "H" (byte 0..1) carries the scope; "~" (byte 1..2) carries
                 // none and must fall back to `ui.virtual_text`.
-                segments: vec![(0..1, self.scope)],
+                segments: vec![(0, 1, self.scope)],
             });
         }
     }
@@ -108,6 +108,103 @@ fn virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
         ratatui::style::Color::Blue,
         "grapheme with no scope falls back to ui.virtual_text"
     );
+}
+
+/// Emits one `Before(0)` row whose four graphemes each carry a distinct
+/// scope, with `segments` built in the *reverse* of byte order — the engine
+/// contract (`VirtualLine::segments` doc) promises `RowMap::block` sorts
+/// this at intake, and `segment_virtual_row`'s cursor scan requires that:
+/// without the sort, a monotonic cursor started against descending-start
+/// input never backs up, so every offset but the last resolves to `None`.
+struct UnsortedScopedVirtualLine {
+    scopes: [crate::types::ScopeId; 4],
+}
+
+impl crate::providers::VirtualLineSource for UnsortedScopedVirtualLine {
+    fn virtual_lines(
+        &self,
+        visible_lines: std::ops::Range<usize>,
+        _content_width: u16,
+        out: &mut Vec<crate::providers::VirtualLine>,
+    ) {
+        if visible_lines.contains(&0) {
+            out.push(crate::providers::VirtualLine {
+                anchor: VirtualLineAnchor::Before(0),
+                provider_id: 0,
+                text: "ABCD".to_string(),
+                segments: vec![
+                    (3, 4, self.scopes[3]),
+                    (2, 3, self.scopes[2]),
+                    (1, 2, self.scopes[1]),
+                    (0, 1, self.scopes[0]),
+                ],
+            });
+        }
+    }
+}
+
+#[test]
+fn virtual_row_resolves_scopes_from_unsorted_segments() {
+    let mut registry = ScopeRegistry::new();
+    let scope_names = ["scope-a", "scope-b", "scope-c", "scope-d"];
+    let scopes: [crate::types::ScopeId; 4] =
+        std::array::from_fn(|i| registry.intern(scope_names[i]));
+    let colors = [
+        ratatui::style::Color::Red,
+        ratatui::style::Color::Green,
+        ratatui::style::Color::Yellow,
+        ratatui::style::Color::Magenta,
+    ];
+    let mut styles_map = HashMap::new();
+    for (name, color) in scope_names.iter().zip(colors) {
+        styles_map.insert(
+            *name,
+            ResolvedStyle {
+                fg: Some(color),
+                ..Default::default()
+            },
+        );
+    }
+    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    theme.bake(&registry);
+
+    let rope = ropey::Rope::from_str("z\n");
+    let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
+    let bid = bids.insert(());
+    let mut pane = Pane::new(bid);
+    pane.viewport = crate::pane::ViewportState::new(20, 5);
+    pane.providers
+        .add_virtual_line_source(Box::new(UnsortedScopedVirtualLine { scopes }));
+
+    let pane_rect = rect(0, 0, 20, 5);
+    let pane_ctx = PaneRenderCtx {
+        pane: &pane,
+        rope: &rope,
+        syntax: None,
+        theme: &theme,
+        rect: pane_rect,
+        settings: PaneRenderSettings {
+            mode: EditorMode::Normal,
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+            show_indent_guides: true,
+        },
+        dim: None,
+    };
+    let mut scratch = FrameScratch::new();
+    let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+    render_pane(&pane_ctx, &mut scratch, &mut buf);
+
+    for (x, color) in colors.into_iter().enumerate() {
+        let cell = buf
+            .cell(ratatui::layout::Position { x: x as u16, y: 0 })
+            .unwrap();
+        assert_eq!(
+            cell.fg, color,
+            "grapheme {x} resolves its scope regardless of segment emission order"
+        );
+    }
 }
 
 // ── top_skip vs virtual lines (B5) ──────────────────────────────────

@@ -255,6 +255,14 @@ impl<'a> RowMap<'a> {
         // `Before` rows ahead of `After` rows; stable, so provider
         // registration order survives within each group.
         virtual_lines.sort_by_key(|vl| vl.anchor.sort_key());
+        // Providers are plugin code and the trait makes no ordering promise
+        // enforceable at the boundary — sort here so `segment_virtual_row`'s
+        // cursor scan (which requires sorted, non-overlapping input) never
+        // has to trust it, same posture as `rebuild_tier_bufs` for highlight
+        // spans.
+        for vl in &mut virtual_lines {
+            vl.segments.sort_by_key(|(start, _, _)| *start);
+        }
 
         let before = virtual_lines
             .iter()
@@ -699,14 +707,15 @@ impl<'a> RowMap<'a> {
         // sub-range of it.
         let (arena_base, _) = push_arena_text(&mut vrow.texts, &vl.text);
 
+        // `vl.segments` was sorted by `block()` at intake, and
+        // `grapheme_indices` yields byte offsets in ascending order, so a
+        // single monotonic cursor resolves every grapheme's scope in
+        // O(graphemes + segments) instead of a per-grapheme linear scan.
+        let mut scope_cursor = crate::style::highlight::IntervalCursor::new(&vl.segments);
         let mut col: u32 = 0;
         for (byte_offset, grapheme_str) in vl.text.grapheme_indices(true) {
             let width = unicode_display_width(grapheme_str).clamp(1, 2) as u8;
-            let scope = vl
-                .segments
-                .iter()
-                .find(|(range, _)| range.contains(&byte_offset))
-                .map(|(_, scope)| *scope);
+            let scope = scope_cursor.scope_at(byte_offset);
             let start = arena_base.saturating_add(u32::try_from(byte_offset).unwrap_or(u32::MAX));
             let len = u16::try_from(grapheme_str.len()).unwrap_or(u16::MAX);
 

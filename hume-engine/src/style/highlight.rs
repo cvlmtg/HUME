@@ -7,19 +7,23 @@ use crate::types::{ResolvedStyle, ScopeId};
 
 /// Walks a sorted, non-overlapping slice of `(byte_start, byte_end, ScopeId)`
 /// intervals in order. Queries must be monotonically non-decreasing.
-struct IntervalCursor<'a> {
+///
+/// `pub(crate)`: also used by `rows::segment_virtual_row` to resolve
+/// per-grapheme scopes for virtual lines, the same interval shape as
+/// `HighlightSource`/`SyntaxSpans`.
+pub(crate) struct IntervalCursor<'a> {
     intervals: &'a [(usize, usize, ScopeId)],
     pos: usize,
 }
 
 impl<'a> IntervalCursor<'a> {
-    fn new(intervals: &'a [(usize, usize, ScopeId)]) -> Self {
+    pub(crate) fn new(intervals: &'a [(usize, usize, ScopeId)]) -> Self {
         Self { intervals, pos: 0 }
     }
 
     /// Return the scope id active at `byte_offset`, or `None`.
     /// Advances the internal cursor forward; never goes backward.
-    fn scope_at(&mut self, byte_offset: usize) -> Option<ScopeId> {
+    pub(crate) fn scope_at(&mut self, byte_offset: usize) -> Option<ScopeId> {
         // Skip intervals that have already ended.
         while self.pos < self.intervals.len() && self.intervals[self.pos].1 <= byte_offset {
             self.pos += 1;
