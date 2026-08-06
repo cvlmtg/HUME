@@ -17,7 +17,8 @@ const releaseLink = (theme.value as { releaseLink: string }).releaseLink
       <div v-if="channel === 'nightly'" class="nightly-banner">
         <!-- target="_self" stops VitePress's router from hijacking this as an
              SPA route change — see the matching comment in config.mts. -->
-        You're reading docs for unreleased changes — <a :href="releaseLink" target="_self">switch to {{ releaseTag }}</a>.
+        You're reading docs for unreleased changes —&nbsp;
+        <a :href="releaseLink" target="_self">switch to {{ releaseTag }}</a>.
       </div>
     </template>
   </DefaultTheme.Layout>
