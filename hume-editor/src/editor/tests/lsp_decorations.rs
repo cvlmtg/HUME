@@ -356,6 +356,162 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
     );
 }
 
+/// Regression: before this commit, `signs`/`virtual_lines`/`eol_text` were
+/// line-indexed and never remapped at all — a sign would silently drift
+/// onto the wrong line the moment a line was inserted or deleted above it
+/// (SPEC.md §5a.1). Deliberately no `attach_running_server` call: `has_any`
+/// now covers every kind, so a signs-only buffer with no LSP server still
+/// gets its edits queued for the remap chokepoint.
+#[test]
+fn sign_remaps_through_a_line_inserted_above_it() {
+    let tmp = safe_tempdir();
+    // "xaaaa\nbbbb\ncccc\n" — the sign below sits on "bbbb\n", line 1.
+    let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm" "" (lambda ()
+             (set-signs! "linter" (current-buffer) (list (list 1 "!" "error" 10)))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    let sign_line = |ed: &Editor| {
+        let pos = ed.state.config.decorations.signs_for("linter", bid)[0].pos;
+        ed.state.buffers.get(bid).text().char_to_line(pos)
+    };
+    assert_eq!(sign_line(&ed), 1, "sanity: sign starts on line 1");
+
+    // Insert a whole new blank line above line 0 — "bbbb" (and the sign on
+    // it) must shift from line 1 to line 2.
+    ed.feed_key(key('i'));
+    ed.feed_key(key_enter());
+    ed.feed_key(key_esc());
+    ed.drain_lsp();
+
+    assert_eq!(
+        sign_line(&ed),
+        2,
+        "the sign must remap forward with the line it annotates"
+    );
+}
+
+/// Same drift regression as the sign test above, for the other two
+/// line-anchored kinds together.
+#[test]
+fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm" "" (lambda ()
+             (set-virtual-lines! "git-diff" (current-buffer) (list (hash 'line 1 'text "note")))
+             (set-eol-text! "diagnostics" (current-buffer) (list (list 1 "msg" "diagnostic.error")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    let vline_line = |ed: &Editor| {
+        let pos = ed
+            .state
+            .config
+            .decorations
+            .virtual_lines_for("git-diff", bid)[0]
+            .pos;
+        ed.state.buffers.get(bid).text().char_to_line(pos)
+    };
+    let eol_line = |ed: &Editor| {
+        let pos = ed
+            .state
+            .config
+            .decorations
+            .eol_text_for_buffer(bid)
+            .next()
+            .unwrap()
+            .pos;
+        ed.state.buffers.get(bid).text().char_to_line(pos)
+    };
+    assert_eq!(vline_line(&ed), 1, "sanity: virtual line starts on line 1");
+    assert_eq!(eol_line(&ed), 1, "sanity: EOL text starts on line 1");
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key_enter());
+    ed.feed_key(key_esc());
+    ed.drain_lsp();
+
+    assert_eq!(
+        vline_line(&ed),
+        2,
+        "the virtual line must remap forward with the line it annotates"
+    );
+    assert_eq!(
+        eol_line(&ed),
+        2,
+        "the EOL text must remap forward with the line it annotates"
+    );
+}
+
+/// SPEC.md §5a.4: line-anchored kinds remap with `Assoc::After`, not
+/// `Assoc::Before`. An "open line above" edit — a newline inserted exactly
+/// at the decorated line's line-start offset — must leave the decoration on
+/// the original line's content, now one line further down, not stranded on
+/// the newly inserted blank line.
+#[test]
+fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
+    let tmp = safe_tempdir();
+    // "xaaaa\n" is line 0 (chars 0..6); "bbbb\n" is line 1, starting
+    // exactly at char 6 — the insertion below lands exactly there.
+    let mut ed = editor_from("-[x]>aaaa\nbbbb\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm" "" (lambda ()
+             (set-signs! "linter" (current-buffer) (list (list 1 "!" "error" 10)))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+    assert_eq!(
+        ed.state.config.decorations.signs_for("linter", bid)[0].pos,
+        6,
+        "sanity: line 1's line-start char offset is 6"
+    );
+
+    // Move the cursor onto "bbbb"'s first char (char 6) and open a blank
+    // line exactly there: `i` + Enter inserts "\n" at position 6 without
+    // touching anything before or after it.
+    ed.set_current_selections(hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::collapsed(6),
+    ));
+    ed.feed_key(key('i'));
+    ed.feed_key(key_enter());
+    ed.feed_key(key_esc());
+    ed.drain_lsp();
+
+    let pos = ed.state.config.decorations.signs_for("linter", bid)[0].pos;
+    let text = ed.state.buffers.get(bid).text();
+    assert_eq!(
+        pos, 7,
+        "Assoc::After must land the sign just past the inserted newline, at \
+         \"bbbb\"'s new position — Assoc::Before would leave it at 6, on the \
+         new blank line instead"
+    );
+    assert_eq!(
+        text.char_to_line(pos),
+        2,
+        "the sign must render on line 2, where \"bbbb\" now is, not line 1's new blank line"
+    );
+}
+
 #[test]
 fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_source() {
     let tmp = safe_tempdir();

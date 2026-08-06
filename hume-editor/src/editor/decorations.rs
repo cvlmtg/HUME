@@ -121,6 +121,53 @@ impl Positioned for ExtraHighlightEntry {
     }
 }
 
+/// The four point-anchored kinds (every kind but `ExtraHighlightEntry`,
+/// which remaps as a range instead — see `SourceStore<ExtraHighlightEntry>::
+/// remap_ranges`) — drives [`SourceStore::remap_points`]' batch
+/// `ChangeSet::map_positions` call.
+pub(crate) trait PointAnchored: Positioned {
+    /// Sticky side for an edit landing exactly at this kind's position —
+    /// see `ChangeSet::Assoc`'s doc and each impl below for the reasoning.
+    const ASSOC: Assoc;
+    fn set_pos(&mut self, pos: usize);
+}
+
+/// `Assoc::Before`: an insertion at the hint's char stays glued to the char
+/// it annotates, sticking to what was already there rather than swallowing
+/// newly typed text into "before the hint".
+impl PointAnchored for InlayHintEntry {
+    const ASSOC: Assoc = Assoc::Before;
+    fn set_pos(&mut self, pos: usize) {
+        self.pos = pos;
+    }
+}
+
+/// `Assoc::After` for every line-anchored kind below (SPEC.md §5a.4): an
+/// insertion containing a newline landing exactly at a line-start anchor
+/// (`o` — open line above) must keep the decoration on the *original* line
+/// content — `Assoc::Before` would strand it on the newly inserted blank
+/// line instead.
+impl PointAnchored for SignEntry {
+    const ASSOC: Assoc = Assoc::After;
+    fn set_pos(&mut self, pos: usize) {
+        self.pos = pos;
+    }
+}
+
+impl PointAnchored for VirtualLineEntry {
+    const ASSOC: Assoc = Assoc::After;
+    fn set_pos(&mut self, pos: usize) {
+        self.pos = pos;
+    }
+}
+
+impl PointAnchored for EolTextEntry {
+    const ASSOC: Assoc = Assoc::After;
+    fn set_pos(&mut self, pos: usize) {
+        self.pos = pos;
+    }
+}
+
 /// One decoration kind's per-source entries, for every buffer — the shape
 /// every one of `DecorationStores`' five fields used to hand-roll separately
 /// (`FxHashMap<BufferId, Vec<(source, Vec<T>)>>`, find-or-push
@@ -190,6 +237,50 @@ impl<T: Positioned> SourceStore<T> {
         match slot.iter_mut().find(|(s, _)| *s == source) {
             Some(existing) => existing.1 = entries,
             None => slot.push((source, entries)),
+        }
+    }
+}
+
+impl<T: PointAnchored> SourceStore<T> {
+    /// Remaps every point-anchored entry for `bid` through `cs`, one batch
+    /// `ChangeSet::map_positions` call per source, using `T::ASSOC`.
+    fn remap_points(&mut self, bid: BufferId, cs: &ChangeSet) {
+        for entries in self.sources_mut(bid) {
+            if entries.is_empty() {
+                continue;
+            }
+            let mut positions: Vec<usize> = entries.iter().map(Positioned::pos).collect();
+            cs.map_positions(&mut positions, T::ASSOC);
+            for (entry, pos) in entries.iter_mut().zip(positions) {
+                entry.set_pos(pos);
+            }
+        }
+    }
+}
+
+impl SourceStore<ExtraHighlightEntry> {
+    /// Remaps every extra-highlight span for `bid` through `cs`, dropping
+    /// any span a covering deletion collapsed to zero width — the one kind
+    /// remapped as a range rather than a point (see `PointAnchored`'s doc).
+    fn remap_ranges(&mut self, bid: BufferId, cs: &ChangeSet) {
+        for spans in self.sources_mut(bid) {
+            if spans.is_empty() {
+                continue;
+            }
+            let mut ranges: Vec<(usize, usize)> = spans.iter().map(|s| (s.start, s.end)).collect();
+            cs.map_ranges(&mut ranges);
+            let mut idx = 0;
+            spans.retain_mut(|s| {
+                let (start, end) = ranges[idx];
+                idx += 1;
+                if end <= start {
+                    false // collapsed by a covering deletion — drop
+                } else {
+                    s.start = start;
+                    s.end = end;
+                    true
+                }
+            });
         }
     }
 }
@@ -350,14 +441,17 @@ impl DecorationStores {
         self.extra_highlights.for_buffer(bid).map(|(_, e)| e)
     }
 
-    /// Whether `bid` has any char-offset decorations (inlay hints or extra
-    /// highlights — the two kinds `remap_through` actually touches) that
-    /// need to stay in sync with edits. `record_lsp_edits` (`doc_ops.rs`)
-    /// uses this to queue a buffer's edits for the remap chokepoint even
-    /// with no attached LSP server — decorations are not LSP-owned, LSP is
-    /// just their first client.
+    /// Whether `bid` has any decoration, of any kind, that needs to stay in
+    /// sync with edits — every kind remaps through `remap_through` now.
+    /// `record_lsp_edits` (`doc_ops.rs`) uses this to queue a buffer's edits
+    /// for the remap chokepoint even with no attached LSP server —
+    /// decorations are not LSP-owned, LSP is just their first client.
     pub(crate) fn has_any(&self, bid: BufferId) -> bool {
-        !self.inlay_hints.is_empty_for(bid) || !self.extra_highlights.is_empty_for(bid)
+        !self.inlay_hints.is_empty_for(bid)
+            || !self.signs.is_empty_for(bid)
+            || !self.virtual_lines.is_empty_for(bid)
+            || !self.eol_text.is_empty_for(bid)
+            || !self.extra_highlights.is_empty_for(bid)
     }
 
     /// Drops every entry for `bid`, across every source and every kind —
@@ -378,41 +472,19 @@ impl DecorationStores {
         self.generation += 1;
     }
 
-    /// Remaps `bid`'s inlay hints and extra highlights through `cs` — the
-    /// same chokepoint as the diagnostics remap
-    /// (`flush_lsp_pending_changes`), so decoration positions never drift
-    /// out of sync with the diagnostics they're often paired with.
+    /// Remaps `bid`'s decorations, of every kind, through `cs` — the same
+    /// chokepoint as the diagnostics remap (`flush_lsp_pending_changes`), so
+    /// decoration positions never drift out of sync with the diagnostics
+    /// they're often paired with. Bumps `generation`: a remap moves
+    /// positions, so cached consumers (the virtual-lines pane sync) must
+    /// resync even though nothing called a `set_*` method.
     pub(crate) fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {
-        for hints in self.inlay_hints.sources_mut(bid) {
-            if hints.is_empty() {
-                continue;
-            }
-            let mut positions: Vec<usize> = hints.iter().map(|h| h.pos).collect();
-            cs.map_positions(&mut positions, Assoc::Before);
-            for (hint, pos) in hints.iter_mut().zip(positions) {
-                hint.pos = pos;
-            }
-        }
-
-        for spans in self.extra_highlights.sources_mut(bid) {
-            if spans.is_empty() {
-                continue;
-            }
-            let mut ranges: Vec<(usize, usize)> = spans.iter().map(|s| (s.start, s.end)).collect();
-            cs.map_ranges(&mut ranges);
-            let mut idx = 0;
-            spans.retain_mut(|s| {
-                let (start, end) = ranges[idx];
-                idx += 1;
-                if end <= start {
-                    false // collapsed by a covering deletion — drop
-                } else {
-                    s.start = start;
-                    s.end = end;
-                    true
-                }
-            });
-        }
+        self.inlay_hints.remap_points(bid, cs);
+        self.signs.remap_points(bid, cs);
+        self.virtual_lines.remap_points(bid, cs);
+        self.eol_text.remap_points(bid, cs);
+        self.extra_highlights.remap_ranges(bid, cs);
+        self.generation += 1;
     }
 }
 

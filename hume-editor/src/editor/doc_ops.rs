@@ -44,15 +44,15 @@ fn record_syntax_edits(
     }
 }
 
-/// No-op when `buf_id` has no LSP server attached and no char-offset
-/// decorations (inlay hints / extra highlights) that need to stay in sync
-/// with edits — decorations are not LSP-owned, LSP is just their first
-/// client, so a buffer with `set-extra-highlights!`/`set-inlay-hints!` data
-/// but no attached server still needs its edits queued here. Called
-/// immediately after every text mutation, alongside `record_syntax_edits` —
-/// same chokepoint, same "text changed, notify the machinery" shape, queued
-/// for the LSP per-frame flush (`Editor::flush_lsp_pending_changes`, which
-/// also does the decoration remap) instead of dispatched inline.
+/// No-op when `buf_id` has no LSP server attached and no decorations, of
+/// any kind, that need to stay in sync with edits — decorations are not
+/// LSP-owned, LSP is just their first client, so a buffer with e.g.
+/// `set-signs!`/`set-inlay-hints!` data but no attached server still needs
+/// its edits queued here. Called immediately after every text mutation,
+/// alongside `record_syntax_edits` — same chokepoint, same "text changed,
+/// notify the machinery" shape, queued for the LSP per-frame flush
+/// (`Editor::flush_lsp_pending_changes`, which also does the decoration
+/// remap) instead of dispatched inline.
 fn record_lsp_edits(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
