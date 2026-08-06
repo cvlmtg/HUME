@@ -102,9 +102,10 @@ pub(crate) struct RepeatableAction {
 /// `replay_dot` at the end of the enclosing `handle_key` call.
 ///
 /// Splitting enqueue (pure State handler) from drain (`&mut Editor` plumbing)
-/// lets `cmd_repeat` satisfy the D7 invariant while still reaching
-/// `replay_dot` (which uses `run_native_body`/`run_steel_command` and
-/// `handle_insert`) for the actual replay.
+/// lets `cmd_repeat` keep the `EditorCmdFn` shape (no `&mut Editor`, see
+/// `registry/command.rs`) while still reaching `replay_dot` (which uses
+/// `run_native_body`/`run_steel_command` and `handle_insert`) for the actual
+/// replay.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PendingRepeat {
     /// Effective replay count — explicit-count override already applied.

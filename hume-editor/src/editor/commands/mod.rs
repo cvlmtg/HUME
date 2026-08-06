@@ -1,9 +1,10 @@
 //! Editor-level command functions.
 //!
 //! Each function in this module is a command operating on
-//! `&mut EditorState` + `&mut EngineView` (the D7 handler shape) — composite
-//! operations involving mode changes, registers, undo groups, or
-//! parameterized motions (find/till/replace).
+//! `&mut EditorState` + `&mut EngineView` (the `EditorCmdFn` shape, see
+//! `registry/command.rs` — never `&mut Editor`) — composite operations
+//! involving mode changes, registers, undo groups, or parameterized motions
+//! (find/till/replace).
 //!
 //! They are registered in [`super::registry`] and called via function pointer
 //! from `execute_keymap_command`, exactly like the pure `cmd_*` functions in

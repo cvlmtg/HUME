@@ -97,6 +97,13 @@ pub enum PopupKind {
 /// never happened. A silent no-op is reserved for calls whose own contract
 /// is already idempotent regardless of host support (e.g.
 /// `cancel-timer!`/`cancel-async!` on an id that was never scheduled).
+///
+/// The trait exists — rather than builtins reaching into `EditorState`
+/// directly — for two reasons: the crate cycle `hume-editor → hume-scripting
+/// → {hume-engine, hume-platform}` is a hard wall, so dissolving it would mean
+/// moving `EditorState` into a crate below `hume-scripting`, re-layering most
+/// of the editor; and it keeps scripting tests mockable (`NullHost`,
+/// `MockHost`) behind a curated API boundary instead of the full state surface.
 pub trait EditorHost {
     // ── Optional capability accessors ────────────────────────────────────────
     /// Cursor-anchored popup / selection menu / bottom drawer / minibuffer

@@ -256,6 +256,13 @@ impl EditorEvent {
 /// events bug (SPEC.md §3): a `Call` and an `Event` queued in the same batch
 /// now drain in insertion order, in one fixpoint, instead of two queues
 /// drained at two different points of the run loop.
+///
+/// Hooks always route through here rather than firing inline — this is a
+/// semantic guarantee of the hook model ("when X happens, then do Y"), not a
+/// consequence of the borrow architecture: a hook must run *after* the
+/// command that triggers it completes, never mid-command. Even if re-entrancy
+/// were fully solved mechanically, this stays queued. **Do not optimize hooks
+/// to fire inline** — this decision is locked.
 #[derive(Debug)]
 pub(crate) enum PendingWork {
     /// A specific Steel closure already captured by the raise site — an

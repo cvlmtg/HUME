@@ -305,7 +305,8 @@ impl CommandRegistry {
         // ── Editor commands — repeat ──────────────────────────────────────────
         // Not flagged repeatable: `.` repeating itself would be nonsensical.
         // The handler sets EditorState::pending_repeat; replay_dot does
-        // the actual replay with &mut Editor after handle_key returns (D7-safe).
+        // the actual replay with &mut Editor after handle_key returns — the
+        // handler itself still takes only EditorCmdFn's shape, no &mut Editor.
         ecmd(
             "repeat-last-action",
             "Repeat the last editing action.",

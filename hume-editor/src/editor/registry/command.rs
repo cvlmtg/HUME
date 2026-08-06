@@ -435,6 +435,17 @@ pub(crate) enum ArgCompleter {
 /// The function signature differs from mappable commands: it receives an
 /// optional string argument (e.g. the path for `:w foo.txt`) and a force flag
 /// (whether `!` was appended), rather than a numeric count.
+///
+/// `fun` deliberately keeps `&mut Editor` rather than [`EditorCmdFn`]'s
+/// `(&mut EditorState, &mut EngineView, …)` shape, for three reasons: typed
+/// commands are not Steel-dispatchable — only callers are the `:` command
+/// line and tests, so `&mut Editor` here never runs while the Steel engine is
+/// borrowed; some handlers genuinely need shell-level fields (`:e` and `:set
+/// buffer language=` reach `scripting` for `activate_lazy_language_plugins`
+/// and `parse_worker` for `setup_buffer_syntax`, neither reachable from the
+/// coarse shape); and this is the Editor-orchestration layer, driving
+/// whole-app ops (`:w`, `:e`, `:bd`, `:split`, `:set language`) that
+/// legitimately span state + view + `parse_worker` + Steel together.
 pub(crate) struct TypedCommand {
     /// Canonical name, e.g. `"write"`. Used as the registry key.
     pub name: Cow<'static, str>,
