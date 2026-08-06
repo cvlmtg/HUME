@@ -1,11 +1,45 @@
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitepress'
+import type { DefaultTheme } from 'vitepress'
+
+// Two channels are deployed from this one config: the latest tagged release
+// (default, served at the site root) and nightly (built from the working
+// tree, served under /nightly/). CI sets these env vars per build; `npm run
+// dev`/`npm run build` with none set reproduces today's single-channel site.
+const channel = process.env.DOCS_CHANNEL ?? 'nightly'
+const srcDir = process.env.DOCS_SRC ?? 'docs'
+const outDir = process.env.DOCS_OUT ?? '.vitepress/dist'
+const base = process.env.DOCS_BASE ?? '/HUME/'
+const releaseTag = process.env.DOCS_RELEASE_TAG ?? 'latest release'
+
+const root = fileURLToPath(new URL('.', import.meta.url))
+
+// The release build pairs main's sidebar (this file) with an older tag's
+// docs/, so a page added since the tag would otherwise dangle. Prune it.
+function pageExists(link: string): boolean {
+  const file = link === '/' ? 'index.md' : `${link.slice(1)}.md`
+  return existsSync(resolve(root, srcDir, file))
+}
+
+function pruneSidebar(items: DefaultTheme.SidebarItem[]): DefaultTheme.SidebarItem[] {
+  return items.flatMap((item) => {
+    if (item.items) {
+      const pruned = pruneSidebar(item.items)
+      return pruned.length > 0 ? [{ ...item, items: pruned }] : []
+    }
+    return !item.link || pageExists(item.link) ? [item] : []
+  })
+}
 
 export default defineConfig({
   title: 'HUME',
   description: 'User manual for HUME — a modal text editor for the terminal',
 
-  base: '/HUME/',
-  srcDir: 'docs',
+  base,
+  srcDir,
+  outDir,
   // light + dark toggle (default). Use 'dark' to default to dark mode.
   appearance: true,
 
@@ -22,9 +56,16 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Manual', link: '/' },
+      {
+        text: channel === 'release' ? releaseTag : 'nightly',
+        items: [
+          { text: releaseTag, link: 'https://cvlmtg.github.io/HUME/', target: '_self', noIcon: true },
+          { text: 'nightly', link: 'https://cvlmtg.github.io/HUME/nightly/', target: '_self', noIcon: true },
+        ],
+      },
     ],
 
-    sidebar: [
+    sidebar: pruneSidebar([
       { text: 'Home', link: '/' },
       {
         text: 'Getting Started',
@@ -77,7 +118,7 @@ export default defineConfig({
         ],
       },
       { text: 'Roadmap', link: '/roadmap' },
-    ],
+    ]),
 
     socialLinks: [
       { icon: 'github', link: 'https://github.com/cvlmtg/HUME' },
@@ -88,5 +129,9 @@ export default defineConfig({
     },
 
     search: { provider: 'local' },
-  },
+
+    // Consumed by theme/Layout.vue to render the nightly banner.
+    channel,
+    releaseTag,
+  } satisfies DefaultTheme.Config & { channel: string; releaseTag: string },
 })

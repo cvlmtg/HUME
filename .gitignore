@@ -21,7 +21,11 @@ Thumbs.db
 # Manual (VitePress)
 /user-manual/node_modules/
 /user-manual/.vitepress/dist/
+/user-manual/.vitepress/dist-release/
+/user-manual/.vitepress/dist-nightly/
 /user-manual/.vitepress/cache/
+/user-manual/docs-release/
+/user-manual/site/
 
 # Tree-sitter grammar test fixtures (fetched by scripts/fetch-test-grammars.sh)
 /tests/fixtures/grammars/

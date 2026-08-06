@@ -3,9 +3,7 @@ name: Deploy manual to GitHub Pages
 on:
   push:
     branches: [main]
-    paths:
-      - "user-manual/**"
-      - ".github/workflows/docs.yml"
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -35,14 +33,54 @@ jobs:
         working-directory: user-manual
         run: npm install
 
-      - name: Build
+      - name: Resolve latest release tag
+        id: release
+        run: |
+          tag=$(git tag -l 'v*' --sort=-v:refname | head -1)
+          if [ -z "$tag" ]; then
+            echo "::error::no v* tag found — nothing to publish as the release channel"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Check out release channel docs
         working-directory: user-manual
+        run: |
+          rm -rf docs-release
+          mkdir docs-release
+          git archive "${{ steps.release.outputs.tag }}" user-manual/docs | tar -x -C docs-release --strip-components=2
+
+      - name: Build release channel
+        working-directory: user-manual
+        env:
+          DOCS_CHANNEL: release
+          DOCS_SRC: docs-release
+          DOCS_BASE: /HUME/
+          DOCS_OUT: .vitepress/dist-release
+          DOCS_RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: npm run build
+
+      - name: Build nightly channel
+        working-directory: user-manual
+        env:
+          DOCS_CHANNEL: nightly
+          DOCS_BASE: /HUME/nightly/
+          DOCS_OUT: .vitepress/dist-nightly
+          DOCS_RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: npm run build
+
+      - name: Assemble site
+        working-directory: user-manual
+        run: |
+          rm -rf site
+          mkdir -p site/nightly
+          cp -R .vitepress/dist-release/. site/
+          cp -R .vitepress/dist-nightly/. site/nightly/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: user-manual/.vitepress/dist
+          path: user-manual/site
 
   deploy:
     needs: build

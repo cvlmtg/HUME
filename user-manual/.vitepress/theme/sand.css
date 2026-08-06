@@ -178,3 +178,18 @@
 .vp-doc :not(pre) > code {
   white-space: nowrap;
 }
+
+/* Nightly-channel banner (theme/Layout.vue), pinned above the nav bar. */
+.nightly-banner {
+  background: var(--vp-custom-block-info-bg);
+  color: var(--vp-custom-block-info-text);
+  border-bottom: 1px solid var(--vp-custom-block-info-border);
+  text-align: center;
+  font-size: 14px;
+  padding: 8px 16px;
+}
+.nightly-banner a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
