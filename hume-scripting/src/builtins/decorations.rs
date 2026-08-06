@@ -4,7 +4,6 @@
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
-use unicode_segmentation::UnicodeSegmentation;
 
 use crate::SteelCtx;
 use crate::json::{json_to_steel, steel_to_json};
@@ -85,9 +84,10 @@ pub(crate) fn set_signs(
 /// `(set-virtual-lines! source bid lines)` — `lines`: list of hashmaps, each
 /// with required `'line`/`'text`, plus optional `'anchor` (`'before` or
 /// `'after`, default `'after`), `'scope` (whole-line base style — `ui.virtual`
-/// fallback when absent), and `'segments` (list of `(start end scope)` byte
-/// ranges into `text`, styling only the covered bytes; bytes outside every
-/// segment keep `'scope`'s style).
+/// fallback when absent), and `'segments` (list of `(start end scope)` char
+/// ranges into `text`, styling only the covered chars; chars outside every
+/// segment keep `'scope`'s style). Segment bounds/ordering/overlap are
+/// validated at the host boundary, not here — see `VirtualLineSpec::segments`.
 pub(crate) fn set_virtual_lines(
     ctx: &mut SteelCtx,
     source: SteelVal,
@@ -97,7 +97,9 @@ pub(crate) fn set_virtual_lines(
     let source = string_arg(source, "set-virtual-lines! source")?;
     let id = bid.0;
     let parsed = virtual_line_specs(lines)?;
-    require_cap(ctx.host.decorations(), SET_VIRTUAL_LINES)?.set_virtual_lines(source, id, parsed);
+    require_cap(ctx.host.decorations(), SET_VIRTUAL_LINES)?
+        .set_virtual_lines(source, id, parsed)
+        .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
@@ -106,10 +108,10 @@ const SET_VIRTUAL_LINES: &str = "set-virtual-lines!";
 
 /// Decodes `lines` into `VirtualLineSpec`s. Each entry is a hashmap, not the
 /// old positional `(line text scope)` list this replaces — free to break: no
-/// `.scm` plugin calls this builtin yet, only Rust tests. Guarantees the
-/// contract `VirtualLineSpec`'s doc promises (segments sorted, non-overlapping,
-/// non-empty, in-bounds, grapheme-cluster-boundary-aligned), so nothing
-/// downstream re-validates.
+/// `.scm` plugin calls this builtin yet, only Rust tests. Only decodes shape
+/// (arity, types) — segment bounds/ordering/overlap validation moved to the
+/// host boundary (`host_impl.rs`'s `set_virtual_lines`), the sole enforcement
+/// point for that contract now.
 fn virtual_line_specs(lines: SteelVal) -> Result<Vec<VirtualLineSpec>, SteelErr> {
     list_items(lines, "set-virtual-lines! lines")?
         .into_iter()
@@ -164,7 +166,7 @@ fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
 
     let segments = match field("segments") {
         None => Vec::new(),
-        Some(v) => virtual_line_segments(v, &text)?,
+        Some(v) => virtual_line_segments(v)?,
     };
 
     Ok(VirtualLineSpec {
@@ -176,25 +178,13 @@ fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
     })
 }
 
-/// Decodes and validates `'segments`: each a `(start end scope)` byte range
-/// into `text`. Sorts by `start`, then checks in one pass — in-bounds,
-/// grapheme-cluster-boundary-aligned, non-empty, non-overlapping — the exact
-/// invariant `VirtualLineSpec::segments` documents.
-///
-/// Grapheme boundaries, not merely char boundaries: the engine
-/// (`hume-engine/src/rows.rs`'s `segment_virtual_row`) resolves each virtual
-/// grapheme's scope once per cluster, at the cluster's start byte. A segment
-/// edge that splits a multi-codepoint cluster (e.g. `e` + combining acute)
-/// would still pass a char-boundary check, but the engine's per-cluster
-/// lookup would either paint the whole cluster with a segment that only
-/// claimed part of it, or miss a segment that only claimed part of it — both
-/// silent. Char boundaries are a strict subset of grapheme boundaries, so
-/// this check subsumes the old one.
-fn virtual_line_segments(
-    segments: SteelVal,
-    text: &str,
-) -> Result<Vec<(usize, usize, String)>, SteelErr> {
-    let mut segments = tuple_list(
+/// Decodes `'segments`: each a `(start end scope)` char range into `text`.
+/// Shape only (arity, types) — bounds, ordering, overlap, and
+/// grapheme-cluster alignment are validated at the host boundary
+/// (`host_impl.rs`'s `set_virtual_lines`), which also converts these char
+/// offsets to the byte offsets the engine needs.
+fn virtual_line_segments(segments: SteelVal) -> Result<Vec<(usize, usize, String)>, SteelErr> {
+    tuple_list(
         segments,
         "set-virtual-lines! segments",
         3..=3,
@@ -205,45 +195,7 @@ fn virtual_line_segments(
             let scope = string_arg(fields[2].clone(), "set-virtual-lines! segment scope")?;
             Ok((start, end, scope))
         },
-    )?;
-    segments.sort_by_key(|(start, _, _)| *start);
-
-    // Every cluster start, plus the end-of-text position — sorted, since
-    // `grapheme_indices` yields ascending byte offsets. Built once per entry
-    // rather than re-walking `text` on every boundary check below.
-    let boundaries: Vec<usize> = text
-        .grapheme_indices(true)
-        .map(|(i, _)| i)
-        .chain(std::iter::once(text.len()))
-        .collect();
-    let grapheme_boundary = |byte_offset: usize| boundaries.binary_search(&byte_offset).is_ok();
-
-    let mut prev_end = 0usize;
-    for (start, end, _) in &segments {
-        if start >= end {
-            steel::stop!(Generic =>
-                "{} segments: segment ({}, {}) must have start < end",
-                SET_VIRTUAL_LINES, start, end);
-        }
-        if *end > text.len() {
-            steel::stop!(Generic =>
-                "{} segments: segment end {} is past text's byte length {}",
-                SET_VIRTUAL_LINES, end, text.len());
-        }
-        if !grapheme_boundary(*start) || !grapheme_boundary(*end) {
-            steel::stop!(Generic =>
-                "{} segments: segment ({}, {}) is not aligned to a grapheme-cluster \
-                 boundary in text", SET_VIRTUAL_LINES, start, end);
-        }
-        if *start < prev_end {
-            steel::stop!(Generic =>
-                "{} segments: segments must not overlap (segment starting at {} \
-                 overlaps the previous one ending at {})", SET_VIRTUAL_LINES, start, prev_end);
-        }
-        prev_end = *end;
-    }
-
-    Ok(segments)
+    )
 }
 
 /// `(set-inline-diagnostics! bid lines)` — `lines`: list of `(line text

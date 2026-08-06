@@ -313,16 +313,15 @@ Instead:
 - `diff_words(old: &str, new: &str) -> WordDiff` (`:254`, `_with_deadline` at `:266`) returns
   `WordHunk` ranges that are **char offsets, explicitly not byte offsets** (`:204`) — matching
   `ExtraHighlightEntry { start, end, scope }`, which is also a char range
-  (`hume-editor/src/editor/decorations.rs:75-79`). **`VirtualLine.segments` is a separate,
-  byte-offset case** (Phase 3's `(byte_start, byte_end, ScopeId)`, shipped Steel-facing as
-  byte ranges by Phase 4.5) — as shipped, a Steel caller feeding `diff-words`' char output
-  into `set-virtual-lines!`'s `'segments` would have to do its own char→byte conversion,
-  which contradicts the rule just stated (char→byte conversion happens editor-side, never
-  in Steel). **SPEC.md Prereq B (§5a.2) flags this and decides to flip `'segments` to char
-  offsets at the Steel surface**, with char→byte conversion moving into the host boundary
-  (`host_impl.rs`'s existing field-by-field map) — tracked as a SPEC checkbox, sequenced
-  before/with the unified-store step, while `set-virtual-lines!` still has zero `.scm`
-  callers.
+  (`hume-editor/src/editor/decorations.rs:75-79`). **`VirtualLine.segments` used to be a
+  separate, byte-offset case** (Phase 3's `(byte_start, byte_end, ScopeId)`, shipped
+  Steel-facing as byte ranges by Phase 4.5) — a Steel caller feeding `diff-words`' char output
+  straight into `set-virtual-lines!`'s `'segments` would have had to do its own char→byte
+  conversion, contradicting the rule just stated. **Fixed (SPEC.md Prereq B / §5a.2, shipped
+  2026-08-06): `'segments` is char offsets at the Steel surface**, with char→byte conversion
+  and the full validation suite (bounds, ordering, non-overlap, grapheme alignment) moved into
+  the host boundary (`host_impl.rs`'s `virtual_line_segments_to_bytes`) — `diff-words`' output
+  now feeds `set-virtual-lines!`'s `'segments` directly, no Steel-side conversion needed.
 - Builtin `(diff-lines old-text new-text)` calls `ctx.host()?.diff()?.diff_lines(old, new)` →
   list of hunks, each `(old-start old-count new-start new-count old-lines new-lines)`, using
   the **same anchor convention** as nvim's `_diff_lines` (`diff.lua:155`) so the Steel render
@@ -528,12 +527,12 @@ trait (`hume-scripting/src/host.rs`).
      words were the actual removed tokens versus context.
 
    Fix landed: `set-virtual-lines!` entries are now hashmaps taking an optional `'anchor`
-   (`'before`/`'after`, default `'after`) and `'segments` (list of `(start end scope)` byte
-   ranges into `text` — the covered bytes render with the segment's scope instead of
+   (`'before`/`'after`, default `'after`) and `'segments` (list of `(start end scope)` char
+   ranges into `text` — the covered chars render with the segment's scope instead of
    `'scope`'s, not layered with it; the bridge gap-fills uncovered bytes with `'scope`),
    threaded through `VirtualLineEntry` and `update_virtual_line_providers`. Segment offsets
-   are bytes as shipped; SPEC.md Prereq B (§5a.2) decides to flip this to char offsets
-   before the unification lands — see Phase 2's note above.
+   were bytes as first shipped; SPEC.md Prereq B (§5a.2) flipped this to char offsets at the
+   Steel surface (shipped 2026-08-06, before the unification lands) — see Phase 2's note above.
    Breaking change (old `(line text)`/`(line text scope)` entries are rejected) — acceptable
    since no `.scm` plugin called this builtin yet. Scoped to Phase 4.5, gating Phase 5b only —
    Phase 5a (signs) and Phase 5c (line background) don't touch this API at all.

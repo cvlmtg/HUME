@@ -674,8 +674,8 @@ impl Editor {
     }
 
     /// Fills the gaps `segments` (already sorted, non-overlapping, in-bounds —
-    /// guaranteed by the Steel boundary, `virtual_line_segments` in
-    /// `hume-scripting`'s `builtins/decorations.rs`) leaves in `0..text_len`
+    /// guaranteed by the host boundary, `virtual_line_segments_to_bytes` in
+    /// `host_impl.rs`) leaves in `0..text_len`
     /// with `base`, so the engine always receives full byte coverage instead
     /// of falling back to `ui.virtual_text` per uncovered byte. No segments →
     /// exactly one segment spanning the whole text, matching the

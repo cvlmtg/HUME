@@ -845,21 +845,25 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         source: String,
         bid: BufferId,
         lines: Vec<hume_scripting::VirtualLineSpec>,
-    ) {
+    ) -> Result<(), String> {
         let entries = lines
             .into_iter()
-            .map(|spec| crate::editor::decorations::VirtualLineEntry {
-                line: spec.line,
-                text: spec.text,
-                before: spec.before,
-                scope: spec.scope,
-                segments: spec.segments,
+            .map(|spec| {
+                let segments = virtual_line_segments_to_bytes(&spec.text, spec.segments)?;
+                Ok(crate::editor::decorations::VirtualLineEntry {
+                    line: spec.line,
+                    text: spec.text,
+                    before: spec.before,
+                    scope: spec.scope,
+                    segments,
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, String>>()?;
         self.state
             .config
             .decorations
             .set_virtual_lines(source, bid, entries);
+        Ok(())
     }
 
     fn set_extra_highlights(
@@ -925,6 +929,83 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         };
         crate::editor::lsp::introspect::diagnostic_counts(lsp, bid)
     }
+}
+
+/// Converts `segments`' char offsets into `text` to byte offsets, sorting by
+/// `start` and validating in the process — the sole enforcement point for
+/// `set-virtual-lines!`'s segment contract (bounds, ordering, non-overlap,
+/// grapheme-cluster alignment), now that the Steel boundary
+/// (`virtual_line_specs` in `hume-scripting`'s `builtins/decorations.rs`)
+/// only decodes shape. See `VirtualLineSpec::segments`'s doc.
+///
+/// Grapheme boundaries, not merely char boundaries: the engine
+/// (`hume-engine/src/rows.rs`'s `segment_virtual_row`) resolves each virtual
+/// grapheme's scope once per cluster, at the cluster's start byte. A segment
+/// edge that splits a multi-codepoint cluster (e.g. `e` + combining acute)
+/// would still pass a char-boundary check, but the engine's per-cluster
+/// lookup would either paint the whole cluster with a segment that only
+/// claimed part of it, or miss a segment that only claimed part of it — both
+/// silent.
+fn virtual_line_segments_to_bytes(
+    text: &str,
+    mut segments: Vec<(usize, usize, String)>,
+) -> Result<Vec<(usize, usize, String)>, String> {
+    use unicode_segmentation::UnicodeSegmentation;
+
+    segments.sort_by_key(|(start, _, _)| *start);
+
+    // Char index -> byte offset, plus a sentinel one past the last char so
+    // `end == char_count` resolves to `text.len()`.
+    let char_to_byte: Vec<usize> = text
+        .char_indices()
+        .map(|(i, _)| i)
+        .chain(std::iter::once(text.len()))
+        .collect();
+    let char_count = char_to_byte.len() - 1;
+
+    // Every grapheme-cluster start byte offset, plus end-of-text — sorted,
+    // since `grapheme_indices` yields ascending byte offsets. Built once per
+    // entry rather than re-walking `text` on every boundary check below.
+    let grapheme_boundaries: Vec<usize> = text
+        .grapheme_indices(true)
+        .map(|(i, _)| i)
+        .chain(std::iter::once(text.len()))
+        .collect();
+    let is_grapheme_boundary =
+        |byte_offset: usize| grapheme_boundaries.binary_search(&byte_offset).is_ok();
+
+    let mut prev_end = 0usize;
+    let mut out = Vec::with_capacity(segments.len());
+    for (start, end, scope) in segments {
+        if start >= end {
+            return Err(format!(
+                "set-virtual-lines! segments: segment ({start}, {end}) must have start < end"
+            ));
+        }
+        if end > char_count {
+            return Err(format!(
+                "set-virtual-lines! segments: segment end {end} is past text's char length {char_count}"
+            ));
+        }
+        let start_byte = char_to_byte[start];
+        let end_byte = char_to_byte[end];
+        if !is_grapheme_boundary(start_byte) || !is_grapheme_boundary(end_byte) {
+            return Err(format!(
+                "set-virtual-lines! segments: segment ({start}, {end}) is not aligned to a \
+                 grapheme-cluster boundary in text"
+            ));
+        }
+        if start < prev_end {
+            return Err(format!(
+                "set-virtual-lines! segments: segments must not overlap (segment starting at \
+                 {start} overlaps the previous one ending at {prev_end})"
+            ));
+        }
+        prev_end = end;
+        out.push((start_byte, end_byte, scope));
+    }
+
+    Ok(out)
 }
 
 impl<'a> EditHost for EditorHostImpl<'a> {

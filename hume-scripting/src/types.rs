@@ -48,13 +48,12 @@ pub enum PendingLanguageReg {
 
 /// One `(set-virtual-lines! …)` entry, decoded from its Steel hashmap shape
 /// (`hume-scripting/src/builtins/decorations.rs`'s `virtual_line_specs`),
-/// which guarantees: `segments` sorted by `start`, non-overlapping,
-/// non-empty, `start < end <= text.len()`, both ends on a `text`
-/// grapheme-cluster boundary (not merely a char boundary — the engine
-/// resolves each virtual grapheme's scope once per cluster, so a segment
-/// edge splitting a cluster would silently over-extend or never apply). The
-/// host boundary (`DecorationHost::set_virtual_lines`) trusts this — see that
-/// trait method's doc for why.
+/// which only validates shape (arity, types) — `segments` here are
+/// **caller-supplied and unvalidated** char ranges, not yet sorted,
+/// bounds-checked, or overlap-checked. `DecorationHost::set_virtual_lines`
+/// (the host boundary) is the sole enforcement point: it sorts, validates
+/// (bounds, ordering, non-overlap, grapheme-cluster alignment), and converts
+/// to byte offsets before anything downstream sees them.
 #[derive(Debug, Clone)]
 pub struct VirtualLineSpec {
     pub line: usize,
@@ -62,12 +61,12 @@ pub struct VirtualLineSpec {
     /// `true` for `'anchor 'before` (render above `line`), `false` for the
     /// default `'after`.
     pub before: bool,
-    /// Whole-line base style; bytes not covered by `segments` fall back to
+    /// Whole-line base style; chars not covered by `segments` fall back to
     /// this (or `ui.virtual` if also absent).
     pub scope: Option<String>,
-    /// `(byte_start, byte_end, scope_name)` into `text`, styling only the
-    /// covered bytes — the bridge (`Editor::update_virtual_line_providers`)
-    /// gap-fills the rest with `scope`.
+    /// `(char_start, char_end, scope_name)` into `text`, styling only the
+    /// covered chars — unvalidated, see the struct doc. The host boundary
+    /// converts these to the byte offsets `VirtualLineEntry` stores.
     pub segments: Vec<(usize, usize, String)>,
 }
 

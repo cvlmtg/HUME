@@ -107,7 +107,10 @@ fn set_extra_highlights_without_decoration_host_errors() {
 //
 // These call the private decoder directly (`NullHost` has no `DecorationHost`,
 // so a full `set_virtual_lines` round trip can't reach the store from here) —
-// same pattern as `picker_items`'s tests in `builtins/ui.rs`.
+// same pattern as `picker_items`'s tests in `builtins/ui.rs`. The decoder only
+// checks shape (arity, types) now — segment bounds/ordering/overlap/grapheme
+// validation moved to the host boundary (`host_impl.rs`'s
+// `virtual_line_segments_to_bytes`), tested there instead.
 
 #[test]
 fn virtual_line_spec_decodes_every_field() {
@@ -128,6 +131,8 @@ fn virtual_line_spec_decodes_every_field() {
     assert_eq!(spec.text, "- let x = 5");
     assert!(spec.before, "'anchor 'before must decode to before: true");
     assert_eq!(spec.scope.as_deref(), Some("diff.minus"));
+    // Char offsets, passed through verbatim — this layer no longer sorts,
+    // bounds-checks, or validates them.
     assert_eq!(
         spec.segments,
         vec![
@@ -148,24 +153,6 @@ fn virtual_line_spec_defaults_anchor_to_after_and_scope_to_none() {
     assert!(!spec.before, "default anchor must be 'after");
     assert_eq!(spec.scope, None);
     assert!(spec.segments.is_empty());
-}
-
-#[test]
-fn virtual_line_spec_sorts_segments() {
-    // Unsorted input, and the second entry's byte range only fits if the text
-    // is long enough — this also locks that the decoder validates against
-    // the *decoded* text, not a stale copy.
-    let entry = hashmap(vec![
-        ("line", SteelVal::IntV(0)),
-        ("text", SteelVal::StringV("abcdef".into())),
-        ("segments", list(vec![seg(4, 6, "b"), seg(0, 2, "a")])),
-    ]);
-    let specs = virtual_line_specs(list(vec![entry])).unwrap();
-    assert_eq!(
-        specs[0].segments,
-        vec![(0, 2, "a".to_string()), (4, 6, "b".to_string())],
-        "segments must come out sorted by start regardless of input order"
-    );
 }
 
 #[test]
@@ -229,79 +216,6 @@ fn virtual_line_spec_rejects_bad_anchor_symbol() {
         .to_string();
     assert!(err.contains("'before"), "got: {err}");
     assert!(err.contains("'after"), "got: {err}");
-}
-
-#[test]
-fn virtual_line_spec_rejects_segment_end_past_text_len() {
-    let entry = hashmap(vec![
-        ("line", SteelVal::IntV(0)),
-        ("text", SteelVal::StringV("ab".into())),
-        ("segments", list(vec![seg(0, 5, "x")])),
-    ]);
-    let err = virtual_line_specs(list(vec![entry]))
-        .unwrap_err()
-        .to_string();
-    assert!(err.contains("byte length"), "got: {err}");
-}
-
-#[test]
-fn virtual_line_spec_rejects_zero_length_segment() {
-    let entry = hashmap(vec![
-        ("line", SteelVal::IntV(0)),
-        ("text", SteelVal::StringV("abcdef".into())),
-        ("segments", list(vec![seg(2, 2, "x")])),
-    ]);
-    let err = virtual_line_specs(list(vec![entry]))
-        .unwrap_err()
-        .to_string();
-    assert!(err.contains("start < end"), "got: {err}");
-}
-
-#[test]
-fn virtual_line_spec_rejects_overlapping_segments() {
-    let entry = hashmap(vec![
-        ("line", SteelVal::IntV(0)),
-        ("text", SteelVal::StringV("abcdef".into())),
-        ("segments", list(vec![seg(0, 3, "a"), seg(2, 5, "b")])),
-    ]);
-    let err = virtual_line_specs(list(vec![entry]))
-        .unwrap_err()
-        .to_string();
-    assert!(err.contains("overlap"), "got: {err}");
-}
-
-#[test]
-fn virtual_line_spec_rejects_non_char_boundary_segment() {
-    // "é" is 2 bytes (U+00E9 encodes to 0xC3 0xA9); byte offset 1 falls
-    // inside it, not on a boundary.
-    let entry = hashmap(vec![
-        ("line", SteelVal::IntV(0)),
-        ("text", SteelVal::StringV("é".into())),
-        ("segments", list(vec![seg(1, 2, "x")])),
-    ]);
-    let err = virtual_line_specs(list(vec![entry]))
-        .unwrap_err()
-        .to_string();
-    assert!(err.contains("grapheme-cluster boundary"), "got: {err}");
-}
-
-#[test]
-fn virtual_line_spec_rejects_segment_splitting_a_grapheme_cluster() {
-    // "e" (1 byte) + combining acute accent U+0301 (2 bytes) is one grapheme
-    // cluster spanning bytes 0..3. Byte 1 is a *char* boundary (it falls
-    // between the two `char`s) but not a *grapheme* boundary — the engine
-    // (`rows.rs`'s `segment_virtual_row`) resolves scope once per cluster at
-    // its start byte, so a segment edge here would silently mis-apply
-    // instead of erroring under a mere `is_char_boundary` check.
-    let entry = hashmap(vec![
-        ("line", SteelVal::IntV(0)),
-        ("text", SteelVal::StringV("e\u{301}".into())),
-        ("segments", list(vec![seg(0, 1, "x")])),
-    ]);
-    let err = virtual_line_specs(list(vec![entry]))
-        .unwrap_err()
-        .to_string();
-    assert!(err.contains("grapheme-cluster boundary"), "got: {err}");
 }
 
 #[test]

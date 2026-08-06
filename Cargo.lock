@@ -1155,7 +1155,6 @@ dependencies = [
  "steel-core",
  "tempfile",
  "termina",
- "unicode-segmentation",
 ]
 
 [[package]]

@@ -43,13 +43,15 @@ pub(crate) struct SignEntry {
 /// set. `scope` styles bytes `segments` doesn't cover (`ui.virtual` fallback
 /// when both are absent); `segments` are `(byte_start, byte_end, scope_name)`
 /// ranges into `text`, already sorted/non-overlapping/in-bounds — guaranteed
-/// by the Steel boundary (`virtual_line_specs` in
-/// `hume-scripting`'s `builtins/decorations.rs`), same shape as
-/// `hume_scripting::VirtualLineSpec`. Kept as a separate type rather than
-/// reusing that one directly: this store stays line-indexed today, but
-/// SPEC.md §6 plans migrating it to char offsets while the Steel surface
-/// keeps line numbers — `host_impl.rs`'s explicit field-by-field map is where
-/// that conversion will land.
+/// by the host boundary (`virtual_line_segments_to_bytes` in `host_impl.rs`),
+/// which also converts the Steel-facing char offsets to these byte offsets.
+/// Kept as a separate type rather than reusing `hume_scripting::VirtualLineSpec`
+/// directly: that type's `segments` are unvalidated char offsets, this one's
+/// are validated byte offsets — deliberately different shapes, not merely a
+/// field rename. This store also stays line-indexed today, but SPEC.md §6
+/// plans migrating it to char offsets while the Steel surface keeps line
+/// numbers — `host_impl.rs`'s explicit field-by-field map is where that
+/// conversion will land.
 #[derive(Clone)]
 pub(crate) struct VirtualLineEntry {
     pub(crate) line: usize,

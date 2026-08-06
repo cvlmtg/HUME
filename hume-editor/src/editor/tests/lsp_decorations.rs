@@ -337,7 +337,9 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
     assert_eq!(
         vlines[0].segments,
         vec![(2, 5, "keyword".to_string())],
-        "segments must reach the store verbatim (already sorted/validated at the Steel boundary)"
+        "'segments' are char offsets at the Steel surface; on this ASCII fixture the host \
+         boundary's char\u{2192}byte conversion (validated there, not at the Steel boundary) \
+         is a no-op, so they reach the store unchanged"
     );
 }
 

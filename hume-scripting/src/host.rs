@@ -451,11 +451,19 @@ pub trait DecorationHost {
     );
 
     /// `(set-virtual-lines! source bid lines)` — replaces `source`'s virtual
-    /// lines for `bid` wholesale. Each `VirtualLineSpec` is already validated
-    /// and its `segments` sorted/non-overlapping — the Steel boundary
-    /// (`virtual_line_specs` in `hume-scripting`'s `builtins/decorations.rs`)
-    /// guarantees this, so no caller of this trait method needs to re-check.
-    fn set_virtual_lines(&mut self, source: String, bid: BufferId, lines: Vec<VirtualLineSpec>);
+    /// lines for `bid` wholesale. Each `VirtualLineSpec`'s `segments` are
+    /// **unvalidated** char ranges (the Steel boundary only decodes shape,
+    /// see `VirtualLineSpec`'s doc) — this method is the sole enforcement
+    /// point: it must sort, validate (bounds, ordering, non-overlap,
+    /// grapheme-cluster alignment against `text`), and convert to byte
+    /// offsets, `Err`ing with a message naming `set-virtual-lines!` on any
+    /// violation rather than storing bad data.
+    fn set_virtual_lines(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        lines: Vec<VirtualLineSpec>,
+    ) -> Result<(), String>;
 
     /// `(set-extra-highlights! source bid spans)` — replaces `source`'s
     /// extra highlights for `bid` wholesale. Each entry is `(start, end,
