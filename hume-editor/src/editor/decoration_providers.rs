@@ -297,26 +297,30 @@ impl Editor {
                 .signcolumn(&self.state.settings);
             let max_plugin_signs = signcolumn.columns as usize;
 
+            // Both the diagnostics and plugin-sign passes below need to turn
+            // a char offset back into a line — diagnostics store char
+            // ranges directly, and plugin signs now store their line's
+            // line-start char offset (`SignEntry::pos`, remapped through
+            // edits like every other decoration kind, SPEC.md §6). Clamped
+            // to the buffer's last valid char in both passes, so a stored
+            // offset that drifted past the current text can't panic
+            // `char_to_line` (which is out-of-bounds past `len_chars()`).
+            let text = self.state.buffers.get(bid).text();
+            let last_char = text.len_chars().saturating_sub(1);
+
             // Diagnostics: every line a diagnostic touches gets a marker;
             // the most severe diagnostic wins when several touch one line.
-            // Clamped to the buffer's last valid char (same defense the
-            // highlight path above takes against a stored diagnostic whose
-            // offsets have drifted past the current text) — `char_to_line`
-            // panics on an out-of-bounds char index.
-            let diag_raw: Vec<(usize, usize, DiagSeverity)> = {
-                let text = self.state.buffers.get(bid).text();
-                let last_char = text.len_chars().saturating_sub(1);
-                self.lsp
-                    .diagnostics_for_range(bid, visible.clone(), floor)
-                    .map(|d| {
-                        (
-                            text.char_to_line(d.start.min(last_char)),
-                            text.char_to_line(d.end.saturating_sub(1).min(last_char)),
-                            d.severity,
-                        )
-                    })
-                    .collect()
-            };
+            let diag_raw: Vec<(usize, usize, DiagSeverity)> = self
+                .lsp
+                .diagnostics_for_range(bid, visible.clone(), floor)
+                .map(|d| {
+                    (
+                        text.char_to_line(d.start.min(last_char)),
+                        text.char_to_line(d.end.saturating_sub(1).min(last_char)),
+                        d.severity,
+                    )
+                })
+                .collect();
             let mut diag_best: rustc_hash::FxHashMap<usize, DiagSeverity> =
                 rustc_hash::FxHashMap::default();
             for (start_line, end_line, severity) in diag_raw {
@@ -368,11 +372,12 @@ impl Editor {
                 .config
                 .decorations
                 .signs_for_buffer(bid)
-                .filter(|(_, e)| visible_lines.contains(&e.line))
-                .map(|(source, e)| {
+                .map(|(source, e)| (source, text.char_to_line(e.pos.min(last_char)), e))
+                .filter(|(_, line, _)| visible_lines.contains(line))
+                .map(|(source, line, e)| {
                     (
                         source.to_string(),
-                        e.line,
+                        line,
                         e.text.clone(),
                         e.scope.clone(),
                         e.priority,
@@ -548,23 +553,29 @@ impl Editor {
             // needs `&mut self`, which can't overlap with either the
             // immutable borrow `eol_text_for_buffer` holds on
             // `self.state.config.decorations` or the one `text` will hold on
-            // `self.state.buffers`.
+            // `self.state.buffers`. Each entry's `pos` is its line's
+            // line-start char offset (`EolTextEntry::pos`), converted back
+            // to a line below once `text` is in scope.
             let entries: Vec<(usize, String, String)> = self
                 .state
                 .config
                 .decorations
                 .eol_text_for_buffer(bid)
-                .map(|e| (e.line, e.text.clone(), e.scope.clone()))
+                .map(|e| (e.pos, e.text.clone(), e.scope.clone()))
                 .collect();
             let resolved: Vec<(usize, String, hume_engine::types::ScopeId)> = entries
                 .into_iter()
-                .map(|(line, text, scope_name)| (line, text, self.runtime_scope(&scope_name)))
+                .map(|(pos, text, scope_name)| (pos, text, self.runtime_scope(&scope_name)))
                 .collect();
 
             let text = self.state.buffers.get(bid).text();
+            let last_char = text.len_chars().saturating_sub(1);
             let mut by_line: rustc_hash::FxHashMap<usize, Vec<InlineInsert>> =
                 rustc_hash::FxHashMap::default();
-            for (line, entry_text, scope) in resolved {
+            for (pos, entry_text, scope) in resolved {
+                // Clamped like the sign path above: a stored offset that
+                // drifted past the current text can't panic `char_to_line`.
+                let line = text.char_to_line(pos.min(last_char));
                 // End-of-line placement: the line's own trailing '\n' char
                 // resolves to a byte offset within `line` (never the next
                 // line — see `char_to_line_byte`'s doc comment on the same
@@ -653,12 +664,20 @@ impl Editor {
                     None => fallback_scope,
                 };
                 let segments = self.gap_fill_segments(&entry.segments, entry.text.len(), base);
+                // `entry.pos` is the anchor line's line-start char offset
+                // (`VirtualLineEntry::pos`) — fetched fresh per entry since
+                // `runtime_scope`/`gap_fill_segments` above need `&mut self`,
+                // which can't overlap with a borrow of `self.state.buffers`.
+                // Clamped like the sign/EOL-text paths: a stored offset that
+                // drifted past the current text can't panic `char_to_line`.
+                let text = self.state.buffers.get(bid).text();
+                let line = text.char_to_line(entry.pos.min(text.len_chars().saturating_sub(1)));
                 let anchor = if entry.before {
-                    VirtualLineAnchor::Before(entry.line)
+                    VirtualLineAnchor::Before(line)
                 } else {
-                    VirtualLineAnchor::After(entry.line)
+                    VirtualLineAnchor::After(line)
                 };
-                by_line.entry(entry.line).or_default().push(VirtualLine {
+                by_line.entry(line).or_default().push(VirtualLine {
                     anchor,
                     // Overwritten by the engine at collection time with the
                     // registration-assigned id (see `ProviderSet::add_virtual_line_source`).

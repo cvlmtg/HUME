@@ -22,42 +22,56 @@ pub(crate) struct InlayHintEntry {
     pub(crate) before: bool,
 }
 
-/// One `(set-signs! …)` entry: a gutter marker on `line` (0-indexed).
+/// One `(set-signs! …)` entry: a gutter marker on the line `pos` starts.
+/// `pos` is that line's line-start char offset, not the Steel-facing line
+/// number — the host boundary (`host_impl.rs`'s `line_start_offset`)
+/// converts at set time, so this remaps through edits with everything else
+/// (SPEC.md §6); the render side derives the current line back via
+/// `char_to_line` at rebuild.
 pub(crate) struct SignEntry {
-    pub(crate) line: usize,
+    pub(crate) pos: usize,
     pub(crate) text: String,
     pub(crate) scope: String,
     pub(crate) priority: i64,
 }
 
 /// One `(set-virtual-lines! …)` entry: a synthetic line of text anchored to
-/// buffer `line` (0-indexed) — rendered after it, or before when `before` is
-/// set. `scope` styles bytes `segments` doesn't cover (`ui.virtual` fallback
-/// when both are absent); `segments` are `(byte_start, byte_end, scope_name)`
-/// ranges into `text`, already sorted/non-overlapping/in-bounds — guaranteed
-/// by the host boundary (`virtual_line_segments_to_bytes` in `host_impl.rs`),
-/// which also converts the Steel-facing char offsets to these byte offsets.
-/// Kept as a separate type rather than reusing `hume_scripting::VirtualLineSpec`
-/// directly: that type's `segments` are unvalidated char offsets, this one's
-/// are validated byte offsets — deliberately different shapes, not merely a
-/// field rename.
+/// the line `pos` starts (rendered after it, or before when `before` is
+/// set). `pos` is that line's line-start char offset, not the Steel-facing
+/// line number — the host boundary (`host_impl.rs`'s `line_start_offset`)
+/// converts at set time, so this remaps through edits like every other kind
+/// (SPEC.md §6); the render side derives the current line back via
+/// `char_to_line` at rebuild. `scope` styles bytes `segments` doesn't cover
+/// (`ui.virtual` fallback when both are absent); `segments` are
+/// `(byte_start, byte_end, scope_name)` ranges into `text`, already
+/// sorted/non-overlapping/in-bounds — guaranteed by the host boundary
+/// (`virtual_line_segments_to_bytes` in `host_impl.rs`), which also converts
+/// the Steel-facing char offsets to these byte offsets. Kept as a separate
+/// type rather than reusing `hume_scripting::VirtualLineSpec` directly: that
+/// type's `segments` are unvalidated char offsets, this one's are validated
+/// byte offsets — deliberately different shapes, not merely a field rename.
 #[derive(Clone)]
 pub(crate) struct VirtualLineEntry {
-    pub(crate) line: usize,
+    pub(crate) pos: usize,
     pub(crate) text: String,
     pub(crate) before: bool,
     pub(crate) scope: Option<String>,
     pub(crate) segments: Vec<(usize, usize, String)>,
 }
 
-/// One `(set-eol-text! …)` entry: `text` appended at the end of buffer
-/// `line` (0-indexed) — the diagnostics plugin's per-line summary (`"[n]
-/// <message>"` or a bare message) is its first client, not its owner, same
-/// as every other kind here is to LSP. Was `InlineDiagnosticEntry` /
-/// `set-inline-diagnostics!` — renamed because it was always "text appended
-/// at end of line", never diagnostics-specific.
+/// One `(set-eol-text! …)` entry: `text` appended at the end of the line
+/// `pos` starts. `pos` is that line's line-start char offset, not the
+/// Steel-facing line number — the host boundary (`host_impl.rs`'s
+/// `line_start_offset`) converts at set time, so this remaps through edits
+/// like every other kind (SPEC.md §6); the render side derives the current
+/// line back via `char_to_line` at rebuild. The diagnostics plugin's
+/// per-line summary (`"[n] <message>"` or a bare message) is this kind's
+/// first client, not its owner, same as every other kind here is to LSP.
+/// Was `InlineDiagnosticEntry` / `set-inline-diagnostics!` — renamed
+/// because it was always "text appended at end of line", never
+/// diagnostics-specific.
 pub(crate) struct EolTextEntry {
-    pub(crate) line: usize,
+    pub(crate) pos: usize,
     pub(crate) text: String,
     pub(crate) scope: String,
 }
@@ -85,19 +99,19 @@ impl Positioned for InlayHintEntry {
 
 impl Positioned for SignEntry {
     fn pos(&self) -> usize {
-        self.line
+        self.pos
     }
 }
 
 impl Positioned for VirtualLineEntry {
     fn pos(&self) -> usize {
-        self.line
+        self.pos
     }
 }
 
 impl Positioned for EolTextEntry {
     fn pos(&self) -> usize {
-        self.line
+        self.pos
     }
 }
 

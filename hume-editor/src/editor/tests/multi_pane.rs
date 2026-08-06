@@ -1002,7 +1002,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
         "test".to_string(),
         bid_a,
         vec![VirtualLineEntry {
-            line: 0,
+            pos: 0,
             text: "deleted".to_string(),
             before: false,
             scope: None,

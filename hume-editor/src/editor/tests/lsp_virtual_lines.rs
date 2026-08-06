@@ -264,7 +264,7 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
         "linter".to_string(),
         bid,
         vec![crate::editor::decorations::VirtualLineEntry {
-            line: 0,
+            pos: 0,
             text: "hint".to_string(),
             before: false,
             scope: None,

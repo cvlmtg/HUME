@@ -447,13 +447,15 @@ pub trait DecorationHost {
     ) -> Result<(), String>;
 
     /// `(set-signs! source bid signs)` — replaces `source`'s signs for `bid`
-    /// wholesale. Each entry is `(line, text, scope, priority)`.
+    /// wholesale. Each entry is `(line, text, scope, priority)`; `line`
+    /// converts to that line's line-start char offset at this boundary
+    /// (SPEC.md §6) — `Err`, naming the builtin, if `line` is out of range.
     fn set_signs(
         &mut self,
         source: String,
         bid: BufferId,
         signs: Vec<(usize, String, String, i64)>,
-    );
+    ) -> Result<(), String>;
 
     /// `(set-virtual-lines! source bid lines)` — replaces `source`'s virtual
     /// lines for `bid` wholesale. Each `VirtualLineSpec`'s `segments` are
@@ -472,19 +474,27 @@ pub trait DecorationHost {
 
     /// `(set-extra-highlights! source bid spans)` — replaces `source`'s
     /// extra highlights for `bid` wholesale. Each entry is `(start, end,
-    /// scope)`, char offsets.
+    /// scope)`, char offsets — `Err`, naming the builtin, if the range is
+    /// empty or out of bounds.
     fn set_extra_highlights(
         &mut self,
         source: String,
         bid: BufferId,
         spans: Vec<(usize, usize, String)>,
-    );
+    ) -> Result<(), String>;
 
     /// `(set-eol-text! source bid lines)` — replaces `source`'s EOL text for
     /// `bid` wholesale. Each entry is `(line, text, scope)`; `text` is
-    /// spliced in at the end of `line`. Not diagnostics-specific — the
-    /// diagnostics plugin is its first client, not its owner.
-    fn set_eol_text(&mut self, source: String, bid: BufferId, lines: Vec<(usize, String, String)>);
+    /// spliced in at the end of `line`, which converts to that line's
+    /// line-start char offset at this boundary (SPEC.md §6) — `Err`, naming
+    /// the builtin, if `line` is out of range. Not diagnostics-specific —
+    /// the diagnostics plugin is its first client, not its owner.
+    fn set_eol_text(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        lines: Vec<(usize, String, String)>,
+    ) -> Result<(), String>;
 
     /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
     /// decoded `{"start" "end" "line" "col" "severity" "message" "code"

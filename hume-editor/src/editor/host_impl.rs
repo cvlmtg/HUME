@@ -801,16 +801,18 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         hints: Vec<(usize, String, bool)>,
     ) -> Result<(), String> {
+        let text = buffer_text(self.state, bid, "set-inlay-hints!")?;
         let entries = hints
             .into_iter()
-            .map(
-                |(pos, text, before)| crate::editor::decorations::InlayHintEntry {
+            .map(|(pos, hint_text, before)| {
+                validate_offset(text, pos, "set-inlay-hints!")?;
+                Ok(crate::editor::decorations::InlayHintEntry {
                     pos,
-                    text,
+                    text: hint_text,
                     before,
-                },
-            )
-            .collect();
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         self.state
             .config
             .decorations
@@ -823,22 +825,24 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         source: String,
         bid: BufferId,
         signs: Vec<(usize, String, String, i64)>,
-    ) {
+    ) -> Result<(), String> {
+        let text = buffer_text(self.state, bid, "set-signs!")?;
         let entries = signs
             .into_iter()
-            .map(
-                |(line, text, scope, priority)| crate::editor::decorations::SignEntry {
-                    line,
-                    text,
+            .map(|(line, sign_text, scope, priority)| {
+                Ok(crate::editor::decorations::SignEntry {
+                    pos: line_start_offset(text, line, "set-signs!")?,
+                    text: sign_text,
                     scope,
                     priority,
-                },
-            )
-            .collect();
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         self.state
             .config
             .decorations
             .set_signs(source, bid, entries);
+        Ok(())
     }
 
     fn set_virtual_lines(
@@ -847,12 +851,14 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         lines: Vec<hume_scripting::VirtualLineSpec>,
     ) -> Result<(), String> {
+        let text = buffer_text(self.state, bid, "set-virtual-lines!")?;
         let entries = lines
             .into_iter()
             .map(|spec| {
+                let pos = line_start_offset(text, spec.line, "set-virtual-lines!")?;
                 let segments = virtual_line_segments_to_bytes(&spec.text, spec.segments)?;
                 Ok(crate::editor::decorations::VirtualLineEntry {
-                    line: spec.line,
+                    pos,
                     text: spec.text,
                     before: spec.before,
                     scope: spec.scope,
@@ -872,38 +878,44 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         source: String,
         bid: BufferId,
         spans: Vec<(usize, usize, String)>,
-    ) {
+    ) -> Result<(), String> {
+        let text = buffer_text(self.state, bid, "set-extra-highlights!")?;
         let entries = spans
             .into_iter()
-            .map(
-                |(start, end, scope)| crate::editor::decorations::ExtraHighlightEntry {
-                    start,
-                    end,
-                    scope,
-                },
-            )
-            .collect();
+            .map(|(start, end, scope)| {
+                validate_range(text, start, end, "set-extra-highlights!")?;
+                Ok(crate::editor::decorations::ExtraHighlightEntry { start, end, scope })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         self.state
             .config
             .decorations
             .set_extra_highlights(source, bid, entries);
+        Ok(())
     }
 
-    fn set_eol_text(&mut self, source: String, bid: BufferId, lines: Vec<(usize, String, String)>) {
+    fn set_eol_text(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        lines: Vec<(usize, String, String)>,
+    ) -> Result<(), String> {
+        let text = buffer_text(self.state, bid, "set-eol-text!")?;
         let entries = lines
             .into_iter()
-            .map(
-                |(line, text, scope)| crate::editor::decorations::EolTextEntry {
-                    line,
-                    text,
+            .map(|(line, eol_text, scope)| {
+                Ok(crate::editor::decorations::EolTextEntry {
+                    pos: line_start_offset(text, line, "set-eol-text!")?,
+                    text: eol_text,
                     scope,
-                },
-            )
-            .collect();
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         self.state
             .config
             .decorations
             .set_eol_text(source, bid, entries);
+        Ok(())
     }
 
     fn diagnostics_for_buffer(
@@ -1007,6 +1019,80 @@ fn virtual_line_segments_to_bytes(
     }
 
     Ok(out)
+}
+
+/// The live text for `bid`, or `Err` naming `builtin` if `bid` doesn't name
+/// an open buffer. Every decoration setter needs this to validate/convert
+/// its Steel-facing positions, so a bogus `bid` fails loudly here rather
+/// than silently storing data no pane will ever render.
+fn buffer_text<'s>(
+    state: &'s EditorState,
+    bid: BufferId,
+    builtin: &str,
+) -> Result<&'s hume_editing::text::Text, String> {
+    state
+        .buffers
+        .try_get(bid)
+        .map(|b| b.text())
+        .ok_or_else(|| format!("{builtin}: unknown buffer"))
+}
+
+/// `line`'s line-start char offset, or `Err` naming `builtin` if `line` is
+/// out of range. Signs/virtual-lines/EOL-text keep their Steel-facing
+/// `line` unit (SPEC.md §6's semantic-units-at-the-surface decision);
+/// this is the one place — already holding the rope — where that converts
+/// to the internal char-offset position model.
+fn line_start_offset(
+    text: &hume_editing::text::Text,
+    line: usize,
+    builtin: &str,
+) -> Result<usize, String> {
+    if line >= text.len_lines() {
+        return Err(format!(
+            "{builtin}: line {line} is out of range (buffer has {} lines)",
+            text.len_lines()
+        ));
+    }
+    Ok(text.line_to_char(line))
+}
+
+/// `pos` must be a valid char offset into `text` (`<=` its length — one past
+/// the last char is valid, e.g. an `'after` hint at end of buffer) — `Err`
+/// naming `builtin` otherwise.
+fn validate_offset(
+    text: &hume_editing::text::Text,
+    pos: usize,
+    builtin: &str,
+) -> Result<(), String> {
+    if pos > text.len_chars() {
+        return Err(format!(
+            "{builtin}: offset {pos} is out of range (buffer has {} chars)",
+            text.len_chars()
+        ));
+    }
+    Ok(())
+}
+
+/// `(start, end)` must be a valid, non-empty char range into `text` — `Err`
+/// naming `builtin` otherwise.
+fn validate_range(
+    text: &hume_editing::text::Text,
+    start: usize,
+    end: usize,
+    builtin: &str,
+) -> Result<(), String> {
+    if start >= end {
+        return Err(format!(
+            "{builtin}: range ({start}, {end}) must have start < end"
+        ));
+    }
+    if end > text.len_chars() {
+        return Err(format!(
+            "{builtin}: range end {end} is past the buffer's char length {}",
+            text.len_chars()
+        ));
+    }
+    Ok(())
 }
 
 impl<'a> EditHost for EditorHostImpl<'a> {

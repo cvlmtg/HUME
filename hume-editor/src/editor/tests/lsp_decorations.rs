@@ -158,6 +158,103 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_offset() {
     );
 }
 
+/// An out-of-range char offset must error loudly at `set-extra-highlights!`
+/// rather than storing a span that never renders — the fail-fast contract
+/// SPEC.md §6 adds for every kind's host-boundary conversion.
+#[test]
+fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdef\n"); // 8 chars total
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm-bad" "" (lambda ()
+             (set-extra-highlights! "linter" (current-buffer) (list (list 0 100 "unused")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm-bad");
+
+    assert!(
+        ed.state
+            .config
+            .decorations
+            .extra_highlights_for_buffer(bid)
+            .next()
+            .is_none(),
+        "a malformed entry must not land in the store at all"
+    );
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("100") && log.contains("set-extra-highlights!"),
+        "must name the builtin and the offending value: {log:?}"
+    );
+}
+
+/// An out-of-range `line` must error loudly at the boundary shared by
+/// signs/virtual-lines/EOL-text, instead of the old silently-never-renders
+/// behavior (SPEC.md §6).
+#[test]
+fn set_signs_set_virtual_lines_and_set_eol_text_error_loudly_on_an_out_of_range_line() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdef\n"); // one real line
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm-signs" "" (lambda ()
+             (set-signs! "linter" (current-buffer) (list (list 99 "!" "error" 10)))))
+           (define-command! "arm-vlines" "" (lambda ()
+             (set-virtual-lines! "git-diff" (current-buffer) (list (hash 'line 99 'text "note")))))
+           (define-command! "arm-eol" "" (lambda ()
+             (set-eol-text! "diagnostics" (current-buffer) (list (list 99 "msg" "diagnostic.error")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":arm-signs");
+    assert!(
+        ed.state
+            .config
+            .decorations
+            .signs_for("linter", bid)
+            .is_empty(),
+        "set-signs! must not store an entry for an out-of-range line"
+    );
+
+    type_cmd(&mut ed, ":arm-vlines");
+    assert!(
+        ed.state
+            .config
+            .decorations
+            .virtual_lines_for("git-diff", bid)
+            .is_empty(),
+        "set-virtual-lines! must not store an entry for an out-of-range line"
+    );
+
+    type_cmd(&mut ed, ":arm-eol");
+    assert!(
+        ed.state
+            .config
+            .decorations
+            .eol_text_for_buffer(bid)
+            .next()
+            .is_none(),
+        "set-eol-text! must not store an entry for an out-of-range line"
+    );
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("set-signs!")
+            && log.contains("set-virtual-lines!")
+            && log.contains("set-eol-text!"),
+        "each builtin must report its own out-of-range line loudly: {log:?}"
+    );
+}
+
 #[test]
 fn inlay_hints_remap_through_an_edit() {
     let tmp = safe_tempdir();
@@ -284,12 +381,13 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
     assert_eq!(linter_signs.len(), 1);
     assert_eq!(
         (
-            linter_signs[0].line,
+            linter_signs[0].pos,
             linter_signs[0].text.as_str(),
             linter_signs[0].scope.as_str(),
             linter_signs[0].priority
         ),
-        (0, "!", "error", 10)
+        (0, "!", "error", 10),
+        "line 0's line-start char offset is 0 on this fixture"
     );
 
     let vcs_signs = ed.state.config.decorations.signs_for("vcs", bid);
@@ -339,7 +437,11 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
 #[test]
 fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[x]>abcdef\n");
+    // `-[x]>` puts the 1-char cursor marker "x" at the very start, so line 0
+    // is "xaaaa\n" (6 chars) and lines 1-3 are 5 chars each ("bbbb\n" etc.) —
+    // line 3 (0-indexed) is in range, its line-start char offset is
+    // 6 + 5 + 5 = 16.
+    let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\ndddd\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -360,7 +462,10 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
         .decorations
         .virtual_lines_for("git-diff", bid);
     assert_eq!(vlines.len(), 1);
-    assert_eq!(vlines[0].line, 3);
+    assert_eq!(
+        vlines[0].pos, 16,
+        "'line 3's line-start char offset on this fixture"
+    );
     assert_eq!(vlines[0].text, "- let x = 5");
     assert!(vlines[0].before, "'anchor 'before must set before: true");
     assert_eq!(vlines[0].scope.as_deref(), Some("diff.minus"));
@@ -376,6 +481,8 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
 #[test]
 fn set_eol_text_round_trips_and_replaces_per_source() {
     let tmp = safe_tempdir();
+    // `-[x]>` puts the 1-char cursor marker "x" at the very start, so line 0
+    // is "xabcdef\n" (8 chars) and line 1 ("ghijkl\n") starts at char 8.
     let mut ed = editor_from("-[x]>abcdef\nghijkl\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
@@ -400,7 +507,7 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
         .eol_text_for_buffer(bid)
         .collect();
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].line, 0);
+    assert_eq!(entries[0].pos, 0, "line 0's line-start char offset is 0");
     assert_eq!(entries[0].text, "[2] first problem");
     assert_eq!(entries[0].scope, "diagnostic.error");
 
@@ -417,7 +524,10 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
         1,
         "the second set-eol-text! must replace, not append"
     );
-    assert_eq!(entries[0].line, 1);
+    assert_eq!(
+        entries[0].pos, 8,
+        "line 1's line-start char offset on this fixture (\"xabcdef\\n\" is 8 chars)"
+    );
     assert_eq!(entries[0].text, "second problem");
     assert_eq!(entries[0].scope, "diagnostic.warning");
 }

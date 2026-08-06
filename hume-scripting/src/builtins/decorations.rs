@@ -75,7 +75,9 @@ pub(crate) fn set_signs(
             ))
         },
     )?;
-    require_cap(ctx.host.decorations(), "set-signs!")?.set_signs(source, id, parsed);
+    require_cap(ctx.host.decorations(), "set-signs!")?
+        .set_signs(source, id, parsed)
+        .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
@@ -220,7 +222,9 @@ pub(crate) fn set_eol_text(
             ))
         },
     )?;
-    require_cap(ctx.host.decorations(), "set-eol-text!")?.set_eol_text(source, id, parsed);
+    require_cap(ctx.host.decorations(), "set-eol-text!")?
+        .set_eol_text(source, id, parsed)
+        .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
@@ -247,7 +251,8 @@ pub(crate) fn set_extra_highlights(
         },
     )?;
     require_cap(ctx.host.decorations(), "set-extra-highlights!")?
-        .set_extra_highlights(source, id, parsed);
+        .set_extra_highlights(source, id, parsed)
+        .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 

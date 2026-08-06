@@ -29,7 +29,7 @@ fn full_message_reaches_the_render_provider_untruncated() {
         "lsp".to_string(),
         bid,
         vec![EolTextEntry {
-            line: 0,
+            pos: 0,
             text: message.to_string(),
             scope: "diagnostic.error".to_string(),
         }],

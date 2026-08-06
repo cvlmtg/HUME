@@ -11,9 +11,9 @@ fn make_two_bids() -> (BufferId, BufferId) {
     (a, b)
 }
 
-fn sign(line: usize, text: &str) -> SignEntry {
+fn sign(pos: usize, text: &str) -> SignEntry {
     SignEntry {
-        line,
+        pos,
         text: text.to_string(),
         scope: "error".to_string(),
         priority: 10,
@@ -56,9 +56,9 @@ fn signs_for_buffer_does_not_leak_another_buffers_entries() {
     );
 }
 
-fn virtual_line(line: usize) -> VirtualLineEntry {
+fn virtual_line(pos: usize) -> VirtualLineEntry {
     VirtualLineEntry {
-        line,
+        pos,
         text: "x".to_string(),
         before: false,
         scope: None,
