@@ -431,15 +431,21 @@ pub trait CompletionHost {
     fn completion_dismiss(&mut self);
 }
 
-/// Inlay hints, signs, virtual lines, extra highlights, inline diagnostics,
-/// and the diagnostic pull/count reads — accessed through
+/// Inlay hints, signs, virtual lines, extra highlights, EOL text, and the
+/// diagnostic pull/count reads — accessed through
 /// [`EditorHost::decorations`].
 pub trait DecorationHost {
-    /// `(set-inlay-hints! bid hints)` — replaces `bid`'s inlay hints
-    /// wholesale. Each entry is `(wire_position, text, before)`; the wire
-    /// position (raw decoded `{"line" "character"}`) is converted to a char
-    /// offset using `bid`'s attached server's negotiated encoding.
-    fn set_inlay_hints(&mut self, bid: BufferId, hints: Vec<(serde_json::Value, String, bool)>);
+    /// `(set-inlay-hints! source bid hints)` — replaces `source`'s inlay
+    /// hints for `bid` wholesale. Each entry is `(wire_position, text,
+    /// before)`; the wire position (raw decoded `{"line" "character"}`) is
+    /// converted to a char offset using `bid`'s attached server's negotiated
+    /// encoding.
+    fn set_inlay_hints(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        hints: Vec<(serde_json::Value, String, bool)>,
+    );
 
     /// `(set-signs! source bid signs)` — replaces `source`'s signs for `bid`
     /// wholesale. Each entry is `(line, text, scope, priority)`.
@@ -475,11 +481,11 @@ pub trait DecorationHost {
         spans: Vec<(usize, usize, String)>,
     );
 
-    /// `(set-inline-diagnostics! bid lines)` — replaces `bid`'s inline
-    /// diagnostic text wholesale (one owner, the diagnostics plugin — no
-    /// `source` multiplexing, unlike `set_virtual_lines`). Each entry is
-    /// `(line, text, scope)`; `text` is spliced in at the end of `line`.
-    fn set_inline_diagnostics(&mut self, bid: BufferId, lines: Vec<(usize, String, String)>);
+    /// `(set-eol-text! source bid lines)` — replaces `source`'s EOL text for
+    /// `bid` wholesale. Each entry is `(line, text, scope)`; `text` is
+    /// spliced in at the end of `line`. Not diagnostics-specific — the
+    /// diagnostics plugin is its first client, not its owner.
+    fn set_eol_text(&mut self, source: String, bid: BufferId, lines: Vec<(usize, String, String)>);
 
     /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
     /// decoded `{"start" "end" "line" "col" "severity" "message" "code"

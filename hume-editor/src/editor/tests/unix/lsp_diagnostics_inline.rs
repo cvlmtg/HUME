@@ -1,5 +1,5 @@
-// Diagnostics end-of-line inline summary (`set-inline-diagnostics!`, wired
-// from `on-diagnostics-changed` in `diagnostics.scm`) and the gn/gp
+// Diagnostics end-of-line summary (`set-eol-text!`, wired from
+// `on-diagnostics-changed` in `diagnostics.scm`) and the gn/gp
 // dismiss-on-any-key overlay (`show-popup! #:kind 'scrollable`). Same harness
 // shape as `lsp_diagnostics_nav.rs`.
 
@@ -94,7 +94,12 @@ fn single_diagnostic_on_a_line_shows_a_bare_message() {
     let (ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[diag]);
     let bid = ed.focused_buffer_id();
 
-    let entries = ed.state.config.decorations.inline_diagnostics_for(bid);
+    let entries: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .eol_text_for_buffer(bid)
+        .collect();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].line, 1);
     assert_eq!(
@@ -117,7 +122,12 @@ fn two_diagnostics_on_the_same_line_show_count_and_leftmost_message() {
     let (ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[d1, d2]);
     let bid = ed.focused_buffer_id();
 
-    let entries = ed.state.config.decorations.inline_diagnostics_for(bid);
+    let entries: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .eol_text_for_buffer(bid)
+        .collect();
     assert_eq!(entries.len(), 1, "both diagnostics collapse into one entry");
     assert_eq!(entries[0].line, 1);
     assert_eq!(
@@ -139,7 +149,12 @@ fn inline_color_follows_the_highest_severity_on_the_line_not_the_leftmost() {
     let (ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[d1, d2]);
     let bid = ed.focused_buffer_id();
 
-    let entries = ed.state.config.decorations.inline_diagnostics_for(bid);
+    let entries: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .eol_text_for_buffer(bid)
+        .collect();
     assert_eq!(entries.len(), 1);
     assert_eq!(
         entries[0].scope, "diagnostic.error",
@@ -165,8 +180,7 @@ fn diagnostics_on_different_lines_get_independent_entries() {
         .state
         .config
         .decorations
-        .inline_diagnostics_for(bid)
-        .iter()
+        .eol_text_for_buffer(bid)
         .map(|e| (e.line, e.text.clone(), e.scope.clone()))
         .collect();
     entries.sort_by_key(|(line, _, _)| *line);

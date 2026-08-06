@@ -303,8 +303,8 @@ impl Editor {
         //      3a. gutter sign data (diagnostics + plugin signs) — decides
         //          gutter width, which decides `Pane::content_width`, which
         //          decides the wrap column.
-        //      3b/3c/3d. inlay hints / virtual lines / end-of-line
-        //          diagnostic summaries — each a `RowMap` provider
+        //      3b/3c/3d. inlay hints / virtual lines / EOL text — each a
+        //          `RowMap` provider
         //          (`inline_decorations` or `virtual_lines`) that
         //          `RowMap::format_line`/`block` reads, so they change wrap
         //          row counts and columns the moment they appear.
@@ -321,7 +321,7 @@ impl Editor {
         self.update_sign_providers();
         self.update_inlay_hint_providers();
         self.update_virtual_line_providers();
-        self.update_inline_diagnostics_providers();
+        self.update_eol_text_providers();
 
         // 4. Scroll every pane so its primary cursor stays visible. Must run
         //    after `settle()`: a settled drain can switch a pane's `buffer_id`

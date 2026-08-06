@@ -112,7 +112,7 @@
            (loop (cdr rest) (hash-ref (car rest) "line") (list (car rest))
                  (cons (reverse current-group) groups)))))))
 
-;;; One group -> a `(line text scope)` entry for `set-inline-diagnostics!`.
+;;; One group -> a `(line text scope)` entry for `set-eol-text!`.
 (define (lsp/line-group->entry group)
   (let* ((leftmost (car group))
          (n (length group))
@@ -124,7 +124,7 @@
 
 (define (lsp/refresh-inline-diagnostics bid)
   (let ((diags (diagnostics-for-buffer bid)))
-    (set-inline-diagnostics! bid
+    (set-eol-text! "lsp-diagnostics" bid
       (map lsp/line-group->entry (lsp/group-by-line diags)))))
 
 (register-hook! 'on-diagnostics-changed
@@ -133,4 +133,4 @@
 ;;; A detached server means nothing new from diagnostics-for-buffer — clear
 ;;; explicitly rather than let the last inline summary sit rendered forever.
 (register-hook! 'on-lsp-detach
-  (lambda (bid server-name) (set-inline-diagnostics! bid '())))
+  (lambda (bid server-name) (set-eol-text! "lsp-diagnostics" bid '())))

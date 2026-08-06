@@ -981,9 +981,9 @@ fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
 }
 
 /// `virtual_lines_synced`'s cache key must include the pane's buffer, not
-/// just `decorations.virtual_lines_generation()` — a generation-only key
-/// would keep a pane mirroring its *previous* buffer's virtual lines after a
-/// switch, since switching a buffer doesn't bump the generation.
+/// just `decorations.generation()` — a generation-only key would keep a pane
+/// mirroring its *previous* buffer's virtual lines after a switch, since
+/// switching a buffer doesn't bump the generation.
 #[test]
 fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
     use crate::editor::decorations::VirtualLineEntry;

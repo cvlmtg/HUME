@@ -1,6 +1,6 @@
 // Decoration stores (set-inlay-hints!,
-// set-signs!, set-virtual-lines!, set-extra-highlights!) and the
-// diagnostics pull (diagnostics-for-buffer, diagnostic-counts).
+// set-signs!, set-virtual-lines!, set-extra-highlights!, set-eol-text!) and
+// the diagnostics pull (diagnostics-for-buffer, diagnostic-counts).
 
 use std::path::Path;
 
@@ -56,14 +56,19 @@ fn set_inlay_hints_converts_wire_position_using_utf16_encoding() {
         &mut ed,
         &mut host,
         r#"(define-command! "arm-hints-a" "" (lambda ()
-             (set-inlay-hints! (current-buffer)
+             (set-inlay-hints! "linter" (current-buffer)
                (list (list (hash "line" 0 "character" 2) "hint" 'after)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm-hints-a");
 
-    let hints = ed.state.config.decorations.inlay_hints_for(bid);
+    let hints: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .inlay_hints_for_buffer(bid)
+        .collect();
     assert_eq!(hints.len(), 1);
     assert_eq!(
         hints[0].pos, 1,
@@ -84,10 +89,10 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
         &mut ed,
         &mut host,
         r#"(define-command! "arm-hints-a" "" (lambda ()
-             (set-inlay-hints! (current-buffer)
+             (set-inlay-hints! "linter" (current-buffer)
                (list (list (hash "line" 0 "character" 0) "first" 'before)))))
            (define-command! "arm-hints-b" "" (lambda ()
-             (set-inlay-hints! (current-buffer)
+             (set-inlay-hints! "linter" (current-buffer)
                (list (list (hash "line" 0 "character" 1) "second" 'before)))))"#,
         tmp.path(),
     );
@@ -95,7 +100,12 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
     type_cmd(&mut ed, ":arm-hints-a");
     type_cmd(&mut ed, ":arm-hints-b");
 
-    let hints = ed.state.config.decorations.inlay_hints_for(bid);
+    let hints: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .inlay_hints_for_buffer(bid)
+        .collect();
     assert_eq!(
         hints.len(),
         1,
@@ -119,7 +129,7 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_position() {
         &mut ed,
         &mut host,
         r#"(define-command! "arm-bad" "" (lambda ()
-             (set-inlay-hints! (current-buffer)
+             (set-inlay-hints! "linter" (current-buffer)
                (list (list (hash "line" 0) "oops" 'before)))))"#,
         tmp.path(),
     );
@@ -127,7 +137,12 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_position() {
     type_cmd(&mut ed, ":arm-bad");
 
     assert!(
-        ed.state.config.decorations.inlay_hints_for(bid).is_empty(),
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .next()
+            .is_none(),
         "a malformed entry must not land in the store at all"
     );
     let log = ed.state.message_log.format_for_display();
@@ -148,13 +163,22 @@ fn inlay_hints_remap_through_an_edit() {
         &mut ed,
         &mut host,
         r#"(define-command! "arm-hints-a" "" (lambda ()
-             (set-inlay-hints! (current-buffer)
+             (set-inlay-hints! "linter" (current-buffer)
                (list (list (hash "line" 0 "character" 3) "hint" 'after)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm-hints-a");
-    assert_eq!(ed.state.config.decorations.inlay_hints_for(bid)[0].pos, 3);
+    let hint_pos = |ed: &Editor| {
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .next()
+            .unwrap()
+            .pos
+    };
+    assert_eq!(hint_pos(&ed), 3);
 
     // Insert two chars before the hint's position — the hint must move with
     // the text it annotates, not stay pinned to the old char index.
@@ -165,7 +189,7 @@ fn inlay_hints_remap_through_an_edit() {
     ed.drain_lsp();
 
     assert_eq!(
-        ed.state.config.decorations.inlay_hints_for(bid)[0].pos,
+        hint_pos(&ed),
         5,
         "the hint must remap forward by the 2 inserted chars"
     );
@@ -344,7 +368,7 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
 }
 
 #[test]
-fn set_inline_diagnostics_round_trips_and_replaces_wholesale() {
+fn set_eol_text_round_trips_and_replaces_per_source() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdef\nghijkl\n");
     let bid = ed.focused_buffer_id();
@@ -353,30 +377,39 @@ fn set_inline_diagnostics_round_trips_and_replaces_wholesale() {
         &mut ed,
         &mut host,
         r#"(define-command! "arm-a" "" (lambda ()
-             (set-inline-diagnostics! (current-buffer)
+             (set-eol-text! "diagnostics" (current-buffer)
                (list (list 0 "[2] first problem" "diagnostic.error")))))
            (define-command! "arm-b" "" (lambda ()
-             (set-inline-diagnostics! (current-buffer)
+             (set-eol-text! "diagnostics" (current-buffer)
                (list (list 1 "second problem" "diagnostic.warning")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm-a");
 
-    let entries = ed.state.config.decorations.inline_diagnostics_for(bid);
+    let entries: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .eol_text_for_buffer(bid)
+        .collect();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].line, 0);
     assert_eq!(entries[0].text, "[2] first problem");
     assert_eq!(entries[0].scope, "diagnostic.error");
 
-    // A second call must replace wholesale (one owner per buffer, unlike
-    // signs/virtual-lines' per-source multiplexing), not append.
+    // A second call for the same source must replace wholesale, not append.
     type_cmd(&mut ed, ":arm-b");
-    let entries = ed.state.config.decorations.inline_diagnostics_for(bid);
+    let entries: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .eol_text_for_buffer(bid)
+        .collect();
     assert_eq!(
         entries.len(),
         1,
-        "the second set-inline-diagnostics! must replace, not append"
+        "the second set-eol-text! must replace, not append"
     );
     assert_eq!(entries[0].line, 1);
     assert_eq!(entries[0].text, "second problem");

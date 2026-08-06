@@ -1,6 +1,6 @@
-//! Decoration stores (inlay hints, signs, virtual lines, extra highlights)
-//! and the diagnostics pull API. Not LSP-specific — any Steel plugin can
-//! populate these — but LSP is the first and heaviest client.
+//! Decoration stores (inlay hints, signs, virtual lines, EOL text, extra
+//! highlights) and the diagnostics pull API. Not LSP-specific — any Steel
+//! plugin can populate these — but LSP is the first and heaviest client.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -15,9 +15,15 @@ use super::args::{
 };
 use super::errors::{generic_err, require_cap};
 
-/// `(set-inlay-hints! bid hints)` — `hints`: list of `(position text
+/// `(set-inlay-hints! source bid hints)` — `hints`: list of `(position text
 /// 'before|'after)`, `position` a wire `{"line" "character"}` hashmap.
-pub(crate) fn set_inlay_hints(ctx: &mut SteelCtx, bid: BidArg, hints: SteelVal) -> SteelResult {
+pub(crate) fn set_inlay_hints(
+    ctx: &mut SteelCtx,
+    source: SteelVal,
+    bid: BidArg,
+    hints: SteelVal,
+) -> SteelResult {
+    let source = string_arg(source, "set-inlay-hints! source")?;
     let id = bid.0;
     let parsed = tuple_list(
         hints,
@@ -50,7 +56,7 @@ pub(crate) fn set_inlay_hints(ctx: &mut SteelCtx, bid: BidArg, hints: SteelVal) 
             Ok((position_json, text, before))
         },
     )?;
-    require_cap(ctx.host.decorations(), "set-inlay-hints!")?.set_inlay_hints(id, parsed);
+    require_cap(ctx.host.decorations(), "set-inlay-hints!")?.set_inlay_hints(source, id, parsed);
     Ok(SteelVal::Void)
 }
 
@@ -198,30 +204,31 @@ fn virtual_line_segments(segments: SteelVal) -> Result<Vec<(usize, usize, String
     )
 }
 
-/// `(set-inline-diagnostics! bid lines)` — `lines`: list of `(line text
-/// scope)`, one owner per buffer (no `source` arg, unlike
-/// `set-virtual-lines!` — the diagnostics plugin is the only client).
-pub(crate) fn set_inline_diagnostics(
+/// `(set-eol-text! source bid lines)` — `lines`: list of `(line text
+/// scope)`. Not diagnostics-specific — the diagnostics plugin is its first
+/// client, not its owner, same as every other decoration kind is to LSP.
+pub(crate) fn set_eol_text(
     ctx: &mut SteelCtx,
+    source: SteelVal,
     bid: BidArg,
     lines: SteelVal,
 ) -> SteelResult {
+    let source = string_arg(source, "set-eol-text! source")?;
     let id = bid.0;
     let parsed = tuple_list(
         lines,
-        "set-inline-diagnostics! lines",
+        "set-eol-text! lines",
         3..=3,
         "(line text scope)",
         |fields| {
             Ok((
-                usize_arg(fields[0].clone(), "set-inline-diagnostics! line")?,
-                string_arg(fields[1].clone(), "set-inline-diagnostics! text")?,
-                string_arg(fields[2].clone(), "set-inline-diagnostics! scope")?,
+                usize_arg(fields[0].clone(), "set-eol-text! line")?,
+                string_arg(fields[1].clone(), "set-eol-text! text")?,
+                string_arg(fields[2].clone(), "set-eol-text! scope")?,
             ))
         },
     )?;
-    require_cap(ctx.host.decorations(), "set-inline-diagnostics!")?
-        .set_inline_diagnostics(id, parsed);
+    require_cap(ctx.host.decorations(), "set-eol-text!")?.set_eol_text(source, id, parsed);
     Ok(SteelVal::Void)
 }
 

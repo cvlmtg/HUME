@@ -40,11 +40,12 @@ pub(crate) struct PaneRenderHandles {
     pub(crate) signs: PaneSigns,
     pub(crate) inlay_hints: InlayHintMap,
     pub(crate) virtual_lines: VirtualLineMap,
-    /// Diagnostics' end-of-line summary text — a second `InlayHintProvider`
-    /// instance (same `InlineDecoration` shape, distinct Arc/`ProviderId`)
-    /// fed by `decorations.inline_diagnostics` instead of `inlay_hints`, so
-    /// the two coexist on the same line without one clobbering the other.
-    pub(crate) inline_diagnostics: InlayHintMap,
+    /// EOL text (the diagnostics plugin's per-line summary is its first
+    /// client) — a second `InlayHintProvider` instance (same
+    /// `InlineDecoration` shape, distinct Arc/`ProviderId`) fed by
+    /// `decorations.eol_text` instead of `inlay_hints`, so the two coexist
+    /// on the same line without one clobbering the other.
+    pub(crate) eol_text: InlayHintMap,
 }
 
 /// Build a new pane viewing `buffer_id`: sign column, line-number gutter,
@@ -87,7 +88,7 @@ pub(crate) fn build_pane(
     let highlights = PaneHighlights::default();
     let signs = PaneSigns::default();
     let inlay_hint_map: InlayHintMap = Arc::new(RwLock::new(FxHashMap::default()));
-    let inline_diagnostics_map: InlayHintMap = Arc::new(RwLock::new(FxHashMap::default()));
+    let eol_text_map: InlayHintMap = Arc::new(RwLock::new(FxHashMap::default()));
     let virtual_line_map: VirtualLineMap = Arc::new(RwLock::new(FxHashMap::default()));
 
     let mut providers = ProviderSet::new();
@@ -125,7 +126,7 @@ pub(crate) fn build_pane(
     // sorts to the right of an inlay hint that lands at the same byte
     // offset (both anchor at end-of-line-content in the common case).
     providers.add_inline_decoration(Box::new(InlayHintProvider {
-        data: Arc::clone(&inline_diagnostics_map),
+        data: Arc::clone(&eol_text_map),
     }));
     providers.add_virtual_line_source(Box::new(PaneVirtualLines {
         data: Arc::clone(&virtual_line_map),
@@ -177,7 +178,7 @@ pub(crate) fn build_pane(
             signs,
             inlay_hints: inlay_hint_map,
             virtual_lines: virtual_line_map,
-            inline_diagnostics: inline_diagnostics_map,
+            eol_text: eol_text_map,
         },
     )
 }

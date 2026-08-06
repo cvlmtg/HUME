@@ -1,17 +1,17 @@
-// Diagnostics end-of-line inline summary: the render-provider half that runs
-// on every platform. The Steel-driven summary/overlay tests (which load the
-// real `core:lsp` plugin) live in `unix/lsp_diagnostics_inline.rs`.
+// EOL text: the render-provider half that runs on every platform. The
+// Steel-driven summary/overlay tests (which load the real `core:lsp` plugin)
+// live in `unix/lsp_diagnostics_inline.rs`.
 
 use super::*;
-use crate::editor::decorations::InlineDiagnosticEntry;
+use crate::editor::decorations::EolTextEntry;
 use hume_engine::pipeline::RenderContext;
 
-/// `update_inline_diagnostics_providers` (`lifecycle.rs`) must hand the full,
+/// `update_eol_text_providers` (`lifecycle.rs`) must hand the full,
 /// untruncated message through to the pane's `InlineInsert` — the per-line
-/// summary text set via `set-inline-diagnostics!` must reach the render
-/// provider byte-for-byte. (`format_buffer_line`'s trailing-insert path then
-/// splits this `InlineInsert` into one cell per grapheme so a terminal
-/// flush doesn't clobber it past the first column — covered directly by
+/// summary text set via `set-eol-text!` must reach the render provider
+/// byte-for-byte. (`format_buffer_line`'s trailing-insert path then splits
+/// this `InlineInsert` into one cell per grapheme so a terminal flush
+/// doesn't clobber it past the first column — covered directly by
 /// `format::tests::trailing_insert_emits_one_cell_per_grapheme` in
 /// `hume-engine`, since a ratatui `Buffer` snapshot here can't observe that
 /// terminal-flush-time truncation.)
@@ -25,9 +25,10 @@ fn full_message_reaches_the_render_provider_untruncated() {
     ed.feed_key(key_esc());
     let bid = ed.focused_buffer_id();
     let message = " mismatched types here";
-    ed.state.config.decorations.set_inline_diagnostics(
+    ed.state.config.decorations.set_eol_text(
+        "lsp".to_string(),
         bid,
-        vec![InlineDiagnosticEntry {
+        vec![EolTextEntry {
             line: 0,
             text: message.to_string(),
             scope: "diagnostic.error".to_string(),
@@ -45,7 +46,7 @@ fn full_message_reaches_the_render_provider_untruncated() {
         .render
         .get(pid)
         .unwrap()
-        .inline_diagnostics
+        .eol_text
         .read()
         .unwrap();
     let inserts = by_line.get(&0).expect("line 0 must have an insert");

@@ -944,7 +944,7 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
     // The state a real `reset_config_state` would leave behind: rendered
     // decorations wiped, `LspState::diagnostics` untouched.
     ed.state.config.decorations = crate::editor::decorations::DecorationStores::reset(
-        ed.state.config.decorations.virtual_lines_generation(),
+        ed.state.config.decorations.generation(),
     );
 
     let mut host = ScriptingHost::new();
@@ -1044,7 +1044,7 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
     // The state a real `reset_config_state` would leave behind: rendered
     // decorations wiped, `LspState::diagnostics` untouched.
     ed.state.config.decorations = crate::editor::decorations::DecorationStores::reset(
-        ed.state.config.decorations.virtual_lines_generation(),
+        ed.state.config.decorations.generation(),
     );
 
     let mut host = ScriptingHost::new();

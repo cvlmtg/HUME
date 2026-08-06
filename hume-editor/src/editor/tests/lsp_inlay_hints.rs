@@ -34,6 +34,7 @@ fn after_hint_renders_dimmed_immediately_after_its_char() {
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(
+        "test".to_string(),
         bid,
         vec![InlayHintEntry {
             pos: 4, // the 'x'
@@ -58,6 +59,7 @@ fn before_hint_renders_immediately_before_its_char() {
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(
+        "test".to_string(),
         bid,
         vec![InlayHintEntry {
             pos: 8, // the '5'
@@ -106,6 +108,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
         saved: None,
     });
     ed.state.config.decorations.set_inlay_hints(
+        "test".to_string(),
         bid,
         vec![InlayHintEntry {
             pos: 0, // the 'x'
@@ -149,6 +152,7 @@ fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
     type_text(&mut ed, "🎉party");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(
+        "test".to_string(),
         bid,
         vec![InlayHintEntry {
             pos: 0,
@@ -177,6 +181,7 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
     type_text(&mut ed, "aaaaaaaaaabbbbbbbbbbccccccccccdddddddddd");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(
+        "test".to_string(),
         bid,
         vec![InlayHintEntry {
             pos: 10, // right after the 'a' run
@@ -201,6 +206,7 @@ fn clearing_the_store_removes_the_hint_next_frame() {
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(
+        "test".to_string(),
         bid,
         vec![InlayHintEntry {
             pos: 4,
@@ -227,7 +233,10 @@ fn clearing_the_store_removes_the_hint_next_frame() {
         .any(|v| !v.is_empty());
     assert!(has_hint_before, "sanity: hint present before clearing");
 
-    ed.state.config.decorations.set_inlay_hints(bid, vec![]);
+    ed.state
+        .config
+        .decorations
+        .set_inlay_hints("test".to_string(), bid, vec![]);
     ed.sync_viewport_dims(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
@@ -258,6 +267,7 @@ fn setting_off_renders_nothing_even_with_hints_in_the_store() {
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(
+        "test".to_string(),
         bid,
         vec![InlayHintEntry {
             pos: 4,

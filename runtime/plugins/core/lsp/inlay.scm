@@ -52,7 +52,7 @@
                   ;; hints from a prior larger one — only an error leaves
                   ;; the existing display untouched.
                   (unless err
-                    (set-inlay-hints! bid
+                    (set-inlay-hints! "lsp-inlay-hints" bid
                       (if (or (void? res) (null? res))
                           '()
                           (map lsp/hint->store-entry res)))))))))))))
@@ -66,4 +66,4 @@
 ;;; `refresh-hints` silently skips once `bid` has no attached server, so
 ;;; stale hints would otherwise sit rendered forever — clear explicitly.
 (register-hook! 'on-lsp-detach
-  (lambda (bid server-name) (set-inlay-hints! bid '())))
+  (lambda (bid server-name) (set-inlay-hints! "lsp-inlay-hints" bid '())))

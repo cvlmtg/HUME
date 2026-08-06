@@ -347,10 +347,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "register-trigger-chars!" completion::register_trigger_chars(source: SteelVal, language: SteelVal, chars: SteelVal);
 
         // Decoration stores + diagnostics pull.
-        cmd "set-inlay-hints!" decorations::set_inlay_hints(bid: args::BidArg, hints: SteelVal);
+        cmd "set-inlay-hints!" decorations::set_inlay_hints(source: SteelVal, bid: args::BidArg, hints: SteelVal);
         cmd "set-signs!" decorations::set_signs(source: SteelVal, bid: args::BidArg, signs: SteelVal);
         cmd "set-virtual-lines!" decorations::set_virtual_lines(source: SteelVal, bid: args::BidArg, lines: SteelVal);
-        cmd "set-inline-diagnostics!" decorations::set_inline_diagnostics(bid: args::BidArg, lines: SteelVal);
+        cmd "set-eol-text!" decorations::set_eol_text(source: SteelVal, bid: args::BidArg, lines: SteelVal);
         cmd "set-extra-highlights!" decorations::set_extra_highlights(source: SteelVal, bid: args::BidArg, spans: SteelVal);
         cmd "%diagnostics-for-buffer" decorations::diagnostics_for_buffer(bid: args::BidArg, severity: SteelVal, range: SteelVal);
         cmd "diagnostic-counts" decorations::diagnostic_counts(bid: args::BidArg);

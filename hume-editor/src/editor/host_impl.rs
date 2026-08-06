@@ -795,7 +795,12 @@ impl<'a> LspHost for EditorHostImpl<'a> {
 }
 
 impl<'a> DecorationHost for EditorHostImpl<'a> {
-    fn set_inlay_hints(&mut self, bid: BufferId, hints: Vec<(serde_json::Value, String, bool)>) {
+    fn set_inlay_hints(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        hints: Vec<(serde_json::Value, String, bool)>,
+    ) {
         let Some(lsp) = self.lsp.as_deref() else {
             return;
         };
@@ -824,7 +829,10 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                 crate::editor::decorations::InlayHintEntry { pos, text, before }
             })
             .collect();
-        self.state.config.decorations.set_inlay_hints(bid, entries);
+        self.state
+            .config
+            .decorations
+            .set_inlay_hints(source, bid, entries);
     }
 
     fn set_signs(
@@ -898,11 +906,11 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .set_extra_highlights(source, bid, entries);
     }
 
-    fn set_inline_diagnostics(&mut self, bid: BufferId, lines: Vec<(usize, String, String)>) {
+    fn set_eol_text(&mut self, source: String, bid: BufferId, lines: Vec<(usize, String, String)>) {
         let entries = lines
             .into_iter()
             .map(
-                |(line, text, scope)| crate::editor::decorations::InlineDiagnosticEntry {
+                |(line, text, scope)| crate::editor::decorations::EolTextEntry {
                     line,
                     text,
                     scope,
@@ -912,7 +920,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         self.state
             .config
             .decorations
-            .set_inline_diagnostics(bid, entries);
+            .set_eol_text(source, bid, entries);
     }
 
     fn diagnostics_for_buffer(

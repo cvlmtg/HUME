@@ -328,6 +328,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
     ));
     ed.ingest_publish_diagnostics(sid, params);
     ed.state.config.decorations.set_inlay_hints(
+        "test".to_string(),
         bid,
         vec![crate::editor::decorations::InlayHintEntry {
             pos: 0,
@@ -341,7 +342,12 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
         "seed diagnostic must land"
     );
     assert!(
-        !ed.state.config.decorations.inlay_hints_for(bid).is_empty(),
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .next()
+            .is_some(),
         "seed hint must land"
     );
 
@@ -353,7 +359,12 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
         "diagnostics for a closed buffer must not linger forever"
     );
     assert!(
-        ed.state.config.decorations.inlay_hints_for(bid).is_empty(),
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .next()
+            .is_none(),
         "decorations for a closed buffer must not linger forever"
     );
 }
@@ -390,6 +401,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
     ));
     ed.ingest_publish_diagnostics(sid, params);
     ed.state.config.decorations.set_inlay_hints(
+        "test".to_string(),
         bid,
         vec![crate::editor::decorations::InlayHintEntry {
             pos: 0,
@@ -403,7 +415,12 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
         "seed diagnostic must land"
     );
     assert!(
-        !ed.state.config.decorations.inlay_hints_for(bid).is_empty(),
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .next()
+            .is_some(),
         "seed hint must land"
     );
 
@@ -433,7 +450,12 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
         "diagnostics for a closed buffer must not linger forever"
     );
     assert!(
-        ed.state.config.decorations.inlay_hints_for(bid).is_empty(),
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .next()
+            .is_none(),
         "decorations for a closed buffer must not linger forever"
     );
     assert!(

@@ -152,7 +152,7 @@ pub(crate) struct ConfigState {
     /// entry entirely (matches `on-lsp-detach`'s clear-on-detach usage).
     pub(crate) trigger_chars: rustc_hash::FxHashMap<(String, String), Vec<char>>,
     /// Steel-writable decoration stores (inlay hints, signs, virtual
-    /// lines, extra highlights) — the render providers read these.
+    /// lines, EOL text, extra highlights) — the render providers read these.
     pub(crate) decorations: decorations::DecorationStores,
     /// Deferred Steel work — events enqueued during command dispatch
     /// (`EditorState::queue_event`) and specific-closure completions
@@ -217,18 +217,18 @@ impl ConfigState {
     /// [`Editor::set_kitty_support`]) and the compiled-in command registry,
     /// with every other field at its empty/`None` default.
     ///
-    /// `prior_virtual_lines_generation` is `0` at session start (nothing to
-    /// carry forward) and the outgoing `ConfigState.decorations`'s own
-    /// generation counter on `:reload-config` — see
-    /// [`decorations::DecorationStores::reset`]'s doc for why this can't
-    /// just be `Default::default()` like every other field here.
-    pub(super) fn new(kitty_enabled: bool, prior_virtual_lines_generation: u64) -> Self {
+    /// `prior_generation` is `0` at session start (nothing to carry forward)
+    /// and the outgoing `ConfigState.decorations`'s own generation counter
+    /// on `:reload-config` — see [`decorations::DecorationStores::reset`]'s
+    /// doc for why this can't just be `Default::default()` like every other
+    /// field here.
+    pub(super) fn new(kitty_enabled: bool, prior_generation: u64) -> Self {
         Self {
             keymap: default_keymap_for(kitty_enabled),
             registry: CommandRegistry::with_defaults(),
             languages: LanguageRegistry::new(),
             trigger_chars: rustc_hash::FxHashMap::default(),
-            decorations: decorations::DecorationStores::reset(prior_virtual_lines_generation),
+            decorations: decorations::DecorationStores::reset(prior_generation),
             pending_work: VecDeque::new(),
             pending_language_detection: Vec::new(),
             async_jobs: rustc_hash::FxHashMap::default(),
@@ -628,7 +628,7 @@ pub(crate) struct Editor {
     /// scroll step compares against this to detect a real viewport change
     /// worth debouncing, rather than firing every frame regardless.
     last_viewport_key: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (usize, u16)>,
-    /// `(buffer_id, decorations.virtual_lines_generation())` as of each
+    /// `(buffer_id, decorations.generation())` as of each
     /// pane's last mirror into its `PaneVirtualLines` Arc — `prepare_frame`
     /// compares against this to skip the rebuild on frames where neither the
     /// store nor the pane's buffer changed, since this runs in scroll/cursor

@@ -1,6 +1,7 @@
-//! Per-frame sync of highlight/sign/inlay-hint/virtual-line decoration data
-//! from editor-authoritative stores to the shared `Arc` buffers the engine's
-//! providers read during rendering. Driven by `prepare_frame`'s step 5/7.
+//! Per-frame sync of highlight/sign/inlay-hint/virtual-line/EOL-text
+//! decoration data from editor-authoritative stores to the shared `Arc`
+//! buffers the engine's providers read during rendering. Driven by
+//! `prepare_frame`'s step 5/7.
 
 use std::sync::Arc;
 
@@ -485,7 +486,7 @@ impl Editor {
 
             let mut by_line: rustc_hash::FxHashMap<usize, Vec<InlineInsert>> =
                 rustc_hash::FxHashMap::default();
-            for entry in self.state.config.decorations.inlay_hints_for(bid) {
+            for entry in self.state.config.decorations.inlay_hints_for_buffer(bid) {
                 if !visible.contains(&entry.pos) {
                     continue;
                 }
@@ -512,16 +513,16 @@ impl Editor {
         }
     }
 
-    /// Sync per-pane diagnostics end-of-line decorations from the
-    /// `decorations.inline_diagnostics` store to each pane's second
-    /// `InlayHintProvider` Arc (`PaneRenderHandles::inline_diagnostics`).
-    /// Unconditional per-frame rebuild, same as `update_inlay_hint_providers`
-    /// — cheap enough that, unlike `virtual_lines`, it doesn't need a
-    /// dirty-tracking generation gate to skip needless work. Both write into
-    /// a pane's `inline_decorations` providers, which `RowMap::format_line`
-    /// reads, so this feeds wrap row counts and columns exactly like inlay
-    /// hints do — called from `prepare_frame`'s step 5, *before* scrolling.
-    pub(super) fn update_inline_diagnostics_providers(&mut self) {
+    /// Sync per-pane EOL-text decorations from the `decorations.eol_text`
+    /// store to each pane's second `InlayHintProvider` Arc
+    /// (`PaneRenderHandles::eol_text`). Unconditional per-frame rebuild, same
+    /// as `update_inlay_hint_providers` — cheap enough that, unlike
+    /// `virtual_lines`, it doesn't need a dirty-tracking generation gate to
+    /// skip needless work. Both write into a pane's `inline_decorations`
+    /// providers, which `RowMap::format_line` reads, so this feeds wrap row
+    /// counts and columns exactly like inlay hints do — called from
+    /// `prepare_frame`'s step 5, *before* scrolling.
+    pub(super) fn update_eol_text_providers(&mut self) {
         use hume_engine::providers::InlineInsert;
 
         let panes: Vec<(PaneId, BufferId)> = self
@@ -537,7 +538,7 @@ impl Editor {
                 .panes
                 .render
                 .get(pid)
-                .map(|r| Arc::clone(&r.inline_diagnostics))
+                .map(|r| Arc::clone(&r.eol_text))
             else {
                 continue;
             };
@@ -545,15 +546,14 @@ impl Editor {
             // Collected into an owned Vec, and every scope name resolved,
             // *before* borrowing buffer text below: `self.runtime_scope`
             // needs `&mut self`, which can't overlap with either the
-            // immutable borrow `inline_diagnostics_for` holds on
+            // immutable borrow `eol_text_for_buffer` holds on
             // `self.state.config.decorations` or the one `text` will hold on
             // `self.state.buffers`.
             let entries: Vec<(usize, String, String)> = self
                 .state
                 .config
                 .decorations
-                .inline_diagnostics_for(bid)
-                .iter()
+                .eol_text_for_buffer(bid)
                 .map(|e| (e.line, e.text.clone(), e.scope.clone()))
                 .collect();
             let resolved: Vec<(usize, String, hume_engine::types::ScopeId)> = entries
@@ -598,12 +598,12 @@ impl Editor {
     /// Sync per-pane virtual-line decorations from the
     /// `decorations.virtual_lines` store to each pane's `PaneVirtualLines`
     /// Arc — a `RowMap::block` provider, so this feeds row *counts* the same
-    /// way inlay hints/inline diagnostics feed wrap columns. Unlike those two,
-    /// this only rebuilds when `decorations.virtual_lines_generation()`
-    /// changed since the pane's last sync, or the pane's buffer changed,
-    /// since resolving each entry's scope (`runtime_scope`) is costlier to
-    /// redo unconditionally every frame. Called from `prepare_frame`'s step
-    /// 5, *before* scrolling, no viewport dependency to make stale.
+    /// way inlay hints/EOL text feed wrap columns. Unlike those two, this
+    /// only rebuilds when `decorations.generation()` changed since the
+    /// pane's last sync, or the pane's buffer changed, since resolving each
+    /// entry's scope (`runtime_scope`) is costlier to redo unconditionally
+    /// every frame. Called from `prepare_frame`'s step 5, *before*
+    /// scrolling, no viewport dependency to make stale.
     ///
     /// Each entry becomes `Before(line)` or `After(line)` per its `before`
     /// flag, and its `segments` are gap-filled with its base scope so the
@@ -611,7 +611,7 @@ impl Editor {
     pub(super) fn update_virtual_line_providers(&mut self) {
         use hume_engine::providers::{VirtualLine, VirtualLineAnchor};
 
-        let current_gen = self.state.config.decorations.virtual_lines_generation();
+        let current_gen = self.state.config.decorations.generation();
         let panes: Vec<(PaneId, BufferId)> = self
             .view
             .panes

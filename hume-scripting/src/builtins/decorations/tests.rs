@@ -48,7 +48,12 @@ fn set_inlay_hints_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_inlay_hints(&mut ctx, BidArg(BufferId::default()), empty);
+    let result = set_inlay_hints(
+        &mut ctx,
+        SteelVal::StringV("test".into()),
+        BidArg(BufferId::default()),
+        empty,
+    );
     assert_names_builtin(result, "set-inlay-hints!");
 }
 
@@ -81,12 +86,17 @@ fn set_virtual_lines_without_decoration_host_errors() {
 }
 
 #[test]
-fn set_inline_diagnostics_without_decoration_host_errors() {
+fn set_eol_text_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_inline_diagnostics(&mut ctx, BidArg(BufferId::default()), empty);
-    assert_names_builtin(result, "set-inline-diagnostics!");
+    let result = set_eol_text(
+        &mut ctx,
+        SteelVal::StringV("test".into()),
+        BidArg(BufferId::default()),
+        empty,
+    );
+    assert_names_builtin(result, "set-eol-text!");
 }
 
 #[test]
