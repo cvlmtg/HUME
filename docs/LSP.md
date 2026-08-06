@@ -161,7 +161,7 @@ The subsystems LSP touches, where they live, and what LSP work did with each. Re
 
 ## Steel API index
 
-Every Steel-visible surface the LSP platform introduces — the lookup table for what a plugin can call. Conventions: `bid` = buffer id value — `equal?` and hash-keying compare by the underlying id (steel-core `Custom::equality_hint`/`try_as_dyn_hash`), so plugin code may use ordinary `equal?` and hash-keyed per-buffer state directly; positions produced by HUME builtins (B5 pulls, params helpers' inputs) are 0-based and **char-indexed** — raw wire positions appear only inside undecoded LSP response hashmaps, and only `goto-location!` (which accepts a raw `Location` hashmap) or the B5/B8 setters (which take response-shaped data) may consume them; Steel never converts encodings itself. Callbacks take `(err result)` — exactly one is non-`#f`.
+Every Steel-visible surface the LSP platform introduces — the lookup table for what a plugin can call. Conventions: `bid` = buffer id value — `equal?` and hash-keying compare by the underlying id (steel-core `Custom::equality_hint`/`try_as_dyn_hash`), so plugin code may use ordinary `equal?` and hash-keyed per-buffer state directly; positions produced by HUME builtins (B5 pulls, params helpers' inputs) are 0-based and **char-indexed** — raw wire positions appear only inside undecoded LSP response hashmaps, and only `goto-location!` (which accepts a raw `Location` hashmap), the B5/B8 setters (which take response-shaped data), or the explicit `lsp-position->offset`/`lsp-range->offsets` converters may consume them; Steel never does encoding *arithmetic* itself — every wire↔offset conversion routes through one of these named builtins, never ad hoc code. Callbacks take `(err result)` — exactly one is non-`#f`.
 
 | Surface | Kind | Task |
 |---------|------|------|
@@ -176,6 +176,8 @@ Every Steel-visible surface the LSP platform introduces — the lookup table for
 | `(lsp-server-for-buffer bid)` → server name or `#f` | builtin | B3 |
 | `(buffer-generation bid)` → int | builtin | B3 |
 | `(lsp-position-params bid)` / `(lsp-range-params bid)` → ready-made params hashmaps (encoding-correct) | builtin | B3 |
+| `(lsp-position->offset bid position)` → char offset for wire `{"line" "character"}` `position`, or `#f` if `bid` has no attached server | builtin | SPEC.md §6 |
+| `(lsp-range->offsets bid range)` → `(start . end)` half-open char offsets for wire `{"start" {…} "end" {…}}` `range`, or `#f` | builtin | SPEC.md §6 |
 | `(viewport-range bid)` → `(first-line . last-line)` currently visible for `bid` (focused pane if it shows `bid`, else the first pane showing it), or `#f` if `bid` isn't shown in any pane | builtin | B3 |
 | `(after ms thunk)` → timer id; `(cancel-timer! id)` | builtin | B4 |
 | `(debounce ms proc)` → debounced proc, one shared pending timer across all calls | builtin (bootstrap wrapper over `after`) | B4 |

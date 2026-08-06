@@ -1,5 +1,8 @@
 use super::*;
 use crate::test_support::SteelCtxTestHarness;
+use hume_engine::pipeline::BufferId;
+use steel::HashMap as SteelHashMap;
+use steel::gc::Gc;
 use steel::rvals::IntoSteelVal;
 
 fn list_of(items: &[&str]) -> SteelVal {
@@ -9,6 +12,24 @@ fn list_of(items: &[&str]) -> SteelVal {
         .collect::<Vec<_>>()
         .into_steelval()
         .unwrap()
+}
+
+/// Builds a Steel hashmap `SteelVal` from `(symbol-key, value)` pairs — the
+/// `(hash 'k v ...)` shape `wire_position` decodes.
+fn hashmap(entries: Vec<(&str, SteelVal)>) -> SteelVal {
+    let mut hm = SteelHashMap::new();
+    for (k, v) in entries {
+        hm.insert(SteelVal::SymbolV(k.into()), v);
+    }
+    SteelVal::HashMapV(Gc::new(hm).into())
+}
+
+/// A well-formed wire `{"line" "character"}` hashmap.
+fn wire_pos(line: isize, character: isize) -> SteelVal {
+    hashmap(vec![
+        ("line", SteelVal::IntV(line)),
+        ("character", SteelVal::IntV(character)),
+    ])
 }
 
 /// `Effect::LspServerOp` entries queued so far, in emission order.
@@ -507,4 +528,76 @@ fn lsp_request_with_false_supersede_queues_none() {
     let requests = lsp_requests(&ctx);
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].supersede, None);
+}
+
+#[test]
+fn lsp_position_to_offset_without_lsp_host_returns_false() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = lsp_position_to_offset(&mut ctx, BidArg(BufferId::default()), wire_pos(0, 0));
+    assert_eq!(result.unwrap(), SteelVal::BoolV(false));
+}
+
+#[test]
+fn lsp_position_to_offset_errors_on_missing_character() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let position = hashmap(vec![("line", SteelVal::IntV(0))]);
+    let result = lsp_position_to_offset(&mut ctx, BidArg(BufferId::default()), position);
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("lsp-position->offset"), "got: {msg}");
+}
+
+#[test]
+fn lsp_position_to_offset_errors_on_non_numeric_line() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let position = hashmap(vec![
+        ("line", SteelVal::StringV("zero".into())),
+        ("character", SteelVal::IntV(0)),
+    ]);
+    let result = lsp_position_to_offset(&mut ctx, BidArg(BufferId::default()), position);
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("lsp-position->offset"), "got: {msg}");
+}
+
+#[test]
+fn lsp_position_to_offset_errors_on_non_hashmap_arg() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = lsp_position_to_offset(&mut ctx, BidArg(BufferId::default()), SteelVal::IntV(5));
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("lsp-position->offset"), "got: {msg}");
+}
+
+#[test]
+fn lsp_range_to_offsets_without_lsp_host_returns_false() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let range = hashmap(vec![("start", wire_pos(0, 0)), ("end", wire_pos(0, 3))]);
+    let result = lsp_range_to_offsets(&mut ctx, BidArg(BufferId::default()), range);
+    assert_eq!(result.unwrap(), SteelVal::BoolV(false));
+}
+
+#[test]
+fn lsp_range_to_offsets_errors_on_missing_end() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let range = hashmap(vec![("start", wire_pos(0, 0))]);
+    let result = lsp_range_to_offsets(&mut ctx, BidArg(BufferId::default()), range);
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("lsp-range->offsets"), "got: {msg}");
+}
+
+#[test]
+fn lsp_range_to_offsets_errors_on_malformed_start() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let range = hashmap(vec![
+        ("start", hashmap(vec![("line", SteelVal::IntV(0))])),
+        ("end", wire_pos(0, 3)),
+    ]);
+    let result = lsp_range_to_offsets(&mut ctx, BidArg(BufferId::default()), range);
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("lsp-range->offsets"), "got: {msg}");
 }

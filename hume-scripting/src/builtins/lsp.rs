@@ -3,17 +3,19 @@
 //! completion, edit/navigation primitives, and the minibuffer prompt live in
 //! their own modules — LSP is a client of those, not their owner.
 
+use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::json::json_to_steel;
+use crate::json::{json_to_steel, steel_to_json};
 use crate::types::{Effect, PendingLspNotify, PendingLspRequest, PendingLspServerOp};
 use crate::{PendingLspServerReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    BidArg, bool_arg, json_params, list_to_env_pairs, list_to_strings, optional_json_arg,
-    optional_string_arg, string_arg,
+    BidArg, bool_arg, cons_pair, json_params, list_to_env_pairs, list_to_strings,
+    optional_json_arg, optional_string_arg, string_arg,
 };
+use super::errors::generic_err;
 
 /// `Some(json)` → decoded to a Steel hashmap; `None` (unresolvable, no
 /// attached server, handshake incomplete, …) → `#f`. Shared by the three
@@ -309,6 +311,80 @@ pub(crate) fn lsp_range_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     Ok(json_or_false(
         ctx.host.lsp().and_then(|lsp| lsp.lsp_range_params(id)),
     ))
+}
+
+/// Decodes a wire `{"line" "character"}` hashmap. `what` names the calling
+/// builtin in the error message — `wire_to_char` (the eventual conversion)
+/// is total and clamps rather than errors, so this boundary check is the
+/// only place a malformed shape gets caught instead of silently producing a
+/// plausible-looking offset.
+fn wire_position(v: &serde_json::Value, what: &str) -> Result<(usize, usize), SteelErr> {
+    match (
+        v.get("line").and_then(serde_json::Value::as_u64),
+        v.get("character").and_then(serde_json::Value::as_u64),
+    ) {
+        (Some(line), Some(character)) => Ok((line as usize, character as usize)),
+        _ => Err(generic_err(format!(
+            "{what}: position must be a hashmap with numeric 'line' and 'character' keys, got {v}"
+        ))),
+    }
+}
+
+/// `(lsp-position->offset bid position)` → `bid`'s char offset for the wire
+/// `{"line" "character"}` hashmap `position`, converted using `bid`'s
+/// attached server's negotiated encoding — or `#f` if `bid` has no attached
+/// server (no negotiated encoding to convert with).
+pub(crate) fn lsp_position_to_offset(
+    ctx: &mut SteelCtx,
+    bid: BidArg,
+    position: SteelVal,
+) -> SteelResult {
+    let id = bid.0;
+    let position_json =
+        steel_to_json(&position).map_err(|e| generic_err(format!("lsp-position->offset: {e}")))?;
+    let (line, character) = wire_position(&position_json, "lsp-position->offset")?;
+    Ok(
+        match ctx
+            .host
+            .lsp()
+            .and_then(|lsp| lsp.lsp_wire_to_char(id, line, character))
+        {
+            Some(offset) => SteelVal::IntV(offset as isize),
+            None => SteelVal::BoolV(false),
+        },
+    )
+}
+
+/// `(lsp-range->offsets bid range)` → `(start . end)` half-open char offsets
+/// for the wire `{"start" {"line" "character"} "end" {"line" "character"}}`
+/// hashmap `range`, same encoding rule as `lsp-position->offset`. `#f` if
+/// `bid` has no attached server.
+pub(crate) fn lsp_range_to_offsets(
+    ctx: &mut SteelCtx,
+    bid: BidArg,
+    range: SteelVal,
+) -> SteelResult {
+    let id = bid.0;
+    let range_json =
+        steel_to_json(&range).map_err(|e| generic_err(format!("lsp-range->offsets: {e}")))?;
+    let start_json = range_json
+        .get("start")
+        .ok_or_else(|| generic_err("lsp-range->offsets: range missing 'start'"))?;
+    let end_json = range_json
+        .get("end")
+        .ok_or_else(|| generic_err("lsp-range->offsets: range missing 'end'"))?;
+    let (start_line, start_character) = wire_position(start_json, "lsp-range->offsets")?;
+    let (end_line, end_character) = wire_position(end_json, "lsp-range->offsets")?;
+    let Some(lsp) = ctx.host.lsp() else {
+        return Ok(SteelVal::BoolV(false));
+    };
+    let (Some(start), Some(end)) = (
+        lsp.lsp_wire_to_char(id, start_line, start_character),
+        lsp.lsp_wire_to_char(id, end_line, end_character),
+    ) else {
+        return Ok(SteelVal::BoolV(false));
+    };
+    cons_pair(SteelVal::IntV(start as isize), SteelVal::IntV(end as isize))
 }
 
 #[cfg(test)]

@@ -325,3 +325,5 @@ builtin (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`,
 on it, the way every built-in feature does.
 
 `lsp-request` also takes two keyword args for requests that fire more than once. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key — the server gets `$/cancelRequest` and the old callback never fires — which is how completion's per-keystroke refilter avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful.
+
+A server's response sometimes carries its own position or range rather than the one you sent — a related location returned inside `res`, say. Convert it back into a plain buffer offset with `lsp-position->offset`/`lsp-range->offsets` before using it with any editing command; both return `#f` if the buffer has no server attached to convert against.

@@ -340,6 +340,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "lsp-registered-for-language?" lsp::lsp_registered_for_language(language: SteelVal);
         cmd "lsp-position-params" lsp::lsp_position_params(bid: args::BidArg);
         cmd "lsp-range-params" lsp::lsp_range_params(bid: args::BidArg);
+        cmd "lsp-position->offset" lsp::lsp_position_to_offset(bid: args::BidArg, position: SteelVal);
+        cmd "lsp-range->offsets" lsp::lsp_range_to_offsets(bid: args::BidArg, range: SteelVal);
         cmd "viewport-range" buffers::viewport_range(bid: args::BidArg);
         cmd "buffer-generation" buffers::buffer_generation(bid: args::BidArg);
         open "register-trigger-chars!" completion::register_trigger_chars(source: SteelVal, language: SteelVal, chars: SteelVal);

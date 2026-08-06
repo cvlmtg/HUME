@@ -1,6 +1,7 @@
 // Introspection builtins: lsp-capabilities,
 // lsp-server-status, lsp-server-for-buffer, buffer-generation,
-// lsp-position-params, lsp-range-params.
+// lsp-position-params, lsp-range-params, lsp-position->offset,
+// lsp-range->offsets.
 
 use std::path::{Path, PathBuf};
 
@@ -416,4 +417,110 @@ fn lsp_position_params_is_false_for_an_unattached_buffer() {
         r#"(equal? (lsp-position-params (current-buffer)) #f)"#,
     );
     assert!(fired, "no attached server must yield #f, not an error");
+}
+
+#[test]
+fn lsp_position_to_offset_uses_the_negotiated_utf16_encoding() {
+    let tmp = safe_tempdir();
+    // "🎉" is 1 char, 2 UTF-16 code units — wire character 2 (the emoji's
+    // full UTF-16 width) must land on char index 1, the char right after it.
+    let mut ed = editor_from("-[x]>🎉rest\n");
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-position-to-offset.rs")));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}})); // UTF-16 default
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (lsp-position->offset (current-buffer)
+                     (hash "line" 0 "character" 2))
+                   1)"#,
+    );
+    assert!(
+        fired,
+        "UTF-16 negotiated: wire character 2 must land right after the emoji, at char index 1"
+    );
+}
+
+#[test]
+fn lsp_position_to_offset_uses_the_negotiated_utf8_encoding() {
+    let tmp = safe_tempdir();
+    // "🎉" is 4 UTF-8 bytes — wire character 4 must land on char index 1.
+    let mut ed = editor_from("-[x]>🎉rest\n");
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-position-to-offset-utf8.rs")));
+    attach_running_server(
+        &mut ed,
+        serde_json::json!({"capabilities": {"positionEncoding": "utf-8"}}),
+    );
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (lsp-position->offset (current-buffer)
+                     (hash "line" 0 "character" 4))
+                   1)"#,
+    );
+    assert!(
+        fired,
+        "UTF-8 negotiated: wire character 4 must land right after the 4-byte emoji, at char index 1"
+    );
+}
+
+#[test]
+fn lsp_position_to_offset_is_false_for_an_unattached_buffer() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    // No server attached at all — no negotiated encoding to convert with.
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (lsp-position->offset (current-buffer) (hash "line" 0 "character" 0)) #f)"#,
+    );
+    assert!(fired, "no attached server must yield #f, not a guess");
+}
+
+#[test]
+fn lsp_range_to_offsets_converts_both_endpoints_half_open() {
+    let tmp = safe_tempdir();
+    // "🎉" occupies char 0 (2 UTF-16 code units); 'b' is char 1, wire
+    // character 2. A wire range [0, 2) must convert to char offsets (0 . 1)
+    // — covering just the emoji, half-open.
+    let mut ed = editor_from("-[x]>🎉bcdef\n");
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-range-to-offsets.rs")));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}})); // UTF-16 default
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (lsp-range->offsets (current-buffer)
+                     (hash "start" (hash "line" 0 "character" 0)
+                           "end" (hash "line" 0 "character" 2)))
+                   (cons 0 1))"#,
+    );
+    assert!(
+        fired,
+        "wire range [0, 2) (UTF-16) must convert to half-open char offsets (0 . 1)"
+    );
+}
+
+#[test]
+fn lsp_range_to_offsets_is_false_for_an_unattached_buffer() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (lsp-range->offsets (current-buffer)
+                     (hash "start" (hash "line" 0 "character" 0)
+                           "end" (hash "line" 0 "character" 1)))
+                   #f)"#,
+    );
+    assert!(fired, "no attached server must yield #f, not a guess");
 }

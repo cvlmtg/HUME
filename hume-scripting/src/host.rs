@@ -531,6 +531,12 @@ pub trait LspHost {
     /// `{"textDocument" {"uri"} "range" {"start" "end"}}` shape from the
     /// primary selection.
     fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value>;
+
+    /// Wire `(line, character)` → char offset in `id`'s attached server's
+    /// negotiated encoding — backs `lsp-position->offset`/`lsp-range->offsets`.
+    /// `None` if `id` is unknown or has no attached server (no negotiated
+    /// encoding to convert with).
+    fn lsp_wire_to_char(&self, id: BufferId, line: usize, character: usize) -> Option<usize>;
 }
 
 /// Timer scheduling — accessed through [`EditorHost::timers`].

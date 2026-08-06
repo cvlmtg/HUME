@@ -782,6 +782,16 @@ impl<'a> LspHost for EditorHostImpl<'a> {
     fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
         crate::editor::lsp::introspect::range_params(self.state, self.lsp.as_deref()?, id)
     }
+
+    fn lsp_wire_to_char(&self, id: BufferId, line: usize, character: usize) -> Option<usize> {
+        crate::editor::lsp::introspect::wire_to_char_for_buffer(
+            self.state,
+            self.lsp.as_deref()?,
+            id,
+            line,
+            character,
+        )
+    }
 }
 
 impl<'a> DecorationHost for EditorHostImpl<'a> {

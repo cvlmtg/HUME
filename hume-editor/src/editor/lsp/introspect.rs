@@ -213,6 +213,19 @@ pub(crate) fn position_params(
     }))
 }
 
+/// The negotiated encoding of `id`'s attached server, or `None` if `id` is
+/// unknown or has no attached (tracked) server — the fallible core shared by
+/// [`encoding_for_buffer`] (clamps to UTF-16) and [`wire_to_char_for_buffer`]
+/// (refuses instead of guessing).
+fn negotiated_encoding(
+    state: &EditorState,
+    lsp: &LspState,
+    id: BufferId,
+) -> Option<hume_editing::position_encoding::PositionEncoding> {
+    let sid = state.buffers.try_get(id)?.lsp_server?;
+    Some(lsp.servers.get(&sid)?.client.encoding())
+}
+
 /// The negotiated encoding of `id`'s attached server, or UTF-16 (the spec
 /// default) if `id` has no attached server — used by `set-inlay-hints!`
 /// to convert its wire positions to char offsets at set time.
@@ -221,13 +234,29 @@ pub(crate) fn encoding_for_buffer(
     lsp: &LspState,
     id: BufferId,
 ) -> hume_editing::position_encoding::PositionEncoding {
-    state
-        .buffers
-        .try_get(id)
-        .and_then(|b| b.lsp_server)
-        .and_then(|sid| lsp.servers.get(&sid))
-        .map(|e| e.client.encoding())
+    negotiated_encoding(state, lsp, id)
         .unwrap_or(hume_editing::position_encoding::PositionEncoding::Utf16)
+}
+
+/// Wire `(line, character)` → char offset in `id`'s attached server's
+/// negotiated encoding, for `lsp-position->offset`/`lsp-range->offsets`.
+/// `None` if `id` is unknown or has no attached server — unlike
+/// `set-inlay-hints!`'s `encoding_for_buffer`, this refuses rather than
+/// guessing UTF-16: the caller has no way to supply an encoding, so a wrong
+/// silent answer (only visible on non-ASCII lines) is worse than a visible
+/// `#f`.
+pub(crate) fn wire_to_char_for_buffer(
+    state: &EditorState,
+    lsp: &LspState,
+    id: BufferId,
+    line: usize,
+    character: usize,
+) -> Option<usize> {
+    let rope = state.buffers.try_get(id)?.text().rope();
+    let encoding = negotiated_encoding(state, lsp, id)?;
+    Some(hume_editing::position_encoding::wire_to_char(
+        rope, line, character, encoding,
+    ))
 }
 
 /// `(diagnostics-for-buffer bid #:severity floor #:range (start . end))` —
