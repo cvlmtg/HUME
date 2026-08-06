@@ -51,6 +51,9 @@ export default defineConfig({
 
   // Load the theme fonts. (Or self-host them under /public for offline builds.)
   head: [
+    // Head hrefs aren't base-rewritten by VitePress like markdown asset
+    // paths are, so `base` must be prepended explicitly here.
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: `${base}favicon.svg` }],
     ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
     ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
     ['link', {
