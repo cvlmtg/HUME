@@ -799,40 +799,23 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         &mut self,
         source: String,
         bid: BufferId,
-        hints: Vec<(serde_json::Value, String, bool)>,
-    ) {
-        let Some(lsp) = self.lsp.as_deref() else {
-            return;
-        };
-        let encoding = crate::editor::lsp::introspect::encoding_for_buffer(self.state, lsp, bid);
-        let Some(rope) = self
-            .state
-            .buffers
-            .try_get(bid)
-            .map(|b| b.text().rope().clone())
-        else {
-            return;
-        };
-        // The `set-inlay-hints!` builtin already validates each position has
-        // numeric `line`/`character` before this ever runs — a malformed
-        // shape errors loudly at that boundary instead of being silently
-        // dropped here.
-        let entries: Vec<crate::editor::decorations::InlayHintEntry> = hints
+        hints: Vec<(usize, String, bool)>,
+    ) -> Result<(), String> {
+        let entries = hints
             .into_iter()
-            .map(|(wire_pos, text, before)| {
-                let line = wire_pos["line"].as_u64().expect("validated by builtin") as usize;
-                let character = wire_pos["character"]
-                    .as_u64()
-                    .expect("validated by builtin") as usize;
-                let pos =
-                    hume_editing::position_encoding::wire_to_char(&rope, line, character, encoding);
-                crate::editor::decorations::InlayHintEntry { pos, text, before }
-            })
+            .map(
+                |(pos, text, before)| crate::editor::decorations::InlayHintEntry {
+                    pos,
+                    text,
+                    before,
+                },
+            )
             .collect();
         self.state
             .config
             .decorations
             .set_inlay_hints(source, bid, entries);
+        Ok(())
     }
 
     fn set_signs(

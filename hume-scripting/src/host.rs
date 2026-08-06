@@ -436,16 +436,15 @@ pub trait CompletionHost {
 /// [`EditorHost::decorations`].
 pub trait DecorationHost {
     /// `(set-inlay-hints! source bid hints)` — replaces `source`'s inlay
-    /// hints for `bid` wholesale. Each entry is `(wire_position, text,
-    /// before)`; the wire position (raw decoded `{"line" "character"}`) is
-    /// converted to a char offset using `bid`'s attached server's negotiated
-    /// encoding.
+    /// hints for `bid` wholesale. Each entry is `(offset, text, before)`,
+    /// `offset` already a char offset — the Steel builtin no longer accepts
+    /// LSP wire positions directly (see `lsp-position->offset`).
     fn set_inlay_hints(
         &mut self,
         source: String,
         bid: BufferId,
-        hints: Vec<(serde_json::Value, String, bool)>,
-    );
+        hints: Vec<(usize, String, bool)>,
+    ) -> Result<(), String>;
 
     /// `(set-signs! source bid signs)` — replaces `source`'s signs for `bid`
     /// wholesale. Each entry is `(line, text, scope, priority)`.

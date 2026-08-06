@@ -6,7 +6,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::json::{json_to_steel, steel_to_json};
+use crate::json::json_to_steel;
 use crate::types::VirtualLineSpec;
 
 use super::SteelResult;
@@ -15,8 +15,11 @@ use super::args::{
 };
 use super::errors::{generic_err, require_cap};
 
-/// `(set-inlay-hints! source bid hints)` — `hints`: list of `(position text
-/// 'before|'after)`, `position` a wire `{"line" "character"}` hashmap.
+/// `(set-inlay-hints! source bid hints)` — `hints`: list of `(offset text
+/// 'before|'after)`, `offset` a char offset. LSP wire `{"line"
+/// "character"}` positions convert via `lsp-position->offset` before
+/// reaching this builtin — the Steel decoration surface speaks editor-native
+/// units only (SPEC.md §6).
 pub(crate) fn set_inlay_hints(
     ctx: &mut SteelCtx,
     source: SteelVal,
@@ -29,22 +32,9 @@ pub(crate) fn set_inlay_hints(
         hints,
         "set-inlay-hints! hints",
         3..=3,
-        "(position text 'before|'after)",
+        "(offset text 'before|'after)",
         |fields| {
-            let position_json = steel_to_json(&fields[0])
-                .map_err(|e| generic_err(format!("set-inlay-hints! position: {e}")))?;
-            // Validated here, at the boundary, rather than left to the host
-            // side's extraction — a malformed position must error loudly, not
-            // silently drop the hint (host_impl.rs's `set_inlay_hints` treats
-            // this shape as already guaranteed).
-            let has_valid_position = position_json.get("line").is_some_and(|v| v.is_u64())
-                && position_json.get("character").is_some_and(|v| v.is_u64());
-            if !has_valid_position {
-                steel::stop!(Generic =>
-                    "set-inlay-hints!: position must be a hashmap with numeric 'line' and 'character' keys, got {}",
-                    position_json
-                );
-            }
+            let pos = usize_arg(fields[0].clone(), "set-inlay-hints! offset")?;
             let text = string_arg(fields[1].clone(), "set-inlay-hints! text")?;
             let before = match &fields[2] {
                 SteelVal::SymbolV(s) if s.as_str() == "before" => true,
@@ -53,10 +43,12 @@ pub(crate) fn set_inlay_hints(
                     steel::stop!(Generic => "set-inlay-hints!: third element must be 'before or 'after")
                 }
             };
-            Ok((position_json, text, before))
+            Ok((pos, text, before))
         },
     )?;
-    require_cap(ctx.host.decorations(), "set-inlay-hints!")?.set_inlay_hints(source, id, parsed);
+    require_cap(ctx.host.decorations(), "set-inlay-hints!")?
+        .set_inlay_hints(source, id, parsed)
+        .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 

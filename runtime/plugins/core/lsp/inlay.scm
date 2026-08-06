@@ -13,15 +13,18 @@
         (string-join (map (lambda (part) (hash-ref part "value")) label) ""))))
 
 ;;; `InlayHint {position, label, paddingLeft?, paddingRight?}` -> the
-;;; `(position text 'before)` shape `set-inlay-hints!` expects; padding
-;;; becomes literal leading/trailing spaces.
-(define (lsp/hint->store-entry hint)
+;;; `(offset text 'before)` shape `set-inlay-hints!` expects, or `#f` if
+;;; `bid` has no attached server to convert the wire position with (a race
+;;; between the request firing and the buffer detaching before the response
+;;; arrives). Padding becomes literal leading/trailing spaces.
+(define (lsp/hint->store-entry bid hint)
   (let* ((text (lsp/inlay-hint-text hint))
          (pad-left (and (hash-contains? hint "paddingLeft") (equal? (hash-ref hint "paddingLeft") #t)))
          (pad-right (and (hash-contains? hint "paddingRight") (equal? (hash-ref hint "paddingRight") #t)))
          (text (if pad-left (string-append " " text) text))
-         (text (if pad-right (string-append text " ") text)))
-    (list (hash-ref hint "position") text 'before)))
+         (text (if pad-right (string-append text " ") text))
+         (offset (lsp-position->offset bid (hash-ref hint "position"))))
+    (and offset (list offset text 'before))))
 
 ;;; `(first last)` visible lines -> `InlayHintParams`, or `#f` if `bid` can't
 ;;; be resolved (hidden/detached by the time a debounced refresh fires).
@@ -55,7 +58,8 @@
                     (set-inlay-hints! "lsp-inlay-hints" bid
                       (if (or (void? res) (null? res))
                           '()
-                          (map lsp/hint->store-entry res)))))))))))))
+                          (filter (lambda (e) e)
+                                  (map (lambda (h) (lsp/hint->store-entry bid h)) res))))))))))))))
 
 (register-hook! 'on-viewport-change
   (lambda (bid first last) (lsp/refresh-hints bid)))

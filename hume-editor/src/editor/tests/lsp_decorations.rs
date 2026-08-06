@@ -12,8 +12,11 @@ use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
 /// Attaches the focused buffer to a `Running` scripted server (UTF-16
-/// encoding, the negotiated default) — inlay hints need a resolvable
-/// server to convert their wire positions.
+/// encoding, the negotiated default) and gives it a path — several tests
+/// below compose `lsp-position->offset`, which needs a resolvable server to
+/// convert a wire position, and `inlay_hints_remap_through_an_edit` needs
+/// the path for the remap chokepoint to have somewhere to (not) send a
+/// `didChange`.
 fn attach_running_server(ed: &mut Editor) -> ServerId {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
@@ -43,11 +46,13 @@ fn attach_running_server(ed: &mut Editor) -> ServerId {
 }
 
 #[test]
-fn set_inlay_hints_converts_wire_position_using_utf16_encoding() {
+fn set_inlay_hints_composes_with_lsp_position_to_offset() {
     let tmp = safe_tempdir();
     // "🎉" is 1 char, 2 UTF-16 code units, 4 UTF-8 bytes — a wire character
     // offset of 2 (the emoji's UTF-16 width) must land on char index 1, the
-    // char right after it, not byte/char index 2 or 4.
+    // char right after it, not byte/char index 2 or 4. `set-inlay-hints!`
+    // no longer decodes wire positions itself — a plugin composes
+    // `lsp-position->offset` before calling the setter.
     let mut ed = editor_from("-[x]>🎉bcdef\n");
     attach_running_server(&mut ed);
     let bid = ed.focused_buffer_id();
@@ -57,7 +62,8 @@ fn set_inlay_hints_converts_wire_position_using_utf16_encoding() {
         &mut host,
         r#"(define-command! "arm-hints-a" "" (lambda ()
              (set-inlay-hints! "linter" (current-buffer)
-               (list (list (hash "line" 0 "character" 2) "hint" 'after)))))"#,
+               (list (list (lsp-position->offset (current-buffer) (hash "line" 0 "character" 2))
+                           "hint" 'after)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -90,10 +96,10 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
         &mut host,
         r#"(define-command! "arm-hints-a" "" (lambda ()
              (set-inlay-hints! "linter" (current-buffer)
-               (list (list (hash "line" 0 "character" 0) "first" 'before)))))
+               (list (list 0 "first" 'before)))))
            (define-command! "arm-hints-b" "" (lambda ()
              (set-inlay-hints! "linter" (current-buffer)
-               (list (list (hash "line" 0 "character" 1) "second" 'before)))))"#,
+               (list (list 1 "second" 'before)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -114,12 +120,12 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
     assert_eq!(hints[0].text, "second");
 }
 
-/// A malformed position (missing `line`/`character`, or a non-numeric value)
-/// must error loudly at the `set-inlay-hints!` boundary rather than being
-/// silently dropped by the host's extraction — silent extraction would leave
-/// a plugin author's typo producing fewer hints with no explanation.
+/// A malformed offset (non-integer, or negative) must error loudly at the
+/// `set-inlay-hints!` boundary rather than being silently dropped — silent
+/// extraction would leave a plugin author's typo producing fewer hints with
+/// no explanation.
 #[test]
-fn set_inlay_hints_errors_loudly_on_a_malformed_position() {
+fn set_inlay_hints_errors_loudly_on_a_malformed_offset() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdef\n");
     attach_running_server(&mut ed);
@@ -130,7 +136,7 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_position() {
         &mut host,
         r#"(define-command! "arm-bad" "" (lambda ()
              (set-inlay-hints! "linter" (current-buffer)
-               (list (list (hash "line" 0) "oops" 'before)))))"#,
+               (list (list "not-a-number" "oops" 'before)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -147,8 +153,8 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_position() {
     );
     let log = ed.state.message_log.format_for_display();
     assert!(
-        log.contains("character"),
-        "must report which field is missing/invalid: {log:?}"
+        log.contains("offset"),
+        "must report which field is invalid: {log:?}"
     );
 }
 
@@ -164,7 +170,7 @@ fn inlay_hints_remap_through_an_edit() {
         &mut host,
         r#"(define-command! "arm-hints-a" "" (lambda ()
              (set-inlay-hints! "linter" (current-buffer)
-               (list (list (hash "line" 0 "character" 3) "hint" 'after)))))"#,
+               (list (list 3 "hint" 'after)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
