@@ -68,6 +68,9 @@ export default defineConfig({
       {
         text: channel === 'release' ? releaseTag : 'nightly',
         items: [
+          // target: '_self' isn't cosmetic: without it, VitePress's SPA router
+          // intercepts the click and resolves the other channel's absolute URL
+          // against this build's own base, silently loading the wrong page chunk.
           { text: releaseTag, link: releaseLink, target: '_self', noIcon: true },
           { text: 'nightly', link: nightlyLink, target: '_self', noIcon: true },
         ],
@@ -142,5 +145,10 @@ export default defineConfig({
     // Consumed by theme/Layout.vue to render the nightly banner.
     channel,
     releaseTag,
-  } satisfies DefaultTheme.Config & { channel: string; releaseTag: string },
+    releaseLink,
+  } satisfies DefaultTheme.Config & {
+    channel: string
+    releaseTag: string
+    releaseLink: string
+  },
 })
