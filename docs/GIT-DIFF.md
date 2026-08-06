@@ -8,11 +8,11 @@
 | 1 — async subprocess execution | ✅ shipped (`2451d3d6`…`8bcb4606`) |
 | theme `diff.*` scopes | ⚠️ partial — all 4 themes, **fg only**, no `bg` |
 | 2 — native diff builtins | ⬜ **next** |
-| 3 — engine: full-row background | ⬜ |
+| 3 — engine: full-row background | ⬜ shape pinned (SPEC Prereq B) |
 | 4.1 — `on-text-changed` hook | ⬜ |
 | 4.2 — buffer-text reads | ⬜ |
 | 4.3 — async git | ✅ subsumed by Phase 1 |
-| 4.4 — line-bg decoration kind | ⬜ |
+| 4.4 — line-bg decoration kind | ⬜ shape pinned (SPEC Prereq B) |
 | 4.5 — `set-virtual-lines!` `Before` anchor + per-segment scopes | ✅ shipped |
 | 5a — the plugin: state/fetch/debounce/init + gutter signs | ⬜ not to be built yet |
 | 5b — virtual deleted lines (+ word-del highlights inside them) | ⬜ not to be built yet |
@@ -313,9 +313,16 @@ Instead:
 - `diff_words(old: &str, new: &str) -> WordDiff` (`:254`, `_with_deadline` at `:266`) returns
   `WordHunk` ranges that are **char offsets, explicitly not byte offsets** (`:204`) — matching
   `ExtraHighlightEntry { start, end, scope }`, which is also a char range
-  (`hume-editor/src/editor/decorations.rs:66-70`). Any byte-range description elsewhere in
-  this doc (Phase 3's `(byte_start, byte_end, ScopeId)`) is a different, later layer — the
-  char→byte conversion happens editor-side, never in Steel.
+  (`hume-editor/src/editor/decorations.rs:75-79`). **`VirtualLine.segments` is a separate,
+  byte-offset case** (Phase 3's `(byte_start, byte_end, ScopeId)`, shipped Steel-facing as
+  byte ranges by Phase 4.5) — as shipped, a Steel caller feeding `diff-words`' char output
+  into `set-virtual-lines!`'s `'segments` would have to do its own char→byte conversion,
+  which contradicts the rule just stated (char→byte conversion happens editor-side, never
+  in Steel). **SPEC.md Prereq B (§5a.2) flags this and decides to flip `'segments` to char
+  offsets at the Steel surface**, with char→byte conversion moving into the host boundary
+  (`host_impl.rs`'s existing field-by-field map) — tracked as a SPEC checkbox, sequenced
+  before/with the unified-store step, while `set-virtual-lines!` still has zero `.scm`
+  callers.
 - Builtin `(diff-lines old-text new-text)` calls `ctx.host()?.diff()?.diff_lines(old, new)` →
   list of hunks, each `(old-start old-count new-start new-count old-lines new-lines)`, using
   the **same anchor convention** as nvim's `_diff_lines` (`diff.lua:155`) so the Steel render
@@ -380,6 +387,21 @@ lines has its own gap — see Phase 4.5).
    (added/changed lines). Depends on the theme prereq above: `diff.plus`/`diff.minus` are
    currently `fg`-only in all four themes, so `bg` values (plus `.word` variants for the
    word-level boost) need adding before this has a color to render.
+
+   **Shape pinned by SPEC.md Prereq B (§5a), build deferred to the unification steps.**
+   Resolve the provider tint once per line, in `LineStyle::enter`
+   (`hume-engine/src/pipeline/pane_render.rs`), into an `Option<Color>` via
+   `theme.resolve(id).bg` — a theme lacking a `bg` on the scope renders nothing, which is
+   today's fg-only reality. Both existing consumers of cursorline's bg must read that same
+   value: the row-fill site (`row_bg = (is_head_line ? cursorline.bg : None).or(provider_bg)`,
+   feeding gutter/trailing cells) and the per-grapheme layering site
+   (`hume-engine/src/style/mod.rs:153-208` — the tint becomes the lowest decoration layer,
+   between `theme.default` and cursorline, for occupied cells). **Precedence: cursorline
+   wins over the tint** — a theme whose cursorline has no `bg` falls through to the tint
+   automatically (`ResolvedStyle::layer` only overrides on `Some(bg)`); losing the tint on
+   the one row under the cursor costs nothing, losing find-the-cursor inside a 30-line
+   tinted hunk is a real regression. Fill extent matches cursorline today: gutter through
+   the right edge, every wrap row of a tinted line, sign glyphs render over the tint.
 
 3. **A highlight tier for plugin spans — done, no new tier needed.** `HighlightTier`
    (`hume-engine/src/providers.rs:37-45`) is `Syntax=0, Extra=1, SearchMatch=2,
@@ -456,18 +478,36 @@ trait (`hume-scripting/src/host.rs`).
    nvim extmark uses:
    - **span highlight** (char-relative range + scope) — already covered by
      `set-extra-highlights!` (`ExtraHighlightEntry { start, end, scope }`,
-     `decorations.rs:66-70`, char offsets matching `diff_words`' `WordHunk` ranges).
+     `decorations.rs:75-79`, char offsets matching `diff_words`' `WordHunk` ranges).
    - **gutter sign** — already covered by `set-signs!`. Note: nvim's own inline-diff plugin
      (`/Users/matteo/dev/neovim-inline-diff`) defines **no signs at all** — this is HUME-side
      scope beyond parity; cross-reference "Why gutter signs are merged into this plugin, not
      a separate one" above.
-   - **virtual line** (styled segments, anchored `Before`/`After`) — **not fully covered; see
-     Phase 4.5.** The engine type is ready but the bridge is not.
+   - **virtual line** (styled segments, anchored `Before`/`After`) — ✅ **shipped, Phase
+     4.5.** Both the engine type and the Steel-facing `set-virtual-lines!` bridge are ready.
    - **line background** (full-width tint) — confirmed missing, and a real gap.
      `row_bg` still has exactly one hardcoded producer (Phase 3.2); `ExtraHighlightEntry`
      cannot substitute for it — it's a char-range span feeding the highlight pipeline, a
      different channel from `row_bg`. This is the one new decoration kind to add to
      `DecorationStores`, paired with the Phase 3.2 engine change.
+
+     **Shape pinned by SPEC.md Prereq B (§5a), build deferred to the unification steps.**
+     Builtin `(set-line-backgrounds! source bid entries)` — the uniform §6
+     `(set-X! source bid entries)` shape; entries are `(line scope)` tuples, `line`
+     0-indexed at the Steel surface (matches signs' tuple style). Store entry
+     `LineBgEntry { pos: usize /* line-start char offset */, scope: String }` in the
+     unified per-source store (SPEC §6); the host boundary converts line → line-start char
+     offset and fails fast on an out-of-range line (can only fire on a plugin bug — the
+     diff runs synchronously against the live buffer in the same Steel evaluation as the
+     setter call). Engine side: a `Decoration::LineBg(ScopeId)` variant on the unified kind
+     enum, queried only at paint time — never by `RowMap`'s layout query, since a line
+     background never affects row count or wrapping. No `priority` field: unlike signs, row
+     tints have no single-slot contention and git-diff is the only specced consumer;
+     deterministic source-name tie-break is enough. One record per line, not a range — the
+     producer trivially expands hunks, and point remap is simpler than range-endpoint-merge
+     semantics. Dirty tracking: covered by SPEC §6's store-wide generation; the payload is
+     small enough that per-frame sync is fine — no dedicated gate needed. See Phase 3.2 for
+     the `row_bg`/precedence contract this kind renders through.
    - **Risk note:** `docs/ROADMAP.md` lists an open, not-yet-started item — "Unified
      decoration system — single trait replacing the separate gutter/highlight/virtual-line/
      overlay provider traits; post-LSP, once the surface is stable." Building the new line-bg
@@ -491,7 +531,9 @@ trait (`hume-scripting/src/host.rs`).
    (`'before`/`'after`, default `'after`) and `'segments` (list of `(start end scope)` byte
    ranges into `text` — the covered bytes render with the segment's scope instead of
    `'scope`'s, not layered with it; the bridge gap-fills uncovered bytes with `'scope`),
-   threaded through `VirtualLineEntry` and `update_virtual_line_providers`.
+   threaded through `VirtualLineEntry` and `update_virtual_line_providers`. Segment offsets
+   are bytes as shipped; SPEC.md Prereq B (§5a.2) decides to flip this to char offsets
+   before the unification lands — see Phase 2's note above.
    Breaking change (old `(line text)`/`(line text scope)` entries are rejected) — acceptable
    since no `.scm` plugin called this builtin yet. Scoped to Phase 4.5, gating Phase 5b only —
    Phase 5a (signs) and Phase 5c (line background) don't touch this API at all.
@@ -562,8 +604,7 @@ accounting a `Before`-anchored block needs (see below) is already in place.
   scope. No Lua-style tokenizer/Myers port — both diff passes are native (Phase 2).
   (← `diff.lua`, logic replaced by native calls, not ported)
 - **render** (5b addition): `hunks → virtual-line records`. Pure delete → one or more virtual
-  lines anchored `Before` the new-side insertion point (falls back to `After` the previous
-  line where `Before` isn't yet wired, per Phase 4.5's rollout); change → virtual old line
+  lines anchored `Before` the new-side insertion point; change → virtual old line
   with word-del segments (from the `diff-words` pass) + word-add span highlights via
   `set-extra-highlights!` on the live line. Three cases exactly as `render.lua`. (← `render.lua`)
 - **highlight**: map word-diff kinds to the `diff.*.word` scopes, once they exist (theme
@@ -692,9 +733,9 @@ store) + theme `diff.*` `bg` values in all four themes.**
   `spawn-process` arbitrary git commands — but this was never a security question; Phase 1's
   `spawn-async!` shipped with the exactly-once, watchdog-guarded callback contract described
   above.
-- **Virtual-line Steel bridge — new risk, Phase 4.5.** The engine type is ready
-  (`Before`/`After` anchoring, per-segment scopes); the Steel-facing `set-virtual-lines!`
-  bridge is not. This gates Phase 5b specifically — Phase 5a (signs) is unaffected.
+- **Virtual-line Steel bridge — ✅ resolved, Phase 4.5 shipped.** Both the engine type
+  (`Before`/`After` anchoring, per-segment scopes) and the Steel-facing `set-virtual-lines!`
+  bridge are ready. Was gating Phase 5b specifically — no longer a blocker.
 - **Virtual-line scroll accounting — resolved, in every wrap mode.** `top_row_offset` counts
   display rows of `top_line`'s whole visual block (`before` + content + `after`); renderer and
   editor row math agree on every row in both wrap modes because they read the same
@@ -741,5 +782,5 @@ store) + theme `diff.*` `bg` values in all four themes.**
   `diff.minus.gutter` / `diff.delta.gutter`; edit a line, confirm the debounced sign update;
   save, confirm the ref re-fetch and sign refresh.
 - **5b/5c end-to-end** (`/run`): `:toggle-inline-diff`, edit a line — deleted line struck
-  above (or below, per Phase 4.5's anchor availability), changed line tinted +
-  word-highlighted, live (debounced) updates; save re-fetches the ref.
+  above the deletion point, changed line tinted + word-highlighted, live (debounced)
+  updates; save re-fetches the ref.
