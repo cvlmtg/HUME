@@ -48,7 +48,7 @@ jobs:
         run: |
           rm -rf docs-release
           mkdir docs-release
-          git archive "${{ steps.release.outputs.tag }}" user-manual/docs | tar -x -C docs-release --strip-components=2
+          git archive "${{ steps.release.outputs.tag }}" docs | tar -x -C docs-release --strip-components=1
 
       - name: Build release channel
         working-directory: user-manual
