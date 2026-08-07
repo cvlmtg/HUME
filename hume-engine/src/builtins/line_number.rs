@@ -80,7 +80,11 @@ impl LineNumberColumn {
         }
     }
 
-    pub fn with_style(style: LineNumberStyle, default_scope: ScopeId, selected_scope: ScopeId) -> Self {
+    pub fn with_style(
+        style: LineNumberStyle,
+        default_scope: ScopeId,
+        selected_scope: ScopeId,
+    ) -> Self {
         Self {
             style,
             default_scope,

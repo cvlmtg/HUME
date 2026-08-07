@@ -395,7 +395,10 @@ fn sign_scope_resolves_via_baked_theme() {
         .into_iter()
         .next()
         .unwrap();
-    assert_eq!(theme.resolve(cell.scope).fg, Some(ratatui::style::Color::Red));
+    assert_eq!(
+        theme.resolve(cell.scope).fg,
+        Some(ratatui::style::Color::Red)
+    );
 }
 
 #[test]

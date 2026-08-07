@@ -5,7 +5,9 @@ use crate::layout::PaneGeometry;
 use crate::pane::ViewportState;
 use crate::providers::{GutterColumn, GutterRowCtx, ProviderId};
 use crate::theme::Theme;
-use crate::types::{CellContent, DisplayRow, EditorMode, Grapheme, ResolvedStyle, RowKind, ScopeId};
+use crate::types::{
+    CellContent, DisplayRow, EditorMode, Grapheme, ResolvedStyle, RowKind, ScopeId,
+};
 
 // ---------------------------------------------------------------------------
 // Stage 4: compose

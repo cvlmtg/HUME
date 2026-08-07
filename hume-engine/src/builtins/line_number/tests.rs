@@ -31,7 +31,8 @@ fn width_grows_with_line_count() {
 
 #[test]
 fn absolute_line_numbers() {
-    let col = LineNumberColumn::with_style(LineNumberStyle::Absolute, DEFAULT_SCOPE, SELECTED_SCOPE);
+    let col =
+        LineNumberColumn::with_style(LineNumberStyle::Absolute, DEFAULT_SCOPE, SELECTED_SCOPE);
     let rope = ropey::Rope::new();
     let cell = col
         .render_row_cells(RowKind::LineStart { line_idx: 4 }, &ctx(&rope, 0))
@@ -105,7 +106,8 @@ fn virtual_rows_are_blank() {
 
 #[test]
 fn relative_line_numbers() {
-    let col = LineNumberColumn::with_style(LineNumberStyle::Relative, DEFAULT_SCOPE, SELECTED_SCOPE);
+    let col =
+        LineNumberColumn::with_style(LineNumberStyle::Relative, DEFAULT_SCOPE, SELECTED_SCOPE);
     let rope = ropey::Rope::new();
     // Cursor at line 5 (0-based). Line 3 is distance 2, line 8 is distance 3.
     let cell = col
@@ -124,7 +126,8 @@ fn relative_line_numbers() {
 
 #[test]
 fn relative_head_line_shows_zero() {
-    let col = LineNumberColumn::with_style(LineNumberStyle::Relative, DEFAULT_SCOPE, SELECTED_SCOPE);
+    let col =
+        LineNumberColumn::with_style(LineNumberStyle::Relative, DEFAULT_SCOPE, SELECTED_SCOPE);
     let rope = ropey::Rope::new();
     let cell = col
         .render_row_cells(RowKind::LineStart { line_idx: 5 }, &ctx(&rope, 5))
@@ -223,7 +226,8 @@ fn digit_count_zero_is_one() {
 
 #[test]
 fn large_line_number_renders_correctly() {
-    let col = LineNumberColumn::with_style(LineNumberStyle::Absolute, DEFAULT_SCOPE, SELECTED_SCOPE);
+    let col =
+        LineNumberColumn::with_style(LineNumberStyle::Absolute, DEFAULT_SCOPE, SELECTED_SCOPE);
     let rope = ropey::Rope::new();
     // line_idx = 9_999_998 → display = 9_999_999 (1-based)
     let cell = col

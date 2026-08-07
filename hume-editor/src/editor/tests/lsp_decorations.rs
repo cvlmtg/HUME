@@ -721,14 +721,22 @@ fn set_line_backgrounds_round_trips_and_replaces_per_source() {
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm-a");
 
-    let entries = ed.state.config.decorations.line_backgrounds_for("git-diff", bid);
+    let entries = ed
+        .state
+        .config
+        .decorations
+        .line_backgrounds_for("git-diff", bid);
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].pos, 0, "line 0's line-start char offset is 0");
     assert_eq!(entries[0].scope, "diff.plus");
 
     // A second call for the same source must replace wholesale, not append.
     type_cmd(&mut ed, ":arm-b");
-    let entries = ed.state.config.decorations.line_backgrounds_for("git-diff", bid);
+    let entries = ed
+        .state
+        .config
+        .decorations
+        .line_backgrounds_for("git-diff", bid);
     assert_eq!(
         entries.len(),
         1,

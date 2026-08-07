@@ -247,7 +247,10 @@ impl<'a> RowMap<'a> {
         };
 
         self.decorations.clear();
-        for (id, provider) in self.providers.decoration_sources(DecorationKinds::VIRTUAL_LINE) {
+        for (id, provider) in self
+            .providers
+            .decoration_sources(DecorationKinds::VIRTUAL_LINE)
+        {
             let start = virtual_lines.len();
             provider.decorations_for_line(line, &mut self.decorations);
             // A provider that declared VIRTUAL_LINE but emitted something

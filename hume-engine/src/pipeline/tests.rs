@@ -4,7 +4,9 @@ use super::*;
 use ratatui::layout::Rect;
 
 use super::layout::split_rect;
-use crate::providers::{Decoration, DecorationKinds, DecorationSource, VirtualLine, VirtualLineAnchor};
+use crate::providers::{
+    Decoration, DecorationKinds, DecorationSource, VirtualLine, VirtualLineAnchor,
+};
 use crate::types::{ResolvedStyle, RowKind};
 
 fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {

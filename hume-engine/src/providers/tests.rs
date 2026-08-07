@@ -196,4 +196,3 @@ fn decoration_sources_filters_by_kind() {
         "PAINT includes HIGHLIGHT but not VIRTUAL_LINE"
     );
 }
-
