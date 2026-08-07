@@ -273,11 +273,16 @@ impl BidArg {
         if ctx.host.buffers().buffer_exists(self.0) {
             Ok(self.0)
         } else {
-            Err(generic_err(format!(
-                "{builtin_name}: invalid buffer id {:?}",
-                self.0
-            )))
+            Err(self.not_live_err(builtin_name))
         }
+    }
+
+    /// The shared "this bid names no open buffer" error — the wording behind
+    /// [`require_live`](Self::require_live), for a builtin whose own host
+    /// call already does the liveness lookup (so a second `buffer_exists`
+    /// check would be redundant) but still needs `require_live`'s message.
+    pub(crate) fn not_live_err(self, builtin_name: &str) -> SteelErr {
+        generic_err(format!("{builtin_name}: invalid buffer id {:?}", self.0))
     }
 }
 

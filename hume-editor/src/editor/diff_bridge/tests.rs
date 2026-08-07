@@ -5,9 +5,7 @@ use super::*;
 /// file as changed.
 #[test]
 fn equal_hunks_are_dropped() {
-    let old = Text::from("a\nb\nc\n");
-    let new = Text::from("a\nb\nc\n");
-    assert_eq!(line_hunks(&old, &new), Vec::new());
+    assert_eq!(line_hunks("a\nb\nc\n", "a\nb\nc\n"), Vec::new());
 }
 
 /// Fail oracle: adopt `vim.diff`'s 1-based starts (or shift a zero-count
@@ -16,15 +14,11 @@ fn equal_hunks_are_dropped() {
 /// off from the plugin's own 0-based line numbering.
 #[test]
 fn pure_insert_is_zero_based_with_no_old_side() {
-    let old = Text::from("a\nb\n");
-    let new = Text::from("a\nx\nb\n");
     assert_eq!(
-        line_hunks(&old, &new),
+        line_hunks("a\nb\n", "a\nx\nb\n"),
         vec![DiffHunk {
             old_start: 1,
-            old_count: 0,
             new_start: 1,
-            new_count: 1,
             old_lines: vec![],
             new_lines: vec!["x".to_string()],
         }]
@@ -35,15 +29,11 @@ fn pure_insert_is_zero_based_with_no_old_side() {
 /// the deletion direction.
 #[test]
 fn pure_delete_is_zero_based_with_no_new_side() {
-    let old = Text::from("a\nx\nb\n");
-    let new = Text::from("a\nb\n");
     assert_eq!(
-        line_hunks(&old, &new),
+        line_hunks("a\nx\nb\n", "a\nb\n"),
         vec![DiffHunk {
             old_start: 1,
-            old_count: 1,
             new_start: 1,
-            new_count: 0,
             old_lines: vec!["x".to_string()],
             new_lines: vec![],
         }]
@@ -55,15 +45,11 @@ fn pure_delete_is_zero_based_with_no_new_side() {
 /// `Delete` + `Insert` pair (which would emit two hunks instead of one).
 #[test]
 fn replace_carries_both_sides() {
-    let old = Text::from("a\nb\nc\n");
-    let new = Text::from("a\nB\nc\n");
     assert_eq!(
-        line_hunks(&old, &new),
+        line_hunks("a\nb\nc\n", "a\nB\nc\n"),
         vec![DiffHunk {
             old_start: 1,
-            old_count: 1,
             new_start: 1,
-            new_count: 1,
             old_lines: vec!["b".to_string()],
             new_lines: vec!["B".to_string()],
         }]
@@ -71,21 +57,16 @@ fn replace_carries_both_sides() {
 }
 
 /// Fail oracle: build `old_lines` by splitting `LineHunkKind::Delete`'s
-/// payload instead of re-slicing the tokenized input — the payload joins
-/// covered lines with no separator (`hume-editing/src/diff.rs`'s
-/// `ops_to_line_hunks`), so a multi-line delete would come back as one
-/// glued `["xy"]` instead of two separate lines.
+/// payload instead of re-slicing the tokenized input — `LineHunkKind`
+/// carries no payload, so this pins the alternative: a multi-line delete
+/// must come back as two separate lines, not one glued string.
 #[test]
-fn multi_line_delete_rebuilds_lines_by_slicing_not_from_the_payload() {
-    let old = Text::from("a\nx\ny\nb\n");
-    let new = Text::from("a\nb\n");
+fn multi_line_delete_rebuilds_lines_by_slicing_the_tokenized_input() {
     assert_eq!(
-        line_hunks(&old, &new),
+        line_hunks("a\nx\ny\nb\n", "a\nb\n"),
         vec![DiffHunk {
             old_start: 1,
-            old_count: 2,
             new_start: 1,
-            new_count: 0,
             old_lines: vec!["x".to_string(), "y".to_string()],
             new_lines: vec![],
         }]
@@ -98,9 +79,7 @@ fn multi_line_delete_rebuilds_lines_by_slicing_not_from_the_payload() {
 /// every file, on every refresh.
 #[test]
 fn missing_trailing_newline_is_not_a_change() {
-    let old = Text::from("a\nb");
-    let new = Text::from("a\nb\n");
-    assert_eq!(line_hunks(&old, &new), Vec::new());
+    assert_eq!(line_hunks("a\nb", "a\nb\n"), Vec::new());
 }
 
 /// Fail oracle: normalize CRLF to LF before comparing (or leave `\r` in a
@@ -112,24 +91,7 @@ fn missing_trailing_newline_is_not_a_change() {
 /// produce, not `git diff`'s raw byte comparison.
 #[test]
 fn crlf_ref_is_normalized_like_the_buffer() {
-    let old = Text::from("a\r\nb\r\n");
-    let new = Text::from("a\nb\n");
-    assert_eq!(line_hunks(&old, &new), Vec::new());
-}
-
-/// Fail oracle: stop stripping the trailing `\n` from a hunk's line
-/// payloads — a plugin splicing one straight into `set-virtual-lines!`'s
-/// row text would embed a newline mid-row.
-#[test]
-fn payload_lines_never_carry_a_trailing_newline() {
-    let old = Text::from("a\nx\ny\nb\n");
-    let new = Text::from("a\nb\n");
-    let hunks = line_hunks(&old, &new);
-    for hunk in &hunks {
-        for line in hunk.old_lines.iter().chain(hunk.new_lines.iter()) {
-            assert!(!line.contains('\n'), "line {line:?} carries a newline");
-        }
-    }
+    assert_eq!(line_hunks("a\r\nb\r\n", "a\nb\n"), Vec::new());
 }
 
 // ── word_hunks (Phase 2b) ────────────────────────────────────────────────
@@ -234,7 +196,11 @@ fn word_hunks_whitespace_run_change_is_diffed() {
 fn word_hunks_with_deadline_forwards_the_timeout_flag() {
     let old = "word ".repeat(100);
     let new = "term ".repeat(100);
-    let (_, forced) = word_hunks_with_deadline(&old, &new, std::time::Duration::ZERO);
+    let (_, forced) = convert_word_diff(hume_editing::diff::diff_words_with_deadline(
+        &old,
+        &new,
+        std::time::Duration::ZERO,
+    ));
     assert!(forced, "a zero deadline must report deadline_hit");
     let (_, default) = word_hunks(&old, &new);
     assert!(!default, "the default deadline must complete on this input");

@@ -401,7 +401,6 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: SteelVal);
         cmd "cancel-async!" process::cancel_async(id: SteelVal);
 
-        // Native line/word diff — the only part of a diff plugin that isn't Steel.
         cmd "diff-lines" diff::diff_lines(old: SteelVal, new: SteelVal);
         cmd "diff-buffer-lines" diff::diff_buffer_lines(bid: args::BidArg, ref_text: SteelVal);
         cmd "diff-words" diff::diff_words(old: SteelVal, new: SteelVal);

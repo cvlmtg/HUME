@@ -1,25 +1,8 @@
 // End-to-end Steel coverage for `diff-lines` / `diff-buffer-lines` (Phase 2a)
 // and `diff-words` (Phase 2b), docs/GIT-DIFF.md.
 
-use std::path::Path;
-
 use super::*;
 use hume_scripting::ScriptingHost;
-
-/// Runs `body` as a Steel command; the command moves the cursor iff `body`'s
-/// own assertion (embedded in the Scheme source) held. Local copy of the
-/// identical helper in `lsp_introspect.rs` — no shared home for it yet.
-fn run_probe(ed: &mut Editor, host: ScriptingHost, tmp: &Path, body: &str) -> bool {
-    let mut host = host;
-    let source = format!(
-        r#"(define-command! "probe" "" (lambda () (when (begin {body}) (call! "move-right"))))"#
-    );
-    eval_with_real_host(ed, &mut host, &source, tmp);
-    ed.scripting = Some(host);
-    let before = state(ed);
-    type_cmd(ed, ":probe");
-    state(ed) != before
-}
 
 /// `diff-lines` returns 0-based hunk tuples, oldest side first.
 ///

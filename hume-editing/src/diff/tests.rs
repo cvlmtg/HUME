@@ -19,15 +19,11 @@ fn diff_lines_basic() {
     assert_eq!(d.hunks.len(), 3);
     assert_eq!(d.hunks[0].kind, LineHunkKind::Equal);
     assert_eq!(d.hunks[0].old, 0..1);
-    assert_eq!(
-        d.hunks[1].kind,
-        LineHunkKind::Replace {
-            old: "b".into(),
-            new: "B".into()
-        }
-    );
+    assert_eq!(d.hunks[1].kind, LineHunkKind::Replace);
     assert_eq!(d.hunks[1].old, 1..2);
     assert_eq!(d.hunks[1].new, 1..2);
+    assert_eq!(old[d.hunks[1].old.clone()].join(""), "b");
+    assert_eq!(new[d.hunks[1].new.clone()].join(""), "B");
     assert_eq!(d.hunks[2].kind, LineHunkKind::Equal);
     assert_eq!(d.hunks[2].old, 2..4);
     assert_eq!(d.hunks[2].new, 2..4);
@@ -53,11 +49,11 @@ fn diff_lines_pure_insert() {
     let insert = d
         .hunks
         .iter()
-        .find(|h| matches!(h.kind, LineHunkKind::Insert(_)))
+        .find(|h| h.kind == LineHunkKind::Insert)
         .expect("should have an insert hunk");
     assert_eq!(insert.old, 1..1);
     assert_eq!(insert.new, 1..2);
-    assert_eq!(insert.kind, LineHunkKind::Insert("b".into()));
+    assert_eq!(new[insert.new.clone()].join(""), "b");
 }
 
 #[test]
@@ -68,11 +64,11 @@ fn diff_lines_pure_delete() {
     let delete = d
         .hunks
         .iter()
-        .find(|h| matches!(h.kind, LineHunkKind::Delete(_)))
+        .find(|h| h.kind == LineHunkKind::Delete)
         .expect("should have a delete hunk");
     assert_eq!(delete.old, 1..2);
     assert_eq!(delete.new, 1..1);
-    assert_eq!(delete.kind, LineHunkKind::Delete("b".into()));
+    assert_eq!(old[delete.old.clone()].join(""), "b");
 }
 
 #[test]
@@ -83,17 +79,12 @@ fn diff_lines_replace_block() {
     let replace = d
         .hunks
         .iter()
-        .find(|h| matches!(h.kind, LineHunkKind::Replace { .. }))
+        .find(|h| h.kind == LineHunkKind::Replace)
         .expect("should have a replace hunk");
     assert_eq!(replace.old, 1..4);
     assert_eq!(replace.new, 1..3);
-    assert_eq!(
-        replace.kind,
-        LineHunkKind::Replace {
-            old: "123".into(),
-            new: "XY".into()
-        }
-    );
+    assert_eq!(old[replace.old.clone()].join(""), "123");
+    assert_eq!(new[replace.new.clone()].join(""), "XY");
 }
 
 // … word-level ………………………………………………………………………………………
@@ -177,7 +168,7 @@ fn diff_words_grapheme_safe() {
 #[test]
 fn diff_lines_empty() {
     // No lines on either side → no hunks. Pins the empty-input contract.
-    let d = diff_lines(&[], &[]);
+    let d = diff_lines::<&str>(&[], &[]);
     assert_eq!(d.algo_used, AlgoUsed::Histogram);
     assert!(!d.deadline_hit());
     assert!(d.hunks.is_empty());
@@ -190,15 +181,11 @@ fn diff_lines_completely_different() {
     let new = lines("xxx\nyyy\nzzz");
     let d = diff_lines(&old, &new);
     assert_eq!(d.hunks.len(), 1);
-    assert_eq!(
-        d.hunks[0].kind,
-        LineHunkKind::Replace {
-            old: "aaabbb".into(),
-            new: "xxxyyyzzz".into(),
-        }
-    );
+    assert_eq!(d.hunks[0].kind, LineHunkKind::Replace);
     assert_eq!(d.hunks[0].old, 0..2);
     assert_eq!(d.hunks[0].new, 0..3);
+    assert_eq!(old[d.hunks[0].old.clone()].join(""), "aaabbb");
+    assert_eq!(new[d.hunks[0].new.clone()].join(""), "xxxyyyzzz");
 }
 
 #[test]
@@ -235,7 +222,7 @@ fn diff_lines_myers_fallback_coherent() {
     assert_eq!(d.hunks.len(), 1);
     assert_eq!(d.hunks[0].old, 0..20);
     assert_eq!(d.hunks[0].new, 0..20);
-    assert!(matches!(d.hunks[0].kind, LineHunkKind::Replace { .. }));
+    assert_eq!(d.hunks[0].kind, LineHunkKind::Replace);
 }
 
 #[test]

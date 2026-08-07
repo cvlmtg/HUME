@@ -20,11 +20,12 @@
 //!
 //! ## Position units
 //!
-//! - [`LineHunk`] ranges are **line indices** into the caller-supplied
-//!   `&[&str]` slices.
+//! - [`LineHunk`] ranges are **line indices** into the caller-supplied `old`/
+//!   `new` slices.
 //! - [`WordHunk`] ranges are **char offsets** into the caller-supplied
 //!   `&str` inputs (consistent with `text::Text`'s char-offset invariant).
 
+use std::hash::Hash;
 use std::ops::Range;
 use std::time::{Duration, Instant};
 
@@ -57,24 +58,22 @@ pub enum AlgoUsed {
     Myers,
 }
 
-/// The kind of a [`LineHunk`]. `Equal` carries no payload — unchanged text is
-/// the common case and is never materialized; callers that need it can fetch
-/// it from their input by the hunk's line ranges. The change variants own the
-/// changed text so the interesting parts of the diff are self-contained
-/// without a slice lookup.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The kind of a [`LineHunk`]. No variant carries a payload — every consumer
+/// re-slices the changed lines from its own input via the hunk's `old`/`new`
+/// ranges instead (a payload would join those lines with no separator,
+/// making a multi-line hunk unrecoverable from it anyway).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]
 pub enum LineHunkKind {
-    /// Lines are identical on both sides. No payload — fetch via the hunk's
-    /// ranges if context is needed.
+    /// Lines are identical on both sides.
     Equal,
     /// Lines were removed from the old side.
-    Delete(String),
+    Delete,
     /// Lines were added on the new side.
-    Insert(String),
+    Insert,
     /// A contiguous block of old lines was replaced by a contiguous block of
     /// new lines.
-    Replace { old: String, new: String },
+    Replace,
 }
 
 /// A single line-level change. `old` and `new` are line-index ranges into the
@@ -115,7 +114,16 @@ impl LineDiff {
 /// Line-level diff with an explicit deadline, for callers that want a tighter
 /// budget than the public default (e.g. scripting, tests). The public
 /// [`diff_lines`] uses [`DIFF_LINE_DEADLINE`].
-pub fn diff_lines_with_deadline(old: &[&str], new: &[&str], deadline: Duration) -> LineDiff {
+///
+/// Generic over the token type — `LineHunkKind` carries no payload, so
+/// nothing here requires `&str`; a caller that already has, say,
+/// `Cow<'_, str>` line tokens can pass them straight through with no
+/// intermediate `&str` view.
+pub fn diff_lines_with_deadline<T: Eq + Hash>(
+    old: &[T],
+    new: &[T],
+    deadline: Duration,
+) -> LineDiff {
     let start = Instant::now();
     let deadline_instant = start + deadline;
     let ops = capture_diff_slices_deadline(Algorithm::Histogram, old, new, Some(deadline_instant));
@@ -125,7 +133,7 @@ pub fn diff_lines_with_deadline(old: &[&str], new: &[&str], deadline: Duration) 
     if start.elapsed() < deadline {
         return LineDiff {
             algo_used: AlgoUsed::Histogram,
-            hunks: ops_to_line_hunks(&ops, old, new),
+            hunks: ops_to_line_hunks(&ops),
         };
     }
 
@@ -137,7 +145,7 @@ pub fn diff_lines_with_deadline(old: &[&str], new: &[&str], deadline: Duration) 
     let myers_ops = capture_diff_slices_deadline(Algorithm::Myers, old, new, Some(myers_deadline));
     LineDiff {
         algo_used: AlgoUsed::Myers,
-        hunks: ops_to_line_hunks(&myers_ops, old, new),
+        hunks: ops_to_line_hunks(&myers_ops),
     }
 }
 
@@ -146,40 +154,31 @@ pub fn diff_lines_with_deadline(old: &[&str], new: &[&str], deadline: Duration) 
 /// `old` and `new` are line slices — the caller decides how to tokenize
 /// (rope lines, file lines, etc.). This keeps `diff.rs` independent of
 /// `ropey` and lets the rope-vs-plain-text choice live with the caller.
-pub fn diff_lines(old: &[&str], new: &[&str]) -> LineDiff {
+pub fn diff_lines<T: Eq + Hash>(old: &[T], new: &[T]) -> LineDiff {
     diff_lines_with_deadline(old, new, DIFF_LINE_DEADLINE)
 }
 
-fn ops_to_line_hunks(ops: &[DiffOp], old: &[&str], new: &[&str]) -> Vec<LineHunk> {
-    // Payloads join the covered lines with no separator — the caller already
-    // knows the line granularity, and Equal hunks carry no payload at all.
+fn ops_to_line_hunks(ops: &[DiffOp]) -> Vec<LineHunk> {
     ops.iter()
-        .map(|op| {
-            let old_range = op.old_range();
-            let new_range = op.new_range();
-            let kind = match op {
+        .map(|op| LineHunk {
+            old: op.old_range(),
+            new: op.new_range(),
+            kind: match op {
                 DiffOp::Equal { .. } => LineHunkKind::Equal,
-                DiffOp::Delete { .. } => LineHunkKind::Delete(old[old_range.clone()].join("")),
-                DiffOp::Insert { .. } => LineHunkKind::Insert(new[new_range.clone()].join("")),
-                DiffOp::Replace { .. } => LineHunkKind::Replace {
-                    old: old[old_range.clone()].join(""),
-                    new: new[new_range.clone()].join(""),
-                },
-            };
-            LineHunk {
-                old: old_range,
-                new: new_range,
-                kind,
-            }
+                DiffOp::Delete { .. } => LineHunkKind::Delete,
+                DiffOp::Insert { .. } => LineHunkKind::Insert,
+                DiffOp::Replace { .. } => LineHunkKind::Replace,
+            },
         })
         .collect()
 }
 
 // ── Word-level types ──────────────────────────────────────────────────────────
 
-/// The kind of a [`WordHunk`]. Mirrors [`LineHunkKind`] but for word-level
-/// changes. `Equal` carries no payload — see [`LineHunkKind`] for the
-/// rationale.
+/// The kind of a [`WordHunk`]. Unlike [`LineHunkKind`], the change variants
+/// here do own their text: a word hunk is the fine-grained refinement of a
+/// single already-short line, so a consumer can move the payload directly
+/// into its own shape rather than re-slicing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
 pub enum WordHunkKind {

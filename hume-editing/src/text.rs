@@ -169,6 +169,20 @@ impl Text {
         self.rope.len_lines()
     }
 
+    /// Line tokens, each keeping its trailing line-break character(s) — the
+    /// tokenization line diffing needs so an `Equal` hunk stays
+    /// byte-comparable across the trailing-empty-line boundary (a bare split
+    /// on `\n` would misalign a 0-char trailing line against a 1-char
+    /// internal `"\n"` line by exactly one char). Borrows via
+    /// `RopeSlice::as_str()` where a line sits in a single rope chunk (the
+    /// common case); owns only when it straddles a chunk boundary.
+    ///
+    /// One rope traversal (`Rope::lines()`), not one `O(log n)` descent per
+    /// line.
+    pub fn line_tokens(&self) -> impl Iterator<Item = Cow<'_, str>> + '_ {
+        self.rope.lines().map(Cow::from)
+    }
+
     /// Returns the char offset of the first character on `line_idx` (0-based).
     ///
     /// # Panics

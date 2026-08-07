@@ -625,21 +625,19 @@ pub trait AsyncProcessHost {
 
 /// A single line-level change between two texts, 0-based and Steel-surface
 /// ready — `set-signs!`/`set-virtual-lines!` are 0-indexed at the Steel
-/// boundary, so no arithmetic is needed to feed a hunk into either. A
-/// zero-count side needs no special anchoring case: its empty range already
-/// sits exactly at the insertion/deletion point (`old_count == 0` for a pure
-/// insert, `new_count == 0` for a pure deletion). `Equal` runs are never
-/// represented — `DiffHost` methods drop them before returning.
+/// boundary, so no arithmetic is needed to feed a hunk into either. The
+/// count each side covers is `old_lines.len()`/`new_lines.len()` — there is
+/// no separate count field to keep in sync. A zero-length side needs no
+/// special anchoring case: its empty line list already sits exactly at the
+/// insertion/deletion point (`old_lines` empty for a pure insert, `new_lines`
+/// empty for a pure deletion). `Equal` runs are never represented —
+/// `DiffHost` methods drop them before returning.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiffHunk {
     /// Line index in the old text where this hunk starts.
     pub old_start: usize,
-    /// Number of old-side lines this hunk covers (0 for a pure insert).
-    pub old_count: usize,
     /// Line index in the new text where this hunk starts.
     pub new_start: usize,
-    /// Number of new-side lines this hunk covers (0 for a pure deletion).
-    pub new_count: usize,
     /// The covered old-side lines, trailing newlines stripped.
     pub old_lines: Vec<String>,
     /// The covered new-side lines, trailing newlines stripped.
@@ -652,17 +650,16 @@ pub struct DiffHunk {
 /// matching `WordHunk`/`ExtraHighlightEntry`/`set-virtual-lines!`'s
 /// `'segments`. `Equal` runs are dropped, same as [`DiffHunk`].
 ///
-/// Unlike [`DiffHunk`] (line-index `start`/`count` into a rebuilt line
-/// list), a word hunk is one contiguous span of text per side, so it
-/// carries `end` (an exclusive char offset) and one `String` per side
-/// rather than a count and a line list — reusing `DiffHunk`'s shape here
-/// would force a fake `count`/single-element `Vec<String>` that doesn't
-/// mean the same thing.
+/// Unlike [`DiffHunk`] (line-index `start` into a rebuilt line list), a
+/// word hunk is one contiguous span of text per side, so it carries `end`
+/// (an exclusive char offset) and one `String` per side rather than a line
+/// list — reusing `DiffHunk`'s shape here would force a fake
+/// single-element `Vec<String>` that doesn't mean the same thing.
 ///
 /// A zero-width side (`start == end`) needs no special case, same
-/// rationale as `DiffHunk`'s zero-count side: it already sits exactly at
-/// the insertion/deletion point (pure insert: `old_start == old_end`, pure
-/// delete: `new_start == new_end`).
+/// rationale as `DiffHunk`'s empty-line-list side: it already sits exactly
+/// at the insertion/deletion point (pure insert: `old_start == old_end`,
+/// pure delete: `new_start == new_end`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WordDiffHunk {
     pub old_start: usize,
@@ -693,7 +690,10 @@ pub trait DiffHost {
     /// As [`diff_lines`](DiffHost::diff_lines), diffing `ref_text` against
     /// `bid`'s live (dirty) in-memory text — avoids materializing the whole
     /// buffer as a Steel string on every debounced call. `None` for an
-    /// unknown/stale `bid`.
+    /// unknown/stale `bid` — the single liveness check this call needs
+    /// (looking up the buffer's text also answers "does it exist"), so the
+    /// Steel boundary maps `None` straight to an error rather than checking
+    /// liveness a second time first.
     fn diff_buffer_lines(&self, bid: BufferId, ref_text: &str) -> Option<Vec<DiffHunk>>;
 
     /// Word-level hunks between `old` and `new`, `Equal` runs dropped. The

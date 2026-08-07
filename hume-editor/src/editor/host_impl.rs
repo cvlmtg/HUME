@@ -757,16 +757,13 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
 
 impl<'a> DiffHost for EditorHostImpl<'a> {
     fn diff_lines(&self, old: &str, new: &str) -> Vec<DiffHunk> {
-        diff_bridge::line_hunks(
-            &hume_editing::text::Text::from(old),
-            &hume_editing::text::Text::from(new),
-        )
+        diff_bridge::line_hunks(old, new)
     }
 
     fn diff_buffer_lines(&self, bid: BufferId, ref_text: &str) -> Option<Vec<DiffHunk>> {
         let buffer_text = self.buffer(bid)?.text();
-        Some(diff_bridge::line_hunks(
-            &hume_editing::text::Text::from(ref_text),
+        Some(diff_bridge::line_hunks_against_buffer(
+            ref_text,
             buffer_text,
         ))
     }

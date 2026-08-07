@@ -38,20 +38,6 @@ fn attach_running_server(ed: &mut Editor, initialize_result: serde_json::Value) 
     sid
 }
 
-/// Runs `body` as a Steel command; the command moves the cursor iff `body`'s
-/// own assertion (embedded in the Scheme source) held.
-fn run_probe(ed: &mut Editor, host: ScriptingHost, tmp: &Path, body: &str) -> bool {
-    let mut host = host;
-    let source = format!(
-        r#"(define-command! "probe" "" (lambda () (when (begin {body}) (call! "move-right"))))"#
-    );
-    eval_with_real_host(ed, &mut host, &source, tmp);
-    ed.scripting = Some(host);
-    let before = state(ed);
-    type_cmd(ed, ":probe");
-    state(ed) != before
-}
-
 #[test]
 fn lsp_capabilities_decodes_after_handshake() {
     let tmp = safe_tempdir();

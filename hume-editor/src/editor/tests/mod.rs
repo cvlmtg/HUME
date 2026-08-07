@@ -475,6 +475,24 @@ fn eval_with_real_host(
     ed.apply_script_effects(effects);
 }
 
+/// Runs `body` as a Steel command; the command moves the cursor iff `body`'s
+/// own assertion (embedded in the Scheme source) held.
+fn run_probe(
+    ed: &mut Editor,
+    mut host: hume_scripting::ScriptingHost,
+    tmp: &std::path::Path,
+    body: &str,
+) -> bool {
+    let source = format!(
+        r#"(define-command! "probe" "" (lambda () (when (begin {body}) (call! "move-right"))))"#
+    );
+    eval_with_real_host(ed, &mut host, &source, tmp);
+    ed.scripting = Some(host);
+    let before = state(ed);
+    type_cmd(ed, ":probe");
+    state(ed) != before
+}
+
 /// Write `content` to a temp file and return its path (kept alive by the
 /// returned `TempPath`).
 ///

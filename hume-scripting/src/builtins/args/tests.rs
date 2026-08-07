@@ -191,6 +191,22 @@ fn bid_arg_accepts_a_real_buffer_id() {
     assert_eq!(BidArg::from_steelval(&val).unwrap().0, BufferId::default());
 }
 
+/// `BidArg::not_live_err`'s wording matches `require_live`'s own — the two
+/// must stay identical since callers whose own host call already does the
+/// liveness lookup (e.g. `diff-buffer-lines`) use `not_live_err` directly
+/// instead of a second `require_live` check.
+///
+/// Fail oracle: let the two messages drift (e.g. hand-roll a different
+/// string at one of the two call sites) — a plugin matching on this error's
+/// text would then behave differently depending on which builtin raised it.
+#[test]
+fn not_live_err_matches_require_live_wording() {
+    let bid = BidArg(BufferId::default());
+    let err = bid.not_live_err("diff-buffer-lines");
+    assert!(err.to_string().contains("invalid buffer id"), "got: {err}");
+    assert!(err.to_string().contains("diff-buffer-lines"), "got: {err}");
+}
+
 // ── PosArg ────────────────────────────────────────────────────────────────
 
 fn pos_pair(line: isize, col: isize) -> SteelVal {

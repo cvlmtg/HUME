@@ -3,10 +3,10 @@ use crate::test_support::SteelCtxTestHarness;
 
 // ── Gate (init mode rejection) ────────────────────────────────────────────
 //
-// Both builtins are `cmd`-gated in `builtins!`'s registration table — the
-// gate lives in the registration wrapper closure, not the function body, so
-// these test the gate primitive directly rather than calling the builtin
-// (its body has no guard to hit).
+// All three builtins are `cmd`-gated in `builtins!`'s registration table —
+// the gate lives in the registration wrapper closure, not the function
+// body, so these test the gate primitive directly rather than calling the
+// builtin (its body has no guard to hit).
 
 /// `diff-lines` is blocked in init mode.
 ///
@@ -114,14 +114,19 @@ fn diff_lines_reports_an_unsupported_host() {
     );
 }
 
-/// `diff-buffer-lines` with a valid-shaped but non-existent buffer id raises
-/// an error before ever reaching the diff capability.
+/// `diff-buffer-lines` on a host with no `DiffHost` capability raises an
+/// error naming the builtin, same as `diff-lines`/`diff-words` — it has no
+/// separate `require_live` gate of its own (the liveness check lives inside
+/// `DiffHost::diff_buffer_lines` itself, since it needs the buffer's text
+/// either way), so `require_cap` is the first and only gate reached here.
+/// The `BidArg::not_live_err` wording that path would raise against a real
+/// host is pinned directly in `args::tests::not_live_err_matches_require_live_wording`.
 ///
-/// Fail oracle: drop `BidArg::require_live` — the capability-absence error
-/// would surface instead of naming the invalid buffer id, and against a
-/// real host a closed buffer would return an empty list rather than fail.
+/// Fail oracle: `ctx.host.diff().map(...).unwrap_or_default()` instead of
+/// `require_cap` — a host that cannot diff at all would silently report
+/// "no differences" instead of failing.
 #[test]
-fn diff_buffer_lines_rejects_an_unknown_buffer_id() {
+fn diff_buffer_lines_reports_an_unsupported_host() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let bid = BidArg(hume_engine::pipeline::BufferId::default());
@@ -131,7 +136,7 @@ fn diff_buffer_lines_rejects_an_unknown_buffer_id() {
         result
             .unwrap_err()
             .to_string()
-            .contains("invalid buffer id")
+            .contains("not supported by this host")
     );
 }
 

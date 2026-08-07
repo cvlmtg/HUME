@@ -9,11 +9,12 @@
 //!
 //! Memory cost of the *stored* inverse ≈ size of the changed lines only, not
 //! the full buffer — this is what lets `:e!` reload record a normal undo step
-//! without a coarse delete-all + insert-all that doubles buffer memory. Peak
-//! cost during the reload is higher: building the diff materializes both
-//! sides into contiguous `String`s (~2× the buffer), and changed lines get
-//! materialized a further time over when [`build_changesets`] re-slices them
-//! from `old`/`new` instead of reusing `diff_lines`'s own `LineHunk` copies —
+//! without a coarse delete-all + insert-all that doubles buffer memory.
+//! [`Text::line_tokens`] borrows its tokens from the rope (owning only where
+//! a line straddles a chunk boundary), so building the diff no longer pays a
+//! full-buffer `String` copy on either side; changed lines still get
+//! materialized once more when [`build_changesets`] re-slices them from
+//! `old`/`new` rather than reusing `diff_lines`'s own `LineHunk` ranges —
 //! deliberate, since those hunk payloads are also the public API
 //! `docs/GIT-DIFF.md` builds on. None of this affects what survives in the
 //! history tree afterwards, which is just the changed lines.
@@ -21,6 +22,7 @@
 //! The helper takes `&Text` on both sides and returns the two `ChangeSet`s; it
 //! does not mutate either buffer. The caller still owns the text swap.
 
+use std::borrow::Cow;
 use std::ops::Range;
 use std::time::Duration;
 
@@ -51,17 +53,8 @@ pub fn changesets_from_line_diff_with_deadline(
     new: &Text,
     deadline: Duration,
 ) -> (ChangeSet, ChangeSet) {
-    // Materialize each side into one contiguous `String`, then tokenise keeping
-    // the trailing `\n` with each line. Keeping the `\n` in the token is
-    // load-bearing: an `Equal` hunk then means byte-identical token slices, so
-    // equal char spans on both sides — including across the trailing-empty-line
-    // boundary, where the bare-`split('\n')` approach would align a 0-char
-    // trailing line with a 1-char internal `"\n"` line and desynchronise the
-    // forward/inverse char cursors by exactly one `\n`.
-    let old_str = old.to_string();
-    let new_str = new.to_string();
-    let (old_tokens, old_offsets) = lines_keep_newline(&old_str);
-    let (new_tokens, new_offsets) = lines_keep_newline(&new_str);
+    let (old_tokens, old_offsets) = tokens_with_offsets(old);
+    let (new_tokens, new_offsets) = tokens_with_offsets(new);
 
     let diff = diff_lines_with_deadline(&old_tokens, &new_tokens, deadline);
 
@@ -69,7 +62,7 @@ pub fn changesets_from_line_diff_with_deadline(
         old_offsets
             .last()
             .copied()
-            .expect("lines_keep_newline always pushes the trailing sentinel"),
+            .expect("tokens_with_offsets always pushes the trailing sentinel"),
         old.len_chars(),
         "old token char count must equal rope len_chars",
     );
@@ -77,7 +70,7 @@ pub fn changesets_from_line_diff_with_deadline(
         new_offsets
             .last()
             .copied()
-            .expect("lines_keep_newline always pushes the trailing sentinel"),
+            .expect("tokens_with_offsets always pushes the trailing sentinel"),
         new.len_chars(),
         "new token char count must equal rope len_chars",
     );
@@ -119,15 +112,15 @@ fn build_changesets(
                 fwd.retain(span(old_offsets, &hunk.old));
                 inv.retain(span(new_offsets, &hunk.new));
             }
-            LineHunkKind::Delete(_) => {
+            LineHunkKind::Delete => {
                 fwd.delete(span(old_offsets, &hunk.old));
                 inv.insert(&slice(old, old_offsets, &hunk.old));
             }
-            LineHunkKind::Insert(_) => {
+            LineHunkKind::Insert => {
                 fwd.insert(&slice(new, new_offsets, &hunk.new));
                 inv.delete(span(new_offsets, &hunk.new));
             }
-            LineHunkKind::Replace { .. } => {
+            LineHunkKind::Replace => {
                 fwd.delete(span(old_offsets, &hunk.old));
                 fwd.insert(&slice(new, new_offsets, &hunk.new));
                 inv.delete(span(new_offsets, &hunk.new));
@@ -140,35 +133,22 @@ fn build_changesets(
     (fwd.finish(), inv.finish())
 }
 
-/// Tokenise `s` into line slices, keeping the trailing `\n` with each line, and
-/// return the cumulative char offset of each token (with a trailing sentinel).
-///
-/// `"a\nb\n"` → tokens `["a\n", "b\n", ""]`, offsets `[0, 2, 4, 4]`. The final
-/// token after the last `\n` is the empty trailing line (`""`, no `\n` of its
-/// own) — HUME's buffer invariant guarantees `s` ends with `\n`, so this token
-/// is always present and empty. `offsets[i]` is the char offset where token `i`
-/// starts and `offsets[tokens.len()]` is the total char count, so the two
-/// `Vec`s are built in a single pass.
-///
-/// Keeping the `\n` in the token makes an `Equal` hunk correspond to
-/// byte-identical slices on both sides, so the forward/inverse char spans agree
-/// even when one side's trailing-empty line aligns with the other side's
-/// internal empty line.
-fn lines_keep_newline(s: &str) -> (Vec<&str>, Vec<usize>) {
-    let mut tokens = Vec::new();
-    let mut offsets = vec![0usize];
-    let mut start = 0;
+/// [`Text::line_tokens`] plus the cumulative char offset of each token (with
+/// a trailing sentinel): `offsets[i]` is the char offset where token `i`
+/// starts and `offsets[tokens.len()]` is the total char count, matching
+/// `text.len_chars()`. `build_changesets` needs both — the tokens to diff,
+/// the offsets to translate a hunk's line-index range back to a char range
+/// into the rope.
+fn tokens_with_offsets(text: &Text) -> (Vec<Cow<'_, str>>, Vec<usize>) {
+    let mut tokens = Vec::with_capacity(text.len_lines());
+    let mut offsets = Vec::with_capacity(text.len_lines() + 1);
+    offsets.push(0);
     let mut char_acc = 0usize;
-    for (i, ch) in s.char_indices() {
-        char_acc += 1;
-        if ch == '\n' {
-            tokens.push(&s[start..=i]);
-            offsets.push(char_acc);
-            start = i + 1;
-        }
+    for token in text.line_tokens() {
+        char_acc += token.chars().count();
+        offsets.push(char_acc);
+        tokens.push(token);
     }
-    tokens.push(&s[start..]);
-    offsets.push(char_acc);
     (tokens, offsets)
 }
 
