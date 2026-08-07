@@ -355,6 +355,28 @@ superseded by a newer one before the older command has finished.
 
 Only install or overwrite files under `(data-dir)` unless you have a specific reason to go elsewhere — that's where HUME expects a plugin's own data (installed grammars, downloaded servers, plugin state) to live.
 
+### Comparing text
+
+Two functions compute a line-level diff — useful for anything that shows what changed between two versions of a file, like a git-status indicator:
+
+```scheme
+(diff-lines old-text new-text)
+```
+
+Splits both `old-text` and `new-text` into lines the same way HUME treats file content — CRLF line endings become LF, and a missing trailing newline doesn't count as a change — then returns the list of hunks where they differ. Unchanged lines are left out entirely. Each hunk is:
+
+```scheme
+(old-start old-count new-start new-count old-lines new-lines)
+```
+
+`old-start`/`new-start` are 0-based line numbers, `old-count`/`new-count` are how many lines the hunk covers on each side, and `old-lines`/`new-lines` are the line contents themselves (no trailing newline). A pure insertion has `old-count` `0`; a pure deletion has `new-count` `0` — either way, the zero-count side's line number is exactly where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!` with no adjustment.
+
+```scheme
+(diff-buffer-lines bid ref-text)
+```
+
+Same result, but compares `ref-text` against the current, unsaved content of the buffer named by `bid` — the buffer never has to be pulled through a builtin as one big string first. This is the one to use in a hook that fires on every keystroke.
+
 ### Custom pickers
 
 The modal fuzzy-finder panel behind [Fuzzy Finder](pickers.md) is a generic widget any
