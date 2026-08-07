@@ -58,12 +58,12 @@ pub enum PopupKind {
 }
 
 /// The editor interface exposed to scripting builtins during a Steel eval, as
-/// a capability directory: every domain method lives on one of the 13
-/// capability traits in this module (`BufferHost`, `SettingsHost`,
-/// `LanguageHost`, `CommandHost`, `CursorHost`, `UiHost`, `LspHost`,
-/// `EditHost`, `DecorationHost`, `CompletionHost`, `TimerHost`,
-/// `AsyncProcessHost`, `OutputHost`), reached through an accessor on this
-/// trait — `EditorHost` itself declares no domain methods.
+/// a capability directory: every domain method lives on one of the capability
+/// traits in this module (`BufferHost`, `SettingsHost`, `LanguageHost`,
+/// `CommandHost`, `CursorHost`, `EventHost`, `UiHost`, `LspHost`, `EditHost`,
+/// `DecorationHost`, `CompletionHost`, `TimerHost`, `AsyncProcessHost`,
+/// `OutputHost`, `DiffHost`), reached through an accessor on this trait —
+/// `EditorHost` itself declares no domain methods.
 ///
 /// Implemented by `EditorHostImpl<'a>` in the editor crate (or `MockHost` in
 /// tests). `SteelCtx` holds `host: &'a mut dyn EditorHost`; builtins call
@@ -87,12 +87,12 @@ pub enum PopupKind {
 /// builtin always sees the pre-command snapshot, not a value that can change
 /// mid-eval (e.g. after `switch-to-buffer!`).
 ///
-/// Five accessors are required — `buffers`, `settings`, `language`,
-/// `commands`, `cursor` — since every host has *some* notion of them, even
-/// if minimal (an empty buffer list, a rejecting command registry). The
-/// other eight are optional (`Option<&mut dyn CapabilityTrait>`): `None`
-/// means the host has no such capability. A mutating builtin maps `None` to
-/// the `"not supported by this host"` error via `errors::require_cap` —
+/// Six accessors are required — `buffers`, `settings`, `language`,
+/// `commands`, `cursor`, `events` — since every host has *some* notion of
+/// them, even if minimal (an empty buffer list, a rejecting command
+/// registry). The rest are optional (`Option<&mut dyn CapabilityTrait>`):
+/// `None` means the host has no such capability. A mutating builtin maps
+/// `None` to the `"not supported by this host"` error via `errors::require_cap` —
 /// silently discarding the write would report success for a mutation that
 /// never happened. A silent no-op is reserved for calls whose own contract
 /// is already idempotent regardless of host support (e.g.
@@ -141,6 +141,11 @@ pub trait EditorHost {
     /// `(spawn-async! …)` / `(cancel-async! …)` — `None` for hosts with no
     /// job registry to spawn onto (test stubs).
     fn async_process(&mut self) -> Option<&mut dyn AsyncProcessHost> {
+        None
+    }
+    /// `(diff-lines …)` / `(diff-buffer-lines …)` — `None` for hosts with no
+    /// text-diffing backend (test stubs).
+    fn diff(&mut self) -> Option<&mut dyn DiffHost> {
         None
     }
     /// Terminal-safety state around `#:inline-output` commands — `None` for
@@ -616,6 +621,48 @@ pub trait AsyncProcessHost {
     /// cancelled, or never existed (a spawn failure that already fired its
     /// callback) — same idempotent contract as `cancel_timer`.
     fn cancel_async(&mut self, id: u64);
+}
+
+/// A single line-level change between two texts, 0-based and Steel-surface
+/// ready — `set-signs!`/`set-virtual-lines!` are 0-indexed at the Steel
+/// boundary, so no arithmetic is needed to feed a hunk into either. A
+/// zero-count side needs no special anchoring case: its empty range already
+/// sits exactly at the insertion/deletion point (`old_count == 0` for a pure
+/// insert, `new_count == 0` for a pure deletion). `Equal` runs are never
+/// represented — `DiffHost` methods drop them before returning.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiffHunk {
+    /// Line index in the old text where this hunk starts.
+    pub old_start: usize,
+    /// Number of old-side lines this hunk covers (0 for a pure insert).
+    pub old_count: usize,
+    /// Line index in the new text where this hunk starts.
+    pub new_start: usize,
+    /// Number of new-side lines this hunk covers (0 for a pure deletion).
+    pub new_count: usize,
+    /// The covered old-side lines, trailing newlines stripped.
+    pub old_lines: Vec<String>,
+    /// The covered new-side lines, trailing newlines stripped.
+    pub new_lines: Vec<String>,
+}
+
+/// Text diffing — accessed through [`EditorHost::diff`]. Backs
+/// `(diff-lines old-text new-text)` / `(diff-buffer-lines bid ref-text)`.
+///
+/// Both methods treat their string inputs as buffer text: CRLF-normalized
+/// and given a trailing newline if missing, matching how HUME would load
+/// them from disk. This is a deliberate divergence from `git diff`'s raw
+/// byte comparison — a file missing its final newline reports no change on
+/// that line, since nothing would change about it on save either.
+pub trait DiffHost {
+    /// Line-level hunks between `old` and `new`, `Equal` runs dropped.
+    fn diff_lines(&self, old: &str, new: &str) -> Vec<DiffHunk>;
+
+    /// As [`diff_lines`](DiffHost::diff_lines), diffing `ref_text` against
+    /// `bid`'s live (dirty) in-memory text — avoids materializing the whole
+    /// buffer as a Steel string on every debounced call. `None` for an
+    /// unknown/stale `bid`.
+    fn diff_buffer_lines(&self, bid: BufferId, ref_text: &str) -> Option<Vec<DiffHunk>>;
 }
 
 /// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer
