@@ -117,7 +117,8 @@ impl TierBufs {
 // ── rebuild_line_decorations ─────────────────────────────────────────────────
 
 /// Gather highlight intervals from the syntax source and every `PAINT`-kind
-/// `DecorationSource` for one buffer line.
+/// `DecorationSource` for one buffer line, returning the line's background
+/// tint (`Decoration::LineBg`), if any provider requested one.
 ///
 /// Must be called once per buffer line before calling [`super::style_row`] for
 /// that line's display rows. Clears and re-fills `tier_bufs`.
@@ -131,7 +132,7 @@ pub(crate) fn rebuild_line_decorations(
     providers: &ProviderSet,
     rope: &ropey::Rope,
     scratch: &mut StyleScratch,
-) {
+) -> Option<ScopeId> {
     scratch.tier_bufs.clear();
     scratch.syntax_spans.clear();
     if let Some(syntax) = syntax {
@@ -145,22 +146,29 @@ pub(crate) fn rebuild_line_decorations(
     for (_, provider) in providers.decoration_sources(DecorationKinds::PAINT) {
         provider.decorations_for_line(line_idx, &mut scratch.decorations);
     }
+    // Last LineBg wins if more than one PAINT-kind provider tints the same
+    // line — the editor bridge already collapses multi-source ties to one
+    // record per line (`update_line_bg_providers`), so this only matters for
+    // a hypothetical second engine-side provider.
+    let mut tint = None;
     for d in scratch.decorations.drain(..) {
-        if let Decoration::Highlight {
-            byte_start,
-            byte_end,
-            scope,
-            tier,
-        } = d
-        {
-            scratch.tier_bufs.push(tier, (byte_start, byte_end, scope));
+        match d {
+            Decoration::Highlight {
+                byte_start,
+                byte_end,
+                scope,
+                tier,
+            } => scratch.tier_bufs.push(tier, (byte_start, byte_end, scope)),
+            Decoration::LineBg(scope) => tint = Some(scope),
+            Decoration::VirtualLine(_) | Decoration::Inline(_) => {
+                // A provider that declared PAINT but emitted a LAYOUT-only
+                // kind is a provider bug — ignored, not a panic, same
+                // posture `rows::RowMap` takes for the reverse case.
+            }
         }
-        // Every other PAINT-kind variant (currently just LineBg) has no
-        // consumer here yet — ignored, not a panic, same posture
-        // `rows::RowMap` takes for a provider whose output doesn't match the
-        // kind it queried for.
     }
     scratch.tier_bufs.sort_all();
+    tint
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────

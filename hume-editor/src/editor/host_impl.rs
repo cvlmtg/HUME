@@ -918,6 +918,29 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         Ok(())
     }
 
+    fn set_line_backgrounds(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        entries: Vec<(usize, String)>,
+    ) -> Result<(), String> {
+        let text = buffer_text(self.state, bid, "set-line-backgrounds!")?;
+        let entries = entries
+            .into_iter()
+            .map(|(line, scope)| {
+                Ok(crate::editor::decorations::LineBgEntry {
+                    pos: line_start_offset(text, line, "set-line-backgrounds!")?,
+                    scope,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        self.state
+            .config
+            .decorations
+            .set_line_backgrounds(source, bid, entries);
+        Ok(())
+    }
+
     fn diagnostics_for_buffer(
         &self,
         bid: BufferId,

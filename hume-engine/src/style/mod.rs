@@ -108,7 +108,8 @@ impl Default for StyleScratch {
 /// to `graphemes`). Writes into the row's slice of `styles_out`; entries
 /// outside `row.graphemes` are untouched.
 ///
-/// Call [`rebuild_tier_bufs`] for the current buffer line before this.
+/// Call [`rebuild_line_decorations`] for the current buffer line before
+/// this, and pass its returned tint through as `line_tint`.
 /// `scratch.sorted_sels` must be pre-populated and sorted by the caller.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn style_row(
@@ -117,6 +118,7 @@ pub(crate) fn style_row(
     line_start_char: usize,
     line_end_char: usize,
     is_head_line: bool,
+    line_tint: Option<ScopeId>,
     mode: EditorMode,
     theme: &Theme,
     scratch: &mut StyleScratch,
@@ -158,7 +160,18 @@ pub(crate) fn style_row(
 
         let mut style = theme.default;
 
-        // Tier 3: selection-head-line background tint (lowest).
+        // Tier 4: provider line-background tint (lowest) — a full-row
+        // background a `DecorationSource` requested for this line (e.g.
+        // git-diff's changed-line highlight). Layered below cursorline so
+        // the cursor's own line always reads clearly even inside a tinted
+        // block; a theme whose cursorline has no `bg` falls through to the
+        // tint automatically (`ResolvedStyle::layer` only overrides on
+        // `Some(bg)`).
+        if let Some(scope) = line_tint {
+            style = style.layer(theme.resolve(scope));
+        }
+
+        // Tier 3: selection-head-line background tint.
         // Applied to every grapheme on the line that contains a selection head.
         // theme.ui fields are O(1) struct-field reads — no HashMap lookup.
         if is_head_line {

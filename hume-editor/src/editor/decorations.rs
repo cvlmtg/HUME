@@ -1,6 +1,7 @@
 //! Steel-writable decoration stores: inlay hints, gutter signs, virtual
-//! lines, end-of-line text, and extra highlights. Not LSP-specific (any
-//! plugin can set them) — LSP is their first client, not their owner. Every
+//! lines, end-of-line text, extra highlights, and line backgrounds. Not
+//! LSP-specific (any plugin can set them) — LSP is their first client, not
+//! their owner. Every
 //! kind is keyed the same way — `BufferId` first, then a per-buffer
 //! `Vec<(source, entries)>`, so unrelated plugins' entries for the same
 //! buffer coexist without a cross-buffer scan to find them (same shape as
@@ -83,6 +84,20 @@ pub(crate) struct ExtraHighlightEntry {
     pub(crate) scope: String,
 }
 
+/// One `(set-line-backgrounds! …)` entry: a full-row background tint on the
+/// line `pos` starts. `pos` is that line's line-start char offset, not the
+/// Steel-facing line number — the host boundary (`host_impl.rs`'s
+/// `line_start_offset`) converts at set time, so this remaps through edits
+/// like every other line-anchored kind (SPEC.md §6); the render side derives
+/// the current line back via `char_to_line` at rebuild. No `priority` field
+/// — unlike signs, row tints have no single-slot contention, so same-line
+/// entries from different sources break ties by source name
+/// (GIT-DIFF.md Phase 4.4).
+pub(crate) struct LineBgEntry {
+    pub(crate) pos: usize,
+    pub(crate) scope: String,
+}
+
 /// Sort key every entry kind provides — [`SourceStore::set`] sorts by this
 /// so the remap chokepoint's batch position/range mapping
 /// (`ChangeSet::map_positions`/`map_ranges`) can rely on ascending input,
@@ -118,6 +133,12 @@ impl Positioned for EolTextEntry {
 impl Positioned for ExtraHighlightEntry {
     fn pos(&self) -> usize {
         self.start
+    }
+}
+
+impl Positioned for LineBgEntry {
+    fn pos(&self) -> usize {
+        self.pos
     }
 }
 
@@ -162,6 +183,13 @@ impl PointAnchored for VirtualLineEntry {
 }
 
 impl PointAnchored for EolTextEntry {
+    const ASSOC: Assoc = Assoc::After;
+    fn set_pos(&mut self, pos: usize) {
+        self.pos = pos;
+    }
+}
+
+impl PointAnchored for LineBgEntry {
     const ASSOC: Assoc = Assoc::After;
     fn set_pos(&mut self, pos: usize) {
         self.pos = pos;
@@ -292,6 +320,7 @@ pub(crate) struct DecorationStores {
     virtual_lines: SourceStore<VirtualLineEntry>,
     extra_highlights: SourceStore<ExtraHighlightEntry>,
     eol_text: SourceStore<EolTextEntry>,
+    line_backgrounds: SourceStore<LineBgEntry>,
     /// Bumped by every `set_*` and by `remove_buffer`, across every kind —
     /// the virtual-lines render write side mirrors `virtual_lines` into a
     /// per-pane Arc only when this changed since its last sync, rather than
@@ -441,6 +470,32 @@ impl DecorationStores {
         self.extra_highlights.for_buffer(bid).map(|(_, e)| e)
     }
 
+    /// Replaces `source`'s line backgrounds for `bid` wholesale.
+    pub(crate) fn set_line_backgrounds(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        entries: Vec<LineBgEntry>,
+    ) {
+        self.line_backgrounds.set(source, bid, entries);
+        self.generation += 1;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn line_backgrounds_for(&self, source: &str, bid: BufferId) -> &[LineBgEntry] {
+        self.line_backgrounds.entries_for(source, bid)
+    }
+
+    /// All line-background entries for `bid`, across every source, paired
+    /// with their source name — the render write side needs the name for a
+    /// deterministic tie-break when two sources tint the same line.
+    pub(crate) fn line_backgrounds_for_buffer(
+        &self,
+        bid: BufferId,
+    ) -> impl Iterator<Item = (&str, &LineBgEntry)> {
+        self.line_backgrounds.for_buffer(bid)
+    }
+
     /// Whether `bid` has any decoration, of any kind, that needs to stay in
     /// sync with edits — every kind remaps through `remap_through` now.
     /// `record_lsp_edits` (`doc_ops.rs`) uses this to queue a buffer's edits
@@ -452,6 +507,7 @@ impl DecorationStores {
             || !self.virtual_lines.is_empty_for(bid)
             || !self.eol_text.is_empty_for(bid)
             || !self.extra_highlights.is_empty_for(bid)
+            || !self.line_backgrounds.is_empty_for(bid)
     }
 
     /// Drops every entry for `bid`, across every source and every kind —
@@ -469,6 +525,7 @@ impl DecorationStores {
         self.virtual_lines.remove_buffer(bid);
         self.extra_highlights.remove_buffer(bid);
         self.eol_text.remove_buffer(bid);
+        self.line_backgrounds.remove_buffer(bid);
         self.generation += 1;
     }
 
@@ -483,6 +540,7 @@ impl DecorationStores {
         self.signs.remap_points(bid, cs);
         self.virtual_lines.remap_points(bid, cs);
         self.eol_text.remap_points(bid, cs);
+        self.line_backgrounds.remap_points(bid, cs);
         self.extra_highlights.remap_ranges(bid, cs);
         self.generation += 1;
     }

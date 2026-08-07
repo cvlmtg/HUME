@@ -370,10 +370,12 @@ impl Editor {
         }
 
         // 5. Sync highlight data (search matches, bracket matches, diagnostic
-        //    underlines, extra highlights) to shared Arc buffers read by the
-        //    highlight providers during rendering. Render-only — no `RowMap`
-        //    consumer reads highlight scope, only the cell's styling.
+        //    underlines, extra highlights) and line-background tints to
+        //    shared Arc buffers read by the highlight/line-bg providers
+        //    during rendering. Render-only — no `RowMap` consumer reads
+        //    either one, only the paint stage.
         self.update_highlight_providers();
+        self.update_line_bg_providers();
 
         // 6. Sync completion-popup view to the shared Arc for `MinibufCompletionOverlay`.
         self.sync_minibuf_completion_view();

@@ -640,6 +640,7 @@ mod lsp_edits;
 mod lsp_hooks;
 mod lsp_inlay_hints;
 mod lsp_introspect;
+mod lsp_line_backgrounds;
 mod lsp_menu;
 mod lsp_popup;
 mod lsp_popup_markdown;

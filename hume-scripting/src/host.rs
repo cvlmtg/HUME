@@ -496,6 +496,18 @@ pub trait DecorationHost {
         lines: Vec<(usize, String, String)>,
     ) -> Result<(), String>;
 
+    /// `(set-line-backgrounds! source bid entries)` — replaces `source`'s
+    /// line backgrounds for `bid` wholesale. Each entry is `(line, scope)`;
+    /// `line` converts to that line's line-start char offset at this
+    /// boundary (SPEC.md §6) — `Err`, naming the builtin, if `line` is out
+    /// of range.
+    fn set_line_backgrounds(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        entries: Vec<(usize, String)>,
+    ) -> Result<(), String>;
+
     /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
     /// decoded `{"start" "end" "line" "col" "severity" "message" "code"
     /// "source"}` hashmaps, filtered then capped at 1000. `severity_floor`

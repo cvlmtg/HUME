@@ -243,6 +243,7 @@
 (#%register-global "set-eol-text!")
 (#%register-global "set-extra-highlights!")
 (#%register-global "set-inlay-hints!")
+(#%register-global "set-line-backgrounds!")
 (#%register-global "set-option!")
 (#%register-global "set-register-prefix!")
 (#%register-global "set-signs!")

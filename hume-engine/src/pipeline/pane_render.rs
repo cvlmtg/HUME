@@ -142,14 +142,18 @@ pub(crate) fn render_pane(
                     line.start_char,
                     line.end_char,
                     line.is_head_line,
+                    line.tint,
                     pane_ctx.settings.mode,
                     pane_ctx.theme,
                     style,
                 );
+                // Cursorline wins over the tint — a theme whose cursorline
+                // has no `bg` falls through to the tint automatically.
                 let row_bg = line
                     .is_head_line
                     .then_some(pane_ctx.theme.ui.cursorline.bg)
-                    .flatten();
+                    .flatten()
+                    .or_else(|| line.tint.and_then(|scope| pane_ctx.theme.resolve(scope).bg));
                 render::compose_row(
                     row.row,
                     row.graphemes,
@@ -223,6 +227,11 @@ struct LineStyle {
     start_char: usize,
     end_char: usize,
     is_head_line: bool,
+    /// A provider-requested full-row background tint for this line, if any
+    /// (`Decoration::LineBg`) — resolved once here and read at both paint
+    /// sites (the row-fill `row_bg` and `style_row`'s per-grapheme
+    /// layering) so they can't disagree about which line is tinted.
+    tint: Option<crate::types::ScopeId>,
 }
 
 impl LineStyle {
@@ -238,7 +247,7 @@ impl LineStyle {
              content line {last_content_line} — `RowMap::last_line`, not \
              `visible.last_line_idx` (the phantom trailing-\\n line one past it)"
         );
-        crate::style::rebuild_line_decorations(
+        let tint = crate::style::rebuild_line_decorations(
             line_idx,
             pane_ctx.syntax,
             &pane_ctx.pane.providers,
@@ -256,6 +265,7 @@ impl LineStyle {
             start_char,
             end_char,
             is_head_line,
+            tint,
         }
     }
 }

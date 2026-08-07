@@ -3,6 +3,7 @@ pub(crate) mod confirm;
 pub(crate) mod drawer;
 pub(crate) mod highlight_providers;
 pub(crate) mod inlay_hints;
+pub(crate) mod line_backgrounds;
 pub(crate) mod menu_box;
 pub(crate) mod picker_panel;
 pub(crate) mod popup;
@@ -24,12 +25,13 @@ use hume_engine::theme::ScopeRegistry;
 use completion_overlay::MinibufCompletionOverlay;
 use highlight_providers::{PaneHighlights, ScopedHighlighter, SharedHighlighter};
 use inlay_hints::{InlayHintMap, InlayHintProvider};
+use line_backgrounds::{LineBgMap, PaneLineBackgrounds};
 use picker_panel::PickerOverlay;
 use popup::PopupOverlay;
 use signs::{PaneSigns, SharedSignSource};
 use virtual_lines::{PaneVirtualLines, VirtualLineMap};
 
-/// A pane's four render-decoration handles, allocated together by
+/// A pane's five render-decoration handles, allocated together by
 /// [`build_pane`] and stored as one `SecondaryMap` entry on
 /// `EditorState.panes.render` — they are always seeded and dropped as a
 /// unit (never independently), and every read site borrows the map
@@ -46,6 +48,7 @@ pub(crate) struct PaneRenderHandles {
     /// `decorations.eol_text` instead of `inlay_hints`, so the two coexist
     /// on the same line without one clobbering the other.
     pub(crate) eol_text: InlayHintMap,
+    pub(crate) line_backgrounds: LineBgMap,
 }
 
 /// Build a new pane viewing `buffer_id`: sign column, line-number gutter,
@@ -92,6 +95,7 @@ pub(crate) fn build_pane(
     let inlay_hint_map: InlayHintMap = Arc::new(RwLock::new(FxHashMap::default()));
     let eol_text_map: InlayHintMap = Arc::new(RwLock::new(FxHashMap::default()));
     let virtual_line_map: VirtualLineMap = Arc::new(RwLock::new(FxHashMap::default()));
+    let line_bg_map: LineBgMap = Arc::new(RwLock::new(FxHashMap::default()));
 
     let mut providers = ProviderSet::new();
     let mut sign_column = SignColumn::new(linenr_scope);
@@ -135,6 +139,9 @@ pub(crate) fn build_pane(
     }));
     providers.add_decoration_source(Box::new(PaneVirtualLines {
         data: Arc::clone(&virtual_line_map),
+    }));
+    providers.add_decoration_source(Box::new(PaneLineBackgrounds {
+        data: Arc::clone(&line_bg_map),
     }));
     providers.add_overlay(Box::new(MinibufCompletionOverlay {
         data: Arc::clone(minibuf_completion_view),
@@ -184,6 +191,7 @@ pub(crate) fn build_pane(
             inlay_hints: inlay_hint_map,
             virtual_lines: virtual_line_map,
             eol_text: eol_text_map,
+            line_backgrounds: line_bg_map,
         },
     )
 }

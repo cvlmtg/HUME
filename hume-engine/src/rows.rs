@@ -274,8 +274,8 @@ impl<'a> RowMap<'a> {
         // Providers are plugin code and the trait makes no ordering promise
         // enforceable at the boundary — sort here so `segment_virtual_row`'s
         // cursor scan (which requires sorted, non-overlapping input) never
-        // has to trust it, same posture as `rebuild_tier_bufs` for highlight
-        // spans.
+        // has to trust it, same posture as `rebuild_line_decorations` takes
+        // for highlight spans.
         for vl in &mut virtual_lines {
             vl.segments.sort_by_key(|(start, _, _)| *start);
         }

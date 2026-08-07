@@ -23,13 +23,14 @@ fn apply_styles(
         .styles
         .resize(graphemes.len(), ResolvedStyle::default());
     let mut current_line: Option<usize> = None;
+    let mut tint = None;
     for row in rows {
         let Some(line_idx) = row.kind.line_idx() else {
             continue; // virtual row: styles stay default
         };
         if current_line != Some(line_idx) {
             current_line = Some(line_idx);
-            rebuild_line_decorations(line_idx, None, &ProviderSet::new(), rope, scratch);
+            tint = rebuild_line_decorations(line_idx, None, &ProviderSet::new(), rope, scratch);
         }
         let line_start_char = rope.line_to_char(line_idx);
         let line_end_char = rope.line_to_char(line_idx + 1);
@@ -43,6 +44,7 @@ fn apply_styles(
             line_start_char,
             line_end_char,
             is_head_line,
+            tint,
             mode,
             theme,
             scratch,

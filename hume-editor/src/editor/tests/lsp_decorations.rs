@@ -194,10 +194,11 @@ fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
 }
 
 /// An out-of-range `line` must error loudly at the boundary shared by
-/// signs/virtual-lines/EOL-text, instead of the old silently-never-renders
-/// behavior (SPEC.md §6).
+/// signs/virtual-lines/EOL-text/line-backgrounds, instead of the old
+/// silently-never-renders behavior (SPEC.md §6).
 #[test]
-fn set_signs_set_virtual_lines_and_set_eol_text_error_loudly_on_an_out_of_range_line() {
+fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudly_on_an_out_of_range_line()
+ {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdef\n"); // one real line
     let bid = ed.focused_buffer_id();
@@ -210,7 +211,9 @@ fn set_signs_set_virtual_lines_and_set_eol_text_error_loudly_on_an_out_of_range_
            (define-command! "arm-vlines" "" (lambda ()
              (set-virtual-lines! "git-diff" (current-buffer) (list (hash 'line 99 'text "note")))))
            (define-command! "arm-eol" "" (lambda ()
-             (set-eol-text! "diagnostics" (current-buffer) (list (list 99 "msg" "diagnostic.error")))))"#,
+             (set-eol-text! "diagnostics" (current-buffer) (list (list 99 "msg" "diagnostic.error")))))
+           (define-command! "arm-linebg" "" (lambda ()
+             (set-line-backgrounds! "git-diff" (current-buffer) (list (list 99 "diff.plus")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -246,11 +249,22 @@ fn set_signs_set_virtual_lines_and_set_eol_text_error_loudly_on_an_out_of_range_
         "set-eol-text! must not store an entry for an out-of-range line"
     );
 
+    type_cmd(&mut ed, ":arm-linebg");
+    assert!(
+        ed.state
+            .config
+            .decorations
+            .line_backgrounds_for("git-diff", bid)
+            .is_empty(),
+        "set-line-backgrounds! must not store an entry for an out-of-range line"
+    );
+
     let log = ed.state.message_log.format_for_display();
     assert!(
         log.contains("set-signs!")
             && log.contains("set-virtual-lines!")
-            && log.contains("set-eol-text!"),
+            && log.contains("set-eol-text!")
+            && log.contains("set-line-backgrounds!"),
         "each builtin must report its own out-of-range line loudly: {log:?}"
     );
 }
@@ -686,6 +700,90 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
     );
     assert_eq!(entries[0].text, "second problem");
     assert_eq!(entries[0].scope, "diagnostic.warning");
+}
+
+#[test]
+fn set_line_backgrounds_round_trips_and_replaces_per_source() {
+    let tmp = safe_tempdir();
+    // "xabcdef\n" is line 0 (8 chars); "ghijkl\n" (line 1) starts at char 8.
+    let mut ed = editor_from("-[x]>abcdef\nghijkl\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm-a" "" (lambda ()
+             (set-line-backgrounds! "git-diff" (current-buffer) (list (list 0 "diff.plus")))))
+           (define-command! "arm-b" "" (lambda ()
+             (set-line-backgrounds! "git-diff" (current-buffer) (list (list 1 "diff.minus")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm-a");
+
+    let entries = ed.state.config.decorations.line_backgrounds_for("git-diff", bid);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].pos, 0, "line 0's line-start char offset is 0");
+    assert_eq!(entries[0].scope, "diff.plus");
+
+    // A second call for the same source must replace wholesale, not append.
+    type_cmd(&mut ed, ":arm-b");
+    let entries = ed.state.config.decorations.line_backgrounds_for("git-diff", bid);
+    assert_eq!(
+        entries.len(),
+        1,
+        "the second set-line-backgrounds! must replace, not append"
+    );
+    assert_eq!(
+        entries[0].pos, 8,
+        "line 1's line-start char offset on this fixture (\"xabcdef\\n\" is 8 chars)"
+    );
+    assert_eq!(entries[0].scope, "diff.minus");
+}
+
+/// Same drift regression as `sign_remaps_through_a_line_inserted_above_it`,
+/// for line backgrounds — SPEC.md §6/§5a.1's remap coverage applies to every
+/// line-anchored kind, not just signs.
+#[test]
+fn line_background_remaps_through_a_line_inserted_above_it() {
+    let tmp = safe_tempdir();
+    // The tint below sits on "bbbb\n", line 1.
+    let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm" "" (lambda ()
+             (set-line-backgrounds! "git-diff" (current-buffer) (list (list 1 "diff.plus")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    let tint_line = |ed: &Editor| {
+        let pos = ed
+            .state
+            .config
+            .decorations
+            .line_backgrounds_for("git-diff", bid)[0]
+            .pos;
+        ed.state.buffers.get(bid).text().char_to_line(pos)
+    };
+    assert_eq!(tint_line(&ed), 1, "sanity: tint starts on line 1");
+
+    // Insert a whole new blank line above line 0 — "bbbb" (and its tint)
+    // must shift from line 1 to line 2.
+    ed.feed_key(key('i'));
+    ed.feed_key(key_enter());
+    ed.feed_key(key_esc());
+    ed.drain_lsp();
+
+    assert_eq!(
+        tint_line(&ed),
+        2,
+        "the tint must remap forward with the line it annotates"
+    );
 }
 
 #[test]

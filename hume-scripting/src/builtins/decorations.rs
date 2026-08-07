@@ -1,6 +1,7 @@
 //! Decoration stores (inlay hints, signs, virtual lines, EOL text, extra
-//! highlights) and the diagnostics pull API. Not LSP-specific — any Steel
-//! plugin can populate these — but LSP is the first and heaviest client.
+//! highlights, line backgrounds) and the diagnostics pull API. Not
+//! LSP-specific — any Steel plugin can populate these — but LSP is the first
+//! and heaviest client.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -252,6 +253,37 @@ pub(crate) fn set_extra_highlights(
     )?;
     require_cap(ctx.host.decorations(), "set-extra-highlights!")?
         .set_extra_highlights(source, id, parsed)
+        .map_err(generic_err)?;
+    Ok(SteelVal::Void)
+}
+
+/// `(set-line-backgrounds! source bid entries)` — `entries`: list of `(line
+/// scope)`. A full-row background tint on each named line. No `priority`
+/// field — unlike signs, row tints have no single-slot contention; same-line
+/// entries from different sources break ties by source name (GIT-DIFF.md
+/// Phase 4.4).
+pub(crate) fn set_line_backgrounds(
+    ctx: &mut SteelCtx,
+    source: SteelVal,
+    bid: BidArg,
+    entries: SteelVal,
+) -> SteelResult {
+    let source = string_arg(source, "set-line-backgrounds! source")?;
+    let id = bid.0;
+    let parsed = tuple_list(
+        entries,
+        "set-line-backgrounds! entries",
+        2..=2,
+        "(line scope)",
+        |fields| {
+            Ok((
+                usize_arg(fields[0].clone(), "set-line-backgrounds! line")?,
+                string_arg(fields[1].clone(), "set-line-backgrounds! scope")?,
+            ))
+        },
+    )?;
+    require_cap(ctx.host.decorations(), "set-line-backgrounds!")?
+        .set_line_backgrounds(source, id, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }

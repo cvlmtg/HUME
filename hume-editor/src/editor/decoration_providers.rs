@@ -1,7 +1,7 @@
-//! Per-frame sync of highlight/sign/inlay-hint/virtual-line/EOL-text
-//! decoration data from editor-authoritative stores to the shared `Arc`
-//! buffers the engine's providers read during rendering. Driven by
-//! `prepare_frame`'s step 5/7.
+//! Per-frame sync of highlight/sign/inlay-hint/virtual-line/EOL-text/
+//! line-background decoration data from editor-authoritative stores to the
+//! shared `Arc` buffers the engine's providers read during rendering. Driven
+//! by `prepare_frame`'s step 5/7.
 
 use std::sync::Arc;
 
@@ -680,7 +680,7 @@ impl Editor {
                 by_line.entry(line).or_default().push(VirtualLine {
                     anchor,
                     // Overwritten by the engine at collection time with the
-                    // registration-assigned id (see `ProviderSet::add_virtual_line_source`).
+                    // registration-assigned id (see `ProviderSet::add_decoration_source`).
                     provider_id: 0,
                     text: entry.text,
                     segments,
@@ -689,6 +689,69 @@ impl Editor {
 
             *map.write_or_panic() = by_line;
             self.virtual_lines_synced.insert(pid, (bid, current_gen));
+        }
+    }
+
+    /// Write per-frame line-background data to every pane's own
+    /// `Arc<RwLock<FxHashMap<usize, ScopeId>>>` buffer, read by that pane's
+    /// `PaneLineBackgrounds` provider. Rebuilds unconditionally each frame —
+    /// unlike `virtual_lines`, the payload is one `ScopeId` per tinted line,
+    /// cheap enough that a dedicated generation-gated sync buys nothing
+    /// (GIT-DIFF.md Phase 4.4).
+    pub(super) fn update_line_bg_providers(&mut self) {
+        let panes: Vec<(PaneId, BufferId)> = self
+            .view
+            .panes
+            .iter()
+            .map(|(pid, pane)| (pid, pane.buffer_id))
+            .collect();
+
+        for &(pid, bid) in &panes {
+            let Some(map) = self
+                .state
+                .panes
+                .render
+                .get(pid)
+                .map(|r| Arc::clone(&r.line_backgrounds))
+            else {
+                continue;
+            };
+
+            // Collected into an owned Vec, source name kept for the
+            // tie-break sort below (mirrors the sign pipeline's pre-sort,
+            // `update_sign_providers`), and every scope name resolved
+            // *before* borrowing buffer text — `self.runtime_scope` needs
+            // `&mut self`, which can't overlap the borrow `text` holds below.
+            let entries: Vec<(String, usize, String)> = self
+                .state
+                .config
+                .decorations
+                .line_backgrounds_for_buffer(bid)
+                .map(|(source, e)| (source.to_string(), e.pos, e.scope.clone()))
+                .collect();
+            let mut resolved: Vec<(String, usize, hume_engine::types::ScopeId)> = entries
+                .into_iter()
+                .map(|(source, pos, scope_name)| (source, pos, self.runtime_scope(&scope_name)))
+                .collect();
+            // Ascending source-name order: the alphabetically-last source
+            // wins the `insert` below when two sources tint the same line.
+            resolved.sort_by(|a, b| a.0.cmp(&b.0));
+
+            let visible_lines = self.visible_line_range(pid, bid);
+            let text = self.state.buffers.get(bid).text();
+            let last_char = text.len_chars().saturating_sub(1);
+            let mut by_line: rustc_hash::FxHashMap<usize, hume_engine::types::ScopeId> =
+                rustc_hash::FxHashMap::default();
+            for (_, pos, scope) in resolved {
+                // Clamped like the sign/EOL-text paths: a stored offset that
+                // drifted past the current text can't panic `char_to_line`.
+                let line = text.char_to_line(pos.min(last_char));
+                if visible_lines.contains(&line) {
+                    by_line.insert(line, scope);
+                }
+            }
+
+            *map.write_or_panic() = by_line;
         }
     }
 
