@@ -158,6 +158,47 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_offset() {
     );
 }
 
+/// An `'after` hint anchored on the buffer's trailing structural `\n` must
+/// error loudly at `set-inlay-hints!`, not store an entry the render bridge
+/// (`update_inlay_hint_providers`) can only resolve onto the unrendered
+/// trailing phantom line — the end-to-end companion to
+/// `host_impl::tests::validate_offset_rejects_after_on_the_trailing_newline`,
+/// exercised here through the actual `set-inlay-hints!` builtin rather than
+/// the bare validation function.
+#[test]
+fn set_inlay_hints_errors_loudly_on_an_after_hint_at_the_trailing_newline() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdef\n"); // "xabcdef\n", 8 chars — offset 7 is the trailing '\n'
+    attach_running_server(&mut ed);
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm-bad" "" (lambda ()
+             (set-inlay-hints! "linter" (current-buffer)
+               (list (list 7 "hint" 'after)))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm-bad");
+
+    assert!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .next()
+            .is_none(),
+        "an 'after hint at the trailing newline must not land in the store"
+    );
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("trailing"),
+        "must explain why this offset is rejected: {log:?}"
+    );
+}
+
 /// An out-of-range char offset must error loudly at `set-extra-highlights!`
 /// rather than storing a span that never renders — the fail-fast contract
 /// SPEC.md §6 adds for every kind's host-boundary conversion.
