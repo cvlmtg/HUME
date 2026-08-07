@@ -443,19 +443,19 @@ impl Buffer {
         // sides; `new_text` is still owned by us here so the borrow is fine.
         let (forward, inverse) = changesets_from_line_diff(&self.text, &new_text);
 
-        // `set_text` only bumps `text_gen`; it does NOT reset history
-        // (`set_view_content` is the only writer that resets history).
-        self.set_text(new_text);
-
-        // Reload of identical-to-disk content: don't litter the undo tree with a
-        // no-op revision. Just re-anchor `saved_revision` to the current node so
-        // the buffer reads clean (it now matches disk). `pre_sels`/`post_sels`
-        // are dropped — there is nothing to undo to.
+        // Reload of identical-to-disk content: `self.text` already equals
+        // `new_text`, so skip `set_text` entirely rather than bump `text_gen`
+        // (and fire `on-text-changed` plus a spurious tree-sitter reparse) for
+        // a no-op. Just re-anchor `saved_revision` — the buffer now matches
+        // disk. `pre_sels`/`post_sels` are dropped — there is nothing to undo to.
         if forward.is_identity() {
             self.saved_revision = Some(self.history.current_id());
             return;
         }
 
+        // `set_text` only bumps `text_gen`; it does NOT reset history
+        // (`set_view_content` is the only writer that resets history).
+        self.set_text(new_text);
         self.record_revision(forward, inverse, pre_sels, post_sels);
         self.saved_revision = Some(self.history.current_id());
     }
@@ -537,6 +537,13 @@ impl Buffer {
         // Clone the buffer for the edit — O(log n) via ropey structural sharing.
         let (new_text, new_sels, cs) = cmd(self.text.clone(), sels.clone());
 
+        // An identity `cs` moved no bytes: recording it would litter the undo
+        // tree with a no-op revision, and bumping `text_gen` would fire
+        // `on-text-changed` for a mutation that never happened.
+        if cs.is_identity() {
+            return (new_sels, cs);
+        }
+
         // self.text is still pre-edit here — safe to call invert.
         let inverse_cs = cs.invert(&self.text);
         self.record_revision(cs.clone(), inverse_cs, sels, new_sels.clone());
@@ -560,6 +567,14 @@ impl Buffer {
             .expect("apply_edit_grouped called without an open group");
 
         let (new_text, new_sels, cs) = cmd(self.text.clone(), sels);
+
+        // An identity `cs` moved no bytes: composing it into the group
+        // accumulator would still be a no-op, but bumping `text_gen` would
+        // fire `on-text-changed` for one. Leave the accumulator untouched —
+        // a group whose every edit was identity commits nothing.
+        if cs.is_identity() {
+            return (new_sels, cs);
+        }
 
         group.cs = Some(match group.cs.take() {
             None => cs.clone(),
@@ -599,7 +614,14 @@ impl Buffer {
         };
 
         group.cs = Some(new_cs);
-        self.set_text(new_text);
+        // `propagation_cs` identity means the buffer's *current* text already
+        // equals `new_text` — re-pasting identical content over itself on a
+        // later cycle. `new_cs` (mapping the original snapshot forward) isn't
+        // identity in that case, so `group.cs` above still needed updating;
+        // only the mutation against the live buffer is skipped.
+        if !propagation_cs.is_identity() {
+            self.set_text(new_text);
+        }
         (new_sels, propagation_cs)
     }
 

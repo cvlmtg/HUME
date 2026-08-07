@@ -1387,6 +1387,175 @@ fn last_buffer_close_fires_on_text_changed() {
     );
 }
 
+/// An identity edit (a command whose `ChangeSet` is the identity transform —
+/// every op a `Retain`) must not bump `text_gen`: `Buffer::apply_edit` skips
+/// `set_text` entirely for one, so it must not fire `on-text-changed` either.
+/// Also asserts `doc_ops::finish_edit`'s matching guard: `edit_seq` (the
+/// global paste-staleness counter, see `BufferStore::edit_seq`'s doc) must
+/// not move either, or a no-op edit command would wrongly stale a pending
+/// paste stamp.
+///
+/// Fail oracle: remove the `cs.is_identity()` guard in `Buffer::apply_edit`
+/// → `text_gen` bumps and this fires once. Remove the matching guard in
+/// `doc_ops::finish_edit` → `edit_seq` bumps even though `text_gen` didn't.
+#[test]
+fn identity_edit_fires_no_on_text_changed() {
+    use crate::editor::doc_ops;
+    use crate::testing::MockHost;
+    use hume_editing::changeset::ChangeSet;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+
+    let focused = ed.state.focused_pane_id;
+    let before_gen = ed.state.buffers.get(bid).text_gen;
+    let before_edit_seq = ed.state.buffers.edit_seq();
+    doc_ops::apply_doc_edit(
+        &mut ed.state.buffers,
+        &ed.state.config.decorations,
+        &mut ed.state.panes.state,
+        focused,
+        bid,
+        |text, sels| {
+            let len = text.len_chars();
+            (text, sels, ChangeSet::identity(len))
+        },
+    );
+    ed.settle();
+
+    assert_eq!(
+        ed.state.buffers.get(bid).text_gen,
+        before_gen,
+        "an identity edit must not bump text_gen"
+    );
+    assert_eq!(
+        ed.state.buffers.edit_seq(),
+        before_edit_seq,
+        "an identity edit must not bump edit_seq"
+    );
+    assert_eq!(
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace)
+            .count(),
+        0,
+        "an identity edit must not fire on-text-changed"
+    );
+}
+
+/// An identity edit records no undo revision (`Buffer::apply_edit`'s guard
+/// returns before `record_revision`): `u` right after one must undo the
+/// *previous* real edit directly, not silently do nothing as if the
+/// identity edit itself were on the undo stack.
+///
+/// Fail oracle: remove the guard (or move it after `record_revision`) → the
+/// identity edit becomes an undo step of its own, and `u` reverts *it*
+/// (a no-op, since it changed nothing) rather than the real edit beneath it.
+#[test]
+fn identity_edit_records_no_undo_revision() {
+    use crate::editor::doc_ops;
+    use hume_editing::changeset::ChangeSet;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let bid = ed.focused_buffer_id();
+    let original = ed.doc().text().to_string();
+
+    // One real edit.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key_esc());
+    ed.settle();
+    let after_real_edit = ed.doc().text().to_string();
+    assert_ne!(
+        after_real_edit, original,
+        "the real edit must have changed the text"
+    );
+
+    // An identity edit: no-op, must not land on the undo stack.
+    let focused = ed.state.focused_pane_id;
+    doc_ops::apply_doc_edit(
+        &mut ed.state.buffers,
+        &ed.state.config.decorations,
+        &mut ed.state.panes.state,
+        focused,
+        bid,
+        |text, sels| {
+            let len = text.len_chars();
+            (text, sels, ChangeSet::identity(len))
+        },
+    );
+    ed.settle();
+    assert_eq!(
+        ed.doc().text().to_string(),
+        after_real_edit,
+        "an identity edit must not itself change the text"
+    );
+
+    // `u` must undo the real edit directly, not a phantom identity revision.
+    ed.feed_key(key('u'));
+    ed.settle();
+    assert_eq!(
+        ed.doc().text().to_string(),
+        original,
+        "undo must skip the identity edit and revert straight to the pre-edit text"
+    );
+}
+
+/// A byte-identical `:e!` reload (`reload_from_text`'s `forward.is_identity()`
+/// case) must not bump `text_gen`, so it must not fire `on-text-changed`.
+///
+/// Fail oracle: move the identity guard back below `set_text` (its original
+/// position) → `text_gen` bumps before the guard returns, and this fires.
+#[test]
+fn identity_reload_fires_no_on_text_changed() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let bid = ed.focused_buffer_id();
+    let text_before = ed.state.buffers.get(bid).text().clone();
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+
+    let before_gen = ed.state.buffers.get(bid).text_gen;
+    let replacement = Buffer::new(text_before, SelectionSet::default());
+    ed.reload_buffer_in_place(bid, replacement);
+    ed.settle();
+
+    assert_eq!(
+        ed.state.buffers.get(bid).text_gen,
+        before_gen,
+        "a byte-identical reload must not bump text_gen"
+    );
+    assert_eq!(
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace)
+            .count(),
+        0,
+        "a byte-identical reload must not fire on-text-changed"
+    );
+}
+
 /// **Exactly one `OnBufferEnter` per focus-changing action.** Pane-focus
 /// cycling and a mouse click into another pane both move focus with no
 /// write to `pane.buffer_id` at all — `focused_pane_id` is the only field

@@ -95,8 +95,16 @@ fn finish_edit(
     buf_pre: &Text,
     rope_pre: &ropey::Rope,
 ) {
-    buffers.bump_edit_seq();
     pane_state[focused_pane_id][buf_id].selections = new_sels;
+    // An identity `cs` moved no bytes, so `Buffer::apply_edit*` skipped
+    // `set_text` and `text_gen` did not move. Feeding the syntax and LSP
+    // streams an edit tagged with an already-parsed generation would be
+    // actively wrong, and paste-stamping must not count a no-op as an edit.
+    // Selections are still written above — a no-op edit can still move cursors.
+    if cs.is_identity() {
+        return;
+    }
+    buffers.bump_edit_seq();
     propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, cs, buf_pre);
     let text_gen = buffers.get(buf_id).text_gen;
     record_syntax_edits(buffers, buf_id, text_gen, cs, rope_pre);
