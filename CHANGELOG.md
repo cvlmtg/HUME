@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- New `set-line-backgrounds!` scripting builtin sets a full-row background tint on a line, the same `(set-X! source bid entries)` shape as the other decoration setters.
 - New `lsp-position->offset`/`lsp-range->offsets` scripting builtins convert a raw LSP wire position/range into a buffer char offset, or `#f` if the buffer has no attached server.
 - **Breaking**: `declare-plugin`'s `#:events` entries must now be symbols (e.g. `'(on-buffer-save)`), matching `register-hook!`. The string form (`'("on-buffer-save")`) that older releases accepted is now rejected.
 - `C` now honours a count prefix: `3C` duplicates each selection onto the 3 lines below in one step instead of ignoring the count and copying onto just one.

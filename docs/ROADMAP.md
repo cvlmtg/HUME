@@ -17,7 +17,6 @@
 - [ ] `:e` binary / huge-file y/n confirm — binary-sniff + size threshold. The reusable confirm-overlay primitive this needs (`ui::confirm`) already exists, built for the disk-change reload prompt.
 - [ ] Streaming load for huge files — chunked read replacing single blocking full-file read.
 - [ ] File-size statusline element + cached size metadata.
-- [ ] Unified decoration system — single trait replacing the separate gutter/highlight/virtual-line/overlay provider traits; post-LSP, once the surface is stable.
 - [ ] Scriptable minibuffer completers — Steel builtin to register plugin completers; core does prefix matching only, fuzzy scoring is a plugin concern.
 - [ ] Scriptable insert-mode completion sources — see `docs/COMPLETION-PICKER.md` (additive, nothing blocks on current work).
 - [ ] Auto-generated command reference + in-editor `:help` expansion.
@@ -26,7 +25,7 @@
 
 - [ ] Byte-string parsing in settings — `"10MB"` / `"512KB"` strings; companion to the size-threshold setting.
 - [ ] Native directory-walker fallback for the file picker — for bare directories without `fd`; build only if the fallback posture proves inadequate in practice (see `docs/FUZZY-FINDERS.md`).
-- [ ] `RowMap::block`'s provider queries are one line at a time (`virtual_lines(line..line+1, ..)`) — the `VirtualLineSource` API already takes a `Range`, but no caller ever queries wider than one line, so each cache miss pays a per-provider lock+lookup+clone per line. Batching would need the render path to query its whole visible range up front.
+- [ ] `RowMap::block`'s provider queries are one line at a time — `DecorationSource::decorations_for_line` takes a single `line_idx`, so each cache miss pays a per-provider lock+lookup+clone per line. Batching would need a range-taking query variant plus the render path querying its whole visible range up front.
 - [ ] `:sort --lexicographic` override — for when numeric auto-detection guesses wrong (e.g. `1.10` vs `1.9`). Not worth shipping until it actually bites.
 
 ### Plugins
@@ -44,7 +43,6 @@
 - Plugin-defined languages × lazy loading — a plugin that defines its **own** language must register that identity eagerly; it can't be the sole provider of its own lazy-activation trigger. Deferred to a dedicated brainstorm.
 - `llvm-mir` / `llvm-mir-yaml` grammar mismatch — inherited from Helix; no HUME-specific fix until upstream resolves it.
 - Undercurl blocked on ratatui underline-shape support — engine model and theme loader are already correct; revisit once ratatui exposes underline-shape bits.
-- `ProviderSet::remove` unwired — implemented and tested, but no editor call site yet; wire it when the first real consumer lands (plugin-registered columns/overlays, or a gutter-visibility toggle).
 - Search-state clobbering from Steel — no risk today (`search-next`/`select-all-matches` take no pattern arg, can't inject a pattern). Decide guard policy before any future pattern-taking search builtin is added.
 - Mark/bookmark drift across edits — a stored char offset goes stale as edits land before it's used. Real marks need positions mapped through edit history; decide where that mapping lives and which stored positions opt in.
 - Snap-vs-error policy for future selection setters — a future selection-setting builtin must handle out-of-range or mid-cluster input from Steel: snap to the nearest valid boundary (forgiving, hides bugs) or raise (fail-fast, breaks legitimately-drifted positions). Decide per call site before the first setter lands.

@@ -8,11 +8,11 @@
 | 1 — async subprocess execution | ✅ shipped (`2451d3d6`…`8bcb4606`) |
 | theme `diff.*` scopes | ⚠️ partial — all 4 themes, **fg only**, no `bg` |
 | 2 — native diff builtins | ⬜ **next** |
-| 3 — engine: full-row background | ⬜ shape pinned (SPEC Prereq B) |
+| 3 — engine: full-row background | ✅ shipped |
 | 4.1 — `on-text-changed` hook | ⬜ |
 | 4.2 — buffer-text reads | ⬜ |
 | 4.3 — async git | ✅ subsumed by Phase 1 |
-| 4.4 — line-bg decoration kind | ⬜ shape pinned (SPEC Prereq B) |
+| 4.4 — line-bg decoration kind | ✅ shipped |
 | 4.5 — `set-virtual-lines!` `Before` anchor + per-segment scopes | ✅ shipped |
 | 5a — the plugin: state/fetch/debounce/init + gutter signs | ⬜ not to be built yet |
 | 5b — virtual deleted lines (+ word-del highlights inside them) | ⬜ not to be built yet |
@@ -378,17 +378,17 @@ lines has its own gap — see Phase 4.5).
    them are representable at this layer with the current API — no engine change needed here.
    Reachable from Steel since Phase 4.5 shipped (`set-virtual-lines!`'s `'segments`).
 
-2. **Provider-driven full-row background.** A real gap, still the one piece of Phase 3 to
-   build. Full-width tint has exactly **one** hardcoded producer:
-   `hume-engine/src/pipeline/pane_render.rs:148-151` sets `row_bg = is_head_line ?
-   theme.ui.cursorline.bg : None`, consumed in `render.rs` at `:122, 174, 231, 276, 294`
-   plus the fill helpers at `:96-97` (method) and `:559` (free fn). Generalize the `row_bg`
-   decision so a provider can request an edge-to-edge background for a line
-   (added/changed lines). Depends on the theme prereq above: `diff.plus`/`diff.minus` are
-   currently `fg`-only in all four themes, so `bg` values (plus `.word` variants for the
-   word-level boost) need adding before this has a color to render.
+2. **Provider-driven full-row background — ✅ shipped, 2026-08-07.** Full-width tint used
+   to have exactly **one** hardcoded producer: `hume-engine/src/pipeline/pane_render.rs`
+   set `row_bg = is_head_line ? theme.ui.cursorline.bg : None`, consumed in `render.rs` at
+   `:122, 174, 231, 276, 294` plus the fill helpers at `:96-97` (method) and `:559` (free
+   fn). `row_bg` is now generalized so a `Decoration::LineBg`-emitting provider can request
+   an edge-to-edge background for a line. Still depends on the theme prereq above:
+   `diff.plus`/`diff.minus` are currently `fg`-only in all four themes, so `bg` values
+   (plus `.word` variants for the word-level boost) need adding before *this specific
+   plugin's* tint has a color to render — the mechanism itself works with any scope that
+   has a `bg`, proven by this repo's own tests against `ui.selection.search`.
 
-   **Shape pinned by SPEC.md Prereq B (§5a), build deferred to the unification steps.**
    Resolve the provider tint once per line, in `LineStyle::enter`
    (`hume-engine/src/pipeline/pane_render.rs`), into an `Option<Color>` via
    `theme.resolve(id).bg` — a theme lacking a `bg` on the scope renders nothing, which is
@@ -487,36 +487,25 @@ trait (`hume-scripting/src/host.rs`).
      a separate one" above.
    - **virtual line** (styled segments, anchored `Before`/`After`) — ✅ **shipped, Phase
      4.5.** Both the engine type and the Steel-facing `set-virtual-lines!` bridge are ready.
-   - **line background** (full-width tint) — confirmed missing, and a real gap.
-     `row_bg` still has exactly one hardcoded producer (Phase 3.2); `ExtraHighlightEntry`
-     cannot substitute for it — it's a char-range span feeding the highlight pipeline, a
-     different channel from `row_bg`. This is the one new decoration kind to add to
-     `DecorationStores`, paired with the Phase 3.2 engine change.
+   - **line background** (full-width tint) — ✅ **shipped, 2026-08-07.** `row_bg`
+     generalized past its one hardcoded cursorline producer (Phase 3.2); `ExtraHighlightEntry`
+     never substituted for it — it's a char-range span feeding the highlight pipeline, a
+     different channel from `row_bg`.
 
-     **Shape pinned by SPEC.md Prereq B (§5a), build deferred to the unification steps.**
      Builtin `(set-line-backgrounds! source bid entries)` — the uniform §6
      `(set-X! source bid entries)` shape; entries are `(line scope)` tuples, `line`
      0-indexed at the Steel surface (matches signs' tuple style). Store entry
      `LineBgEntry { pos: usize /* line-start char offset */, scope: String }` in the
      unified per-source store (SPEC §6); the host boundary converts line → line-start char
-     offset and fails fast on an out-of-range line (can only fire on a plugin bug — the
-     diff runs synchronously against the live buffer in the same Steel evaluation as the
-     setter call). Engine side: a `Decoration::LineBg(ScopeId)` variant on the unified kind
-     enum, queried only at paint time — never by `RowMap`'s layout query, since a line
-     background never affects row count or wrapping. No `priority` field: unlike signs, row
-     tints have no single-slot contention and git-diff is the only specced consumer;
-     deterministic source-name tie-break is enough. One record per line, not a range — the
-     producer trivially expands hunks, and point remap is simpler than range-endpoint-merge
-     semantics. Dirty tracking: covered by SPEC §6's store-wide generation; the payload is
-     small enough that per-frame sync is fine — no dedicated gate needed. See Phase 3.2 for
-     the `row_bg`/precedence contract this kind renders through.
-   - **Risk note (partially resolved 2026-08-07):** the store-side half of `docs/ROADMAP.md`'s
-     unified-decoration-system item has now landed (SPEC.md), so the line-bg kind's store
-     shape above rides on the current, already-unified `SourceStore<T>` — no further store-side
-     churn expected. The engine-side half (a single `DecorationSource` trait replacing
-     `HighlightSource`/`VirtualLineSource`/`InlineDecoration`, SPEC.md §2/§6) is still open;
-     building the line-bg kind's engine variant before that lands would still be a future
-     churn point.
+     offset and fails fast on an out-of-range line. Engine side: `Decoration::LineBg(ScopeId)`
+     on the unified `DecorationSource` kind enum, queried only at paint time — never by
+     `RowMap`'s layout query, since a line background never affects row count or wrapping.
+     No `priority` field: unlike signs, row tints have no single-slot contention;
+     same-line entries from different sources break ties by ascending source name. One
+     record per line, not a range. Dirty tracking: covered by SPEC §6's store-wide
+     generation; the payload is small enough that per-frame sync is fine — no dedicated
+     gate needed. See Phase 3.2 for the `row_bg`/precedence contract this kind renders
+     through.
 
 5. **`set-virtual-lines!` anchor + per-segment scopes — ✅ shipped, needed by Phase 5b.**
    Was a verified plan-vs-code gap: the engine type
