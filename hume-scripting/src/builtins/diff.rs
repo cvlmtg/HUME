@@ -59,7 +59,10 @@ fn hunk_to_steel(hunk: DiffHunk) -> SteelVal {
 }
 
 fn string_list(lines: Vec<String>) -> SteelVal {
-    let list: Vec<SteelVal> = lines.into_iter().map(|s| SteelVal::StringV(s.into())).collect();
+    let list: Vec<SteelVal> = lines
+        .into_iter()
+        .map(|s| SteelVal::StringV(s.into()))
+        .collect();
     SteelVal::ListV(list.into())
 }
 
