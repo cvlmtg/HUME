@@ -10,6 +10,7 @@ pub(crate) mod buffers;
 pub(crate) mod commands;
 pub(crate) mod completion;
 pub(crate) mod decorations;
+pub(crate) mod diff;
 pub(crate) mod dirs;
 pub(crate) mod edits;
 pub(crate) mod errors;
@@ -399,6 +400,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // streaming source (that's `picker-source-spawn!`'s shape).
         cmd "spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: SteelVal);
         cmd "cancel-async!" process::cancel_async(id: SteelVal);
+
+        // Native line diff — the only part of a diff plugin that isn't Steel.
+        cmd "diff-lines" diff::diff_lines(old: SteelVal, new: SteelVal);
+        cmd "diff-buffer-lines" diff::diff_buffer_lines(bid: args::BidArg, ref_text: SteelVal);
         open "language-has-grammar?" syntax::language_has_grammar(name: SteelVal);
         cmd "buffer-language" buffers::buffer_language(bid: args::BidArg);
         cmd "set-buffer-language!" buffers::set_buffer_language_steel(bid: args::BidArg, lang: SteelVal);

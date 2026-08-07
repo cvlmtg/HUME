@@ -90,6 +90,8 @@
 (#%register-global "delete-word-backward")
 (#%register-global "diagnostic-counts")
 (#%register-global "diagnostics-for-buffer")
+(#%register-global "diff-buffer-lines")
+(#%register-global "diff-lines")
 (#%register-global "exit-insert")
 (#%register-global "find-backward")
 (#%register-global "find-forward")
