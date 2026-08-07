@@ -1,8 +1,9 @@
 pub(crate) mod highlight;
 use highlight::HighlightStack;
 pub use highlight::TierBufs;
-pub(crate) use highlight::rebuild_tier_bufs;
+pub(crate) use highlight::rebuild_line_decorations;
 
+use crate::providers::Decoration;
 use crate::theme::Theme;
 use crate::types::{DisplayRow, EditorMode, Grapheme, ResolvedStyle, ScopeId, Selection};
 
@@ -17,8 +18,11 @@ use crate::types::{DisplayRow, EditorMode, Grapheme, ResolvedStyle, ScopeId, Sel
 pub struct StyleScratch {
     /// Per-grapheme resolved styles (parallel to the graphemes slice).
     pub styles: Vec<ResolvedStyle>,
-    /// Raw highlight intervals from one provider, reused across providers.
-    pub highlights: Vec<(usize, usize, ScopeId)>,
+    /// Raw spans from the buffer's `SyntaxSpans` source, reused each call.
+    pub syntax_spans: Vec<(usize, usize, ScopeId)>,
+    /// Raw decorations from the `PAINT`-kind `DecorationSource` providers,
+    /// reused across providers.
+    pub decorations: Vec<Decoration>,
     /// Sorted highlight intervals split by tier; built once per buffer line.
     pub tier_bufs: TierBufs,
     /// Selection column spans for the current row (all selections, including primary).
@@ -45,7 +49,8 @@ impl StyleScratch {
     pub fn new() -> Self {
         Self {
             styles: Vec::with_capacity(512),
-            highlights: Vec::with_capacity(256),
+            syntax_spans: Vec::with_capacity(256),
+            decorations: Vec::with_capacity(256),
             tier_bufs: TierBufs::default(),
             sel_spans: Vec::new(),
             head_cols: Vec::new(),
@@ -75,7 +80,8 @@ impl StyleScratch {
     /// Reset all buffers to empty, retaining allocated capacity.
     pub fn clear(&mut self) {
         self.styles.clear();
-        self.highlights.clear();
+        self.syntax_spans.clear();
+        self.decorations.clear();
         self.tier_bufs.clear();
         self.sel_spans.clear();
         self.head_cols.clear();

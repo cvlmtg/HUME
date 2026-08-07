@@ -71,7 +71,7 @@ pub struct LineNumberColumn {
 impl LineNumberColumn {
     /// `default_scope`/`selected_scope` are interned by the caller (once, at
     /// pane construction) — same intern-at-construction contract as every
-    /// other provider (`HighlightSource`, `InlineInsert`, `SignSource`).
+    /// other provider (`DecorationSource`, `SignSource`).
     pub fn new(default_scope: ScopeId, selected_scope: ScopeId) -> Self {
         Self {
             style: LineNumberStyle::Hybrid,

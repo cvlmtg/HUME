@@ -181,21 +181,25 @@ fn down_wrap_file_fits_no_movement() {
 /// Emits `self.1` distinct `After(self.0)` rows, texted "1".."9".
 struct MultiAfterLine(usize, usize);
 
-impl hume_engine::providers::VirtualLineSource for MultiAfterLine {
-    fn virtual_lines(
+impl hume_engine::providers::DecorationSource for MultiAfterLine {
+    fn kinds(&self) -> hume_engine::providers::DecorationKinds {
+        hume_engine::providers::DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(
         &self,
-        visible_lines: std::ops::Range<usize>,
-        _content_width: u16,
-        out: &mut Vec<hume_engine::providers::VirtualLine>,
+        line_idx: usize,
+        out: &mut Vec<hume_engine::providers::Decoration>,
     ) {
-        if visible_lines.contains(&self.0) {
+        if line_idx == self.0 {
             for i in 0..self.1 {
-                out.push(hume_engine::providers::VirtualLine {
-                    anchor: hume_engine::providers::VirtualLineAnchor::After(self.0),
-                    provider_id: 0,
-                    text: (i + 1).to_string(),
-                    segments: Vec::new(),
-                });
+                out.push(hume_engine::providers::Decoration::VirtualLine(
+                    hume_engine::providers::VirtualLine {
+                        anchor: hume_engine::providers::VirtualLineAnchor::After(self.0),
+                        provider_id: 0,
+                        text: (i + 1).to_string(),
+                        segments: Vec::new(),
+                    },
+                ));
             }
         }
     }
@@ -211,7 +215,7 @@ impl hume_engine::providers::VirtualLineSource for MultiAfterLine {
 fn down_reaches_every_row_of_an_after_last_line_block() {
     let rope = rope_with_lines(2); // last real line = index 1
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(MultiAfterLine(1, 3)));
+    providers.add_decoration_source(Box::new(MultiAfterLine(1, 3)));
     let mut scratch = FormatScratch::new();
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
@@ -245,7 +249,7 @@ fn down_reaches_every_row_of_an_after_last_line_block() {
 fn down_overshoot_past_after_last_line_clamps_not_resets() {
     let rope = rope_with_lines(2);
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(MultiAfterLine(1, 3)));
+    providers.add_decoration_source(Box::new(MultiAfterLine(1, 3)));
     let mut scratch = FormatScratch::new();
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {

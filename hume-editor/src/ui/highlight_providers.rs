@@ -1,19 +1,20 @@
-//! Engine-compatible highlight providers for bracket matching and search.
+//! Engine-compatible decoration sources for bracket matching and search.
 //!
 //! Each provider wraps an `Arc<RwLock<Vec<(line_idx, byte_start, byte_end)>>>`
 //! that the editor writes once per frame (after scroll is resolved, before
-//! `term.draw`). The provider reads the shared data in `highlights_for_line()`
-//! during the engine's per-line render loop.
+//! `term.draw`). The provider reads the shared data in
+//! `decorations_for_line()` during the engine's per-line render loop.
 //!
-//! Using `Arc<RwLock<...>>` is correct: it satisfies `Send + Sync` (required
-//! by `HighlightSource: Send + Sync`) and is uncontended in practice (~25ns
-//! per lock/unlock). Do not replace with `UnsafeCell`.
+//! Using `Arc<RwLock<...>>` is correct: it satisfies `Send + Sync`, needed
+//! since providers are boxed into the pane's `ProviderSet` and must outlive
+//! the frame that writes them, and is uncontended in practice (~25ns per
+//! lock/unlock). Do not replace with `UnsafeCell`.
 
 use std::sync::{Arc, RwLock};
 
 use crate::lock_ext::LockExt;
 
-use hume_engine::providers::{HighlightSource, HighlightTier, SourceContext};
+use hume_engine::providers::{Decoration, DecorationKinds, DecorationSource, HighlightTier};
 use hume_engine::types::ScopeId;
 
 /// Shared per-frame highlight data: `(line_idx, byte_start, byte_end)` triples,
@@ -46,17 +47,12 @@ pub(crate) struct SharedHighlighter {
     pub(crate) data: HighlightRanges,
 }
 
-impl HighlightSource for SharedHighlighter {
-    fn tier(&self) -> HighlightTier {
-        self.tier
+impl DecorationSource for SharedHighlighter {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::HIGHLIGHT
     }
 
-    fn highlights_for_line(
-        &self,
-        line_idx: usize,
-        _ctx: &SourceContext,
-        out: &mut Vec<(usize, usize, ScopeId)>,
-    ) {
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
         let data = self.data.read_or_panic();
         // Data is sorted by line_idx (search matches) or tiny (bracket match),
         // so binary-search to the first entry for this line.
@@ -65,7 +61,12 @@ impl HighlightSource for SharedHighlighter {
             if l != line_idx {
                 break;
             }
-            out.push((byte_start, byte_end, self.scope));
+            out.push(Decoration::Highlight {
+                byte_start,
+                byte_end,
+                scope: self.scope,
+                tier: self.tier,
+            });
         }
     }
 }
@@ -87,24 +88,24 @@ pub(crate) struct ScopedHighlighter {
     pub(crate) data: ScopedHighlightRanges,
 }
 
-impl HighlightSource for ScopedHighlighter {
-    fn tier(&self) -> HighlightTier {
-        self.tier
+impl DecorationSource for ScopedHighlighter {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::HIGHLIGHT
     }
 
-    fn highlights_for_line(
-        &self,
-        line_idx: usize,
-        _ctx: &SourceContext,
-        out: &mut Vec<(usize, usize, ScopeId)>,
-    ) {
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
         let data = self.data.read_or_panic();
         let start = data.partition_point(|&(l, _, _, _)| l < line_idx);
         for &(l, byte_start, byte_end, scope) in &data[start..] {
             if l != line_idx {
                 break;
             }
-            out.push((byte_start, byte_end, scope));
+            out.push(Decoration::Highlight {
+                byte_start,
+                byte_end,
+                scope,
+                tier: self.tier,
+            });
         }
     }
 }

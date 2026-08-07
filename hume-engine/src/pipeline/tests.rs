@@ -4,7 +4,7 @@ use super::*;
 use ratatui::layout::Rect;
 
 use super::layout::split_rect;
-use crate::providers::VirtualLineAnchor;
+use crate::providers::{Decoration, DecorationKinds, DecorationSource, VirtualLine, VirtualLineAnchor};
 use crate::types::{ResolvedStyle, RowKind};
 
 fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
@@ -24,22 +24,20 @@ struct ScopedVirtualLine {
     scope: crate::types::ScopeId,
 }
 
-impl crate::providers::VirtualLineSource for ScopedVirtualLine {
-    fn virtual_lines(
-        &self,
-        visible_lines: std::ops::Range<usize>,
-        _content_width: u16,
-        out: &mut Vec<crate::providers::VirtualLine>,
-    ) {
-        if visible_lines.contains(&0) {
-            out.push(crate::providers::VirtualLine {
+impl DecorationSource for ScopedVirtualLine {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
+        if line_idx == 0 {
+            out.push(Decoration::VirtualLine(VirtualLine {
                 anchor: VirtualLineAnchor::Before(0),
                 provider_id: 0,
                 text: "H~".to_string(),
                 // "H" (byte 0..1) carries the scope; "~" (byte 1..2) carries
                 // none and must fall back to `ui.virtual_text`.
                 segments: vec![(0, 1, self.scope)],
-            });
+            }));
         }
     }
 }
@@ -74,7 +72,7 @@ fn virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
     let mut pane = Pane::new(bid);
     pane.viewport = crate::pane::ViewportState::new(20, 5);
     pane.providers
-        .add_virtual_line_source(Box::new(ScopedVirtualLine { scope: hint_scope }));
+        .add_decoration_source(Box::new(ScopedVirtualLine { scope: hint_scope }));
 
     let pane_rect = rect(0, 0, 20, 5);
     let pane_ctx = PaneRenderCtx {
@@ -121,15 +119,13 @@ struct UnsortedScopedVirtualLine {
     scopes: [crate::types::ScopeId; 4],
 }
 
-impl crate::providers::VirtualLineSource for UnsortedScopedVirtualLine {
-    fn virtual_lines(
-        &self,
-        visible_lines: std::ops::Range<usize>,
-        _content_width: u16,
-        out: &mut Vec<crate::providers::VirtualLine>,
-    ) {
-        if visible_lines.contains(&0) {
-            out.push(crate::providers::VirtualLine {
+impl DecorationSource for UnsortedScopedVirtualLine {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
+        if line_idx == 0 {
+            out.push(Decoration::VirtualLine(VirtualLine {
                 anchor: VirtualLineAnchor::Before(0),
                 provider_id: 0,
                 text: "ABCD".to_string(),
@@ -139,7 +135,7 @@ impl crate::providers::VirtualLineSource for UnsortedScopedVirtualLine {
                     (1, 2, self.scopes[1]),
                     (0, 1, self.scopes[0]),
                 ],
-            });
+            }));
         }
     }
 }
@@ -175,7 +171,7 @@ fn virtual_row_resolves_scopes_from_unsorted_segments() {
     let mut pane = Pane::new(bid);
     pane.viewport = crate::pane::ViewportState::new(20, 5);
     pane.providers
-        .add_virtual_line_source(Box::new(UnsortedScopedVirtualLine { scopes }));
+        .add_decoration_source(Box::new(UnsortedScopedVirtualLine { scopes }));
 
     let pane_rect = rect(0, 0, 20, 5);
     let pane_ctx = PaneRenderCtx {
@@ -213,29 +209,26 @@ fn virtual_row_resolves_scopes_from_unsorted_segments() {
 
 /// Emits one virtual line anchored to a fixed line index, only when that
 /// line is in the visible range — smoke-tests the whole virtual-line path
-/// (`ProviderSet::add_virtual_line_source` → `render_pane`) for the first
-/// time, per the plan's note that no real `VirtualLineSource` exists yet.
+/// (`ProviderSet::add_decoration_source` → `render_pane`).
 struct FixedVirtualLineSource {
     anchor: VirtualLineAnchor,
 }
 
-impl crate::providers::VirtualLineSource for FixedVirtualLineSource {
-    fn virtual_lines(
-        &self,
-        visible_lines: std::ops::Range<usize>,
-        _content_width: u16,
-        out: &mut Vec<crate::providers::VirtualLine>,
-    ) {
+impl DecorationSource for FixedVirtualLineSource {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
         let line = match self.anchor {
             VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
         };
-        if visible_lines.contains(&line) {
-            out.push(crate::providers::VirtualLine {
+        if line_idx == line {
+            out.push(Decoration::VirtualLine(VirtualLine {
                 anchor: self.anchor,
                 provider_id: 0,
                 text: "V".to_string(),
                 segments: Vec::new(),
-            });
+            }));
         }
     }
 }
@@ -257,7 +250,7 @@ fn render_wrapped_pane_with_virtual_line(
     pane.viewport = crate::pane::ViewportState::new(10, 6);
     pane.viewport.top_row_offset = top_row_offset;
     pane.providers
-        .add_virtual_line_source(Box::new(FixedVirtualLineSource { anchor }));
+        .add_decoration_source(Box::new(FixedVirtualLineSource { anchor }));
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 10, 6);
@@ -369,21 +362,19 @@ fn after_virtual_line_renders_below_skipped_rows() {
 /// individually reachable by scrolling, not just the rows nearest the edge.
 struct MultiBeforeLine(usize);
 
-impl crate::providers::VirtualLineSource for MultiBeforeLine {
-    fn virtual_lines(
-        &self,
-        visible_lines: std::ops::Range<usize>,
-        _content_width: u16,
-        out: &mut Vec<crate::providers::VirtualLine>,
-    ) {
-        if visible_lines.contains(&0) {
+impl DecorationSource for MultiBeforeLine {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
+        if line_idx == 0 {
             for i in 0..self.0 {
-                out.push(crate::providers::VirtualLine {
+                out.push(Decoration::VirtualLine(VirtualLine {
                     anchor: VirtualLineAnchor::Before(0),
                     provider_id: 0,
                     text: (i + 1).to_string(),
                     segments: Vec::new(),
-                });
+                }));
             }
         }
     }
@@ -404,7 +395,7 @@ fn render_pane_with_n_before_lines(
     pane.viewport = crate::pane::ViewportState::new(10, height);
     pane.viewport.top_row_offset = top_row_offset;
     pane.providers
-        .add_virtual_line_source(Box::new(MultiBeforeLine(n)));
+        .add_decoration_source(Box::new(MultiBeforeLine(n)));
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 10, height);
@@ -456,23 +447,21 @@ struct SpoofingVirtualLineSource {
     anchor: VirtualLineAnchor,
 }
 
-impl crate::providers::VirtualLineSource for SpoofingVirtualLineSource {
-    fn virtual_lines(
-        &self,
-        visible_lines: std::ops::Range<usize>,
-        _content_width: u16,
-        out: &mut Vec<crate::providers::VirtualLine>,
-    ) {
+impl DecorationSource for SpoofingVirtualLineSource {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
         let line = match self.anchor {
             VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
         };
-        if visible_lines.contains(&line) {
-            out.push(crate::providers::VirtualLine {
+        if line_idx == line {
+            out.push(Decoration::VirtualLine(VirtualLine {
                 anchor: self.anchor,
                 provider_id: 9999, // spoofed — must be overwritten by the pipeline
                 text: "V".to_string(),
                 segments: Vec::new(),
-            });
+            }));
         }
     }
 }
@@ -517,7 +506,7 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
         .add_gutter_column(Box::new(ProviderIdReportingGutter));
     let real_id = pane
         .providers
-        .add_virtual_line_source(Box::new(SpoofingVirtualLineSource {
+        .add_decoration_source(Box::new(SpoofingVirtualLineSource {
             anchor: VirtualLineAnchor::Before(0),
         }));
 

@@ -1,6 +1,6 @@
-//! Virtual-line rendering — a per-pane `VirtualLineSource` fed from
-//! the `virtual_lines` decoration store, keyed by anchor line so `virtual_lines`
-//! (the trait method) is a plain map lookup per queried line.
+//! Virtual-line rendering — a per-pane VIRTUAL_LINE-kind `DecorationSource`
+//! fed from the `virtual_lines` decoration store, keyed by anchor line so
+//! `decorations_for_line` is a plain map lookup per queried line.
 //!
 //! Unlike the popup/menu widgets, this provider is consulted by *scroll and
 //! cursor math* through `rows::RowMap`, not just rendering — so the per-line
@@ -8,12 +8,11 @@
 //! allocation-heavy work).
 
 use rustc_hash::FxHashMap;
-use std::ops::Range;
 use std::sync::{Arc, RwLock};
 
 use crate::lock_ext::LockExt;
 
-use hume_engine::providers::{VirtualLine, VirtualLineSource};
+use hume_engine::providers::{Decoration, DecorationKinds, DecorationSource, VirtualLine};
 
 pub(crate) type VirtualLineMap = Arc<RwLock<FxHashMap<usize, Vec<VirtualLine>>>>;
 
@@ -21,18 +20,14 @@ pub(crate) struct PaneVirtualLines {
     pub(crate) data: VirtualLineMap,
 }
 
-impl VirtualLineSource for PaneVirtualLines {
-    fn virtual_lines(
-        &self,
-        visible_lines: Range<usize>,
-        _content_width: u16,
-        out: &mut Vec<VirtualLine>,
-    ) {
-        let guard = self.data.read_or_panic();
-        for line in visible_lines {
-            if let Some(lines) = guard.get(&line) {
-                out.extend(lines.iter().cloned());
-            }
+impl DecorationSource for PaneVirtualLines {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::VIRTUAL_LINE
+    }
+
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
+        if let Some(lines) = self.data.read_or_panic().get(&line_idx) {
+            out.extend(lines.iter().cloned().map(Decoration::VirtualLine));
         }
     }
 }

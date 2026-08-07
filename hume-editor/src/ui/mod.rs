@@ -41,8 +41,8 @@ pub(crate) struct PaneRenderHandles {
     pub(crate) inlay_hints: InlayHintMap,
     pub(crate) virtual_lines: VirtualLineMap,
     /// EOL text (the diagnostics plugin's per-line summary is its first
-    /// client) — a second `InlayHintProvider` instance (same
-    /// `InlineDecoration` shape, distinct Arc/`ProviderId`) fed by
+    /// client) — a second `InlayHintProvider` instance (same INLINE-kind
+    /// `DecorationSource` shape, distinct Arc/`ProviderId`) fed by
     /// `decorations.eol_text` instead of `inlay_hints`, so the two coexist
     /// on the same line without one clobbering the other.
     pub(crate) eol_text: InlayHintMap,
@@ -106,34 +106,34 @@ pub(crate) fn build_pane(
         linenr_scope,
         linenr_selected_scope,
     )));
-    providers.add_highlight_source(Box::new(SharedHighlighter {
+    providers.add_decoration_source(Box::new(SharedHighlighter {
         scope: bracket_scope,
         tier: HighlightTier::BracketMatch,
         data: Arc::clone(&highlights.bracket),
     }));
-    providers.add_highlight_source(Box::new(SharedHighlighter {
+    providers.add_decoration_source(Box::new(SharedHighlighter {
         scope: search_scope,
         tier: HighlightTier::SearchMatch,
         data: Arc::clone(&highlights.search),
     }));
-    providers.add_highlight_source(Box::new(ScopedHighlighter {
+    providers.add_decoration_source(Box::new(ScopedHighlighter {
         tier: HighlightTier::Diagnostic,
         data: Arc::clone(&highlights.diagnostics),
     }));
-    providers.add_highlight_source(Box::new(ScopedHighlighter {
+    providers.add_decoration_source(Box::new(ScopedHighlighter {
         tier: HighlightTier::Extra,
         data: Arc::clone(&highlights.extra),
     }));
-    providers.add_inline_decoration(Box::new(InlayHintProvider {
+    providers.add_decoration_source(Box::new(InlayHintProvider {
         data: Arc::clone(&inlay_hint_map),
     }));
     // Registered after inlay hints so a diagnostic's end-of-line summary
     // sorts to the right of an inlay hint that lands at the same byte
     // offset (both anchor at end-of-line-content in the common case).
-    providers.add_inline_decoration(Box::new(InlayHintProvider {
+    providers.add_decoration_source(Box::new(InlayHintProvider {
         data: Arc::clone(&eol_text_map),
     }));
-    providers.add_virtual_line_source(Box::new(PaneVirtualLines {
+    providers.add_decoration_source(Box::new(PaneVirtualLines {
         data: Arc::clone(&virtual_line_map),
     }));
     providers.add_overlay(Box::new(MinibufCompletionOverlay {

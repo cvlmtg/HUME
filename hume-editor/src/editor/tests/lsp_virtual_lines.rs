@@ -1,7 +1,8 @@
-// Inline diagnostics VirtualLineSource: the
+// Inline diagnostics virtual lines: the
 // `update_virtual_line_providers` write side that feeds the new
-// `PaneVirtualLines` (`VirtualLineSource`) from the `decorations.virtual_lines`
-// store, over the virtual-row-aware scroll/cursor plumbing.
+// `PaneVirtualLines` (VIRTUAL_LINE-kind `DecorationSource`) from the
+// `decorations.virtual_lines` store, over the virtual-row-aware scroll/cursor
+// plumbing.
 //
 // Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s
 // bare `Pane::new`) — `PaneVirtualLines` is only registered by `build_pane`,

@@ -34,7 +34,7 @@ fn map<'a>(
     )
 }
 
-/// No `VirtualLineSource` registered — every line's block reduces to its
+/// No decoration source registered — every line's block reduces to its
 /// content rows, matching every test's virtual-line-unaware expectations
 /// exactly.
 fn no_providers() -> ProviderSet {
@@ -263,52 +263,60 @@ fn zb_then_scrolloff_trims_cursor_inward() {
 
 // ── Virtual-line-aware scrolling (synthetic provider) ───────────────
 
-/// A `VirtualLineSource` double that emits exactly one `Before(line)`
+/// A `DecorationSource` double that emits exactly one `Before(line)`
 /// virtual row when queried for `line`, and nothing for any other line.
 struct OneBeforeLine(usize);
 
-impl hume_engine::providers::VirtualLineSource for OneBeforeLine {
-    fn virtual_lines(
+impl hume_engine::providers::DecorationSource for OneBeforeLine {
+    fn kinds(&self) -> hume_engine::providers::DecorationKinds {
+        hume_engine::providers::DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(
         &self,
-        visible_lines: std::ops::Range<usize>,
-        _content_width: u16,
-        out: &mut Vec<hume_engine::providers::VirtualLine>,
+        line_idx: usize,
+        out: &mut Vec<hume_engine::providers::Decoration>,
     ) {
-        if visible_lines.contains(&self.0) {
-            out.push(hume_engine::providers::VirtualLine {
-                anchor: hume_engine::providers::VirtualLineAnchor::Before(self.0),
-                provider_id: 0,
-                text: "V".to_string(),
-                segments: Vec::new(),
-            });
+        if line_idx == self.0 {
+            out.push(hume_engine::providers::Decoration::VirtualLine(
+                hume_engine::providers::VirtualLine {
+                    anchor: hume_engine::providers::VirtualLineAnchor::Before(self.0),
+                    provider_id: 0,
+                    text: "V".to_string(),
+                    segments: Vec::new(),
+                },
+            ));
         }
     }
 }
 
 fn providers_with_before_line(line: usize) -> ProviderSet {
     let mut p = ProviderSet::new();
-    p.add_virtual_line_source(Box::new(OneBeforeLine(line)));
+    p.add_decoration_source(Box::new(OneBeforeLine(line)));
     p
 }
 
 /// Emits `self.1` distinct `Before(self.0)` rows, texted "1".."9".
 struct MultiBeforeLine(usize, usize);
 
-impl hume_engine::providers::VirtualLineSource for MultiBeforeLine {
-    fn virtual_lines(
+impl hume_engine::providers::DecorationSource for MultiBeforeLine {
+    fn kinds(&self) -> hume_engine::providers::DecorationKinds {
+        hume_engine::providers::DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(
         &self,
-        visible_lines: std::ops::Range<usize>,
-        _content_width: u16,
-        out: &mut Vec<hume_engine::providers::VirtualLine>,
+        line_idx: usize,
+        out: &mut Vec<hume_engine::providers::Decoration>,
     ) {
-        if visible_lines.contains(&self.0) {
+        if line_idx == self.0 {
             for i in 0..self.1 {
-                out.push(hume_engine::providers::VirtualLine {
-                    anchor: hume_engine::providers::VirtualLineAnchor::Before(self.0),
-                    provider_id: 0,
-                    text: (i + 1).to_string(),
-                    segments: Vec::new(),
-                });
+                out.push(hume_engine::providers::Decoration::VirtualLine(
+                    hume_engine::providers::VirtualLine {
+                        anchor: hume_engine::providers::VirtualLineAnchor::Before(self.0),
+                        provider_id: 0,
+                        text: (i + 1).to_string(),
+                        segments: Vec::new(),
+                    },
+                ));
             }
         }
     }
@@ -323,7 +331,7 @@ impl hume_engine::providers::VirtualLineSource for MultiBeforeLine {
 /// verified through `screen_pos` the same way the render pipeline would
 /// place the terminal cursor), not exact `top_line`/`top_row_offset`
 /// values — landing precision exactly at a virtual block's boundary is
-/// left untested here, deferred until a real `VirtualLineSource` exists.
+/// left untested here.
 #[test]
 fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row() {
     let r = rope("a\nb\nc\nd\n");
@@ -388,7 +396,7 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row_no_wrap() {
 fn scroll_backward_from_cursor_reaches_into_before_line_0() {
     let r = rope("a\nb\nc\n");
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(MultiBeforeLine(0, 3)));
+    providers.add_decoration_source(Box::new(MultiBeforeLine(0, 3)));
     let cursor_char = r.line_to_char(2);
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
@@ -530,16 +538,19 @@ fn horizontal_scroll_reaches_past_former_u16_column_ceiling() {
 // forward walk finds, and resolving it costs one format.
 
 /// Counts formats of `line`: `RowMap::format_line` queries every registered
-/// inline-decoration provider exactly once per format and nowhere else, so
-/// this counts `format_buffer_line` runs without depending on anything the
-/// row map reports about itself.
+/// INLINE-kind `DecorationSource` exactly once per format and nowhere else,
+/// so this counts `format_buffer_line` runs without depending on anything
+/// the row map reports about itself.
 struct CountFormatsOf(usize, std::rc::Rc<std::cell::Cell<usize>>);
 
-impl hume_engine::providers::InlineDecoration for CountFormatsOf {
+impl hume_engine::providers::DecorationSource for CountFormatsOf {
+    fn kinds(&self) -> hume_engine::providers::DecorationKinds {
+        hume_engine::providers::DecorationKinds::INLINE
+    }
     fn decorations_for_line(
         &self,
         line_idx: usize,
-        _out: &mut Vec<hume_engine::providers::InlineInsert>,
+        _out: &mut Vec<hume_engine::providers::Decoration>,
     ) {
         if line_idx == self.0 {
             self.1.set(self.1.get() + 1);
@@ -558,7 +569,7 @@ impl hume_engine::providers::InlineDecoration for CountFormatsOf {
 fn reported_screen_row_agrees_with_a_forward_walk() {
     let r = rope("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(MultiBeforeLine(3, 2)));
+    providers.add_decoration_source(Box::new(MultiBeforeLine(3, 2)));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         for height in [1u16, 2, 5, 8] {
@@ -601,7 +612,7 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
     let r = rope(&("a".repeat(5_000) + "\n"));
     let formats = std::rc::Rc::new(std::cell::Cell::new(0));
     let mut providers = ProviderSet::new();
-    providers.add_inline_decoration(Box::new(CountFormatsOf(0, std::rc::Rc::clone(&formats))));
+    providers.add_decoration_source(Box::new(CountFormatsOf(0, std::rc::Rc::clone(&formats))));
     let mut v = viewport(0, 10, 80);
     let cursor_char = 4_000;
 

@@ -670,7 +670,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
-        default_gutter_scope: ScopeId(0),
+        default_gutter_scope,
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(

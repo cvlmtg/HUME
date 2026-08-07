@@ -4,17 +4,30 @@ struct DummyHighlight {
     tier: HighlightTier,
 }
 
-impl HighlightSource for DummyHighlight {
-    fn tier(&self) -> HighlightTier {
-        self.tier
+impl DecorationSource for DummyHighlight {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::HIGHLIGHT
     }
-    fn highlights_for_line(
-        &self,
-        _: usize,
-        _: &SourceContext,
-        _: &mut Vec<(usize, usize, ScopeId)>,
-    ) {
+    fn decorations_for_line(&self, _: usize, out: &mut Vec<Decoration>) {
+        out.push(Decoration::Highlight {
+            byte_start: 0,
+            byte_end: 1,
+            scope: ScopeId(0),
+            tier: self.tier,
+        });
     }
+}
+
+/// A `VIRTUAL_LINE`-kind source, distinguishable from `DummyHighlight` by
+/// declared kind — used to prove `ProviderSet::decoration_sources` filters
+/// by kind rather than returning every registered source.
+struct DummyVirtualLine;
+
+impl DecorationSource for DummyVirtualLine {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(&self, _: usize, _: &mut Vec<Decoration>) {}
 }
 
 struct DummyGutter;
@@ -133,11 +146,11 @@ fn sync_sign_column_width_skips_non_sign_columns() {
 #[test]
 fn provider_set_ids_are_sequential_and_unique_across_types() {
     let mut set = ProviderSet::new();
-    let id0 = set.add_highlight_source(Box::new(DummyHighlight {
+    let id0 = set.add_decoration_source(Box::new(DummyHighlight {
         tier: HighlightTier::Syntax,
     }));
     let id1 = set.add_gutter_column(Box::new(DummyGutter));
-    let id2 = set.add_highlight_source(Box::new(DummyHighlight {
+    let id2 = set.add_decoration_source(Box::new(DummyHighlight {
         tier: HighlightTier::Diagnostic,
     }));
     assert_eq!(id0, 0);
@@ -146,26 +159,41 @@ fn provider_set_ids_are_sequential_and_unique_across_types() {
 }
 
 #[test]
-fn provider_set_highlight_sorted_by_tier() {
+fn decoration_sources_filters_by_kind() {
     let mut set = ProviderSet::new();
-    set.add_highlight_source(Box::new(DummyHighlight {
-        tier: HighlightTier::BracketMatch,
-    }));
-    set.add_highlight_source(Box::new(DummyHighlight {
+    set.add_decoration_source(Box::new(DummyHighlight {
         tier: HighlightTier::Syntax,
     }));
-    set.add_highlight_source(Box::new(DummyHighlight {
-        tier: HighlightTier::Diagnostic,
-    }));
+    set.add_decoration_source(Box::new(DummyVirtualLine));
 
-    let tiers: Vec<_> = set.highlights.iter().map(|(_, h)| h.tier()).collect();
+    let highlight_kinds: Vec<_> = set
+        .decoration_sources(DecorationKinds::HIGHLIGHT)
+        .map(|(id, _)| id)
+        .collect();
     assert_eq!(
-        tiers,
-        vec![
-            HighlightTier::Syntax,
-            HighlightTier::Diagnostic,
-            HighlightTier::BracketMatch,
-        ]
+        highlight_kinds,
+        vec![0],
+        "only the HIGHLIGHT-kind source (id 0) matches"
+    );
+
+    let virtual_line_kinds: Vec<_> = set
+        .decoration_sources(DecorationKinds::VIRTUAL_LINE)
+        .map(|(id, _)| id)
+        .collect();
+    assert_eq!(
+        virtual_line_kinds,
+        vec![1],
+        "only the VIRTUAL_LINE-kind source (id 1) matches"
+    );
+
+    let paint_kinds: Vec<_> = set
+        .decoration_sources(DecorationKinds::PAINT)
+        .map(|(id, _)| id)
+        .collect();
+    assert_eq!(
+        paint_kinds,
+        vec![0],
+        "PAINT includes HIGHLIGHT but not VIRTUAL_LINE"
     );
 }
 

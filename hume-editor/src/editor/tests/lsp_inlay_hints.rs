@@ -1,6 +1,6 @@
 // Inlay-hint rendering: the `update_inlay_hint_providers`
-// write side that feeds the new `InlayHintProvider` (`InlineDecoration`) from
-// the `decorations.inlay_hints` store.
+// write side that feeds the new `InlayHintProvider` (INLINE-kind
+// `DecorationSource`) from the `decorations.inlay_hints` store.
 //
 // Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s bare
 // `Pane::new`) — `InlayHintProvider` is only registered by `build_pane`, same

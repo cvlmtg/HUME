@@ -26,8 +26,8 @@ use crate::editor::error::CommandError;
 /// reached (or staying put if the document's edge came first).
 ///
 /// `content_only`: when `true`, only content rows count against `count` —
-/// virtual rows are neither a cost nor a landing spot, so a
-/// `VirtualLineSource`'s rows never swallow a `j`/`k` keystroke. When
+/// virtual rows are neither a cost nor a landing spot, so a virtual-line
+/// decoration source's rows never swallow a `j`/`k` keystroke. When
 /// `false`, every display row counts, virtual ones included — for callers
 /// whose `count` is already a display-row measurement of something else
 /// (the mouse wheel's or page-scroll's own viewport delta), which it has to

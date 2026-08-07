@@ -499,21 +499,25 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_row_offset_for_the_next_f
 #[test]
 fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block() {
     struct ThreeBeforeLine0;
-    impl hume_engine::providers::VirtualLineSource for ThreeBeforeLine0 {
-        fn virtual_lines(
+    impl hume_engine::providers::DecorationSource for ThreeBeforeLine0 {
+        fn kinds(&self) -> hume_engine::providers::DecorationKinds {
+            hume_engine::providers::DecorationKinds::VIRTUAL_LINE
+        }
+        fn decorations_for_line(
             &self,
-            visible: std::ops::Range<usize>,
-            _content_width: u16,
-            out: &mut Vec<hume_engine::providers::VirtualLine>,
+            line_idx: usize,
+            out: &mut Vec<hume_engine::providers::Decoration>,
         ) {
-            if visible.contains(&0) {
+            if line_idx == 0 {
                 for _ in 0..3 {
-                    out.push(hume_engine::providers::VirtualLine {
-                        anchor: hume_engine::providers::VirtualLineAnchor::Before(0),
-                        provider_id: 0,
-                        text: "V".to_string(),
-                        segments: Vec::new(),
-                    });
+                    out.push(hume_engine::providers::Decoration::VirtualLine(
+                        hume_engine::providers::VirtualLine {
+                            anchor: hume_engine::providers::VirtualLineAnchor::Before(0),
+                            provider_id: 0,
+                            text: "V".to_string(),
+                            segments: Vec::new(),
+                        },
+                    ));
                 }
             }
         }
@@ -523,7 +527,7 @@ fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block()
     run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
     ed.view.panes[ed.state.focused_pane_id]
         .providers
-        .add_virtual_line_source(Box::new(ThreeBeforeLine0));
+        .add_decoration_source(Box::new(ThreeBeforeLine0));
     {
         let pane = &mut ed.view.panes[ed.state.focused_pane_id];
         pane.viewport.top_line = 0;

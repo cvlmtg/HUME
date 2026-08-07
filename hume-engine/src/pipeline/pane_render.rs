@@ -20,7 +20,7 @@ const H_WINDOW_SLACK: u16 = 4;
 /// The walk *is* the layout: starting from the viewport's top row address and
 /// stepping one row at a time through `rows::RowMap` visits exactly the rows on
 /// screen, in order, whether each comes from a buffer line's wrapping or from a
-/// `VirtualLineSource`. There is no separate "which lines are visible" estimate
+/// VIRTUAL_LINE-kind `DecorationSource`. There is no separate "which lines are visible" estimate
 /// to disagree with what gets emitted, and no skip counter to run down before
 /// the first row — the starting address already accounts for a viewport parked
 /// partway into a line's block.
@@ -238,10 +238,10 @@ impl LineStyle {
              content line {last_content_line} — `RowMap::last_line`, not \
              `visible.last_line_idx` (the phantom trailing-\\n line one past it)"
         );
-        crate::style::rebuild_tier_bufs(
+        crate::style::rebuild_line_decorations(
             line_idx,
             pane_ctx.syntax,
-            &pane_ctx.pane.providers.highlights,
+            &pane_ctx.pane.providers,
             pane_ctx.rope,
             style,
         );

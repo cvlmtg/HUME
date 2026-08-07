@@ -82,7 +82,7 @@ pub(super) fn ensure_cursor_visible(
 /// to (`Pane::recall_scroll` restores a saved offset verbatim; an LSP
 /// goto-definition jump moves `top_line` without touching `top_row_offset` at
 /// all) — and the block a stale address was valid for can shrink or vanish
-/// (wrap width change, a `VirtualLineSource` removed, a resize) between the
+/// (wrap width change, a virtual-line decoration source removed, a resize) between the
 /// write and the next read. Call once per pane per frame, before
 /// `ensure_cursor_visible`, so every other write site can stay unvalidated.
 pub(super) fn clamp_viewport_top(viewport: &mut ViewportState, rm: &mut RowMap<'_>) {

@@ -2,10 +2,11 @@
 // rows the buffer text alone does not account for, and the requirement that
 // the renderer and `cursor::screen_pos` agree about both:
 //
-//   - a `VirtualLineSource`'s `Before`/`After` rows, which occupy whole screen
-//     rows (docs/GIT-DIFF.md's former "virtual-line scroll accounting" risk),
-//   - an `InlineDecoration`'s inserts, which take columns and so can push a
-//     line onto an extra wrap row.
+//   - a VIRTUAL_LINE-kind `DecorationSource`'s `Before`/`After` rows, which
+//     occupy whole screen rows (docs/GIT-DIFF.md's former "virtual-line
+//     scroll accounting" risk),
+//   - an INLINE-kind `DecorationSource`'s inserts, which take columns and so
+//     can push a line onto an extra wrap row.
 //
 // `PaneVirtualLines` can now emit `Before` too (`set-virtual-lines!`'s
 // `'anchor` — docs/GIT-DIFF.md Phase 4.5); these register synthetic
@@ -19,7 +20,7 @@ use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 use hume_engine::pane::WrapMode;
 use hume_engine::providers::{
-    InlineDecoration, InlineInsert, VirtualLine, VirtualLineAnchor, VirtualLineSource,
+    Decoration, DecorationKinds, DecorationSource, InlineInsert, VirtualLine, VirtualLineAnchor,
 };
 use hume_engine::types::ScopeId;
 use ratatui::layout::Rect;
@@ -28,20 +29,18 @@ use termina::event::{Event as TerminalEvent, MouseEvent, MouseEventKind};
 /// Emits one `Before(0)` virtual row, texted "V".
 struct OneBeforeLine;
 
-impl VirtualLineSource for OneBeforeLine {
-    fn virtual_lines(
-        &self,
-        visible_lines: std::ops::Range<usize>,
-        _content_width: u16,
-        out: &mut Vec<VirtualLine>,
-    ) {
-        if visible_lines.contains(&0) {
-            out.push(VirtualLine {
+impl DecorationSource for OneBeforeLine {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
+        if line_idx == 0 {
+            out.push(Decoration::VirtualLine(VirtualLine {
                 anchor: VirtualLineAnchor::Before(0),
                 provider_id: 0,
                 text: "V".to_string(),
                 segments: Vec::new(),
-            });
+            }));
         }
     }
 }
@@ -59,7 +58,7 @@ fn editor_with_before_line() -> Editor {
     });
     ed.view.panes[pid]
         .providers
-        .add_virtual_line_source(Box::new(OneBeforeLine));
+        .add_decoration_source(Box::new(OneBeforeLine));
     ed
 }
 
@@ -159,21 +158,19 @@ fn mouse_wheel_moves_one_row_at_a_time_through_a_before_block() {
 /// Emits `self.1` distinct `After(self.0)` rows.
 struct MultiAfterLine(usize, usize);
 
-impl VirtualLineSource for MultiAfterLine {
-    fn virtual_lines(
-        &self,
-        visible_lines: std::ops::Range<usize>,
-        _content_width: u16,
-        out: &mut Vec<VirtualLine>,
-    ) {
-        if visible_lines.contains(&self.0) {
+impl DecorationSource for MultiAfterLine {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
+        if line_idx == self.0 {
             for i in 0..self.1 {
-                out.push(VirtualLine {
+                out.push(Decoration::VirtualLine(VirtualLine {
                     anchor: VirtualLineAnchor::After(self.0),
                     provider_id: 0,
                     text: (i + 1).to_string(),
                     segments: Vec::new(),
-                });
+                }));
             }
         }
     }
@@ -204,7 +201,7 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
         });
         ed.view.panes[pid]
             .providers
-            .add_virtual_line_source(Box::new(MultiAfterLine(1, 3)));
+            .add_decoration_source(Box::new(MultiAfterLine(1, 3)));
 
         apply_visual_vertical(
             &mut ed.state,
@@ -238,14 +235,17 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
 /// already-interned scope, the same contract real providers follow.
 struct HintOnLine0(ScopeId);
 
-impl InlineDecoration for HintOnLine0 {
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<InlineInsert>) {
+impl DecorationSource for HintOnLine0 {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::INLINE
+    }
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
         if line_idx == 0 {
-            out.push(InlineInsert {
+            out.push(Decoration::Inline(InlineInsert {
                 byte_offset: 0,
                 text: "HHHHHH".to_string(),
                 scope: self.0,
-            });
+            }));
         }
     }
 }
@@ -271,7 +271,7 @@ fn screen_pos_counts_an_inline_hints_extra_wrap_row() {
     let scope = ed.view.registry.intern("ui.virtual_text");
     ed.view.panes[pid]
         .providers
-        .add_inline_decoration(Box::new(HintOnLine0(scope)));
+        .add_decoration_source(Box::new(HintOnLine0(scope)));
 
     // Height 4 leaves 3 content rows once the statusline takes one.
     let rendered = ed.render_to_buf(Rect::new(0, 0, 10, 4));

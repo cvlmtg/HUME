@@ -819,9 +819,9 @@ fn push_priority_highlight_lines(
 
 /// Flattens overlapping same-line `(start, end, priority, scope)` spans
 /// (already split per-line by [`push_priority_highlight_lines`]) into the
-/// sorted, non-overlapping sequence the engine's `HighlightSource` contract
-/// requires — a single `HighlightSource`'s own output must not overlap
-/// itself (cross-tier layering, e.g. diagnostics vs. search matches, is
+/// sorted, non-overlapping sequence the engine's `Decoration::Highlight`
+/// contract requires — a single source's own output must not overlap itself
+/// (cross-tier layering, e.g. diagnostics vs. search matches, is
 /// handled automatically by the engine's per-tier `HighlightStack`; this
 /// only resolves overlaps *within* one tier, e.g. two diagnostics on the
 /// same line). Lower `priority` wins overlapping regions (ties keep

@@ -4,7 +4,7 @@ use std::rc::Rc;
 use ropey::Rope;
 
 use super::*;
-use crate::providers::{InlineDecoration, VirtualLineSource};
+use crate::providers::DecorationSource;
 use crate::types::ScopeId;
 
 // ---------------------------------------------------------------------------
@@ -42,30 +42,51 @@ impl FixedAnchor {
     }
 }
 
-impl VirtualLineSource for FixedAnchor {
-    fn virtual_lines(&self, visible: Range<usize>, _width: u16, out: &mut Vec<VirtualLine>) {
+impl DecorationSource for FixedAnchor {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
         let line = match self.anchor {
             VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
         };
-        if visible.contains(&line) {
+        if line_idx == line {
             for _ in 0..self.count {
-                out.push(VirtualLine {
+                out.push(Decoration::VirtualLine(VirtualLine {
                     anchor: self.anchor,
                     provider_id: 0,
                     text: self.text.to_string(),
                     segments: Vec::new(),
-                });
+                }));
             }
         }
     }
 }
 
-/// A `VirtualLineSource` that never emits anything — registered only to consume
-/// a `ProviderId` so the next provider's real id is not 0.
+/// A VIRTUAL_LINE-kind source that never emits anything — registered only to
+/// consume a `ProviderId` so the next provider's real id is not 0.
 struct NoRows;
 
-impl VirtualLineSource for NoRows {
-    fn virtual_lines(&self, _visible: Range<usize>, _width: u16, _out: &mut Vec<VirtualLine>) {}
+impl DecorationSource for NoRows {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(&self, _line_idx: usize, _out: &mut Vec<Decoration>) {}
+}
+
+/// A LINE_BG-kind source that counts every `decorations_for_line` call —
+/// used to prove the layout stage (`block`/`format_line`) never queries a
+/// kind it has no use for, even when the same line is both counted and
+/// formatted.
+struct CountingLineBg(Rc<Cell<usize>>);
+
+impl DecorationSource for CountingLineBg {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::LINE_BG
+    }
+    fn decorations_for_line(&self, _line_idx: usize, _out: &mut Vec<Decoration>) {
+        self.0.set(self.0.get() + 1);
+    }
 }
 
 /// One inline insert on `line`, counting how often it is queried — the only
@@ -77,15 +98,18 @@ struct CountingInsert {
     calls: Rc<Cell<usize>>,
 }
 
-impl InlineDecoration for CountingInsert {
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<InlineInsert>) {
+impl DecorationSource for CountingInsert {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::INLINE
+    }
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
         self.calls.set(self.calls.get() + 1);
         if line_idx == self.line {
-            out.push(InlineInsert {
+            out.push(Decoration::Inline(InlineInsert {
                 byte_offset: self.byte_offset,
                 text: self.text.to_string(),
                 scope: ScopeId(0),
-            });
+            }));
         }
     }
 }
@@ -97,7 +121,7 @@ fn with_counting_insert(
 ) -> (ProviderSet, Rc<Cell<usize>>) {
     let calls = Rc::new(Cell::new(0));
     let mut providers = ProviderSet::new();
-    providers.add_inline_decoration(Box::new(CountingInsert {
+    providers.add_decoration_source(Box::new(CountingInsert {
         line,
         byte_offset,
         text,
@@ -170,8 +194,8 @@ fn block_counts_before_and_after_virtual_rows() {
     // two separate providers, on top of its own single unwrapped content row.
     let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(5), 2)));
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(5), 1)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(5), 2)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(5), 1)));
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
@@ -191,12 +215,32 @@ fn block_counts_before_and_after_virtual_rows() {
 fn block_ignores_virtual_rows_anchored_to_other_lines() {
     let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(2), 3)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(2), 3)));
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(rm.block(5).before, 0);
     assert_eq!(rm.block(5).after, 0);
+}
+
+#[test]
+fn layout_stage_never_queries_a_paint_only_kind() {
+    // block() drives both the VIRTUAL_LINE query and, under wrapping,
+    // format_line()'s INLINE query — a LINE_BG-kind source (paint-only)
+    // must be invisible to both.
+    let calls = Rc::new(Cell::new(0));
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(CountingLineBg(Rc::clone(&calls))));
+    let rope = Rope::from_str("abcdef\n");
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+
+    rm.block(0);
+    assert_eq!(
+        calls.get(),
+        0,
+        "block() must never query a LINE_BG-only source"
+    );
 }
 
 #[test]
@@ -257,8 +301,8 @@ fn no_wrap_block_counts_without_running_the_formatter() {
 /// a 5-row block whose every row kind is hand-known.
 fn mixed_block_providers() -> ProviderSet {
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 2)));
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(0), 1)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 2)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(0), 1)));
     providers
 }
 
@@ -327,7 +371,7 @@ fn clamp_reaches_the_documents_very_last_row() {
     // documented way to reach it (RowMap has no dedicated accessor).
     let rope = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(2), 1)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(2), 1)));
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
@@ -355,8 +399,8 @@ fn clamp_reaches_the_documents_very_last_row() {
 fn three_line_doc() -> (Rope, ProviderSet, Vec<RowPos>) {
     let rope = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(1), 2)));
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(2), 1)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(1), 2)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(2), 1)));
     let expected = vec![
         RowPos::new(0, 0),
         RowPos::new(1, 0),
@@ -631,7 +675,7 @@ fn locate_offsets_the_row_by_the_lines_before_block() {
     // its block row shifts from 1 to 3.
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 2)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 2)));
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
@@ -765,8 +809,8 @@ fn char_at_on_a_virtual_row_clamps_to_the_lines_own_content() {
     // against the nearest content row of the line it is anchored to.
     let rope = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(1), 1)));
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(2), 1)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(1), 1)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(2), 1)));
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
@@ -803,7 +847,7 @@ fn content_row_char_bounds_scopes_to_one_wrap_row() {
 fn content_row_char_bounds_rejects_a_virtual_row() {
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 1)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 1)));
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
@@ -854,8 +898,8 @@ fn render_row_segments_a_virtual_rows_text() {
     let mut providers = ProviderSet::new();
     // Consume id 0 so the emitting provider's real id is 1 — it self-reports
     // 0, which must be overwritten.
-    providers.add_virtual_line_source(Box::new(NoRows));
-    providers.add_virtual_line_source(Box::new(FixedAnchor {
+    providers.add_decoration_source(Box::new(NoRows));
+    providers.add_decoration_source(Box::new(FixedAnchor {
         anchor: VirtualLineAnchor::Before(0),
         count: 1,
         text: "deleted line",
@@ -918,7 +962,7 @@ fn render_row_does_not_reformat_a_line_because_of_its_virtual_rows() {
     // state that follows it in the same block.
     let rope = Rope::from_str("abcdef\n");
     let (mut providers, calls) = with_counting_insert(0, 0, "hint");
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 1)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 1)));
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
 
@@ -940,7 +984,7 @@ fn render_row_yields_correct_content_rows_after_a_virtual_row() {
     // it in the same block: they must still come back correct.
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(FixedAnchor {
+    providers.add_decoration_source(Box::new(FixedAnchor {
         anchor: VirtualLineAnchor::Before(0),
         count: 1,
         text: "V",
@@ -1030,7 +1074,7 @@ fn a_column_query_after_an_offset_query_reformats() {
 fn locate_row_answers_without_formatting_in_no_wrap() {
     let rope = long_unwrapped_line();
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 2)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 2)));
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
@@ -1059,7 +1103,7 @@ fn locate_row_agrees_with_locate_in_both_wrap_modes() {
     // multi-byte grapheme, and the phantom line past the last `\n`.
     let rope = Rope::from_str("a\n\nébc\n");
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(1), 2)));
+    providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(1), 2)));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 2 }] {
         let mut s = FormatScratch::new();

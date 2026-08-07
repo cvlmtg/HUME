@@ -25,7 +25,7 @@ fn map<'a>(
     RowMap::new(rope, wrap, 4, ws(), providers, content_width, scratch)
 }
 
-/// No `VirtualLineSource` registered — every line's block reduces to its
+/// No decoration source registered — every line's block reduces to its
 /// content rows, matching every test below's virtual-line-unaware expectations
 /// exactly.
 fn no_providers() -> ProviderSet {
@@ -211,31 +211,35 @@ fn wrap_click_below_last_line_clamped() {
 
 // ── Virtual-line-aware row counting (synthetic provider) ────────────
 
-/// A `VirtualLineSource` double that emits exactly one `Before(line)`
+/// A `DecorationSource` double that emits exactly one `Before(line)`
 /// virtual row when queried for `line`, and nothing for any other line.
 struct OneBeforeLine(usize);
 
-impl hume_engine::providers::VirtualLineSource for OneBeforeLine {
-    fn virtual_lines(
+impl hume_engine::providers::DecorationSource for OneBeforeLine {
+    fn kinds(&self) -> hume_engine::providers::DecorationKinds {
+        hume_engine::providers::DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(
         &self,
-        visible_lines: std::ops::Range<usize>,
-        _content_width: u16,
-        out: &mut Vec<hume_engine::providers::VirtualLine>,
+        line_idx: usize,
+        out: &mut Vec<hume_engine::providers::Decoration>,
     ) {
-        if visible_lines.contains(&self.0) {
-            out.push(hume_engine::providers::VirtualLine {
-                anchor: hume_engine::providers::VirtualLineAnchor::Before(self.0),
-                provider_id: 0,
-                text: "V".to_string(),
-                segments: Vec::new(),
-            });
+        if line_idx == self.0 {
+            out.push(hume_engine::providers::Decoration::VirtualLine(
+                hume_engine::providers::VirtualLine {
+                    anchor: hume_engine::providers::VirtualLineAnchor::Before(self.0),
+                    provider_id: 0,
+                    text: "V".to_string(),
+                    segments: Vec::new(),
+                },
+            ));
         }
     }
 }
 
 fn providers_with_before_line(line: usize) -> ProviderSet {
     let mut p = ProviderSet::new();
-    p.add_virtual_line_source(Box::new(OneBeforeLine(line)));
+    p.add_decoration_source(Box::new(OneBeforeLine(line)));
     p
 }
 
@@ -389,25 +393,29 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row_no_wrap() {
 
 // ── Buffer-edge virtual blocks: Before(0) and After(last_line) ──────────
 
-/// A `VirtualLineSource` double that emits `self.1` distinct `After(line)`
+/// A `DecorationSource` double that emits `self.1` distinct `After(line)`
 /// rows, texted "1".."9", when queried for `line`.
 struct MultiAfterLine(usize, usize);
 
-impl hume_engine::providers::VirtualLineSource for MultiAfterLine {
-    fn virtual_lines(
+impl hume_engine::providers::DecorationSource for MultiAfterLine {
+    fn kinds(&self) -> hume_engine::providers::DecorationKinds {
+        hume_engine::providers::DecorationKinds::VIRTUAL_LINE
+    }
+    fn decorations_for_line(
         &self,
-        visible_lines: std::ops::Range<usize>,
-        _content_width: u16,
-        out: &mut Vec<hume_engine::providers::VirtualLine>,
+        line_idx: usize,
+        out: &mut Vec<hume_engine::providers::Decoration>,
     ) {
-        if visible_lines.contains(&self.0) {
+        if line_idx == self.0 {
             for i in 0..self.1 {
-                out.push(hume_engine::providers::VirtualLine {
-                    anchor: hume_engine::providers::VirtualLineAnchor::After(self.0),
-                    provider_id: 0,
-                    text: (i + 1).to_string(),
-                    segments: Vec::new(),
-                });
+                out.push(hume_engine::providers::Decoration::VirtualLine(
+                    hume_engine::providers::VirtualLine {
+                        anchor: hume_engine::providers::VirtualLineAnchor::After(self.0),
+                        provider_id: 0,
+                        text: (i + 1).to_string(),
+                        segments: Vec::new(),
+                    },
+                ));
             }
         }
     }
@@ -422,7 +430,7 @@ fn screen_pos_accounts_for_before_line_0() {
     let v = vp(0, 80, 10);
     let cursor_char = 0; // start of line 0
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(OneBeforeLine(0)));
+    providers.add_decoration_source(Box::new(OneBeforeLine(0)));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let mut s = FormatScratch::new();
@@ -448,7 +456,7 @@ fn screen_pos_unaffected_by_after_on_cursors_own_last_line() {
     let rope = Rope::from_str("a\nb\n");
     let cursor_char = rope.line_to_char(1); // start of the last real line
     let mut providers = ProviderSet::new();
-    providers.add_virtual_line_source(Box::new(MultiAfterLine(1, 3)));
+    providers.add_decoration_source(Box::new(MultiAfterLine(1, 3)));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let v = vp(0, 80, 10);

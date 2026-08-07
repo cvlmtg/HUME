@@ -2,7 +2,7 @@
 //!
 //! A document's rows come from two independent sources: a buffer line's own
 //! content rows (one per wrap row — exactly one when wrapping is off), and
-//! virtual rows contributed by [`VirtualLineSource`](crate::providers::VirtualLineSource)
+//! virtual rows contributed by [`DecorationSource`](crate::providers::DecorationSource)
 //! providers, anchored `Before` or `After` a line. Rendering, scrolling,
 //! cursor placement, mouse mapping and visual movement all need the same
 //! flattened view of those two sources, and any two implementations of that
@@ -29,7 +29,9 @@ use crate::format::{
     FormatBound, FormatScratch, format_buffer_line, push_arena_text, unicode_display_width,
 };
 use crate::pane::{WhitespaceConfig, WrapMode};
-use crate::providers::{InlineInsert, ProviderSet, VirtualLine, VirtualLineAnchor};
+use crate::providers::{
+    Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLine, VirtualLineAnchor,
+};
 use crate::types::{CellContent, DisplayRow, Grapheme};
 
 // ---------------------------------------------------------------------------
@@ -148,6 +150,11 @@ pub struct RowMap<'a> {
     /// Inline inserts for the line currently being formatted. Reused across
     /// the lines one map visits.
     inline_inserts: Vec<InlineInsert>,
+    /// Scratch for one `DecorationSource::decorations_for_line` call at a
+    /// time — drained into `virtual_lines`/`inline_inserts` immediately
+    /// after, so this stays empty between calls. Reused across providers and
+    /// lines to avoid a per-call allocation.
+    decorations: Vec<Decoration>,
     cached: Option<CachedLine>,
 }
 
@@ -184,6 +191,7 @@ impl<'a> RowMap<'a> {
             h_window: None,
             scratch,
             inline_inserts: Vec::new(),
+            decorations: Vec::new(),
             cached: None,
         }
     }
@@ -238,13 +246,21 @@ impl<'a> RowMap<'a> {
             None => Vec::new(),
         };
 
-        for (id, provider) in &self.providers.virtual_lines {
+        self.decorations.clear();
+        for (id, provider) in self.providers.decoration_sources(DecorationKinds::VIRTUAL_LINE) {
             let start = virtual_lines.len();
-            provider.virtual_lines(line..line + 1, self.content_width, &mut virtual_lines);
+            provider.decorations_for_line(line, &mut self.decorations);
+            // A provider that declared VIRTUAL_LINE but emitted something
+            // else is a provider bug — ignored, not a panic.
+            for d in self.decorations.drain(..) {
+                if let Decoration::VirtualLine(vl) = d {
+                    virtual_lines.push(vl);
+                }
+            }
             // Never trust a provider's self-reported id: it could name another
             // provider's rows, which the gutter would then attribute wrongly.
             for vl in &mut virtual_lines[start..] {
-                vl.provider_id = *id;
+                vl.provider_id = id;
             }
         }
         // A row anchored outside the queried line is a provider bug. Drop it
@@ -808,9 +824,17 @@ impl<'a> RowMap<'a> {
     /// pushes a line past the wrap column.
     fn format_line(&mut self, line: usize, bound: FormatBound) {
         self.inline_inserts.clear();
-        for (_, provider) in &self.providers.inline_decorations {
-            provider.decorations_for_line(line, &mut self.inline_inserts);
+        self.decorations.clear();
+        for (_, provider) in self.providers.decoration_sources(DecorationKinds::INLINE) {
+            provider.decorations_for_line(line, &mut self.decorations);
         }
+        // A provider that declared INLINE but emitted something else is a
+        // provider bug — ignored, not a panic.
+        self.inline_inserts
+            .extend(self.decorations.drain(..).filter_map(|d| match d {
+                Decoration::Inline(ins) => Some(ins),
+                _ => None,
+            }));
         self.inline_inserts.sort_by_key(|i| i.byte_offset);
 
         self.scratch.clear_line_bufs();

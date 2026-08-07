@@ -1,12 +1,13 @@
 use super::*;
+use crate::providers::ProviderSet;
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, Selection};
 use std::collections::HashMap;
 
 /// Test driver mirroring the live pipeline's Style-stage orchestration
 /// (`pipeline::pane_render::render_pane`'s row walk): primary-based
-/// `is_head_line`, `rebuild_tier_bufs` once per buffer line, `style_row` per
-/// display row.
+/// `is_head_line`, `rebuild_line_decorations` once per buffer line,
+/// `style_row` per display row.
 /// No highlight providers or tree — these tests cover cursor/selection styling only.
 fn apply_styles(
     rows: &[DisplayRow],
@@ -28,7 +29,7 @@ fn apply_styles(
         };
         if current_line != Some(line_idx) {
             current_line = Some(line_idx);
-            rebuild_tier_bufs(line_idx, None, &[], rope, scratch);
+            rebuild_line_decorations(line_idx, None, &ProviderSet::new(), rope, scratch);
         }
         let line_start_char = rope.line_to_char(line_idx);
         let line_end_char = rope.line_to_char(line_idx + 1);

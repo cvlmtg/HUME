@@ -1,6 +1,7 @@
 use std::any::Any;
 use std::borrow::Cow;
-use std::ops::Range;
+
+use bitflags::bitflags;
 
 use crate::builtins::line_number::{LineNumberColumn, LineNumberStyle};
 use crate::builtins::sign_column::SignColumn;
@@ -14,25 +15,13 @@ use crate::types::{EditorMode, RowKind, Scope, ScopeId};
 pub type ProviderId = u16;
 
 // ---------------------------------------------------------------------------
-// Source context
-// ---------------------------------------------------------------------------
-
-/// Context passed to providers that need to query the buffer or syntax tree.
-pub struct SourceContext<'a> {
-    pub rope: &'a ropey::Rope,
-    /// Absolute byte offset of `line_idx`'s start in the file.
-    /// Providers that receive byte ranges from external tools (e.g. tree-sitter)
-    /// use this to convert to line-relative offsets.
-    pub line_start_byte: usize,
-}
-
-// ---------------------------------------------------------------------------
 // Highlight tier
 // ---------------------------------------------------------------------------
 
-/// Priority tier of a highlight source in the style cascade.
+/// Priority tier of a highlight span in the style cascade.
 /// Higher = wins over lower. Style stage processes tiers lowest-first so later
-/// calls' `layer()` results take precedence.
+/// calls' `layer()` results take precedence. Data on `Decoration::Highlight`,
+/// not a per-provider property — one source can emit spans at different tiers.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum HighlightTier {
     Syntax = 0,
@@ -45,42 +34,18 @@ pub enum HighlightTier {
 }
 
 // ---------------------------------------------------------------------------
-// Highlight source
-// ---------------------------------------------------------------------------
-
-/// A source of highlight spans for buffer lines.
-///
-/// Called once per visible buffer line. The caller clears `out` before the
-/// first provider for each line; providers only append. Each span is
-/// `(byte_start, byte_end, scope)` with byte offsets *relative to the line
-/// start*. Output must be sorted by `byte_start` and non-overlapping.
-pub trait HighlightSource {
-    fn tier(&self) -> HighlightTier;
-
-    /// Append highlight spans for `line_idx` to `out`.
-    ///
-    /// Each span is `(byte_start, byte_end, scope_id)` with byte offsets
-    /// *relative to the line start*. Output must be sorted by `byte_start`
-    /// and non-overlapping. Scopes must have been interned via
-    /// [`crate::theme::ScopeRegistry`] before the first render.
-    fn highlights_for_line(
-        &self,
-        line_idx: usize,
-        ctx: &SourceContext,
-        out: &mut Vec<(usize, usize, ScopeId)>,
-    );
-}
-
-// ---------------------------------------------------------------------------
 // Syntax spans
 // ---------------------------------------------------------------------------
 
 /// Per-buffer source of syntax highlight spans, implemented outside the
-/// engine (hume-treesitter's `Syntax`). Same span contract as
-/// `HighlightSource::highlights_for_line`: `(byte_start, byte_end, scope_id)`
-/// relative to the line start, sorted, non-overlapping, appended to `out`.
-/// The engine consumes only these spans — it has no knowledge of parse
-/// trees, grammars, or tree-sitter.
+/// engine (hume-treesitter's `Syntax`). Same span shape as
+/// `Decoration::Highlight`: `(byte_start, byte_end, scope_id)` relative to
+/// the line start, sorted, non-overlapping, appended to `out`. Kept as its
+/// own trait rather than folded into `DecorationSource`: parse state is
+/// per-buffer while `DecorationSource` providers are per-pane, and this is
+/// the dependency-inversion seam to `hume-treesitter` — same span shape,
+/// different lifecycle. The engine consumes only these spans — it has no
+/// knowledge of parse trees, grammars, or tree-sitter.
 pub trait SyntaxSpans {
     fn spans_for_line(
         &self,
@@ -96,11 +61,9 @@ pub trait SyntaxSpans {
 
 /// Context passed to `GutterColumn::render_row` for buffer/syntax access.
 ///
-/// A dedicated struct rather than reusing `SourceContext`: that one carries
-/// `line_start_byte`, a per-line-lookup most gutters don't need, and gutter
-/// rendering (~100 calls/frame) should stay cheap to build. Providers that
-/// need e.g. `line_to_byte` call it themselves — this struct does not
-/// precompute per-line data.
+/// Gutter rendering (~100 calls/frame) should stay cheap to build, so this
+/// struct does not precompute per-line data — providers that need e.g.
+/// `line_to_byte` call it themselves.
 pub struct GutterRowCtx<'a> {
     pub mode: EditorMode,
     pub primary_head_line: usize,
@@ -138,9 +101,9 @@ pub struct GutterCell {
 /// between `builtins::line_number`, `builtins::sign_column`, and
 /// `EngineView`'s own interned fallback for `compose_gutter`. Callers intern
 /// this once (at pane/view construction) and carry the resulting `ScopeId` —
-/// same intern-at-construction contract as `HighlightSource`/`InlineInsert`,
-/// so the per-cell hot path in `compose_gutter` never falls back to a
-/// by-name lookup.
+/// same intern-at-construction contract as `DecorationSource`, so the
+/// per-cell hot path in `compose_gutter` never falls back to a by-name
+/// lookup.
 pub(crate) const DEFAULT_GUTTER_SCOPE: Scope = Scope("ui.linenr");
 
 /// What a gutter cell displays.
@@ -180,7 +143,7 @@ impl GutterCell {
 }
 
 // ---------------------------------------------------------------------------
-// Virtual line source
+// Virtual line
 // ---------------------------------------------------------------------------
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -218,33 +181,18 @@ pub struct VirtualLine {
     /// scope its graphemes should resolve to. Bytes not covered by any
     /// segment get no scope (the render stage falls back to
     /// `ui.virtual_text`). Scopes must have been interned via `ScopeRegistry`
-    /// before the first render (same contract as `HighlightSource`).
+    /// before the first render (same contract as every `DecorationSource`).
     ///
-    /// Same span shape as `HighlightSource`/`SyntaxSpans`: sorted by
+    /// Same span shape as `Decoration::Highlight`/`SyntaxSpans`: sorted by
     /// `byte_start`, non-overlapping. Providers are plugin code, so the
     /// engine does not trust this — it re-sorts at intake (`RowMap::block`)
     /// before resolving scopes with a monotonic cursor, the same posture
-    /// `rebuild_tier_bufs` takes for highlight spans.
+    /// `style::rebuild_line_decorations` takes for highlight spans.
     pub segments: Vec<(usize, usize, ScopeId)>,
 }
 
-/// Produces virtual display rows (inline diagnostics, code lenses, git blame).
-///
-/// Implementations must be cheap per-line lookups into their own state (same
-/// contract as `SignSource`): `rows::RowMap` queries a single line whenever it
-/// needs that line's block shape, which is scroll, cursor and movement math as
-/// well as render — so this can run far more often than once per frame.
-pub trait VirtualLineSource {
-    fn virtual_lines(
-        &self,
-        visible_lines: Range<usize>,
-        content_width: u16,
-        out: &mut Vec<VirtualLine>,
-    );
-}
-
 // ---------------------------------------------------------------------------
-// Inline decoration
+// Inline insert
 // ---------------------------------------------------------------------------
 
 /// An inline decoration injected at a specific byte offset within a buffer
@@ -252,10 +200,10 @@ pub trait VirtualLineSource {
 /// ghost text, and inline type annotations.
 ///
 /// `scope` is an already-interned [`ScopeId`], not a [`Scope`] name: providers
-/// intern their scopes at construction time (same contract as
-/// [`HighlightSource`] — see its `highlights_for_line` doc), since the
-/// per-grapheme hot path in `format_buffer_line`/`style_row` must stay
-/// index-based, never touching the raw scope-name map.
+/// intern their scopes at construction time (same contract as every
+/// `DecorationSource`), since the per-grapheme hot path in
+/// `format_buffer_line`/`style_row` must stay index-based, never touching the
+/// raw scope-name map.
 #[derive(Clone, Debug)]
 pub struct InlineInsert {
     /// Byte offset within the buffer line at which to inject the text.
@@ -264,9 +212,68 @@ pub struct InlineInsert {
     pub scope: ScopeId,
 }
 
-pub trait InlineDecoration {
-    /// Append inline inserts for `line_idx`. Caller sorts by `byte_offset`.
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<InlineInsert>);
+// ---------------------------------------------------------------------------
+// Decoration source
+// ---------------------------------------------------------------------------
+
+/// One piece of per-line decoration data a [`DecorationSource`] can produce.
+/// Replaces three previously-separate trait outputs (highlight spans, virtual
+/// lines, inline inserts) with a single query result, so a provider that
+/// wants to emit more than one kind (or a kind that varies by line) no longer
+/// needs to implement more than one trait.
+pub enum Decoration {
+    /// `(byte_start, byte_end)` relative to the line start, plus the tier
+    /// this span layers at — tier is data here, not a per-provider property,
+    /// so one source can emit spans at different tiers.
+    Highlight {
+        byte_start: usize,
+        byte_end: usize,
+        scope: ScopeId,
+        tier: HighlightTier,
+    },
+    VirtualLine(VirtualLine),
+    Inline(InlineInsert),
+    /// Full-row background tint for the queried line.
+    LineBg(ScopeId),
+}
+
+bitflags! {
+    /// Which [`Decoration`] kinds a [`DecorationSource`] can produce. Cached
+    /// at registration (`ProviderSet::add_decoration_source`) so a querying
+    /// stage skips providers whose output it would discard, without calling
+    /// `kinds()` again per line.
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    pub struct DecorationKinds: u8 {
+        const HIGHLIGHT    = 0b0001;
+        const VIRTUAL_LINE = 0b0010;
+        const INLINE       = 0b0100;
+        const LINE_BG      = 0b1000;
+    }
+}
+
+impl DecorationKinds {
+    /// Kinds the layout stage (`rows::RowMap`) queries — they affect row
+    /// count/wrapping, so they must be known before paint.
+    pub const LAYOUT: Self = Self::VIRTUAL_LINE.union(Self::INLINE);
+    /// Kinds the paint stage queries — render-only, never consulted by layout.
+    pub const PAINT: Self = Self::HIGHLIGHT.union(Self::LINE_BG);
+}
+
+/// A source of per-line decorations (highlight spans, virtual lines, inline
+/// inserts, line backgrounds). Called once per queried buffer line; the
+/// caller clears `out` before the first provider for each line (or per
+/// provider, when order matters — see call sites), providers only append.
+///
+/// Implementations must be cheap per-line lookups into their own state:
+/// `rows::RowMap` queries a single line whenever it needs that line's block
+/// shape, which is scroll, cursor, and movement math as well as render — so
+/// this can run far more often than once per frame.
+pub trait DecorationSource {
+    /// The [`Decoration`] kinds this source can produce — fixed for the
+    /// source's lifetime, cached at registration.
+    fn kinds(&self) -> DecorationKinds;
+
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>);
 }
 
 // ---------------------------------------------------------------------------
@@ -351,10 +358,8 @@ pub trait BottomBandProvider {
 /// gutter column rendering which provider owns a row).
 #[derive(Default)]
 pub struct ProviderSet {
-    pub(crate) highlights: Vec<(ProviderId, Box<dyn HighlightSource>)>,
+    pub(crate) decorations: Vec<(ProviderId, DecorationKinds, Box<dyn DecorationSource>)>,
     pub(crate) gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)>,
-    pub(crate) virtual_lines: Vec<(ProviderId, Box<dyn VirtualLineSource>)>,
-    pub(crate) inline_decorations: Vec<(ProviderId, Box<dyn InlineDecoration>)>,
     pub(crate) overlays: Vec<(ProviderId, Box<dyn OverlayProvider>)>,
     next_id: ProviderId,
 }
@@ -371,31 +376,16 @@ impl ProviderSet {
         id
     }
 
-    pub fn add_highlight_source(&mut self, p: Box<dyn HighlightSource>) -> ProviderId {
+    pub fn add_decoration_source(&mut self, p: Box<dyn DecorationSource>) -> ProviderId {
         let id = self.alloc_id();
-        self.highlights.push((id, p));
-        // Stable sort: within a tier, registration order is preserved —
-        // later `add_highlight_source` calls layer on top of earlier ones
-        // at the same tier. Deterministic layering relies on this.
-        self.highlights.sort_by_key(|(_, h)| h.tier());
+        let kinds = p.kinds();
+        self.decorations.push((id, kinds, p));
         id
     }
 
     pub fn add_gutter_column(&mut self, p: Box<dyn GutterColumn>) -> ProviderId {
         let id = self.alloc_id();
         self.gutter_columns.push((id, p));
-        id
-    }
-
-    pub fn add_virtual_line_source(&mut self, p: Box<dyn VirtualLineSource>) -> ProviderId {
-        let id = self.alloc_id();
-        self.virtual_lines.push((id, p));
-        id
-    }
-
-    pub fn add_inline_decoration(&mut self, p: Box<dyn InlineDecoration>) -> ProviderId {
-        let id = self.alloc_id();
-        self.inline_decorations.push((id, p));
         id
     }
 
@@ -407,6 +397,21 @@ impl ProviderSet {
 
     pub fn gutter_columns(&self) -> impl Iterator<Item = &dyn GutterColumn> {
         self.gutter_columns.iter().map(|(_, c)| c.as_ref())
+    }
+
+    /// Decoration sources whose declared [`DecorationKinds`] intersect
+    /// `want` — the kind-routing chokepoint: the layout stage
+    /// (`rows::RowMap`) queries `DecorationKinds::LAYOUT`, the paint stage
+    /// (`style::rebuild_line_decorations`) queries `DecorationKinds::PAINT`,
+    /// so neither stage pays for a provider whose output it would discard.
+    pub(crate) fn decoration_sources(
+        &self,
+        want: DecorationKinds,
+    ) -> impl Iterator<Item = (ProviderId, &dyn DecorationSource)> {
+        self.decorations
+            .iter()
+            .filter(move |(_, kinds, _)| kinds.intersects(want))
+            .map(|(id, _, p)| (*id, p.as_ref()))
     }
 
     /// Push the resolved line-number style into the `LineNumberColumn`, if present.

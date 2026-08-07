@@ -1,5 +1,5 @@
 use super::StyleScratch;
-use crate::providers::{HighlightSource, HighlightTier, ProviderId, SourceContext, SyntaxSpans};
+use crate::providers::{Decoration, DecorationKinds, HighlightTier, ProviderSet, SyntaxSpans};
 use crate::theme::Theme;
 use crate::types::{ResolvedStyle, ScopeId};
 
@@ -10,7 +10,7 @@ use crate::types::{ResolvedStyle, ScopeId};
 ///
 /// `pub(crate)`: also used by `rows::segment_virtual_row` to resolve
 /// per-grapheme scopes for virtual lines, the same interval shape as
-/// `HighlightSource`/`SyntaxSpans`.
+/// `Decoration::Highlight`/`SyntaxSpans`.
 pub(crate) struct IntervalCursor<'a> {
     intervals: &'a [(usize, usize, ScopeId)],
     pos: usize,
@@ -114,42 +114,51 @@ impl TierBufs {
     }
 }
 
-// ── rebuild_tier_bufs ─────────────────────────────────────────────────────────
+// ── rebuild_line_decorations ─────────────────────────────────────────────────
 
-/// Gather highlight intervals from all providers for one buffer line.
+/// Gather highlight intervals from the syntax source and every `PAINT`-kind
+/// `DecorationSource` for one buffer line.
 ///
 /// Must be called once per buffer line before calling [`super::style_row`] for
-/// that line's display rows. Clears and re-fills `tier_bufs` and `raw_highlights`.
+/// that line's display rows. Clears and re-fills `tier_bufs`.
 ///
 /// `syntax` is the buffer's syntax span source (if a language is
 /// configured). Its spans for this line are merged into the `Syntax`
 /// tier bucket before any per-pane provider-based sources.
-pub(crate) fn rebuild_tier_bufs(
+pub(crate) fn rebuild_line_decorations(
     line_idx: usize,
     syntax: Option<&dyn SyntaxSpans>,
-    providers: &[(ProviderId, Box<dyn HighlightSource>)],
+    providers: &ProviderSet,
     rope: &ropey::Rope,
     scratch: &mut StyleScratch,
 ) {
     scratch.tier_bufs.clear();
-    scratch.highlights.clear();
+    scratch.syntax_spans.clear();
     if let Some(syntax) = syntax {
-        syntax.spans_for_line(line_idx, rope, &mut scratch.highlights);
-        for &interval in scratch.highlights.iter() {
+        syntax.spans_for_line(line_idx, rope, &mut scratch.syntax_spans);
+        for &interval in scratch.syntax_spans.iter() {
             scratch.tier_bufs.push(HighlightTier::Syntax, interval);
         }
-        scratch.highlights.clear();
+        scratch.syntax_spans.clear();
     }
-    let ctx = SourceContext {
-        rope,
-        line_start_byte: rope.line_to_byte(line_idx),
-    };
-    for (_, provider) in providers {
-        provider.highlights_for_line(line_idx, &ctx, &mut scratch.highlights);
-        for &interval in scratch.highlights.iter() {
-            scratch.tier_bufs.push(provider.tier(), interval);
+    scratch.decorations.clear();
+    for (_, provider) in providers.decoration_sources(DecorationKinds::PAINT) {
+        provider.decorations_for_line(line_idx, &mut scratch.decorations);
+    }
+    for d in scratch.decorations.drain(..) {
+        if let Decoration::Highlight {
+            byte_start,
+            byte_end,
+            scope,
+            tier,
+        } = d
+        {
+            scratch.tier_bufs.push(tier, (byte_start, byte_end, scope));
         }
-        scratch.highlights.clear();
+        // Every other PAINT-kind variant (currently just LineBg) has no
+        // consumer here yet — ignored, not a panic, same posture
+        // `rows::RowMap` takes for a provider whose output doesn't match the
+        // kind it queried for.
     }
     scratch.tier_bufs.sort_all();
 }

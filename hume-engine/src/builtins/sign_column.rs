@@ -16,8 +16,8 @@ pub struct Sign {
     /// 1–2 cells wide; wider is truncated to the column width by
     /// `render::compose_gutter`, same as any other gutter cell text.
     pub text: Cow<'static, str>,
-    /// Already-interned — same contract as `HighlightSource`/`InlineInsert`:
-    /// intern at provider-construction time, before the first render.
+    /// Already-interned — same contract as every `DecorationSource`: intern
+    /// at provider-construction time, before the first render.
     pub scope: ScopeId,
     /// Higher wins when multiple sources fire for the same line. Ties
     /// resolve to the later-registered source (registration order in
@@ -34,7 +34,7 @@ pub trait SignSource {
     /// Signs for one buffer line, ordered by the source's own preference
     /// (highest priority first when it has several). Called per `LineStart`
     /// row per frame — implementations should be cheap lookups into their
-    /// own state (same contract as `VirtualLineSource`).
+    /// own state (same contract as `DecorationSource`).
     fn signs_for_line(&self, line_idx: usize, ctx: &GutterRowCtx) -> Vec<Sign>;
 }
 
