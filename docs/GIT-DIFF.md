@@ -8,7 +8,7 @@
 | 1 — async subprocess execution | ✅ shipped (`2451d3d6`…`8bcb4606`) |
 | theme `diff.*` scopes | ⚠️ partial — all 4 themes, **fg only**, no `bg` |
 | 2a — native line-diff builtins (`diff-lines`, `diff-buffer-lines`) | ✅ shipped |
-| 2b — native word-diff builtin (`diff-words`) | ⬜ **next**, prerequisite of 5b only |
+| 2b — native word-diff builtin (`diff-words`) | ✅ shipped, prerequisite of 5b only |
 | 3 — engine: full-row background | ✅ shipped |
 | 4.1 — `on-text-changed` hook | ⬜ |
 | 4.2 — buffer-text reads | ⬜ |
@@ -141,7 +141,7 @@ the merge it would be avoiding.
 | nvim primitive the plugin uses | HUME today | must build |
 |---|---|---|
 | `vim.diff` (line Myers) | ✅ **shipped (Phase 2a).** `diff-lines`/`diff-buffer-lines` Steel builtins, wrapping `diff_lines` (`hume-editing/src/diff.rs:149`) | reuse — nothing to build |
-| word-diff Myers (in *Lua*) | ✅ `diff_words` exists (`hume-editing/src/diff.rs:254`), grapheme-safe, zero production callers today | Steel builtin wrapper (Phase 2b) |
+| word-diff Myers (in *Lua*) | ✅ **shipped (Phase 2b).** `diff-words` Steel builtin, wrapping `diff_words` (`hume-editing/src/diff.rs:254`) | reuse — nothing to build |
 | `nvim_buf_get_lines` (live text) | ❌ no buffer-text read — the biggest gap for general-purpose Steel scripts (the diff plugin itself sidesteps this via `diff-buffer-lines`, but other consumers still need it) | buffer-text builtins (Phase 4.2) |
 | `autocmd TextChanged` | ❌ no on-edit hook (14-entry `EditorEvent` set, none fire on edit) | `on-text-changed` hook (Phase 4.1) |
 | `autocmd BufWritePost` | ✅ `on-buffer-save` (`hume-editor/src/editor/event.rs`) | reuse |
@@ -343,27 +343,233 @@ Landed as `hume-scripting/src/builtins/diff.rs`, registered `cmd`-gated in `regi
 (`hume-scripting/src/builtins/mod.rs`); see `user-manual/docs/plugins.md`'s "Comparing text"
 section for the plugin-author-facing description.
 
-## Phase 2b — Native word-diff builtin (Rust) [`diff-words`] — ⬜ next
+## Phase 2b — Native word-diff builtin (Rust) [`diff-words`] — ✅ SHIPPED
 
-Deferred out of 2a: word-diff has exactly one consumer, Phase 5b, so it moves next to that
-prerequisite list rather than shipping unused. `DiffHost` and the builtin module are already
-shaped for this to be a pure addition — one trait method, one builtin, no rework of 2a.
+Deferred out of 2a: word-diff has exactly one consumer, Phase 5b, so it landed next to that
+prerequisite list rather than shipping unused. Extends the same `DiffHost` trait and
+`hume-scripting/src/builtins/diff.rs` module 2a landed — one trait method, one builtin
+function, one bridge function, no new files, no rework of 2a.
 
-- `diff_words(old: &str, new: &str) -> WordDiff` (`hume-editing/src/diff.rs:254`,
-  `_with_deadline` at `:266`) returns `WordHunk` ranges that are **char offsets, explicitly
-  not byte offsets** (`:204`) — matching `ExtraHighlightEntry { start, end, scope }`, which is
-  also a char range (`hume-editor/src/editor/decorations.rs:75-79`), and matching
-  `set-virtual-lines!`'s `'segments`, which are char offsets at the Steel surface (char→byte
-  conversion happens at the host boundary, `host_impl.rs`'s `virtual_line_segments_to_bytes`)
-  — `diff-words`' output feeds `'segments` directly, no Steel-side conversion needed.
-- Builtin `(diff-words old-text new-text)` → list of word-hunks (char-offset ranges) plus a
-  `deadline-hit?` flag (from `WordDiff::deadline_hit()`, `:231` — the underlying `250ms`/`50ms`
-  deadlines at `:39`/`:46` are `pub(crate)`/private, so the flag is the only signal Steel ever
-  gets) so Steel can degrade gracefully (skip word highlights, fall back to line-level tint
-  only) on a timeout instead of guessing a token-count threshold.
-- **No word-diff logic in Steel** — the plugin's `diff` module only calls this builtin and
-  builds decoration records from its output; a tokenizer/Myers port from nvim's `diff.lua` is
-  unnecessary.
+### Why word-diff needs no `Text` normalization (unlike Phase 2a's line-diff)
+
+Phase 2a routes both sides through `Text::from` because `diff_lines` compares whole buffer
+content and needs CRLF/trailing-newline normalization to avoid phantom hunks. `diff-words` is
+different: per Phase 5b's design (below), the plugin calls it on **two already-extracted line
+strings** — one `old_lines[i]`/`new_lines[i]` pair from a `diff-lines`/`diff-buffer-lines`
+`Replace` hunk, both of which came from `Text`-normalized content already. So `diff-words`
+takes its two `&str` arguments as-is, no `Text` wrapping, no line splitting — it's a pure
+two-string word diff, general-purpose the same way `diff-lines` is. **There is no
+`diff-buffer-words` variant** — unlike `diff-buffer-lines` (added because materializing a
+whole buffer as a Steel string per debounce tick is real hot-path cost), word-diff's inputs
+are always two short strings the plugin already holds in Steel, so there is nothing to save by
+reaching into a buffer directly.
+
+### Why the payload strings ARE directly usable (unlike Phase 2a's line-diff)
+
+Phase 2a's `LineHunkKind` payloads join covered lines with no separator, which is lossy for a
+multi-line hunk (the trap `diff_bridge::line_hunks` works around by re-slicing its own
+tokenized input). **Word-diff has no equivalent trap.** Verified at
+`hume-editing/src/diff.rs:266-311`: `tokenize_with_offsets` (`:316`) tokenizes via
+`split_word_bounds()` (UAX #29), which partitions the input into *contiguous, abutting*
+tokens — including whitespace runs as their own tokens, so nothing between tokens is dropped.
+`WordHunkKind::Delete`/`Insert`/`Replace`'s payload (`old_tokens[range].join("")`, `:290-298`)
+is therefore byte-for-byte identical to slicing `old`/`new` directly at that char range — the
+join has nothing to lose, unlike lines joined without their `\n` separator. **The bridge uses
+the payload strings directly; no re-slicing is needed or should be added.**
+
+### `DiffHost` trait extension
+
+```rust
+/// Word-level diff between two (typically short) strings — e.g. a single
+/// changed line's old/new text, as passed from a `diff-lines`/
+/// `diff-buffer-lines` `Replace` hunk. Ranges are 0-based **char offsets**,
+/// not byte offsets, matching `WordHunk`/`ExtraHighlightEntry`/
+/// `set-virtual-lines!`'s `'segments`. `Equal` runs are dropped, same as
+/// `diff_lines`.
+///
+/// The returned `bool` mirrors `WordDiff::deadline_hit()`: `true` means the
+/// underlying Myers pass could not finish within its deadline and returned
+/// a coarse (Replace-all) result — unlike line-diff's Myers fallback (still
+/// a correct partition), a word-diff timeout result should be treated as a
+/// fallback, not a precise diff (Phase 5b: skip word highlighting, fall
+/// back to a whole-line scope).
+fn diff_words(&self, old: &str, new: &str) -> (Vec<WordDiffHunk>, bool);
+```
+
+Placed on `DiffHost` right after `diff_buffer_lines`, in `hume-scripting/src/host.rs`. Return
+shape is a plain Rust tuple, not a wrapper struct — matches the existing
+`DecorationHost::diagnostic_counts(&self, bid: BufferId) -> (usize, usize)` precedent
+(`host.rs`), which the builtin layer already knows how to turn into a Steel dotted pair via
+`cons_pair`.
+
+### `WordDiffHunk` — a new type, not a reuse of `DiffHunk`
+
+```rust
+/// A single word-level change between two texts — `hume-editing`'s
+/// `WordHunk` after dropping `Equal` runs. Unlike [`DiffHunk`] (line-index
+/// `start`/`count` into a rebuilt line list), a word hunk is one contiguous
+/// span of text per side, so it carries `end` (an exclusive char offset,
+/// matching `WordHunk`/`ExtraHighlightEntry`/`set-virtual-lines!`'s
+/// `'segments`) and one `String` per side rather than a count and a line
+/// list — reusing `DiffHunk`'s shape here would force a fake `count`/
+/// single-element `Vec<String>` that doesn't mean the same thing.
+///
+/// A zero-width side (`start == end`) needs no special case, same
+/// rationale as `DiffHunk`'s zero-count side: it already sits exactly at
+/// the insertion/deletion point (pure insert: `old_start == old_end`, pure
+/// delete: `new_start == new_end`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WordDiffHunk {
+    pub old_start: usize,
+    pub old_end: usize,
+    pub new_start: usize,
+    pub new_end: usize,
+    pub old_text: String,
+    pub new_text: String,
+}
+```
+
+Placed in `hume-scripting/src/host.rs` next to `DiffHunk`, same rationale (`OptionValue`'s:
+shapes a host → Steel trait return that `hume-scripting` can't otherwise name).
+
+### `diff_bridge::word_hunks` — the bridge function
+
+```rust
+/// Word-level hunks between `old` and `new`, `Equal` runs dropped. No
+/// `Text` normalization and no re-slicing — see the module doc's rationale.
+pub(crate) fn word_hunks(old: &str, new: &str) -> (Vec<WordDiffHunk>, bool) {
+    convert_word_diff(diff_words(old, new))
+}
+
+/// As [`word_hunks`], with an explicit deadline — exists so tests can force
+/// the Myers timeout path (`Duration::ZERO`) without waiting on a
+/// pathological input, mirroring `diff_lines_with_deadline`'s own test use.
+#[cfg(test)]
+fn word_hunks_with_deadline(
+    old: &str,
+    new: &str,
+    deadline: std::time::Duration,
+) -> (Vec<WordDiffHunk>, bool) {
+    convert_word_diff(hume_editing::diff::diff_words_with_deadline(
+        old, new, deadline,
+    ))
+}
+
+/// Shared `WordDiff` → Steel-facing shape mapping for [`word_hunks`] and
+/// [`word_hunks_with_deadline`].
+fn convert_word_diff(diff: WordDiff) -> (Vec<WordDiffHunk>, bool) {
+    let deadline_hit = diff.deadline_hit();
+    let hunks = diff
+        .hunks
+        .into_iter()
+        .filter_map(|h| {
+            let (old_text, new_text) = match h.kind {
+                WordHunkKind::Equal => return None,
+                WordHunkKind::Delete(s) => (s, String::new()),
+                WordHunkKind::Insert(s) => (String::new(), s),
+                WordHunkKind::Replace { old, new } => (old, new),
+            };
+            Some(WordDiffHunk {
+                old_start: h.old.start,
+                old_end: h.old.end,
+                new_start: h.new.start,
+                new_end: h.new.end,
+                old_text,
+                new_text,
+            })
+        })
+        .collect();
+    (hunks, deadline_hit)
+}
+```
+
+**No duplicated deadline constant.** `hume-editing`'s own `DIFF_WORD_DEADLINE` is private
+(not even `pub(crate)`, confirmed `diff.rs:46`), so an earlier draft of this design had the
+bridge declare its own `DEFAULT_WORD_DEADLINE` matching it — a second copy of a 50ms literal
+that could silently drift. Landed shape instead: `word_hunks` calls the plain `diff_words`
+(so `hume-editing` stays the single source of the default deadline), and only a
+`#[cfg(test)]` `word_hunks_with_deadline` — unreachable from production code, so `Duration`
+never appears outside tests — calls `diff_words_with_deadline` to force the timeout path.
+Both funnel through one `convert_word_diff` so the mapping isn't duplicated either.
+
+**`filter_map`, not `filter` + `unreachable!`.** An earlier draft filtered `Equal` first, then
+matched with an `unreachable!("filtered above")` arm for it — a panic path the compiler can't
+prove dead. Matching directly and `return None`ing for `Equal` is one pass with no panic arm.
+
+`impl DiffHost for EditorHostImpl` (`host_impl.rs`) gets one more method:
+`fn diff_words(&self, old: &str, new: &str) -> (Vec<WordDiffHunk>, bool) { diff_bridge::word_hunks(old, new) }`
+— no `Text` involved, unlike `diff_lines`/`diff_buffer_lines`.
+
+### Steel-facing shape
+
+```scheme
+(diff-words old-text new-text)
+; → (hunks . deadline-hit?)
+```
+
+`hunks` is a list of 6-element tuples, `(old-start old-end new-start new-end old-text
+new-text)`, char offsets, `Equal` dropped. `deadline-hit?` is `#t`/`#f`. The outer shape is a
+**dotted pair**, not a 2-element list — built with `args::cons_pair(hunks_list,
+SteelVal::BoolV(deadline_hit))`, the same helper and shape as
+`diagnostic-counts` → `(errors . warnings)` (`builtins/decorations.rs`). `cons_pair`'s only
+constraint is that its *second* argument not be list-shaped (steel's `cons` returns a proper
+list otherwise) — the hunks list is the *first* argument here, so this is a valid use, and the
+first use where the car is a list rather than a scalar.
+
+A plugin composes a hunk directly into `set-virtual-lines!`'s `'segments` (`(start end scope)`
+char ranges into the deleted line's own text) or `set-extra-highlights!`'s `(start end scope)`
+spans (after adding the live line's own buffer offset) — no conversion needed at either call
+site, matching the "0-based, no arithmetic" design goal Phase 2a set for `diff-lines`.
+
+Builtin, `hume-scripting/src/builtins/diff.rs` (appended, not a new file):
+
+```rust
+pub(crate) fn diff_words(ctx: &mut SteelCtx, old: SteelVal, new: SteelVal) -> SteelResult {
+    let old = string_arg(old, "diff-words old-text")?;
+    let new = string_arg(new, "diff-words new-text")?;
+    let (hunks, deadline_hit) =
+        require_cap(ctx.host.diff(), "diff-words")?.diff_words(&old, &new);
+    cons_pair(word_hunks_to_steel(hunks), SteelVal::BoolV(deadline_hit))
+}
+```
+
+`word_hunks_to_steel` mirrors `hunks_to_steel`/`hunk_to_steel` already in the file (6-field
+list per hunk, two of the fields plain strings this time instead of string lists). Registered
+`cmd`-gated in `builtins/mod.rs`, right after the `diff-buffer-lines` entry — same rationale
+as 2a's gate choice: capability-backed, called from a debounce callback (`Command` mode).
+
+### No word-diff logic in Steel
+
+The plugin's `diff` module only calls `diff-words` and builds decoration records from its
+output; a tokenizer/Myers port from nvim's `diff.lua` is unnecessary.
+
+### Tests (mirrors Phase 2a's granularity)
+
+- **`diff_bridge/tests.rs`** (extended, same file as `line_hunks`'s tests): pure insert
+  (`old_start == old_end`, `old_text == ""`), pure delete (mirror), replace, `Equal` dropped,
+  a whitespace-run change (`"a  b"` → `"a b"`, confirming whitespace tokens are diffed like any
+  other token), and — using `word_hunks_with_deadline(..., Duration::ZERO)` — a test asserting
+  the returned `bool` is `true` on a forced timeout and `false` on the same input at the
+  default deadline. Oracles hand-written, same convention as 2a.
+- **`builtins/diff/tests.rs`** (extended): init-mode gate; non-string `old`; non-string `new`;
+  unsupported host (`NullHost`, no `DiffHost`). No buffer-id variant — `diff-words` takes only
+  two string arguments.
+- **`hume-editor/src/editor/tests/diff_steel.rs`** (extended): one `run_probe` asserting
+  `(diff-words "foo bar" "foo baz")` returns the expected `(hunks . deadline-hit?)` shape via
+  `equal?` — pins the registered Steel encoding, same role as 2a's two probes. Expected value,
+  worked out by hand from `split_word_bounds()`'s tokenization (`"foo"`, `" "`, `"bar"`/`"baz"`
+  — offsets `0,3,4,7`): `(equal? (diff-words "foo bar" "foo baz") (cons (list (list 4 7 4 7
+  "bar" "baz")) #f))`.
+
+### Commit breakdown
+
+Four commits, not Phase 2a's five: `DiffHost::diff_words`/`WordDiffHunk` and their sole
+implementor (`impl DiffHost for EditorHostImpl`) cannot be split across commits without an
+intermediate commit that fails to compile, so (1) folds together host types, the bridge
+function, the host impl, and their tests; (2) the `diff-words` builtin + its tests +
+registration + `hume-globals.scm` regen (same drift-test gate as 2a); (3) the end-to-end Steel
+test; (4) docs — flip this section's status line, extend `user-manual/docs/plugins.md`'s
+"Comparing text" section with `diff-words`, add the `CHANGELOG.md` entry.
 
 ---
 
@@ -594,8 +800,8 @@ A plugin under `runtime/plugins/git-diff/`, mirroring the nvim five-module layou
 > constraint: no change to state, fetch, debounce, or init from 5a.
 
 Prerequisites: **Phase 2b (word-diff builtin) + Phase 4.5 (virtual-line `Before` anchor +
-per-segment scopes)** — the scroll accounting a `Before`-anchored block needs (see below) is
-already in place; Phase 4.5 has shipped, Phase 2b has not.
+per-segment scopes)** — both have shipped, so this layer is unblocked on the native-diff side;
+the scroll accounting a `Before`-anchored block needs (see below) is already in place too.
 
 - **diff** (extended): for each changed hunk, also call `(diff-words old-line new-line)`,
   checking `deadline-hit?` to skip word highlights on a timeout and fall back to a whole-line
@@ -685,9 +891,9 @@ store) + theme `diff.*` `bg` values in all four themes.**
   sides normalized through `Text::from`); `hume-editor/src/editor/host_impl.rs`'s `impl
   DiffHost` forwards to it — no new diff code, no new `hume-scripting` dependency
   (`hume-scripting/Cargo.toml` still has none).
-- **Native word diff (Phase 2b — next)**: extends the same `DiffHost` trait and
-  `builtins/diff.rs` with `diff-words`, forwarding to `hume-editing/src/diff.rs:254`
-  (`diff_words`) — no new diff code.
+- **Native word diff (Phase 2b — shipped)**: extends the same `DiffHost` trait and
+  `builtins/diff.rs` with `diff-words`, forwarding via `diff_bridge::word_hunks` to
+  `hume-editing/src/diff.rs:254` (`diff_words`) — no new diff code.
 - **Engine render**: `hume-engine/src/rows.rs` (`RowMap`, the display-row authority every
   consumer below reads — block shape, stepping, char↔row mapping, render accessors),
   `hume-engine/src/providers.rs` (`VirtualLine`, `VirtualLineAnchor`, `HighlightTier`),

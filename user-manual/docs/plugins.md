@@ -377,6 +377,14 @@ Splits both `old-text` and `new-text` into lines the same way HUME treats file c
 
 Same result, but compares `ref-text` against the current, unsaved content of the buffer named by `bid` — the buffer never has to be pulled through a builtin as one big string first. This is the one to use in a hook that fires on every keystroke.
 
+For a finer-grained comparison inside a single changed line — highlighting exactly which words differ rather than the whole line:
+
+```scheme
+(diff-words old-text new-text)
+```
+
+Returns `(hunks . too-long?)`. `hunks` is a list of `(old-start old-end new-start new-end old-text new-text)` tuples — 0-based character positions into `old-text`/`new-text`, with `old-text`/`new-text` on each hunk holding the actual changed words. A pure insertion has an empty `old-text` and `old-start` equal to `old-end`; a pure deletion mirrors that on the new side. `too-long?` is `#t` when the two texts were too large to compare word-by-word in time — treat that as a signal to fall back to highlighting the whole line instead of individual words.
+
 ### Custom pickers
 
 The modal fuzzy-finder panel behind [Fuzzy Finder](pickers.md) is a generic widget any
