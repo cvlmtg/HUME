@@ -1387,6 +1387,57 @@ fn last_buffer_close_fires_on_text_changed() {
     );
 }
 
+/// Opening a read-only view (`:messages`/`:ls`) for the first time is silent
+/// (fresh `Buffer`, baseline matches); refreshing an existing one via the
+/// same label reuses the buffer and calls `set_view_content`, which must
+/// fire `on-text-changed` — the documented trigger `store/tests.rs`'s
+/// coverage never exercised end-to-end (it calls `set_view_content`
+/// directly, bypassing `open_read_only_view`'s reuse path).
+///
+/// Fail oracle: change `open_read_only_view`'s reuse branch to close and
+/// reopen the view buffer instead of calling `set_view_content` → the second
+/// open also starts from a fresh baseline and this fires zero times.
+#[test]
+fn read_only_view_refresh_fires_on_text_changed() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+
+    let fire_count = |ed: &Editor| {
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace && e.text == "changed")
+            .count()
+    };
+
+    ed.open_read_only_view("[test-view]", "one\n", 0);
+    ed.settle();
+    assert_eq!(
+        fire_count(&ed),
+        0,
+        "the first open of a read-only view must not fire on-text-changed"
+    );
+
+    ed.open_read_only_view("[test-view]", "two\n", 0);
+    ed.settle();
+    assert_eq!(
+        fire_count(&ed),
+        1,
+        "refreshing an existing read-only view must fire on-text-changed once"
+    );
+}
+
 /// An identity edit (a command whose `ChangeSet` is the identity transform —
 /// every op a `Retain`) must not bump `text_gen`: `Buffer::apply_edit` skips
 /// `set_text` entirely for one, so it must not fire `on-text-changed` either.

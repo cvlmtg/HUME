@@ -128,19 +128,18 @@ impl BufferStore {
     }
 
     /// Every open buffer whose `text_gen` has moved since the last call —
-    /// the observation-point source for `on-text-changed`. `Buffer` holds no
-    /// `EditorState` and cannot reach the event queue itself, so this sweep
-    /// stands in for a raise site at `Buffer::set_text`. Advances each
-    /// touched buffer's `announced_text_gen` to match as it goes, so a
-    /// buffer reported once stays quiet until it mutates again — a burst of
-    /// edits between two calls coalesces into one entry. Walks `order`
-    /// (open-order) for deterministic event ordering.
+    /// the observation-point source for `on-text-changed`
+    /// (`EditorEvent::OnTextChanged`'s doc has the full contract: what bumps
+    /// `text_gen`, what coalesces, what never fires). Advances each touched
+    /// buffer's `announced_text_gen` to match as it goes, so a buffer
+    /// reported once stays quiet until it mutates again — a burst of edits
+    /// between two calls coalesces into one entry. Walks `order` (open-order)
+    /// for deterministic event ordering.
     ///
     /// Unlike `edit_seq` (global and edit-only by design — a `:messages`
     /// refresh or `:e!` must not look like an edit to paste-stamping, see its
     /// doc), this is per-buffer and fires for every text replacement
-    /// `set_text` performs, matching `text_gen`'s own scope: user edits,
-    /// undo/redo, `:e!` reload, and read-only view refreshes alike.
+    /// `set_text` performs.
     pub(crate) fn take_text_changed(&mut self) -> Vec<BufferId> {
         let Self { order, buffers, .. } = self;
         order

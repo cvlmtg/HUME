@@ -124,15 +124,29 @@ pub(crate) enum EditorEvent {
         filter_text: String,
     },
     /// Fires when a buffer's text changes — user edits, undo, redo, `:e!`
-    /// reload, and read-only view refreshes (`:messages`, `:ls`) alike, all
-    /// of which bump `Buffer::text_gen`. Raised by diffing `text_gen` at a
-    /// drain observation point (`Editor::detect_text_changed`,
+    /// reload, and read-only view refreshes (`:messages`, `:ls`,
+    /// `:plugin-status`) alike, all of which bump `Buffer::text_gen`. Raised
+    /// by diffing `text_gen` against a per-buffer `announced_text_gen`
+    /// baseline at a drain observation point (`Editor::detect_text_changed`,
     /// `BufferStore::take_text_changed`), not from `Buffer::set_text` itself
-    /// — `Buffer` has no path to the event queue. Consequently this
-    /// **coalesces**: several mutations to the same buffer between two
-    /// drain passes fire exactly one event, not one per mutation. A no-op
-    /// undo at the history root, or an edit refused by the read-only guard,
-    /// never bumps `text_gen` and so never fires.
+    /// — `Buffer` has no path to the event queue, the same reason
+    /// `OnBufferEnter` is raised via a diff rather than a raise site.
+    /// Consequently this
+    /// **coalesces**: several mutations to the same buffer within one drain
+    /// pass (not one per rendered frame — a pass runs once per `settle()`)
+    /// fire exactly one event, not one per mutation.
+    ///
+    /// Never fires for: a no-op undo at the history root; an edit refused by
+    /// the read-only guard; an edit or `:e!` reload whose `ChangeSet` is the
+    /// identity transform (`Buffer::apply_edit*` and `reload_from_text` all
+    /// skip the mutation entirely in that case, specifically so this doesn't
+    /// fire for one). Does fire, unconditionally and with no identity check,
+    /// for every `:messages`/`:ls`/`:plugin-status` refresh of an
+    /// already-open view buffer, even a byte-identical one — a handler that
+    /// resolves the buffer's path must handle `#f` (these buffers have none).
+    /// Also fires, exactly once, for a buffer replaced in place under a
+    /// surviving `BufferId` (`close_buffer`'s last-buffer scratch swap) —
+    /// see `Buffer::announced_text_gen`'s doc.
     OnTextChanged {
         buffer: BufferId,
     },

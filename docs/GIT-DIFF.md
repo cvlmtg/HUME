@@ -143,7 +143,7 @@ the merge it would be avoiding.
 | `vim.diff` (line Myers) | ✅ **shipped (Phase 2a).** `diff-lines`/`diff-buffer-lines` Steel builtins, wrapping `diff_lines` (`hume-editing/src/diff.rs:157`) | reuse — nothing to build |
 | word-diff Myers (in *Lua*) | ✅ **shipped (Phase 2b).** `diff-words` Steel builtin, wrapping `diff_words` (`hume-editing/src/diff.rs:253`) | reuse — nothing to build |
 | `nvim_buf_get_lines` (live text) | ❌ no buffer-text read — the biggest gap for general-purpose Steel scripts (the diff plugin itself sidesteps this via `diff-buffer-lines`, but other consumers still need it) | buffer-text builtins (Phase 4.2) |
-| `autocmd TextChanged` | ✅ **shipped (Phase 4.1).** `on-text-changed` fires `(buffer-id)`, raised by diffing `Buffer::text_gen` at a drain observation point (`hume-editor/src/editor/scripting_setup.rs`'s `detect_text_changed`) — not from `Buffer::set_text`, which has no path to the event queue. Coalesces a burst of mutations into one fire; covers edits, undo/redo, and `:e!` reload alike. | reuse — nothing to build |
+| `autocmd TextChanged` | ✅ **shipped (Phase 4.1).** `on-text-changed` fires `(buffer-id)` — see Phase 4 item 1 below for the design. | reuse — nothing to build |
 | `autocmd BufWritePost` | ✅ `on-buffer-save` (`hume-editor/src/editor/event.rs`) | reuse |
 | `vim.uv` timer (debounce) | ✅ `(after ms thunk)` / `(cancel-timer! id)` / `debounce`, timer wheel in `editor/timers.rs` | reuse — nothing to build |
 | `vim.system` (async git) | ✅ shipped — `(spawn-async! cmd args cwd callback)` / `(cancel-async! id)`, one-shot capture, exactly-once callback, never inline (`hume-scripting/src/builtins/process.rs`) | reuse — nothing to build |

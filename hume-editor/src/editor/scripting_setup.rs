@@ -17,6 +17,14 @@ use super::{Editor, Severity, host_impl::EditorHostImpl};
 /// batch size geometrically pass over pass — few passes, but exponential
 /// total evals. Counting total hooks processed bounds both that shape and the
 /// constant-width ping-pong loop; unreachable in any legitimate configuration.
+///
+/// A backstop against a plugin gone off the rails, not a state boundary: it
+/// should never fire against correct scripts, so the abort path (below) does
+/// not try to preserve fidelity across it — e.g. an observation baseline like
+/// `Buffer::announced_text_gen` that already advanced past a dropped event is
+/// left advanced, not rolled back. By the time this cap trips, the editor is
+/// already reporting a bug; losing one further notification on top of that is
+/// not worth the bookkeeping to prevent.
 const MAX_EVENT_DRAIN: usize = 1000;
 
 impl Editor {
@@ -277,17 +285,17 @@ impl Editor {
         loop {
             self.detect_buffer_enter();
             // Inside the fixpoint, not outside it like `drain_async_sources`:
-            // a handler that reacts to its own buffer's edit (auto-format,
-            // trim-on-change) is a feedback loop, and only inside the loop
-            // does `MAX_EVENT_DRAIN` below catch it loudly in the same
-            // `settle()` call. Outside, the same loop would silently re-arm
-            // every frame forever, like a self-re-arming timer never would
-            // (that case is `drain_async_sources`' own reason to sit outside
-            // — see `settle`'s doc). No rollback on the cap path, unlike
-            // `detect_buffer_enter`'s `last_entered_buffer = None`: this
-            // event drives no Rust-side reaction, so a notification lost to
-            // an already-reported cascade error costs a plugin one refresh —
-            // the buffer's next mutation re-announces it on its own.
+            // a *synchronous* handler that reacts to its own buffer's edit
+            // (auto-format, trim-on-change) is a feedback loop, and only
+            // inside the loop does `MAX_EVENT_DRAIN` (see its doc) catch it
+            // in the same `settle()` call. This does not cover a debounced
+            // handler — its re-triggering edit lands via a timer thunk, which
+            // `drain_async_sources` converts to queued work only once per
+            // `settle()` and outside this loop, so `total_processed` never
+            // accumulates across the resulting one-cycle-per-interval churn
+            // and the cap never trips. No rollback here on the cap path,
+            // unlike `detect_buffer_enter`'s `last_entered_buffer = None`:
+            // see `MAX_EVENT_DRAIN`'s doc for why.
             self.detect_text_changed();
             if self.state.config.pending_work.is_empty() {
                 return true;

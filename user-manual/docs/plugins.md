@@ -245,7 +245,7 @@ Available hooks and their lambda signatures:
 
 `on-buffer-open` and `on-buffer-close` always fire as a pair for a given buffer: a buffer opened and closed within the same command never announces either one.
 
-`on-text-changed` covers edits, undo, redo, and `:e!` reload alike. It coalesces: several mutations to the same buffer between two handler runs fire it only once, so pair it with `debounce` if you want to react after typing settles rather than on every fire.
+`on-text-changed` covers edits, undo, redo, `:e!` reload, and refreshes of read-only view buffers (`:messages`, `:ls`, `:plugin-status`) alike — those buffers have no file, so a handler that looks up a path must handle it being absent. It coalesces multiple mutations made by a single command (a multi-cursor edit, a macro, a paste) into one fire, but each keystroke while typing is its own command and so fires on its own — pair it with `debounce` if you want to react only after typing settles rather than on every character.
 
 For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry — a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it. The same caveat applies to `on-text-changed`: gating a lazy plugin on it activates on the first edit in *any* buffer, not a buffer the plugin specifically cares about.
 
