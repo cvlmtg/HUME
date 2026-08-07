@@ -15,6 +15,19 @@ use hume_editing::lines::line_end_exclusive;
 use hume_ops::pair::find_bracket_pair;
 
 impl Editor {
+    /// Snapshot of every pane's `(PaneId, BufferId)` — the entry point every
+    /// render bridge below starts with, so its loop body can freely mutate
+    /// `self.state` (e.g. `update_highlight_providers` refreshing a
+    /// buffer's search-match cache) without conflicting with a live borrow
+    /// of `self.view.panes`.
+    fn decorated_panes(&self) -> Vec<(PaneId, BufferId)> {
+        self.view
+            .panes
+            .iter()
+            .map(|(pid, pane)| (pid, pane.buffer_id))
+            .collect()
+    }
+
     /// Interned scope ids for the four diagnostic severities, in
     /// `DiagSeverity` discriminant order (`[error, warning, info, hint]`) —
     /// resolved once and cached, since interning needs `&mut
@@ -57,15 +70,7 @@ impl Editor {
     pub(super) fn update_highlight_providers(&mut self) {
         let in_insert = self.state.mode() == EditorMode::Insert;
 
-        // Snapshot (pane, buffer) pairs up front: the loop body mutates
-        // `self.state.buffers` (refreshing the search-match cache), which would
-        // otherwise conflict with an active borrow of `self.view.panes`.
-        let panes: Vec<(PaneId, BufferId)> = self
-            .view
-            .panes
-            .iter()
-            .map(|(pid, pane)| (pid, pane.buffer_id))
-            .collect();
+        let panes = self.decorated_panes();
 
         // ── Search match highlights — one pane at a time ─────────────────────
         for &(pid, bid) in &panes {
@@ -268,12 +273,7 @@ impl Editor {
     pub(super) fn update_sign_providers(&mut self) {
         use hume_engine::builtins::sign_column::Sign;
 
-        let panes: Vec<(PaneId, BufferId)> = self
-            .view
-            .panes
-            .iter()
-            .map(|(pid, pane)| (pid, pane.buffer_id))
-            .collect();
+        let panes = self.decorated_panes();
 
         let floor = self.state.settings.lsp_diagnostics_severity_floor;
         let diag_scopes = self.diagnostic_scopes();
@@ -471,12 +471,7 @@ impl Editor {
     pub(super) fn update_inlay_hint_providers(&mut self) {
         use hume_engine::providers::InlineInsert;
 
-        let panes: Vec<(PaneId, BufferId)> = self
-            .view
-            .panes
-            .iter()
-            .map(|(pid, pane)| (pid, pane.buffer_id))
-            .collect();
+        let panes = self.decorated_panes();
 
         let scope = self.inlay_hint_scope();
         for &(pid, bid) in &panes {
@@ -538,12 +533,7 @@ impl Editor {
     pub(super) fn update_eol_text_providers(&mut self) {
         use hume_engine::providers::InlineInsert;
 
-        let panes: Vec<(PaneId, BufferId)> = self
-            .view
-            .panes
-            .iter()
-            .map(|(pid, pane)| (pid, pane.buffer_id))
-            .collect();
+        let panes = self.decorated_panes();
 
         for &(pid, bid) in &panes {
             let Some(map) = self
@@ -556,37 +546,25 @@ impl Editor {
                 continue;
             };
 
-            // Filtered to the viewport *before* cloning `text`/`scope` or
-            // resolving a scope — `text` (immutable borrow of
-            // `self.state.buffers`) and the immutable `eol_text_for_buffer`
-            // borrow on `self.state.config.decorations` can coexist; only
-            // `self.runtime_scope` below needs `&mut self`, so the owned
-            // collect here exists to end those borrows, not to escape an
-            // unrelated conflict. Each entry's `pos` is its line's
-            // line-start char offset (`EolTextEntry::pos`); resolved to its
-            // *current* line here (once), reused below rather than
-            // re-resolved.
+            // `visible_line_anchored` ends the immutable `eol_text_for_buffer`
+            // borrow (on `self.state.config.decorations`) before
+            // `self.runtime_scope` below, which needs `&mut self`. Each
+            // entry's `pos` is its line's line-start char offset
+            // (`EolTextEntry::pos`); resolved to its *current* line here
+            // (once), reused below rather than re-resolved.
             let visible_lines = self.visible_line_range(pid, bid);
             let text = self.state.buffers.get(bid).text();
-            let visible_entries: Vec<(String, usize, String, String)> = self
-                .state
-                .config
-                .decorations
-                .eol_text_for_buffer(bid)
-                .filter_map(|(source, e)| {
-                    let line = resolve_decoration_line(text, e.pos)?;
-                    visible_lines
-                        .contains(&line)
-                        .then(|| (source.to_string(), line, e.text.clone(), e.scope.clone()))
-                })
+            let filtered: Vec<(String, usize, crate::editor::decorations::EolTextEntry)> =
+                visible_line_anchored(
+                    text,
+                    &visible_lines,
+                    self.state.config.decorations.eol_text_for_buffer(bid),
+                    |e| e.pos,
+                );
+            let resolved: Vec<(String, usize, String, hume_engine::types::ScopeId)> = filtered
+                .into_iter()
+                .map(|(source, line, e)| (source, line, e.text, self.runtime_scope(&e.scope)))
                 .collect();
-            let resolved: Vec<(String, usize, String, hume_engine::types::ScopeId)> =
-                visible_entries
-                    .into_iter()
-                    .map(|(source, line, text, scope_name)| {
-                        (source, line, text, self.runtime_scope(&scope_name))
-                    })
-                    .collect();
 
             let text = self.state.buffers.get(bid).text();
             let per_line: Vec<(String, usize, InlineInsert)> = resolved
@@ -657,12 +635,7 @@ impl Editor {
     pub(super) fn update_virtual_line_providers(&mut self) {
         use hume_engine::providers::{VirtualLine, VirtualLineAnchor};
 
-        let panes: Vec<(PaneId, BufferId)> = self
-            .view
-            .panes
-            .iter()
-            .map(|(pid, pane)| (pid, pane.buffer_id))
-            .collect();
+        let panes = self.decorated_panes();
 
         let fallback_scope = self.virtual_text_fallback_scope();
         for &(pid, bid) in &panes {
@@ -737,12 +710,7 @@ impl Editor {
     /// cheap enough that a dedicated generation-gated sync buys nothing
     /// (GIT-DIFF.md Phase 4.4).
     pub(super) fn update_line_bg_providers(&mut self) {
-        let panes: Vec<(PaneId, BufferId)> = self
-            .view
-            .panes
-            .iter()
-            .map(|(pid, pane)| (pid, pane.buffer_id))
-            .collect();
+        let panes = self.decorated_panes();
 
         for &(pid, bid) in &panes {
             let Some(map) = self
@@ -755,31 +723,26 @@ impl Editor {
                 continue;
             };
 
-            // Filtered to the viewport *before* cloning or resolving a scope
-            // — like the sign path above (`update_sign_providers`): a tinted
-            // line scrolled out of view costs nothing but the filter check.
-            // `text`/`visible_lines` and the immutable
-            // `line_backgrounds_for_buffer` borrow can coexist; only
-            // `self.runtime_scope` below needs `&mut self`, so the owned
-            // collect here exists to end those borrows, not to escape an
-            // unrelated conflict.
+            // `visible_line_anchored` ends the immutable
+            // `line_backgrounds_for_buffer` borrow before `self.runtime_scope`
+            // below, which needs `&mut self` — like the sign path above
+            // (`update_sign_providers`): a tinted line scrolled out of view
+            // costs nothing but the filter check.
             let visible_lines = self.visible_line_range(pid, bid);
             let text = self.state.buffers.get(bid).text();
-            let visible_entries: Vec<(String, usize, String)> = self
-                .state
-                .config
-                .decorations
-                .line_backgrounds_for_buffer(bid)
-                .filter_map(|(source, e)| {
-                    let line = resolve_decoration_line(text, e.pos)?;
-                    visible_lines
-                        .contains(&line)
-                        .then(|| (source.to_string(), line, e.scope.clone()))
-                })
-                .collect();
-            let per_line: Vec<(String, usize, hume_engine::types::ScopeId)> = visible_entries
+            let filtered: Vec<(String, usize, crate::editor::decorations::LineBgEntry)> =
+                visible_line_anchored(
+                    text,
+                    &visible_lines,
+                    self.state
+                        .config
+                        .decorations
+                        .line_backgrounds_for_buffer(bid),
+                    |e| e.pos,
+                );
+            let per_line: Vec<(String, usize, hume_engine::types::ScopeId)> = filtered
                 .into_iter()
-                .map(|(source, line, scope_name)| (source, line, self.runtime_scope(&scope_name)))
+                .map(|(source, line, e)| (source, line, self.runtime_scope(&e.scope)))
                 .collect();
             let by_line = last_writer_per_line(per_line);
 
@@ -864,6 +827,32 @@ fn last_writer_per_line<T>(
 fn resolve_decoration_line(text: &hume_editing::text::Text, pos: usize) -> Option<usize> {
     let line = text.char_to_line(pos);
     (line + 1 < text.len_lines()).then_some(line)
+}
+
+/// Filters `entries`' `(source, entry)` pairs to `visible_lines`, resolving
+/// each entry's anchor position (via `pos_of`) to its current line and
+/// cloning past the borrow — shared by `update_eol_text_providers` and
+/// `update_line_bg_providers`, whose bodies are otherwise identical up to
+/// this filter step: resolve line → drop if scrolled out of view or drifted
+/// onto the phantom trailing line (`resolve_decoration_line`) → own the
+/// result. Returns fully-owned `(source, line, entry)` triples, not
+/// `&entry`, so the immutable borrow on the decoration store `entries` came
+/// from ends here — every caller needs that borrow gone before its next
+/// step (`self.runtime_scope`), which needs `&mut self`.
+fn visible_line_anchored<'a, E: Clone + 'a>(
+    text: &hume_editing::text::Text,
+    visible_lines: &std::ops::Range<usize>,
+    entries: impl Iterator<Item = (&'a str, &'a E)>,
+    pos_of: impl Fn(&E) -> usize,
+) -> Vec<(String, usize, E)> {
+    entries
+        .filter_map(|(source, e)| {
+            let line = resolve_decoration_line(text, pos_of(e))?;
+            visible_lines
+                .contains(&line)
+                .then(|| (source.to_string(), line, e.clone()))
+        })
+        .collect()
 }
 
 /// Convert a char-offset position to a line-relative byte offset.

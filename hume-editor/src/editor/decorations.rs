@@ -71,6 +71,10 @@ pub(crate) struct VirtualLineEntry {
 /// line back via `char_to_line` at rebuild. The diagnostics plugin's
 /// per-line summary (`"[n] <message>"` or a bare message) is this kind's
 /// first client, not its owner, same as every other kind here is to LSP.
+/// `Clone`: `decoration_providers.rs`'s `visible_line_anchored` clones a
+/// viewport-filtered subset out from under an immutable store borrow before
+/// resolving each entry's scope (which needs `&mut self`).
+#[derive(Clone)]
 pub(crate) struct EolTextEntry {
     pub(crate) pos: usize,
     pub(crate) text: String,
@@ -92,7 +96,9 @@ pub(crate) struct ExtraHighlightEntry {
 /// the current line back via `char_to_line` at rebuild. No `priority` field
 /// — unlike signs, row tints have no single-slot contention, so same-line
 /// entries from different sources break ties by source name
-/// (GIT-DIFF.md Phase 4.4).
+/// (GIT-DIFF.md Phase 4.4). `Clone`: see `EolTextEntry`'s doc — same
+/// `visible_line_anchored` consumer.
+#[derive(Clone)]
 pub(crate) struct LineBgEntry {
     pub(crate) pos: usize,
     pub(crate) scope: String,
