@@ -133,9 +133,10 @@ fn line_start_offset_rejects_the_trailing_phantom_line() {
 #[test]
 fn validate_offset_accepts_the_last_real_char() {
     // "abc\n" — char offsets 0..=3 are real chars (the last being '\n'
-    // itself); char offset 4 is one past the end.
+    // itself); char offset 4 is one past the end. 'before' anchoring, so
+    // the 'after'-only phantom-line check doesn't apply.
     let text = hume_editing::text::Text::from("abc\n");
-    validate_offset(&text, 3, "test").expect("last real char must be valid");
+    validate_offset(&text, 3, true, "test").expect("last real char must be valid");
 }
 
 #[test]
@@ -146,8 +147,30 @@ fn validate_offset_rejects_one_past_the_end() {
     // silently accepted and then silently never rendered. Must now error
     // loudly instead, same as every other out-of-range offset.
     let text = hume_editing::text::Text::from("abc\n");
-    let err = validate_offset(&text, 4, "test").unwrap_err();
+    let err = validate_offset(&text, 4, true, "test").unwrap_err();
     assert!(err.contains("out of range"), "got: {err}");
+}
+
+#[test]
+fn validate_offset_accepts_after_on_the_last_real_content_char() {
+    // "abc\n" — an 'after hint on 'c' (offset 2) anchors at offset 3 (the
+    // trailing '\n'), still on the last content line. Must not be confused
+    // with the phantom-line case below.
+    let text = hume_editing::text::Text::from("abc\n");
+    validate_offset(&text, 2, false, "test").expect("'after on the last content char is valid");
+}
+
+#[test]
+fn validate_offset_rejects_after_on_the_trailing_newline() {
+    // "abc\n" — an 'after hint anchored on the trailing '\n' itself (offset
+    // 3) would render at offset 4, the start of the buffer's trailing
+    // phantom line — a position `RowMap::last_line()` never lays out, so
+    // the hint would be silently accepted and then silently never render
+    // (the same failure class `line_start_offset` already rejects for the
+    // line-anchored kinds, reachable here through a char offset instead).
+    let text = hume_editing::text::Text::from("abc\n");
+    let err = validate_offset(&text, 3, false, "test").unwrap_err();
+    assert!(err.contains("trailing"), "got: {err}");
 }
 
 #[test]

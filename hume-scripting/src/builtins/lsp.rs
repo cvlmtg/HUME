@@ -333,7 +333,12 @@ fn wire_position(v: &serde_json::Value, what: &str) -> Result<(usize, usize), St
 /// `(lsp-position->offset bid position)` → `bid`'s char offset for the wire
 /// `{"line" "character"}` hashmap `position`, converted using `bid`'s
 /// attached server's negotiated encoding — or `#f` if `bid` has no attached
-/// server (no negotiated encoding to convert with).
+/// server (no negotiated encoding to convert with), or if `position` would
+/// land on the buffer's trailing phantom line (a stale response racing an
+/// edit, or a server's past-end convention) — every point-anchored
+/// decoration setter (`set-inlay-hints!`) rejects that offset outright, so
+/// refusing here lets a caller filter one bad entry instead of the whole
+/// setter call failing on it.
 pub(crate) fn lsp_position_to_offset(
     ctx: &mut SteelCtx,
     bid: BidArg,
@@ -347,7 +352,7 @@ pub(crate) fn lsp_position_to_offset(
         match ctx
             .host
             .lsp()
-            .and_then(|lsp| lsp.lsp_wire_to_char(id, line, character))
+            .and_then(|lsp| lsp.lsp_wire_point_to_char(id, line, character))
         {
             Some(offset) => SteelVal::IntV(offset as isize),
             None => SteelVal::BoolV(false),

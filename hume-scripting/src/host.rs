@@ -560,10 +560,20 @@ pub trait LspHost {
     fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value>;
 
     /// Wire `(line, character)` → char offset in `id`'s attached server's
-    /// negotiated encoding — backs `lsp-position->offset`/`lsp-range->offsets`.
-    /// `None` if `id` is unknown or has no attached server (no negotiated
-    /// encoding to convert with).
+    /// negotiated encoding — backs `lsp-range->offsets`. `None` if `id` is
+    /// unknown or has no attached server (no negotiated encoding to convert
+    /// with). Clamps rather than refuses an out-of-range `line`/`character`
+    /// (a range's `end` can legitimately land at the buffer's char length);
+    /// point-anchored callers want [`lsp_wire_point_to_char`](Self::lsp_wire_point_to_char).
     fn lsp_wire_to_char(&self, id: BufferId, line: usize, character: usize) -> Option<usize>;
+
+    /// Same conversion as [`lsp_wire_to_char`](Self::lsp_wire_to_char), but
+    /// backs `lsp-position->offset` specifically: refuses (`None`) rather
+    /// than clamping when the wire position would land on the buffer's
+    /// trailing phantom line, since every point-anchored decoration setter
+    /// (`set-inlay-hints!`) rejects that offset outright — see
+    /// `wire_point_to_char_for_buffer`'s doc for why the two must differ.
+    fn lsp_wire_point_to_char(&self, id: BufferId, line: usize, character: usize) -> Option<usize>;
 }
 
 /// Timer scheduling — accessed through [`EditorHost::timers`].

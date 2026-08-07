@@ -68,9 +68,6 @@ pub(crate) struct VirtualLineEntry {
 /// line back via `char_to_line` at rebuild. The diagnostics plugin's
 /// per-line summary (`"[n] <message>"` or a bare message) is this kind's
 /// first client, not its owner, same as every other kind here is to LSP.
-/// Was `InlineDiagnosticEntry` / `set-inline-diagnostics!` — renamed
-/// because it was always "text appended at end of line", never
-/// diagnostics-specific.
 pub(crate) struct EolTextEntry {
     pub(crate) pos: usize,
     pub(crate) text: String,
@@ -142,7 +139,7 @@ impl Positioned for LineBgEntry {
     }
 }
 
-/// The four point-anchored kinds (every kind but `ExtraHighlightEntry`,
+/// The five point-anchored kinds (every kind but `ExtraHighlightEntry`,
 /// which remaps as a range instead — see `SourceStore<ExtraHighlightEntry>::
 /// remap_ranges`) — drives [`SourceStore::remap_points`]' batch
 /// `ChangeSet::map_positions` call.
@@ -196,8 +193,7 @@ impl PointAnchored for LineBgEntry {
     }
 }
 
-/// One decoration kind's per-source entries, for every buffer — the shape
-/// every one of `DecorationStores`' five fields used to hand-roll separately
+/// One decoration kind's per-source entries, for every buffer
 /// (`FxHashMap<BufferId, Vec<(source, Vec<T>)>>`, find-or-push
 /// replace-wholesale-by-source). Written once, instantiated per kind; the
 /// type system carries the per-kind payload differences.
@@ -339,12 +335,13 @@ pub(crate) struct DecorationStores {
     /// scroll/cursor math too, not just render, so avoiding needless
     /// per-frame rebuild work matters more there).
     ///
-    /// Originally one store-wide counter (SPEC.md §6), reopened: every
-    /// keystroke in *any* LSP-attached buffer ran `remap_through`, which
-    /// bumped a single global counter unconditionally — including for
-    /// buffers with zero decorations — so the virtual-lines resync skip
-    /// never actually fired while typing. Per-buffer stamps mean typing in
-    /// one buffer no longer invalidates every pane on every other buffer.
+    /// Per-buffer, not one store-wide counter: `remap_through` runs once per
+    /// queued edit for *every* LSP-attached buffer, decorated or not
+    /// (`record_lsp_edits`'s gate is `lsp_server.is_some() || has_any(bid)`),
+    /// so a single global counter would bump on every keystroke in any
+    /// LSP-attached buffer — the virtual-lines resync skip would never
+    /// actually fire while typing. Per-buffer stamps mean typing in one
+    /// buffer doesn't invalidate every pane on every other buffer.
     generation: FxHashMap<BufferId, u64>,
     /// Shared source for every buffer's stamp — see `touch`. Not itself a
     /// generation to compare against; `reset` carries it forward so a fresh
@@ -595,9 +592,9 @@ impl DecorationStores {
     /// resync even though nothing called a `set_*` method.
     pub(crate) fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {
         // Every kind always attempts its remap — only whether to bump the
-        // stamp is conditional. `Vec`'s eager evaluation (not the iterator
-        // adapters below) is what guarantees none of these six calls get
-        // short-circuited away.
+        // stamp is conditional. The array literal's eager evaluation (not
+        // the iterator adapters below) is what guarantees none of these six
+        // calls get short-circuited away.
         let touched = [
             self.inlay_hints.remap_points(bid, cs),
             self.signs.remap_points(bid, cs),

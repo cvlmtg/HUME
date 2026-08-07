@@ -104,15 +104,17 @@ the merge it would be avoiding.
 - **A generic, Steel-writable decoration API**: `DecorationHost`
   (`hume-scripting/src/host.rs`) exposes `set-inlay-hints!`, `set-signs!`,
   `set-virtual-lines!`, `set-extra-highlights!`, `set-eol-text!` (was
-  `set-inline-diagnostics!`), backed by `DecorationStores`
-  (`hume-editor/src/editor/decorations.rs`), source-namespaced. See
-  Phase 4.4/4.5 for the remaining gaps (line-background tint; virtual-line anchor/segments).
-- **`VirtualLine` already carries per-segment styling — engine-side only.** `VirtualLine.segments:
-  Vec<(Range<usize>, ScopeId)>` (`hume-engine/src/providers.rs:228`) and `Grapheme.scope:
-  Option<ScopeId>` (`hume-engine/src/types.rs:160`), segmented by `rows::RowMap`'s virtual-row
-  accessor and styled in `hume-engine/src/pipeline/pane_render.rs`. The engine type supports styled,
-  segmented, `Before`-or-`After`-anchored virtual lines. **The Steel-facing bridge does not
-  yet expose this** — see "Two verified plan-vs-code contradictions" below.
+  `set-inline-diagnostics!`), and `set-line-backgrounds!`, backed by
+  `DecorationStores` (`hume-editor/src/editor/decorations.rs`),
+  source-namespaced. Phase 4.4 (line-background tint) and 4.5 (virtual-line
+  anchor/segments) have both shipped.
+- **`VirtualLine` carries per-segment styling, engine- and Steel-side.**
+  `VirtualLine.segments: Vec<(Range<usize>, ScopeId)>`
+  (`hume-engine/src/providers.rs:228`) and `Grapheme.scope: Option<ScopeId>`
+  (`hume-engine/src/types.rs:160`), segmented by `rows::RowMap`'s virtual-row
+  accessor and styled in `hume-engine/src/pipeline/pane_render.rs`. The
+  Steel-facing bridge (`set-virtual-lines!`'s `'anchor`/`'segments`, Phase
+  4.5) exposes the full `Before`/`After`-anchored, per-segment-scoped shape.
 - **A generic plugin highlight tier**: `HighlightTier::Extra`
   (`hume-engine/src/providers.rs:37`) is documented as "generic plugin-supplied spans",
   driven by `set-extra-highlights!`. **Resolved** (Phase 3.3): ranked below
@@ -145,7 +147,8 @@ the merge it would be avoiding.
 | `autocmd BufWritePost` | ✅ `on-buffer-save` (`hume-editor/src/editor/event.rs`) | reuse |
 | `vim.uv` timer (debounce) | ✅ `(after ms thunk)` / `(cancel-timer! id)` / `debounce`, timer wheel in `editor/timers.rs` | reuse — nothing to build |
 | `vim.system` (async git) | ✅ shipped — `(spawn-async! cmd args cwd callback)` / `(cancel-async! id)`, one-shot capture, exactly-once callback, never inline (`hume-scripting/src/builtins/process.rs`) | reuse — nothing to build |
-| `nvim_buf_set_extmark` (virt_lines_above / inline hl / hl_eol) | ✅ **shipped (Phase 4.5).** `set-virtual-lines!` now accepts `'anchor`/`'segments` reaching the engine's `VirtualLineAnchor::Before/After` and per-segment `ScopeId` styling (`hume-engine/src/providers.rs:208-251`) via the Steel bridge (`Editor::update_virtual_line_providers`, `hume-editor/src/editor/decoration_providers.rs`). `set-extra-highlights!`/`set-signs!` unaffected. | still needed: a **line-background** (full-row tint) decoration kind (Phase 3.2 + 4.4) |
+| `nvim_buf_set_extmark` (virt_lines_above / inline hl / hl_eol) | ✅ **shipped (Phase 4.5).** `set-virtual-lines!` now accepts `'anchor`/`'segments` reaching the engine's `VirtualLineAnchor::Before/After` and per-segment `ScopeId` styling (`hume-engine/src/providers.rs:208-251`) via the Steel bridge (`Editor::update_virtual_line_providers`, `hume-editor/src/editor/decoration_providers.rs`). `set-extra-highlights!`/`set-signs!` unaffected. | reuse — nothing to build |
+| line background (full-row tint) | ✅ **shipped (Phase 3.2 + 4.4).** `set-line-backgrounds!` → `Decoration::LineBg(ScopeId)`, paint-stage only. | reuse — nothing to build |
 | highlight groups | ⚠️ `diff.*` scopes now exist in **all four** bundled themes, but **`fg`-only** — no `bg` for the line/word tint | add `bg` (and `.word` variants) to all four themes |
 
 ## Goals
@@ -159,10 +162,10 @@ the merge it would be avoiding.
 3. The **Steel-facing plugin API** filled out: edit hook, live buffer-text reads, and
    background-job-backed async git — each general-purpose. (Decoration API already exists,
    see #4.)
-4. A small **engine** change so decorations can add a **line background (full-row tint)**
-   kind; virtual-line segment styling and a generic plugin highlight tier (`Extra`) already
-   exist at the engine layer (the Steel bridge needs extending — Phase 4.5). `Extra`'s tier
-   ranking is confirmed sufficient for word-diff highlights — no new tier needed (Phase 3.3).
+4. ✅ **Shipped.** A **line background (full-row tint)** decoration kind (Phase 3.2 + 4.4);
+   virtual-line segment styling (Phase 4.5) and a generic plugin highlight tier (`Extra`,
+   Phase 3.3) shipped alongside it. `Extra`'s tier ranking is confirmed sufficient for
+   word-diff highlights — no new tier needed.
 5. The `git-diff` plugin itself, written almost entirely in **Steel**, mirroring the
    nvim five-module layout, plus gutter signs as a first-class fourth rendering.
 
@@ -368,9 +371,8 @@ Instead:
 
 ## Phase 3 — Engine rendering changes (Rust, `hume-engine`)
 
-Styled virtual lines and a generic plugin highlight tier already exist at the engine layer.
-Only the full-row background is an actual engine-side gap (the Steel bridge for virtual
-lines has its own gap — see Phase 4.5).
+Styled virtual lines, a generic plugin highlight tier, and full-row background all exist at
+the engine layer now — the two items below are historical record of what shipped.
 
 1. **Styled virtual lines — done, engine-side and Steel-side.** `VirtualLine.segments:
    Vec<(usize, usize, ScopeId)>` (`hume-engine/src/providers.rs:250`, byte offsets into
@@ -431,11 +433,10 @@ one for diff's deleted-line rendering.
 ## Phase 4 — Steel platform primitives (Rust, the "test surface")
 
 Timer builtins already ship — not covered here. The decoration API already ships as
-`DecorationHost`/`DecorationStores` — the remaining gaps are one new decoration kind (line
-background) and one bridge fix (virtual-line anchor/segments), not a new store. There is no
-Rust-enforced git sandbox to work around (full-trust plugin model). The real gaps are the
-edit hook, buffer-text reads, non-blocking git execution (resolved by Phase 1), and the two
-items below.
+`DecorationHost`/`DecorationStores`, including the line-background kind and the
+virtual-line anchor/segments bridge — no new store needed. There is no Rust-enforced git
+sandbox to work around (full-trust plugin model). The real gaps are the edit hook,
+buffer-text reads, non-blocking git execution (resolved by Phase 1), and the two items below.
 
 Each is general-purpose. Registered through `register_all`
 (`hume-scripting/src/builtins/mod.rs`) and, where they touch editor state, the `EditorHost`
@@ -695,11 +696,12 @@ store) + theme `diff.*` `bg` values in all four themes.**
   `hume-engine/src/render.rs`
   (`fill_row_bg` method `:96`, free fn `:559`, consumers at `:122,174,231,276,294`),
   `hume-engine/src/types.rs` (`Grapheme.scope` `:160`).
-- **Steel surface**: `hume-editor/src/editor/event.rs` (`EditorEvent`, 14 variants, no
-  `on-text-changed` yet), `host.rs:409-465` (`DecorationHost`, already implemented — extend,
-  don't rebuild), `builtins/buffers.rs` (add text-read builtins), `builtins/timers.rs`
-  (existing `after`/`cancel-timer!`/`debounce` — reuse), `hume-editor/src/editor/decorations.rs`
-  (`DecorationStores` — add line-bg kind; extend `VirtualLineEntry` for Phase 4.5).
+- **Steel surface**: `hume-editor/src/editor/event.rs` (`EditorEvent`, no `on-text-changed`
+  yet), `host.rs` (`DecorationHost`, already implemented — extend, don't rebuild),
+  `builtins/buffers.rs` (add text-read builtins), `builtins/timers.rs` (existing
+  `after`/`cancel-timer!`/`debounce` — reuse), `hume-editor/src/editor/decorations.rs`
+  (`DecorationStores` — line-bg kind (Phase 4.4) and `VirtualLineEntry`'s `before`/`segments`
+  (Phase 4.5) both landed already).
 - **Virtual-line bridge (Phase 4.5 — ✅ shipped)**: `hume-editor/src/editor/decoration_providers.rs`
   (`update_virtual_line_providers`, now anchor- and segment-aware; not `lifecycle.rs` — that
   was always the wrong path for this function), `hume-editor/src/editor/decorations.rs`
@@ -713,8 +715,7 @@ store) + theme `diff.*` `bg` values in all four themes.**
 - **Plugin (Phase 5a/5b/5c)**: new `runtime/plugins/git-diff/*.scm` (model on
   `runtime/plugins/core/lsp/inlay.scm`); `runtime/init.scm.example`.
 - **Docs**: `docs/ROADMAP.md`'s `git-diff` plugin roadmap item already points at this file;
-  note the existing open "Unified decoration system" item this phase's Phase 4.4 work will
-  interact with; optional `docs/learning/*.md` on the job-execution/decoration design.
+  optional `docs/learning/*.md` on the job-execution/decoration design.
 
 ## Risks / watch-list
 

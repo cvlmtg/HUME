@@ -31,8 +31,7 @@ fn interval_cursor_empty() {
 }
 
 /// Emits spans at two different tiers — proves tier is data on
-/// `Decoration::Highlight`, not a per-provider property, now that
-/// `add_highlight_source`'s old sort-by-tier-at-registration is gone.
+/// `Decoration::Highlight`, not a per-provider property.
 struct TwoTierSource(ScopeId);
 
 impl DecorationSource for TwoTierSource {

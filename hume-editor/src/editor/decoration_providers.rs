@@ -522,10 +522,15 @@ impl Editor {
     /// (`PaneRenderHandles::eol_text`). Unconditional per-frame rebuild, same
     /// as `update_inlay_hint_providers` — cheap enough that, unlike
     /// `virtual_lines`, it doesn't need a dirty-tracking generation gate to
-    /// skip needless work. Both write into a pane's `inline_decorations`
-    /// providers, which `RowMap::format_line` reads, so this feeds wrap row
-    /// counts and columns exactly like inlay hints do — called from
-    /// `prepare_frame`'s step 5, *before* scrolling.
+    /// skip needless work; filtered to the viewport before any per-entry
+    /// clone or scope resolution runs, same as the sign/line-bg bridges
+    /// above, so the per-frame cost is one entry per *visible* EOL line, not
+    /// per EOL line in the whole buffer. Both write into a pane's
+    /// `inline_decorations` providers, which `RowMap::format_line` reads, so
+    /// this feeds wrap row counts and columns exactly like inlay hints do —
+    /// called from `prepare_frame`'s step 5, *before* scrolling, so (like
+    /// `update_sign_providers`) the viewport it filters against is still the
+    /// previous frame's.
     pub(super) fn update_eol_text_providers(&mut self) {
         use hume_engine::providers::InlineInsert;
 
@@ -547,34 +552,42 @@ impl Editor {
                 continue;
             };
 
-            // Collected into an owned Vec, source name kept for the
-            // last-writer-per-line fold below (SPEC.md §5a.4), and every
-            // scope name resolved *before* borrowing buffer text —
-            // `self.runtime_scope` needs `&mut self`, which can't overlap
-            // with either the immutable borrow `eol_text_for_buffer` holds
-            // on `self.state.config.decorations` or the one `text` will
-            // hold on `self.state.buffers`. Each entry's `pos` is its line's
-            // line-start char offset (`EolTextEntry::pos`), converted back
-            // to a line below once `text` is in scope.
-            let entries: Vec<(String, usize, String, String)> = self
+            // Filtered to the viewport *before* cloning `text`/`scope` or
+            // resolving a scope — `text` (immutable borrow of
+            // `self.state.buffers`) and the immutable `eol_text_for_buffer`
+            // borrow on `self.state.config.decorations` can coexist; only
+            // `self.runtime_scope` below needs `&mut self`, so the owned
+            // collect here exists to end those borrows, not to escape an
+            // unrelated conflict. Each entry's `pos` is its line's
+            // line-start char offset (`EolTextEntry::pos`); resolved to its
+            // *current* line here (once), reused below rather than
+            // re-resolved.
+            let visible_lines = self.visible_line_range(pid, bid);
+            let text = self.state.buffers.get(bid).text();
+            let visible_entries: Vec<(String, usize, String, String)> = self
                 .state
                 .config
                 .decorations
                 .eol_text_for_buffer(bid)
-                .map(|(source, e)| (source.to_string(), e.pos, e.text.clone(), e.scope.clone()))
-                .collect();
-            let resolved: Vec<(String, usize, String, hume_engine::types::ScopeId)> = entries
-                .into_iter()
-                .map(|(source, pos, text, scope_name)| {
-                    (source, pos, text, self.runtime_scope(&scope_name))
+                .filter_map(|(source, e)| {
+                    let line = resolve_decoration_line(text, e.pos)?;
+                    visible_lines
+                        .contains(&line)
+                        .then(|| (source.to_string(), line, e.text.clone(), e.scope.clone()))
                 })
                 .collect();
+            let resolved: Vec<(String, usize, String, hume_engine::types::ScopeId)> =
+                visible_entries
+                    .into_iter()
+                    .map(|(source, line, text, scope_name)| {
+                        (source, line, text, self.runtime_scope(&scope_name))
+                    })
+                    .collect();
 
             let text = self.state.buffers.get(bid).text();
             let per_line: Vec<(String, usize, InlineInsert)> = resolved
                 .into_iter()
-                .filter_map(|(source, pos, entry_text, scope)| {
-                    let line = resolve_decoration_line(text, pos)?;
+                .map(|(source, line, entry_text, scope)| {
                     // End-of-line placement: the line's own trailing '\n'
                     // char resolves to a byte offset within `line` (never
                     // the next line — see `char_to_line_byte`'s doc comment
@@ -582,7 +595,7 @@ impl Editor {
                     // anchor).
                     let line_newline = line_end_exclusive(text, line) - 1;
                     let (_, byte_offset) = char_to_line_byte(text, line_newline);
-                    Some((
+                    (
                         source,
                         line,
                         InlineInsert {
@@ -590,7 +603,7 @@ impl Editor {
                             text: entry_text,
                             scope,
                         },
-                    ))
+                    )
                 })
                 .collect();
             let by_line: rustc_hash::FxHashMap<usize, Vec<InlineInsert>> =
@@ -734,14 +747,13 @@ impl Editor {
             };
 
             // Filtered to the viewport *before* cloning or resolving a scope
-            // — like the sign path above (`update_sign_providers`), and
-            // unlike this bridge before this fix, which cloned and resolved
-            // every tinted line in the whole buffer only to discard the
-            // ones scrolled out of view. `text`/`visible_lines` and the
-            // immutable `line_backgrounds_for_buffer` borrow can coexist;
-            // only `self.runtime_scope` below needs `&mut self`, so the
-            // owned collect here exists to end those borrows, not to escape
-            // an unrelated conflict.
+            // — like the sign path above (`update_sign_providers`): a tinted
+            // line scrolled out of view costs nothing but the filter check.
+            // `text`/`visible_lines` and the immutable
+            // `line_backgrounds_for_buffer` borrow can coexist; only
+            // `self.runtime_scope` below needs `&mut self`, so the owned
+            // collect here exists to end those borrows, not to escape an
+            // unrelated conflict.
             let visible_lines = self.visible_line_range(pid, bid);
             let text = self.state.buffers.get(bid).text();
             let visible_entries: Vec<(String, usize, String)> = self

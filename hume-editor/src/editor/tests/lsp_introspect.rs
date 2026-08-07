@@ -484,6 +484,35 @@ fn lsp_position_to_offset_is_false_for_an_unattached_buffer() {
 }
 
 #[test]
+fn lsp_position_to_offset_is_false_when_it_would_land_on_the_trailing_phantom_line() {
+    let tmp = safe_tempdir();
+    // "-[x]>abc\n" is "xabc\n" — one content line; a wire `line` past it
+    // clamps (inside `wire_to_char`) onto the buffer's trailing phantom line
+    // rather than erroring — servers send past-end positions routinely. Every
+    // point-anchored decoration setter (`set-inlay-hints!`) rejects that
+    // offset outright, so `lsp-position->offset` must refuse here too,
+    // rather than handing back a value only useful for failing one step
+    // later (and, inside a hint batch, failing every *other* hint with it).
+    let mut ed = editor_from("-[x]>abc\n");
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-position-phantom-line.rs")));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (lsp-position->offset (current-buffer)
+                     (hash "line" 5 "character" 0))
+                   #f)"#,
+    );
+    assert!(
+        fired,
+        "a wire line past the buffer's content must yield #f, not the phantom line's offset"
+    );
+}
+
+#[test]
 fn lsp_range_to_offsets_converts_both_endpoints_half_open() {
     let tmp = safe_tempdir();
     // "🎉" occupies char 0 (2 UTF-16 code units); 'b' is char 1, wire
@@ -506,6 +535,37 @@ fn lsp_range_to_offsets_converts_both_endpoints_half_open() {
     assert!(
         fired,
         "wire range [0, 2) (UTF-16) must convert to half-open char offsets (0 . 1)"
+    );
+}
+
+#[test]
+fn lsp_range_to_offsets_end_may_land_at_the_buffers_char_length() {
+    // Deliberately the opposite of `lsp_position_to_offset_is_false_when_it_
+    // would_land_on_the_trailing_phantom_line`: a range's `end` legitimately
+    // sits at the buffer's char length (`set-extra-highlights!`'s
+    // `validate_range` accepts that boundary), so `lsp-range->offsets` must
+    // keep the clamping behavior `lsp-position->offset` deliberately
+    // refuses — a past-end wire `line` for `end` is not an error here.
+    // "-[x]>abc\n" is "xabc\n" (the marked 'x' is real buffer content) — 5
+    // chars.
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abc\n");
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-range-end-at-length.rs")));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (lsp-range->offsets (current-buffer)
+                     (hash "start" (hash "line" 0 "character" 0)
+                           "end" (hash "line" 5 "character" 0)))
+                   (cons 0 5))"#,
+    );
+    assert!(
+        fired,
+        "a past-end wire `line` for `end` must clamp to the buffer's char length, not #f"
     );
 }
 

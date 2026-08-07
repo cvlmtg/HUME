@@ -97,14 +97,16 @@ pub struct GutterCell {
 
 /// Default/blank gutter scope name — the fallback every built-in gutter
 /// column (line numbers, unfilled sign slots) renders under when it has
-/// nothing more specific to say. One source so the literal can't drift
-/// between `builtins::line_number`, `builtins::sign_column`, and
-/// `EngineView`'s own interned fallback for `compose_gutter`. Callers intern
-/// this once (at pane/view construction) and carry the resulting `ScopeId` —
-/// same intern-at-construction contract as `DecorationSource`, so the
-/// per-cell hot path in `compose_gutter` never falls back to a by-name
-/// lookup.
-pub(crate) const DEFAULT_GUTTER_SCOPE: Scope = Scope("ui.linenr");
+/// nothing more specific to say. `pub`, not `pub(crate)`: one source so the
+/// literal can't drift between `builtins::line_number`, `builtins::sign_column`,
+/// `EngineView`'s own interned fallback for `compose_gutter`, and
+/// `hume-editor`'s `build_pane`, which interns this same constant to hand
+/// `LineNumberColumn`/`SignColumn` their scopes at construction. Every
+/// caller interns this once (at pane/view construction) and carries the
+/// resulting `ScopeId` — same intern-at-construction contract as
+/// `DecorationSource`, so the per-cell hot path in `compose_gutter` never
+/// falls back to a by-name lookup.
+pub const DEFAULT_GUTTER_SCOPE: Scope = Scope("ui.linenr");
 
 /// What a gutter cell displays.
 ///
@@ -217,10 +219,10 @@ pub struct InlineInsert {
 // ---------------------------------------------------------------------------
 
 /// One piece of per-line decoration data a [`DecorationSource`] can produce.
-/// Replaces three previously-separate trait outputs (highlight spans, virtual
-/// lines, inline inserts) with a single query result, so a provider that
-/// wants to emit more than one kind (or a kind that varies by line) no longer
-/// needs to implement more than one trait.
+/// A single query result covering every kind (highlight spans, virtual
+/// lines, inline inserts, line backgrounds), so a provider that wants to
+/// emit more than one kind (or a kind that varies by line) only implements
+/// one trait.
 pub enum Decoration {
     /// `(byte_start, byte_end)` relative to the line start, plus the tier
     /// this span layers at — tier is data here, not a per-provider property,

@@ -792,6 +792,16 @@ impl<'a> LspHost for EditorHostImpl<'a> {
             character,
         )
     }
+
+    fn lsp_wire_point_to_char(&self, id: BufferId, line: usize, character: usize) -> Option<usize> {
+        crate::editor::lsp::introspect::wire_point_to_char_for_buffer(
+            self.state,
+            self.lsp.as_deref()?,
+            id,
+            line,
+            character,
+        )
+    }
 }
 
 impl<'a> DecorationHost for EditorHostImpl<'a> {
@@ -805,7 +815,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let entries = hints
             .into_iter()
             .map(|(pos, hint_text, before)| {
-                validate_offset(text, pos, "set-inlay-hints!")?;
+                validate_offset(text, pos, before, "set-inlay-hints!")?;
                 Ok(crate::editor::decorations::InlayHintEntry {
                     pos,
                     text: hint_text,
@@ -1069,9 +1079,9 @@ fn buffer_text<'s>(
 /// Rejects the buffer's last line, not just `line >= len_lines()`: the
 /// buffer invariant (every buffer ends with a structural `\n`) means that
 /// last line is always the empty phantom line the trailing `\n` produces —
-/// zero-width, at `pos == len_chars()`, nothing to decorate. Admitting it
-/// used to leave a caller-visible position no render pass could resolve to
-/// a real line without pushing it onto whatever line precedes it.
+/// zero-width, at `pos == len_chars()`, nothing to decorate. `RowMap::
+/// last_line()` never lays it out, so admitting it would hand a caller a
+/// position no render pass can resolve to a real line.
 fn line_start_offset(
     text: &hume_editing::text::Text,
     line: usize,
@@ -1092,9 +1102,18 @@ fn line_start_offset(
 /// `visible_char_range` is half-open, so `pos == len_chars()` can never pass
 /// its `contains` check and the hint would silently never render — reject it
 /// here instead, same as every other position-taking decoration kind.
+///
+/// `before == false` ('after') gets a second check: the render bridge
+/// (`decoration_providers.rs`'s `update_inlay_hint_providers`) anchors an
+/// 'after' hint at `pos + 1`, so a hint on the buffer's last content char
+/// (its trailing structural `\n`) would resolve to the trailing phantom
+/// line — same unresolvable position `line_start_offset` already refuses
+/// for the line-anchored kinds, but reachable here through a char offset
+/// instead of a line number, so that check alone doesn't catch it.
 fn validate_offset(
     text: &hume_editing::text::Text,
     pos: usize,
+    before: bool,
     builtin: &str,
 ) -> Result<(), String> {
     if pos >= text.len_chars() {
@@ -1102,6 +1121,15 @@ fn validate_offset(
             "{builtin}: offset {pos} is out of range (buffer has {} chars)",
             text.len_chars()
         ));
+    }
+    if !before {
+        let landing_line = text.char_to_line(pos + 1);
+        if landing_line + 1 >= text.len_lines() {
+            return Err(format!(
+                "{builtin}: offset {pos} anchored 'after would land on the buffer's trailing \
+                 empty line"
+            ));
+        }
     }
     Ok(())
 }

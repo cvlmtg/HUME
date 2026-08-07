@@ -239,12 +239,17 @@ pub(crate) fn encoding_for_buffer(
 }
 
 /// Wire `(line, character)` → char offset in `id`'s attached server's
-/// negotiated encoding, for `lsp-position->offset`/`lsp-range->offsets`.
-/// `None` if `id` is unknown or has no attached server — unlike
-/// `set-inlay-hints!`'s `encoding_for_buffer`, this refuses rather than
-/// guessing UTF-16: the caller has no way to supply an encoding, so a wrong
-/// silent answer (only visible on non-ASCII lines) is worse than a visible
-/// `#f`.
+/// negotiated encoding, for `lsp-range->offsets`. `None` if `id` is unknown
+/// or has no attached server — unlike `set-inlay-hints!`'s
+/// `encoding_for_buffer`, this refuses rather than guessing UTF-16: the
+/// caller has no way to supply an encoding, so a wrong silent answer (only
+/// visible on non-ASCII lines) is worse than a visible `#f`.
+///
+/// Clamps rather than errors on an out-of-range `line`/`character`, same as
+/// `wire_to_char` itself — a range's `end` legitimately lands exactly at
+/// the buffer's `len_chars()` (`set-extra-highlights!`'s `validate_range`
+/// accepts that boundary), so this must not reject it. Point-anchored
+/// callers want the opposite; see [`wire_point_to_char_for_buffer`].
 pub(crate) fn wire_to_char_for_buffer(
     state: &EditorState,
     lsp: &LspState,
@@ -257,6 +262,28 @@ pub(crate) fn wire_to_char_for_buffer(
     Some(hume_editing::position_encoding::wire_to_char(
         rope, line, character, encoding,
     ))
+}
+
+/// Wire `(line, character)` → char offset, for `lsp-position->offset`.
+/// Same conversion as [`wire_to_char_for_buffer`], but refuses (`None`)
+/// when the result lands at `len_chars()` — the position `wire_to_char`
+/// clamps a past-end `line` onto (the buffer's trailing phantom line, every
+/// buffer ending with a structural `\n`). A point-anchored decoration
+/// setter (`set-inlay-hints!`'s `validate_offset`) rejects that offset
+/// outright: handing it back here would let a single stale server response
+/// (a request that raced an edit) fail the caller's *entire* hint batch
+/// (`collect::<Result<Vec<_>, _>>` in `host_impl.rs`) instead of just being
+/// filtered out, one entry, by the caller's own `#f` check.
+pub(crate) fn wire_point_to_char_for_buffer(
+    state: &EditorState,
+    lsp: &LspState,
+    id: BufferId,
+    line: usize,
+    character: usize,
+) -> Option<usize> {
+    let offset = wire_to_char_for_buffer(state, lsp, id, line, character)?;
+    let len_chars = state.buffers.try_get(id)?.text().rope().len_chars();
+    (offset < len_chars).then_some(offset)
 }
 
 /// `(diagnostics-for-buffer bid #:severity floor #:range (start . end))` —

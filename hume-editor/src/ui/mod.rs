@@ -19,7 +19,7 @@ use hume_engine::builtins::line_number::LineNumberColumn;
 use hume_engine::builtins::sign_column::SignColumn;
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::BufferId;
-use hume_engine::providers::{HighlightTier, ProviderSet};
+use hume_engine::providers::{DEFAULT_GUTTER_SCOPE, HighlightTier, ProviderSet};
 use hume_engine::theme::ScopeRegistry;
 
 use completion_overlay::MinibufCompletionOverlay;
@@ -31,7 +31,7 @@ use popup::PopupOverlay;
 use signs::{PaneSigns, SharedSignSource};
 use virtual_lines::{PaneVirtualLines, VirtualLineMap};
 
-/// A pane's five render-decoration handles, allocated together by
+/// A pane's six render-decoration handles, allocated together by
 /// [`build_pane`] and stored as one `SecondaryMap` entry on
 /// `EditorState.panes.render` — they are always seeded and dropped as a
 /// unit (never independently), and every read site borrows the map
@@ -53,10 +53,11 @@ pub(crate) struct PaneRenderHandles {
 
 /// Build a new pane viewing `buffer_id`: sign column, line-number gutter,
 /// bracket-match/search-match/diagnostic/extra-highlight sources, inlay-hint
-/// decoration, virtual-line source, and completion/hover/selection-menu/LSP
-/// overlays. Wrap mode is not seeded here — the new pane starts with no
-/// override for any buffer (`Pane::new`'s empty `wraps` map) and resolves it
-/// lazily on every read (`commands::effective_wrap_mode`).
+/// decoration, virtual-line source, line-background tint, and
+/// completion/hover/selection-menu/LSP overlays. Wrap mode is not seeded
+/// here — the new pane starts with no override for any buffer (`Pane::new`'s
+/// empty `wraps` map) and resolves it lazily on every read
+/// (`commands::effective_wrap_mode`).
 ///
 /// Returns the pane with its freshly-allocated [`PaneRenderHandles`] — every
 /// pane gets its own buffers (never shared), so each pane's decorations come
@@ -87,7 +88,14 @@ pub(crate) fn build_pane(
 ) -> (Pane, PaneRenderHandles) {
     let bracket_scope = registry.intern("ui.cursor.match");
     let search_scope = registry.intern("ui.selection.search");
-    let linenr_scope = registry.intern("ui.linenr");
+    // Interns the engine's own `DEFAULT_GUTTER_SCOPE` constant rather than
+    // repeating the "ui.linenr" literal here — the two must resolve to the
+    // same scope: `compose_gutter`'s own fallback
+    // (`EngineView::default_gutter_scope`) interns that same constant, and a
+    // blank sign slot / line-number cell rendering under a different
+    // `ScopeId` than the row-fill fallback would silently disagree on
+    // styling.
+    let linenr_scope = registry.intern(DEFAULT_GUTTER_SCOPE.0);
     let linenr_selected_scope = registry.intern("ui.linenr.selected");
 
     let highlights = PaneHighlights::default();

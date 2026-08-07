@@ -98,21 +98,20 @@ pub(crate) fn set_virtual_lines(
     let source = string_arg(source, "set-virtual-lines! source")?;
     let id = bid.0;
     let parsed = virtual_line_specs(lines)?;
-    require_cap(ctx.host.decorations(), SET_VIRTUAL_LINES)?
+    require_cap(ctx.host.decorations(), "set-virtual-lines!")?
         .set_virtual_lines(source, id, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
 const VIRTUAL_LINE_KEYS: &[&str] = &["line", "text", "anchor", "scope", "segments"];
-const SET_VIRTUAL_LINES: &str = "set-virtual-lines!";
 
-/// Decodes `lines` into `VirtualLineSpec`s. Each entry is a hashmap, not the
-/// old positional `(line text scope)` list this replaces — free to break: no
-/// `.scm` plugin calls this builtin yet, only Rust tests. Only decodes shape
-/// (arity, types) — segment bounds/ordering/overlap validation moved to the
-/// host boundary (`host_impl.rs`'s `set_virtual_lines`), the sole enforcement
-/// point for that contract now.
+/// Decodes `lines` into `VirtualLineSpec`s. Each entry is a hashmap — free
+/// to change shape without a migration path: no `.scm` plugin calls this
+/// builtin yet, only Rust tests. Only decodes shape (arity, types) —
+/// segment bounds/ordering/overlap validation happens at the host boundary
+/// (`host_impl.rs`'s `set_virtual_lines`), the sole enforcement point for
+/// that contract.
 fn virtual_line_specs(lines: SteelVal) -> Result<Vec<VirtualLineSpec>, SteelErr> {
     list_items(lines, "set-virtual-lines! lines")?
         .into_iter()
@@ -123,34 +122,31 @@ fn virtual_line_specs(lines: SteelVal) -> Result<Vec<VirtualLineSpec>, SteelErr>
 fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
     let SteelVal::HashMapV(map) = &entry else {
         steel::stop!(TypeMismatch =>
-            "{}: each entry must be a hashmap with 'line and 'text keys \
-             (plus optional 'anchor/'scope/'segments)", SET_VIRTUAL_LINES);
+            "set-virtual-lines!: each entry must be a hashmap with 'line and 'text keys \
+             (plus optional 'anchor/'scope/'segments)");
     };
     for (key, _) in map.iter() {
         let SteelVal::SymbolV(key_name) = key else {
             steel::stop!(Generic =>
-                "{}: hashmap key must be a symbol, got {:?}", SET_VIRTUAL_LINES, key);
+                "set-virtual-lines!: hashmap key must be a symbol, got {:?}", key);
         };
         if !VIRTUAL_LINE_KEYS.contains(&key_name.as_str()) {
             steel::stop!(Generic =>
-                "{}: unknown key '{}, expected one of {:?}",
-                SET_VIRTUAL_LINES, key_name, VIRTUAL_LINE_KEYS);
+                "set-virtual-lines!: unknown key '{}, expected one of {:?}",
+                key_name, VIRTUAL_LINE_KEYS);
         }
     }
     let field = |k: &str| map.get(&SteelVal::SymbolV(k.into())).cloned();
 
-    let line =
-        field("line").ok_or_else(|| generic_err(format!("{SET_VIRTUAL_LINES}: missing 'line")))?;
+    let line = field("line").ok_or_else(|| generic_err("set-virtual-lines!: missing 'line"))?;
     let line = usize_arg(line, "set-virtual-lines! line")?;
 
-    let text =
-        field("text").ok_or_else(|| generic_err(format!("{SET_VIRTUAL_LINES}: missing 'text")))?;
+    let text = field("text").ok_or_else(|| generic_err("set-virtual-lines!: missing 'text"))?;
     let text = string_arg(text, "set-virtual-lines! text")?;
     if let Some(c) = text.chars().find(|c| c.is_control()) {
         steel::stop!(Generic =>
-            "{}: 'text contains control character {:?} — virtual lines render as a \
-             single row, so text must not contain newlines or other control characters",
-            SET_VIRTUAL_LINES, c);
+            "set-virtual-lines!: 'text contains control character {:?} — virtual lines render \
+             as a single row, so text must not contain newlines or other control characters", c);
     }
 
     let before = match field("anchor") {
@@ -158,7 +154,7 @@ fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
         Some(SteelVal::SymbolV(s)) if s.as_str() == "before" => true,
         Some(SteelVal::SymbolV(s)) if s.as_str() == "after" => false,
         Some(_) => steel::stop!(Generic =>
-            "{}: 'anchor must be 'before or 'after", SET_VIRTUAL_LINES),
+            "set-virtual-lines!: 'anchor must be 'before or 'after"),
     };
 
     let scope = field("scope")
