@@ -5,11 +5,12 @@ use slotmap::{SlotMap, new_key_type};
 use crate::format::FormatScratch;
 use crate::pane::{Pane, WhitespaceConfig, WrapMode};
 use crate::providers::{
-    BottomBandProvider, GutterCell, StatuslineProvider, SyntaxSpans, TabBarProvider,
+    BottomBandProvider, DEFAULT_GUTTER_SCOPE, GutterCell, StatuslineProvider, SyntaxSpans,
+    TabBarProvider,
 };
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
-use crate::types::EditorMode;
+use crate::types::{EditorMode, ScopeId};
 
 mod layout;
 mod pane_render;
@@ -146,6 +147,10 @@ pub struct EngineView {
     /// grammar, ...) is still baked before `render_into` resolves anything.
     /// No other call site needs to bake manually after interning.
     pub registry: ScopeRegistry,
+    /// `DEFAULT_GUTTER_SCOPE` interned once at construction — carried on
+    /// `PaneRenderCtx`/`ComposeCtx` so gutter composition never falls back to
+    /// a by-name lookup on the per-cell hot path.
+    default_gutter_scope: ScopeId,
     /// Optional tab bar rendered at the top of the terminal area.
     pub tabbar: Option<Box<dyn TabBarProvider>>,
     /// Bottom chrome bands, stacked directly above the statusline —
@@ -182,13 +187,16 @@ impl EngineView {
     pub fn new(theme: Theme) -> Self {
         let panes = SlotMap::with_key();
         let buffers = SlotMap::with_key();
+        let mut registry = ScopeRegistry::new();
+        let default_gutter_scope = registry.intern(DEFAULT_GUTTER_SCOPE.0);
         Self {
             // Placeholder layout — will be replaced before the first render.
             layout: LayoutTree::Leaf(PaneId::default()),
             panes,
             buffers,
             theme,
-            registry: ScopeRegistry::new(),
+            registry,
+            default_gutter_scope,
             tabbar: None,
             bottom_bands: Vec::new(),
             last_pane_area: ratatui::layout::Rect::default(),
@@ -365,6 +373,7 @@ impl EngineView {
                     .then_some(self.theme.ui.background.bg)
                     .flatten()
                     .map(|bg| (bg, PANE_DIM_FACTOR)),
+                default_gutter_scope: self.default_gutter_scope,
             };
             render_pane(&pane_ctx, scratch, buf);
         }
@@ -473,4 +482,6 @@ pub(crate) struct PaneRenderCtx<'a> {
     /// `Some` for non-focused panes — blend every written cell's fg/bg toward
     /// this target by `factor`. `None` for the focused pane.
     pub dim: Option<(ratatui::style::Color, f32)>,
+    /// See `EngineView::default_gutter_scope`.
+    pub default_gutter_scope: ScopeId,
 }

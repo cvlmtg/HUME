@@ -30,8 +30,9 @@ fn higher_priority_sign_wins_on_the_same_line() {
     let mut registry = ScopeRegistry::new();
     let diag_scope = registry.intern("diagnostic");
     let git_scope = registry.intern("git");
+    let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::new();
+    let mut col = SignColumn::new(blank_scope);
     col.add_source(Box::new(FixedSign {
         line: 3,
         sign: Sign {
@@ -56,7 +57,7 @@ fn higher_priority_sign_wins_on_the_same_line() {
         .next()
         .unwrap();
     assert_eq!(cell.as_str(), "!", "priority 10 beats priority 5");
-    assert_eq!(cell.scope, crate::providers::GutterScope::Id(diag_scope));
+    assert_eq!(cell.scope, diag_scope);
 }
 
 #[test]
@@ -64,8 +65,9 @@ fn removing_the_winner_reveals_the_next_highest() {
     let mut registry = ScopeRegistry::new();
     let diag_scope = registry.intern("diagnostic");
     let git_scope = registry.intern("git");
+    let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::new();
+    let mut col = SignColumn::new(blank_scope);
     let winner_id = col.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
@@ -100,7 +102,9 @@ fn removing_the_winner_reveals_the_next_highest() {
 
 #[test]
 fn no_source_fires_renders_blank() {
-    let col = SignColumn::new();
+    let mut registry = ScopeRegistry::new();
+    let blank_scope = registry.intern("ui.linenr");
+    let col = SignColumn::new(blank_scope);
     let rope = ropey::Rope::new();
     let cell = col
         .render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope))
@@ -114,7 +118,8 @@ fn no_source_fires_renders_blank() {
 fn sign_absent_on_wrap_virtual_and_filler_rows() {
     let mut registry = ScopeRegistry::new();
     let scope = registry.intern("diagnostic");
-    let mut col = SignColumn::new();
+    let blank_scope = registry.intern("ui.linenr");
+    let mut col = SignColumn::new(blank_scope);
     col.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
@@ -147,14 +152,18 @@ fn sign_absent_on_wrap_virtual_and_filler_rows() {
 
 #[test]
 fn width_is_configured_not_recomputed_per_frame() {
-    let col = SignColumn::with_width(3);
+    let mut registry = ScopeRegistry::new();
+    let blank_scope = registry.intern("ui.linenr");
+    let col = SignColumn::with_width(3, blank_scope);
     assert_eq!(col.width(0), 3);
     assert_eq!(col.width(999_999), 3, "stable regardless of file size");
 }
 
 #[test]
 fn set_width_overrides_the_configured_width() {
-    let mut col = SignColumn::with_width(2);
+    let mut registry = ScopeRegistry::new();
+    let blank_scope = registry.intern("ui.linenr");
+    let mut col = SignColumn::with_width(2, blank_scope);
     col.set_width(0);
     assert_eq!(col.width(0), 0, "collapsed to zero when no signs exist");
     col.set_width(2);
@@ -169,7 +178,8 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     // other gutter column — SignColumn adds no truncation of its own.
     let mut registry = ScopeRegistry::new();
     let scope = registry.intern("diagnostic");
-    let mut col = SignColumn::with_width(2); // usable = 1 cell
+    let blank_scope = registry.intern("ui.linenr");
+    let mut col = SignColumn::with_width(2, blank_scope); // usable = 1 cell
     col.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
@@ -226,6 +236,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
+        default_gutter_scope: blank_scope,
     };
     let mut canvas = crate::render::PaneCanvas::new(&mut buf, None);
     crate::render::compose_row(
@@ -261,9 +272,10 @@ fn sign_text_truncates_to_column_width_end_to_end() {
 #[test]
 fn zero_width_sign_column_leaves_the_next_column_untouched() {
     let mut registry = ScopeRegistry::new();
-    let scope = registry.intern("ui.linenr");
-    let empty_col = SignColumn::with_width(0); // no sources — width collapsed
-    let mut content_col = SignColumn::with_width(2);
+    let blank_scope = registry.intern("ui.linenr");
+    let scope = registry.intern("diagnostic");
+    let empty_col = SignColumn::with_width(0, blank_scope); // no sources — width collapsed
+    let mut content_col = SignColumn::with_width(2, blank_scope);
     content_col.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
@@ -321,6 +333,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
+        default_gutter_scope: blank_scope,
     };
     let mut canvas = crate::render::PaneCanvas::new(&mut buf, None);
     crate::render::compose_row(
@@ -355,6 +368,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
 fn sign_scope_resolves_via_baked_theme() {
     let mut registry = ScopeRegistry::new();
     let scope_id = registry.intern("diagnostic.error");
+    let blank_scope = registry.intern("ui.linenr");
     let mut styles_map = std::collections::HashMap::new();
     styles_map.insert(
         "diagnostic.error",
@@ -366,7 +380,7 @@ fn sign_scope_resolves_via_baked_theme() {
     let mut theme = Theme::new(styles_map, crate::types::ResolvedStyle::default());
     theme.bake(&registry);
 
-    let mut col = SignColumn::new();
+    let mut col = SignColumn::new(blank_scope);
     col.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
@@ -381,10 +395,7 @@ fn sign_scope_resolves_via_baked_theme() {
         .into_iter()
         .next()
         .unwrap();
-    let crate::providers::GutterScope::Id(id) = cell.scope else {
-        panic!("expected an interned ScopeId, got {:?}", cell.scope);
-    };
-    assert_eq!(theme.resolve(id).fg, Some(ratatui::style::Color::Red));
+    assert_eq!(theme.resolve(cell.scope).fg, Some(ratatui::style::Color::Red));
 }
 
 #[test]
@@ -393,8 +404,9 @@ fn multi_slot_column_keeps_top_n_signs_by_priority() {
     let a = registry.intern("a");
     let b = registry.intern("b");
     let c = registry.intern("c");
+    let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::with_width(3); // 2 sign slots
+    let mut col = SignColumn::with_width(3, blank_scope); // 2 sign slots
     col.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
@@ -431,8 +443,9 @@ fn multi_slot_column_keeps_top_n_signs_by_priority() {
 fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
     let mut registry = ScopeRegistry::new();
     let a = registry.intern("a");
+    let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::with_width(3); // 2 sign slots
+    let mut col = SignColumn::with_width(3, blank_scope); // 2 sign slots
     col.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
@@ -454,8 +467,9 @@ fn multi_slot_column_ties_go_to_later_registered_source() {
     let mut registry = ScopeRegistry::new();
     let a = registry.intern("a");
     let b = registry.intern("b");
+    let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::with_width(3); // 2 sign slots
+    let mut col = SignColumn::with_width(3, blank_scope); // 2 sign slots
     col.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
@@ -483,8 +497,9 @@ fn multi_slot_column_ties_go_to_later_registered_source() {
 fn width_one_column_keeps_no_signs() {
     let mut registry = ScopeRegistry::new();
     let a = registry.intern("a");
+    let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::with_width(1); // 0 sign slots
+    let mut col = SignColumn::with_width(1, blank_scope); // 0 sign slots
     col.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
@@ -508,8 +523,9 @@ fn multi_slot_column_renders_through_compose_gutter() {
     let mut registry = ScopeRegistry::new();
     let a = registry.intern("a");
     let b = registry.intern("b");
+    let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::with_width(3); // 2 sign slots
+    let mut col = SignColumn::with_width(3, blank_scope); // 2 sign slots
     col.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
@@ -574,6 +590,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
+        default_gutter_scope: blank_scope,
     };
     let mut canvas = crate::render::PaneCanvas::new(&mut buf, None);
     crate::render::compose_row(

@@ -84,6 +84,8 @@ pub(crate) fn build_pane(
 ) -> (Pane, PaneRenderHandles) {
     let bracket_scope = registry.intern("ui.cursor.match");
     let search_scope = registry.intern("ui.selection.search");
+    let linenr_scope = registry.intern("ui.linenr");
+    let linenr_selected_scope = registry.intern("ui.linenr.selected");
 
     let highlights = PaneHighlights::default();
     let signs = PaneSigns::default();
@@ -92,7 +94,7 @@ pub(crate) fn build_pane(
     let virtual_line_map: VirtualLineMap = Arc::new(RwLock::new(FxHashMap::default()));
 
     let mut providers = ProviderSet::new();
-    let mut sign_column = SignColumn::new();
+    let mut sign_column = SignColumn::new(linenr_scope);
     // Plugin signs registered after diagnostics so a plugin can override at
     // equal priority (`SignColumn`'s tie-break: later-registered wins).
     sign_column.add_source(Box::new(SharedSignSource::new(Arc::clone(
@@ -100,7 +102,10 @@ pub(crate) fn build_pane(
     ))));
     sign_column.add_source(Box::new(SharedSignSource::new(Arc::clone(&signs.plugin))));
     providers.add_gutter_column(Box::new(sign_column));
-    providers.add_gutter_column(Box::new(LineNumberColumn::default()));
+    providers.add_gutter_column(Box::new(LineNumberColumn::new(
+        linenr_scope,
+        linenr_selected_scope,
+    )));
     providers.add_highlight_source(Box::new(SharedHighlighter {
         scope: bracket_scope,
         tier: HighlightTier::BracketMatch,

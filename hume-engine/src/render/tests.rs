@@ -1,7 +1,7 @@
 use super::*;
 use crate::pane::ViewportState;
 use crate::theme::Theme;
-use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind};
+use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, ScopeId};
 
 fn make_test_buf(w: u16, h: u16) -> ratatui::buffer::Buffer {
     ratatui::buffer::Buffer::empty(ratatui::layout::Rect {
@@ -68,6 +68,7 @@ fn renders_simple_text() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
+        default_gutter_scope: ScopeId(0),
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -131,6 +132,7 @@ fn filler_rows_have_tilde() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
+        default_gutter_scope: ScopeId(0),
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     render_tilde_fillers(1, &[], &ctx, &mut canvas);
@@ -187,6 +189,7 @@ fn do_compose_row(
         theme: &theme,
         pane_bg: None,
         rope: &rope,
+        default_gutter_scope: ScopeId(0),
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -428,6 +431,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
+        default_gutter_scope: ScopeId(0),
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -614,7 +618,7 @@ impl GutterColumn for OverlongGutter {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
                 "TOOLONG",
             )),
-            scope: crate::types::Scope("ui.linenr").into(),
+            scope: crate::types::ScopeId(0),
         }]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -646,7 +650,10 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         height: 1,
     };
     let mut buf = make_test_buf(10, 1);
-    let theme = Theme::default();
+    let mut registry = crate::theme::ScopeRegistry::new();
+    let default_gutter_scope = registry.intern("ui.linenr");
+    let mut theme = Theme::default();
+    theme.bake(&registry);
     let col_widths = vec![4u16];
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {
@@ -663,6 +670,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
+        default_gutter_scope: ScopeId(0),
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -725,7 +733,10 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
     for x in 0..11u16 {
         set_cell(&mut buf, x, 0, "Z", ratatui::style::Style::default());
     }
-    let theme = Theme::default();
+    let mut registry = crate::theme::ScopeRegistry::new();
+    let default_gutter_scope = registry.intern("ui.linenr");
+    let mut theme = Theme::default();
+    theme.bake(&registry);
     let col_widths = vec![4u16];
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {
@@ -742,6 +753,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
+        default_gutter_scope,
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -788,7 +800,7 @@ impl GutterColumn for LeftoverGutter {
             .iter()
             .map(|s| crate::providers::GutterCell {
                 content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(s)),
-                scope: crate::types::Scope("ui.linenr").into(),
+                scope: crate::types::ScopeId(0),
             })
             .collect()
     }
@@ -812,7 +824,7 @@ impl GutterColumn for ExactFillGutter {
     ) -> Vec<crate::providers::GutterCell> {
         vec![crate::providers::GutterCell {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed("N")),
-            scope: crate::types::Scope("ui.linenr").into(),
+            scope: crate::types::ScopeId(0),
         }]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -857,7 +869,10 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     for x in 0..10u16 {
         set_cell(&mut buf, x, 0, "Z", ratatui::style::Style::default());
     }
-    let theme = Theme::default();
+    let mut registry = crate::theme::ScopeRegistry::new();
+    let default_gutter_scope = registry.intern("ui.linenr");
+    let mut theme = Theme::default();
+    theme.bake(&registry);
     let col_widths = vec![2u16, 6u16];
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {
@@ -874,6 +889,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
+        default_gutter_scope,
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -931,7 +947,7 @@ impl GutterColumn for HugeGutter {
     ) -> Vec<crate::providers::GutterCell> {
         vec![crate::providers::GutterCell {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed("N")),
-            scope: crate::types::Scope("ui.linenr").into(),
+            scope: crate::types::ScopeId(0),
         }]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -967,7 +983,10 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
     for x in 0..12u16 {
         set_cell(&mut buf, x, 0, "Z", ratatui::style::Style::default());
     }
-    let theme = Theme::default();
+    let mut registry = crate::theme::ScopeRegistry::new();
+    let default_gutter_scope = registry.intern("ui.linenr");
+    let mut theme = Theme::default();
+    theme.bake(&registry);
     let col_widths = vec![20u16];
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {
@@ -984,6 +1003,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
+        default_gutter_scope,
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -1032,7 +1052,7 @@ impl GutterColumn for OwnedIconGutter {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Owned(
                 "AB".to_string(),
             )),
-            scope: crate::types::Scope("ui.linenr").into(),
+            scope: crate::types::ScopeId(0),
         }]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -1055,7 +1075,7 @@ impl GutterColumn for StaticIconGutter {
     ) -> Vec<crate::providers::GutterCell> {
         vec![crate::providers::GutterCell {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed("AB")),
-            scope: crate::types::Scope("ui.linenr").into(),
+            scope: crate::types::ScopeId(0),
         }]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -1084,7 +1104,10 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             height: 1,
         };
         let mut buf = make_test_buf(7, 1);
-        let theme = Theme::default();
+        let mut registry = crate::theme::ScopeRegistry::new();
+        let default_gutter_scope = registry.intern("ui.linenr");
+        let mut theme = Theme::default();
+        theme.bake(&registry);
         let col_widths = vec![3u16];
         let rope = ropey::Rope::new();
         let ctx = ComposeCtx {
@@ -1101,6 +1124,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             theme: &theme,
             pane_bg: None,
             rope: &rope,
+            default_gutter_scope,
         };
         let mut canvas = PaneCanvas::new(&mut buf, None);
         compose_row(
@@ -1157,10 +1181,10 @@ impl GutterColumn for FirstCharGutter {
                     content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Owned(
                         first_char.to_string(),
                     )),
-                    scope: crate::types::Scope("ui.linenr").into(),
+                    scope: crate::types::ScopeId(0),
                 }
             }
-            _ => crate::providers::GutterCell::blank(crate::types::Scope("ui.linenr")),
+            _ => crate::providers::GutterCell::blank(crate::types::ScopeId(0)),
         };
         vec![cell]
     }
@@ -1197,7 +1221,10 @@ fn gutter_column_reads_rope_via_ctx() {
         height: 2,
     };
     let mut buf = make_test_buf(12, 2);
-    let theme = Theme::default();
+    let mut registry = crate::theme::ScopeRegistry::new();
+    let default_gutter_scope = registry.intern("ui.linenr");
+    let mut theme = Theme::default();
+    theme.bake(&registry);
     let col_widths = vec![2u16];
     let ctx = ComposeCtx {
         gutter_columns: &gutter_columns,
@@ -1213,6 +1240,7 @@ fn gutter_column_reads_rope_via_ctx() {
         theme: &theme,
         pane_bg: None,
         rope: &rope,
+        default_gutter_scope,
     };
     let mut canvas = PaneCanvas::new(&mut buf, None);
     compose_row(
@@ -1341,6 +1369,7 @@ fn compose_row_dims_cells_inline() {
         theme: &theme,
         pane_bg: Some(Color::Rgb(0, 0, 0)),
         rope: &rope,
+        default_gutter_scope: ScopeId(0),
     };
     let mut canvas = PaneCanvas::new(&mut buf, Some((Color::Rgb(0, 0, 0), 0.5)));
     compose_row(
@@ -1404,6 +1433,7 @@ fn compose_row_non_rgb_dim_target_is_noop() {
         theme: &theme,
         pane_bg: Some(Color::Rgb(0, 0, 0)),
         rope: &rope,
+        default_gutter_scope: ScopeId(0),
     };
     let mut canvas = PaneCanvas::new(&mut buf, Some((Color::Reset, 0.5)));
     compose_row(

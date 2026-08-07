@@ -91,6 +91,7 @@ fn virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
             show_indent_guides: true,
         },
         dim: None,
+        default_gutter_scope: crate::types::ScopeId(0),
     };
     let mut scratch = FrameScratch::new();
     let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
@@ -191,6 +192,7 @@ fn virtual_row_resolves_scopes_from_unsorted_segments() {
             show_indent_guides: true,
         },
         dim: None,
+        default_gutter_scope: crate::types::ScopeId(0),
     };
     let mut scratch = FrameScratch::new();
     let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
@@ -273,6 +275,7 @@ fn render_wrapped_pane_with_virtual_line(
             show_indent_guides: true,
         },
         dim: None,
+        default_gutter_scope: crate::types::ScopeId(0),
     };
     let mut scratch = FrameScratch::new();
     let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
@@ -419,6 +422,7 @@ fn render_pane_with_n_before_lines(
             show_indent_guides: true,
         },
         dim: None,
+        default_gutter_scope: crate::types::ScopeId(0),
     };
     let mut scratch = FrameScratch::new();
     let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
@@ -491,9 +495,9 @@ impl crate::providers::GutterColumn for ProviderIdReportingGutter {
                 content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Owned(
                     provider_id.to_string(),
                 )),
-                scope: crate::types::Scope("ui.linenr").into(),
+                scope: crate::types::ScopeId(0),
             },
-            _ => crate::providers::GutterCell::blank(crate::types::Scope("ui.linenr")),
+            _ => crate::providers::GutterCell::blank(crate::types::ScopeId(0)),
         };
         vec![cell]
     }
@@ -517,7 +521,10 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
             anchor: VirtualLineAnchor::Before(0),
         }));
 
-    let theme = Theme::default();
+    let mut registry = crate::theme::ScopeRegistry::new();
+    let default_gutter_scope = registry.intern("ui.linenr");
+    let mut theme = Theme::default();
+    theme.bake(&registry);
     let pane_rect = rect(0, 0, 10, 3);
     let pane_ctx = PaneRenderCtx {
         pane: &pane,
@@ -533,6 +540,7 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
             show_indent_guides: true,
         },
         dim: None,
+        default_gutter_scope,
     };
     let mut scratch = FrameScratch::new();
     let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
@@ -579,6 +587,7 @@ fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
             show_indent_guides: true,
         },
         dim: None,
+        default_gutter_scope: crate::types::ScopeId(0),
     };
     let mut scratch = FrameScratch::new();
     let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
@@ -623,6 +632,7 @@ fn scrolled_pane_renders_from_top_line_onward() {
             show_indent_guides: true,
         },
         dim: None,
+        default_gutter_scope: crate::types::ScopeId(0),
     };
     let mut scratch = FrameScratch::new();
     let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
@@ -658,7 +668,7 @@ fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
                 content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
                     text,
                 )),
-                scope: crate::types::Scope("ui.linenr").into(),
+                scope: crate::types::ScopeId(0),
             }]
         }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -674,7 +684,10 @@ fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
     pane.viewport = crate::pane::ViewportState::new(20, 3); // 1 real row + 2 filler rows
     pane.providers.add_gutter_column(Box::new(MarkerGutter));
 
-    let theme = Theme::default();
+    let mut registry = crate::theme::ScopeRegistry::new();
+    let default_gutter_scope = registry.intern("ui.linenr");
+    let mut theme = Theme::default();
+    theme.bake(&registry);
     let pane_rect = rect(0, 0, 20, 3);
     let pane_ctx = PaneRenderCtx {
         pane: &pane,
@@ -690,6 +703,7 @@ fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
             show_indent_guides: true,
         },
         dim: None,
+        default_gutter_scope,
     };
     let mut scratch = FrameScratch::new();
     let mut buf = ratatui::buffer::Buffer::empty(pane_rect);

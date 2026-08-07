@@ -78,6 +78,7 @@ pub(crate) fn render_pane(
         theme: pane_ctx.theme,
         pane_bg: pane_ctx.theme.ui.background.bg,
         rope: pane_ctx.rope,
+        default_gutter_scope: pane_ctx.default_gutter_scope,
     };
     let mut canvas = render::PaneCanvas::new(buf, pane_ctx.dim);
 

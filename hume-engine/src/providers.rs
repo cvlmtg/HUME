@@ -129,41 +129,19 @@ pub trait GutterColumn {
 #[derive(Clone, Debug)]
 pub struct GutterCell {
     pub content: GutterCellContent,
-    pub scope: GutterScope,
+    pub scope: ScopeId,
 }
 
-/// Default/blank gutter scope — the fallback every built-in gutter column
-/// (line numbers, unfilled sign slots) renders under when it has nothing
-/// more specific to say. One source so the literal can't drift between
-/// `builtins::line_number`, `builtins::sign_column`, and `render`'s own
-/// fallback in `compose_gutter`.
+/// Default/blank gutter scope name — the fallback every built-in gutter
+/// column (line numbers, unfilled sign slots) renders under when it has
+/// nothing more specific to say. One source so the literal can't drift
+/// between `builtins::line_number`, `builtins::sign_column`, and
+/// `EngineView`'s own interned fallback for `compose_gutter`. Callers intern
+/// this once (at pane/view construction) and carry the resulting `ScopeId` —
+/// same intern-at-construction contract as `HighlightSource`/`InlineInsert`,
+/// so the per-cell hot path in `compose_gutter` never falls back to a
+/// by-name lookup.
 pub(crate) const DEFAULT_GUTTER_SCOPE: Scope = Scope("ui.linenr");
-
-/// A gutter cell's scope: either a name (`Scope`, resolved via
-/// `Theme::resolve_by_name` — the slow "by string" path static builtins like
-/// `LineNumberColumn` use) or an already-interned `ScopeId` (the fast O(1)
-/// path — same intern-at-construction contract as `HighlightSource`/
-/// `InlineInsert`, used by providers like `SignSource` that resolve their
-/// scope once up front). `compose_gutter` handles both; gutter rendering is
-/// ~100 calls/frame either way, so the by-name path's extra hash lookup is
-/// negligible — this is about contract consistency, not performance.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GutterScope {
-    Name(Scope),
-    Id(ScopeId),
-}
-
-impl From<Scope> for GutterScope {
-    fn from(s: Scope) -> Self {
-        GutterScope::Name(s)
-    }
-}
-
-impl From<ScopeId> for GutterScope {
-    fn from(id: ScopeId) -> Self {
-        GutterScope::Id(id)
-    }
-}
 
 /// What a gutter cell displays.
 ///
@@ -186,10 +164,10 @@ impl GutterCellContent {
 }
 
 impl GutterCell {
-    pub fn blank(scope: impl Into<GutterScope>) -> Self {
+    pub fn blank(scope: ScopeId) -> Self {
         Self {
             content: GutterCellContent::Blank,
-            scope: scope.into(),
+            scope,
         }
     }
 

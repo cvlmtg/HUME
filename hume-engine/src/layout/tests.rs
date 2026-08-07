@@ -2,7 +2,7 @@ use super::*;
 use crate::providers::GutterCell;
 use crate::providers::GutterColumn;
 use crate::providers::GutterRowCtx;
-use crate::types::{RowKind, Scope};
+use crate::types::{RowKind, ScopeId};
 
 /// A gutter column three columns wide, whatever the line count.
 struct FixedWidthGutter;
@@ -12,7 +12,7 @@ impl GutterColumn for FixedWidthGutter {
         3
     }
     fn render_row_cells(&self, _: RowKind, _: &GutterRowCtx) -> Vec<GutterCell> {
-        vec![GutterCell::blank(Scope("ui.linenr"))]
+        vec![GutterCell::blank(ScopeId(0))]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self

@@ -1,5 +1,4 @@
 use super::*;
-use crate::types::Scope;
 
 struct DummyHighlight {
     tier: HighlightTier,
@@ -25,7 +24,7 @@ impl GutterColumn for DummyGutter {
         0
     }
     fn render_row_cells(&self, _: crate::types::RowKind, _: &GutterRowCtx) -> Vec<GutterCell> {
-        vec![GutterCell::blank(Scope("x"))]
+        vec![GutterCell::blank(ScopeId(0))]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
@@ -41,7 +40,7 @@ impl GutterColumn for OtherGutter {
         5
     }
     fn render_row_cells(&self, _: crate::types::RowKind, _: &GutterRowCtx) -> Vec<GutterCell> {
-        vec![GutterCell::blank(Scope("y"))]
+        vec![GutterCell::blank(ScopeId(1))]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
@@ -53,7 +52,7 @@ impl GutterColumn for OtherGutter {
 fn num_str(n: usize) -> String {
     GutterCell {
         content: GutterCellContent::from_number(n),
-        scope: Scope("x").into(),
+        scope: ScopeId(0),
     }
     .as_str()
     .to_owned()
@@ -81,10 +80,10 @@ fn from_number_large() {
 fn gutter_cell_text_and_blank() {
     let s = GutterCell {
         content: GutterCellContent::Text(Cow::Borrowed("abc")),
-        scope: Scope("x").into(),
+        scope: ScopeId(0),
     };
     assert_eq!(s.as_str(), "abc");
-    let b = GutterCell::blank(Scope("x"));
+    let b = GutterCell::blank(ScopeId(0));
     assert_eq!(b.as_str(), " ");
 }
 
@@ -96,6 +95,8 @@ fn sync_line_number_style_updates_line_number_column() {
     let mut set = ProviderSet::new();
     set.add_gutter_column(Box::new(LineNumberColumn::with_style(
         LineNumberStyle::Hybrid,
+        ScopeId(0),
+        ScopeId(1),
     )));
     set.sync_line_number_style(LineNumberStyle::Relative);
     let col = set.gutter_columns[0]
@@ -125,7 +126,7 @@ fn sync_line_number_style_no_op_when_empty() {
 #[test]
 fn sync_sign_column_width_updates_registered_sign_columns() {
     let mut set = ProviderSet::new();
-    set.add_gutter_column(Box::new(SignColumn::new()));
+    set.add_gutter_column(Box::new(SignColumn::new(ScopeId(0))));
     set.sync_sign_column_width(0);
     let col = set.gutter_columns[0]
         .1

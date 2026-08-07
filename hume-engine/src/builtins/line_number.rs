@@ -1,8 +1,8 @@
 use std::any::Any;
 use std::str::FromStr;
 
-use crate::providers::{DEFAULT_GUTTER_SCOPE, GutterCell, GutterCellContent, GutterColumn};
-use crate::types::{RowKind, Scope};
+use crate::providers::{GutterCell, GutterCellContent, GutterColumn};
+use crate::types::{RowKind, ScopeId};
 
 // ---------------------------------------------------------------------------
 // Line number style
@@ -62,23 +62,30 @@ impl std::fmt::Display for LineNumberStyle {
 /// one space of padding on the right.
 pub struct LineNumberColumn {
     pub style: LineNumberStyle,
-}
-
-impl Default for LineNumberColumn {
-    fn default() -> Self {
-        Self {
-            style: LineNumberStyle::Hybrid,
-        }
-    }
+    /// Interned `"ui.linenr"` — every row but the primary head line.
+    default_scope: ScopeId,
+    /// Interned `"ui.linenr.selected"` — the primary selection's head line.
+    selected_scope: ScopeId,
 }
 
 impl LineNumberColumn {
-    pub fn new() -> Self {
-        Self::default()
+    /// `default_scope`/`selected_scope` are interned by the caller (once, at
+    /// pane construction) — same intern-at-construction contract as every
+    /// other provider (`HighlightSource`, `InlineInsert`, `SignSource`).
+    pub fn new(default_scope: ScopeId, selected_scope: ScopeId) -> Self {
+        Self {
+            style: LineNumberStyle::Hybrid,
+            default_scope,
+            selected_scope,
+        }
     }
 
-    pub fn with_style(style: LineNumberStyle) -> Self {
-        Self { style }
+    pub fn with_style(style: LineNumberStyle, default_scope: ScopeId, selected_scope: ScopeId) -> Self {
+        Self {
+            style,
+            default_scope,
+            selected_scope,
+        }
     }
 
     /// Number of digits needed to represent `total_lines`.
@@ -105,13 +112,13 @@ impl GutterColumn for LineNumberColumn {
         let primary_head_line = ctx.primary_head_line;
         let cell = match kind {
             RowKind::Filler | RowKind::Virtual { .. } | RowKind::Wrap { .. } => {
-                GutterCell::blank(DEFAULT_GUTTER_SCOPE)
+                GutterCell::blank(self.default_scope)
             }
             RowKind::LineStart { line_idx } => {
                 let scope = if line_idx == primary_head_line {
-                    Scope("ui.linenr.selected")
+                    self.selected_scope
                 } else {
-                    DEFAULT_GUTTER_SCOPE
+                    self.default_scope
                 };
 
                 let display_num = match self.style {
@@ -130,7 +137,7 @@ impl GutterColumn for LineNumberColumn {
 
                 GutterCell {
                     content: GutterCellContent::from_number(display_num),
-                    scope: scope.into(),
+                    scope,
                 }
             }
         };

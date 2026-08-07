@@ -5,7 +5,7 @@ use crate::layout::PaneGeometry;
 use crate::pane::ViewportState;
 use crate::providers::{GutterColumn, GutterRowCtx, ProviderId};
 use crate::theme::Theme;
-use crate::types::{CellContent, DisplayRow, EditorMode, Grapheme, ResolvedStyle, RowKind};
+use crate::types::{CellContent, DisplayRow, EditorMode, Grapheme, ResolvedStyle, RowKind, ScopeId};
 
 // ---------------------------------------------------------------------------
 // Stage 4: compose
@@ -40,6 +40,12 @@ pub(crate) struct ComposeCtx<'a> {
     /// so gutter providers (git-signs, diagnostics) can query buffer content
     /// without pre-owning it.
     pub rope: &'a ropey::Rope,
+    /// `DEFAULT_GUTTER_SCOPE` ("ui.linenr"), interned once at
+    /// `EngineView::new` — the fallback scope `compose_gutter` and
+    /// `render_tilde_fillers` resolve under when a cell/column has nothing
+    /// more specific to say. Threaded in rather than re-interned here: the
+    /// per-cell hot path only ever does an O(1) `ScopeId` index.
+    pub default_gutter_scope: ScopeId,
 }
 
 /// The pane's drawing surface — every cell write for a pane goes through here.
@@ -110,23 +116,19 @@ impl<'a> PaneCanvas<'a> {
 /// resolved to). Shared by `compose_gutter`'s per-cell loop and its
 /// leftover-width blank fill so the two resolution paths can't drift.
 ///
-/// `GutterScope::Name` is the slow by-string path (static builtins);
-/// `Id` is the fast O(1) path for providers that intern at construction
-/// (e.g. `SignSource`). Gutter rendering is ~100 calls/frame either way,
-/// so the difference is negligible here.
+/// `scope` is always already-interned — every gutter provider (`SignSource`,
+/// `LineNumberColumn`) interns at construction, so this is an O(1) `Theme::resolve`
+/// index, never a by-name lookup.
 ///
 /// Cursorline/pane bg is the base; the gutter scope style layers on top.
 /// If the scope defines its own bg, it wins; otherwise the row bg shows
 /// through.
 fn gutter_cell_style(
-    scope: crate::providers::GutterScope,
+    scope: ScopeId,
     theme: &crate::theme::Theme,
     row_bg: Option<ratatui::style::Color>,
 ) -> ratatui::style::Style {
-    let scope_style: ratatui::style::Style = match scope {
-        crate::providers::GutterScope::Name(name) => theme.resolve_by_name(name).into(),
-        crate::providers::GutterScope::Id(id) => theme.resolve(id).into(),
-    };
+    let scope_style: ratatui::style::Style = theme.resolve(scope).into();
     match row_bg {
         Some(bg) => ratatui::style::Style::default().bg(bg).patch(scope_style),
         None => scope_style,
@@ -182,8 +184,7 @@ fn compose_gutter(
         // may be written before truncation.
         let n_cells = cells.len().max(1);
         let usable_per_cell = col_width.saturating_sub(1) / n_cells as u16;
-        let mut last_scope: crate::providers::GutterScope =
-            crate::providers::GutterScope::Name(crate::providers::DEFAULT_GUTTER_SCOPE);
+        let mut last_scope: ScopeId = compose_ctx.default_gutter_scope;
         for (cell_idx, cell) in cells.iter().enumerate() {
             let is_last = cell_idx == cells.len() - 1;
             let text = cell.as_str();
