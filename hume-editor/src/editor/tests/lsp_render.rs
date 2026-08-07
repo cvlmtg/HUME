@@ -299,6 +299,47 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
     );
 }
 
+/// Two sources' extra highlights overlapping the same range must resolve
+/// the tie in alphabetical source-name order, not whichever source called
+/// `set-extra-highlights!` first — `SourceStore::set` keeps a buffer's
+/// sources sorted ascending by name, and `flatten_priority_overlaps`
+/// resolves same-priority ties by push order, so "zzz" set before "aaa"
+/// must still lose the overlap to "aaa".
+#[test]
+fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
+    let tmp = safe_tempdir();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    type_text(&mut ed, "abcdefgh");
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm-zzz" "" (lambda ()
+             (set-extra-highlights! "zzz" (current-buffer) (list (list 1 4 "zzz-scope")))))
+           (define-command! "arm-aaa" "" (lambda ()
+             (set-extra-highlights! "aaa" (current-buffer) (list (list 1 4 "aaa-scope")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    // "zzz" armed first — if the tie-break followed call order this would win.
+    type_cmd(&mut ed, ":arm-zzz");
+    type_cmd(&mut ed, ":arm-aaa");
+
+    let pid = ed.state.focused_pane_id;
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    let aaa_scope = scope(&ed, "aaa-scope");
+    assert_eq!(
+        extra_arc(&ed, pid),
+        vec![(0, 1, 4, aaa_scope)],
+        "the alphabetically first source (\"aaa\") must win the overlap \
+         regardless of which source called set-extra-highlights! first"
+    );
+}
+
 /// Reproduces the same-frame scope-intern-then-resolve race: a scope name
 /// that has never been interned before must render its real style on the
 /// very first frame it appears in, not a stale/default style (or panic).

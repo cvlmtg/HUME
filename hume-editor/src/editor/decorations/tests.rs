@@ -56,6 +56,35 @@ fn signs_for_buffer_does_not_leak_another_buffers_entries() {
     );
 }
 
+/// `SourceStore::set` keeps `by_buffer`'s per-buffer source list sorted
+/// ascending by name, so `for_buffer` (here via `signs_for_buffer`, the one
+/// reader that keeps the source name) yields a deterministic cross-source
+/// order — independent of which source called `set-*!` first. Without the
+/// sort in `set` (e.g. reverting to plain find-or-push), setting `"zzz"`
+/// before `"aaa"` would leave `"zzz"` first in iteration order and this
+/// assertion would fail.
+#[test]
+fn sources_iterate_in_ascending_name_order_regardless_of_set_order() {
+    let mut store = DecorationStores::default();
+    let (a, _b) = make_two_bids();
+    store.set_signs("zzz".to_string(), a, vec![sign(0, "z")]);
+    store.set_signs("mmm".to_string(), a, vec![sign(0, "m")]);
+    store.set_signs("aaa".to_string(), a, vec![sign(0, "a")]);
+
+    let sources: Vec<&str> = store.signs_for_buffer(a).map(|(s, _)| s).collect();
+    assert_eq!(
+        sources,
+        vec!["aaa", "mmm", "zzz"],
+        "sources must iterate ascending by name regardless of set() call order"
+    );
+
+    // Re-setting an existing source (wholesale replace) must not move it out
+    // of sorted position.
+    store.set_signs("mmm".to_string(), a, vec![sign(1, "m2")]);
+    let sources: Vec<&str> = store.signs_for_buffer(a).map(|(s, _)| s).collect();
+    assert_eq!(sources, vec!["aaa", "mmm", "zzz"]);
+}
+
 fn virtual_line(pos: usize) -> VirtualLineEntry {
     VirtualLineEntry {
         pos,

@@ -317,3 +317,49 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
         "virtual line must be gone once the store is cleared"
     );
 }
+
+/// Two sources anchored to the same line must render in alphabetical
+/// source-name order, not the order they happened to call
+/// `set-virtual-lines!` in — `SourceStore::set` keeps a buffer's sources
+/// sorted ascending by name for exactly this: virtual lines have no
+/// per-line collapse (unlike signs/EOL text/line backgrounds), so
+/// whichever order the store iterates in *is* the render order. Setting
+/// "zzz" before "aaa" here would put "zzz" first if `set` fell back to
+/// find-or-push instead of a sorted insert.
+#[test]
+fn same_line_virtual_lines_from_two_sources_order_alphabetically_by_source() {
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    type_text(&mut ed, "let x = 5");
+    let bid = ed.focused_buffer_id();
+    let entry = |text: &str| crate::editor::decorations::VirtualLineEntry {
+        pos: 0,
+        text: text.to_string(),
+        before: false,
+        scope: None,
+        segments: Vec::new(),
+    };
+    ed.state
+        .config
+        .decorations
+        .set_virtual_lines("zzz".to_string(), bid, vec![entry("from zzz")]);
+    ed.state
+        .config
+        .decorations
+        .set_virtual_lines("aaa".to_string(), bid, vec![entry("from aaa")]);
+
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    let texts: Vec<String> = virtual_lines_at(&ed, 0)
+        .iter()
+        .map(|v| v.text.clone())
+        .collect();
+    assert_eq!(
+        texts,
+        vec!["from aaa".to_string(), "from zzz".to_string()],
+        "virtual lines must render in ascending source-name order regardless \
+         of which source called set-virtual-lines! first"
+    );
+}

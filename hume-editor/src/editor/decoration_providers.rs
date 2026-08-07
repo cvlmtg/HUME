@@ -243,7 +243,11 @@ impl Editor {
                     for (start, end, scope) in extra {
                         // No severity concept for plugin-supplied spans —
                         // uniform priority; overlap ties resolve by push
-                        // order (first source registered wins).
+                        // order, which `extra_highlights_for_buffer`
+                        // (`SourceStore::for_buffer`) yields ascending by
+                        // source name — the alphabetically-first source wins,
+                        // deterministic across sessions rather than whichever
+                        // source happened to call `set-extra-highlights!` first.
                         push_priority_highlight_lines(text, start, end, 0, scope, &mut raw);
                     }
                     let mut data = extra_arc.write_or_panic();
@@ -363,14 +367,15 @@ impl Editor {
             // would get cloned every frame by
             // `SharedSignSource::signs_for_line`. Safe only because the sort
             // below is priority-only: same-priority ties resolve by the
-            // input order `plugin_raw.sort_by` set just above (source name,
-            // ascending), not a second tie-break rule invented here. The
-            // only other explicit priority-tie decision in the sign
-            // pipeline is `SignColumn::render_row_cells`'s own sort
+            // input order, which `signs_for_buffer` (`SourceStore::for_buffer`)
+            // already yields ascending by source name — no local re-sort
+            // needed, not a second tie-break rule invented here. The only
+            // other explicit priority-tie decision in the sign pipeline is
+            // `SignColumn::render_row_cells`'s own sort
             // (hume-engine/src/builtins/sign_column.rs, arbitrates plugin vs
             // diagnostics map by source-registration order) — this sort
             // must stay priority-only so it never overrides that.
-            let mut plugin_raw: Vec<(String, usize, String, String, i64)> = self
+            let plugin_raw: Vec<(String, usize, String, String, i64)> = self
                 .state
                 .config
                 .decorations
@@ -389,7 +394,6 @@ impl Editor {
                     )
                 })
                 .collect();
-            plugin_raw.sort_by(|a, b| a.0.cmp(&b.0));
 
             let mut plugin_all: rustc_hash::FxHashMap<usize, Vec<(String, String, i64)>> =
                 rustc_hash::FxHashMap::default();
@@ -640,7 +644,12 @@ impl Editor {
     /// counter): an edit only bumps the buffer it edited, so typing in one
     /// buffer no longer forces every pane on every *other* buffer to
     /// resync too. Called from `prepare_frame`'s step 5, *before* scrolling,
-    /// no viewport dependency to make stale.
+    /// no viewport dependency to make stale. Two sources anchored to the same
+    /// line stack rather than collapse (unlike the four line-anchored kinds
+    /// `last_writer_per_line` folds) — `virtual_lines_for_buffer`
+    /// (`SourceStore::for_buffer`) yields sources ascending by name, and
+    /// `RowMap::block`'s anchor sort is stable, so they render in
+    /// alphabetical-by-source order, not registration order.
     ///
     /// Each entry becomes `Before(line)` or `After(line)` per its `before`
     /// flag, and its `segments` are gap-filled with its base scope so the
@@ -824,9 +833,10 @@ impl Editor {
 /// one that a remap collapsed onto the same line (ties resolve by store
 /// order — `SourceStore::set` sorts by position, so "later" means originally
 /// further along the buffer); across sources, tie-break by source name,
-/// mirroring the sign pipeline (`update_sign_providers`'s ascending
-/// source-name pre-sort, then a *stable* priority sort, leaves same-priority
-/// ties in source order — i.e. the alphabetically first source wins).
+/// mirroring the sign pipeline (`SourceStore::set` keeps sources ascending by
+/// name; `update_sign_providers`'s *stable* priority sort over that input
+/// leaves same-priority ties in source order — i.e. the alphabetically first
+/// source wins).
 ///
 /// A single stable sort **descending** by source name gets both properties
 /// from one `FxHashMap::insert`-per-entry fold: one source's own entries

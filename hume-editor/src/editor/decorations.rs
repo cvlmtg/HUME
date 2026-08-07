@@ -194,9 +194,9 @@ impl PointAnchored for LineBgEntry {
 }
 
 /// One decoration kind's per-source entries, for every buffer
-/// (`FxHashMap<BufferId, Vec<(source, Vec<T>)>>`, find-or-push
-/// replace-wholesale-by-source). Written once, instantiated per kind; the
-/// type system carries the per-kind payload differences.
+/// (`FxHashMap<BufferId, Vec<(source, Vec<T>)>>`, kept sorted ascending by
+/// `source` — see `set`). Written once, instantiated per kind; the type
+/// system carries the per-kind payload differences.
 pub(crate) struct SourceStore<T> {
     by_buffer: FxHashMap<BufferId, Vec<(String, Vec<T>)>>,
 }
@@ -210,9 +210,14 @@ impl<T> Default for SourceStore<T> {
 }
 
 impl<T> SourceStore<T> {
-    /// All entries for `bid`, across every source, paired with their source
-    /// name — signs need the name for a deterministic priority tie-break;
-    /// every other kind's caller discards it.
+    /// All entries for `bid`, across every source in ascending source-name
+    /// order (see `set`), paired with their source name — signs need the
+    /// name for a deterministic priority tie-break; virtual lines and extra
+    /// highlights (the two kinds with no per-line collapse) rely on this
+    /// ascending order directly, so two sources anchored to the same line
+    /// render in a name-deterministic order rather than whichever call
+    /// `set-*!` happened to land first this session; every other kind's
+    /// caller discards the name.
     fn for_buffer(&self, bid: BufferId) -> impl Iterator<Item = (&str, &T)> {
         self.by_buffer
             .get(&bid)
@@ -254,13 +259,16 @@ impl<T> SourceStore<T> {
 
 impl<T: Positioned> SourceStore<T> {
     /// Replaces `source`'s entries for `bid` wholesale, sorted by `pos` (see
-    /// `Positioned`'s doc).
+    /// `Positioned`'s doc). `slot` itself stays sorted ascending by `source`
+    /// name — a binary-search insert rather than find-or-push — so
+    /// `for_buffer`'s iteration order is deterministic by construction
+    /// instead of "whichever source called `set` first this session".
     fn set(&mut self, source: String, bid: BufferId, mut entries: Vec<T>) {
         entries.sort_by_key(Positioned::pos);
         let slot = self.by_buffer.entry(bid).or_default();
-        match slot.iter_mut().find(|(s, _)| *s == source) {
-            Some(existing) => existing.1 = entries,
-            None => slot.push((source, entries)),
+        match slot.binary_search_by(|(s, _)| s.as_str().cmp(source.as_str())) {
+            Ok(idx) => slot[idx].1 = entries,
+            Err(idx) => slot.insert(idx, (source, entries)),
         }
     }
 }
