@@ -34,15 +34,15 @@ Helix&nbsp;&nbsp;Lorem <span class="sel">ipsum<span class="head">&nbsp;</span></
 HUME&nbsp;&nbsp;&nbsp;Lorem ipsum<span class="sel">&nbsp;dolo<span class="head">r</span></span> sit
 </div>
 
-To select the word the cursor is already sitting on — no forward jump — HUME binds `mm`. By default it selects the whole word plus one adjacent whitespace run (same rule as `w`/`b` above), no matter where in the word the cursor sits; with `word-selects-whitespace` off it behaves like `miw` (bare word) instead. Helix has no dedicated command for this, but `e` (move to end of word) reaches a similar result *only when the cursor already sits on the word's first character* — unlike `w`, `e` always excludes the trailing whitespace and, starting from the middle of a word, selects only from that point to the word's end (`rem`), not the whole word. `mm` has neither restriction.
+To select the word the cursor is already sitting on — no forward jump — HUME binds `mm`. By default it selects the whole word plus one adjacent whitespace run (same rule as `w`/`b` above), no matter where in the word the cursor sits. Helix's closest equivalent is `maw`, match mode's around-word text object: it also grabs the whole word plus one whitespace run, independent of cursor position. The two pick sides differently — `maw` reaches for trailing whitespace first and only falls back to leading whitespace if the word has none, while `mm` reaches for leading whitespace first and switches to trailing only for a line's first word (where a leading run would be indentation) — so they agree at line starts and for a line's last word, but land on opposite sides mid-line. `miw` (inner word, no whitespace) matches `mm` exactly, but only once `word-selects-whitespace` is turned off. `e` (move to end of word) only approximates `mm` when the cursor already sits on the word's first character — from the middle of a word it instead selects just cursor→end (`rem`), not the whole word.
 
 <div class="key-demo">
 <strong>Select the current word, cursor in the middle of the word</strong><br>
 Helix&nbsp;&nbsp;Lorem ip<span class="head">s</span>um dolor sit<br>
 HUME&nbsp;&nbsp;&nbsp;Lorem ip<span class="head">s</span>um dolor sit<br>
 <br>
-<strong>Press <code>e</code></strong><br>
-Helix&nbsp;&nbsp;Lorem ip<span class="sel">su<span class="head">m</span></span> dolor sit<br>
+<strong>Press <code>maw</code></strong><br>
+Helix&nbsp;&nbsp;Lorem <span class="sel">ipsum<span class="head">&nbsp;</span></span>dolor sit<br>
 <strong>Press <code>mm</code></strong><br>
 HUME&nbsp;&nbsp;&nbsp;Lorem<span class="sel"> ipsu<span class="head">m</span></span> dolor sit
 </div>
