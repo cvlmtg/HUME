@@ -115,13 +115,11 @@ fn remove_server_is_a_no_op_for_a_server_with_nothing_stored() {
     let mut store = DiagnosticsStore::default();
     let bid = make_bid();
     store.replace(ServerId(0), bid, vec![diag(0, 1, DiagSeverity::Error)]);
-    let gen_before = store.generation;
 
     let touched = store.remove_server(ServerId(99));
-    assert!(touched.is_empty());
-    assert_eq!(
-        store.generation, gen_before,
-        "no change must not bump generation"
+    assert!(
+        touched.is_empty(),
+        "removing a server with nothing stored must report no buffers touched"
     );
     assert_eq!(
         store.counts(bid),
@@ -294,24 +292,6 @@ fn remap_deletion_covering_the_range_drops_it() {
         kept.is_empty(),
         "a deletion covering the range must drop it, not zero it"
     );
-}
-
-#[test]
-fn remap_bumps_generation_only_when_the_buffer_has_stored_diagnostics() {
-    let mut store = DiagnosticsStore::default();
-    let bid = make_bid();
-    let mut b = ChangeSetBuilder::new(5);
-    b.retain(0).insert("X").retain_rest();
-    let cs = b.finish();
-
-    let gen_before = store.generation;
-    store.remap_through(bid, &cs); // no entry for bid — no-op
-    assert_eq!(store.generation, gen_before);
-
-    store.replace(ServerId(0), bid, vec![diag(0, 1, DiagSeverity::Error)]);
-    let gen_after_replace = store.generation;
-    store.remap_through(bid, &cs);
-    assert_eq!(store.generation, gen_after_replace + 1);
 }
 
 /// `DiagnosticsStore::remap_through` now goes through the same

@@ -101,16 +101,12 @@ impl RangeAnchored for StoredDiag {
 /// Wraps the same generic `SourceStore<K, T>` the decoration kinds share
 /// (`decorations.rs`), keyed by `ServerId` instead of a plugin-chosen
 /// source name — `set`/`remap_ranges`/`remove_buffer` are the shared
-/// write/remap machinery; `generation` (a Steel-visible dirty signal, a
-/// different cadence/consumer than `DecorationStores`' per-buffer stamp)
-/// and the diagnostics-specific reads (`for_range`'s severity/range filter,
-/// `counts`) stay here since no decoration kind needs them.
+/// write/remap machinery; the diagnostics-specific reads (`for_range`'s
+/// severity/range filter, `counts`) stay here since no decoration kind
+/// needs them.
 #[derive(Default)]
 pub(crate) struct DiagnosticsStore {
     store: SourceStore<ServerId, StoredDiag>,
-    /// Bumped on every ingest or remap — cheap "did anything change" signal
-    /// for Steel-side consumers (`on-diagnostics-changed`).
-    pub(crate) generation: u64,
 }
 
 impl DiagnosticsStore {
@@ -121,7 +117,6 @@ impl DiagnosticsStore {
     /// pre-sort themselves.
     pub(crate) fn replace(&mut self, server: ServerId, bid: BufferId, diags: Vec<StoredDiag>) {
         self.store.set(server, bid, diags);
-        self.generation += 1;
     }
 
     /// Remaps every stored range for `bid` through `cs` — must be called
@@ -130,16 +125,9 @@ impl DiagnosticsStore {
     /// consuming the same `Buffer.lsp_pending` entries — same source, both
     /// consumers). A range collapsed to empty by a covering deletion is
     /// dropped, not kept as a zero-width entry — `SourceStore::remap_ranges`'
-    /// shared policy, the same one `ExtraHighlightEntry` uses. Only bumps
-    /// `generation` when `bid` actually had a diagnostic to remap — a buffer
-    /// with none is a no-op, same conditional-touch discipline
-    /// `DecorationStores::remap_through` uses for the same reason (avoid
-    /// firing a "changed" signal on every keystroke in a buffer with
-    /// nothing to change).
+    /// shared policy, the same one `ExtraHighlightEntry` uses.
     pub(crate) fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {
-        if self.store.remap_ranges(bid, cs) {
-            self.generation += 1;
-        }
+        self.store.remap_ranges(bid, cs);
     }
 
     /// Drops every `StoredDiag` published by `server` — called when a
@@ -155,11 +143,7 @@ impl DiagnosticsStore {
     /// this batch touched" discipline as `drain_lsp`'s `publishDiagnostics`
     /// ingest.
     pub(crate) fn remove_server(&mut self, server: ServerId) -> Vec<BufferId> {
-        let touched = self.store.retain_sources(|&sid| sid != server);
-        if !touched.is_empty() {
-            self.generation += 1;
-        }
-        touched
+        self.store.retain_sources(|&sid| sid != server)
     }
 
     /// Drops every diagnostic for `bid`, across every server — called when
@@ -171,11 +155,7 @@ impl DiagnosticsStore {
     /// was actually removed, so a reload caller only fires
     /// `OnDiagnosticsChanged` when the display actually changes.
     pub(crate) fn remove_buffer(&mut self, bid: BufferId) -> bool {
-        let removed = self.store.remove_buffer(bid);
-        if removed {
-            self.generation += 1;
-        }
-        removed
+        self.store.remove_buffer(bid)
     }
 
     /// Every buffer with at least one stored diagnostic, from any server —
@@ -336,7 +316,7 @@ impl Editor {
             .unwrap_or(hume_editing::position_encoding::PositionEncoding::Utf16);
         let rope = self.state.buffers.get(bid).text().rope().clone();
 
-        let mut stored: Vec<StoredDiag> = parsed
+        let stored: Vec<StoredDiag> = parsed
             .diagnostics
             .into_iter()
             .map(|d| {
@@ -372,7 +352,6 @@ impl Editor {
                 }
             })
             .collect();
-        stored.sort_by_key(|d| d.start);
 
         self.lsp.diagnostics.replace(server_id, bid, stored);
         Some(bid)
