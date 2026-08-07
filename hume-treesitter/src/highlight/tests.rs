@@ -1,21 +1,37 @@
+use hume_engine::interval_sweep::{TieBreak, flatten_overlapping_spans};
+
 use super::*;
 
 fn s(n: u16) -> ScopeId {
     ScopeId(n)
 }
 
-/// Run `flatten_overlaps` with every interval at depth 0 (single-layer,
-/// the pre-injection behavior) — `d()` below builds multi-depth input
-/// for the depth-priority tests.
+/// Run the shared sweep (`hume_engine::interval_sweep`) the same way
+/// `layer_highlights_for_line` does — `TieBreak::LastPushed`, `(start, end,
+/// depth, scope)` field order — with every interval at depth 0
+/// (single-layer, the pre-injection behavior). `d()` below builds
+/// multi-depth input for the depth-priority tests. Pins tree-sitter's
+/// depth-priority *semantics* against the shared implementation, not a
+/// treesitter-local one — this crate no longer owns the sweep algorithm.
 fn run(raw: Vec<(usize, usize, ScopeId)>) -> Vec<(usize, usize, ScopeId)> {
     run_d(raw.into_iter().map(|(a, b, c)| (a, b, c, 0)).collect())
 }
 
-fn run_d(mut raw: Vec<(usize, usize, ScopeId, u8)>) -> Vec<(usize, usize, ScopeId)> {
+fn run_d(raw: Vec<(usize, usize, ScopeId, u8)>) -> Vec<(usize, usize, ScopeId)> {
+    let mut raw: Vec<(usize, usize, u8, ScopeId)> = raw
+        .into_iter()
+        .map(|(s, e, scope, d)| (s, e, d, scope))
+        .collect();
     let mut stack = Vec::new();
     let mut events = Vec::new();
     let mut out = Vec::new();
-    flatten_overlaps(&mut raw, &mut stack, &mut events, &mut out);
+    flatten_overlapping_spans(
+        &mut raw,
+        &mut stack,
+        &mut events,
+        &mut out,
+        TieBreak::LastPushed,
+    );
     out
 }
 
@@ -94,13 +110,25 @@ fn scratch_reuse_across_calls_leaves_no_stale_events() {
     let mut events = Vec::new();
     let mut out = Vec::new();
 
-    let mut first = vec![(0, 3, s(0), 0)];
-    flatten_overlaps(&mut first, &mut stack, &mut events, &mut out);
+    let mut first: Vec<(usize, usize, u8, ScopeId)> = vec![(0, 3, 0, s(0))];
+    flatten_overlapping_spans(
+        &mut first,
+        &mut stack,
+        &mut events,
+        &mut out,
+        TieBreak::LastPushed,
+    );
     assert_eq!(out, vec![(0, 3, s(0))]);
 
     out.clear();
-    let mut second = vec![(10, 12, s(1), 0)];
-    flatten_overlaps(&mut second, &mut stack, &mut events, &mut out);
+    let mut second: Vec<(usize, usize, u8, ScopeId)> = vec![(10, 12, 0, s(1))];
+    flatten_overlapping_spans(
+        &mut second,
+        &mut stack,
+        &mut events,
+        &mut out,
+        TieBreak::LastPushed,
+    );
     assert_eq!(out, vec![(10, 12, s(1))]);
 }
 

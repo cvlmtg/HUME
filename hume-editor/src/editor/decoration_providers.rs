@@ -1,7 +1,7 @@
 //! Per-frame sync of highlight/sign/inlay-hint/virtual-line/EOL-text/
 //! line-background decoration data from editor-authoritative stores to the
 //! shared `Arc` buffers the engine's providers read during rendering. Driven
-//! by `prepare_frame`'s step 5/7.
+//! by `prepare_frame`'s step 3/5.
 
 use std::sync::Arc;
 
@@ -296,7 +296,7 @@ impl Editor {
     /// pane's own `Arc<RwLock<FxHashMap<line, Vec<Sign>>>>` buffers, read by
     /// that pane's `SharedSignSource`s. Stays visible in Insert mode — same
     /// reasoning as [`Self::update_highlight_providers`]'s diagnostics
-    /// section. Called from `prepare_frame`'s step 5, *before* scrolling: the
+    /// section. Called from `prepare_frame`'s step 3, *before* scrolling: the
     /// sign column's width feeds `Pane::content_width`, which decides the
     /// wrap column the scroll step's `RowMap` resolves against.
     pub(super) fn update_sign_providers(&mut self) {
@@ -404,33 +404,20 @@ impl Editor {
             // (hume-engine/src/builtins/sign_column.rs, arbitrates plugin vs
             // diagnostics map by source-registration order) — this sort
             // must stay priority-only so it never overrides that.
-            let plugin_raw: Vec<(String, usize, String, String, i64)> = self
-                .state
-                .config
-                .decorations
-                .signs_for_buffer(bid)
-                .filter_map(|(source, e)| {
-                    resolve_decoration_line(text, e.pos).map(|line| (source, line, e))
-                })
-                .filter(|(_, line, _)| visible_lines.contains(line))
-                .map(|(source, line, e)| {
-                    (
-                        source.to_string(),
-                        line,
-                        e.text.clone(),
-                        e.scope.clone(),
-                        e.priority,
-                    )
-                })
-                .collect();
+            let plugin_raw = visible_line_anchored(
+                text,
+                &visible_lines,
+                self.state.config.decorations.signs_for_buffer(bid),
+                |e| e.pos,
+            );
 
             let mut plugin_all: rustc_hash::FxHashMap<usize, Vec<(String, String, i64)>> =
                 rustc_hash::FxHashMap::default();
-            for (_, line, text, scope, priority) in plugin_raw {
+            for (_, line, e) in plugin_raw {
                 plugin_all
                     .entry(line)
                     .or_default()
-                    .push((text, scope, priority));
+                    .push((e.text, e.scope, e.priority));
             }
             {
                 let mut guard = plugin_map.write_or_panic();
@@ -556,7 +543,7 @@ impl Editor {
     /// per EOL line in the whole buffer. Both write into a pane's
     /// `inline_decorations` providers, which `RowMap::format_line` reads, so
     /// this feeds wrap row counts and columns exactly like inlay hints do —
-    /// called from `prepare_frame`'s step 5, *before* scrolling, so (like
+    /// called from `prepare_frame`'s step 3, *before* scrolling, so (like
     /// `update_sign_providers`) the viewport it filters against is still the
     /// previous frame's.
     pub(super) fn update_eol_text_providers(&mut self) {
@@ -650,7 +637,7 @@ impl Editor {
     /// every frame. The stamp is per-buffer (not a single store-wide
     /// counter): an edit only bumps the buffer it edited, so typing in one
     /// buffer no longer forces every pane on every *other* buffer to
-    /// resync too. Called from `prepare_frame`'s step 5, *before* scrolling,
+    /// resync too. Called from `prepare_frame`'s step 3, *before* scrolling,
     /// no viewport dependency to make stale. Two sources anchored to the same
     /// line stack rather than collapse (unlike the four line-anchored kinds
     /// `last_writer_per_line` folds) — `virtual_lines_for_buffer`
@@ -978,86 +965,59 @@ fn push_priority_highlight_lines(
 /// (cross-tier layering, e.g. diagnostics vs. search matches, is
 /// handled automatically by the engine's per-tier `HighlightStack`; this
 /// only resolves overlaps *within* one tier, e.g. two diagnostics on the
-/// same line). Lower `priority` wins overlapping regions (ties keep
-/// whichever was pushed first) — same event-sweep shape as
-/// `flatten_overlaps` in `hume-treesitter/src/highlight.rs`
-/// (nested tree-sitter injection layers), adapted for scope-carrying
-/// diagnostic/extra-highlight spans instead of syntax layers. `raw` need
-/// not be pre-sorted; drained (left empty) on return.
+/// same line). One line's worth of spans at a time through
+/// [`hume_engine::interval_sweep::flatten_overlapping_spans`] — the same
+/// event-sweep `hume-treesitter/src/highlight.rs` uses for nested injection
+/// layers, generic over both crates now instead of a second hand-rolled
+/// copy. `Reverse<priority>` makes "lower priority number wins" read as
+/// "highest rank wins" with no inversion arithmetic;
+/// `TieBreak::FirstPushed` matches this function's original contract —
+/// same-priority ties keep whichever span was pushed to `raw` first, pinned
+/// by `overlapping_extra_highlights_from_two_sources_resolve_alphabetically`
+/// (`raw`'s push order comes from `SourceStore::for_buffer`'s ascending
+/// source-name order). `raw` need not be pre-sorted; drained (left empty)
+/// on return.
 fn flatten_priority_overlaps(
     raw: &mut Vec<(usize, usize, usize, u8, hume_engine::types::ScopeId)>,
     out: &mut Vec<(usize, usize, usize, hume_engine::types::ScopeId)>,
 ) {
+    use hume_engine::interval_sweep::{TieBreak, flatten_overlapping_spans};
+    use std::cmp::Reverse;
+
     if raw.is_empty() {
         return;
     }
     raw.sort_by_key(|&(line, start, _, _, _)| (line, start));
 
+    let mut group: Vec<(usize, usize, Reverse<u8>, hume_engine::types::ScopeId)> = Vec::new();
+    let mut stack = Vec::new();
+    let mut events = Vec::new();
+    let mut line_out = Vec::new();
     let mut i = 0;
     while i < raw.len() {
         let line = raw[i].0;
         let mut j = i;
+        group.clear();
         while j < raw.len() && raw[j].0 == line {
+            let (_, start, end, priority, scope) = raw[j];
+            group.push((start, end, Reverse(priority), scope));
             j += 1;
         }
-        flatten_one_line(&raw[i..j], line, out);
+        flatten_overlapping_spans(
+            &mut group,
+            &mut stack,
+            &mut events,
+            &mut line_out,
+            TieBreak::FirstPushed,
+        );
+        out.extend(
+            line_out
+                .drain(..)
+                .map(|(start, end, scope)| (line, start, end, scope)),
+        );
         i = j;
     }
     raw.clear();
-}
-
-/// One line's worth of `(_, start, end, priority, scope)` spans (the `line`
-/// field is ignored — the caller already grouped by it) → flattened,
-/// non-overlapping `(line, start, end, scope)` output. See
-/// [`flatten_priority_overlaps`].
-fn flatten_one_line(
-    group: &[(usize, usize, usize, u8, hume_engine::types::ScopeId)],
-    line: usize,
-    out: &mut Vec<(usize, usize, usize, hume_engine::types::ScopeId)>,
-) {
-    if group.len() == 1 {
-        let (_, start, end, _, scope) = group[0];
-        out.push((line, start, end, scope));
-        return;
-    }
-
-    // Event sweep: (pos, is_end, seq, priority, scope). `seq` is the span's
-    // index within `group`, used to pop the exact matching stack entry.
-    // End events sort before start events at the same position so a
-    // closing span is popped before a new one at the same byte is pushed.
-    let mut events: Vec<(usize, bool, u32, u8, hume_engine::types::ScopeId)> =
-        Vec::with_capacity(group.len() * 2);
-    for (seq, &(_, start, end, priority, scope)) in group.iter().enumerate() {
-        let seq = seq as u32;
-        events.push((start, false, seq, priority, scope));
-        events.push((end, true, seq, priority, scope));
-    }
-    events.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
-
-    // Sorted ascending by (priority, seq) — the lowest-priority (highest-
-    // severity) active span is always at `stack[0]`.
-    let mut stack: Vec<(u8, u32, hume_engine::types::ScopeId)> = Vec::new();
-    let mut pos = 0usize;
-    for &(event_pos, is_end, seq, priority, scope) in &events {
-        if let Some(&(_, _, active_scope)) = stack.first()
-            && pos < event_pos
-        {
-            out.push((line, pos, event_pos, active_scope));
-        }
-        pos = event_pos;
-
-        if is_end {
-            if let Some(idx) = stack
-                .iter()
-                .position(|&(p, s, _)| p == priority && s == seq)
-            {
-                stack.remove(idx);
-            }
-        } else {
-            let insert_at = stack.partition_point(|&(p, s, _)| (p, s) < (priority, seq));
-            stack.insert(insert_at, (priority, seq, scope));
-        }
-    }
 }
 
 #[cfg(test)]

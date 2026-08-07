@@ -18,9 +18,9 @@ use crate::registry::GrammarBundle;
 /// pattern as `TreeSitterHighlighter::cursor`).
 #[derive(Default)]
 pub(crate) struct FlattenScratch {
-    raw: Vec<(usize, usize, ScopeId, u8)>,
+    raw: Vec<(usize, usize, u8, ScopeId)>,
     stack: Vec<(u8, u32, ScopeId)>,
-    events: Vec<(usize, bool, u32, ScopeId, u8)>,
+    events: Vec<(usize, bool, u32, u8, ScopeId)>,
 }
 
 /// Diagnostic info for a broken pending-edit chain: a text mutation bumped

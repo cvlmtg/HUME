@@ -31,7 +31,11 @@ pub(crate) struct InlayHintEntry {
 /// number — the host boundary (`host_impl.rs`'s `line_start_offset`)
 /// converts at set time, so this remaps through edits with everything else
 /// (SPEC.md §6); the render side derives the current line back via
-/// `char_to_line` at rebuild.
+/// `char_to_line` at rebuild. `Clone`: `decoration_providers.rs`'s
+/// `visible_line_anchored` clones a viewport-filtered subset out from under
+/// an immutable store borrow before resolving each entry's scope (which
+/// needs `&mut self`) — same reason `EolTextEntry`/`LineBgEntry` carry it.
+#[derive(Clone)]
 pub(crate) struct SignEntry {
     pub(crate) pos: usize,
     pub(crate) text: String,

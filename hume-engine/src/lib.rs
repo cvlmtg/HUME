@@ -1,5 +1,6 @@
 pub mod builtins;
 pub mod format;
+pub mod interval_sweep;
 pub mod layout;
 pub mod pane;
 pub mod pipeline;
