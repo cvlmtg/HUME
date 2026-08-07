@@ -279,7 +279,7 @@ impl Editor {
                     let mut transient = SecondaryMap::new();
                     transient.insert(pane_id, PaneTransient::default());
                     // No render entry: this pane is built via `Pane::new`
-                    // directly (not `build_pane`), so it has no `SharedHighlighter`/
+                    // directly (not `build_pane`), so it has no `ScopedHighlighter`/
                     // `SignSource` providers to feed — the write sides skip panes
                     // with no entry.
                     PaneView {
@@ -309,6 +309,8 @@ impl Editor {
                 diagnostic_scopes: None,
                 inlay_hint_scope: None,
                 virtual_text_fallback_scope: None,
+                bracket_match_scope: None,
+                search_match_scope: None,
                 runtime_scope_cache: rustc_hash::FxHashMap::default(),
                 popup_view: Arc::new(RwLock::new(None)),
                 popup_band_view: Arc::new(RwLock::new(None)),

@@ -1,9 +1,9 @@
 // Inlay-hint rendering: the `update_inlay_hint_providers`
-// write side that feeds the new `InlayHintProvider` (INLINE-kind
+// write side that feeds the new `InlineDecorationProvider` (INLINE-kind
 // `DecorationSource`) from the `decorations.inlay_hints` store.
 //
 // Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s bare
-// `Pane::new`) — `InlayHintProvider` is only registered by `build_pane`, same
+// `Pane::new`) — `InlineDecorationProvider` is only registered by `build_pane`, same
 // reasoning as `lsp_render.rs`. Hints are injected directly via
 // `ed.state.config.decorations.set_inlay_hints` (bypassing `set-inlay-hints!`'s wire
 // position/UTF-16 decoding, already covered by `lsp_decorations.rs`) since

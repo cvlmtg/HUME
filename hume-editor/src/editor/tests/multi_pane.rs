@@ -1495,7 +1495,7 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
 // ── Per-pane highlight isolation ────────────────────────────────────────────
 //
 // `update_highlight_providers` must not write into globally-shared highlight
-// state read by every pane's `SharedHighlighter` — each pane owns its own
+// state read by every pane's `ScopedHighlighter` — each pane owns its own
 // highlight buffers (`PaneHighlights`), computed from that pane's own buffer
 // and viewport. Global, focused-buffer-only state would render the focused
 // pane's highlight bytes (bracket/search matches) onto every other pane's
@@ -1539,12 +1539,17 @@ fn multiline_search_match_splits_into_per_line_highlight_spans() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    let matches = ed.state.panes.render[pid]
+    // Every span shares the one search-match scope (`ScopedHighlighter`
+    // carries it per-span now, not fixed on the provider) — dropped here
+    // since this test is about span geometry, not scope resolution.
+    let matches: Vec<(usize, usize, usize)> = ed.state.panes.render[pid]
         .highlights
         .search
         .read()
         .unwrap()
-        .clone();
+        .iter()
+        .map(|&(line, start, end, _)| (line, start, end))
+        .collect();
     assert_eq!(
         matches,
         vec![(0, 2, 3), (1, 0, 3)],

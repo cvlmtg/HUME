@@ -2,7 +2,7 @@ pub(crate) mod completion_overlay;
 pub(crate) mod confirm;
 pub(crate) mod drawer;
 pub(crate) mod highlight_providers;
-pub(crate) mod inlay_hints;
+pub(crate) mod inline_decorations;
 pub(crate) mod line_backgrounds;
 pub(crate) mod menu_box;
 pub(crate) mod picker_panel;
@@ -23,8 +23,8 @@ use hume_engine::providers::{DEFAULT_GUTTER_SCOPE, HighlightTier, ProviderSet};
 use hume_engine::theme::ScopeRegistry;
 
 use completion_overlay::MinibufCompletionOverlay;
-use highlight_providers::{PaneHighlights, ScopedHighlighter, SharedHighlighter};
-use inlay_hints::{InlayHintMap, InlayHintProvider};
+use highlight_providers::{PaneHighlights, ScopedHighlighter};
+use inline_decorations::{InlineDecorationMap, InlineDecorationProvider};
 use line_backgrounds::{LineBgMap, PaneLineBackgrounds};
 use picker_panel::PickerOverlay;
 use popup::PopupOverlay;
@@ -40,14 +40,14 @@ use virtual_lines::{PaneVirtualLines, VirtualLineMap};
 pub(crate) struct PaneRenderHandles {
     pub(crate) highlights: PaneHighlights,
     pub(crate) signs: PaneSigns,
-    pub(crate) inlay_hints: InlayHintMap,
+    pub(crate) inlay_hints: InlineDecorationMap,
     pub(crate) virtual_lines: VirtualLineMap,
     /// EOL text (the diagnostics plugin's per-line summary is its first
-    /// client) — a second `InlayHintProvider` instance (same INLINE-kind
-    /// `DecorationSource` shape, distinct Arc/`ProviderId`) fed by
-    /// `decorations.eol_text` instead of `inlay_hints`, so the two coexist
-    /// on the same line without one clobbering the other.
-    pub(crate) eol_text: InlayHintMap,
+    /// client) — a second `InlineDecorationProvider` instance (same
+    /// INLINE-kind `DecorationSource` shape, distinct Arc/`ProviderId`) fed
+    /// by `decorations.eol_text` instead of `inlay_hints`, so the two
+    /// coexist on the same line without one clobbering the other.
+    pub(crate) eol_text: InlineDecorationMap,
     pub(crate) line_backgrounds: LineBgMap,
 }
 
@@ -67,10 +67,11 @@ pub(crate) struct PaneRenderHandles {
 /// The gutter column is added with its default style; `prepare_frame` syncs
 /// the buffer-resolved `line-number-style` into every pane's gutter before
 /// each render (see `sync_line_number_style`), so the seeded style never
-/// reaches a frame. Interning `bracket_scope`/`search_scope` here is safe
-/// even for panes built after the last bake (e.g. splits) — `prepare_frame`
-/// calls `Theme::bake_if_stale` every frame, picking up any scope interned
-/// since.
+/// reaches a frame. Bracket-match/search-match scopes are not interned
+/// here — unlike `linenr_scope` (shared with the gutter columns built right
+/// below), they have no other constructor needing them this frame, so they
+/// resolve lazily on first render the same way `Editor::diagnostic_scopes`/
+/// `inlay_hint_scope` already do (`decoration_providers.rs`).
 ///
 /// Single source of truth for pane construction — every creation site
 /// (`Editor::open`'s bootstrap pane, `commands::open_pane`) goes through
@@ -86,8 +87,6 @@ pub(crate) fn build_pane(
     picker_view: &Arc<RwLock<Option<picker_panel::PickerViewState>>>,
     buffer_id: BufferId,
 ) -> (Pane, PaneRenderHandles) {
-    let bracket_scope = registry.intern("ui.cursor.match");
-    let search_scope = registry.intern("ui.selection.search");
     // Interns the engine's own `DEFAULT_GUTTER_SCOPE` constant rather than
     // repeating the "ui.linenr" literal here — the two must resolve to the
     // same scope: `compose_gutter`'s own fallback
@@ -100,8 +99,8 @@ pub(crate) fn build_pane(
 
     let highlights = PaneHighlights::default();
     let signs = PaneSigns::default();
-    let inlay_hint_map: InlayHintMap = Arc::new(RwLock::new(FxHashMap::default()));
-    let eol_text_map: InlayHintMap = Arc::new(RwLock::new(FxHashMap::default()));
+    let inlay_hint_map: InlineDecorationMap = Arc::new(RwLock::new(FxHashMap::default()));
+    let eol_text_map: InlineDecorationMap = Arc::new(RwLock::new(FxHashMap::default()));
     let virtual_line_map: VirtualLineMap = Arc::new(RwLock::new(FxHashMap::default()));
     let line_bg_map: LineBgMap = Arc::new(RwLock::new(FxHashMap::default()));
 
@@ -118,13 +117,11 @@ pub(crate) fn build_pane(
         linenr_scope,
         linenr_selected_scope,
     )));
-    providers.add_decoration_source(Box::new(SharedHighlighter {
-        scope: bracket_scope,
+    providers.add_decoration_source(Box::new(ScopedHighlighter {
         tier: HighlightTier::BracketMatch,
         data: Arc::clone(&highlights.bracket),
     }));
-    providers.add_decoration_source(Box::new(SharedHighlighter {
-        scope: search_scope,
+    providers.add_decoration_source(Box::new(ScopedHighlighter {
         tier: HighlightTier::SearchMatch,
         data: Arc::clone(&highlights.search),
     }));
@@ -136,13 +133,13 @@ pub(crate) fn build_pane(
         tier: HighlightTier::Extra,
         data: Arc::clone(&highlights.extra),
     }));
-    providers.add_decoration_source(Box::new(InlayHintProvider {
+    providers.add_decoration_source(Box::new(InlineDecorationProvider {
         data: Arc::clone(&inlay_hint_map),
     }));
     // Registered after inlay hints so a diagnostic's end-of-line summary
     // sorts to the right of an inlay hint that lands at the same byte
     // offset (both anchor at end-of-line-content in the common case).
-    providers.add_decoration_source(Box::new(InlayHintProvider {
+    providers.add_decoration_source(Box::new(InlineDecorationProvider {
         data: Arc::clone(&eol_text_map),
     }));
     providers.add_decoration_source(Box::new(PaneVirtualLines {

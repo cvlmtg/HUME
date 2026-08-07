@@ -215,6 +215,8 @@ impl Editor {
                 diagnostic_scopes: None,
                 inlay_hint_scope: None,
                 virtual_text_fallback_scope: None,
+                bracket_match_scope: None,
+                search_match_scope: None,
                 runtime_scope_cache: rustc_hash::FxHashMap::default(),
                 popup_view,
                 popup_band_view,

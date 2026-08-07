@@ -3,7 +3,7 @@
 //!
 //! The overlay reads a `MinibufCompletionView` snapshot from an `Arc<RwLock<_>>` that
 //! `Editor` writes once per frame (in `prepare_frame`) before `EngineView::render`
-//! is called.  The snapshot pattern (same as `SharedHighlighter`) avoids any
+//! is called.  The snapshot pattern (same as `ScopedHighlighter`) avoids any
 //! borrow-checker conflicts between the editor and the render pipeline.
 
 use std::sync::{Arc, RwLock};

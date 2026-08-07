@@ -248,7 +248,7 @@ fn split_different_buffer_keeps_empty_jump_list() {
 /// different pane viewing an unrelated buffer.
 ///
 /// Uses `Editor::open` (not the bare-pane `for_testing` harness) so both
-/// panes get real `SharedHighlighter` providers wired via `build_pane` — the
+/// panes get real `ScopedHighlighter` providers wired via `build_pane` — the
 /// bug only reproduces when a pane actually has highlight-reading providers.
 #[test]
 fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {

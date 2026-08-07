@@ -46,6 +46,30 @@ impl Editor {
         scopes
     }
 
+    /// Interned `ScopeId` for `ui.cursor.match` (bracket match highlight),
+    /// cached the same way as [`Self::diagnostic_scopes`] — every pane's
+    /// bracket-match `ScopedHighlighter` writes this into each span it
+    /// pushes rather than carrying it fixed on the provider.
+    fn bracket_match_scope(&mut self) -> hume_engine::types::ScopeId {
+        if let Some(id) = self.state.bracket_match_scope {
+            return id;
+        }
+        let id = self.view.registry.intern("ui.cursor.match");
+        self.state.bracket_match_scope = Some(id);
+        id
+    }
+
+    /// Interned `ScopeId` for `ui.selection.search` (search match
+    /// highlight) — see [`Self::bracket_match_scope`].
+    fn search_match_scope(&mut self) -> hume_engine::types::ScopeId {
+        if let Some(id) = self.state.search_match_scope {
+            return id;
+        }
+        let id = self.view.registry.intern("ui.selection.search");
+        self.state.search_match_scope = Some(id);
+        id
+    }
+
     /// Interned `ScopeId` for a plugin-supplied runtime scope name (extra
     /// highlights, signs, virtual lines), cached across frames so the same
     /// name string is never re-interned.
@@ -59,7 +83,7 @@ impl Editor {
     }
 
     /// Write per-frame highlight data to every pane's own `Arc<RwLock<...>>`
-    /// buffers, read by that pane's `SharedHighlighter` providers.
+    /// buffers, read by that pane's `ScopedHighlighter` providers.
     ///
     /// Called once per frame, after scroll is resolved and before `term.draw`.
     /// Bracket matching is suppressed in Insert mode. Each pane's search
@@ -71,6 +95,8 @@ impl Editor {
         let in_insert = self.state.mode() == EditorMode::Insert;
 
         let panes = self.decorated_panes();
+        let search_scope = self.search_match_scope();
+        let bracket_scope = self.bracket_match_scope();
 
         // ── Search match highlights — one pane at a time ─────────────────────
         for &(pid, bid) in &panes {
@@ -117,7 +143,7 @@ impl Editor {
                 }
                 // end_incl is inclusive char offset; +1 makes it exclusive.
                 let end_char = (end_incl + 1).min(text.len_chars());
-                push_match_highlight_lines(text, start, end_char, &mut data);
+                push_match_highlight_lines(text, start, end_char, search_scope, &mut data);
             }
         }
 
@@ -158,9 +184,12 @@ impl Editor {
                         let (line, byte) = char_to_line_byte(buf, match_pos);
                         // Single-char match: byte_end = byte + utf8 length of the char.
                         let ch_len = buf.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
-                        bracket_arc
-                            .write_or_panic()
-                            .push((line, byte, byte + ch_len));
+                        bracket_arc.write_or_panic().push((
+                            line,
+                            byte,
+                            byte + ch_len,
+                            bracket_scope,
+                        ));
                     }
                 }
             }
@@ -461,7 +490,7 @@ impl Editor {
     }
 
     /// Sync per-pane inlay-hint decorations from the
-    /// `decorations.inlay_hints` store to each pane's `InlayHintProvider`
+    /// `decorations.inlay_hints` store to each pane's `InlineDecorationProvider`
     /// Arc. Not gated on `lsp.inlay-hints` here: the store is per-source
     /// (`set-inlay-hints!` takes a `source` arg precisely so unrelated
     /// plugins can coexist), and `lsp.inlay-hints` is the LSP inlay-hints
@@ -517,7 +546,7 @@ impl Editor {
     }
 
     /// Sync per-pane EOL-text decorations from the `decorations.eol_text`
-    /// store to each pane's second `InlayHintProvider` Arc
+    /// store to each pane's second `InlineDecorationProvider` Arc
     /// (`PaneRenderHandles::eol_text`). Unconditional per-frame rebuild, same
     /// as `update_inlay_hint_providers` — cheap enough that, unlike
     /// `virtual_lines`, it doesn't need a dirty-tracking generation gate to
@@ -904,18 +933,21 @@ fn line_segments(
     })
 }
 
-/// Push one `(line, byte_start, byte_end)` triple per line the
-/// `[start, end_char_excl)` char range touches. See [`line_segments`].
+/// Push one `(line, byte_start, byte_end, scope)` quadruple per line the
+/// `[start, end_char_excl)` char range touches, all sharing `scope` — search
+/// matches are the one caller, always one fixed scope per call. See
+/// [`line_segments`].
 fn push_match_highlight_lines(
     buf: &hume_editing::text::Text,
     start: usize,
     end_char_excl: usize,
-    data: &mut Vec<(usize, usize, usize)>,
+    scope: hume_engine::types::ScopeId,
+    data: &mut Vec<(usize, usize, usize, hume_engine::types::ScopeId)>,
 ) {
     if start >= end_char_excl {
         return;
     }
-    data.extend(line_segments(buf, start, end_char_excl));
+    data.extend(line_segments(buf, start, end_char_excl).map(|(l, s, e)| (l, s, e, scope)));
 }
 
 /// Push one `(line, byte_start, byte_end, priority, scope)` quintuple per

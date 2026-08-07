@@ -448,6 +448,15 @@ pub(crate) struct EditorState {
     /// virtual-line entry with no explicit scope — resolved lazily on first
     /// use for the same reason as `diagnostic_scopes`.
     pub(super) virtual_text_fallback_scope: Option<hume_engine::types::ScopeId>,
+    /// Interned scope ids for `ui.cursor.match` (bracket match) and
+    /// `ui.selection.search` (search match), resolved lazily on first use
+    /// for the same reason as `diagnostic_scopes` — every pane's bracket-
+    /// and search-match highlighter is a `ScopedHighlighter` now (folded in
+    /// from the now-deleted `SharedHighlighter`), so the scope travels with
+    /// each written span instead of living on the provider; these two are
+    /// the editor-wide constants every pane's spans carry.
+    pub(super) bracket_match_scope: Option<hume_engine::types::ScopeId>,
+    pub(super) search_match_scope: Option<hume_engine::types::ScopeId>,
     /// Cache of interned `ScopeId`s for plugin-supplied scope name strings
     /// (extra highlights, signs, virtual lines) — avoids re-interning the
     /// same runtime name every frame.
