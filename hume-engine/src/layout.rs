@@ -36,9 +36,8 @@ pub struct PaneGeometry {
 ///
 /// Takes an iterator (rather than a slice) so callers can feed it
 /// `ProviderSet::gutter_columns()` directly — `ProviderSet` stores
-/// `(ProviderId, Box<dyn GutterColumn>)` pairs internally (to support
-/// `ProviderSet::remove`), which isn't a shape this purely-arithmetic
-/// function needs to know about.
+/// `(ProviderId, Box<dyn GutterColumn>)` pairs internally, which isn't a
+/// shape this purely-arithmetic function needs to know about.
 pub fn gutter_width_for_line<'a>(
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn>,
     max_line: usize,

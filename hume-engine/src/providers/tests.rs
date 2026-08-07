@@ -31,22 +31,6 @@ impl GutterColumn for DummyGutter {
     }
 }
 
-/// Distinguishable from `DummyGutter` by width — used to prove `remove`
-/// takes down the right provider and leaves the other untouched.
-struct OtherGutter;
-
-impl GutterColumn for OtherGutter {
-    fn width(&self, _: usize) -> u8 {
-        5
-    }
-    fn render_row_cells(&self, _: crate::types::RowKind, _: &GutterRowCtx) -> Vec<GutterCell> {
-        vec![GutterCell::blank(ScopeId(1))]
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-}
-
 // ── GutterCellContent::from_number ─────────────────────────────────
 
 fn num_str(n: usize) -> String {
@@ -185,55 +169,3 @@ fn provider_set_highlight_sorted_by_tier() {
     );
 }
 
-// ── Provider unregistration (G3) ─────────────────────────────────────
-
-#[test]
-fn remove_by_id_takes_down_only_that_provider() {
-    let mut set = ProviderSet::new();
-    let id0 = set.add_gutter_column(Box::new(DummyGutter)); // width 0
-    set.add_gutter_column(Box::new(OtherGutter)); // width 5
-
-    assert!(set.remove(id0));
-
-    let widths: Vec<u8> = set.gutter_columns().map(|c| c.width(0)).collect();
-    assert_eq!(
-        widths,
-        vec![5],
-        "only OtherGutter (width 5) remains; render order reflects it alone"
-    );
-}
-
-#[test]
-fn remove_unknown_id_is_a_no_op() {
-    let mut set = ProviderSet::new();
-    set.add_gutter_column(Box::new(DummyGutter));
-
-    assert!(!set.remove(999), "unknown id must return false");
-    assert_eq!(
-        set.gutter_columns().count(),
-        1,
-        "removing an unknown id must not touch existing providers"
-    );
-}
-
-#[test]
-fn remove_across_provider_types_only_touches_the_matching_list() {
-    // Ids are shared across all five lists' allocator — removing a
-    // gutter-column id must not accidentally hit a highlight source
-    // that happens to share the same numeric id space at a different
-    // index.
-    let mut set = ProviderSet::new();
-    let highlight_id = set.add_highlight_source(Box::new(DummyHighlight {
-        tier: HighlightTier::Syntax,
-    }));
-    let gutter_id = set.add_gutter_column(Box::new(DummyGutter));
-
-    assert!(set.remove(gutter_id));
-    assert_eq!(set.gutter_columns().count(), 0);
-    assert_eq!(
-        set.highlights.len(),
-        1,
-        "removing the gutter column must not touch the highlight source"
-    );
-    let _ = highlight_id;
-}

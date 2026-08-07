@@ -344,10 +344,11 @@ pub trait BottomBandProvider {
 
 /// Complete set of providers for a pane. Allocated once at startup.
 ///
-/// Each list stores `(ProviderId, Box<dyn Trait>)` pairs rather than bare
-/// boxes so a provider can be looked up and removed later (`remove`) — e.g.
-/// a plugin unregistering a gutter column it added, or a `:set`-style toggle
-/// turning a built-in column off.
+/// Each list stores `(ProviderId, Box<dyn Trait>)` pairs — the id is still
+/// load-bearing even with no unregistration path: virtual rows are stamped
+/// with their producing provider's id (`rows::RowMap::block`) so
+/// `RowKind::Virtual { provider_id }` can be attributed back to it (e.g. by a
+/// gutter column rendering which provider owns a row).
 #[derive(Default)]
 pub struct ProviderSet {
     pub(crate) highlights: Vec<(ProviderId, Box<dyn HighlightSource>)>,
@@ -402,34 +403,6 @@ impl ProviderSet {
         let id = self.alloc_id();
         self.overlays.push((id, p));
         id
-    }
-
-    /// Remove the provider registered under `id`, whichever list holds it.
-    /// Returns `true` if a provider was removed, `false` for an unknown id
-    /// (a no-op, not an error — callers don't need to track what they
-    /// already removed).
-    ///
-    /// No editor call site exists yet — kept as the engine primitive for the
-    /// future unregistration paths named on [`ProviderSet`] (Steel provider
-    /// registration; a gutter-visibility `:set` toggle). See ROADMAP open
-    /// questions.
-    pub fn remove(&mut self, id: ProviderId) -> bool {
-        let before = self.highlights.len()
-            + self.gutter_columns.len()
-            + self.virtual_lines.len()
-            + self.inline_decorations.len()
-            + self.overlays.len();
-        self.highlights.retain(|(pid, _)| *pid != id);
-        self.gutter_columns.retain(|(pid, _)| *pid != id);
-        self.virtual_lines.retain(|(pid, _)| *pid != id);
-        self.inline_decorations.retain(|(pid, _)| *pid != id);
-        self.overlays.retain(|(pid, _)| *pid != id);
-        let after = self.highlights.len()
-            + self.gutter_columns.len()
-            + self.virtual_lines.len()
-            + self.inline_decorations.len()
-            + self.overlays.len();
-        before != after
     }
 
     pub fn gutter_columns(&self) -> impl Iterator<Item = &dyn GutterColumn> {
