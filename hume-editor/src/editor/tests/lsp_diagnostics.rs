@@ -512,6 +512,68 @@ fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
     );
 }
 
+/// `lsp_stop_one` used to null `buf.lsp_server` and clear `buf.lsp_pending`
+/// without first draining it through the decoration remap chokepoint
+/// (`flush_lsp_pending_changes` — `lsp_pending` is its only carrier). Any
+/// edit queued since the last frame's flush was discarded unremapped,
+/// leaving a plugin's sign anchored at its pre-edit position permanently —
+/// a detached buffer no longer gets queued for the remap at all, so it
+/// never resyncs later either.
+#[test]
+fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
+    let tmp = safe_tempdir();
+    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
+    std::fs::write(&file, "aa\nbb\ncc\n").unwrap();
+
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let bid = open_with_client(&mut ed, &file, sid);
+    ed.lsp.insert_server_key_for_test(
+        "rust".to_string(),
+        file.parent().unwrap().to_path_buf(),
+        sid,
+    );
+    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+
+    // "cc"'s line-start char offset in "aa\nbb\ncc\n" is 6.
+    ed.state.config.decorations.set_signs(
+        "test".to_string(),
+        bid,
+        vec![crate::editor::decorations::SignEntry {
+            pos: 6,
+            text: "!".to_string(),
+            scope: "x".to_string(),
+            priority: 0,
+        }],
+    );
+
+    // Insert a new first line — shifts "cc" one line down, to a line-start
+    // char offset of 8. Deliberately no `ed.settle()`/`drain_lsp()` here:
+    // the edit's ChangeSet sits unflushed in `buf.lsp_pending` until
+    // `lsp_stop` runs, exactly the race this regression covers.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+    ed.feed_key(key_enter());
+    ed.feed_key(key_esc());
+
+    ed.lsp_stop(Some("rust"));
+
+    assert_eq!(
+        ed.state.buffers.get(bid).text().rope().to_string(),
+        "X\naa\nbb\ncc\n",
+        "sanity: the edit landed"
+    );
+    let signs = ed.state.config.decorations.signs_for("test", bid);
+    assert_eq!(signs.len(), 1);
+    assert_eq!(
+        signs[0].pos, 8,
+        "the sign must follow the edit through the stop, not stay anchored \
+         at its pre-edit position"
+    );
+}
+
 /// Regression: on the minimal 1-char "\n" buffer, `widen_zero_length` has no
 /// char to widen a zero-width diagnostic onto in either direction under the
 /// general forward/backward rule — it must widen onto the structural

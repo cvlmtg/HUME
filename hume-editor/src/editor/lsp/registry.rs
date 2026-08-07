@@ -328,12 +328,26 @@ impl Editor {
             .filter(|(_, buf)| buf.lsp_server == Some(server_id))
             .map(|(bid, _)| bid)
             .collect();
+        // Remaps decorations/diagnostics through every buffer's queued
+        // `lsp_pending` edits (this server's buffers among them) before
+        // detaching — those entries are the only carrier for the
+        // decoration remap (`flush_lsp_pending_changes`'s own doc), so
+        // dropping them unremapped below would leave a plugin's
+        // signs/virtual-lines/line-backgrounds anchored at stale,
+        // pre-edit positions permanently, not just until the next attach.
+        // Safe to call this early: `self.lsp.servers.remove(&server_id)`
+        // above already dropped this server's entry, so the didChange
+        // half of the flush finds no client to send to and skips it —
+        // only the remap runs for these buffers.
+        self.flush_lsp_pending_changes();
         for &bid in &bids {
             let buf = self.state.buffers.get_mut(bid);
             buf.lsp_server = None;
             // Any edits queued for the now-detached server must not survive
             // to a future attach — flushed against a new server's didOpen
-            // baseline, they'd desync its document state immediately.
+            // baseline, they'd desync its document state immediately. The
+            // flush above already drains `lsp_pending` to empty; this is
+            // belt-and-suspenders against a future edit racing in between.
             buf.lsp_pending.clear();
         }
         // An open completion session's items are a snapshot already fetched
