@@ -1342,6 +1342,51 @@ fn text_changed_feedback_loop_is_cut_off_by_drain_cap() {
     );
 }
 
+/// A buffer replaced in place via the last-buffer scratch swap
+/// (`close_buffer`'s Case C, see `p6_close_last_buffer_becomes_scratch`) is a
+/// content change under a surviving `BufferId` — `on-text-changed` must fire
+/// once for it, not be silently swallowed by the swap resetting the
+/// observation baseline back to a matching 0/0.
+///
+/// Fail oracle: drop the `text_gen`/`announced_text_gen` carry-forward in
+/// `replace_buffer_in_place` → zero fires.
+#[test]
+fn last_buffer_close_fires_on_text_changed() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+
+    ed.close_buffer(bid);
+    ed.settle();
+
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid,
+        "the scratch swap reuses the same buffer id"
+    );
+    let fires = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace && e.text == "changed")
+        .count();
+    assert_eq!(
+        fires, 1,
+        "the last-buffer scratch swap must announce as one on-text-changed"
+    );
+}
+
 /// **Exactly one `OnBufferEnter` per focus-changing action.** Pane-focus
 /// cycling and a mouse click into another pane both move focus with no
 /// write to `pane.buffer_id` at all — `focused_pane_id` is the only field

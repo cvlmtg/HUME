@@ -267,7 +267,7 @@ pub(crate) fn close_buffer_and_notify(
 
 /// Replace buffer `id` with `new_doc` in-place, reseeding all pane state.
 ///
-/// Used by `:e!` reload and the last-buffer case of `close_buffer`.
+/// Used by the last-buffer case of `close_buffer`.
 /// Caller contract: `new_doc.search_pattern` must be `None`.
 pub(crate) fn replace_buffer_in_place(
     ev: &mut EngineView,
@@ -281,11 +281,20 @@ pub(crate) fn replace_buffer_in_place(
         new_doc.search_pattern.is_none(),
         "replace_buffer_in_place: new_doc must have no active search state",
     );
+    let prev = buffers.get(id);
     // Carry the stamp forward past whatever `new_doc`'s constructor set it
     // to (always 0) — see `Buffer::replace_stamp`'s doc for why this bump,
     // not the buffer's content, is what marks `id` as "not the same buffer
     // instance a snapshot taken before this call meant".
-    new_doc.replace_stamp = buffers.get(id).replace_stamp.wrapping_add(1);
+    new_doc.replace_stamp = prev.replace_stamp.wrapping_add(1);
+    // `text_gen`/`announced_text_gen` are a per-`BufferId` observation baseline,
+    // not per-`Buffer`-instance state: `take_text_changed` diffs them to raise
+    // `on-text-changed`. Letting `new_doc`'s constructor reset both to 0 would
+    // make a total content replacement under a live id read as "nothing
+    // happened". Carry the baseline forward and bump past it so the swap
+    // announces itself exactly once.
+    new_doc.text_gen = prev.text_gen + 1;
+    new_doc.announced_text_gen = prev.announced_text_gen;
     // The new doc carries no syntax attachment (Buffer.syntax = None by
     // construction — the flip made this assignment alone sufficient to drop
     // any stale committed layers, since they now live inside Buffer.syntax).
