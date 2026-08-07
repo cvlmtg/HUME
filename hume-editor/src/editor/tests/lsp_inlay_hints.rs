@@ -30,7 +30,6 @@ fn type_text(ed: &mut Editor, text: &str) {
 fn after_hint_renders_dimmed_immediately_after_its_char() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
-    ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(
@@ -55,7 +54,6 @@ fn after_hint_renders_dimmed_immediately_after_its_char() {
 fn before_hint_renders_immediately_before_its_char() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
-    ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(
@@ -95,7 +93,6 @@ fn before_hint_renders_immediately_before_its_char() {
 #[test]
 fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.state.settings.lsp_inlay_hints = true; // off by default
     ed.state.settings.scrolloff = 0;
     type_text(&mut ed, "x\na\nb");
     let bid = ed.focused_buffer_id();
@@ -148,7 +145,6 @@ fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
     // treating `pos` as already a byte count.
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
-    ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "🎉party");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(
@@ -177,7 +173,6 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
     // assert correctness of cursor placement on this line.
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
-    ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "aaaaaaaaaabbbbbbbbbbccccccccccdddddddddd");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(
@@ -202,7 +197,6 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
 #[test]
 fn clearing_the_store_removes_the_hint_next_frame() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.state.settings.lsp_inlay_hints = true; // off by default
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(

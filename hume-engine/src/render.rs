@@ -43,10 +43,10 @@ pub(crate) struct ComposeCtx<'a> {
     /// without pre-owning it.
     pub rope: &'a ropey::Rope,
     /// `DEFAULT_GUTTER_SCOPE` ("ui.linenr"), interned once at
-    /// `EngineView::new` — the fallback scope `compose_gutter` and
-    /// `render_tilde_fillers` resolve under when a cell/column has nothing
-    /// more specific to say. Threaded in rather than re-interned here: the
-    /// per-cell hot path only ever does an O(1) `ScopeId` index.
+    /// `EngineView::new` — the fallback scope `compose_gutter` resolves
+    /// under when a cell/column has nothing more specific to say. Threaded
+    /// in rather than re-interned here: the per-cell hot path only ever
+    /// does an O(1) `ScopeId` index.
     pub default_gutter_scope: ScopeId,
 }
 

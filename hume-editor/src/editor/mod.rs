@@ -129,7 +129,7 @@ pub(crate) enum InlineOutputDispatch {
 ///
 /// Grouped into its own struct, rather than left as individual `EditorState`
 /// fields, so `Editor::reset_config_state` resets by *construction*
-/// (`self.state.config = ConfigState::new(kitty_enabled, prior_gen)`) instead of by a
+/// (`self.state.config = ConfigState::new(kitty_enabled, prior_clock)`) instead of by a
 /// hand-maintained list of field clears: a field added here is reset the
 /// moment it's added, with no second place to remember. Fields that must
 /// survive a reload (buffers, panes, undo history, registers, running LSP
@@ -451,10 +451,9 @@ pub(crate) struct EditorState {
     /// Interned scope ids for `ui.cursor.match` (bracket match) and
     /// `ui.selection.search` (search match), resolved lazily on first use
     /// for the same reason as `diagnostic_scopes` — every pane's bracket-
-    /// and search-match highlighter is a `ScopedHighlighter` now (folded in
-    /// from the now-deleted `SharedHighlighter`), so the scope travels with
-    /// each written span instead of living on the provider; these two are
-    /// the editor-wide constants every pane's spans carry.
+    /// and search-match highlighter is a `ScopedHighlighter`, so the scope
+    /// travels with each written span instead of living on the provider;
+    /// these two are the editor-wide constants every pane's spans carry.
     pub(super) bracket_match_scope: Option<hume_engine::types::ScopeId>,
     pub(super) search_match_scope: Option<hume_engine::types::ScopeId>,
     /// Cache of interned `ScopeId`s for plugin-supplied scope name strings

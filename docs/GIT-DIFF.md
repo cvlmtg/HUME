@@ -125,10 +125,9 @@ the merge it would be avoiding.
   `spawn-process` (`runtime/plugins/core/plum/lib.scm:33`, `plugins.scm:69,91`). There is no
   Rust-enforced sandbox to any directory — any plugin can already `spawn-process` `git` with
   arbitrary args/cwd (see Phase 4.3).
-- **The `SharedHighlighter` pattern** (`hume-editor/src/ui/highlight_providers.rs:40,82`,
-  `SharedHighlighter`/`ScopedHighlighter`): an `Arc<RwLock<…>>`-backed provider the editor
-  refreshes each frame. Relevant for native-only providers; anything Steel-facing goes
-  through `DecorationHost` instead.
+- **The `ScopedHighlighter` pattern** (`hume-editor/src/ui/highlight_providers.rs:49-53`):
+  an `Arc<RwLock<…>>`-backed provider the editor refreshes each frame. Relevant for
+  native-only providers; anything Steel-facing goes through `DecorationHost` instead.
 - **`set-signs!` has no Steel client today.** `grep -rn "set-signs!" runtime/` returns
   nothing — diagnostics signs are produced Rust-side, not through the Steel builtin.
   `git-diff` will be the *first* Steel caller of `set-signs!`, which is exactly what the
@@ -473,13 +472,14 @@ trait (`hume-scripting/src/host.rs`).
    way `runtime/plugins/core/plum/lib.scm:33` wraps sync `spawn-process` for clone/pull.
 
 4. **Decoration API — extend, don't rebuild.** `DecorationHost`
-   (`hume-scripting/src/host.rs`, seven methods: `set_inlay_hints`, `set_signs`,
-   `set_virtual_lines`, `set_extra_highlights`, `set_eol_text`,
+   (`hume-scripting/src/host.rs`, eight methods: `set_inlay_hints`, `set_signs`,
+   `set_virtual_lines`, `set_extra_highlights`, `set_eol_text`, `set_line_backgrounds`,
    `diagnostics_for_buffer`, `diagnostic_counts`) is backed by `DecorationStores`
    (`hume-editor/src/editor/decorations.rs` — **unified 2026-08-07**, SPEC.md's
-   unified-store item: one generic `SourceStore<T>` instantiated per kind, all five
-   uniformly per-source-keyed and char-offset-positioned, one store-wide `generation`
-   counter). `set-inline-diagnostics!` is now `set-eol-text!` (never
+   unified-store item: one generic `SourceStore<K, T>` instantiated per kind, all six
+   decoration kinds uniformly per-source-keyed and char-offset-positioned, one
+   per-buffer `generation` stamp off a shared monotonic clock). `set-inline-diagnostics!`
+   is now `set-eol-text!` (never
    diagnostics-specific — the diagnostics plugin is its first client, not its owner).
    Cross-check against the nvim extmark uses:
    - **span highlight** (char-relative range + scope) — already covered by
@@ -506,10 +506,10 @@ trait (`hume-scripting/src/host.rs`).
      `RowMap`'s layout query, since a line background never affects row count or wrapping.
      No `priority` field: unlike signs, row tints have no single-slot contention;
      same-line entries from different sources break ties by ascending source name. One
-     record per line, not a range. Dirty tracking: covered by SPEC §6's store-wide
-     generation; the payload is small enough that per-frame sync is fine — no dedicated
-     gate needed. See Phase 3.2 for the `row_bg`/precedence contract this kind renders
-     through.
+     record per line, not a range. Dirty tracking: covered by SPEC §6's per-buffer
+     generation stamp; the payload is small enough that per-frame sync is fine — no
+     dedicated gate needed. See Phase 3.2 for the `row_bg`/precedence contract this
+     kind renders through.
 
 5. **`set-virtual-lines!` anchor + per-segment scopes — ✅ shipped, needed by Phase 5b.**
    Was a verified plan-vs-code gap: the engine type

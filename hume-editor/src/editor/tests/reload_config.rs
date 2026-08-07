@@ -769,8 +769,9 @@ fn resync_does_not_refire_attach_for_a_starting_server() {
 
 /// Every already-open buffer gets `OnBufferOpen` re-fired on resync — the
 /// same replay that covers a plugin's decorations set from that hook
-/// (signs, virtual lines) which `reset_config_state`'s `decorations.clear_all()`
-/// wipes and nothing else would bring back, since buffers aren't reopened.
+/// (signs, virtual lines) which `reset_config_state`'s fresh `ConfigState`
+/// (a new, empty `DecorationStores`) wipes and nothing else would bring
+/// back, since buffers aren't reopened.
 #[test]
 fn resync_refires_buffer_open_for_every_open_buffer() {
     let tmp = safe_tempdir();
