@@ -1556,6 +1556,75 @@ fn identity_reload_fires_no_on_text_changed() {
     );
 }
 
+/// `OnTextChanged` is queued from the live-buffer sweep at the top of a
+/// drain pass, but fires behind whatever `Call` items (timer thunks, async
+/// callbacks) were already queued ahead of it in the same batch. A due timer
+/// that closes the edited buffer before its own `on-text-changed` fires must
+/// not hand a dead `BufferId` to any handler.
+///
+/// Fail oracle: remove `fire_one_event`'s liveness check → the handler
+/// receives the closed buffer's dead id and its first buffer builtin on it
+/// errors, which would surface as a `Severity::Error` the last assertion
+/// below catches.
+#[test]
+fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>b\n");
+    let bid_b = ed.open_buffer(Buffer::new(Text::from("hello\n"), SelectionSet::default()));
+    ed.switch_to_buffer_with_jump(bid_b);
+
+    let mut host = hume_scripting::ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))
+           (define-command! "start" ""
+             (lambda () (after 0 (lambda () (close-buffer! (current-buffer))))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    ed.settle(); // drain startup on-buffer-open/on-buffer-enter
+
+    // Real edit on B — bumps text_gen, not yet observed by a drain pass.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('z'));
+    ed.feed_key(key_esc());
+
+    // Schedule the close, due immediately, and convert it to a queued Call
+    // — but don't drain it yet.
+    type_cmd(&mut ed, ":start");
+    ed.drain_async_sources();
+    assert!(
+        ed.state.buffers.try_get(bid_b).is_some(),
+        "scheduling the close must not run it yet"
+    );
+
+    // One settle: `detect_text_changed` queues B's event behind the
+    // already-queued close Call, in the same `pending_work` batch.
+    ed.settle();
+
+    assert!(
+        ed.state.buffers.try_get(bid_b).is_none(),
+        "the scheduled close must have run"
+    );
+    assert_eq!(
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace)
+            .count(),
+        0,
+        "on-text-changed must not fire for a buffer closed earlier in the batch"
+    );
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .all(|e| e.severity != Severity::Error),
+        "a dead buffer id must not surface as a hook error"
+    );
+}
+
 /// **Exactly one `OnBufferEnter` per focus-changing action.** Pane-focus
 /// cycling and a mouse click into another pane both move focus with no
 /// write to `pane.buffer_id` at all — `focused_pane_id` is the only field

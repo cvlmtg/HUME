@@ -420,6 +420,17 @@ impl Editor {
     /// Fire every handler registered for one `EditorEvent`, if any are —
     /// the per-item body of `settle`'s `Event` arm.
     fn fire_one_event(&mut self, event: EditorEvent) {
+        // `OnTextChanged` is queued from a live-buffer sweep at the top of a
+        // drain pass, but fires behind whatever `Call` items (timer thunks,
+        // async callbacks) were already queued ahead of it in the same
+        // batch — one of those can close `buffer` first. `OnBufferClose` is
+        // deliberately exempt from this shape: it is raised for an id that's
+        // already gone by design (see `lifecycle.rs`'s pairing check).
+        if let EditorEvent::OnTextChanged { buffer } = &event
+            && self.state.buffers.try_get(*buffer).is_none()
+        {
+            return;
+        }
         let name = event.name();
         // Activate lazy event plugins first so their register-hook! calls
         // land before the has_hook_handlers check below.
