@@ -314,6 +314,34 @@ fn remap_bumps_generation_only_when_the_buffer_has_stored_diagnostics() {
     assert_eq!(store.generation, gen_after_replace + 1);
 }
 
+/// `DiagnosticsStore::remap_through` now goes through the same
+/// `SourceStore::remap_ranges` `ExtraHighlightEntry` uses
+/// (`decorations.rs`) — this pins that shared policy for the diagnostics
+/// instantiation: a diagnostic a covering deletion collapses to zero width
+/// is dropped, not kept as a zero-width entry.
+#[test]
+fn remap_through_drops_a_diagnostic_a_covering_deletion_collapses() {
+    let mut store = DiagnosticsStore::default();
+    let bid = make_bid();
+    store.replace(ServerId(0), bid, vec![diag(2, 5, DiagSeverity::Error)]);
+
+    // Delete chars 0..8 of a 10-char document — fully covers [2, 5).
+    let mut b = ChangeSetBuilder::new(10);
+    b.delete(8).retain_rest();
+    let cs = b.finish();
+    store.remap_through(bid, &cs);
+
+    // `counts` iterates every stored entry with no range/severity filter —
+    // unlike `for_range`, it can't coincidentally exclude a surviving
+    // zero-width entry the way a `d.end > lo` check with `lo == 0` would.
+    assert_eq!(
+        store.counts(bid),
+        (0, 0),
+        "a diagnostic fully covered by a deletion must be dropped, not kept \
+         as a zero-width entry"
+    );
+}
+
 #[test]
 fn map_severity_absent_defaults_to_error() {
     assert_eq!(map_severity(None), DiagSeverity::Error);

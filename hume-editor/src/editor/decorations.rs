@@ -4,11 +4,14 @@
 //! their owner. Every
 //! kind is keyed the same way — `BufferId` first, then a per-buffer
 //! `Vec<(source, entries)>`, so unrelated plugins' entries for the same
-//! buffer coexist without a cross-buffer scan to find them (same shape as
-//! `DiagnosticsStore::by_buffer`) — see `SourceStore`. Most render providers
-//! read these fresh every frame; `virtual_lines` is the exception — resolving
-//! each entry's scope is costly enough that its per-pane sync gates on
-//! `generation` instead (see that field's doc).
+//! buffer coexist without a cross-buffer scan to find them — see
+//! `SourceStore`, generic over the source-key type so `lsp/diagnostics.rs`'s
+//! `DiagnosticsStore` (keyed by `ServerId` instead of a plugin-chosen
+//! `String`) shares this exact write/remap machinery rather than
+//! reimplementing it. Most render providers read these fresh every frame;
+//! `virtual_lines` is the exception — resolving each entry's scope is costly
+//! enough that its per-pane sync gates on `generation` instead (see that
+//! field's doc).
 
 use rustc_hash::FxHashMap;
 
@@ -140,8 +143,8 @@ impl Positioned for LineBgEntry {
 }
 
 /// The five point-anchored kinds (every kind but `ExtraHighlightEntry`,
-/// which remaps as a range instead — see `SourceStore<ExtraHighlightEntry>::
-/// remap_ranges`) — drives [`SourceStore::remap_points`]' batch
+/// which remaps as a range instead via `RangeAnchored` — see
+/// [`SourceStore::remap_ranges`]) — drives [`SourceStore::remap_points`]' batch
 /// `ChangeSet::map_positions` call.
 pub(crate) trait PointAnchored: Positioned {
     /// Sticky side for an edit landing exactly at this kind's position —
@@ -193,15 +196,38 @@ impl PointAnchored for LineBgEntry {
     }
 }
 
+/// The one kind remapped as a range rather than a point (see
+/// `PointAnchored`'s doc) — drives [`SourceStore::remap_ranges`]' batch
+/// `ChangeSet::map_ranges` call. `Positioned::pos()` supplies the range's
+/// start; this supplies the end.
+pub(crate) trait RangeAnchored: Positioned {
+    fn end(&self) -> usize;
+    fn set_range(&mut self, start: usize, end: usize);
+}
+
+impl RangeAnchored for ExtraHighlightEntry {
+    fn end(&self) -> usize {
+        self.end
+    }
+    fn set_range(&mut self, start: usize, end: usize) {
+        self.start = start;
+        self.end = end;
+    }
+}
+
 /// One decoration kind's per-source entries, for every buffer
 /// (`FxHashMap<BufferId, Vec<(source, Vec<T>)>>`, kept sorted ascending by
 /// `source` — see `set`). Written once, instantiated per kind; the type
-/// system carries the per-kind payload differences.
-pub(crate) struct SourceStore<T> {
-    by_buffer: FxHashMap<BufferId, Vec<(String, Vec<T>)>>,
+/// system carries the per-kind payload differences. Generic over the source
+/// key `K` (not just `String`) so `lsp/diagnostics.rs`'s `DiagnosticsStore`
+/// — keyed by `ServerId`, otherwise the exact same shape (per-buffer,
+/// per-source, wholesale-replace, remap-through-a-`ChangeSet`) — can wrap
+/// this instead of hand-rolling the same write/remap logic a second time.
+pub(crate) struct SourceStore<K, T> {
+    by_buffer: FxHashMap<BufferId, Vec<(K, Vec<T>)>>,
 }
 
-impl<T> Default for SourceStore<T> {
+impl<K, T> Default for SourceStore<K, T> {
     fn default() -> Self {
         Self {
             by_buffer: FxHashMap::default(),
@@ -209,28 +235,40 @@ impl<T> Default for SourceStore<T> {
     }
 }
 
-impl<T> SourceStore<T> {
+impl<K, T> SourceStore<K, T> {
+    /// Every source's entries for `bid`, grouped (not flattened) — the
+    /// primitive `for_buffer` and a per-source-structure caller (e.g.
+    /// `DiagnosticsStore::for_range`'s per-source `partition_point` prune)
+    /// both build on.
+    pub(crate) fn groups_for_buffer(&self, bid: BufferId) -> impl Iterator<Item = (&K, &[T])> {
+        self.by_buffer
+            .get(&bid)
+            .into_iter()
+            .flat_map(|entry| entry.iter().map(|(k, v)| (k, v.as_slice())))
+    }
+
     /// All entries for `bid`, across every source in ascending source-name
-    /// order (see `set`), paired with their source name — signs need the
-    /// name for a deterministic priority tie-break; virtual lines and extra
+    /// order (see `set`), paired with their source. Signs need the source
+    /// for a deterministic priority tie-break; virtual lines and extra
     /// highlights (the two kinds with no per-line collapse) rely on this
     /// ascending order directly, so two sources anchored to the same line
     /// render in a name-deterministic order rather than whichever call
     /// `set-*!` happened to land first this session; every other kind's
-    /// caller discards the name.
-    fn for_buffer(&self, bid: BufferId) -> impl Iterator<Item = (&str, &T)> {
-        self.by_buffer
-            .get(&bid)
-            .into_iter()
-            .flat_map(|entry| entry.iter())
-            .flat_map(|(source, entries)| entries.iter().map(move |e| (source.as_str(), e)))
+    /// caller discards it.
+    pub(crate) fn for_buffer(&self, bid: BufferId) -> impl Iterator<Item = (&K, &T)> {
+        self.groups_for_buffer(bid)
+            .flat_map(|(k, entries)| entries.iter().map(move |e| (k, e)))
     }
 
     #[cfg(test)]
-    fn entries_for(&self, source: &str, bid: BufferId) -> &[T] {
+    fn entries_for<Q>(&self, source: &Q, bid: BufferId) -> &[T]
+    where
+        K: std::borrow::Borrow<Q>,
+        Q: PartialEq + ?Sized,
+    {
         self.by_buffer
             .get(&bid)
-            .and_then(|entry| entry.iter().find(|(s, _)| s == source))
+            .and_then(|entry| entry.iter().find(|(s, _)| s.borrow() == source))
             .map(|(_, v)| v.as_slice())
             .unwrap_or(&[])
     }
@@ -245,8 +283,11 @@ impl<T> SourceStore<T> {
             .flat_map(|entry| entry.iter_mut().map(|(_, v)| v))
     }
 
-    fn remove_buffer(&mut self, bid: BufferId) {
-        self.by_buffer.remove(&bid);
+    /// Drops every entry for `bid`. Returns whether `bid` had an entry to
+    /// drop — `DiagnosticsStore::remove_buffer` uses this to only bump its
+    /// generation when the removal actually changed anything.
+    pub(crate) fn remove_buffer(&mut self, bid: BufferId) -> bool {
+        self.by_buffer.remove(&bid).is_some()
     }
 
     fn is_empty_for(&self, bid: BufferId) -> bool {
@@ -255,25 +296,50 @@ impl<T> SourceStore<T> {
             .get(&bid)
             .is_some_and(|entry| entry.iter().any(|(_, v)| !v.is_empty()))
     }
+
+    /// Every buffer with at least one source registered, of any kind —
+    /// `DiagnosticsStore::buffers_with_diagnostics`'s sole caller.
+    pub(crate) fn buffers(&self) -> impl Iterator<Item = BufferId> + '_ {
+        self.by_buffer.keys().copied()
+    }
+
+    /// Drops every source `keep` rejects, across every buffer; a buffer left
+    /// with zero sources is dropped from `by_buffer` entirely rather than
+    /// kept as an empty `Vec`. Returns the buffers actually touched.
+    /// `DiagnosticsStore::remove_server`'s sole caller — decoration kinds
+    /// have no per-source removal (a source only ever replaces its own
+    /// entries wholesale via `set`, never disappears on its own).
+    pub(crate) fn retain_sources(&mut self, mut keep: impl FnMut(&K) -> bool) -> Vec<BufferId> {
+        let mut touched = Vec::new();
+        self.by_buffer.retain(|&bid, entry| {
+            let before = entry.len();
+            entry.retain(|(k, _)| keep(k));
+            if entry.len() != before {
+                touched.push(bid);
+            }
+            !entry.is_empty()
+        });
+        touched
+    }
 }
 
-impl<T: Positioned> SourceStore<T> {
+impl<K: Ord, T: Positioned> SourceStore<K, T> {
     /// Replaces `source`'s entries for `bid` wholesale, sorted by `pos` (see
     /// `Positioned`'s doc). `slot` itself stays sorted ascending by `source`
-    /// name — a binary-search insert rather than find-or-push — so
+    /// — a binary-search insert rather than find-or-push — so
     /// `for_buffer`'s iteration order is deterministic by construction
     /// instead of "whichever source called `set` first this session".
-    fn set(&mut self, source: String, bid: BufferId, mut entries: Vec<T>) {
+    pub(crate) fn set(&mut self, source: K, bid: BufferId, mut entries: Vec<T>) {
         entries.sort_by_key(Positioned::pos);
         let slot = self.by_buffer.entry(bid).or_default();
-        match slot.binary_search_by(|(s, _)| s.as_str().cmp(source.as_str())) {
+        match slot.binary_search_by(|(s, _)| s.cmp(&source)) {
             Ok(idx) => slot[idx].1 = entries,
             Err(idx) => slot.insert(idx, (source, entries)),
         }
     }
 }
 
-impl<T: PointAnchored> SourceStore<T> {
+impl<K, T: PointAnchored> SourceStore<K, T> {
     /// Remaps every point-anchored entry for `bid` through `cs`, one batch
     /// `ChangeSet::map_positions` call per source, using `T::ASSOC`. Returns
     /// whether `bid` had any entry to remap — callers use this to skip a
@@ -295,20 +361,28 @@ impl<T: PointAnchored> SourceStore<T> {
     }
 }
 
-impl SourceStore<ExtraHighlightEntry> {
-    /// Remaps every extra-highlight span for `bid` through `cs`, dropping
-    /// any span a covering deletion collapsed to zero width — the one kind
-    /// remapped as a range rather than a point (see `PointAnchored`'s doc).
-    /// Returns whether `bid` had any span to remap, same as `remap_points`.
-    fn remap_ranges(&mut self, bid: BufferId, cs: &ChangeSet) -> bool {
+impl<K, T: RangeAnchored> SourceStore<K, T> {
+    /// Remaps every range-anchored entry for `bid` through `cs`, dropping any
+    /// range a covering deletion collapsed to zero width. Returns whether
+    /// `bid` had any entry to remap, same as `remap_points`. The one other
+    /// implementor of this policy before it moved here
+    /// (`DiagnosticsStore::remap_through`) was a near-verbatim copy of this
+    /// method against `StoredDiag` instead of `ExtraHighlightEntry` — this
+    /// generic version now backs both.
+    pub(crate) fn remap_ranges(&mut self, bid: BufferId, cs: &ChangeSet) -> bool {
         let mut touched = false;
         for spans in self.sources_mut(bid) {
             if spans.is_empty() {
                 continue;
             }
             touched = true;
-            let mut ranges: Vec<(usize, usize)> = spans.iter().map(|s| (s.start, s.end)).collect();
+            let mut ranges: Vec<(usize, usize)> =
+                spans.iter().map(|s| (s.pos(), s.end())).collect();
             cs.map_ranges(&mut ranges);
+            debug_assert!(
+                ranges.windows(2).all(|w| w[0].0 <= w[1].0),
+                "map_ranges must preserve sort order"
+            );
             let mut idx = 0;
             spans.retain_mut(|s| {
                 let (start, end) = ranges[idx];
@@ -316,8 +390,7 @@ impl SourceStore<ExtraHighlightEntry> {
                 if end <= start {
                     false // collapsed by a covering deletion — drop
                 } else {
-                    s.start = start;
-                    s.end = end;
+                    s.set_range(start, end);
                     true
                 }
             });
@@ -328,12 +401,12 @@ impl SourceStore<ExtraHighlightEntry> {
 
 #[derive(Default)]
 pub(crate) struct DecorationStores {
-    inlay_hints: SourceStore<InlayHintEntry>,
-    signs: SourceStore<SignEntry>,
-    virtual_lines: SourceStore<VirtualLineEntry>,
-    extra_highlights: SourceStore<ExtraHighlightEntry>,
-    eol_text: SourceStore<EolTextEntry>,
-    line_backgrounds: SourceStore<LineBgEntry>,
+    inlay_hints: SourceStore<String, InlayHintEntry>,
+    signs: SourceStore<String, SignEntry>,
+    virtual_lines: SourceStore<String, VirtualLineEntry>,
+    extra_highlights: SourceStore<String, ExtraHighlightEntry>,
+    eol_text: SourceStore<String, EolTextEntry>,
+    line_backgrounds: SourceStore<String, LineBgEntry>,
     /// Per-buffer dirty-tracking stamp, touched by every `set_*` and
     /// `remove_buffer` for that buffer, and by `remap_through` when a remap
     /// actually moved one of that buffer's entries — the virtual-lines
@@ -447,7 +520,7 @@ impl DecorationStores {
         &self,
         bid: BufferId,
     ) -> impl Iterator<Item = (&str, &SignEntry)> {
-        self.signs.for_buffer(bid)
+        self.signs.for_buffer(bid).map(|(s, e)| (s.as_str(), e))
     }
 
     /// Replaces `source`'s virtual lines for `bid` wholesale.
@@ -494,7 +567,7 @@ impl DecorationStores {
         &self,
         bid: BufferId,
     ) -> impl Iterator<Item = (&str, &EolTextEntry)> {
-        self.eol_text.for_buffer(bid)
+        self.eol_text.for_buffer(bid).map(|(s, e)| (s.as_str(), e))
     }
 
     /// Replaces `source`'s line backgrounds for `bid` wholesale.
@@ -520,7 +593,9 @@ impl DecorationStores {
         &self,
         bid: BufferId,
     ) -> impl Iterator<Item = (&str, &LineBgEntry)> {
-        self.line_backgrounds.for_buffer(bid)
+        self.line_backgrounds
+            .for_buffer(bid)
+            .map(|(s, e)| (s.as_str(), e))
     }
 
     /// Replaces `source`'s extra highlights for `bid` wholesale.

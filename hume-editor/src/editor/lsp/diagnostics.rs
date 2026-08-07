@@ -3,7 +3,6 @@
 //! subsequent edit. Bulk never reaches Steel — Steel gets
 //! a signal + bounded pulls.
 
-use rustc_hash::FxHashMap;
 use std::ops::Range;
 
 use hume_editing::changeset::ChangeSet;
@@ -15,6 +14,7 @@ use lsp_types::PublishDiagnosticsParams;
 use ropey::Rope;
 
 use crate::editor::Editor;
+use crate::editor::decorations::{Positioned, RangeAnchored, SourceStore};
 use crate::editor::message_log::Severity;
 
 /// Ordered least-to-most-lenient so `severity <= floor` means "at least as
@@ -82,9 +82,32 @@ pub(crate) struct StoredDiag {
     pub(crate) raw: serde_json::Value,
 }
 
+impl Positioned for StoredDiag {
+    fn pos(&self) -> usize {
+        self.start
+    }
+}
+
+impl RangeAnchored for StoredDiag {
+    fn end(&self) -> usize {
+        self.end
+    }
+    fn set_range(&mut self, start: usize, end: usize) {
+        self.start = start;
+        self.end = end;
+    }
+}
+
+/// Wraps the same generic `SourceStore<K, T>` the decoration kinds share
+/// (`decorations.rs`), keyed by `ServerId` instead of a plugin-chosen
+/// source name — `set`/`remap_ranges`/`remove_buffer` are the shared
+/// write/remap machinery; `generation` (a Steel-visible dirty signal, a
+/// different cadence/consumer than `DecorationStores`' per-buffer stamp)
+/// and the diagnostics-specific reads (`for_range`'s severity/range filter,
+/// `counts`) stay here since no decoration kind needs them.
 #[derive(Default)]
 pub(crate) struct DiagnosticsStore {
-    by_buffer: FxHashMap<BufferId, Vec<(ServerId, Vec<StoredDiag>)>>,
+    store: SourceStore<ServerId, StoredDiag>,
     /// Bumped on every ingest or remap — cheap "did anything change" signal
     /// for Steel-side consumers (`on-diagnostics-changed`).
     pub(crate) generation: u64,
@@ -93,14 +116,11 @@ pub(crate) struct DiagnosticsStore {
 impl DiagnosticsStore {
     /// Replaces one server's diagnostics for `bid` (already coalesced —
     /// the caller keeps only the last `publishDiagnostics` per (server,
-    /// uri) within a drain batch). `diags` must already be sorted by
-    /// `start` — callers build it that way at ingest.
+    /// uri) within a drain batch). `SourceStore::set` sorts by `start`
+    /// (`StoredDiag`'s `Positioned` impl), so callers no longer need to
+    /// pre-sort themselves.
     pub(crate) fn replace(&mut self, server: ServerId, bid: BufferId, diags: Vec<StoredDiag>) {
-        let entry = self.by_buffer.entry(bid).or_default();
-        match entry.iter_mut().find(|(sid, _)| *sid == server) {
-            Some(slot) => slot.1 = diags,
-            None => entry.push((server, diags)),
-        }
+        self.store.set(server, bid, diags);
         self.generation += 1;
     }
 
@@ -109,35 +129,17 @@ impl DiagnosticsStore {
     /// undo/redo (same chokepoint as `flush_lsp_pending_changes`,
     /// consuming the same `Buffer.lsp_pending` entries — same source, both
     /// consumers). A range collapsed to empty by a covering deletion is
-    /// dropped, not kept as a zero-width entry.
+    /// dropped, not kept as a zero-width entry — `SourceStore::remap_ranges`'
+    /// shared policy, the same one `ExtraHighlightEntry` uses. Only bumps
+    /// `generation` when `bid` actually had a diagnostic to remap — a buffer
+    /// with none is a no-op, same conditional-touch discipline
+    /// `DecorationStores::remap_through` uses for the same reason (avoid
+    /// firing a "changed" signal on every keystroke in a buffer with
+    /// nothing to change).
     pub(crate) fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {
-        let Some(entry) = self.by_buffer.get_mut(&bid) else {
-            return;
-        };
-        for (_server, diags) in entry.iter_mut() {
-            if diags.is_empty() {
-                continue;
-            }
-            let mut ranges: Vec<(usize, usize)> = diags.iter().map(|d| (d.start, d.end)).collect();
-            cs.map_ranges(&mut ranges);
-            let mut idx = 0;
-            diags.retain_mut(|d| {
-                let (start, end) = ranges[idx];
-                idx += 1;
-                if end <= start {
-                    false // collapsed by a covering deletion — drop
-                } else {
-                    d.start = start;
-                    d.end = end;
-                    true
-                }
-            });
-            debug_assert!(
-                diags.windows(2).all(|w| w[0].start <= w[1].start),
-                "map_ranges must preserve sort order"
-            );
+        if self.store.remap_ranges(bid, cs) {
+            self.generation += 1;
         }
-        self.generation += 1;
     }
 
     /// Drops every `StoredDiag` published by `server` — called when a
@@ -146,21 +148,14 @@ impl DiagnosticsStore {
     /// buffers still attached to a server) or duplicate a fresh instance's
     /// entry after `:lsp-restart` (a new `ServerId` would otherwise coexist
     /// with the old, frozen one via `replace`'s "push if no matching sid"
-    /// path). A buffer left with no remaining server entry is dropped from
-    /// `by_buffer` entirely, not kept as an empty `Vec`. Returns the buffers
-    /// actually touched, so the caller can fire `OnDiagnosticsChanged` for
-    /// exactly those — same "only the buffers this batch touched" discipline
-    /// as `drain_lsp`'s `publishDiagnostics` ingest.
+    /// path). A buffer left with no remaining server entry is dropped
+    /// entirely, not kept as an empty `Vec` (`SourceStore::retain_sources`).
+    /// Returns the buffers actually touched, so the caller can fire
+    /// `OnDiagnosticsChanged` for exactly those — same "only the buffers
+    /// this batch touched" discipline as `drain_lsp`'s `publishDiagnostics`
+    /// ingest.
     pub(crate) fn remove_server(&mut self, server: ServerId) -> Vec<BufferId> {
-        let mut touched = Vec::new();
-        self.by_buffer.retain(|&bid, entry| {
-            let before = entry.len();
-            entry.retain(|(sid, _)| *sid != server);
-            if entry.len() != before {
-                touched.push(bid);
-            }
-            !entry.is_empty()
-        });
+        let touched = self.store.retain_sources(|&sid| sid != server);
         if !touched.is_empty() {
             self.generation += 1;
         }
@@ -176,7 +171,7 @@ impl DiagnosticsStore {
     /// was actually removed, so a reload caller only fires
     /// `OnDiagnosticsChanged` when the display actually changes.
     pub(crate) fn remove_buffer(&mut self, bid: BufferId) -> bool {
-        let removed = self.by_buffer.remove(&bid).is_some();
+        let removed = self.store.remove_buffer(bid);
         if removed {
             self.generation += 1;
         }
@@ -189,23 +184,18 @@ impl DiagnosticsStore {
     /// deliberately (see `LspState::reset_config`'s doc), so `:reload-config`'s
     /// resync can still replay `OnDiagnosticsChanged` for them.
     pub(crate) fn buffers_with_diagnostics(&self) -> impl Iterator<Item = BufferId> + '_ {
-        self.by_buffer.keys().copied()
+        self.store.buffers()
     }
 
     /// Production callers: `:lsp-status` and the `(diagnostic-counts …)` builtin.
     pub(crate) fn counts(&self, bid: BufferId) -> (usize, usize) {
-        let Some(entry) = self.by_buffer.get(&bid) else {
-            return (0, 0);
-        };
         let mut errors = 0;
         let mut warnings = 0;
-        for (_server, diags) in entry {
-            for d in diags {
-                match d.severity {
-                    DiagSeverity::Error => errors += 1,
-                    DiagSeverity::Warning => warnings += 1,
-                    DiagSeverity::Info | DiagSeverity::Hint => {}
-                }
+        for (_server, d) in self.store.for_buffer(bid) {
+            match d.severity {
+                DiagSeverity::Error => errors += 1,
+                DiagSeverity::Warning => warnings += 1,
+                DiagSeverity::Info | DiagSeverity::Hint => {}
             }
         }
         (errors, warnings)
@@ -214,13 +204,14 @@ impl DiagnosticsStore {
     /// Production caller: the `(diagnostics-for-buffer …)` builtin. The
     /// underline/sign providers also read from here.
     ///
-    /// Each server's own `Vec` is sorted by `start`, but with 2+ servers
-    /// publishing for the same buffer, concatenating them in server order
-    /// would not be globally sorted — callers that assume start-ascending
-    /// order (e.g. `goto-next-diagnostic`'s nearest-match logic) would jump
-    /// to whichever server happened to be iterated first rather than the
-    /// nearest diagnostic. Collected and sorted once here so every caller
-    /// gets a globally ordered result without re-deriving it.
+    /// Each server's own entries are sorted by `start` (`SourceStore::set`),
+    /// but with 2+ servers publishing for the same buffer, concatenating
+    /// them in server order would not be globally sorted — callers that
+    /// assume start-ascending order (e.g. `goto-next-diagnostic`'s
+    /// nearest-match logic) would jump to whichever server happened to be
+    /// iterated first rather than the nearest diagnostic. Collected and
+    /// sorted once here so every caller gets a globally ordered result
+    /// without re-deriving it.
     pub(crate) fn for_range(
         &self,
         bid: BufferId,
@@ -229,15 +220,13 @@ impl DiagnosticsStore {
     ) -> impl Iterator<Item = &StoredDiag> {
         let (lo, hi) = (range.start, range.end);
         let mut out: Vec<&StoredDiag> = self
-            .by_buffer
-            .get(&bid)
-            .into_iter()
-            .flat_map(|entry| entry.iter())
+            .store
+            .groups_for_buffer(bid)
             .flat_map(move |(_server, diags)| {
-                // Each server's Vec is sorted by `start` (see `replace` and
-                // `remap_through`), so everything past the first `start >= hi`
-                // can't overlap `range`. `end` isn't sorted, so the lower bound
-                // still needs a full scan from the front.
+                // Each server's slice is sorted by `start`
+                // (`SourceStore::set`), so everything past the first
+                // `start >= hi` can't overlap `range`. `end` isn't sorted,
+                // so the lower bound still needs a full scan from the front.
                 let upper = diags.partition_point(|d| d.start < hi);
                 diags[..upper].iter()
             })
