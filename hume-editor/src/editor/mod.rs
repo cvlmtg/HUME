@@ -152,7 +152,8 @@ pub(crate) struct ConfigState {
     /// entry entirely (matches `on-lsp-detach`'s clear-on-detach usage).
     pub(crate) trigger_chars: rustc_hash::FxHashMap<(String, String), Vec<char>>,
     /// Steel-writable decoration stores (inlay hints, signs, virtual
-    /// lines, EOL text, extra highlights) — the render providers read these.
+    /// lines, EOL text, extra highlights, line backgrounds) — the render
+    /// providers read these.
     pub(crate) decorations: decorations::DecorationStores,
     /// Deferred Steel work — events enqueued during command dispatch
     /// (`EditorState::queue_event`) and specific-closure completions

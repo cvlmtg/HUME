@@ -780,7 +780,7 @@ fn grid_of_four_panes_renders_cross_junction_glyph() {
 
 /// Entering Insert mode must hide the fake block cursor only in the focused
 /// pane (which real terminal bar cursor overlays) — not in every pane.
-/// `resolve_pane_settings` (lifecycle.rs) forces a block-cursor mode for
+/// `resolve_pane_settings` (frame.rs) forces a block-cursor mode for
 /// unfocused panes regardless of the editor's global mode; this locks that
 /// per-pane behavior at the render level. `:vsplit` moves focus to the new
 /// (right) pane, so the left pane's cursor cell must keep its block style

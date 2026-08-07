@@ -6,7 +6,7 @@ use super::*;
 use crate::editor::decorations::EolTextEntry;
 use hume_engine::pipeline::RenderContext;
 
-/// `update_eol_text_providers` (`lifecycle.rs`) must hand the full,
+/// `update_eol_text_providers` (`decoration_providers.rs`) must hand the full,
 /// untruncated message through to the pane's `InlineInsert` — the per-line
 /// summary text set via `set-eol-text!` must reach the render provider
 /// byte-for-byte. (`format_buffer_line`'s trailing-insert path then splits

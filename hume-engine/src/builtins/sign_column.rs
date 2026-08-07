@@ -143,7 +143,7 @@ impl GutterColumn for SignColumn {
         // tie-break rule). This is the *only* place in the sign pipeline that
         // makes an explicit same-priority tie-break decision: the editor's
         // plugin-sign pre-merge (`Editor::update_sign_providers`,
-        // hume-editor/src/editor/lifecycle.rs) sorts by priority only and
+        // hume-editor/src/editor/decoration_providers.rs) sorts by priority only and
         // relies on this being the sole arbiter — it must stay that way, or a
         // same-priority sign could be discarded upstream by a rule that
         // disagrees with this one. Diagnostics' severity collapse (many

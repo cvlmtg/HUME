@@ -254,10 +254,12 @@ bitflags! {
 }
 
 impl DecorationKinds {
-    /// Kinds the layout stage (`rows::RowMap`) queries — they affect row
-    /// count/wrapping, so they must be known before paint.
-    pub const LAYOUT: Self = Self::VIRTUAL_LINE.union(Self::INLINE);
-    /// Kinds the paint stage queries — render-only, never consulted by layout.
+    /// Kinds the paint stage queries in one pass (`style::rebuild_line_decorations`)
+    /// — render-only, never consulted by layout. The layout stage has no
+    /// analogous combined constant: `rows::RowMap` queries `VIRTUAL_LINE` and
+    /// `INLINE` separately, at different points in the row walk (`block()`
+    /// for virtual lines, `format_line()` for inline inserts), so a `LAYOUT`
+    /// union would have no correct caller.
     pub const PAINT: Self = Self::HIGHLIGHT.union(Self::LINE_BG);
 }
 
@@ -402,10 +404,11 @@ impl ProviderSet {
     }
 
     /// Decoration sources whose declared [`DecorationKinds`] intersect
-    /// `want` — the kind-routing chokepoint: the layout stage
-    /// (`rows::RowMap`) queries `DecorationKinds::LAYOUT`, the paint stage
-    /// (`style::rebuild_line_decorations`) queries `DecorationKinds::PAINT`,
-    /// so neither stage pays for a provider whose output it would discard.
+    /// `want` — the kind-routing chokepoint: the layout stage (`rows::RowMap`)
+    /// queries `VIRTUAL_LINE` and `INLINE` separately, the paint stage
+    /// (`style::rebuild_line_decorations`) queries `DecorationKinds::PAINT`
+    /// (`HIGHLIGHT | LINE_BG`) in one pass, so no stage pays for a provider
+    /// whose output it would discard.
     pub(crate) fn decoration_sources(
         &self,
         want: DecorationKinds,
