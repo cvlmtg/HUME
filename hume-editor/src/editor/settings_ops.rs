@@ -43,6 +43,17 @@ pub(crate) fn apply_global(
         ));
     }
 
+    // Raised after the write (and any resync) succeeds — a plugin reacting
+    // to this sees the setting already in its new, live state. The single
+    // raise site for every `:set global`/`set-option!`/`:theme` write, since
+    // this is the single write path all three funnel through (see the
+    // module doc) — a plugin owning one setting's policy (e.g. the LSP
+    // inlay-hints plugin) needs exactly one hook, not one per write path.
+    state.queue_event(super::event::EditorEvent::OnOptionChange {
+        key: key.to_string(),
+        value: value.to_string(),
+    });
+
     Ok(())
 }
 

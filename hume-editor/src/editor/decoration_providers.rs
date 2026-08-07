@@ -298,15 +298,18 @@ impl Editor {
             let max_plugin_signs = signcolumn.columns as usize;
 
             // Both the diagnostics and plugin-sign passes below need to turn
-            // a char offset back into a line — diagnostics store char
-            // ranges directly, and plugin signs now store their line's
-            // line-start char offset (`SignEntry::pos`, remapped through
-            // edits like every other decoration kind, SPEC.md §6). Clamped
-            // to the buffer's last valid char in both passes, so a stored
-            // offset that drifted past the current text can't panic
-            // `char_to_line` (which is out-of-bounds past `len_chars()`).
+            // a char offset back into a line — diagnostics store char ranges
+            // directly (live server output, never validated against
+            // `line_start_offset`, so can legitimately be EOF-anchored), and
+            // plugin signs store their line's line-start char offset
+            // (`SignEntry::pos`, remapped through edits like every other
+            // decoration kind, SPEC.md §6).
             let text = self.state.buffers.get(bid).text();
-            let last_char = text.len_chars().saturating_sub(1);
+            // Diagnostics only: clamped to the last content char so an
+            // EOF-anchored diagnostic (server points one past the buffer's
+            // last char) still marks the buffer's last real line rather than
+            // resolving to the trailing phantom line and vanishing.
+            let last_content_char = text.len_chars().saturating_sub(1);
 
             // Diagnostics: every line a diagnostic touches gets a marker;
             // the most severe diagnostic wins when several touch one line.
@@ -315,8 +318,8 @@ impl Editor {
                 .diagnostics_for_range(bid, visible.clone(), floor)
                 .map(|d| {
                     (
-                        text.char_to_line(d.start.min(last_char)),
-                        text.char_to_line(d.end.saturating_sub(1).min(last_char)),
+                        text.char_to_line(d.start.min(last_content_char)),
+                        text.char_to_line(d.end.saturating_sub(1).min(last_content_char)),
                         d.severity,
                     )
                 })
@@ -372,7 +375,9 @@ impl Editor {
                 .config
                 .decorations
                 .signs_for_buffer(bid)
-                .map(|(source, e)| (source, text.char_to_line(e.pos.min(last_char)), e))
+                .filter_map(|(source, e)| {
+                    resolve_decoration_line(text, e.pos).map(|line| (source, line, e))
+                })
                 .filter(|(_, line, _)| visible_lines.contains(line))
                 .map(|(source, line, e)| {
                     (
@@ -453,9 +458,12 @@ impl Editor {
 
     /// Sync per-pane inlay-hint decorations from the
     /// `decorations.inlay_hints` store to each pane's `InlayHintProvider`
-    /// Arc. Gated on `lsp.inlay-hints`: when off, every pane's map is
-    /// cleared so a mid-session toggle takes effect immediately rather than
-    /// waiting for the store to next change.
+    /// Arc. Not gated on `lsp.inlay-hints` here: the store is per-source
+    /// (`set-inlay-hints!` takes a `source` arg precisely so unrelated
+    /// plugins can coexist), and `lsp.inlay-hints` is the LSP inlay-hints
+    /// plugin's own setting — it owns clearing *its* source on toggle-off,
+    /// via the `on-option-change` hook (`inlay.scm`), rather than this
+    /// bridge wiping every source wholesale on a setting it doesn't own.
     pub(super) fn update_inlay_hint_providers(&mut self) {
         use hume_engine::providers::InlineInsert;
 
@@ -465,15 +473,6 @@ impl Editor {
             .iter()
             .map(|(pid, pane)| (pid, pane.buffer_id))
             .collect();
-
-        if !self.state.settings.lsp_inlay_hints {
-            for &(pid, _) in &panes {
-                if let Some(r) = self.state.panes.render.get(pid) {
-                    r.inlay_hints.write_or_panic().clear();
-                }
-            }
-            return;
-        }
 
         let scope = self.inlay_hint_scope();
         for &(pid, bid) in &panes {
@@ -548,46 +547,57 @@ impl Editor {
                 continue;
             };
 
-            // Collected into an owned Vec, and every scope name resolved,
-            // *before* borrowing buffer text below: `self.runtime_scope`
-            // needs `&mut self`, which can't overlap with either the
-            // immutable borrow `eol_text_for_buffer` holds on
-            // `self.state.config.decorations` or the one `text` will hold on
-            // `self.state.buffers`. Each entry's `pos` is its line's
+            // Collected into an owned Vec, source name kept for the
+            // last-writer-per-line fold below (SPEC.md §5a.4), and every
+            // scope name resolved *before* borrowing buffer text —
+            // `self.runtime_scope` needs `&mut self`, which can't overlap
+            // with either the immutable borrow `eol_text_for_buffer` holds
+            // on `self.state.config.decorations` or the one `text` will
+            // hold on `self.state.buffers`. Each entry's `pos` is its line's
             // line-start char offset (`EolTextEntry::pos`), converted back
             // to a line below once `text` is in scope.
-            let entries: Vec<(usize, String, String)> = self
+            let entries: Vec<(String, usize, String, String)> = self
                 .state
                 .config
                 .decorations
                 .eol_text_for_buffer(bid)
-                .map(|e| (e.pos, e.text.clone(), e.scope.clone()))
+                .map(|(source, e)| (source.to_string(), e.pos, e.text.clone(), e.scope.clone()))
                 .collect();
-            let resolved: Vec<(usize, String, hume_engine::types::ScopeId)> = entries
+            let resolved: Vec<(String, usize, String, hume_engine::types::ScopeId)> = entries
                 .into_iter()
-                .map(|(pos, text, scope_name)| (pos, text, self.runtime_scope(&scope_name)))
+                .map(|(source, pos, text, scope_name)| {
+                    (source, pos, text, self.runtime_scope(&scope_name))
+                })
                 .collect();
 
             let text = self.state.buffers.get(bid).text();
-            let last_char = text.len_chars().saturating_sub(1);
-            let mut by_line: rustc_hash::FxHashMap<usize, Vec<InlineInsert>> =
-                rustc_hash::FxHashMap::default();
-            for (pos, entry_text, scope) in resolved {
-                // Clamped like the sign path above: a stored offset that
-                // drifted past the current text can't panic `char_to_line`.
-                let line = text.char_to_line(pos.min(last_char));
-                // End-of-line placement: the line's own trailing '\n' char
-                // resolves to a byte offset within `line` (never the next
-                // line — see `char_to_line_byte`'s doc comment on the same
-                // pattern used for inlay hints' `'after` anchor).
-                let line_newline = line_end_exclusive(text, line) - 1;
-                let (_, byte_offset) = char_to_line_byte(text, line_newline);
-                by_line.entry(line).or_default().push(InlineInsert {
-                    byte_offset,
-                    text: entry_text,
-                    scope,
-                });
-            }
+            let per_line: Vec<(String, usize, InlineInsert)> = resolved
+                .into_iter()
+                .filter_map(|(source, pos, entry_text, scope)| {
+                    let line = resolve_decoration_line(text, pos)?;
+                    // End-of-line placement: the line's own trailing '\n'
+                    // char resolves to a byte offset within `line` (never
+                    // the next line — see `char_to_line_byte`'s doc comment
+                    // on the same pattern used for inlay hints' `'after`
+                    // anchor).
+                    let line_newline = line_end_exclusive(text, line) - 1;
+                    let (_, byte_offset) = char_to_line_byte(text, line_newline);
+                    Some((
+                        source,
+                        line,
+                        InlineInsert {
+                            byte_offset,
+                            text: entry_text,
+                            scope,
+                        },
+                    ))
+                })
+                .collect();
+            let by_line: rustc_hash::FxHashMap<usize, Vec<InlineInsert>> =
+                last_writer_per_line(per_line)
+                    .into_iter()
+                    .map(|(line, insert)| (line, vec![insert]))
+                    .collect();
 
             *map.write_or_panic() = by_line;
         }
@@ -610,11 +620,14 @@ impl Editor {
     /// `decorations.virtual_lines` store to each pane's `PaneVirtualLines`
     /// Arc — a `RowMap::block` provider, so this feeds row *counts* the same
     /// way inlay hints/EOL text feed wrap columns. Unlike those two, this
-    /// only rebuilds when `decorations.generation()` changed since the
+    /// only rebuilds when `decorations.generation(bid)` changed since the
     /// pane's last sync, or the pane's buffer changed, since resolving each
     /// entry's scope (`runtime_scope`) is costlier to redo unconditionally
-    /// every frame. Called from `prepare_frame`'s step 5, *before*
-    /// scrolling, no viewport dependency to make stale.
+    /// every frame. The stamp is per-buffer (not a single store-wide
+    /// counter): an edit only bumps the buffer it edited, so typing in one
+    /// buffer no longer forces every pane on every *other* buffer to
+    /// resync too. Called from `prepare_frame`'s step 5, *before* scrolling,
+    /// no viewport dependency to make stale.
     ///
     /// Each entry becomes `Before(line)` or `After(line)` per its `before`
     /// flag, and its `segments` are gap-filled with its base scope so the
@@ -622,7 +635,6 @@ impl Editor {
     pub(super) fn update_virtual_line_providers(&mut self) {
         use hume_engine::providers::{VirtualLine, VirtualLineAnchor};
 
-        let current_gen = self.state.config.decorations.generation();
         let panes: Vec<(PaneId, BufferId)> = self
             .view
             .panes
@@ -632,6 +644,7 @@ impl Editor {
 
         let fallback_scope = self.virtual_text_fallback_scope();
         for &(pid, bid) in &panes {
+            let current_gen = self.state.config.decorations.generation(bid);
             if self.virtual_lines_synced.get(&pid) == Some(&(bid, current_gen)) {
                 continue;
             }
@@ -668,10 +681,10 @@ impl Editor {
                 // (`VirtualLineEntry::pos`) — fetched fresh per entry since
                 // `runtime_scope`/`gap_fill_segments` above need `&mut self`,
                 // which can't overlap with a borrow of `self.state.buffers`.
-                // Clamped like the sign/EOL-text paths: a stored offset that
-                // drifted past the current text can't panic `char_to_line`.
                 let text = self.state.buffers.get(bid).text();
-                let line = text.char_to_line(entry.pos.min(text.len_chars().saturating_sub(1)));
+                let Some(line) = resolve_decoration_line(text, entry.pos) else {
+                    continue;
+                };
                 let anchor = if entry.before {
                     VirtualLineAnchor::Before(line)
                 } else {
@@ -695,7 +708,10 @@ impl Editor {
     /// Write per-frame line-background data to every pane's own
     /// `Arc<RwLock<FxHashMap<usize, ScopeId>>>` buffer, read by that pane's
     /// `PaneLineBackgrounds` provider. Rebuilds unconditionally each frame —
-    /// unlike `virtual_lines`, the payload is one `ScopeId` per tinted line,
+    /// unlike `virtual_lines`, the payload is filtered to the viewport
+    /// before any per-entry clone or scope resolution runs (mirrors
+    /// `update_sign_providers`), so the per-frame cost is one `ScopeId` per
+    /// *visible* tinted line, not per tinted line in the whole buffer —
     /// cheap enough that a dedicated generation-gated sync buys nothing
     /// (GIT-DIFF.md Phase 4.4).
     pub(super) fn update_line_bg_providers(&mut self) {
@@ -717,39 +733,34 @@ impl Editor {
                 continue;
             };
 
-            // Collected into an owned Vec, source name kept for the
-            // tie-break sort below (mirrors the sign pipeline's pre-sort,
-            // `update_sign_providers`), and every scope name resolved
-            // *before* borrowing buffer text — `self.runtime_scope` needs
-            // `&mut self`, which can't overlap the borrow `text` holds below.
-            let entries: Vec<(String, usize, String)> = self
+            // Filtered to the viewport *before* cloning or resolving a scope
+            // — like the sign path above (`update_sign_providers`), and
+            // unlike this bridge before this fix, which cloned and resolved
+            // every tinted line in the whole buffer only to discard the
+            // ones scrolled out of view. `text`/`visible_lines` and the
+            // immutable `line_backgrounds_for_buffer` borrow can coexist;
+            // only `self.runtime_scope` below needs `&mut self`, so the
+            // owned collect here exists to end those borrows, not to escape
+            // an unrelated conflict.
+            let visible_lines = self.visible_line_range(pid, bid);
+            let text = self.state.buffers.get(bid).text();
+            let visible_entries: Vec<(String, usize, String)> = self
                 .state
                 .config
                 .decorations
                 .line_backgrounds_for_buffer(bid)
-                .map(|(source, e)| (source.to_string(), e.pos, e.scope.clone()))
+                .filter_map(|(source, e)| {
+                    let line = resolve_decoration_line(text, e.pos)?;
+                    visible_lines
+                        .contains(&line)
+                        .then(|| (source.to_string(), line, e.scope.clone()))
+                })
                 .collect();
-            let mut resolved: Vec<(String, usize, hume_engine::types::ScopeId)> = entries
+            let per_line: Vec<(String, usize, hume_engine::types::ScopeId)> = visible_entries
                 .into_iter()
-                .map(|(source, pos, scope_name)| (source, pos, self.runtime_scope(&scope_name)))
+                .map(|(source, line, scope_name)| (source, line, self.runtime_scope(&scope_name)))
                 .collect();
-            // Ascending source-name order: the alphabetically-last source
-            // wins the `insert` below when two sources tint the same line.
-            resolved.sort_by(|a, b| a.0.cmp(&b.0));
-
-            let visible_lines = self.visible_line_range(pid, bid);
-            let text = self.state.buffers.get(bid).text();
-            let last_char = text.len_chars().saturating_sub(1);
-            let mut by_line: rustc_hash::FxHashMap<usize, hume_engine::types::ScopeId> =
-                rustc_hash::FxHashMap::default();
-            for (_, pos, scope) in resolved {
-                // Clamped like the sign/EOL-text paths: a stored offset that
-                // drifted past the current text can't panic `char_to_line`.
-                let line = text.char_to_line(pos.min(last_char));
-                if visible_lines.contains(&line) {
-                    by_line.insert(line, scope);
-                }
-            }
+            let by_line = last_writer_per_line(per_line);
 
             *map.write_or_panic() = by_line;
         }
@@ -794,6 +805,43 @@ impl Editor {
         }
         out
     }
+}
+
+/// Folds per-source, line-anchored decoration entries into one winner per
+/// line — SPEC.md §5a.4: within one source, a later entry beats an earlier
+/// one that a remap collapsed onto the same line (ties resolve by store
+/// order — `SourceStore::set` sorts by position, so "later" means originally
+/// further along the buffer); across sources, tie-break by source name,
+/// mirroring the sign pipeline (`update_sign_providers`'s ascending
+/// source-name pre-sort, then a *stable* priority sort, leaves same-priority
+/// ties in source order — i.e. the alphabetically first source wins).
+///
+/// A single stable sort **descending** by source name gets both properties
+/// from one `FxHashMap::insert`-per-entry fold: one source's own entries
+/// keep their relative (store) order, so its later entry overwrites its
+/// earlier one when folded left-to-right; and the alphabetically-first
+/// source sorts last, so its entries are folded last and win the
+/// cross-source overwrite.
+fn last_writer_per_line<T>(
+    mut entries: Vec<(String, usize, T)>,
+) -> rustc_hash::FxHashMap<usize, T> {
+    entries.sort_by(|a, b| b.0.cmp(&a.0));
+    entries.into_iter().map(|(_, line, v)| (line, v)).collect()
+}
+
+/// Resolves a stored line-anchored decoration's position to its current
+/// line, or `None` if a remap drifted it onto the buffer's trailing phantom
+/// line — always empty (every buffer ends with a structural `\n`,
+/// `text.len_lines() - 1`), the same line `host_impl.rs`'s
+/// `line_start_offset` refuses to hand out a position on in the first place.
+/// A fresh `set-*!` call can never produce this; a `remap_points` result can,
+/// when an edit deletes everything after the entry's anchor up to
+/// end-of-buffer. The entry disappears rather than getting relocated onto
+/// whatever line precedes it (four callers: signs, EOL text, virtual lines,
+/// line backgrounds — all four line-anchored decoration kinds).
+fn resolve_decoration_line(text: &hume_editing::text::Text, pos: usize) -> Option<usize> {
+    let line = text.char_to_line(pos);
+    (line + 1 < text.len_lines()).then_some(line)
 }
 
 /// Convert a char-offset position to a line-relative byte offset.
@@ -968,3 +1016,6 @@ fn flatten_one_line(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

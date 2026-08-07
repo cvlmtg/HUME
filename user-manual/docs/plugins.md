@@ -240,6 +240,7 @@ Available hooks and their lambda signatures:
 | `on-trigger-char` | A registered trigger character is typed | `(buffer-id char source)` |
 | `on-completion-accept` | A completion entry is accepted | `(buffer-id item)` |
 | `on-completion-refilter` | Completion input changes | `(buffer-id text)` |
+| `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)` — both strings |
 
 `on-buffer-open` and `on-buffer-close` always fire as a pair for a given buffer: a buffer opened and closed within the same command never announces either one.
 

@@ -288,8 +288,18 @@ pub(crate) fn diagnostics_for_buffer(
         .for_range(bid, start..end, floor)
         .take(CAP)
         .map(|d| {
-            let line = rope.char_to_line(d.start.min(rope.len_chars()));
-            let col = d.start.min(rope.len_chars()) - rope.line_to_char(line);
+            // Clamped to the last *content* char, not `len_chars()`: a
+            // server can report a diagnostic anchored at end-of-file, one
+            // past the buffer's last real char, and `len_chars()` itself
+            // resolves to the buffer's trailing phantom empty line (every
+            // buffer ends with a structural `\n` — see
+            // `hume-editor/src/editor/host_impl.rs`'s `line_start_offset`).
+            // Landing there instead of the buffer's last content line would
+            // hand plugins a `line` that later fails the fail-fast bound
+            // check every decoration setter now enforces.
+            let last_content_char = rope.len_chars().saturating_sub(1);
+            let line = rope.char_to_line(d.start.min(last_content_char));
+            let col = d.start.min(last_content_char) - rope.line_to_char(line);
             serde_json::json!({
                 "start": d.start,
                 "end": d.end,

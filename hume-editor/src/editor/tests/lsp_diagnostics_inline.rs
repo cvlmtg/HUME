@@ -56,3 +56,115 @@ fn full_message_reaches_the_render_provider_untruncated() {
         "the full message must reach the provider, not a prefix of it"
     );
 }
+
+/// Two entries from the *same* source landing on the same line — the shape a
+/// remap produces when an edit collapses several originally-distinct lines
+/// into one (SPEC.md §5a.4: "within one source, last entry wins"). Before
+/// this fix, `update_eol_text_providers` pushed onto a per-line `Vec`
+/// instead of folding, so both entries survived and rendered concatenated at
+/// the same byte offset.
+#[test]
+fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.feed_key(key('i'));
+    for ch in "let x = 1".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_esc());
+    let bid = ed.focused_buffer_id();
+    ed.state.config.decorations.set_eol_text(
+        "diagnostics".to_string(),
+        bid,
+        vec![
+            EolTextEntry {
+                pos: 0,
+                text: "first".to_string(),
+                scope: "diagnostic.error".to_string(),
+            },
+            EolTextEntry {
+                pos: 0,
+                text: "second".to_string(),
+                scope: "diagnostic.warning".to_string(),
+            },
+        ],
+    );
+
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(60, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+    let pid = ed.state.focused_pane_id;
+    let by_line = ed
+        .state
+        .panes
+        .render
+        .get(pid)
+        .unwrap()
+        .eol_text
+        .read()
+        .unwrap();
+    let inserts = by_line.get(&0).expect("line 0 must have an insert");
+    assert_eq!(
+        inserts.len(),
+        1,
+        "two same-line entries from one source must collapse to one insert, \
+         not stack"
+    );
+    assert_eq!(
+        inserts[0].text, "second",
+        "the later entry must win, per SPEC.md \u{a7}5a.4"
+    );
+}
+
+/// Two sources tinting the same line — SPEC.md §5a.4's cross-source
+/// tie-break, mirroring the sign pipeline: the alphabetically *first*
+/// source wins.
+#[test]
+fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.feed_key(key('i'));
+    for ch in "let x = 1".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_esc());
+    let bid = ed.focused_buffer_id();
+    ed.state.config.decorations.set_eol_text(
+        "z-plugin".to_string(),
+        bid,
+        vec![EolTextEntry {
+            pos: 0,
+            text: "from-z".to_string(),
+            scope: "diagnostic.error".to_string(),
+        }],
+    );
+    ed.state.config.decorations.set_eol_text(
+        "a-plugin".to_string(),
+        bid,
+        vec![EolTextEntry {
+            pos: 0,
+            text: "from-a".to_string(),
+            scope: "diagnostic.error".to_string(),
+        }],
+    );
+
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(60, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+    let pid = ed.state.focused_pane_id;
+    let by_line = ed
+        .state
+        .panes
+        .render
+        .get(pid)
+        .unwrap()
+        .eol_text
+        .read()
+        .unwrap();
+    let inserts = by_line.get(&0).expect("line 0 must have an insert");
+    assert_eq!(inserts.len(), 1);
+    assert_eq!(
+        inserts[0].text, "from-a",
+        "the alphabetically first source (\"a-plugin\") must win"
+    );
+}

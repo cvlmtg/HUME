@@ -63,9 +63,12 @@ the merge it would be avoiding.
 
 ### What HUME already has (verified by exploration)
 
-- **Rendering substrate** in `hume-engine/src/providers.rs`: `VirtualLineSource`,
-  `HighlightSource` (tiered byte-range spans), `GutterColumn`, `OverlayProvider`, all
-  aggregated per-pane in a `ProviderSet`.
+- **Rendering substrate** in `hume-engine/src/providers.rs`: the unified
+  `DecorationSource` trait (produces virtual lines, tiered byte-range
+  highlight spans, line-background tints — formerly three separate traits,
+  merged since this section was written) plus `GutterColumn` and
+  `OverlayProvider` (still their own traits), all aggregated per-pane in a
+  `ProviderSet`.
 - **Theme scopes** `diff.plus` / `diff.minus` / `diff.delta` (+ `.gutter` variants) are now
   defined in all four bundled themes — `sand.toml:58-63`, `dark.toml:40-45`,
   `light.toml:41-46`, `gruvbox.toml:40-45` — but every entry is **`fg`-only**. Phase 5c's
@@ -633,9 +636,9 @@ the same distance the viewport moved; plain `j`/`k` (`VerticalUnit::ContentRow`)
 virtual rows as free, landing only on real content.
 
 Inline decorations count toward the same budget: an inlay hint takes columns and so participates
-in wrapping, and `RowMap` queries `InlineDecoration` when it counts a line's rows, so a hint that
-pushes a line onto an extra wrap row moves the rows below it for scroll math exactly as it does
-on screen.
+in wrapping, and `RowMap` queries `DecorationKinds::INLINE` when it counts a line's rows, so a hint
+that pushes a line onto an extra wrap row moves the rows below it for scroll math exactly as it
+does on screen.
 
 See `hume-engine/src/rows/tests.rs`, `hume-engine/src/pipeline/tests.rs`'s
 `virtual_before_block_taller_than_viewport_exposes_every_row`,

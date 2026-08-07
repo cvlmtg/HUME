@@ -193,8 +193,8 @@ impl Editor {
         // fires).
         self.state.buffers.clear_languages_all();
         self.state.buffers.clear_overrides_all();
-        let prior_generation = self.state.config.decorations.generation();
-        self.state.config = super::ConfigState::new(self.kitty_enabled, prior_generation);
+        let prior_clock = self.state.config.decorations.clock();
+        self.state.config = super::ConfigState::new(self.kitty_enabled, prior_clock);
         super::settings_ops::reset_globals(&mut self.state, &mut self.view);
 
         ReloadSnapshot {

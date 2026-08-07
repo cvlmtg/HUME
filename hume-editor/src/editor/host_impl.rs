@@ -1065,29 +1065,39 @@ fn buffer_text<'s>(
 /// `line` unit (SPEC.md §6's semantic-units-at-the-surface decision);
 /// this is the one place — already holding the rope — where that converts
 /// to the internal char-offset position model.
+///
+/// Rejects the buffer's last line, not just `line >= len_lines()`: the
+/// buffer invariant (every buffer ends with a structural `\n`) means that
+/// last line is always the empty phantom line the trailing `\n` produces —
+/// zero-width, at `pos == len_chars()`, nothing to decorate. Admitting it
+/// used to leave a caller-visible position no render pass could resolve to
+/// a real line without pushing it onto whatever line precedes it.
 fn line_start_offset(
     text: &hume_editing::text::Text,
     line: usize,
     builtin: &str,
 ) -> Result<usize, String> {
-    if line >= text.len_lines() {
+    if line + 1 >= text.len_lines() {
         return Err(format!(
-            "{builtin}: line {line} is out of range (buffer has {} lines)",
-            text.len_lines()
+            "{builtin}: line {line} is out of range (buffer has {} content lines)",
+            text.len_lines() - 1
         ));
     }
     Ok(text.line_to_char(line))
 }
 
-/// `pos` must be a valid char offset into `text` (`<=` its length — one past
-/// the last char is valid, e.g. an `'after` hint at end of buffer) — `Err`
-/// naming `builtin` otherwise.
+/// `pos` must address a real char in `text` (`<` its length) — `Err` naming
+/// `builtin` otherwise. One past the last char looks tempting for an
+/// `'after` hint at end-of-buffer, but there's no char there to anchor to:
+/// `visible_char_range` is half-open, so `pos == len_chars()` can never pass
+/// its `contains` check and the hint would silently never render — reject it
+/// here instead, same as every other position-taking decoration kind.
 fn validate_offset(
     text: &hume_editing::text::Text,
     pos: usize,
     builtin: &str,
 ) -> Result<(), String> {
-    if pos > text.len_chars() {
+    if pos >= text.len_chars() {
         return Err(format!(
             "{builtin}: offset {pos} is out of range (buffer has {} chars)",
             text.len_chars()

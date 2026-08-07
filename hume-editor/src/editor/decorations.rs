@@ -271,18 +271,23 @@ impl<T: Positioned> SourceStore<T> {
 
 impl<T: PointAnchored> SourceStore<T> {
     /// Remaps every point-anchored entry for `bid` through `cs`, one batch
-    /// `ChangeSet::map_positions` call per source, using `T::ASSOC`.
-    fn remap_points(&mut self, bid: BufferId, cs: &ChangeSet) {
+    /// `ChangeSet::map_positions` call per source, using `T::ASSOC`. Returns
+    /// whether `bid` had any entry to remap — callers use this to skip a
+    /// dirty-tracking stamp bump when `bid` had nothing for this kind.
+    fn remap_points(&mut self, bid: BufferId, cs: &ChangeSet) -> bool {
+        let mut touched = false;
         for entries in self.sources_mut(bid) {
             if entries.is_empty() {
                 continue;
             }
+            touched = true;
             let mut positions: Vec<usize> = entries.iter().map(Positioned::pos).collect();
             cs.map_positions(&mut positions, T::ASSOC);
             for (entry, pos) in entries.iter_mut().zip(positions) {
                 entry.set_pos(pos);
             }
         }
+        touched
     }
 }
 
@@ -290,11 +295,14 @@ impl SourceStore<ExtraHighlightEntry> {
     /// Remaps every extra-highlight span for `bid` through `cs`, dropping
     /// any span a covering deletion collapsed to zero width — the one kind
     /// remapped as a range rather than a point (see `PointAnchored`'s doc).
-    fn remap_ranges(&mut self, bid: BufferId, cs: &ChangeSet) {
+    /// Returns whether `bid` had any span to remap, same as `remap_points`.
+    fn remap_ranges(&mut self, bid: BufferId, cs: &ChangeSet) -> bool {
+        let mut touched = false;
         for spans in self.sources_mut(bid) {
             if spans.is_empty() {
                 continue;
             }
+            touched = true;
             let mut ranges: Vec<(usize, usize)> = spans.iter().map(|s| (s.start, s.end)).collect();
             cs.map_ranges(&mut ranges);
             let mut idx = 0;
@@ -310,6 +318,7 @@ impl SourceStore<ExtraHighlightEntry> {
                 }
             });
         }
+        touched
     }
 }
 
@@ -321,35 +330,68 @@ pub(crate) struct DecorationStores {
     extra_highlights: SourceStore<ExtraHighlightEntry>,
     eol_text: SourceStore<EolTextEntry>,
     line_backgrounds: SourceStore<LineBgEntry>,
-    /// Bumped by every `set_*` and by `remove_buffer`, across every kind —
-    /// the virtual-lines render write side mirrors `virtual_lines` into a
-    /// per-pane Arc only when this changed since its last sync, rather than
+    /// Per-buffer dirty-tracking stamp, touched by every `set_*` and
+    /// `remove_buffer` for that buffer, and by `remap_through` when a remap
+    /// actually moved one of that buffer's entries — the virtual-lines
+    /// render write side mirrors `virtual_lines` into a per-pane Arc only
+    /// when *its buffer's* stamp changed since its last sync, rather than
     /// every frame (unlike inlay hints/EOL text, that sync runs in
     /// scroll/cursor math too, not just render, so avoiding needless
-    /// per-frame rebuild work matters more there). One store-wide counter
-    /// rather than one per kind: writes are event-driven and rare relative
-    /// to frames, so a spurious cross-kind resync costs ~nothing next to a
-    /// second counter to keep in sync.
-    generation: u64,
+    /// per-frame rebuild work matters more there).
+    ///
+    /// Originally one store-wide counter (SPEC.md §6), reopened: every
+    /// keystroke in *any* LSP-attached buffer ran `remap_through`, which
+    /// bumped a single global counter unconditionally — including for
+    /// buffers with zero decorations — so the virtual-lines resync skip
+    /// never actually fired while typing. Per-buffer stamps mean typing in
+    /// one buffer no longer invalidates every pane on every other buffer.
+    generation: FxHashMap<BufferId, u64>,
+    /// Shared source for every buffer's stamp — see `touch`. Not itself a
+    /// generation to compare against; `reset` carries it forward so a fresh
+    /// store's stamps are guaranteed to never repeat a value any earlier
+    /// store in this session ever handed out (see `reset`'s doc).
+    clock: u64,
 }
 
 impl DecorationStores {
     /// A fresh, empty store — used by `ConfigState::new` for both session
-    /// start (`prior_generation: 0`, nothing to carry forward) and
+    /// start (`prior_clock: 0`, nothing to carry forward) and
     /// `:reload-config`'s reset (the outgoing `ConfigState`'s own
-    /// `decorations.generation()`).
+    /// `decorations.clock()`).
     ///
-    /// Bumps `prior_generation` rather than resetting to `0`: on a second
-    /// (or later) reload, a plain reset-to-`0` could coincidentally equal a
-    /// pane's already-synced counter in `Editor::virtual_lines_synced` (e.g.
-    /// a pane that hasn't synced since the *first* reload also left it at
-    /// `0`), which would skip the sync that clears the pane's stale `Arc` of
-    /// the old virtual lines.
-    pub(crate) fn reset(prior_generation: u64) -> Self {
+    /// Carries `prior_clock` forward rather than starting over at `0`: with
+    /// a per-buffer stamp map that resets to empty (every buffer defaulting
+    /// back to stamp `0`) on every reload, a buffer that goes untouched
+    /// across two-or-more reloads could otherwise see the *same* stamp
+    /// sequence repeat (`0, 1, 2, …` again), which could coincidentally
+    /// equal a pane's already-synced stamp in `Editor::virtual_lines_synced`
+    /// left over from before the *first* reload — skipping the sync that
+    /// should clear the pane's stale `Arc` of the old virtual lines. A
+    /// single ever-increasing clock, carried forward across every reset,
+    /// guarantees no stamp value is ever reused for the life of the
+    /// session, so that ABA collision can't happen no matter how many
+    /// reloads a pane sits out.
+    pub(crate) fn reset(prior_clock: u64) -> Self {
         Self {
-            generation: prior_generation.wrapping_add(1),
+            clock: prior_clock.wrapping_add(1),
             ..Default::default()
         }
+    }
+
+    /// Stamps `bid` with a fresh value off the shared clock — the one
+    /// mutation primitive every `set_*`, `remove_buffer`, and a touched
+    /// `remap_through` funnel through, so `generation`/`clock` can never
+    /// drift out of sync with each other.
+    fn touch(&mut self, bid: BufferId) {
+        self.clock = self.clock.wrapping_add(1);
+        self.generation.insert(bid, self.clock);
+    }
+
+    /// The shared clock backing every buffer's stamp — `:reload-config`
+    /// carries this forward into the next store via `reset`. Not a
+    /// generation to compare a buffer's stamp against; see `generation`.
+    pub(crate) fn clock(&self) -> u64 {
+        self.clock
     }
 
     /// Replaces `source`'s inlay hints for `bid` wholesale.
@@ -360,7 +402,7 @@ impl DecorationStores {
         hints: Vec<InlayHintEntry>,
     ) {
         self.inlay_hints.set(source, bid, hints);
-        self.generation += 1;
+        self.touch(bid);
     }
 
     /// All inlay hints for `bid`, across every source.
@@ -379,18 +421,24 @@ impl DecorationStores {
         entries: Vec<EolTextEntry>,
     ) {
         self.eol_text.set(source, bid, entries);
-        self.generation += 1;
+        self.touch(bid);
     }
 
-    /// All EOL text entries for `bid`, across every source.
-    pub(crate) fn eol_text_for_buffer(&self, bid: BufferId) -> impl Iterator<Item = &EolTextEntry> {
-        self.eol_text.for_buffer(bid).map(|(_, e)| e)
+    /// All EOL text entries for `bid`, across every source, paired with
+    /// their source name — the render write side needs the name for a
+    /// deterministic tie-break when a remap collapses two sources' entries
+    /// onto the same line (mirrors `signs_for_buffer`/`line_backgrounds_for_buffer`).
+    pub(crate) fn eol_text_for_buffer(
+        &self,
+        bid: BufferId,
+    ) -> impl Iterator<Item = (&str, &EolTextEntry)> {
+        self.eol_text.for_buffer(bid)
     }
 
     /// Replaces `source`'s signs for `bid` wholesale.
     pub(crate) fn set_signs(&mut self, source: String, bid: BufferId, signs: Vec<SignEntry>) {
         self.signs.set(source, bid, signs);
-        self.generation += 1;
+        self.touch(bid);
     }
 
     #[cfg(test)]
@@ -418,13 +466,16 @@ impl DecorationStores {
         lines: Vec<VirtualLineEntry>,
     ) {
         self.virtual_lines.set(source, bid, lines);
-        self.generation += 1;
+        self.touch(bid);
     }
 
-    /// Current generation — bumped by every `set_*` call and `remove_buffer`,
-    /// across every kind.
-    pub(crate) fn generation(&self) -> u64 {
-        self.generation
+    /// `bid`'s current stamp — `0` if `bid` has never been touched by this
+    /// store (a fresh buffer, or one this store was reset since — see
+    /// `reset`). Bumped by every `set_*` call and `remove_buffer` for `bid`,
+    /// and by `remap_through` when a remap actually moved one of `bid`'s
+    /// entries.
+    pub(crate) fn generation(&self, bid: BufferId) -> u64 {
+        self.generation.get(&bid).copied().unwrap_or(0)
     }
 
     /// All virtual-line entries for `bid`, across every source — the render
@@ -449,7 +500,7 @@ impl DecorationStores {
         spans: Vec<ExtraHighlightEntry>,
     ) {
         self.extra_highlights.set(source, bid, spans);
-        self.generation += 1;
+        self.touch(bid);
     }
 
     #[cfg(test)]
@@ -478,7 +529,7 @@ impl DecorationStores {
         entries: Vec<LineBgEntry>,
     ) {
         self.line_backgrounds.set(source, bid, entries);
-        self.generation += 1;
+        self.touch(bid);
     }
 
     #[cfg(test)]
@@ -515,10 +566,11 @@ impl DecorationStores {
     /// the same `BufferId`. `BufferId` is a versioned slotmap key, so a
     /// future slot reuse can never alias with the closed buffer's stale
     /// entries — but a *reload* keeps the same key, so clearing
-    /// `virtual_lines` without bumping `generation` would leave a pane's
+    /// `virtual_lines` without touching `bid`'s stamp would leave a pane's
     /// `virtual_lines_synced` entry looking still-current: it would keep
     /// mirroring the pre-reload virtual lines at now-meaningless line
-    /// anchors. The bump forces every pane on `bid` to resync.
+    /// anchors. Touching unconditionally (not just when a kind had entries)
+    /// forces every pane on `bid` to resync.
     pub(crate) fn remove_buffer(&mut self, bid: BufferId) {
         self.inlay_hints.remove_buffer(bid);
         self.signs.remove_buffer(bid);
@@ -526,23 +578,39 @@ impl DecorationStores {
         self.extra_highlights.remove_buffer(bid);
         self.eol_text.remove_buffer(bid);
         self.line_backgrounds.remove_buffer(bid);
-        self.generation += 1;
+        self.touch(bid);
     }
 
     /// Remaps `bid`'s decorations, of every kind, through `cs` — the same
     /// chokepoint as the diagnostics remap (`flush_lsp_pending_changes`), so
     /// decoration positions never drift out of sync with the diagnostics
-    /// they're often paired with. Bumps `generation`: a remap moves
+    /// they're often paired with. Touches `bid`'s stamp only if some kind
+    /// actually had an entry to remap: `record_lsp_edits` (`doc_ops.rs`)
+    /// queues *every* edit in an LSP-attached buffer for this chokepoint,
+    /// decorated or not, so touching unconditionally would stamp a
+    /// zero-decoration buffer on every keystroke — defeating the
+    /// virtual-lines pane sync's whole reason to check the stamp in the
+    /// first place. A remap that *did* touch something still moved
     /// positions, so cached consumers (the virtual-lines pane sync) must
     /// resync even though nothing called a `set_*` method.
     pub(crate) fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {
-        self.inlay_hints.remap_points(bid, cs);
-        self.signs.remap_points(bid, cs);
-        self.virtual_lines.remap_points(bid, cs);
-        self.eol_text.remap_points(bid, cs);
-        self.line_backgrounds.remap_points(bid, cs);
-        self.extra_highlights.remap_ranges(bid, cs);
-        self.generation += 1;
+        // Every kind always attempts its remap — only whether to bump the
+        // stamp is conditional. `Vec`'s eager evaluation (not the iterator
+        // adapters below) is what guarantees none of these six calls get
+        // short-circuited away.
+        let touched = [
+            self.inlay_hints.remap_points(bid, cs),
+            self.signs.remap_points(bid, cs),
+            self.virtual_lines.remap_points(bid, cs),
+            self.eol_text.remap_points(bid, cs),
+            self.line_backgrounds.remap_points(bid, cs),
+            self.extra_highlights.remap_ranges(bid, cs),
+        ]
+        .into_iter()
+        .any(|kind_touched| kind_touched);
+        if touched {
+            self.touch(bid);
+        }
     }
 }
 

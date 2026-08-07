@@ -123,6 +123,20 @@ pub(crate) enum EditorEvent {
         buffer: BufferId,
         filter_text: String,
     },
+    /// Fires after a successful `:set global`/`set-option!`/`:theme` write —
+    /// `settings_ops::apply_global` is the single production path every one
+    /// of those funnels through, so this is the one place to raise it.
+    /// Buffer-scoped overrides (`:set`/`set-buffer-option!` without
+    /// `global`) don't raise this: the payload has no `BufferId` to name,
+    /// and `apply_buffer` has no per-key resync effects to piggyback on (see
+    /// its doc). `value` is the setting's already-coerced string form (same
+    /// representation `:set`/`set-option!` accept), not a typed value — a
+    /// plugin owning one setting's policy (e.g. the LSP inlay-hints plugin
+    /// reacting to `lsp.inlay-hints`) parses the one key it cares about.
+    OnOptionChange {
+        key: String,
+        value: String,
+    },
 }
 
 /// Pairs each `EditorEvent` variant with its Steel-facing name, once, and
@@ -176,6 +190,7 @@ editor_event_names! {
     OnTriggerChar => "on-trigger-char",
     OnCompletionAccept => "on-completion-accept",
     OnCompletionRefilter => "on-completion-refilter",
+    OnOptionChange => "on-option-change",
 }
 
 impl EditorEvent {
@@ -245,6 +260,12 @@ impl EditorEvent {
                 vec![
                     SteelBufferId::new(*buffer).into_steel_val(),
                     SteelVal::StringV(filter_text.as_str().into()),
+                ]
+            }
+            EditorEvent::OnOptionChange { key, value } => {
+                vec![
+                    SteelVal::StringV(key.as_str().into()),
+                    SteelVal::StringV(value.as_str().into()),
                 ]
             }
         }

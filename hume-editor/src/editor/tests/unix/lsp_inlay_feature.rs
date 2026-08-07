@@ -184,6 +184,52 @@ fn hints_land_in_the_store_at_the_correct_char_offset() {
     assert!(hints[0].before);
 }
 
+/// Regression coverage for the render bridge no longer gating on
+/// `lsp.inlay-hints` itself (`decoration_providers.rs`'s
+/// `update_inlay_hint_providers`): the real shipped plugin must still make
+/// toggling the setting off clear its own hints, now via the
+/// `on-option-change` hook (`inlay.scm`) instead of a Rust-side wipe. Goes
+/// through `:set global`, not a direct field write, so the real event fires.
+#[test]
+fn setting_off_via_set_command_clears_hints_through_the_plugin_hook() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/inlayHint",
+            inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
+        );
+    });
+    let bid = ed.focused_buffer_id();
+
+    type_cmd(&mut ed, ":set global lsp.inlay-hints=true");
+    fire_viewport_change(&mut ed);
+    settle_after_debounce(&mut ed);
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count(),
+        1,
+        "sanity: the hint lands once the setting is on"
+    );
+
+    type_cmd(&mut ed, ":set global lsp.inlay-hints=false");
+    ed.settle();
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count(),
+        0,
+        "the plugin's on-option-change handler must clear its own \
+         (\"lsp-inlay-hints\") source when the setting turns off"
+    );
+}
+
 #[test]
 fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
     let tmp = safe_tempdir();

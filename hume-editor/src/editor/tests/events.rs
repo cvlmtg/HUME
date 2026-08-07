@@ -982,6 +982,46 @@ fn on_focus_gained_fires_from_handle_input_and_settle_with_no_args() {
     );
 }
 
+/// `on-option-change` fires `(key value)` after `apply_global` — the single
+/// write path `:set global`, `set-option!`, and `:theme` all funnel through
+/// (`settings_ops.rs`) — succeeds. Exercised via `:set global` here;
+/// `tests/unix/lsp_inlay_feature.rs`'s
+/// `setting_off_via_set_command_clears_hints_through_the_plugin_hook` covers
+/// the same raise reached through the real shipped plugin's own handler.
+///
+/// Fail oracle: raise site missing or misplaced (before the write, or on the
+/// buffer-scoped `apply_buffer` path too), wired to the wrong Steel name, or
+/// `steel_args` passing the wrong pair.
+#[test]
+fn on_option_change_fires_key_and_value_after_a_set_global() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-option-change (lambda (key value)
+             (log! 'trace (string-append key "=" value))))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+
+    type_cmd(&mut ed, ":set global lsp.inlay-hints=true");
+    ed.settle();
+
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Trace && e.text == "lsp.inlay-hints=true"),
+        "on-option-change must fire with the changed key and its new value \
+         after a successful :set global"
+    );
+}
+
 /// **Exactly one `OnBufferEnter` per focus-changing action.** Pane-focus
 /// cycling and a mouse click into another pane both move focus with no
 /// write to `pane.buffer_id` at all — `focused_pane_id` is the only field

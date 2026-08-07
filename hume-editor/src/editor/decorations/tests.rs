@@ -68,27 +68,81 @@ fn virtual_line(pos: usize) -> VirtualLineEntry {
 
 #[test]
 fn remove_buffer_bumps_generation() {
-    // A pane's `virtual_lines_synced` cache keys on `(BufferId, generation())`
-    // (`decoration_providers.rs`). `remove_buffer` mutates the
-    // `virtual_lines` store without going through
-    // `set_virtual_lines`, so if it didn't also bump the generation, a pane
-    // reloading the same buffer would see an unchanged cache key and keep
-    // mirroring the just-removed (pre-reload) virtual lines forever.
+    // A pane's `virtual_lines_synced` cache keys on
+    // `(BufferId, generation(BufferId))` (`decoration_providers.rs`).
+    // `remove_buffer` mutates the `virtual_lines` store without going
+    // through `set_virtual_lines`, so if it didn't also touch `a`'s stamp, a
+    // pane reloading the same buffer would see an unchanged cache key and
+    // keep mirroring the just-removed (pre-reload) virtual lines forever.
     let mut store = DecorationStores::default();
-    let (a, _b) = make_two_bids();
+    let (a, b) = make_two_bids();
     store.set_virtual_lines("git-diff".to_string(), a, vec![virtual_line(0)]);
-    let generation_after_set = store.generation();
+    let a_generation_after_set = store.generation(a);
+    let b_generation_before = store.generation(b);
 
     store.remove_buffer(a);
 
     assert_ne!(
-        store.generation(),
-        generation_after_set,
-        "remove_buffer must bump generation so panes mirroring \
+        store.generation(a),
+        a_generation_after_set,
+        "remove_buffer must bump bid's stamp so panes mirroring \
          the cleared buffer resync instead of keeping stale entries"
+    );
+    assert_eq!(
+        store.generation(b),
+        b_generation_before,
+        "remove_buffer(a) must not touch an unrelated buffer's stamp — the \
+         per-buffer generation exists precisely so unrelated buffers don't \
+         resync each other's panes"
     );
     assert!(
         store.virtual_lines_for("git-diff", a).is_empty(),
         "remove_buffer must still clear the entries themselves"
+    );
+}
+
+/// Post-ship correction (SPEC.md "Post-ship corrections", reopening §6's
+/// dirty-tracking decision): `remap_through` used to bump the (then
+/// store-wide) generation unconditionally, on every queued edit in *any*
+/// LSP-attached buffer — including one with zero decorations, which
+/// `record_lsp_edits` (`doc_ops.rs`) still queues, since it gates on
+/// `lsp_server.is_some() || has_any(bid)`. With a per-buffer stamp, the same
+/// unconditional bump would just narrow the blast radius from "every pane on
+/// every buffer" to "every pane on this one buffer" — still wrong for a
+/// buffer with nothing to invalidate. `remap_through` must only touch a
+/// buffer's stamp when a kind actually had an entry to remap.
+#[test]
+fn remap_through_only_touches_a_buffer_that_has_decorations() {
+    use hume_editing::changeset::ChangeSetBuilder;
+
+    let mut store = DecorationStores::default();
+    let (a, b) = make_two_bids(); // a: has a sign; b: has nothing at all.
+    store.set_signs("linter".to_string(), a, vec![sign(0, "x")]);
+    let a_generation_after_set = store.generation(a);
+    let b_generation_before = store.generation(b);
+
+    // An identity changeset — its content doesn't matter to this test, only
+    // that `remap_through` is called with *something* to remap through.
+    let cs = {
+        let mut csb = ChangeSetBuilder::new(5);
+        csb.retain_rest();
+        csb.finish()
+    };
+
+    store.remap_through(a, &cs);
+    store.remap_through(b, &cs);
+
+    assert_ne!(
+        store.generation(a),
+        a_generation_after_set,
+        "remap_through must touch a buffer that has an entry to remap"
+    );
+    assert_eq!(
+        store.generation(b),
+        b_generation_before,
+        "remap_through must not touch a buffer with nothing to remap — this \
+         is the fix for the keystroke-storm bug: typing in an LSP-attached \
+         but undecorated buffer must not invalidate every pane's \
+         virtual-lines resync cache"
     );
 }

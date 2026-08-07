@@ -381,7 +381,8 @@ impl Editor {
             | EditorEvent::OnViewportChange { .. }
             | EditorEvent::OnTriggerChar { .. }
             | EditorEvent::OnCompletionAccept { .. }
-            | EditorEvent::OnCompletionRefilter { .. } => {}
+            | EditorEvent::OnCompletionRefilter { .. }
+            | EditorEvent::OnOptionChange { .. } => {}
         }
     }
 

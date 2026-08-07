@@ -71,3 +71,16 @@
 ;;; stale hints would otherwise sit rendered forever — clear explicitly.
 (register-hook! 'on-lsp-detach
   (lambda (bid server-name) (set-inlay-hints! "lsp-inlay-hints" bid '())))
+
+;;; The render bridge (`update_inlay_hint_providers`) is not gated on
+;;; `lsp.inlay-hints` — the store is per-source, so an unrelated plugin's
+;;; hints must not vanish just because this setting toggles. This plugin
+;;; owns clearing *its own* source when the setting turns off, and
+;;; re-requesting hints for every visible buffer when it turns back on.
+(register-hook! 'on-option-change
+  (lambda (key value)
+    (when (equal? key "lsp.inlay-hints")
+      (if (equal? value "true")
+          (for-each lsp/refresh-hints (buffers))
+          (for-each (lambda (bid) (set-inlay-hints! "lsp-inlay-hints" bid '()))
+                    (buffers))))))

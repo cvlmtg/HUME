@@ -449,6 +449,7 @@ fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
             .eol_text_for_buffer(bid)
             .next()
             .unwrap()
+            .1
             .pos;
         ed.state.buffers.get(bid).text().char_to_line(pos)
     };
@@ -677,9 +678,9 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
         .eol_text_for_buffer(bid)
         .collect();
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].pos, 0, "line 0's line-start char offset is 0");
-    assert_eq!(entries[0].text, "[2] first problem");
-    assert_eq!(entries[0].scope, "diagnostic.error");
+    assert_eq!(entries[0].1.pos, 0, "line 0's line-start char offset is 0");
+    assert_eq!(entries[0].1.text, "[2] first problem");
+    assert_eq!(entries[0].1.scope, "diagnostic.error");
 
     // A second call for the same source must replace wholesale, not append.
     type_cmd(&mut ed, ":arm-b");
@@ -695,11 +696,11 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
         "the second set-eol-text! must replace, not append"
     );
     assert_eq!(
-        entries[0].pos, 8,
+        entries[0].1.pos, 8,
         "line 1's line-start char offset on this fixture (\"xabcdef\\n\" is 8 chars)"
     );
-    assert_eq!(entries[0].text, "second problem");
-    assert_eq!(entries[0].scope, "diagnostic.warning");
+    assert_eq!(entries[0].1.text, "second problem");
+    assert_eq!(entries[0].1.scope, "diagnostic.warning");
 }
 
 #[test]

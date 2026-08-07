@@ -217,18 +217,18 @@ impl ConfigState {
     /// [`Editor::set_kitty_support`]) and the compiled-in command registry,
     /// with every other field at its empty/`None` default.
     ///
-    /// `prior_generation` is `0` at session start (nothing to carry forward)
-    /// and the outgoing `ConfigState.decorations`'s own generation counter
-    /// on `:reload-config` — see [`decorations::DecorationStores::reset`]'s
+    /// `prior_clock` is `0` at session start (nothing to carry forward) and
+    /// the outgoing `ConfigState.decorations`'s own shared clock on
+    /// `:reload-config` — see [`decorations::DecorationStores::reset`]'s
     /// doc for why this can't just be `Default::default()` like every other
     /// field here.
-    pub(super) fn new(kitty_enabled: bool, prior_generation: u64) -> Self {
+    pub(super) fn new(kitty_enabled: bool, prior_clock: u64) -> Self {
         Self {
             keymap: default_keymap_for(kitty_enabled),
             registry: CommandRegistry::with_defaults(),
             languages: LanguageRegistry::new(),
             trigger_chars: rustc_hash::FxHashMap::default(),
-            decorations: decorations::DecorationStores::reset(prior_generation),
+            decorations: decorations::DecorationStores::reset(prior_clock),
             pending_work: VecDeque::new(),
             pending_language_detection: Vec::new(),
             async_jobs: rustc_hash::FxHashMap::default(),
@@ -628,13 +628,14 @@ pub(crate) struct Editor {
     /// scroll step compares against this to detect a real viewport change
     /// worth debouncing, rather than firing every frame regardless.
     last_viewport_key: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (usize, u16)>,
-    /// `(buffer_id, decorations.generation())` as of each
+    /// `(buffer_id, decorations.generation(buffer_id))` as of each
     /// pane's last mirror into its `PaneVirtualLines` Arc — `prepare_frame`
-    /// compares against this to skip the rebuild on frames where neither the
-    /// store nor the pane's buffer changed, since this runs in scroll/cursor
-    /// math too, not just render. The buffer id is part of the key so a pane
-    /// switching buffers always rebuilds, even on an unchanged generation —
-    /// otherwise it would keep mirroring the previous buffer's virtual lines.
+    /// compares against this to skip the rebuild on frames where neither
+    /// that buffer's stamp nor the pane's buffer changed, since this runs in
+    /// scroll/cursor math too, not just render. The buffer id is part of the
+    /// key so a pane switching buffers always rebuilds, even onto a buffer
+    /// whose stamp happens to match the old one — otherwise it would keep
+    /// mirroring the previous buffer's virtual lines.
     virtual_lines_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
     /// LSP backend + client state: threaded in production,
     /// synchronous-inline in tests, mirroring `parse_worker` above.

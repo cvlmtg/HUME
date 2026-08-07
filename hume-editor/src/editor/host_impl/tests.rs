@@ -6,7 +6,7 @@ use hume_scripting::host::{BufferHost, LanguageHost};
 use crate::editor::Editor;
 use crate::editor::scripting_setup::make_init_host;
 
-use super::virtual_line_segments_to_bytes;
+use super::{line_start_offset, validate_offset, virtual_line_segments_to_bytes};
 
 #[test]
 fn close_buffer_errs_when_id_unknown() {
@@ -105,6 +105,49 @@ fn virtual_line_segments_to_bytes_rejects_segment_splitting_a_grapheme_cluster()
     // instead of erroring under a mere char-boundary check.
     let err = virtual_line_segments_to_bytes("e\u{301}", vec![seg(0, 1, "x")]).unwrap_err();
     assert!(err.contains("grapheme-cluster boundary"), "got: {err}");
+}
+
+// ── `line_start_offset` / `validate_offset` — the position-contract fix
+// (post-ship code review, SPEC.md "Post-ship corrections"): a decoration
+// position must address a real char, never the buffer's trailing phantom
+// line or one-past-the-end.
+
+#[test]
+fn line_start_offset_accepts_the_last_content_line() {
+    // "aaa\nbbb\nccc\n": line 2 ("ccc") is the last *content* line.
+    let text = hume_editing::text::Text::from("aaa\nbbb\nccc\n");
+    let pos = line_start_offset(&text, 2, "test").expect("last content line must be valid");
+    assert_eq!(pos, 8, "line 2's line-start char offset");
+}
+
+#[test]
+fn line_start_offset_rejects_the_trailing_phantom_line() {
+    // Same fixture: line 3 is the empty line the trailing '\n' produces —
+    // `RowMap::last_line()` (hume-engine/src/rows.rs) agrees line 2 is the
+    // last renderable line, so line 3 has no row to decorate.
+    let text = hume_editing::text::Text::from("aaa\nbbb\nccc\n");
+    let err = line_start_offset(&text, 3, "test").unwrap_err();
+    assert!(err.contains("out of range"), "got: {err}");
+}
+
+#[test]
+fn validate_offset_accepts_the_last_real_char() {
+    // "abc\n" — char offsets 0..=3 are real chars (the last being '\n'
+    // itself); char offset 4 is one past the end.
+    let text = hume_editing::text::Text::from("abc\n");
+    validate_offset(&text, 3, "test").expect("last real char must be valid");
+}
+
+#[test]
+fn validate_offset_rejects_one_past_the_end() {
+    // Pre-fix, this was deliberately admitted as "an 'after hint at
+    // end-of-buffer" — but `visible_char_range` is half-open, so that
+    // position could never pass its `contains` check: the hint would be
+    // silently accepted and then silently never rendered. Must now error
+    // loudly instead, same as every other out-of-range offset.
+    let text = hume_editing::text::Text::from("abc\n");
+    let err = validate_offset(&text, 4, "test").unwrap_err();
+    assert!(err.contains("out of range"), "got: {err}");
 }
 
 #[test]

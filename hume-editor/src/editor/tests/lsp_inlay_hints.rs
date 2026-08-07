@@ -258,16 +258,21 @@ fn clearing_the_store_removes_the_hint_next_frame() {
 }
 
 #[test]
-fn setting_off_renders_nothing_even_with_hints_in_the_store() {
-    // lsp.inlay-hints defaults to false, so this test turns it ON
-    // first and confirms a hint renders — otherwise the final "off" assert
-    // would pass even if the `:set … =false` call were a no-op (the
-    // zero-effect the setting already starts in).
+fn setting_off_does_not_clear_an_unrelated_sources_hints() {
+    // The render bridge (`update_inlay_hint_providers`) is not gated on
+    // `lsp.inlay-hints` — that setting belongs to the LSP inlay-hints
+    // plugin, which owns clearing *its own* source
+    // (`"lsp-inlay-hints"`) on toggle-off via the `on-option-change` hook
+    // (see `runtime/plugins/core/lsp/inlay.scm`, and the real-plugin
+    // regression coverage in `tests/unix/lsp_inlay_feature.rs`). This test
+    // has no scripting host attached, so no hook fires — it's checking the
+    // render bridge in isolation: a source with no relation to LSP must
+    // render regardless of that setting, on or off.
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(
-        "test".to_string(),
+        "some-other-plugin".to_string(),
         bid,
         vec![InlayHintEntry {
             pos: 4,
@@ -293,15 +298,21 @@ fn setting_off_renders_nothing_even_with_hints_in_the_store() {
     };
 
     let mut ctx = RenderContext::new();
+    assert!(
+        has_hint(&mut ed, &mut ctx),
+        "sanity: an unrelated source's hint renders with the setting at its off default"
+    );
+
     type_cmd(&mut ed, ":set global lsp.inlay-hints=true");
     assert!(
         has_hint(&mut ed, &mut ctx),
-        "sanity: hint renders once the setting is on"
+        "unrelated source must still render once the LSP setting turns on"
     );
 
     type_cmd(&mut ed, ":set global lsp.inlay-hints=false");
     assert!(
-        !has_hint(&mut ed, &mut ctx),
-        "setting off must clear the provider map, not just skip refreshing it"
+        has_hint(&mut ed, &mut ctx),
+        "turning the LSP inlay-hints setting back off must not clear a \
+         source it doesn't own"
     );
 }
