@@ -161,14 +161,25 @@ pub(crate) fn style_row(
         let mut style = theme.default;
 
         // Tier 4: provider line-background tint (lowest) — a full-row
-        // background a `DecorationSource` requested for this line (e.g.
-        // git-diff's changed-line highlight). Layered below cursorline so
+        // *background* a `DecorationSource` requested for this line (e.g.
+        // git-diff's changed-line highlight). Only `bg` is layered, not the
+        // scope's whole resolved style: the row-fill paint site
+        // (`pane_render.rs`'s `row_bg`) can only ever contribute a
+        // background — it has no per-grapheme fg/modifiers to paint — so a
+        // `LineBg`-scoped fg or modifier applied here would only ever show
+        // up on content cells, never on the gutter or the row's trailing
+        // fill past end-of-line. Constraining both paint sites to `bg` is
+        // what keeps them in agreement "by construction" instead of by
+        // convention (GIT-DIFF.md Phase 3.2). Layered below cursorline so
         // the cursor's own line always reads clearly even inside a tinted
         // block; a theme whose cursorline has no `bg` falls through to the
         // tint automatically (`ResolvedStyle::layer` only overrides on
         // `Some(bg)`).
         if let Some(scope) = line_tint {
-            style = style.layer(theme.resolve(scope));
+            style = style.layer(ResolvedStyle {
+                bg: theme.resolve(scope).bg,
+                ..ResolvedStyle::default()
+            });
         }
 
         // Tier 3: selection-head-line background tint.

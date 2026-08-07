@@ -102,6 +102,69 @@ fn no_selections_yields_default_style() {
     );
 }
 
+/// A `line_tint` scope with `fg`/modifiers as well as `bg` must only
+/// contribute its `bg` — the row-fill paint site (`pane_render.rs`'s
+/// `row_bg`) can only ever read a background color out of the same scope, so
+/// a fg/modifier applied here would show up on content cells but nowhere the
+/// row-fill site paints (gutter, trailing fill past end-of-line),
+/// contradicting a kind documented as a full-row *background* tint.
+///
+/// Fail oracle: layering the tint's whole `ResolvedStyle` (the pre-fix
+/// behavior) makes this fail on both the fg and the modifier assertions.
+#[test]
+fn line_tint_applies_only_background_not_fg_or_modifiers() {
+    let graphemes = make_graphemes(3);
+    let rows = vec![make_row(0..3)];
+    let mut scratch = StyleScratch::new();
+
+    let mut registry = crate::theme::ScopeRegistry::new();
+    let tint_scope = registry.intern("diff.plus");
+    let mut styles_map = HashMap::new();
+    styles_map.insert(
+        "diff.plus",
+        ResolvedStyle {
+            fg: Some(ratatui::style::Color::Red),
+            bg: Some(ratatui::style::Color::Green),
+            modifiers: crate::types::Modifiers::BOLD,
+            ..Default::default()
+        },
+    );
+    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    theme.bake(&registry);
+
+    scratch.populate_sorted_sels(&[], 0);
+    scratch
+        .styles
+        .resize(graphemes.len(), ResolvedStyle::default());
+    style_row(
+        &rows[0],
+        &graphemes,
+        0,
+        3,
+        false, // not the cursor line — isolates the tint's own contribution
+        Some(tint_scope),
+        EditorMode::Normal,
+        &theme,
+        &mut scratch,
+    );
+
+    assert_eq!(
+        scratch.styles[0].bg,
+        Some(ratatui::style::Color::Green),
+        "the tint's background must still apply"
+    );
+    assert_eq!(
+        scratch.styles[0].fg, None,
+        "the tint's foreground must not apply — only the row-fill paint \
+         site's `.bg` can express this decoration"
+    );
+    assert_eq!(
+        scratch.styles[0].modifiers,
+        crate::types::Modifiers::empty(),
+        "the tint's modifiers must not apply, same reasoning as fg"
+    );
+}
+
 #[test]
 fn selection_head_overrides_default() {
     let rope = ropey::Rope::from_str("abcde");
