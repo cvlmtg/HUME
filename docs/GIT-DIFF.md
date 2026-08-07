@@ -140,8 +140,8 @@ the merge it would be avoiding.
 
 | nvim primitive the plugin uses | HUME today | must build |
 |---|---|---|
-| `vim.diff` (line Myers) | ✅ **shipped (Phase 2a).** `diff-lines`/`diff-buffer-lines` Steel builtins, wrapping `diff_lines` (`hume-editing/src/diff.rs:149`) | reuse — nothing to build |
-| word-diff Myers (in *Lua*) | ✅ **shipped (Phase 2b).** `diff-words` Steel builtin, wrapping `diff_words` (`hume-editing/src/diff.rs:254`) | reuse — nothing to build |
+| `vim.diff` (line Myers) | ✅ **shipped (Phase 2a).** `diff-lines`/`diff-buffer-lines` Steel builtins, wrapping `diff_lines` (`hume-editing/src/diff.rs:157`) | reuse — nothing to build |
+| word-diff Myers (in *Lua*) | ✅ **shipped (Phase 2b).** `diff-words` Steel builtin, wrapping `diff_words` (`hume-editing/src/diff.rs:253`) | reuse — nothing to build |
 | `nvim_buf_get_lines` (live text) | ❌ no buffer-text read — the biggest gap for general-purpose Steel scripts (the diff plugin itself sidesteps this via `diff-buffer-lines`, but other consumers still need it) | buffer-text builtins (Phase 4.2) |
 | `autocmd TextChanged` | ❌ no on-edit hook (14-entry `EditorEvent` set, none fire on edit) | `on-text-changed` hook (Phase 4.1) |
 | `autocmd BufWritePost` | ✅ `on-buffer-save` (`hume-editor/src/editor/event.rs`) | reuse |
@@ -705,7 +705,7 @@ store) + theme `diff.*` `bg` values in all four themes.**
   (`hume-scripting/Cargo.toml` still has none).
 - **Native word diff (Phase 2b — shipped)**: extends the same `DiffHost` trait and
   `builtins/diff.rs` with `diff-words`, forwarding via `diff_bridge::word_hunks` to
-  `hume-editing/src/diff.rs:254` (`diff_words`) — no new diff code.
+  `hume-editing/src/diff.rs:253` (`diff_words`) — no new diff code.
 - **Engine render**: `hume-engine/src/rows.rs` (`RowMap`, the display-row authority every
   consumer below reads — block shape, stepping, char↔row mapping, render accessors),
   `hume-engine/src/providers.rs` (`VirtualLine`, `VirtualLineAnchor`, `HighlightTier`),

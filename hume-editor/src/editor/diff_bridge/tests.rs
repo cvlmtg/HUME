@@ -94,6 +94,46 @@ fn crlf_ref_is_normalized_like_the_buffer() {
     assert_eq!(line_hunks("a\r\nb\r\n", "a\nb\n"), Vec::new());
 }
 
+/// Fail oracle: strip only `'\n'` in `strip_newlines` — `Text::line_tokens`
+/// is backed by `Rope::lines()`, which (ropey's default `unicode_lines`
+/// feature) breaks on far more than LF, and `Text::from` only normalizes
+/// `\r\n` pairs, so a form feed (U+000C) or bare `\r` reaches a `DiffHunk`
+/// line string still carrying its terminator — exactly the control char a
+/// plugin would then render straight into a `set-virtual-lines!` row.
+#[test]
+fn line_hunks_strips_non_lf_unicode_line_breaks() {
+    // The change sits on the FF-terminated line itself (not a later
+    // LF-terminated line) — otherwise `strip_suffix('\n')` alone would
+    // still pass, since the *changed* line would happen to end in `\n`.
+    assert_eq!(
+        line_hunks("a\u{0C}b\n", "x\u{0C}b\n"),
+        vec![DiffHunk {
+            old_start: 0,
+            new_start: 0,
+            old_lines: vec!["a".to_string()],
+            new_lines: vec!["x".to_string()],
+        }]
+    );
+}
+
+/// Mirror of `line_hunks_strips_non_lf_unicode_line_breaks` — a bare `\r`
+/// (old Mac), which `Text::from` explicitly leaves untouched
+/// (`hume-editing/src/text.rs`'s `normalize_crlf` doc) unlike a `\r\n` pair.
+#[test]
+fn line_hunks_strips_bare_cr_line_break() {
+    // Same shape as `line_hunks_strips_non_lf_unicode_line_breaks`: the
+    // change sits on the CR-terminated line itself.
+    assert_eq!(
+        line_hunks("a\rb\n", "x\rb\n"),
+        vec![DiffHunk {
+            old_start: 0,
+            new_start: 0,
+            old_lines: vec!["a".to_string()],
+            new_lines: vec!["x".to_string()],
+        }]
+    );
+}
+
 // ── word_hunks (Phase 2b) ────────────────────────────────────────────────
 
 /// Fail oracle: swap `old_start`/`old_end` for a pure-insert side (or emit a

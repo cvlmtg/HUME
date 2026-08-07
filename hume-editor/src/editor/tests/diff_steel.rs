@@ -2,6 +2,7 @@
 // and `diff-words` (Phase 2b), docs/GIT-DIFF.md.
 
 use super::*;
+use crate::editor::message_log::Severity;
 use hume_scripting::ScriptingHost;
 
 /// `diff-lines` returns 0-based hunk tuples, oldest side first.
@@ -49,6 +50,53 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
     assert!(
         fired,
         "diff-buffer-lines must diff the ref against the buffer's live text"
+    );
+}
+
+/// `diff-buffer-lines` on a stale bid raises "invalid buffer id", not a
+/// silent "no differences" — `DiffHost::diff_buffer_lines` is the one
+/// `DiffHost` call that skips `BidArg::require_live` (its own buffer-text
+/// lookup already doubles as the liveness check), so this is the only path
+/// that exercises `BidArg::not_live_err` end to end. Errors raised inside a
+/// `define-command!` body surface as a `Severity::Error` message-log entry
+/// prefixed `"steel call error: "` (`scripting_setup.rs`'s `run_call_batch`
+/// → `apply_script_result`), not as a Rust panic or a silent no-op — hence
+/// checking the log instead of a `run_probe` boolean.
+///
+/// Fail oracle: swap `DiffHost::diff_buffer_lines`'s `None` return for
+/// `Some(Vec::new())` on an unknown bid — this assertion goes red while
+/// every other test in this file, none of which pass a stale bid, stays
+/// green.
+#[test]
+fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\n");
+
+    let scratch = tmp.path().join("scratch.txt");
+    std::fs::write(&scratch, "x\n").unwrap();
+    let scratch_str = scratch.to_string_lossy().replace('\\', "/");
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        &format!(
+            r#"(define-command! "probe" "" (lambda ()
+                 (define b (open-buffer! "{scratch_str}"))
+                 (close-buffer! b)
+                 (diff-buffer-lines b "a\nb\n")))"#
+        ),
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":probe");
+
+    let entries: Vec<_> = ed.state.message_log.entries().cloned().collect();
+    assert!(
+        entries.iter().any(|e| e.severity == Severity::Error
+            && e.text.contains("diff-buffer-lines")
+            && e.text.contains("invalid buffer id")),
+        "a stale bid must surface as a Steel error naming the builtin, got: {entries:?}"
     );
 }
 

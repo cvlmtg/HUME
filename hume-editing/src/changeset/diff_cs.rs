@@ -13,11 +13,10 @@
 //! [`Text::line_tokens`] borrows its tokens from the rope (owning only where
 //! a line straddles a chunk boundary), so building the diff no longer pays a
 //! full-buffer `String` copy on either side; changed lines still get
-//! materialized once more when [`build_changesets`] re-slices them from
-//! `old`/`new` rather than reusing `diff_lines`'s own `LineHunk` ranges —
-//! deliberate, since those hunk payloads are also the public API
-//! `docs/GIT-DIFF.md` builds on. None of this affects what survives in the
-//! history tree afterwards, which is just the changed lines.
+//! materialized once, when [`build_changesets`] re-slices them from
+//! `old`/`new` — `LineHunkKind` carries no payload of its own, only the
+//! line-index ranges. None of this affects what survives in the history tree
+//! afterwards, which is just the changed lines.
 //!
 //! The helper takes `&Text` on both sides and returns the two `ChangeSet`s; it
 //! does not mutate either buffer. The caller still owns the text swap.

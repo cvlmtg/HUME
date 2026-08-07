@@ -82,6 +82,24 @@ fn from_str_trailing_newline() {
 }
 
 #[test]
+fn line_tokens_count_matches_len_lines_and_keeps_terminators() {
+    let buf = Text::from("a\nb\n");
+    let tokens: Vec<_> = buf.line_tokens().collect();
+    assert_eq!(tokens.len(), buf.len_lines());
+    assert_eq!(tokens, vec!["a\n", "b\n", ""]);
+}
+
+#[test]
+fn line_tokens_splits_on_non_lf_unicode_breaks() {
+    // ropey's default `unicode_lines` feature breaks on far more than `\n` —
+    // form feed (U+000C) here. `Text::from` only collapses `\r\n`, so a bare
+    // FF reaches the rope untouched and still terminates a token.
+    let buf = Text::from("a\u{0C}b\n");
+    let tokens: Vec<_> = buf.line_tokens().collect();
+    assert_eq!(tokens, vec!["a\u{0C}", "b\n", ""]);
+}
+
+#[test]
 fn from_str_unicode() {
     // "é" can be represented as a single char (U+00E9) or as two chars
     // (U+0065 + U+0301 combining accent). `Text::from` accepts whatever

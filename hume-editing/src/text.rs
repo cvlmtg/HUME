@@ -177,9 +177,16 @@ impl Text {
     /// `RopeSlice::as_str()` where a line sits in a single rope chunk (the
     /// common case); owns only when it straddles a chunk boundary.
     ///
+    /// The break set is ropey's default `unicode_lines` feature — LF, CR,
+    /// CRLF, VT, FF, NEL, LS, PS — **not** just `\n`. `Text::from` only
+    /// normalizes `\r\n` pairs to `\n`; every other form reaches the rope
+    /// as-is and terminates a token here. A consumer that needs the bare
+    /// line content must strip whichever of these trails the token, not
+    /// just `'\n'`.
+    ///
     /// One rope traversal (`Rope::lines()`), not one `O(log n)` descent per
     /// line.
-    pub fn line_tokens(&self) -> impl Iterator<Item = Cow<'_, str>> + '_ {
+    pub fn line_tokens(&self) -> impl Iterator<Item = Cow<'_, str>> {
         self.rope.lines().map(Cow::from)
     }
 
