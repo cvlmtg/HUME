@@ -1022,6 +1022,326 @@ fn on_option_change_fires_key_and_value_after_a_set_global() {
     );
 }
 
+// ── OnTextChanged ────────────────────────────────────────────────────────────
+
+/// Typing one character fires exactly one `on-text-changed`, naming the
+/// edited buffer.
+///
+/// Fail oracle: swap `bid` for a stale/wrong id in `steel_args`, or drop the
+/// raise entirely → either the count or the buffer-id check below fails.
+#[test]
+fn typing_one_character_fires_on_text_changed_once() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-text-changed
+             (lambda (bid)
+               (log! 'trace (if (equal? bid (current-buffer)) "correct-bid" "wrong-bid"))))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle(); // drain the startup on-buffer-open/on-buffer-enter
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key_esc());
+    ed.settle();
+
+    let traces: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert_eq!(
+        traces,
+        vec!["correct-bid"],
+        "exactly one on-text-changed must fire, naming the edited buffer"
+    );
+}
+
+/// Several mutations to the same buffer before a single `settle()` coalesce
+/// into one `on-text-changed` — the contract `on-text-changed`'s doc states
+/// and `BufferStore::take_text_changed` implements.
+///
+/// Fail oracle: raise from a per-mutation write site instead of the
+/// `text_gen` diff → three fires instead of one.
+#[test]
+fn several_edits_before_one_settle_coalesce_into_one_event() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+
+    // Three keystrokes, no settle() between them — `feed_key` only steps the
+    // keymap, it never drains `pending_work` on its own.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key('b'));
+    ed.feed_key(key('c'));
+    ed.feed_key(key_esc());
+    ed.settle();
+
+    let fires = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace && e.text == "changed")
+        .count();
+    assert_eq!(
+        fires, 1,
+        "three mutations before one settle() must coalesce into one event"
+    );
+}
+
+/// Undo fires `on-text-changed` (it bumps `text_gen` via `Buffer::undo`); a
+/// second undo once history is back at its root does not, since nothing
+/// mutated (`buffer/tests.rs`'s `text_gen_not_bumped_when_undo_at_root` pins
+/// the same non-bump at the `Buffer` layer).
+#[test]
+fn undo_fires_but_a_no_op_undo_at_root_does_not() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+
+    let fire_count = |ed: &Editor| {
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace && e.text == "changed")
+            .count()
+    };
+
+    // One real edit, drained, to give undo something to undo.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key_esc());
+    ed.settle();
+    assert_eq!(fire_count(&ed), 1, "the edit itself must fire once");
+
+    // `u` (undo) restores the pre-edit text — a real mutation, must fire.
+    ed.feed_key(key('u'));
+    ed.settle();
+    assert_eq!(fire_count(&ed), 2, "undoing the edit must fire again");
+
+    // History is now at its root — a second `u` is a no-op, must not fire.
+    ed.feed_key(key('u'));
+    ed.settle();
+    assert_eq!(
+        fire_count(&ed),
+        2,
+        "a no-op undo at the history root must not fire"
+    );
+}
+
+/// `:e!` reload (`Editor::reload_buffer_in_place`) fires `on-text-changed` —
+/// the case a raise site at `doc_ops::finish_edit` would have missed, since
+/// reload never goes through `doc_ops` (see `BufferStore::edit_seq`'s doc).
+#[test]
+fn e_bang_reload_fires_on_text_changed() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+
+    let replacement = Buffer::new(Text::from("reloaded\n"), SelectionSet::default());
+    ed.reload_buffer_in_place(bid, replacement);
+    ed.settle();
+
+    let fires = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace && e.text == "changed")
+        .count();
+    assert_eq!(fires, 1, ":e! reload must fire on-text-changed");
+}
+
+/// An edit refused by the read-only guard (`doc_ops::apply_doc_edit`'s early
+/// `return` before `cmd` ever runs) never bumps `text_gen`, so it must not
+/// fire `on-text-changed`.
+///
+/// Fail oracle: remove the read-only guard, or move this raise upstream of
+/// it → `insert_char` runs, `text_gen` bumps, and this fires.
+#[test]
+fn read_only_refused_edit_fires_no_on_text_changed() {
+    use crate::editor::doc_ops;
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).read_only = true;
+
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+
+    let focused = ed.state.focused_pane_id;
+    let before_gen = ed.state.buffers.get(bid).text_gen;
+    doc_ops::apply_doc_edit(
+        &mut ed.state.buffers,
+        &ed.state.config.decorations,
+        &mut ed.state.panes.state,
+        focused,
+        bid,
+        |text, sels| hume_ops::edit::insert_char(text, sels, 'z'),
+    );
+    ed.settle();
+
+    assert_eq!(
+        ed.state.buffers.get(bid).text_gen,
+        before_gen,
+        "read-only guard must block the edit before it reaches set_text"
+    );
+    assert_eq!(
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace)
+            .count(),
+        0,
+        "a read-only-refused edit must not fire on-text-changed"
+    );
+}
+
+/// Opening a buffer fires `on-buffer-open`, not `on-text-changed` — a fresh
+/// buffer's `text_gen` starts at 0 and `announced_text_gen` is seeded to
+/// match, so there is no diff to observe.
+#[test]
+fn opening_a_buffer_fires_on_buffer_open_not_on_text_changed() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-buffer-open (lambda (bid) (log! 'trace "opened")))
+           (register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+
+    let path = tmp.path().join("fresh.txt");
+    std::fs::write(&path, "hello\n").unwrap();
+    type_cmd(&mut ed, &format!(":e {}", path.display()));
+    ed.settle();
+
+    let traces: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert_eq!(
+        traces,
+        vec!["opened"],
+        "opening a buffer must fire on-buffer-open only, not on-text-changed"
+    );
+}
+
+/// A handler that itself edits on `on-text-changed` is a feedback loop —
+/// must be cut off by the same drain cap the other cascade tests exercise,
+/// not livelock the editor. Detection runs *inside* `drain_pending_work`'s
+/// fixpoint specifically so this cap can catch it (see the call site's doc).
+///
+/// The handler alternates `make-text-uppercase`/`make-text-lowercase` on the
+/// selected letter — whichever direction the selection is in, at least one
+/// of the two always changes the character (a lowercase letter capitalizes;
+/// an uppercase one lowercases), so every invocation bumps `text_gen` and
+/// re-triggers `on-text-changed`, guaranteeing the loop never runs dry on
+/// its own.
+///
+/// Fail oracle: move `detect_text_changed` outside the fixpoint (mirroring
+/// `drain_async_sources`) → this test never returns.
+#[test]
+fn text_changed_feedback_loop_is_cut_off_by_drain_cap() {
+    // Selection starts on the letter `a` and never moves — `make-text-*`
+    // transforms case in place — so the alternation below never runs dry.
+    // `define-command!`'s effect (registering "kick") only takes hold once
+    // applied, so this uses `eval_with_real_host` rather than
+    // `eval_source`+`MockHost` — the latter never calls
+    // `apply_script_effects`, so a defined command would never actually
+    // reach `ed.state.config.commands`.
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = hume_scripting::ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-text-changed
+             (lambda (bid)
+               (call! "make-text-uppercase")
+               (call! "make-text-lowercase")))
+           (define-command! "kick" "" (lambda () (call! "make-text-uppercase")))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    ed.settle();
+
+    type_cmd(&mut ed, ":kick");
+    ed.settle(); // must return, not hang
+
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error
+                && e.text.contains("event/callback cascade exceeded")),
+        "drain cap must log an Error naming the hook cascade"
+    );
+    assert!(
+        ed.state.config.pending_work.is_empty(),
+        "pending hooks must be dropped when the cap fires"
+    );
+}
+
 /// **Exactly one `OnBufferEnter` per focus-changing action.** Pane-focus
 /// cycling and a mouse click into another pane both move focus with no
 /// write to `pane.buffer_id` at all — `focused_pane_id` is the only field

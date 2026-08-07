@@ -276,6 +276,19 @@ impl Editor {
         let mut total_processed = 0usize;
         loop {
             self.detect_buffer_enter();
+            // Inside the fixpoint, not outside it like `drain_async_sources`:
+            // a handler that reacts to its own buffer's edit (auto-format,
+            // trim-on-change) is a feedback loop, and only inside the loop
+            // does `MAX_EVENT_DRAIN` below catch it loudly in the same
+            // `settle()` call. Outside, the same loop would silently re-arm
+            // every frame forever, like a self-re-arming timer never would
+            // (that case is `drain_async_sources`' own reason to sit outside
+            // — see `settle`'s doc). No rollback on the cap path, unlike
+            // `detect_buffer_enter`'s `last_entered_buffer = None`: this
+            // event drives no Rust-side reaction, so a notification lost to
+            // an already-reported cascade error costs a plugin one refresh —
+            // the buffer's next mutation re-announces it on its own.
+            self.detect_text_changed();
             if self.state.config.pending_work.is_empty() {
                 return true;
             }
@@ -327,6 +340,23 @@ impl Editor {
             self.state.last_entered_buffer = Some(now);
             self.state
                 .queue_event(EditorEvent::OnBufferEnter { buffer: now });
+        }
+    }
+
+    /// Observation point for `on-text-changed` (`EditorEvent::OnTextChanged`'s
+    /// doc). `Buffer::set_text` — the one place every text mutation funnels
+    /// through — has no path to `EditorState::queue_event`, so this diffs
+    /// `Buffer::text_gen` instead, the same shape `detect_buffer_enter` uses
+    /// for a value with no write-site chokepoint of its own. Run every pass
+    /// of `drain_pending_work`'s loop, not just once before it, so a
+    /// handler-driven edit is caught by the very next pass and multiple
+    /// mutations to one buffer between two passes still announce as one
+    /// event (`BufferStore::take_text_changed` advances the baseline as it
+    /// reports).
+    fn detect_text_changed(&mut self) {
+        for buffer in self.state.buffers.take_text_changed() {
+            self.state
+                .queue_event(EditorEvent::OnTextChanged { buffer });
         }
     }
 
@@ -382,7 +412,8 @@ impl Editor {
             | EditorEvent::OnTriggerChar { .. }
             | EditorEvent::OnCompletionAccept { .. }
             | EditorEvent::OnCompletionRefilter { .. }
-            | EditorEvent::OnOptionChange { .. } => {}
+            | EditorEvent::OnOptionChange { .. }
+            | EditorEvent::OnTextChanged { .. } => {}
         }
     }
 

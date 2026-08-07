@@ -54,6 +54,7 @@ fn all_variants() -> Vec<EditorEvent> {
             key: "lsp.inlay-hints".to_string(),
             value: "true".to_string(),
         },
+        EditorEvent::OnTextChanged { buffer },
     ]
 }
 
@@ -124,6 +125,7 @@ fn buffer_only_events_carry_one_buffer_id_arg() {
         EditorEvent::OnBufferSave { buffer },
         EditorEvent::OnBufferEnter { buffer },
         EditorEvent::OnDiagnosticsChanged { buffer },
+        EditorEvent::OnTextChanged { buffer },
     ] {
         let args = event.steel_args();
         assert_eq!(args.len(), 1, "{event:?} must carry exactly one arg");

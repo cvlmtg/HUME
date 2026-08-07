@@ -123,6 +123,19 @@ pub(crate) enum EditorEvent {
         buffer: BufferId,
         filter_text: String,
     },
+    /// Fires when a buffer's text changes — user edits, undo, redo, `:e!`
+    /// reload, and read-only view refreshes (`:messages`, `:ls`) alike, all
+    /// of which bump `Buffer::text_gen`. Raised by diffing `text_gen` at a
+    /// drain observation point (`Editor::detect_text_changed`,
+    /// `BufferStore::take_text_changed`), not from `Buffer::set_text` itself
+    /// — `Buffer` has no path to the event queue. Consequently this
+    /// **coalesces**: several mutations to the same buffer between two
+    /// drain passes fire exactly one event, not one per mutation. A no-op
+    /// undo at the history root, or an edit refused by the read-only guard,
+    /// never bumps `text_gen` and so never fires.
+    OnTextChanged {
+        buffer: BufferId,
+    },
     /// Fires after a successful `:set global`/`set-option!`/`:theme` write —
     /// `settings_ops::apply_global` is the single production path every one
     /// of those funnels through, so this is the one place to raise it.
@@ -193,6 +206,7 @@ editor_event_names! {
     OnCompletionAccept => "on-completion-accept",
     OnCompletionRefilter => "on-completion-refilter",
     OnOptionChange => "on-option-change",
+    OnTextChanged => "on-text-changed",
 }
 
 impl EditorEvent {
@@ -207,7 +221,8 @@ impl EditorEvent {
             | EditorEvent::OnBufferClose { buffer }
             | EditorEvent::OnBufferSave { buffer }
             | EditorEvent::OnBufferEnter { buffer }
-            | EditorEvent::OnDiagnosticsChanged { buffer } => {
+            | EditorEvent::OnDiagnosticsChanged { buffer }
+            | EditorEvent::OnTextChanged { buffer } => {
                 vec![SteelBufferId::new(*buffer).into_steel_val()]
             }
             EditorEvent::OnFocusGained => vec![],

@@ -156,6 +156,8 @@ The full set of lifecycle hooks, for reference:
 | `on-trigger-char` | A registered trigger character was typed in insert mode |
 | `on-completion-accept` | A completion candidate was accepted |
 | `on-completion-refilter` | An incomplete completion list needs a fresh request as typing continues |
+| `on-option-change` | A global setting changed (`:set global`, `set-option!`, `:theme`) |
+| `on-text-changed` | A buffer's text changed — edits, undo/redo, and `:e!` reload alike, coalesced into one fire per burst |
 
 Hooks never fire mid-command. Whatever triggers one — a command you ran, a
 language server responding, a timer, the terminal regaining focus — queues

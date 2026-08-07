@@ -65,6 +65,7 @@ pub(super) const MOCK_HOST_EVENT_NAMES: &[&str] = &[
     "on-completion-accept",
     "on-completion-refilter",
     "on-option-change",
+    "on-text-changed",
 ];
 
 pub(crate) struct MockHost {

@@ -241,10 +241,13 @@ Available hooks and their lambda signatures:
 | `on-completion-accept` | A completion entry is accepted | `(buffer-id item)` |
 | `on-completion-refilter` | Completion input changes | `(buffer-id text)` |
 | `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)` — both strings |
+| `on-text-changed` | A buffer's text changes | `(buffer-id)` |
 
 `on-buffer-open` and `on-buffer-close` always fire as a pair for a given buffer: a buffer opened and closed within the same command never announces either one.
 
-For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry — a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it.
+`on-text-changed` covers edits, undo, redo, and `:e!` reload alike. It coalesces: several mutations to the same buffer between two handler runs fire it only once, so pair it with `debounce` if you want to react after typing settles rather than on every fire.
+
+For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry — a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it. The same caveat applies to `on-text-changed`: gating a lazy plugin on it activates on the first edit in *any* buffer, not a buffer the plugin specifically cares about.
 
 `set-option!` works from a hook or command handler too, not just at the top level of your plugin — it changes the *global* default, so use it there when that's really what you want.
 

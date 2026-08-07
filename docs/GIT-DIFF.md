@@ -10,7 +10,7 @@
 | 2a — native line-diff builtins (`diff-lines`, `diff-buffer-lines`) | ✅ shipped |
 | 2b — native word-diff builtin (`diff-words`) | ✅ shipped, prerequisite of 5b only |
 | 3 — engine: full-row background | ✅ shipped |
-| 4.1 — `on-text-changed` hook | ⬜ |
+| 4.1 — `on-text-changed` hook | ✅ shipped |
 | 4.2 — buffer-text reads | ⬜ |
 | 4.3 — async git | ✅ subsumed by Phase 1 |
 | 4.4 — line-bg decoration kind | ✅ shipped |
@@ -143,7 +143,7 @@ the merge it would be avoiding.
 | `vim.diff` (line Myers) | ✅ **shipped (Phase 2a).** `diff-lines`/`diff-buffer-lines` Steel builtins, wrapping `diff_lines` (`hume-editing/src/diff.rs:157`) | reuse — nothing to build |
 | word-diff Myers (in *Lua*) | ✅ **shipped (Phase 2b).** `diff-words` Steel builtin, wrapping `diff_words` (`hume-editing/src/diff.rs:253`) | reuse — nothing to build |
 | `nvim_buf_get_lines` (live text) | ❌ no buffer-text read — the biggest gap for general-purpose Steel scripts (the diff plugin itself sidesteps this via `diff-buffer-lines`, but other consumers still need it) | buffer-text builtins (Phase 4.2) |
-| `autocmd TextChanged` | ❌ no on-edit hook (14-entry `EditorEvent` set, none fire on edit) | `on-text-changed` hook (Phase 4.1) |
+| `autocmd TextChanged` | ✅ **shipped (Phase 4.1).** `on-text-changed` fires `(buffer-id)`, raised by diffing `Buffer::text_gen` at a drain observation point (`hume-editor/src/editor/scripting_setup.rs`'s `detect_text_changed`) — not from `Buffer::set_text`, which has no path to the event queue. Coalesces a burst of mutations into one fire; covers edits, undo/redo, and `:e!` reload alike. | reuse — nothing to build |
 | `autocmd BufWritePost` | ✅ `on-buffer-save` (`hume-editor/src/editor/event.rs`) | reuse |
 | `vim.uv` timer (debounce) | ✅ `(after ms thunk)` / `(cancel-timer! id)` / `debounce`, timer wheel in `editor/timers.rs` | reuse — nothing to build |
 | `vim.system` (async git) | ✅ shipped — `(spawn-async! cmd args cwd callback)` / `(cancel-async! id)`, one-shot capture, exactly-once callback, never inline (`hume-scripting/src/builtins/process.rs`) | reuse — nothing to build |
@@ -451,26 +451,36 @@ one for diff's deleted-line rendering.
 Timer builtins already ship — not covered here. The decoration API already ships as
 `DecorationHost`/`DecorationStores`, including the line-background kind and the
 virtual-line anchor/segments bridge — no new store needed. There is no Rust-enforced git
-sandbox to work around (full-trust plugin model). The real gaps are the edit hook,
-buffer-text reads, non-blocking git execution (resolved by Phase 1), and the two items below.
+sandbox to work around (full-trust plugin model). Phase 4.1 (edit hook) has shipped; the
+remaining real gap is buffer-text reads, item 2 below.
 
 Each is general-purpose. Registered through `register_all`
 (`hume-scripting/src/builtins/mod.rs`) and, where they touch editor state, the `EditorHost`
 trait (`hume-scripting/src/host.rs`).
 
-1. **`on-text-changed` hook.** Missing — current `EditorEvent` set
-   (`hume-editor/src/editor/event.rs`) has 14 variants (`on-buffer-open`, `on-buffer-close`,
-   `on-buffer-save`, `on-buffer-enter`, `on-focus-gained`, `on-mode-change`, `on-language-set`,
-   `on-lsp-attach`, `on-lsp-detach`, `on-diagnostics-changed`, `on-viewport-change`,
-   `on-trigger-char`, `on-completion-accept`, `on-completion-refilter`) and none fire on edit.
-   Add `EditorEvent::OnTextChanged` + Steel name;
-   fire from the edit-apply path — `apply_edit`/`apply_edit_grouped`/`apply_edit_regrouped`
-   on `Buffer` (`hume-editor/src/editor/buffer/mod.rs:457,477,507`), called from
-   `hume-editor/src/editor/doc_ops.rs:106,137,171`, all routing through `set_text`
-   (`buffer/mod.rs:261`) which is where `text_gen` is bumped — fire the hook there. Handler
-   args `(bid)`. `on-buffer-save` already exists and fires from
-   `hume-editor/src/editor/commands/typed_file.rs:261` — reuse it. Optional:
-   `on-buffer-reload` for `:e!`.
+1. **`on-text-changed` hook — ✅ shipped.** `EditorEvent` (`hume-editor/src/editor/event.rs`)
+   now carries 16 variants, `OnTextChanged { buffer }` among them, Steel name
+   `on-text-changed`, handler args `(bid)`.
+
+   **Deviated from this doc's original plan, deliberately.** The original plan proposed
+   raising from the edit-apply path — `apply_edit`/`apply_edit_grouped`/`apply_edit_regrouped`
+   on `Buffer`, called from `doc_ops.rs`, all routing through `set_text` where `text_gen` is
+   bumped — and firing there. That's the right *place* semantically (`set_text` is the one
+   private chokepoint every text mutation funnels through), but unreachable: `Buffer` holds no
+   `EditorState` and cannot call `EditorState::queue_event`, and `doc_ops`'s apply functions
+   take disjoint field borrows (`&mut BufferStore`, `&DecorationStores`, …), not
+   `&mut EditorState`, by design. Raising there would also miss `:e!` reload and read-only
+   view refreshes (`:messages`/`:ls`), both of which mutate text through `set_text` outside
+   `doc_ops` entirely — and a diff-driven `git-diff` plugin needs a reload to re-trigger it.
+
+   Shipped instead as an **observation-point diff**, the same shape `OnBufferEnter` already
+   uses for a value with no write-site chokepoint (`docs/LESSONS.md` L9):
+   `Editor::detect_text_changed` (`scripting_setup.rs`) diffs each open buffer's `text_gen`
+   against a new `Buffer::announced_text_gen` baseline every pass of `drain_pending_work`'s
+   fixpoint, via `BufferStore::take_text_changed`. This **coalesces** — several mutations to
+   one buffer between two drain passes fire exactly one event, not one per mutation — and
+   fires for edits, undo, redo, and `:e!` reload alike, since all of them bump `text_gen`. No
+   separate `on-buffer-reload` was added; `on-text-changed` already covers it.
 
 2. **Buffer text reads.** Still the biggest gap for general-purpose Steel scripts —
    `builtins/buffers.rs` and `BufferHost` (`hume-scripting/src/host.rs:339-376`) remain
@@ -558,14 +568,15 @@ trait (`hume-scripting/src/host.rs`).
 
 > Deferred — documented here for completeness; **not to be built in this pass.**
 
-Prerequisites: **Phase 2a (line-diff builtins, shipped) + Phase 4.1 (`on-text-changed`) only.**
-Neither Phase 4.5 (virtual-line bridge) nor Phase 3.2/4.4 (line background) is needed for this
-layer, and 5a doesn't call `diff-words` — Phase 2b is not a prerequisite here.
+Prerequisites: **Phase 2a (line-diff builtins) + Phase 4.1 (`on-text-changed`) — both ✅
+shipped.** Neither Phase 4.5 (virtual-line bridge) nor Phase 3.2/4.4 (line background) is
+needed for this layer, and 5a doesn't call `diff-words` — Phase 2b is not a prerequisite
+here. Nothing blocks starting 5a itself.
 
 Closest existing structural precedent in-repo: `runtime/plugins/core/lsp/inlay.scm` — uses
 `debounce-by`, `register-hook!` (e.g. `'on-viewport-change`, `'on-diagnostics-changed`,
 `'on-lsp-detach`), and a decoration setter (`set-inlay-hints!`) — the same shape `git-diff`
-needs (`debounce-by` + `register-hook! 'on-text-changed` once it exists + `set-signs!`).
+needs (`debounce-by` + `register-hook! 'on-text-changed` (now shipped) + `set-signs!`).
 Worth reading before writing `init.scm`.
 
 A plugin under `runtime/plugins/git-diff/`, mirroring the nvim five-module layout but with
@@ -719,20 +730,22 @@ store) + theme `diff.*` `bg` values in all four themes.**
   `hume-engine/src/render.rs`
   (`fill_row_bg` method `:96`, free fn `:559`, consumers at `:122,174,231,276,294`),
   `hume-engine/src/types.rs` (`Grapheme.scope` `:160`).
-- **Steel surface**: `hume-editor/src/editor/event.rs` (`EditorEvent`, no `on-text-changed`
-  yet), `host.rs` (`DecorationHost`, already implemented — extend, don't rebuild),
-  `builtins/buffers.rs` (add text-read builtins), `builtins/timers.rs` (existing
-  `after`/`cancel-timer!`/`debounce` — reuse), `hume-editor/src/editor/decorations.rs`
+- **Steel surface**: `hume-editor/src/editor/event.rs` (`EditorEvent`, `on-text-changed`
+  shipped, Phase 4.1), `host.rs` (`DecorationHost`, already implemented — extend, don't
+  rebuild), `builtins/buffers.rs` (add text-read builtins, Phase 4.2), `builtins/timers.rs`
+  (existing `after`/`cancel-timer!`/`debounce` — reuse), `hume-editor/src/editor/decorations.rs`
   (`DecorationStores` — line-bg kind (Phase 4.4) and `VirtualLineEntry`'s `before`/`segments`
   (Phase 4.5) both landed already).
 - **Virtual-line bridge (Phase 4.5 — ✅ shipped)**: `hume-editor/src/editor/decoration_providers.rs`
   (`update_virtual_line_providers`, now anchor- and segment-aware; not `lifecycle.rs` — that
   was always the wrong path for this function), `hume-editor/src/editor/decorations.rs`
   (`VirtualLineEntry` — carries `before` + `segments`).
-- **Editor glue**: `hume-editor/src/editor/doc_ops.rs:106,137,171` + `buffer/mod.rs:261`
-  (`set_text` — fire `on-text-changed` here), `hume-editor/src/ui/highlight_providers.rs:40,82`
-  (native-only decoration precedent, superseded by `DecorationHost` for Steel-facing work),
-  `hume-editor/src/editor/buffer/mod.rs:102` (`text_gen`).
+- **`on-text-changed` (Phase 4.1 — ✅ shipped)**: `hume-editor/src/editor/buffer/mod.rs`
+  (`Buffer::text_gen`, `Buffer::announced_text_gen`), `hume-editor/src/editor/buffer/store.rs`
+  (`BufferStore::take_text_changed`), `hume-editor/src/editor/scripting_setup.rs`
+  (`Editor::detect_text_changed`, called from `drain_pending_work`'s fixpoint), `event.rs`
+  (`EditorEvent::OnTextChanged`). Not `doc_ops.rs`/`set_text` — see Phase 4 item 1's "deviated
+  from this doc's original plan" note for why the raise is an observation-point diff instead.
 - **Themes**: `runtime/themes/{sand,dark,light,gruvbox}.toml` — `diff.*` scopes exist in all
   four but need `bg` and `.word` variants added (see theme prereq above).
 - **Plugin (Phase 5a/5b/5c)**: new `runtime/plugins/git-diff/*.scm` (model on

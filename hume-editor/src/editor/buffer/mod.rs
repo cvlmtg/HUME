@@ -109,6 +109,12 @@ pub(crate) struct Buffer {
     /// `reparse_stale_buffers` skips a buffer when this equals
     /// `syntax.parsed_gen()`.
     pub(crate) text_gen: u64,
+    /// The `text_gen` value most recently announced as an `on-text-changed`
+    /// event. `Buffer` cannot reach the event queue (it holds no
+    /// `EditorState`), so the hook is raised by diffing this against
+    /// `text_gen` at a drain observation point — see
+    /// `BufferStore::take_text_changed` — rather than at `set_text` itself.
+    pub(crate) announced_text_gen: u64,
     /// Per-buffer tree-sitter syntax attachment: grammar identity, committed
     /// parse layers, generation bookkeeping, and in-flight state, all in one
     /// place. `None` when no grammar is attached or the buffer exceeds
@@ -188,6 +194,7 @@ impl Buffer {
             language: None,
             language_explicit: false,
             text_gen: 0,
+            announced_text_gen: 0,
             syntax: None,
             read_only: false,
             label: None,

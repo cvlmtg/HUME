@@ -139,3 +139,62 @@ fn reload_from_text_does_not_bump_edit_seq() {
         "reload_from_text (:e!) is a system refresh, not a user edit — edit_seq must not move"
     );
 }
+
+// ── take_text_changed ───────────────────────────────────────────────────────
+
+#[test]
+fn take_text_changed_reports_nothing_for_an_untouched_store() {
+    let (mut store, mut ev) = store_with_engine();
+    let id = make_id(&mut ev);
+    store.open(id, make_buf());
+    assert_eq!(store.take_text_changed(), Vec::new());
+}
+
+/// After a mutation, exactly the touched buffer is reported once — and a
+/// second immediate call reports nothing, since the baseline already caught
+/// up.
+///
+/// Fail oracle: drop the `announced_text_gen = text_gen` write in
+/// `take_text_changed` → the second call still returns `[id]`.
+#[test]
+fn take_text_changed_reports_a_touched_buffer_once() {
+    let (mut store, mut ev) = store_with_engine();
+    let id = make_id(&mut ev);
+    store.open(id, make_buf());
+    store.get_mut(id).set_view_content(Text::from("edited\n"));
+
+    assert_eq!(store.take_text_changed(), vec![id]);
+    assert_eq!(
+        store.take_text_changed(),
+        Vec::new(),
+        "baseline must advance so a second call sees nothing new"
+    );
+}
+
+/// Several mutations to the same buffer between two calls coalesce into one
+/// report — the coalescing contract `on-text-changed` documents.
+#[test]
+fn take_text_changed_coalesces_multiple_mutations_into_one_report() {
+    let (mut store, mut ev) = store_with_engine();
+    let id = make_id(&mut ev);
+    store.open(id, make_buf());
+    store.get_mut(id).set_view_content(Text::from("first\n"));
+    store.get_mut(id).set_view_content(Text::from("second\n"));
+    store.get_mut(id).set_view_content(Text::from("third\n"));
+
+    assert_eq!(store.take_text_changed(), vec![id]);
+}
+
+/// Only a buffer that actually mutated is reported — a sibling buffer left
+/// untouched must not appear.
+#[test]
+fn take_text_changed_ignores_untouched_siblings() {
+    let (mut store, mut ev) = store_with_engine();
+    let a = make_id(&mut ev);
+    let b = make_id(&mut ev);
+    store.open(a, make_buf());
+    store.open(b, make_buf());
+    store.get_mut(b).set_view_content(Text::from("only b\n"));
+
+    assert_eq!(store.take_text_changed(), vec![b]);
+}
