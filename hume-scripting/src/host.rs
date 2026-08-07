@@ -646,14 +646,46 @@ pub struct DiffHunk {
     pub new_lines: Vec<String>,
 }
 
-/// Text diffing — accessed through [`EditorHost::diff`]. Backs
-/// `(diff-lines old-text new-text)` / `(diff-buffer-lines bid ref-text)`.
+/// A single word-level change between two texts — e.g. a single changed
+/// line's old/new text, as passed from a `diff-lines`/`diff-buffer-lines`
+/// `Replace` hunk. Ranges are 0-based **char offsets**, not byte offsets,
+/// matching `WordHunk`/`ExtraHighlightEntry`/`set-virtual-lines!`'s
+/// `'segments`. `Equal` runs are dropped, same as [`DiffHunk`].
 ///
-/// Both methods treat their string inputs as buffer text: CRLF-normalized
-/// and given a trailing newline if missing, matching how HUME would load
-/// them from disk. This is a deliberate divergence from `git diff`'s raw
-/// byte comparison — a file missing its final newline reports no change on
-/// that line, since nothing would change about it on save either.
+/// Unlike [`DiffHunk`] (line-index `start`/`count` into a rebuilt line
+/// list), a word hunk is one contiguous span of text per side, so it
+/// carries `end` (an exclusive char offset) and one `String` per side
+/// rather than a count and a line list — reusing `DiffHunk`'s shape here
+/// would force a fake `count`/single-element `Vec<String>` that doesn't
+/// mean the same thing.
+///
+/// A zero-width side (`start == end`) needs no special case, same
+/// rationale as `DiffHunk`'s zero-count side: it already sits exactly at
+/// the insertion/deletion point (pure insert: `old_start == old_end`, pure
+/// delete: `new_start == new_end`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WordDiffHunk {
+    pub old_start: usize,
+    pub old_end: usize,
+    pub new_start: usize,
+    pub new_end: usize,
+    pub old_text: String,
+    pub new_text: String,
+}
+
+/// Text diffing — accessed through [`EditorHost::diff`]. Backs
+/// `(diff-lines old-text new-text)` / `(diff-buffer-lines bid ref-text)` /
+/// `(diff-words old-text new-text)`.
+///
+/// `diff_lines`/`diff_buffer_lines` treat their string inputs as buffer
+/// text: CRLF-normalized and given a trailing newline if missing, matching
+/// how HUME would load them from disk. This is a deliberate divergence from
+/// `git diff`'s raw byte comparison — a file missing its final newline
+/// reports no change on that line, since nothing would change about it on
+/// save either. `diff_words` does **no** such normalization: its inputs are
+/// single lines already extracted from `Text`-normalized content (typically
+/// one side of a `Replace` hunk), so wrapping them again would be a no-op
+/// at best.
 pub trait DiffHost {
     /// Line-level hunks between `old` and `new`, `Equal` runs dropped.
     fn diff_lines(&self, old: &str, new: &str) -> Vec<DiffHunk>;
@@ -663,6 +695,15 @@ pub trait DiffHost {
     /// buffer as a Steel string on every debounced call. `None` for an
     /// unknown/stale `bid`.
     fn diff_buffer_lines(&self, bid: BufferId, ref_text: &str) -> Option<Vec<DiffHunk>>;
+
+    /// Word-level hunks between `old` and `new`, `Equal` runs dropped. The
+    /// returned `bool` mirrors `WordDiff::deadline_hit()`: `true` means the
+    /// underlying Myers pass could not finish within its deadline and
+    /// returned a coarse (Replace-all) result — unlike line-diff's Myers
+    /// fallback (still a correct partition), a word-diff timeout result
+    /// should be treated as a fallback, not a precise diff (skip word
+    /// highlighting, fall back to a whole-line scope).
+    fn diff_words(&self, old: &str, new: &str) -> (Vec<WordDiffHunk>, bool);
 }
 
 /// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer

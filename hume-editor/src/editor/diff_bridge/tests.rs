@@ -131,3 +131,111 @@ fn payload_lines_never_carry_a_trailing_newline() {
         }
     }
 }
+
+// ── word_hunks (Phase 2b) ────────────────────────────────────────────────
+
+/// Fail oracle: swap `old_start`/`old_end` for a pure-insert side (or emit a
+/// non-empty `old_text`) — a plugin anchoring a `set-virtual-lines!` insert
+/// marker at the wrong offset, or rendering phantom "removed" text.
+#[test]
+fn word_hunks_pure_insert_has_zero_width_old_side() {
+    let (hunks, deadline_hit) = word_hunks("foo bar", "foo big bar");
+    assert!(!deadline_hit);
+    // "foo bar" tokens: ["foo", " ", "bar"] (offsets 0,3,4,7).
+    // "foo big bar" tokens: ["foo", " ", "big", " ", "bar"] (offsets 0,3,4,7,8,11).
+    assert_eq!(
+        hunks,
+        vec![WordDiffHunk {
+            old_start: 4,
+            old_end: 4,
+            new_start: 4,
+            new_end: 8,
+            old_text: String::new(),
+            new_text: "big ".to_string(),
+        }]
+    );
+}
+
+/// Mirror of `word_hunks_pure_insert_has_zero_width_old_side` — the deletion
+/// direction, same oracle.
+#[test]
+fn word_hunks_pure_delete_has_zero_width_new_side() {
+    let (hunks, deadline_hit) = word_hunks("foo big bar", "foo bar");
+    assert!(!deadline_hit);
+    assert_eq!(
+        hunks,
+        vec![WordDiffHunk {
+            old_start: 4,
+            old_end: 8,
+            new_start: 4,
+            new_end: 4,
+            old_text: "big ".to_string(),
+            new_text: String::new(),
+        }]
+    );
+}
+
+/// Fail oracle: a changed word reports non-empty text on both sides with
+/// matching ranges — catches accidentally treating a `Replace` as a
+/// `Delete` + `Insert` pair (two hunks instead of one).
+#[test]
+fn word_hunks_replace_carries_both_sides() {
+    let (hunks, deadline_hit) = word_hunks("foo bar", "foo baz");
+    assert!(!deadline_hit);
+    assert_eq!(
+        hunks,
+        vec![WordDiffHunk {
+            old_start: 4,
+            old_end: 7,
+            new_start: 4,
+            new_end: 7,
+            old_text: "bar".to_string(),
+            new_text: "baz".to_string(),
+        }]
+    );
+}
+
+/// Fail oracle: stop filtering `WordHunkKind::Equal` — this returns an
+/// all-equal hunk carrying no text instead of an empty list, and every
+/// plugin decorates the whole line as changed.
+#[test]
+fn word_hunks_equal_runs_are_dropped() {
+    let (hunks, deadline_hit) = word_hunks("foo bar", "foo bar");
+    assert!(!deadline_hit);
+    assert_eq!(hunks, Vec::new());
+}
+
+/// Fail oracle: tokenize on `split_whitespace` (collapsing runs) instead of
+/// `split_word_bounds` — a whitespace-only edit inside a line would vanish
+/// instead of surfacing as a hunk.
+#[test]
+fn word_hunks_whitespace_run_change_is_diffed() {
+    let (hunks, deadline_hit) = word_hunks("a  b", "a b");
+    assert!(!deadline_hit);
+    // "a  b" tokens: ["a", "  ", "b"] (offsets 0,1,3,4).
+    // "a b" tokens: ["a", " ", "b"] (offsets 0,1,2,3).
+    assert_eq!(
+        hunks,
+        vec![WordDiffHunk {
+            old_start: 1,
+            old_end: 3,
+            new_start: 1,
+            new_end: 2,
+            old_text: "  ".to_string(),
+            new_text: " ".to_string(),
+        }]
+    );
+}
+
+/// Fail oracle: hardcode `word_hunks`'s `deadline_hit` return to `false` —
+/// this pins that a forced `Duration::ZERO` deadline surfaces as `true`,
+/// while the same input through the default-deadline path stays `false`.
+#[test]
+fn word_hunks_with_deadline_forwards_the_timeout_flag() {
+    let old = "word ".repeat(100);
+    let new = "term ".repeat(100);
+    let (_, forced) = word_hunks_with_deadline(&old, &new, std::time::Duration::ZERO);
+    assert!(forced, "a zero deadline must report deadline_hit");
+    let (_, default) = word_hunks(&old, &new);
+    assert!(!default, "the default deadline must complete on this input");
+}

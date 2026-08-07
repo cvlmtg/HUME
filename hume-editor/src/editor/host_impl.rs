@@ -23,7 +23,7 @@ use crate::ui::statusline::StatusLineConfig;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
     DiffHost, DiffHunk, EditHost, EditorHost, EventHost, LanguageHost, LspHost, OptionValue,
-    OutputHost, PopupKind, SettingsHost, TimerHost, UiHost,
+    OutputHost, PopupKind, SettingsHost, TimerHost, UiHost, WordDiffHunk,
 };
 
 use super::{EditorState, Severity};
@@ -769,6 +769,10 @@ impl<'a> DiffHost for EditorHostImpl<'a> {
             &hume_editing::text::Text::from(ref_text),
             buffer_text,
         ))
+    }
+
+    fn diff_words(&self, old: &str, new: &str) -> (Vec<WordDiffHunk>, bool) {
+        diff_bridge::word_hunks(old, new)
     }
 }
 
