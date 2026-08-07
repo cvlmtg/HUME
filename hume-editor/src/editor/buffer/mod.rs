@@ -428,12 +428,19 @@ impl Buffer {
     /// so the inverse carries only the changed lines, not a full-buffer
     /// delete-all + insert-all. `saved_revision` is bumped after recording so
     /// the reloaded buffer is `!is_dirty()`.
+    ///
+    /// Returns `true` if the text actually changed (`set_text` ran, `text_gen`
+    /// moved) — `false` for an identical-to-disk no-op. The caller uses this to
+    /// decide whether state computed against the pre-reload content (the
+    /// engine syntax tree, LSP diagnostics/decorations, the `didChange` wire
+    /// message) is still valid or needs discarding — `reload_from_text` is the
+    /// only place that already knows which branch ran.
     pub(crate) fn reload_from_text(
         &mut self,
         new_text: Text,
         pre_sels: SelectionSet,
         post_sels: SelectionSet,
-    ) {
+    ) -> bool {
         // Reloading from disk is, by definition, catching up to whatever is
         // there now — clear regardless of which branch below runs.
         self.disk_state = disk::DiskState::InSync;
@@ -450,7 +457,7 @@ impl Buffer {
         // disk. `pre_sels`/`post_sels` are dropped — there is nothing to undo to.
         if forward.is_identity() {
             self.saved_revision = Some(self.history.current_id());
-            return;
+            return false;
         }
 
         // `set_text` only bumps `text_gen`; it does NOT reset history
@@ -458,6 +465,7 @@ impl Buffer {
         self.set_text(new_text);
         self.record_revision(forward, inverse, pre_sels, post_sels);
         self.saved_revision = Some(self.history.current_id());
+        true
     }
 
     /// `true` if the buffer has unsaved changes.
@@ -647,8 +655,10 @@ impl Buffer {
 
     /// Close the current edit group and record it as a single undo step.
     ///
-    /// If no edits were applied since `begin_edit_group` (empty group), no
-    /// revision is recorded. Panics if no group is open.
+    /// If no edits were applied since `begin_edit_group` (empty group), or the
+    /// composed `ChangeSet` cancelled out to the identity transform (e.g. type
+    /// a char, then backspace it), no revision is recorded.  Panics if no
+    /// group is open.
     pub(crate) fn commit_edit_group(
         &mut self,
         edit_group: &mut Option<EditGroup>,
@@ -659,6 +669,15 @@ impl Buffer {
             .expect("commit_edit_group called without an open group");
 
         if let Some(cs) = group.cs {
+            // An identity `cs` moved no bytes: recording it would put a no-op
+            // revision on the undo stack, and undoing that revision would
+            // call `set_text` unconditionally (`Buffer::undo` has no identity
+            // guard of its own — every revision that reaches `record_revision`
+            // is assumed real), bumping `text_gen` and firing
+            // `on-text-changed` for a mutation that never happened.
+            if cs.is_identity() {
+                return;
+            }
             let inverse_cs = cs.invert(&group.text_snapshot);
             self.record_revision(cs, inverse_cs, group.pre_sels, post_sels);
         }

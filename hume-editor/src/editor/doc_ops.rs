@@ -96,11 +96,13 @@ fn finish_edit(
     rope_pre: &ropey::Rope,
 ) {
     pane_state[focused_pane_id][buf_id].selections = new_sels;
-    // An identity `cs` moved no bytes, so `Buffer::apply_edit*` skipped
-    // `set_text` and `text_gen` did not move. Feeding the syntax and LSP
-    // streams an edit tagged with an already-parsed generation would be
-    // actively wrong, and paste-stamping must not count a no-op as an edit.
-    // Selections are still written above — a no-op edit can still move cursors.
+    // An identity `cs` moved no bytes: `Buffer::apply_edit*` skipped
+    // `set_text` for it directly, and `commit_edit_group` never records it as
+    // a revision for `undo`/`redo` to later replay — so `text_gen` did not
+    // move either way. Feeding the syntax and LSP streams an edit tagged with
+    // an already-parsed generation would be actively wrong, and paste-stamping
+    // must not count a no-op as an edit. Selections are still written above —
+    // a no-op edit can still move cursors.
     if cs.is_identity() {
         return;
     }

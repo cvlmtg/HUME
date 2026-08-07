@@ -1563,6 +1563,91 @@ fn identity_edit_records_no_undo_revision() {
     );
 }
 
+/// An insert session whose composed edits cancel out to the identity
+/// transform (type a character, then backspace it, all inside one insert
+/// session) must record no undo revision at all — `commit_edit_group`'s
+/// identity guard. `text_gen` still moves during the session itself (each
+/// keystroke is individually a real, non-identity `set_text`, so
+/// `on-text-changed` correctly fires once for it, coalesced) — the guard's
+/// job is narrower: making sure nothing lands on the undo stack for `u` to
+/// later replay as a *second*, phantom mutation.
+///
+/// Fail oracle: remove `commit_edit_group`'s `cs.is_identity()` guard → the
+/// no-op revision is recorded, `is_dirty()`/`can_undo()` both read `true`
+/// right after `<Esc>`, and `u` fires a second, spurious `on-text-changed`
+/// for a byte-identical buffer instead of being a silent no-op.
+#[test]
+fn insert_then_backspace_records_no_revision() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let bid = ed.focused_buffer_id();
+    let original = ed.doc().text().to_string();
+
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+
+    let fire_count = |ed: &Editor| {
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace && e.text == "changed")
+            .count()
+    };
+
+    // Type 'z', then backspace it, all within one insert session — the
+    // composed ChangeSet cancels to identity (the same cancellation
+    // `changeset/tests.rs`'s `compose_insert_then_delete` pins).
+    ed.feed_key(key('i'));
+    ed.feed_key(key('z'));
+    ed.feed_key(key_backspace());
+    ed.feed_key(key_esc());
+    ed.settle();
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        original,
+        "the session must have made no net change"
+    );
+    assert!(
+        !ed.state.buffers.get(bid).is_dirty(),
+        "a session that cancelled out to identity must not read dirty"
+    );
+    assert!(
+        !ed.state.buffers.get(bid).can_undo(),
+        "a session that cancelled out to identity must record no undo revision"
+    );
+    assert_eq!(
+        fire_count(&ed),
+        1,
+        "the session's own keystrokes are real intermediate mutations — must fire once, coalesced"
+    );
+
+    // `u` must be a silent no-op (nothing was ever recorded for it to undo),
+    // not replay a phantom identity revision — and must therefore not fire a
+    // second on-text-changed.
+    ed.feed_key(key('u'));
+    ed.settle();
+    assert_eq!(
+        ed.doc().text().to_string(),
+        original,
+        "undo must leave the text untouched — there is nothing to undo"
+    );
+    assert_eq!(
+        fire_count(&ed),
+        1,
+        "a no-op undo (nothing was ever recorded) must not fire a second on-text-changed"
+    );
+}
+
 /// A byte-identical `:e!` reload (`reload_from_text`'s `forward.is_identity()`
 /// case) must not bump `text_gen`, so it must not fire `on-text-changed`.
 ///

@@ -332,6 +332,39 @@ fn reload_flushes_pending_change_before_the_whole_document_didchange() {
     );
 }
 
+/// A byte-identical `:e!` reload (the file on disk hasn't actually changed)
+/// must send no `didChange` at all — `reload_from_text`'s identity branch
+/// never bumps `text_gen`, so there is no new version to announce, and
+/// `reload_buffer_in_place` must not fall back to sending one at the
+/// buffer's unchanged version (which would be a version regression from the
+/// server's point of view: a second notification carrying a version it
+/// already has).
+///
+/// Fail oracle: un-gate `lsp_did_change_whole_document` in
+/// `reload_buffer_in_place` (send it unconditionally, as before the fix) →
+/// a second `didChange` appears at the same version as the last one on file.
+#[test]
+fn identical_reload_sends_no_didchange() {
+    let tmp = safe_tempdir();
+    let (mut ed, bid, log) = attached_editor(&tmp);
+
+    let path = ed.state.buffers.get(bid).path().unwrap().to_path_buf();
+    std::fs::write(&path, "hello world\n").unwrap(); // identical to attached_editor's seed content
+    ed.execute_typed("e!", None).unwrap();
+    ed.drain_lsp();
+
+    let did_changes: Vec<_> = log
+        .borrow()
+        .iter()
+        .filter(|(m, _)| m == "textDocument/didChange")
+        .cloned()
+        .collect();
+    assert!(
+        did_changes.is_empty(),
+        "a byte-identical reload must send no didChange, got: {did_changes:?}"
+    );
+}
+
 /// Regression: same root shape as the reload ordering test above, for `:w`
 /// — an edit queued but not yet drained, immediately followed by a save in
 /// the same window. `didSave` carries no text, so a server doing

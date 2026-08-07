@@ -132,15 +132,18 @@ pub(crate) enum EditorEvent {
     /// — `Buffer` has no path to the event queue, the same reason
     /// `OnBufferEnter` is raised via a diff rather than a raise site.
     /// Consequently this
-    /// **coalesces**: several mutations to the same buffer within one drain
-    /// pass (not one per rendered frame — a pass runs once per `settle()`)
-    /// fire exactly one event, not one per mutation.
+    /// **coalesces**: several mutations to the same buffer observed by one
+    /// pass of `drain_pending_work`'s fixpoint — detection runs at the top of
+    /// every pass, so at least once per `settle()` — fire exactly one event,
+    /// not one per mutation.
     ///
     /// Never fires for: a no-op undo at the history root; an edit refused by
-    /// the read-only guard; an edit or `:e!` reload whose `ChangeSet` is the
-    /// identity transform (`Buffer::apply_edit*` and `reload_from_text` all
-    /// skip the mutation entirely in that case, specifically so this doesn't
-    /// fire for one). Does fire, unconditionally and with no identity check,
+    /// the read-only guard; an edit, insert/paste session, or `:e!` reload
+    /// whose composed `ChangeSet` is the identity transform
+    /// (`Buffer::apply_edit*`, `commit_edit_group`, and `reload_from_text` all
+    /// skip the mutation — or the revision that would make undo replay one —
+    /// entirely in that case, specifically so this doesn't fire for one).
+    /// Does fire, unconditionally and with no identity check,
     /// for every `:messages`/`:ls`/`:plugin-status` refresh of an
     /// already-open view buffer, even a byte-identical one — a handler that
     /// resolves the buffer's path must handle `#f` (these buffers have none).

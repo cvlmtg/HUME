@@ -265,7 +265,8 @@ impl Editor {
         let new_file_meta = std::mem::take(&mut new_doc.file_meta);
         drop(new_doc);
 
-        self.state
+        let mutated = self
+            .state
             .buffers
             .get_mut(id)
             .reload_from_text(new_text, pre_sels, post_sels);
@@ -278,30 +279,41 @@ impl Editor {
         // *older* version) after it: a version regression the server can't
         // recover from, permanently desyncing its copy of the document.
         self.flush_lsp_pending_changes();
-        // `reload_from_text` bumped text_gen via set_text but produced no
-        // ChangeSet the LSP pending-queue mechanism can consume — send the
-        // reload as a whole-document didChange instead.
-        self.lsp_did_change_whole_document(id);
-        // Diagnostics and LSP-sourced decorations were computed against the
-        // pre-reload text — their char offsets are meaningless (and
-        // potentially out-of-bounds, e.g. after a shrink) against the new
-        // content. The server republishes diagnostics shortly after seeing
-        // the didChange above; nothing republishes decorations on its own,
-        // so they simply stay cleared until a plugin sets them again.
-        if self.lsp.remove_buffer_diagnostics(id) {
-            self.queue_diagnostics_changed(id);
-        }
-        self.state.config.decorations.remove_buffer(id);
+        // Everything below discards state computed against the pre-reload
+        // text — diagnostics/decorations char offsets, the engine syntax
+        // tree, a whole-document didChange at a fresh version. A no-op
+        // reload (`mutated == false`) never touched `self.text` or
+        // `text_gen`, so that state is still valid against the (unchanged)
+        // current content — skip discarding it rather than throw away
+        // perfectly good syntax highlighting/diagnostics for nothing.
+        if mutated {
+            // `reload_from_text` bumped text_gen via set_text but produced no
+            // ChangeSet the LSP pending-queue mechanism can consume — send the
+            // reload as a whole-document didChange instead.
+            self.lsp_did_change_whole_document(id);
+            // Diagnostics and LSP-sourced decorations were computed against the
+            // pre-reload text — their char offsets are meaningless (and
+            // potentially out-of-bounds, e.g. after a shrink) against the new
+            // content. The server republishes diagnostics shortly after seeing
+            // the didChange above; nothing republishes decorations on its own,
+            // so they simply stay cleared until a plugin sets them again.
+            if self.lsp.remove_buffer_diagnostics(id) {
+                self.queue_diagnostics_changed(id);
+            }
+            self.state.config.decorations.remove_buffer(id);
 
-        // Drop the stale committed layers (they reference pre-reload content),
-        // keeping the grammar attachment and generation bookkeeping intact.
-        // `set_text` bumped `text_gen`, so `reparse_stale_buffers` will post a
-        // fresh full parse on the next tick. `detect_and_set_language` handles
-        // a genuine language change (shebang/extension), re-running setup via
-        // `set_buffer_language` itself.
-        if let Some(syn) = self.state.buffers.get_mut(id).syntax.as_mut() {
-            syn.clear_layers();
+            // Drop the stale committed layers (they reference pre-reload
+            // content), keeping the grammar attachment and generation
+            // bookkeeping intact. `set_text` bumped `text_gen`, so
+            // `reparse_stale_buffers` will post a fresh full parse on the
+            // next tick.
+            if let Some(syn) = self.state.buffers.get_mut(id).syntax.as_mut() {
+                syn.clear_layers();
+            }
         }
+        // `detect_and_set_language` handles a genuine language change
+        // (shebang/extension) regardless of `mutated` — re-running setup via
+        // `set_buffer_language` itself.
         self.detect_and_set_language(id);
 
         // ── Phase 3: reseed per-pane selections / edit groups / scroll ───────

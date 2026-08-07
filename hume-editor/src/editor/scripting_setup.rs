@@ -375,6 +375,21 @@ impl Editor {
         while let Some(item) = items.pop_front() {
             match item {
                 PendingWork::Event(event) => {
+                    // `OnTextChanged` is queued from a live-buffer sweep at
+                    // the top of a drain pass, but fires behind whatever
+                    // `Call` items (timer thunks, async callbacks) were
+                    // already queued ahead of it in the same batch — one of
+                    // those can close `buffer` first. Checked here, ahead of
+                    // both `react_to_event` and `fire_one_event`, so neither
+                    // ever sees a dead id. `OnBufferClose` is deliberately
+                    // exempt from this shape: it is raised for an id that's
+                    // already gone by design (see `lifecycle.rs`'s pairing
+                    // check).
+                    if let EditorEvent::OnTextChanged { buffer } = &event
+                        && self.state.buffers.try_get(*buffer).is_none()
+                    {
+                        continue;
+                    }
                     self.react_to_event(&event);
                     self.fire_one_event(event);
                 }
@@ -428,17 +443,6 @@ impl Editor {
     /// Fire every handler registered for one `EditorEvent`, if any are —
     /// the per-item body of `settle`'s `Event` arm.
     fn fire_one_event(&mut self, event: EditorEvent) {
-        // `OnTextChanged` is queued from a live-buffer sweep at the top of a
-        // drain pass, but fires behind whatever `Call` items (timer thunks,
-        // async callbacks) were already queued ahead of it in the same
-        // batch — one of those can close `buffer` first. `OnBufferClose` is
-        // deliberately exempt from this shape: it is raised for an id that's
-        // already gone by design (see `lifecycle.rs`'s pairing check).
-        if let EditorEvent::OnTextChanged { buffer } = &event
-            && self.state.buffers.try_get(*buffer).is_none()
-        {
-            return;
-        }
         let name = event.name();
         // Activate lazy event plugins first so their register-hook! calls
         // land before the has_hook_handlers check below.

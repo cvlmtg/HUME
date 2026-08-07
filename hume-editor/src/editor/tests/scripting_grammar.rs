@@ -699,6 +699,37 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
         new_byte_len,
         "engine tree must be aligned to the reloaded content, not the stale pre-reload text"
     );
+
+    // A second reload with byte-identical content: `reload_from_text`'s
+    // `forward.is_identity()` branch returns `false` (no mutation) without
+    // touching `text_gen`. `reload_buffer_in_place` must not call
+    // `clear_layers` on that no-mutation path — doing so would drop the tree
+    // just installed above with no `text_gen` bump to trigger a reparse,
+    // leaving the buffer unhighlighted until the next real edit.
+    //
+    // Fail oracle: gate `clear_layers` on `mutated` removed (call it
+    // unconditionally, as before this fix) → `layers()` is `None` here.
+    let mut identical = Buffer::new(Text::from(new_text), SelectionSet::default());
+    identical.set_path(Some(std::path::PathBuf::from("data.json")));
+    ed.reload_buffer_in_place(bid, identical);
+    ed.reparse_stale_buffers();
+    ed.reparse_stale_buffers();
+
+    let tree_after_noop_reload = ed
+        .state
+        .buffers
+        .get(bid)
+        .syntax
+        .as_ref()
+        .expect("highlighter must survive a byte-identical reload")
+        .layers()
+        .and_then(hume_treesitter::layers::SyntaxLayers::root_tree)
+        .expect("tree must still be installed after a byte-identical reload");
+    assert_eq!(
+        tree_after_noop_reload.root_node().end_byte(),
+        new_byte_len,
+        "the untouched tree must still be aligned to the (unchanged) content"
+    );
 }
 
 // ---------------------------------------------------------------------------
