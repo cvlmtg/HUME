@@ -163,6 +163,35 @@ fn inline_color_follows_the_highest_severity_on_the_line_not_the_leftmost() {
     );
 }
 
+/// `diagnostics-for-buffer` (no `#:severity`) must default to
+/// `lsp.diagnostics-severity-floor`, same as the underline/gutter-sign
+/// bridges — a below-floor diagnostic must not appear in the EOL summary
+/// either. And raising the floor at runtime must refresh already-rendered
+/// summaries via the `on-option-change` hook, not just future ones.
+#[test]
+fn eol_summary_respects_the_severity_floor_and_updates_when_it_changes() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let diag: DiagFixture = ((1, 0), (1, 2), 2, "just a warning"); // severity 2 = warning
+    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[diag]);
+    let bid = ed.focused_buffer_id();
+
+    assert_eq!(
+        ed.state.config.decorations.eol_text_for_buffer(bid).count(),
+        1,
+        "sanity: floor defaults to hint, so the warning shows"
+    );
+
+    run(&mut ed, ":set global lsp.diagnostics-severity-floor=error");
+    assert_eq!(
+        ed.state.config.decorations.eol_text_for_buffer(bid).count(),
+        0,
+        "raising the floor above the diagnostic's severity must both stop \
+         it appearing in future summaries and refresh the one already \
+         rendered"
+    );
+}
+
 #[test]
 fn diagnostics_on_different_lines_get_independent_entries() {
     let tmp = safe_tempdir();

@@ -292,6 +292,12 @@ pub(crate) fn wire_point_to_char_for_buffer(
 /// ready for `goto-location!` shape 2. Errors loudly on an unknown
 /// `#:severity` name (e.g. `'warn` typoed for `'warning`) rather than
 /// silently returning nothing that qualifies.
+///
+/// With no `#:severity`, defaults to `lsp.diagnostics-severity-floor` — the
+/// same floor `update_highlight_providers`/`update_sign_providers` apply to
+/// underlines/gutter signs, so a caller (e.g. the diagnostics plugin's EOL
+/// summary) agrees with what's on screen unless it explicitly asks for a
+/// different cut.
 pub(crate) fn diagnostics_for_buffer(
     state: &EditorState,
     lsp: &LspState,
@@ -301,7 +307,7 @@ pub(crate) fn diagnostics_for_buffer(
 ) -> Result<Vec<serde_json::Value>, String> {
     const CAP: usize = 1000;
     let floor = match severity_floor.map(str::parse::<DiagSeverity>) {
-        None => DiagSeverity::Hint, // most lenient — no filtering
+        None => state.settings.lsp_diagnostics_severity_floor,
         Some(Ok(f)) => f,
         Some(Err(e)) => return Err(e),
     };

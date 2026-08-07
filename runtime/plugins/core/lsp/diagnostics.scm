@@ -134,3 +134,14 @@
 ;;; explicitly rather than let the last inline summary sit rendered forever.
 (register-hook! 'on-lsp-detach
   (lambda (bid server-name) (set-eol-text! "lsp-diagnostics" bid '())))
+
+;;; `diagnostics-for-buffer` (no `#:severity`) reads
+;;; `lsp.diagnostics-severity-floor` as its default floor, same as the
+;;; underline/gutter-sign render bridges — but that only takes effect the
+;;; next time this plugin calls it. Without this hook, changing the floor at
+;;; runtime would leave every buffer's inline summary showing the old cut
+;;; until its next unrelated `on-diagnostics-changed` fire.
+(register-hook! 'on-option-change
+  (lambda (key value)
+    (when (equal? key "lsp.diagnostics-severity-floor")
+      (for-each lsp/refresh-inline-diagnostics (buffers)))))
