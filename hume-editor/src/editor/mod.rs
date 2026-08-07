@@ -24,6 +24,7 @@ use self::keymap::{Keymap, WaitCharPending};
 mod async_job;
 mod async_source;
 mod decoration_providers;
+mod diff_bridge;
 pub(crate) mod error;
 mod frame;
 pub(crate) mod host_impl;

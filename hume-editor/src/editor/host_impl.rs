@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
+use crate::editor::diff_bridge;
 use crate::editor::lsp::LspState;
 use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
@@ -21,8 +22,8 @@ use crate::lock_ext::LockExt;
 use crate::ui::statusline::StatusLineConfig;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
-    EditHost, EditorHost, EventHost, LanguageHost, LspHost, OptionValue, OutputHost, PopupKind,
-    SettingsHost, TimerHost, UiHost,
+    DiffHost, DiffHunk, EditHost, EditorHost, EventHost, LanguageHost, LspHost, OptionValue,
+    OutputHost, PopupKind, SettingsHost, TimerHost, UiHost,
 };
 
 use super::{EditorState, Severity};
@@ -166,6 +167,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     // The job registry lives on `self.state.config` — always reachable, no
     // `Option`-wrapped upstream field to gate on (unlike `timers`/`lsp`).
     fn async_process(&mut self) -> Option<&mut dyn AsyncProcessHost> {
+        Some(self)
+    }
+    fn diff(&mut self) -> Option<&mut dyn DiffHost> {
         Some(self)
     }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
@@ -748,6 +752,23 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
         // no-op if `id` already completed, was already cancelled, or never
         // existed (a spawn failure that already fired its callback above).
         self.state.config.async_jobs.remove(&id);
+    }
+}
+
+impl<'a> DiffHost for EditorHostImpl<'a> {
+    fn diff_lines(&self, old: &str, new: &str) -> Vec<DiffHunk> {
+        diff_bridge::line_hunks(
+            &hume_editing::text::Text::from(old),
+            &hume_editing::text::Text::from(new),
+        )
+    }
+
+    fn diff_buffer_lines(&self, bid: BufferId, ref_text: &str) -> Option<Vec<DiffHunk>> {
+        let buffer_text = self.buffer(bid)?.text();
+        Some(diff_bridge::line_hunks(
+            &hume_editing::text::Text::from(ref_text),
+            buffer_text,
+        ))
     }
 }
 
