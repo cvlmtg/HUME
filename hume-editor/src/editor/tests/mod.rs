@@ -619,6 +619,7 @@ mod buffer_store;
 mod command_mode;
 mod commands;
 mod completion;
+mod diff_steel;
 mod disk_change;
 mod dot_repeat;
 mod events;
