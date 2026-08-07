@@ -1,5 +1,5 @@
-// End-to-end Steel coverage for `diff-lines` / `diff-buffer-lines` (Phase 2a,
-// docs/GIT-DIFF.md).
+// End-to-end Steel coverage for `diff-lines` / `diff-buffer-lines` (Phase 2a)
+// and `diff-words` (Phase 2b), docs/GIT-DIFF.md.
 
 use std::path::Path;
 
@@ -67,4 +67,27 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
         fired,
         "diff-buffer-lines must diff the ref against the buffer's live text"
     );
+}
+
+/// `diff-words` returns a `(hunks . deadline-hit?)` dotted pair of 6-element
+/// char-offset tuples.
+///
+/// Fail oracle: any change to field order, offset base, or the dotted-pair-
+/// vs-list outer shape stops this probe from firing — it is the one test
+/// that pins the *registered* Steel shape, not just the Rust struct. Offsets
+/// worked out by hand from `split_word_bounds()`'s tokenization of "foo bar"
+/// (`"foo"`, `" "`, `"bar"`/`"baz"` — offsets `0,3,4,7`).
+#[test]
+fn diff_words_returns_a_hunks_and_deadline_hit_pair() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (diff-words "foo bar" "foo baz")
+                   (cons (list (list 4 7 4 7 "bar" "baz")) #f))"#,
+    );
+    assert!(fired, "diff-words must return the expected hunk/pair shape");
 }
