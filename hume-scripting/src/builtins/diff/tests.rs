@@ -28,6 +28,13 @@ fn diff_buffer_lines_blocked_in_init_mode() {
     assert!(super::super::errors::require_cmd(&h.ctx_init(), "diff-buffer-lines").is_err());
 }
 
+/// `diff-words` is blocked in init mode.
+#[test]
+fn diff_words_blocked_in_init_mode() {
+    let mut h = SteelCtxTestHarness::new();
+    assert!(super::super::errors::require_cmd(&h.ctx_init(), "diff-words").is_err());
+}
+
 // ── Type errors ────────────────────────────────────────────────────────────
 
 /// `diff-lines` rejects a non-string argument.
@@ -39,6 +46,39 @@ fn diff_lines_rejects_a_non_string_argument() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let result = diff_lines(&mut ctx, SteelVal::IntV(1), SteelVal::StringV("".into()));
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("expected a string")
+    );
+}
+
+/// `diff-words` rejects a non-string `old` argument.
+///
+/// Fail oracle: hand-roll a `to_string()` coercion instead of `string_arg` —
+/// `(diff-words 1 "x")` would silently diff the literal text `"1"`.
+#[test]
+fn diff_words_rejects_a_non_string_old_argument() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = diff_words(&mut ctx, SteelVal::IntV(1), SteelVal::StringV("".into()));
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("expected a string")
+    );
+}
+
+/// `diff-words` rejects a non-string `new` argument.
+#[test]
+fn diff_words_rejects_a_non_string_new_argument() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = diff_words(&mut ctx, SteelVal::StringV("".into()), SteelVal::IntV(1));
     assert!(result.is_err());
     assert!(
         result
@@ -92,5 +132,29 @@ fn diff_buffer_lines_rejects_an_unknown_buffer_id() {
             .unwrap_err()
             .to_string()
             .contains("invalid buffer id")
+    );
+}
+
+/// `diff-words` on a host with no `DiffHost` capability raises an error
+/// naming the builtin.
+///
+/// Fail oracle: `ctx.host.diff().map(...).unwrap_or_default()` instead of
+/// `require_cap` — a host that cannot diff at all would silently report
+/// "no differences" instead of failing.
+#[test]
+fn diff_words_reports_an_unsupported_host() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = diff_words(
+        &mut ctx,
+        SteelVal::StringV("foo bar".into()),
+        SteelVal::StringV("foo baz".into()),
+    );
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("not supported by this host")
     );
 }

@@ -92,6 +92,7 @@
 (#%register-global "diagnostics-for-buffer")
 (#%register-global "diff-buffer-lines")
 (#%register-global "diff-lines")
+(#%register-global "diff-words")
 (#%register-global "exit-insert")
 (#%register-global "find-backward")
 (#%register-global "find-forward")
