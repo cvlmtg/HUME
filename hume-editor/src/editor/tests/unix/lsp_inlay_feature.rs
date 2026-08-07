@@ -230,6 +230,108 @@ fn setting_off_via_set_command_clears_hints_through_the_plugin_hook() {
     );
 }
 
+/// Regression coverage for the `on-option-change` hook trusting the raw
+/// `:set` string instead of `get-option`'s coerced bool (`inlay.scm`'s
+/// handler used to test `(equal? value "true")`, so any of `parse-bool`'s
+/// other accepted spellings — `on`/`yes`/`1` — took the *else* branch and
+/// **cleared** hints instead of requesting them).
+///
+/// Writes through `settings_ops::apply_global` directly (the exact
+/// production path `:set global`/`set-option!`/`:theme` all funnel
+/// through — see its module doc) rather than `type_cmd(":set global …")`:
+/// typing and executing a command line opens and closes the minibuffer,
+/// which resizes the pane and queues its own `on-viewport-change`. That
+/// event independently re-requests hints via its own, already-correct
+/// `get-option` check, which would mask this bug — the hook's own branch,
+/// and nothing else, must be what re-requests them here. No
+/// `fire_viewport_change` for the same reason.
+#[test]
+fn setting_on_via_a_non_true_spelling_still_requests_hints() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+        // Three responses queued: the seeding "true" phase below sends two
+        // requests (the direct fire `fire_viewport_change` queues, plus the
+        // second, independent one `prepare_frame`'s scroll step arms via
+        // `debounce_viewport_change` — see the comment below), and the
+        // final "on" toggle sends a third.
+        for _ in 0..3 {
+            backend.respond_to(
+                "textDocument/inlayHint",
+                inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
+            );
+        }
+    });
+    let bid = ed.focused_buffer_id();
+
+    // Seed a synced viewport and one landed hint. Uses `fire_viewport_change`
+    // (unlike the toggles below) purely to establish the viewport
+    // `lsp/refresh-hints` needs — that event's own hint request is
+    // legitimate here, since the setting is already correctly on.
+    crate::editor::settings_ops::apply_global(
+        &mut ed.state,
+        &mut ed.view,
+        "lsp.inlay-hints",
+        "true",
+    )
+    .unwrap();
+    fire_viewport_change(&mut ed);
+    settle_after_debounce(&mut ed);
+    // `fire_viewport_change` -> `prepare_frame` also arms
+    // `debounce_viewport_change`'s own Rust-side timer (`lsp.viewport-debounce-ms`,
+    // 150ms by default) as a side effect of its scroll step seeing the
+    // pane's visible range change for the first time — a *second*,
+    // independent `on-viewport-change` fire, on top of the direct one
+    // `fire_viewport_change` queues itself. One `settle_after_debounce`
+    // round only guarantees the direct fire's request/response round trip
+    // completes; without draining this second one here too, it leaks into
+    // the toggles below and masks their outcome by re-requesting hints on
+    // its own, independent of what `on-option-change`'s branch does.
+    settle_after_debounce(&mut ed);
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count(),
+        1,
+        "sanity: the hint lands once the setting is on"
+    );
+
+    crate::editor::settings_ops::apply_global(
+        &mut ed.state,
+        &mut ed.view,
+        "lsp.inlay-hints",
+        "off",
+    )
+    .unwrap();
+    ed.settle();
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count(),
+        0,
+        "sanity: \"off\" clears, same as \"false\""
+    );
+
+    crate::editor::settings_ops::apply_global(&mut ed.state, &mut ed.view, "lsp.inlay-hints", "on")
+        .unwrap();
+    settle_after_debounce(&mut ed);
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count(),
+        1,
+        "\"on\" must behave identically to \"true\" and re-request the hint \
+         via the hook's own branch, not silently stay cleared"
+    );
+}
+
 #[test]
 fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
     let tmp = safe_tempdir();

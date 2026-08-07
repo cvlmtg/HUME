@@ -77,10 +77,13 @@
 ;;; hints must not vanish just because this setting toggles. This plugin
 ;;; owns clearing *its own* source when the setting turns off, and
 ;;; re-requesting hints for every visible buffer when it turns back on.
+;;; `value` (the raw `:set`/`set-option!` string) is ignored in favor of
+;;; `get-option`'s already-coerced bool — `value` could be "on"/"yes"/"1",
+;;; any of `parse-bool`'s accepted spellings, not just the literal "true".
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "lsp.inlay-hints")
-      (if (equal? value "true")
+      (if (get-option "lsp.inlay-hints")
           (for-each lsp/refresh-hints (buffers))
           (for-each (lambda (bid) (set-inlay-hints! "lsp-inlay-hints" bid '()))
                     (buffers))))))

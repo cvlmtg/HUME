@@ -129,10 +129,12 @@ pub(crate) enum EditorEvent {
     /// Buffer-scoped overrides (`:set`/`set-buffer-option!` without
     /// `global`) don't raise this: the payload has no `BufferId` to name,
     /// and `apply_buffer` has no per-key resync effects to piggyback on (see
-    /// its doc). `value` is the setting's already-coerced string form (same
-    /// representation `:set`/`set-option!` accept), not a typed value — a
-    /// plugin owning one setting's policy (e.g. the LSP inlay-hints plugin
-    /// reacting to `lsp.inlay-hints`) parses the one key it cares about.
+    /// its doc). `value` is the raw string `:set`/`set-option!` was given,
+    /// not its parsed/coerced form (`write_global` discards the parsed value
+    /// after validating it) — a plugin owning one setting's policy (e.g. the
+    /// LSP inlay-hints plugin reacting to `lsp.inlay-hints`) should re-read
+    /// `(get-option key)` for a typed value rather than pattern-match this
+    /// string.
     OnOptionChange {
         key: String,
         value: String,
