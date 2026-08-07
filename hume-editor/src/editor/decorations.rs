@@ -399,6 +399,15 @@ impl DecorationStores {
         self.clock
     }
 
+    /// `bid`'s current stamp — `0` if `bid` has never been touched by this
+    /// store (a fresh buffer, or one this store was reset since — see
+    /// `reset`). Bumped by every `set_*` call and `remove_buffer` for `bid`,
+    /// and by `remap_through` when a remap actually moved one of `bid`'s
+    /// entries.
+    pub(crate) fn generation(&self, bid: BufferId) -> u64 {
+        self.generation.get(&bid).copied().unwrap_or(0)
+    }
+
     /// Replaces `source`'s inlay hints for `bid` wholesale.
     pub(crate) fn set_inlay_hints(
         &mut self,
@@ -416,28 +425,6 @@ impl DecorationStores {
         bid: BufferId,
     ) -> impl Iterator<Item = &InlayHintEntry> {
         self.inlay_hints.for_buffer(bid).map(|(_, e)| e)
-    }
-
-    /// Replaces `source`'s EOL text for `bid` wholesale.
-    pub(crate) fn set_eol_text(
-        &mut self,
-        source: String,
-        bid: BufferId,
-        entries: Vec<EolTextEntry>,
-    ) {
-        self.eol_text.set(source, bid, entries);
-        self.touch(bid);
-    }
-
-    /// All EOL text entries for `bid`, across every source, paired with
-    /// their source name — the render write side needs the name for a
-    /// deterministic tie-break when a remap collapses two sources' entries
-    /// onto the same line (mirrors `signs_for_buffer`/`line_backgrounds_for_buffer`).
-    pub(crate) fn eol_text_for_buffer(
-        &self,
-        bid: BufferId,
-    ) -> impl Iterator<Item = (&str, &EolTextEntry)> {
-        self.eol_text.for_buffer(bid)
     }
 
     /// Replaces `source`'s signs for `bid` wholesale.
@@ -474,15 +461,6 @@ impl DecorationStores {
         self.touch(bid);
     }
 
-    /// `bid`'s current stamp — `0` if `bid` has never been touched by this
-    /// store (a fresh buffer, or one this store was reset since — see
-    /// `reset`). Bumped by every `set_*` call and `remove_buffer` for `bid`,
-    /// and by `remap_through` when a remap actually moved one of `bid`'s
-    /// entries.
-    pub(crate) fn generation(&self, bid: BufferId) -> u64 {
-        self.generation.get(&bid).copied().unwrap_or(0)
-    }
-
     /// All virtual-line entries for `bid`, across every source — the render
     /// write side merges them all into one per-line bucket.
     pub(crate) fn virtual_lines_for_buffer(
@@ -495,6 +473,54 @@ impl DecorationStores {
     #[cfg(test)]
     pub(crate) fn virtual_lines_for(&self, source: &str, bid: BufferId) -> &[VirtualLineEntry] {
         self.virtual_lines.entries_for(source, bid)
+    }
+
+    /// Replaces `source`'s EOL text for `bid` wholesale.
+    pub(crate) fn set_eol_text(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        entries: Vec<EolTextEntry>,
+    ) {
+        self.eol_text.set(source, bid, entries);
+        self.touch(bid);
+    }
+
+    /// All EOL text entries for `bid`, across every source, paired with
+    /// their source name — the render write side needs the name for a
+    /// deterministic tie-break when a remap collapses two sources' entries
+    /// onto the same line (mirrors `signs_for_buffer`/`line_backgrounds_for_buffer`).
+    pub(crate) fn eol_text_for_buffer(
+        &self,
+        bid: BufferId,
+    ) -> impl Iterator<Item = (&str, &EolTextEntry)> {
+        self.eol_text.for_buffer(bid)
+    }
+
+    /// Replaces `source`'s line backgrounds for `bid` wholesale.
+    pub(crate) fn set_line_backgrounds(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        entries: Vec<LineBgEntry>,
+    ) {
+        self.line_backgrounds.set(source, bid, entries);
+        self.touch(bid);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn line_backgrounds_for(&self, source: &str, bid: BufferId) -> &[LineBgEntry] {
+        self.line_backgrounds.entries_for(source, bid)
+    }
+
+    /// All line-background entries for `bid`, across every source, paired
+    /// with their source name — the render write side needs the name for a
+    /// deterministic tie-break when two sources tint the same line.
+    pub(crate) fn line_backgrounds_for_buffer(
+        &self,
+        bid: BufferId,
+    ) -> impl Iterator<Item = (&str, &LineBgEntry)> {
+        self.line_backgrounds.for_buffer(bid)
     }
 
     /// Replaces `source`'s extra highlights for `bid` wholesale.
@@ -526,44 +552,32 @@ impl DecorationStores {
         self.extra_highlights.for_buffer(bid).map(|(_, e)| e)
     }
 
-    /// Replaces `source`'s line backgrounds for `bid` wholesale.
-    pub(crate) fn set_line_backgrounds(
-        &mut self,
-        source: String,
-        bid: BufferId,
-        entries: Vec<LineBgEntry>,
-    ) {
-        self.line_backgrounds.set(source, bid, entries);
-        self.touch(bid);
-    }
-
-    #[cfg(test)]
-    pub(crate) fn line_backgrounds_for(&self, source: &str, bid: BufferId) -> &[LineBgEntry] {
-        self.line_backgrounds.entries_for(source, bid)
-    }
-
-    /// All line-background entries for `bid`, across every source, paired
-    /// with their source name — the render write side needs the name for a
-    /// deterministic tie-break when two sources tint the same line.
-    pub(crate) fn line_backgrounds_for_buffer(
-        &self,
-        bid: BufferId,
-    ) -> impl Iterator<Item = (&str, &LineBgEntry)> {
-        self.line_backgrounds.for_buffer(bid)
-    }
-
     /// Whether `bid` has any decoration, of any kind, that needs to stay in
     /// sync with edits — every kind remaps through `remap_through` now.
     /// `record_lsp_edits` (`doc_ops.rs`) uses this to queue a buffer's edits
     /// for the remap chokepoint even with no attached LSP server —
     /// decorations are not LSP-owned, LSP is just their first client.
+    ///
+    /// Exhaustive destructuring, no `..`: a new decoration kind fails to
+    /// compile here until it is listed, so a kind can never silently go
+    /// unreported to `has_any`'s callers.
     pub(crate) fn has_any(&self, bid: BufferId) -> bool {
-        !self.inlay_hints.is_empty_for(bid)
-            || !self.signs.is_empty_for(bid)
-            || !self.virtual_lines.is_empty_for(bid)
-            || !self.eol_text.is_empty_for(bid)
-            || !self.extra_highlights.is_empty_for(bid)
-            || !self.line_backgrounds.is_empty_for(bid)
+        let Self {
+            inlay_hints,
+            signs,
+            virtual_lines,
+            eol_text,
+            line_backgrounds,
+            extra_highlights,
+            generation: _,
+            clock: _,
+        } = self;
+        !inlay_hints.is_empty_for(bid)
+            || !signs.is_empty_for(bid)
+            || !virtual_lines.is_empty_for(bid)
+            || !eol_text.is_empty_for(bid)
+            || !line_backgrounds.is_empty_for(bid)
+            || !extra_highlights.is_empty_for(bid)
     }
 
     /// Drops every entry for `bid`, across every source and every kind —
@@ -576,13 +590,27 @@ impl DecorationStores {
     /// mirroring the pre-reload virtual lines at now-meaningless line
     /// anchors. Touching unconditionally (not just when a kind had entries)
     /// forces every pane on `bid` to resync.
+    ///
+    /// Exhaustive destructuring, no `..`: a new decoration kind fails to
+    /// compile here until it is listed, so closing or reloading a buffer can
+    /// never leave a stale kind behind.
     pub(crate) fn remove_buffer(&mut self, bid: BufferId) {
-        self.inlay_hints.remove_buffer(bid);
-        self.signs.remove_buffer(bid);
-        self.virtual_lines.remove_buffer(bid);
-        self.extra_highlights.remove_buffer(bid);
-        self.eol_text.remove_buffer(bid);
-        self.line_backgrounds.remove_buffer(bid);
+        let Self {
+            inlay_hints,
+            signs,
+            virtual_lines,
+            eol_text,
+            line_backgrounds,
+            extra_highlights,
+            generation: _,
+            clock: _,
+        } = self;
+        inlay_hints.remove_buffer(bid);
+        signs.remove_buffer(bid);
+        virtual_lines.remove_buffer(bid);
+        eol_text.remove_buffer(bid);
+        line_backgrounds.remove_buffer(bid);
+        extra_highlights.remove_buffer(bid);
         self.touch(bid);
     }
 
@@ -598,18 +626,32 @@ impl DecorationStores {
     /// first place. A remap that *did* touch something still moved
     /// positions, so cached consumers (the virtual-lines pane sync) must
     /// resync even though nothing called a `set_*` method.
+    ///
+    /// Exhaustive destructuring, no `..`: a new decoration kind fails to
+    /// compile here until it is listed, so a kind can never silently skip
+    /// the remap chokepoint and drift out of sync with its buffer's edits.
     pub(crate) fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {
+        let Self {
+            inlay_hints,
+            signs,
+            virtual_lines,
+            eol_text,
+            line_backgrounds,
+            extra_highlights,
+            generation: _,
+            clock: _,
+        } = self;
         // Every kind always attempts its remap — only whether to bump the
         // stamp is conditional. The array literal's eager evaluation (not
         // the iterator adapters below) is what guarantees none of these six
         // calls get short-circuited away.
         let touched = [
-            self.inlay_hints.remap_points(bid, cs),
-            self.signs.remap_points(bid, cs),
-            self.virtual_lines.remap_points(bid, cs),
-            self.eol_text.remap_points(bid, cs),
-            self.line_backgrounds.remap_points(bid, cs),
-            self.extra_highlights.remap_ranges(bid, cs),
+            inlay_hints.remap_points(bid, cs),
+            signs.remap_points(bid, cs),
+            virtual_lines.remap_points(bid, cs),
+            eol_text.remap_points(bid, cs),
+            line_backgrounds.remap_points(bid, cs),
+            extra_highlights.remap_ranges(bid, cs),
         ]
         .into_iter()
         .any(|kind_touched| kind_touched);
