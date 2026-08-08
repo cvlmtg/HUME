@@ -227,9 +227,14 @@ pub fn format_buffer_line(
     for chunk in line_slice.chunks() {
         scratch.line_texts.push_str(chunk);
     }
-    // Strip the trailing newline that ropey includes for non-final lines.
-    let had_newline = scratch.line_texts.ends_with('\n');
+    // Strip the trailing line break that ropey includes for non-final lines
+    // (any of `hume_rope::LINE_BREAKS`, not just `\n`) and detect it by
+    // length delta rather than `ends_with('\n')` — a line terminated by a
+    // non-LF break (bare `\r`, VT, FF, NEL, LS, PS) must still get the EOL
+    // sentinel below; testing only `'\n'` would silently drop it.
+    let len_before = scratch.line_texts.len();
     strip_line_ending(&mut scratch.line_texts);
+    let had_newline = scratch.line_texts.len() != len_before;
 
     let line_str = &scratch.line_texts[text_start..];
 
@@ -650,15 +655,16 @@ fn grapheme_display(
 ) -> (u8, CellContent) {
     // Tab: expand to next tab stop.
     //
-    // This is the renderer's tab-stop arithmetic. It is intentionally
-    // duplicated with `hume_editing::grapheme::display_col_in_line` (which
-    // serves the editing ops) rather than shared: `hume-engine` deliberately
-    // does not depend on `hume-editing` (engine has no knowledge of the text
-    // model), and the two diverge on purpose — here non-tab graphemes use
-    // `unicode-width` so wide CJK chars take 2 columns for rendering, while the
-    // editing helper counts every non-tab grapheme as 1 (so CJK-plus-tab
-    // mixtures may misalign a tab stop there; bounded and rare). See the doc on
-    // `display_col_in_line` for the divergence rationale.
+    // The stop-distance formula itself is shared — `tab_display_width` below
+    // delegates to `hume_rope::grapheme::tab_advance`, the same primitive
+    // `hume_rope::grapheme::display_col_in_line` (the editing-ops counterpart)
+    // uses. What stays genuinely separate is the *column-counting* convention:
+    // this function counts wide CJK graphemes as 2 columns via `unicode-width`
+    // (the display-accurate choice for rendering), while `display_col_in_line`
+    // counts every non-tab grapheme as 1 (it walks a `&Text` char range, not a
+    // rendered `&str` line, so display width isn't available there) — so
+    // CJK-plus-tab mixtures may misalign a tab stop in editing ops; bounded
+    // and rare.
     if grapheme_str == "\t" {
         let display_width = tab_display_width(current_col, tab_width);
         let content = if should_render_whitespace(whitespace.tab, is_trailing) {
@@ -808,7 +814,7 @@ pub(crate) fn compute_indent_depth(line_str: &str, tab_width: u8) -> u8 {
     for b in line_str.bytes() {
         match b {
             b' ' => col += 1,
-            b'\t' => col = (col / tw + 1) * tw,
+            b'\t' => col += hume_rope::grapheme::tab_advance(col, tw),
             _ => break,
         }
     }

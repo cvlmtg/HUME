@@ -137,6 +137,38 @@ fn viewport_change_triggers_one_debounced_request() {
     assert_eq!(request_count(&requests, "textDocument/inlayHint"), 1);
 }
 
+/// `lsp/inlay-hint-params` builds its wire `range` straight from
+/// `viewport-range`, already 0-based end-exclusive — no `+ 1` needed.
+/// Nothing else in this file inspects the request's `params`, so a stray
+/// `+ 1` (re-adding the pre-exclusive-range LSP-end-conversion) would ask
+/// for one line past the pane's actual viewport with no test failing.
+///
+/// Fail oracle: change `inlay.scm`'s `"end" (hash "line" end ...)` to
+/// `(hash "line" (+ end 1) ...)` — `range.end.line` below becomes 2.
+#[test]
+fn inlay_hint_request_range_matches_the_viewport() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
+    });
+    ed.state.settings.lsp_inlay_hints = true;
+
+    fire_viewport_change(&mut ed);
+    settle_after_debounce(&mut ed);
+
+    let log = requests.borrow();
+    let (_, _, params) = log
+        .iter()
+        .find(|(_, method, _)| method == "textDocument/inlayHint")
+        .expect("one textDocument/inlayHint request must have fired");
+    // Fixture buffer ("let x = 1;\n") has exactly one content line, so
+    // `viewport-range` clamps to it regardless of the pane's exact height.
+    assert_eq!(params["range"]["start"]["line"], 0);
+    assert_eq!(params["range"]["end"]["line"], 1);
+}
+
 #[test]
 fn setting_off_sends_no_request() {
     let tmp = safe_tempdir();

@@ -16,7 +16,7 @@
 //! `// single-funnel-exempt: <reason>`. Use only for a deliberate second
 //! dispatch path with its own equivalent bookkeeping — rare.
 
-use super::{collect_source_rs, strip_line_comment};
+use super::{collect_source_rs, scan_forbidden};
 
 /// Forbid any site outside `commands/pipeline.rs` from binding the `fun` field of
 /// a native `MappableCommand` variant (`Motion { fun`, `Selection { fun`,
@@ -58,93 +58,28 @@ fn single_native_dispatch_funnel() {
     // Only this file is the single legal executor of native commands.
     let allowed_file = "src/editor/commands/pipeline.rs";
 
-    let mut violations: Vec<String> = Vec::new();
-
     let src_root = root.join("src");
     let mut paths: Vec<std::path::PathBuf> = Vec::new();
     collect_source_rs(&src_root, &mut paths);
-
-    for path in &paths {
-        let rel = path
-            .strip_prefix(root)
-            .unwrap_or(path)
+    // The allowed file may contain these patterns — it IS the funnel.
+    paths.retain(|p| {
+        p.strip_prefix(root)
+            .unwrap_or(p)
             .to_string_lossy()
-            .replace('\\', "/");
+            .replace('\\', "/")
+            != allowed_file
+    });
 
-        // The allowed file may contain these patterns — it IS the funnel.
-        if rel == allowed_file {
-            continue;
-        }
-
-        let src = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-
-        let mut in_test_block = false;
-        let mut brace_depth: i64 = 0;
-        let mut test_entry_depth: i64 = 0;
-        let mut saw_cfg_test = false;
-        // Previous non-test source line, kept so an exempt marker on the line
-        // *above* a violation suppresses it. `cargo fmt` hoists trailing
-        // comments onto their own line, so the marker often sits above the
-        // forbidden pattern rather than beside it.
-        let mut prev_line: &str = "";
-
-        for (lineno, line) in src.lines().enumerate() {
-            let trimmed = line.trim();
-
-            // Track the previous source line for the preceding-line opt-out.
-            // Done first so every `continue` below still keeps prev_line in
-            // sync with the real line history.
-            let prev_for_exempt = prev_line;
-            prev_line = line;
-
-            if trimmed == "#[cfg(test)]" {
-                saw_cfg_test = true;
-            }
-            if saw_cfg_test && trimmed.starts_with("mod tests") {
-                in_test_block = true;
-                test_entry_depth = brace_depth;
-                saw_cfg_test = false;
-            }
-
-            let opens = line.chars().filter(|&c| c == '{').count() as i64;
-            let closes = line.chars().filter(|&c| c == '}').count() as i64;
-            brace_depth += opens - closes;
-            if in_test_block && brace_depth <= test_entry_depth {
-                in_test_block = false;
-            }
-
-            if in_test_block {
-                continue;
-            }
-
-            if trimmed.starts_with("//") {
-                continue;
-            }
-
-            // Same-line opt-out (marker sits beside the forbidden pattern).
-            if line.contains("// single-funnel-exempt:") {
-                continue;
-            }
-
-            let code = strip_line_comment(line);
-
-            for pattern in forbidden_patterns {
-                if code.contains(pattern) {
-                    // Previous-line opt-out: marker on the line above the
-                    // forbidden pattern. fmt moves trailing comments above,
-                    // so this is the common placement.
-                    if prev_for_exempt.contains("// single-funnel-exempt:") {
-                        continue;
-                    }
-                    violations.push(format!(
-                        "  {rel}:{} — `{pattern}` outside dispatch funnel: {trimmed}",
-                        lineno + 1,
-                    ));
-                }
-            }
-        }
-    }
+    let violations: Vec<String> =
+        scan_forbidden(&paths, root, forbidden_patterns, "// single-funnel-exempt:")
+            .into_iter()
+            .map(|v| {
+                format!(
+                    "  {}:{} — `{}` outside dispatch funnel: {}",
+                    v.file, v.lineno, v.pattern, v.trimmed
+                )
+            })
+            .collect();
 
     assert!(
         violations.is_empty(),

@@ -33,7 +33,7 @@ fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayRow>, Vec<Grapheme>
     let ws = WhitespaceConfig::default();
     let inserts = Vec::new();
     let mut scratch = FormatScratch::new();
-    for line_idx in 0..rope.len_lines() {
+    for line_idx in hume_rope::ropey_lines_range(&rope) {
         format_buffer_line(
             &rope,
             line_idx,
@@ -75,6 +75,50 @@ fn eol_sentinel_emitted_on_non_empty_line() {
     );
     assert_eq!(sentinel.col, 5, "sentinel one past last char");
     assert_eq!(sentinel.char_offset, 5, "sentinel at \\n char offset");
+}
+
+#[test]
+fn eol_sentinel_emitted_for_non_lf_line_break() {
+    // "a\rb\n" — ropey (unicode_lines) splits line 0 at the bare '\r'
+    // ("a\r"), which `Text::from` never normalizes (only "\r\n" pairs are
+    // collapsed). The sentinel must still be emitted: `had_newline` has to
+    // be derived from what `strip_line_ending` actually removed, not from
+    // an `ends_with('\n')` check that a non-LF terminator never satisfies.
+    let (rows, graphemes) = do_format("a\rb\n", WrapMode::None);
+    assert_eq!(rows.len(), 3, "\"a\\r\", \"b\\n\", \"\" (trailing)");
+    let row0_gs = &graphemes[rows[0].graphemes.clone()];
+    assert_eq!(row0_gs.len(), 2, "1 content grapheme + eol sentinel");
+    let sentinel = &row0_gs[1];
+    assert!(
+        matches!(sentinel.content, CellContent::Empty),
+        "sentinel must be Empty"
+    );
+    assert_eq!(sentinel.col, 1, "sentinel one past 'a'");
+    assert_eq!(sentinel.char_offset, 1, "sentinel at the '\\r' char offset");
+}
+
+#[test]
+fn empty_line_terminated_by_non_lf_break_still_gets_a_sentinel_row() {
+    // "\rx\n" — line 0 is just "\r" (empty content, non-LF terminator).
+    // Every content row must have at least one grapheme (rows.rs's
+    // `locate_in_line` documents this as an invariant); a `had_newline`
+    // check narrowed to '\n' would strip nothing, leave the '\r' as
+    // content, and never hit this path at all — regressing to a row with
+    // zero graphemes for a line that ends with a break ropey doesn't
+    // consider '\n'.
+    let (rows, graphemes) = do_format("\rx\n", WrapMode::None);
+    assert_eq!(rows.len(), 3, "\"\\r\", \"x\\n\", \"\" (trailing)");
+    let row0_gs = &graphemes[rows[0].graphemes.clone()];
+    assert_eq!(row0_gs.len(), 1, "exactly one sentinel grapheme");
+    assert!(
+        matches!(row0_gs[0].content, CellContent::Empty),
+        "sentinel must be Empty"
+    );
+    assert_eq!(row0_gs[0].col, 0);
+    assert_eq!(
+        row0_gs[0].char_offset, 0,
+        "sentinel at the '\\r' char offset"
+    );
 }
 
 #[test]
@@ -300,7 +344,7 @@ fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayRow>, Vec<Graph
     let rope = Rope::from_str(text);
     let inserts = Vec::new();
     let mut scratch = FormatScratch::new();
-    for line_idx in 0..rope.len_lines() {
+    for line_idx in hume_rope::ropey_lines_range(&rope) {
         format_buffer_line(
             &rope,
             line_idx,
@@ -655,7 +699,7 @@ fn do_format_windowed(
     let ws = WhitespaceConfig::default();
     let inserts = Vec::new();
     let mut scratch = FormatScratch::new();
-    for line_idx in 0..rope.len_lines() {
+    for line_idx in hume_rope::ropey_lines_range(&rope) {
         format_buffer_line(
             &rope,
             line_idx,

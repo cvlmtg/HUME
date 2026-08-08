@@ -84,6 +84,110 @@ fn strip_line_comment(line: &str) -> &str {
     line
 }
 
+/// One forbidden-pattern hit found by [`scan_forbidden`].
+struct Violation {
+    /// `path` relative to the caller's `display_root` (or the absolute path,
+    /// if `path` doesn't start with `display_root`).
+    file: String,
+    /// 1-based line number.
+    lineno: usize,
+    pattern: &'static str,
+    /// The offending line, trimmed of leading/trailing whitespace.
+    trimmed: String,
+}
+
+/// Scan `paths` for any of `forbidden` patterns in active (non-test,
+/// non-comment) code — the skeleton shared by every forbidden-pattern lint
+/// in this module (`#[cfg(test)] mod tests { … }` tracking via brace depth,
+/// comment stripping, and a two-tier opt-out).
+///
+/// An opt-out comment containing `marker` (e.g. `"// grapheme-safe:"`)
+/// suppresses a hit when it appears on the violation line itself, or on the
+/// line immediately above it — `cargo fmt` hoists trailing comments onto
+/// their own line, so the marker often ends up above the forbidden pattern
+/// rather than beside it, and a same-line-only check silently stops working
+/// under formatting.
+fn scan_forbidden(
+    paths: &[std::path::PathBuf],
+    display_root: &std::path::Path,
+    forbidden: &[&'static str],
+    marker: &str,
+) -> Vec<Violation> {
+    let mut violations = Vec::new();
+
+    for path in paths {
+        let file = path
+            .strip_prefix(display_root)
+            .unwrap_or(path)
+            .display()
+            .to_string();
+        let src = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+
+        // Track whether we are inside a `#[cfg(test)] mod tests { … }` block
+        // so violations there don't get flagged.
+        let mut in_test_block = false;
+        let mut brace_depth: i64 = 0;
+        let mut test_entry_depth: i64 = 0;
+        let mut saw_cfg_test = false;
+        // Previous non-blank source line, kept so an opt-out marker on the
+        // line *above* a violation suppresses it (see the preceding-line
+        // opt-out rationale above).
+        let mut prev_line: &str = "";
+
+        for (lineno, line) in src.lines().enumerate() {
+            let trimmed = line.trim();
+            let prev_for_exempt = prev_line;
+            prev_line = line;
+
+            if trimmed == "#[cfg(test)]" {
+                saw_cfg_test = true;
+            }
+            if saw_cfg_test && trimmed.starts_with("mod tests") {
+                in_test_block = true;
+                test_entry_depth = brace_depth;
+                saw_cfg_test = false;
+            }
+
+            let opens = line.chars().filter(|&c| c == '{').count() as i64;
+            let closes = line.chars().filter(|&c| c == '}').count() as i64;
+            brace_depth += opens - closes;
+            if in_test_block && brace_depth <= test_entry_depth {
+                in_test_block = false;
+            }
+
+            if in_test_block {
+                continue;
+            }
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            // Same-line opt-out.
+            if line.contains(marker) {
+                continue;
+            }
+
+            let code = strip_line_comment(line);
+            for &pattern in forbidden {
+                if code.contains(pattern) {
+                    // Preceding-line opt-out.
+                    if prev_for_exempt.contains(marker) {
+                        continue;
+                    }
+                    violations.push(Violation {
+                        file: file.clone(),
+                        lineno: lineno + 1,
+                        pattern,
+                        trimmed: trimmed.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    violations
+}
+
 /// Extracts every double-quoted string literal's contents from `s`,
 /// verbatim (no escape processing — plugin command names never contain a
 /// `"`, so a naive quote-delimited split is exact here).

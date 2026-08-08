@@ -350,7 +350,7 @@ fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-viewport-change (lambda (bid first last) (call! "move-right")))"#,
+        r#"(register-hook! 'on-viewport-change (lambda (bid first end) (call! "move-right")))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

@@ -73,6 +73,16 @@ pub struct Text {
     line_ending: LineEnding,
 }
 
+/// True if `rope` satisfies the invariant every `Text` upholds by
+/// construction: non-empty, and ending with `'\n'`. Stricter than
+/// [`hume_rope::ends_with_newline`] — that one (correctly, for its own
+/// generic-rope callers) treats a truly empty rope as vacuously fine; a HUME
+/// buffer never is, so this crate's own gates ([`Text::from_rope`],
+/// `ChangeSet::apply`) require it non-empty too.
+pub(crate) fn is_valid_buffer_rope(rope: &Rope) -> bool {
+    rope.len_chars() > 0 && hume_rope::ends_with_newline(rope)
+}
+
 impl Text {
     /// Wrap a raw `Rope` into a `Text`.
     ///
@@ -88,7 +98,7 @@ impl Text {
         // Raw constructor for ChangeSet::apply — no CRLF normalization needed
         // because the source buffer was already normalized on load.
         debug_assert!(
-            rope.len_chars() > 0 && rope.char(rope.len_chars() - 1) == '\n',
+            is_valid_buffer_rope(&rope),
             "Text invariant violated: rope must end with '\\n' (len={})",
             rope.len_chars(),
         );
@@ -170,12 +180,6 @@ impl Text {
     /// Index of the last ropey line — the phantom trailing line.
     pub fn last_ropey_line(&self) -> usize {
         hume_rope::last_ropey_line(&self.rope)
-    }
-
-    /// `0..ropey_line_count()` — every line index ropey considers valid,
-    /// phantom line included.
-    pub fn ropey_lines_range(&self) -> Range<usize> {
-        hume_rope::ropey_lines_range(&self.rope)
     }
 
     /// Number of content lines: every HUME buffer ends with a structural

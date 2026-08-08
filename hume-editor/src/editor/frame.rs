@@ -457,11 +457,12 @@ impl Editor {
     /// [`Self::visible_char_range`] and [`Self::visible_line_range`]. These
     /// render-side helpers deliberately return a one-row *superset* of it
     /// (its end plus one more row) — cheap over-fetch beats a wrap-aware
-    /// exact bound for a bulk store slice. `lsp::introspect::
-    /// pane_visible_range` is end-exclusive too now, so the two conventions
-    /// differ only in that one-row slack, not in inclusive-vs-exclusive —
-    /// they still don't share an implementation, since one clamps to
-    /// `content_lines` and the other to the ropey-domain line count.
+    /// exact bound for a bulk store slice. Both this range and
+    /// `lsp::introspect::pane_visible_range` are end-exclusive, so the two
+    /// conventions differ only in that one-row slack, not in
+    /// inclusive-vs-exclusive — they still don't share an implementation,
+    /// since one clamps to `content_lines` and the other to the ropey-domain
+    /// line count.
     fn visible_line_bounds(&self, pid: PaneId) -> Range<usize> {
         let vp = &self.view.panes[pid].viewport;
         let top_line = vp.top_line;

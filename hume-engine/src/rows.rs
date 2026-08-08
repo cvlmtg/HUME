@@ -169,7 +169,7 @@ impl<'a> RowMap<'a> {
         scratch: &'a mut FormatScratch,
     ) -> Self {
         debug_assert!(
-            rope.len_chars() == 0 || rope.char(rope.len_chars() - 1) == '\n',
+            hume_rope::ends_with_newline(rope),
             "RowMap requires a trailing '\\n' (the buffer invariant) — \
              without it `last_line`'s content-line derivation drops the \
              rope's actual last content line"
@@ -654,11 +654,10 @@ impl<'a> RowMap<'a> {
         };
 
         let start = first_char_of(rows.get(sub)?)?;
-        // Every HUME buffer ends with `\n`, so `line + 1` is always a line.
         let end = rows
             .get(sub + 1)
             .and_then(first_char_of)
-            .unwrap_or_else(|| self.rope.line_to_char(pos.line + 1));
+            .unwrap_or_else(|| hume_rope::line_end_exclusive(self.rope, pos.line));
         Some((start, end))
     }
 

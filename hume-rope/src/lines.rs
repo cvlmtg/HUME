@@ -2,11 +2,13 @@ use ropey::Rope;
 use std::ops::Range;
 
 /// True if `rope` satisfies the trailing-newline invariant every HUME
-/// buffer upholds by construction: empty, or ending in `'\n'`. Debug-only —
-/// content-domain functions assert this rather than defend against it,
-/// since a caller violating it is exactly the bug class this crate exists
-/// to surface.
-fn ends_with_newline(rope: &Rope) -> bool {
+/// buffer upholds by construction: empty, or ending in `'\n'`. The single
+/// source of truth for that check — [`content_line_count`] asserts it
+/// (a caller violating it is exactly the bug class this crate exists to
+/// surface), while callers that must reject a violation at runtime instead
+/// of trusting it (constructing a `Text`, applying a `ChangeSet`) check it
+/// directly.
+pub fn ends_with_newline(rope: &Rope) -> bool {
     let len = rope.len_chars();
     len == 0 || rope.char(len - 1) == '\n'
 }
@@ -71,7 +73,7 @@ pub fn content_lines_range(rope: &Rope) -> Range<usize> {
 /// NEL, LS, PS. `hume_editing::text::Text::from` only collapses `\r\n`
 /// pairs, so every other form survives into the rope and can terminate a
 /// line token.
-pub const LINE_BREAKS: [char; 7] = [
+pub(crate) const LINE_BREAKS: [char; 7] = [
     '\n', '\r', '\u{0B}', '\u{0C}', '\u{85}', '\u{2028}', '\u{2029}',
 ];
 

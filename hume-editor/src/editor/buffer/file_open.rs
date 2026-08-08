@@ -199,7 +199,7 @@ impl Editor {
     ///
     /// Used by the no-arg `:e`/`:e!` reload branch.
     pub(crate) fn reload_buffer_in_place(&mut self, id: BufferId, mut new_doc: Buffer) {
-        use hume_editing::lines::snap_to_grapheme_boundary;
+        use hume_editing::lines::{line_end_exclusive, snap_to_grapheme_boundary};
         use hume_editing::selection::{Selection, SelectionSet};
 
         // ── Phase 1: capture (line, col) per pane + focused pane's pre_sels ──
@@ -235,10 +235,7 @@ impl Editor {
             for &(pid, line, col) in &cursor_coords {
                 let target_line = line.min(last_line);
                 let line_start = new_text.line_to_char(target_line);
-                // target_line <= last_line = last_content_line(), so
-                // target_line + 1 <= last_ropey_line() < ropey_line_count() —
-                // line_to_char is safe.
-                let line_end = new_text.line_to_char(target_line + 1).saturating_sub(1);
+                let line_end = line_end_exclusive(new_text, target_line) - 1;
                 let target = (line_start + col).min(line_end);
                 let head = snap_to_grapheme_boundary(new_text, line_start, target);
                 heads.push((pid, head));

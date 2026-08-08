@@ -302,6 +302,58 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
     );
 }
 
+/// `lsp/visible-lines` is `viewport-range`'s exclusive width with no `+ 1` —
+/// `viewport-range` is already end-exclusive, so re-adding the old
+/// inclusive-range `+ 1` workaround would overcount by one line and shift
+/// the ⅓ popup/drawer threshold (`lsp/show-hover`) by one. The default
+/// 24-row pane can't tell the two formulas apart (`⌊24/3⌋ == ⌊25/3⌋ == 8`,
+/// see `tall_content_docks_instead_of_using_the_drawer` below); a 23-row
+/// pane can (`⌊23/3⌋ == 7`, `⌊24/3⌋ == 8`).
+///
+/// Fail oracle: reinstating `(+ 1 (- (cdr range) (car range)))` in
+/// `lib.scm`'s `lsp/visible-lines` reports 24 visible lines instead of 23,
+/// raising the threshold to 8 — 8 content lines would then float instead of
+/// dock, failing the first assertion below.
+#[test]
+fn visible_lines_threshold_has_no_off_by_one_from_the_old_inclusive_range() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let eight_lines = (0..8)
+        .map(|i| format!("line{i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let (mut ed, _guard, _sid) = setup(
+        file_dir.path(),
+        tmp.path(),
+        serde_json::json!({"capabilities": {"hoverProvider": true}}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/hover",
+                serde_json::json!({"contents": eight_lines}),
+            );
+        },
+    );
+    ed.viewport_mut().height = 23;
+
+    run_hover(&mut ed);
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    assert!(
+        popup_lines(&ed).is_none(),
+        "8 lines against a 23-row pane (threshold 7) must dock, not float"
+    );
+    assert!(
+        matches!(
+            ed.state.config.popup.as_ref().map(|p| &p.layout),
+            Some(crate::ui::popup::PopupLayout::Docked)
+        ),
+        "must be a docked popup, not the drawer"
+    );
+}
+
 #[test]
 fn tall_content_docks_instead_of_using_the_drawer() {
     let tmp = safe_tempdir();

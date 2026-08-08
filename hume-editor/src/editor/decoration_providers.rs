@@ -11,7 +11,7 @@ use hume_engine::types::EditorMode;
 use super::Editor;
 use crate::editor::lsp::diagnostics::DiagSeverity;
 use crate::lock_ext::LockExt;
-use hume_editing::lines::line_end_exclusive;
+use hume_editing::lines::{char_to_line_byte, line_end_exclusive, line_segments};
 use hume_ops::pair::find_bracket_pair;
 
 impl Editor {
@@ -867,24 +867,6 @@ fn visible_line_anchored<'a, E: Clone + 'a>(
                 .then(|| (source.to_string(), line, e.clone()))
         })
         .collect()
-}
-
-/// See [`hume_rope::char_to_line_byte`].
-fn char_to_line_byte(buf: &hume_editing::text::Text, char_pos: usize) -> (usize, usize) {
-    hume_rope::char_to_line_byte(buf.rope(), char_pos)
-}
-
-/// See [`hume_rope::line_segments`]. Shared by [`push_match_highlight_lines`]
-/// (search/bracket matches, one scope per provider) and
-/// [`push_priority_highlight_lines`] (diagnostics/extra highlights, one
-/// scope + priority per range) — same per-line splitting math, only the
-/// tuple shape differs.
-fn line_segments(
-    buf: &hume_editing::text::Text,
-    start: usize,
-    end_char_excl: usize,
-) -> impl Iterator<Item = (usize, usize, usize)> + '_ {
-    hume_rope::line_segments(buf.rope(), start, end_char_excl)
 }
 
 /// Push one `(line, byte_start, byte_end, scope)` quadruple per line the

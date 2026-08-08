@@ -330,7 +330,7 @@ impl ChangeSet {
             }
         }
 
-        if rope.len_chars() == 0 || rope.char(rope.len_chars() - 1) != '\n' {
+        if !crate::text::is_valid_buffer_rope(&rope) {
             return Err(ApplyError::TrailingNewlineMissing);
         }
         Ok(Text::from_rope(rope, buf.line_ending()))

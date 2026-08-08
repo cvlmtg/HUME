@@ -222,7 +222,7 @@ Four tiers, cheapest first.
 Test-writing rules that bite here specifically:
 - **Independent oracle**: the ChangeSet→LSP-edit converter's own test applies the emitted LSP events to a plain `String` mirror and compares with the post-edit rope — never re-derive expectations through the converter itself.
 - **Flip check**: after writing a test, break the code (flip a condition) and confirm the test fails.
-- **Grapheme rules don't apply to wire math**: protocol positions are char/code-unit based — use the position-encoding conversion helpers, not grapheme helpers, for codec/conversion code. Grapheme discipline still governs anything selection-like (e.g. "symbol under cursor"). The `no_raw_char_stepping_in_motion_code` lint only scans `ops/` + `lines.rs`/`word.rs`; don't move protocol math there.
+- **Grapheme rules don't apply to wire math**: protocol positions are char/code-unit based — use the position-encoding conversion helpers, not grapheme helpers, for codec/conversion code. Grapheme discipline still governs anything selection-like (e.g. "symbol under cursor"). The `no_raw_char_stepping_in_motion_code` lint only scans `ops/` + `lines.rs`/`word.rs` (plus `hume-rope`'s own `lines.rs`); don't move protocol math there.
 - Shared-state test mutexes: recover from poison with `unwrap_or_else(|e| e.into_inner())`.
 
 ## Step 0 — Prerequisites

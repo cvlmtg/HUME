@@ -46,6 +46,20 @@ pub fn place_column(buf: &Text, line: usize, col: usize) -> usize {
     hume_rope::place_column(buf.rope(), line, col)
 }
 
+/// See [`hume_rope::char_to_line_byte`].
+pub fn char_to_line_byte(buf: &Text, char_pos: usize) -> (usize, usize) {
+    hume_rope::char_to_line_byte(buf.rope(), char_pos)
+}
+
+/// See [`hume_rope::line_segments`].
+pub fn line_segments(
+    buf: &Text,
+    start: usize,
+    end_char_excl: usize,
+) -> impl Iterator<Item = (usize, usize, usize)> + '_ {
+    hume_rope::line_segments(buf.rope(), start, end_char_excl)
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

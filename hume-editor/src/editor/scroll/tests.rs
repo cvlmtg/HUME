@@ -574,7 +574,7 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         for height in [1u16, 2, 5, 8] {
             for top in [0usize, 2, 5, 9] {
-                for line in 0..r.len_lines() - 1 {
+                for line in hume_rope::content_lines_range(&r) {
                     let cursor_char = r.line_to_char(line);
                     let mut v = viewport(top, height, 80);
 

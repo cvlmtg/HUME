@@ -403,9 +403,9 @@ pub(crate) fn range_params(
 /// the buffer.
 ///
 /// `height.max(1)` (not `height` directly): a `height == 0` pane (no visible
-/// rows) still reports a one-line range rather than an empty one — matches
-/// this function's behavior before the exclusive-range conversion, not a new
-/// choice made here.
+/// rows, e.g. one not yet laid out) still reports a one-line range rather
+/// than an empty one, so callers always get at least the pane's top line
+/// instead of a degenerate empty range.
 pub(crate) fn pane_visible_range(pane: &Pane, content_lines: usize) -> Range<usize> {
     let first_line = pane.viewport.top_line;
     let visible_rows = pane.viewport.height.max(1) as usize;

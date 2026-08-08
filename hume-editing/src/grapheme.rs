@@ -14,11 +14,6 @@ pub fn prev_grapheme_boundary(buf: &Text, char_offset: usize) -> usize {
     hume_rope::grapheme::prev_grapheme_boundary(buf.full_slice(), char_offset)
 }
 
-/// See [`hume_rope::grapheme::grapheme_count`].
-pub fn grapheme_count(buf: &Text, from_char: usize, to_char: usize) -> usize {
-    hume_rope::grapheme::grapheme_count(buf.full_slice(), from_char, to_char)
-}
-
 /// See [`hume_rope::grapheme::grapheme_col_in_line`].
 pub fn grapheme_col_in_line(buf: &Text, line_idx: usize, char_pos: usize) -> usize {
     hume_rope::grapheme::grapheme_col_in_line(buf.full_slice(), line_idx, char_pos)

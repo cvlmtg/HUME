@@ -205,9 +205,10 @@ pub fn tab_advance(col: usize, tw: usize) -> usize {
 /// Deliberately diverges from the renderer's
 /// `hume_engine::format::grapheme_display`: the renderer uses `unicode-width`
 /// so wide CJK chars take 2 columns for display, while this helper counts
-/// every non-tab grapheme as 1 — see the comment on `grapheme_display` for
-/// the rationale. `hume-engine` cannot share this implementation directly
-/// (it formats a `&str` line, not a `RopeSlice`), so the two stay separate.
+/// every non-tab grapheme as 1 (it walks a `&Text` char range, not a rendered
+/// `&str` line, so display width isn't available here). The shared
+/// tab-*stop-distance* arithmetic ([`tab_advance`]) is not part of this
+/// divergence — both sides delegate to it.
 ///
 /// Used by `insert_tab` (Soft style: insert spaces to the next tab stop) and
 /// by dedent-on-Backspace (compute the previous tab stop).

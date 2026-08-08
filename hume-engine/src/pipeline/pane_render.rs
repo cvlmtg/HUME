@@ -255,7 +255,7 @@ impl LineStyle {
             style,
         );
         let start_char = pane_ctx.rope.line_to_char(line_idx);
-        let end_char = pane_ctx.rope.line_to_char(line_idx + 1);
+        let end_char = hume_rope::line_end_exclusive(pane_ctx.rope, line_idx);
         // Cursorline highlights only the primary cursor's line.
         let is_head_line = style
             .primary_idx_in_sorted
