@@ -7,7 +7,8 @@
 - New `set-line-backgrounds!` scripting builtin sets a full-row background tint on a line, the same `(set-X! source bid entries)` shape as the other decoration setters.
 - New `lsp-position->offset`/`lsp-range->offsets` scripting builtins convert a raw LSP wire position/range into a buffer char offset, or `#f` if the buffer has no attached server.
 - New `on-option-change` hook fires `(key value)` after a global setting is changed via `:set global`, `set-option!`, or `:theme`.
-- New `on-text-changed` hook fires `(buffer-id)` when a buffer's text changes — edits, undo, redo, `:e!` reload, and read-only view refreshes (`:messages`, `:ls`) alike, coalesced into one fire per triggering command rather than one per underlying mutation.
+- New `on-text-changed` hook fires `(buffer-id)` when a buffer's text changes — edits, undo, redo, `:e!` reload, and read-only view refreshes (`:messages`, `:ls`, `:plugin-status`) alike, coalesced into one fire per triggering command rather than one per underlying mutation.
+- New `spawn-async!`/`cancel-async!` scripting builtins run a subprocess in the background: `callback` fires once with `(stdout stderr exit-code)` when it finishes, without blocking the editor.
 - **Breaking**: `set-inline-diagnostics!` is renamed `set-eol-text!` and now takes a `source` argument first: `(set-eol-text! source bid entries)`, matching every other decoration setter's `(set-X! source bid entries)` shape.
 - **Breaking**: `set-inlay-hints!` now takes a `source` argument first — `(set-inlay-hints! source bid hints)` — and each hint's position is a plain buffer char offset instead of an LSP wire `{"line" ... "character" ...}` hashmap. Convert a wire position first with the new `lsp-position->offset`/`lsp-range->offsets` builtins.
 - **Breaking**: `set-virtual-lines!`'s entries are now hashmaps (`(hash 'line ... 'text ... 'scope ... 'anchor ... 'segments ...)`) instead of positional `(line text scope)` lists, and `'segments` are char offsets, not byte offsets.
@@ -21,7 +22,9 @@
 - `core:steel-server` no longer flags HUME's own commands and configuration functions as unknown identifiers while you edit `init.scm` or a plugin file.
 - The buffer picker (`g b`) now shows each buffer's full display path instead of a `:pwd`-relative one.
 - New `core:pickers` picker, `g m`, lists files with staged or unstaged git changes. Untracked-file inclusion is configurable via `#:config (hash "untracked" #t | #f)`.
-- HUME now notices when an open file changes on disk and prompts to reload it. Controlled by the `autoread` option (default on); `:w`/`:wa` refuse to overwrite a changed file unless forced with `!`.
+- `picker!` gains a `#:pending` flag that shows a loading indicator until the first batch of results is pushed, for pickers (like `g m`) that populate asynchronously.
+- Fixed a bug where the fuzzy picker silently ignored Ctrl+u/Ctrl+d; they now move the selection by half a page, matching the drawer and scrollable popups.
+- HUME now notices when an open file changes on disk — another program, a formatter, `git checkout` — and prompts to reload the next time that buffer gets focus again (switching buffers/panes, a pane close, a picker accept, LSP goto-definition, etc.); Insert mode and the command line just warn instead, and prompt on the next such focus change. Controlled by the `autoread` option (default on; `#f` warns only). Answering `[k]eep` silences the prompt until the file changes again — `:checktime` still flags it regardless. `:w`/`:wa` refuse to overwrite a changed file unless forced with `!`.
 - New `:sort` command sorts each run of adjacent selected rows by their selected text, with `-r` (reverse) and `-i` (case-insensitive) flags; numeric keys are auto-detected.
 - Scrollable popups and menus now show a scrollbar.
 - The whole statusline now tints with the current mode's color, not just the mode indicator. Opt out with the new `statusline.mode-colors` option.
@@ -36,8 +39,8 @@
 - `:messages` entries are now colored by severity.
 - Quitting with an attached language server no longer leaves the screen frozen in the alternate screen while it shuts down: the terminal is restored first.
 - Fixed a bug where `d`/`c`/`p` on a read-only buffer could still overwrite the kill ring or a named register before refusing the edit.
-- The external-change reload prompt now also appears when a changed buffer becomes focused via `:q`, `:bd`, a pane close, pane-focus cycling, a click into another pane, a fuzzy-picker accept, or any other non-interactive buffer switch (e.g. LSP goto-definition). Answering `[k]eep` now silences that prompt until the file changes again, instead of reopening it on the next focus change; `:checktime` still warns about it, so a declined change is never silent forever.
 - New `on-buffer-enter` and `on-focus-gained` hooks: the former fires whenever the focused buffer changes, the latter when the terminal regains focus.
+- Tagged release builds now show a clean `--version` string, with no commit-hash suffix.
 - `wrap-mode` is now a buffer option: set it per file type from an `on-language-set` hook, or globally. `:set global wrap-mode=…` now applies to buffers that are already open, not just ones opened afterward; `:set pane wrap-mode=…` and `:wrap` still pin a single pane above both, but now remember that pin separately for each buffer the pane shows — switching to another buffer resolves that buffer's own setting instead of carrying the pin along, and switching back restores it. `:wrap` turning wrapping back on, with nothing to restore, now falls back to the configured global style instead of always hardcoding `indent`.
 
 ## [0.10.0] - 2026-07-24
