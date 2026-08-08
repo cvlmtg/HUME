@@ -171,8 +171,8 @@ impl<'a> RowMap<'a> {
         debug_assert!(
             rope.len_chars() == 0 || rope.char(rope.len_chars() - 1) == '\n',
             "RowMap requires a trailing '\\n' (the buffer invariant) — \
-             without it `last_line`'s `len_lines() - 2` drops the rope's \
-             actual last content line"
+             without it `last_line`'s content-line derivation drops the \
+             rope's actual last content line"
         );
         debug_assert!(
             content_width >= 1,
@@ -320,15 +320,8 @@ impl<'a> RowMap<'a> {
     }
 
     /// Index of the last buffer line a cursor can occupy.
-    ///
-    /// Every HUME buffer ends with a structural `\n`, so ropey reports one
-    /// extra empty line past the content; the last real line is
-    /// `len_lines() - 2`. `hume_editing::text::Text::last_content_line` is
-    /// the SSOT for this rule everywhere a `Text` is in scope; `hume-engine`
-    /// takes a bare `&Rope` by design and doesn't depend on `hume-editing`,
-    /// so this re-derives it independently.
     pub fn last_line(&self) -> usize {
-        self.rope.len_lines().saturating_sub(2)
+        hume_rope::last_content_line(self.rope)
     }
 
     /// Pull `pos` into the document: `line` into `0..=last_line()`, then `row`
@@ -471,13 +464,8 @@ impl<'a> RowMap<'a> {
              against the current buffer before reaching here",
             self.rope.len_chars()
         );
-        let line = self.rope.char_to_line(char_offset);
+        let (line, target_byte) = hume_rope::char_to_line_byte(self.rope, char_offset);
         let before = self.block(line).before;
-        let line_start_byte = self.rope.line_to_byte(line);
-        let target_byte = self
-            .rope
-            .char_to_byte(char_offset)
-            .saturating_sub(line_start_byte);
         // Only up to the target: everything past it is irrelevant to where
         // this one offset sits.
         self.ensure_formatted(line, FormatBound::ToByte(target_byte));

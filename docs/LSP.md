@@ -178,7 +178,7 @@ Every Steel-visible surface the LSP platform introduces — the lookup table for
 | `(lsp-position-params bid)` / `(lsp-range-params bid)` → ready-made params hashmaps (encoding-correct) | builtin | B3 |
 | `(lsp-position->offset bid position)` → char offset for wire `{"line" "character"}` `position`, or `#f` if `bid` has no attached server | builtin | SPEC.md §6 |
 | `(lsp-range->offsets bid range)` → `(start . end)` half-open char offsets for wire `{"start" {…} "end" {…}}` `range`, or `#f` | builtin | SPEC.md §6 |
-| `(viewport-range bid)` → `(first-line . last-line)` currently visible for `bid` (focused pane if it shows `bid`, else the first pane showing it), or `#f` if `bid` isn't shown in any pane | builtin | B3 |
+| `(viewport-range bid)` → `(first-line . end-line)`, 0-based end-exclusive, currently visible for `bid` (focused pane if it shows `bid`, else the first pane showing it), or `#f` if `bid` isn't shown in any pane | builtin | B3 |
 | `(after ms thunk)` → timer id; `(cancel-timer! id)` | builtin | B4 |
 | `(debounce ms proc)` → debounced proc, one shared pending timer across all calls | builtin (bootstrap wrapper over `after`) | B4 |
 | `(debounce-by ms proc)` → debounced proc keyed per `(car args)` — independent pending timer per key, so a call keyed `k2` never cancels a still-pending call keyed `k1` | builtin (bootstrap wrapper over `after`) | B4 |

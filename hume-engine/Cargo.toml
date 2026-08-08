@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 hume-platform = { path = "../hume-platform" }
+hume-rope = { path = "../hume-rope" }
 ropey.workspace = true
 unicode-segmentation.workspace = true
 unicode-width.workspace = true

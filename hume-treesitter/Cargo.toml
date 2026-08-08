@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 hume-engine = { path = "../hume-engine" }
 hume-editing = { path = "../hume-editing" }
+hume-rope = { path = "../hume-rope" }
 globset = "0.4"
 tree-sitter.workspace = true
 tree-sitter-language = "0.1"

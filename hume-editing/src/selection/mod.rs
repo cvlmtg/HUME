@@ -378,11 +378,7 @@ impl SelectionSet {
         for sel in &mut self.selections {
             let pre_line = buf_pre.char_to_line(sel.head);
             let line_start = buf_pre.line_to_char(pre_line);
-            let line_end = if pre_line + 1 < buf_pre.len_lines() {
-                buf_pre.line_to_char(pre_line + 1)
-            } else {
-                buf_pre.len_chars()
-            };
+            let line_end = crate::lines::line_end_exclusive(buf_pre, pre_line);
 
             // Drop edits that end entirely before this line — heads (and thus
             // pre-edit lines) strictly increase across selections in a sorted,

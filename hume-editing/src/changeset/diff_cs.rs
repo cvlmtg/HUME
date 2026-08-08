@@ -82,8 +82,8 @@ pub fn changesets_from_line_diff_with_deadline(
 /// `old_offsets` / `new_offsets` are the cumulative char-offset tables over
 /// each side's line tokens (length `tokens.len() + 1`, last entry == buffer
 /// `len_chars`). Using token-derived offsets — not `Text::line_to_char` — keeps
-/// the hunk end at `len_lines()` (the trailing empty token) panic-free and
-/// keeps the forward/inverse cursors byte-for-byte aligned with the rope.
+/// the hunk end at `ropey_line_count()` (the trailing empty token) panic-free
+/// and keeps the forward/inverse cursors byte-for-byte aligned with the rope.
 fn build_changesets(
     old: &Text,
     new: &Text,
@@ -139,8 +139,8 @@ fn build_changesets(
 /// the offsets to translate a hunk's line-index range back to a char range
 /// into the rope.
 fn tokens_with_offsets(text: &Text) -> (Vec<Cow<'_, str>>, Vec<usize>) {
-    let mut tokens = Vec::with_capacity(text.len_lines());
-    let mut offsets = Vec::with_capacity(text.len_lines() + 1);
+    let mut tokens = Vec::with_capacity(text.ropey_line_count());
+    let mut offsets = Vec::with_capacity(text.ropey_line_count() + 1);
     offsets.push(0);
     let mut char_acc = 0usize;
     for token in text.line_tokens() {

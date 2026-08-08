@@ -1,9 +1,8 @@
 //! Rope char offset ↔ LSP wire `(line, character)` position conversion, in
 //! both negotiated encodings (negotiate `utf-8`, fall back to UTF-16).
-//! `hume-editing` must
-//! not depend on `lsp-types`, so [`PositionEncoding`] mirrors the wire
-//! `Position`/encoding concept as a plain type; `hume-lsp` converts to/from
-//! `lsp_types::Position`.
+//! [`PositionEncoding`] mirrors the wire `Position`/encoding concept as a
+//! plain type so this crate doesn't need to depend on `lsp-types`;
+//! `hume-lsp` converts to/from `lsp_types::Position`.
 //!
 //! Wire math is **not** motion math: `character` counts code units in the
 //! negotiated encoding, never a grapheme or a raw byte. The grapheme
@@ -11,6 +10,8 @@
 //! reach for them here (hub: testing playbook).
 
 use ropey::Rope;
+
+use crate::lines::last_ropey_line;
 
 /// Wire-format position encoding negotiated with an LSP server.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,7 +49,7 @@ pub fn char_to_wire(text: &Rope, char_idx: usize, enc: PositionEncoding) -> (usi
 /// landing mid-char — `Rope::byte_to_char`/`utf16_cu_to_char` guarantee this
 /// for any in-bounds code-unit index, on-boundary or not.
 pub fn wire_to_char(text: &Rope, line: usize, character: usize, enc: PositionEncoding) -> usize {
-    let line = line.min(text.len_lines().saturating_sub(1));
+    let line = line.min(last_ropey_line(text));
     let line_start = text.line_to_char(line);
     let content_end = line_content_end_char(text, line);
 
@@ -79,7 +80,7 @@ pub fn wire_to_char(text: &Rope, line: usize, character: usize, enc: PositionEnc
 /// *on* the `\n` — and must not be reused here; the two disagree by design
 /// for an empty line, and wire math needs this one.
 fn line_content_end_char(text: &Rope, line: usize) -> usize {
-    if line + 1 >= text.len_lines() {
+    if line >= last_ropey_line(text) {
         return text.len_chars();
     }
     let next_start = text.line_to_char(line + 1);

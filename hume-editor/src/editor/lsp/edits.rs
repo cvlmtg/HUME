@@ -436,10 +436,10 @@ pub(crate) enum GotoTarget {
 /// Clamps a char-indexed `(line, col)` pair to a valid char offset in `bid`.
 fn char_indexed_to_char_pos(state: &EditorState, bid: BufferId, line: usize, col: usize) -> usize {
     let buf = state.buffers.get(bid);
-    let rope = buf.text().rope();
-    let line = line.min(rope.len_lines().saturating_sub(1));
-    let line_start = rope.line_to_char(line);
-    let line_len = hume_editing::lines::line_content_end(buf.text(), line) - line_start;
+    let text = buf.text();
+    let line = line.min(text.last_ropey_line());
+    let line_start = text.line_to_char(line);
+    let line_len = hume_editing::lines::line_content_end(text, line) - line_start;
     line_start + col.min(line_len)
 }
 
@@ -565,11 +565,7 @@ pub(crate) fn selection_spans_full_line(state: &EditorState, bid: BufferId) -> b
     let end_exclusive = next_grapheme_boundary(text, sel.end());
     let line = text.char_to_line(start);
     let line_start = text.line_to_char(line);
-    let line_end = if line + 1 < text.len_lines() {
-        text.line_to_char(line + 1)
-    } else {
-        text.len_chars()
-    };
+    let line_end = hume_editing::lines::line_end_exclusive(text, line);
     start == line_start && end_exclusive == line_end
 }
 

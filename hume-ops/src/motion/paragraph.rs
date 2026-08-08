@@ -14,7 +14,12 @@ use hume_editing::text::Text;
 /// (EOF). At EOF already: no-op.
 pub(super) fn next_paragraph(buf: &Text, head: usize) -> usize {
     let mut line = buf.char_to_line(head);
-    let total = buf.len_lines();
+    // Deliberately the ropey count, not content_line_count(): the phantom
+    // trailing line is empty like any other (is_empty_line agrees), so the
+    // scan is allowed to walk onto it and Phase 2 swallows it as part of the
+    // gap — `line >= total` below then lands on the trailing \n uniformly,
+    // with no separate EOF branch needed.
+    let total = buf.ropey_line_count();
 
     // Phase 1: skip the current paragraph (non-empty lines).
     while line < total && !is_empty_line(buf, line) {

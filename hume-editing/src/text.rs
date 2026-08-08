@@ -159,31 +159,45 @@ impl Text {
         self.rope.len_chars() == 1 && self.rope.char(0) == '\n'
     }
 
-    /// Total number of lines. A buffer always has at least one line, even when
-    /// empty (the single empty line). A trailing newline adds an extra empty
-    /// line — this matches how most editors count lines.
-    ///
-    /// For example: `"hello\nworld"` has 2 lines; `"hello\n"` has 2 lines
-    /// (the second is empty).
-    pub fn len_lines(&self) -> usize {
-        self.rope.len_lines()
+    /// Raw ropey line count, phantom trailing line included. See
+    /// [`hume_rope`]'s crate docs for the ropey-domain / content-domain
+    /// distinction. Callers wanting the buffer's real line count want
+    /// [`Text::content_line_count`] instead.
+    pub fn ropey_line_count(&self) -> usize {
+        hume_rope::ropey_line_count(&self.rope)
+    }
+
+    /// Index of the last ropey line — the phantom trailing line.
+    pub fn last_ropey_line(&self) -> usize {
+        hume_rope::last_ropey_line(&self.rope)
+    }
+
+    /// `0..ropey_line_count()` — every line index ropey considers valid,
+    /// phantom line included.
+    pub fn ropey_lines_range(&self) -> Range<usize> {
+        hume_rope::ropey_lines_range(&self.rope)
     }
 
     /// Number of content lines: every HUME buffer ends with a structural
     /// `\n`, which ropey counts as one extra empty line past the content —
     /// this subtracts it. The single source of truth for "how many lines
     /// does this buffer have" from a caller's point of view (line counts
-    /// shown to the user, range-checked line indices); callers that instead
-    /// need the last *valid rope* line (phantom line included) keep using
-    /// `len_lines() - 1` directly.
+    /// shown to the user, range-checked line indices).
     pub fn content_line_count(&self) -> usize {
-        self.len_lines().saturating_sub(1)
+        hume_rope::content_line_count(&self.rope)
     }
 
     /// Index of the last content line (`content_line_count() - 1`). Callers
     /// clamping a target line to stay within real content use this.
     pub fn last_content_line(&self) -> usize {
-        self.content_line_count().saturating_sub(1)
+        hume_rope::last_content_line(&self.rope)
+    }
+
+    /// `0..content_line_count()` — every real content line index.
+    /// `range.contains(&line)` is the canonical "is this a real content
+    /// line" bounds check.
+    pub fn content_lines_range(&self) -> Range<usize> {
+        hume_rope::content_lines_range(&self.rope)
     }
 
     /// Line tokens, each keeping its trailing line-break character(s) — the
@@ -212,7 +226,7 @@ impl Text {
     /// instead of tokenizing (and discarding) every line before it.
     ///
     /// # Panics
-    /// Panics if `line_idx > self.len_lines()` (matches `line_to_char`).
+    /// Panics if `line_idx > self.ropey_line_count()` (matches `line_to_char`).
     pub fn line_tokens_at(&self, line_idx: usize) -> impl Iterator<Item = Cow<'_, str>> {
         self.rope.lines_at(line_idx).map(Cow::from)
     }
@@ -220,7 +234,7 @@ impl Text {
     /// Returns the char offset of the first character on `line_idx` (0-based).
     ///
     /// # Panics
-    /// Panics if `line_idx >= self.len_lines()`.
+    /// Panics if `line_idx >= self.ropey_line_count()`.
     pub fn line_to_char(&self, line_idx: usize) -> usize {
         self.rope.line_to_char(line_idx)
     }
@@ -264,10 +278,7 @@ impl Text {
     /// # Panics
     /// Panics if `pos > self.len_chars()`.
     pub fn chars_at(&self, pos: usize) -> CharCursor<'_> {
-        CharCursor {
-            iter: self.rope.chars_at(pos),
-            pos,
-        }
+        hume_rope::chars_at(&self.rope, pos)
     }
 
     /// Convert a byte offset to a char (Unicode scalar value) offset.
@@ -333,66 +344,13 @@ impl Text {
     }
 }
 
-/// The line breaks [`Text::line_tokens`] splits on (ropey's default
-/// `unicode_lines` feature) — LF, CR, CRLF, VT, FF, NEL, LS, PS.
-/// `Text::from` only collapses `\r\n` pairs, so every other form survives
-/// into the rope and can terminate a token.
-const LINE_BREAKS: [char; 7] = [
-    '\n', '\r', '\u{0B}', '\u{0C}', '\u{85}', '\u{2028}', '\u{2029}',
-];
-
-/// Strips a single trailing line break from a [`Text::line_tokens`] token —
-/// never just `'\n'`, since the break set above is wider. A break char
-/// always terminates a token, never sits interior to one, so the greedy
-/// `trim_end_matches` is exact — including collapsing a two-char `"\r\n"`
-/// token in one pass.
-pub fn strip_line_break(line: &str) -> &str {
-    line.trim_end_matches(LINE_BREAKS)
-}
-
-/// A char-level cursor for scanning a contiguous range of a [`Text`] without
-/// re-paying ropey's O(log n) tree descent on every step. Each `next()` /
-/// `prev()` call is amortized O(1) after the initial O(log n) seek in
-/// [`Text::chars_at`] — an O(span × log n) loop of `char_at(i)` calls becomes
-/// O(log n + span).
-///
-/// **Char-level, not grapheme-level** — intended for ASCII delimiter scanning
-/// (brackets, quotes, argument commas), same exposure class as `char_at`.
-/// Motion and selection logic must keep using `grapheme.rs` boundary helpers;
-/// a multi-codepoint cluster (e.g. `e` + U+0301) is yielded here as two
-/// separate chars, just like two `char_at` calls would see it.
-pub struct CharCursor<'a> {
-    iter: ropey::iter::Chars<'a>,
-    /// Char index of the position the cursor currently sits at — the index
-    /// `next()` would yield and `prev()` would land on.
-    pos: usize,
-}
-
-impl Iterator for CharCursor<'_> {
-    type Item = (usize, char);
-
-    /// Yield the char at the cursor position, then advance forward.
-    fn next(&mut self) -> Option<(usize, char)> {
-        let ch = self.iter.next()?;
-        let pos = self.pos;
-        self.pos += 1;
-        Some((pos, ch))
-    }
-}
-
-impl CharCursor<'_> {
-    /// Step back and yield the char just before the cursor position.
-    ///
-    /// Not a [`DoubleEndedIterator`](std::iter::DoubleEndedIterator) impl —
-    /// that trait means "consume from the far end of the same forward
-    /// sequence," not "walk backward from here," which is what callers
-    /// (bracket-pair scans) actually need.
-    pub fn prev(&mut self) -> Option<(usize, char)> {
-        let ch = self.iter.prev()?;
-        self.pos -= 1;
-        Some((self.pos, ch))
-    }
-}
+/// Re-exported from `hume-rope` so existing `hume_editing::text::CharCursor`
+/// paths keep working. See `hume_rope::CharCursor` for docs.
+pub use hume_rope::CharCursor;
+/// Re-exported from `hume-rope` so existing
+/// `hume_editing::text::strip_line_break` paths keep working. See
+/// `hume_rope::strip_line_break` for docs.
+pub use hume_rope::strip_line_break;
 
 // `From<&str>`, not `FromStr`, since construction here always succeeds
 // (worst case we append a '\n') — `FromStr` is reserved for fallible parsing.

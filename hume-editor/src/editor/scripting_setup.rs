@@ -183,7 +183,7 @@ impl Editor {
             .queue_event(EditorEvent::OnDiagnosticsChanged { buffer: bid });
     }
 
-    /// Fire `OnViewportChange (bid first-line last-line)` for `pane_id` —
+    /// Fire `OnViewportChange (bid first-line end-line)` for `pane_id` —
     /// called only when its debounce timer actually fires (`timer_bridge`),
     /// reading the pane's *current* bounds rather than whatever they were
     /// when the timer was armed. A no-op if the pane closed in the meantime.
@@ -193,12 +193,11 @@ impl Editor {
         };
         let bid = pane.buffer_id;
         let content_lines = self.state.buffers.get(bid).text().content_line_count();
-        let (first_line, last_line) =
-            super::lsp::introspect::pane_visible_range(pane, content_lines);
+        let range = super::lsp::introspect::pane_visible_range(pane, content_lines);
         self.state.queue_event(EditorEvent::OnViewportChange {
             buffer: bid,
-            first_line,
-            last_line,
+            first_line: range.start,
+            end_line: range.end,
         });
     }
 

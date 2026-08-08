@@ -326,7 +326,7 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_lines(&self, id: BufferId, range: Range<usize>) -> Option<Vec<String>> {
         self.inner.buffer_lines(id, range)
     }
-    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
+    fn viewport_range(&self, id: BufferId) -> Option<Range<usize>> {
         self.inner.viewport_range(id)
     }
 }

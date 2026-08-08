@@ -238,11 +238,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
                     rm.content_row_char_bounds(pos).unwrap_or_else(|| {
                         let buf_line = text.char_to_line(sel.anchor());
                         let ls = text.line_to_char(buf_line);
-                        let le = if buf_line + 1 < text.len_lines() {
-                            text.line_to_char(buf_line + 1)
-                        } else {
-                            text.len_chars()
-                        };
+                        let le = hume_editing::lines::line_end_exclusive(text, buf_line);
                         (ls, le)
                     });
 

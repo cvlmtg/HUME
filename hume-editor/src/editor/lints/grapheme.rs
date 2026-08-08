@@ -6,8 +6,8 @@
 //! U+0065 + U+0301) instead of advancing a full grapheme cluster.
 //!
 //! `no_raw_char_stepping_in_motion_code` recursively scans `hume-ops/src/`,
-//! `hume-editing/src/lines.rs` + `hume-editing/src/word.rs` for the
-//! forbidden patterns.
+//! `hume-editing/src/lines.rs`, `hume-editing/src/word.rs` +
+//! `hume-rope/src/lines.rs` for the forbidden patterns.
 //!
 //! **Opt-out**: annotate a line with `// grapheme-safe: <reason>` (e.g.
 //! ASCII-only delimiter scanning, grapheme-boundary-aligned bound conversion).
@@ -42,6 +42,12 @@ fn no_raw_char_stepping_in_motion_code() {
     // lines.rs and word.rs live in the editing crate — scan them from there.
     paths.push(workspace_root.join("hume-editing/src/lines.rs"));
     paths.push(workspace_root.join("hume-editing/src/word.rs"));
+    // The line-boundary helpers that walk grapheme boundaries
+    // (snap_to_grapheme_boundary, line_content_end, place_column) moved to
+    // hume-rope — scan their new home too. hume-rope/src/grapheme.rs (the
+    // boundary-detection implementation itself) and cursor.rs (CharCursor,
+    // deliberately char-level) stay out of scope, same as before the move.
+    paths.push(workspace_root.join("hume-rope/src/lines.rs"));
 
     // Forbidden patterns — raw +1/-1 steps on char-position variables.
     // Stepping by 1 skips over combining codepoints (e.g. é = U+0065 + U+0301)

@@ -12,6 +12,7 @@ hume-engine = { path = "../hume-engine" }
 hume-platform = { path = "../hume-platform" }
 hume-scripting = { path = "../hume-scripting" }
 hume-editing = { path = "../hume-editing" }
+hume-rope = { path = "../hume-rope" }
 hume-ops = { path = "../hume-ops" }
 hume-treesitter = { path = "../hume-treesitter" }
 hume-lsp = { path = "../hume-lsp" }

@@ -236,7 +236,7 @@ Available hooks and their lambda signatures:
 | `on-diagnostics-changed` | A buffer's LSP diagnostics change | `(buffer-id)` — pull details with `diagnostics-for-buffer` |
 | `on-lsp-attach` | A language server attaches to a buffer | `(buffer-id server-name)` |
 | `on-lsp-detach` | A language server detaches from a buffer | `(buffer-id server-name)` |
-| `on-viewport-change` | The visible region of a pane changes | `(buffer-id first-line last-line)` |
+| `on-viewport-change` | The visible region of a pane changes | `(buffer-id first-line end-line)` — 0-based, end-exclusive |
 | `on-trigger-char` | A registered trigger character is typed | `(buffer-id char source)` |
 | `on-completion-accept` | A completion entry is accepted | `(buffer-id item)` |
 | `on-completion-refilter` | Completion input changes | `(buffer-id text)` |
@@ -371,11 +371,11 @@ Returns a buffer's full live content as a string — including any unsaved edits
 (buffer-lines bid #:start start #:end end)
 ```
 
-Returns the buffer's content as a list of lines, each with its line ending stripped. With no range, every line is returned; `#:start`/`#:end` select a 0-based, end-exclusive slice (`(buffer-lines bid #:start 10 #:end 40)` returns lines 10 through 39). An out-of-range `#:end`, or a `#:start` past `#:end`, raises an error rather than silently clamping. Compose with `(viewport-range bid)` to read only what's currently on screen — guard against `#f`, which `viewport-range` returns for a buffer not currently shown in any pane:
+Returns the buffer's content as a list of lines, each with its line ending stripped. With no range, every line is returned; `#:start`/`#:end` select a 0-based, end-exclusive slice (`(buffer-lines bid #:start 10 #:end 40)` returns lines 10 through 39). An out-of-range `#:end`, or a `#:start` past `#:end`, raises an error rather than silently clamping. Compose with `(viewport-range bid)` to read only what's currently on screen — it returns the same 0-based, end-exclusive range shape, so its pair passes straight through as `#:start`/`#:end`. Guard against `#f`, which `viewport-range` returns for a buffer not currently shown in any pane:
 
 ```scheme
 (let ((vr (viewport-range bid)))
-  (and vr (buffer-lines bid #:start (car vr) #:end (+ 1 (cdr vr)))))
+  (and vr (buffer-lines bid #:start (car vr) #:end (cdr vr))))
 ```
 
 If you're about to diff a buffer's content against another text, reach for `(diff-buffer-lines bid ref-text)` instead of `(buffer-text bid)`, especially from a hook that fires on every keystroke.

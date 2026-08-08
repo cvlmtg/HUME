@@ -403,13 +403,11 @@ impl Pane {
 
     /// Width available for text after subtracting the gutter, clamped to at least 1.
     ///
-    /// `total_lines` is the buffer's current line count (used to size the line-number column).
-    /// Call this before `WrapMode::resolve` to get the concrete wrap column.
-    pub fn content_width(&self, total_lines: usize) -> u16 {
-        let gutter_w = gutter_width_for_line(
-            self.providers.gutter_columns(),
-            total_lines.saturating_sub(1),
-        );
+    /// `last_line_idx` is the buffer's last ropey line index (used to size
+    /// the line-number column — `hume_rope::last_ropey_line`). Call this
+    /// before `WrapMode::resolve` to get the concrete wrap column.
+    pub fn content_width(&self, last_line_idx: usize) -> u16 {
+        let gutter_w = gutter_width_for_line(self.providers.gutter_columns(), last_line_idx);
         self.viewport.width.saturating_sub(gutter_w).max(1)
     }
 
@@ -427,14 +425,14 @@ impl Pane {
 
     /// Restore the saved scroll for `id`, or reset to top on first visit.
     ///
-    /// `len_lines` is `id`'s *current* line count — the buffer may have
-    /// shrunk since this scroll was saved (edited elsewhere while this pane
-    /// viewed a different buffer), so `top_line` is clamped to the last
-    /// content line, the same bound `reload_buffer_in_place` applies
+    /// `last_content_line` is `id`'s *current* last content line index — the
+    /// buffer may have shrunk since this scroll was saved (edited elsewhere
+    /// while this pane viewed a different buffer), so `top_line` is clamped
+    /// to it, the same bound `reload_buffer_in_place` applies
     /// (`hume-editor/src/editor/buffer/file_open.rs`).
-    pub fn recall_scroll(&mut self, id: BufferId, len_lines: usize) {
+    pub fn recall_scroll(&mut self, id: BufferId, last_content_line: usize) {
         let sp = self.saved_scrolls.get(id).copied().unwrap_or_default();
-        self.viewport.top_line = sp.top_line.min(len_lines.saturating_sub(2));
+        self.viewport.top_line = sp.top_line.min(last_content_line);
         self.viewport.top_row_offset = sp.top_row_offset;
         self.viewport.horizontal_offset = sp.horizontal_offset;
     }

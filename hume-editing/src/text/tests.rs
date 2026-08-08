@@ -17,7 +17,7 @@ fn from_rope_is_raw() {
 fn empty_buffer() {
     let buf = Text::empty();
     assert_eq!(buf.len_chars(), 1); // structural trailing \n
-    assert_eq!(buf.len_lines(), 2); // "\n" → line 0 = "\n", line 1 = ""
+    assert_eq!(buf.ropey_line_count(), 2); // "\n" → line 0 = "\n", line 1 = ""
     assert!(buf.is_empty());
     assert_eq!(buf.to_string(), "\n");
 }
@@ -26,7 +26,7 @@ fn empty_buffer() {
 fn from_str_ascii() {
     let buf = Text::from("hello\nworld");
     assert_eq!(buf.len_chars(), 12); // "hello\nworld\n"
-    assert_eq!(buf.len_lines(), 3); // line 0, line 1, trailing empty line
+    assert_eq!(buf.ropey_line_count(), 3); // line 0, line 1, trailing empty line
     assert!(!buf.is_empty());
     assert_eq!(buf.to_string(), "hello\nworld\n");
 }
@@ -78,14 +78,14 @@ fn from_str_cr_then_crlf_leaves_bare_cr() {
 fn from_str_trailing_newline() {
     // A trailing newline creates an extra empty line.
     let buf = Text::from("hello\n");
-    assert_eq!(buf.len_lines(), 2);
+    assert_eq!(buf.ropey_line_count(), 2);
 }
 
 #[test]
-fn line_tokens_count_matches_len_lines_and_keeps_terminators() {
+fn line_tokens_count_matches_ropey_line_count_and_keeps_terminators() {
     let buf = Text::from("a\nb\n");
     let tokens: Vec<_> = buf.line_tokens().collect();
-    assert_eq!(tokens.len(), buf.len_lines());
+    assert_eq!(tokens.len(), buf.ropey_line_count());
     assert_eq!(tokens, vec!["a\n", "b\n", ""]);
 }
 
@@ -271,87 +271,4 @@ fn remove_grapheme_cluster_range() {
     // buf: 'e'(0) U+0301(1) 'h'(2) 'e'(3) ... '\n'(7) = 8 chars.
     let new = buf.remove(0..2); // remove the 'e' + combining accent
     assert_eq!(new.to_string(), "hello\n");
-}
-
-// ── CharCursor ────────────────────────────────────────────────────────────
-
-#[test]
-fn char_cursor_forward_from_start() {
-    // "hello\n": h0 e1 l2 l3 o4 \n5.
-    let buf = Text::from("hello");
-    let got: Vec<(usize, char)> = buf.chars_at(0).collect();
-    assert_eq!(
-        got,
-        vec![(0, 'h'), (1, 'e'), (2, 'l'), (3, 'l'), (4, 'o'), (5, '\n')]
-    );
-}
-
-#[test]
-fn char_cursor_forward_from_middle() {
-    let buf = Text::from("hello");
-    let got: Vec<(usize, char)> = buf.chars_at(2).collect();
-    assert_eq!(got, vec![(2, 'l'), (3, 'l'), (4, 'o'), (5, '\n')]);
-}
-
-#[test]
-fn char_cursor_prev_walks_back_to_start_then_none() {
-    let buf = Text::from("hello");
-    let mut c = buf.chars_at(4); // positioned before 'o'
-    assert_eq!(c.prev(), Some((3, 'l')));
-    assert_eq!(c.prev(), Some((2, 'l')));
-    assert_eq!(c.prev(), Some((1, 'e')));
-    assert_eq!(c.prev(), Some((0, 'h')));
-    assert_eq!(c.prev(), None);
-}
-
-#[test]
-fn char_cursor_interleaved_next_prev_round_trips() {
-    let buf = Text::from("hello");
-    let mut c = buf.chars_at(2);
-    assert_eq!(c.next(), Some((2, 'l'))); // cursor now at 3
-    assert_eq!(c.prev(), Some((2, 'l'))); // back to 2 — same value
-    assert_eq!(c.next(), Some((2, 'l'))); // forward again — still consistent
-}
-
-#[test]
-fn char_cursor_at_eof() {
-    let buf = Text::from("hello");
-    let len = buf.len_chars();
-    let mut at_eof = buf.chars_at(len);
-    assert_eq!(at_eof.next(), None);
-    assert_eq!(at_eof.prev(), Some((len - 1, '\n')));
-}
-
-#[test]
-fn char_cursor_yields_codepoints_not_grapheme_clusters() {
-    // "caf" + e + U+0301 (combining acute, 2 codepoints) + structural \n:
-    // c0 a1 f2 e3 U+0301(4) \n(5). The combining mark must come back as
-    // its own char, not merged with 'e' — CharCursor is char-level.
-    let buf = Text::from("caf\u{0065}\u{0301}");
-    let got: Vec<(usize, char)> = buf.chars_at(3).collect();
-    assert_eq!(got, vec![(3, 'e'), (4, '\u{0301}'), (5, '\n')]);
-}
-
-#[test]
-fn strip_line_break_strips_every_unicode_line_break() {
-    // Independent oracle: each expected value is a literal, not derived
-    // from LINE_BREAKS — a bug that drops one break char from the const
-    // still fails this.
-    assert_eq!(strip_line_break("hello\n"), "hello");
-    assert_eq!(strip_line_break("hello\r"), "hello");
-    assert_eq!(strip_line_break("hello\u{0B}"), "hello"); // VT
-    assert_eq!(strip_line_break("hello\u{0C}"), "hello"); // FF
-    assert_eq!(strip_line_break("hello\u{85}"), "hello"); // NEL
-    assert_eq!(strip_line_break("hello\u{2028}"), "hello"); // LS
-    assert_eq!(strip_line_break("hello\u{2029}"), "hello"); // PS
-}
-
-#[test]
-fn strip_line_break_collapses_crlf_in_one_pass() {
-    assert_eq!(strip_line_break("hello\r\n"), "hello");
-}
-
-#[test]
-fn strip_line_break_is_a_no_op_without_a_trailing_break() {
-    assert_eq!(strip_line_break("hello"), "hello");
 }

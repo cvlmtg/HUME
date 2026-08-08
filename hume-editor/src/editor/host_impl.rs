@@ -300,7 +300,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         )
     }
 
-    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
+    fn viewport_range(&self, id: BufferId) -> Option<Range<usize>> {
         crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
     }
 }
@@ -1125,21 +1125,21 @@ fn buffer_text<'s>(
 /// this is the one place — already holding the rope — where that converts
 /// to the internal char-offset position model.
 ///
-/// Rejects the buffer's last line, not just `line >= len_lines()`: the
-/// buffer invariant (every buffer ends with a structural `\n`) means that
-/// last line is always the empty phantom line the trailing `\n` produces —
-/// zero-width, at `pos == len_chars()`, nothing to decorate. `RowMap::
-/// last_line()` never lays it out, so admitting it would hand a caller a
-/// position no render pass can resolve to a real line.
+/// Rejects the buffer's last *ropey* line, not just any out-of-range line:
+/// the buffer invariant (every buffer ends with a structural `\n`) means
+/// that last line is always the empty phantom line the trailing `\n`
+/// produces — zero-width, at `pos == len_chars()`, nothing to decorate.
+/// `RowMap::last_line()` never lays it out, so admitting it would hand a
+/// caller a position no render pass can resolve to a real line.
 fn line_start_offset(
     text: &hume_editing::text::Text,
     line: usize,
     builtin: &str,
 ) -> Result<usize, String> {
-    if line + 1 >= text.len_lines() {
+    if !text.content_lines_range().contains(&line) {
         return Err(format!(
             "{builtin}: line {line} is out of range (buffer has {} content lines)",
-            text.len_lines() - 1
+            text.content_line_count()
         ));
     }
     Ok(text.line_to_char(line))
@@ -1173,7 +1173,7 @@ fn validate_offset(
     }
     if !before {
         let landing_line = text.char_to_line(pos + 1);
-        if landing_line + 1 >= text.len_lines() {
+        if landing_line >= text.content_line_count() {
             return Err(format!(
                 "{builtin}: offset {pos} anchored 'after would land on the buffer's trailing \
                  empty line"

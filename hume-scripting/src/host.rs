@@ -421,11 +421,12 @@ pub trait BufferHost {
     /// rope's line lookup). `None` if `id` is unknown.
     fn buffer_lines(&self, id: BufferId, range: Range<usize>) -> Option<Vec<String>>;
 
-    /// `(viewport-range bid)` — the `(first_line . last_line)` char-line span
-    /// currently visible for `id` (the focused pane's if shown there, else
-    /// the first pane showing it), or `None` if `id` isn't open in any pane.
-    /// Pane geometry, not LSP state — doesn't need an attached server.
-    fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)>;
+    /// The line range (0-based, end-exclusive) currently visible for `id`
+    /// (the focused pane's if shown there, else the first pane showing it),
+    /// or `None` if `id` isn't open in any pane. Backs the Steel
+    /// `(viewport-range bid)` builtin. Pane geometry, not LSP state —
+    /// doesn't need an attached server.
+    fn viewport_range(&self, id: BufferId) -> Option<Range<usize>>;
 }
 
 /// Completion session orchestration — accessed through

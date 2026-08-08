@@ -235,8 +235,9 @@ impl Editor {
             for &(pid, line, col) in &cursor_coords {
                 let target_line = line.min(last_line);
                 let line_start = new_text.line_to_char(target_line);
-                // target_line <= last_line = len_lines() - 2, so target_line + 1
-                // <= len_lines() - 1 < len_lines() — line_to_char is safe.
+                // target_line <= last_line = last_content_line(), so
+                // target_line + 1 <= last_ropey_line() < ropey_line_count() —
+                // line_to_char is safe.
                 let line_end = new_text.line_to_char(target_line + 1).saturating_sub(1);
                 let target = (line_start + col).min(line_end);
                 let head = snap_to_grapheme_boundary(new_text, line_start, target);

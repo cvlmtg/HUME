@@ -64,11 +64,8 @@ fn make_input_edit(
     let old_end_byte = rope.char_to_byte(old_end_char);
     let new_end_byte = start_byte + inserted.len(); // str::len() is byte count
 
-    let start_row = rope.char_to_line(start_char);
-    let start_col = start_byte - rope.line_to_byte(start_row);
-
-    let old_end_row = rope.char_to_line(old_end_char);
-    let old_end_col = old_end_byte - rope.line_to_byte(old_end_row);
+    let (start_row, start_col) = hume_rope::char_to_line_byte(rope, start_char);
+    let (old_end_row, old_end_col) = hume_rope::char_to_line_byte(rope, old_end_char);
 
     let (new_end_row, new_end_col) = new_end_point(start_row, start_col, inserted);
 

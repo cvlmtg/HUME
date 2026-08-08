@@ -5,6 +5,8 @@
 //! `Editor::run`'s loop, `render_to_buf` — calls in that order; everything
 //! else here is a step `prepare_frame` drives or a helper those steps share.
 
+use std::ops::Range;
+
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, PaneId, PaneRenderSettings, RenderContext};
 use hume_engine::types::EditorMode;
@@ -58,10 +60,10 @@ impl Editor {
     pub(super) fn resolve_pane_settings(&self, pid: PaneId) -> (PaneRenderSettings, u16) {
         let pane = &self.view.panes[pid];
         let doc = self.state.buffers.get(pane.buffer_id);
-        let len_lines = doc.text().len_lines();
-        let gutter_w = super::cursor::gutter_width(pane.providers.gutter_columns(), len_lines);
+        let last_line_idx = doc.text().last_ropey_line();
+        let gutter_w = super::cursor::gutter_width(pane.providers.gutter_columns(), last_line_idx);
         let wrap_mode = super::commands::effective_wrap_mode(doc, &self.state.settings, pane)
-            .resolve(pane.content_width(len_lines));
+            .resolve(pane.content_width(last_line_idx));
         let tab_width = doc.overrides.tab_width(&self.state.settings);
         let whitespace = doc.overrides.whitespace(&self.state.settings);
         let show_indent_guides = doc.overrides.show_indent_guides(&self.state.settings);
@@ -450,46 +452,40 @@ impl Editor {
         &mut self.view.panes[self.state.focused_pane_id].viewport
     }
 
-    /// Pane `pid`'s visible viewport as `(top_line, bottom_line)`, before any
-    /// clamping to the buffer's actual line count — the shared basis for
+    /// Pane `pid`'s visible viewport as a line range, before any clamping to
+    /// the buffer's actual line count — the shared basis for
     /// [`Self::visible_char_range`] and [`Self::visible_line_range`]. These
-    /// render-side helpers deliberately return a one-row *superset*
-    /// (end-exclusive, `bottom_line` itself still included) — cheap over-fetch
-    /// beats a wrap-aware exact bound for a bulk store slice. This is a
-    /// distinct convention from `lsp::introspect::pane_visible_range`, whose
-    /// `last_line` is the Steel-facing *inclusive* last visible row — the two
-    /// don't share an implementation because they don't share a contract.
-    fn visible_line_bounds(&self, pid: PaneId) -> (usize, usize) {
+    /// render-side helpers deliberately return a one-row *superset* of it
+    /// (its end plus one more row) — cheap over-fetch beats a wrap-aware
+    /// exact bound for a bulk store slice. `lsp::introspect::
+    /// pane_visible_range` is end-exclusive too now, so the two conventions
+    /// differ only in that one-row slack, not in inclusive-vs-exclusive —
+    /// they still don't share an implementation, since one clamps to
+    /// `content_lines` and the other to the ropey-domain line count.
+    fn visible_line_bounds(&self, pid: PaneId) -> Range<usize> {
         let vp = &self.view.panes[pid].viewport;
         let top_line = vp.top_line;
-        (top_line, top_line + vp.height as usize)
+        top_line..(top_line + vp.height as usize)
     }
 
     /// The char range of `bid`'s content currently visible in pane `pid` —
     /// shared by every per-frame write side that pulls a bounded slice from a
     /// Rust-side store (diagnostics, decorations) instead of the whole buffer.
-    /// HUME buffers always end with a structural `\n`, so `len_lines() >= 1`
-    /// always holds.
-    pub(super) fn visible_char_range(&self, pid: PaneId, bid: BufferId) -> std::ops::Range<usize> {
-        let (top_line, bot_line) = self.visible_line_bounds(pid);
+    pub(super) fn visible_char_range(&self, pid: PaneId, bid: BufferId) -> Range<usize> {
+        let bounds = self.visible_line_bounds(pid);
         let text = self.state.buffers.get(bid).text();
-        let len_lines = text.len_lines();
-        let top_char = text.line_to_char(top_line.min(len_lines - 1));
-        let end_char = if bot_line + 1 < len_lines {
-            text.line_to_char(bot_line + 1)
-        } else {
-            text.len_chars()
-        };
+        let top_char = text.line_to_char(bounds.start.min(text.last_ropey_line()));
+        let end_char = hume_editing::lines::line_end_exclusive(text, bounds.end);
         top_char..end_char
     }
 
     /// The line range of `bid`'s content currently visible in pane `pid`
     /// (end-exclusive) — used by line-indexed stores (gutter signs) instead
     /// of the char-offset stores' [`Self::visible_char_range`].
-    pub(super) fn visible_line_range(&self, pid: PaneId, bid: BufferId) -> std::ops::Range<usize> {
-        let (top_line, bot_line) = self.visible_line_bounds(pid);
-        let len_lines = self.state.buffers.get(bid).text().len_lines();
-        top_line.min(len_lines - 1)..(bot_line + 1).min(len_lines)
+    pub(super) fn visible_line_range(&self, pid: PaneId, bid: BufferId) -> Range<usize> {
+        let bounds = self.visible_line_bounds(pid);
+        let text = self.state.buffers.get(bid).text();
+        bounds.start.min(text.last_ropey_line())..(bounds.end + 1).min(text.ropey_line_count())
     }
 }
 

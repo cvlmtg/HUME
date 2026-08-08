@@ -703,7 +703,7 @@ fn completion_popup_anchor_matches_an_independent_screen_pos_walk_when_wrapped()
     let buf = ed.state.buffers.get(bid);
     let gutter_w = cursor::gutter_width(
         ed.view.panes[pid].providers.gutter_columns(),
-        buf.text().len_lines(),
+        buf.text().last_ropey_line(),
     );
     let mut scratch = FormatScratch::new();
     let mut rm = commands::pane_row_map(buf, &ed.state.settings, &ed.view.panes[pid], &mut scratch);

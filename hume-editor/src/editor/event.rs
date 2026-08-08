@@ -91,11 +91,15 @@ pub(crate) enum EditorEvent {
         buffer: BufferId,
     },
     /// Fires after scroll/resize resolves a pane's viewport, debounced
-    /// (`lsp.viewport-debounce-ms`) so a scroll burst fires once.
+    /// (`lsp.viewport-debounce-ms`) so a scroll burst fires once. `first_line`
+    /// / `end_line` are the visible range, end-exclusive (matching
+    /// `viewport-range`'s convention) — no registered handler currently reads
+    /// either arg (each re-reads live state via `(viewport-range bid)`
+    /// instead), so this is a payload shape, not a behavior guarantee.
     OnViewportChange {
         buffer: BufferId,
         first_line: usize,
-        last_line: usize,
+        end_line: usize,
     },
     /// Fires in Insert mode after a registered trigger char (see
     /// `register-trigger-chars!`) has been inserted into the buffer — once
@@ -266,12 +270,12 @@ impl EditorEvent {
             EditorEvent::OnViewportChange {
                 buffer,
                 first_line,
-                last_line,
+                end_line,
             } => {
                 vec![
                     SteelBufferId::new(*buffer).into_steel_val(),
                     SteelVal::IntV(*first_line as isize),
-                    SteelVal::IntV(*last_line as isize),
+                    SteelVal::IntV(*end_line as isize),
                 ]
             }
             EditorEvent::OnTriggerChar { buffer, ch, source } => {

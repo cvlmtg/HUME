@@ -831,7 +831,7 @@ fn last_writer_per_line<T>(
 /// Resolves a stored line-anchored decoration's position to its current
 /// line, or `None` if a remap drifted it onto the buffer's trailing phantom
 /// line — always empty (every buffer ends with a structural `\n`,
-/// `text.len_lines() - 1`), the same line `host_impl.rs`'s
+/// `text.last_ropey_line()`), the same line `host_impl.rs`'s
 /// `line_start_offset` refuses to hand out a position on in the first place.
 /// A fresh `set-*!` call can never produce this; a `remap_points` result can,
 /// when an edit deletes everything after the entry's anchor up to
@@ -840,7 +840,7 @@ fn last_writer_per_line<T>(
 /// line backgrounds — all four line-anchored decoration kinds).
 fn resolve_decoration_line(text: &hume_editing::text::Text, pos: usize) -> Option<usize> {
     let line = text.char_to_line(pos);
-    (line + 1 < text.len_lines()).then_some(line)
+    text.content_lines_range().contains(&line).then_some(line)
 }
 
 /// Filters `entries`' `(source, entry)` pairs to `visible_lines`, resolving
@@ -869,53 +869,22 @@ fn visible_line_anchored<'a, E: Clone + 'a>(
         .collect()
 }
 
-/// Convert a char-offset position to a line-relative byte offset.
-///
-/// Returns `(line_idx, byte_in_line)` where `byte_in_line` is the byte offset
-/// from the start of the line — suitable for building highlight spans that the
-/// engine expects in line-relative byte coordinates.
+/// See [`hume_rope::char_to_line_byte`].
 fn char_to_line_byte(buf: &hume_editing::text::Text, char_pos: usize) -> (usize, usize) {
-    let line = buf.char_to_line(char_pos);
-    let line_start_byte = buf.char_to_byte(buf.line_to_char(line));
-    let byte = buf.char_to_byte(char_pos).saturating_sub(line_start_byte);
-    (line, byte)
+    hume_rope::char_to_line_byte(buf.rope(), char_pos)
 }
 
-/// Yield `(line, byte_start, byte_end)` for each line the *non-empty*
-/// `[start, end_char_excl)` char range touches, clipped to that line's own
-/// content (up to but excluding its trailing `\n`). Caller must check
-/// `start < end_char_excl` first.
-///
-/// A single-line range yields one triple, byte-identical to converting
-/// `start`/`end_char_excl` directly with [`char_to_line_byte`]. A multi-line
-/// range yields one triple per touched line. The clip point is deliberately
-/// the `\n` char's own position, not `line_end_exclusive` — the latter is
-/// the *next* line's start, which `char_to_line_byte` would resolve to the
-/// wrong line (byte 0 of the line after).
-///
-/// Shared by [`push_match_highlight_lines`] (search/bracket matches, one
-/// scope per provider) and [`push_priority_highlight_lines`]
-/// (diagnostics/extra highlights, one scope + priority per range) — same
-/// per-line splitting math, only the tuple shape differs.
+/// See [`hume_rope::line_segments`]. Shared by [`push_match_highlight_lines`]
+/// (search/bracket matches, one scope per provider) and
+/// [`push_priority_highlight_lines`] (diagnostics/extra highlights, one
+/// scope + priority per range) — same per-line splitting math, only the
+/// tuple shape differs.
 fn line_segments(
     buf: &hume_editing::text::Text,
     start: usize,
     end_char_excl: usize,
 ) -> impl Iterator<Item = (usize, usize, usize)> + '_ {
-    let last_char = end_char_excl - 1;
-    let start_line = buf.char_to_line(start);
-    let end_line = buf.char_to_line(last_char);
-    (start_line..=end_line).map(move |line| {
-        // Every content line ends with a '\n' — HUME buffers always end with
-        // a structural trailing '\n', so this position always exists and
-        // still belongs to `line` in ropey's line model.
-        let line_newline = line_end_exclusive(buf, line) - 1;
-        let seg_start = start.max(buf.line_to_char(line));
-        let seg_end = end_char_excl.min(line_newline);
-        let (_, byte_start) = char_to_line_byte(buf, seg_start);
-        let (_, byte_end) = char_to_line_byte(buf, seg_end);
-        (line, byte_start, byte_end)
-    })
+    hume_rope::line_segments(buf.rope(), start, end_char_excl)
 }
 
 /// Push one `(line, byte_start, byte_end, scope)` quadruple per line the

@@ -177,13 +177,14 @@ fn buffer_lines_start_past_end_raises() {
 
 /// The user manual's `(viewport-range bid)` + `buffer-lines` recipe
 /// (`user-manual/docs/plugins.md`) must not raise on the common case of a
-/// buffer shorter than the pane, where the viewport's `last_line` sits at
-/// the buffer's last content line.
+/// buffer shorter than the pane, where the viewport's `end` sits at one past
+/// the buffer's last content line — both ranges are 0-based and
+/// end-exclusive, so `#:end` takes `(cdr vr)` directly, no `+ 1` needed.
 ///
-/// Fail oracle: `viewport-range` returning the ropey phantom-line index
-/// (one past the last content line) instead of the last content line would
-/// make `#:end (+ 1 (cdr vr))` overshoot `buffer-lines`' bounds check and
-/// raise instead of returning every content line.
+/// Fail oracle: `viewport-range` returning one past the ropey phantom-line
+/// index (two past the last content line) instead of one past the last
+/// content line would make `#:end (cdr vr)` overshoot `buffer-lines`' bounds
+/// check and raise instead of returning every content line.
 #[test]
 fn manual_viewport_range_recipe_reads_every_content_line_without_raising() {
     let tmp = safe_tempdir();
@@ -195,7 +196,7 @@ fn manual_viewport_range_recipe_reads_every_content_line_without_raising() {
         tmp.path(),
         r#"(let ((vr (viewport-range (current-buffer))))
              (equal? (buffer-lines (current-buffer)
-                       #:start (car vr) #:end (+ 1 (cdr vr)))
+                       #:start (car vr) #:end (cdr vr))
                      (list "a" "b" "c")))"#,
     );
     assert!(

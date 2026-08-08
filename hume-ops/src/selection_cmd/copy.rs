@@ -91,8 +91,9 @@ fn copy_selection_vertically(
             }
             let target_outer_usize = target_outer as usize;
 
-            // The phantom trailing line (line_to_char == len_chars) has no content.
-            if buf.line_to_char(target_outer_usize) >= buf.len_chars() {
+            // Past the last real content line — the phantom trailing line
+            // (and anything further) has no content to copy onto.
+            if target_outer_usize > buf.last_content_line() {
                 break;
             }
 

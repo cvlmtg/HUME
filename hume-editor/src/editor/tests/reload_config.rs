@@ -1085,7 +1085,7 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
 /// (same technique as `resync_refires_buffer_open_for_every_open_buffer` —
 /// a plain "did state change" check can't distinguish "each pane fired once"
 /// from "only one pane fired, or one fired twice for the wrong buffer").
-/// The exact `(first, last)` bounds this hook reports are covered separately
+/// The exact `(first, end)` bounds this hook reports are covered separately
 /// by `viewport_range_matches_the_on_viewport_change_hooks_own_computation`
 /// (`lsp_introspect.rs`) — this test is about the resync replay's fan-out
 /// across panes, not `pane_visible_range`'s own math.

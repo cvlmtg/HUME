@@ -263,13 +263,11 @@ fn recall_scroll_clamps_top_line_to_the_buffers_current_last_content_line() {
     pane.remember_scroll();
 
     // The pane moves elsewhere, then recalls the same buffer — which has
-    // since shrunk to 5 lines (e.g. edited by another pane in the meantime).
+    // since shrunk to a last content line of 3 (e.g. edited by another pane
+    // in the meantime).
     pane.viewport.top_line = 0;
-    pane.recall_scroll(bid, 5);
+    pane.recall_scroll(bid, 3);
 
-    // Independent oracle: last content line excludes the phantom trailing-
-    // newline line, i.e. len_lines - 2 (the same bound `layout.rs`'s
-    // `compute_viewport` and `file_open.rs`'s reload path apply) = 3.
     assert_eq!(pane.viewport.top_line, 3);
 }
 

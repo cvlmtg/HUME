@@ -179,7 +179,7 @@ impl BufferHost for MockHost {
     fn buffer_lines(&self, _id: BufferId, _range: Range<usize>) -> Option<Vec<String>> {
         None
     }
-    fn viewport_range(&self, _id: BufferId) -> Option<(usize, usize)> {
+    fn viewport_range(&self, _id: BufferId) -> Option<Range<usize>> {
         None
     }
 }

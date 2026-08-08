@@ -72,13 +72,16 @@ pub(crate) fn place(viewport: &ViewportState, cursor_col: u32, screen_row: usize
 
 /// Gutter width in terminal columns for the current frame.
 ///
-/// Used to offset the terminal cursor column past line numbers and other gutter
-/// providers.
+/// Used to offset the terminal cursor column past line numbers and other
+/// gutter providers. `last_line_idx` is the buffer's last ropey line index
+/// (`hume_rope::last_ropey_line`) — deliberately the phantom trailing line,
+/// not the last content line, so the gutter is sized one digit wider than
+/// content strictly requires.
 pub(crate) fn gutter_width<'a>(
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn>,
-    total_lines: usize,
+    last_line_idx: usize,
 ) -> u16 {
-    gutter_width_for_line(gutter_columns, total_lines.saturating_sub(1))
+    gutter_width_for_line(gutter_columns, last_line_idx)
 }
 
 // ---------------------------------------------------------------------------

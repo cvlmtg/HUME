@@ -8,6 +8,7 @@
 mod dispatch_funnel;
 mod field_classification;
 mod grapheme;
+mod line_count;
 mod manual_options;
 mod plugin_manifest;
 mod resync_derived_state;

@@ -26,14 +26,15 @@
          (offset (lsp-position->offset bid (hash-ref hint "position"))))
     (and offset (list offset text 'before))))
 
-;;; `(first last)` visible lines -> `InlayHintParams`, or `#f` if `bid` can't
-;;; be resolved (hidden/detached by the time a debounced refresh fires).
-(define (lsp/inlay-hint-params bid first last)
+;;; `(first end)` visible lines, 0-based end-exclusive (`viewport-range`'s own
+;;; convention) -> `InlayHintParams`, or `#f` if `bid` can't be resolved
+;;; (hidden/detached by the time a debounced refresh fires).
+(define (lsp/inlay-hint-params bid first end)
   (let ((pp (lsp-position-params bid)))
     (and pp
          (hash "textDocument" (hash-ref pp "textDocument")
                "range" (hash "start" (hash "line" first "character" 0)
-                              "end" (hash "line" (+ last 1) "character" 0))))))
+                              "end" (hash "line" end "character" 0))))))
 
 ;;; Debounced (200ms) per buffer, re-run from both on-viewport-change and
 ;;; on-diagnostics-changed. `debounce-by`, not `debounce`: keying per `bid`
@@ -62,7 +63,7 @@
                                   (map (lambda (h) (lsp/hint->store-entry bid h)) res))))))))))))))
 
 (register-hook! 'on-viewport-change
-  (lambda (bid first last) (lsp/refresh-hints bid)))
+  (lambda (bid first end) (lsp/refresh-hints bid)))
 
 (register-hook! 'on-diagnostics-changed
   (lambda (bid) (lsp/refresh-hints bid)))

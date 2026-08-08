@@ -35,7 +35,7 @@ fn all_variants() -> Vec<EditorEvent> {
         EditorEvent::OnViewportChange {
             buffer,
             first_line: 3,
-            last_line: 42,
+            end_line: 42,
         },
         EditorEvent::OnTriggerChar {
             buffer,
@@ -206,7 +206,7 @@ fn on_viewport_change_carries_buffer_and_both_line_bounds() {
     let event = EditorEvent::OnViewportChange {
         buffer,
         first_line: 3,
-        last_line: 42,
+        end_line: 42,
     };
     let args = event.steel_args();
     assert_eq!(args.len(), 3);

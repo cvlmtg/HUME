@@ -185,7 +185,7 @@ impl Editor {
             let pane = &self.view.panes[pid];
             cursor::gutter_width(
                 pane.providers.gutter_columns(),
-                self.state.buffers.get(buf_id).text().len_lines(),
+                self.state.buffers.get(buf_id).text().last_ropey_line(),
             )
         };
         let (mut rm, viewport) = pane_row_map_mut(

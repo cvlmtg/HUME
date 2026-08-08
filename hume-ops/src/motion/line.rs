@@ -69,19 +69,13 @@ pub(super) fn goto_first_nonblank(buf: &Text, head: usize) -> usize {
 /// and by direct/proptest callers of the pure `cmd_move_down` op.
 pub(super) fn move_down_inner(buf: &Text, head: usize, preferred_col: Option<usize>) -> usize {
     let line = buf.char_to_line(head);
-    if line + 1 >= buf.len_lines() {
-        return head; // already on the last line
-    }
-
-    let col = preferred_col.unwrap_or_else(|| head - buf.line_to_char(line));
-
-    // The phantom trailing line (produced by the structural trailing \n) has
-    // line_to_char(line + 1) == len_chars(). Moving into it would place the
-    // cursor past all characters — stay put instead.
-    if buf.line_to_char(line + 1) >= buf.len_chars() {
+    // On the last content line, line + 1 is the phantom trailing line (the
+    // structural \n) — nothing to land on there, so stay put.
+    if line >= buf.last_content_line() {
         return head;
     }
 
+    let col = preferred_col.unwrap_or_else(|| head - buf.line_to_char(line));
     place_column(buf, line + 1, col)
 }
 

@@ -628,12 +628,15 @@ fn is_whitespace_grapheme(s: &str) -> bool {
 /// stop. Column-dependent, so a wrap that moves a tab to a new starting
 /// column (see `format_buffer_line`'s post-`maybe_wrap` recompute) requires
 /// calling this again rather than reusing the pre-wrap width.
+///
+/// Delegates the arithmetic to `hume_rope::grapheme::tab_advance` (this
+/// function is just the `u32`/`u8` shell `format_buffer_line`'s types need);
+/// the modulo-based formula there always lands in `[1, tab_width]`, so unlike
+/// the naive "next multiple of `tab_width`" approach it can't overflow even
+/// at `col` near `u32::MAX` — no saturating arithmetic needed.
 fn tab_display_width(col: u32, tab_width: u8) -> u8 {
-    let tab_width = tab_width.max(1) as u32;
-    let next_stop = (col / tab_width + 1).saturating_mul(tab_width);
-    // saturating: at col ≈ u32::MAX the true next stop overflows u32; clamp
-    // to a 1-wide tab instead of panicking (debug) or wrapping (release).
-    next_stop.saturating_sub(col).clamp(1, 255) as u8
+    let tab_width = tab_width.max(1);
+    hume_rope::grapheme::tab_advance(col as usize, tab_width as usize) as u8
 }
 
 /// Compute the display `width` and `CellContent` for one grapheme cluster.
@@ -812,11 +815,14 @@ pub(crate) fn compute_indent_depth(line_str: &str, tab_width: u8) -> u8 {
     (col / tw).min(u8::MAX as usize) as u8
 }
 
-/// Remove a trailing `\n` from a string buffer in-place.
+/// Remove a trailing line break from a string buffer in-place — any of
+/// ropey's `unicode_lines` break sequences (`hume_rope::LINE_BREAKS`), not
+/// just `\n`, so a line terminated by e.g. NEL or LS doesn't render that
+/// terminator as a literal trailing character. A `\r\n` pair is removed as
+/// one unit.
 pub(crate) fn strip_line_ending(buf: &mut String) {
-    if buf.ends_with('\n') {
-        buf.pop();
-    }
+    let stripped_len = hume_rope::strip_line_break(buf).len();
+    buf.truncate(stripped_len);
 }
 
 // ---------------------------------------------------------------------------

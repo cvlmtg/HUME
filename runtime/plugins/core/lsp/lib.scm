@@ -100,10 +100,11 @@
 ;; popup threshold and inlay.scm's refresh trigger for its two callers.
 
 ;;; Number of lines currently visible in `bid`'s pane, or `#f` if `bid` isn't
-;;; shown in any pane.
+;;; shown in any pane. `viewport-range` is 0-based end-exclusive, so the
+;;; count is just the range's width — no `+ 1` needed.
 (define (lsp/visible-lines bid)
   (let ((range (viewport-range bid)))
-    (if range (+ 1 (- (cdr range) (car range))) #f)))
+    (if range (- (cdr range) (car range)) #f)))
 
 ;; ── Location display + drawer ───────────────────────────────────────────────
 ;; Everything here normalizes to `{uri, range}` once, at response ingress,

@@ -21,8 +21,9 @@ pub struct PaneGeometry {
     pub content_width: u16,
     /// Total gutter width in columns.
     pub gutter_width: u16,
-    /// 0-based index of the last buffer line (`rope.len_lines() - 1`).
-    /// This is the correct value to pass to `GutterColumn::width()`.
+    /// 0-based index of the last ropey line (`hume_rope::last_ropey_line`),
+    /// phantom trailing line included. This is the correct value to pass to
+    /// `GutterColumn::width()`.
     pub last_line_idx: usize,
 }
 
@@ -55,8 +56,10 @@ pub fn compute_viewport<'a>(
 ) -> PaneGeometry {
     // 0-based index of the last line — the single source of truth for
     // GutterColumn::width(). Using the whole-file last line (not just what is
-    // on screen) keeps gutter width stable as the user scrolls.
-    let last_line_idx = rope.len_lines().saturating_sub(1);
+    // on screen) keeps gutter width stable as the user scrolls. Deliberately
+    // the phantom trailing line, not the last content line: the gutter is
+    // sized one digit wider than content requires.
+    let last_line_idx = hume_rope::last_ropey_line(rope);
     let gutter_width = gutter_width_for_line(gutter_columns, last_line_idx);
 
     PaneGeometry {

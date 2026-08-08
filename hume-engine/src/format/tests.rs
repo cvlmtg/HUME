@@ -21,9 +21,10 @@ fn tab_display_width_normal_range() {
 }
 
 #[test]
-fn tab_display_width_saturates_near_u32_max() {
-    // col=u32::MAX, tab_width=4: true next stop overflows u32.
-    // Without the saturating_mul/clamp fix this panics in debug builds.
+fn tab_display_width_no_overflow_near_u32_max() {
+    // col=u32::MAX, tab_width=4: u32::MAX % 4 == 3, so the distance to the
+    // next stop is 4 - 3 = 1. The modulo-based formula never computes a
+    // "next stop" value that could itself overflow u32.
     assert_eq!(tab_display_width(u32::MAX, 4), 1);
 }
 
@@ -625,11 +626,22 @@ fn strip_line_ending_no_newline_unchanged() {
 }
 
 #[test]
-fn strip_line_ending_cr_not_stripped() {
-    // Engine assumes Unix line endings; \r is left in place.
+fn strip_line_ending_crlf_stripped_as_one_unit() {
+    // A literal "\r\n" pair can reach the rope (Text::from's CRLF strip
+    // leaves one behind in the "\r\r\n" edge case) — both chars go, not
+    // just the \n.
     let mut buf = "hello\r\n".to_string();
     strip_line_ending(&mut buf);
-    assert_eq!(buf, "hello\r");
+    assert_eq!(buf, "hello");
+}
+
+#[test]
+fn strip_line_ending_non_lf_unicode_break_stripped() {
+    // NEL (U+0085) is one of ropey's unicode_lines break chars — a line
+    // terminated by it must not render the NEL as a literal trailing char.
+    let mut buf = "hello\u{85}".to_string();
+    strip_line_ending(&mut buf);
+    assert_eq!(buf, "hello");
 }
 
 // ── h_window clipping (B1) ───────────────────────────────────────────

@@ -319,7 +319,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut host = ScriptingHost::new();
-    // Captures the hook's own `(first . last)` payload so the assertion
+    // Captures the hook's own `(first . end)` payload so the assertion
     // compares two independently-reached values, not the builtin against
     // itself — both paths share `introspect::pane_visible_range`, so this
     // pins that they stay in sync, not just that the builtin returns
@@ -329,7 +329,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
         &mut host,
         r#"(define *captured* #f)
            (register-hook! 'on-viewport-change
-             (lambda (bid first last) (set! *captured* (cons first last))))"#,
+             (lambda (bid first end) (set! *captured* (cons first end))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -352,16 +352,16 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
     );
 }
 
-/// `viewport-range`'s `last_line` names the buffer's last *content* line,
+/// `viewport-range`'s `end` names one past the buffer's last *content* line,
 /// never ropey's phantom line past the structural trailing `\n` — the bug
 /// that made the manual's documented recipe (`user-manual/docs/plugins.md`)
 /// overshoot `buffer-lines`' bounds check whenever the viewport reaches EOF.
 ///
-/// Fail oracle: clamping to `len_lines() - 1` (the phantom-line index)
-/// instead of the content line count would report `(cdr vr)` one past what
-/// this asserts.
+/// Fail oracle: clamping to `ropey_line_count()` (one past the phantom-line
+/// index) instead of `content_line_count()` would report `(cdr vr)` one past
+/// what this asserts.
 #[test]
-fn viewport_range_last_line_is_the_last_content_line_at_eof() {
+fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
@@ -369,30 +369,30 @@ fn viewport_range_last_line_is_the_last_content_line_at_eof() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (cdr (viewport-range (current-buffer))) 2)"#,
+        r#"(equal? (cdr (viewport-range (current-buffer))) 3)"#,
     );
     assert!(
         fired,
-        "viewport-range's last_line must be the buffer's last content line (2), not the ropey phantom-line index (3)"
+        "viewport-range's end must be one past the buffer's last content line (3), not one past the ropey phantom-line index (4)"
     );
 }
 
-/// A buffer taller than the pane: `last_line` is the last visible *row*
-/// (`top_line + height - 1`), not `top_line + height`. `viewport_range` is
+/// A buffer taller than the pane: `end` is one past the last visible *row*
+/// (`top_line + height`), not `top_line + height + 1`. `viewport_range` is
 /// called directly (not through the `on-viewport-change` hook or a Steel
 /// probe) so the pane's height is exactly what this test set, not whatever a
 /// dispatched command might have touched.
 ///
-/// Fail oracle: the pre-fix `first_line + height` reports 3 for a 3-row
-/// pane at the top of a 6-line buffer, naming a row that isn't on screen.
+/// Fail oracle: the pre-fix `first_line + height + 1` reports 4 for a 3-row
+/// pane at the top of a 6-line buffer, naming a row past what's on screen.
 #[test]
-fn viewport_range_last_line_is_the_last_visible_row_not_one_past() {
+fn viewport_range_end_is_one_past_the_last_visible_row() {
     let mut ed = editor_from("-[a]>\nb\nc\nd\ne\nf\n");
     ed.viewport_mut().height = 3;
     let bid = ed.focused_buffer_id();
 
     let got = crate::editor::lsp::introspect::viewport_range(&ed.state, &ed.view, bid);
-    assert_eq!(got, Some((0, 2)));
+    assert_eq!(got, Some(0..3));
 }
 
 #[test]

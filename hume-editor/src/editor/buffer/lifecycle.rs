@@ -116,7 +116,7 @@ pub(crate) fn switch_pane_to_buffer(
 ) {
     ev.panes[pid].remember_scroll();
     ev.panes[pid].buffer_id = target;
-    ev.panes[pid].recall_scroll(target, buffers.get(target).text().len_lines());
+    ev.panes[pid].recall_scroll(target, buffers.get(target).text().last_content_line());
     pane_state::ensure(pane_state, buffers, pid, target);
 }
 

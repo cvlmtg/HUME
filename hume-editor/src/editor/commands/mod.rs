@@ -250,7 +250,7 @@ pub(super) fn pane_row_map<'a>(
         tab_width,
         whitespace,
         &pane.providers,
-        pane.content_width(doc.text().len_lines()),
+        pane.content_width(doc.text().last_ropey_line()),
         scratch,
     )
 }
@@ -268,7 +268,7 @@ pub(super) fn pane_row_map_mut<'a>(
     let (tab_width, whitespace) = format_overrides(doc, settings);
     // Both need the whole pane, so they are read before it is split.
     let wrap_mode = effective_wrap_mode(doc, settings, pane);
-    let content_width = pane.content_width(doc.text().len_lines());
+    let content_width = pane.content_width(doc.text().last_ropey_line());
     let rm = RowMap::new(
         doc.text().rope(),
         wrap_mode,

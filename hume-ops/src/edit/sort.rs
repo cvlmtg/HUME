@@ -120,7 +120,7 @@ fn collect_rows(buf: &Text, sels: &SelectionSet) -> Vec<Row> {
         for line in start_line..=end_line {
             let line_start = buf.line_to_char(line);
             // This line's own trailing '\n'. Every line reachable from a
-            // selection is a real content line (< len_lines() - 1) — the
+            // selection is a real content line (< last_ropey_line()) — the
             // structural final line can never host a selection, since `head`
             // is always `< len_chars()` and the buffer's last char is the
             // trailing '\n' belonging to the second-to-last line.

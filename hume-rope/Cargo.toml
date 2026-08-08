@@ -1,15 +1,11 @@
 [package]
-name = "hume-editing"
+name = "hume-rope"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 ropey.workspace = true
 unicode-segmentation.workspace = true
-similar.workspace = true
-rustc-hash.workspace = true
-hume-rope = { path = "../hume-rope" }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
-proptest = "1.11.0"

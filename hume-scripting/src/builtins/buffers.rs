@@ -300,16 +300,17 @@ pub(crate) fn char_index_to_line(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResu
     }
 }
 
-/// `(viewport-range bid)` → `(first-line . last-line)` currently visible
+/// `(viewport-range bid)` → `(first-line . end-line)` currently visible
 /// for `bid` (the focused pane's if shown there, else the first pane showing
-/// it), or `#f` if `bid` isn't open in any pane. Reads live view state,
-/// which only exists at command dispatch, hook fire, or a queued-call drain.
+/// it) — 0-based, end-exclusive, matching `buffer-lines`' range convention —
+/// or `#f` if `bid` isn't open in any pane. Reads live view state, which
+/// only exists at command dispatch, hook fire, or a queued-call drain.
 pub(crate) fn viewport_range(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;
     match ctx.host.buffers().viewport_range(id) {
-        Some((first, last)) => cons_pair(
-            SteelVal::IntV(first as isize),
-            SteelVal::IntV(last as isize),
+        Some(range) => cons_pair(
+            SteelVal::IntV(range.start as isize),
+            SteelVal::IntV(range.end as isize),
         ),
         None => Ok(SteelVal::BoolV(false)),
     }

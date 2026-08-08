@@ -4,6 +4,8 @@
 //! because they mutate the transport). These run through `EditorHostImpl`
 //! directly since a Steel caller needs the value back inline.
 
+use std::ops::Range;
+
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_lsp::backend::ServerId;
@@ -390,25 +392,25 @@ pub(crate) fn range_params(
     }))
 }
 
-/// `pane`'s visible `(first_line, last_line)` span, clamped to a buffer of
+/// `pane`'s visible line range, end-exclusive, clamped to a buffer of
 /// `content_lines` — the single computation shared by `queue_viewport_change`
 /// (pane -> its own range, for the `on-viewport-change` hook payload) and
 /// [`viewport_range`] (buffer -> the pane showing it, for the synchronous
-/// `(viewport-range bid)` builtin, which wraps this pair in a dotted-pair
-/// wire value). Both `.scm` consumers (`lsp/visible-lines`,
-/// `lsp/inlay-hint-params`) and the user manual treat `last_line` as
-/// *inclusive* — `height` is the pane's content-row count
-/// (`hume-engine`'s `layout::content_height`), so the last visible row is
-/// `height - 1` past `top_line`, not `height`. Also clamps to
-/// `content_lines - 1` (0 when the buffer has no content lines) so it never
-/// points past the buffer's last *content* line — not ropey's phantom line
-/// past the structural trailing `\n` — even when the pane's viewport height
-/// exceeds the buffer.
-pub(crate) fn pane_visible_range(pane: &Pane, content_lines: usize) -> (usize, usize) {
+/// `(viewport-range bid)` builtin, which wraps this range in a dotted-pair
+/// wire value). Clamped to `content_lines` so the range never points past the
+/// buffer's last *content* line — not ropey's phantom line past the
+/// structural trailing `\n` — even when the pane's viewport height exceeds
+/// the buffer.
+///
+/// `height.max(1)` (not `height` directly): a `height == 0` pane (no visible
+/// rows) still reports a one-line range rather than an empty one — matches
+/// this function's behavior before the exclusive-range conversion, not a new
+/// choice made here.
+pub(crate) fn pane_visible_range(pane: &Pane, content_lines: usize) -> Range<usize> {
     let first_line = pane.viewport.top_line;
-    let last_row = pane.viewport.height.saturating_sub(1) as usize;
-    let last_line = (first_line + last_row).min(content_lines.saturating_sub(1));
-    (first_line, last_line)
+    let visible_rows = pane.viewport.height.max(1) as usize;
+    let end_line = (first_line + visible_rows).min(content_lines);
+    first_line..end_line
 }
 
 /// The pane currently showing buffer `id`: the focused pane if it shows `id`,
@@ -430,7 +432,7 @@ fn pane_showing_buffer(state: &EditorState, view: &EngineView, id: BufferId) -> 
         .map(|(pid, _)| pid)
 }
 
-/// `(viewport-range bid)` — the `(first_line . last_line)` span currently
+/// `(viewport-range bid)` — the visible line range (end-exclusive) currently
 /// visible for `id`, or `None` if `id` isn't shown in any pane (a background
 /// or hidden buffer). With the same buffer open in two panes, the focused
 /// pane's range wins — no less arbitrary than any other tie-break, since a
@@ -440,7 +442,7 @@ pub(crate) fn viewport_range(
     state: &EditorState,
     view: &EngineView,
     id: BufferId,
-) -> Option<(usize, usize)> {
+) -> Option<Range<usize>> {
     let pane_id = pane_showing_buffer(state, view, id)?;
     let pane = view.panes.get(pane_id)?;
     let content_lines = state.buffers.try_get(id)?.text().content_line_count();
