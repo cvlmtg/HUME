@@ -287,9 +287,7 @@ need was the anticipated second client.
 Thin Steel wrappers over `hume-editing`'s existing diff code — no new diff algorithm, no new
 `similar` usage.
 
-**Routed through the `Host` trait, not a new crate dependency.** Verified dependency graph:
-`hume-scripting` depends only on `hume-engine` + `hume-platform` (`hume-scripting/Cargo.toml`),
-and neither depends on `hume-editing` — only `hume-editor` links it. A `DiffHost` capability
+**Routed through the `Host` trait, not a new crate dependency.** A `DiffHost` capability
 trait landed on `hume-scripting/src/host.rs`, alongside `BufferHost`/`DecorationHost`/etc.,
 accessed the same way as every other capability: `EditorHost::diff(&mut self) -> Option<&mut
 dyn DiffHost>`, defaulted to `None` like the other eight optional accessors (so `NullHost`/

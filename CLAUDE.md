@@ -5,12 +5,12 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 
 ## Key files
 - `README.md` — Project description
+- `docs/CRATES.md` — Workspace crates, what each owns, dependency edges
 - `docs/ROADMAP.md` — Open questions and milestones
 - `docs/LSP.md` — LSP design, prerequisites, and task breakdown
 - `docs/LEARNING.md` — Concepts and Rust patterns explained as they arise
 
 ## Architectural invariants (quick orientation)
-- **Workspace**: `hume-engine/` (rendering pipeline, pane geometry), `hume-editor/` (editor state, scripting glue, keymaps, everything else; builds the `hume` binary), `hume-ops/` (named commands — pure functions of buffer + selections), `hume-editing/` (text model, selections, grapheme utils), `hume-rope/` (leaf crate: line-count/line-range/grapheme-boundary/rope-position primitives shared by `hume-editing`, `hume-engine`, and `hume-treesitter`), `hume-platform/` (terminal I/O, filesystem helpers), `hume-scripting/` (Steel scripting host), `hume-treesitter/` (grammar loading, incremental parse), `hume-lsp/` (LSP client transport), plus `hume-test-fixtures/` (shared test DSL and grammar fixtures, dev-only).
 - **Named commands** (`hume-ops/src/edit/`, `hume-ops/src/motion/`) are pure functions of buffer + selections (plus command-specific params like `count: usize`, `MotionMode`). Edits also return a `ChangeSet`. They have no knowledge of keys — `hume-ops` doesn't depend on `hume-editor`, so this is compiler-enforced, not just discipline.
 - **Keymaps** (`hume-editor/src/editor/keymap/`) map `KeyEvent` sequences to command names via a trie. Per-mode keymaps (Normal, Extend, Insert).
 - **Buffer invariant**: every buffer always ends with a structural `\n`. Cursors always satisfy `head < len_chars()`.
