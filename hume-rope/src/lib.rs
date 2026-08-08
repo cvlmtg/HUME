@@ -27,7 +27,7 @@ pub mod position_encoding;
 pub use cursor::{CharCursor, chars_at};
 pub use lines::{
     char_to_line_byte, content_line_count, content_lines_range, ends_with_newline, is_empty_line,
-    last_content_line, last_ropey_line, leading_whitespace_end, line_content_end,
+    last_content_line, last_ropey_line, leading_whitespace_end, line_break_char, line_content_end,
     line_end_exclusive, line_end_exclusive_byte, line_segments, place_column, ropey_line_count,
     ropey_lines_range, snap_to_grapheme_boundary, strip_line_break,
 };

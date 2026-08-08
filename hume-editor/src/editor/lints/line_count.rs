@@ -6,7 +6,9 @@
 //! `content_line_count`, `last_content_line`, `content_lines_range`) — or a
 //! `hume_editing::text::Text` method that delegates to one of them — never a
 //! raw `len_lines()` call or a manual `+ 1` / `- 1` re-derivation of one of
-//! these functions' own result.
+//! these functions' own result. The same applies to the char offset of a
+//! line's own line-break: `line_end_exclusive(buf, line) - 1` must be
+//! `hume_rope::line_break_char(buf, line)` instead.
 //!
 //! `no_raw_line_count_derivations` recursively scans every workspace
 //! crate's `src/` — derived from the root `Cargo.toml`'s `members` list, so
@@ -17,7 +19,7 @@
 //!
 //! **Opt-out**: annotate a line with `// line-count-safe: <reason>`.
 
-use super::{collect_source_rs, quoted_strings, scan_forbidden};
+use super::{collect_source_rs, quoted_strings, scan_forbidden, strip_line_comment};
 
 /// Every workspace member crate name, derived from the root `Cargo.toml`'s
 /// `[workspace] members = [...]` line — the single source of truth for
@@ -149,6 +151,33 @@ fn no_raw_line_count_derivations() {
                 )
             })
             .collect();
+
+    // `line_end_exclusive(buf, line) - 1` — the char position of `line`'s own
+    // line-break — is a re-derivation like the twelve above, but its argument
+    // is a per-call-site variable, so it can't be one fixed substring. Scan
+    // for the stem, then keep only hits that also spell a trailing `- 1` or
+    // `.saturating_sub(1)` — `hume_rope::line_break_char` is the single
+    // implementation; a bare `line_end_exclusive` call with no subtraction is
+    // legitimate (it wants the *next* line's start, not this line's break).
+    violations.extend(
+        scan_forbidden(
+            &paths,
+            workspace_root,
+            &["line_end_exclusive("],
+            "// line-count-safe:",
+        )
+        .into_iter()
+        .filter(|v| {
+            let code = strip_line_comment(&v.trimmed);
+            code.contains("- 1") || code.contains(".saturating_sub(1)")
+        })
+        .map(|v| {
+            format!(
+                "  {}:{} — `line_end_exclusive(...) - 1` (use hume_rope::line_break_char) in: {}",
+                v.file, v.lineno, v.trimmed
+            )
+        }),
+    );
 
     // `collect_source_rs` drops every `tests.rs` file and `tests/` directory
     // so the rest of this lint stays test-exempt (independent-oracle

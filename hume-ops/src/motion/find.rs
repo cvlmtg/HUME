@@ -1,6 +1,6 @@
 use super::{FindKind, MotionMode, apply_motion};
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use hume_editing::lines::line_end_exclusive;
+use hume_editing::lines::line_break_char;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::Text;
 
@@ -14,8 +14,7 @@ use hume_editing::text::Text;
 pub(super) fn find_char_on_line_forward(buf: &Text, head: usize, ch: char) -> Option<usize> {
     let line = buf.char_to_line(head);
     // Exclude the '\n': stop iteration once pos reaches the newline position.
-    // The buffer always ends with '\n', so line_end_exclusive >= 1.
-    let newline = line_end_exclusive(buf, line) - 1;
+    let newline = line_break_char(buf, line);
     let mut pos = next_grapheme_boundary(buf, head);
     while pos < newline {
         if buf.char_at(pos) == Some(ch) {

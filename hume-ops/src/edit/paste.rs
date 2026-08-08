@@ -1,7 +1,7 @@
 //! `p`/`P` — paste register contents after/before each selection.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::lines::{is_line_start, line_end_exclusive};
+use hume_editing::lines::{is_line_start, line_break_char, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 
@@ -106,10 +106,9 @@ fn paste_impl(
             let needs_prefix = start > b.old_pos() && !is_line_start(buf, sel);
 
             // Consume the line's trailing '\n' when the selection ends right before it,
-            // so the pasted line's own '\n' doesn't create a blank line. `newline_pos`
-            // is the '\n' that terminates the selection's last line.
+            // so the pasted line's own '\n' doesn't create a blank line.
             let last_line = buf.char_to_line(end_incl);
-            let newline_pos = line_end_exclusive(buf, last_line) - 1;
+            let newline_pos = line_break_char(buf, last_line);
             let del_end = if end_incl + 1 == newline_pos {
                 newline_pos + 1
             } else {

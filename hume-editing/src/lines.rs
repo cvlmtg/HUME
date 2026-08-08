@@ -21,6 +21,11 @@ pub fn line_end_exclusive(buf: &Text, line: usize) -> usize {
     hume_rope::line_end_exclusive(buf.rope(), line)
 }
 
+/// See [`hume_rope::line_break_char`].
+pub fn line_break_char(buf: &Text, line: usize) -> usize {
+    hume_rope::line_break_char(buf.rope(), line)
+}
+
 /// See [`hume_rope::leading_whitespace_end`].
 pub fn leading_whitespace_end(buf: &Text, line: usize) -> usize {
     hume_rope::leading_whitespace_end(buf.rope(), line)

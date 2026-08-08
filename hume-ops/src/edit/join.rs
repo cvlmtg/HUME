@@ -2,7 +2,7 @@
 //! the inserted spaces.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::lines::line_end_exclusive;
+use hume_editing::lines::{line_break_char, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 
@@ -46,7 +46,7 @@ pub fn join_lines_select_spaces(buf: Text, sels: SelectionSet) -> (Text, Selecti
         }
 
         for line in start_line..end_line {
-            let nl_pos = line_end_exclusive(buf, line).saturating_sub(1);
+            let nl_pos = line_break_char(buf, line);
             let next_start = line_end_exclusive(buf, line);
             let next_end_excl = line_end_exclusive(buf, line + 1);
 

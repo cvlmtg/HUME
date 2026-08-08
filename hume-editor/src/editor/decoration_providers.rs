@@ -11,7 +11,7 @@ use hume_engine::types::EditorMode;
 use super::Editor;
 use crate::editor::lsp::diagnostics::DiagSeverity;
 use crate::lock_ext::LockExt;
-use hume_editing::lines::{char_to_line_byte, line_end_exclusive, line_segments};
+use hume_editing::lines::{char_to_line_byte, line_break_char, line_segments};
 use hume_ops::pair::find_bracket_pair;
 
 impl Editor {
@@ -589,7 +589,7 @@ impl Editor {
                     // the next line — see `char_to_line_byte`'s doc comment
                     // on the same pattern used for inlay hints' `'after`
                     // anchor).
-                    let line_newline = line_end_exclusive(text, line) - 1;
+                    let line_newline = line_break_char(text, line);
                     let (_, byte_offset) = char_to_line_byte(text, line_newline);
                     (
                         source,

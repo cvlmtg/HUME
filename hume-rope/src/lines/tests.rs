@@ -96,6 +96,65 @@ fn line_end_exclusive_empty_line_between() {
     assert_eq!(line_end_exclusive(&buf, 1), 3);
 }
 
+// ── line_break_char ───────────────────────────────────────────────────────
+//
+// Every expected offset below is hand-counted straight off the source
+// string's char positions — never derived by calling `line_end_exclusive`
+// (or anything else under test) — so a bug that breaks the `- 1` relationship
+// this function replaces can't also fool its own test.
+
+#[test]
+fn line_break_char_first_line() {
+    // "hello\nworld\n": h=0 e=1 l=2 l=3 o=4 \n=5
+    let buf = rope("hello\nworld\n");
+    assert_eq!(line_break_char(&buf, 0), 5);
+}
+
+#[test]
+fn line_break_char_middle_line() {
+    // "a\nb\nc\n": a=0 \n=1 b=2 \n=3 c=4 \n=5 — line 1 ("b") breaks at 3.
+    let buf = rope("a\nb\nc\n");
+    assert_eq!(line_break_char(&buf, 1), 3);
+}
+
+#[test]
+fn line_break_char_empty_line() {
+    // "a\n\nb\n": a=0 \n=1 \n=2 b=3 \n=4 — line 1 is empty, breaks at 2.
+    let buf = rope("a\n\nb\n");
+    assert_eq!(line_break_char(&buf, 1), 2);
+}
+
+#[test]
+fn line_break_char_last_content_line() {
+    // "a\nb\nc\n": last content line is 2 ("c"), breaks at 5.
+    let buf = rope("a\nb\nc\n");
+    assert_eq!(line_break_char(&buf, last_content_line(&buf)), 5);
+}
+
+#[test]
+fn line_break_char_single_line_buffer() {
+    // "hello\n": one content line, breaks at 5.
+    let buf = rope("hello\n");
+    assert_eq!(line_break_char(&buf, 0), 5);
+}
+
+#[test]
+fn line_break_char_empty_buffer() {
+    // "\n": one empty content line, breaks at 0.
+    let buf = rope("\n");
+    assert_eq!(line_break_char(&buf, 0), 0);
+}
+
+#[test]
+#[should_panic(expected = "is not a real content line")]
+fn line_break_char_asserts_against_the_phantom_trailing_line() {
+    // "a\n" has one content line (0); line 1 is the phantom trailing line —
+    // line_end_exclusive(1) - 1 would silently return line 0's own '\n'
+    // instead of failing, so this must be caught instead of mis-answered.
+    let buf = rope("a\n");
+    line_break_char(&buf, 1);
+}
+
 // ── leading_whitespace_end ────────────────────────────────────────────────
 
 #[test]

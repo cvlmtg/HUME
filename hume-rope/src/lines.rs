@@ -96,6 +96,24 @@ pub fn line_end_exclusive(rope: &Rope, line: usize) -> usize {
     }
 }
 
+/// Char offset of the line-break char that terminates `line` — the
+/// inclusive counterpart to [`line_end_exclusive`].
+///
+/// Content domain: `line` must be a real content line. On the phantom
+/// trailing line this would return the *previous* line's terminator, so
+/// that case is debug-asserted rather than silently mis-answered.
+///
+/// With a `\r\n` terminator this is the `\n`, not the `\r` — `Text::from`
+/// normalizes CRLF, so a HUME buffer never has one.
+pub fn line_break_char(rope: &Rope, line: usize) -> usize {
+    debug_assert!(
+        line < content_line_count(rope),
+        "line_break_char: line {line} is not a real content line (buffer has {} content lines)",
+        content_line_count(rope)
+    );
+    line_end_exclusive(rope, line) - 1
+}
+
 /// Char offset one past the last content char on `line` — the offset the
 /// byte-domain wire helpers in [`crate::position_encoding`] use, expressed
 /// in bytes instead of chars.
@@ -245,10 +263,7 @@ pub fn line_segments(
     let start_line = rope.char_to_line(start);
     let end_line = rope.char_to_line(last_char);
     (start_line..=end_line).map(move |line| {
-        // Every content line ends with a '\n' — HUME buffers always end with
-        // a structural trailing '\n', so this position always exists and
-        // still belongs to `line` in ropey's line model.
-        let line_newline = line_end_exclusive(rope, line) - 1;
+        let line_newline = line_break_char(rope, line);
         let seg_start = start.max(rope.line_to_char(line));
         let seg_end = end_char_excl.min(line_newline);
         let (_, byte_start) = char_to_line_byte(rope, seg_start);

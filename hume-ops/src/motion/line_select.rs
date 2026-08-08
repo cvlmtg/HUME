@@ -1,5 +1,5 @@
 use super::MotionMode;
-use hume_editing::lines::{is_line_start, line_end_exclusive};
+use hume_editing::lines::{is_line_start, line_break_char, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
 use hume_editing::text::Text;
 
@@ -45,7 +45,7 @@ fn extend_line_span(buf: &Text, sel: Selection, delta: isize) -> Selection {
     if !is_selection_linewise(buf, &sel) {
         let top_line = buf.char_to_line(sel.start());
         let bottom_line = buf.char_to_line(sel.end());
-        let end = line_end_exclusive(buf, bottom_line) - 1;
+        let end = line_break_char(buf, bottom_line);
         return Selection::directed(buf.line_to_char(top_line), end, delta > 0);
     }
 
@@ -69,7 +69,7 @@ fn extend_line_span(buf: &Text, sel: Selection, delta: isize) -> Selection {
 
     let lo = anchor_line.min(new_head_line);
     let hi = anchor_line.max(new_head_line);
-    let end = line_end_exclusive(buf, hi) - 1;
+    let end = line_break_char(buf, hi);
     Selection::directed(buf.line_to_char(lo), end, anchor_line <= new_head_line)
 }
 
@@ -88,7 +88,7 @@ fn move_select_line(buf: &Text, sel: Selection) -> Selection {
         buf.char_to_line(sel.start())
     };
     let start = buf.line_to_char(target_line);
-    let end = line_end_exclusive(buf, target_line) - 1; // inclusive `\n`
+    let end = line_break_char(buf, target_line);
     Selection::new(start, end)
 }
 
@@ -129,7 +129,7 @@ fn move_select_line_backward(buf: &Text, sel: Selection) -> Selection {
         top_line
     };
     let start = buf.line_to_char(target_line);
-    let end = line_end_exclusive(buf, target_line) - 1; // inclusive `\n`
+    let end = line_break_char(buf, target_line);
     Selection::new(end, start) // backward: anchor=`\n`, head=line_start
 }
 

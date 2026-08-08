@@ -1,5 +1,5 @@
 use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::lines::{line_content_end, line_end_exclusive, place_column};
+use hume_editing::lines::{line_break_char, line_content_end, line_end_exclusive, place_column};
 use hume_editing::text::Text;
 
 // ── Line motions (inner) ──────────────────────────────────────────────────────
@@ -23,13 +23,11 @@ pub(super) fn goto_line_end(buf: &Text, head: usize) -> usize {
 ///
 /// Unlike `goto_line_end` (which stops at the last non-newline grapheme and
 /// therefore lands on the `\n` itself only on empty lines), this always
-/// returns the `\n` position. The buffer invariant guarantees every line —
-/// including the last — ends with `\n`, so `line_end_exclusive - 1` is always
-/// valid. Used by `cmd_open_line_below` to make the insertion point uniform
-/// across empty and non-empty lines.
+/// returns the `\n` position. Used by `cmd_open_line_below` to make the
+/// insertion point uniform across empty and non-empty lines.
 pub(super) fn goto_line_newline(buf: &Text, head: usize) -> usize {
     let line = buf.char_to_line(head);
-    line_end_exclusive(buf, line) - 1
+    line_break_char(buf, line)
 }
 
 /// Jump to the first non-blank character on the current line.

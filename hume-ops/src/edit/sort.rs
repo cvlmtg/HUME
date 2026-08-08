@@ -8,7 +8,7 @@
 //! per-line shell invocation to reorder against.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::lines::line_end_exclusive;
+use hume_editing::lines::{line_break_char, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 
@@ -119,12 +119,8 @@ fn collect_rows(buf: &Text, sels: &SelectionSet) -> Vec<Row> {
         let end_line = buf.char_to_line(sel.end_inclusive(buf));
         for line in start_line..=end_line {
             let line_start = buf.line_to_char(line);
-            // This line's own trailing '\n'. Every line reachable from a
-            // selection is a real content line (< last_ropey_line()) — the
-            // structural final line can never host a selection, since `head`
-            // is always `< len_chars()` and the buffer's last char is the
-            // trailing '\n' belonging to the second-to-last line.
-            let nl = line_end_exclusive(buf, line) - 1;
+            // This line's own trailing '\n'.
+            let nl = line_break_char(buf, line);
             let fragment = if nl > line_start {
                 // On the selection's own start/end line, clamp to the part of
                 // the line actually selected; on lines in between (a
