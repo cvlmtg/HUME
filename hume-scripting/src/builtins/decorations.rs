@@ -106,9 +106,9 @@ pub(crate) fn set_virtual_lines(
 
 const VIRTUAL_LINE_KEYS: &[&str] = &["line", "text", "anchor", "scope", "segments"];
 
-/// Decodes `lines` into `VirtualLineSpec`s. Each entry is a hashmap — free
-/// to change shape without a migration path: no `.scm` plugin calls this
-/// builtin yet, only Rust tests. Only decodes shape (arity, types) —
+/// Decodes `lines` into `VirtualLineSpec`s. Each entry is a hashmap, shaped
+/// to match `set-virtual-lines!`'s contract with its first real caller, the
+/// git-diff plugin. Only decodes shape (arity, types) —
 /// segment bounds/ordering/overlap validation happens at the host boundary
 /// (`host_impl.rs`'s `set_virtual_lines`), the sole enforcement point for
 /// that contract.
