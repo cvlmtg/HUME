@@ -324,6 +324,111 @@ fn on_buffer_open_queued_after_on_language_set() {
     );
 }
 
+// ── Startup buffer: OnBufferOpen ──────────────────────────────────────────────
+
+/// The startup buffer (`Editor::open`'s `file_path` argument) predates the
+/// scripting host, so it can't route through `open_buffer_and_notify` like
+/// every other buffer — but it must still announce `on-buffer-open`, after
+/// `on-language-set`, once `detect_pending_languages` runs.
+///
+/// Asserting the full two-element order (not just "did it fire") also
+/// covers a double-fire: the post-init sweep (`scripting_setup.rs`) that
+/// re-detects every open buffer's language calls `detect_and_set_language`
+/// a second time for this buffer, which would append a spurious third entry
+/// if `set_buffer_language_impl`'s unchanged-value early return ever broke.
+///
+/// Fail oracle: drop the `open_hook_pending`/`pending_language_detection`
+/// bookkeeping `Editor::open` now does → `hook_order` is `["on-language-set"]`
+/// (or empty, if language detection also finds nothing to change).
+#[test]
+fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("main.rs");
+    std::fs::write(&file, "fn main() {}\n").unwrap();
+
+    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {})).unwrap();
+    let bid = ed.focused_buffer_id();
+
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))
+           (register-hook! 'on-buffer-open (lambda (bid) (call! "move-right")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.state
+        .config
+        .languages
+        .register_identity_no_rebuild("rust", &["rs"], &[], &[], None);
+    ed.state
+        .config
+        .languages
+        .rebuild_glob_set()
+        .expect("rebuild ok");
+
+    // Stands in for what `apply_script_effects`'s tail does during
+    // `init_scripting` (`scripting_setup.rs:105`) — inspecting the queue
+    // before `settle()` drains it, same as the sibling test above.
+    ed.detect_pending_languages();
+
+    let hook_order: Vec<&str> = ed
+        .state
+        .config
+        .pending_work
+        .iter()
+        .filter_map(|w| match w {
+            crate::editor::event::PendingWork::Event(e) => Some(e.name()),
+            crate::editor::event::PendingWork::Call(..) => None,
+        })
+        .collect();
+    assert_eq!(
+        hook_order,
+        vec!["on-language-set", "on-buffer-open"],
+        "startup buffer {bid:?} must announce on-language-set then on-buffer-open \
+         exactly once each; got {hook_order:?}"
+    );
+}
+
+/// `OnBufferClose` must never fire for the startup buffer unless its
+/// `OnBufferOpen` was already announced — the pairing invariant
+/// `close_buffer_and_notify` documents and
+/// `unix::scripting_effects::buffer_opened_and_closed_in_one_eval_fires_neither_hook`
+/// already asserts for a buffer opened mid-eval. Before the fix, the startup
+/// buffer's `open_hook_pending` defaulted to `false` (it never went through
+/// `open_buffer_and_notify`), so closing it fired an unpaired
+/// `on-buffer-close` despite `on-buffer-open` never having fired.
+#[test]
+fn startup_buffer_close_before_any_drain_fires_no_on_buffer_close() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("main.rs");
+    std::fs::write(&file, "fn main() {}\n").unwrap();
+
+    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {})).unwrap();
+    let bid = ed.focused_buffer_id();
+    assert!(
+        ed.state.buffers.get(bid).open_hook_pending,
+        "sanity: the startup buffer's open hasn't been announced yet"
+    );
+
+    // Closed before any `detect_pending_languages` drain — no scripting host
+    // is even attached yet, matching a real early-exit (e.g. `:q` before the
+    // first frame).
+    ed.close_buffer(bid);
+
+    let queued_close = ed.state.config.pending_work.iter().any(|w| {
+        matches!(w, crate::editor::event::PendingWork::Event(e) if e.name() == "on-buffer-close")
+    });
+    assert!(
+        !queued_close,
+        "on-buffer-close must not fire for a buffer whose on-buffer-open never did"
+    );
+}
+
 // ── Hook (call! …) dispatch ───────────────────────────────────────────────────
 
 /// `queue_event` must dispatch commands called by `(call! …)` inside hook bodies.

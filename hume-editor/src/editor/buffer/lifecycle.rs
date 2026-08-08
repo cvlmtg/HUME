@@ -43,25 +43,33 @@ pub(crate) fn open_buffer(
     bid
 }
 
-/// [`open_buffer`] plus queuing language detection — the disjoint-borrow
-/// (`view`/`state`) chokepoint every buffer-opening path shares:
-/// `Editor::open_buffer`, `EditorHostImpl::open_buffer` (`(open-buffer! …)`),
-/// and `lsp::edits::resolve_or_open` (workspace edits, goto-definition).
-///
-/// Deliberately does **not** run detection inline: that needs
-/// `set_buffer_language`, which can activate lazy language plugins via
-/// `self.scripting` — a full `&mut Editor`/Steel-eval capability this
-/// disjoint-borrow chokepoint never holds. Instead `bid` is queued onto
-/// `state.config.pending_language_detection`; every caller drains it once it holds
-/// (or regains) that capability — see `Editor::detect_pending_languages`,
-/// which also fires `OnBufferOpen` once detection (and `OnLanguageSet`) for
-/// `bid` has run, so plugins observing both hooks see `OnLanguageSet` first.
-///
-/// Also marks the buffer `open_hook_pending` until that drain fires its
-/// `OnBufferOpen` — read by [`close_buffer_and_notify`] so a buffer closed
-/// before the drain runs (e.g. opened and closed within one Steel eval)
+/// Marks `bid` `open_hook_pending` and queues it for language detection —
+/// every fresh `BufferId` must go through this exactly once, or
+/// `Editor::detect_pending_languages` never announces its `OnBufferOpen`
+/// (see that function's doc). Deliberately does **not** run detection
+/// inline: that needs `set_buffer_language`, which can activate lazy
+/// language plugins via `self.scripting` — a full `&mut Editor`/Steel-eval
+/// capability neither of this function's callers hold. Also leaves
+/// `open_hook_pending` set until that drain fires its `OnBufferOpen` — read
+/// by [`close_buffer_and_notify`] so a buffer closed before the drain runs
 /// announces neither hook, rather than an `OnBufferClose` with no matching
 /// open.
+///
+/// Two callers: [`open_buffer_and_notify`] below, the disjoint-borrow
+/// (`view`/`state`) chokepoint `Editor::open_buffer`, `EditorHostImpl::open_buffer`
+/// (`(open-buffer! …)`), and `lsp::edits::resolve_or_open` all share; and
+/// `Editor::open`, which builds the startup buffer inline (bootstrapping the
+/// very `EngineView`/pane-state maps `open_buffer` needs, so it can't call
+/// that helper) but must leave the buffer in the same state.
+pub(crate) fn queue_open_announcement(state: &mut EditorState, bid: BufferId) {
+    state.buffers.get_mut(bid).open_hook_pending = true;
+    state.config.pending_language_detection.push(bid);
+}
+
+/// [`open_buffer`] plus [`queue_open_announcement`] — see the latter for why
+/// detection doesn't run inline. `Editor::detect_pending_languages` fires
+/// `OnBufferOpen` once detection (and `OnLanguageSet`) for `bid` has run, so
+/// plugins observing both hooks see `OnLanguageSet` first.
 pub(crate) fn open_buffer_and_notify(
     ev: &mut EngineView,
     state: &mut EditorState,
@@ -75,8 +83,7 @@ pub(crate) fn open_buffer_and_notify(
         doc,
         state.settings.undo_levels,
     );
-    state.buffers.get_mut(bid).open_hook_pending = true;
-    state.config.pending_language_detection.push(bid);
+    queue_open_announcement(state, bid);
     bid
 }
 
