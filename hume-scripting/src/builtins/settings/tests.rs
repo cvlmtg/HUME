@@ -315,6 +315,15 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
         self.inner.buffer_generation(id)
     }
+    fn buffer_text(&self, id: BufferId) -> Option<String> {
+        self.inner.buffer_text(id)
+    }
+    fn buffer_line_count(&self, id: BufferId) -> Option<usize> {
+        self.inner.buffer_line_count(id)
+    }
+    fn buffer_lines(&self, id: BufferId, range: std::ops::Range<usize>) -> Option<Vec<String>> {
+        self.inner.buffer_lines(id, range)
+    }
     fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {
         self.inner.viewport_range(id)
     }

@@ -358,6 +358,28 @@ superseded by a newer one before the older command has finished.
 
 Only install or overwrite files under `(data-dir)` unless you have a specific reason to go elsewhere — that's where HUME expects a plugin's own data (installed grammars, downloaded servers, plugin state) to live.
 
+### Reading buffer text
+
+```scheme
+(buffer-text bid)
+```
+
+Returns a buffer's full live content as a string — including any unsaved edits, not what's on disk. The string always ends with a trailing newline, the same way HUME stores every buffer internally.
+
+```scheme
+(buffer-lines bid)
+(buffer-lines bid #:start start #:end end)
+```
+
+Returns the buffer's content as a list of lines, each with its line ending stripped. With no range, every line is returned; `#:start`/`#:end` select a 0-based, end-exclusive slice (`(buffer-lines bid #:start 10 #:end 40)` returns lines 10 through 39). An out-of-range `#:end`, or a `#:start` past `#:end`, raises an error rather than silently clamping. Compose with `(viewport-range bid)` to read only what's currently on screen:
+
+```scheme
+(let ((vr (viewport-range bid)))
+  (buffer-lines bid #:start (car vr) #:end (+ 1 (cdr vr))))
+```
+
+If you're about to diff a buffer's content against another text, reach for `(diff-buffer-lines bid ref-text)` instead of `(buffer-text bid)` — it compares against the buffer's live text directly, without materializing the whole buffer as a string first, and is the cheaper choice for a hook that fires on every keystroke.
+
 ### Comparing text
 
 Two functions compute a line-level diff — useful for anything that shows what changed between two versions of a file, like a git-status indicator:

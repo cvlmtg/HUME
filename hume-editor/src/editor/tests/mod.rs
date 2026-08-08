@@ -634,6 +634,7 @@ mod auto_pairs;
 mod bracketed_paste;
 mod buffer;
 mod buffer_store;
+mod buffer_text_steel;
 mod command_mode;
 mod commands;
 mod completion;

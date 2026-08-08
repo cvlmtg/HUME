@@ -125,6 +125,20 @@ fn char_index_to_line_blocked_in_init_mode() {
     assert!(super::super::errors::require_cmd(&h.ctx_init(), "char-index->line").is_err());
 }
 
+/// `buffer-text` is blocked in init mode.
+#[test]
+fn buffer_text_blocked_in_init_mode() {
+    let mut h = SteelCtxTestHarness::new();
+    assert!(super::super::errors::require_cmd(&h.ctx_init(), "buffer-text").is_err());
+}
+
+/// `%buffer-lines` (the Rust half of `buffer-lines`) is blocked in init mode.
+#[test]
+fn buffer_lines_blocked_in_init_mode() {
+    let mut h = SteelCtxTestHarness::new();
+    assert!(super::super::errors::require_cmd(&h.ctx_init(), "%buffer-lines").is_err());
+}
+
 // ── Type errors (wrong arg type) ──────────────────────────────────────────
 //
 // `buffer-path`/`buffer-name`/`buffer-dirty?` don't decode `bid` in-body
@@ -151,6 +165,26 @@ fn char_index_to_line_wrong_type_errors() {
     let mut ctx = h.ctx();
     let result = char_index_to_line(&mut ctx, SteelVal::IntV(-1));
     assert!(result.is_err());
+}
+
+/// `%buffer-lines` rejects a non-integer, non-`#f` `start`/`end` argument.
+#[test]
+fn buffer_lines_wrong_type_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = buffer_lines(
+        &mut ctx,
+        default_bid(),
+        SteelVal::StringV("not-an-int".into()),
+        SteelVal::BoolV(false),
+    );
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("expected a non-negative integer")
+    );
 }
 
 // ── Invalid buffer ID (NullHost always returns buffer_exists=false) ───────
@@ -182,6 +216,42 @@ fn buffer_display_path_invalid_id_errors() {
     let mut ctx = h.ctx();
     // NullHost.buffer_exists always returns false.
     let result = buffer_display_path(&mut ctx, default_bid());
+    assert!(result.is_err(), "non-existent buffer id must error");
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid buffer id")
+    );
+}
+
+/// `buffer-text` on a non-existent buffer raises, exactly like `buffer-path`.
+#[test]
+fn buffer_text_invalid_id_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = buffer_text(&mut ctx, default_bid());
+    assert!(result.is_err(), "non-existent buffer id must error");
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid buffer id")
+    );
+}
+
+/// `%buffer-lines` on a non-existent buffer raises — `buffer_line_count` is
+/// looked up before the range is validated, so this is the first check hit.
+#[test]
+fn buffer_lines_invalid_id_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = buffer_lines(
+        &mut ctx,
+        default_bid(),
+        SteelVal::BoolV(false),
+        SteelVal::BoolV(false),
+    );
     assert!(result.is_err(), "non-existent buffer id must error");
     assert!(
         result

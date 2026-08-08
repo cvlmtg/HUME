@@ -17,7 +17,7 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use hume_editing::diff::{LineHunk, LineHunkKind, WordDiff, WordHunkKind, diff_lines, diff_words};
-use hume_editing::text::Text;
+use hume_editing::text::{Text, strip_line_break};
 
 use hume_scripting::host::{DiffHunk, WordDiffHunk};
 
@@ -56,24 +56,14 @@ fn hunks(old: &Text, new: &Text) -> Vec<DiffHunk> {
         .collect()
 }
 
-/// The line breaks `Rope::lines()` splits on (ropey's default `unicode_lines`
-/// feature — see [`Text::line_tokens`]'s doc). `Text::from` only collapses
-/// `\r\n` pairs, so every other form survives into the rope and can
-/// terminate a token here.
-const LINE_BREAKS: [char; 7] = [
-    '\n', '\r', '\u{0B}', '\u{0C}', '\u{85}', '\u{2028}', '\u{2029}',
-];
-
 /// Slices `tokens[range]` into owned lines with each token's trailing line
-/// break stripped — a [`DiffHunk`]'s line payloads never carry one, since a
-/// plugin may feed one straight into `set-virtual-lines!`'s row text. A break
-/// char always terminates a token, never sits interior to one, so the greedy
-/// `trim_end_matches` is exact — including collapsing a two-char `"\r\n"`
-/// token in one pass.
+/// break stripped (via [`strip_line_break`]) — a [`DiffHunk`]'s line
+/// payloads never carry one, since a plugin may feed one straight into
+/// `set-virtual-lines!`'s row text.
 fn strip_newlines(tokens: &[Cow<'_, str>], range: Range<usize>) -> Vec<String> {
     tokens[range]
         .iter()
-        .map(|line| line.trim_end_matches(LINE_BREAKS).to_string())
+        .map(|line| strip_line_break(line).to_string())
         .collect()
 }
 

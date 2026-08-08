@@ -119,6 +119,9 @@
 (define (diagnostics-for-buffer bid #:severity [severity #f] #:range [range #f])
   (%diagnostics-for-buffer bid severity range))
 
+(define (buffer-lines bid #:start [start #f] #:end [end #f])
+  (%buffer-lines bid start end))
+
 (define (apply-text-edits! bid edits #:expect-generation [gen #f])
   (%apply-text-edits! bid edits gen))
 

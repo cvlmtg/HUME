@@ -12,6 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
+use hume_editing::text::strip_line_break;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use crate::editor::diff_bridge;
@@ -271,6 +272,28 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
 
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
         Some(self.buffer(id)?.text_gen)
+    }
+
+    fn buffer_text(&self, id: BufferId) -> Option<String> {
+        Some(self.buffer(id)?.text().to_string())
+    }
+
+    fn buffer_line_count(&self, id: BufferId) -> Option<usize> {
+        // Every HUME buffer ends with a structural '\n', which ropey counts
+        // as one extra empty line — the same ghost line `RowMap::last_line`
+        // (hume-engine/src/rows.rs) subtracts for row/viewport math.
+        Some(self.buffer(id)?.text().len_lines().saturating_sub(1))
+    }
+
+    fn buffer_lines(&self, id: BufferId, range: std::ops::Range<usize>) -> Option<Vec<String>> {
+        let text = self.buffer(id)?.text();
+        Some(
+            text.line_tokens()
+                .skip(range.start)
+                .take(range.len())
+                .map(|line| strip_line_break(&line).to_string())
+                .collect(),
+        )
     }
 
     fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {

@@ -312,3 +312,27 @@ fn char_cursor_yields_codepoints_not_grapheme_clusters() {
     let got: Vec<(usize, char)> = buf.chars_at(3).collect();
     assert_eq!(got, vec![(3, 'e'), (4, '\u{0301}'), (5, '\n')]);
 }
+
+#[test]
+fn strip_line_break_strips_every_unicode_line_break() {
+    // Independent oracle: each expected value is a literal, not derived
+    // from LINE_BREAKS — a bug that drops one break char from the const
+    // still fails this.
+    assert_eq!(strip_line_break("hello\n"), "hello");
+    assert_eq!(strip_line_break("hello\r"), "hello");
+    assert_eq!(strip_line_break("hello\u{0B}"), "hello"); // VT
+    assert_eq!(strip_line_break("hello\u{0C}"), "hello"); // FF
+    assert_eq!(strip_line_break("hello\u{85}"), "hello"); // NEL
+    assert_eq!(strip_line_break("hello\u{2028}"), "hello"); // LS
+    assert_eq!(strip_line_break("hello\u{2029}"), "hello"); // PS
+}
+
+#[test]
+fn strip_line_break_collapses_crlf_in_one_pass() {
+    assert_eq!(strip_line_break("hello\r\n"), "hello");
+}
+
+#[test]
+fn strip_line_break_is_a_no_op_without_a_trailing_break() {
+    assert_eq!(strip_line_break("hello"), "hello");
+}

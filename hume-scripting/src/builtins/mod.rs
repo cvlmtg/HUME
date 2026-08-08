@@ -307,6 +307,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "buffer-display-path" buffers::buffer_display_path(bid: args::BidArg);
         cmd "buffer-name" buffers::buffer_name(bid: args::BidArg);
         cmd "buffer-dirty?" buffers::buffer_dirty(bid: args::BidArg);
+        cmd "buffer-text" buffers::buffer_text(bid: args::BidArg);
+        cmd "%buffer-lines" buffers::buffer_lines(bid: args::BidArg, start: SteelVal, end: SteelVal);
         // Live cursor read — reflects synchronous edits in the same eval.
         cmd "current-line-number" buffers::current_line_number();
         cmd "current-selections" buffers::current_selections();

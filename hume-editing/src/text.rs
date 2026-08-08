@@ -306,6 +306,23 @@ impl Text {
     }
 }
 
+/// The line breaks [`Text::line_tokens`] splits on (ropey's default
+/// `unicode_lines` feature) — LF, CR, CRLF, VT, FF, NEL, LS, PS.
+/// `Text::from` only collapses `\r\n` pairs, so every other form survives
+/// into the rope and can terminate a token.
+const LINE_BREAKS: [char; 7] = [
+    '\n', '\r', '\u{0B}', '\u{0C}', '\u{85}', '\u{2028}', '\u{2029}',
+];
+
+/// Strips a single trailing line break from a [`Text::line_tokens`] token —
+/// never just `'\n'`, since the break set above is wider. A break char
+/// always terminates a token, never sits interior to one, so the greedy
+/// `trim_end_matches` is exact — including collapsing a two-char `"\r\n"`
+/// token in one pass.
+pub fn strip_line_break(line: &str) -> &str {
+    line.trim_end_matches(LINE_BREAKS)
+}
+
 /// A char-level cursor for scanning a contiguous range of a [`Text`] without
 /// re-paying ropey's O(log n) tree descent on every step. Each `next()` /
 /// `prev()` call is amortized O(1) after the initial O(log n) seek in

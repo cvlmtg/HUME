@@ -1,3 +1,4 @@
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::{BufferId, PaneId};
@@ -398,6 +399,25 @@ pub trait BufferHost {
     /// script can compare a saved value against a live read), but the LSP
     /// bridge's own `#:allow-stale` staleness check is what motivated it.
     fn buffer_generation(&self, id: BufferId) -> Option<u64>;
+
+    /// `(buffer-text bid)` — the buffer's full live (dirty) in-memory
+    /// content, always ending with the structural trailing `\n`. `None` if
+    /// `id` is unknown.
+    fn buffer_text(&self, id: BufferId) -> Option<String>;
+
+    /// Number of *content* lines in `id`'s live text — every HUME buffer
+    /// ends with a structural `\n`, which ropey counts as one extra empty
+    /// line (see [`hume_engine::pipeline`] invariants); this excludes that
+    /// phantom line, matching what the statusline and `:w` report. `None`
+    /// if `id` is unknown.
+    fn buffer_line_count(&self, id: BufferId) -> Option<usize>;
+
+    /// Content lines `range` (0-based, end-exclusive) of `id`'s live text,
+    /// each with its trailing line break stripped. `range` is caller-
+    /// validated against [`buffer_line_count`](Self::buffer_line_count) —
+    /// this call itself does not clamp or bounds-check. `None` if `id` is
+    /// unknown.
+    fn buffer_lines(&self, id: BufferId, range: Range<usize>) -> Option<Vec<String>>;
 
     /// `(viewport-range bid)` — the `(first_line . last_line)` char-line span
     /// currently visible for `id` (the focused pane's if shown there, else

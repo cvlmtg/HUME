@@ -11,7 +11,7 @@
 | 2b — native word-diff builtin (`diff-words`) | ✅ shipped, prerequisite of 5b only |
 | 3 — engine: full-row background | ✅ shipped |
 | 4.1 — `on-text-changed` hook | ✅ shipped |
-| 4.2 — buffer-text reads | ⬜ |
+| 4.2 — buffer-text reads | ✅ shipped |
 | 4.3 — async git | ✅ subsumed by Phase 1 |
 | 4.4 — line-bg decoration kind | ✅ shipped |
 | 4.5 — `set-virtual-lines!` `Before` anchor + per-segment scopes | ✅ shipped |
@@ -142,7 +142,7 @@ the merge it would be avoiding.
 |---|---|---|
 | `vim.diff` (line Myers) | ✅ **shipped (Phase 2a).** `diff-lines`/`diff-buffer-lines` Steel builtins, wrapping `diff_lines` (`hume-editing/src/diff.rs:157`) | reuse — nothing to build |
 | word-diff Myers (in *Lua*) | ✅ **shipped (Phase 2b).** `diff-words` Steel builtin, wrapping `diff_words` (`hume-editing/src/diff.rs:253`) | reuse — nothing to build |
-| `nvim_buf_get_lines` (live text) | ❌ no buffer-text read — the biggest gap for general-purpose Steel scripts (the diff plugin itself sidesteps this via `diff-buffer-lines`, but other consumers still need it) | buffer-text builtins (Phase 4.2) |
+| `nvim_buf_get_lines` (live text) | ✅ **shipped (Phase 4.2).** `buffer-text`/`buffer-lines` Steel builtins, wrapping `BufferHost::{buffer_text, buffer_lines}` (`hume-editor/src/editor/host_impl.rs`) — general-purpose reads; the diff plugin itself still prefers `diff-buffer-lines` for its own per-keystroke hook | reuse — nothing to build |
 | `autocmd TextChanged` | ✅ **shipped (Phase 4.1).** `on-text-changed` fires `(buffer-id)` — see Phase 4 item 1 below for the design. | reuse — nothing to build |
 | `autocmd BufWritePost` | ✅ `on-buffer-save` (`hume-editor/src/editor/event.rs`) | reuse |
 | `vim.uv` timer (debounce) | ✅ `(after ms thunk)` / `(cancel-timer! id)` / `debounce`, timer wheel in `editor/timers.rs` | reuse — nothing to build |
@@ -482,17 +482,32 @@ trait (`hume-scripting/src/host.rs`).
    fires for edits, undo, redo, and `:e!` reload alike, since all of them bump `text_gen`. No
    separate `on-buffer-reload` was added; `on-text-changed` already covers it.
 
-2. **Buffer text reads.** Still the biggest gap for general-purpose Steel scripts —
-   `builtins/buffers.rs` and `BufferHost` (`hume-scripting/src/host.rs:339-376`) remain
-   metadata-only (`buffer-path`, `buffer-name`, `buffer-dirty?`, `buffer-generation`,
-   `buffer-language`, cursor/selection reads). No text/content/slice/get-text builtin exists
-   anywhere. Add `(buffer-text bid)` and `(buffer-lines bid)` returning the **live (dirty)
-   in-memory** content. **Confirmed: no separate `buffer-text-gen` builtin needed** —
-   `(buffer-generation bid)` already returns the `text_gen` counter
-   (`hume-editor/src/editor/buffer/mod.rs:102`, registered `builtins/mod.rs:445`, impl
-   `buffers.rs:99-107`, `BufferHost::buffer_generation` at `host.rs:367`) and is already used
+2. **Buffer text reads — ✅ shipped.** `builtins/buffers.rs` and `BufferHost`
+   (`hume-scripting/src/host.rs:368-407`) were metadata-only (`buffer-path`, `buffer-name`,
+   `buffer-dirty?`, `buffer-generation`, `buffer-language`, cursor/selection reads) — no
+   text/content/slice/get-text builtin existed anywhere. Added `(buffer-text bid)` → the
+   buffer's full live (dirty) content, string, trailing `\n` included, and `(buffer-lines bid
+   #:start .. #:end ..)` → its content lines, breaks stripped, phantom trailing line (the one
+   ropey counts past the structural `\n`) excluded — matching what the statusline and `:w`
+   already count. `#:start`/`#:end` is 0-based, end-exclusive, keyword args rather than
+   positional-optional: steel-core 0.8.2 desugars `(define (f a [b 0]))` to a mixed
+   fixed-plus-rest lambda, exactly the shape `bootstrap.scm`'s `get-option` comment documents
+   as broken for 2+ positional args at a required-module call site (which every plugin body
+   is) — keywords on a fixed leading positional (`diagnostics-for-buffer bid #:range ..`) are
+   the proven-safe form, so `buffer-lines` follows it. An out-of-range `#:end`, or `#:start >
+   #:end`, raises rather than silently clamping. **Confirmed: no separate `buffer-text-gen`
+   builtin needed** — `(buffer-generation bid)` already returns the `text_gen` counter
+   (`hume-editor/src/editor/buffer/mod.rs:111`, registered `builtins/mod.rs`, impl
+   `buffers.rs:105-113`, `BufferHost::buffer_generation` at `host.rs:401`) and is already used
    as a generation-paired-read guard by `runtime/plugins/core/lsp/format.scm:21`
    (`expect_gen`) — reuse that pattern rather than adding a second counter.
+
+   Landed as three new `BufferHost` methods (`buffer_text`, `buffer_line_count`,
+   `buffer_lines`) implemented in `hume-editor/src/editor/host_impl.rs` via
+   `Buffer::text()`/`Text::line_tokens()` — no whole-buffer materialization inside the range
+   read. The line-break strip shared with `diff_bridge.rs`'s tokenization was promoted to
+   `hume_editing::text::strip_line_break` (module-level SSOT) rather than staying duplicated
+   between the two call sites.
 
 3. **Async git — ✅ resolved by Phase 1, no new native builtin needed here.** `spawn-async!`
    shipped; the plugin's `init.scm` calls it directly for `git show`/`git rev-parse`, the same
@@ -732,7 +747,9 @@ store) + theme `diff.*` `bg` values in all four themes.**
   `hume-engine/src/types.rs` (`Grapheme.scope` `:160`).
 - **Steel surface**: `hume-editor/src/editor/event.rs` (`EditorEvent`, `on-text-changed`
   shipped, Phase 4.1), `host.rs` (`DecorationHost`, already implemented — extend, don't
-  rebuild), `builtins/buffers.rs` (add text-read builtins, Phase 4.2), `builtins/timers.rs`
+  rebuild), `builtins/buffers.rs` (`buffer-text`/`%buffer-lines`, Phase 4.2 — ✅ shipped;
+  `bootstrap.scm` wraps `%buffer-lines` in the `#:start`/`#:end` keyword-arg form),
+  `builtins/timers.rs`
   (existing `after`/`cancel-timer!`/`debounce` — reuse), `hume-editor/src/editor/decorations.rs`
   (`DecorationStores` — line-bg kind (Phase 4.4) and `VirtualLineEntry`'s `before`/`segments`
   (Phase 4.5) both landed already).

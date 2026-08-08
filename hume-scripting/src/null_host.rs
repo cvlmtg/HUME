@@ -99,6 +99,15 @@ impl BufferHost for NullHost {
     fn buffer_generation(&self, _id: BufferId) -> Option<u64> {
         None
     }
+    fn buffer_text(&self, _id: BufferId) -> Option<String> {
+        None
+    }
+    fn buffer_line_count(&self, _id: BufferId) -> Option<usize> {
+        None
+    }
+    fn buffer_lines(&self, _id: BufferId, _range: std::ops::Range<usize>) -> Option<Vec<String>> {
+        None
+    }
     fn viewport_range(&self, _id: BufferId) -> Option<(usize, usize)> {
         None
     }

@@ -9,7 +9,7 @@
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::SteelResult;
-use super::args::{BidArg, cons_pair, optional_string_arg, usize_arg};
+use super::args::{BidArg, cons_pair, optional_string_arg, optional_usize_arg, usize_arg};
 use super::errors::generic_err;
 use super::ids::{SteelBufferId, SteelPaneId};
 use crate::{SteelCtx, types::Effect};
@@ -110,6 +110,54 @@ pub(crate) fn buffer_generation(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult 
         .buffer_generation(id)
         .ok_or_else(|| generic_err(format!("buffer-generation: invalid buffer id {id:?}")))?;
     Ok(SteelVal::IntV(generation as isize))
+}
+
+/// `(buffer-text bid)` → the buffer's full live (dirty) content, string,
+/// trailing `\n` included.
+pub(crate) fn buffer_text(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
+    ctx.host
+        .buffers()
+        .buffer_text(id)
+        .ok_or_else(|| generic_err(format!("buffer-text: invalid buffer id {id:?}")))?
+        .into_steelval()
+        .map_err(generic_err)
+}
+
+/// `(%buffer-lines bid start end)` — Rust half of the bootstrap-wrapped
+/// `(buffer-lines bid #:start .. #:end ..)`. `start`/`end` are already-decoded
+/// `Option<usize>` from `bootstrap.scm`'s `#f`-defaulted keyword args:
+/// `start` defaults to `0`, `end` to the buffer's content line count.
+/// Content lines in `[start, end)`, 0-based, end-exclusive, each with its
+/// trailing line break stripped — the phantom line past the buffer's
+/// structural trailing `\n` is never included (matches the statusline's and
+/// `:w`'s line count). Raises rather than clamping on `start > end` or
+/// `end` past the line count.
+pub(crate) fn buffer_lines(
+    ctx: &mut SteelCtx,
+    bid: BidArg,
+    start: SteelVal,
+    end: SteelVal,
+) -> SteelResult {
+    let id = bid.0;
+    let start = optional_usize_arg(start, "buffer-lines start")?.unwrap_or(0);
+    let line_count = ctx
+        .host
+        .buffers()
+        .buffer_line_count(id)
+        .ok_or_else(|| generic_err(format!("buffer-lines: invalid buffer id {id:?}")))?;
+    let end = optional_usize_arg(end, "buffer-lines end")?.unwrap_or(line_count);
+    if start > end || end > line_count {
+        return Err(generic_err(format!(
+            "buffer-lines: range {start}..{end} out of bounds for a {line_count}-line buffer"
+        )));
+    }
+    let lines = ctx
+        .host
+        .buffers()
+        .buffer_lines(id, start..end)
+        .ok_or_else(|| generic_err(format!("buffer-lines: invalid buffer id {id:?}")))?;
+    lines.into_steelval().map_err(generic_err)
 }
 
 // ── Mutating builtins ─────────────────────────────────────────────────────────
