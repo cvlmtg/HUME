@@ -10,7 +10,7 @@ use std::collections::VecDeque;
 
 /// Which minibuffer prompt a history ring belongs to.
 ///
-/// An explicit enum (rather than a raw `char`) keeps the variant set closed,
+/// An explicit ENUM (rather than a raw `char`) keeps the variant set closed,
 /// exhaustively matched, and serializable to a stable key in a future env file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum HistoryKind {

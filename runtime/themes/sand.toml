@@ -51,8 +51,6 @@
 "diagnostic.info" = { fg = "blue", modifiers = [ "underlined" ] }
 "diagnostic.hint" = { fg = "green", modifiers = [ "underlined" ] }
 "diagnostic.deprecated" = { modifiers = [ "crossed_out" ] }
-# :messages severity badge/body — no underline, so redeclared as sub-keys
-# rather than modifying diagnostic.* above (which LSP squiggles also use).
 "diagnostic.error.message" = { fg = "bg", bg = "red" }
 "diagnostic.warning.message" = { fg = "bg", bg = "sand" }
 "diagnostic.info.message" = { fg = "bg", bg = "blue" }
@@ -71,10 +69,6 @@
 "diff.plus.gutter" = { fg = "green" }
 "diff.minus.gutter" = { fg = "red" }
 "diff.delta.gutter" = { fg = "blue" }
-# Word-level segments (`diff.*.word`) mark the exact changed span inside a
-# `diff.plus`/`diff.minus`-tinted row — git-diff.hume's `diff-words` output
-# (render.scm). No `diff.delta.word`: the plugin only ever tags new-side
-# word spans `diff.plus.word`, even inside a changed (`diff.delta`) line.
 "diff.plus.word" = { fg = "fg", bg = "diff_plus_word_bg", modifiers = [ "bold" ] }
 "diff.minus.word" = { fg = "fg", bg = "diff_minus_word_bg", modifiers = [ "bold", "crossed_out" ] }
 "markup.heading" = { fg = "sand", modifiers = [ "bold" ] }

@@ -1,12 +1,7 @@
 # HUME built-in dark theme.
-# A flat, no-dependency theme for dark terminals (the editor default aesthetic).
-# All colors are explicit hex values so this file exercises the basic loader path.
+# A flat, no-dependency theme for dark terminals
 #
-# Note: [palette] must come after all scope definitions (TOML section semantics).
-
 # ── Base text ─────────────────────────────────────────────────────────────────
-# Base foreground for plain (unhighlighted) text — folded into `theme.default`
-# so it can be dimmed like syntax-highlighted spans (see loader.rs).
 "ui.text" = { fg = "fg" }
 "ui.text.focus" = { fg = "#ffffff", bg = "#50508c" }
 
@@ -36,8 +31,7 @@
 "diagnostic.info"    = { fg = "cyan",   modifiers = ["underlined"] }
 "diagnostic.hint"    = { fg = "green",  modifiers = ["underlined"] }
 
-# :messages severity badge/body — no underline, so redeclared as sub-keys
-# rather than modifying diagnostic.* above (which LSP squiggles also use).
+# :messages severity badge/body
 "diagnostic.error.message"        = { fg = "bg", bg = "red" }
 "diagnostic.warning.message"      = { fg = "bg", bg = "yellow" }
 "diagnostic.info.message"         = { fg = "bg", bg = "cyan" }
@@ -55,9 +49,7 @@
 "diff.minus.gutter" = { fg = "red" }
 "diff.delta.gutter" = { fg = "cyan" }
 # Word-level segments (`diff.*.word`) mark the exact changed span inside a
-# `diff.plus`/`diff.minus`-tinted row — git-diff.hume's `diff-words` output
-# (render.scm). No `diff.delta.word`: the plugin only ever tags new-side
-# word spans `diff.plus.word`, even inside a changed (`diff.delta`) line.
+# `diff.plus`/`diff.minus`-tinted row
 "diff.plus.word"    = { fg = "fg", bg = "diff_plus_word_bg", modifiers = ["bold"] }
 "diff.minus.word"   = { fg = "fg", bg = "diff_minus_word_bg", modifiers = ["bold", "crossed_out"] }
 
@@ -119,36 +111,36 @@
 "ui.statusline.separator" = { fg = "dark_gray" }
 
 [palette]
-fg           = "#d0d0d0"
-bg           = "#1a1a1a"
-black        = "#000000"
-white        = "#ffffff"
-red          = "#e05050"
-dark_gray    = "#808080"
-mid_gray     = "#8c8ca0"
-cursor_line  = "#3a3a3a"
-selection    = "#444478"
-statusline   = "#ffffff"
-statusline_fg = "#000000"
+fg                 = "#d0d0d0"
+bg                 = "#1a1a1a"
+black              = "#000000"
+white              = "#ffffff"
+red                = "#e05050"
+dark_gray          = "#808080"
+mid_gray           = "#8c8ca0"
+cursor_line        = "#3a3a3a"
+selection          = "#444478"
+statusline         = "#ffffff"
+statusline_fg      = "#000000"
 statusline_insert  = "#8fdcdc"
 statusline_extend  = "#ecdf8f"
 statusline_search  = "#e8a8e8"
 statusline_command = "#a8dca8"
 statusline_select  = "#a8c0f0"
-cyan         = "#00cdcd"
-yellow       = "#cdcd00"
-magenta      = "#cd00cd"
-green        = "#00cd00"
-blue         = "#0000ee"
-syn_comment  = "#6a7080"
-syn_string   = "#7ab87a"
-syn_escape   = "#d09060"
-syn_number   = "#d09060"
-syn_const    = "#c07ad8"
-syn_keyword  = "#5bc0eb"
-syn_function = "#e8c83a"
-syn_type     = "#5bc4b4"
-syn_param    = "#c4b4a0"
+cyan               = "#00cdcd"
+yellow             = "#cdcd00"
+magenta            = "#cd00cd"
+green              = "#00cd00"
+blue               = "#0000ee"
+syn_comment        = "#6a7080"
+syn_string         = "#7ab87a"
+syn_escape         = "#d09060"
+syn_number         = "#d09060"
+syn_const          = "#c07ad8"
+syn_keyword        = "#5bc0eb"
+syn_function       = "#e8c83a"
+syn_type           = "#5bc4b4"
+syn_param          = "#c4b4a0"
 diff_plus_bg       = "#153A15"
 diff_plus_word_bg  = "#105E10"
 diff_minus_bg      = "#3E2424"

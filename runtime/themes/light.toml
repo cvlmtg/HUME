@@ -1,9 +1,7 @@
 # HUME built-in light theme.
 # Inherits from dark and overrides the colors that need to change for a light
-# terminal background. Exercises the `inherits` loader path.
+# terminal background.
 #
-# Note: [palette] must come after all scope definitions (TOML section semantics).
-
 inherits = "dark"
 
 # ── Cursor ────────────────────────────────────────────────────────────────────
@@ -27,17 +25,14 @@ inherits = "dark"
 
 # ── Diagnostics ───────────────────────────────────────────────────────────────
 # Redeclared (not inherited) so these resolve against this file's own
-# lighter-background-appropriate palette below — see loader.rs: a scope
-# inherited unchanged from the parent keeps the parent's resolved color, only
-# a scope redeclared here re-resolves against this palette.
+# lighter-background-appropriate palette below
 "diagnostic.error"   = { fg = "red",    modifiers = ["underlined"] }
 "diagnostic.warning" = { fg = "yellow", modifiers = ["underlined"] }
 "diagnostic.info"    = { fg = "cyan",   modifiers = ["underlined"] }
 "diagnostic.hint"    = { fg = "green",  modifiers = ["underlined"] }
 
 # :messages severity badge/body — redeclared (not inherited) for the same
-# reason as diagnostic.* above; also no underline, so a sub-key rather than
-# a diagnostic.* edit (which LSP squiggles also use).
+# reason as diagnostic.* above;
 "diagnostic.error.message"        = { fg = "white", bg = "red" }
 "diagnostic.warning.message"      = { fg = "white", bg = "yellow" }
 "diagnostic.info.message"         = { fg = "white", bg = "cyan" }
@@ -57,9 +52,7 @@ inherits = "dark"
 "diff.minus.gutter" = { fg = "red" }
 "diff.delta.gutter" = { fg = "cyan" }
 # Word-level segments (`diff.*.word`) mark the exact changed span inside a
-# `diff.plus`/`diff.minus`-tinted row — git-diff.hume's `diff-words` output
-# (render.scm). No `diff.delta.word`: the plugin only ever tags new-side
-# word spans `diff.plus.word`, even inside a changed (`diff.delta`) line.
+# `diff.plus`/`diff.minus`-tinted row
 "diff.plus.word"    = { fg = "white", bg = "diff_plus_word_bg", modifiers = ["bold"] }
 "diff.minus.word"   = { fg = "white", bg = "diff_minus_word_bg", modifiers = ["bold", "crossed_out"] }
 
@@ -92,23 +85,23 @@ inherits = "dark"
 "ui.statusline.separator" = { fg = "light_gray" }
 
 [palette]
-white        = "#f5f5f5"
-black        = "#1a1a1a"
-red          = "#a02020"
-mid_gray     = "#9090a0"
+white              = "#f5f5f5"
+black              = "#1a1a1a"
+red                = "#a02020"
+mid_gray           = "#9090a0"
 # Lighter than mid_gray specifically for the separator: it sits on the
-# saturated dark row backgrounds below (cyan/yellow/magenta/green/blue), where
-# mid_gray's contrast is too low to read as a divider.
-light_gray   = "#c8c8d2"
-cursor_line  = "#e8e8f0"
-selection    = "#b8b8e8"
-statusline   = "#1a1a1a"
-statusline_fg = "#f5f5f5"
-cyan         = "#007878"
-yellow       = "#787800"
-magenta      = "#780078"
-green        = "#007800"
-blue         = "#0000bb"
+# saturated dark row backgrounds below (cyan/yellow/magenta/green/blue),
+# where mid_gray's contrast is too low to read as a divider.
+light_gray         = "#c8c8d2"
+cursor_line        = "#e8e8f0"
+selection          = "#b8b8e8"
+statusline         = "#1a1a1a"
+statusline_fg      = "#f5f5f5"
+cyan               = "#007878"
+yellow             = "#787800"
+magenta            = "#780078"
+green              = "#007800"
+blue               = "#0000bb"
 diff_plus_bg       = "#152B15"
 diff_plus_word_bg  = "#103E10"
 diff_minus_bg      = "#321B1B"
