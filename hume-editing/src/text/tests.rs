@@ -100,6 +100,25 @@ fn line_tokens_splits_on_non_lf_unicode_breaks() {
 }
 
 #[test]
+fn line_tokens_at_skips_the_seek_not_just_the_output() {
+    let buf = Text::from("a\nb\nc\n");
+    let tokens: Vec<_> = buf.line_tokens_at(1).collect();
+    assert_eq!(tokens, vec!["b\n", "c\n", ""]);
+}
+
+#[test]
+fn content_line_count_excludes_the_phantom_trailing_line() {
+    assert_eq!(Text::from("\n").content_line_count(), 1);
+    assert_eq!(Text::from("a\nb\nc\n").content_line_count(), 3);
+}
+
+#[test]
+fn last_content_line_is_content_line_count_minus_one() {
+    assert_eq!(Text::from("\n").last_content_line(), 0);
+    assert_eq!(Text::from("a\nb\nc\n").last_content_line(), 2);
+}
+
+#[test]
 fn from_str_unicode() {
     // "é" can be represented as a single char (U+00E9) or as two chars
     // (U+0065 + U+0301 combining accent). `Text::from` accepts whatever

@@ -504,10 +504,10 @@ trait (`hume-scripting/src/host.rs`).
 
    Landed as three new `BufferHost` methods (`buffer_text`, `buffer_line_count`,
    `buffer_lines`) implemented in `hume-editor/src/editor/host_impl.rs` via
-   `Buffer::text()`/`Text::line_tokens()` — no whole-buffer materialization inside the range
-   read. The line-break strip shared with `diff_bridge.rs`'s tokenization was promoted to
-   `hume_editing::text::strip_line_break` (module-level SSOT) rather than staying duplicated
-   between the two call sites.
+   `Buffer::text()`/`Text::line_tokens_at()` — an `O(log n)` seek to the range's start, not a
+   whole-buffer tokenize-then-skip. The line-break strip shared with `diff_bridge.rs`'s
+   tokenization was promoted to `hume_editing::text::strip_line_break` (module-level SSOT)
+   rather than staying duplicated between the two call sites.
 
 3. **Async git — ✅ resolved by Phase 1, no new native builtin needed here.** `spawn-async!`
    shipped; the plugin's `init.scm` calls it directly for `git show`/`git rev-parse`, the same

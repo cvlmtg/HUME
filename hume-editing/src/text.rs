@@ -169,6 +169,23 @@ impl Text {
         self.rope.len_lines()
     }
 
+    /// Number of content lines: every HUME buffer ends with a structural
+    /// `\n`, which ropey counts as one extra empty line past the content —
+    /// this subtracts it. The single source of truth for "how many lines
+    /// does this buffer have" from a caller's point of view (line counts
+    /// shown to the user, range-checked line indices); callers that instead
+    /// need the last *valid rope* line (phantom line included) keep using
+    /// `len_lines() - 1` directly.
+    pub fn content_line_count(&self) -> usize {
+        self.len_lines().saturating_sub(1)
+    }
+
+    /// Index of the last content line (`content_line_count() - 1`). Callers
+    /// clamping a target line to stay within real content use this.
+    pub fn last_content_line(&self) -> usize {
+        self.content_line_count().saturating_sub(1)
+    }
+
     /// Line tokens, each keeping its trailing line-break character(s) — the
     /// tokenization line diffing needs so an `Equal` hunk stays
     /// byte-comparable across the trailing-empty-line boundary (a bare split
@@ -187,7 +204,17 @@ impl Text {
     /// One rope traversal (`Rope::lines()`), not one `O(log n)` descent per
     /// line.
     pub fn line_tokens(&self) -> impl Iterator<Item = Cow<'_, str>> {
-        self.rope.lines().map(Cow::from)
+        self.line_tokens_at(0)
+    }
+
+    /// Same as [`Text::line_tokens`], starting at `line_idx` — an `O(log n)`
+    /// seek to `line_idx` followed by one traversal of the remaining lines,
+    /// instead of tokenizing (and discarding) every line before it.
+    ///
+    /// # Panics
+    /// Panics if `line_idx > self.len_lines()` (matches `line_to_char`).
+    pub fn line_tokens_at(&self, line_idx: usize) -> impl Iterator<Item = Cow<'_, str>> {
+        self.rope.lines_at(line_idx).map(Cow::from)
     }
 
     /// Returns the char offset of the first character on `line_idx` (0-based).

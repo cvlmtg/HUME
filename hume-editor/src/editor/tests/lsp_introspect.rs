@@ -352,6 +352,31 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
     );
 }
 
+/// `viewport-range`'s `last_line` names the buffer's last *content* line,
+/// never ropey's phantom line past the structural trailing `\n` — the bug
+/// that made the manual's documented recipe (`user-manual/docs/plugins.md`)
+/// overshoot `buffer-lines`' bounds check whenever the viewport reaches EOF.
+///
+/// Fail oracle: clamping to `len_lines() - 1` (the phantom-line index)
+/// instead of the content line count would report `(cdr vr)` one past what
+/// this asserts.
+#[test]
+fn viewport_range_last_line_is_the_last_content_line_at_eof() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\nb\nc\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (cdr (viewport-range (current-buffer))) 2)"#,
+    );
+    assert!(
+        fired,
+        "viewport-range's last_line must be the buffer's last content line (2), not the ropey phantom-line index (3)"
+    );
+}
+
 #[test]
 fn viewport_range_is_false_for_a_buffer_not_shown_in_any_pane() {
     let tmp = safe_tempdir();

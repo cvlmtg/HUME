@@ -364,9 +364,7 @@ pub(crate) fn typed_goto_line(
         .checked_sub(1)
         .ok_or_else(|| CommandError::new("line numbers start at 1"))?;
 
-    // len_lines() counts the ghost line after the trailing '\n', so the last
-    // real content line is always at index len_lines() - 2.
-    let last = ed.doc().text().len_lines().saturating_sub(2);
+    let last = ed.doc().text().last_content_line();
     let target = line0.min(last);
     let char_pos = ed.doc().text().line_to_char(target);
 

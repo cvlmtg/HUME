@@ -20,10 +20,8 @@ impl StatuslineElement for PositionElement {
         let head = editor.current_selections().primary().head();
         let head_line = buf.char_to_line(head);
         let col_0 = grapheme_col_in_line(buf, head_line, head);
-        // Every buffer ends with a structural '\n' (editor invariant), so
-        // ropey counts one phantom trailing line; subtract it to get the
-        // highest row a cursor can actually occupy.
-        let max_row = buf.len_lines().saturating_sub(1);
+        // Largest 1-based line number this buffer can display.
+        let max_row = buf.content_line_count();
         (head_line + 1, col_0 + 1, max_row)
     }
 

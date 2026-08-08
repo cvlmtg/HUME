@@ -140,12 +140,16 @@ pub(crate) fn buffer_lines(
     end: SteelVal,
 ) -> SteelResult {
     let id = bid.0;
+    // One error message for both lookups below — the second is unreachable
+    // in practice (nothing can close `id` between two synchronous host
+    // calls) but the trait returns `Option`, so it's handled, not assumed.
+    let invalid_id = || generic_err(format!("buffer-lines: invalid buffer id {id:?}"));
     let start = optional_usize_arg(start, "buffer-lines start")?.unwrap_or(0);
     let line_count = ctx
         .host
         .buffers()
         .buffer_line_count(id)
-        .ok_or_else(|| generic_err(format!("buffer-lines: invalid buffer id {id:?}")))?;
+        .ok_or_else(invalid_id)?;
     let end = optional_usize_arg(end, "buffer-lines end")?.unwrap_or(line_count);
     if start > end || end > line_count {
         return Err(generic_err(format!(
@@ -156,7 +160,7 @@ pub(crate) fn buffer_lines(
         .host
         .buffers()
         .buffer_lines(id, start..end)
-        .ok_or_else(|| generic_err(format!("buffer-lines: invalid buffer id {id:?}")))?;
+        .ok_or_else(invalid_id)?;
     lines.into_steelval().map_err(generic_err)
 }
 

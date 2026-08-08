@@ -101,63 +101,24 @@ fn buffer_lines_out_of_range_end_raises() {
     );
 }
 
-/// `buffer-text` on a stale bid raises "invalid buffer id", not an empty
-/// string — same pattern as `diff-buffer-lines`' stale-bid test.
+/// A `#:start` past `#:end` raises too — the other half of the `start > end
+/// || end > line_count` guard, previously untested (deleting `start > end
+/// ||` from the guard would have left the whole suite green).
+///
+/// Fail oracle: silently treating an inverted range as empty (or as
+/// underflowing range math) would leave `:messages` empty instead of
+/// logging this error.
 #[test]
-fn buffer_text_on_a_stale_bid_raises_invalid_buffer_id() {
+fn buffer_lines_start_past_end_raises() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>\n");
-
-    let scratch = tmp.path().join("scratch.txt");
-    std::fs::write(&scratch, "x\n").unwrap();
-    let scratch_str = scratch.to_string_lossy().replace('\\', "/");
+    let mut ed = editor_from("-[a]>\nb\nc\n");
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
         &mut host,
-        &format!(
-            r#"(define-command! "probe" "" (lambda ()
-                 (define b (open-buffer! "{scratch_str}"))
-                 (close-buffer! b)
-                 (buffer-text b)))"#
-        ),
-        tmp.path(),
-    );
-    ed.scripting = Some(host);
-    type_cmd(&mut ed, ":probe");
-
-    let entries: Vec<_> = ed.state.message_log.entries().cloned().collect();
-    assert!(
-        entries.iter().any(|e| e.severity == Severity::Error
-            && e.text.contains("buffer-text")
-            && e.text.contains("invalid buffer id")),
-        "a stale bid must surface as a Steel error naming the builtin, got: {entries:?}"
-    );
-}
-
-/// `buffer-lines` on a stale bid raises "invalid buffer id" too — the same
-/// `buffer_line_count` lookup that backs the range check is itself the
-/// liveness check.
-#[test]
-fn buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>\n");
-
-    let scratch = tmp.path().join("scratch.txt");
-    std::fs::write(&scratch, "x\n").unwrap();
-    let scratch_str = scratch.to_string_lossy().replace('\\', "/");
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        &format!(
-            r#"(define-command! "probe" "" (lambda ()
-                 (define b (open-buffer! "{scratch_str}"))
-                 (close-buffer! b)
-                 (buffer-lines b)))"#
-        ),
+        r#"(define-command! "probe" "" (lambda ()
+             (buffer-lines (current-buffer) #:start 3 #:end 1)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -167,9 +128,85 @@ fn buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
     assert!(
         entries.iter().any(|e| e.severity == Severity::Error
             && e.text.contains("buffer-lines")
+            && e.text.contains("out of bounds")),
+        "a #:start past #:end must surface as a Steel error, got: {entries:?}"
+    );
+}
+
+/// The user manual's `(viewport-range bid)` + `buffer-lines` recipe
+/// (`user-manual/docs/plugins.md`) must not raise on the common case of a
+/// buffer shorter than the pane, where the viewport's `last_line` sits at
+/// the buffer's last content line.
+///
+/// Fail oracle: `viewport-range` returning the ropey phantom-line index
+/// (one past the last content line) instead of the last content line would
+/// make `#:end (+ 1 (cdr vr))` overshoot `buffer-lines`' bounds check and
+/// raise instead of returning every content line.
+#[test]
+fn manual_viewport_range_recipe_reads_every_content_line_without_raising() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\nb\nc\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(let ((vr (viewport-range (current-buffer))))
+             (equal? (buffer-lines (current-buffer)
+                       #:start (car vr) #:end (+ 1 (cdr vr)))
+                     (list "a" "b" "c")))"#,
+    );
+    assert!(
+        fired,
+        "the documented viewport-range recipe must read every content line without raising"
+    );
+}
+
+/// A stale bid raises "invalid buffer id" for both `buffer-text` and
+/// `buffer-lines` — not an empty string/list.
+fn assert_stale_bid_raises(builtin_call: &str, builtin_name: &str) {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\n");
+
+    let scratch = tmp.path().join("scratch.txt");
+    std::fs::write(&scratch, "x\n").unwrap();
+    let scratch_str = scratch.to_string_lossy().replace('\\', "/");
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        &format!(
+            r#"(define-command! "probe" "" (lambda ()
+                 (define b (open-buffer! "{scratch_str}"))
+                 (close-buffer! b)
+                 ({builtin_call} b)))"#
+        ),
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":probe");
+
+    let entries: Vec<_> = ed.state.message_log.entries().cloned().collect();
+    assert!(
+        entries.iter().any(|e| e.severity == Severity::Error
+            && e.text.contains(builtin_name)
             && e.text.contains("invalid buffer id")),
         "a stale bid must surface as a Steel error naming the builtin, got: {entries:?}"
     );
+}
+
+/// Same pattern as `diff-buffer-lines`' stale-bid test.
+#[test]
+fn buffer_text_on_a_stale_bid_raises_invalid_buffer_id() {
+    assert_stale_bid_raises("buffer-text", "buffer-text");
+}
+
+/// The same `buffer_line_count` lookup that backs the range check is itself
+/// the liveness check.
+#[test]
+fn buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
+    assert_stale_bid_raises("buffer-lines", "buffer-lines");
 }
 
 /// The doc's stated oracle (`docs/GIT-DIFF.md`): `diff-buffer-lines` against

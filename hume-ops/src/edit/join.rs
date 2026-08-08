@@ -25,7 +25,7 @@ pub fn join_lines_select_spaces(buf: Text, sels: SelectionSet) -> (Text, Selecti
     let has_work = sels.iter_sorted().any(|sel| {
         let start = buf.char_to_line(sel.start());
         let end = buf.char_to_line(sel.end_inclusive(&buf));
-        start != end || start < buf.len_lines().saturating_sub(2)
+        start != end || start < buf.last_content_line()
     });
     if !has_work {
         let mut b = ChangeSetBuilder::new(buf.len_chars());
@@ -39,11 +39,10 @@ pub fn join_lines_select_spaces(buf: Text, sels: SelectionSet) -> (Text, Selecti
         let start_line = buf.char_to_line(sel.start());
         let mut end_line = buf.char_to_line(sel.end_inclusive(buf));
         if start_line == end_line {
-            // Clamp to the last *content* line (len_lines() - 2: the structural
-            // '\n' opens a final empty line). A cursor on the last content line
-            // must not join with that empty line — it would delete the
-            // structural '\n' and panic in the changeset validator.
-            end_line = (end_line + 1).min(buf.len_lines().saturating_sub(2));
+            // Clamp to the last content line: a cursor there must not join
+            // with the trailing structural-newline line — it would delete
+            // the structural '\n' and panic in the changeset validator.
+            end_line = (end_line + 1).min(buf.last_content_line());
         }
 
         for line in start_line..end_line {

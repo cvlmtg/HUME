@@ -249,7 +249,7 @@ fn serialize_buffer(ed: &Editor, bid: BufferId) -> (String, usize) {
     } else {
         text.to_string()
     };
-    let line_count = text.len_lines().saturating_sub(1);
+    let line_count = text.content_line_count();
     (content, line_count)
 }
 

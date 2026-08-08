@@ -192,8 +192,9 @@ impl Editor {
             return;
         };
         let bid = pane.buffer_id;
-        let total_lines = self.state.buffers.get(bid).text().len_lines();
-        let (first_line, last_line) = super::lsp::introspect::pane_visible_range(pane, total_lines);
+        let content_lines = self.state.buffers.get(bid).text().content_line_count();
+        let (first_line, last_line) =
+            super::lsp::introspect::pane_visible_range(pane, content_lines);
         self.state.queue_event(EditorEvent::OnViewportChange {
             buffer: bid,
             first_line,

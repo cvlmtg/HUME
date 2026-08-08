@@ -391,16 +391,18 @@ pub(crate) fn range_params(
 }
 
 /// `pane`'s visible `(first_line, last_line)` span, clamped to a buffer of
-/// `total_lines` — the single computation shared by `queue_viewport_change`
+/// `content_lines` — the single computation shared by `queue_viewport_change`
 /// (pane -> its own range, for the `on-viewport-change` hook payload) and
 /// [`viewport_range`] (buffer -> the pane showing it, for the synchronous
 /// `(viewport-range bid)` builtin, which wraps this pair in a dotted-pair
-/// wire value). `last_line` clamps to `total_lines - 1`
-/// (0 when the buffer is empty of lines) so it never points past the buffer's
-/// last valid line, even when the pane's viewport height exceeds the buffer.
-pub(crate) fn pane_visible_range(pane: &Pane, total_lines: usize) -> (usize, usize) {
+/// wire value). `last_line` clamps to `content_lines - 1` (0 when the buffer
+/// has no content lines) so it never points past the buffer's last *content*
+/// line — not ropey's phantom line past the structural trailing `\n` — even
+/// when the pane's viewport height exceeds the buffer.
+pub(crate) fn pane_visible_range(pane: &Pane, content_lines: usize) -> (usize, usize) {
     let first_line = pane.viewport.top_line;
-    let last_line = (first_line + pane.viewport.height as usize).min(total_lines.saturating_sub(1));
+    let last_line =
+        (first_line + pane.viewport.height as usize).min(content_lines.saturating_sub(1));
     (first_line, last_line)
 }
 
@@ -436,8 +438,8 @@ pub(crate) fn viewport_range(
 ) -> Option<(usize, usize)> {
     let pane_id = pane_showing_buffer(state, view, id)?;
     let pane = view.panes.get(pane_id)?;
-    let total_lines = state.buffers.try_get(id)?.text().len_lines();
-    Some(pane_visible_range(pane, total_lines))
+    let content_lines = state.buffers.try_get(id)?.text().content_line_count();
+    Some(pane_visible_range(pane, content_lines))
 }
 
 impl crate::editor::Editor {

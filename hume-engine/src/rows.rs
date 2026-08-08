@@ -323,10 +323,10 @@ impl<'a> RowMap<'a> {
     ///
     /// Every HUME buffer ends with a structural `\n`, so ropey reports one
     /// extra empty line past the content; the last real line is
-    /// `len_lines() - 2`. The one place that rule lives for row/viewport
-    /// math — editor-side buffer-line clamping (`file_open.rs`,
-    /// `ops/edit/mod.rs`, `ops/motion/char_move.rs`, `typed_misc.rs`)
-    /// re-derives it independently, since those sites don't hold a `RowMap`.
+    /// `len_lines() - 2`. `hume_editing::text::Text::last_content_line` is
+    /// the SSOT for this rule everywhere a `Text` is in scope; `hume-engine`
+    /// takes a bare `&Rope` by design and doesn't depend on `hume-editing`,
+    /// so this re-derives it independently.
     pub fn last_line(&self) -> usize {
         self.rope.len_lines().saturating_sub(2)
     }

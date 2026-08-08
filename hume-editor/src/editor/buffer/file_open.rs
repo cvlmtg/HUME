@@ -230,13 +230,13 @@ impl Editor {
         // Borrow `new_doc.text()` immutably, then move `new_text` out below.
         let post_heads: Vec<(PaneId, usize)> = {
             let new_text = new_doc.text();
-            let last_line = new_text.len_lines().saturating_sub(2);
+            let last_line = new_text.last_content_line();
             let mut heads = Vec::with_capacity(cursor_coords.len());
             for &(pid, line, col) in &cursor_coords {
                 let target_line = line.min(last_line);
                 let line_start = new_text.line_to_char(target_line);
-                // target_line <= last_line = len_lines - 2, so target_line + 1
-                // < len_lines — line_to_char is safe.
+                // target_line <= last_line = len_lines() - 2, so target_line + 1
+                // <= len_lines() - 1 < len_lines() — line_to_char is safe.
                 let line_end = new_text.line_to_char(target_line + 1).saturating_sub(1);
                 let target = (line_start + col).min(line_end);
                 let head = snap_to_grapheme_boundary(new_text, line_start, target);
@@ -466,10 +466,9 @@ impl Editor {
 
         // Position cursor at the requested line (clamped to last content line).
         let pid = self.state.focused_pane_id;
-        let rope = self.state.buffers.get(bid).text().rope();
-        let last_content = rope.len_lines().saturating_sub(2); // skip trailing \n line
-        let target_line = cursor_line.min(last_content);
-        let char_pos = rope.line_to_char(target_line);
+        let text = self.state.buffers.get(bid).text();
+        let target_line = cursor_line.min(text.last_content_line());
+        let char_pos = text.line_to_char(target_line);
         self.state.panes.state[pid][bid].selections =
             SelectionSet::single(Selection::collapsed(char_pos));
 

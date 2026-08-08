@@ -28,11 +28,6 @@ pub(super) fn goto_first_line(_buf: &Text, _head: usize) -> usize {
 }
 
 /// Jump to the first character of the last (real) line of the buffer.
-///
-/// `ropey`'s `len_lines()` counts the empty "ghost" line that follows every
-/// trailing `\n`, so the last content line is always at index `len_lines() - 2`.
-/// For the minimal buffer (`"\n"`) that yields index 0, which is correct.
 pub(super) fn goto_last_line(buf: &Text, _head: usize) -> usize {
-    let last_line = buf.len_lines().saturating_sub(2);
-    buf.line_to_char(last_line)
+    buf.line_to_char(buf.last_content_line())
 }
