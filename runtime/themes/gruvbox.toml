@@ -48,12 +48,18 @@
 "diagnostic.hint.message-text"    = { fg = "bright_green" }
 
 # ── Diff ──────────────────────────────────────────────────────────────────────
-"diff.plus"         = { fg = "bright_green" }
-"diff.minus"        = { fg = "bright_red" }
-"diff.delta"        = { fg = "bright_blue" }
+"diff.plus"         = { fg = "fg1", bg = "diff_plus_bg" }
+"diff.minus"        = { fg = "fg1", bg = "diff_minus_bg" }
+"diff.delta"        = { fg = "fg1", bg = "diff_delta_bg" }
 "diff.plus.gutter"  = { fg = "bright_green" }
 "diff.minus.gutter" = { fg = "bright_red" }
 "diff.delta.gutter" = { fg = "bright_blue" }
+# Word-level segments (`diff.*.word`) mark the exact changed span inside a
+# `diff.plus`/`diff.minus`-tinted row — git-diff.hume's `diff-words` output
+# (render.scm). No `diff.delta.word`: the plugin only ever tags new-side
+# word spans `diff.plus.word`, even inside a changed (`diff.delta`) line.
+"diff.plus.word"    = { fg = "fg1", bg = "diff_plus_word_bg", modifiers = ["bold"] }
+"diff.minus.word"   = { fg = "fg1", bg = "diff_minus_word_bg", modifiers = ["bold", "crossed_out"] }
 
 # ── Whitespace ────────────────────────────────────────────────────────────────
 "ui.whitespace" = { fg = "bg3" }
@@ -127,3 +133,8 @@ bright_blue      = "#83a598"
 bright_purple    = "#d3869b"
 bright_aqua      = "#8ec07c"
 bright_orange    = "#fe8019"
+diff_plus_bg       = "#424228"
+diff_plus_word_bg  = "#5F6027"
+diff_minus_bg      = "#4E2E2A"
+diff_minus_word_bg = "#78352D"
+diff_delta_bg      = "#383E3C"

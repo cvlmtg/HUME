@@ -65,12 +65,18 @@
 "warning" = { fg = "sand" }
 "info" = { fg = "blue" }
 "hint" = { fg = "green" }
-"diff.plus" = { fg = "green" }
-"diff.minus" = { fg = "red" }
-"diff.delta" = { fg = "blue" }
+"diff.plus" = { fg = "fg", bg = "diff_plus_bg" }
+"diff.minus" = { fg = "fg", bg = "diff_minus_bg" }
+"diff.delta" = { fg = "fg", bg = "diff_delta_bg" }
 "diff.plus.gutter" = { fg = "green" }
 "diff.minus.gutter" = { fg = "red" }
 "diff.delta.gutter" = { fg = "blue" }
+# Word-level segments (`diff.*.word`) mark the exact changed span inside a
+# `diff.plus`/`diff.minus`-tinted row — git-diff.hume's `diff-words` output
+# (render.scm). No `diff.delta.word`: the plugin only ever tags new-side
+# word spans `diff.plus.word`, even inside a changed (`diff.delta`) line.
+"diff.plus.word" = { fg = "fg", bg = "diff_plus_word_bg", modifiers = [ "bold" ] }
+"diff.minus.word" = { fg = "fg", bg = "diff_minus_word_bg", modifiers = [ "bold", "crossed_out" ] }
 "markup.heading" = { fg = "sand", modifiers = [ "bold" ] }
 "markup.heading.1" = { fg = "sand", modifiers = [ "bold" ] }
 "markup.heading.2" = { fg = "sand", modifiers = [ "bold" ] }
@@ -167,3 +173,8 @@
 "blue" = "#6FA8C7"
 "gold" = "#EFD98A"
 "bright_fg" = "#F5ECDE"
+"diff_plus_bg" = "#1D3018"
+"diff_plus_word_bg" = "#255226"
+"diff_minus_bg" = "#351A17"
+"diff_minus_word_bg" = "#5F2927"
+"diff_delta_bg" = "#1D3018"
