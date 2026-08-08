@@ -313,6 +313,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "current-line-number" buffers::current_line_number();
         cmd "current-selections" buffers::current_selections();
         cmd "char-index->line" buffers::char_index_to_line(idx: SteelVal);
+        cmd "line->offset" buffers::line_to_offset(bid: args::BidArg, line: SteelVal);
 
         // Multi-buffer mutating builtins
         cmd "open-buffer!" buffers::open_buffer(path: String);

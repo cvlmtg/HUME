@@ -300,6 +300,10 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         )
     }
 
+    fn line_to_offset(&self, id: BufferId, line: usize) -> Option<usize> {
+        Some(self.buffer(id)?.text().line_to_char(line))
+    }
+
     fn viewport_range(&self, id: BufferId) -> Option<Range<usize>> {
         crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
     }

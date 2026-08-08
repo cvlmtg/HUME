@@ -421,6 +421,20 @@ pub trait BufferHost {
     /// rope's line lookup). `None` if `id` is unknown.
     fn buffer_lines(&self, id: BufferId, range: Range<usize>) -> Option<Vec<String>>;
 
+    /// The 0-based char offset where content `line` (0-based) starts in
+    /// `id`'s live text. `line` is caller-validated against
+    /// [`buffer_line_count`](Self::buffer_line_count) — same contract as
+    /// [`buffer_lines`](Self::buffer_lines): this call itself does not
+    /// bounds-check, and an out-of-range `line` is a caller bug (the editor
+    /// implementation panics, via the underlying rope's line lookup). `None`
+    /// if `id` is unknown.
+    ///
+    /// Backs the Steel `(line->offset bid line)` builtin — the inverse
+    /// direction of `char-index->line`, but not a drop-in inverse of it:
+    /// `char-index->line` is 1-indexed and reads the focused buffer, this is
+    /// 0-indexed and takes an explicit `id`.
+    fn line_to_offset(&self, id: BufferId, line: usize) -> Option<usize>;
+
     /// The line range (0-based, end-exclusive) currently visible for `id`
     /// (the focused pane's if shown there, else the first pane showing it),
     /// or `None` if `id` isn't open in any pane. Backs the Steel

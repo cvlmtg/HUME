@@ -380,6 +380,12 @@ Returns the buffer's content as a list of lines, each with its line ending strip
 
 If you're about to diff a buffer's content against another text, reach for `(diff-buffer-lines bid ref-text)` instead of `(buffer-text bid)`, especially from a hook that fires on every keystroke.
 
+```scheme
+(line->offset bid line)
+```
+
+Returns the 0-based char offset where content line `line` (0-based) starts — the conversion decoration builtins that take char offsets (like `set-extra-highlights!`) need when all you have is a line number, e.g. from a diff hunk. Raises if `line` is at or past the buffer's content line count.
+
 ### Comparing text
 
 Two functions compute a line-level diff — useful for anything that shows what changed between two versions of a file, like a git-status indicator:

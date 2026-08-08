@@ -150,6 +150,7 @@
 (#%register-global "jump-forward")
 (#%register-global "keep-primary-selection")
 (#%register-global "language-has-grammar?")
+(#%register-global "line->offset")
 (#%register-global "load-plugin")
 (#%register-global "loaded-plugins")
 (#%register-global "log!")

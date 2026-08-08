@@ -109,6 +109,9 @@ impl BufferHost for NullHost {
     fn buffer_lines(&self, _id: BufferId, _range: Range<usize>) -> Option<Vec<String>> {
         None
     }
+    fn line_to_offset(&self, _id: BufferId, _line: usize) -> Option<usize> {
+        None
+    }
     fn viewport_range(&self, _id: BufferId) -> Option<Range<usize>> {
         None
     }

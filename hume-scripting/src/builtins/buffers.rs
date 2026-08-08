@@ -300,6 +300,41 @@ pub(crate) fn char_index_to_line(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResu
     }
 }
 
+/// `(line->offset bid line)` → 0-based char offset where 0-based content
+/// `line` starts in `bid`'s live text. Raises on a stale `bid` or a `line`
+/// past the content line count — same bounds contract as `buffer-lines`
+/// (raises rather than clamping), checked here via `buffer_line_count`
+/// before the host is asked to convert.
+///
+/// Not the inverse of `char-index->line`: that builtin is 1-indexed and
+/// reads the *focused* buffer; this is 0-indexed and takes an explicit
+/// `bid`. Named for the conversion family (`char-index->line`,
+/// `lsp-position->offset`, `lsp-range->offsets`, `path->display`), not the
+/// `buffer-text`/`buffer-lines` accessor family.
+pub(crate) fn line_to_offset(ctx: &mut SteelCtx, bid: BidArg, line: SteelVal) -> SteelResult {
+    let id = bid.0;
+    // Decode before touching the host — same reasoning as `buffer_lines`:
+    // a stale bid must not mask a genuine type error in `line`.
+    let line = usize_arg(line, "line->offset")?;
+    let invalid_id = || generic_err(format!("line->offset: invalid buffer id {id:?}"));
+    let line_count = ctx
+        .host
+        .buffers()
+        .buffer_line_count(id)
+        .ok_or_else(invalid_id)?;
+    if line >= line_count {
+        return Err(generic_err(format!(
+            "line->offset: line {line} is out of range (buffer has {line_count} content lines)"
+        )));
+    }
+    let offset = ctx
+        .host
+        .buffers()
+        .line_to_offset(id, line)
+        .ok_or_else(invalid_id)?;
+    Ok(SteelVal::IntV(offset as isize))
+}
+
 /// `(viewport-range bid)` → `(first-line . end-line)` currently visible
 /// for `bid` (the focused pane's if shown there, else the first pane showing
 /// it) — 0-based, end-exclusive, matching `buffer-lines`' range convention —

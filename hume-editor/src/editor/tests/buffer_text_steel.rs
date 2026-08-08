@@ -251,6 +251,117 @@ fn buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
     assert_stale_bid_raises("buffer-lines", "buffer-lines");
 }
 
+/// `line->offset` returns the char offset where each content line starts.
+///
+/// Fail oracle: an off-by-one (e.g. forgetting the previous lines' `\n`
+/// separators) would return 1 for line 1 instead of 2.
+#[test]
+fn line_to_offset_returns_each_lines_start_char_offset() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\nbb\nccc\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(and (= (line->offset (current-buffer) 0) 0)
+                 (= (line->offset (current-buffer) 1) 2)
+                 (= (line->offset (current-buffer) 2) 5))"#,
+    );
+    assert!(
+        fired,
+        "line->offset must return each content line's start char offset"
+    );
+}
+
+/// `line->offset` counts in chars, not bytes — a line after a multi-byte
+/// character must not be offset by its UTF-8 byte width.
+///
+/// Fail oracle: a byte-offset implementation would return 4 for line 1
+/// instead of 2 ("é" is 1 char but 2 UTF-8 bytes, "a\n" contributes 2 chars).
+#[test]
+fn line_to_offset_counts_chars_not_bytes() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[é]>\nb\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(= (line->offset (current-buffer) 1) 2)"#,
+    );
+    assert!(
+        fired,
+        "line->offset must count chars, not UTF-8 bytes, ahead of the target line"
+    );
+}
+
+/// A `line` at or past the buffer's content line count raises — including
+/// the phantom trailing line past the structural `\n`, same convention as
+/// `buffer-lines`' `#:end`.
+#[test]
+fn line_to_offset_out_of_range_line_raises() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\nb\n");
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "probe" "" (lambda ()
+             (line->offset (current-buffer) 2)))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":probe");
+
+    let entries: Vec<_> = ed.state.message_log.entries().cloned().collect();
+    assert!(
+        entries.iter().any(|e| e.severity == Severity::Error
+            && e.text.contains("line->offset")
+            && e.text.contains("out of range")),
+        "an out-of-range line must surface as a Steel error, got: {entries:?}"
+    );
+}
+
+/// Same pattern as `buffer-lines`' stale-bid test, but not reusing
+/// `assert_stale_bid_raises`: that helper appends `b` as the call's *last*
+/// arg, which fits `buffer-text`/`buffer-lines` (bid is their only/first
+/// arg) but not `line->offset`, whose second arg (`line`) must come after
+/// `b`, not before it.
+#[test]
+fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\n");
+
+    let scratch = tmp.path().join("scratch.txt");
+    std::fs::write(&scratch, "x\n").unwrap();
+    let scratch_str = scratch.to_string_lossy().replace('\\', "/");
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        &format!(
+            r#"(define-command! "probe" "" (lambda ()
+                 (define b (open-buffer! "{scratch_str}"))
+                 (close-buffer! b)
+                 (line->offset b 0)))"#
+        ),
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":probe");
+
+    let entries: Vec<_> = ed.state.message_log.entries().cloned().collect();
+    assert!(
+        entries.iter().any(|e| e.severity == Severity::Error
+            && e.text.contains("line->offset")
+            && e.text.contains("invalid buffer id")),
+        "a stale bid must surface as a Steel error naming the builtin, got: {entries:?}"
+    );
+}
+
 /// Oracle: `diff-buffer-lines` against a ref must agree with `diff-lines`
 /// called on the ref and a `buffer-text` read — the cheaper, buffer-avoiding
 /// path and the general-purpose path must produce identical hunks for the

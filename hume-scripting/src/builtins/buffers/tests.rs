@@ -139,6 +139,13 @@ fn buffer_lines_blocked_in_init_mode() {
     assert!(super::super::errors::require_cmd(&h.ctx_init(), "%buffer-lines").is_err());
 }
 
+/// `line->offset` is blocked in init mode.
+#[test]
+fn line_to_offset_blocked_in_init_mode() {
+    let mut h = SteelCtxTestHarness::new();
+    assert!(super::super::errors::require_cmd(&h.ctx_init(), "line->offset").is_err());
+}
+
 // ── Type errors (wrong arg type) ──────────────────────────────────────────
 //
 // `buffer-path`/`buffer-name`/`buffer-dirty?` don't decode `bid` in-body
@@ -185,6 +192,26 @@ fn buffer_lines_wrong_type_errors() {
             .to_string()
             .contains("expected a non-negative integer")
     );
+}
+
+/// `line->offset` rejects a non-integer and a negative integer `line`
+/// argument, same guard as `char-index->line`.
+#[test]
+fn line_to_offset_wrong_type_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = line_to_offset(&mut ctx, default_bid(), SteelVal::StringV("nope".into()));
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("expected a non-negative integer")
+    );
+
+    let mut ctx = h.ctx();
+    let result = line_to_offset(&mut ctx, default_bid(), SteelVal::IntV(-1));
+    assert!(result.is_err());
 }
 
 // ── Invalid buffer ID (NullHost always returns buffer_exists=false) ───────
@@ -252,6 +279,23 @@ fn buffer_lines_invalid_id_errors() {
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
     );
+    assert!(result.is_err(), "non-existent buffer id must error");
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid buffer id")
+    );
+}
+
+/// `line->offset` on a non-existent buffer raises — `buffer_line_count` is
+/// looked up before `line` is bounds-checked, so this is the first check
+/// hit, same as `%buffer-lines`.
+#[test]
+fn line_to_offset_invalid_id_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = line_to_offset(&mut ctx, default_bid(), SteelVal::IntV(0));
     assert!(result.is_err(), "non-existent buffer id must error");
     assert!(
         result
