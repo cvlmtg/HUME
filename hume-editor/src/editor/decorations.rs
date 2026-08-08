@@ -99,8 +99,8 @@ pub(crate) struct ExtraHighlightEntry {
 /// like every other line-anchored kind (SPEC.md §6); the render side derives
 /// the current line back via `char_to_line` at rebuild. No `priority` field
 /// — unlike signs, row tints have no single-slot contention, so same-line
-/// entries from different sources break ties by source name
-/// (GIT-DIFF.md Phase 4.4). `Clone`: see `EolTextEntry`'s doc — same
+/// entries from different sources break ties by source name.
+/// `Clone`: see `EolTextEntry`'s doc — same
 /// `visible_line_anchored` consumer.
 #[derive(Clone)]
 pub(crate) struct LineBgEntry {

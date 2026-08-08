@@ -34,7 +34,6 @@
 - [ ] `core:lsp` `cargo-git` install flavor — installs from a pinned git tag instead of crates.io semver; unblocks `nil`.
 - [ ] `core:lsp` install support for `pkg:golang` (gopls) and `pkg:pypi` source kinds — currently fail loudly as unsupported (see `docs/LSP-INSTALL.md`'s "v1 scope and limitations").
 - [ ] `:lsp-install` argument completion — Steel commands have no argument-completion path today.
-- [ ] `git-diff` plugin — gutter signs + inline diff, layered (signs first, then virtual deleted lines, then background tint); plugin candidate, keep out of core. Design: `docs/GIT-DIFF.md`.
 
 ## Open questions
 

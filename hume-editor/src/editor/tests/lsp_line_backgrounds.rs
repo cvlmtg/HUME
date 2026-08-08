@@ -2,7 +2,7 @@
 // `update_line_bg_providers` write side that feeds the new
 // `PaneLineBackgrounds` (LINE_BG-kind `DecorationSource`) from the
 // `decorations.line_backgrounds` store, and the engine's `row_bg`
-// generalization that renders it (GIT-DIFF.md Phase 3.2/4.4).
+// generalization that renders it.
 //
 // Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s
 // bare `Pane::new`) — `PaneLineBackgrounds` is only registered by

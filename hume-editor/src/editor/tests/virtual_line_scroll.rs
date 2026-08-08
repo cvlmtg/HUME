@@ -3,13 +3,12 @@
 // the renderer and `cursor::screen_pos` agree about both:
 //
 //   - a VIRTUAL_LINE-kind `DecorationSource`'s `Before`/`After` rows, which
-//     occupy whole screen rows (docs/GIT-DIFF.md's former "virtual-line
-//     scroll accounting" risk),
+//     occupy whole screen rows (the "virtual-line scroll accounting" risk),
 //   - an INLINE-kind `DecorationSource`'s inserts, which take columns and so
 //     can push a line onto an extra wrap row.
 //
 // `PaneVirtualLines` can now emit `Before` too (`set-virtual-lines!`'s
-// `'anchor` — docs/GIT-DIFF.md Phase 4.5); these register synthetic
+// `'anchor`); these register synthetic
 // providers directly on the pane instead, mirroring `cursor/tests.rs`'s and
 // `scroll/tests.rs`'s `OneBeforeLine` doubles, to isolate row-counting math
 // from the Steel bridge (that path is exercised separately in

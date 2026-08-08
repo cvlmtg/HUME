@@ -721,8 +721,7 @@ impl Editor {
     /// before any per-entry clone or scope resolution runs (mirrors
     /// `update_sign_providers`), so the per-frame cost is one `ScopeId` per
     /// *visible* tinted line, not per tinted line in the whole buffer —
-    /// cheap enough that a dedicated generation-gated sync buys nothing
-    /// (GIT-DIFF.md Phase 4.4).
+    /// cheap enough that a dedicated generation-gated sync buys nothing.
     pub(super) fn update_line_bg_providers(&mut self) {
         let panes = self.decorated_panes();
 

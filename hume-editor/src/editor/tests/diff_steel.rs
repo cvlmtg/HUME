@@ -1,5 +1,5 @@
-// End-to-end Steel coverage for `diff-lines` / `diff-buffer-lines` (Phase 2a)
-// and `diff-words` (Phase 2b), docs/GIT-DIFF.md.
+// End-to-end Steel coverage for `diff-lines` / `diff-buffer-lines` and
+// `diff-words`.
 
 use super::*;
 use crate::editor::message_log::Severity;

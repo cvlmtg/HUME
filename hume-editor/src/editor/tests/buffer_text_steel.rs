@@ -1,5 +1,4 @@
-// End-to-end Steel coverage for `buffer-text` / `buffer-lines` (Phase 4.2,
-// docs/GIT-DIFF.md).
+// End-to-end Steel coverage for `buffer-text` / `buffer-lines`.
 
 use super::*;
 use crate::editor::message_log::Severity;
@@ -252,10 +251,10 @@ fn buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
     assert_stale_bid_raises("buffer-lines", "buffer-lines");
 }
 
-/// The doc's stated oracle (`docs/GIT-DIFF.md`): `diff-buffer-lines` against
-/// a ref must agree with `diff-lines` called on the ref and a `buffer-text`
-/// read — the cheaper, buffer-avoiding path and the general-purpose path
-/// must produce identical hunks for the same input.
+/// Oracle: `diff-buffer-lines` against a ref must agree with `diff-lines`
+/// called on the ref and a `buffer-text` read — the cheaper, buffer-avoiding
+/// path and the general-purpose path must produce identical hunks for the
+/// same input.
 #[test]
 fn diff_buffer_lines_agrees_with_diff_lines_over_buffer_text() {
     let tmp = safe_tempdir();

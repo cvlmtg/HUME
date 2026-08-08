@@ -1,6 +1,5 @@
 //! Translates `hume_editing::diff::{LineHunk, WordHunk}` into their
-//! Steel-facing [`DiffHunk`]/[`WordDiffHunk`] shapes (Phase 2a/2b,
-//! `docs/GIT-DIFF.md`).
+//! Steel-facing [`DiffHunk`]/[`WordDiffHunk`] shapes.
 //!
 //! **Line diff** normalizes both sides through [`Text::from`] before
 //! tokenizing — CRLF-normalized and given a trailing newline if missing, the

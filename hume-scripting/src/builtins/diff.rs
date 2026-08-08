@@ -1,6 +1,6 @@
 //! `(diff-lines old-text new-text)` / `(diff-buffer-lines bid ref-text)` /
 //! `(diff-words old-text new-text)` — native line and word diff, exposed to
-//! Steel plugins (Phase 2a/2b, `docs/GIT-DIFF.md`).
+//! Steel plugins.
 
 use steel::rvals::SteelVal;
 

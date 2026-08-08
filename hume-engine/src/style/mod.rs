@@ -170,7 +170,7 @@ pub(crate) fn style_row(
         // up on content cells, never on the gutter or the row's trailing
         // fill past end-of-line. Constraining both paint sites to `bg` is
         // what keeps them in agreement "by construction" instead of by
-        // convention (GIT-DIFF.md Phase 3.2). Layered below cursorline so
+        // convention. Layered below cursorline so
         // the cursor's own line always reads clearly even inside a tinted
         // block; a theme whose cursorline has no `bg` falls through to the
         // tint automatically (`ResolvedStyle::layer` only overrides on

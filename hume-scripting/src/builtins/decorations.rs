@@ -256,8 +256,7 @@ pub(crate) fn set_extra_highlights(
 /// `(set-line-backgrounds! source bid entries)` — `entries`: list of `(line
 /// scope)`. A full-row background tint on each named line. No `priority`
 /// field — unlike signs, row tints have no single-slot contention; same-line
-/// entries from different sources break ties by source name (GIT-DIFF.md
-/// Phase 4.4).
+/// entries from different sources break ties by source name.
 pub(crate) fn set_line_backgrounds(
     ctx: &mut SteelCtx,
     source: SteelVal,
