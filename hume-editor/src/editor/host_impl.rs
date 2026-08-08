@@ -10,7 +10,7 @@
 //! - **Init dispatch** (`scripting_setup.rs`): called with the same fields
 //!   during `init_scripting`; init-only builtins set settings.
 
-use std::borrow::Cow;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use hume_editing::text::strip_line_break;
@@ -283,21 +283,18 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         Some(self.buffer(id)?.text().content_line_count())
     }
 
-    fn buffer_lines(&self, id: BufferId, range: std::ops::Range<usize>) -> Option<Vec<String>> {
+    fn buffer_lines(&self, id: BufferId, range: Range<usize>) -> Option<Vec<String>> {
         let text = self.buffer(id)?.text();
         Some(
             text.line_tokens_at(range.start)
                 .take(range.len())
-                .map(|line| match line {
-                    // Already owned (the line straddled a rope chunk
-                    // boundary) — truncate in place instead of allocating a
-                    // second copy via `strip_line_break(..).to_string()`.
-                    Cow::Owned(mut s) => {
-                        let trimmed_len = strip_line_break(&s).len();
-                        s.truncate(trimmed_len);
-                        s
-                    }
-                    Cow::Borrowed(s) => strip_line_break(s).to_string(),
+                .map(|line| {
+                    // Both branches allocate exactly once — `into_owned`
+                    // copies a `Borrowed` line, `Owned` is already a copy —
+                    // so truncating in place covers both without a match.
+                    let mut s = line.into_owned();
+                    s.truncate(strip_line_break(&s).len());
+                    s
                 })
                 .collect(),
         )

@@ -125,20 +125,18 @@ impl Editor {
             // refreshes. No-op when the cache already matches this revision.
             super::search::ops::update_buffer_matches(&mut self.state.buffers, bid);
 
+            let visible = self.visible_line_range(pid, bid);
             let buf = self.state.buffers.get(bid);
             let text = buf.text();
-            let vp = &self.view.panes[pid].viewport;
-            let top_line = vp.top_line;
-            let bot_line = top_line + vp.height as usize;
 
             // Matches are sorted by document order. Binary-search to the first
             // match that starts at or after this pane's `top_line`.
-            let top_char = text.line_to_char(top_line.min(text.len_lines().saturating_sub(1)));
+            let top_char = text.line_to_char(visible.start);
             let matches = &buf.search_matches.matches;
             let first = matches.partition_point(|&(start, _)| start < top_char);
             for &(start, end_incl) in &matches[first..] {
                 let start_line = text.char_to_line(start);
-                if start_line > bot_line {
+                if start_line >= visible.end {
                     break;
                 }
                 // end_incl is inclusive char offset; +1 makes it exclusive.

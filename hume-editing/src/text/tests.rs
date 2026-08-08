@@ -100,7 +100,7 @@ fn line_tokens_splits_on_non_lf_unicode_breaks() {
 }
 
 #[test]
-fn line_tokens_at_skips_the_seek_not_just_the_output() {
+fn line_tokens_at_starts_at_the_requested_line() {
     let buf = Text::from("a\nb\nc\n");
     let tokens: Vec<_> = buf.line_tokens_at(1).collect();
     assert_eq!(tokens, vec!["b\n", "c\n", ""]);

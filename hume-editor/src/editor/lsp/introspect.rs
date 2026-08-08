@@ -395,14 +395,19 @@ pub(crate) fn range_params(
 /// (pane -> its own range, for the `on-viewport-change` hook payload) and
 /// [`viewport_range`] (buffer -> the pane showing it, for the synchronous
 /// `(viewport-range bid)` builtin, which wraps this pair in a dotted-pair
-/// wire value). `last_line` clamps to `content_lines - 1` (0 when the buffer
-/// has no content lines) so it never points past the buffer's last *content*
-/// line — not ropey's phantom line past the structural trailing `\n` — even
-/// when the pane's viewport height exceeds the buffer.
+/// wire value). Both `.scm` consumers (`lsp/visible-lines`,
+/// `lsp/inlay-hint-params`) and the user manual treat `last_line` as
+/// *inclusive* — `height` is the pane's content-row count
+/// (`hume-engine`'s `layout::content_height`), so the last visible row is
+/// `height - 1` past `top_line`, not `height`. Also clamps to
+/// `content_lines - 1` (0 when the buffer has no content lines) so it never
+/// points past the buffer's last *content* line — not ropey's phantom line
+/// past the structural trailing `\n` — even when the pane's viewport height
+/// exceeds the buffer.
 pub(crate) fn pane_visible_range(pane: &Pane, content_lines: usize) -> (usize, usize) {
     let first_line = pane.viewport.top_line;
-    let last_line =
-        (first_line + pane.viewport.height as usize).min(content_lines.saturating_sub(1));
+    let last_row = pane.viewport.height.saturating_sub(1) as usize;
+    let last_line = (first_line + last_row).min(content_lines.saturating_sub(1));
     (first_line, last_line)
 }
 

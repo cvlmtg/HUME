@@ -415,8 +415,10 @@ pub trait BufferHost {
     /// Content lines `range` (0-based, end-exclusive) of `id`'s live text,
     /// each with its trailing line break stripped. `range` is caller-
     /// validated against [`buffer_line_count`](Self::buffer_line_count) —
-    /// this call itself does not clamp or bounds-check. `None` if `id` is
-    /// unknown.
+    /// this call itself does not clamp or bounds-check, and an out-of-range
+    /// `range` is a caller bug: implementations may panic rather than
+    /// return `None` (the editor implementation does, via the underlying
+    /// rope's line lookup). `None` if `id` is unknown.
     fn buffer_lines(&self, id: BufferId, range: Range<usize>) -> Option<Vec<String>>;
 
     /// `(viewport-range bid)` — the `(first_line . last_line)` char-line span

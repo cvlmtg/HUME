@@ -71,6 +71,48 @@ fn buffer_lines_supports_a_start_end_range() {
     );
 }
 
+/// `#:start` alone: `#:end` defaults to the buffer's content line count,
+/// not just to whatever `#:end` happened to be passed alongside it above.
+#[test]
+fn buffer_lines_start_only_defaults_end_to_the_line_count() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\nb\nc\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (buffer-lines (current-buffer) #:start 1) (list "b" "c"))"#,
+    );
+    assert!(
+        fired,
+        "buffer-lines with only #:start must default #:end to the line count"
+    );
+}
+
+/// `buffer-text` always returns `\n` line endings, even for a buffer whose
+/// source used `\r\n` — `Text::from`'s CRLF normalization, not a second
+/// strip pass in the builtin itself.
+///
+/// Fail oracle: reading the rope's raw content without normalization would
+/// still see the `\r` bytes.
+#[test]
+fn buffer_text_normalizes_crlf_to_lf() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\r\nb\r\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (buffer-text (current-buffer)) "a\nb\n")"#,
+    );
+    assert!(
+        fired,
+        "buffer-text must return LF line endings even for a CRLF-origin buffer"
+    );
+}
+
 /// An `#:end` past the buffer's line count raises rather than silently
 /// clamping — fail-fast, matching the project's error-handling convention.
 ///

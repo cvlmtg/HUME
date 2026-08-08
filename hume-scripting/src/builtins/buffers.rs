@@ -140,17 +140,21 @@ pub(crate) fn buffer_lines(
     end: SteelVal,
 ) -> SteelResult {
     let id = bid.0;
+    // Decode both args before touching the host — a stale bid must not mask
+    // a genuine type error in either argument (or the reverse) depending on
+    // which happens to be checked first.
+    let start = optional_usize_arg(start, "buffer-lines start")?.unwrap_or(0);
+    let end = optional_usize_arg(end, "buffer-lines end")?;
     // One error message for both lookups below — the second is unreachable
     // in practice (nothing can close `id` between two synchronous host
     // calls) but the trait returns `Option`, so it's handled, not assumed.
     let invalid_id = || generic_err(format!("buffer-lines: invalid buffer id {id:?}"));
-    let start = optional_usize_arg(start, "buffer-lines start")?.unwrap_or(0);
     let line_count = ctx
         .host
         .buffers()
         .buffer_line_count(id)
         .ok_or_else(invalid_id)?;
-    let end = optional_usize_arg(end, "buffer-lines end")?.unwrap_or(line_count);
+    let end = end.unwrap_or(line_count);
     if start > end || end > line_count {
         return Err(generic_err(format!(
             "buffer-lines: range {start}..{end} out of bounds for a {line_count}-line buffer"

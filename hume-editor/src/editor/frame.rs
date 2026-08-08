@@ -452,7 +452,13 @@ impl Editor {
 
     /// Pane `pid`'s visible viewport as `(top_line, bottom_line)`, before any
     /// clamping to the buffer's actual line count — the shared basis for
-    /// [`Self::visible_char_range`] and [`Self::visible_line_range`].
+    /// [`Self::visible_char_range`] and [`Self::visible_line_range`]. These
+    /// render-side helpers deliberately return a one-row *superset*
+    /// (end-exclusive, `bottom_line` itself still included) — cheap over-fetch
+    /// beats a wrap-aware exact bound for a bulk store slice. This is a
+    /// distinct convention from `lsp::introspect::pane_visible_range`, whose
+    /// `last_line` is the Steel-facing *inclusive* last visible row — the two
+    /// don't share an implementation because they don't share a contract.
     fn visible_line_bounds(&self, pid: PaneId) -> (usize, usize) {
         let vp = &self.view.panes[pid].viewport;
         let top_line = vp.top_line;

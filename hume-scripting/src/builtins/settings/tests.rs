@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use super::*;
 use crate::test_support::SteelCtxTestHarness;
 use hume_engine::pipeline::BufferId;
@@ -321,7 +323,7 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_line_count(&self, id: BufferId) -> Option<usize> {
         self.inner.buffer_line_count(id)
     }
-    fn buffer_lines(&self, id: BufferId, range: std::ops::Range<usize>) -> Option<Vec<String>> {
+    fn buffer_lines(&self, id: BufferId, range: Range<usize>) -> Option<Vec<String>> {
         self.inner.buffer_lines(id, range)
     }
     fn viewport_range(&self, id: BufferId) -> Option<(usize, usize)> {

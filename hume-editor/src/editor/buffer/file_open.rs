@@ -320,13 +320,7 @@ impl Editor {
         // Targeted, not `fresh_from_buf`: selections are restored to the clamped
         // post-reload cursor; stale edit groups / paste sessions drop (an open
         // group against pre-reload text cannot compose against the new text).
-        let last_line = self
-            .state
-            .buffers
-            .get(id)
-            .text()
-            .len_lines()
-            .saturating_sub(2);
+        let last_line = self.state.buffers.get(id).text().last_content_line();
         for &(pid, head) in &post_heads {
             self.state.panes.state[pid][id].selections =
                 SelectionSet::single(Selection::collapsed(head));

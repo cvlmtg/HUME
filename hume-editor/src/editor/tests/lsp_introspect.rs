@@ -377,6 +377,24 @@ fn viewport_range_last_line_is_the_last_content_line_at_eof() {
     );
 }
 
+/// A buffer taller than the pane: `last_line` is the last visible *row*
+/// (`top_line + height - 1`), not `top_line + height`. `viewport_range` is
+/// called directly (not through the `on-viewport-change` hook or a Steel
+/// probe) so the pane's height is exactly what this test set, not whatever a
+/// dispatched command might have touched.
+///
+/// Fail oracle: the pre-fix `first_line + height` reports 3 for a 3-row
+/// pane at the top of a 6-line buffer, naming a row that isn't on screen.
+#[test]
+fn viewport_range_last_line_is_the_last_visible_row_not_one_past() {
+    let mut ed = editor_from("-[a]>\nb\nc\nd\ne\nf\n");
+    ed.viewport_mut().height = 3;
+    let bid = ed.focused_buffer_id();
+
+    let got = crate::editor::lsp::introspect::viewport_range(&ed.state, &ed.view, bid);
+    assert_eq!(got, Some((0, 2)));
+}
+
 #[test]
 fn viewport_range_is_false_for_a_buffer_not_shown_in_any_pane() {
     let tmp = safe_tempdir();
