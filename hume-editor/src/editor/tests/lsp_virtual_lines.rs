@@ -166,7 +166,7 @@ fn per_segment_scopes_style_the_virtual_lines_text() {
 }
 
 #[test]
-fn segments_gap_fill_with_the_base_scope() {
+fn scope_becomes_the_line_s_base_scope_segments_stay_sparse() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "let x = 5");
@@ -191,13 +191,18 @@ fn segments_gap_fill_with_the_base_scope() {
     assert_eq!(lines.len(), 1);
     assert_eq!(
         lines[0].segments,
-        vec![(0, 2, base), (2, 4, kw), (4, 6, base)],
-        "the gap before and after the explicit segment must be filled with the base scope"
+        vec![(2, 4, kw)],
+        "'segments passes through sparse — the engine, not the editor, fills gaps from base_scope"
+    );
+    assert_eq!(
+        lines[0].base_scope,
+        Some(base),
+        "'scope becomes base_scope, the row's fallback and background"
     );
 }
 
 #[test]
-fn no_segments_yields_one_whole_text_segment() {
+fn no_segments_yields_an_empty_segment_list() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "let x = 5");
@@ -220,9 +225,177 @@ fn no_segments_yields_one_whole_text_segment() {
     assert_eq!(lines.len(), 1);
     assert_eq!(
         lines[0].segments,
-        vec![(0, 4, base)],
-        "no 'segments must behave exactly like the pre-segments API: one whole-text segment"
+        Vec::new(),
+        "no 'segments — the whole row falls back to base_scope, nothing to name as a segment"
     );
+    assert_eq!(lines[0].base_scope, Some(base));
+}
+
+#[test]
+fn no_scope_falls_back_to_ui_virtual_as_the_base_scope() {
+    let tmp = safe_tempdir();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    type_text(&mut ed, "let x = 5");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (set-virtual-lines! "linter" (current-buffer)
+               (list (hash 'line 0 'text "hint")))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    let ui_virtual = ed
+        .view
+        .registry
+        .get("ui.virtual")
+        .expect("ui.virtual interned as the fallback base_scope");
+    let lines = virtual_lines_at(&ed, 0);
+    assert_eq!(lines.len(), 1);
+    assert_eq!(
+        lines[0].base_scope,
+        Some(ui_virtual),
+        "no 'scope must still populate base_scope (with ui.virtual) — never leave it None, \
+         or a theme that gives ui.virtual a bg would tint this row's text but not its \
+         gutter/trailing cells"
+    );
+}
+
+/// A theme where `ui.virtual` itself carries a `bg` — none of the bundled
+/// themes do, but a custom one might, and a scope-less virtual line's row
+/// fill must track it exactly like an explicit `'scope` would.
+fn theme_with_tinted_ui_virtual() -> hume_engine::theme::Theme {
+    hume_engine::theme::loader::parse_theme(
+        r##"
+        "ui.virtual" = { fg = "#808080", bg = "#ff00ff" }
+        "ui.background" = { fg = "#ffffff", bg = "#000000" }
+        "##,
+    )
+    .expect("inline test theme must parse")
+}
+
+#[test]
+fn generic_virtual_line_with_no_scope_tints_the_full_row_when_ui_virtual_has_a_bg() {
+    let tmp = safe_tempdir();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.view.theme = theme_with_tinted_ui_virtual();
+    type_text(&mut ed, "hello");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (set-virtual-lines! "linter" (current-buffer)
+               (list (hash 'line 0 'text "V" 'anchor 'before)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    let buf = ed.render_to_buf(Rect::new(0, 0, 40, 8));
+
+    let virtual_bg = Some(ratatui::style::Color::Rgb(0xff, 0x00, 0xff));
+    // Row 0 is the virtual line (anchored `'before` line 0). Column 20 sits
+    // well past the 1-char text but short of the right edge.
+    assert_eq!(buf[(0, 0)].style().bg, virtual_bg, "gutter cell");
+    assert_eq!(
+        buf[(20, 0)].style().bg,
+        virtual_bg,
+        "a cell past the virtual line's own text — the row fill, not just the \
+         per-grapheme style, must carry ui.virtual's bg"
+    );
+    assert_eq!(buf[(39, 0)].style().bg, virtual_bg, "window border");
+}
+
+/// Reuses `ui.selection.search` purely as a scope guaranteed to carry a
+/// distinct, known `bg` in the embedded snapshot theme — same convention as
+/// `lsp_line_backgrounds.rs`'s `TINT_SCOPE`.
+const TINT_SCOPE: &str = "ui.selection.search";
+
+#[test]
+fn virtual_line_background_tints_gutter_content_and_trailing_cells() {
+    let tmp = safe_tempdir();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    type_text(&mut ed, "hello");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "go" "" (lambda ()
+                 (set-virtual-lines! "git-diff" (current-buffer)
+                   (list (hash 'line 0 'text "V" 'anchor 'before 'scope "{TINT_SCOPE}")))))"#
+        ),
+    );
+    type_cmd(&mut ed, ":go");
+
+    let buf = ed.render_to_buf(Rect::new(0, 0, 40, 8));
+
+    let scope = ed
+        .view
+        .registry
+        .get(TINT_SCOPE)
+        .expect("set-virtual-lines! must have interned the scope");
+    let expected_bg = ed.view.theme.resolve(scope).bg;
+    assert!(expected_bg.is_some(), "sanity: the test scope has a bg");
+
+    // Row 0 is the virtual line (anchored `'before` line 0); row 1 is the
+    // real "hello" content line. Column 20 sits well past the 1-char virtual
+    // text but short of the right edge — exactly where the bug this test
+    // guards against left the row untinted.
+    assert_eq!(buf[(0, 0)].style().bg, expected_bg, "gutter cell");
+    assert_eq!(
+        buf[(20, 0)].style().bg,
+        expected_bg,
+        "a cell past the virtual line's own text"
+    );
+    assert_eq!(
+        buf[(39, 0)].style().bg,
+        expected_bg,
+        "the rightmost cell, at the window border"
+    );
+    assert_ne!(
+        buf[(20, 1)].style().bg,
+        expected_bg,
+        "the real content line below must not carry it"
+    );
+}
+
+#[test]
+fn virtual_line_with_empty_text_still_renders_its_background_bar() {
+    let tmp = safe_tempdir();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    type_text(&mut ed, "hello");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "go" "" (lambda ()
+                 (set-virtual-lines! "git-diff" (current-buffer)
+                   (list (hash 'line 0 'text "" 'anchor 'before 'scope "{TINT_SCOPE}")))))"#
+        ),
+    );
+    type_cmd(&mut ed, ":go");
+
+    let buf = ed.render_to_buf(Rect::new(0, 0, 40, 8));
+
+    let scope = ed
+        .view
+        .registry
+        .get(TINT_SCOPE)
+        .expect("set-virtual-lines! must have interned the scope");
+    let expected_bg = ed.view.theme.resolve(scope).bg;
+
+    // No text means no graphemes at all (`segment_virtual_row` emits one
+    // grapheme per cluster) — the row-fill is the only thing that can paint
+    // this row, so its presence here proves the fill runs independently of
+    // content.
+    assert_eq!(buf[(0, 0)].style().bg, expected_bg, "gutter cell");
+    assert_eq!(buf[(20, 0)].style().bg, expected_bg, "content cell");
+    assert_eq!(buf[(39, 0)].style().bg, expected_bg, "window border");
 }
 
 #[test]

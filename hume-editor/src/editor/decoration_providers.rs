@@ -612,10 +612,13 @@ impl Editor {
         }
     }
 
-    /// Interned `ScopeId` for `ui.virtual` — the same theme key
-    /// `Theme::ui.virtual_text` (the struct field) resolves from — used as
-    /// the fallback scope for a virtual-line entry with no explicit
-    /// `scope`. Cached the same way as [`Self::inlay_hint_scope`].
+    /// Interned `ScopeId` for `ui.virtual` — the fallback `base_scope` for a
+    /// virtual-line entry with no explicit `scope`, so a theme that gives
+    /// `ui.virtual` a `bg` tints a scope-less virtual line's gutter and
+    /// trailing cells the same as its text, not just the text (the row-fill
+    /// site and the per-grapheme site must resolve the same scope for a
+    /// line — see `update_virtual_line_providers`). Cached the same way as
+    /// [`Self::inlay_hint_scope`].
     fn virtual_text_fallback_scope(&mut self) -> hume_engine::types::ScopeId {
         if let Some(id) = self.state.virtual_text_fallback_scope {
             return id;
@@ -644,14 +647,19 @@ impl Editor {
     /// alphabetical-by-source order, not registration order.
     ///
     /// Each entry becomes `Before(line)` or `After(line)` per its `before`
-    /// flag, and its `segments` are gap-filled with its base scope so the
-    /// engine always sees full byte coverage — see `gap_fill_segments`.
+    /// flag. `entry.scope` (or `ui.virtual` when absent) resolves to
+    /// `VirtualLine::base_scope` — the engine falls back to it for bytes
+    /// `segments` doesn't cover, and reads its `bg` to fill the row past the
+    /// last grapheme (see `segment_virtual_row`/`pane_render.rs`'s
+    /// virtual-row `row_bg`). Always `Some`, never left as the engine's own
+    /// `None` fallback, so a theme that puts a `bg` on `ui.virtual` reaches
+    /// the row fill exactly the same way an explicit `scope` would.
     pub(super) fn update_virtual_line_providers(&mut self) {
         use hume_engine::providers::{VirtualLine, VirtualLineAnchor};
 
         let panes = self.decorated_panes();
-
         let fallback_scope = self.virtual_text_fallback_scope();
+
         for &(pid, bid) in &panes {
             let current_gen = self.state.config.decorations.generation(bid);
             if self.virtual_lines_synced.get(&pid) == Some(&(bid, current_gen)) {
@@ -681,15 +689,19 @@ impl Editor {
             let mut by_line: rustc_hash::FxHashMap<usize, Vec<VirtualLine>> =
                 rustc_hash::FxHashMap::default();
             for entry in entries {
-                let base = match &entry.scope {
+                let base_scope = Some(match &entry.scope {
                     Some(name) => self.runtime_scope(name),
                     None => fallback_scope,
-                };
-                let segments = self.gap_fill_segments(&entry.segments, entry.text.len(), base);
+                });
+                let segments = entry
+                    .segments
+                    .iter()
+                    .map(|(start, end, name)| (*start, *end, self.runtime_scope(name)))
+                    .collect();
                 // `entry.pos` is the anchor line's line-start char offset
                 // (`VirtualLineEntry::pos`) — fetched fresh per entry since
-                // `runtime_scope`/`gap_fill_segments` above need `&mut self`,
-                // which can't overlap with a borrow of `self.state.buffers`.
+                // `runtime_scope` above needs `&mut self`, which can't
+                // overlap with a borrow of `self.state.buffers`.
                 let text = self.state.buffers.get(bid).text();
                 let Some(line) = resolve_decoration_line(text, entry.pos) else {
                     continue;
@@ -706,6 +718,7 @@ impl Editor {
                     provider_id: 0,
                     text: entry.text,
                     segments,
+                    base_scope,
                 });
             }
 
@@ -761,46 +774,6 @@ impl Editor {
 
             *map.write_or_panic() = by_line;
         }
-    }
-
-    /// Fills the gaps `segments` (already sorted, non-overlapping, in-bounds —
-    /// guaranteed by the host boundary, `virtual_line_segments_to_bytes` in
-    /// `host_impl.rs`) leaves in `0..text_len`
-    /// with `base`, so the engine always receives full byte coverage instead
-    /// of falling back to `ui.virtual_text` per uncovered byte. No segments →
-    /// exactly one segment spanning the whole text, matching the
-    /// pre-segments behavior byte-for-byte.
-    ///
-    /// A non-sorted or overlapping `segments` here is a caller bug, not a
-    /// runtime condition to tolerate: `RowMap::block` only *sorts* the
-    /// output by `start` (it does not merge or reject overlaps), so
-    /// silently emitting overlapping ranges here would still reach
-    /// `IntervalCursor`, whose non-overlap precondition it violates —
-    /// producing a wrong-scope render rather than an error.
-    fn gap_fill_segments(
-        &mut self,
-        segments: &[(usize, usize, String)],
-        text_len: usize,
-        base: hume_engine::types::ScopeId,
-    ) -> Vec<(usize, usize, hume_engine::types::ScopeId)> {
-        let mut out = Vec::with_capacity(segments.len() * 2 + 1);
-        let mut cursor = 0usize;
-        for (start, end, name) in segments {
-            debug_assert!(
-                *start >= cursor,
-                "gap_fill_segments: caller-guaranteed sorted/non-overlapping segments violated"
-            );
-            let scope = self.runtime_scope(name);
-            if *start > cursor {
-                out.push((cursor, *start, base));
-            }
-            out.push((*start, *end, scope));
-            cursor = *end;
-        }
-        if cursor < text_len {
-            out.push((cursor, text_len, base));
-        }
-        out
     }
 }
 

@@ -516,6 +516,7 @@ fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block()
                             provider_id: 0,
                             text: "V".to_string(),
                             segments: Vec::new(),
+                            base_scope: None,
                         },
                     ));
                 }

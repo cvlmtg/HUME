@@ -181,9 +181,9 @@ pub struct VirtualLine {
     pub text: String,
     /// `(byte_start, byte_end, scope_id)` offsets into `text`, each naming the
     /// scope its graphemes should resolve to. Bytes not covered by any
-    /// segment get no scope (the render stage falls back to
-    /// `ui.virtual_text`). Scopes must have been interned via `ScopeRegistry`
-    /// before the first render (same contract as every `DecorationSource`).
+    /// segment fall back to `base_scope`, then to `ui.virtual_text`. Scopes
+    /// must have been interned via `ScopeRegistry` before the first render
+    /// (same contract as every `DecorationSource`).
     ///
     /// Same span shape as `Decoration::Highlight`/`SyntaxSpans`: sorted by
     /// `byte_start`, non-overlapping. Providers are plugin code, so the
@@ -191,6 +191,11 @@ pub struct VirtualLine {
     /// before resolving scopes with a monotonic cursor, the same posture
     /// `style::rebuild_line_decorations` takes for highlight spans.
     pub segments: Vec<(usize, usize, ScopeId)>,
+    /// Scope for bytes no `segments` entry covers, and the row's background:
+    /// its `bg` fills the row's gutter and trailing cells past the text (the
+    /// virtual-row counterpart of `Decoration::LineBg`). `None` → the render
+    /// stage's `ui.virtual_text` fallback, and no row fill.
+    pub base_scope: Option<ScopeId>,
 }
 
 // ---------------------------------------------------------------------------

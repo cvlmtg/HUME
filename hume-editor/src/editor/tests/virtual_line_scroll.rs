@@ -39,6 +39,7 @@ impl DecorationSource for OneBeforeLine {
                 provider_id: 0,
                 text: "V".to_string(),
                 segments: Vec::new(),
+                base_scope: None,
             }));
         }
     }
@@ -169,6 +170,7 @@ impl DecorationSource for MultiAfterLine {
                     provider_id: 0,
                     text: (i + 1).to_string(),
                     segments: Vec::new(),
+                    base_scope: None,
                 }));
             }
         }

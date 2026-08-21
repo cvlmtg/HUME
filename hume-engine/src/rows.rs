@@ -32,7 +32,7 @@ use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{
     Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLine, VirtualLineAnchor,
 };
-use crate::types::{CellContent, DisplayRow, Grapheme};
+use crate::types::{CellContent, DisplayRow, Grapheme, ScopeId};
 
 // ---------------------------------------------------------------------------
 // Addresses
@@ -132,6 +132,11 @@ pub struct RenderRow<'m> {
     pub line_text: &'m str,
     /// Arena backing `Indicator`/`Virtual` cell text.
     pub virtual_texts: &'m str,
+    /// The row's own background scope (`VirtualLine::base_scope`) — `None`
+    /// for content rows, which get their background from
+    /// `Decoration::LineBg`/cursorline instead (`pane_render.rs`'s
+    /// `LineStyle::tint`).
+    pub base_scope: Option<ScopeId>,
 }
 
 /// The single authority on the document's display-row list. See the module doc.
@@ -681,6 +686,7 @@ impl<'a> RowMap<'a> {
                     graphemes: &self.scratch.graphemes,
                     line_text: &self.scratch.line_texts,
                     virtual_texts: &self.scratch.virtual_texts,
+                    base_scope: None,
                 }
             }
             RowKind::Before(i) => self.segment_virtual_row(pos.line, i),
@@ -706,6 +712,7 @@ impl<'a> RowMap<'a> {
             .expect("kind() resolved this line's block");
         let vl = &cached.virtual_lines[vl_idx];
         let provider_id = vl.provider_id;
+        let base_scope = vl.base_scope;
         let vrow = &mut self.scratch.virtual_row;
         vrow.clear();
 
@@ -721,7 +728,7 @@ impl<'a> RowMap<'a> {
         let mut col: u32 = 0;
         for (byte_offset, grapheme_str) in vl.text.grapheme_indices(true) {
             let width = unicode_display_width(grapheme_str).clamp(1, 2) as u8;
-            let scope = scope_cursor.scope_at(byte_offset);
+            let scope = scope_cursor.scope_at(byte_offset).or(base_scope);
             let start = arena_base.saturating_add(u32::try_from(byte_offset).unwrap_or(u32::MAX));
             let len = u16::try_from(grapheme_str.len()).unwrap_or(u16::MAX);
 
@@ -763,6 +770,7 @@ impl<'a> RowMap<'a> {
             // A virtual row has no buffer text; every cell of it is `Virtual`.
             line_text: "",
             virtual_texts: &vrow.texts,
+            base_scope,
         }
     }
 

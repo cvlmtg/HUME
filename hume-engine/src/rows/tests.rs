@@ -57,6 +57,7 @@ impl DecorationSource for FixedAnchor {
                     provider_id: 0,
                     text: self.text.to_string(),
                     segments: Vec::new(),
+                    base_scope: None,
                 }));
             }
         }

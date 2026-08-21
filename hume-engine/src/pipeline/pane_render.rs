@@ -171,7 +171,8 @@ pub(crate) fn render_pane(
                 let row = rows.render_row(pos);
                 // Virtual rows are skipped by the style stage (no highlight
                 // tiers, no cursor/selection), but each grapheme can still
-                // carry its own `scope` from the provider that produced it:
+                // carry its own `scope` from the provider that produced it
+                // (already folded with `base_scope` in `segment_virtual_row`):
                 // `theme.default` layered with that scope, or the themed
                 // `virtual_text` fallback for graphemes with none (matching
                 // the tilde-filler / no-decoration look).
@@ -185,6 +186,13 @@ pub(crate) fn render_pane(
                         None => compose_ctx.theme.ui.virtual_text,
                     }
                 }));
+                // Row-wide fill, the virtual-row counterpart of content rows'
+                // `Decoration::LineBg` tint — extends `base_scope`'s `bg`
+                // across the gutter and past the last grapheme to the window
+                // border, instead of stopping at end-of-text.
+                let row_bg = row
+                    .base_scope
+                    .and_then(|scope| compose_ctx.theme.resolve(scope).bg);
                 render::compose_row(
                     row.row,
                     row.graphemes,
@@ -195,7 +203,7 @@ pub(crate) fn render_pane(
                     col_widths,
                     &compose_ctx,
                     &mut canvas,
-                    None,
+                    row_bg,
                 );
             }
         }

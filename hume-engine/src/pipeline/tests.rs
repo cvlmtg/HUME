@@ -39,6 +39,7 @@ impl DecorationSource for ScopedVirtualLine {
                 // "H" (byte 0..1) carries the scope; "~" (byte 1..2) carries
                 // none and must fall back to `ui.virtual_text`.
                 segments: vec![(0, 1, self.scope)],
+                base_scope: None,
             }));
         }
     }
@@ -137,6 +138,7 @@ impl DecorationSource for UnsortedScopedVirtualLine {
                     (1, 2, self.scopes[1]),
                     (0, 1, self.scopes[0]),
                 ],
+                base_scope: None,
             }));
         }
     }
@@ -230,6 +232,7 @@ impl DecorationSource for FixedVirtualLineSource {
                 provider_id: 0,
                 text: "V".to_string(),
                 segments: Vec::new(),
+                base_scope: None,
             }));
         }
     }
@@ -376,6 +379,7 @@ impl DecorationSource for MultiBeforeLine {
                     provider_id: 0,
                     text: (i + 1).to_string(),
                     segments: Vec::new(),
+                    base_scope: None,
                 }));
             }
         }
@@ -463,6 +467,7 @@ impl DecorationSource for SpoofingVirtualLineSource {
                 provider_id: 9999, // spoofed — must be overwritten by the pipeline
                 text: "V".to_string(),
                 segments: Vec::new(),
+                base_scope: None,
             }));
         }
     }
