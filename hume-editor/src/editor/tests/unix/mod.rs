@@ -268,6 +268,26 @@ impl Drop for StagedGrammarFixture {
     }
 }
 
+/// Runs `git <args>` in `dir`, asserting success — shared by every test
+/// fixture that needs a real git repository (`core:pickers`'s git-branch
+/// picker, `core:git-diff`'s ref fetch).
+fn git(dir: &Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .status()
+        .expect("spawn git");
+    assert!(status.success(), "git {args:?} failed");
+}
+
+/// `git init -q` plus a local commit identity — a fresh sandbox has neither,
+/// and `git commit` fails without one.
+fn git_init(dir: &Path) {
+    git(dir, &["init", "-q"]);
+    git(dir, &["config", "user.email", "test@example.com"]);
+    git(dir, &["config", "user.name", "Test"]);
+}
+
 /// Like `CwdGuard`, but also owns a tempdir the test can `cd` into.
 ///
 /// Bundling the tempdir into the same struct as the restore-on-drop logic is
@@ -335,6 +355,7 @@ mod command_mode;
 mod completion;
 mod dot_repeat;
 mod file_io;
+mod git_diff_plugin;
 mod injections_editor;
 mod language;
 mod list_buffers;

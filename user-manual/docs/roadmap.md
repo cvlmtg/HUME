@@ -12,8 +12,6 @@ HUME is under active development. Here's what's missing and what's coming.
 
 ## Future ideas
 
-**Git gutter** — diff markers in the gutter (a good plugin candidate).
-
 **Embedded REPL** — a Steel REPL running in a docked pane.
 
 ---

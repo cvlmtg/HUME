@@ -14,6 +14,7 @@
 (load-plugin "core:pickers")          ; fuzzy file/buffer finders
 (declare-plugin "core:lsp")           ; language server features
 (declare-plugin "core:plum")          ; plugin/grammar manager
+(declare-plugin "core:git-diff")      ; live inline git diff
 
 ;; (load-plugin "core:vim-keybind")      ; vim muscle memory
 ;; (load-plugin "core:helix-surround")   ; helix-style surround

@@ -60,23 +60,6 @@ fn setup_with_config(
     ed
 }
 
-fn git(dir: &Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .status()
-        .expect("spawn git");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-/// `git init -q` plus a local commit identity — a fresh sandbox has neither,
-/// and `git commit` fails without one.
-fn git_init(dir: &Path) {
-    git(dir, &["init", "-q"]);
-    git(dir, &["config", "user.email", "test@example.com"]);
-    git(dir, &["config", "user.name", "Test"]);
-}
-
 // ── Files picker — git branch (full integration) ──────────────────────────────
 
 #[test]

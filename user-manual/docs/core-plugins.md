@@ -1,6 +1,6 @@
 # Core Plugins
 
-HUME ships a some plugins under the `core:` namespace — a plugin and grammar manager, language server support, and a few keymap alternatives. **None of them load automatically.** Nothing runs until you ask for it in your `init.scm`, so a default HUME is exactly what you see.
+HUME ships a some plugins under the `core:` namespace — a plugin and grammar manager, language server support, live git diff, and a few keymap alternatives. **None of them load automatically.** Nothing runs until you ask for it in your `init.scm`, so a default HUME is exactly what you see.
 
 There are two ways to bring a plugin in:
 
@@ -95,6 +95,48 @@ turn them off with `#:config`:
 
 See [Fuzzy Finder](pickers.md) for the file-source chain, keys, buffer display, and
 modified-files details.
+
+## core:git-diff
+
+Live, VSCode-style inline git diff. As you type, compares the buffer against a git ref
+(default `HEAD`) and renders gutter `+`/`-`/`~` signs, deleted lines as virtual rows,
+added/changed lines with a background tint, and word-level highlights inside changed lines.
+
+```scheme
+(declare-plugin "core:git-diff")
+```
+
+Declared lazily like this, it wakes on the first buffer opened (signs default on) or the
+first `:toggle-git-signs`/`:toggle-inline-diff` you type.
+
+| Command | Effect |
+|---------|--------|
+| `:toggle-git-signs [ref]` | Toggle gutter signs for the current buffer |
+| `:toggle-inline-diff [ref]` | Toggle inline rendering (virtual deleted lines, word highlights, background tint) for the current buffer |
+
+Both take an optional git ref, e.g. `:toggle-inline-diff HEAD~2`. Giving a ref always turns
+that rendering on and points it at that ref; it's sticky across a later bare toggle off/on.
+The ref is shared between the two commands. A file git doesn't know about yet (untracked,
+brand-new, or outside a repo) shows no diff.
+
+No default key bindings — bind them yourself, e.g. `(bind-key! 'normal "g Shift-d"
+"toggle-inline-diff")`.
+
+Configure with `#:config`:
+
+```scheme
+(declare-plugin "core:git-diff"
+  #:config (hash "signs" #t "inline" #f "ref" "HEAD"))
+```
+
+| Key | Type | Default | Effect |
+|---|---|---|---|
+| `"signs"` | bool | `#t` | Whether gutter signs start on for a newly opened buffer |
+| `"inline"` | bool | `#f` | Whether inline rendering starts on for a newly opened buffer |
+| `"ref"` | string | `"HEAD"` | The default git ref a buffer diffs against, until overridden per-buffer via the toggle commands |
+
+Inline rendering's background tint and word highlights depend on your theme defining colors
+for them; HUME's four bundled themes do.
 
 ## core:vim-keybind
 

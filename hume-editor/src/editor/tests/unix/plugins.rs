@@ -2133,6 +2133,83 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
 }
 
+/// The real `core:git-diff` plugin's own shipped `manifest.scm` resolves and evaluates via a
+/// zero-trigger `(declare-plugin "core:git-diff")`, through the full production
+/// `init_scripting` path against the repo's actual `runtime/` tree.
+///
+/// Flip: a syntax error, a wrong plugin name, or a stale command/event list in the real
+/// `runtime/plugins/core/git-diff/manifest.scm` would fail this test while every
+/// synthetic-fixture test elsewhere in this file still passes.
+#[test]
+fn core_git_diff_real_manifest_scm_resolves_via_zero_trigger_declare() {
+    use crate::editor::Severity;
+    use hume_scripting::attribution::PluginId;
+
+    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("hume-editor/ must have a parent (the repo root)")
+        .join("runtime");
+    assert!(
+        runtime_dir
+            .join("plugins")
+            .join("core")
+            .join("git-diff")
+            .join("manifest.scm")
+            .exists(),
+        "sanity: the real manifest.scm must exist at the expected repo path"
+    );
+
+    let (ed, _dirs) =
+        setup_editor_with_init_scripting(r#"(declare-plugin "core:git-diff")"#, Some(&runtime_dir));
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "init.scm with core:git-diff's real manifest.scm must not log errors; got: {errors:?}"
+    );
+
+    let id = PluginId::Core("git-diff".to_string());
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Declared)
+        ),
+        "core:git-diff must be Declared (not yet activated) once the zero-trigger \
+         declare resolves its manifest.scm"
+    );
+    assert!(
+        matches!(
+            ed.state.config.registry.get_mappable("toggle-git-signs"),
+            Some(MappableCommand::Lazy { .. })
+        ),
+        "manifest.scm's #:commands entries must be registered as Lazy stubs, \
+         including \"toggle-git-signs\""
+    );
+    assert!(
+        matches!(
+            ed.state.config.registry.get_mappable("toggle-inline-diff"),
+            Some(MappableCommand::Lazy { .. })
+        ),
+        "manifest.scm's #:commands entries must be registered as Lazy stubs, \
+         including \"toggle-inline-diff\""
+    );
+    assert!(
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_event_plugins("on-buffer-open")
+            .contains(&id),
+        "manifest.scm's #:events '(on-buffer-open) must register the plugin to \
+         activate on the first buffer opened"
+    );
+}
+
 /// Keymap lint is silent when every bound key targets a registered command.
 ///
 /// Flip: the test above binds an *unknown* name and asserts a Warning is
