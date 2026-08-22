@@ -3,7 +3,7 @@
 //! version, URI) is the editor glue's job — this is pure text math.
 
 use hume_editing::changeset::{ChangeSet, Operation};
-use hume_editing::position_encoding::{PositionEncoding, char_to_wire};
+use hume_rope::position_encoding::{PositionEncoding, char_to_wire};
 use lsp_types::{Position, Range, TextDocumentContentChangeEvent};
 use ropey::Rope;
 
@@ -74,7 +74,7 @@ fn wire_range(rope: &Rope, start: usize, end: usize, enc: PositionEncoding) -> R
 }
 
 /// Independent oracle: applies emitted events to a plain `String` using its
-/// own line/character math — no ropey, no `hume_editing::position_encoding`
+/// own line/character math — no ropey, no `hume_rope::position_encoding`
 /// — so it cannot share a bug with `changeset_to_content_changes`. Exposed
 /// (behind `test-util`) so consumer crates' invariant tests (e.g.
 /// hume-editor's version-sync test) can reuse it instead of re-deriving

@@ -3,7 +3,7 @@
 //! every cursor, then best-effort `completionItem/resolve`.
 
 use hume_editing::changeset::Assoc;
-use hume_editing::position_encoding::wire_to_char;
+use hume_rope::position_encoding::wire_to_char;
 
 use super::CompletionSession;
 use super::item::{StoredCompletionItem, parse_additional_text_edits_lenient};
@@ -417,7 +417,7 @@ impl CompletionSession {
         item: &StoredCompletionItem,
         rope_pre: ropey::Rope,
         accept_cs: hume_editing::changeset::ChangeSet,
-        encoding: hume_editing::position_encoding::PositionEncoding,
+        encoding: hume_rope::position_encoding::PositionEncoding,
     ) {
         let Some(server_id) = state.buffers.try_get(self.bid).and_then(|b| b.lsp_server) else {
             return;

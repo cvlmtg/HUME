@@ -11,7 +11,7 @@
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::position_encoding::{PositionEncoding, wire_to_char};
+use hume_rope::position_encoding::{PositionEncoding, wire_to_char};
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_lsp::codec::ResponseError;
 

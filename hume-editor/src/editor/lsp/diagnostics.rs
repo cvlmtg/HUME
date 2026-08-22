@@ -6,7 +6,7 @@
 use std::ops::Range;
 
 use hume_editing::changeset::ChangeSet;
-use hume_editing::position_encoding::wire_to_char;
+use hume_rope::position_encoding::wire_to_char;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_lsp::sync::wire_version;
@@ -313,7 +313,7 @@ impl Editor {
             .servers
             .get(&server_id)
             .map(|e| e.client.encoding())
-            .unwrap_or(hume_editing::position_encoding::PositionEncoding::Utf16);
+            .unwrap_or(hume_rope::position_encoding::PositionEncoding::Utf16);
         let rope = self.state.buffers.get(bid).text().rope().clone();
 
         let stored: Vec<StoredDiag> = parsed

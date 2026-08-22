@@ -186,7 +186,7 @@ fn uri_and_encoding<'a>(
     state: &'a EditorState,
     lsp: &'a LspState,
     id: BufferId,
-) -> Option<(String, hume_editing::position_encoding::PositionEncoding)> {
+) -> Option<(String, hume_rope::position_encoding::PositionEncoding)> {
     let buf = state.buffers.try_get(id)?;
     let path = buf.path()?;
     let sid = buf.lsp_server?;
@@ -205,7 +205,7 @@ pub(crate) fn position_params(
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
     let pbs = pane_buffer_state(state, id)?;
     let rope = state.buffers.get(id).text().rope();
-    let (line, character) = hume_editing::position_encoding::char_to_wire(
+    let (line, character) = hume_rope::position_encoding::char_to_wire(
         rope,
         pbs.selections.primary().head(),
         encoding,
@@ -224,7 +224,7 @@ fn negotiated_encoding(
     state: &EditorState,
     lsp: &LspState,
     id: BufferId,
-) -> Option<hume_editing::position_encoding::PositionEncoding> {
+) -> Option<hume_rope::position_encoding::PositionEncoding> {
     let sid = state.buffers.try_get(id)?.lsp_server?;
     Some(lsp.servers.get(&sid)?.client.encoding())
 }
@@ -236,9 +236,9 @@ pub(crate) fn encoding_for_buffer(
     state: &EditorState,
     lsp: &LspState,
     id: BufferId,
-) -> hume_editing::position_encoding::PositionEncoding {
+) -> hume_rope::position_encoding::PositionEncoding {
     negotiated_encoding(state, lsp, id)
-        .unwrap_or(hume_editing::position_encoding::PositionEncoding::Utf16)
+        .unwrap_or(hume_rope::position_encoding::PositionEncoding::Utf16)
 }
 
 /// Wire `(line, character)` → char offset in `id`'s attached server's
@@ -262,7 +262,7 @@ pub(crate) fn wire_to_char_for_buffer(
 ) -> Option<usize> {
     let rope = state.buffers.try_get(id)?.text().rope();
     let encoding = negotiated_encoding(state, lsp, id)?;
-    Some(hume_editing::position_encoding::wire_to_char(
+    Some(hume_rope::position_encoding::wire_to_char(
         rope, line, character, encoding,
     ))
 }
@@ -374,13 +374,13 @@ fn wire_pos_to_grapheme_col(
     text: &hume_editing::text::Text,
     line: usize,
     character: usize,
-    encoding: hume_editing::position_encoding::PositionEncoding,
+    encoding: hume_rope::position_encoding::PositionEncoding,
 ) -> Option<usize> {
     if line > text.last_ropey_line() {
         return None;
     }
     let char_pos =
-        hume_editing::position_encoding::wire_to_char(text.rope(), line, character, encoding);
+        hume_rope::position_encoding::wire_to_char(text.rope(), line, character, encoding);
     Some(hume_editing::grapheme::grapheme_col_in_line(
         text, line, char_pos,
     ))
@@ -491,9 +491,9 @@ pub(crate) fn range_params(
     let end_exclusive = hume_editing::grapheme::next_grapheme_boundary(text, end_c);
     let rope = text.rope();
     let (start_line, start_char) =
-        hume_editing::position_encoding::char_to_wire(rope, start_c, encoding);
+        hume_rope::position_encoding::char_to_wire(rope, start_c, encoding);
     let (end_line, end_char) =
-        hume_editing::position_encoding::char_to_wire(rope, end_exclusive, encoding);
+        hume_rope::position_encoding::char_to_wire(rope, end_exclusive, encoding);
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
         "range": {

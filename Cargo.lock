@@ -1110,6 +1110,7 @@ version = "0.1.0"
 dependencies = [
  "hume-editing",
  "hume-platform",
+ "hume-rope",
  "lsp-types",
  "ropey",
  "rustc-hash",

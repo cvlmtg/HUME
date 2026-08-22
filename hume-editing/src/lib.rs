@@ -31,10 +31,6 @@ pub mod error;
 pub mod grapheme;
 pub mod history;
 pub mod lines;
-/// Rope char offset ↔ LSP wire position conversion. Re-exported from
-/// `hume-rope` (a bare-`&Rope` algorithm with no `Text` dependency) so
-/// existing `hume_editing::position_encoding::…` paths keep working.
-pub use hume_rope::position_encoding;
 pub mod selection;
 pub mod tab_style;
 pub mod text;

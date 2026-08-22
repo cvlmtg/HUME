@@ -3,6 +3,7 @@
 - hume-editing
 - hume-engine
 - hume-treesitter
+- hume-lsp
 - hume-editor
 ## Description
 Rope-domain primitives for line counts, line ranges, grapheme boundaries, and rope-position math, shared by every crate that needs to answer "how many lines" or "which line is last." Distinguishes *ropey domain* (ropey's own line indexing, including the phantom trailing line the buffer invariant's structural `\n` creates) from *content domain* (that phantom line excluded); its six functions are the single source of truth for line-count/range math workspace-wide. Its `width` module (`tab_advance`, `grapheme_width`, `str_width`) is likewise the single source of truth for display-column math — the only crate visible to both `hume-editing` (editing-ops tab math) and `hume-engine` (the renderer), so it's where the two converge on one convention.
@@ -52,6 +53,7 @@ Named commands — every edit and motion operation as a pure function of buffer 
 ### Depends on
 - hume-editing
 - hume-platform
+- hume-rope
 ### Used by
 - hume-editor
 ## Description

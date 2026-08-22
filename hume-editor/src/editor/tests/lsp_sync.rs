@@ -84,7 +84,7 @@ fn replay(log: &[(String, serde_json::Value)]) -> (String, Option<i64>) {
                         mirror = apply_events_to_string_mirror(
                             mirror,
                             std::slice::from_ref(&event),
-                            hume_editing::position_encoding::PositionEncoding::Utf16,
+                            hume_rope::position_encoding::PositionEncoding::Utf16,
                         );
                     } else {
                         mirror = change["text"].as_str().unwrap().to_string();
