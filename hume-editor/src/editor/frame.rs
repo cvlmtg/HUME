@@ -520,8 +520,8 @@ fn scroll_into_view(
     if viewport.height == 0 {
         return None;
     }
-    let (cursor_pos, cursor_col) = rm.locate(cursor_char);
+    let (cursor_pos, cursor_display_col) = rm.locate(cursor_char);
     let screen_row = scroll::ensure_cursor_visible(viewport, &mut rm, cursor_pos, scrolloff);
-    scroll::ensure_cursor_visible_horizontal(viewport, &mut rm, cursor_col);
-    screen_row.map(|row| super::cursor::place(viewport, cursor_col, row))
+    scroll::ensure_cursor_visible_horizontal(viewport, &mut rm, cursor_display_col);
+    screen_row.map(|row| super::cursor::place(viewport, cursor_display_col, row))
 }

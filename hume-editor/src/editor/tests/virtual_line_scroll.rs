@@ -1,6 +1,6 @@
 // Editor-level integration tests for the two ways a provider can add display
 // rows the buffer text alone does not account for, and the requirement that
-// the renderer and `cursor::screen_pos` agree about both:
+// the renderer and `cursor::content_pos` agree about both:
 //
 //   - a VIRTUAL_LINE-kind `DecorationSource`'s `Before`/`After` rows, which
 //     occupy whole screen rows (the "virtual-line scroll accounting" risk),
@@ -90,7 +90,7 @@ fn screen_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     assert_eq!(cell(&buf, 0, 2), "y", "line 1 follows at row 2");
 
     // `render_to_buf` already ran `prepare_frame` (settling the viewport);
-    // ask `screen_pos` with that same settled state, exactly as production
+    // ask `content_pos` with that same settled state, exactly as production
     // code does after `prepare_frame`.
     let pid = ed.state.focused_pane_id;
     let vp = ed.view.panes[pid].viewport.clone();
@@ -103,11 +103,11 @@ fn screen_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
         &mut scratch,
     );
 
-    let pos = crate::editor::cursor::screen_pos(&vp, &mut rm, cursor_char);
+    let pos = crate::editor::cursor::content_pos(&vp, &mut rm, cursor_char);
     assert_eq!(
         pos.map(|(_, row)| row),
         Some(1),
-        "screen_pos must report the row the renderer actually draws 'x' on"
+        "content_pos must report the row the renderer actually draws 'x' on"
     );
 }
 
@@ -294,8 +294,8 @@ fn screen_pos_counts_an_inline_hints_extra_wrap_row() {
         &mut scratch,
     );
     assert_eq!(
-        crate::editor::cursor::screen_pos(&vp, &mut rm, cursor_char).map(|(_, row)| row),
+        crate::editor::cursor::content_pos(&vp, &mut rm, cursor_char).map(|(_, row)| row),
         Some(2),
-        "screen_pos must count the hint's wrap row, as the renderer does"
+        "content_pos must count the hint's wrap row, as the renderer does"
     );
 }

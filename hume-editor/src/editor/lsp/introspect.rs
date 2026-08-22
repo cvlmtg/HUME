@@ -334,12 +334,12 @@ pub(crate) fn diagnostics_for_buffer(
             // check every decoration setter now enforces.
             let last_content_char = rope.len_chars().saturating_sub(1);
             let line = rope.char_to_line(d.start.min(last_content_char));
-            let col = d.start.min(last_content_char) - rope.line_to_char(line);
+            let char_col = d.start.min(last_content_char) - rope.line_to_char(line);
             serde_json::json!({
                 "start": d.start,
                 "end": d.end,
                 "line": line,
-                "col": col,
+                "col": char_col,
                 "severity": d.severity.to_string(),
                 "message": d.message,
                 "code": d.code,

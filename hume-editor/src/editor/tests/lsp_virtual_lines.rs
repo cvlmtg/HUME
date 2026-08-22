@@ -78,7 +78,7 @@ fn virtual_line_renders_after_its_anchor_line() {
 
 #[test]
 fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
-    // Snapshot proof (not a numeric row assertion — `cursor::screen_pos`'s
+    // Snapshot proof (not a numeric row assertion — `cursor::content_pos`'s
     // internals aren't reachable from this integration-style test module):
     // with a virtual line inserted after line 0, moving the cursor onto
     // line 1 ('bbb') must still show "bbb" directly below the virtual

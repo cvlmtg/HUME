@@ -269,10 +269,10 @@ fn p6_reload_clamps_cursor_to_last_line() {
     );
 }
 
-/// `reload_buffer_in_place` clamps a col that exceeds the new line length to
-/// the line's terminating `\n`.
+/// `reload_buffer_in_place` clamps a char col that exceeds the new line
+/// length to the line's terminating `\n`.
 #[test]
-fn p6_reload_clamps_col_to_line_end() {
+fn p6_reload_clamps_char_col_to_line_end() {
     use hume_editing::selection::Selection;
 
     let mut ed = Editor::for_testing(Buffer::new(
@@ -303,10 +303,10 @@ fn p6_reload_clamps_col_to_line_end() {
     );
 }
 
-/// `reload_buffer_in_place` snaps a col that lands inside a grapheme cluster
-/// back to the cluster's start.
+/// `reload_buffer_in_place` snaps a char col that lands inside a grapheme
+/// cluster back to the cluster's start.
 #[test]
-fn p6_reload_snaps_col_to_grapheme_boundary() {
+fn p6_reload_snaps_char_col_to_grapheme_boundary() {
     use hume_editing::selection::Selection;
 
     // "caf" + é (U+0065 U+0301, two chars) + "\n" → len_chars=6.

@@ -75,10 +75,10 @@ fn before_hint_renders_immediately_before_its_char() {
 }
 
 /// `prepare_frame` must sync `update_inlay_hint_providers` *before* it
-/// scrolls: the scroll step and `screen_pos` both build a `RowMap` off the
+/// scrolls: the scroll step and `content_pos` both build a `RowMap` off the
 /// same pane provider Arc `update_inlay_hint_providers` writes, so if scroll
 /// ran first it would size line 0's block without the hint (1 row) while
-/// `screen_pos` — built fresh right after `prepare_frame` returns, as
+/// `content_pos` — built fresh right after `prepare_frame` returns, as
 /// production code does for the terminal caret — sees the hint already
 /// written (2 rows) and disagrees about which absolute row the cursor is on.
 ///
@@ -129,7 +129,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
         &mut scratch,
     );
     assert_eq!(
-        crate::editor::cursor::screen_pos(&vp, &mut rm, cursor_char),
+        crate::editor::cursor::content_pos(&vp, &mut rm, cursor_char),
         Some((0, 2)),
         "scroll must have already accounted for the hint's extra wrap row, \
          placing the cursor at the last visible row rather than leaving it \

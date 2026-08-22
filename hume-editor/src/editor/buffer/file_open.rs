@@ -182,7 +182,7 @@ impl Editor {
     /// swaps the whole `Buffer` and discards `History`), this delegates to
     /// [`Buffer::reload_from_text`] — see its doc for the history/undo mechanics.
     ///
-    /// Each pane's primary cursor is captured as `(line, col)` before the
+    /// Each pane's primary cursor is captured as `(line, char_col)` before the
     /// reload and restored against the new content; multi-selections collapse
     /// to the primary (stale against fresh content). Cursor and `top_line`
     /// are clamped if the file shrank: past-end lines land on the new last
@@ -202,7 +202,7 @@ impl Editor {
         use hume_editing::lines::{line_break_char, snap_to_grapheme_boundary};
         use hume_editing::selection::{Selection, SelectionSet};
 
-        // ── Phase 1: capture (line, col) per pane + focused pane's pre_sels ──
+        // ── Phase 1: capture (line, char_col) per pane + focused pane's pre_sels ──
         let pane_ids: Vec<PaneId> = self
             .view
             .panes
@@ -220,23 +220,23 @@ impl Editor {
                 .map(|&pid| {
                     let head = self.state.panes.state[pid][id].selections.primary().head();
                     let line = text.char_to_line(head);
-                    let col = head - text.line_to_char(line);
-                    (pid, line, col)
+                    let char_col = head - text.line_to_char(line);
+                    (pid, line, char_col)
                 })
                 .collect()
         }; // borrows on text and panes.state end here
 
-        // ── Phase 2: clamp (line, col) against the new text ──────────────────
+        // ── Phase 2: clamp (line, char_col) against the new text ──────────────
         // Borrow `new_doc.text()` immutably, then move `new_text` out below.
         let post_heads: Vec<(PaneId, usize)> = {
             let new_text = new_doc.text();
             let last_line = new_text.last_content_line();
             let mut heads = Vec::with_capacity(cursor_coords.len());
-            for &(pid, line, col) in &cursor_coords {
+            for &(pid, line, char_col) in &cursor_coords {
                 let target_line = line.min(last_line);
                 let line_start = new_text.line_to_char(target_line);
                 let line_end = line_break_char(new_text, target_line);
-                let target = (line_start + col).min(line_end);
+                let target = (line_start + char_col).min(line_end);
                 let head = snap_to_grapheme_boundary(new_text, line_start, target);
                 heads.push((pid, head));
             }

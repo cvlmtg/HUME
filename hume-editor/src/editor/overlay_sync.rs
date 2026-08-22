@@ -22,7 +22,7 @@ impl Editor {
             return;
         }
         let view = self.state.minibuf_completion.as_ref().map(|state| {
-            let anchor_col = self
+            let anchor_x = self
                 .state
                 .minibuf
                 .as_ref()
@@ -30,14 +30,14 @@ impl Editor {
                     let pad: u16 = 1;
                     let prompt_w = text_width(&mb.prompt) as u16;
                     let safe_end = state.span_start.min(mb.input.len());
-                    let token_col = text_width(&mb.input[..safe_end]) as u16;
-                    pad + prompt_w + token_col
+                    let token_w = text_width(&mb.input[..safe_end]) as u16;
+                    pad + prompt_w + token_w
                 })
                 .unwrap_or(0);
             crate::ui::completion_overlay::MinibufCompletionView {
                 rows: state.candidates.iter().map(|c| c.display.clone()).collect(),
                 selected: state.selected,
-                anchor_col,
+                anchor_x,
                 border: self.state.settings.popup_border,
             }
         });
@@ -73,11 +73,11 @@ impl Editor {
         let content_width = pane_rect.width.saturating_sub(gutter_w);
         // Step 6 (`scroll_into_view`) already resolved the focused cursor's
         // screen cell this frame, via the same locate/distance walk
-        // `screen_pos` runs below — nothing between steps 6 and 10 moves the
+        // `content_pos` runs below — nothing between steps 6 and 10 moves the
         // cursor or the viewport, so the two callers anchored at the live
         // cursor (`sync_popup_view`, `sync_menu_view`) can reuse it instead of
         // re-walking the row list (a full per-line format in wrap mode).
-        let (col, row) = match ctx.cursor_content_pos {
+        let (content_x, row) = match ctx.cursor_content_pos {
             Some(cell) if anchor_char == self.focused_cursor_char() => cell,
             _ => {
                 let vp = &self.view.panes[focused].viewport;
@@ -88,10 +88,10 @@ impl Editor {
                     &self.view.panes[focused],
                     &mut ctx.cursor_format,
                 );
-                super::cursor::screen_pos(vp, &mut rm, anchor_char)?
+                super::cursor::content_pos(vp, &mut rm, anchor_char)?
             }
         };
-        let anchor = (col + gutter_w + pane_rect.x, row + pane_rect.y);
+        let anchor = (content_x + gutter_w + pane_rect.x, row + pane_rect.y);
         // Reserve 2 cells on each axis for the popup's 1-cell frame, so
         // content + border together fit the same envelope this budget used
         // to give to content alone.

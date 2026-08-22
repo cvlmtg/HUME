@@ -695,7 +695,7 @@ fn completion_popup_anchor_matches_an_independent_screen_pos_walk_when_wrapped()
     };
 
     // Independent oracle: re-derive the same cell via a fresh `RowMap` and
-    // `cursor::screen_pos` — the exact primitives the fast path's slow
+    // `cursor::content_pos` — the exact primitives the fast path's slow
     // fallback uses — entirely bypassing `ctx.cursor_content_pos`.
     let bid = ed.focused_buffer_id();
     let cursor_char = ed.current_selections().primary().head();
@@ -708,8 +708,8 @@ fn completion_popup_anchor_matches_an_independent_screen_pos_walk_when_wrapped()
     let mut scratch = FormatScratch::new();
     let mut rm = commands::pane_row_map(buf, &ed.state.settings, &ed.view.panes[pid], &mut scratch);
     let vp = &ed.view.panes[pid].viewport;
-    let (col, row) = cursor::screen_pos(vp, &mut rm, cursor_char).expect("cursor is visible");
-    let expected_x = col + gutter_w + pane_rect.x;
+    let (content_x, row) = cursor::content_pos(vp, &mut rm, cursor_char).expect("cursor is visible");
+    let expected_x = content_x + gutter_w + pane_rect.x;
     let expected_y = row + pane_rect.y + 1; // resolve_popup_geometry: room below → anchor_y + 1
 
     assert_eq!((x, y), (expected_x, expected_y));

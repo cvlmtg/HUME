@@ -33,7 +33,7 @@ pub(crate) struct MinibufCompletionView {
     pub selected: usize,
     /// Absolute terminal column where the popup's left edge begins.
     /// Equals: `pad(1) + prompt_w(1) + display_width(input[..span_start])`.
-    pub anchor_col: u16,
+    pub anchor_x: u16,
     /// Whether to draw box-drawing border characters around the popup.
     /// When `false`, a 1-cell bg-filled frame is still drawn on all sides;
     /// only the box-drawing glyphs are suppressed.
@@ -67,7 +67,7 @@ impl OverlayProvider for MinibufCompletionOverlay {
         // Shift left by 1 so the text column aligns under the token in the input.
         let popup_y = pane_area.y + pane_area.height - outer_h;
         let popup_x = view
-            .anchor_col
+            .anchor_x
             .saturating_sub(1)
             .min(pane_area.x + pane_area.width.saturating_sub(outer_w));
 

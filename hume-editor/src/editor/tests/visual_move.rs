@@ -121,11 +121,11 @@ fn visual_move_down_at_bottom_stays_put() {
 /// The preferred display column is preserved across consecutive j/k presses
 /// and used to find the closest grapheme when the target row is shorter.
 #[test]
-fn visual_preferred_col_stickiness() {
+fn visual_preferred_display_col_stickiness() {
     // Cursor at char 40 (display col 40) in sub-row 0 of the long line.
     let mut ed = visual_test_editor(40);
 
-    // j: target_col = 40, sub-row 1 has only 4 chars (cols 0..3).
+    // j: target_display_col = 40, sub-row 1 has only 4 chars (cols 0..3).
     // Closest to col 40 is char 79 (col 3, last 'a' on sub-row 1).
     ed.handle_key(key('j'));
     assert_eq!(
@@ -139,7 +139,7 @@ fn visual_preferred_col_stickiness() {
         "sticky col stays at 40"
     );
 
-    // j again: cross to "short\n" (line 1). target_col=40, "short" has cols 0..4.
+    // j again: cross to "short\n" (line 1). target_display_col=40, "short" has cols 0..4.
     // Closest to 40 is 't' at col 4, char 85.
     ed.handle_key(key('j'));
     assert_eq!(
@@ -156,7 +156,7 @@ fn visual_preferred_col_stickiness() {
 
 /// Any non-vertical command resets preferred_display_col.
 #[test]
-fn visual_preferred_col_reset_on_horizontal_motion() {
+fn visual_preferred_display_col_reset_on_horizontal_motion() {
     let mut ed = visual_test_editor(40);
     ed.handle_key(key('j')); // latches sticky_display_col on the selection
     assert!(

@@ -19,16 +19,17 @@ use super::scroll::top_pos;
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Compute the on-screen `(col, row)` of `cursor_char` within the pane content
-/// area (i.e., after the gutter).
+/// Compute the pane-content-relative `(x, row)` of `cursor_char` within the
+/// pane content area (i.e., after the gutter — not a terminal-absolute
+/// screen cell; callers add the gutter width and pane origin for that).
 ///
 /// Returns `None` if the position is outside the visible viewport (defensive;
 /// should not happen after `scroll::ensure_cursor_visible`).
 ///
-/// `col` accounts for `viewport.horizontal_offset` (0 while wrapping, since
-/// wrap mode has no horizontal scroll — see
+/// The returned `x` accounts for `viewport.horizontal_offset` (0 while
+/// wrapping, since wrap mode has no horizontal scroll — see
 /// `scroll::ensure_cursor_visible_horizontal`).
-pub(crate) fn screen_pos(
+pub(crate) fn content_pos(
     viewport: &ViewportState,
     rm: &mut RowMap<'_>,
     cursor_char: usize,
@@ -37,7 +38,7 @@ pub(crate) fn screen_pos(
     if height == 0 {
         return None;
     }
-    let (cursor_pos, cursor_col) = rm.locate(cursor_char);
+    let (cursor_pos, cursor_display_col) = rm.locate(cursor_char);
     // Clamp the top the same way `pane_render.rs` does before its row walk:
     // a write site that doesn't validate `top_row_offset` against the block
     // it addresses (`recall_scroll`, an LSP jump — see `clamp_viewport_top`'s
@@ -48,26 +49,31 @@ pub(crate) fn screen_pos(
     // off-screen cursor a `None` rather than a row past the last one; a cursor
     // scrolled off the *top* is likewise unreachable walking forward.
     let screen_row = rm.distance(top, cursor_pos, height as usize - 1)?;
-    Some(place(viewport, cursor_col, screen_row))
+    Some(place(viewport, cursor_display_col, screen_row))
 }
 
-/// Turn a resolved document column and screen row into a pane-relative cell.
+/// Turn a resolved document display column and screen row into a
+/// pane-content-relative cell.
 ///
-/// Split out from [`screen_pos`] so the scroll step — which necessarily resolves
+/// Split out from [`content_pos`] so the scroll step — which necessarily resolves
 /// both while deciding where to scroll — can produce the same answer without
 /// re-walking the row list. The two must not drift: this is the only place the
 /// horizontal-offset subtraction and the `u16` narrowing happen.
-pub(crate) fn place(viewport: &ViewportState, cursor_col: u32, screen_row: usize) -> (u16, u16) {
-    let col = cursor_col.saturating_sub(viewport.horizontal_offset);
+pub(crate) fn place(
+    viewport: &ViewportState,
+    cursor_display_col: u32,
+    screen_row: usize,
+) -> (u16, u16) {
+    let content_x = cursor_display_col.saturating_sub(viewport.horizontal_offset);
     // `ensure_cursor_visible_horizontal` keeps the cursor's document column
     // within one viewport width of `horizontal_offset`, so once past that
     // subtraction it's a small on-screen offset — safe to narrow to the
     // terminal-cell (`u16`) domain this function returns.
     debug_assert!(
-        u16::try_from(col).is_ok(),
-        "on-screen cursor column {col} exceeds a u16 — cursor should be within the viewport"
+        u16::try_from(content_x).is_ok(),
+        "on-screen cursor column {content_x} exceeds a u16 — cursor should be within the viewport"
     );
-    (col as u16, screen_row as u16)
+    (content_x as u16, screen_row as u16)
 }
 
 /// Gutter width in terminal columns for the current frame.
@@ -112,15 +118,16 @@ pub(crate) fn screen_to_char_offset(
         return None;
     }
     // Screen column past the gutter, plus horizontal scroll (0 while wrapping
-    // — see `scroll::ensure_cursor_visible_horizontal`).
-    let content_col = ((screen_x - gutter_w) as u32).saturating_add(viewport.horizontal_offset);
+    // — see `scroll::ensure_cursor_visible_horizontal`), reconstructed back
+    // into a document display column.
+    let display_col = ((screen_x - gutter_w) as u32).saturating_add(viewport.horizontal_offset);
 
     let top = rm.clamp(top_pos(viewport));
     let clicked = rm.advance(top, screen_y as isize);
     // A click asks which cell it hit, so a column past the text resolves to
     // the row's last cell rather than its last *content* cell — landing on the
     // line's `\n`, a real cursor position in HUME's inclusive model.
-    Some(rm.char_at(clicked, content_col, DisplayColTarget::Cell))
+    Some(rm.char_at(clicked, display_col, DisplayColTarget::Cell))
 }
 
 // ---------------------------------------------------------------------------

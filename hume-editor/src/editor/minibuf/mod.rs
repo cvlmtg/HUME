@@ -60,7 +60,7 @@ impl MiniBuffer {
     /// Accounts for the 1-column `pad_left` space prepended by the statusline
     /// renderer, the prompt character, and the input text before the cursor.
     /// Add `area.x` to get the absolute screen column.
-    pub(crate) fn statusline_cursor_col(&self) -> u16 {
+    pub(crate) fn statusline_cursor_x(&self) -> u16 {
         let pad: u16 = 1; // pad_left inserts one space before the MiniBuf span
         let prompt_w = text_width(&self.prompt) as u16;
         let input_w = text_width(&self.input[..self.cursor]) as u16;

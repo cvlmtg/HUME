@@ -3,11 +3,11 @@ use hume_editing::selection::Selection;
 use pretty_assertions::assert_eq;
 use termina::event::{Event as TerminalEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
-fn mouse_drag(col: u16, row: u16) -> TerminalEvent {
+fn mouse_drag(x: u16, y: u16) -> TerminalEvent {
     TerminalEvent::Mouse(MouseEvent {
         kind: MouseEventKind::Drag(MouseButton::Left),
-        column: col,
-        row,
+        column: x,
+        row: y,
         modifiers: Modifiers::NONE,
     })
 }

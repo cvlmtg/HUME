@@ -112,11 +112,11 @@ fn key_left() -> KeyEvent {
 
 /// A left-button-down mouse event at the given screen coordinates. Shared by
 /// `mouse.rs` and `disk_change.rs` (click-to-focus's buffer-enter disk check).
-fn mouse_left_down(col: u16, row: u16) -> TerminalEvent {
+fn mouse_left_down(x: u16, y: u16) -> TerminalEvent {
     TerminalEvent::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
-        column: col,
-        row,
+        column: x,
+        row: y,
         modifiers: Modifiers::NONE,
     })
 }
@@ -293,7 +293,7 @@ impl Editor {
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
                 focused_pane_id: pane_id,
                 motion_format_scratch: hume_engine::format::FormatScratch::new(),
-                visual_move_target_cols: Vec::new(),
+                visual_move_target_display_cols: Vec::new(),
                 macro_recording: None,
                 macro_pending: None,
                 replay_queue: VecDeque::new(),

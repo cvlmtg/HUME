@@ -413,7 +413,7 @@ pub(crate) fn apply_workspace_edit(
 ///   `focused_bid`'s attached server's encoding — the server that produced
 ///   this location negotiated that encoding for every response it sends,
 ///   regardless of which file the location points into);
-/// - `(list target line col)`, already char-indexed — `target` is a path
+/// - `(list target line char-col)`, already char-indexed — `target` is a path
 ///   string, a `file://` URI string, or a `bid`.
 pub(crate) enum GotoTarget {
     Wire {
@@ -424,23 +424,28 @@ pub(crate) enum GotoTarget {
     Path {
         path_or_uri: String,
         line: usize,
-        col: usize,
+        char_col: usize,
     },
     Buffer {
         bid: BufferId,
         line: usize,
-        col: usize,
+        char_col: usize,
     },
 }
 
-/// Clamps a char-indexed `(line, col)` pair to a valid char offset in `bid`.
-fn char_indexed_to_char_pos(state: &EditorState, bid: BufferId, line: usize, col: usize) -> usize {
+/// Clamps a char-indexed `(line, char_col)` pair to a valid char offset in `bid`.
+fn char_indexed_to_char_pos(
+    state: &EditorState,
+    bid: BufferId,
+    line: usize,
+    char_col: usize,
+) -> usize {
     let buf = state.buffers.get(bid);
     let text = buf.text();
     let line = line.min(text.last_ropey_line());
     let line_start = text.line_to_char(line);
     let line_len = hume_editing::lines::line_content_end(text, line) - line_start;
-    line_start + col.min(line_len)
+    line_start + char_col.min(line_len)
 }
 
 /// A bare path string and a `file://` URI string both name shape 2's
@@ -486,16 +491,16 @@ fn resolve_goto_target(
         GotoTarget::Path {
             path_or_uri,
             line,
-            col,
+            char_col,
         } => {
             let bid = resolve_path_or_uri(state, view, &path_or_uri)?;
-            Ok((bid, char_indexed_to_char_pos(state, bid, line, col)))
+            Ok((bid, char_indexed_to_char_pos(state, bid, line, char_col)))
         }
-        GotoTarget::Buffer { bid, line, col } => {
+        GotoTarget::Buffer { bid, line, char_col } => {
             if state.buffers.try_get(bid).is_none() {
                 return Err("no such buffer".to_string());
             }
-            Ok((bid, char_indexed_to_char_pos(state, bid, line, col)))
+            Ok((bid, char_indexed_to_char_pos(state, bid, line, char_col)))
         }
     }
 }

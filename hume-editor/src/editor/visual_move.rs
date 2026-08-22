@@ -37,7 +37,7 @@ fn move_vertical(
     head: usize,
     down: bool,
     count: usize,
-    target_col: u32,
+    target_display_col: u32,
     content_only: bool,
 ) -> usize {
     let start = rm.locate_row(head);
@@ -61,10 +61,10 @@ fn move_vertical(
 
     if last_content == start {
         // Already on the document's first/last content row: leave the head
-        // exactly where it was rather than snapping it to `target_col`.
+        // exactly where it was rather than snapping it to `target_display_col`.
         return head;
     }
-    rm.char_at(last_content, target_col, DisplayColTarget::NearestContent)
+    rm.char_at(last_content, target_display_col, DisplayColTarget::NearestContent)
 }
 
 /// How `apply_visual_vertical`'s `count` should be interpreted.
@@ -121,8 +121,8 @@ pub(super) fn apply_visual_vertical(
     let content_only = !matches!(unit, VerticalUnit::ScreenRow);
 
     let buf_id = focused_buffer_id(state, view);
-    let target_cols = &mut state.visual_move_target_cols;
-    target_cols.clear();
+    let target_display_cols = &mut state.visual_move_target_display_cols;
+    target_display_cols.clear();
     let mut rm = pane_row_map(
         state.buffers.get(buf_id),
         &state.settings,
@@ -142,7 +142,7 @@ pub(super) fn apply_visual_vertical(
             // Pass 1: resolve each selection's sticky display column from
             // sel.sticky_display_col, computing it fresh on the first j/k
             // press.
-            target_cols.extend(
+            target_display_cols.extend(
                 sels.iter_sorted().map(|sel| {
                     sel.sticky_display_col()
                         .unwrap_or_else(|| rm.locate(sel.head()).1)
@@ -151,17 +151,24 @@ pub(super) fn apply_visual_vertical(
 
             // Pass 2: move each selection, preserving the sticky column so
             // consecutive j/k presses reuse it.
-            let mut col_iter = target_cols.iter();
+            let mut display_col_iter = target_display_cols.iter();
             sels.map(|sel| {
-                let &target_col = col_iter.next().expect("one column per selection");
-                let head =
-                    move_vertical(&mut rm, sel.head(), down, count, target_col, content_only);
+                let &target_display_col =
+                    display_col_iter.next().expect("one column per selection");
+                let head = move_vertical(
+                    &mut rm,
+                    sel.head(),
+                    down,
+                    count,
+                    target_display_col,
+                    content_only,
+                );
                 let anchor = if mode == MotionMode::Extend {
                     sel.anchor()
                 } else {
                     head
                 };
-                Selection::with_sticky_display_col(anchor, head, target_col)
+                Selection::with_sticky_display_col(anchor, head, target_display_col)
             })
         },
     );

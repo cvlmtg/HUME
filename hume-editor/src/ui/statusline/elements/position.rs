@@ -11,22 +11,23 @@ use crate::ui::theme::EditorColors;
 pub(in crate::ui::statusline) struct PositionElement;
 
 impl StatuslineElement for PositionElement {
-    /// 1-based (line, col, max_row). `max_row` is the highest row index the
-    /// cursor can reach in the buffer, used to size the padding field.
+    /// 1-based (line, grapheme_col, max_row). `max_row` is the highest row
+    /// index the cursor can reach in the buffer, used to size the padding
+    /// field.
     type Data = (usize, usize, usize);
 
     fn read(editor: &Editor) -> Self::Data {
         let buf = editor.doc().text();
         let head = editor.current_selections().primary().head();
         let head_line = buf.char_to_line(head);
-        let col_0 = grapheme_col_in_line(buf, head_line, head);
+        let grapheme_col = grapheme_col_in_line(buf, head_line, head);
         // Largest 1-based line number this buffer can display.
         let max_row = buf.content_line_count();
-        (head_line + 1, col_0 + 1, max_row)
+        (head_line + 1, grapheme_col + 1, max_row)
     }
 
     fn format(
-        (line, col, max_row): Self::Data,
+        (line, grapheme_col, max_row): Self::Data,
         colors: &EditorColors,
     ) -> (Cow<'static, str>, Style) {
         // Right-align into a field sized for the largest row this buffer can
@@ -37,7 +38,10 @@ impl StatuslineElement for PositionElement {
         let row_digits = digit_count(max_row).max(3);
         let width = row_digits + 1 + 3;
         (
-            Cow::Owned(format!("{:>width$}", format!("{line}:{col}"))),
+            Cow::Owned(format!(
+                "{:>width$}",
+                format!("{line}:{grapheme_col}")
+            )),
             colors.statusline,
         )
     }

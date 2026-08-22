@@ -1228,16 +1228,16 @@ impl<'a> EditHost for EditorHostImpl<'a> {
                 .map_err(|_| "apply-text-edits!: position exceeds u32 (malformed edit)".to_string())
         };
         let mut typed_edits = Vec::with_capacity(edits.len());
-        for (start_line, start_char, end_line, end_char, new_text) in edits {
+        for (start_line, start_character, end_line, end_character, new_text) in edits {
             typed_edits.push(lsp_types::TextEdit {
                 range: lsp_types::Range {
                     start: lsp_types::Position {
                         line: to_u32(start_line)?,
-                        character: to_u32(start_char)?,
+                        character: to_u32(start_character)?,
                     },
                     end: lsp_types::Position {
                         line: to_u32(end_line)?,
-                        character: to_u32(end_char)?,
+                        character: to_u32(end_character)?,
                     },
                 },
                 new_text,
@@ -1281,7 +1281,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         &mut self,
         path_or_uri: String,
         line: usize,
-        col: usize,
+        char_col: usize,
     ) -> Result<(), String> {
         let Some(lsp) = self.lsp.as_deref() else {
             return Err("goto-location!: no LSP state available".to_string());
@@ -1289,7 +1289,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         let target = crate::editor::lsp::edits::GotoTarget::Path {
             path_or_uri,
             line,
-            col,
+            char_col,
         };
         crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
     }
@@ -1298,12 +1298,12 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         &mut self,
         bid: BufferId,
         line: usize,
-        col: usize,
+        char_col: usize,
     ) -> Result<(), String> {
         let Some(lsp) = self.lsp.as_deref() else {
             return Err("goto-location!: no LSP state available".to_string());
         };
-        let target = crate::editor::lsp::edits::GotoTarget::Buffer { bid, line, col };
+        let target = crate::editor::lsp::edits::GotoTarget::Buffer { bid, line, char_col };
         crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
     }
 }

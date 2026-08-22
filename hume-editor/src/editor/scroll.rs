@@ -97,7 +97,7 @@ pub(super) fn clamp_viewport_top(viewport: &mut ViewportState, rm: &mut RowMap<'
 pub(super) fn ensure_cursor_visible_horizontal(
     viewport: &mut ViewportState,
     rm: &mut RowMap<'_>,
-    cursor_col: u32,
+    cursor_display_col: u32,
 ) {
     const H_MARGIN: usize = 5;
 
@@ -106,7 +106,7 @@ pub(super) fn ensure_cursor_visible_horizontal(
         return;
     }
 
-    let cursor_col = cursor_col as usize;
+    let cursor_display_col = cursor_display_col as usize;
     // `locate`'s column is content-relative (the gutter isn't part of it),
     // so the margin must compare against the content width the map itself
     // was built with — not `viewport.width`, which still includes the
@@ -119,10 +119,11 @@ pub(super) fn ensure_cursor_visible_horizontal(
     let margin = H_MARGIN.min(content_width / 2);
     let offset = viewport.horizontal_offset as usize;
 
-    if cursor_col < offset + margin {
-        viewport.horizontal_offset = cursor_col.saturating_sub(margin) as u32;
-    } else if cursor_col >= offset + content_width - margin {
-        viewport.horizontal_offset = cursor_col.saturating_sub(content_width - margin - 1) as u32;
+    if cursor_display_col < offset + margin {
+        viewport.horizontal_offset = cursor_display_col.saturating_sub(margin) as u32;
+    } else if cursor_display_col >= offset + content_width - margin {
+        viewport.horizontal_offset =
+            cursor_display_col.saturating_sub(content_width - margin - 1) as u32;
     }
 }
 

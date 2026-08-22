@@ -58,11 +58,11 @@ impl Editor {
 
     // ── Click ─────────────────────────────────────────────────────────────────
 
-    fn mouse_left_down(&mut self, col: u16, row: u16) {
+    fn mouse_left_down(&mut self, x: u16, y: u16) {
         // Hit-test before anything else: a miss (statusline, tabline, a
         // divider seam — anything outside a pane's own rect) is a no-op, and
         // a hit's pane-relative coordinates are what every step below needs.
-        let Some((pid, rel_col, rel_row)) = self.pane_at_screen_pos(col, row) else {
+        let Some((pid, pane_x, pane_y)) = self.pane_at_screen_pos(x, y) else {
             return;
         };
 
@@ -82,7 +82,7 @@ impl Editor {
         // uses — no jump-list push, matching those.
         self.state.focused_pane_id = pid;
 
-        if let Some(char_off) = self.click_to_char(pid, rel_col, rel_row) {
+        if let Some(char_off) = self.click_to_char(pid, pane_x, pane_y) {
             // Collapse the primary selection to the clicked position.
             let sel = Selection::collapsed(char_off);
             self.set_current_selections(SelectionSet::single(sel));
@@ -97,7 +97,7 @@ impl Editor {
 
     // ── Drag ──────────────────────────────────────────────────────────────────
 
-    fn mouse_left_drag(&mut self, col: u16, row: u16) {
+    fn mouse_left_drag(&mut self, x: u16, y: u16) {
         // Drag events are only received when `mouse_select = true` (mode 1002).
         let Some(anchor) = self.state.mouse_drag_anchor else {
             return;
@@ -112,11 +112,11 @@ impl Editor {
         let Some(rect) = self.view.pane_rect(pid) else {
             return;
         };
-        if !rect.contains(Position::new(col, row)) {
+        if !rect.contains(Position::new(x, y)) {
             return;
         }
 
-        if let Some(head) = self.click_to_char(pid, col - rect.x, row - rect.y) {
+        if let Some(head) = self.click_to_char(pid, x - rect.x, y - rect.y) {
             let sel = Selection::new(anchor, head);
             self.set_current_selections(SelectionSet::single(sel));
         }
@@ -164,22 +164,22 @@ impl Editor {
 
     // ── Coordinate conversion ─────────────────────────────────────────────────
 
-    /// Which pane `(col, row)` (terminal-absolute) falls in, and its
+    /// Which pane `(x, y)` (terminal-absolute) falls in, and its
     /// position translated into that pane's own rect-relative coordinates —
     /// what `click_to_char` and `screen_to_char_offset` expect. `None` for a
     /// click outside every pane's rect (statusline, tabline, a divider seam).
-    fn pane_at_screen_pos(&self, col: u16, row: u16) -> Option<(PaneId, u16, u16)> {
-        let pos = Position::new(col, row);
+    fn pane_at_screen_pos(&self, x: u16, y: u16) -> Option<(PaneId, u16, u16)> {
+        let pos = Position::new(x, y);
         self.view
             .pane_rects()
             .into_iter()
             .find(|(_, rect)| rect.contains(pos))
-            .map(|(pid, rect)| (pid, col - rect.x, row - rect.y))
+            .map(|(pid, rect)| (pid, x - rect.x, y - rect.y))
     }
 
-    /// Resolve a pane-relative `(col, row)` click in pane `pid` to a buffer
+    /// Resolve a pane-relative `(x, y)` click in pane `pid` to a buffer
     /// char offset.
-    fn click_to_char(&mut self, pid: PaneId, col: u16, row: u16) -> Option<usize> {
+    fn click_to_char(&mut self, pid: PaneId, x: u16, y: u16) -> Option<usize> {
         let buf_id = self.view.panes[pid].buffer_id;
         let gutter_w = {
             let pane = &self.view.panes[pid];
@@ -194,7 +194,7 @@ impl Editor {
             &mut self.view.panes[pid],
             &mut self.state.motion_format_scratch,
         );
-        cursor::screen_to_char_offset(col, row, gutter_w, viewport, &mut rm)
+        cursor::screen_to_char_offset(x, y, gutter_w, viewport, &mut rm)
     }
 }
 

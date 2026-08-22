@@ -76,7 +76,7 @@ const EDITOR_STATE_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
     ("inline_output", "preserved"),
     ("inline_output_entered", "preserved: test-only seam"),
     ("motion_format_scratch", "preserved"),
-    ("visual_move_target_cols", "preserved"),
+    ("visual_move_target_display_cols", "preserved"),
     ("last_repeatable_action", "preserved"),
     ("selection_recipe", "preserved"),
     ("pending_repeat", "preserved"),

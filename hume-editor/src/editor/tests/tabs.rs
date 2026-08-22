@@ -254,9 +254,9 @@ fn backspace_on_first_content_char_dedents() {
 }
 
 #[test]
-fn backspace_at_col_zero_plain_delete() {
-    // "foo" cursor on 'f' (col 0) — no leading ws → plain backspace is a no-op
-    // at buffer start (nothing to delete to the left).
+fn backspace_at_char_col_zero_plain_delete() {
+    // "foo" cursor on 'f' (char col 0) — no leading ws → plain backspace is a
+    // no-op at buffer start (nothing to delete to the left).
     let mut ed = editor_from("-[f]>oo\n");
     ed.handle_key(key('i'));
     ed.handle_key(key_backspace());

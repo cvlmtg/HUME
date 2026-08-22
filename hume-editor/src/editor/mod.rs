@@ -345,7 +345,7 @@ pub(crate) struct EditorState {
     /// Reusable scratch buffer for format operations in visual-line movement.
     pub(super) motion_format_scratch: hume_engine::format::FormatScratch,
     /// Reusable sticky-column buffer for visual j/k movement.
-    pub(super) visual_move_target_cols: Vec<u32>,
+    pub(super) visual_move_target_display_cols: Vec<u32>,
     /// The last repeatable editing action, available for replay via `.`.
     pub(super) last_repeatable_action: Option<RepeatableAction>,
     /// Accumulating selection-recipe buffer for the *next* edit's dot-repeat.

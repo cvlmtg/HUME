@@ -244,7 +244,7 @@ fn providers_with_before_line(line: usize) -> ProviderSet {
     p
 }
 
-/// `screen_pos` must count a virtual-`Before` row anchored to the
+/// `content_pos` must count a virtual-`Before` row anchored to the
 /// cursor's own line as occupying a screen row above it — the cursor
 /// must land one row lower than it would with zero providers.
 ///
@@ -259,7 +259,7 @@ fn screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
 
     let bare = no_providers();
     let mut s = FormatScratch::new();
-    let with_none = screen_pos(&v, &mut map(&rope, wrap, &bare, 80, &mut s), cursor_char);
+    let with_none = content_pos(&v, &mut map(&rope, wrap, &bare, 80, &mut s), cursor_char);
     assert_eq!(
         with_none,
         Some((0, 1)),
@@ -268,7 +268,7 @@ fn screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
 
     let providers = providers_with_before_line(1);
     let mut s = FormatScratch::new();
-    let with_virtual = screen_pos(
+    let with_virtual = content_pos(
         &v,
         &mut map(&rope, wrap, &providers, 80, &mut s),
         cursor_char,
@@ -337,7 +337,7 @@ fn screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() {
 
     let bare = no_providers();
     let mut s = FormatScratch::new();
-    let with_none = screen_pos(&v, &mut map(&rope, wrap, &bare, 80, &mut s), cursor_char);
+    let with_none = content_pos(&v, &mut map(&rope, wrap, &bare, 80, &mut s), cursor_char);
     assert_eq!(
         with_none,
         Some((0, 1)),
@@ -346,7 +346,7 @@ fn screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() {
 
     let providers = providers_with_before_line(1);
     let mut s = FormatScratch::new();
-    let with_virtual = screen_pos(
+    let with_virtual = content_pos(
         &v,
         &mut map(&rope, wrap, &providers, 80, &mut s),
         cursor_char,
@@ -423,7 +423,7 @@ impl hume_engine::providers::DecorationSource for MultiAfterLine {
     }
 }
 
-/// `screen_pos` for a cursor on buffer line 0 must count a `Before(0)`
+/// `content_pos` for a cursor on buffer line 0 must count a `Before(0)`
 /// block above it exactly like any other line's `before` block — no
 /// special-casing at the very top of the buffer, in either wrap mode.
 #[test]
@@ -436,7 +436,7 @@ fn screen_pos_accounts_for_before_line_0() {
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let mut s = FormatScratch::new();
-        let pos = screen_pos(
+        let pos = content_pos(
             &v,
             &mut map(&rope, wrap, &providers, 80, &mut s),
             cursor_char,
@@ -449,7 +449,7 @@ fn screen_pos_accounts_for_before_line_0() {
     }
 }
 
-/// `screen_pos` for a cursor on the last real buffer line must not be
+/// `content_pos` for a cursor on the last real buffer line must not be
 /// thrown off by an `After(last_line)` block anchored to that same line —
 /// the block is *after* the cursor's row, so it must not affect the
 /// cursor's own screen row at all (only rows below it).
@@ -463,7 +463,7 @@ fn screen_pos_unaffected_by_after_on_cursors_own_last_line() {
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let v = vp(0, 80, 10);
         let mut s = FormatScratch::new();
-        let pos = screen_pos(
+        let pos = content_pos(
             &v,
             &mut map(&rope, wrap, &providers, 80, &mut s),
             cursor_char,
@@ -476,7 +476,7 @@ fn screen_pos_unaffected_by_after_on_cursors_own_last_line() {
     }
 }
 
-/// `screen_pos` must clamp a stale `top_row_offset` the same way
+/// `content_pos` must clamp a stale `top_row_offset` the same way
 /// `pane_render.rs`'s row walk clamps its own start address (`RowMap::clamp`)
 /// before drawing — a write site that never validates the offset against the
 /// block it addresses (`recall_scroll`, an LSP jump) can leave it pointing
@@ -500,7 +500,7 @@ fn screen_pos_clamps_a_top_row_offset_past_the_lines_current_block() {
     let providers = providers_with_before_line(0);
     let mut s = FormatScratch::new();
 
-    let pos = screen_pos(
+    let pos = content_pos(
         &v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
         cursor_char,
@@ -521,7 +521,7 @@ fn screen_pos_zero_height_returns_none() {
     let providers = no_providers();
     let mut s = FormatScratch::new();
 
-    let pos = screen_pos(
+    let pos = content_pos(
         &v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
         0,
@@ -530,7 +530,7 @@ fn screen_pos_zero_height_returns_none() {
 }
 
 /// A cursor more rows below the viewport's top than the viewport is tall —
-/// the case `ensure_cursor_visible` is supposed to prevent, but `screen_pos`
+/// the case `ensure_cursor_visible` is supposed to prevent, but `content_pos`
 /// must still answer `None` rather than a row past the visible window.
 #[test]
 fn screen_pos_cursor_below_viewport_returns_none() {
@@ -540,7 +540,7 @@ fn screen_pos_cursor_below_viewport_returns_none() {
     let mut s = FormatScratch::new();
     let cursor_char = rope.line_to_char(5); // 'f' — 5 rows below the top
 
-    let pos = screen_pos(
+    let pos = content_pos(
         &v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
         cursor_char,

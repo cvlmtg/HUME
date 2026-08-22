@@ -330,7 +330,7 @@ impl hume_engine::providers::DecorationSource for MultiBeforeLine {
 /// far enough for the content-only row count.
 ///
 /// Checks the *robust* invariant (cursor lands inside the viewport,
-/// verified through `screen_pos` the same way the render pipeline would
+/// verified through `content_pos` the same way the render pipeline would
 /// place the terminal cursor), not exact `top_line`/`top_row_offset`
 /// values — landing precision exactly at a virtual block's boundary is
 /// left untested here.
@@ -348,7 +348,7 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row() {
     ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 0);
 
     let mut s = FormatScratch::new();
-    let pos = cursor::screen_pos(&v, &mut map(&r, wrap, &providers, 80, &mut s), cursor_char);
+    let pos = cursor::content_pos(&v, &mut map(&r, wrap, &providers, 80, &mut s), cursor_char);
     let (_, row) = pos.expect("cursor must be visible after ensure_cursor_visible");
     assert!(
         (row as usize) < v.height as usize,
@@ -373,7 +373,7 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row_no_wrap() {
     ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 0);
 
     let mut s = FormatScratch::new();
-    let pos = cursor::screen_pos(&v, &mut map(&r, wrap, &providers, 80, &mut s), cursor_char);
+    let pos = cursor::content_pos(&v, &mut map(&r, wrap, &providers, 80, &mut s), cursor_char);
     let (_, row) = pos.expect("cursor must be visible after ensure_cursor_visible");
     assert!(
         (row as usize) < v.height as usize,
@@ -475,12 +475,12 @@ fn horizontal_scroll_margin_uses_content_width_not_viewport_width() {
     let cursor_char = 70;
 
     let mut rm = map(&r, WrapMode::None, &providers, 72, &mut s);
-    let cursor_col = rm.locate(cursor_char).1;
-    ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_col);
+    let cursor_display_col = rm.locate(cursor_char).1;
+    ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_display_col);
 
     assert_eq!(
         v.horizontal_offset, 4,
-        "cursor_col(70) - (content_width(72) - margin(5) - 1) = 4"
+        "cursor_display_col(70) - (content_width(72) - margin(5) - 1) = 4"
     );
 }
 
@@ -496,8 +496,8 @@ fn horizontal_scroll_margin_no_scroll_when_within_content_width() {
     let cursor_char = 70;
 
     let mut rm = map(&r, WrapMode::None, &providers, 80, &mut s);
-    let cursor_col = rm.locate(cursor_char).1;
-    ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_col);
+    let cursor_display_col = rm.locate(cursor_char).1;
+    ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_display_col);
 
     assert_eq!(v.horizontal_offset, 0, "70 < content_width(80) - margin(5)");
 }
@@ -505,7 +505,7 @@ fn horizontal_scroll_margin_no_scroll_when_within_content_width() {
 /// A cursor past column 65535 on a huge unwrapped line must scroll to its
 /// true (unclamped) column, not a `u16`-truncated one — regression guard
 /// for the `u16` → `u32` display-column widening. Independent oracle: every
-/// char is 1 column wide, so `cursor_col == cursor_char`, and the expected
+/// char is 1 column wide, so `cursor_display_col == cursor_char`, and the expected
 /// offset is plain arithmetic on that value.
 #[test]
 fn horizontal_scroll_reaches_past_former_u16_column_ceiling() {
@@ -519,12 +519,12 @@ fn horizontal_scroll_reaches_past_former_u16_column_ceiling() {
     // the narrowing this guards against would live in that resolution, and a
     // hand-written column would step over the very code under test.
     let mut rm = map(&r, WrapMode::None, &providers, 80, &mut s);
-    let cursor_col = rm.locate(cursor_char).1;
-    ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_col);
+    let cursor_display_col = rm.locate(cursor_char).1;
+    ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_display_col);
 
     assert_eq!(
         v.horizontal_offset, 69_925,
-        "cursor_col(69_999) - (content_width(80) - margin(5) - 1) = 69_925"
+        "cursor_display_col(69_999) - (content_width(80) - margin(5) - 1) = 69_925"
     );
     assert!(
         v.horizontal_offset > u16::MAX as u32,
@@ -562,7 +562,7 @@ impl hume_engine::providers::DecorationSource for CountFormatsOf {
 
 /// `ensure_cursor_visible` reports the cursor's screen row from the rows
 /// `scroll_back_from` stepped *backward* (or, in its stable arm, from the
-/// distance it already measured). `screen_pos` derives the same row by walking
+/// distance it already measured). `content_pos` derives the same row by walking
 /// *forward* from the settled viewport top. The draw path may only skip that
 /// forward walk if the two always agree — so sweep the shapes where they could
 /// diverge: both wrap modes, a viewport shorter than the virtual block, a top
@@ -587,7 +587,7 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
                     let reported = ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 2);
 
                     let mut s = FormatScratch::new();
-                    let walked = cursor::screen_pos(
+                    let walked = cursor::content_pos(
                         &v,
                         &mut map(&r, wrap, &providers, 80, &mut s),
                         cursor_char,
@@ -621,10 +621,10 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
     let mut s = FormatScratch::new();
     let mut rm = map(&r, WrapMode::None, &providers, 80, &mut s);
     clamp_viewport_top(&mut v, &mut rm);
-    let (cursor_pos, cursor_col) = rm.locate(cursor_char);
+    let (cursor_pos, cursor_display_col) = rm.locate(cursor_char);
     let row = ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 3).expect("height is 10");
-    ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_col);
-    let placed = cursor::place(&v, cursor_col, row);
+    ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_display_col);
+    let placed = cursor::place(&v, cursor_display_col, row);
 
     assert_eq!(
         formats.get(),
@@ -637,7 +637,7 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
     // above: re-deriving is exactly the second format being ruled out, so it
     // has to stay on this side of the assertion.
     let mut s = FormatScratch::new();
-    let walked = cursor::screen_pos(
+    let walked = cursor::content_pos(
         &v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
         cursor_char,

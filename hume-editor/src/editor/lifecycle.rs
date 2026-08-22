@@ -197,7 +197,7 @@ impl Editor {
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
                 focused_pane_id: pane_id,
                 motion_format_scratch: hume_engine::format::FormatScratch::new(),
-                visual_move_target_cols: Vec::new(),
+                visual_move_target_display_cols: Vec::new(),
                 macro_recording: None,
                 macro_pending: None,
                 replay_queue: VecDeque::new(),
@@ -414,7 +414,7 @@ impl Editor {
                 // Minibuf active (Command / Search): place the terminal cursor
                 // in the statusline at the minibuf edit position.
                 let statusline_row = size.height.saturating_sub(1);
-                Some((mb.statusline_cursor_col(), statusline_row))
+                Some((mb.statusline_cursor_x(), statusline_row))
             } else if self.state.mode().cursor_is_bar() {
                 // Insert / Select: place the terminal cursor at the document
                 // head, where `prepare_frame`'s scroll step already resolved it
@@ -433,7 +433,7 @@ impl Editor {
                     .map(|r| (r.x, r.y))
                     .expect("focused pane must have a rect after prepare_frame");
                 ctx.cursor_content_pos
-                    .map(|(col, row)| (col + gutter_w + ox, row + oy))
+                    .map(|(content_x, row)| (content_x + gutter_w + ox, row + oy))
             } else {
                 None
             };
@@ -445,8 +445,8 @@ impl Editor {
             let _ = hume_platform::terminal::begin_synchronized_update(&shared);
             term.draw(|frame| {
                 self.render_into(frame.area(), frame.buffer_mut(), &mut ctx);
-                if let Some((col, row)) = cursor_screen {
-                    frame.set_cursor_position((col, row));
+                if let Some((x, y)) = cursor_screen {
+                    frame.set_cursor_position((x, y));
                 }
             })?;
 
