@@ -13,8 +13,8 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use hume_rope::lines::strip_line_break;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_rope::lines::strip_line_break;
 
 use crate::editor::diff_bridge;
 use crate::editor::lsp::LspState;

@@ -205,11 +205,8 @@ pub(crate) fn position_params(
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
     let pbs = pane_buffer_state(state, id)?;
     let rope = state.buffers.get(id).text().rope();
-    let (line, character) = hume_rope::position_encoding::char_to_wire(
-        rope,
-        pbs.selections.primary().head(),
-        encoding,
-    );
+    let (line, character) =
+        hume_rope::position_encoding::char_to_wire(rope, pbs.selections.primary().head(), encoding);
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
         "position": {"line": line, "character": character},

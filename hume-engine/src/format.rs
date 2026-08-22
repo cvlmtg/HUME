@@ -309,9 +309,12 @@ pub fn format_buffer_line(
                 break 'lines;
             }
             let ins = &inline_inserts[insert_idx];
-            let ins_width =
-                hume_rope::width::str_width(&ins.text, wrap.current_display_col as usize, tab_width)
-                    .min(255) as u8;
+            let ins_width = hume_rope::width::str_width(
+                &ins.text,
+                wrap.current_display_col as usize,
+                tab_width,
+            )
+            .min(255) as u8;
             if ins_width > 0 {
                 wrap.maybe_wrap(
                     ins_width,
@@ -752,8 +755,7 @@ fn push_insert_cells(
         // 255), unlike a whole insert string's — no `.min(255)` cap needed
         // before narrowing.
         let g_width =
-            hume_rope::width::grapheme_width(g_str, *current_display_col as usize, tab_width)
-                as u8;
+            hume_rope::width::grapheme_width(g_str, *current_display_col as usize, tab_width) as u8;
         graphemes_out.push(Grapheme {
             byte_range: byte_range.clone(),
             // Char offset of the real grapheme this insert precedes (not MAX):
