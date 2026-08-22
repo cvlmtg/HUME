@@ -15,6 +15,7 @@ fn pure_insert_at_start() {
     assert_eq!(e.start_byte, 0);
     assert_eq!(e.old_end_byte, 0);
     assert_eq!(e.new_end_byte, 2);
+    // column-name-safe: tree-sitter's Point::column is a byte offset
     assert_eq!(e.start_position, tree_sitter::Point { row: 0, column: 0 });
     assert_eq!(e.old_end_position, tree_sitter::Point { row: 0, column: 0 });
     assert_eq!(e.new_end_position, tree_sitter::Point { row: 0, column: 2 });
@@ -155,25 +156,25 @@ fn multibyte_utf8_byte_offsets() {
 
 #[test]
 fn new_end_point_no_newlines() {
-    let (row, col) = new_end_point(2, 5, "hello");
+    let (row, byte_col) = new_end_point(2, 5, "hello");
     assert_eq!(row, 2);
-    assert_eq!(col, 10); // 5 + 5
+    assert_eq!(byte_col, 10); // 5 + 5
 }
 
 #[test]
 fn new_end_point_with_newlines() {
-    let (row, col) = new_end_point(1, 3, "foo\nbar\nbaz");
-    // 2 newlines → row + 2 = 3; col = "baz".len() = 3
+    let (row, byte_col) = new_end_point(1, 3, "foo\nbar\nbaz");
+    // 2 newlines → row + 2 = 3; byte_col = "baz".len() = 3
     assert_eq!(row, 3);
-    assert_eq!(col, 3);
+    assert_eq!(byte_col, 3);
 }
 
 #[test]
 fn new_end_point_trailing_newline() {
-    // Inserted text ends with '\n' — col must be 0.
-    let (row, col) = new_end_point(0, 0, "foo\n");
+    // Inserted text ends with '\n' — byte_col must be 0.
+    let (row, byte_col) = new_end_point(0, 0, "foo\n");
     assert_eq!(row, 1);
-    assert_eq!(col, 0);
+    assert_eq!(byte_col, 0);
 }
 
 /// Regression: a single changeset with edits at two non-adjacent positions must

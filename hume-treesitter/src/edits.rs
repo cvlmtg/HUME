@@ -64,10 +64,10 @@ fn make_input_edit(
     let old_end_byte = rope.char_to_byte(old_end_char);
     let new_end_byte = start_byte + inserted.len(); // str::len() is byte count
 
-    let (start_row, start_col) = hume_rope::char_to_line_byte(rope, start_char);
-    let (old_end_row, old_end_col) = hume_rope::char_to_line_byte(rope, old_end_char);
+    let (start_row, start_byte_col) = hume_rope::char_to_line_byte(rope, start_char);
+    let (old_end_row, old_end_byte_col) = hume_rope::char_to_line_byte(rope, old_end_char);
 
-    let (new_end_row, new_end_col) = new_end_point(start_row, start_col, inserted);
+    let (new_end_row, new_end_byte_col) = new_end_point(start_row, start_byte_col, inserted);
 
     tree_sitter::InputEdit {
         start_byte,
@@ -75,23 +75,23 @@ fn make_input_edit(
         new_end_byte,
         start_position: tree_sitter::Point {
             row: start_row,
-            column: start_col,
+            column: start_byte_col, // column-name-safe: tree-sitter's Point::column is a byte offset
         },
         old_end_position: tree_sitter::Point {
             row: old_end_row,
-            column: old_end_col,
+            column: old_end_byte_col, // column-name-safe: tree-sitter's Point::column is a byte offset
         },
         new_end_position: tree_sitter::Point {
             row: new_end_row,
-            column: new_end_col,
+            column: new_end_byte_col, // column-name-safe: tree-sitter's Point::column is a byte offset
         },
     }
 }
 
-/// Compute `new_end_position` for an insertion starting at `(start_row, start_col)`.
-fn new_end_point(start_row: usize, start_col: usize, inserted: &str) -> (usize, usize) {
+/// Compute `new_end_position` for an insertion starting at `(start_row, start_byte_col)`.
+fn new_end_point(start_row: usize, start_byte_col: usize, inserted: &str) -> (usize, usize) {
     match inserted.rfind('\n') {
-        None => (start_row, start_col + inserted.len()),
+        None => (start_row, start_byte_col + inserted.len()),
         // Column is the byte count after the last newline in the inserted text.
         Some(last_nl) => {
             let newline_count = inserted.bytes().filter(|&b| b == b'\n').count();
