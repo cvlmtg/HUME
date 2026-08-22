@@ -55,18 +55,37 @@ pub(super) fn goto_first_nonblank(buf: &Text, head: usize) -> usize {
     head // no non-blank found — no-op, matching Helix
 }
 
+/// Place the cursor on `target_line` at `line`'s (or `preferred_display_col`,
+/// if given) display column — the shared tail of `move_down_inner`/
+/// `move_up_inner`, which differ only in which neighboring line they target
+/// and its own boundary check. `line` is `head`'s own line, passed in rather
+/// than re-derived since both callers already have it for that check.
+///
+/// **Column model:** display column — tab-aware and unicode-width-aware, via
+/// `place_display_column`/`display_col_in_line`. Matches
+/// `editor::visual_move::move_vertical`'s model, which bare `j`/`k` (and
+/// page/half-page scroll, the mouse wheel) use.
+fn to_line_keeping_display_col(
+    buf: &Text,
+    head: usize,
+    line: usize,
+    target_line: usize,
+    preferred_display_col: Option<usize>,
+    tab_width: u8,
+) -> usize {
+    let display_col =
+        preferred_display_col.unwrap_or_else(|| display_col_in_line(buf, line, head, tab_width));
+    place_display_column(buf, target_line, display_col, tab_width)
+}
+
 /// Move the cursor down one line, preserving the display column.
 ///
 /// `preferred_display_col` overrides the column computed from the current
 /// position. Pass `None` to use the current position's own display column.
 ///
-/// **Column model:** display column — tab-aware and unicode-width-aware, via
-/// `place_display_column`/`display_col_in_line`. Matches
-/// `editor::visual_move::move_vertical`'s model, which bare `j`/`k` (and
-/// page/half-page scroll, the mouse wheel) use. This function is reached only
-/// by an explicit numeric prefix (`9j`), which counts buffer lines to match
-/// relative-line-number gutters even while wrapping, and by direct/proptest
-/// callers of the pure `cmd_move_down` op.
+/// This function is reached only by an explicit numeric prefix (`9j`), which
+/// counts buffer lines to match relative-line-number gutters even while
+/// wrapping, and by direct/proptest callers of the pure `cmd_move_down` op.
 pub(super) fn move_down_inner(
     buf: &Text,
     head: usize,
@@ -79,10 +98,7 @@ pub(super) fn move_down_inner(
     if line >= buf.last_content_line() {
         return head;
     }
-
-    let display_col =
-        preferred_display_col.unwrap_or_else(|| display_col_in_line(buf, line, head, tab_width));
-    place_display_column(buf, line + 1, display_col, tab_width)
+    to_line_keeping_display_col(buf, head, line, line + 1, preferred_display_col, tab_width)
 }
 
 /// Move the cursor up one line, preserving the display column.
@@ -99,8 +115,5 @@ pub(super) fn move_up_inner(
     if line == 0 {
         return head; // already on the first line
     }
-
-    let display_col =
-        preferred_display_col.unwrap_or_else(|| display_col_in_line(buf, line, head, tab_width));
-    place_display_column(buf, line - 1, display_col, tab_width)
+    to_line_keeping_display_col(buf, head, line, line - 1, preferred_display_col, tab_width)
 }

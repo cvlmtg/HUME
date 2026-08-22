@@ -1,5 +1,3 @@
-use unicode_segmentation::UnicodeSegmentation;
-
 use crate::layout::PaneGeometry;
 use crate::pane::ViewportState;
 use crate::providers::{GutterColumn, GutterRowCtx, ProviderId};
@@ -202,25 +200,13 @@ fn compose_gutter(
             // plugin-supplied column isn't guaranteed to — `set_string` only
             // clips to the terminal buffer, not to this column's width or
             // the pane rect, so an overlong cell would otherwise bleed into
-            // the content area or the neighbouring pane. Truncate on
-            // grapheme-cluster boundaries (never raw chars/bytes — the
-            // project's text-boundary invariant) by accumulating display
-            // width until `usable_per_cell` is exhausted.
-            let mut truncated_len = text.len();
-            let mut text_width = 0u16;
-            for (byte_idx, g) in text.grapheme_indices(true) {
-                let w = hume_rope::width::grapheme_width(
-                    g,
-                    text_width as usize,
-                    compose_ctx.tab_width,
-                ) as u16;
-                if text_width + w > usable_per_cell {
-                    truncated_len = byte_idx;
-                    break;
-                }
-                text_width += w;
-            }
-            let text = &text[..truncated_len];
+            // the content area or the neighbouring pane.
+            let (text, text_width) = hume_rope::width::truncate_to_width(
+                text,
+                usable_per_cell as usize,
+                compose_ctx.tab_width,
+            );
+            let text_width = text_width as u16;
             let pad = usable_per_cell.saturating_sub(text_width);
             for px in 0..pad {
                 canvas.set_cell(gutter_x + px, y, " ", style);

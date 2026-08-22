@@ -55,16 +55,27 @@ pub(super) enum MiniBufferEvent {
 }
 
 impl MiniBuffer {
-    /// Column offset of the edit cursor within the rendered statusline.
+    /// Column offset of the cell at `byte_offset` into `input` within the
+    /// rendered statusline: the 1-column `pad_left` space the statusline
+    /// renderer prepends, plus the prompt's width, plus the display width of
+    /// `input` up to `byte_offset` (clamped to `input`'s length). Add
+    /// `area.x` to get the absolute screen column.
     ///
-    /// Accounts for the 1-column `pad_left` space prepended by the statusline
-    /// renderer, the prompt character, and the input text before the cursor.
-    /// Add `area.x` to get the absolute screen column.
-    pub(crate) fn statusline_cursor_x(&self) -> u16 {
+    /// Shared by the edit cursor ([`Self::statusline_cursor_x`], at
+    /// `self.cursor`) and the completion-overlay anchor (at a completion
+    /// span's start) — both are "where does this byte offset into `input`
+    /// land on screen" under the same prompt.
+    pub(crate) fn cursor_x_at(&self, byte_offset: usize) -> u16 {
         let pad: u16 = 1; // pad_left inserts one space before the MiniBuf span
         let prompt_w = text_width(&self.prompt) as u16;
-        let input_w = text_width(&self.input[..self.cursor]) as u16;
+        let safe_offset = byte_offset.min(self.input.len());
+        let input_w = text_width(&self.input[..safe_offset]) as u16;
         pad + prompt_w + input_w
+    }
+
+    /// Column offset of the edit cursor within the rendered statusline.
+    pub(crate) fn statusline_cursor_x(&self) -> u16 {
+        self.cursor_x_at(self.cursor)
     }
 
     /// Handle a single key event for standard mini-buffer editing.

@@ -21,14 +21,13 @@ use crate::lock_ext::LockExt;
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use unicode_segmentation::UnicodeSegmentation;
 
 use hume_engine::providers::OverlayProvider;
 use hume_engine::render::fill_rect_bg;
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
 
-use super::width::{cell_width, text_width};
+use super::width::{text_width, truncate_text, truncate_text_tail};
 
 /// Maximum panel width/height in terminal cells, before the pane-fraction
 /// clamp — mirrors `MAX_POPUP_WIDTH`'s role for the popup widget.
@@ -140,44 +139,16 @@ pub(crate) fn picker_styles(theme: &Theme) -> PickerStyles {
 /// Remove leading graphemes from `s` until its display width fits `budget`,
 /// keeping the *tail* — so the cursor cell (always at the end of the query,
 /// per the store's append/pop-at-end-only editing model) stays visible.
-/// Grapheme-cluster aware, matching the project's text-boundary discipline.
 fn truncate_tail(s: &str, budget: usize) -> String {
-    if text_width(s) <= budget {
-        return s.to_string();
-    }
-    let mut acc = 0usize;
-    let mut pieces: Vec<&str> = Vec::new();
-    for g in s.graphemes(true).rev() {
-        let w = cell_width(g);
-        if acc + w > budget {
-            break;
-        }
-        acc += w;
-        pieces.push(g);
-    }
-    pieces.into_iter().rev().collect()
+    truncate_text_tail(s, budget).to_string()
 }
 
 /// Remove trailing graphemes from `s` until its display width fits `budget`,
 /// keeping the *head* — the prompt is a fixed label, not something the user
 /// is editing, so if it must be clipped at all (a pathologically narrow
-/// panel), the readable prefix matters more than the tail. Grapheme-cluster
-/// aware, same discipline as `truncate_tail`.
+/// panel), the readable prefix matters more than the tail.
 fn truncate_head(s: &str, budget: usize) -> String {
-    if text_width(s) <= budget {
-        return s.to_string();
-    }
-    let mut acc = 0usize;
-    let mut pieces: Vec<&str> = Vec::new();
-    for g in s.graphemes(true) {
-        let w = cell_width(g);
-        if acc + w > budget {
-            break;
-        }
-        acc += w;
-        pieces.push(g);
-    }
-    pieces.concat()
+    truncate_text(s, budget).to_string()
 }
 
 /// Clip `s` to `budget` display cells, keeping the *tail* and prefixing a

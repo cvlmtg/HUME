@@ -7,7 +7,7 @@ use hume_platform::path::is_path_sep;
 
 use crate::editor::Editor;
 use crate::ui::theme::EditorColors;
-use crate::ui::width::{cell_width, text_width};
+use crate::ui::width::{text_width, truncate_text};
 
 /// The `FilePath` element does not implement [`super::StatuslineElement`]:
 /// its content isn't read from `Editor` directly, but computed externally by
@@ -101,16 +101,7 @@ pub(in crate::ui::statusline) fn shorten_path_to_width_with(
     let available = max_display_cols.saturating_sub(prefix_w + ellipsis_w);
 
     let filename = &components[n - 1];
-    let mut truncated = String::new();
-    let mut display_cols_used = 0usize;
-    for g in filename.graphemes(true) {
-        let gw = cell_width(g);
-        if display_cols_used + gw > available {
-            break;
-        }
-        truncated.push_str(g);
-        display_cols_used += gw;
-    }
+    let truncated = truncate_text(filename, available);
 
     if truncated.is_empty() {
         // Not even one grapheme of filename fits; just show the ellipsis.

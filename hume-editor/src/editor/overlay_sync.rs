@@ -6,7 +6,6 @@ use hume_engine::pipeline::RenderContext;
 
 use super::Editor;
 use crate::lock_ext::LockExt;
-use crate::ui::width::text_width;
 
 impl Editor {
     /// Write the current completion state into the shared `MinibufCompletionView` Arc
@@ -26,13 +25,7 @@ impl Editor {
                 .state
                 .minibuf
                 .as_ref()
-                .map(|mb| {
-                    let pad: u16 = 1;
-                    let prompt_w = text_width(&mb.prompt) as u16;
-                    let safe_end = state.span_start.min(mb.input.len());
-                    let token_w = text_width(&mb.input[..safe_end]) as u16;
-                    pad + prompt_w + token_w
-                })
+                .map(|mb| mb.cursor_x_at(state.span_start))
                 .unwrap_or(0);
             crate::ui::completion_overlay::MinibufCompletionView {
                 rows: state.candidates.iter().map(|c| c.display.clone()).collect(),

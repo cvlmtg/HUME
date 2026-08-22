@@ -31,8 +31,9 @@ pub(crate) struct MinibufCompletionView {
     pub rows: Vec<String>,
     /// Index of the currently-selected row.
     pub selected: usize,
-    /// Absolute terminal column where the popup's left edge begins.
-    /// Equals: `pad(1) + prompt_w(1) + display_width(input[..span_start])`.
+    /// Absolute terminal column where the popup's left edge begins — see
+    /// `MiniBuffer::cursor_x_at` for the formula (computed at the
+    /// completion span's start, not the edit cursor).
     pub anchor_x: u16,
     /// Whether to draw box-drawing border characters around the popup.
     /// When `false`, a 1-cell bg-filled frame is still drawn on all sides;
