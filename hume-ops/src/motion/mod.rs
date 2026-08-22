@@ -138,7 +138,6 @@ motion_cmd!(/// Move or extend cursors to the first non-blank character on their
 // `CommandRegistry` — reached only by `editor::visual_move`'s
 // `apply_visual_vertical` (the `9j`/`9k` numeric-prefix path), which already
 // has the buffer settings access a registered `fn`-pointer command wouldn't.
-// Passes `None` as the target-column hint (no sticky column across presses).
 
 /// Move or extend cursors down one line, preserving the display column.
 pub fn cmd_move_down(
@@ -149,7 +148,7 @@ pub fn cmd_move_down(
     tab_width: u8,
 ) -> SelectionSet {
     apply_motion(buf, sels, mode, count, |b, h| {
-        move_down_inner(b, h, None, tab_width)
+        move_down_inner(b, h, tab_width)
     })
 }
 
@@ -162,7 +161,7 @@ pub fn cmd_move_up(
     tab_width: u8,
 ) -> SelectionSet {
     apply_motion(buf, sels, mode, count, |b, h| {
-        move_up_inner(b, h, None, tab_width)
+        move_up_inner(b, h, tab_width)
     })
 }
 

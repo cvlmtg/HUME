@@ -98,8 +98,8 @@ pub(super) fn apply_visual_vertical(
     // Only an explicit count (`9j`) takes the pure buffer-line motion, to
     // match relative-line-number gutters even while wrapping. A bare `j`/`k`
     // always goes through `move_vertical` below so it shares one column
-    // model — the sticky *display* column `Selection::horiz` is documented
-    // for — with page/half-page scroll and the mouse wheel (`ScreenRow`),
+    // model — the sticky *display* column `Selection::sticky_display_col`
+    // holds — with page/half-page scroll and the mouse wheel (`ScreenRow`),
     // which must preserve display columns across virtual rows regardless of
     // wrap mode. The cost in no-wrap mode is a per-press format of the
     // cursor's line instead of pure rope arithmetic; `move_down_inner`'s

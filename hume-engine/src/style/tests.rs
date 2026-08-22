@@ -1221,7 +1221,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
 // ── Inline-insert char_offset partition invariant (B2) ────────────────
 
 /// Drive the real formatter with a mid-row insert, then style the result —
-/// end-to-end coverage that `resolve_grapheme_col`'s partition_point lands
+/// end-to-end coverage that `resolve_grapheme_display_col`'s partition_point lands
 /// on the real grapheme, not the insert sharing its char_offset.
 #[test]
 fn insert_mid_row_head_resolves_to_real_grapheme_col() {
@@ -1229,7 +1229,7 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
     // a(col0) b(col1) [insert XY](col2..4) c(col4) d(col5) e(col6) f(col7).
     // The insert and 'c' share char_offset 2 (the insert is pushed first,
     // at the offset of the grapheme it precedes) — the exact tie
-    // `resolve_grapheme_col` must break in favour of the real grapheme.
+    // `resolve_grapheme_display_col` must break in favour of the real grapheme.
     // Cursor at char 2 ('c') must land at display_col 4, not the insert's display_col 2.
     let rope = ropey::Rope::from_str("abcdef");
     let mut registry = crate::theme::ScopeRegistry::new();

@@ -241,8 +241,9 @@ fn cluster_str(slice: RopeSlice<'_>, start: usize, end: usize) -> Cow<'_, str> {
 /// renderer uses, so this and `hume_engine::format::grapheme_display` always
 /// agree on where a given position lands on screen.
 ///
-/// Used by `insert_tab` (Soft style: insert spaces to the next tab stop) and
-/// by dedent-on-Backspace (compute the previous tab stop).
+/// Used by `insert_tab` (Soft style: insert spaces to the next tab stop),
+/// dedent-on-Backspace (compute the previous tab stop), and vertical motion
+/// (`place_display_column`, which reads the column a cursor is leaving).
 pub fn display_col_in_line(
     slice: RopeSlice<'_>,
     line_idx: usize,
@@ -270,14 +271,18 @@ pub fn display_col_in_line(
 ///
 /// For `target_display_col == 0` this is the line start. When
 /// `target_display_col` is a tab stop and the line's leading content is
-/// whitespace (the only context in which this helper is called —
-/// dedent-on-Backspace), the position is exact: tabs jump to multiples of
-/// `tab_width` and spaces step by one, so every tab stop along the way is
-/// hit. If a grapheme would overshoot `target_display_col` (e.g. a tab when
-/// not aligned), the walk stops at the current position — the closest
-/// position not exceeding `target_display_col`. The walk never leaves the
-/// line: a `target_display_col` beyond the line's width stops on the line's
-/// `\n`.
+/// whitespace — dedent-on-Backspace's case — the position is exact: tabs
+/// jump to multiples of `tab_width` and spaces step by one, so every tab
+/// stop along the way is hit. Otherwise the result is the closest position
+/// not exceeding `target_display_col`: a grapheme that would overshoot (a
+/// tab when not aligned, a double-width cluster straddling the target)
+/// leaves the walk at the position before it. Vertical motion relies on that
+/// weaker guarantee, landing on the cluster the column falls inside.
+///
+/// The walk never leaves the line: a `target_display_col` beyond the line's
+/// width stops on the line's `\n`. Callers that want a *cursor* position
+/// want [`crate::lines::place_display_column`] instead, which clamps that
+/// case back onto the last real character.
 pub fn char_pos_at_display_col(
     slice: RopeSlice<'_>,
     line_idx: usize,

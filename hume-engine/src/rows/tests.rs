@@ -689,7 +689,7 @@ fn locate_skips_a_mid_line_inline_insert_sharing_the_real_graphemes_offset() {
     // right before 'b' shares 'b's char_offset (1). `locate` must resolve to
     // the real grapheme's column — 'a' at 0, the insert's own two cells at 1
     // and 2, 'b' at 3 — not the insert's column, matching what
-    // `style::resolve_grapheme_col` already guarantees for selection styling.
+    // `style::resolve_grapheme_display_col` already guarantees for selection styling.
     let rope = Rope::from_str("ab\n");
     let (providers, _calls) = with_counting_insert(0, 1, "XY");
     let mut s = FormatScratch::new();

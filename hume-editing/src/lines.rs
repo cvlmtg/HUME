@@ -31,11 +31,6 @@ pub fn leading_whitespace_end(buf: &Text, line: usize) -> usize {
     hume_rope::lines::leading_whitespace_end(buf.rope(), line)
 }
 
-/// See [`hume_rope::lines::snap_to_grapheme_boundary`].
-pub fn snap_to_grapheme_boundary(buf: &Text, line_start: usize, target: usize) -> usize {
-    hume_rope::lines::snap_to_grapheme_boundary(buf.rope(), line_start, target)
-}
-
 /// See [`hume_rope::lines::is_empty_line`].
 pub fn is_empty_line(buf: &Text, line: usize) -> bool {
     hume_rope::lines::is_empty_line(buf.rope(), line)

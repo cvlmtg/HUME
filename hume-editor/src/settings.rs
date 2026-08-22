@@ -136,12 +136,12 @@ impl FromStr for SignColumnConfig {
         let mode: SignColumnMode = mode_str.parse()?;
         let slots = match slots_str {
             Some(c) => {
-                let n: u8 = c.parse().map_err(|_| {
-                    format!("invalid signcolumn columns: expected 1–127, got '{c}'")
-                })?;
+                let n: u8 = c
+                    .parse()
+                    .map_err(|_| format!("invalid signcolumn slots: expected 1–127, got '{c}'"))?;
                 if n == 0 || n > 127 {
                     return Err(format!(
-                        "invalid signcolumn columns: expected 1–127, got '{n}'"
+                        "invalid signcolumn slots: expected 1–127, got '{n}'"
                     ));
                 }
                 n

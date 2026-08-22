@@ -33,7 +33,8 @@ pub struct Selection {
     /// Sticky display column for visual j/k motion. `None` means "not latched
     /// — recompute on next vertical move." Any horizontal motion or edit that
     /// touches this selection's line resets this to `None` by construction
-    /// (constructors set it to `None`; only `with_sticky_display_col` preserves it).
+    /// (constructors set it to `None`; `with_sticky_display_col` sets it, and
+    /// `shift` carries it through a same-line edit).
     pub(crate) sticky_display_col: Option<u32>,
 }
 

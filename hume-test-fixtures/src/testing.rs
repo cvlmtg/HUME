@@ -294,7 +294,7 @@ pub fn serialize_state(buf: &Text, sels: &SelectionSet) -> String {
 /// // Motion command (returns SelectionSet only):
 /// assert_state!(
 ///     "-[h]>ello\n",
-///     |(buf, sels)| cmd_move_right(&buf, sels, 1),
+///     |(buf, sels)| cmd_move_right(&buf, sels, 1, MotionMode::Move),
 ///     "h-[e]>llo\n",
 /// );
 /// ```

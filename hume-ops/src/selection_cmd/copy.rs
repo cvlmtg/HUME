@@ -9,14 +9,13 @@ use hume_editing::text::Text;
 /// them to the selection set.
 ///
 /// Each copy preserves the **char-offset** column of both `anchor` and
-/// `head` (not a display column — wrong for tabs/wide chars, same narrow gap
-/// `move_down_inner`/`move_up_inner` used to have before they switched to
-/// `place_display_column`'s display-column model). Left as char-offset here because
+/// `head`, not a display column — so a copy lands one column off under a tab
+/// or a wide grapheme. Char-offset because
 /// `cmd_copy_selection_on_next_line`/`_prev_line` are registered directly in
-/// `CommandRegistry` as bare `fn` pointers — no channel to a per-buffer
-/// `tab_width` exists at that call shape, unlike the `9j`/`9k` path, which
-/// isn't registered and is reached through code that already resolves
-/// buffer settings.
+/// `CommandRegistry` as bare `fn` pointers, and no channel to a per-buffer
+/// `tab_width` exists at that call shape. Vertical *motion* (`9j`/`9k`) uses
+/// `place_display_column` instead precisely because it isn't registered, and
+/// so is reached through code that already resolves buffer settings.
 ///
 /// Clamped to the length of its target line and snapped to a grapheme
 /// boundary. Copying stops early once a target line doesn't exist (i.e. the

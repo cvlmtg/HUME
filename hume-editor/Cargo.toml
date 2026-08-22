@@ -24,7 +24,6 @@ rustc-hash.workspace = true
 steel-core = { version = "0.8.2", features = ["custom-hash"] }
 ropey.workspace = true
 unicode-segmentation.workspace = true
-unicode-width.workspace = true
 ratatui.workspace = true
 # Unused directly: ratatui's layout-cache feature needs critical-section's std
 # backend registered (no_std by default, otherwise a link error on Windows).
@@ -38,6 +37,9 @@ arboard = "3"
 nucleo-matcher = "0.3.1"
 
 [dev-dependencies]
+# Independent width oracle for UI-chrome tests: asserts against `unicode-width`
+# directly rather than through `hume_rope::width`, the code under test.
+unicode-width.workspace = true
 pretty_assertions = "1.4.1"
 proptest = "1.11.0"
 insta = "1.47"

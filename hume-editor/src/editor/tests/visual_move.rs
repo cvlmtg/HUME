@@ -260,11 +260,11 @@ fn visual_move_up_with_explicit_count_moves_buffer_lines() {
 
 /// No-wrap `j` (`ContentRow`) and a screen-relative scroll of the same row
 /// count (`ScreenRow`, what page/half-page/the mouse wheel use) must land on
-/// the *same* character — both preserve the sticky *display* column, not the
-/// char-offset column `move_down_inner` uses. Line 0 has a leading tab (tab
-/// width 4): 'f' sits at char index 1 but display column 4. Landing by char
-/// column would put both on line 1's char index 1 ('b'); landing by display
-/// column — the correct, unified model — puts both on char index 4 ('e').
+/// the *same* character — both preserve the sticky *display* column. Line 0
+/// has a leading tab (tab width 4): 'f' sits at char index 1 but display
+/// column 4. Landing by char column would put both on line 1's char index 1
+/// ('b'); landing by display column — the model every vertical path now
+/// shares — puts both on char index 4 ('e').
 #[test]
 fn no_wrap_bare_j_and_screen_row_scroll_agree_on_display_column() {
     use crate::editor::visual_move::{VerticalUnit, apply_visual_vertical};

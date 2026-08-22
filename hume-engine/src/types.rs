@@ -172,9 +172,16 @@ pub struct Grapheme {
     /// reserved for a virtual-*row*'s cells, which have no buffer position at
     /// all (see [`crate::rows::RowMap::render_row`]).
     pub char_offset: usize,
-    /// Display column within the row (0-based, accounts for preceding
-    /// widths). Row-relative — this is the row a wrapped or virtual line
-    /// produced, not the underlying buffer line's own display column.
+    /// Display column within the row this grapheme ended up on (0-based,
+    /// accounting for the widths before it). Row-relative: when a line wraps,
+    /// the graphemes carried onto the continuation row are renumbered from
+    /// that row's own left edge (its indent, under `WrapMode::Indent`).
+    ///
+    /// With wrapping off a row *is* the whole line, so the same value is also
+    /// the line's own display column and may run far past the viewport's
+    /// width — which is why the render path subtracts
+    /// `ViewportState::horizontal_offset` from it rather than treating it as
+    /// a screen cell.
     pub display_col: u32,
     /// Display width: 1 for ASCII/most Unicode, 2 for CJK, >1 for tabs.
     pub width: u8,

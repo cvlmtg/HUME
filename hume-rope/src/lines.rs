@@ -157,10 +157,13 @@ pub fn leading_whitespace_end(rope: &Rope, line: usize) -> usize {
 }
 
 /// Snap `target` back to the nearest grapheme boundary at or before it,
-/// walking forward from `line_start`. Used by vertical motions after computing
-/// a char-offset column target, ensuring the cursor always lands on a cluster
-/// boundary.
-pub fn snap_to_grapheme_boundary(rope: &Rope, line_start: usize, target: usize) -> usize {
+/// walking forward from `line_start`, so a computed column target always
+/// lands on a cluster boundary rather than inside one.
+///
+/// Crate-internal: [`place_char_column`] is the only caller, and the column
+/// placement it does is what every outside caller actually wants — a bare
+/// snap without the line's own clamp is a half-answer.
+pub(crate) fn snap_to_grapheme_boundary(rope: &Rope, line_start: usize, target: usize) -> usize {
     let mut pos = line_start;
     loop {
         let next = crate::grapheme::next_grapheme_boundary(rope.slice(..), pos);

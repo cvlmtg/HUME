@@ -316,7 +316,8 @@ pub(crate) fn compose_row(
             continue;
         }
         // Clip cells that start before the viewport edge. `g.display_col` is
-        // a document column (`u32`), but this render path always runs behind
+        // a row column (`u32`), which with wrapping off spans the whole
+        // unwrapped line, but this render path always runs behind
         // `with_h_window` (`pane_render.rs`), so a cell surviving the skip
         // above sits within one viewport width of `h_offset` — safely
         // representable in the terminal-cell (`u16`) domain the rest of

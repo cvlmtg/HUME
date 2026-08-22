@@ -81,7 +81,7 @@ impl Default for FrameScratch {
 /// All scratch buffers needed for one render pass.
 ///
 /// Create once with `RenderContext::new()` and pass `&mut ctx` to
-/// `EngineView::render()` and `cursor::screen_pos()` each frame. After a few
+/// `EngineView::render()` and `cursor::content_pos()` each frame. After a few
 /// frames all internal `Vec`s have stabilised capacity and no further heap
 /// allocations occur.
 pub struct RenderContext {
