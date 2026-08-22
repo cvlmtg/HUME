@@ -14,6 +14,15 @@
 //! `hume-rope/src/width.rs` (the implementation itself), for direct
 //! `unicode-width` use.
 //!
+//! **What is not scanned**: test code (`collect_source_rs` skips any
+//! `tests/` directory and any `tests.rs`) and this `lints/` directory. Tests
+//! are deliberately out of scope here — several assert against
+//! `unicode-width` directly, as an oracle independent of the code under
+//! test. Note also that the forbidden list is `unicode-width`'s own symbols:
+//! a *hand-rolled* width computation (re-deriving `tw - col % tw`, or
+//! counting `chars()`) violates the same invariant without tripping this
+//! lint.
+//!
 //! **Opt-out**: annotate a line with `// display-width-safe: <reason>` — the
 //! two known-legitimate cases are `SignColumnConfig::width`/`GutterColumn::width`,
 //! whose `.width()` is a gutter *cell count*, not a display-width measurement.

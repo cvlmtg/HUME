@@ -15,7 +15,6 @@ fn pure_insert_at_start() {
     assert_eq!(e.start_byte, 0);
     assert_eq!(e.old_end_byte, 0);
     assert_eq!(e.new_end_byte, 2);
-    // column-name-safe: tree-sitter's Point::column is a byte offset
     assert_eq!(e.start_position, tree_sitter::Point { row: 0, column: 0 });
     assert_eq!(e.old_end_position, tree_sitter::Point { row: 0, column: 0 });
     assert_eq!(e.new_end_position, tree_sitter::Point { row: 0, column: 2 });

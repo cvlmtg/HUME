@@ -564,7 +564,7 @@ fn goto_location_directory_target_errors_with_no_jump_entry() {
     assert_eq!(state(&ed), before);
 }
 
-/// `(goto-location! (list path line col))` on a path that doesn't exist yet
+/// `(goto-location! (list path line char-col))` on a path that doesn't exist yet
 /// must open a new-file buffer and jump to it, the same tolerance `:e` has —
 /// `resolve_path_or_uri` shares `Editor::resolve_open_path`'s
 /// `Buffer::from_file_or_new` chokepoint.

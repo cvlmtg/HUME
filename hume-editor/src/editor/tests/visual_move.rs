@@ -240,7 +240,7 @@ fn visual_move_down_with_explicit_count_moves_buffer_lines() {
             .primary()
             .sticky_display_col()
             .is_none(),
-        "buffer-line path (preferred_col: None) doesn't set sticky display column"
+        "buffer-line path doesn't set a sticky display column"
     );
 }
 

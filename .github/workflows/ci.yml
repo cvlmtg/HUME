@@ -84,6 +84,10 @@ jobs:
         shell: bash
         run: bash scripts/fetch-test-grammars.sh
 
+      # Both env vars are set for every cargo-test step below, matching
+      # `scripts/test-all.sh`, which exports them once before both runs — the
+      # script's whole purpose is that running it locally reproduces this job
+      # exactly, so a step-scoped `env:` here would quietly break that.
       - name: Test
         env:
           HUME_REQUIRE_LIVE_GRAMMAR_E2E: "1"
@@ -92,4 +96,7 @@ jobs:
 
       # --all-targets above excludes doctests; run them separately.
       - name: Doctests
+        env:
+          HUME_REQUIRE_LIVE_GRAMMAR_E2E: "1"
+          HUME_REQUIRE_GRAMMAR_FIXTURES: "1"
         run: cargo test --doc
