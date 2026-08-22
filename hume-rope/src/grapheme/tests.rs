@@ -221,6 +221,20 @@ fn grapheme_count_to_buffer_end() {
     assert_eq!(grapheme_count(buf.slice(..), 0, 3), 3);
 }
 
+#[test]
+fn grapheme_col_and_display_col_diverge_after_a_tab() {
+    // The confusion the whole column taxonomy exists to prevent, pinned at
+    // the two functions that define it. On "\tx", 'x' is preceded by exactly
+    // one grapheme cluster, so its *grapheme* column is 1 — the unit the
+    // editing model counts in, and the one HUME shows a user (1-based: 2).
+    // Its *display* column is 4, because the tab expands to the next stop.
+    // Rendering the display column as "the column" would report 5 for a
+    // cursor the user reached with a single press of →.
+    let buf = rope("\tx\n");
+    assert_eq!(grapheme_col_in_line(buf.slice(..), 0, 1), 1);
+    assert_eq!(display_col_in_line(buf.slice(..), 0, 1, 4), 4);
+}
+
 // ── display_col_in_line ───────────────────────────────────────────────────
 
 #[test]
@@ -305,6 +319,20 @@ fn char_pos_at_tab_stop_after_tab() {
     // tab (char 1).
     let buf = rope("\tx\n");
     assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 4, 4), 1);
+}
+
+#[test]
+fn char_pos_at_display_col_inside_a_wide_cluster_stays_on_its_start() {
+    // "漢bc\n": 漢 occupies display cols 0 AND 1, so col 1 falls *inside*
+    // the cluster rather than on any cluster start. The walk must stop
+    // before the grapheme that would overshoot and answer 0 (漢's own
+    // position) — never 1, which is 'b', a full column to the right of
+    // where the caller pointed. Every other test here targets a cluster
+    // start, where the overshoot branch never fires.
+    let buf = rope("\u{6F22}bc\n");
+    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 0, 4), 0);
+    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 1, 4), 0);
+    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 2, 4), 1); // 'b'
 }
 
 #[test]

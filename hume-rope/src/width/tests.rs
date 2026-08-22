@@ -113,6 +113,36 @@ fn grapheme_width_lone_combining_mark_clamps_to_one() {
     assert_eq!(grapheme_width("\u{0301}", 0, 4), 1);
 }
 
+#[test]
+fn no_grapheme_cluster_exceeds_the_upper_clamp() {
+    // `grapheme_width`'s upper clamp is defensive, not load-bearing: the
+    // pinned `unicode-width` already measures every one of these multi-code-
+    // point clusters as 2, so nothing reaches the clamp to be cut down. This
+    // test exists to notice if that ever stops being true — a `unicode-width`
+    // bump that started summing a ZWJ sequence's parts (5 code points, 3 of
+    // them emoji) would silently turn one glyph into a 6-column cell, and the
+    // clamp would start doing real work with no other test to say so.
+    for cluster in [
+        "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}", // ZWJ family
+        "\u{1F1EC}\u{1F1E7}",                          // regional-indicator flag
+        "1\u{FE0F}\u{20E3}",                           // keycap
+        "\u{1F44D}\u{1F3FD}",                          // emoji + skin-tone modifier
+        "\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}", // tag flag
+    ] {
+        assert_eq!(
+            cluster.graphemes(true).count(),
+            1,
+            "fixture must be a single cluster: {cluster:?}"
+        );
+        assert_eq!(
+            unicode_width::UnicodeWidthStr::width(cluster),
+            2,
+            "unicode-width no longer caps this cluster at 2: {cluster:?}"
+        );
+        assert_eq!(grapheme_width(cluster, 0, 4), 2);
+    }
+}
+
 // ── str_width ────────────────────────────────────────────────────────────
 
 #[test]

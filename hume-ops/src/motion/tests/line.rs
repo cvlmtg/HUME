@@ -254,6 +254,33 @@ fn move_up_basic() {
 }
 
 #[test]
+fn move_up_preserves_display_column_across_a_tab() {
+    // The upward twin of `move_down_preserves_display_column_across_a_tab`:
+    // both directions share `to_line_keeping_display_col`, but only down was
+    // asserted on anything but ASCII. Cursor on 'o' (char offset 2) of the
+    // tabbed line sits at display column 5 (tab expands to 4, 'w' is 1
+    // more); moving up must land on display column 5 of the plain line —
+    // 'f' (char offset 5), not char-offset column 2 ('c').
+    assert_state!(
+        "abcdefgh\n\tw-[o]>rld\n",
+        |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move, 4),
+        "abcde-[f]>gh\n\tworld\n"
+    );
+}
+
+#[test]
+fn move_up_preserves_display_column_across_a_wide_cjk_char() {
+    // 漢 is 2 display columns but 1 char, so 'b' sits at display column 2.
+    // Moving up must land on display column 2 — 'c' — not char-offset
+    // column 1 ('b').
+    assert_state!(
+        "abcdefgh\n\u{6F22}-[b]>c\n",
+        |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move, 4),
+        "ab-[c]>defgh\n\u{6F22}bc\n"
+    );
+}
+
+#[test]
 fn move_up_preserves_display_column() {
     assert_state!(
         "hello\nwor-[l]>d\n",
