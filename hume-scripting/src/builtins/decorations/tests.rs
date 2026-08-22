@@ -229,7 +229,7 @@ fn virtual_line_spec_rejects_bad_anchor_symbol() {
 }
 
 #[test]
-fn virtual_line_spec_rejects_control_character_in_text() {
+fn virtual_line_spec_rejects_newline_in_text() {
     // A virtual line renders as a single row (`rows.rs`'s
     // `segment_virtual_row`); a raw newline would become one garbled
     // `CellContent::Virtual` cell instead of splitting the row.
@@ -240,7 +240,45 @@ fn virtual_line_spec_rejects_control_character_in_text() {
     let err = virtual_line_specs(list(vec![entry]))
         .unwrap_err()
         .to_string();
-    assert!(err.contains("control character"), "got: {err}");
+    assert!(err.contains("newline"), "got: {err}");
+}
+
+#[test]
+fn virtual_line_spec_rejects_carriage_return_in_text() {
+    let entry = hashmap(vec![
+        ("line", SteelVal::IntV(0)),
+        ("text", SteelVal::StringV("a\rb".into())),
+    ]);
+    let err = virtual_line_specs(list(vec![entry]))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("newline"), "got: {err}");
+}
+
+#[test]
+fn virtual_line_spec_keeps_a_literal_tab_in_text() {
+    // The engine expands a tab in a virtual row's text to the next tab
+    // stop (`hume_engine::rows::segment_virtual_row`) — this builtin no
+    // longer expands it, or rejects it, itself.
+    let entry = hashmap(vec![
+        ("line", SteelVal::IntV(0)),
+        ("text", SteelVal::StringV("\tx".into())),
+    ]);
+    let specs = virtual_line_specs(list(vec![entry])).expect("a tab is accepted");
+    assert_eq!(specs[0].text, "\tx");
+}
+
+#[test]
+fn virtual_line_spec_maps_other_control_characters_to_a_space() {
+    // A control character other than tab has no sensible one-row
+    // rendering, so it becomes a literal space rather than erroring —
+    // 1-for-1, so a caller's `'segments` char offsets stay valid.
+    let entry = hashmap(vec![
+        ("line", SteelVal::IntV(0)),
+        ("text", SteelVal::StringV("a\u{7}b".into())), // BEL
+    ]);
+    let specs = virtual_line_specs(list(vec![entry])).expect("mapped, not rejected");
+    assert_eq!(specs[0].text, "a b");
 }
 
 #[test]

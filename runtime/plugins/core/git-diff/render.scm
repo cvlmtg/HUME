@@ -64,72 +64,6 @@
 
 ;; ── Inline: deleted lines + word highlights ─────────────────────────────────
 
-;;; True for a char `set-virtual-lines!` rejects in `'text`
-;;; (`c.is_control()` in `hume-scripting/src/builtins/decorations.rs`, Rust's
-;;; `char::is_control`, i.e. Unicode category `Cc`: U+0000–U+001F and
-;;; U+007F–U+009F). Steel has no `char-control?` builtin, so both ranges are
-;;; checked by hand rather than delegating.
-(define (git-diff/control-char? c)
-  (let ([n (char->integer c)])
-    (or (< n 32) (and (>= n 127) (< n 160)))))
-
-;;; Fast path for `git-diff/expand-tabs`/`git-diff/expanded-offset`: most
-;;; lines have no control character (only tab-indented ones do), so skip
-;;; the walk and use the line as-is.
-(define (git-diff/needs-expansion? text)
-  (let loop ([i 0])
-    (cond [(= i (string-length text)) #f]
-          [(git-diff/control-char? (string-ref text i)) #t]
-          [else (loop (+ i 1))])))
-
-;;; Next tab stop at or after column `col`, `tab-width` columns apart —
-;;; shared by `expand-tabs` (building the expanded string) and
-;;; `expanded-offset` (mapping one raw offset into it), so the two always
-;;; agree on where a given tab lands.
-;;;
-;;; `col` here counts one Steel char (Unicode scalar value) per preceding
-;;; character — the only per-character measure Steel string ops give a
-;;; plugin, and there's no scripting builtin exposing the Rust side's
-;;; display-width primitive (`hume_rope::grapheme::tab_advance`, wrapped as
-;;; `hume-engine`'s `tab_display_width`) for this to delegate to instead.
-;;; The live buffer's own renderer counts a wide CJK grapheme as 2 display
-;;; columns before a tab; this counts it as 1. So a removed line with a wide
-;;; or combining-mark character before a tab can show that tab landing one
-;;; column off from where the live buffer would have rendered it — narrow,
-;;; but real; not something this function can fix on its own.
-(define (git-diff/tab-stop col tab-width)
-  (* tab-width (+ 1 (quotient col tab-width))))
-
-;;; `text` with every control character replaced by something safe for
-;;; `set-virtual-lines!`'s `'text`, which raises on `\t` and friends: a tab
-;;; expands to spaces up to the next `tab-width` column stop, using
-;;; `git-diff/tab-stop`'s char-counted columns (see its doc for where that
-;;; can disagree with the live buffer's own rendering); anything else
-;;; becomes one literal space. Only called once `git-diff/needs-expansion?`
-;;; is already known `#t`.
-(define (git-diff/expand-tabs text tab-width)
-  (let loop ([i 0] [col 0] [acc '()])
-    (if (= i (string-length text))
-        (list->string (reverse acc))
-        (let ([c (string-ref text i)])
-          (if (char=? c #\tab)
-              (let ([stop (git-diff/tab-stop col tab-width)])
-                (loop (+ i 1) stop (append (map (lambda (_) #\space) (range 0 (- stop col))) acc)))
-              (loop (+ i 1) (+ col 1) (cons (if (git-diff/control-char? c) #\space c) acc)))))))
-
-;;; The column raw char offset `idx` into `text` lands at after the same
-;;; expansion `expand-tabs` performs — walked independently rather than
-;;; sharing state with it, since segment bounds are only needed for a line
-;;; that actually has segments, not for every expanded line.
-(define (git-diff/expanded-offset text tab-width idx)
-  (let loop ([i 0] [col 0])
-    (if (= i idx)
-        col
-        (loop (+ i 1)
-              (if (char=? (string-ref text i) #\tab)
-                  (git-diff/tab-stop col tab-width)
-                  (+ col 1))))))
-
 ;;; Where a hunk's removed old-side lines attach, as a `(kind . line)` pair.
 ;;; `'after (- new-start 1)` when a preceding line exists — it renders at
 ;;; the same visual position `'before new-start` would (adjacent lines'
@@ -158,12 +92,11 @@
 ;;; A whole removed line with no word-level detail — a pure deletion, an
 ;;; unpaired excess old line inside a change hunk, or a pair whose
 ;;; `diff-words` call hit its deadline (coarse result, not trustworthy
-;;; enough to show per-word).
-(define (git-diff/plain-virtual-line old-line anchor tab-width)
-  (let ([text (if (git-diff/needs-expansion? old-line)
-                   (git-diff/expand-tabs old-line tab-width)
-                   old-line)])
-    (git-diff/virtual-line-hash text anchor '())))
+;;; enough to show per-word). `old-line` is passed straight through:
+;;; `set-virtual-lines!` accepts a literal tab in `'text` and expands it
+;;; itself, so this plugin has no expansion of its own to do.
+(define (git-diff/plain-virtual-line old-line anchor)
+  (git-diff/virtual-line-hash old-line anchor '()))
 
 ;;; `old-line`'s virtual row with word-del `'segments` built from
 ;;; `diff-words`' hunks (`(old-start old-end new-start new-end old-text
@@ -171,21 +104,14 @@
 ;;; offsets). Filtered to hunks that actually remove something from the OLD
 ;;; side (`old-start < old-end`): a hunk that's a pure insertion on this
 ;;; line has nothing to underline here, and a zero-width segment would
-;;; raise (`set-virtual-lines!`'s `start < end` check). Segment bounds are
-;;; remapped through the same tab expansion as `'text` itself — the host
-;;; validates `'segments` against the *expanded* text's length, not the raw
-;;; line's.
-(define (git-diff/virtual-line-with-segments old-line anchor tab-width word-hunks)
-  (let* ([expand? (git-diff/needs-expansion? old-line)]
-         [text (if expand? (git-diff/expand-tabs old-line tab-width) old-line)]
-         [removals (filter (lambda (wh) (< (list-ref wh 0) (list-ref wh 1))) word-hunks)]
-         [segments (map (lambda (wh)
-                          (let ([s (list-ref wh 0)] [e (list-ref wh 1)])
-                            (list (if expand? (git-diff/expanded-offset old-line tab-width s) s)
-                                  (if expand? (git-diff/expanded-offset old-line tab-width e) e)
-                                  "diff.minus.word")))
+;;; raise (`set-virtual-lines!`'s `start < end` check). Offsets need no
+;;; remapping — `'text` is `old-line` unexpanded, so its char offsets are
+;;; exactly `diff-words`' own.
+(define (git-diff/virtual-line-with-segments old-line anchor word-hunks)
+  (let* ([removals (filter (lambda (wh) (< (list-ref wh 0) (list-ref wh 1))) word-hunks)]
+         [segments (map (lambda (wh) (list (list-ref wh 0) (list-ref wh 1) "diff.minus.word"))
                         removals)])
-    (git-diff/virtual-line-hash text anchor segments)))
+    (git-diff/virtual-line-hash old-line anchor segments)))
 
 ;;; `word-hunks`' new-side fields (char offsets into the live line,
 ;;; unaffected by tab expansion — the live buffer still has real tabs) ->
@@ -218,20 +144,20 @@
 ;;; One paired (old-line . new-line) -> `(virtual-line . spans)`, one
 ;;; `diff-words` call shared by both — see `render-inline!`'s comment on
 ;;; why this makes two decoration kinds instead of one.
-(define (git-diff/paired-line->vl+spans old-line new-line line-offset anchor tab-width)
+(define (git-diff/paired-line->vl+spans old-line new-line line-offset anchor)
   (let* ([result (diff-words old-line new-line)]
          [word-hunks (car result)]
          [deadline-hit? (cdr result)])
     (if deadline-hit?
-        (cons (git-diff/plain-virtual-line old-line anchor tab-width) '())
-        (cons (git-diff/virtual-line-with-segments old-line anchor tab-width word-hunks)
+        (cons (git-diff/plain-virtual-line old-line anchor) '())
+        (cons (git-diff/virtual-line-with-segments old-line anchor word-hunks)
               (git-diff/word-hunks->new-side-spans line-offset word-hunks)))))
 
 ;;; One hunk's removed old-side lines -> `(virtual-lines . spans)`.
 ;;; `old-lines[0, paired-count)` have a same-index `new-lines` counterpart
 ;;; to word-diff against; any remainder (a hunk removing more lines than it
 ;;; adds) gets a plain whole-line row, same treatment as a pure deletion.
-(define (git-diff/hunk-old-lines->virtual+spans bid old-lines new-lines new-start paired-count anchor tab-width)
+(define (git-diff/hunk-old-lines->virtual+spans bid old-lines new-lines new-start paired-count anchor)
   (let* ([offsets (if (> paired-count 0)
                        (git-diff/paired-line-offsets bid new-start new-lines paired-count)
                        '())]
@@ -243,10 +169,10 @@
                        (reverse acc)
                        (loop (cdr olds) (cdr news) (cdr offs) (- n 1)
                              (cons (git-diff/paired-line->vl+spans
-                                     (car olds) (car news) (car offs) anchor tab-width)
+                                     (car olds) (car news) (car offs) anchor)
                                    acc))))]
          [unpaired (map (lambda (old-line)
-                          (cons (git-diff/plain-virtual-line old-line anchor tab-width) '()))
+                          (cons (git-diff/plain-virtual-line old-line anchor) '()))
                         (list-tail old-lines paired-count))]
          [all (append paired unpaired)])
     (cons (map car all) (apply append (map cdr all)))))
@@ -254,10 +180,8 @@
 ;;; One hunk -> `(virtual-lines . spans)` for `render-inline!`. A pure
 ;;; addition (`old-count` 0) contributes nothing here — nothing was removed
 ;;; to show as a virtual row, and `render-line-bgs!` alone covers its
-;;; new-side tint. `tab-width` is a `render-inline!`-wide constant, not
-;;; per-hunk state — the caller reads it once and passes it down, rather
-;;; than this making a `get-option` host call per hunk.
-(define (git-diff/hunk-inline-data bid hunk tab-width)
+;;; new-side tint.
+(define (git-diff/hunk-inline-data bid hunk)
   (let* ([old-count (list-ref hunk 1)]
          [new-start (list-ref hunk 2)]
          [new-count (list-ref hunk 3)]
@@ -267,7 +191,7 @@
         (cons '() '())
         (git-diff/hunk-old-lines->virtual+spans
           bid old-lines new-lines new-start (min old-count new-count)
-          (git-diff/hunk-anchor new-start) tab-width))))
+          (git-diff/hunk-anchor new-start)))))
 
 ;;; `hunks → (set-virtual-lines! …)` + `(set-extra-highlights! …)`. Two
 ;;; setter calls, not this repo's usual one — a single word-diff pass
@@ -275,8 +199,7 @@
 ;;; new-side highlight spans), and splitting this into two renderers to
 ;;; keep one setter each would call `diff-words` twice for no benefit.
 (define (git-diff/render-inline! bid hunks)
-  (let* ([tab-width (get-option bid "tab-width")]
-         [results (map (lambda (h) (git-diff/hunk-inline-data bid h tab-width)) hunks)]
+  (let* ([results (map (lambda (h) (git-diff/hunk-inline-data bid h)) hunks)]
          [virtual-lines (apply append (map car results))]
          [spans (apply append (map cdr results))])
     (set-virtual-lines! git-diff/*source* bid virtual-lines)

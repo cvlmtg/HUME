@@ -143,11 +143,21 @@ fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
 
     let text = field("text").ok_or_else(|| generic_err("set-virtual-lines!: missing 'text"))?;
     let text = string_arg(text, "set-virtual-lines! text")?;
-    if let Some(c) = text.chars().find(|c| c.is_control()) {
+    if text.contains(['\n', '\r']) {
         steel::stop!(Generic =>
-            "set-virtual-lines!: 'text contains control character {:?} — virtual lines render \
-             as a single row, so text must not contain newlines or other control characters", c);
+            "set-virtual-lines!: 'text must not contain a newline — virtual lines render as a \
+             single row");
     }
+    // A tab renders like a real buffer line's tab — the engine expands it to
+    // the next tab stop (`hume_engine::rows::segment_virtual_row`), so
+    // callers no longer need to expand it themselves. Any other control
+    // character has no sensible one-row rendering and becomes a literal
+    // space, char-for-char, so a caller's `'segments` offsets (validated
+    // below) stay aligned with `text`.
+    let text: String = text
+        .chars()
+        .map(|c| if c != '\t' && c.is_control() { ' ' } else { c })
+        .collect();
 
     let before = match field("anchor") {
         None => false,

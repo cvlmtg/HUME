@@ -13,11 +13,14 @@
 // hand from the committed-vs-buffer text each fixture sets up, never by
 // calling `diff-buffer-lines`/`diff-words` in the test itself.
 
+use super::*;
+
 use std::path::Path;
 use std::time::Duration;
 
-use super::*;
+use super::super::render_snapshot::render_to_styled_string;
 use hume_scripting::ScriptingHost;
+use ratatui::layout::Rect;
 
 const SOURCE: &str = "git-diff";
 
@@ -356,7 +359,7 @@ fn inline_change_renders_virtual_line_word_spans_and_tint() {
 }
 
 #[test]
-fn inline_tab_indented_deletion_expands_virtual_line_text() {
+fn inline_tab_indented_deletion_keeps_a_literal_tab_that_still_renders_at_the_right_column() {
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\n\ttabbed line\nthree\n", "v1");
@@ -364,6 +367,7 @@ fn inline_tab_indented_deletion_expands_virtual_line_text() {
 
     let tmp = safe_tempdir();
     let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     drain_until(&mut ed, |ed| {
@@ -379,19 +383,69 @@ fn inline_tab_indented_deletion_expands_virtual_line_text() {
         vec![(
             0,
             false,
-            "    tabbed line".to_string(),
+            "\ttabbed line".to_string(),
             Some("diff.minus".to_string()),
             Vec::new(),
         )],
-        "the tab must expand to the default 4-wide stop, matching the live \
-         buffer's own rendering, not survive as a literal \\t \
-         (set-virtual-lines! rejects control chars)"
+        "set-virtual-lines! now accepts a literal tab in 'text and no longer \
+         expands it — the engine expands it at render time instead, the \
+         same as a real buffer line's tab"
     );
     assert_eq!(
         line_bgs(&ed, bid),
         Vec::<(usize, String)>::new(),
         "a pure deletion has no live new-side line to tint"
     );
+
+    // Frame-level: the tab must still land on the default 4-wide stop on
+    // screen, exactly as it did when the plugin expanded it by hand.
+    let snap = render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
+    insta::assert_snapshot!(snap);
+}
+
+#[test]
+fn inline_wide_cjk_before_tab_in_a_deletion_shifts_the_tab_on_screen() {
+    // The bug this whole change fixes: the plugin used to expand a deleted
+    // line's tabs itself, counting one Steel char (not one display column)
+    // per preceding character — a wide CJK grapheme before a tab landed
+    // that tab one column early. Now the plugin stores the line verbatim
+    // and the engine expands it, so a wide char correctly shifts the stop
+    // by its full 2-column width.
+    let repo = safe_tempdir();
+    git_init(repo.path());
+    commit_file(repo.path(), "f.txt", "one\n\u{6F22}\ttabbed\nthree\n", "v1");
+    std::fs::write(repo.path().join("f.txt"), "one\nthree\n").unwrap();
+
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    let bid = open(&mut ed, &repo.path().join("f.txt"));
+
+    drain_until(&mut ed, |ed| {
+        !ed.state
+            .config
+            .decorations
+            .virtual_lines_for(SOURCE, bid)
+            .is_empty()
+    });
+
+    assert_eq!(
+        vlines(&ed, bid),
+        vec![(
+            0,
+            false,
+            "\u{6F22}\ttabbed".to_string(),
+            Some("diff.minus".to_string()),
+            Vec::new(),
+        )],
+        "the stored text is the line verbatim — no plugin-side expansion"
+    );
+
+    // 漢 occupies columns 0-1, so the tab (tab_width 4) advances from
+    // column 2 to column 4 — not column 3, which a char-counting (not
+    // column-counting) expansion would have produced.
+    let snap = render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
+    insta::assert_snapshot!(snap);
 }
 
 #[test]

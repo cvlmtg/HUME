@@ -1,0 +1,13 @@
+---
+source: hume-editor/src/editor/tests/unix/git_diff_plugin.rs
+assertion_line: 403
+expression: snap
+---
+<fg=#e05050,bg=#3a3a3a>- </><fg=#c8c8d2,bg=#3a3a3a>1 </><fg=#000000,bg=#ffffff>o</><fg=#d0d0d0,bg=#3a3a3a>ne</>
+<fg=#808080,bg=#3e2424>    </><fg=#d0d0d0,bg=#3e2424>    tabbed line</>
+<fg=#808080,bg=#1a1a1a>  1 </><fg=#d0d0d0,bg=#1a1a1a>three</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#808080,bg=#1a1a1a>~</>
+<fg=#000000,bg=#ffffff> Opened f.txt</>
