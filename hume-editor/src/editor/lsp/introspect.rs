@@ -319,7 +319,7 @@ pub(crate) fn diagnostics_for_buffer(
         Some(Err(e)) => return Err(e),
     };
     let (start, end) = range.unwrap_or((0, usize::MAX));
-    let Some(rope) = state.buffers.try_get(bid).map(|b| b.text().rope()) else {
+    let Some(text) = state.buffers.try_get(bid).map(|b| b.text()) else {
         return Ok(Vec::new());
     };
 
@@ -337,12 +337,12 @@ pub(crate) fn diagnostics_for_buffer(
             // Landing there instead of the buffer's last content line would
             // hand plugins a `line` that later fails the fail-fast bound
             // check every decoration setter now enforces.
-            let last_content_char = rope.len_chars().saturating_sub(1);
+            let last_content_char = text.len_chars().saturating_sub(1);
             let clamped_start = d.start.min(last_content_char);
-            let line = rope.char_to_line(clamped_start);
-            let char_col = clamped_start - rope.line_to_char(line);
+            let line = text.char_to_line(clamped_start);
+            let char_col = hume_editing::lines::char_col_in_line(text, line, clamped_start);
             let grapheme_col =
-                hume_rope::grapheme::grapheme_col_in_line(rope.slice(..), line, clamped_start);
+                hume_editing::grapheme::grapheme_col_in_line(text, line, clamped_start);
             serde_json::json!({
                 "start": d.start,
                 "end": d.end,
@@ -489,11 +489,13 @@ pub(crate) fn range_params(
     };
     let text = state.buffers.get(id).text();
     let end_exclusive = hume_editing::grapheme::next_grapheme_boundary(text, end_c);
-    let rope = text.rope();
-    let (start_line, start_char) =
-        hume_rope::position_encoding::char_to_wire(rope, start_c, encoding);
-    let (end_line, end_char) =
-        hume_rope::position_encoding::char_to_wire(rope, end_exclusive, encoding);
+    let ((start_line, start_char), (end_line, end_char)) =
+        hume_rope::position_encoding::char_range_to_wire_range(
+            text.rope(),
+            start_c,
+            end_exclusive,
+            encoding,
+        );
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
         "range": {

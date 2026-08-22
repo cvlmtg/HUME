@@ -277,8 +277,7 @@ pub fn insert_tab(
             b.delete(del_end - start);
             display_col_shift -= del_width as isize;
         }
-        let tw = tab_width.max(1) as usize;
-        let n = tw - (display_col % tw);
+        let n = hume_editing::width::tab_advance(display_col, tab_width);
         b.insert(&" ".repeat(n));
         display_col_shift += n as isize;
         new_sels.push(Selection::collapsed(b.new_pos()));

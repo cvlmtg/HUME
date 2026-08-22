@@ -3,7 +3,7 @@
 //! version, URI) is the editor glue's job — this is pure text math.
 
 use hume_editing::changeset::{ChangeSet, Operation};
-use hume_rope::position_encoding::{PositionEncoding, char_to_wire};
+use hume_rope::position_encoding::PositionEncoding;
 use lsp_types::{Position, Range, TextDocumentContentChangeEvent};
 use ropey::Rope;
 
@@ -54,13 +54,13 @@ pub fn changeset_to_content_changes(
     events
 }
 
-/// `[start, end)` in `rope`'s current state, converted to a wire `Range` —
-/// every position goes through `char_to_wire`; ops count chars, the
-/// wire wants code units, so there is no arithmetic shortcut even for the
-/// UTF-8 case.
+/// `[start, end)` in `rope`'s current state, converted to a wire `Range` via
+/// [`hume_rope::position_encoding::char_range_to_wire_range`] — the one
+/// lsp_types↔tuple adaptation point in this module, so `hume-rope` stays
+/// free of an `lsp_types` dependency.
 fn wire_range(rope: &Rope, start: usize, end: usize, enc: PositionEncoding) -> Range {
-    let (start_line, start_character) = char_to_wire(rope, start, enc);
-    let (end_line, end_character) = char_to_wire(rope, end, enc);
+    let ((start_line, start_character), (end_line, end_character)) =
+        hume_rope::position_encoding::char_range_to_wire_range(rope, start, end, enc);
     Range {
         start: Position {
             line: start_line as u32,

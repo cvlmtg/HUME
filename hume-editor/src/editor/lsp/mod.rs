@@ -34,6 +34,23 @@ use diagnostics::{DiagSeverity, DiagnosticsStore, StoredDiag};
 use progress::{ProgressTask, SpinnerClock};
 use registry::{LanguageName, LspServerConfig};
 
+/// `lsp_types::Range` → char-offset span via
+/// [`hume_rope::position_encoding::wire_range_to_char_range`] — the one
+/// lsp_types↔tuple adaptation point in the editor's LSP glue, so
+/// `hume-rope` stays free of an `lsp_types` dependency.
+pub(crate) fn wire_range_to_chars(
+    rope: &ropey::Rope,
+    range: &lsp_types::Range,
+    encoding: hume_rope::position_encoding::PositionEncoding,
+) -> (usize, usize) {
+    hume_rope::position_encoding::wire_range_to_char_range(
+        rope,
+        (range.start.line as usize, range.start.character as usize),
+        (range.end.line as usize, range.end.character as usize),
+        encoding,
+    )
+}
+
 /// A Rust closure run with a completed request's outcome. `hume-lsp` never
 /// holds this — it only ever sees the `(ServerId, RequestId)` pair the
 /// editor keys its callback under, which `hume-lsp` already hands back from

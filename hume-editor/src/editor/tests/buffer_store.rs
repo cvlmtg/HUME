@@ -270,7 +270,9 @@ fn p6_reload_clamps_cursor_to_last_line() {
 }
 
 /// `reload_buffer_in_place` clamps a char col that exceeds the new line
-/// length to the line's terminating `\n`.
+/// length to the line's last content character (the vim/helix
+/// stick-to-content convention `place_char_column` uses) — never onto the
+/// line's terminating `\n`.
 #[test]
 fn p6_reload_clamps_char_col_to_line_end() {
     use hume_editing::selection::Selection;
@@ -295,11 +297,12 @@ fn p6_reload_clamps_char_col_to_line_end() {
     let replacement = Buffer::new(Text::from("hi\n"), SelectionSet::default());
     ed.reload_buffer_in_place(bid, replacement);
 
-    // line_end=2 (\n), target=(0+10).min(2)=2 → head=2.
+    // last content char='i' (char 1); overshooting col 10 clamps there, not
+    // onto the '\n' at char 2.
     assert_eq!(
         ed.current_selections().primary().head(),
-        2,
-        "cursor clamped to \\n when col exceeds new line length",
+        1,
+        "cursor clamped to the last content char when col exceeds new line length",
     );
 }
 

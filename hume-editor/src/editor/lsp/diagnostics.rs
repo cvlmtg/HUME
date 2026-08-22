@@ -6,7 +6,6 @@
 use std::ops::Range;
 
 use hume_editing::changeset::ChangeSet;
-use hume_rope::position_encoding::wire_to_char;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_lsp::sync::wire_version;
@@ -321,18 +320,7 @@ impl Editor {
             .into_iter()
             .map(|d| {
                 let raw = serde_json::to_value(&d).unwrap_or(serde_json::Value::Null);
-                let start = wire_to_char(
-                    &rope,
-                    d.range.start.line as usize,
-                    d.range.start.character as usize,
-                    encoding,
-                );
-                let end = wire_to_char(
-                    &rope,
-                    d.range.end.line as usize,
-                    d.range.end.character as usize,
-                    encoding,
-                );
+                let (start, end) = super::wire_range_to_chars(&rope, &d.range, encoding);
                 let (start, end) = if start == end {
                     widen_zero_length(&rope, start)
                 } else {

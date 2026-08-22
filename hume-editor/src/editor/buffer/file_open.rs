@@ -186,7 +186,7 @@ impl Editor {
     /// reload and restored against the new content; multi-selections collapse
     /// to the primary (stale against fresh content). Cursor and `top_line`
     /// are clamped if the file shrank: past-end lines land on the new last
-    /// line, past-end columns on the line's `\n`.
+    /// line, past-end columns on the line's last content character.
     ///
     /// Only the focused pane's pre/post selections are written into the
     /// history revision (undo/redo restore its cursor); other panes on the
@@ -199,7 +199,7 @@ impl Editor {
     ///
     /// Used by the no-arg `:e`/`:e!` reload branch.
     pub(crate) fn reload_buffer_in_place(&mut self, id: BufferId, mut new_doc: Buffer) {
-        use hume_editing::lines::{line_break_char, snap_to_grapheme_boundary};
+        use hume_editing::lines::{char_col_in_line, place_char_column};
         use hume_editing::selection::{Selection, SelectionSet};
 
         // ── Phase 1: capture (line, char_col) per pane + focused pane's pre_sels ──
@@ -220,7 +220,7 @@ impl Editor {
                 .map(|&pid| {
                     let head = self.state.panes.state[pid][id].selections.primary().head();
                     let line = text.char_to_line(head);
-                    let char_col = head - text.line_to_char(line);
+                    let char_col = char_col_in_line(text, line, head);
                     (pid, line, char_col)
                 })
                 .collect()
@@ -234,10 +234,7 @@ impl Editor {
             let mut heads = Vec::with_capacity(cursor_coords.len());
             for &(pid, line, char_col) in &cursor_coords {
                 let target_line = line.min(last_line);
-                let line_start = new_text.line_to_char(target_line);
-                let line_end = line_break_char(new_text, target_line);
-                let target = (line_start + char_col).min(line_end);
-                let head = snap_to_grapheme_boundary(new_text, line_start, target);
+                let head = place_char_column(new_text, target_line, char_col);
                 heads.push((pid, head));
             }
             heads

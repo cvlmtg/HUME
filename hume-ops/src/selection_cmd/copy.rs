@@ -1,5 +1,5 @@
 use crate::MotionMode;
-use hume_editing::lines::place_char_column;
+use hume_editing::lines::{char_col_in_line, place_char_column};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 
@@ -84,8 +84,8 @@ fn copy_selection_vertically(
         // Both endpoints' char columns are loop-invariant — the original
         // selection never changes across copies — so compute them once
         // instead of re-deriving from the rope on every iteration.
-        let anchor_char_col = sel.anchor() - buf.line_to_char(anchor_line as usize);
-        let head_char_col = sel.head() - buf.line_to_char(head_line as usize);
+        let anchor_char_col = char_col_in_line(buf, anchor_line as usize, sel.anchor());
+        let head_char_col = char_col_in_line(buf, head_line as usize, sel.head());
 
         // Walk outward one line at a time, breaking as soon as a target line
         // falls off the buffer — every further step in that direction would

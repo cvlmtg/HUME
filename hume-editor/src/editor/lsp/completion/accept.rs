@@ -3,12 +3,11 @@
 //! every cursor, then best-effort `completionItem/resolve`.
 
 use hume_editing::changeset::Assoc;
-use hume_rope::position_encoding::wire_to_char;
 
 use super::CompletionSession;
 use super::item::{StoredCompletionItem, parse_additional_text_edits_lenient};
 use crate::editor::event::EditorEvent;
-use crate::editor::lsp::{LspCallback, LspState, edits, introspect};
+use crate::editor::lsp::{LspCallback, LspState, edits, introspect, wire_range_to_chars};
 use crate::editor::{EditorState, Severity};
 use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors, word_start_before};
 
@@ -118,18 +117,7 @@ impl CompletionSession {
         let (span, new_text) = match &item.text_edit {
             Some(te) => {
                 let rope_at_begin = &self.rope_at_begin;
-                let start_b = wire_to_char(
-                    rope_at_begin,
-                    te.range.start.line as usize,
-                    te.range.start.character as usize,
-                    encoding,
-                );
-                let end_b = wire_to_char(
-                    rope_at_begin,
-                    te.range.end.line as usize,
-                    te.range.end.character as usize,
-                    encoding,
-                );
+                let (start_b, end_b) = wire_range_to_chars(rope_at_begin, &te.range, encoding);
                 if end_b < start_b {
                     return Err(format!(
                         "text edit has a reversed range (end {end_b} before start {start_b})"

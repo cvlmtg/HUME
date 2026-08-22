@@ -85,18 +85,7 @@ fn build_edit_changeset(
     let char_edits: Vec<(usize, usize, &str)> = edits
         .iter()
         .map(|e| {
-            let start = wire_to_char(
-                rope,
-                e.range.start.line as usize,
-                e.range.start.character as usize,
-                encoding,
-            );
-            let end = wire_to_char(
-                rope,
-                e.range.end.line as usize,
-                e.range.end.character as usize,
-                encoding,
-            );
+            let (start, end) = super::wire_range_to_chars(rope, &e.range, encoding);
             (start, end, e.new_text.as_str())
         })
         .collect();
@@ -229,21 +218,7 @@ pub(crate) fn build_edits_from_earlier_document<'a>(
     }
     let mut ranges: Vec<(usize, usize)> = edits
         .iter()
-        .map(|e| {
-            let start = wire_to_char(
-                rope_at,
-                e.range.start.line as usize,
-                e.range.start.character as usize,
-                encoding,
-            );
-            let end = wire_to_char(
-                rope_at,
-                e.range.end.line as usize,
-                e.range.end.character as usize,
-                encoding,
-            );
-            (start, end)
-        })
+        .map(|e| super::wire_range_to_chars(rope_at, &e.range, encoding))
         .collect();
     if let Some(&(start, end)) = ranges.iter().find(|&&(start, end)| end < start) {
         return Err(format!(
@@ -433,7 +408,10 @@ pub(crate) enum GotoTarget {
     },
 }
 
-/// Clamps a char-indexed `(line, char_col)` pair to a valid char offset in `bid`.
+/// Clamps a char-indexed `(line, char_col)` pair to a valid char offset in
+/// `bid`. `line` clamps to the ropey-domain last line here (a scripted
+/// target can address the buffer's own trailing phantom line); the
+/// char_col clamp and grapheme snap are `place_char_column`'s.
 fn char_indexed_to_char_pos(
     state: &EditorState,
     bid: BufferId,
@@ -443,9 +421,7 @@ fn char_indexed_to_char_pos(
     let buf = state.buffers.get(bid);
     let text = buf.text();
     let line = line.min(text.last_ropey_line());
-    let line_start = text.line_to_char(line);
-    let line_len = hume_editing::lines::line_content_end(text, line) - line_start;
-    line_start + char_col.min(line_len)
+    hume_editing::lines::place_char_column(text, line, char_col)
 }
 
 /// A bare path string and a `file://` URI string both name shape 2's

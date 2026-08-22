@@ -206,7 +206,7 @@ fn delete_sel_region(
             // del_start's char column within its original line — this stays
             // correct in the multi-cursor case where b.new_pos() != b.old_pos().
             let prev_line = buf.char_to_line(del_start);
-            let char_col = del_start - buf.line_to_char(prev_line);
+            let char_col = hume_editing::lines::char_col_in_line(buf, prev_line, del_start);
             b.retain(del_start - b.old_pos());
             let cursor_new = b.new_pos().saturating_sub(char_col);
             // Delete from the preceding '\n' through the last content char,

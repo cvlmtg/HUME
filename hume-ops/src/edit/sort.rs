@@ -8,7 +8,7 @@
 //! per-line shell invocation to reorder against.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::lines::{line_break_char, line_end_exclusive};
+use hume_editing::lines::{char_col_in_line, line_break_char, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 
@@ -261,9 +261,8 @@ fn remap_selections(
         let end_line = old_buf.char_to_line(sel.end_inclusive(old_buf));
         let moved = if start_line == end_line {
             line_map.get(&start_line).map(|&new_line| {
-                let old_line_start = old_buf.line_to_char(start_line);
-                let anchor_char_col = sel.anchor() - old_line_start;
-                let head_char_col = sel.head() - old_line_start;
+                let anchor_char_col = char_col_in_line(old_buf, start_line, sel.anchor());
+                let head_char_col = char_col_in_line(old_buf, start_line, sel.head());
                 let new_line_start = new_buf.line_to_char(new_line);
                 Selection::new(
                     new_line_start + anchor_char_col,
