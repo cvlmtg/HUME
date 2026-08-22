@@ -1,6 +1,5 @@
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::format::unicode_display_width;
 use crate::layout::PaneGeometry;
 use crate::pane::ViewportState;
 use crate::providers::{GutterColumn, GutterRowCtx, ProviderId};
@@ -209,7 +208,11 @@ fn compose_gutter(
             let mut truncated_len = text.len();
             let mut text_width = 0u16;
             for (byte_idx, g) in text.grapheme_indices(true) {
-                let w = unicode_display_width(g) as u16;
+                let w = hume_rope::width::grapheme_width(
+                    g,
+                    text_width as usize,
+                    compose_ctx.tab_width as usize,
+                ) as u16;
                 if text_width + w > usable_per_cell {
                     truncated_len = byte_idx;
                     break;

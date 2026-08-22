@@ -2,7 +2,6 @@ use std::ops::Range;
 
 use ropey::Rope;
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
 
 use crate::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 use crate::providers::InlineInsert;
@@ -306,7 +305,12 @@ pub fn format_buffer_line(
                 break 'lines;
             }
             let ins = &inline_inserts[insert_idx];
-            let ins_width = unicode_display_width(&ins.text).min(255) as u8;
+            let ins_width = hume_rope::width::str_width(
+                &ins.text,
+                wrap.current_col as usize,
+                tab_width as usize,
+            )
+            .min(255) as u8;
             if ins_width > 0 {
                 wrap.maybe_wrap(
                     ins_width,
@@ -328,6 +332,7 @@ pub fn format_buffer_line(
                         byte_offset..byte_offset, // zero-length: virtual
                         char_pos,
                         indent_depth,
+                        tab_width,
                         &mut wrap.current_col,
                     );
                 } else {
@@ -380,7 +385,8 @@ pub fn format_buffer_line(
         // (post-wrap) column, not the one `grapheme_display` computed it at —
         // tab width is column-dependent, unlike every other grapheme's.
         let width = if grapheme_str == "\t" {
-            tab_display_width(wrap.current_col, tab_width)
+            hume_rope::width::grapheme_width("\t", wrap.current_col as usize, tab_width as usize)
+                as u8
         } else {
             width
         };
@@ -484,6 +490,7 @@ pub fn format_buffer_line(
                 line_str.len()..line_str.len(),
                 char_pos,
                 indent_depth,
+                tab_width,
                 &mut wrap.current_col,
             );
         }
@@ -629,22 +636,13 @@ fn is_whitespace_grapheme(s: &str) -> bool {
 // Grapheme display computation
 // ---------------------------------------------------------------------------
 
-/// Display width of a tab starting at `col`: the distance to the next tab
-/// stop. Column-dependent, so a wrap that moves a tab to a new starting
-/// column (see `format_buffer_line`'s post-`maybe_wrap` recompute) requires
-/// calling this again rather than reusing the pre-wrap width.
-///
-/// Delegates the arithmetic to `hume_rope::grapheme::tab_advance` (this
-/// function is just the `u32`/`u8` shell `format_buffer_line`'s types need);
-/// the modulo-based formula there always lands in `[1, tab_width]`, so unlike
-/// the naive "next multiple of `tab_width`" approach it can't overflow even
-/// at `col` near `u32::MAX` — no saturating arithmetic needed.
-fn tab_display_width(col: u32, tab_width: u8) -> u8 {
-    let tab_width = tab_width.max(1);
-    hume_rope::grapheme::tab_advance(col as usize, tab_width as usize) as u8
-}
-
 /// Compute the display `width` and `CellContent` for one grapheme cluster.
+///
+/// Width is one `hume_rope::width::grapheme_width` call for every branch —
+/// tab, space, NBSP/ideographic space, and regular graphemes alike — so this
+/// and every other column computation in the workspace (editing ops, Steel
+/// decorations, UI chrome) agree on where a given cluster lands. What varies
+/// per branch below is only which `CellContent` renders it.
 fn grapheme_display(
     grapheme_str: &str,
     current_col: u32,
@@ -653,20 +651,12 @@ fn grapheme_display(
     is_trailing: bool,
     virtual_texts: &mut String,
 ) -> (u8, CellContent) {
+    let width =
+        hume_rope::width::grapheme_width(grapheme_str, current_col as usize, tab_width as usize)
+            as u8;
+
     // Tab: expand to next tab stop.
-    //
-    // The stop-distance formula itself is shared — `tab_display_width` below
-    // delegates to `hume_rope::grapheme::tab_advance`, the same primitive
-    // `hume_rope::grapheme::display_col_in_line` (the editing-ops counterpart)
-    // uses. What stays genuinely separate is the *column-counting* convention:
-    // this function counts wide CJK graphemes as 2 columns via `unicode-width`
-    // (the display-accurate choice for rendering), while `display_col_in_line`
-    // counts every non-tab grapheme as 1 (it walks a `&Text` char range, not a
-    // rendered `&str` line, so display width isn't available there) — so
-    // CJK-plus-tab mixtures may misalign a tab stop in editing ops; bounded
-    // and rare.
     if grapheme_str == "\t" {
-        let display_width = tab_display_width(current_col, tab_width);
         let content = if should_render_whitespace(whitespace.tab, is_trailing) {
             let (start, len) = push_arena_text(virtual_texts, whitespace.tab_char);
             CellContent::Indicator { start, len }
@@ -675,7 +665,7 @@ fn grapheme_display(
             let (start, len) = push_arena_text(virtual_texts, " ");
             CellContent::Indicator { start, len }
         };
-        return (display_width, content);
+        return (width, content);
     }
 
     // Space
@@ -686,29 +676,24 @@ fn grapheme_display(
         } else {
             CellContent::Grapheme
         };
-        return (1, content);
+        return (width, content);
     }
 
     // Invisible Unicode spaces (NBSP, ideographic space): gated by the same
     // `space` render mode but with a distinct glyph, so stray non-breaking
-    // spaces stand out from ordinary ones. Width comes from unicode-width
-    // (U+3000 is 2 columns), matching the regular-grapheme path so the wrap
-    // math is identical whether the indicator is on or off.
+    // spaces stand out from ordinary ones.
     if grapheme_str == "\u{A0}" || grapheme_str == "\u{3000}" {
-        let w = unicode_display_width(grapheme_str).clamp(1, 2) as u8;
         let content = if should_render_whitespace(whitespace.space, is_trailing) {
             let (start, len) = push_arena_text(virtual_texts, whitespace.nbsp_char);
             CellContent::Indicator { start, len }
         } else {
             CellContent::Grapheme
         };
-        return (w, content);
+        return (width, content);
     }
 
-    // Regular grapheme: use unicode-width for display width.
-    let w = unicode_display_width(grapheme_str).min(2) as u8;
-    let w = w.max(1); // always at least 1 column
-    (w, CellContent::Grapheme)
+    // Regular grapheme.
+    (width, CellContent::Grapheme)
 }
 
 /// Push `text` into a per-frame text arena (`FormatScratch::virtual_texts`
@@ -745,6 +730,7 @@ pub(crate) fn push_arena_text(arena: &mut String, text: &str) -> (u32, u16) {
 /// own symbol to one glyph and space-filling the rest; inline-insert text
 /// (inlay hints, diagnostics) has no such luxury. Shared by both the
 /// mid-line and end-of-line insert sites in `format_buffer_line`.
+#[allow(clippy::too_many_arguments)]
 fn push_insert_cells(
     virtual_texts_out: &mut String,
     graphemes_out: &mut Vec<Grapheme>,
@@ -752,14 +738,17 @@ fn push_insert_cells(
     byte_range: Range<usize>,
     char_offset: usize,
     indent_depth: u8,
+    tab_width: u8,
     current_col: &mut u32,
 ) {
     let (text_start, _) = push_arena_text(virtual_texts_out, &ins.text);
     for (g_byte_offset, g_str) in ins.text.grapheme_indices(true) {
-        let g_width = unicode_display_width(g_str).min(255) as u8;
-        if g_width == 0 {
-            continue;
-        }
+        // One grapheme cluster's width is always <= tab_width (u8's own max
+        // 255), unlike a whole insert string's — no `.min(255)` cap needed
+        // before narrowing.
+        let g_width =
+            hume_rope::width::grapheme_width(g_str, *current_col as usize, tab_width as usize)
+                as u8;
         graphemes_out.push(Grapheme {
             byte_range: byte_range.clone(),
             // Char offset of the real grapheme this insert precedes (not MAX):
@@ -796,11 +785,6 @@ fn should_render_whitespace(render: WhitespaceRender, is_trailing: bool) -> bool
     }
 }
 
-/// Unicode display width for a grapheme cluster, using unicode-width.
-pub(crate) fn unicode_display_width(s: &str) -> usize {
-    s.width()
-}
-
 // ---------------------------------------------------------------------------
 // Utility helpers
 // ---------------------------------------------------------------------------
@@ -814,7 +798,7 @@ pub(crate) fn compute_indent_depth(line_str: &str, tab_width: u8) -> u8 {
     for b in line_str.bytes() {
         match b {
             b' ' => col += 1,
-            b'\t' => col += hume_rope::grapheme::tab_advance(col, tw),
+            b'\t' => col += hume_rope::width::tab_advance(col, tw),
             _ => break,
         }
     }

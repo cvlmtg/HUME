@@ -25,9 +25,7 @@ use std::ops::Range;
 use ropey::Rope;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::format::{
-    FormatBound, FormatScratch, format_buffer_line, push_arena_text, unicode_display_width,
-};
+use crate::format::{FormatBound, FormatScratch, format_buffer_line, push_arena_text};
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{
     Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLine, VirtualLineAnchor,
@@ -725,19 +723,34 @@ impl<'a> RowMap<'a> {
         // single monotonic cursor resolves every grapheme's scope in
         // O(graphemes + segments) instead of a per-grapheme linear scan.
         let mut scope_cursor = crate::style::highlight::IntervalCursor::new(&vl.segments);
+        let tab_width = self.tab_width as usize;
         let mut col: u32 = 0;
         for (byte_offset, grapheme_str) in vl.text.grapheme_indices(true) {
-            let width = unicode_display_width(grapheme_str).clamp(1, 2) as u8;
+            let width =
+                hume_rope::width::grapheme_width(grapheme_str, col as usize, tab_width) as u8;
             let scope = scope_cursor.scope_at(byte_offset).or(base_scope);
-            let start = arena_base.saturating_add(u32::try_from(byte_offset).unwrap_or(u32::MAX));
-            let len = u16::try_from(grapheme_str.len()).unwrap_or(u16::MAX);
+
+            // A literal tab renders as a space, exactly like a buffer line's
+            // tab with its whitespace indicator off (`grapheme_display`) —
+            // decoration providers have no per-line whitespace-indicator
+            // setting to key off. Everything else stays `Virtual`, pointing
+            // at its own slice of the row's one text copy.
+            let content = if grapheme_str == "\t" {
+                let (start, len) = push_arena_text(&mut vrow.texts, " ");
+                CellContent::Indicator { start, len }
+            } else {
+                let start =
+                    arena_base.saturating_add(u32::try_from(byte_offset).unwrap_or(u32::MAX));
+                let len = u16::try_from(grapheme_str.len()).unwrap_or(u16::MAX);
+                CellContent::Virtual { start, len }
+            };
 
             vrow.graphemes.push(Grapheme {
                 byte_range: 0..0, // zero-length: virtual, no buffer position
                 char_offset: usize::MAX,
                 col,
                 width,
-                content: CellContent::Virtual { start, len },
+                content,
                 indent_depth: 0,
                 scope,
             });

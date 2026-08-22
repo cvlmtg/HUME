@@ -1,32 +1,10 @@
 use super::*;
 use crate::pane::{WhitespaceConfig, WrapMode};
 
-#[test]
-fn tab_display_width_normal_range() {
-    assert_eq!(
-        tab_display_width(0, 4),
-        4,
-        "tab at col 0, width 4 → full stop"
-    );
-    assert_eq!(
-        tab_display_width(2, 4),
-        2,
-        "tab at col 2, width 4 → half stop"
-    );
-    assert_eq!(
-        tab_display_width(4, 4),
-        4,
-        "tab exactly on a stop → full width"
-    );
-}
-
-#[test]
-fn tab_display_width_no_overflow_near_u32_max() {
-    // col=u32::MAX, tab_width=4: u32::MAX % 4 == 3, so the distance to the
-    // next stop is 4 - 3 = 1. The modulo-based formula never computes a
-    // "next stop" value that could itself overflow u32.
-    assert_eq!(tab_display_width(u32::MAX, 4), 1);
-}
+// Tab-stop arithmetic itself (`hume_rope::width::tab_advance`) is tested at
+// its own definition in `hume-rope`, this crate's SSOT for display-column
+// math — see `hume_rope::width::tests::tab_advance_*`. What's left to cover
+// here is `format_buffer_line`'s use of it, below.
 
 fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayRow>, Vec<Grapheme>) {
     let rope = Rope::from_str(text);

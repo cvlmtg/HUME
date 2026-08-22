@@ -921,6 +921,67 @@ fn render_row_segments_a_virtual_rows_text() {
 }
 
 #[test]
+fn render_row_expands_a_tab_in_a_virtual_lines_text() {
+    // A virtual row must be tab-aware exactly like a real buffer line — this
+    // is what lets `set-virtual-lines!` accept a literal `\t` in `'text`
+    // instead of requiring the caller to expand it by hand (previously the
+    // git-diff plugin's job, and the source of its column-counting bug).
+    let rope = Rope::from_str("hi\n");
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(NoRows));
+    providers.add_decoration_source(Box::new(FixedAnchor {
+        anchor: VirtualLineAnchor::Before(0),
+        count: 1,
+        text: "\tx",
+    }));
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s); // tab_width == 4, see `map`
+
+    let virtual_row = rm.render_row(RowPos::new(0, 0));
+    let cells = &virtual_row.graphemes[virtual_row.row.graphemes.clone()];
+    assert_eq!(cells.len(), 2, "one cell for the tab, one for 'x'");
+    assert_eq!(cells[0].col, 0);
+    assert_eq!(cells[0].width, 4, "tab at col 0, tab_width 4 -> full stop");
+    assert!(
+        matches!(cells[0].content, CellContent::Indicator { .. }),
+        "a tab renders as a space-filled Indicator, matching a real buffer line's tab with its indicator off"
+    );
+    assert_eq!(cells[1].col, 4, "'x' lands right after the tab stop");
+}
+
+#[test]
+fn render_row_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop() {
+    // A wide CJK grapheme before a tab must shift the tab's stop by its full
+    // 2-column width, matching a real buffer line — the exact case
+    // `git-diff/render.scm` used to get wrong when it counted one Steel char
+    // (not one display column) per preceding character.
+    let rope = Rope::from_str("hi\n");
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(NoRows));
+    providers.add_decoration_source(Box::new(FixedAnchor {
+        anchor: VirtualLineAnchor::Before(0),
+        count: 1,
+        text: "\u{6F22}\tx",
+    }));
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s); // tab_width == 4, see `map`
+
+    let virtual_row = rm.render_row(RowPos::new(0, 0));
+    let cells = &virtual_row.graphemes[virtual_row.row.graphemes.clone()];
+    // 漢(w2) + its WidthContinuation, then the tab (tab_advance(2, 4) == 2,
+    // so it also occupies 2 columns and gets its own WidthContinuation —
+    // same as any width-2 cell, tab or not), then 'x'.
+    assert_eq!(cells.len(), 5);
+    assert_eq!(cells[0].col, 0);
+    assert_eq!(cells[0].width, 2);
+    assert!(matches!(cells[1].content, CellContent::WidthContinuation));
+    assert_eq!(cells[2].col, 2, "tab starts right after the wide char");
+    assert_eq!(cells[2].width, 2, "tab_advance(2, 4) == 2");
+    assert!(matches!(cells[3].content, CellContent::WidthContinuation));
+    assert_eq!(cells[4].col, 4, "'x' lands at column 4, not 3");
+}
+
+#[test]
 fn h_window_clips_an_unwrapped_rows_graphemes_without_changing_its_row_count() {
     // The render path's bound on arbitrarily long unwrapped lines: only the
     // window's columns are emitted, but the line is still one row.
