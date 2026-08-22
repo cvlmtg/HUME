@@ -161,11 +161,12 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
     })
 }
 
-/// Five locations, one `lsp-references` response, exercising every path in
-/// `location_grapheme_cols`: the focused buffer's own open rope, the same
+/// Seven locations, one `lsp-references` response, exercising every path in
+/// `location_display_parts`: the focused buffer's own open rope, the same
 /// unopened file read from disk twice (one cached read, two different
-/// grapheme columns out of it), a target file that doesn't exist, and a
-/// line past the target's end.
+/// grapheme columns out of it), a target file that doesn't exist, a line
+/// past the target's end, the buffer's own phantom trailing line, and a
+/// target whose URI needs percent-decoding.
 ///
 /// Fail oracle: revert `lsp/location-display` to render the raw wire
 /// `character` (this range's prior behavior) — row 0 would read `1:5`
@@ -176,6 +177,13 @@ fn references_drawer_shows_grapheme_columns_across_open_and_disk_files() {
     let file_dir = safe_tempdir();
     let (file, uri) = write_fixture_file(file_dir.path(), "main.rs");
     let (_other_file, other_uri) = write_fixture_file(file_dir.path(), "other.rs");
+    // A space forces `path_to_uri` to percent-encode, so the URI and the
+    // path it denotes are no longer the same string.
+    let (_spaced_file, spaced_uri) = write_fixture_file(file_dir.path(), "a name.rs");
+    assert!(
+        spaced_uri.contains("%20"),
+        "fixture must exercise percent-decoding, got {spaced_uri:?}"
+    );
     let missing = file_dir.path().join("definitely_missing.rs");
     let missing_uri = format!("file://{}", missing.display());
 
@@ -189,6 +197,7 @@ fn references_drawer_shows_grapheme_columns_across_open_and_disk_files() {
                 loc(&missing_uri, 0, 0), // unreadable target: no column
                 loc(&uri, 5, 0),         // past the file's one content line: no column
                 loc(&uri, 1, 0),         // the buffer's own phantom line: no column
+                loc(&spaced_uri, 0, 4),  // percent-encoded uri: decoded path + col 3
             ]),
         );
     });
@@ -199,7 +208,7 @@ fn references_drawer_shows_grapheme_columns_across_open_and_disk_files() {
         let guard = ed.state.drawer_view.read().unwrap();
         guard.as_ref().expect("drawer must open").rows.clone()
     };
-    assert_eq!(rows.len(), 6);
+    assert_eq!(rows.len(), 7);
     assert!(
         rows[0].ends_with("main.rs:1:3"),
         "open-buffer location must show grapheme col 3, got {:?}",
@@ -236,5 +245,16 @@ fn references_drawer_shows_grapheme_columns_across_open_and_disk_files() {
         "the phantom trailing line has no content, so it must degrade to \
          path:line with no column, got {:?}",
         rows[5]
+    );
+    // The row's path and its column must come from the same URI parse. When
+    // Scheme rendered the path by stripping "file://" itself, it had no
+    // percent-decoding: the row read "a%20name.rs" while the column beside
+    // it had been read out of "a name.rs" — one row naming a file it did
+    // not measure.
+    assert!(
+        rows[6].ends_with("a name.rs:1:3"),
+        "a percent-encoded uri must render its decoded path and the column \
+         read from that same file, got {:?}",
+        rows[6]
     );
 }

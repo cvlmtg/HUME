@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use ropey::RopeSlice;
-use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
+use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete, UnicodeSegmentation};
 
 /// Returns the char offset of the start of the *next* grapheme cluster after
 /// `char_offset`, or `slice.len_chars()` when already at (or past) the end.
@@ -130,6 +130,35 @@ pub fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: usize) -> usize
 /// arbitrarily wide. This implementation uses the same chunk-at-a-time
 /// `GraphemeCursor` strategy as `next_grapheme_boundary` — O(log n) per
 /// cluster with no heap allocation.
+/// Byte offset of the start of the grapheme cluster ending at `byte_pos` —
+/// the `&str` sibling of [`prev_grapheme_boundary`], for the short, already
+/// contiguous strings the UI edits in place (a minibuffer prompt, a picker
+/// query) rather than a rope. `0` when `byte_pos` is already 0.
+///
+/// A plain `&str` needs none of the rope walker's chunk machinery: one
+/// backwards `grapheme_indices` step over the prefix is exact and
+/// allocation-free. Both exist so no caller is tempted to hand-roll the
+/// `next_back()` walk and land mid-cluster on a combining sequence or a ZWJ
+/// emoji.
+pub fn prev_str_boundary(s: &str, byte_pos: usize) -> usize {
+    s[..byte_pos]
+        .grapheme_indices(true)
+        .next_back()
+        .map(|(i, _)| i)
+        .unwrap_or(0)
+}
+
+/// Byte offset just past the grapheme cluster starting at `byte_pos` — the
+/// `&str` sibling of [`next_grapheme_boundary`]. `s.len()` when `byte_pos` is
+/// at or past the end. See [`prev_str_boundary`] for why these exist.
+pub fn next_str_boundary(s: &str, byte_pos: usize) -> usize {
+    s[byte_pos..]
+        .grapheme_indices(true)
+        .next()
+        .map(|(_, g)| byte_pos + g.len())
+        .unwrap_or(s.len())
+}
+
 pub(crate) fn grapheme_count(slice: RopeSlice<'_>, from_char: usize, to_char: usize) -> usize {
     let to_char = to_char.max(from_char);
     if from_char == to_char {

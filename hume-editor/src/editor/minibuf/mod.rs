@@ -1,7 +1,5 @@
 pub(crate) mod history;
 
-use unicode_segmentation::UnicodeSegmentation;
-
 use crate::ui::width::text_width;
 
 // ── MiniBuffer ────────────────────────────────────────────────────────────────
@@ -106,7 +104,7 @@ impl MiniBuffer {
                         MiniBufferEvent::Ignored // cursor at start but input non-empty: no-op
                     }
                 } else {
-                    let prev = prev_grapheme(&self.input, self.cursor);
+                    let prev = hume_rope::grapheme::prev_str_boundary(&self.input, self.cursor);
                     self.input.drain(prev..self.cursor);
                     self.cursor = prev;
                     if self.input.is_empty() {
@@ -136,11 +134,11 @@ impl MiniBuffer {
                 MiniBufferEvent::Edited
             }
             KeyCode::Left => {
-                self.cursor = prev_grapheme(&self.input, self.cursor);
+                self.cursor = hume_rope::grapheme::prev_str_boundary(&self.input, self.cursor);
                 MiniBufferEvent::CursorMoved
             }
             KeyCode::Right => {
-                self.cursor = next_grapheme(&self.input, self.cursor);
+                self.cursor = hume_rope::grapheme::next_str_boundary(&self.input, self.cursor);
                 MiniBufferEvent::CursorMoved
             }
             KeyCode::Tab => MiniBufferEvent::CompleteRequested { reverse: false },
@@ -166,30 +164,6 @@ impl MiniBuffer {
     }
 }
 
-// ── Grapheme helpers ─────────────────────────────────────────────────────────
-
-/// Return the byte offset of the grapheme cluster that ends at `cursor`.
-///
-/// If `cursor` is already at 0 (start of string), returns 0.
-fn prev_grapheme(s: &str, cursor: usize) -> usize {
-    s[..cursor]
-        .grapheme_indices(true)
-        .next_back()
-        .map(|(i, _)| i)
-        .unwrap_or(0)
-}
-
-/// Return the byte offset immediately after the grapheme cluster that starts at `cursor`.
-///
-/// If `cursor` is at or past the end of the string, returns `s.len()`.
-fn next_grapheme(s: &str, cursor: usize) -> usize {
-    s[cursor..]
-        .grapheme_indices(true)
-        .next()
-        .map(|(_, g)| cursor + g.len())
-        .unwrap_or(s.len())
-}
-
 /// Walk back from `cursor` over trailing whitespace, then over one run of
 /// non-whitespace graphemes — the readline Ctrl-W "delete word" boundary.
 /// Returns the byte offset where the deletion should begin; equals `cursor`
@@ -206,7 +180,7 @@ fn word_boundary_back(s: &str, cursor: usize) -> usize {
     let mut i = cursor;
     // Phase 1: skip trailing separators (whitespace or '/').
     while i > 0 {
-        let prev = prev_grapheme(s, i);
+        let prev = hume_rope::grapheme::prev_str_boundary(s, i);
         if is_sep(&s[prev..i]) {
             i = prev;
         } else {
@@ -215,7 +189,7 @@ fn word_boundary_back(s: &str, cursor: usize) -> usize {
     }
     // Phase 2: consume the run of non-separator graphemes.
     while i > 0 {
-        let prev = prev_grapheme(s, i);
+        let prev = hume_rope::grapheme::prev_str_boundary(s, i);
         if !is_sep(&s[prev..i]) {
             i = prev;
         } else {

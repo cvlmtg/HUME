@@ -221,7 +221,7 @@ fn line_number_style_display_round_trips_through_from_str() {
 
 #[test]
 fn digit_count_zero_is_one() {
-    assert_eq!(LineNumberColumn::digit_count(0), 1);
+    assert_eq!(super::digit_count(0), 1);
 }
 
 #[test]

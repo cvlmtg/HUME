@@ -120,38 +120,23 @@
                         (hash-ref loc "targetSelectionRange")
                         (hash-ref loc "targetRange")))))
 
-;;; "path/to/file.rs" stripped of the "file://" scheme prefix — good enough
-;;; for display, not for parsing back into a URI (no percent-decoding, no
-;;; UNC-share authority handling — see `hume_lsp::uri::uri_to_path` on the
-;;; Rust side for that). A Windows drive-letter URI (`file:///C:/foo`)
-;;; decodes to an extra leading '/' before the drive letter that a plain
-;;; 7-char strip leaves in ("/C:/foo"); drop it so the result reads
-;;; "C:/foo" like every other path this file displays.
-(define (lsp/uri->display-path uri)
-  (define (ascii-letter? c)
-    (let ([n (char->integer c)])
-      (or (and (>= n 65) (<= n 90)) (and (>= n 97) (<= n 122)))))
-  (define (strip-drive-letter-slash s)
-    (if (and (>= (string-length s) 3)
-             (equal? (substring s 0 1) "/")
-             (ascii-letter? (string-ref s 1))
-             (equal? (substring s 2 3) ":"))
-        (substring s 1 (string-length s))
-        s))
-  (if (and (>= (string-length uri) 7) (equal? (substring uri 0 7) "file://"))
-      (path->display (strip-drive-letter-slash (substring uri 7 (string-length uri))))
-      uri))
-
 ;;; "path/to/file.rs:12:5" — 1-based line/grapheme-col, matching every other
 ;;; editor's location display convention and the unit the statusline shows
 ;;; (not the raw wire `character`, which counts UTF-16 code units — see the
 ;;; "Column naming" invariant). `loc` must already be normalized (`{uri,
-;;; range}`); `grapheme-col` is `#f` when the target file couldn't be
-;;; resolved/read, in which case the row falls back to `path:line`.
-(define (lsp/location-display loc grapheme-col)
-  (let* ((uri (hash-ref loc "uri"))
-         (start (hash-ref (hash-ref loc "range") "start"))
-         (prefix (string-append (lsp/uri->display-path uri) ":"
+;;; range}`); `part` is that location's `(path . grapheme-col)` pair from
+;;; `lsp-locations->display-parts`, whose col is `#f` when the target file
+;;; couldn't be resolved/read — the row then falls back to `path:line`.
+;;;
+;;; The path comes from that builtin rather than from stripping "file://"
+;;; here: URI decoding (percent-escapes, UNC authorities, the extra leading
+;;; slash before a Windows drive letter) belongs to one implementation, and
+;;; it's the one that also resolved the file the column was read out of.
+;;; `path->display` still runs here — that's display form, not decoding.
+(define (lsp/location-display loc part)
+  (let* ((start (hash-ref (hash-ref loc "range") "start"))
+         (grapheme-col (cdr part))
+         (prefix (string-append (path->display (car part)) ":"
                                 (number->string (+ 1 (hash-ref start "line"))))))
     (if grapheme-col
         (string-append prefix ":" (number->string (+ 1 grapheme-col)))
@@ -160,5 +145,5 @@
 ;;; `locs`: a list of already-normalized `{uri, range}` hashmaps. Drawer rows
 ;;; are pre-formatted display strings.
 (define (lsp/show-locations! locs)
-  (show-drawer-list! (map lsp/location-display locs (lsp-locations->grapheme-cols locs))
+  (show-drawer-list! (map lsp/location-display locs (lsp-locations->display-parts locs))
     (lambda (idx) (when idx (goto-location! (list-ref locs idx))))))

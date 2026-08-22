@@ -249,6 +249,14 @@ fn trimmed_window(order: &[usize]) -> Option<(usize, usize)> {
 /// group's total length is invariant under a row permutation (rows move
 /// verbatim), so the range still points at valid text, just reordered
 /// underneath it.
+///
+/// Adds the column to the new line start directly rather than going through
+/// `place_char_column`: that helper *clamps* a column past the line's content
+/// onto the last real character, which is right when moving between lines of
+/// different lengths but wrong here. A row lands intact at its new home, so
+/// every column on it is still valid — including a head sitting on the row's
+/// own `\n` (what `x` selects), which the clamp would silently pull back onto
+/// the last character.
 fn remap_selections(
     old_buf: &Text,
     new_buf: &Text,

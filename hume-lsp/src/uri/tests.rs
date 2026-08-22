@@ -15,6 +15,41 @@ fn path_to_uri_rejects_relative_path() {
     );
 }
 
+// ── uri_to_display_string: what a drawer row shows ──────────────────────
+
+#[test]
+fn uri_to_display_string_drops_the_slash_before_a_drive_letter_on_every_platform() {
+    // A server on Windows can report a location to an editor running
+    // anywhere. `uri_to_path` keeps the leading slash off Windows because
+    // `/C:/…` is the literal path there — but a drawer row is text, and
+    // `C:/Users/x/main.rs` is how that location is named.
+    let uri = lsp_types::Uri::from_str("file:///C:/Users/x/main.rs").expect("parse");
+    assert_eq!(
+        uri_to_display_string(&uri).expect("uri_to_display_string"),
+        "C:/Users/x/main.rs"
+    );
+}
+
+#[test]
+fn uri_to_display_string_percent_decodes() {
+    let uri = lsp_types::Uri::from_str("file:///tmp/a%20name.rs").expect("parse");
+    assert_eq!(
+        uri_to_display_string(&uri).expect("uri_to_display_string"),
+        "/tmp/a name.rs"
+    );
+}
+
+#[test]
+fn uri_to_display_string_leaves_an_ordinary_absolute_path_alone() {
+    // Only a real drive-letter segment loses the slash: a one-letter
+    // directory must not.
+    let uri = lsp_types::Uri::from_str("file:///c/src/main.rs").expect("parse");
+    assert_eq!(
+        uri_to_display_string(&uri).expect("uri_to_display_string"),
+        "/c/src/main.rs"
+    );
+}
+
 // ── uri_to_path: inbound parsing ────────────────────────────────────────
 
 #[test]

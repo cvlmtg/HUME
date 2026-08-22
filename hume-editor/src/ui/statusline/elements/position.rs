@@ -35,16 +35,11 @@ impl StatuslineElement for PositionElement {
         // element's right edge stays put as the cursor moves and elements
         // after it (e.g. FilePath) don't jitter left-right. A column past
         // the 3-digit budget just overflows the field rather than shifting it.
-        let row_digits = digit_count(max_row).max(3);
+        let row_digits = hume_engine::builtins::line_number::digit_count(max_row).max(3) as usize;
         let width = row_digits + 1 + 3;
         (
             Cow::Owned(format!("{:>width$}", format!("{line}:{grapheme_col}"))),
             colors.statusline,
         )
     }
-}
-
-/// Number of base-10 digits needed to represent `n` (treats 0 as 1 digit).
-fn digit_count(n: usize) -> usize {
-    if n == 0 { 1 } else { n.ilog10() as usize + 1 }
 }

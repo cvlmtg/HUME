@@ -392,29 +392,38 @@ pub(crate) fn lsp_range_to_offsets(
     cons_pair(SteelVal::IntV(start as isize), SteelVal::IntV(end as isize))
 }
 
-/// `(lsp-locations->grapheme-cols locs)` → one grapheme column (integer) or
-/// `#f` per entry in `locs`, a list of already-normalized `{uri, range}`
-/// hashmaps — the display-side counterpart to `goto-location!`'s wire
-/// conversion. See `LspHost::lsp_locations_grapheme_cols`'s doc for why a
-/// raw wire `character` is never the right value to show a user.
-pub(crate) fn lsp_locations_to_grapheme_cols(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
+/// `(lsp-locations->display-parts locs)` → one `(path . grapheme-col)` pair
+/// per entry in `locs`, a list of already-normalized `{uri, range}` hashmaps
+/// — the display-side counterpart to `goto-location!`'s wire conversion. The
+/// column is `#f` when the target file can't be resolved/read or the line is
+/// out of range; the path is always present, since it comes from the URI
+/// itself rather than from reading the file. See
+/// `LspHost::lsp_locations_display_parts`'s doc for why a raw wire
+/// `character` is never the right value to show a user, and why the path
+/// travels with it.
+pub(crate) fn lsp_locations_to_display_parts(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
     let mut parsed = Vec::new();
-    for entry in list_items(locs, "lsp-locations->grapheme-cols locs")? {
+    for entry in list_items(locs, "lsp-locations->display-parts locs")? {
         parsed.push(steel_to_json(&entry).map_err(generic_err)?);
     }
-    let grapheme_cols = ctx
+    let parts = ctx
         .host
         .lsp()
-        .ok_or_else(|| generic_err("lsp-locations->grapheme-cols: no LSP state available"))?
-        .lsp_locations_grapheme_cols(parsed)
+        .ok_or_else(|| generic_err("lsp-locations->display-parts: no LSP state available"))?
+        .lsp_locations_display_parts(parsed)
         .map_err(generic_err)?;
-    let entries: Vec<SteelVal> = grapheme_cols
+    let entries: Vec<SteelVal> = parts
         .into_iter()
-        .map(|grapheme_col| match grapheme_col {
-            Some(c) => SteelVal::IntV(c as isize),
-            None => SteelVal::BoolV(false),
+        .map(|(path, grapheme_col)| {
+            cons_pair(
+                SteelVal::StringV(path.into()),
+                match grapheme_col {
+                    Some(c) => SteelVal::IntV(c as isize),
+                    None => SteelVal::BoolV(false),
+                },
+            )
         })
-        .collect();
+        .collect::<Result<_, _>>()?;
     Ok(SteelVal::ListV(entries.into()))
 }
 

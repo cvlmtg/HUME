@@ -620,21 +620,27 @@ pub trait LspHost {
     /// `wire_point_to_char_for_buffer`'s doc for why the two must differ.
     fn lsp_wire_point_to_char(&self, id: BufferId, line: usize, character: usize) -> Option<usize>;
 
-    /// `(lsp-locations->grapheme-cols locs)` — one grapheme column per
-    /// already-normalized `{uri, range}` location in `locs`, `None` for an
-    /// entry whose target file can't be resolved/read or whose line is out
-    /// of range. Backs `lsp/location-display`'s drawer rows: `goto-location!`
-    /// (raw `Location` shape) already converts wire positions correctly for
-    /// the *jump*; this is the display-side counterpart, since a wire
+    /// `(lsp-locations->display-parts locs)` — the filesystem path and
+    /// grapheme column of each already-normalized `{uri, range}` location in
+    /// `locs`, the column `None` for an entry whose target file can't be
+    /// resolved/read or whose line is out of range. Backs
+    /// `lsp/location-display`'s drawer rows: `goto-location!` (raw
+    /// `Location` shape) already converts wire positions correctly for the
+    /// *jump*; this is the display-side counterpart, since a wire
     /// `character` (UTF-16 code units by default) is never the number to
-    /// show a user — see the "Column naming" invariant. Every location
-    /// shares the encoding negotiated by the currently focused buffer's
-    /// attached server, same as `goto-location!`'s wire shape. `Err` only
-    /// for a location whose shape can't be decoded at all.
-    fn lsp_locations_grapheme_cols(
+    /// show a user — see the "Column naming" invariant.
+    ///
+    /// The path rides along because it and the column come from one URI
+    /// parse: decoding the URI a second time in Scheme to render the path is
+    /// how a row ends up naming one file and reporting a column read out of
+    /// another. Every location shares the encoding negotiated by the
+    /// currently focused buffer's attached server, same as
+    /// `goto-location!`'s wire shape. `Err` only for a location whose shape
+    /// can't be decoded at all.
+    fn lsp_locations_display_parts(
         &self,
         locs: Vec<serde_json::Value>,
-    ) -> Result<Vec<Option<usize>>, String>;
+    ) -> Result<Vec<(String, Option<usize>)>, String>;
 }
 
 /// Timer scheduling — accessed through [`EditorHost::timers`].

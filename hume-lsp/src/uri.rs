@@ -221,10 +221,33 @@ fn resolve_authority(uri: &lsp_types::Uri) -> Result<Option<String>, UriError> {
 
 /// `true` if `segment` is a single ASCII letter followed by `:` (e.g. `"C:"`)
 /// — the decoded shape of a Windows drive-letter path segment.
-#[cfg(windows)]
 fn is_drive_letter_segment(segment: &str) -> bool {
     let bytes = segment.as_bytes();
     bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+
+/// `file://` URI → the string form to *show* a user, as
+/// [`uri_to_path`] decodes it but with a Windows drive-letter path rendered
+/// `C:/foo` on every platform, not just Windows.
+///
+/// Separate from [`uri_to_path`] because the two answer different questions.
+/// `uri_to_path` produces a path to *open*: off Windows, `file:///C:/foo`
+/// names the literal directory `/C:`, and dropping that leading slash would
+/// turn an absolute path into a relative one resolved against the cwd. A
+/// drawer row naming a location on another machine has no such constraint —
+/// it is text — and showing `/C:/Users/x/main.rs` for a path the server
+/// calls `C:/Users/x/main.rs` just looks wrong.
+///
+/// Errors exactly as [`uri_to_path`] does.
+pub fn uri_to_display_string(uri: &lsp_types::Uri) -> Result<String, UriError> {
+    let path = uri_to_path(uri)?;
+    let display = path.display().to_string();
+    Ok(match display.strip_prefix('/') {
+        Some(rest) if rest.split('/').next().is_some_and(is_drive_letter_segment) => {
+            rest.to_string()
+        }
+        _ => display,
+    })
 }
 
 /// `true` for RFC 3986 unreserved characters.

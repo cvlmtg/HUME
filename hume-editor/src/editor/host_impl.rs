@@ -856,15 +856,15 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         )
     }
 
-    fn lsp_locations_grapheme_cols(
+    fn lsp_locations_display_parts(
         &self,
         locs: Vec<serde_json::Value>,
-    ) -> Result<Vec<Option<usize>>, String> {
+    ) -> Result<Vec<(String, Option<usize>)>, String> {
         let Some(lsp) = self.lsp.as_deref() else {
-            return Err("lsp-locations->grapheme-cols: no LSP state available".to_string());
+            return Err("lsp-locations->display-parts: no LSP state available".to_string());
         };
         let bid = crate::editor::commands::focused_buffer_id(self.state, self.view);
-        crate::editor::lsp::introspect::location_grapheme_cols(self.state, lsp, bid, &locs)
+        crate::editor::lsp::introspect::location_display_parts(self.state, lsp, bid, &locs)
     }
 }
 

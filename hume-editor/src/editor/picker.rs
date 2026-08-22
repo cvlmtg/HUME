@@ -16,7 +16,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use hume_platform::process::line_source::SpawnedLineSource;
 use steel::rvals::SteelVal;
-use unicode_segmentation::UnicodeSegmentation;
 
 use super::fuzzy::{FuzzyMatcher, FuzzyPattern};
 
@@ -183,11 +182,13 @@ impl PickerSession {
     /// own meaning (mirrors the minibuffer's `EmptiedByBackspace` /
     /// `BackspaceOnEmpty` distinction).
     pub(crate) fn pop_grapheme(&mut self) -> bool {
-        let boundary = match self.query.grapheme_indices(true).next_back() {
-            Some((i, _)) => i,
-            None => return false,
-        };
-        self.query.truncate(boundary);
+        if self.query.is_empty() {
+            return false;
+        }
+        self.query.truncate(hume_rope::grapheme::prev_str_boundary(
+            &self.query,
+            self.query.len(),
+        ));
         self.rerank();
         true
     }

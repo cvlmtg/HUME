@@ -91,15 +91,16 @@ impl LineNumberColumn {
             selected_scope,
         }
     }
+}
 
-    /// Number of digits needed to represent `total_lines`.
-    fn digit_count(total_lines: usize) -> u8 {
-        if total_lines == 0 {
-            1
-        } else {
-            total_lines.ilog10() as u8 + 1
-        }
-    }
+/// Number of base-10 digits needed to write `n`, with `0` counting as one
+/// digit. The single source of truth for how wide a line number renders,
+/// shared by this gutter column and the statusline's `line:col` element —
+/// both size a field around the largest line number they can show, and a
+/// change to that sizing (a minimum width, a different numbering base)
+/// has to reach both or they disagree on screen.
+pub fn digit_count(n: usize) -> u8 {
+    if n == 0 { 1 } else { n.ilog10() as u8 + 1 }
 }
 
 impl GutterColumn for LineNumberColumn {
@@ -112,7 +113,7 @@ impl GutterColumn for LineNumberColumn {
         // field (`ui/statusline/elements/position.rs`) instead sizes for
         // `content_line_count()` — an accidental, shipped divergence, not a
         // bug to fix here.
-        Self::digit_count(last_line_idx + 1).saturating_add(1)
+        digit_count(last_line_idx + 1).saturating_add(1)
     }
 
     fn render_row_cells(
