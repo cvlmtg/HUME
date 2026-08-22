@@ -234,7 +234,8 @@ fn display_col_no_tabs_matches_grapheme_col() {
 
 #[test]
 fn display_col_tab_advances_to_next_stop() {
-    // "\tx\n": tab at col 0 → col 4; 'x' at col 4 → col 5.
+    // "\tx\n": tab at display col 0 → display col 4; 'x' at display col 4 →
+    // display col 5.
     let buf = rope("\tx\n");
     assert_eq!(display_col_in_line(buf.slice(..), 0, 0, 4), 0); // at the tab itself
     assert_eq!(display_col_in_line(buf.slice(..), 0, 1, 4), 4); // past the tab
@@ -242,7 +243,7 @@ fn display_col_tab_advances_to_next_stop() {
 }
 
 #[test]
-fn display_col_tab_mid_line_uses_current_col() {
+fn display_col_tab_mid_line_uses_current_display_col() {
     // "ab\tcd\n" with tw=4: 'a'(1) 'b'(2) '\t' → next stop of 2 is 4; then 'c'(5).
     let buf = rope("ab\tcd\n");
     assert_eq!(display_col_in_line(buf.slice(..), 0, 2, 4), 2); // before the tab
@@ -252,7 +253,7 @@ fn display_col_tab_mid_line_uses_current_col() {
 
 #[test]
 fn display_col_tab_width_8() {
-    // "\t\n" with tw=8: tab → col 8.
+    // "\t\n" with tw=8: tab → display col 8.
     let buf = rope("\t\n");
     assert_eq!(display_col_in_line(buf.slice(..), 0, 1, 8), 8);
 }
@@ -267,10 +268,11 @@ fn display_col_at_line_start_is_zero() {
 
 #[test]
 fn display_col_wide_cjk_before_tab_shifts_the_stop() {
-    // "\u{6F22}\tx\n" (漢 is East Asian Wide, 2 columns) with tw=4:
-    // 漢 takes col 0→2; tab from col 2 advances to the next stop, col 4;
-    // 'x' lands at col 4. A char-counting (not column-counting) walk would
-    // have put the tab's stop at col 3 instead — the bug this module fixes.
+    // "\u{6F22}\tx\n" (漢 is East Asian Wide, 2 display columns) with tw=4:
+    // 漢 takes display col 0→2; tab from display col 2 advances to the next
+    // stop, display col 4; 'x' lands at display col 4. A char-counting (not
+    // display-column-counting) walk would have put the tab's stop at
+    // display col 3 instead — the bug this module fixes.
     let buf = rope("\u{6F22}\tx\n");
     assert_eq!(display_col_in_line(buf.slice(..), 0, 1, 4), 2); // past 漢
     assert_eq!(display_col_in_line(buf.slice(..), 0, 2, 4), 4); // past the tab
@@ -278,10 +280,10 @@ fn display_col_wide_cjk_before_tab_shifts_the_stop() {
 }
 
 #[test]
-fn display_col_decomposed_e_acute_before_tab_counts_as_one_column() {
+fn display_col_decomposed_e_acute_before_tab_counts_as_one_display_column() {
     // "e\u{0301}\tx\n": the decomposed é is one grapheme cluster occupying 1
-    // column (base 'e' + zero-width combining mark), so the tab after it
-    // behaves exactly as it would after a plain 'e'.
+    // display column (base 'e' + zero-width combining mark), so the tab
+    // after it behaves exactly as it would after a plain 'e'.
     let buf = rope("e\u{0301}\tx\n");
     assert_eq!(buf.len_chars(), 5); // e, U+0301, \t, x, \n
     assert_eq!(display_col_in_line(buf.slice(..), 0, 2, 4), 1); // past the é cluster
@@ -292,37 +294,40 @@ fn display_col_decomposed_e_acute_before_tab_counts_as_one_column() {
 // ── char_pos_at_display_col ───────────────────────────────────────────────
 
 #[test]
-fn char_pos_at_col_zero_is_line_start() {
+fn char_pos_at_display_col_zero_is_line_start() {
     let buf = rope("\tfoo\n");
     assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 0, 4), 0);
 }
 
 #[test]
 fn char_pos_at_tab_stop_after_tab() {
-    // "\tx\n": tab takes col 0→4. char at col 4 is past the tab (char 1).
+    // "\tx\n": tab takes display col 0→4. char at display col 4 is past the
+    // tab (char 1).
     let buf = rope("\tx\n");
     assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 4, 4), 1);
 }
 
 #[test]
-fn char_pos_at_col_two_in_spaces() {
-    // "    \n": 4 spaces. char at col 2 is char 2 (third space).
+fn char_pos_at_display_col_two_in_spaces() {
+    // "    \n": 4 spaces. char at display col 2 is char 2 (third space).
     let buf = rope("    \n");
     assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 2, 4), 2);
 }
 
 #[test]
-fn char_pos_at_col_eight_two_tabs() {
-    // "\t\t\n": tab→col4, tab→col8. char at col 8 is past second tab (char 2).
+fn char_pos_at_display_col_eight_two_tabs() {
+    // "\t\t\n": tab→col4, tab→col8. char at display col 8 is past second tab
+    // (char 2).
     let buf = rope("\t\t\n");
     assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 8, 4), 2);
-    // Mid stop: col 4 is past first tab (char 1).
+    // Mid stop: display col 4 is past first tab (char 1).
     assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 4, 4), 1);
 }
 
 #[test]
 fn char_pos_mixed_spaces_and_tab() {
-    // "  \t\n": 2 spaces (col 0,1) + tab (col 2→4). char at col 4 is char 3.
+    // "  \t\n": 2 spaces (display col 0,1) + tab (display col 2→4). char at
+    // display col 4 is char 3.
     let buf = rope("  \t\n");
     assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 4, 4), 3);
     assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 2, 4), 2);
@@ -330,24 +335,24 @@ fn char_pos_mixed_spaces_and_tab() {
 
 #[test]
 fn char_pos_overshoot_stops_short() {
-    // "\t\n" with tw=4, target col 2: the tab would jump col 0→4,
-    // overshooting 2. Walk stops at line_start (col 0).
+    // "\t\n" with tw=4, target display col 2: the tab would jump display col
+    // 0→4, overshooting 2. Walk stops at line_start (display col 0).
     let buf = rope("\t\n");
     assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 2, 4), 0);
 }
 
 #[test]
-fn char_pos_at_col_after_wide_cjk_and_tab() {
-    // "\u{6F22}\tx\n" with tw=4: 漢 spans col 0→2, tab spans col 2→4 —
-    // the char at col 4 is 'x' (char index 2).
+fn char_pos_at_display_col_after_wide_cjk_and_tab() {
+    // "\u{6F22}\tx\n" with tw=4: 漢 spans display col 0→2, tab spans display
+    // col 2→4 — the char at display col 4 is 'x' (char index 2).
     let buf = rope("\u{6F22}\tx\n");
     assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 4, 4), 2);
 }
 
 #[test]
 fn char_pos_target_beyond_line_width_stops_at_newline() {
-    // "ab\ncd\n" — line 0 is 2 columns wide. A target past that must stop
-    // on line 0's '\n' (char 2), never walk onto line 1.
+    // "ab\ncd\n" — line 0 is 2 display columns wide. A target past that must
+    // stop on line 0's '\n' (char 2), never walk onto line 1.
     let buf = rope("ab\ncd\n");
     assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 4, 4), 2);
     // Same guard on the last content line: stops at its structural '\n'.

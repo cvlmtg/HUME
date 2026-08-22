@@ -222,43 +222,45 @@ pub fn display_col_in_line(
 ) -> usize {
     let line_start = slice.line_to_char(line_idx);
     let tw = tab_width as usize;
-    let mut col = 0usize;
+    let mut display_col = 0usize;
     let mut pos = line_start;
     while pos < char_pos {
         let next = next_grapheme_boundary(slice, pos);
         if next > char_pos || next == pos {
             break;
         }
-        col += crate::width::grapheme_width(&cluster_str(slice, pos, next), col, tw);
+        display_col += crate::width::grapheme_width(&cluster_str(slice, pos, next), display_col, tw);
         pos = next;
     }
-    col
+    display_col
 }
 
 /// Return the char offset on `line_idx` at which the display column first
-/// reaches `target_col`, walking forward from the line start with `\t`
-/// expanded to tab stops of width `tab_width`.
+/// reaches `target_display_col`, walking forward from the line start with
+/// `\t` expanded to tab stops of width `tab_width`.
 ///
-/// For `target_col == 0` this is the line start. When `target_col` is a tab
-/// stop and the line's leading content is whitespace (the only context in
-/// which this helper is called — dedent-on-Backspace), the position is exact:
-/// tabs jump to multiples of `tab_width` and spaces step by one, so every
-/// tab stop along the way is hit. If a grapheme would overshoot `target_col`
-/// (e.g. a tab when not aligned), the walk stops at the current position —
-/// the closest position not exceeding `target_col`. The walk never leaves the
-/// line: a `target_col` beyond the line's width stops on the line's `\n`.
+/// For `target_display_col == 0` this is the line start. When
+/// `target_display_col` is a tab stop and the line's leading content is
+/// whitespace (the only context in which this helper is called —
+/// dedent-on-Backspace), the position is exact: tabs jump to multiples of
+/// `tab_width` and spaces step by one, so every tab stop along the way is
+/// hit. If a grapheme would overshoot `target_display_col` (e.g. a tab when
+/// not aligned), the walk stops at the current position — the closest
+/// position not exceeding `target_display_col`. The walk never leaves the
+/// line: a `target_display_col` beyond the line's width stops on the line's
+/// `\n`.
 pub fn char_pos_at_display_col(
     slice: RopeSlice<'_>,
     line_idx: usize,
-    target_col: usize,
+    target_display_col: usize,
     tab_width: u8,
 ) -> usize {
     let line_start = slice.line_to_char(line_idx);
-    if target_col == 0 {
+    if target_display_col == 0 {
         return line_start;
     }
     let tw = tab_width as usize;
-    let mut col = 0usize;
+    let mut display_col = 0usize;
     let mut pos = line_start;
     loop {
         let next = next_grapheme_boundary(slice, pos);
@@ -268,13 +270,13 @@ pub fn char_pos_at_display_col(
         if slice.get_char(pos) == Some('\n') {
             break; // end of line — never walk onto the next line
         }
-        let w = crate::width::grapheme_width(&cluster_str(slice, pos, next), col, tw);
-        if col + w > target_col {
+        let w = crate::width::grapheme_width(&cluster_str(slice, pos, next), display_col, tw);
+        if display_col + w > target_display_col {
             break; // this grapheme would overshoot — stop here
         }
-        col += w;
+        display_col += w;
         pos = next;
-        if col == target_col {
+        if display_col == target_display_col {
             break;
         }
     }

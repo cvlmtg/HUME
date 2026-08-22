@@ -1,5 +1,7 @@
 use hume_editing::grapheme::{display_col_in_line, next_grapheme_boundary};
-use hume_editing::lines::{line_break_char, line_content_end, line_end_exclusive, place_column};
+use hume_editing::lines::{
+    line_break_char, line_content_end, line_end_exclusive, place_display_column,
+};
 use hume_editing::text::Text;
 
 // ── Line motions (inner) ──────────────────────────────────────────────────────
@@ -59,7 +61,7 @@ pub(super) fn goto_first_nonblank(buf: &Text, head: usize) -> usize {
 /// Pass `None` to use the current position's own display column.
 ///
 /// **Column model:** display column — tab-aware and unicode-width-aware, via
-/// `place_column`/`display_col_in_line`. Matches
+/// `place_display_column`/`display_col_in_line`. Matches
 /// `editor::visual_move::move_vertical`'s model, which bare `j`/`k` (and
 /// page/half-page scroll, the mouse wheel) use. This function is reached only
 /// by an explicit numeric prefix (`9j`), which counts buffer lines to match
@@ -79,7 +81,7 @@ pub(super) fn move_down_inner(
     }
 
     let col = preferred_col.unwrap_or_else(|| display_col_in_line(buf, line, head, tab_width));
-    place_column(buf, line + 1, col, tab_width)
+    place_display_column(buf, line + 1, col, tab_width)
 }
 
 /// Move the cursor up one line, preserving the display column.
@@ -97,5 +99,5 @@ pub(super) fn move_up_inner(
     }
 
     let col = preferred_col.unwrap_or_else(|| display_col_in_line(buf, line, head, tab_width));
-    place_column(buf, line - 1, col, tab_width)
+    place_display_column(buf, line - 1, col, tab_width)
 }

@@ -13,39 +13,39 @@
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-/// Columns a `\t` at display column `col` occupies — the distance to the next
-/// tab stop of width `tw`. Always in `[1, tw]`: a tab already sitting on a
-/// stop advances a full `tw` rather than zero. `tw < 1` is clamped to 1
-/// (a zero-width tab stop is meaningless) so callers don't each have to
-/// guard it themselves.
-pub fn tab_advance(col: usize, tw: usize) -> usize {
+/// Columns a `\t` at display column `display_col` occupies — the distance to
+/// the next tab stop of width `tw`. Always in `[1, tw]`: a tab already
+/// sitting on a stop advances a full `tw` rather than zero. `tw < 1` is
+/// clamped to 1 (a zero-width tab stop is meaningless) so callers don't each
+/// have to guard it themselves.
+pub fn tab_advance(display_col: usize, tw: usize) -> usize {
     let tw = tw.max(1);
-    tw - col % tw
+    tw - display_col % tw
 }
 
 /// Display columns one grapheme cluster occupies when rendered starting at
-/// column `col`. A tab advances to the next `tab_width` stop; every other
-/// cluster is measured with `unicode-width` and clamped to `[1, 2]` — the
-/// lower bound keeps every cluster occupying at least one cell (so it stays
-/// addressable by column even for a degenerate cluster with no base
-/// character, e.g. a lone combining mark), the upper bound matches the
-/// two-cell layout the renderer gives every wide grapheme.
-pub fn grapheme_width(cluster: &str, col: usize, tab_width: usize) -> usize {
+/// display column `display_col`. A tab advances to the next `tab_width`
+/// stop; every other cluster is measured with `unicode-width` and clamped to
+/// `[1, 2]` — the lower bound keeps every cluster occupying at least one
+/// cell (so it stays addressable by column even for a degenerate cluster
+/// with no base character, e.g. a lone combining mark), the upper bound
+/// matches the two-cell layout the renderer gives every wide grapheme.
+pub fn grapheme_width(cluster: &str, display_col: usize, tab_width: usize) -> usize {
     if cluster == "\t" {
-        tab_advance(col, tab_width)
+        tab_advance(display_col, tab_width)
     } else {
         cluster.width().clamp(1, 2)
     }
 }
 
-/// Display columns `s` occupies when rendered starting at column
-/// `start_col` — the sum of its grapheme clusters' [`grapheme_width`].
-pub fn str_width(s: &str, start_col: usize, tab_width: usize) -> usize {
-    let mut col = start_col;
+/// Display columns `s` occupies when rendered starting at display column
+/// `start_display_col` — the sum of its grapheme clusters' [`grapheme_width`].
+pub fn str_width(s: &str, start_display_col: usize, tab_width: usize) -> usize {
+    let mut display_col = start_display_col;
     for g in s.graphemes(true) {
-        col += grapheme_width(g, col, tab_width);
+        display_col += grapheme_width(g, display_col, tab_width);
     }
-    col - start_col
+    display_col - start_display_col
 }
 
 #[cfg(test)]

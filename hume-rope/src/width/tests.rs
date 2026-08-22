@@ -4,7 +4,7 @@ use pretty_assertions::assert_eq;
 // ── tab_advance ──────────────────────────────────────────────────────────
 
 #[test]
-fn tab_advance_from_col_zero_reaches_full_width() {
+fn tab_advance_from_display_col_zero_reaches_full_width() {
     assert_eq!(tab_advance(0, 4), 4);
 }
 
@@ -31,24 +31,24 @@ fn tab_advance_zero_width_clamps_to_one() {
 
 #[test]
 fn tab_advance_no_overflow_near_u32_max() {
-    // col = u32::MAX as usize, tw = 4: u32::MAX % 4 == 3, so the distance
-    // to the next stop is 4 - 3 = 1. The modulo-based formula never
-    // computes a "next stop" value that could itself overflow — relevant
-    // since `hume-engine` casts its `u32` document column straight into
-    // this `usize` parameter.
+    // display_col = u32::MAX as usize, tw = 4: u32::MAX % 4 == 3, so the
+    // distance to the next stop is 4 - 3 = 1. The modulo-based formula
+    // never computes a "next stop" value that could itself overflow —
+    // relevant since `hume-engine` casts its `u32` document display column
+    // straight into this `usize` parameter.
     assert_eq!(tab_advance(u32::MAX as usize, 4), 1);
 }
 
 // ── grapheme_width ───────────────────────────────────────────────────────
 
 #[test]
-fn grapheme_width_ascii_is_one_column() {
+fn grapheme_width_ascii_is_one_display_column() {
     assert_eq!(grapheme_width("a", 0, 4), 1);
-    assert_eq!(grapheme_width("a", 7, 4), 1); // column-independent
+    assert_eq!(grapheme_width("a", 7, 4), 1); // display-column-independent
 }
 
 #[test]
-fn grapheme_width_wide_cjk_is_two_columns() {
+fn grapheme_width_wide_cjk_is_two_display_columns() {
     // U+6F22 (漢) is East Asian Wide.
     assert_eq!(grapheme_width("\u{6F22}", 0, 4), 2);
 }
@@ -60,11 +60,11 @@ fn grapheme_width_tab_advances_to_next_stop() {
 }
 
 #[test]
-fn grapheme_width_decomposed_e_acute_is_one_column() {
+fn grapheme_width_decomposed_e_acute_is_one_display_column() {
     // "e" + U+0301 (combining acute accent) is ONE grapheme cluster
     // (unicode-segmentation merges them). The base 'e' contributes 1
-    // column; the combining mark contributes 0 — total 1, matching how
-    // the character actually renders on screen.
+    // display column; the combining mark contributes 0 — total 1, matching
+    // how the character actually renders on screen.
     assert_eq!(grapheme_width("e\u{0301}", 0, 4), 1);
 }
 
@@ -85,9 +85,9 @@ fn str_width_no_tabs_sums_grapheme_widths() {
 }
 
 #[test]
-fn str_width_tab_uses_running_column() {
-    // "ab\tcd" at tw=4: a(1)->1, b(1)->2, tab from col 2 advances 2 (to
-    // col 4), c(1)->5, d(1)->6. Total width = 6.
+fn str_width_tab_uses_running_display_col() {
+    // "ab\tcd" at tw=4: a(1)->1, b(1)->2, tab from display col 2 advances 2
+    // (to display col 4), c(1)->5, d(1)->6. Total width = 6.
     assert_eq!(str_width("ab\tcd", 0, 4), 6);
 }
 
@@ -95,17 +95,18 @@ fn str_width_tab_uses_running_column() {
 fn str_width_wide_char_before_tab_shifts_the_stop() {
     // This is the case the git-diff plugin got wrong when it counted one
     // Steel char (not one display column) per preceding character: a wide
-    // CJK char occupies 2 columns, so the tab after it lands one column
-    // later than a naive char-count would predict.
+    // CJK char occupies 2 display columns, so the tab after it lands one
+    // display column later than a naive char-count would predict.
     //
-    // "\u{6F22}\tx" at tw=4: 漢(2)->2, tab from col 2 advances 2 (to col
-    // 4), x(1)->5. Total width = 5 — not 4, which a char-counting (not
-    // column-counting) walk would have produced.
+    // "\u{6F22}\tx" at tw=4: 漢(2)->2, tab from display col 2 advances 2 (to
+    // display col 4), x(1)->5. Total width = 5 — not 4, which a
+    // char-counting (not display-column-counting) walk would have produced.
     assert_eq!(str_width("\u{6F22}\tx", 0, 4), 5);
 }
 
 #[test]
-fn str_width_honors_nonzero_start_col() {
-    // Starting at column 2, a tab (tw=4) advances 2 to reach column 4.
+fn str_width_honors_nonzero_start_display_col() {
+    // Starting at display column 2, a tab (tw=4) advances 2 to reach
+    // display column 4.
     assert_eq!(str_width("\t", 2, 4), 2);
 }

@@ -43,7 +43,7 @@ fn no_raw_char_stepping_in_motion_code() {
     paths.push(workspace_root.join("hume-editing/src/lines.rs"));
     paths.push(workspace_root.join("hume-editing/src/word.rs"));
     // The line-boundary helpers that walk grapheme boundaries
-    // (snap_to_grapheme_boundary, line_content_end, place_column) moved to
+    // (snap_to_grapheme_boundary, line_content_end, place_display_column) moved to
     // hume-rope — scan their new home too. hume-rope/src/grapheme.rs (the
     // boundary-detection implementation itself) and cursor.rs (CharCursor,
     // deliberately char-level) stay out of scope, same as before the move.

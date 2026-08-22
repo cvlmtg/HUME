@@ -11,7 +11,7 @@ use hume_editing::text::Text;
 /// Each copy preserves the **char-offset** column of both `anchor` and
 /// `head` (not a display column — wrong for tabs/wide chars, same narrow gap
 /// `move_down_inner`/`move_up_inner` used to have before they switched to
-/// `place_column`'s display-column model). Left as char-offset here because
+/// `place_display_column`'s display-column model). Left as char-offset here because
 /// `cmd_copy_selection_on_next_line`/`_prev_line` are registered directly in
 /// `CommandRegistry` as bare `fn` pointers — no channel to a per-buffer
 /// `tab_width` exists at that call shape, unlike the `9j`/`9k` path, which
