@@ -300,7 +300,10 @@ fn selection_range_highlighted() {
         &mut scratch,
     );
 
-    assert_eq!(scratch.styles[0].bg, None, "display_col 0 outside selection");
+    assert_eq!(
+        scratch.styles[0].bg, None,
+        "display_col 0 outside selection"
+    );
     assert_eq!(
         scratch.styles[1].bg,
         Some(ratatui::style::Color::Red),

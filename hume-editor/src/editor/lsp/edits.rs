@@ -496,7 +496,11 @@ fn resolve_goto_target(
             let bid = resolve_path_or_uri(state, view, &path_or_uri)?;
             Ok((bid, char_indexed_to_char_pos(state, bid, line, char_col)))
         }
-        GotoTarget::Buffer { bid, line, char_col } => {
+        GotoTarget::Buffer {
+            bid,
+            line,
+            char_col,
+        } => {
             if state.buffers.try_get(bid).is_none() {
                 return Err("no such buffer".to_string());
             }

@@ -708,7 +708,8 @@ fn completion_popup_anchor_matches_an_independent_screen_pos_walk_when_wrapped()
     let mut scratch = FormatScratch::new();
     let mut rm = commands::pane_row_map(buf, &ed.state.settings, &ed.view.panes[pid], &mut scratch);
     let vp = &ed.view.panes[pid].viewport;
-    let (content_x, row) = cursor::content_pos(vp, &mut rm, cursor_char).expect("cursor is visible");
+    let (content_x, row) =
+        cursor::content_pos(vp, &mut rm, cursor_char).expect("cursor is visible");
     let expected_x = content_x + gutter_w + pane_rect.x;
     let expected_y = row + pane_rect.y + 1; // resolve_popup_geometry: room below → anchor_y + 1
 

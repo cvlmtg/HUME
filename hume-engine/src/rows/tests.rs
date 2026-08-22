@@ -941,12 +941,18 @@ fn render_row_expands_a_tab_in_a_virtual_lines_text() {
     let cells = &virtual_row.graphemes[virtual_row.row.graphemes.clone()];
     assert_eq!(cells.len(), 2, "one cell for the tab, one for 'x'");
     assert_eq!(cells[0].display_col, 0);
-    assert_eq!(cells[0].width, 4, "tab at display_col 0, tab_width 4 -> full stop");
+    assert_eq!(
+        cells[0].width, 4,
+        "tab at display_col 0, tab_width 4 -> full stop"
+    );
     assert!(
         matches!(cells[0].content, CellContent::Indicator { .. }),
         "a tab renders as a space-filled Indicator, matching a real buffer line's tab with its indicator off"
     );
-    assert_eq!(cells[1].display_col, 4, "'x' lands right after the tab stop");
+    assert_eq!(
+        cells[1].display_col, 4,
+        "'x' lands right after the tab stop"
+    );
 }
 
 #[test]
@@ -975,7 +981,10 @@ fn render_row_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop() {
     assert_eq!(cells[0].display_col, 0);
     assert_eq!(cells[0].width, 2);
     assert!(matches!(cells[1].content, CellContent::WidthContinuation));
-    assert_eq!(cells[2].display_col, 2, "tab starts right after the wide char");
+    assert_eq!(
+        cells[2].display_col, 2,
+        "tab starts right after the wide char"
+    );
     assert_eq!(cells[2].width, 2, "tab_advance(2, 4) == 2");
     assert!(matches!(cells[3].content, CellContent::WidthContinuation));
     assert_eq!(cells[4].display_col, 4, "'x' lands at column 4, not 3");

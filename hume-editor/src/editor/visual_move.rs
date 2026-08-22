@@ -64,7 +64,11 @@ fn move_vertical(
         // exactly where it was rather than snapping it to `target_display_col`.
         return head;
     }
-    rm.char_at(last_content, target_display_col, DisplayColTarget::NearestContent)
+    rm.char_at(
+        last_content,
+        target_display_col,
+        DisplayColTarget::NearestContent,
+    )
 }
 
 /// How `apply_visual_vertical`'s `count` should be interpreted.
@@ -142,12 +146,10 @@ pub(super) fn apply_visual_vertical(
             // Pass 1: resolve each selection's sticky display column from
             // sel.sticky_display_col, computing it fresh on the first j/k
             // press.
-            target_display_cols.extend(
-                sels.iter_sorted().map(|sel| {
-                    sel.sticky_display_col()
-                        .unwrap_or_else(|| rm.locate(sel.head()).1)
-                }),
-            );
+            target_display_cols.extend(sels.iter_sorted().map(|sel| {
+                sel.sticky_display_col()
+                    .unwrap_or_else(|| rm.locate(sel.head()).1)
+            }));
 
             // Pass 2: move each selection, preserving the sticky column so
             // consecutive j/k presses reuse it.

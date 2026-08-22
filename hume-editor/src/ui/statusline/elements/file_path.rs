@@ -40,7 +40,10 @@ pub(in crate::ui::statusline) fn statusline_display_path(editor: &Editor) -> Str
 ///    left-to-right, re-checking width each time.
 /// 3. If still too wide after all dirs are abbreviated, truncate the filename
 ///    with a trailing `…`, shrinking until it fits or only `…` remains.
-pub(in crate::ui::statusline) fn shorten_path_to_width(display: &str, max_display_cols: usize) -> String {
+pub(in crate::ui::statusline) fn shorten_path_to_width(
+    display: &str,
+    max_display_cols: usize,
+) -> String {
     shorten_path_to_width_with(display, max_display_cols, is_path_sep)
 }
 

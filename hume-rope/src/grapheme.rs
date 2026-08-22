@@ -229,7 +229,8 @@ pub fn display_col_in_line(
         if next > char_pos || next == pos {
             break;
         }
-        display_col += crate::width::grapheme_width(&cluster_str(slice, pos, next), display_col, tw);
+        display_col +=
+            crate::width::grapheme_width(&cluster_str(slice, pos, next), display_col, tw);
         pos = next;
     }
     display_col

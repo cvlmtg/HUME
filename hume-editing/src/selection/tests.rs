@@ -600,5 +600,9 @@ fn translate_in_place_merges_selections_collapsed_onto_same_point() {
     assert_eq!(set.len(), 1, "both selections collapse onto the same point");
     let s = set.primary();
     assert_eq!((s.anchor(), s.head()), (0, 0));
-    assert_eq!(s.sticky_display_col(), None, "merged selection's line was edited");
+    assert_eq!(
+        s.sticky_display_col(),
+        None,
+        "merged selection's line was edited"
+    );
 }

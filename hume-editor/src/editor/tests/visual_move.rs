@@ -160,12 +160,18 @@ fn visual_preferred_display_col_reset_on_horizontal_motion() {
     let mut ed = visual_test_editor(40);
     ed.handle_key(key('j')); // latches sticky_display_col on the selection
     assert!(
-        ed.current_selections().primary().sticky_display_col().is_some(),
+        ed.current_selections()
+            .primary()
+            .sticky_display_col()
+            .is_some(),
         "j latches sticky col"
     );
     ed.handle_key(key('l')); // horizontal motion — Selection::new() clears sticky_display_col
     assert!(
-        ed.current_selections().primary().sticky_display_col().is_none(),
+        ed.current_selections()
+            .primary()
+            .sticky_display_col()
+            .is_none(),
         "l resets sticky col"
     );
 }
@@ -230,7 +236,10 @@ fn visual_move_down_with_explicit_count_moves_buffer_lines() {
         "1j: one buffer line skips the sub-row-1 stop entirely"
     );
     assert!(
-        ed.current_selections().primary().sticky_display_col().is_none(),
+        ed.current_selections()
+            .primary()
+            .sticky_display_col()
+            .is_none(),
         "buffer-line path (preferred_col: None) doesn't set sticky display column"
     );
 }

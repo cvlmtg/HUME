@@ -360,7 +360,7 @@ fn inline_change_renders_virtual_line_word_spans_and_tint() {
 
 #[test]
 fn inline_tab_indented_deletion_keeps_a_literal_tab_that_still_renders_at_the_right_display_column()
- {
+{
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\n\ttabbed line\nthree\n", "v1");

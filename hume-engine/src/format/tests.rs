@@ -212,7 +212,10 @@ fn soft_wrap_defers_wide_char_whole_to_next_row_when_it_would_straddle_column() 
     assert_eq!(row1.len(), 4, "'中' + its width continuation + 'e' + 'f'");
     assert_eq!(row1[0].char_offset, 4, "row 1 starts with '中'");
     assert_eq!(row1[0].width, 2, "'中' keeps its full display width");
-    assert_eq!(row1[0].display_col, 0, "'中' starts at column 0 of the new row");
+    assert_eq!(
+        row1[0].display_col, 0,
+        "'中' starts at column 0 of the new row"
+    );
     assert!(
         matches!(row1[1].content, CellContent::WidthContinuation),
         "second cell of '中' stays paired with it on the same row"
@@ -238,7 +241,10 @@ fn soft_wrap_defers_tab_whole_to_next_row_when_it_would_straddle_column() {
 
     let row1 = &graphemes[rows[1].graphemes.clone()];
     assert_eq!(row1.len(), 3, "tab + 'e' + 'f'");
-    assert_eq!(row1[0].display_col, 0, "tab starts at column 0 of the new row");
+    assert_eq!(
+        row1[0].display_col, 0,
+        "tab starts at column 0 of the new row"
+    );
     assert_eq!(row1[0].width, 4, "tab keeps its full 4-column expansion");
     assert_eq!(row1[1].char_offset, 5, "'e' follows the tab");
     assert_eq!(row1[2].char_offset, 6, "'f' follows 'e'");
@@ -253,7 +259,10 @@ fn soft_wrap_recomputes_tab_width_at_post_wrap_column() {
     let (rows, graphemes) = do_format("ab\tc", WrapMode::Soft { width: 3 });
     assert!(rows.len() >= 2, "tab must overflow onto a new row");
     let row1 = &graphemes[rows[1].graphemes.clone()];
-    assert_eq!(row1[0].display_col, 0, "tab starts at column 0 of the new row");
+    assert_eq!(
+        row1[0].display_col, 0,
+        "tab starts at column 0 of the new row"
+    );
     assert_eq!(
         row1[0].width, 4,
         "tab must expand its full post-wrap tab stop (4), not the stale pre-wrap width (2)"
@@ -826,8 +835,7 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
     let display_cols: Vec<u32> = insert_cells.iter().map(|g| g.display_col).collect();
     let expected: Vec<u32> = (0..300).collect();
     assert_eq!(
-        display_cols,
-        expected,
+        display_cols, expected,
         "columns advance 0..300 without wraparound"
     );
 }

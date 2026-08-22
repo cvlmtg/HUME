@@ -38,10 +38,7 @@ impl StatuslineElement for PositionElement {
         let row_digits = digit_count(max_row).max(3);
         let width = row_digits + 1 + 3;
         (
-            Cow::Owned(format!(
-                "{:>width$}",
-                format!("{line}:{grapheme_col}")
-            )),
+            Cow::Owned(format!("{:>width$}", format!("{line}:{grapheme_col}"))),
             colors.statusline,
         )
     }

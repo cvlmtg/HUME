@@ -1303,7 +1303,11 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         let Some(lsp) = self.lsp.as_deref() else {
             return Err("goto-location!: no LSP state available".to_string());
         };
-        let target = crate::editor::lsp::edits::GotoTarget::Buffer { bid, line, char_col };
+        let target = crate::editor::lsp::edits::GotoTarget::Buffer {
+            bid,
+            line,
+            char_col,
+        };
         crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
     }
 }

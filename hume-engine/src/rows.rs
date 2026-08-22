@@ -565,7 +565,12 @@ impl<'a> RowMap<'a> {
     /// A virtual row is not buffer content, so `pos` landing on one clamps to
     /// the nearest content sub-row of the same line — the first for a `Before`
     /// row, the last for an `After` row.
-    pub fn char_at(&mut self, pos: RowPos, target_display_col: u32, target: DisplayColTarget) -> usize {
+    pub fn char_at(
+        &mut self,
+        pos: RowPos,
+        target_display_col: u32,
+        target: DisplayColTarget,
+    ) -> usize {
         let b = self.block(pos.line);
         let sub = pos
             .row
@@ -730,8 +735,9 @@ impl<'a> RowMap<'a> {
         let tab_width = self.tab_width as usize;
         let mut display_col: u32 = 0;
         for (byte_offset, grapheme_str) in vl.text.grapheme_indices(true) {
-            let width = hume_rope::width::grapheme_width(grapheme_str, display_col as usize, tab_width)
-                as u8;
+            let width =
+                hume_rope::width::grapheme_width(grapheme_str, display_col as usize, tab_width)
+                    as u8;
             let scope = scope_cursor.scope_at(byte_offset).or(base_scope);
 
             // A literal tab renders as a space, exactly like a buffer line's

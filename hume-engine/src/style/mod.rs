@@ -429,7 +429,8 @@ fn char_offset_to_display_col(
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
 ) -> Option<u32> {
-    resolve_grapheme_display_col(char_offset, graphemes, row_range).map(|(display_col, _)| display_col)
+    resolve_grapheme_display_col(char_offset, graphemes, row_range)
+        .map(|(display_col, _)| display_col)
 }
 
 /// Exclusive right edge (`g.display_col + g.width`) of the grapheme at `char_offset`.
