@@ -71,8 +71,8 @@
                        (if (string? err) err (hash-ref err "message")))))
 
 ;;; A `TextEdit` hashmap `{range: {start, end}, newText}` -> the
-;;; `((start-line . start-col) (end-line . end-col) text)` tuple shape
-;;; `apply-text-edits!` expects. Shared by completion and formatting.
+;;; `((start-line . start-character) (end-line . end-character) text)` tuple
+;;; shape `apply-text-edits!` expects. Shared by completion and formatting.
 (define (lsp/text-edit->tuple te)
   (let* ((range (hash-ref te "range"))
          (start (hash-ref range "start"))

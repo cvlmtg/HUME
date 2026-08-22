@@ -551,7 +551,7 @@ pub trait DecorationHost {
     ) -> Result<(), String>;
 
     /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
-    /// decoded `{"start" "end" "line" "col" "severity" "message" "code"
+    /// decoded `{"start" "end" "line" "char-col" "severity" "message" "code"
     /// "source"}` hashmaps, filtered then capped at 1000. `severity_floor`
     /// is `None` for "no floor" (everything); `range` is `None` for the
     /// whole buffer. `Err` on an unknown `#:severity` name.
@@ -893,8 +893,8 @@ pub trait UiHost {
 /// through [`EditorHost::edits`].
 pub trait EditHost {
     /// `(apply-text-edits! bid edits #:expect-generation gen)` — `edits` is
-    /// `(start_line, start_char, end_line, end_char, new_text)` tuples in
-    /// wire coordinates. Applied as one undo step.
+    /// `(start_line, start_character, end_line, end_character, new_text)`
+    /// tuples in wire coordinates. Applied as one undo step.
     fn apply_text_edits(
         &mut self,
         bid: BufferId,
@@ -915,22 +915,22 @@ pub trait EditHost {
         character: usize,
     ) -> Result<(), String>;
 
-    /// `(goto-location! target)`, `(list target line col)` shape with a
+    /// `(goto-location! target)`, `(list target line char-col)` shape with a
     /// path or `file://` URI string target — already char-indexed.
     fn goto_location_path(
         &mut self,
         path_or_uri: String,
         line: usize,
-        col: usize,
+        char_col: usize,
     ) -> Result<(), String>;
 
-    /// `(goto-location! target)`, `(list target line col)` shape with a
+    /// `(goto-location! target)`, `(list target line char-col)` shape with a
     /// `bid` target — already char-indexed.
     fn goto_location_buffer(
         &mut self,
         bid: BufferId,
         line: usize,
-        col: usize,
+        char_col: usize,
     ) -> Result<(), String>;
 }
 

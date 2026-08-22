@@ -31,7 +31,7 @@
     (if (null? before) (car (reverse diags)) (car (reverse before)))))
 
 (define (lsp/diag-jump-to! d)
-  (goto-location! (list (current-buffer) (hash-ref d "line") (hash-ref d "col"))))
+  (goto-location! (list (current-buffer) (hash-ref d "line") (hash-ref d "char-col"))))
 
 ;;; gn/gp only — jumps like `lsp/diag-jump-to!`, then pops the target's full
 ;;; message in a dismiss-on-any-key overlay (Ctrl+u/d scroll it instead).
@@ -66,7 +66,7 @@
             (map (lambda (d)
                    (string-append (lsp/severity-glyph (hash-ref d "severity")) " "
                                   (number->string (+ 1 (hash-ref d "line"))) ":"
-                                  (number->string (+ 1 (hash-ref d "col"))) " "
+                                  (number->string (+ 1 (hash-ref d "char-col"))) " "
                                   (lsp/first-line (hash-ref d "message"))))
                  diags)
             (lambda (idx) (when idx (lsp/diag-jump-to! (list-ref diags idx)))))))))

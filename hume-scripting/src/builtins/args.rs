@@ -305,25 +305,25 @@ pub(crate) fn optional_bid_arg(
     }
 }
 
-/// A decoded `(line . col)` wire position — a dotted pair.
+/// A decoded `(line . character)` wire position — a dotted pair.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PosArg {
     pub(crate) line: usize,
-    pub(crate) col: usize,
+    pub(crate) character: usize,
 }
 
 impl FromSteelVal for PosArg {
     fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
-        let (line, col) = pair_fields(val.clone(), "position", "(line . col)")?;
+        let (line, character) = pair_fields(val.clone(), "position", "(line . character)")?;
         Ok(PosArg {
             line: usize_arg(line, "position")?,
-            col: usize_arg(col, "position")?,
+            character: usize_arg(character, "position")?,
         })
     }
 }
 
-/// A decoded `((start-line . start-col) (end-line . end-col) text)` LSP
-/// text edit entry — outer 3-tuple is a list, inner positions are dotted
+/// A decoded `((start-line . start-character) (end-line . end-character) text)`
+/// LSP text edit entry — outer 3-tuple is a list, inner positions are dotted
 /// pairs.
 #[derive(Debug)]
 pub(crate) struct TextEditArg {
@@ -338,7 +338,7 @@ impl FromSteelVal for TextEditArg {
             val.clone(),
             "text edit",
             3..=3,
-            "((start-line . start-col) (end-line . end-col) text)",
+            "((start-line . start-character) (end-line . end-character) text)",
         )?;
         Ok(TextEditArg {
             start: PosArg::from_steelval(&fields[0])?,

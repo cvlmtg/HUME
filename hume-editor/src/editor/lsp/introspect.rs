@@ -290,7 +290,7 @@ pub(crate) fn wire_point_to_char_for_buffer(
 
 /// `(diagnostics-for-buffer bid #:severity floor #:range (start . end))` —
 /// decoded, filtered, capped-at-1000 hashmaps. `start`/`end`
-/// are char offsets; `line`/`col` are the char-indexed start position,
+/// are char offsets; `line`/`char-col` are the char-indexed start position,
 /// ready for `goto-location!` shape 2. Errors loudly on an unknown
 /// `#:severity` name (e.g. `'warn` typoed for `'warning`) rather than
 /// silently returning nothing that qualifies.
@@ -339,7 +339,7 @@ pub(crate) fn diagnostics_for_buffer(
                 "start": d.start,
                 "end": d.end,
                 "line": line,
-                "col": char_col,
+                "char-col": char_col,
                 "severity": d.severity.to_string(),
                 "message": d.message,
                 "code": d.code,

@@ -189,7 +189,7 @@ Every Steel-visible surface the LSP platform introduces — the lookup table for
 | `(set-extra-highlights! source bid spans)` — `spans`: `(start end scope)` char range, validated non-empty and in-bounds at the host boundary per SPEC.md §6 | builtin | B5 |
 | `(diagnostics-for-buffer bid #:severity floor #:range (start . end))` | builtin | B5 |
 | `(diagnostic-counts bid)` → `(errors . warnings)` | builtin | B5 |
-| `(apply-text-edits! bid edits #:expect-generation gen)` — `edits`: list of `((start-line . start-col) (end-line . end-col) text)` | builtin | B6 |
+| `(apply-text-edits! bid edits #:expect-generation gen)` — `edits`: list of `((start-line . start-character) (end-line . end-character) text)` | builtin | B6 |
 | `(apply-workspace-edit! wsedit)` | builtin | B6 |
 | `(goto-location! loc)` | builtin | B6 |
 | `(selection-spans-full-line? bid)` → bool (F8's range-format gate) | builtin | B6 |

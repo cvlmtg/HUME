@@ -160,14 +160,14 @@ fn cons_pair_then_pair_fields_round_trips() {
 
 #[test]
 fn pair_fields_rejects_proper_list() {
-    let err = pair_fields(list_of(&["a", "b"]), "position", "(line . col)").unwrap_err();
-    assert!(err.to_string().contains("(line . col)"), "got: {err}");
+    let err = pair_fields(list_of(&["a", "b"]), "position", "(line . character)").unwrap_err();
+    assert!(err.to_string().contains("(line . character)"), "got: {err}");
 }
 
 #[test]
 fn pair_fields_rejects_non_pair_scalar() {
-    let err = pair_fields(SteelVal::IntV(3), "position", "(line . col)").unwrap_err();
-    assert!(err.to_string().contains("(line . col)"), "got: {err}");
+    let err = pair_fields(SteelVal::IntV(3), "position", "(line . character)").unwrap_err();
+    assert!(err.to_string().contains("(line . character)"), "got: {err}");
 }
 
 // ── BidArg ────────────────────────────────────────────────────────────────
@@ -209,14 +209,14 @@ fn not_live_err_matches_require_live_wording() {
 
 // ── PosArg ────────────────────────────────────────────────────────────────
 
-fn pos_pair(line: isize, col: isize) -> SteelVal {
-    cons_pair(SteelVal::IntV(line), SteelVal::IntV(col)).unwrap()
+fn pos_pair(line: isize, character: isize) -> SteelVal {
+    cons_pair(SteelVal::IntV(line), SteelVal::IntV(character)).unwrap()
 }
 
 #[test]
-fn pos_arg_decodes_line_col_pair() {
+fn pos_arg_decodes_line_character_pair() {
     let pos = PosArg::from_steelval(&pos_pair(3, 7)).unwrap();
-    assert_eq!((pos.line, pos.col), (3, 7));
+    assert_eq!((pos.line, pos.character), (3, 7));
 }
 
 #[test]
@@ -225,7 +225,7 @@ fn pos_arg_rejects_proper_list() {
         .into_steelval()
         .unwrap();
     let err = PosArg::from_steelval(&val).unwrap_err();
-    assert!(err.to_string().contains("(line . col)"), "got: {err}");
+    assert!(err.to_string().contains("(line . character)"), "got: {err}");
 }
 
 #[test]
@@ -245,8 +245,8 @@ fn text_edit_arg_decodes_start_end_text() {
     .into_steelval()
     .unwrap();
     let edit = TextEditArg::from_steelval(&val).unwrap();
-    assert_eq!((edit.start.line, edit.start.col), (0, 0));
-    assert_eq!((edit.end.line, edit.end.col), (0, 3));
+    assert_eq!((edit.start.line, edit.start.character), (0, 0));
+    assert_eq!((edit.end.line, edit.end.character), (0, 3));
     assert_eq!(edit.text, "abc");
 }
 
@@ -259,5 +259,5 @@ fn text_edit_arg_rejects_malformed_position() {
         .into_steelval()
         .unwrap();
     let err = TextEditArg::from_steelval(&val).unwrap_err();
-    assert!(err.to_string().contains("(line . col)"), "got: {err}");
+    assert!(err.to_string().contains("(line . character)"), "got: {err}");
 }

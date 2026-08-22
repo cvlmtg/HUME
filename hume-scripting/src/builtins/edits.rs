@@ -15,8 +15,8 @@ use super::args::{
 use super::errors::{generic_err, require_cap};
 
 /// `(%apply-text-edits! bid edits expect-gen)` — `edits`: list of `((start-
-/// line . start-col) (end-line . end-col) text)`, wire positions as dotted
-/// pairs.
+/// line . start-character) (end-line . end-character) text)`, wire positions
+/// as dotted pairs.
 ///
 /// `edits` decodes manually via `TextEditArg::from_steelval` per entry
 /// rather than a typed `Vec<TextEditArg>` param — steel-core's blanket
@@ -38,9 +38,9 @@ pub(crate) fn apply_text_edits(
             let edit = TextEditArg::from_steelval(entry)?;
             Ok((
                 edit.start.line,
-                edit.start.col,
+                edit.start.character,
                 edit.end.line,
-                edit.end.col,
+                edit.end.character,
                 edit.text,
             ))
         })
@@ -66,8 +66,8 @@ pub(crate) fn apply_workspace_edit(ctx: &mut SteelCtx, wsedit: SteelVal) -> Stee
 /// in Scheme): a raw `Location`/`LocationLink` hashmap (wire
 /// position, converted using the focused buffer's server encoding — correct
 /// because the caller is that server's own response callback), or `(list
-/// target line col)` with char-indexed `line`/`col` and `target` a `bid`, a
-/// path string, or a `file://` URI string.
+/// target line char-col)` with char-indexed `line`/`char-col` and `target` a
+/// `bid`, a path string, or a `file://` URI string.
 pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
     match &loc {
         SteelVal::HashMapV(_) => {
@@ -106,25 +106,30 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
                 .map_err(generic_err)
         }
         SteelVal::ListV(_) => {
-            let fields = checked_fields(loc.clone(), "goto-location!", 3..=3, "(target line col)")?;
+            let fields = checked_fields(
+                loc.clone(),
+                "goto-location!",
+                3..=3,
+                "(target line char-col)",
+            )?;
             let target = fields[0].clone();
             let line = usize_arg(fields[1].clone(), "goto-location! line")?;
-            let col = usize_arg(fields[2].clone(), "goto-location! col")?;
+            let char_col = usize_arg(fields[2].clone(), "goto-location! char-col")?;
             if let Some(bid) = super::ids::downcast_buffer_id(&target) {
                 require_cap(ctx.host.edits(), "goto-location!")?
-                    .goto_location_buffer(bid, line, col)
+                    .goto_location_buffer(bid, line, char_col)
                     .map(|()| SteelVal::Void)
                     .map_err(generic_err)
             } else {
                 let s = string_arg(target, "goto-location! target")?;
                 require_cap(ctx.host.edits(), "goto-location!")?
-                    .goto_location_path(s, line, col)
+                    .goto_location_path(s, line, char_col)
                     .map(|()| SteelVal::Void)
                     .map_err(generic_err)
             }
         }
         _ => steel::stop!(TypeMismatch =>
-            "goto-location!: expected a Location hashmap or (list target line col)"),
+            "goto-location!: expected a Location hashmap or (list target line char-col)"),
     }
 }
 
