@@ -223,8 +223,10 @@ pub(crate) fn draw_menu_box(
 fn paint_styled_row(buf: &mut ScreenBuf, x: u16, y: u16, runs: &StyledRow) {
     let mut cx = x;
     for (run_text, run_style) in runs {
-        buf.set_string(cx, y, run_text, *run_style);
-        cx += text_width(run_text) as u16;
+        // See `statusline::draw_section`: advance by the cursor the write
+        // returns rather than re-measuring the run, so a grapheme ratatui
+        // skips or widens can't shift the runs after it.
+        (cx, _) = buf.set_stringn(cx, y, run_text, usize::MAX, *run_style);
     }
 }
 

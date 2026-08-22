@@ -201,11 +201,14 @@ fn compose_gutter(
             // clips to the terminal buffer, not to this column's width or
             // the pane rect, so an overlong cell would otherwise bleed into
             // the content area or the neighbouring pane.
-            let (text, text_width) = hume_rope::width::truncate_to_width(
-                text,
-                usable_per_cell as usize,
-                compose_ctx.tab_width,
-            );
+            // `tab_width` of 1, not the buffer's: a gutter cell is a glyph in
+            // a fixed-width lane, with no tab stops of its own to expand
+            // against — and `set_signs!` rejects a control character in a
+            // sign outright, so no gutter text contains a tab to begin with.
+            // Passing the buffer's tab width would only suggest otherwise.
+            // For every non-tab cluster the parameter is inert.
+            let (text, text_width) =
+                hume_rope::width::truncate_to_width(text, usable_per_cell as usize, 1);
             let text_width = text_width as u16;
             let pad = usable_per_cell.saturating_sub(text_width);
             for px in 0..pad {

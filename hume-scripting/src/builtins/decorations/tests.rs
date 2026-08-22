@@ -72,6 +72,59 @@ fn set_signs_without_decoration_host_errors() {
 }
 
 #[test]
+fn set_signs_rejects_a_control_character_in_the_glyph() {
+    // The gutter right-aligns a sign by measuring its text, then writes it
+    // with a terminal-buffer writer that silently drops anything it can't
+    // draw. A tab measures as several columns and draws as none, so the
+    // padding lands wrong and the lane's separator sits past the end of the
+    // glyph. Rejected at intake, where the caller can still be told which
+    // value was wrong.
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let sign = list(vec![
+        SteelVal::IntV(0),
+        SteelVal::StringV("\tS".into()),
+        SteelVal::StringV("ui.sign".into()),
+        SteelVal::IntV(0),
+    ]);
+    let result = set_signs(
+        &mut ctx,
+        SteelVal::StringV("test".into()),
+        BidArg(BufferId::default()),
+        list(vec![sign]),
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("must not contain a control character"),
+        "got: {msg}"
+    );
+    assert!(msg.contains("set-signs!"), "got: {msg}");
+}
+
+#[test]
+fn set_signs_accepts_a_multi_codepoint_glyph() {
+    // Only *control* characters are rejected — a normal multi-byte glyph
+    // (here a combining sequence) must still reach the gutter untouched.
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let sign = list(vec![
+        SteelVal::IntV(0),
+        SteelVal::StringV("e\u{0301}".into()),
+        SteelVal::StringV("ui.sign".into()),
+        SteelVal::IntV(0),
+    ]);
+    let result = set_signs(
+        &mut ctx,
+        SteelVal::StringV("test".into()),
+        BidArg(BufferId::default()),
+        list(vec![sign]),
+    );
+    // The harness has no decoration host, so validation passing means the
+    // call gets as far as the host lookup and fails *there*.
+    assert_names_builtin(result, "set-signs!");
+}
+
+#[test]
 fn set_virtual_lines_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();

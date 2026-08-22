@@ -268,40 +268,42 @@ pub fn place_char_column(rope: &Rope, line: usize, char_col: usize) -> usize {
 /// `move_up_inner` (`9j`/`9k`) share with `editor::visual_move::move_vertical`'s
 /// bare `j`/`k`.
 ///
-/// Doesn't just delegate the overshoot case to
-/// [`crate::grapheme::char_pos_at_display_col`]: that function always lands
-/// ON the line's trailing `\n` once `target_display_col` reaches or passes
-/// the line's width — correct for its own caller (`dedent_tab_backward`,
-/// which wants an exact column), but not what vertical motion wants. Moving
-/// onto a *shorter* line should stick to the last real character (the
-/// vim/helix convention), landing on `\n` only when the line is genuinely
-/// empty — so this checks the line's own display width first and only
-/// defers to `char_pos_at_display_col` when `target_display_col` lands
-/// strictly inside the line, falling back to [`line_content_end`] otherwise.
+/// Can't just return [`crate::grapheme::char_pos_at_display_col`]'s answer:
+/// that function lands ON the line's trailing `\n` once `target_display_col`
+/// reaches or passes the line's width — correct for its own caller
+/// (`dedent_tab_backward`, which wants an exact column), but not what
+/// vertical motion wants. Moving onto a *shorter* line should stick to the
+/// last real character (the vim/helix convention), landing on `\n` only when
+/// the line is genuinely empty.
 ///
-/// The comparison is `>=`, not `>`: a target *equal* to the line's width is
-/// already one column past its last character, which is exactly the `\n`'s
-/// own column. Letting that case through to `char_pos_at_display_col` would
-/// land `9j` on a non-empty line's newline while bare `j` — which resolves
-/// through `RowMap`'s `NearestContent`, and so excludes the EOL sentinel —
-/// lands on its last real character, splitting the two column models this
-/// function exists to unify. An empty line still lands on its `\n`: its width
-/// is 0, so `0 >= 0` takes the [`line_content_end`] branch, which for an
-/// empty line *is* the newline. Mirrors [`place_char_column`]'s two-tier
-/// clamp shape, just in display-column units.
+/// Landing on the `\n` is precisely the signal that the target was out of
+/// range, so that one position doubles as the range check and no separate
+/// measurement of the line's width is needed — the walk that finds the
+/// position also proves whether it fits. An empty line still lands on its
+/// `\n`, since there [`line_content_end`] *is* that newline.
+///
+/// Getting this boundary wrong splits the two column models the function
+/// exists to unify: a target equal to the line's width is already one column
+/// past its last character, and returning the `\n` for it would put `9j` on
+/// a non-empty line's newline while bare `j` — which resolves through
+/// `RowMap`'s `NearestContent`, and so excludes the EOL sentinel — lands on
+/// its last real character.
 pub fn place_display_column(
     rope: &Rope,
     line: usize,
     target_display_col: usize,
     tab_width: u8,
 ) -> usize {
-    let slice = rope.slice(..);
-    let line_width =
-        crate::grapheme::display_col_in_line(slice, line, line_break_char(rope, line), tab_width);
-    if target_display_col >= line_width {
+    let pos = crate::grapheme::char_pos_at_display_col(
+        rope.slice(..),
+        line,
+        target_display_col,
+        tab_width,
+    );
+    if pos >= line_break_char(rope, line) {
         line_content_end(rope, line)
     } else {
-        crate::grapheme::char_pos_at_display_col(slice, line, target_display_col, tab_width)
+        pos
     }
 }
 

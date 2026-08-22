@@ -68,9 +68,23 @@ pub(crate) fn set_signs(
         4..=4,
         "(line text scope priority)",
         |fields| {
+            let text = string_arg(fields[1].clone(), "set-signs! text")?;
+            // A sign is a glyph in a fixed-width gutter lane: no control
+            // character has a meaning there, and one would misalign the lane
+            // rather than render. The gutter measures the text to right-align
+            // it but writes it with a terminal-buffer writer that drops what
+            // it can't draw, so a tab would reserve columns that then stay
+            // blank and push the padding off. Rejected outright rather than
+            // substituted — unlike `set-virtual-lines!`, which maps them to
+            // spaces because its callers' `'segments` offsets have to keep
+            // lining up with the text.
+            if text.contains(char::is_control) {
+                steel::stop!(Generic =>
+                    "set-signs!: 'text must not contain a control character, got {:?}", text);
+            }
             Ok((
                 usize_arg(fields[0].clone(), "set-signs! line")?,
-                string_arg(fields[1].clone(), "set-signs! text")?,
+                text,
                 string_arg(fields[2].clone(), "set-signs! scope")?,
                 int_arg(fields[3].clone(), "set-signs! priority")?,
             ))

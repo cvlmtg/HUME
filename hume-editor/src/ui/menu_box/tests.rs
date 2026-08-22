@@ -30,6 +30,28 @@ fn symbols_in(buf: &ScreenBuf, area: Rect) -> String {
 }
 
 #[test]
+fn styled_runs_stay_adjacent_when_a_run_holds_an_undrawable_grapheme() {
+    // `set_stringn` draws nothing for a grapheme it can't render — a
+    // zero-width space here — and so consumes no cell for it. A painter that
+    // advanced by its own measurement of the run would count that cluster as
+    // one cell and start the next run one column too far right, leaving a
+    // blank column mid-row. The runs must read back as one contiguous string.
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 3));
+    let runs: StyledRow = vec![
+        ("a\u{200B}b".to_string(), style()),
+        ("cd".to_string(), style()),
+    ];
+    paint_styled_row(&mut buf, 0, 1, &runs);
+
+    assert_eq!(
+        symbols_in(&buf, Rect::new(0, 1, 6, 1)),
+        "abcd",
+        "the second run must start in the cell right after the first run's \
+         last drawn grapheme"
+    );
+}
+
+#[test]
 fn draw_menu_box_border_frame_snapshot() {
     let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
     let outer = Rect::new(2, 3, 8, 4);

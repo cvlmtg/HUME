@@ -82,16 +82,15 @@ pub fn indent_depth(line: &str, tab_width: u8) -> u8 {
 /// returned width can be strictly less than `max_display_width`.
 pub fn truncate_to_width(s: &str, max_display_width: usize, tab_width: u8) -> (&str, usize) {
     let mut display_col = 0usize;
-    let mut end = 0usize;
     for (byte_idx, g) in s.grapheme_indices(true) {
         let w = grapheme_width(g, display_col, tab_width);
         if display_col + w > max_display_width {
             return (&s[..byte_idx], display_col);
         }
         display_col += w;
-        end = byte_idx + g.len();
     }
-    (&s[..end], display_col)
+    // Reaching here means every cluster fit, so the whole string is the answer.
+    (s, display_col)
 }
 
 /// Longest suffix of `s` (kept from the end, dropping leading graphemes)

@@ -271,8 +271,15 @@ fn draw_section(
     y: u16,
 ) {
     for (text, style) in spans {
-        screen_buf.set_string(x, y, text.as_ref(), *style);
-        x += text_width(text.as_ref()) as u16;
+        // Advance by what the write actually consumed, not by our own
+        // measurement of it. `set_stringn` skips graphemes it can't draw (a
+        // control character, a zero-width cluster) and pads a couple it
+        // draws wider than `unicode-width` alone reports, so re-deriving the
+        // step here would drift — leaving a gap or overlapping the next span
+        // — on exactly the inputs a Steel statusline provider or an LSP
+        // label can contain. Asking for the cursor back keeps the two in
+        // step by construction, whatever convention ratatui uses.
+        (x, _) = screen_buf.set_stringn(x, y, text.as_ref(), usize::MAX, *style);
     }
 }
 
