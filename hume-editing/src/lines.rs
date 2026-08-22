@@ -46,6 +46,11 @@ pub fn line_content_end(buf: &Text, line: usize) -> usize {
     hume_rope::lines::line_content_end(buf.rope(), line)
 }
 
+/// See [`hume_rope::lines::char_col_in_line`].
+pub fn char_col_in_line(buf: &Text, line: usize, char_pos: usize) -> usize {
+    hume_rope::lines::char_col_in_line(buf.rope(), line, char_pos)
+}
+
 /// See [`hume_rope::lines::place_char_column`].
 pub fn place_char_column(buf: &Text, line: usize, char_col: usize) -> usize {
     hume_rope::lines::place_char_column(buf.rope(), line, char_col)

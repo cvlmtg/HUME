@@ -287,6 +287,65 @@ fn is_empty_line_false_for_whitespace_only_line() {
     assert!(!is_empty_line(&buf, 0));
 }
 
+// ── char_col_in_line ─────────────────────────────────────────────────────
+
+#[test]
+fn char_col_in_line_at_line_start_is_zero() {
+    let buf = rope("ab\ncd\n");
+    assert_eq!(char_col_in_line(&buf, 0, 0), 0);
+}
+
+#[test]
+fn char_col_in_line_mid_line() {
+    // "ab\ncd\n" — line 1 starts at char offset 3; char offset 4 ('d') is
+    // column 1.
+    let buf = rope("ab\ncd\n");
+    assert_eq!(char_col_in_line(&buf, 1, 4), 1);
+}
+
+#[test]
+fn char_col_in_line_on_the_lines_own_newline() {
+    // Line 0's own '\n' sits at offset 2 — column 2, one past its two
+    // content chars.
+    let buf = rope("ab\ncd\n");
+    assert_eq!(char_col_in_line(&buf, 0, 2), 2);
+}
+
+#[test]
+fn char_col_in_line_is_the_inverse_of_place_char_column() {
+    // Round-trip: a char_col that doesn't overshoot the line comes back
+    // unchanged through place_char_column -> char_col_in_line.
+    let buf = rope("hello\nworld\n");
+    let char_col = 3;
+    let pos = place_char_column(&buf, 1, char_col);
+    assert_eq!(char_col_in_line(&buf, 1, pos), char_col);
+}
+
+// ── advance_byte_point ───────────────────────────────────────────────────
+
+#[test]
+fn advance_byte_point_no_newlines() {
+    let (row, byte_col) = advance_byte_point(2, 5, "hello");
+    assert_eq!(row, 2);
+    assert_eq!(byte_col, 10); // 5 + 5
+}
+
+#[test]
+fn advance_byte_point_with_newlines() {
+    let (row, byte_col) = advance_byte_point(1, 3, "foo\nbar\nbaz");
+    // 2 newlines → row + 2 = 3; byte_col = "baz".len() = 3
+    assert_eq!(row, 3);
+    assert_eq!(byte_col, 3);
+}
+
+#[test]
+fn advance_byte_point_trailing_newline() {
+    // Inserted text ends with '\n' — byte_col must be 0.
+    let (row, byte_col) = advance_byte_point(0, 0, "foo\n");
+    assert_eq!(row, 1);
+    assert_eq!(byte_col, 0);
+}
+
 // ── place_char_column ────────────────────────────────────────────────────
 
 #[test]

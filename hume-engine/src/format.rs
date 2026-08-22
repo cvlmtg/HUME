@@ -243,7 +243,7 @@ pub fn format_buffer_line(
     // leading and interior whitespace in one check. On an all-whitespace line
     // `trim_end()` yields `""` (offset 0), so every ws char counts as trailing.
     let trailing_ws_start = line_str.trim_end().len();
-    let indent_depth = compute_indent_depth(line_str, tab_width);
+    let indent_depth = hume_rope::width::indent_depth(line_str, tab_width);
 
     // `WrapMode { width }` stays terminal-bounded (`u16`) — widened here since
     // it's compared against `current_display_col`, which now tracks a document column
@@ -794,22 +794,6 @@ fn should_render_whitespace(render: WhitespaceRender, is_trailing: bool) -> bool
 // ---------------------------------------------------------------------------
 // Utility helpers
 // ---------------------------------------------------------------------------
-
-/// Count the number of indent levels in a line's leading whitespace.
-/// One indent level = `tab_width` columns (spaces) or one tab stop.
-pub(crate) fn compute_indent_depth(line_str: &str, tab_width: u8) -> u8 {
-    let tw = tab_width.max(1) as usize;
-    let mut display_col = 0usize;
-    // Leading whitespace is always ASCII (space/tab), so byte iteration is safe and faster.
-    for b in line_str.bytes() {
-        match b {
-            b' ' => display_col += 1,
-            b'\t' => display_col += hume_rope::width::tab_advance(display_col, tab_width),
-            _ => break,
-        }
-    }
-    (display_col / tw).min(u8::MAX as usize) as u8
-}
 
 /// Remove a trailing line break from a string buffer in-place — any of
 /// ropey's `unicode_lines` break sequences (`hume_rope::LINE_BREAKS`), not

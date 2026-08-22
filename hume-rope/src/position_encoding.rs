@@ -38,6 +38,21 @@ pub fn char_to_wire(text: &Rope, char_idx: usize, enc: PositionEncoding) -> (usi
     (line, character)
 }
 
+/// `[start_char, end_char)` → a wire `((line, character), (line, character))`
+/// pair, via [`char_to_wire`] on each end. The inverse of
+/// [`wire_range_to_char_range`].
+pub fn char_range_to_wire_range(
+    text: &Rope,
+    start_char: usize,
+    end_char: usize,
+    enc: PositionEncoding,
+) -> ((usize, usize), (usize, usize)) {
+    (
+        char_to_wire(text, start_char, enc),
+        char_to_wire(text, end_char, enc),
+    )
+}
+
 /// `(line, character)` → char offset.
 ///
 /// Out-of-range input clamps rather than errors — servers send past-end
@@ -67,6 +82,24 @@ pub fn wire_to_char(text: &Rope, line: usize, character: usize, enc: PositionEnc
             text.utf16_cu_to_char(cu)
         }
     }
+}
+
+/// A wire `(line, character)` range's two ends → `(start_char, end_char)`,
+/// via [`wire_to_char`] on each end independently. Each end clamps on its
+/// own (`wire_to_char`'s clamp-don't-error contract) — a reversed range
+/// (`end` before `start`) is passed through unreordered; callers that must
+/// reject one check `end < start` themselves. The inverse of
+/// [`char_range_to_wire_range`].
+pub fn wire_range_to_char_range(
+    text: &Rope,
+    start: (usize, usize),
+    end: (usize, usize),
+    enc: PositionEncoding,
+) -> (usize, usize) {
+    (
+        wire_to_char(text, start.0, start.1, enc),
+        wire_to_char(text, end.0, end.1, enc),
+    )
 }
 
 /// The char offset one past the last content char on `line` — the position

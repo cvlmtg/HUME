@@ -67,7 +67,8 @@ fn make_input_edit(
     let (start_row, start_byte_col) = hume_rope::lines::char_to_line_byte(rope, start_char);
     let (old_end_row, old_end_byte_col) = hume_rope::lines::char_to_line_byte(rope, old_end_char);
 
-    let (new_end_row, new_end_byte_col) = new_end_point(start_row, start_byte_col, inserted);
+    let (new_end_row, new_end_byte_col) =
+        hume_rope::lines::advance_byte_point(start_row, start_byte_col, inserted);
 
     tree_sitter::InputEdit {
         start_byte,
@@ -85,18 +86,6 @@ fn make_input_edit(
             row: new_end_row,
             column: new_end_byte_col, // column-name-safe: tree-sitter's Point::column is a byte offset
         },
-    }
-}
-
-/// Compute `new_end_position` for an insertion starting at `(start_row, start_byte_col)`.
-fn new_end_point(start_row: usize, start_byte_col: usize, inserted: &str) -> (usize, usize) {
-    match inserted.rfind('\n') {
-        None => (start_row, start_byte_col + inserted.len()),
-        // Column is the byte count after the last newline in the inserted text.
-        Some(last_nl) => {
-            let newline_count = inserted.bytes().filter(|&b| b == b'\n').count();
-            (start_row + newline_count, inserted.len() - last_nl - 1)
-        }
     }
 }
 

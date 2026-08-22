@@ -211,6 +211,20 @@ pub fn line_content_end(rope: &Rope, line: usize) -> usize {
     }
 }
 
+/// 0-based char column of `char_pos` within `line` — `char_pos` minus the
+/// line's start offset. The char-unit sibling of
+/// [`crate::grapheme::grapheme_col_in_line`] /
+/// [`crate::grapheme::display_col_in_line`]; inverse of `place_char_column`'s
+/// `line_start + char_col`.
+pub fn char_col_in_line(rope: &Rope, line: usize, char_pos: usize) -> usize {
+    let line_start = rope.line_to_char(line);
+    debug_assert!(
+        char_pos >= line_start,
+        "char_col_in_line: char_pos {char_pos} is before line {line}'s start {line_start}"
+    );
+    char_pos - line_start
+}
+
 /// Place the cursor at `char_col` **chars** from the start of `line` (not
 /// display columns — every non-tab grapheme counts 1, a tab counts 1),
 /// clamping to the last content character and snapping to a grapheme
@@ -280,6 +294,25 @@ pub fn char_to_line_byte(rope: &Rope, char_pos: usize) -> (usize, usize) {
     let line_start_byte = rope.line_to_byte(line);
     let byte = rope.char_to_byte(char_pos).saturating_sub(line_start_byte);
     (line, byte)
+}
+
+/// `(row, byte_col)` of the end of `inserted` written starting at
+/// `(row, byte_col)` — tree-sitter's `Point` convention (row is a line
+/// index, `byte_col` a line-relative byte offset), used to build the
+/// `new_end_position` of an `InputEdit` without a second rope lookup: same
+/// row with `byte_col` advanced by `inserted`'s byte length when `inserted`
+/// has no `'\n'`; otherwise `row` advances by the newline count and
+/// `byte_col` becomes the byte count after the last `'\n'`. Splits on
+/// `'\n'` only, matching tree-sitter's own convention — callers feed
+/// CRLF-normalized buffer text.
+pub fn advance_byte_point(row: usize, byte_col: usize, inserted: &str) -> (usize, usize) {
+    match inserted.rfind('\n') {
+        None => (row, byte_col + inserted.len()),
+        Some(last_nl) => {
+            let newline_count = inserted.bytes().filter(|&b| b == b'\n').count();
+            (row + newline_count, inserted.len() - last_nl - 1)
+        }
+    }
 }
 
 /// Yield `(line, byte_start, byte_end)` for each line the *non-empty*

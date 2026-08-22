@@ -1,4 +1,4 @@
-use super::{input_edits_from_changeset, new_end_point};
+use super::input_edits_from_changeset;
 use hume_editing::changeset::ChangeSetBuilder;
 
 #[test]
@@ -152,29 +152,6 @@ fn multibyte_utf8_byte_offsets() {
     // "é" (U+00E9) = 2 bytes — different from char count of 1.
     assert_eq!(e.old_end_byte, 2, "byte offset must count bytes not chars");
     assert_eq!(e.new_end_byte, 0);
-}
-
-#[test]
-fn new_end_point_no_newlines() {
-    let (row, byte_col) = new_end_point(2, 5, "hello");
-    assert_eq!(row, 2);
-    assert_eq!(byte_col, 10); // 5 + 5
-}
-
-#[test]
-fn new_end_point_with_newlines() {
-    let (row, byte_col) = new_end_point(1, 3, "foo\nbar\nbaz");
-    // 2 newlines → row + 2 = 3; byte_col = "baz".len() = 3
-    assert_eq!(row, 3);
-    assert_eq!(byte_col, 3);
-}
-
-#[test]
-fn new_end_point_trailing_newline() {
-    // Inserted text ends with '\n' — byte_col must be 0.
-    let (row, byte_col) = new_end_point(0, 0, "foo\n");
-    assert_eq!(row, 1);
-    assert_eq!(byte_col, 0);
 }
 
 /// Regression: a single changeset with edits at two non-adjacent positions must

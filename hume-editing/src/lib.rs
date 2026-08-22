@@ -39,4 +39,5 @@ pub mod selection;
 pub mod tab_style;
 pub mod text;
 pub mod transaction;
+pub mod width;
 pub mod word;

@@ -39,6 +39,43 @@ fn tab_advance_no_overflow_near_u32_max() {
     assert_eq!(tab_advance(u32::MAX as usize, 4), 1);
 }
 
+// ── prev_tab_stop ────────────────────────────────────────────────────────
+
+#[test]
+fn prev_tab_stop_within_first_stop_is_zero() {
+    assert_eq!(prev_tab_stop(0, 4), 0);
+    assert_eq!(prev_tab_stop(1, 4), 0);
+    assert_eq!(prev_tab_stop(3, 4), 0);
+}
+
+#[test]
+fn prev_tab_stop_sitting_on_a_stop_steps_back_to_the_previous_one() {
+    // A tab stop already sitting exactly on a stop still steps back, never
+    // a no-op — the mirror of tab_advance never advancing by zero.
+    assert_eq!(prev_tab_stop(4, 4), 0);
+    assert_eq!(prev_tab_stop(8, 4), 4);
+}
+
+#[test]
+fn prev_tab_stop_mid_stop_steps_to_the_stop_before_it() {
+    assert_eq!(prev_tab_stop(5, 4), 4);
+    assert_eq!(prev_tab_stop(9, 4), 8);
+}
+
+#[test]
+fn prev_tab_stop_zero_width_clamps_to_one() {
+    assert_eq!(prev_tab_stop(3, 0), 2);
+}
+
+#[test]
+fn prev_tab_stop_and_tab_advance_are_a_fixed_point_pair() {
+    // For any k >= 1, stepping back from exactly k tab stops lands on
+    // (k-1) stops — the same relationship tab_advance has going forward.
+    for k in 1usize..10 {
+        assert_eq!(prev_tab_stop(k * 4, 4), (k - 1) * 4);
+    }
+}
+
 // ── grapheme_width ───────────────────────────────────────────────────────
 
 #[test]
@@ -109,4 +146,92 @@ fn str_width_honors_nonzero_start_display_col() {
     // Starting at display column 2, a tab (tw=4) advances 2 to reach
     // display column 4.
     assert_eq!(str_width("\t", 2, 4), 2);
+}
+
+// ── indent_depth ─────────────────────────────────────────────────────────
+
+#[test]
+fn indent_depth_two_spaces() {
+    assert_eq!(indent_depth("  foo", 2), 1);
+    assert_eq!(indent_depth("    foo", 2), 2);
+    assert_eq!(indent_depth("foo", 2), 0);
+}
+
+#[test]
+fn indent_depth_with_tabs() {
+    // Two tabs with tab_width=4 => 2 indent levels.
+    assert_eq!(indent_depth("\t\tfoo", 4), 2);
+    // Mixed: tab (0→4) then space (4→5), depth = 5/4 = 1.
+    assert_eq!(indent_depth("\t foo", 4), 1);
+}
+
+#[test]
+fn indent_depth_zero_tab_width_no_panic() {
+    // tab_width=0 should be clamped to 1 internally.
+    let depth = indent_depth("  foo", 0);
+    assert_eq!(depth, 2); // tw=1, col=2, depth=2
+}
+
+// ── truncate_to_width ────────────────────────────────────────────────────
+
+#[test]
+fn truncate_to_width_whole_string_fits() {
+    assert_eq!(truncate_to_width("ab", 5, 4), ("ab", 2));
+}
+
+#[test]
+fn truncate_to_width_exact_budget() {
+    assert_eq!(truncate_to_width("abcd", 4, 4), ("abcd", 4));
+}
+
+#[test]
+fn truncate_to_width_drops_a_whole_wide_cluster_that_would_overshoot() {
+    // Each 漢 is 2 columns; budget 3 can only fit the first one (2 cols),
+    // not half of the second.
+    assert_eq!(truncate_to_width("\u{6F22}\u{6F22}", 3, 4), ("\u{6F22}", 2));
+}
+
+#[test]
+fn truncate_to_width_tab_expands_against_real_stops() {
+    // "a\tb" at tw=4: a(1)->1, tab from col 1 advances 3 (to col 4) -> "a\t"
+    // is 4 columns, exactly the budget; 'b' would overshoot to 5.
+    assert_eq!(truncate_to_width("a\tb", 4, 4), ("a\t", 4));
+}
+
+#[test]
+fn truncate_to_width_zero_budget_is_empty() {
+    assert_eq!(truncate_to_width("abc", 0, 4), ("", 0));
+}
+
+#[test]
+fn truncate_to_width_never_splits_a_decomposed_cluster() {
+    // "e" + combining acute is one grapheme cluster measuring 1 column;
+    // budget 0 drops it whole rather than keeping the bare 'e'.
+    assert_eq!(truncate_to_width("e\u{0301}", 0, 4), ("", 0));
+    assert_eq!(truncate_to_width("e\u{0301}", 1, 4), ("e\u{0301}", 1));
+}
+
+// ── truncate_suffix_to_width ─────────────────────────────────────────────
+
+#[test]
+fn truncate_suffix_to_width_whole_string_fits() {
+    assert_eq!(truncate_suffix_to_width("ab", 5, 1), ("ab", 2));
+}
+
+#[test]
+fn truncate_suffix_to_width_keeps_the_tail() {
+    assert_eq!(truncate_suffix_to_width("abc", 2, 1), ("bc", 2));
+}
+
+#[test]
+fn truncate_suffix_to_width_drops_a_whole_wide_cluster_that_would_overshoot() {
+    assert_eq!(
+        truncate_suffix_to_width("\u{6F22}\u{6F22}", 3, 1),
+        ("\u{6F22}", 2)
+    );
+}
+
+#[test]
+fn truncate_suffix_to_width_zero_budget_is_empty() {
+    assert_eq!(truncate_suffix_to_width("abc", 0, 1), ("", 0));
 }

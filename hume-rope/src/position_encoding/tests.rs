@@ -81,6 +81,35 @@ fn char_to_wire_minimum_buffer_is_a_bare_newline() {
     assert_eq!(char_to_wire(&text, 1, PositionEncoding::Utf8), (1, 0));
 }
 
+// ── char_range_to_wire_range ─────────────────────────────────────────────
+
+#[test]
+fn char_range_to_wire_range_is_char_to_wire_on_each_end() {
+    let text = fixture();
+    assert_eq!(
+        char_range_to_wire_range(&text, 4, 7, PositionEncoding::Utf16),
+        (
+            char_to_wire(&text, 4, PositionEncoding::Utf16),
+            char_to_wire(&text, 7, PositionEncoding::Utf16),
+        )
+    );
+}
+
+#[test]
+fn char_range_to_wire_range_astral_char_diverges_utf8_vs_utf16() {
+    let text = fixture();
+    // Range spanning 😀 (char_idx 6..7) — UTF-8 counts it as 4 bytes,
+    // UTF-16 as a 2-unit surrogate pair.
+    assert_eq!(
+        char_range_to_wire_range(&text, 6, 7, PositionEncoding::Utf8),
+        ((2, 0), (2, 4))
+    );
+    assert_eq!(
+        char_range_to_wire_range(&text, 6, 7, PositionEncoding::Utf16),
+        ((2, 0), (2, 2))
+    );
+}
+
 // ── CRLF line terminator ─────────────────────────────────────────────────
 //
 // `hume_editing::text::Text` normalizes `\r\n` to `\n` on load, but a `\r\n`
@@ -159,4 +188,48 @@ fn wire_to_char_minimum_buffer_is_a_bare_newline() {
     assert_eq!(wire_to_char(&text, 0, 0, PositionEncoding::Utf8), 0);
     // Past-end line/character both clamp to the sole valid EOF position.
     assert_eq!(wire_to_char(&text, 5, 5, PositionEncoding::Utf8), 1);
+}
+
+// ── wire_range_to_char_range ─────────────────────────────────────────────
+
+#[test]
+fn wire_range_to_char_range_is_wire_to_char_on_each_end() {
+    let text = fixture();
+    assert_eq!(
+        wire_range_to_char_range(&text, (0, 0), (1, 1), PositionEncoding::Utf8),
+        (
+            wire_to_char(&text, 0, 0, PositionEncoding::Utf8),
+            wire_to_char(&text, 1, 1, PositionEncoding::Utf8),
+        )
+    );
+}
+
+#[test]
+fn wire_range_to_char_range_each_end_clamps_independently() {
+    let text = fixture();
+    // Line 1 ("cé") — character way past its length clamps to that line's
+    // content end, same as a lone wire_to_char call.
+    assert_eq!(
+        wire_range_to_char_range(&text, (1, 0), (1, 9_999), PositionEncoding::Utf8),
+        (3, 5)
+    );
+}
+
+#[test]
+fn wire_range_to_char_range_reversed_input_is_not_reordered() {
+    let text = fixture();
+    // end before start on the wire — the pair comes back reversed too, not
+    // swapped into order. Callers that must reject this check it themselves.
+    let (start, end) = wire_range_to_char_range(&text, (1, 1), (0, 0), PositionEncoding::Utf8);
+    assert_eq!((start, end), (4, 0));
+    assert!(end < start);
+}
+
+#[test]
+fn wire_range_to_char_range_round_trips_through_char_range_to_wire_range() {
+    let text = fixture();
+    for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
+        let (start, end) = char_range_to_wire_range(&text, 1, 8, enc);
+        assert_eq!(wire_range_to_char_range(&text, start, end, enc), (1, 8));
+    }
 }

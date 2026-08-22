@@ -311,13 +311,6 @@ fn tab_expansion_advances_to_tabstop() {
 }
 
 #[test]
-fn indent_depth_two_spaces() {
-    assert_eq!(compute_indent_depth("  foo", 2), 1);
-    assert_eq!(compute_indent_depth("    foo", 2), 2);
-    assert_eq!(compute_indent_depth("foo", 2), 0);
-}
-
-#[test]
 fn grapheme_display_cols_are_correct() {
     let (_, graphemes) = do_format("abc\n", WrapMode::None);
     assert_eq!(graphemes[0].display_col, 0);
@@ -628,23 +621,6 @@ fn cjk_character_produces_width_continuation() {
         CellContent::WidthContinuation
     ));
     assert_eq!(graphemes[1].display_col, 2);
-}
-
-// ── indent_depth helpers ─────────────────────────────────────────────
-
-#[test]
-fn indent_depth_with_tabs() {
-    // Two tabs with tab_width=4 => 2 indent levels.
-    assert_eq!(compute_indent_depth("\t\tfoo", 4), 2);
-    // Mixed: tab (0→4) then space (4→5), depth = 5/4 = 1.
-    assert_eq!(compute_indent_depth("\t foo", 4), 1);
-}
-
-#[test]
-fn indent_depth_zero_tab_width_no_panic() {
-    // tab_width=0 should be clamped to 1 internally.
-    let depth = compute_indent_depth("  foo", 0);
-    assert_eq!(depth, 2); // tw=1, col=2, depth=2
 }
 
 // ── strip_line_ending ─────────────────────────────────────────────────
