@@ -387,7 +387,7 @@ pub(crate) fn commit_edit_group(
 ///
 /// `buf_pre` must be the buffer text **before** the edit — `translate_in_place`
 /// uses it to identify which line each head was on pre-edit, which governs
-/// whether `Selection.horiz` is reset after the translation.
+/// whether `Selection.sticky_display_col` is reset after the translation.
 ///
 /// Engine pane mirrors are **not** updated here; `sync_all_pane_mirrors` in
 /// the next `prepare_frame` handles that. Only the authoritative `SelectionSet`

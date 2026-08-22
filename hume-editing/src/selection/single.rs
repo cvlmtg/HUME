@@ -33,27 +33,27 @@ pub struct Selection {
     /// Sticky display column for visual j/k motion. `None` means "not latched
     /// — recompute on next vertical move." Any horizontal motion or edit that
     /// touches this selection's line resets this to `None` by construction
-    /// (constructors set it to `None`; only `with_horiz` preserves it).
-    pub(crate) horiz: Option<u32>,
+    /// (constructors set it to `None`; only `with_sticky_display_col` preserves it).
+    pub(crate) sticky_display_col: Option<u32>,
 }
 
 impl Selection {
-    /// A collapsed selection at `pos` (anchor == head == pos). `horiz: None`.
+    /// A collapsed selection at `pos` (anchor == head == pos). `sticky_display_col: None`.
     pub fn collapsed(pos: usize) -> Self {
         Self {
             anchor: pos,
             head: pos,
-            horiz: None,
+            sticky_display_col: None,
         }
     }
 
-    /// A directional range from `anchor` to `head`. `horiz: None`.
+    /// A directional range from `anchor` to `head`. `sticky_display_col: None`.
     /// Passing `anchor == head` produces a single-character selection.
     pub fn new(anchor: usize, head: usize) -> Self {
         Self {
             anchor,
             head,
-            horiz: None,
+            sticky_display_col: None,
         }
     }
 
@@ -61,12 +61,12 @@ impl Selection {
     ///
     /// Used *only* by visual j/k motion to carry the column across consecutive
     /// vertical moves. All other code uses [`Self::new`] or [`Self::collapsed`] which reset
-    /// `horiz` to `None` by construction.
-    pub fn with_horiz(anchor: usize, head: usize, horiz: u32) -> Self {
+    /// `sticky_display_col` to `None` by construction.
+    pub fn with_sticky_display_col(anchor: usize, head: usize, sticky_display_col: u32) -> Self {
         Self {
             anchor,
             head,
-            horiz: Some(horiz),
+            sticky_display_col: Some(sticky_display_col),
         }
     }
 
@@ -101,8 +101,8 @@ impl Selection {
     }
 
     /// Sticky display column for visual j/k motion, or `None` when not latched.
-    pub fn horiz(&self) -> Option<u32> {
-        self.horiz
+    pub fn sticky_display_col(&self) -> Option<u32> {
+        self.sticky_display_col
     }
 
     /// Is this a single-character selection (anchor == head)?
@@ -162,14 +162,14 @@ impl Selection {
     }
 
     /// Swap anchor and head. A forward selection becomes backward and vice
-    /// versa. Useful for `flip selection` commands. `horiz` is cleared since
-    /// the head moved to a potentially different column.
+    /// versa. Useful for `flip selection` commands. `sticky_display_col` is
+    /// cleared since the head moved to a potentially different column.
     #[must_use]
     pub fn flip(self) -> Self {
         Self {
             anchor: self.head,
             head: self.anchor,
-            horiz: None,
+            sticky_display_col: None,
         }
     }
 
@@ -198,11 +198,11 @@ impl Selection {
             .checked_add_signed(delta)
             .expect("shift underflow: head cannot go below zero");
         // Shifting changes the absolute position but not the column relationship,
-        // so preserve horiz.
+        // so preserve sticky_display_col.
         Self {
             anchor,
             head,
-            horiz: self.horiz,
+            sticky_display_col: self.sticky_display_col,
         }
     }
 }

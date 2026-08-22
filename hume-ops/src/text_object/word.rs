@@ -287,7 +287,7 @@ pub fn nearest_word_on_line(
 }
 
 /// Apply the result of `nearest_word_on_line` to `sel` according to `mode`,
-/// preserving `sel.horiz` throughout.
+/// preserving `sel.sticky_display_col` throughout.
 ///
 /// Returns `sel` unchanged when `found` is `None` (no candidate word in bounds).
 /// Shared by the buffer-line path in `cmd_select_word_nearest_on_line` and the
@@ -301,8 +301,8 @@ pub fn apply_nearest_word_result(
         return sel;
     };
     match mode {
-        MotionMode::Move => match sel.horiz() {
-            Some(h) => Selection::with_horiz(start, end, h),
+        MotionMode::Move => match sel.sticky_display_col() {
+            Some(sticky) => Selection::with_sticky_display_col(start, end, sticky),
             None => Selection::new(start, end),
         },
         MotionMode::Extend => {
@@ -310,8 +310,8 @@ pub fn apply_nearest_word_result(
             let new_start = sel.start().min(start);
             let new_end = sel.end().max(end);
             let s = Selection::directed(new_start, new_end, forward);
-            match sel.horiz() {
-                Some(h) => Selection::with_horiz(s.anchor(), s.head(), h),
+            match sel.sticky_display_col() {
+                Some(sticky) => Selection::with_sticky_display_col(s.anchor(), s.head(), sticky),
                 None => s,
             }
         }
@@ -319,8 +319,9 @@ pub fn apply_nearest_word_result(
 }
 
 /// Select the word nearest the cursor on the same buffer line, snapping to it
-/// when the cursor sits on whitespace. Preserves `sel.horiz` so the sticky
-/// visual column (set by `move-down` / `move-up`) survives through this step.
+/// when the cursor sits on whitespace. Preserves `sel.sticky_display_col` so
+/// the sticky display column (set by `move-down` / `move-up`) survives
+/// through this step.
 ///
 /// `around` mirrors the effective `word-selects-whitespace` setting: when set,
 /// the selected span includes the word's whitespace bookend (matching `mm`);

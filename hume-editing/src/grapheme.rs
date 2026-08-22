@@ -28,8 +28,13 @@ pub fn display_col_in_line(buf: &Text, line_idx: usize, char_pos: usize, tab_wid
 pub fn char_pos_at_display_col(
     buf: &Text,
     line_idx: usize,
-    target_col: usize,
+    target_display_col: usize,
     tab_width: u8,
 ) -> usize {
-    hume_rope::grapheme::char_pos_at_display_col(buf.full_slice(), line_idx, target_col, tab_width)
+    hume_rope::grapheme::char_pos_at_display_col(
+        buf.full_slice(),
+        line_idx,
+        target_display_col,
+        tab_width,
+    )
 }

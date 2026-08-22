@@ -83,8 +83,9 @@ fn d4a_search_pattern_is_per_buffer() {
     assert!(ed.state.panes.state[pid_b][bid].search_cursor.wrapped);
 }
 
-/// D4b — `Selection.horiz` travels with the selection; resets when its line
-/// is touched by an edit; survives translate_in_place on untouched lines.
+/// D4b — `Selection.sticky_display_col` travels with the selection; resets
+/// when its line is touched by an edit; survives translate_in_place on
+/// untouched lines.
 #[test]
 fn d4b_sticky_col_is_per_selection() {
     use hume_editing::changeset::ChangeSetBuilder;
@@ -94,29 +95,32 @@ fn d4b_sticky_col_is_per_selection() {
     // "abc\ndef\n" — two lines.
     let text = Text::from("abc\ndef\n");
 
-    // Selection on line 1 (char offset 4 = 'd'), horiz = 0.
-    let sel = Selection::with_horiz(4, 4, 0);
+    // Selection on line 1 (char offset 4 = 'd'), sticky_display_col = 0.
+    let sel = Selection::with_sticky_display_col(4, 4, 0);
     let mut sels = SelectionSet::single(sel);
 
     // CS that inserts at the start of line 0 only: "abc\n" → "Xabc\n"
-    // This touches line 0 but not line 1, so horiz on line-1 head should survive.
+    // This touches line 0 but not line 1, so sticky_display_col on line-1
+    // head should survive.
     let mut b = ChangeSetBuilder::new(text.len_chars());
     b.insert("X"); // insert at start
     b.retain_rest();
     let cs = b.finish();
 
     sels.translate_in_place(&cs, &text);
-    // Head moved from 4 to 5 (past the inserted 'X'), horiz preserved.
+    // Head moved from 4 to 5 (past the inserted 'X'), sticky_display_col
+    // preserved.
     assert_eq!(sels.primary().head(), 5, "head mapped past insert");
     assert_eq!(
-        sels.primary().horiz(),
+        sels.primary().sticky_display_col(),
         Some(0),
-        "horiz preserved on untouched line"
+        "sticky_display_col preserved on untouched line"
     );
 
-    // Now a CS that touches line 1 (inserts at position of 'd'): horiz should reset.
-    // Re-build sels with the updated head but set horiz back to show it was latched.
-    let sel2 = Selection::with_horiz(5, 5, 0);
+    // Now a CS that touches line 1 (inserts at position of 'd'):
+    // sticky_display_col should reset. Re-build sels with the updated head
+    // but set sticky_display_col back to show it was latched.
+    let sel2 = Selection::with_sticky_display_col(5, 5, 0);
     let mut sels2 = SelectionSet::single(sel2);
 
     // "Xabc\ndef\n" (after first edit) — "d" is now at char 5 (line 1).
@@ -130,11 +134,12 @@ fn d4b_sticky_col_is_per_selection() {
     let cs2 = b2.finish();
 
     sels2.translate_in_place(&cs2, &text2);
-    // Head moved past insert; horiz must be reset because line 1 was touched.
+    // Head moved past insert; sticky_display_col must be reset because line
+    // 1 was touched.
     assert_eq!(
-        sels2.primary().horiz(),
+        sels2.primary().sticky_display_col(),
         None,
-        "horiz reset when head's line is touched"
+        "sticky_display_col reset when head's line is touched"
     );
 }
 

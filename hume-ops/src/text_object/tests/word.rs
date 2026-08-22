@@ -532,38 +532,52 @@ fn nearest_on_whitespace_only_line_is_noop() {
 }
 
 #[test]
-fn nearest_preserves_horiz_on_word() {
-    // sel.horiz = Some(5) must survive the snap to a word.
+fn nearest_preserves_sticky_display_col_on_word() {
+    // sel.sticky_display_col = Some(5) must survive the snap to a word.
     let buf = Text::from("hello world\n");
-    let sels = SelectionSet::single(Selection::with_horiz(6, 6, 5));
+    let sels = SelectionSet::single(Selection::with_sticky_display_col(6, 6, 5));
     let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false);
     let sel = result.primary();
     // "world" spans chars 6–10.
     assert_eq!((sel.anchor(), sel.head()), (6, 10), "expected word range");
-    assert_eq!(sel.horiz(), Some(5), "horiz must be preserved");
+    assert_eq!(
+        sel.sticky_display_col(),
+        Some(5),
+        "sticky_display_col must be preserved"
+    );
 }
 
 #[test]
-fn nearest_preserves_horiz_on_whitespace() {
-    // Head on space, horiz = Some(3). After snapping to "hi", horiz still Some(3).
+fn nearest_preserves_sticky_display_col_on_whitespace() {
+    // Head on space, sticky_display_col = Some(3). After snapping to "hi",
+    // sticky_display_col still Some(3).
     let buf = Text::from("hi   world\n");
     //                    0123456789
     // spaces at 2,3,4; head=3 (space), prev word = "hi" ends at 1.
-    let sels = SelectionSet::single(Selection::with_horiz(3, 3, 3));
+    let sels = SelectionSet::single(Selection::with_sticky_display_col(3, 3, 3));
     let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false);
     let sel = result.primary();
     assert_eq!((sel.anchor(), sel.head()), (0, 1), "expected 'hi' range");
-    assert_eq!(sel.horiz(), Some(3), "horiz must be preserved");
+    assert_eq!(
+        sel.sticky_display_col(),
+        Some(3),
+        "sticky_display_col must be preserved"
+    );
 }
 
 #[test]
-fn nearest_no_horiz_is_cleared() {
-    // When input sel has horiz=None, output must also have horiz=None.
+fn nearest_no_sticky_display_col_is_cleared() {
+    // When input sel has sticky_display_col=None, output must also have
+    // sticky_display_col=None.
     let buf = Text::from("hello world\n");
     let sels = SelectionSet::single(Selection::new(6, 6));
     let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false);
     let sel = result.primary();
-    assert_eq!(sel.horiz(), None, "horiz must stay None");
+    assert_eq!(
+        sel.sticky_display_col(),
+        None,
+        "sticky_display_col must stay None"
+    );
 }
 
 #[test]
@@ -588,14 +602,14 @@ fn nearest_extend_grows_selection_to_snapped_word() {
 }
 
 #[test]
-fn nearest_extend_preserves_horiz() {
+fn nearest_extend_preserves_sticky_display_col() {
     let buf = Text::from("hello world\n");
-    let sels = SelectionSet::single(Selection::with_horiz(0, 5, 7)); // anchor=0, head=5 (space)
+    let sels = SelectionSet::single(Selection::with_sticky_display_col(0, 5, 7)); // anchor=0, head=5 (space)
     let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Extend, false);
     assert_eq!(
-        result.primary().horiz(),
+        result.primary().sticky_display_col(),
         Some(7),
-        "horiz must survive extend mode"
+        "sticky_display_col must survive extend mode"
     );
 }
 

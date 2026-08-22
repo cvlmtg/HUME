@@ -297,7 +297,7 @@ impl SelectionSet {
 
     /// Merge overlapping or adjacent selections in place, updating `primary`.
     ///
-    /// Merged selections get `horiz: None` regardless of their pre-merge values
+    /// Merged selections get `sticky_display_col: None` regardless of their pre-merge values
     /// because the merged `head` is semantically a new position — the column it
     /// corresponds to was never latched by a vertical motion.
     pub fn merge_overlapping_in_place(&mut self) {
@@ -327,8 +327,8 @@ impl SelectionSet {
                         last.anchor = last.start();
                         last.head = sel.end();
                     }
-                    // Merged — reset horiz since neither side's column is valid.
-                    last.horiz = None;
+                    // Merged — reset sticky_display_col since neither side's column is valid.
+                    last.sticky_display_col = None;
                 }
                 if primary_before.start() >= last.start() && primary_before.end() <= last.end() {
                     new_primary = write;
@@ -356,8 +356,9 @@ impl SelectionSet {
     ///
     /// This is the non-acting-pane propagation primitive. For each selection:
     /// - Maps `anchor` and `head` through the changeset.
-    /// - Resets `horiz` to `None` if the edit touched the head's pre-edit line
-    ///   (the display column is stale when the line's content changed).
+    /// - Resets `sticky_display_col` to `None` if the edit touched the head's
+    ///   pre-edit line (the display column is stale when the line's content
+    ///   changed).
     /// - After all selections are mapped, calls `merge_overlapping_in_place` so
     ///   the no-overlap invariant is restored (a deletion spanning multiple
     ///   selections can collapse them).
@@ -407,7 +408,7 @@ impl SelectionSet {
             // means `line_start <= start` from the skip, so `start < line_end`
             // gives `line_start <= start < line_end`).
             if edit_idx < edits.len() && edits[edit_idx].0 < line_end {
-                sel.horiz = None;
+                sel.sticky_display_col = None;
             }
 
             let forward = sel.anchor <= sel.head;

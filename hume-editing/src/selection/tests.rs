@@ -62,17 +62,23 @@ fn merge_contained_selection() {
 }
 
 #[test]
-fn merge_clears_horiz_on_extended_selection() {
-    // Merging two overlapping selections clears horiz on the result — neither
-    // side's latched column is valid once the head moves to the union boundary.
-    let a = Selection::with_horiz(0, 5, 42); // horiz latched
-    let b = Selection::with_horiz(3, 8, 99); // horiz latched
+fn merge_clears_sticky_display_col_on_extended_selection() {
+    // Merging two overlapping selections clears sticky_display_col on the
+    // result — neither side's latched column is valid once the head moves
+    // to the union boundary.
+    let a = Selection::with_sticky_display_col(0, 5, 42); // sticky_display_col latched
+    let b = Selection::with_sticky_display_col(3, 8, 99); // sticky_display_col latched
     let mut set = SelectionSet::from_vec_unchecked(vec![a, b], 0);
     // The two selections overlap → they merge into one.
     set.merge_overlapping_in_place();
     assert_eq!(set.len(), 1);
-    // The merged selection must have horiz cleared — neither side's column is valid.
-    assert_eq!(set.primary().horiz, None, "merge must clear horiz");
+    // The merged selection must have sticky_display_col cleared — neither
+    // side's column is valid.
+    assert_eq!(
+        set.primary().sticky_display_col,
+        None,
+        "merge must clear sticky_display_col"
+    );
 }
 
 #[test]
@@ -473,7 +479,7 @@ fn validate_passes_when_head_is_last_valid_char() {
 // ── translate_in_place ────────────────────────────────────────────────────
 
 #[test]
-fn translate_in_place_remaps_positions_and_resets_horiz_only_on_touched_lines() {
+fn translate_in_place_remaps_positions_and_resets_sticky_display_col_only_on_touched_lines() {
     // "aaa\nbbb\nccc\n" (12 chars): line0 = aaa\n [0,4), line1 = bbb\n [4,8),
     // line2 = ccc\n [8,12).
     let buf_pre = Text::from("aaa\nbbb\nccc");
@@ -481,9 +487,9 @@ fn translate_in_place_remaps_positions_and_resets_horiz_only_on_touched_lines() 
     // sel0: collapsed at 1, on the untouched line0.
     // sel1: range (5,6), fully inside the edited span on line1.
     // sel2: collapsed at 9, on the untouched line2.
-    let sel0 = Selection::with_horiz(1, 1, 5);
-    let sel1 = Selection::with_horiz(5, 6, 9); // forward: anchor <= head
-    let sel2 = Selection::with_horiz(9, 9, 7);
+    let sel0 = Selection::with_sticky_display_col(1, 1, 5);
+    let sel1 = Selection::with_sticky_display_col(5, 6, 9); // forward: anchor <= head
+    let sel2 = Selection::with_sticky_display_col(9, 9, 7);
     let mut set = SelectionSet::from_vec(vec![sel0, sel1, sel2], 0);
 
     // Replace "bbb" (positions 4..7) with "XY" — net -1 char, entirely
@@ -499,23 +505,23 @@ fn translate_in_place_remaps_positions_and_resets_horiz_only_on_touched_lines() 
 
     assert_eq!(set.len(), 3, "no selection should merge here");
 
-    // sel0: untouched line, position unchanged, horiz preserved.
+    // sel0: untouched line, position unchanged, sticky_display_col preserved.
     let s0 = set.iter_sorted().next().unwrap();
     assert_eq!((s0.anchor(), s0.head()), (1, 1));
-    assert_eq!(s0.horiz(), Some(5));
+    assert_eq!(s0.sticky_display_col(), Some(5));
 
     // sel1: collapses onto the replacement point (old positions 5,6 both
-    // fell inside the deleted "bbb"), direction preserved, horiz reset
-    // because its line was edited.
+    // fell inside the deleted "bbb"), direction preserved, sticky_display_col
+    // reset because its line was edited.
     let s1 = set.iter_sorted().nth(1).unwrap();
     assert_eq!((s1.anchor(), s1.head()), (4, 4));
-    assert_eq!(s1.horiz(), None);
+    assert_eq!(s1.sticky_display_col(), None);
 
     // sel2: untouched line, shifted back by 1 (net delta of the replace),
-    // horiz preserved.
+    // sticky_display_col preserved.
     let s2 = set.iter_sorted().nth(2).unwrap();
     assert_eq!((s2.anchor(), s2.head()), (8, 8));
-    assert_eq!(s2.horiz(), Some(7));
+    assert_eq!(s2.sticky_display_col(), Some(7));
 }
 
 #[test]
@@ -525,8 +531,8 @@ fn translate_in_place_insert_exactly_at_line_start_touches_that_line() {
     // range [3,3). It must count as touching line1 (matching the
     // pre-batch `touches_line` behavior: `old >= line_start`), not line0.
     let buf_pre = Text::from("aa\nbb");
-    let sel0 = Selection::with_horiz(1, 1, 5); // head=1, on line0
-    let sel1 = Selection::with_horiz(4, 4, 9); // head=4, on line1
+    let sel0 = Selection::with_sticky_display_col(1, 1, 5); // head=1, on line0
+    let sel1 = Selection::with_sticky_display_col(4, 4, 9); // head=4, on line1
     let mut set = SelectionSet::from_vec(vec![sel0, sel1], 0);
 
     let mut b = ChangeSetBuilder::new(6);
@@ -539,13 +545,13 @@ fn translate_in_place_insert_exactly_at_line_start_touches_that_line() {
 
     let s0 = set.iter_sorted().next().unwrap();
     assert_eq!(
-        s0.horiz(),
+        s0.sticky_display_col(),
         Some(5),
         "line0 wasn't touched — insert lands after it"
     );
     let s1 = set.iter_sorted().nth(1).unwrap();
     assert_eq!(
-        s1.horiz(),
+        s1.sticky_display_col(),
         None,
         "line1 touched — insert lands exactly at its start"
     );
@@ -580,8 +586,8 @@ fn translate_in_place_merges_selections_collapsed_onto_same_point() {
     // that removes the entire content ("abcdef") both collapse to
     // position 0 and must merge into a single selection.
     let buf_pre = Text::from("abcdef");
-    let sel0 = Selection::with_horiz(1, 1, 3);
-    let sel1 = Selection::with_horiz(4, 4, 8);
+    let sel0 = Selection::with_sticky_display_col(1, 1, 3);
+    let sel1 = Selection::with_sticky_display_col(4, 4, 8);
     let mut set = SelectionSet::from_vec(vec![sel0, sel1], 0);
 
     let mut b = ChangeSetBuilder::new(7);
@@ -594,5 +600,5 @@ fn translate_in_place_merges_selections_collapsed_onto_same_point() {
     assert_eq!(set.len(), 1, "both selections collapse onto the same point");
     let s = set.primary();
     assert_eq!((s.anchor(), s.head()), (0, 0));
-    assert_eq!(s.horiz(), None, "merged selection's line was edited");
+    assert_eq!(s.sticky_display_col(), None, "merged selection's line was edited");
 }

@@ -51,7 +51,7 @@ fn visual_move_down_within_wrapped_line() {
         "j: sub-row 0 → sub-row 1, col 0 → char 76"
     );
     assert_eq!(
-        ed.current_selections().primary().horiz(),
+        ed.current_selections().primary().sticky_display_col(),
         Some(0),
         "sticky col latched on first j"
     );
@@ -134,7 +134,7 @@ fn visual_preferred_col_stickiness() {
         "j: clamped to last char on short sub-row"
     );
     assert_eq!(
-        ed.current_selections().primary().horiz(),
+        ed.current_selections().primary().sticky_display_col(),
         Some(40),
         "sticky col stays at 40"
     );
@@ -148,7 +148,7 @@ fn visual_preferred_col_stickiness() {
         "j: clamped to last char on short second line"
     );
     assert_eq!(
-        ed.current_selections().primary().horiz(),
+        ed.current_selections().primary().sticky_display_col(),
         Some(40),
         "sticky col still 40"
     );
@@ -158,14 +158,14 @@ fn visual_preferred_col_stickiness() {
 #[test]
 fn visual_preferred_col_reset_on_horizontal_motion() {
     let mut ed = visual_test_editor(40);
-    ed.handle_key(key('j')); // latches horiz on the selection
+    ed.handle_key(key('j')); // latches sticky_display_col on the selection
     assert!(
-        ed.current_selections().primary().horiz().is_some(),
+        ed.current_selections().primary().sticky_display_col().is_some(),
         "j latches sticky col"
     );
-    ed.handle_key(key('l')); // horizontal motion — Selection::new() clears horiz
+    ed.handle_key(key('l')); // horizontal motion — Selection::new() clears sticky_display_col
     assert!(
-        ed.current_selections().primary().horiz().is_none(),
+        ed.current_selections().primary().sticky_display_col().is_none(),
         "l resets sticky col"
     );
 }
@@ -173,8 +173,8 @@ fn visual_preferred_col_reset_on_horizontal_motion() {
 /// WrapMode::None: a no-wrap content row *is* a buffer line, so bare `j`
 /// lands on the same char a buffer-line hop would (0 → 81 "short") — but it
 /// still goes through the sticky *display*-column model (`move_vertical`),
-/// matching page/half-page/wheel scroll in the same mode, so `horiz` latches
-/// here too.
+/// matching page/half-page/wheel scroll in the same mode, so
+/// `sticky_display_col` latches here too.
 #[test]
 fn visual_move_no_wrap_content_row_is_a_buffer_line() {
     let mut ed = visual_test_editor(0);
@@ -191,7 +191,7 @@ fn visual_move_no_wrap_content_row_is_a_buffer_line() {
         "WrapMode::None: a content row is a buffer line"
     );
     assert_eq!(
-        ed.current_selections().primary().horiz(),
+        ed.current_selections().primary().sticky_display_col(),
         Some(0),
         "sticky display column latches even in no-wrap mode"
     );
@@ -230,8 +230,8 @@ fn visual_move_down_with_explicit_count_moves_buffer_lines() {
         "1j: one buffer line skips the sub-row-1 stop entirely"
     );
     assert!(
-        ed.current_selections().primary().horiz().is_none(),
-        "buffer-line path (preferred_col: None) doesn't set sticky visual column"
+        ed.current_selections().primary().sticky_display_col().is_none(),
+        "buffer-line path (preferred_col: None) doesn't set sticky display column"
     );
 }
 
@@ -503,7 +503,11 @@ fn select_word_nearest_scopes_to_visual_subrow() {
         83,
         "must snap to 'ratatui' (last char = 'i' at char 83)"
     );
-    assert_eq!(sel.horiz(), Some(0), "horiz preserved through snap");
+    assert_eq!(
+        sel.sticky_display_col(),
+        Some(0),
+        "sticky_display_col preserved through snap"
+    );
 }
 
 /// Two consecutive `j` + `select-word-nearest-on-line` sequences must advance
