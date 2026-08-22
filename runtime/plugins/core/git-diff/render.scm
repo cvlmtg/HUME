@@ -86,15 +86,27 @@
 ;;; shared by `expand-tabs` (building the expanded string) and
 ;;; `expanded-offset` (mapping one raw offset into it), so the two always
 ;;; agree on where a given tab lands.
+;;;
+;;; `col` here counts one Steel char (Unicode scalar value) per preceding
+;;; character — the only per-character measure Steel string ops give a
+;;; plugin, and there's no scripting builtin exposing the Rust side's
+;;; display-width primitive (`hume_rope::grapheme::tab_advance`, wrapped as
+;;; `hume-engine`'s `tab_display_width`) for this to delegate to instead.
+;;; The live buffer's own renderer counts a wide CJK grapheme as 2 display
+;;; columns before a tab; this counts it as 1. So a removed line with a wide
+;;; or combining-mark character before a tab can show that tab landing one
+;;; column off from where the live buffer would have rendered it — narrow,
+;;; but real; not something this function can fix on its own.
 (define (git-diff/tab-stop col tab-width)
   (* tab-width (+ 1 (quotient col tab-width))))
 
 ;;; `text` with every control character replaced by something safe for
 ;;; `set-virtual-lines!`'s `'text`, which raises on `\t` and friends: a tab
-;;; expands to spaces up to the next `tab-width` column stop (matching the
-;;; live buffer's own rendering, not a fixed width); anything else becomes
-;;; one literal space. Only called once `git-diff/needs-expansion?` is
-;;; already known `#t`.
+;;; expands to spaces up to the next `tab-width` column stop, using
+;;; `git-diff/tab-stop`'s char-counted columns (see its doc for where that
+;;; can disagree with the live buffer's own rendering); anything else
+;;; becomes one literal space. Only called once `git-diff/needs-expansion?`
+;;; is already known `#t`.
 (define (git-diff/expand-tabs text tab-width)
   (let loop ([i 0] [col 0] [acc '()])
     (if (= i (string-length text))

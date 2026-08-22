@@ -467,8 +467,13 @@ fn reload_config_keeps_a_startup_grammar_registered() {
 /// RAII guard: unsets `XDG_CONFIG_HOME` and `HOME` for its lifetime (the
 /// only two env vars `hume_platform::dirs::config_dir()` ever consults on
 /// Unix), restoring each to its original value on drop rather than just
-/// removing it — other tests serialized behind the same `TEST_GLOBALS` claim
-/// depend on `HOME` being set again afterward.
+/// removing it — several other tests read `HOME` via
+/// `hume_platform::dirs::home_dir().expect(...)` and would panic on a
+/// missing var. Restoring it here only protects those readers *after* this
+/// guard drops; it does not serialize against them while `HOME` is unset —
+/// none of those call sites claim `Global::Env` themselves, so this only
+/// narrows the unset window to this guard's own lifetime rather than
+/// closing it.
 struct NoConfigDirGuard {
     _xdg_config_home: EnvVarGuard,
     _home: EnvVarGuard,
