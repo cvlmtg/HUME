@@ -69,10 +69,10 @@ fn drain_until_picker_total(ed: &mut Editor, n: usize) {
 
 // ── Shared unix-only guards and fixtures ─────────────────────────────────────
 
-/// Lock `HUME_RUNTIME_MUTEX`, create isolated `runtime` and `tmp` tempdirs,
-/// set `HUME_RUNTIME` and `TMPDIR`, and restore both on drop.
+/// Claim `Global::Env`, create isolated `runtime` and `tmp` tempdirs, set
+/// `HUME_RUNTIME` and `TMPDIR`, and restore both on drop.
 ///
-/// The mutex is acquired BEFORE the tempdirs are created so that a concurrent
+/// The claim is acquired BEFORE the tempdirs are created so that a concurrent
 /// guarded test's TMPDIR does not cause our tempdirs to be nested inside it —
 /// which would make them disappear when that test's guard drops and deletes its
 /// tree.
@@ -80,14 +80,14 @@ struct HumeRuntimeGuard {
     runtime: tempfile::TempDir,
     tmp: tempfile::TempDir,
     // Last field — released after runtime/tmp dirs are deleted.
-    _lock: std::sync::MutexGuard<'static, ()>,
+    _lock: ClaimGuard,
 }
 
 impl HumeRuntimeGuard {
     fn new() -> Self {
-        let lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let runtime = tempfile::tempdir().expect("tempdir");
-        let tmp = tempfile::tempdir().expect("tempdir");
+        let lock = TEST_GLOBALS.claim(Global::Env);
+        let runtime = safe_tempdir();
+        let tmp = safe_tempdir();
         unsafe {
             std::env::set_var("HUME_RUNTIME", runtime.path());
             std::env::set_var("TMPDIR", tmp.path());
@@ -158,14 +158,14 @@ struct RealRuntimeGuard {
     prev_xdg_data_home: Option<String>,
     // Last field — released after `_data_tmp` is deleted (see
     // `HumeRuntimeGuard`'s doc for why the drop order matters).
-    _lock: std::sync::MutexGuard<'static, ()>,
+    _lock: ClaimGuard,
 }
 
 impl RealRuntimeGuard {
     fn new() -> Self {
-        let lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let lock = TEST_GLOBALS.claim(Global::Env);
         let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
-        let data_tmp = tempfile::tempdir().expect("tempdir");
+        let data_tmp = safe_tempdir();
         let prev_xdg_data_home = std::env::var("XDG_DATA_HOME").ok();
         unsafe {
             std::env::set_var("HUME_RUNTIME", real_runtime);
@@ -208,7 +208,7 @@ struct StagedGrammarFixture {
     _data_tmp: tempfile::TempDir,
     // Last field — released after the tempdirs above are deleted (see
     // `HumeRuntimeGuard`'s doc for why the drop order matters).
-    _lock: std::sync::MutexGuard<'static, ()>,
+    _lock: ClaimGuard,
 }
 
 impl StagedGrammarFixture {
@@ -217,15 +217,15 @@ impl StagedGrammarFixture {
     /// `init.scm`. Caller supplies `grammar_name`'s own fixture files —
     /// callers gate on `skip_unless_grammars` first.
     fn new(grammar_name: &str, parser: &Path, highlights: &Path, init_scm: &str) -> Self {
-        let lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let lock = TEST_GLOBALS.claim(Global::Env);
         let repo_runtime_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
 
-        let config_tmp = tempfile::tempdir().expect("tempdir");
+        let config_tmp = safe_tempdir();
         let config_dir = config_tmp.path().join("hume");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(config_dir.join("init.scm"), init_scm).unwrap();
 
-        let data_tmp = tempfile::tempdir().expect("tempdir");
+        let data_tmp = safe_tempdir();
         let grammars_dir = data_tmp.path().join("hume").join("grammars");
         let hl_dir = grammars_dir.join("sources").join(grammar_name);
         std::fs::create_dir_all(&hl_dir).unwrap();
@@ -308,22 +308,14 @@ fn git_init(dir: &Path) {
 struct CwdSandbox {
     dir: tempfile::TempDir,
     saved: PathBuf,
-    _lock: std::sync::MutexGuard<'static, ()>,
+    _lock: ClaimGuard,
 }
 
 impl CwdSandbox {
     fn new() -> Self {
-        let _lock = CWD_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = TEST_GLOBALS.claim(Global::Cwd);
         let saved = std::env::current_dir().expect("current_dir");
-        // Deliberately bare, not `safe_tempdir()`: this only holds CWD_MUTEX,
-        // not HUME_RUNTIME_MUTEX, so this creation is still exposed to the
-        // TMPDIR race described at `safe_tempdir()`'s definition — BUT some
-        // callers (e.g. `pickers_plugin.rs`) construct `CwdSandbox` while
-        // already holding a `HumeRuntimeGuard` on the same thread, and
-        // `safe_tempdir()` would try to re-lock that (non-reentrant) mutex
-        // there and deadlock. Fixing the race here needs a reentrant-aware
-        // lock, not a swap to `safe_tempdir()`.
-        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = safe_tempdir();
         Self { dir, saved, _lock }
     }
 

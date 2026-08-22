@@ -1071,6 +1071,7 @@ dependencies = [
  "insta",
  "lsp-types",
  "nucleo-matcher",
+ "parking_lot",
  "pretty_assertions",
  "proptest",
  "ratatui",

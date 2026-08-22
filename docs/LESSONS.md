@@ -318,7 +318,7 @@ landed in `92c96c07` on `2026-07-28`, three days after the process started.
 
 ---
 
-## L7 — Non-reentrant test mutex held across a helper that re-acquires it (2026-07-30)
+## L7 — Non-reentrant test mutex held across a helper that re-acquires it (2026-07-30, structurally fixed 2026-08-22)
 
 **Root cause:** A test held `HUME_RUNTIME_MUTEX` (a plain `std::sync::Mutex`,
 not reentrant) for its *entire* body via `let _lock = MUTEX.lock()...` bound
@@ -329,32 +329,35 @@ the *same* mutex again, on the *same* thread. `std::sync::Mutex` doesn't
 detect same-thread re-entrancy — it just blocks forever, since the lock is
 already held by the very thread trying to acquire it.
 
-**Concrete instance:** `steel_server_plugin_registers_scheme_with_generated_globals_env`
+**Concrete instances:** `steel_server_plugin_registers_scheme_with_generated_globals_env`
 (`hume-editor/src/editor/tests/scripting_host_globals.rs`) held `_lock` for the
 whole test, then called `safe_tempdir()` near the end — `cargo test` reported
-the test as "running for over 60 seconds" instead of failing fast.
+the test as "running for over 60 seconds" instead of failing fast. The same
+pattern bit again in `bad_config_value_fails_plugin_load_with_prefixed_error`
+(`unix/git_diff_plugin.rs`), fixed the first time only by call-ordering
+discipline (create the tempdir before the guard) — a fix that has to be
+re-derived and re-applied by hand at every call site, and depends on nobody
+reordering the two lines later.
 
-**Prevention rules:**
+**Structural fix (2026-08-22):** the discipline-based prevention rules below
+were replaced, not supplemented — the failure mode they guarded against is
+now impossible to hit by construction, so reader attention is no longer the
+backstop. `HUME_RUNTIME_MUTEX` and the separate `CWD_MUTEX` were replaced by
+one `TEST_GLOBALS` lock (`hume-editor/src/editor/tests/mod.rs`) built on
+`parking_lot::ReentrantMutex`: a thread that already holds it can re-enter
+via `safe_tempdir()`/`safe_named_tempfile()` without blocking on itself.
+Reentrancy alone would let a *nested guard* (as opposed to a momentary
+`safe_tempdir()` visit) silently corrupt teardown instead of hanging, so
+`TestGlobals::claim` tracks per-resource exclusivity and panics loudly on a
+same-thread double-claim rather than allowing it. Two lints
+(`hume-editor/src/editor/lints/test_globals.rs`) now forbid a bare
+`tempfile::tempdir()`/`NamedTempFile::new()` or a raw `std::env::set_var`/
+`remove_var` anywhere in the test tree outside the sanctioned constructors/
+guards, so a new test can't reintroduce either hazard even by accident.
 
-1. **Scope a mutex guard to the critical section, not the whole test.**
-   `HUME_RUNTIME` only needs the lock held from `set_var` to `remove_var`
-   around `ScriptingHost::new()` (the one place that reads it) — wrap just
-   that in a block expression (`let host = { let _lock = ...; ...; host };`)
-   so the guard drops before any later helper in the same function can touch
-   the same mutex.
-2. **Before adding `safe_tempdir()` (or anything else documented as taking
-   `HUME_RUNTIME_MUTEX`) inside a test, check whether that test already holds
-   the lock from an earlier step.** A same-thread self-deadlock on a
-   `std::sync::Mutex` doesn't panic or error — it hangs silently, and the only
-   symptom is the test runner's own generic "running for over Ns" notice.
-3. **When a test hangs with no assertion failure, suspect a lock, not the
-   logic under test first.** Instrument with `eprintln!`s bracketing each
-   step (`--nocapture`) to find the last one that printed — the gap between
-   the last print and the next is where the hang is, and a mutex acquire is
-   the first thing to check there before doubting the code under test.
-
-**Files:** `hume-editor/src/editor/tests/scripting_host_globals.rs`
-(`host_and_editor_after_runtime_layers`'s scoped-lock block).
+**Files:** `hume-editor/src/editor/tests/mod.rs` (`TestGlobals`, `Global`,
+`ClaimGuard`, `safe_tempdir`, `safe_named_tempfile`, `EnvVarGuard`),
+`hume-editor/src/editor/lints/test_globals.rs`.
 
 ---
 

@@ -365,18 +365,17 @@ fn typed_theme_bad_name_leaves_setting() {
 /// Mirrors `editor/tests/unix/mod.rs`'s `RealRuntimeGuard`, minus the
 /// `XDG_DATA_HOME` redirect (unneeded for a read-only theme load).
 struct RealThemeRuntimeGuard {
-    _lock: std::sync::MutexGuard<'static, ()>,
+    _lock: ClaimGuard,
 }
 
 impl RealThemeRuntimeGuard {
     fn new() -> Self {
-        let lock = super::HUME_RUNTIME_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let lock = TEST_GLOBALS.claim(Global::Env);
         let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
         // SAFETY: not unsafe in the memory-safety sense — Rust 2024 requires
-        // the block because env vars are process-global; HUME_RUNTIME_MUTEX
-        // is what actually makes this test-safe (see its doc at tests/mod.rs).
+        // the block because env vars are process-global; the `Global::Env`
+        // claim above is what actually makes this test-safe (see
+        // `TestGlobals`'s doc at tests/mod.rs).
         unsafe {
             std::env::set_var("HUME_RUNTIME", real_runtime);
         }

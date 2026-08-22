@@ -457,8 +457,8 @@ fn buffer_by_path_finds_lexically_keyed_buffer_after_parent_dir_appears() {
 
 #[test]
 fn open_extra_files_opens_all_paths() {
-    let f1 = tempfile::NamedTempFile::new().unwrap();
-    let f2 = tempfile::NamedTempFile::new().unwrap();
+    let f1 = safe_named_tempfile();
+    let f2 = safe_named_tempfile();
     std::fs::write(f1.path(), "file one\n").unwrap();
     std::fs::write(f2.path(), "file two\n").unwrap();
 
@@ -509,7 +509,7 @@ fn startup_with_missing_first_file_opens_new_file_buffer() {
 
 #[test]
 fn open_extra_files_deduplicates() {
-    let f1 = tempfile::NamedTempFile::new().unwrap();
+    let f1 = safe_named_tempfile();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
 
@@ -728,7 +728,7 @@ fn wa_skips_read_only_dirty_buffer() {
 
 #[test]
 fn open_extra_files_nonexistent_opens_new_file_buffer() {
-    let f1 = tempfile::NamedTempFile::new().unwrap();
+    let f1 = safe_named_tempfile();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
 
@@ -777,7 +777,7 @@ fn open_extra_files_nonexistent_opens_new_file_buffer() {
 /// both would render identically for such input.
 #[test]
 fn open_extra_files_new_file_shows_untransformed_display_path() {
-    let f1 = tempfile::NamedTempFile::new().unwrap();
+    let f1 = safe_named_tempfile();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
@@ -821,7 +821,7 @@ fn open_extra_files_new_file_shows_untransformed_display_path() {
 /// warns.
 #[test]
 fn open_extra_files_warns_with_untransformed_path() {
-    let f1 = tempfile::NamedTempFile::new().unwrap();
+    let f1 = safe_named_tempfile();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
@@ -890,7 +890,7 @@ fn write_follows_symlink() {
     use std::os::unix::fs::symlink;
 
     // Create the real file and a symlink pointing to it.
-    let real = tempfile::NamedTempFile::new().unwrap();
+    let real = safe_named_tempfile();
     std::fs::write(real.path(), "hello\n").unwrap();
 
     let link_dir = safe_tempdir();
@@ -938,7 +938,7 @@ fn write_follows_symlink() {
 /// file — verifies the plain-write path of the new return value.
 #[test]
 fn write_file_atomic_returns_false_on_plain_write() {
-    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let tmp = safe_named_tempfile();
     std::fs::write(tmp.path(), "initial\n").unwrap();
     let mut meta = hume_platform::io::read_file_meta(tmp.path()).unwrap();
 

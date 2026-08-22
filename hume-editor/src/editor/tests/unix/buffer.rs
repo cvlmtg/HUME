@@ -37,7 +37,7 @@ fn buffer_full_path_switches() {
 
 #[test]
 fn buffer_full_path_not_open_errors() {
-    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let tmp = safe_named_tempfile();
     let canonical = std::fs::canonicalize(tmp.path()).unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     // File exists on disk but is not open.

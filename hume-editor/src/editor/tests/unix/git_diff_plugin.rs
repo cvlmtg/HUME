@@ -723,10 +723,6 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
     use hume_scripting::PluginStatus;
     use hume_scripting::attribution::PluginId;
 
-    // `safe_tempdir()` must run before `RealRuntimeGuard::new()` — the guard
-    // holds `HUME_RUNTIME_MUTEX` for its whole lifetime, and `safe_tempdir()`
-    // re-locking that same non-reentrant mutex on this thread afterward
-    // would deadlock (see `RealRuntimeGuard`'s own doc).
     let tmp = safe_tempdir();
     let _guard = RealRuntimeGuard::new();
     let init_path = tmp.path().join("init.scm");

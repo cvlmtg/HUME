@@ -44,24 +44,22 @@ fn fabricate_server(data_dir_root: &Path, name: &str, version: &str, bin: &str) 
     std::fs::write(dir.join(bin), b"#!/bin/sh\n").unwrap();
 }
 
-fn lock() -> std::sync::MutexGuard<'static, ()> {
-    super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
+fn lock() -> ClaimGuard {
+    TEST_GLOBALS.claim(Global::Env)
 }
 
 /// Load `init_src` into `ed`, pointing `HUME_RUNTIME` at the repo's real
 /// `runtime/` dir (so the real shipped plugin sources and
 /// lsp-servers.scm/lsp-sources.scm catalogs are used) and `XDG_DATA_HOME` at
-/// `data_dir`. Env vars are process-global — callers must hold
-/// `super::HUME_RUNTIME_MUTEX` for the test's duration. Mirrors
+/// `data_dir`. Env vars are process-global — callers must hold a
+/// `TEST_GLOBALS.claim(Global::Env)` for the test's duration. Mirrors
 /// `injections_editor.rs`'s `load_plum`.
 fn load_with_init(ed: &mut Editor, data_dir: &std::path::Path, init_src: &str) {
     let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
         .join("runtime");
-    let config_tmp = tempfile::tempdir().unwrap();
+    let config_tmp = safe_tempdir();
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(hume_config.join("init.scm"), init_src).unwrap();
@@ -103,7 +101,7 @@ fn load_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
 fn plum_plugin_loads_cleanly() {
     let _lock = lock();
 
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -127,7 +125,7 @@ fn plum_plugin_loads_cleanly() {
 fn lsp_plugin_loads_with_real_lsp_catalogs() {
     let _lock = lock();
 
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -151,7 +149,7 @@ fn lsp_plugin_loads_with_real_lsp_catalogs() {
 #[test]
 fn plum_alone_does_not_register_installed_servers() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
@@ -186,7 +184,7 @@ fn plum_alone_does_not_register_installed_servers() {
 #[test]
 fn scan_registers_installed_server_with_absolute_managed_path() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
@@ -216,7 +214,7 @@ fn scan_registers_installed_server_with_absolute_managed_path() {
 #[test]
 fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_objects() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     fabricate_server(data_tmp.path(), "svlangserver", "0.4.1", "svlangserver");
     fabricate_server(
         data_tmp.path(),
@@ -289,7 +287,7 @@ fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_object
 #[test]
 fn interrupted_install_is_warned_and_not_registered() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let dir = canonical_data_dir(data_tmp.path())
         .join("servers")
         .join("rust-analyzer");
@@ -315,7 +313,7 @@ fn interrupted_install_is_warned_and_not_registered() {
 #[test]
 fn orphan_server_is_warned_and_not_registered() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     fabricate_server(
         data_tmp.path(),
         "totally-not-a-real-server",
@@ -338,7 +336,7 @@ fn orphan_server_is_warned_and_not_registered() {
 #[test]
 fn install_lock_sentinel_file_is_never_scanned_as_a_server_directory() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
     std::fs::create_dir_all(&servers_dir).unwrap();
     // A file, not a directory — sitting directly under servers/, exactly
@@ -359,7 +357,7 @@ fn install_lock_sentinel_file_is_never_scanned_as_a_server_directory() {
 #[test]
 fn stray_non_directory_file_under_servers_dir_is_never_scanned_as_a_server() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
     std::fs::create_dir_all(&servers_dir).unwrap();
     // A file, not a directory, with no special-cased name — e.g. a
@@ -383,7 +381,7 @@ fn stray_non_directory_file_under_servers_dir_is_never_scanned_as_a_server() {
 #[test]
 fn lsp_rescan_servers_command_registers_newly_installed() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
     assert_eq!(
@@ -422,7 +420,7 @@ fn lsp_rescan_servers_command_registers_newly_installed() {
 #[test]
 fn rescan_does_not_clobber_a_manually_registered_language() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
 
     let mut ed = editor_from("-[x]>\n");
     load_with_init(
@@ -466,7 +464,7 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
 #[test]
 fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registration() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
@@ -500,7 +498,7 @@ fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registrat
 #[test]
 fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
@@ -544,14 +542,14 @@ fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
 #[test]
 fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
         "2026-07-06",
         "rust-analyzer",
     );
-    let src_tmp = tempfile::tempdir().unwrap();
+    let src_tmp = safe_tempdir();
     let file = src_tmp.path().join("main.rs");
     std::fs::write(&file, b"fn main() {}\n").unwrap();
 
@@ -605,7 +603,7 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
 #[test]
 fn lazy_lsp_plugin_activates_on_typed_lsp_install_command() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_with_init(
         &mut ed,
@@ -629,7 +627,7 @@ fn lazy_lsp_plugin_activates_on_typed_lsp_install_command() {
 #[test]
 fn lsp_install_stub_kind_names_the_unsupported_kind() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -646,7 +644,7 @@ fn lsp_install_stub_kind_names_the_unsupported_kind() {
 #[test]
 fn lsp_install_cargo_git_stub_kind_names_the_kind() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -664,7 +662,7 @@ fn lsp_install_cargo_git_stub_kind_names_the_kind() {
 #[test]
 fn lsp_install_unknown_language_warns() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -680,7 +678,7 @@ fn lsp_install_unknown_language_warns() {
 #[test]
 fn lsp_install_no_language_buffer_and_no_arg_warns() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -697,7 +695,7 @@ fn lsp_install_no_language_buffer_and_no_arg_warns() {
 #[test]
 fn lsp_install_unsupported_asset_format_fails_loudly() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -720,7 +718,7 @@ fn lsp_install_unsupported_asset_format_fails_loudly() {
 #[test]
 fn install_lock_is_released_after_a_failed_install() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -763,7 +761,7 @@ fn install_lock_is_released_after_a_failed_install() {
 #[test]
 fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
     std::fs::create_dir_all(&servers_dir).unwrap();
     std::fs::write(servers_dir.join(".install-lock"), b"").unwrap();
@@ -787,7 +785,7 @@ fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
 #[test]
 fn lsp_install_no_arg_falls_back_to_buffer_language_not_the_count_sentinel() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -814,7 +812,7 @@ fn lsp_install_no_arg_falls_back_to_buffer_language_not_the_count_sentinel() {
 #[test]
 fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
 
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
@@ -861,7 +859,7 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
 #[test]
 fn plum_missing_plugins_excludes_declared_core_plugins() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_with_init(
         &mut ed,
@@ -890,7 +888,7 @@ fn plum_missing_plugins_excludes_declared_core_plugins() {
 #[test]
 fn lsp_uninstall_removes_registration_and_directory() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
@@ -929,7 +927,7 @@ fn lsp_uninstall_removes_registration_and_directory() {
 #[test]
 fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
@@ -960,7 +958,7 @@ fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held(
 #[test]
 fn lsp_uninstall_of_never_installed_server_is_silent() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -992,7 +990,7 @@ fn lsp_uninstall_of_never_installed_server_is_silent() {
 #[test]
 fn lsp_uninstall_rejects_path_traversal_name() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     // A sibling write-sandbox dir `../plugins` would canonicalize into —
     // it must survive untouched.
     let plugins_dir = canonical_data_dir(data_tmp.path()).join("plugins");
@@ -1022,7 +1020,7 @@ fn lsp_uninstall_rejects_path_traversal_name() {
 #[test]
 fn lsp_servers_command_runs_without_error() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -1069,7 +1067,7 @@ fn lsp_servers_command_runs_without_error() {
 #[test]
 fn lsp_status_opens_a_read_only_view_when_no_servers_are_registered() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -1082,7 +1080,7 @@ fn lsp_status_opens_a_read_only_view_when_no_servers_are_registered() {
 #[test]
 fn lsp_stop_with_no_matching_server_reports_nothing_to_stop() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -1097,7 +1095,7 @@ fn lsp_stop_with_no_matching_server_reports_nothing_to_stop() {
 #[test]
 fn lsp_restart_with_no_matching_server_reports_nothing_to_restart() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -1112,7 +1110,7 @@ fn lsp_restart_with_no_matching_server_reports_nothing_to_restart() {
 #[test]
 fn plum_alone_does_not_expose_lsp_status_stop_restart() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -1137,7 +1135,7 @@ fn plum_alone_does_not_expose_lsp_status_stop_restart() {
 #[test]
 fn discovery_hint_fires_once_for_an_installable_unregistered_language() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -1174,7 +1172,7 @@ fn discovery_hint_fires_once_for_an_installable_unregistered_language() {
 #[test]
 fn discovery_hint_does_not_fire_for_a_blocked_server() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -1195,7 +1193,7 @@ fn discovery_hint_does_not_fire_for_a_blocked_server() {
 #[test]
 fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -1204,19 +1202,13 @@ fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
     // availability could suggest a :lsp-install that immediately fails
     // `lsp/preflight!`'s own npm-on-$PATH check. Force $PATH to a directory
     // with no npm binary in it.
-    let empty_path_dir = tempfile::tempdir().unwrap();
-    let original_path = std::env::var("PATH").unwrap();
-    unsafe {
-        std::env::set_var("PATH", empty_path_dir.path());
-    }
-
-    let bid = ed.focused_buffer_id();
-    let lang = ed.state.config.languages.intern("systemverilog");
-    ed.set_buffer_language(bid, Some(lang));
-    ed.settle();
-
-    unsafe {
-        std::env::set_var("PATH", original_path);
+    let empty_path_dir = safe_tempdir();
+    {
+        let _path = EnvVarGuard::set("PATH", empty_path_dir.path());
+        let bid = ed.focused_buffer_id();
+        let lang = ed.state.config.languages.intern("systemverilog");
+        ed.set_buffer_language(bid, Some(lang));
+        ed.settle();
     }
 
     let log = ed.state.message_log.format_for_display();
@@ -1229,7 +1221,7 @@ fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
 #[test]
 fn discovery_hint_fires_for_cargo_kind_now_installable() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -1255,25 +1247,19 @@ fn discovery_hint_fires_for_cargo_kind_now_installable() {
 #[test]
 fn discovery_hint_does_not_fire_for_cargo_kind_when_cargo_missing_from_path() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
     // Force $PATH to a directory with no cargo binary in it — must not hint
     // an install that would immediately fail `lsp/preflight!`'s cargo check.
-    let empty_path_dir = tempfile::tempdir().unwrap();
-    let original_path = std::env::var("PATH").unwrap();
-    unsafe {
-        std::env::set_var("PATH", empty_path_dir.path());
-    }
-
-    let bid = ed.focused_buffer_id();
-    let lang = ed.state.config.languages.intern("pest");
-    ed.set_buffer_language(bid, Some(lang));
-    ed.settle();
-
-    unsafe {
-        std::env::set_var("PATH", original_path);
+    let empty_path_dir = safe_tempdir();
+    {
+        let _path = EnvVarGuard::set("PATH", empty_path_dir.path());
+        let bid = ed.focused_buffer_id();
+        let lang = ed.state.config.languages.intern("pest");
+        ed.set_buffer_language(bid, Some(lang));
+        ed.settle();
     }
 
     let log = ed.state.message_log.format_for_display();
@@ -1286,7 +1272,7 @@ fn discovery_hint_does_not_fire_for_cargo_kind_when_cargo_missing_from_path() {
 #[test]
 fn discovery_hint_does_not_fire_when_already_registered() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
@@ -1331,7 +1317,7 @@ fn write_fake_cargo_shim(
     bin_name: &str,
     create_binary: bool,
 ) -> tempfile::TempDir {
-    let shim_dir = tempfile::tempdir().unwrap();
+    let shim_dir = safe_tempdir();
     let body = if create_binary {
         format!(
             "#!/bin/sh\n\
@@ -1364,21 +1350,17 @@ fn write_fake_cargo_shim(
 #[test]
 fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
-    let args_tmp = tempfile::tempdir().unwrap();
+    let args_tmp = safe_tempdir();
     let args_file = args_tmp.path().join("argv.txt");
     let shim_dir = write_fake_cargo_shim(&args_file, "pest-language-server", true);
 
-    let original_path = std::env::var("PATH").unwrap();
-    unsafe {
-        std::env::set_var("PATH", shim_dir.path());
-    }
-    type_cmd(&mut ed, ":lsp-install pest");
-    unsafe {
-        std::env::set_var("PATH", original_path);
+    {
+        let _path = EnvVarGuard::set("PATH", shim_dir.path());
+        type_cmd(&mut ed, ":lsp-install pest");
     }
 
     let argv: Vec<String> = std::fs::read_to_string(&args_file)
@@ -1427,23 +1409,19 @@ fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
 #[test]
 fn lsp_install_cargo_missing_binary_after_install_fails_loudly() {
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
-    let args_tmp = tempfile::tempdir().unwrap();
+    let args_tmp = safe_tempdir();
     let args_file = args_tmp.path().join("argv.txt");
     // create_binary: false — shim exits 0 but leaves no bin/ behind, exactly
     // the failure this installer's own post-check must catch.
     let shim_dir = write_fake_cargo_shim(&args_file, "pest-language-server", false);
 
-    let original_path = std::env::var("PATH").unwrap();
-    unsafe {
-        std::env::set_var("PATH", shim_dir.path());
-    }
-    type_cmd(&mut ed, ":lsp-install pest");
-    unsafe {
-        std::env::set_var("PATH", original_path);
+    {
+        let _path = EnvVarGuard::set("PATH", shim_dir.path());
+        type_cmd(&mut ed, ":lsp-install pest");
     }
 
     let log = ed.state.message_log.format_for_display();
@@ -1486,7 +1464,7 @@ fn lsp_install_real_rust_analyzer_e2e() {
     }
 
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -1559,7 +1537,7 @@ fn lsp_install_real_rust_analyzer_reinstall_after_version_bump_e2e() {
     }
 
     let _lock = lock();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 

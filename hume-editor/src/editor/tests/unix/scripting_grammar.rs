@@ -342,11 +342,11 @@ fn setup_editor_with_languages_scm(
     languages_scm: &str,
     file_name: &str,
 ) -> (Editor, Vec<tempfile::TempDir>) {
-    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let config_tmp = tempfile::tempdir().unwrap();
-    let runtime_tmp = tempfile::tempdir().unwrap();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let config_tmp = safe_tempdir();
+    let runtime_tmp = safe_tempdir();
+    let data_tmp = safe_tempdir();
 
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
@@ -451,9 +451,9 @@ fn define_language_language_id_keyword_round_trips_through_real_prelude() {
 /// override — proving it actually exercises the bug.
 #[test]
 fn tsx_bundled_language_id_is_typescriptreact() {
-    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let config_tmp = tempfile::tempdir().unwrap();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let config_tmp = safe_tempdir();
+    let data_tmp = safe_tempdir();
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(hume_config.join("init.scm"), "").unwrap();
@@ -712,11 +712,11 @@ fn init_errors_with_catalog(
     catalog_src: &str,
     populate_data: impl FnOnce(&std::path::Path),
 ) -> (Vec<String>, Editor, Vec<tempfile::TempDir>) {
-    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let config_tmp = tempfile::tempdir().unwrap();
-    let runtime_tmp = tempfile::tempdir().unwrap();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let config_tmp = safe_tempdir();
+    let runtime_tmp = safe_tempdir();
+    let data_tmp = safe_tempdir();
 
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();

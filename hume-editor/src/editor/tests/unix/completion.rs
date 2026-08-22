@@ -6,23 +6,21 @@ use super::*;
 ///
 /// Sets only `HUME_RUNTIME` (not `TMPDIR`) so it cannot race with the
 /// unguarded path-completion tests, whose `tempfile::tempdir()` respects
-/// `TMPDIR`. The shared `HUME_RUNTIME_MUTEX` still serializes against other
+/// `TMPDIR`. The shared `TEST_GLOBALS` claim still serializes against other
 /// `HUME_RUNTIME`-sensitive tests.
 #[test]
 fn tab_completes_set_global_theme_value() {
     struct HumeRuntimeOnly {
         _dir: tempfile::TempDir,
-        _lock: std::sync::MutexGuard<'static, ()>,
+        _lock: ClaimGuard,
     }
     impl Drop for HumeRuntimeOnly {
         fn drop(&mut self) {
             unsafe { std::env::remove_var("HUME_RUNTIME") }
         }
     }
-    let lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let dir = tempfile::tempdir().expect("tempdir");
+    let lock = TEST_GLOBALS.claim(Global::Env);
+    let dir = safe_tempdir();
     // Two themes so the popup opens (a single candidate completes silently).
     let themes_dir = dir.path().join("themes");
     std::fs::create_dir_all(&themes_dir).unwrap();

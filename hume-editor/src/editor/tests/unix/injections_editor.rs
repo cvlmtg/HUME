@@ -4,13 +4,14 @@ use super::*;
 /// sources, not a synthetic copy) into `ed`, pointing `HUME_RUNTIME` at the
 /// repo's real `runtime/` dir (so the real `grammar-sources.scm` catalog is
 /// used) and `XDG_DATA_HOME` at `data_dir`. Env vars are process-global —
-/// callers must hold `super::HUME_RUNTIME_MUTEX` for the test's duration.
+/// callers must hold a `TEST_GLOBALS.claim(Global::Env)` for the test's
+/// duration.
 fn load_plum(ed: &mut Editor, data_dir: &std::path::Path) {
     let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
         .join("runtime");
-    let config_tmp = tempfile::tempdir().unwrap();
+    let config_tmp = safe_tempdir();
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(hume_config.join("init.scm"), r#"(load-plugin "core:plum")"#).unwrap();
@@ -36,7 +37,7 @@ fn load_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
         .parent()
         .unwrap()
         .join("runtime");
-    let config_tmp = tempfile::tempdir().unwrap();
+    let config_tmp = safe_tempdir();
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(
@@ -67,11 +68,9 @@ fn load_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
 /// pure Scheme-syntax/logic smoke test, not an installation test.
 #[test]
 fn plum_plugin_loads_with_real_grammar_catalog() {
-    let _lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -95,11 +94,9 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
 /// processes") works for loading and basic discovery.
 #[test]
 fn plum_list_runs_with_no_errors_against_empty_data_dir() {
-    let _lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -137,11 +134,9 @@ fn git_ok(dir: &std::path::Path, args: &[&str]) {
 /// builtin) and fast-forward the clone to match.
 #[test]
 fn plum_update_runs_real_git_pull_against_local_origin() {
-    let _lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let origin_tmp = tempfile::tempdir().unwrap();
+    let origin_tmp = safe_tempdir();
     let origin_dir = origin_tmp.path();
     git_ok(origin_dir, &["init", "-q"]);
     git_ok(origin_dir, &["config", "user.email", "test@example.com"]);
@@ -150,7 +145,7 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
     git_ok(origin_dir, &["add", "plugin.scm"]);
     git_ok(origin_dir, &["commit", "-q", "-m", "v1"]);
 
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let clone_dir = data_tmp.path().join("hume/plugins/testuser/testrepo");
     std::fs::create_dir_all(clone_dir.parent().unwrap()).unwrap();
     git_ok(
@@ -197,11 +192,9 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
 /// definition; `:plum-cleanup` must remove its directory.
 #[test]
 fn plum_cleanup_removes_orphan_plugin_directory() {
-    let _lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let orphan_dir = data_tmp.path().join("hume/plugins/testuser/orphanrepo");
     std::fs::create_dir_all(&orphan_dir).unwrap();
     std::fs::write(orphan_dir.join("plugin.scm"), "; orphan\n").unwrap();
@@ -235,11 +228,9 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
 /// install-failure warning instead.
 #[test]
 fn plum_install_grammar_no_arg_no_language_warns() {
-    let _lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -266,11 +257,9 @@ fn plum_install_grammar_no_arg_no_language_warns() {
 /// an unknown name deletes nothing.
 #[test]
 fn plum_install_grammar_unknown_name_warns() {
-    let _lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -300,11 +289,9 @@ fn plum_install_grammar_unknown_name_warns() {
 /// of ever mentioning `nosuchlang`.
 #[test]
 fn plum_install_grammar_arg_overrides_buffer_language() {
-    let _lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -341,11 +328,9 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
 /// below for the case that does.
 #[test]
 fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
-    let _lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -373,11 +358,9 @@ fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
 /// against a real TTY, or panics against a non-TTY stdin in CI.
 #[test]
 fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
-    let _lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
@@ -420,11 +403,9 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
         return;
     }
 
-    let _lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     // `load_plum` points XDG_DATA_HOME at data_tmp — the real data dir is
     // XDG_DATA_HOME/hume (see dirs.rs's ScriptDirs::new).
     let data_dir = data_tmp.path().join("hume");
@@ -480,11 +461,9 @@ fn plum_install_grammar_resolves_helix_inherits_chain() {
         return;
     }
 
-    let _lock = super::HUME_RUNTIME_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let data_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = safe_tempdir();
     let data_dir = data_tmp.path().join("hume");
 
     let buf = crate::editor::buffer::Buffer::new(

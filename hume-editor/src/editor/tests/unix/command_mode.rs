@@ -9,7 +9,7 @@ use super::*;
 /// the `:buffer#` full-alias form.
 #[test]
 fn colon_b_hash_switches_to_alternate() {
-    let f1 = tempfile::NamedTempFile::new().unwrap();
+    let f1 = safe_named_tempfile();
     std::fs::write(f1.path(), "file1\n").unwrap();
     let c1 = std::fs::canonicalize(f1.path()).unwrap();
 
@@ -60,7 +60,7 @@ fn colon_b_hash_switches_to_alternate() {
 /// force=true with the path as argument — regression guard for the new parser.
 #[test]
 fn colon_edit_bang_path_parses() {
-    let f = tempfile::NamedTempFile::new().unwrap();
+    let f = safe_named_tempfile();
     std::fs::write(f.path(), "clean\n").unwrap();
     let canonical = std::fs::canonicalize(f.path()).unwrap();
 

@@ -14,6 +14,7 @@ mod plugin_manifest;
 mod resync_derived_state;
 mod scm_headers;
 mod statusline_writes;
+mod test_globals;
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 

@@ -26,15 +26,15 @@ struct ReloadFixture {
     _runtime_tmp: tempfile::TempDir,
     // Last field — released after the tempdirs above are deleted (see
     // `HumeRuntimeGuard`'s doc for why the drop order matters).
-    _lock: std::sync::MutexGuard<'static, ()>,
+    _lock: ClaimGuard,
 }
 
 impl ReloadFixture {
     fn new(init_scm: &str) -> Self {
-        let lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let config_tmp = tempfile::tempdir().unwrap();
-        let data_tmp = tempfile::tempdir().unwrap();
-        let runtime_tmp = tempfile::tempdir().unwrap();
+        let lock = TEST_GLOBALS.claim(Global::Env);
+        let config_tmp = safe_tempdir();
+        let data_tmp = safe_tempdir();
+        let runtime_tmp = safe_tempdir();
         let config_dir = config_tmp.path().join("hume");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(config_dir.join("init.scm"), init_scm).unwrap();
@@ -172,7 +172,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
           (when (equal? lang "rust") (set-buffer-option! bid "tab-width" 7))))"#;
     let fixture = ReloadFixture::new(init_scm);
 
-    let file_tmp = tempfile::tempdir().unwrap();
+    let file_tmp = safe_tempdir();
     let file = file_tmp.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
@@ -339,7 +339,7 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
     let init_scm = r#"(%define-language! "notes" '() '() '() #f)"#;
     let fixture = ReloadFixture::new(init_scm);
 
-    let file_tmp = tempfile::tempdir().unwrap();
+    let file_tmp = safe_tempdir();
     let file = file_tmp.path().join("README"); // no extension: never auto-detected
     std::fs::write(&file, "hello\n").unwrap();
 
@@ -415,7 +415,7 @@ fn reload_config_keeps_a_startup_grammar_registered() {
     let (parser, hl) = grammar_fixture("json");
     let fixture = StagedGrammarFixture::new("json", &parser, &hl, "");
 
-    let file_tmp = tempfile::tempdir().unwrap();
+    let file_tmp = safe_tempdir();
     let file = file_tmp.path().join("data.json");
     std::fs::write(&file, "{\"x\": 1}\n").unwrap();
 
@@ -467,42 +467,32 @@ fn reload_config_keeps_a_startup_grammar_registered() {
 /// RAII guard: unsets `XDG_CONFIG_HOME` and `HOME` for its lifetime (the
 /// only two env vars `hume_platform::dirs::config_dir()` ever consults on
 /// Unix), restoring each to its original value on drop rather than just
-/// removing it — other tests serialized behind the same
-/// `HUME_RUNTIME_MUTEX` depend on `HOME` being set again afterward.
+/// removing it — other tests serialized behind the same `TEST_GLOBALS` claim
+/// depend on `HOME` being set again afterward.
 struct NoConfigDirGuard {
-    _lock: std::sync::MutexGuard<'static, ()>,
-    xdg_config_home: Option<String>,
-    home: Option<String>,
+    _xdg_config_home: EnvVarGuard,
+    _home: EnvVarGuard,
+    // Last field — released after both vars above are restored (fields drop
+    // in declaration order; see `HumeRuntimeGuard`'s doc for why the order
+    // matters here too).
+    _lock: ClaimGuard,
 }
 
 impl NoConfigDirGuard {
     fn new() -> Self {
-        let lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let xdg_config_home = std::env::var("XDG_CONFIG_HOME").ok();
-        let home = std::env::var("HOME").ok();
+        let lock = TEST_GLOBALS.claim(Global::Env);
+        // `capture` (not `set`) — the mutation here is `remove_var`, not a
+        // new value, so only the restore-on-drop half applies.
+        let xdg_config_home = EnvVarGuard::capture("XDG_CONFIG_HOME");
+        let home = EnvVarGuard::capture("HOME");
         unsafe {
             std::env::remove_var("XDG_CONFIG_HOME");
             std::env::remove_var("HOME");
         }
         Self {
+            _xdg_config_home: xdg_config_home,
+            _home: home,
             _lock: lock,
-            xdg_config_home,
-            home,
-        }
-    }
-}
-
-impl Drop for NoConfigDirGuard {
-    fn drop(&mut self) {
-        unsafe {
-            match &self.xdg_config_home {
-                Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
-                None => std::env::remove_var("XDG_CONFIG_HOME"),
-            }
-            match &self.home {
-                Some(v) => std::env::set_var("HOME", v),
-                None => std::env::remove_var("HOME"),
-            }
         }
     }
 }
@@ -635,7 +625,7 @@ fn reload_config_explicit_language_restore_skips_a_bid_whose_buffer_was_swapped_
     let init_scm = r#"(%define-language! "notes" '() '() '() #f)"#;
     let fixture = ReloadFixture::new(init_scm);
 
-    let file_tmp = tempfile::tempdir().unwrap();
+    let file_tmp = safe_tempdir();
     let file = file_tmp.path().join("README"); // no extension: never auto-detected
     std::fs::write(&file, "hello\n").unwrap();
 

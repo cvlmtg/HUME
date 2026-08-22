@@ -1,9 +1,10 @@
 // Shared imports and harness helpers used by all test submodules.
 // Each submodule does `use super::*;` to access these.
 
+use std::cell::Cell;
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
@@ -424,20 +425,118 @@ impl Editor {
     }
 }
 
-// ── cwd guard ─────────────────────────────────────────────────────────────────
+// ── process-global test lock ─────────────────────────────────────────────────
+//
+// test-global-safe: definitions below are the sanctioned owners of process
+// globals (cwd, HUME_RUNTIME, TMPDIR, XDG_*, HOME, PATH) — every other mutator
+// in the test tree routes through them.
 
-// Process cwd is global state. Any test that calls `set_current_dir` must hold
-// this mutex for its entire duration so tests do not race on cwd.
-#[cfg(unix)]
-static CWD_MUTEX: Mutex<()> = Mutex::new(());
+/// The two process globals the suite serializes access to. A `Cell<bool>` per
+/// variant tracks whether *this thread* currently holds an exclusive claim on
+/// it (see [`TestGlobals::claim`]).
+#[derive(Clone, Copy, Debug)]
+enum Global {
+    /// `HUME_RUNTIME`, `TMPDIR`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `HOME`,
+    /// `PATH` — every env var a guard in this tree redirects.
+    Env,
+    /// The process current directory.
+    Cwd,
+}
 
-// ── HUME_RUNTIME guard ────────────────────────────────────────────────────────
+struct Claims {
+    env: Cell<bool>,
+    cwd: Cell<bool>,
+}
 
-// HUME_RUNTIME is a process-global env var. Any test that sets it must hold
-// this mutex for its entire duration so tests do not race on the value.
-static HUME_RUNTIME_MUTEX: Mutex<()> = Mutex::new(());
+impl Claims {
+    const fn new() -> Self {
+        Claims {
+            env: Cell::new(false),
+            cwd: Cell::new(false),
+        }
+    }
 
-/// Creates a tempdir while holding `HUME_RUNTIME_MUTEX` — guarantees no
+    fn flag(&self, what: Global) -> &Cell<bool> {
+        match what {
+            Global::Env => &self.env,
+            Global::Cwd => &self.cwd,
+        }
+    }
+}
+
+/// Exclusive claim on one [`Global`] for a guard's lifetime — released when
+/// this drops. Never construct directly; go through [`TestGlobals::claim`].
+struct ClaimGuard {
+    what: Global,
+    _lock: parking_lot::ReentrantMutexGuard<'static, Claims>,
+}
+
+impl Drop for ClaimGuard {
+    fn drop(&mut self) {
+        self._lock.flag(self.what).set(false);
+    }
+}
+
+/// The single lock guarding every process global the suite mutates. Reentrant
+/// (`parking_lot::ReentrantMutex`, not `std::sync::Mutex`): a helper that
+/// re-acquires it on a thread that already holds it — e.g. `safe_tempdir()`
+/// called from inside a live `HumeRuntimeGuard` — blocks only on *other*
+/// threads, never on itself. A non-reentrant mutex here hung the suite twice
+/// (`docs/LESSONS.md` L7, and the `git_diff_plugin.rs` fix that prompted this
+/// type) with no panic, no assertion failure — just a silent "running for
+/// over 60s" from the test runner, on a process-wide lock that then starved
+/// every other concurrently-running test too.
+///
+/// One lock, not one per `Global`: guards nest in both directions (a
+/// `CwdSandbox` opened inside a live `HumeRuntimeGuard` in
+/// `unix/pickers_plugin.rs`, and a `CwdSandbox`-like guard that itself claims
+/// `Env` while already holding `Cwd`) — two independently-ordered locks
+/// deadlock ABBA the moment both nesting directions exist. Reentrancy makes
+/// that moot: nesting is fine as long as it never claims the *same* `Global`
+/// twice, which [`claim`](Self::claim) enforces.
+struct TestGlobals {
+    inner: parking_lot::ReentrantMutex<Claims>,
+}
+
+impl TestGlobals {
+    const fn new() -> Self {
+        TestGlobals {
+            inner: parking_lot::ReentrantMutex::new(Claims::new()),
+        }
+    }
+
+    /// Exclusive claim on `what` for a guard's lifetime. Panics if this
+    /// thread already claims `what`: reentrancy makes a *second* guard
+    /// construct without blocking, but its `Drop` would then clear state
+    /// (env vars, cwd) the outer guard still needs — silently, and strictly
+    /// worse than the hang this type replaces. A guard that legitimately
+    /// nests a *different* `Global` (e.g. `Cwd` inside `Env`) is fine; only
+    /// same-resource nesting is the bug.
+    fn claim(&'static self, what: Global) -> ClaimGuard {
+        let lock = self.inner.lock();
+        let flag = lock.flag(what);
+        assert!(
+            !flag.get(),
+            "test already holds a {what:?} claim on this thread — a nested guard \
+             for the same resource would clear it out from under the outer guard \
+             on drop; scope the outer guard tighter instead of nesting"
+        );
+        flag.set(true);
+        ClaimGuard { what, _lock: lock }
+    }
+
+    /// Momentary reentrant visit: blocks on another thread's claim, never on
+    /// this thread's own. `safe_tempdir()`'s creation instant only needs "no
+    /// other thread is mid `TMPDIR`-redirect right now", not exclusivity
+    /// against a claim this same thread may already hold.
+    fn enter(&'static self) -> parking_lot::ReentrantMutexGuard<'static, Claims> {
+        self.inner.lock()
+    }
+}
+
+static TEST_GLOBALS: TestGlobals = TestGlobals::new();
+
+/// Creates a tempdir while holding [`TEST_GLOBALS`] — guarantees no
 /// concurrent `HumeRuntimeGuard` is mid-`TMPDIR`-redirect at creation time,
 /// so this directory can't land inside (and later be deleted along with)
 /// that guard's tree. Only the creation instant needs the lock: once a
@@ -446,10 +545,19 @@ static HUME_RUNTIME_MUTEX: Mutex<()> = Mutex::new(());
 /// while it's set. Any test that creates its own tempdirs outside a
 /// `HumeRuntimeGuard`/`RealRuntimeGuard` (which already protect everything
 /// created during their lifetime) should use this instead of a bare
-/// `tempfile::tempdir()`.
+/// `tempfile::tempdir()`. Safe to call from inside a held guard on the same
+/// thread — [`TestGlobals::enter`] is reentrant.
 fn safe_tempdir() -> tempfile::TempDir {
-    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.enter();
     tempfile::tempdir().expect("tempdir")
+}
+
+/// [`safe_tempdir`]'s twin for a single named file — for a test that keeps
+/// the `NamedTempFile` itself alive (e.g. to reopen or persist it), rather
+/// than [`temp_file`]'s write-content-and-hand-back-a-path shape.
+fn safe_named_tempfile() -> tempfile::NamedTempFile {
+    let _lock = TEST_GLOBALS.enter();
+    tempfile::NamedTempFile::new().expect("named tempfile")
 }
 
 /// Write `source` as `<tmp>/init.scm`, evaluate it against the real
@@ -501,7 +609,7 @@ fn run_probe(
 /// behind `write_file_atomic`, so any temp file the editor might write to
 /// must not keep one held.
 fn temp_file(content: &str) -> (std::path::PathBuf, tempfile::TempPath) {
-    let f = tempfile::NamedTempFile::new().unwrap();
+    let f = safe_named_tempfile();
     std::fs::write(f.path(), content).unwrap();
     let path = f.path().to_path_buf();
     (path, f.into_temp_path())
@@ -523,13 +631,13 @@ fn file_buffer(content: &str) -> (Buffer, tempfile::TempPath) {
 #[cfg(unix)]
 struct CwdGuard {
     saved: PathBuf,
-    _lock: std::sync::MutexGuard<'static, ()>,
+    _lock: ClaimGuard,
 }
 
 #[cfg(unix)]
 impl CwdGuard {
     fn new() -> Self {
-        let lock = CWD_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let lock = TEST_GLOBALS.claim(Global::Cwd);
         let saved = std::env::current_dir().expect("current_dir");
         CwdGuard { saved, _lock: lock }
     }
@@ -539,6 +647,53 @@ impl CwdGuard {
 impl Drop for CwdGuard {
     fn drop(&mut self) {
         let _ = std::env::set_current_dir(&self.saved);
+    }
+}
+
+/// Saves one env var's value on construction, restores it (or removes it, if
+/// it was unset before) on drop — generalizes the hand-written save/restore
+/// already duplicated in `RealRuntimeGuard` (`XDG_DATA_HOME`) and
+/// `NoConfigDirGuard` (`HOME`/`XDG_CONFIG_HOME`) to any single var, for sites
+/// that mutate just one (e.g. `PATH` in `scripting_lsp_install.rs`) rather
+/// than owning a whole guard.
+///
+/// Caller must already hold a `Global::Env` claim for at least this guard's
+/// lifetime — this only owns the save/restore, not the exclusivity, the same
+/// contract `load_plum`/`load_lsp` (`unix/injections_editor.rs`) document for
+/// their own env mutation.
+struct EnvVarGuard {
+    key: &'static str,
+    prev: Option<String>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+        let prev = std::env::var(key).ok();
+        unsafe {
+            std::env::set_var(key, value);
+        }
+        EnvVarGuard { key, prev }
+    }
+
+    /// Captures `key`'s current value without touching it — for a caller
+    /// that mutates the var itself (e.g. `remove_var`, to test the "unset"
+    /// case) and just wants the restore-on-drop half.
+    fn capture(key: &'static str) -> Self {
+        EnvVarGuard {
+            key,
+            prev: std::env::var(key).ok(),
+        }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        unsafe {
+            match &self.prev {
+                Some(v) => std::env::set_var(self.key, v),
+                None => std::env::remove_var(self.key),
+            }
+        }
     }
 }
 
@@ -700,6 +855,7 @@ mod surround;
 mod sync_dispatch;
 mod tabs;
 mod terminator;
+mod test_globals;
 mod theme_loading;
 mod timers;
 mod undo_levels;

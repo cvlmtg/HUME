@@ -26,7 +26,7 @@ fn set_cwd_updates_editor_and_process_cwd() {
 #[test]
 fn set_cwd_rejects_non_directory() {
     let _guard = CwdGuard::new();
-    let file = tempfile::NamedTempFile::new().unwrap();
+    let file = safe_named_tempfile();
     let canonical = std::fs::canonicalize(file.path()).unwrap();
     let before = std::env::current_dir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
@@ -150,7 +150,7 @@ fn typed_cd_error_on_nonexistent() {
 #[test]
 fn typed_cd_error_on_file_path() {
     let _guard = CwdGuard::new();
-    let file = tempfile::NamedTempFile::new().unwrap();
+    let file = safe_named_tempfile();
     let canonical = std::fs::canonicalize(file.path()).unwrap();
     let before = std::env::current_dir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
@@ -299,16 +299,16 @@ fn path_completer_dirs_only_mode() {
 
 // ── CwdSandbox teardown ordering ───────────────────────────────────────────────
 
-/// Basic mechanics, checked entirely while `CwdSandbox` (and thus `CWD_MUTEX`)
-/// is held, so nothing else can mutate cwd mid-check: cd into the sandbox's
-/// tempdir, confirm cwd matches it, then drop and confirm the tempdir is
-/// actually gone from disk.
+/// Basic mechanics, checked entirely while `CwdSandbox` (and thus its
+/// `Global::Cwd` claim) is held, so nothing else can mutate cwd mid-check: cd
+/// into the sandbox's tempdir, confirm cwd matches it, then drop and confirm
+/// the tempdir is actually gone from disk.
 ///
 /// Deliberately does NOT re-read `std::env::current_dir()` after `cwd` drops
-/// and releases `CWD_MUTEX` — cwd is process-global, so any other
-/// CWD-mutating test could legitimately acquire the lock and change it before
-/// the next line ran, making such a check racy against unrelated tests, not a
-/// signal about this sandbox's correctness.
+/// and releases its claim — cwd is process-global, so any other CWD-mutating
+/// test could legitimately acquire the claim and change it before the next
+/// line ran, making such a check racy against unrelated tests, not a signal
+/// about this sandbox's correctness.
 #[test]
 fn cwd_sandbox_restores_cwd_and_deletes_tempdir() {
     let cwd = CwdSandbox::new();

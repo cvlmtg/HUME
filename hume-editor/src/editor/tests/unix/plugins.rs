@@ -1504,11 +1504,11 @@ fn setup_editor_with_init_scripting(
     init_scm: &str,
     runtime_dir: Option<&std::path::Path>,
 ) -> (Editor, Vec<tempfile::TempDir>) {
-    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let config_tmp = tempfile::tempdir().unwrap();
-    let data_tmp = tempfile::tempdir().unwrap();
-    let runtime_tmp = runtime_dir.is_none().then(|| tempfile::tempdir().unwrap());
+    let config_tmp = safe_tempdir();
+    let data_tmp = safe_tempdir();
+    let runtime_tmp = runtime_dir.is_none().then(safe_tempdir);
     let runtime_path = runtime_dir.unwrap_or_else(|| runtime_tmp.as_ref().unwrap().path());
 
     let hume_config = config_tmp.path().join("hume");
@@ -1728,11 +1728,11 @@ fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
 /// `#:languages` activation entries for `"user/tp"` are actually recorded.  (Absent-path
 /// plugins early-return in `declare_plugin` and skip activation registration.)
 fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
-    let _lock = HUME_RUNTIME_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_GLOBALS.claim(Global::Env);
 
-    let config_tmp = tempfile::tempdir().unwrap();
-    let runtime_tmp = tempfile::tempdir().unwrap();
-    let data_tmp = tempfile::tempdir().unwrap();
+    let config_tmp = safe_tempdir();
+    let runtime_tmp = safe_tempdir();
+    let data_tmp = safe_tempdir();
 
     // Trivial plugin body — the lint checks activation entry names, not plugin behaviour.
     let plugin_dir = data_tmp
@@ -2256,7 +2256,7 @@ fn setup_stdlib_editor() -> (Editor, ScriptingHost, HumeRuntimeGuard, tempfile::
     let guard = HumeRuntimeGuard::new();
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
 
-    let init_dir = tempfile::tempdir().unwrap();
+    let init_dir = safe_tempdir();
     let init_path = init_dir.path().join("init.scm");
     std::fs::write(&init_path, r#"(load-plugin "core:stdlib")"#).unwrap();
 

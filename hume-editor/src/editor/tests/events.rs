@@ -345,7 +345,7 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let file = dir.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
@@ -404,7 +404,7 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
 /// `on-buffer-close` despite `on-buffer-open` never having fired.
 #[test]
 fn startup_buffer_close_before_any_drain_fires_no_on_buffer_close() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = safe_tempdir();
     let file = dir.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 

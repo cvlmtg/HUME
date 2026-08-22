@@ -42,6 +42,9 @@ pretty_assertions = "1.4.1"
 proptest = "1.11.0"
 insta = "1.47"
 tempfile = "3"
+# Reentrant lock for the test suite's process-global guards (HUME_RUNTIME,
+# TMPDIR, cwd, ...) — see `editor/tests/mod.rs`'s `TestGlobals`.
+parking_lot = "0.12"
 tree-sitter.workspace = true
 hume-scripting = { path = "../hume-scripting", features = ["test-util"] }
 hume-treesitter = { path = "../hume-treesitter", features = ["test-util"] }

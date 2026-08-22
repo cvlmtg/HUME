@@ -30,14 +30,13 @@ fn lsp_home_dir() -> std::path::PathBuf {
 /// with the same `builtin_names` production passes.
 ///
 /// `grammars.scm` calls `(runtime-dir)` to build grammar paths, so
-/// `HUME_RUNTIME` must point at the real `runtime/` dir for the duration —
-/// `cargo test`'s cwd is the crate dir, not the workspace root, so
-/// `hume_platform::dirs::runtime_dir()`'s cwd-relative fallback misses.
-/// `HUME_RUNTIME` is process-global; the lock is scoped to just
-/// `ScriptingHost::new()` (the only step that reads it), not held for the
-/// rest of this function — a caller building on the result (e.g. via
-/// `safe_tempdir()`) would otherwise self-deadlock on the same
-/// `HUME_RUNTIME_MUTEX`.
+/// `HUME_RUNTIME` must point at the real `runtime/` dir while `ScriptingHost`
+/// is constructed — `cargo test`'s cwd is the crate dir, not the workspace
+/// root, so `hume_platform::dirs::runtime_dir()`'s cwd-relative fallback
+/// misses. `ScriptingHost::new()` caches the result into `self.dirs`
+/// (`hume-scripting/src/lib.rs`) rather than re-reading the env var on every
+/// later `(runtime-dir)` call, so the var only needs to be set for that one
+/// constructor call, not for the rest of this function.
 fn host_and_editor_after_runtime_layers() -> (ScriptingHost, Editor, rustc_hash::FxHashSet<String>)
 {
     let runtime_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -46,11 +45,9 @@ fn host_and_editor_after_runtime_layers() -> (ScriptingHost, Editor, rustc_hash:
         .join("runtime");
 
     let mut host = {
-        let _lock = super::HUME_RUNTIME_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _lock = TEST_GLOBALS.claim(Global::Env);
         // SAFETY (not the unsafe-block kind — env vars are just inherently
-        // process-global): guarded by the lock above.
+        // process-global): guarded by the claim above.
         unsafe {
             std::env::set_var("HUME_RUNTIME", &runtime_root);
         }
