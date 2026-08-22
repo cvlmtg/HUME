@@ -31,7 +31,7 @@ pub(in crate::ui::statusline) fn statusline_display_path(editor: &Editor) -> Str
         .unwrap_or_else(|| doc.display_name())
 }
 
-/// Shorten `display` (a `~`-collapsed path string) to fit within `max_cols`
+/// Shorten `display` (a `~`-collapsed path string) to fit within `max_display_cols`
 /// terminal columns by abbreviating leading directory components.
 ///
 /// Algorithm:
@@ -40,8 +40,8 @@ pub(in crate::ui::statusline) fn statusline_display_path(editor: &Editor) -> Str
 ///    left-to-right, re-checking width each time.
 /// 3. If still too wide after all dirs are abbreviated, truncate the filename
 ///    with a trailing `…`, shrinking until it fits or only `…` remains.
-pub(in crate::ui::statusline) fn shorten_path_to_width(display: &str, max_cols: usize) -> String {
-    shorten_path_to_width_with(display, max_cols, is_path_sep)
+pub(in crate::ui::statusline) fn shorten_path_to_width(display: &str, max_display_cols: usize) -> String {
+    shorten_path_to_width_with(display, max_display_cols, is_path_sep)
 }
 
 /// `is_sep` is injected so the separator handling (`/` everywhere, plus `\` on
@@ -50,13 +50,13 @@ pub(in crate::ui::statusline) fn shorten_path_to_width(display: &str, max_cols: 
 /// (as can appear in a Windows path) survives reassembly unchanged.
 pub(in crate::ui::statusline) fn shorten_path_to_width_with(
     display: &str,
-    max_cols: usize,
+    max_display_cols: usize,
     is_sep: fn(char) -> bool,
 ) -> String {
-    if text_width(display) <= max_cols {
+    if text_width(display) <= max_display_cols {
         return display.to_owned();
     }
-    if max_cols == 0 {
+    if max_display_cols == 0 {
         return String::new();
     }
 
@@ -83,7 +83,7 @@ pub(in crate::ui::statusline) fn shorten_path_to_width_with(
         components[i] = format!("{first}{sep}");
 
         let candidate = components.concat();
-        if text_width(&candidate) <= max_cols {
+        if text_width(&candidate) <= max_display_cols {
             return candidate;
         }
     }
@@ -95,18 +95,18 @@ pub(in crate::ui::statusline) fn shorten_path_to_width_with(
     // Available columns for the filename (after prefix + ellipsis). The
     // prefix already carries its own trailing separator, if any.
     let prefix_w = text_width(&prefix);
-    let available = max_cols.saturating_sub(prefix_w + ellipsis_w);
+    let available = max_display_cols.saturating_sub(prefix_w + ellipsis_w);
 
     let filename = &components[n - 1];
     let mut truncated = String::new();
-    let mut cols_used = 0usize;
+    let mut display_cols_used = 0usize;
     for g in filename.graphemes(true) {
         let gw = cell_width(g);
-        if cols_used + gw > available {
+        if display_cols_used + gw > available {
             break;
         }
         truncated.push_str(g);
-        cols_used += gw;
+        display_cols_used += gw;
     }
 
     if truncated.is_empty() {

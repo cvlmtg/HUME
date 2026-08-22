@@ -914,7 +914,7 @@ fn every_pane_scoped_key_is_also_buffer_and_global_scoped() {
 fn signcolumn_default_is_always_1() {
     let cfg = SignColumnConfig::default();
     assert_eq!(cfg.mode, SignColumnMode::Always);
-    assert_eq!(cfg.columns, 1);
+    assert_eq!(cfg.slots, 1);
     assert_eq!(cfg.width(), 2);
 }
 
@@ -922,21 +922,21 @@ fn signcolumn_default_is_always_1() {
 fn signcolumn_parses_always() {
     let cfg: SignColumnConfig = "always".parse().unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Always);
-    assert_eq!(cfg.columns, 1);
+    assert_eq!(cfg.slots, 1);
 }
 
 #[test]
 fn signcolumn_parses_auto() {
     let cfg: SignColumnConfig = "auto".parse().unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Auto);
-    assert_eq!(cfg.columns, 1);
+    assert_eq!(cfg.slots, 1);
 }
 
 #[test]
 fn signcolumn_parses_always_with_columns() {
     let cfg: SignColumnConfig = "always:3".parse().unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Always);
-    assert_eq!(cfg.columns, 3);
+    assert_eq!(cfg.slots, 3);
     assert_eq!(cfg.width(), 4);
 }
 
@@ -944,7 +944,7 @@ fn signcolumn_parses_always_with_columns() {
 fn signcolumn_parses_auto_with_columns() {
     let cfg: SignColumnConfig = "auto:2".parse().unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Auto);
-    assert_eq!(cfg.columns, 2);
+    assert_eq!(cfg.slots, 2);
     assert_eq!(cfg.width(), 3);
 }
 
@@ -996,7 +996,7 @@ fn signcolumn_display_round_trips() {
 fn set_global_signcolumn() {
     let s = global("signcolumn", "auto:2").unwrap();
     assert_eq!(s.signcolumn.mode, SignColumnMode::Auto);
-    assert_eq!(s.signcolumn.columns, 2);
+    assert_eq!(s.signcolumn.slots, 2);
 }
 
 #[test]
@@ -1005,5 +1005,5 @@ fn set_buffer_signcolumn() {
     let ov = buffer("signcolumn", "always:3").unwrap();
     let cfg = ov.signcolumn(&global);
     assert_eq!(cfg.mode, SignColumnMode::Always);
-    assert_eq!(cfg.columns, 3);
+    assert_eq!(cfg.slots, 3);
 }

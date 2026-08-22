@@ -250,7 +250,7 @@ pub fn format_buffer_line(
     // that can exceed a `u16`.
     let wrap_width = wrap_mode.wrap_width().map_or(u32::MAX, u32::from); // u32::MAX = sentinel for "no wrap"
     // For indent-wrap, continuation rows start at this column.
-    let indent_cols: u32 = if matches!(wrap_mode, WrapMode::Indent { .. }) {
+    let indent_display_cols: u32 = if matches!(wrap_mode, WrapMode::Indent { .. }) {
         (indent_depth as u32) * (tab_width as u32)
     } else {
         0
@@ -316,7 +316,7 @@ pub fn format_buffer_line(
                 wrap.maybe_wrap(
                     ins_width,
                     wrap_width,
-                    indent_cols,
+                    indent_display_cols,
                     line_idx,
                     indent_depth,
                     rows_out,
@@ -375,7 +375,7 @@ pub fn format_buffer_line(
         wrap.maybe_wrap(
             width,
             wrap_width,
-            indent_cols,
+            indent_display_cols,
             line_idx,
             indent_depth,
             rows_out,
@@ -555,7 +555,7 @@ impl WrapState {
         &mut self,
         width: u8,
         wrap_width: u32,
-        indent_cols: u32,
+        indent_display_cols: u32,
         line_idx: usize,
         indent_depth: u8,
         rows_out: &mut Vec<DisplayRow>,
@@ -589,7 +589,7 @@ impl WrapState {
         self.last_ws_was_set = false;
 
         // Recalculate `current_display_col` for graphemes in [split_at..] on the new row.
-        let mut new_display_col = indent_cols;
+        let mut new_display_col = indent_display_cols;
         for g in &mut graphemes_out[split_at..] {
             g.display_col = new_display_col;
             g.indent_depth = indent_depth;

@@ -91,21 +91,21 @@ impl FromStr for SignColumnMode {
 /// Sign column configuration: visibility mode and number of sign slots.
 ///
 /// Wire format: `"always"`, `"always:N"`, `"auto"`, `"auto:N"` where N is the
-/// number of sign slots (1–127). The gutter width is `columns + 1` (one cell
+/// number of sign slots (1–127). The gutter width is `slots + 1` (one cell
 /// per sign plus one padding column). Default is `"always"` (= `"always:1"`,
 /// width 2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SignColumnConfig {
     pub mode: SignColumnMode,
-    /// Number of sign slots. Width = `columns + 1` (padding).
-    pub columns: u8,
+    /// Number of sign slots. Width = `slots + 1` (padding).
+    pub slots: u8,
 }
 
 impl Default for SignColumnConfig {
     fn default() -> Self {
         Self {
             mode: SignColumnMode::Always,
-            columns: 1,
+            slots: 1,
         }
     }
 }
@@ -113,7 +113,7 @@ impl Default for SignColumnConfig {
 impl SignColumnConfig {
     /// Gutter width in cells: one cell per sign slot plus one padding column.
     pub fn width(self) -> u8 {
-        self.columns.saturating_add(1)
+        self.slots.saturating_add(1)
     }
 
     pub const VALUES: &'static [&'static str] = &["always", "auto", "always:1", "auto:1"];
@@ -121,7 +121,7 @@ impl SignColumnConfig {
 
 impl fmt::Display for SignColumnConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.mode, self.columns)
+        write!(f, "{}:{}", self.mode, self.slots)
     }
 }
 
@@ -129,12 +129,12 @@ impl FromStr for SignColumnConfig {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (mode_str, cols_str) = match s.split_once(':') {
+        let (mode_str, slots_str) = match s.split_once(':') {
             Some((m, c)) => (m, Some(c)),
             None => (s, None),
         };
         let mode: SignColumnMode = mode_str.parse()?;
-        let columns = match cols_str {
+        let slots = match slots_str {
             Some(c) => {
                 let n: u8 = c.parse().map_err(|_| {
                     format!("invalid signcolumn columns: expected 1–127, got '{c}'")
@@ -148,7 +148,7 @@ impl FromStr for SignColumnConfig {
             }
             None => 1,
         };
-        Ok(Self { mode, columns })
+        Ok(Self { mode, slots })
     }
 }
 

@@ -318,7 +318,7 @@ impl Editor {
             let visible_lines = self.visible_line_range(pid, bid);
 
             // Compute the buffer's `signcolumn` setting up front — the
-            // configured column count decides how many signs per line the
+            // configured slot count decides how many signs per line the
             // plugin merge keeps (the rest is dropped before the map write).
             let signcolumn = self
                 .state
@@ -326,7 +326,7 @@ impl Editor {
                 .get(bid)
                 .overrides
                 .signcolumn(&self.state.settings);
-            let max_plugin_signs = signcolumn.columns as usize;
+            let max_plugin_signs = signcolumn.slots as usize;
 
             // Both the diagnostics and plugin-sign passes below need to turn
             // a char offset back into a line — diagnostics store char ranges

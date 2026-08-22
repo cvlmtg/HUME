@@ -39,9 +39,11 @@ impl Editor {
     pub(super) fn handle_mouse(&mut self, mouse: MouseEvent) {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
+                // column-name-safe: termina's MouseEvent::column is a terminal-absolute x
                 self.mouse_left_down(mouse.column, mouse.row)
             }
             MouseEventKind::Drag(MouseButton::Left) => {
+                // column-name-safe: termina's MouseEvent::column is a terminal-absolute x
                 self.mouse_left_drag(mouse.column, mouse.row)
             }
             MouseEventKind::Up(MouseButton::Left) => {

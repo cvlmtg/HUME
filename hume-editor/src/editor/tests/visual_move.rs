@@ -6,7 +6,7 @@ use pretty_assertions::assert_eq;
 //
 // `visual_test_editor` pins settings to `WrapMode::Indent { width: 76 }` with
 // tab_width=4 and an 80×24 viewport. For a line with no leading indent, Indent
-// wrap is equivalent to Soft wrap (indent_cols = 0), so the wrap boundary is
+// wrap is equivalent to Soft wrap (indent_display_cols = 0), so the wrap boundary is
 // simply at column 76.
 //
 // Test layout:
