@@ -8,7 +8,7 @@
 //! raw `len_lines()` call or a manual `+ 1` / `- 1` re-derivation of one of
 //! these functions' own result. The same applies to the char offset of a
 //! line's own line-break: `line_end_exclusive(buf, line) - 1` must be
-//! `hume_rope::line_break_char(buf, line)` instead.
+//! `hume_rope::lines::line_break_char(buf, line)` instead.
 //!
 //! `no_raw_line_count_derivations` recursively scans every workspace
 //! crate's `src/` — derived from the root `Cargo.toml`'s `members` list, so
@@ -141,7 +141,7 @@ fn no_raw_line_count_derivations() {
     // line-break — is a re-derivation like the twelve above, but its argument
     // is a per-call-site variable, so it can't be one fixed substring. Scan
     // for the stem, then keep only hits that also spell a trailing `- 1` or
-    // `.saturating_sub(1)` — `hume_rope::line_break_char` is the single
+    // `.saturating_sub(1)` — `hume_rope::lines::line_break_char` is the single
     // implementation; a bare `line_end_exclusive` call with no subtraction is
     // legitimate (it wants the *next* line's start, not this line's break).
     violations.extend(
@@ -158,7 +158,7 @@ fn no_raw_line_count_derivations() {
         })
         .map(|v| {
             format!(
-                "  {}:{} — `line_end_exclusive(...) - 1` (use hume_rope::line_break_char) in: {}",
+                "  {}:{} — `line_end_exclusive(...) - 1` (use hume_rope::lines::line_break_char) in: {}",
                 v.file, v.lineno, v.trimmed
             )
         }),

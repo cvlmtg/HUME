@@ -404,7 +404,7 @@ impl Pane {
     /// Width available for text after subtracting the gutter, clamped to at least 1.
     ///
     /// `last_line_idx` is the buffer's last ropey line index (used to size
-    /// the line-number column — `hume_rope::last_ropey_line`). Call this
+    /// the line-number column — `hume_rope::lines::last_ropey_line`). Call this
     /// before `WrapMode::resolve` to get the concrete wrap column.
     pub fn content_width(&self, last_line_idx: usize) -> u16 {
         let gutter_w = gutter_width_for_line(self.providers.gutter_columns(), last_line_idx);

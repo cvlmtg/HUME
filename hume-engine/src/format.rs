@@ -309,12 +309,9 @@ pub fn format_buffer_line(
                 break 'lines;
             }
             let ins = &inline_inserts[insert_idx];
-            let ins_width = hume_rope::width::str_width(
-                &ins.text,
-                wrap.current_display_col as usize,
-                tab_width as usize,
-            )
-            .min(255) as u8;
+            let ins_width =
+                hume_rope::width::str_width(&ins.text, wrap.current_display_col as usize, tab_width)
+                    .min(255) as u8;
             if ins_width > 0 {
                 wrap.maybe_wrap(
                     ins_width,
@@ -393,11 +390,8 @@ pub fn format_buffer_line(
         // (post-wrap) column, not the one `grapheme_display` computed it at —
         // tab width is column-dependent, unlike every other grapheme's.
         let width = if grapheme_str == "\t" {
-            hume_rope::width::grapheme_width(
-                "\t",
-                wrap.current_display_col as usize,
-                tab_width as usize,
-            ) as u8
+            hume_rope::width::grapheme_width("\t", wrap.current_display_col as usize, tab_width)
+                as u8
         } else {
             width
         };
@@ -662,11 +656,9 @@ fn grapheme_display(
     is_trailing: bool,
     virtual_texts: &mut String,
 ) -> (u8, CellContent) {
-    let width = hume_rope::width::grapheme_width(
-        grapheme_str,
-        current_display_col as usize,
-        tab_width as usize,
-    ) as u8;
+    let width =
+        hume_rope::width::grapheme_width(grapheme_str, current_display_col as usize, tab_width)
+            as u8;
 
     // Tab: expand to next tab stop.
     if grapheme_str == "\t" {
@@ -759,11 +751,9 @@ fn push_insert_cells(
         // One grapheme cluster's width is always <= tab_width (u8's own max
         // 255), unlike a whole insert string's — no `.min(255)` cap needed
         // before narrowing.
-        let g_width = hume_rope::width::grapheme_width(
-            g_str,
-            *current_display_col as usize,
-            tab_width as usize,
-        ) as u8;
+        let g_width =
+            hume_rope::width::grapheme_width(g_str, *current_display_col as usize, tab_width)
+                as u8;
         graphemes_out.push(Grapheme {
             byte_range: byte_range.clone(),
             // Char offset of the real grapheme this insert precedes (not MAX):
@@ -814,7 +804,7 @@ pub(crate) fn compute_indent_depth(line_str: &str, tab_width: u8) -> u8 {
     for b in line_str.bytes() {
         match b {
             b' ' => display_col += 1,
-            b'\t' => display_col += hume_rope::width::tab_advance(display_col, tw),
+            b'\t' => display_col += hume_rope::width::tab_advance(display_col, tab_width),
             _ => break,
         }
     }
@@ -827,7 +817,7 @@ pub(crate) fn compute_indent_depth(line_str: &str, tab_width: u8) -> u8 {
 /// terminator as a literal trailing character. A `\r\n` pair is removed as
 /// one unit.
 pub(crate) fn strip_line_ending(buf: &mut String) {
-    let stripped_len = hume_rope::strip_line_break(buf).len();
+    let stripped_len = hume_rope::lines::strip_line_break(buf).len();
     buf.truncate(stripped_len);
 }
 

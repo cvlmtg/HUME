@@ -172,7 +172,7 @@ impl<'a> RowMap<'a> {
         scratch: &'a mut FormatScratch,
     ) -> Self {
         debug_assert!(
-            hume_rope::ends_with_newline(rope),
+            hume_rope::lines::ends_with_newline(rope),
             "RowMap requires a trailing '\\n' (the buffer invariant) — \
              without it `last_line`'s content-line derivation drops the \
              rope's actual last content line"
@@ -324,7 +324,7 @@ impl<'a> RowMap<'a> {
 
     /// Index of the last buffer line a cursor can occupy.
     pub fn last_line(&self) -> usize {
-        hume_rope::last_content_line(self.rope)
+        hume_rope::lines::last_content_line(self.rope)
     }
 
     /// Pull `pos` into the document: `line` into `0..=last_line()`, then `row`
@@ -467,7 +467,7 @@ impl<'a> RowMap<'a> {
              against the current buffer before reaching here",
             self.rope.len_chars()
         );
-        let (line, target_byte) = hume_rope::char_to_line_byte(self.rope, char_offset);
+        let (line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
         let before = self.block(line).before;
         // Only up to the target: everything past it is irrelevant to where
         // this one offset sits.
@@ -669,7 +669,7 @@ impl<'a> RowMap<'a> {
         let end = rows
             .get(sub + 1)
             .and_then(first_char_of)
-            .unwrap_or_else(|| hume_rope::line_end_exclusive(self.rope, pos.line));
+            .unwrap_or_else(|| hume_rope::lines::line_end_exclusive(self.rope, pos.line));
         Some((start, end))
     }
 
@@ -732,12 +732,13 @@ impl<'a> RowMap<'a> {
         // single monotonic cursor resolves every grapheme's scope in
         // O(graphemes + segments) instead of a per-grapheme linear scan.
         let mut scope_cursor = crate::style::highlight::IntervalCursor::new(&vl.segments);
-        let tab_width = self.tab_width as usize;
         let mut display_col: u32 = 0;
         for (byte_offset, grapheme_str) in vl.text.grapheme_indices(true) {
-            let width =
-                hume_rope::width::grapheme_width(grapheme_str, display_col as usize, tab_width)
-                    as u8;
+            let width = hume_rope::width::grapheme_width(
+                grapheme_str,
+                display_col as usize,
+                self.tab_width,
+            ) as u8;
             let scope = scope_cursor.scope_at(byte_offset).or(base_scope);
 
             // A literal tab renders as a space, exactly like a buffer line's

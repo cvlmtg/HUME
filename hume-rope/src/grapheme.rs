@@ -130,7 +130,7 @@ pub fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: usize) -> usize
 /// arbitrarily wide. This implementation uses the same chunk-at-a-time
 /// `GraphemeCursor` strategy as `next_grapheme_boundary` — O(log n) per
 /// cluster with no heap allocation.
-pub fn grapheme_count(slice: RopeSlice<'_>, from_char: usize, to_char: usize) -> usize {
+pub(crate) fn grapheme_count(slice: RopeSlice<'_>, from_char: usize, to_char: usize) -> usize {
     let to_char = to_char.max(from_char);
     if from_char == to_char {
         return 0;
@@ -221,7 +221,6 @@ pub fn display_col_in_line(
     tab_width: u8,
 ) -> usize {
     let line_start = slice.line_to_char(line_idx);
-    let tw = tab_width as usize;
     let mut display_col = 0usize;
     let mut pos = line_start;
     while pos < char_pos {
@@ -230,7 +229,7 @@ pub fn display_col_in_line(
             break;
         }
         display_col +=
-            crate::width::grapheme_width(&cluster_str(slice, pos, next), display_col, tw);
+            crate::width::grapheme_width(&cluster_str(slice, pos, next), display_col, tab_width);
         pos = next;
     }
     display_col
@@ -260,7 +259,6 @@ pub fn char_pos_at_display_col(
     if target_display_col == 0 {
         return line_start;
     }
-    let tw = tab_width as usize;
     let mut display_col = 0usize;
     let mut pos = line_start;
     loop {
@@ -271,7 +269,8 @@ pub fn char_pos_at_display_col(
         if slice.get_char(pos) == Some('\n') {
             break; // end of line — never walk onto the next line
         }
-        let w = crate::width::grapheme_width(&cluster_str(slice, pos, next), display_col, tw);
+        let w =
+            crate::width::grapheme_width(&cluster_str(slice, pos, next), display_col, tab_width);
         if display_col + w > target_display_col {
             break; // this grapheme would overshoot — stop here
         }

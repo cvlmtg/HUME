@@ -13,7 +13,7 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use hume_editing::text::strip_line_break;
+use hume_rope::lines::strip_line_break;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use crate::editor::diff_bridge;

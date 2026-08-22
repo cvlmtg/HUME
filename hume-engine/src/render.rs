@@ -212,7 +212,7 @@ fn compose_gutter(
                 let w = hume_rope::width::grapheme_width(
                     g,
                     text_width as usize,
-                    compose_ctx.tab_width as usize,
+                    compose_ctx.tab_width,
                 ) as u16;
                 if text_width + w > usable_per_cell {
                     truncated_len = byte_idx;

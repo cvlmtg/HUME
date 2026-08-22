@@ -16,7 +16,8 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use hume_editing::diff::{LineHunk, LineHunkKind, WordDiff, WordHunkKind, diff_lines, diff_words};
-use hume_editing::text::{Text, strip_line_break};
+use hume_editing::text::Text;
+use hume_rope::lines::strip_line_break;
 
 use hume_scripting::host::{DiffHunk, WordDiffHunk};
 

@@ -106,7 +106,7 @@ impl GutterColumn for LineNumberColumn {
     fn width(&self, last_line_idx: usize) -> u8 {
         // Digits needed to display the 1-based line number, plus 1 space of
         // right-padding. `last_line_idx` is the phantom-inclusive
-        // `hume_rope::last_ropey_line` (see `layout.rs`/`Pane::content_width`
+        // `hume_rope::lines::last_ropey_line` (see `layout.rs`/`Pane::content_width`
         // callers), so this sizes for `content_line_count() + 1` digits — one
         // wider than content strictly needs. The statusline's own row-digit
         // field (`ui/statusline/elements/position.rs`) instead sizes for

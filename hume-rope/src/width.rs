@@ -18,8 +18,8 @@ use unicode_width::UnicodeWidthStr;
 /// sitting on a stop advances a full `tw` rather than zero. `tw < 1` is
 /// clamped to 1 (a zero-width tab stop is meaningless) so callers don't each
 /// have to guard it themselves.
-pub fn tab_advance(display_col: usize, tw: usize) -> usize {
-    let tw = tw.max(1);
+pub fn tab_advance(display_col: usize, tw: u8) -> usize {
+    let tw = (tw as usize).max(1);
     tw - display_col % tw
 }
 
@@ -30,7 +30,7 @@ pub fn tab_advance(display_col: usize, tw: usize) -> usize {
 /// cell (so it stays addressable by column even for a degenerate cluster
 /// with no base character, e.g. a lone combining mark), the upper bound
 /// matches the two-cell layout the renderer gives every wide grapheme.
-pub fn grapheme_width(cluster: &str, display_col: usize, tab_width: usize) -> usize {
+pub fn grapheme_width(cluster: &str, display_col: usize, tab_width: u8) -> usize {
     if cluster == "\t" {
         tab_advance(display_col, tab_width)
     } else {
@@ -40,7 +40,7 @@ pub fn grapheme_width(cluster: &str, display_col: usize, tab_width: usize) -> us
 
 /// Display columns `s` occupies when rendered starting at display column
 /// `start_display_col` — the sum of its grapheme clusters' [`grapheme_width`].
-pub fn str_width(s: &str, start_display_col: usize, tab_width: usize) -> usize {
+pub fn str_width(s: &str, start_display_col: usize, tab_width: u8) -> usize {
     let mut display_col = start_display_col;
     for g in s.graphemes(true) {
         display_col += grapheme_width(g, display_col, tab_width);

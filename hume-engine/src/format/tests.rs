@@ -11,7 +11,7 @@ fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayRow>, Vec<Grapheme>
     let ws = WhitespaceConfig::default();
     let inserts = Vec::new();
     let mut scratch = FormatScratch::new();
-    for line_idx in hume_rope::ropey_lines_range(&rope) {
+    for line_idx in hume_rope::lines::ropey_lines_range(&rope) {
         format_buffer_line(
             &rope,
             line_idx,
@@ -331,7 +331,7 @@ fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayRow>, Vec<Graph
     let rope = Rope::from_str(text);
     let inserts = Vec::new();
     let mut scratch = FormatScratch::new();
-    for line_idx in hume_rope::ropey_lines_range(&rope) {
+    for line_idx in hume_rope::lines::ropey_lines_range(&rope) {
         format_buffer_line(
             &rope,
             line_idx,
@@ -693,7 +693,7 @@ fn do_format_windowed(
     let ws = WhitespaceConfig::default();
     let inserts = Vec::new();
     let mut scratch = FormatScratch::new();
-    for line_idx in hume_rope::ropey_lines_range(&rope) {
+    for line_idx in hume_rope::lines::ropey_lines_range(&rope) {
         format_buffer_line(
             &rope,
             line_idx,

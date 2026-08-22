@@ -1,3 +1,4 @@
+use hume_rope::cursor::CharCursor;
 use ropey::Rope;
 use std::borrow::Cow;
 use std::ops::Range;
@@ -75,12 +76,12 @@ pub struct Text {
 
 /// True if `rope` satisfies the invariant every `Text` upholds by
 /// construction: non-empty, and ending with `'\n'`. Stricter than
-/// [`hume_rope::ends_with_newline`] — that one (correctly, for its own
+/// [`hume_rope::lines::ends_with_newline`] — that one (correctly, for its own
 /// generic-rope callers) treats a truly empty rope as vacuously fine; a HUME
 /// buffer never is, so this crate's own gates ([`Text::from_rope`],
 /// `ChangeSet::apply`) require it non-empty too.
 pub(crate) fn is_valid_buffer_rope(rope: &Rope) -> bool {
-    rope.len_chars() > 0 && hume_rope::ends_with_newline(rope)
+    rope.len_chars() > 0 && hume_rope::lines::ends_with_newline(rope)
 }
 
 impl Text {
@@ -174,12 +175,12 @@ impl Text {
     /// distinction. Callers wanting the buffer's real line count want
     /// [`Text::content_line_count`] instead.
     pub fn ropey_line_count(&self) -> usize {
-        hume_rope::ropey_line_count(&self.rope)
+        hume_rope::lines::ropey_line_count(&self.rope)
     }
 
     /// Index of the last ropey line — the phantom trailing line.
     pub fn last_ropey_line(&self) -> usize {
-        hume_rope::last_ropey_line(&self.rope)
+        hume_rope::lines::last_ropey_line(&self.rope)
     }
 
     /// Number of content lines: every HUME buffer ends with a structural
@@ -188,20 +189,20 @@ impl Text {
     /// does this buffer have" from a caller's point of view (line counts
     /// shown to the user, range-checked line indices).
     pub fn content_line_count(&self) -> usize {
-        hume_rope::content_line_count(&self.rope)
+        hume_rope::lines::content_line_count(&self.rope)
     }
 
     /// Index of the last content line (`content_line_count() - 1`). Callers
     /// clamping a target line to stay within real content use this.
     pub fn last_content_line(&self) -> usize {
-        hume_rope::last_content_line(&self.rope)
+        hume_rope::lines::last_content_line(&self.rope)
     }
 
     /// `0..content_line_count()` — every real content line index.
     /// `range.contains(&line)` is the canonical "is this a real content
     /// line" bounds check.
     pub fn content_lines_range(&self) -> Range<usize> {
-        hume_rope::content_lines_range(&self.rope)
+        hume_rope::lines::content_lines_range(&self.rope)
     }
 
     /// Line tokens, each keeping its trailing line-break character(s) — the
@@ -282,7 +283,7 @@ impl Text {
     /// # Panics
     /// Panics if `pos > self.len_chars()`.
     pub fn chars_at(&self, pos: usize) -> CharCursor<'_> {
-        hume_rope::chars_at(&self.rope, pos)
+        hume_rope::cursor::chars_at(&self.rope, pos)
     }
 
     /// Convert a byte offset to a char (Unicode scalar value) offset.
@@ -347,14 +348,6 @@ impl Text {
         }
     }
 }
-
-/// Re-exported from `hume-rope` so existing `hume_editing::text::CharCursor`
-/// paths keep working. See `hume_rope::CharCursor` for docs.
-pub use hume_rope::CharCursor;
-/// Re-exported from `hume-rope` so existing
-/// `hume_editing::text::strip_line_break` paths keep working. See
-/// `hume_rope::strip_line_break` for docs.
-pub use hume_rope::strip_line_break;
 
 // `From<&str>`, not `FromStr`, since construction here always succeeds
 // (worst case we append a '\n') — `FromStr` is reserved for fallible parsing.

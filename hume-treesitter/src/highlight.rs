@@ -189,7 +189,7 @@ pub fn layer_highlights_for_line(
     out: &mut Vec<(usize, usize, ScopeId)>,
 ) {
     let line_start = rope.line_to_byte(line_idx);
-    let line_end = hume_rope::line_end_exclusive_byte(rope, line_idx);
+    let line_end = hume_rope::lines::line_end_exclusive_byte(rope, line_idx);
 
     raw.clear();
     for layer in &layers.layers {
