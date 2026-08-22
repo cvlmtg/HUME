@@ -23,6 +23,7 @@ mod cursor;
 pub mod grapheme;
 mod lines;
 pub mod position_encoding;
+pub mod width;
 
 pub use cursor::{CharCursor, chars_at};
 pub use lines::{

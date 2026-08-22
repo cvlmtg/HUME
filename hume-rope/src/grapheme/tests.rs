@@ -265,6 +265,30 @@ fn display_col_at_line_start_is_zero() {
     assert_eq!(display_col_in_line(buf.slice(..), 1, 4, 4), 1);
 }
 
+#[test]
+fn display_col_wide_cjk_before_tab_shifts_the_stop() {
+    // "\u{6F22}\tx\n" (漢 is East Asian Wide, 2 columns) with tw=4:
+    // 漢 takes col 0→2; tab from col 2 advances to the next stop, col 4;
+    // 'x' lands at col 4. A char-counting (not column-counting) walk would
+    // have put the tab's stop at col 3 instead — the bug this module fixes.
+    let buf = rope("\u{6F22}\tx\n");
+    assert_eq!(display_col_in_line(buf.slice(..), 0, 1, 4), 2); // past 漢
+    assert_eq!(display_col_in_line(buf.slice(..), 0, 2, 4), 4); // past the tab
+    assert_eq!(display_col_in_line(buf.slice(..), 0, 3, 4), 5); // past 'x'
+}
+
+#[test]
+fn display_col_decomposed_e_acute_before_tab_counts_as_one_column() {
+    // "e\u{0301}\tx\n": the decomposed é is one grapheme cluster occupying 1
+    // column (base 'e' + zero-width combining mark), so the tab after it
+    // behaves exactly as it would after a plain 'e'.
+    let buf = rope("e\u{0301}\tx\n");
+    assert_eq!(buf.len_chars(), 5); // e, U+0301, \t, x, \n
+    assert_eq!(display_col_in_line(buf.slice(..), 0, 2, 4), 1); // past the é cluster
+    assert_eq!(display_col_in_line(buf.slice(..), 0, 3, 4), 4); // past the tab
+    assert_eq!(display_col_in_line(buf.slice(..), 0, 4, 4), 5); // past 'x'
+}
+
 // ── char_pos_at_display_col ───────────────────────────────────────────────
 
 #[test]
@@ -310,6 +334,14 @@ fn char_pos_overshoot_stops_short() {
     // overshooting 2. Walk stops at line_start (col 0).
     let buf = rope("\t\n");
     assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 2, 4), 0);
+}
+
+#[test]
+fn char_pos_at_col_after_wide_cjk_and_tab() {
+    // "\u{6F22}\tx\n" with tw=4: 漢 spans col 0→2, tab spans col 2→4 —
+    // the char at col 4 is 'x' (char index 2).
+    let buf = rope("\u{6F22}\tx\n");
+    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, 4, 4), 2);
 }
 
 #[test]

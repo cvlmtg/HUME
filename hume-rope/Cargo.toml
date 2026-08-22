@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 ropey.workspace = true
 unicode-segmentation.workspace = true
+unicode-width.workspace = true
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

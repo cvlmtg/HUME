@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use ropey::RopeSlice;
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 
@@ -181,34 +183,34 @@ pub fn grapheme_col_in_line(slice: RopeSlice<'_>, line_idx: usize, char_pos: usi
     grapheme_count(slice, slice.line_to_char(line_idx), char_pos)
 }
 
-/// Columns a `\t` at display column `col` occupies — the distance to the next
-/// tab stop of width `tw`. Always in `[1, tw]`: a tab already sitting on a stop
-/// advances a full `tw` rather than zero.
+/// Grapheme cluster `[start, end)` of `slice`, as text — the shape
+/// `width::grapheme_width` needs to measure it, since `unicode-width`'s
+/// context-sensitive rules (e.g. combining marks folding into a base
+/// character's width) need the whole cluster, not just its first char.
 ///
-/// Shared with the renderer's `hume_engine::format::tab_display_width`,
-/// which delegates here after narrowing its `u32`/`u8` row-formatting types
-/// down to `usize`.
-pub fn tab_advance(col: usize, tw: usize) -> usize {
-    tw - col % tw
+/// Borrowed with zero copy when the cluster lies entirely inside one rope
+/// chunk — true for the overwhelming majority of clusters, since chunks run
+/// hundreds of bytes and a cluster is rarely more than a handful of
+/// codepoints. Copied only for the rare cluster that straddles a chunk
+/// boundary.
+fn cluster_str(slice: RopeSlice<'_>, start: usize, end: usize) -> Cow<'_, str> {
+    let start_byte = slice.char_to_byte(start);
+    let end_byte = slice.char_to_byte(end);
+    let (chunk, chunk_byte_start, _, _) = slice.chunk_at_byte(start_byte);
+    let local_start = start_byte - chunk_byte_start;
+    let local_end = end_byte - chunk_byte_start;
+    if local_end <= chunk.len() {
+        Cow::Borrowed(&chunk[local_start..local_end])
+    } else {
+        Cow::Owned(slice.slice(start..end).chars().collect())
+    }
 }
 
 /// 0-based display column of `char_pos` within line `line_idx`, with `\t`
-/// expanded to tab stops of width `tab_width`.
-///
-/// Non-tab graphemes count as one column each (matching the logical-column
-/// convention of [`grapheme_col_in_line`]); wide CJK characters are therefore
-/// undercounted by one. This is acceptable for tab-stop alignment — the only
-/// place display width matters for editing — since CJK-plus-tab mixtures are
-/// rare and any error there is bounded. A `'\t'` advances the column to the
-/// next multiple of `tab_width`.
-///
-/// Deliberately diverges from the renderer's
-/// `hume_engine::format::grapheme_display`: the renderer uses `unicode-width`
-/// so wide CJK chars take 2 columns for display, while this helper counts
-/// every non-tab grapheme as 1 (it walks a `&Text` char range, not a rendered
-/// `&str` line, so display width isn't available here). The shared
-/// tab-*stop-distance* arithmetic ([`tab_advance`]) is not part of this
-/// divergence — both sides delegate to it.
+/// expanded to tab stops of width `tab_width` and every other grapheme
+/// weighted by [`crate::width::grapheme_width`] — the same convention the
+/// renderer uses, so this and `hume_engine::format::grapheme_display` always
+/// agree on where a given position lands on screen.
 ///
 /// Used by `insert_tab` (Soft style: insert spaces to the next tab stop) and
 /// by dedent-on-Backspace (compute the previous tab stop).
@@ -219,7 +221,7 @@ pub fn display_col_in_line(
     tab_width: u8,
 ) -> usize {
     let line_start = slice.line_to_char(line_idx);
-    let tw = tab_width.max(1) as usize;
+    let tw = tab_width as usize;
     let mut col = 0usize;
     let mut pos = line_start;
     while pos < char_pos {
@@ -227,12 +229,7 @@ pub fn display_col_in_line(
         if next > char_pos || next == pos {
             break;
         }
-        let ch = slice.get_char(pos);
-        col += if ch == Some('\t') {
-            tab_advance(col, tw)
-        } else {
-            1
-        };
+        col += crate::width::grapheme_width(&cluster_str(slice, pos, next), col, tw);
         pos = next;
     }
     col
@@ -260,7 +257,7 @@ pub fn char_pos_at_display_col(
     if target_col == 0 {
         return line_start;
     }
-    let tw = tab_width.max(1) as usize;
+    let tw = tab_width as usize;
     let mut col = 0usize;
     let mut pos = line_start;
     loop {
@@ -268,15 +265,10 @@ pub fn char_pos_at_display_col(
         if next == pos {
             break; // end of buffer
         }
-        let ch = slice.get_char(pos);
-        if ch == Some('\n') {
+        if slice.get_char(pos) == Some('\n') {
             break; // end of line — never walk onto the next line
         }
-        let w = if ch == Some('\t') {
-            tab_advance(col, tw)
-        } else {
-            1
-        };
+        let w = crate::width::grapheme_width(&cluster_str(slice, pos, next), col, tw);
         if col + w > target_col {
             break; // this grapheme would overshoot — stop here
         }
