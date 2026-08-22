@@ -99,11 +99,23 @@ pub(super) fn apply_visual_vertical(
     // which must preserve display columns across virtual rows regardless of
     // wrap mode. The cost in no-wrap mode is a per-press format of the
     // cursor's line instead of pure rope arithmetic; `move_down_inner`'s
-    // char-offset column model is now reached only via `BufferLine`.
+    // display-column model (same as `move_vertical`'s) is now reached only
+    // via `BufferLine`.
     let use_buffer_line_motion = matches!(unit, VerticalUnit::BufferLine);
     if use_buffer_line_motion {
+        // `cmd_move_down`/`cmd_move_up` aren't registered in `CommandRegistry`
+        // (unlike every other named command, they need a `tab_width` no bare
+        // `fn`-pointer dispatch could supply) — resolved here instead, the
+        // same buffer-overrides lookup `mappings/insert.rs`'s `insert_tab`
+        // call site uses.
+        let buf_id = focused_buffer_id(state, view);
+        let tab_width = state
+            .buffers
+            .get(buf_id)
+            .overrides
+            .tab_width(&state.settings);
         let motion = if down { cmd_move_down } else { cmd_move_up };
-        apply_focused_motion(state, view, |b, s| motion(b, s, count, mode));
+        apply_focused_motion(state, view, |b, s| motion(b, s, count, mode, tab_width));
         return;
     }
     let content_only = !matches!(unit, VerticalUnit::ScreenRow);

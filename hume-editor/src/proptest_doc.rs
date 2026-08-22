@@ -332,8 +332,8 @@ mod tests {
         match op {
             PureOp::MoveRight => cmd_move_right(buf, sels, 1, mode),
             PureOp::MoveLeft => cmd_move_left(buf, sels, 1, mode),
-            PureOp::MoveUp => cmd_move_up(buf, sels, 1, mode),
-            PureOp::MoveDown => cmd_move_down(buf, sels, 1, mode),
+            PureOp::MoveUp => cmd_move_up(buf, sels, 1, mode, 4),
+            PureOp::MoveDown => cmd_move_down(buf, sels, 1, mode, 4),
             PureOp::GotoLineStart => cmd_goto_line_start(buf, sels, 1, mode),
             PureOp::GotoLineEnd => cmd_goto_line_end(buf, sels, 1, mode),
             PureOp::SelectNextWord => cmd_select_next_word(buf, sels, 1, mode),

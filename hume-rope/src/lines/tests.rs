@@ -287,25 +287,76 @@ fn is_empty_line_false_for_whitespace_only_line() {
     assert!(!is_empty_line(&buf, 0));
 }
 
-// ── place_column ──────────────────────────────────────────────────────────
+// ── place_char_column ────────────────────────────────────────────────────
+
+#[test]
+fn place_char_column_within_line() {
+    // "hello\nworld\n" — col 2 of line 1 lands on 'r' (offset 8).
+    let buf = rope("hello\nworld\n");
+    assert_eq!(place_char_column(&buf, 1, 2), 8);
+}
+
+#[test]
+fn place_char_column_overshoot_clamps_to_line_content_end() {
+    // "hi\nhello\n" — line 0 only has 2 real chars; col 10 clamps to 'i' (offset 1).
+    let buf = rope("hi\nhello\n");
+    assert_eq!(place_char_column(&buf, 0, 10), 1);
+}
+
+#[test]
+fn place_char_column_on_empty_line_lands_on_newline() {
+    // "a\n\nb\n" — line 1 is empty; any column lands on its '\n' (offset 2).
+    let buf = rope("a\n\nb\n");
+    assert_eq!(place_char_column(&buf, 1, 3), 2);
+}
+
+// ── place_column (display-column-aware) ─────────────────────────────────
 
 #[test]
 fn place_column_within_line() {
-    // "hello\nworld\n" — col 2 of line 1 lands on 'r' (offset 8).
+    // "hello\nworld\n" — display col 2 of line 1 lands on 'r' (offset 8).
     let buf = rope("hello\nworld\n");
-    assert_eq!(place_column(&buf, 1, 2), 8);
+    assert_eq!(place_column(&buf, 1, 2, 4), 8);
 }
 
 #[test]
 fn place_column_overshoot_clamps_to_line_content_end() {
-    // "hi\nhello\n" — line 0 only has 2 real chars; col 10 clamps to 'i' (offset 1).
+    // "hi\nhello\n" — line 0 is 2 columns wide; col 10 clamps to 'i' (offset 1).
     let buf = rope("hi\nhello\n");
-    assert_eq!(place_column(&buf, 0, 10), 1);
+    assert_eq!(place_column(&buf, 0, 10, 4), 1);
 }
 
 #[test]
 fn place_column_on_empty_line_lands_on_newline() {
     // "a\n\nb\n" — line 1 is empty; any column lands on its '\n' (offset 2).
     let buf = rope("a\n\nb\n");
-    assert_eq!(place_column(&buf, 1, 3), 2);
+    assert_eq!(place_column(&buf, 1, 3, 4), 2);
+}
+
+#[test]
+fn place_column_tab_before_target_lands_display_correct() {
+    // "\tworld\nhi\n" — tab_width 4: tab occupies cols 0-3, 'w' starts at
+    // display col 4. Landing at display col 4 must land on 'w' (offset 1),
+    // not char-offset 4 (which would be 'o').
+    let buf = rope("\tworld\nhi\n");
+    assert_eq!(place_column(&buf, 0, 4, 4), 1);
+}
+
+#[test]
+fn place_column_wide_cjk_before_target_lands_display_correct() {
+    // "\u{6F22}bc\nhi\n" — 漢 (East Asian Wide) occupies display cols 0-1,
+    // so 'b' is at display col 2. A char-offset walk would put 'b' at col 1
+    // instead — this is the exact bug the display-column split fixes.
+    let buf = rope("\u{6F22}bc\nhi\n");
+    assert_eq!(place_column(&buf, 0, 2, 4), 1); // lands on 'b'
+    assert_eq!(place_column(&buf, 0, 3, 4), 2); // lands on 'c'
+}
+
+#[test]
+fn place_column_overshoot_past_wide_line_clamps_to_last_char() {
+    // "\u{6F22}b\nhi\n" — line 0 is 3 display columns wide (漢=2, b=1). A
+    // target col past that clamps to the last real char ('b', offset 1), not
+    // char_pos_at_display_col's own "always land on \n" overshoot behavior.
+    let buf = rope("\u{6F22}b\nhi\n");
+    assert_eq!(place_column(&buf, 0, 10, 4), 1);
 }

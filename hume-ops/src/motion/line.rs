@@ -1,4 +1,4 @@
-use hume_editing::grapheme::next_grapheme_boundary;
+use hume_editing::grapheme::{display_col_in_line, next_grapheme_boundary};
 use hume_editing::lines::{line_break_char, line_content_end, line_end_exclusive, place_column};
 use hume_editing::text::Text;
 
@@ -53,19 +53,24 @@ pub(super) fn goto_first_nonblank(buf: &Text, head: usize) -> usize {
     head // no non-blank found — no-op, matching Helix
 }
 
-/// Move the cursor down one line, preserving the char-offset column.
+/// Move the cursor down one line, preserving the display column.
 ///
 /// `preferred_col` overrides the column computed from the current position.
-/// Pass `None` to use the current column.
+/// Pass `None` to use the current position's own display column.
 ///
-/// **Column model:** column is a char offset from line start, not a display
-/// column — correct for ASCII, wrong for tabs/wide chars. Interactive `j`/`k`
-/// (and page/half-page scroll, the mouse wheel) never reach this: they go
-/// through `editor::visual_move::move_vertical`'s display-column model
-/// instead. This function is now reached only by an explicit numeric prefix
-/// (`9j`), which counts buffer lines to match relative-line-number gutters,
-/// and by direct/proptest callers of the pure `cmd_move_down` op.
-pub(super) fn move_down_inner(buf: &Text, head: usize, preferred_col: Option<usize>) -> usize {
+/// **Column model:** display column — tab-aware and unicode-width-aware, via
+/// `place_column`/`display_col_in_line`. Matches
+/// `editor::visual_move::move_vertical`'s model, which bare `j`/`k` (and
+/// page/half-page scroll, the mouse wheel) use. This function is reached only
+/// by an explicit numeric prefix (`9j`), which counts buffer lines to match
+/// relative-line-number gutters even while wrapping, and by direct/proptest
+/// callers of the pure `cmd_move_down` op.
+pub(super) fn move_down_inner(
+    buf: &Text,
+    head: usize,
+    preferred_col: Option<usize>,
+    tab_width: u8,
+) -> usize {
     let line = buf.char_to_line(head);
     // On the last content line, line + 1 is the phantom trailing line (the
     // structural \n) — nothing to land on there, so stay put.
@@ -73,19 +78,24 @@ pub(super) fn move_down_inner(buf: &Text, head: usize, preferred_col: Option<usi
         return head;
     }
 
-    let col = preferred_col.unwrap_or_else(|| head - buf.line_to_char(line));
-    place_column(buf, line + 1, col)
+    let col = preferred_col.unwrap_or_else(|| display_col_in_line(buf, line, head, tab_width));
+    place_column(buf, line + 1, col, tab_width)
 }
 
-/// Move the cursor up one line, preserving the char-offset column.
+/// Move the cursor up one line, preserving the display column.
 ///
 /// See `move_down_inner` for the column model and `preferred_col` semantics.
-pub(super) fn move_up_inner(buf: &Text, head: usize, preferred_col: Option<usize>) -> usize {
+pub(super) fn move_up_inner(
+    buf: &Text,
+    head: usize,
+    preferred_col: Option<usize>,
+    tab_width: u8,
+) -> usize {
     let line = buf.char_to_line(head);
     if line == 0 {
         return head; // already on the first line
     }
 
-    let col = preferred_col.unwrap_or_else(|| head - buf.line_to_char(line));
-    place_column(buf, line - 1, col)
+    let col = preferred_col.unwrap_or_else(|| display_col_in_line(buf, line, head, tab_width));
+    place_column(buf, line - 1, col, tab_width)
 }

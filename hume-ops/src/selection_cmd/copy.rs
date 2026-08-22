@@ -1,5 +1,5 @@
 use crate::MotionMode;
-use hume_editing::lines::place_column;
+use hume_editing::lines::place_char_column;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 
@@ -8,8 +8,17 @@ use hume_editing::text::Text;
 /// Duplicate each selection onto each of the `count` lines below it and add
 /// them to the selection set.
 ///
-/// Each copy preserves the column offsets of both `anchor` and `head`,
-/// clamped to the length of its target line and snapped to a grapheme
+/// Each copy preserves the **char-offset** column of both `anchor` and
+/// `head` (not a display column — wrong for tabs/wide chars, same narrow gap
+/// `move_down_inner`/`move_up_inner` used to have before they switched to
+/// `place_column`'s display-column model). Left as char-offset here because
+/// `cmd_copy_selection_on_next_line`/`_prev_line` are registered directly in
+/// `CommandRegistry` as bare `fn` pointers — no channel to a per-buffer
+/// `tab_width` exists at that call shape, unlike the `9j`/`9k` path, which
+/// isn't registered and is reached through code that already resolves
+/// buffer settings.
+///
+/// Clamped to the length of its target line and snapped to a grapheme
 /// boundary. Copying stops early once a target line doesn't exist (i.e. the
 /// selection's bottommost line is the last real line) — a `count` larger than
 /// the remaining lines just clamps at the last one, it doesn't wrap or error.
@@ -100,8 +109,8 @@ fn copy_selection_vertically(
             // Shift each endpoint by the same delta, clamped to the target
             // line's content and snapped to a grapheme boundary.
             let delta = target_outer - outer_line;
-            let new_anchor = place_column(buf, (anchor_line + delta) as usize, anchor_col);
-            let new_head = place_column(buf, (head_line + delta) as usize, head_col);
+            let new_anchor = place_char_column(buf, (anchor_line + delta) as usize, anchor_col);
+            let new_head = place_char_column(buf, (head_line + delta) as usize, head_col);
 
             let new_sel = Selection::new(new_anchor, new_head);
 

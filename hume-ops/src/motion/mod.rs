@@ -85,39 +85,22 @@ mod tests;
 // The `motion_cmd!` macro below generates each command, so the table is just
 // data — name, mode, motion — with no repeated scaffolding.
 
-/// Generate a named motion command.
-///
-/// Two arms handle the two motion shapes in this codebase:
-///
-/// **Direct** — the motion function takes only `(&Text, head)`:
+/// Generate a named motion command whose motion function takes only
+/// `(&Text, head)`:
 /// ```text
 /// motion_cmd!(/// doc, cmd_move_right, move_right);
 /// ```
 ///
-/// **Curried** — the motion function needs an extra argument (a boundary
-/// predicate or a target-column hint); the macro generates the closure
-/// `|b, h| inner(b, h, arg)`:
-/// ```text
-/// motion_cmd!(/// doc, cmd_move_down, move_down_inner(None));
-/// ```
-///
-/// The curried arm is listed first so `ident(expr)` is tried before the
-/// bare-`expr` arm — otherwise `inner(arg)` would match the direct arm as an
-/// expression and generate a call-site type error.
+/// A motion needing an extra runtime argument (e.g. `cmd_move_down`/
+/// `cmd_move_up`, which need a `tab_width` no other motion command does) is
+/// hand-written instead — its signature genuinely differs from every other
+/// motion command's, so forcing it through this one-shape macro would need a
+/// second arm maintained for exactly one caller.
 ///
 /// `#[allow(non_snake_case)]` is emitted unconditionally to suppress the
 /// expected warning for WORD variants (`cmd_next_WORD_start` etc.) without a
 /// separate macro arm.
 macro_rules! motion_cmd {
-    // Curried arm: motion needs an extra argument — generates a closure.
-    ($(#[$attr:meta])* $name:ident, $inner:ident($arg:expr)) => {
-        $(#[$attr])*
-        #[allow(non_snake_case)]
-        pub fn $name(buf: &Text, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
-            apply_motion(buf, sels, mode, count, |b, h| $inner(b, h, $arg))
-        }
-    };
-    // Direct arm: motion function takes only (&Text, head).
     ($(#[$attr:meta])* $name:ident, $motion:expr) => {
         $(#[$attr])*
         #[allow(non_snake_case)]
@@ -148,11 +131,40 @@ motion_cmd!(/// Move or extend cursors to the `\n` terminating the current line.
 motion_cmd!(/// Move or extend cursors to the first non-blank character on their current line.
     cmd_goto_first_nonblank, goto_first_nonblank);
 
-// Vertical motion passes `None` as the target-column hint (no sticky column yet).
-motion_cmd!(/// Move or extend cursors down one line, preserving the char-offset column.
-    cmd_move_down, move_down_inner(None));
-motion_cmd!(/// Move or extend cursors up one line, preserving the char-offset column.
-    cmd_move_up, move_up_inner(None));
+// Vertical motion — hand-written rather than `motion_cmd!`: `tab_width` makes
+// this signature genuinely differ from every other motion command's (the
+// display column `move_down_inner`/`move_up_inner` need can't be derived
+// from `buf`/`sels`/`count`/`mode` alone). Not registered in
+// `CommandRegistry` — reached only by `editor::visual_move`'s
+// `apply_visual_vertical` (the `9j`/`9k` numeric-prefix path), which already
+// has the buffer settings access a registered `fn`-pointer command wouldn't.
+// Passes `None` as the target-column hint (no sticky column across presses).
+
+/// Move or extend cursors down one line, preserving the display column.
+pub fn cmd_move_down(
+    buf: &Text,
+    sels: SelectionSet,
+    count: usize,
+    mode: MotionMode,
+    tab_width: u8,
+) -> SelectionSet {
+    apply_motion(buf, sels, mode, count, |b, h| {
+        move_down_inner(b, h, None, tab_width)
+    })
+}
+
+/// Move or extend cursors up one line, preserving the display column.
+pub fn cmd_move_up(
+    buf: &Text,
+    sels: SelectionSet,
+    count: usize,
+    mode: MotionMode,
+    tab_width: u8,
+) -> SelectionSet {
+    apply_motion(buf, sels, mode, count, |b, h| {
+        move_up_inner(b, h, None, tab_width)
+    })
+}
 
 // Paragraph motions.
 motion_cmd!(/// Move or extend cursors to the start of the next paragraph (`]p`).

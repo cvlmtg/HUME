@@ -156,7 +156,7 @@ fn goto_first_nonblank_all_blank_line() {
 fn move_down_basic() {
     assert_state!(
         "-[h]>ello\nworld\n",
-        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move, 4),
         "hello\n-[w]>orld\n"
     );
 }
@@ -165,7 +165,7 @@ fn move_down_basic() {
 fn move_down_preserves_column() {
     assert_state!(
         "hel-[l]>o\nworld\n",
-        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move, 4),
         "hello\nwor-[l]>d\n"
     );
 }
@@ -174,7 +174,7 @@ fn move_down_preserves_column() {
 fn move_down_clamps_to_shorter_line() {
     assert_state!(
         "hel-[l]>o\nab\n",
-        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move, 4),
         "hello\na-[b]>\n"
     );
 }
@@ -183,7 +183,7 @@ fn move_down_clamps_to_shorter_line() {
 fn move_down_clamp_on_last_line() {
     assert_state!(
         "hello\n-[w]>orld\n",
-        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move, 4),
         "hello\n-[w]>orld\n"
     );
 }
@@ -192,7 +192,7 @@ fn move_down_clamp_on_last_line() {
 fn move_down_to_empty_line() {
     assert_state!(
         "-[h]>ello\n\nworld\n",
-        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move, 4),
         "hello\n-[\n]>world\n"
     );
 }
@@ -201,7 +201,7 @@ fn move_down_to_empty_line() {
 fn move_down_empty_buffer() {
     assert_state!(
         "-[\n]>",
-        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move, 4),
         "-[\n]>"
     );
 }
@@ -211,8 +211,34 @@ fn move_down_multi_cursor_merge() {
     // Two cursors on line 0. Both move to line 1 — they converge and merge.
     assert_state!(
         "-[h]>ello\n-[w]>orld\n",
-        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move, 4),
         "hello\n-[w]>orld\n"
+    );
+}
+
+#[test]
+fn move_down_preserves_display_column_across_a_tab() {
+    // Source line has a tab (tab_width 4): cursor on 'o' (char offset 2)
+    // sits at display column 5 (tab expands to 4, 'w' is 1 more). Moving
+    // down must land at display column 5 on the plain-text target line —
+    // 'f' (char offset 5) — not char-offset column 2, which would be 'c'.
+    assert_state!(
+        "\tw-[o]>rld\nabcdefgh\n",
+        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move, 4),
+        "\tworld\nabcde-[f]>gh\n"
+    );
+}
+
+#[test]
+fn move_down_preserves_display_column_across_a_wide_cjk_char() {
+    // Source line's first grapheme (漢, East Asian Wide) is 2 display
+    // columns wide but 1 char. Cursor on 'b' (char offset 1) sits at
+    // display column 2. Moving down must land at display column 2 on the
+    // target line — 'c' — not char-offset column 1, which would be 'b'.
+    assert_state!(
+        "\u{6F22}-[b]>c\nabcdefgh\n",
+        |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move, 4),
+        "\u{6F22}bc\nab-[c]>defgh\n"
     );
 }
 
@@ -222,7 +248,7 @@ fn move_down_multi_cursor_merge() {
 fn move_up_basic() {
     assert_state!(
         "hello\n-[w]>orld\n",
-        |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move, 4),
         "-[h]>ello\nworld\n"
     );
 }
@@ -231,7 +257,7 @@ fn move_up_basic() {
 fn move_up_preserves_column() {
     assert_state!(
         "hello\nwor-[l]>d\n",
-        |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move, 4),
         "hel-[l]>o\nworld\n"
     );
 }
@@ -240,7 +266,7 @@ fn move_up_preserves_column() {
 fn move_up_clamp_on_first_line() {
     assert_state!(
         "-[h]>ello\nworld\n",
-        |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move, 4),
         "-[h]>ello\nworld\n"
     );
 }
@@ -250,7 +276,7 @@ fn move_up_clamps_to_shorter_line() {
     // "ab" is 2 chars, "hello" is 5. Cursor at col 3 on "hello" → clamps to end of "ab".
     assert_state!(
         "ab\nhel-[l]>o\n",
-        |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move, 4),
         "a-[b]>\nhello\n"
     );
 }
@@ -260,7 +286,7 @@ fn move_down_count_3() {
     // From 'a' on line 0, move down 3 lines — lands on 'd'.
     assert_state!(
         "-[a]>\nb\nc\nd\ne\n",
-        |(buf, sels)| cmd_move_down(&buf, sels, 3, MotionMode::Move),
+        |(buf, sels)| cmd_move_down(&buf, sels, 3, MotionMode::Move, 4),
         "a\nb\nc\n-[d]>\ne\n"
     );
 }
@@ -304,7 +330,7 @@ fn move_up_multi_cursor_merge() {
     // Text content "a\norld\n" is unchanged; only one cursor remains.
     assert_state!(
         "a\n-[o]>r-[l]>d\n",
-        |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move),
+        |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move, 4),
         "-[a]>\norld\n"
     );
 }
