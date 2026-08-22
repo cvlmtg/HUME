@@ -15,7 +15,7 @@ Buffer (text + config)
          │  → visible line range, column widths
          ▼
   Stage 2: Format        ← "where does each character appear on screen?"
-         │  → one display row per visual line; one entry per grapheme with its column
+         │  → one display row per visual line; one entry per grapheme with its display column
          ▼
   Stage 3: Style         ← "what colour and decoration does each character get?"
          │  → one style value per grapheme
@@ -56,7 +56,7 @@ multiple display rows (a "line start" row plus one or more "continuation"
 rows). Each display row is a sequence of *cells*, and each cell is one of a
 small set:
 
-- a **grapheme** — a real character, annotated with its visual column and
+- a **grapheme** — a real character, annotated with its display column and
   visual width (most are 1 column; CJK double-width characters are 2);
 - an **indicator** — a placeholder glyph standing in for a tab or a
   whitespace run when the user has asked to see them;

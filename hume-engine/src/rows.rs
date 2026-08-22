@@ -94,7 +94,7 @@ pub enum DisplayColTarget {
     /// (a real cursor position in HUME's inclusive selection model).
     Cell,
     /// The real grapheme whose start column is *nearest* this one — what a
-    /// sticky-column `j`/`k` asks, since it minimises visual column drift.
+    /// sticky-column `j`/`k` asks, since it minimises display column drift.
     /// The end-of-line sentinel is skipped unless it is the row's only
     /// grapheme (an empty line), so vertical movement stays on content.
     NearestContent,

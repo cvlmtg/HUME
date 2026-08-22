@@ -61,14 +61,14 @@ stay on the same buffer line if that line spans multiple rows. (A `j`/`k`
 with an explicit count — `9j` — deliberately moves by buffer lines even in
 wrap mode, so it matches relative line numbers.)
 
-Visual-line movement needs to know the visual column of the cursor, not just
+Visual-line movement needs to know the display column of the cursor, not just
 its character offset in the buffer. The goal is "land on the closest character
-in the row above/below at the same visual column" — which requires knowing what
+in the row above/below at the same display column" — which requires knowing what
 column the characters in adjacent rows start at.
 
 To do this without re-rendering the whole frame, the engine's format stage is
 called for the specific buffer line being moved into. The resulting grapheme
-list is then scanned for the grapheme whose visual column is closest to the
+list is then scanned for the grapheme whose display column is closest to the
 target column.
 
 ### The sticky column
