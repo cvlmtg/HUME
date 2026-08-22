@@ -19,22 +19,22 @@ fn ctx(rope: &ropey::Rope, primary_head_line: usize) -> GutterRowCtx<'_> {
 fn width_grows_with_line_count() {
     // width(max_line) must fit the 1-based line number max_line+1.
     // digit_count(n+1) + 1 pad.
-    let col = LineNumberColumn::new(DEFAULT_SCOPE, SELECTED_SCOPE);
-    assert_eq!(col.width(0), 2); // max line "1" → 1 digit + 1 pad
-    assert_eq!(col.width(8), 2); // max line "9" → 1 digit + 1 pad
-    assert_eq!(col.width(9), 3); // max line "10" → 2 digits + 1 pad
-    assert_eq!(col.width(10), 3); // max line "11" → 2 digits + 1 pad
-    assert_eq!(col.width(98), 3); // max line "99" → 2 digits + 1 pad
-    assert_eq!(col.width(99), 4); // max line "100" → 3 digits + 1 pad
-    assert_eq!(col.width(100), 4); // max line "101" → 3 digits + 1 pad
+    let lane = LineNumberColumn::new(DEFAULT_SCOPE, SELECTED_SCOPE);
+    assert_eq!(lane.width(0), 2); // max line "1" → 1 digit + 1 pad
+    assert_eq!(lane.width(8), 2); // max line "9" → 1 digit + 1 pad
+    assert_eq!(lane.width(9), 3); // max line "10" → 2 digits + 1 pad
+    assert_eq!(lane.width(10), 3); // max line "11" → 2 digits + 1 pad
+    assert_eq!(lane.width(98), 3); // max line "99" → 2 digits + 1 pad
+    assert_eq!(lane.width(99), 4); // max line "100" → 3 digits + 1 pad
+    assert_eq!(lane.width(100), 4); // max line "101" → 3 digits + 1 pad
 }
 
 #[test]
 fn absolute_line_numbers() {
-    let col =
+    let lane =
         LineNumberColumn::with_style(LineNumberStyle::Absolute, DEFAULT_SCOPE, SELECTED_SCOPE);
     let rope = ropey::Rope::new();
-    let cell = col
+    let cell = lane
         .render_row_cells(RowKind::LineStart { line_idx: 4 }, &ctx(&rope, 0))
         .into_iter()
         .next()
@@ -44,10 +44,10 @@ fn absolute_line_numbers() {
 
 #[test]
 fn hybrid_head_line_shows_absolute() {
-    let col = LineNumberColumn::with_style(LineNumberStyle::Hybrid, DEFAULT_SCOPE, SELECTED_SCOPE);
+    let lane = LineNumberColumn::with_style(LineNumberStyle::Hybrid, DEFAULT_SCOPE, SELECTED_SCOPE);
     let rope = ropey::Rope::new();
     // Cursor is on line 2 (0-based).
-    let cell = col
+    let cell = lane
         .render_row_cells(RowKind::LineStart { line_idx: 2 }, &ctx(&rope, 2))
         .into_iter()
         .next()
@@ -58,9 +58,9 @@ fn hybrid_head_line_shows_absolute() {
 
 #[test]
 fn hybrid_non_head_line_shows_relative() {
-    let col = LineNumberColumn::with_style(LineNumberStyle::Hybrid, DEFAULT_SCOPE, SELECTED_SCOPE);
+    let lane = LineNumberColumn::with_style(LineNumberStyle::Hybrid, DEFAULT_SCOPE, SELECTED_SCOPE);
     let rope = ropey::Rope::new();
-    let cell = col
+    let cell = lane
         .render_row_cells(RowKind::LineStart { line_idx: 5 }, &ctx(&rope, 2))
         .into_iter()
         .next()
@@ -70,9 +70,9 @@ fn hybrid_non_head_line_shows_relative() {
 
 #[test]
 fn wrap_rows_are_blank() {
-    let col = LineNumberColumn::new(DEFAULT_SCOPE, SELECTED_SCOPE);
+    let lane = LineNumberColumn::new(DEFAULT_SCOPE, SELECTED_SCOPE);
     let rope = ropey::Rope::new();
-    let cell = col
+    let cell = lane
         .render_row_cells(
             RowKind::Wrap {
                 line_idx: 3,
@@ -88,9 +88,9 @@ fn wrap_rows_are_blank() {
 
 #[test]
 fn virtual_rows_are_blank() {
-    let col = LineNumberColumn::new(DEFAULT_SCOPE, SELECTED_SCOPE);
+    let lane = LineNumberColumn::new(DEFAULT_SCOPE, SELECTED_SCOPE);
     let rope = ropey::Rope::new();
-    let cell = col
+    let cell = lane
         .render_row_cells(
             RowKind::Virtual {
                 provider_id: 0,
@@ -106,17 +106,17 @@ fn virtual_rows_are_blank() {
 
 #[test]
 fn relative_line_numbers() {
-    let col =
+    let lane =
         LineNumberColumn::with_style(LineNumberStyle::Relative, DEFAULT_SCOPE, SELECTED_SCOPE);
     let rope = ropey::Rope::new();
     // Cursor at line 5 (0-based). Line 3 is distance 2, line 8 is distance 3.
-    let cell = col
+    let cell = lane
         .render_row_cells(RowKind::LineStart { line_idx: 3 }, &ctx(&rope, 5))
         .into_iter()
         .next()
         .unwrap();
     assert_eq!(cell.as_str(), "2");
-    let cell = col
+    let cell = lane
         .render_row_cells(RowKind::LineStart { line_idx: 8 }, &ctx(&rope, 5))
         .into_iter()
         .next()
@@ -126,10 +126,10 @@ fn relative_line_numbers() {
 
 #[test]
 fn relative_head_line_shows_zero() {
-    let col =
+    let lane =
         LineNumberColumn::with_style(LineNumberStyle::Relative, DEFAULT_SCOPE, SELECTED_SCOPE);
     let rope = ropey::Rope::new();
-    let cell = col
+    let cell = lane
         .render_row_cells(RowKind::LineStart { line_idx: 5 }, &ctx(&rope, 5))
         .into_iter()
         .next()
@@ -140,9 +140,9 @@ fn relative_head_line_shows_zero() {
 #[test]
 fn hybrid_line_below_head_shows_relative() {
     // Cursor at line 5, render line 2 (below in the file, higher index than cursor).
-    let col = LineNumberColumn::with_style(LineNumberStyle::Hybrid, DEFAULT_SCOPE, SELECTED_SCOPE);
+    let lane = LineNumberColumn::with_style(LineNumberStyle::Hybrid, DEFAULT_SCOPE, SELECTED_SCOPE);
     let rope = ropey::Rope::new();
-    let cell = col
+    let cell = lane
         .render_row_cells(RowKind::LineStart { line_idx: 2 }, &ctx(&rope, 5))
         .into_iter()
         .next()
@@ -226,11 +226,11 @@ fn digit_count_zero_is_one() {
 
 #[test]
 fn large_line_number_renders_correctly() {
-    let col =
+    let lane =
         LineNumberColumn::with_style(LineNumberStyle::Absolute, DEFAULT_SCOPE, SELECTED_SCOPE);
     let rope = ropey::Rope::new();
     // line_idx = 9_999_998 → display = 9_999_999 (1-based)
-    let cell = col
+    let cell = lane
         .render_row_cells(
             RowKind::LineStart {
                 line_idx: 9_999_998,

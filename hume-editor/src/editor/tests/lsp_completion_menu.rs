@@ -655,7 +655,7 @@ fn stale_anchor_after_switching_focus_to_another_buffer_skips_render() {
 // ── Regression: overlay anchor reuses the scroll pass's cached cursor cell ──
 //
 // `popup_anchor_and_bounds` takes a fast path when its `anchor_char` is the
-// focused cursor: it reuses `ctx.cursor_screen`, resolved by `scroll_into_view`
+// focused cursor: it reuses `ctx.cursor_content_pos`, resolved by `scroll_into_view`
 // earlier in `prepare_frame`, instead of re-walking the row list. Pins that
 // the reused cell agrees with a full, independent walk — in wrap mode, where
 // that walk is a per-line format, so a wrong cache would show up as a
@@ -696,7 +696,7 @@ fn completion_popup_anchor_matches_an_independent_screen_pos_walk_when_wrapped()
 
     // Independent oracle: re-derive the same cell via a fresh `RowMap` and
     // `cursor::screen_pos` — the exact primitives the fast path's slow
-    // fallback uses — entirely bypassing `ctx.cursor_screen`.
+    // fallback uses — entirely bypassing `ctx.cursor_content_pos`.
     let bid = ed.focused_buffer_id();
     let cursor_char = ed.current_selections().primary().head();
     let pane_rect = ed.view.pane_rect(pid).expect("focused pane has a rect");

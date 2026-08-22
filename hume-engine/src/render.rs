@@ -143,12 +143,12 @@ fn gutter_cell_style(
 /// is never silently blank — a custom column must be consulted for filler
 /// rows too, not just `LineNumberColumn`'s blank-for-Filler default.
 ///
-/// `col_widths` must already be populated by the caller (one entry per
+/// `lane_widths` must already be populated by the caller (one entry per
 /// gutter column) — see `compose_row`'s doc comment for why it isn't folded
 /// into `ComposeCtx`.
 fn compose_gutter(
     row_kind: RowKind,
-    col_widths: &[u16],
+    lane_widths: &[u16],
     compose_ctx: &ComposeCtx,
     row_bg: Option<ratatui::style::Color>,
     y: u16,
@@ -168,23 +168,24 @@ fn compose_gutter(
         primary_head_line: compose_ctx.primary_head_line,
         rope: compose_ctx.rope,
     };
-    for ((_, col_provider), &col_width) in compose_ctx.gutter_columns.iter().zip(col_widths.iter())
+    for ((_, lane_provider), &lane_width) in
+        compose_ctx.gutter_columns.iter().zip(lane_widths.iter())
     {
-        if col_width == 0 {
+        if lane_width == 0 {
             continue;
         }
-        let col_start = gutter_x;
-        if col_start >= pane_right_edge {
+        let lane_x = gutter_x;
+        if lane_x >= pane_right_edge {
             continue;
         }
-        let col_width = col_width.min(pane_right_edge - col_start);
-        let cells = col_provider.render_row_cells(row_kind, &gutter_ctx);
-        // Distribute `col_width` across `cells.len()` sub-cells. Only the
+        let lane_width = lane_width.min(pane_right_edge - lane_x);
+        let cells = lane_provider.render_row_cells(row_kind, &gutter_ctx);
+        // Distribute `lane_width` across `cells.len()` sub-cells. Only the
         // column's right padding (1 cell) is reserved — no separators between
         // sub-cells. `usable_per_cell` is how much of each sub-cell's text
         // may be written before truncation.
         let n_cells = cells.len().max(1);
-        let usable_per_cell = col_width.saturating_sub(1) / n_cells as u16;
+        let usable_per_cell = lane_width.saturating_sub(1) / n_cells as u16;
         let mut last_scope: ScopeId = compose_ctx.default_gutter_scope;
         for (cell_idx, cell) in cells.iter().enumerate() {
             let is_last = cell_idx == cells.len() - 1;
@@ -237,28 +238,28 @@ fn compose_gutter(
             last_scope = cell.scope;
         }
         // Any leftover width (e.g. sub-cell widths that don't evenly divide
-        // col_width - 1) fills as blanks under the last cell's scope —
+        // lane_width - 1) fills as blanks under the last cell's scope —
         // preserves the single-cell builtin behaviour where the whole column
-        // shared one scope. Bounded by `col_start`, not `pane_rect.x`: for
+        // shared one scope. Bounded by `lane_x`, not `pane_rect.x`: for
         // every column after the first, `pane_rect.x` is the pane's left
         // edge, not this column's — using it here left leftover cells
         // unpainted and `gutter_x` short of the column boundary for any
         // non-first column with uneven leftover.
-        if gutter_x < col_start + col_width {
+        if gutter_x < lane_x + lane_width {
             let style = gutter_cell_style(
                 last_scope,
                 compose_ctx.theme,
                 row_bg.or(compose_ctx.pane_bg),
             );
-            while gutter_x < col_start + col_width {
+            while gutter_x < lane_x + lane_width {
                 canvas.set_cell(gutter_x, y, " ", style);
                 gutter_x += 1;
             }
         }
         // Providers are a public extension point; their cell-width math
-        // isn't guaranteed to sum to col_width exactly. Land on the column
+        // isn't guaranteed to sum to lane_width exactly. Land on the column
         // boundary regardless, so the next column never inherits any drift.
-        gutter_x = col_start + col_width;
+        gutter_x = lane_x + lane_width;
     }
 }
 
@@ -273,7 +274,7 @@ fn compose_gutter(
 /// for a content row, `virtual_row.texts` for a provider's virtual row) —
 /// same lifetime/borrow rationale as `line_str`.
 ///
-/// `col_widths` must already be populated by the caller (one entry per gutter
+/// `lane_widths` must already be populated by the caller (one entry per gutter
 /// column). Passed separately from `compose_ctx` because in the fused pipeline it lives
 /// in `FrameScratch`, which cannot be bundled into `ComposeCtx` without
 /// creating a conflicting borrow.
@@ -285,7 +286,7 @@ pub(crate) fn compose_row(
     line_str: &str,
     virtual_texts: &str,
     screen_row: u16,
-    col_widths: &[u16],
+    lane_widths: &[u16],
     compose_ctx: &ComposeCtx,
     canvas: &mut PaneCanvas,
     // Background colour to fill the entire row (gutter + content) before
@@ -302,7 +303,7 @@ pub(crate) fn compose_row(
     // handling since a filler row has no backing graphemes to iterate.
     debug_assert!(!matches!(row.kind, RowKind::Filler));
 
-    compose_gutter(row.kind, col_widths, compose_ctx, row_bg, y, canvas);
+    compose_gutter(row.kind, lane_widths, compose_ctx, row_bg, y, canvas);
 
     // ── Content ───────────────────────────────────────────────────────
     let content_x_origin = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
@@ -325,21 +326,21 @@ pub(crate) fn compose_row(
         }
 
         // Horizontal scroll: skip cells left of the viewport.
-        if g.col + g.width as u32 <= h_offset {
+        if g.display_col + g.width as u32 <= h_offset {
             continue;
         }
-        // Clip cells that start before the viewport edge. `g.col` is a
-        // document column (`u32`), but this render path always runs behind
+        // Clip cells that start before the viewport edge. `g.display_col` is
+        // a document column (`u32`), but this render path always runs behind
         // `with_h_window` (`pane_render.rs`), so a cell surviving the skip
         // above sits within one viewport width of `h_offset` — safely
         // representable in the terminal-cell (`u16`) domain the rest of
         // compose works in.
-        let visible_col = g.col.saturating_sub(h_offset);
+        let content_x = g.display_col.saturating_sub(h_offset);
         debug_assert!(
-            u16::try_from(visible_col).is_ok(),
-            "on-screen column {visible_col} exceeds a u16 — h_window should have clipped this cell"
+            u16::try_from(content_x).is_ok(),
+            "on-screen column {content_x} exceeds a u16 — h_window should have clipped this cell"
         );
-        let screen_x = content_x_origin + visible_col as u16;
+        let screen_x = content_x_origin + content_x as u16;
         if screen_x >= right_edge {
             break; // past right edge — done with this row
         }
@@ -349,16 +350,16 @@ pub(crate) fn compose_row(
         // A multi-column cell (double-width CJK grapheme, tab
         // Indicator) whose left edge sits before `h_offset` still
         // passes the skip check above once its right edge crosses
-        // it — but `visible_col` above already clamped to 0, so
+        // it — but `content_x` above already clamped to 0, so
         // rendering the glyph there would draw its *full* width at
         // the viewport's left edge instead of the fraction that's
         // actually scrolled into view, shifting the row. Render
         // spaces for the visible remainder instead (matches Helix).
         // Impossible for width-1 cells: straddling needs
-        // `g.col < h_offset < g.col + g.width`, which has no integer
-        // solution when `g.width == 1`.
-        if g.col < h_offset {
-            let visible_cells = g.width as u32 - (h_offset - g.col);
+        // `g.display_col < h_offset < g.display_col + g.width`, which has no
+        // integer solution when `g.width == 1`.
+        if g.display_col < h_offset {
+            let visible_cells = g.width as u32 - (h_offset - g.display_col);
             for i in 0..visible_cells as u16 {
                 let sx = screen_x + i;
                 if sx < right_edge {
@@ -411,18 +412,18 @@ pub(crate) fn compose_row(
             .map(|g| g.indent_depth)
             .unwrap_or(0);
         let tw = compose_ctx.tab_width.max(1) as u16;
-        // Draw a guide at each inner tab-stop: col = k*tw for k in 1..depth.
+        // Draw a guide at each inner tab-stop: display col = k*tw for k in 1..depth.
         // These positions are guaranteed to lie within the leading whitespace.
         for k in 1..depth {
-            let guide_col = k as u32 * tw as u32;
+            let guide_display_col = k as u32 * tw as u32;
             // Account for horizontal scroll.
-            if guide_col + tw as u32 > h_offset {
-                let visible_col = guide_col.saturating_sub(h_offset);
+            if guide_display_col + tw as u32 > h_offset {
+                let content_x = guide_display_col.saturating_sub(h_offset);
                 debug_assert!(
-                    u16::try_from(visible_col).is_ok(),
-                    "on-screen indent guide column {visible_col} exceeds a u16"
+                    u16::try_from(content_x).is_ok(),
+                    "on-screen indent guide column {content_x} exceeds a u16"
                 );
-                let screen_x = content_x_origin + visible_col as u16;
+                let screen_x = content_x_origin + content_x as u16;
                 if screen_x < right_edge {
                     canvas.set_cell(
                         screen_x,
@@ -454,7 +455,7 @@ fn resolve_arena_text(arena: &str, start: u32, len: u16) -> &str {
 /// vertical space after the last real content row has been rendered.
 pub(crate) fn render_tilde_fillers(
     start_screen_row: u16,
-    col_widths: &[u16],
+    lane_widths: &[u16],
     compose_ctx: &ComposeCtx,
     canvas: &mut PaneCanvas,
 ) {
@@ -473,7 +474,7 @@ pub(crate) fn render_tilde_fillers(
         // fg on top of that, matching editor convention: `~` sits at the
         // pane's left edge, ignoring/overriding the line-number gutter, never
         // shifted into the content area.
-        compose_gutter(RowKind::Filler, col_widths, compose_ctx, None, y, canvas);
+        compose_gutter(RowKind::Filler, lane_widths, compose_ctx, None, y, canvas);
         let content_x = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
         match compose_ctx.pane_bg {
             Some(bg) => canvas.fill_row_bg(content_x, right_edge, y, bg),

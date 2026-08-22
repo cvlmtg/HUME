@@ -51,7 +51,7 @@ fn eol_sentinel_emitted_on_non_empty_line() {
         matches!(sentinel.content, CellContent::Empty),
         "sentinel must be Empty"
     );
-    assert_eq!(sentinel.col, 5, "sentinel one past last char");
+    assert_eq!(sentinel.display_col, 5, "sentinel one past last char");
     assert_eq!(sentinel.char_offset, 5, "sentinel at \\n char offset");
 }
 
@@ -71,7 +71,7 @@ fn eol_sentinel_emitted_for_non_lf_line_break() {
         matches!(sentinel.content, CellContent::Empty),
         "sentinel must be Empty"
     );
-    assert_eq!(sentinel.col, 1, "sentinel one past 'a'");
+    assert_eq!(sentinel.display_col, 1, "sentinel one past 'a'");
     assert_eq!(sentinel.char_offset, 1, "sentinel at the '\\r' char offset");
 }
 
@@ -92,7 +92,7 @@ fn empty_line_terminated_by_non_lf_break_still_gets_a_sentinel_row() {
         matches!(row0_gs[0].content, CellContent::Empty),
         "sentinel must be Empty"
     );
-    assert_eq!(row0_gs[0].col, 0);
+    assert_eq!(row0_gs[0].display_col, 0);
     assert_eq!(
         row0_gs[0].char_offset, 0,
         "sentinel at the '\\r' char offset"
@@ -114,7 +114,7 @@ fn empty_line_produces_empty_sentinel_grapheme() {
         matches!(row_gs[0].content, CellContent::Empty),
         "sentinel must be Empty"
     );
-    assert_eq!(row_gs[0].col, 0);
+    assert_eq!(row_gs[0].display_col, 0);
     assert_eq!(row_gs[0].width, 1);
 }
 
@@ -212,7 +212,7 @@ fn soft_wrap_defers_wide_char_whole_to_next_row_when_it_would_straddle_column() 
     assert_eq!(row1.len(), 4, "'中' + its width continuation + 'e' + 'f'");
     assert_eq!(row1[0].char_offset, 4, "row 1 starts with '中'");
     assert_eq!(row1[0].width, 2, "'中' keeps its full display width");
-    assert_eq!(row1[0].col, 0, "'中' starts at column 0 of the new row");
+    assert_eq!(row1[0].display_col, 0, "'中' starts at column 0 of the new row");
     assert!(
         matches!(row1[1].content, CellContent::WidthContinuation),
         "second cell of '中' stays paired with it on the same row"
@@ -238,7 +238,7 @@ fn soft_wrap_defers_tab_whole_to_next_row_when_it_would_straddle_column() {
 
     let row1 = &graphemes[rows[1].graphemes.clone()];
     assert_eq!(row1.len(), 3, "tab + 'e' + 'f'");
-    assert_eq!(row1[0].col, 0, "tab starts at column 0 of the new row");
+    assert_eq!(row1[0].display_col, 0, "tab starts at column 0 of the new row");
     assert_eq!(row1[0].width, 4, "tab keeps its full 4-column expansion");
     assert_eq!(row1[1].char_offset, 5, "'e' follows the tab");
     assert_eq!(row1[2].char_offset, 6, "'f' follows 'e'");
@@ -253,7 +253,7 @@ fn soft_wrap_recomputes_tab_width_at_post_wrap_column() {
     let (rows, graphemes) = do_format("ab\tc", WrapMode::Soft { width: 3 });
     assert!(rows.len() >= 2, "tab must overflow onto a new row");
     let row1 = &graphemes[rows[1].graphemes.clone()];
-    assert_eq!(row1[0].col, 0, "tab starts at column 0 of the new row");
+    assert_eq!(row1[0].display_col, 0, "tab starts at column 0 of the new row");
     assert_eq!(
         row1[0].width, 4,
         "tab must expand its full post-wrap tab stop (4), not the stale pre-wrap width (2)"
@@ -289,7 +289,7 @@ fn soft_wrap_exact_fit_row_keeps_eol_sentinel_on_same_row() {
         "sentinel must be Empty"
     );
     assert_eq!(
-        sentinel.col, 5,
+        sentinel.display_col, 5,
         "sentinel sits one column past the wrap width"
     );
     assert_eq!(sentinel.char_offset, 5, "sentinel at the \\n char offset");
@@ -309,11 +309,11 @@ fn indent_depth_two_spaces() {
 }
 
 #[test]
-fn grapheme_cols_are_correct() {
+fn grapheme_display_cols_are_correct() {
     let (_, graphemes) = do_format("abc\n", WrapMode::None);
-    assert_eq!(graphemes[0].col, 0);
-    assert_eq!(graphemes[1].col, 1);
-    assert_eq!(graphemes[2].col, 2);
+    assert_eq!(graphemes[0].display_col, 0);
+    assert_eq!(graphemes[1].display_col, 1);
+    assert_eq!(graphemes[2].display_col, 2);
 }
 
 // ── Whitespace indicators ─────────────────────────────────────────────
@@ -377,11 +377,11 @@ fn newline_indicator_all_mode() {
         matches!(sentinel.content, CellContent::Empty),
         "index 3 is the eol sentinel"
     );
-    assert_eq!(sentinel.col, 3);
+    assert_eq!(sentinel.display_col, 3);
     assert_eq!(sentinel.char_offset, 3); // char offset of the '\n'
     let nl_indicator = &row0_gs[4];
     assert_eq!(cell_text(&arena, &nl_indicator.content), "⏎");
-    assert_eq!(nl_indicator.col, 3);
+    assert_eq!(nl_indicator.display_col, 3);
 }
 
 #[test]
@@ -423,7 +423,7 @@ fn space_indicator_all_mode() {
     };
     let (_, graphemes, arena) = do_format_ws("a b\n", ws);
     // Space at index 1 should be Indicator
-    let space_g = graphemes.iter().find(|g| g.col == 1).unwrap();
+    let space_g = graphemes.iter().find(|g| g.display_col == 1).unwrap();
     assert_eq!(cell_text(&arena, &space_g.content), "·");
 }
 
@@ -436,10 +436,10 @@ fn nbsp_indicator_all_mode() {
         ..WhitespaceConfig::default()
     };
     let (_, graphemes, arena) = do_format_ws("a\u{A0}b\u{3000}c\n", ws);
-    let nbsp_g = graphemes.iter().find(|g| g.col == 1).unwrap();
+    let nbsp_g = graphemes.iter().find(|g| g.display_col == 1).unwrap();
     assert_eq!(cell_text(&arena, &nbsp_g.content), "⍽");
     assert_eq!(nbsp_g.width, 1);
-    let ideo_g = graphemes.iter().find(|g| g.col == 3).unwrap();
+    let ideo_g = graphemes.iter().find(|g| g.display_col == 3).unwrap();
     assert_eq!(cell_text(&arena, &ideo_g.content), "⍽");
     assert_eq!(ideo_g.width, 2, "ideographic space keeps its 2-col width");
 }
@@ -449,10 +449,10 @@ fn nbsp_renders_as_itself_when_off() {
     // With space rendering off, invisible spaces stay CellContent::Grapheme
     // (rendered as themselves) and keep their unicode widths.
     let (_, graphemes, _) = do_format_ws("a\u{A0}b\u{3000}c\n", WhitespaceConfig::default());
-    let nbsp_g = graphemes.iter().find(|g| g.col == 1).unwrap();
+    let nbsp_g = graphemes.iter().find(|g| g.display_col == 1).unwrap();
     assert!(matches!(nbsp_g.content, CellContent::Grapheme));
     assert_eq!(nbsp_g.width, 1);
-    let ideo_g = graphemes.iter().find(|g| g.col == 3).unwrap();
+    let ideo_g = graphemes.iter().find(|g| g.display_col == 3).unwrap();
     assert!(matches!(ideo_g.content, CellContent::Grapheme));
     assert_eq!(ideo_g.width, 2);
 }
@@ -483,9 +483,13 @@ fn space_indicator_trailing_mode_interior() {
         ..WhitespaceConfig::default()
     };
     let (_, graphemes, _) = do_format_ws("  A  B  \n", ws);
-    let is_indicator = |col: u32| {
+    let is_indicator = |display_col: u32| {
         matches!(
-            graphemes.iter().find(|g| g.col == col).unwrap().content,
+            graphemes
+                .iter()
+                .find(|g| g.display_col == display_col)
+                .unwrap()
+                .content,
             CellContent::Indicator { .. }
         )
     };
@@ -510,12 +514,15 @@ fn space_indicator_trailing_mode_blank_line() {
         ..WhitespaceConfig::default()
     };
     let (_, graphemes, arena) = do_format_ws("   \n", ws);
-    for col in 0..3u32 {
-        let g = graphemes.iter().find(|g| g.col == col).unwrap();
+    for display_col in 0..3u32 {
+        let g = graphemes
+            .iter()
+            .find(|g| g.display_col == display_col)
+            .unwrap();
         assert_eq!(
             cell_text(&arena, &g.content),
             "·",
-            "col {col} should be a trailing indicator"
+            "display col {display_col} should be a trailing indicator"
         );
     }
 }
@@ -588,14 +595,14 @@ fn word_wrap_space_ends_previous_row_not_starts_continuation() {
 }
 
 #[test]
-fn indent_wrap_continuation_starts_at_indent_col() {
+fn indent_wrap_continuation_starts_at_indent_display_col() {
     // "    long" with 4 spaces of indent (depth=1, tab_width=4), width=6.
-    // First row: "    lo", continuation row starts at col 4.
+    // First row: "    lo", continuation row starts at display col 4.
     let (rows, graphemes) = do_format("    long text here", WrapMode::Indent { width: 6 });
     assert!(rows.len() >= 2);
     let wrap_row_graphemes = &graphemes[rows[1].graphemes.clone()];
-    // The first grapheme on the continuation row should be at col 4 (indent level).
-    assert_eq!(wrap_row_graphemes[0].col, 4);
+    // The first grapheme on the continuation row should be at display col 4 (indent level).
+    assert_eq!(wrap_row_graphemes[0].display_col, 4);
 }
 
 // ── CJK double-width ─────────────────────────────────────────────────
@@ -606,12 +613,12 @@ fn cjk_character_produces_width_continuation() {
     let (_, graphemes) = do_format("中", WrapMode::None);
     assert_eq!(graphemes.len(), 2);
     assert_eq!(graphemes[0].width, 2);
-    assert_eq!(graphemes[0].col, 0);
+    assert_eq!(graphemes[0].display_col, 0);
     assert!(matches!(
         graphemes[1].content,
         CellContent::WidthContinuation
     ));
-    assert_eq!(graphemes[1].col, 2);
+    assert_eq!(graphemes[1].display_col, 2);
 }
 
 // ── indent_depth helpers ─────────────────────────────────────────────
@@ -707,26 +714,27 @@ fn long_line_no_wrap_clips_to_window_without_panic() {
         graphemes.len()
     );
     // Every emitted grapheme must fall within (or just at) the window.
-    assert!(graphemes.iter().all(|g| g.col < 90));
+    assert!(graphemes.iter().all(|g| g.display_col < 90));
 }
 
 #[test]
-fn long_line_no_wrap_window_scrolled_right_has_correct_cols() {
+fn long_line_no_wrap_window_scrolled_right_has_correct_display_cols() {
     // Same 70,000-char ASCII line, scrolled to h_offset = 65,000. Since
-    // every char is 1 column wide, col must equal char index (independent
-    // oracle) for every grapheme actually emitted around the window.
+    // every char is 1 column wide, display_col must equal char index
+    // (independent oracle) for every grapheme actually emitted around the
+    // window.
     let text: String = "a".repeat(70_000);
     let (rows, graphemes) = do_format_windowed(&text, WrapMode::None, Some(65_000..65_080));
     assert_eq!(rows.len(), 1);
     assert!(!graphemes.is_empty(), "window should still emit graphemes");
     for g in &graphemes {
         assert_eq!(
-            g.col as usize, g.char_offset,
-            "pure-ASCII line: col must equal char index"
+            g.display_col as usize, g.char_offset,
+            "pure-ASCII line: display_col must equal char index"
         );
     }
     // Nothing before the window's left edge should appear.
-    assert!(graphemes.iter().all(|g| g.col >= 65_000));
+    assert!(graphemes.iter().all(|g| g.display_col >= 65_000));
 }
 
 // ── Inline-insert char_offset partition invariant (B2) ──────────────
@@ -734,7 +742,7 @@ fn long_line_no_wrap_window_scrolled_right_has_correct_cols() {
 #[test]
 fn row_char_offsets_are_non_decreasing_with_inline_inserts() {
     // Inserts at several offsets, including one at byte 0 (row-start) and
-    // one past the last real char (trailing). `resolve_grapheme_col`'s
+    // one past the last real char (trailing). `resolve_grapheme_display_col`'s
     // partition_point requires the whole row sorted by char_offset.
     let rope = Rope::from_str("abcdef");
     let inserts = vec![
@@ -815,9 +823,13 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
         .collect();
     assert_eq!(insert_cells.len(), 300, "one virtual cell per grapheme");
     assert!(insert_cells.iter().all(|g| g.width == 1));
-    let cols: Vec<u32> = insert_cells.iter().map(|g| g.col).collect();
+    let display_cols: Vec<u32> = insert_cells.iter().map(|g| g.display_col).collect();
     let expected: Vec<u32> = (0..300).collect();
-    assert_eq!(cols, expected, "columns advance 0..300 without wraparound");
+    assert_eq!(
+        display_cols,
+        expected,
+        "columns advance 0..300 without wraparound"
+    );
 }
 
 #[test]
@@ -852,9 +864,9 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
         .collect();
     assert_eq!(insert_cells.len(), 5, "one virtual cell per grapheme");
     assert!(insert_cells.iter().all(|g| g.width == 1));
-    let cols: Vec<u32> = insert_cells.iter().map(|g| g.col).collect();
+    let display_cols: Vec<u32> = insert_cells.iter().map(|g| g.display_col).collect();
     assert_eq!(
-        cols,
+        display_cols,
         vec![3, 4, 5, 6, 7],
         "columns advance one-by-one starting right after 'abc'"
     );
@@ -862,16 +874,16 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
 
 #[test]
 fn no_window_caller_reaches_true_column_past_former_u16_ceiling() {
-    // `current_col`/`Grapheme::col` are `u32`: the column at the end of a
-    // 70,000-char pure-ASCII line is its true (unclamped) char index, never
-    // saturating at `u16::MAX` (65,535). Independent oracle: every char is 1
-    // column wide, so col == index.
+    // `current_display_col`/`Grapheme::display_col` are `u32`: the column at
+    // the end of a 70,000-char pure-ASCII line is its true (unclamped) char
+    // index, never saturating at `u16::MAX` (65,535). Independent oracle:
+    // every char is 1 column wide, so display_col == index.
     let text: String = "a".repeat(70_000);
     let (rows, graphemes) = do_format_windowed(&text, WrapMode::None, None);
     assert_eq!(rows.len(), 1);
     assert_eq!(graphemes.len(), 70_000, "no window: every char is scanned");
     assert_eq!(
-        graphemes.last().unwrap().col,
+        graphemes.last().unwrap().display_col,
         69_999,
         "column exceeds the former u16 ceiling instead of saturating at it"
     );

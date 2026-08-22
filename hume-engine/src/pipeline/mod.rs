@@ -45,8 +45,8 @@ pub struct FrameScratch {
     pub style: StyleScratch,
     /// Scratch storage for gutter cells rendered per row.
     pub gutter_cells: Vec<GutterCell>,
-    /// Pre-computed gutter column widths used by the render stage.
-    pub col_widths: Vec<u16>,
+    /// Pre-computed gutter lane widths used by the render stage.
+    pub lane_widths: Vec<u16>,
 }
 
 impl FrameScratch {
@@ -55,7 +55,7 @@ impl FrameScratch {
             format: FormatScratch::new(),
             style: StyleScratch::new(),
             gutter_cells: Vec::new(),
-            col_widths: Vec::new(),
+            lane_widths: Vec::new(),
         }
     }
 
@@ -64,7 +64,7 @@ impl FrameScratch {
         self.format.clear();
         self.style.clear();
         self.gutter_cells.clear();
-        self.col_widths.clear();
+        self.lane_widths.clear();
     }
 }
 
@@ -96,16 +96,19 @@ pub struct RenderContext {
     /// render so junction glyphs (`┬ ┴ ├ ┤ ┼`) can be drawn where seams
     /// cross. Reused scratch storage, same rationale as `seams`.
     pub(crate) seam_arms: FxHashMap<(u16, u16), u8>,
-    /// Scratch for cursor-position computation (`cursor::screen_pos` and scroll).
+    /// Scratch for cursor-position computation (`cursor::content_pos` and scroll).
     /// Distinct from `frame.format` — used outside the render pipeline, where
     /// borrowing `frame` simultaneously would conflict.
     pub cursor_format: FormatScratch,
-    /// Where the focused pane's cursor landed on screen (pane-relative, before
-    /// the gutter), resolved by the scroll step that already had the row map
-    /// open. `None` until that step runs, and reset every frame — a
-    /// `RenderContext` outlives the frame that filled it, so a leftover value
-    /// must never read as the current one.
-    pub cursor_screen: Option<(u16, u16)>,
+    /// Where the focused pane's cursor landed within the pane's content area
+    /// (pane-relative, *before* the gutter and pane origin are added — not a
+    /// terminal-absolute screen cell), resolved by the scroll step that
+    /// already had the row map open. `None` until that step runs, and reset
+    /// every frame — a `RenderContext` outlives the frame that filled it, so
+    /// a leftover value must never read as the current one. Callers that need
+    /// the real screen cell add the gutter width and the pane rect's origin
+    /// (see `lifecycle.rs`/`overlay_sync.rs` in `hume-editor`).
+    pub cursor_content_pos: Option<(u16, u16)>,
 }
 
 impl RenderContext {
@@ -116,7 +119,7 @@ impl RenderContext {
             seams: Vec::new(),
             seam_arms: FxHashMap::default(),
             cursor_format: FormatScratch::new(),
-            cursor_screen: None,
+            cursor_content_pos: None,
         }
     }
 }

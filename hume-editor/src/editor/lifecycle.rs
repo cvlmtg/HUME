@@ -432,7 +432,7 @@ impl Editor {
                     .pane_rect(self.state.focused_pane_id)
                     .map(|r| (r.x, r.y))
                     .expect("focused pane must have a rect after prepare_frame");
-                ctx.cursor_screen
+                ctx.cursor_content_pos
                     .map(|(col, row)| (col + gutter_w + ox, row + oy))
             } else {
                 None

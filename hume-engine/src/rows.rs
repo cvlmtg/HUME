@@ -86,7 +86,7 @@ impl RowsBreakdown {
 /// a click and a sticky-column vertical move optimise different things, and
 /// collapsing them regresses one or the other.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ColTarget {
+pub enum DisplayColTarget {
     /// The cell that *contains* this column — what a mouse click asks. A
     /// column inside a wide cell (a tab's expanse, a double-width glyph)
     /// resolves to that cell, and the end-of-line sentinel is a valid landing
@@ -472,8 +472,8 @@ impl<'a> RowMap<'a> {
         // Only up to the target: everything past it is irrelevant to where
         // this one offset sits.
         self.ensure_formatted(line, FormatBound::ToByte(target_byte));
-        let (sub, col) = self.locate_in_line(line, target_byte, char_offset);
-        (RowPos::new(line, before + sub), col)
+        let (sub, display_col) = self.locate_in_line(line, target_byte, char_offset);
+        (RowPos::new(line, before + sub), display_col)
     }
 
     /// Which content sub-row of `line` holds `target_byte` (line-relative,
@@ -494,17 +494,21 @@ impl<'a> RowMap<'a> {
                 && (target_byte < last.byte_range.end || is_last)
             {
                 // The real grapheme, not an inline-insert decoration sharing
-                // its `char_offset` — `style::resolve_grapheme_col` skips
-                // forward past any `Virtual` cells to reach it, the same rule
-                // `style::char_offset_to_col` applies for selection styling.
-                let col =
-                    crate::style::resolve_grapheme_col(char_offset, graphemes, &row.graphemes)
-                        .map_or_else(
-                            // Past every grapheme on the row (end of line).
-                            || last.col.saturating_add(last.width as u32),
-                            |(col, _)| col,
-                        );
-                return (i, col);
+                // its `char_offset` — `style::resolve_grapheme_display_col`
+                // skips forward past any `Virtual` cells to reach it, the
+                // same rule `style::char_offset_to_display_col` applies for
+                // selection styling.
+                let display_col = crate::style::resolve_grapheme_display_col(
+                    char_offset,
+                    graphemes,
+                    &row.graphemes,
+                )
+                .map_or_else(
+                    // Past every grapheme on the row (end of line).
+                    || last.display_col.saturating_add(last.width as u32),
+                    |(display_col, _)| display_col,
+                );
+                return (i, display_col);
             }
         }
 
@@ -522,14 +526,14 @@ impl<'a> RowMap<'a> {
              line"
         );
         let last_row = rows.len().saturating_sub(1);
-        let col = rows
+        let display_col = rows
             .get(last_row)
             .filter(|r| !r.graphemes.is_empty())
             .map_or(0, |r| {
                 let lg = &graphemes[r.graphemes.end - 1];
-                lg.col.saturating_add(lg.width as u32)
+                lg.display_col.saturating_add(lg.width as u32)
             });
-        (last_row, col)
+        (last_row, display_col)
     }
 
     /// The display row `char_offset` sits on, without resolving its column.
@@ -555,13 +559,13 @@ impl<'a> RowMap<'a> {
         RowPos::new(line, self.block(line).before)
     }
 
-    /// The char offset `target_col` resolves to on `pos`'s row, under
+    /// The char offset `target_display_col` resolves to on `pos`'s row, under
     /// `target`'s policy.
     ///
     /// A virtual row is not buffer content, so `pos` landing on one clamps to
     /// the nearest content sub-row of the same line — the first for a `Before`
     /// row, the last for an `After` row.
-    pub fn char_at(&mut self, pos: RowPos, target_col: u32, target: ColTarget) -> usize {
+    pub fn char_at(&mut self, pos: RowPos, target_display_col: u32, target: DisplayColTarget) -> usize {
         let b = self.block(pos.line);
         let sub = pos
             .row
@@ -569,7 +573,7 @@ impl<'a> RowMap<'a> {
             .min(b.content.saturating_sub(1));
         // Only up to the target column: no cell further right can be the one
         // this column resolves to, under either policy.
-        self.ensure_formatted(pos.line, FormatBound::ToCol(target_col));
+        self.ensure_formatted(pos.line, FormatBound::ToDisplayCol(target_display_col));
 
         let line_start = self.rope.line_to_char(pos.line);
         let Some(row) = self.scratch.display_rows.get(sub) else {
@@ -581,14 +585,14 @@ impl<'a> RowMap<'a> {
         }
 
         match target {
-            ColTarget::Cell => {
+            DisplayColTarget::Cell => {
                 graphemes
                     .iter()
-                    .find(|g| target_col < g.col.saturating_add(g.width as u32))
+                    .find(|g| target_display_col < g.display_col.saturating_add(g.width as u32))
                     .unwrap_or_else(|| graphemes.last().expect("non-empty checked above"))
                     .char_offset
             }
-            ColTarget::NearestContent => {
+            DisplayColTarget::NearestContent => {
                 // Eligibility by content type: `Grapheme`/`WidthContinuation`
                 // are real content, always eligible. `Empty` (EOL sentinel)
                 // has a buffer position but isn't content, so it only
@@ -621,7 +625,7 @@ impl<'a> RowMap<'a> {
                             CellContent::Virtual { .. } => false,
                             CellContent::Indicator { .. } => !g.byte_range.is_empty(),
                         })
-                        .min_by_key(|g| target_col.abs_diff(g.col))
+                        .min_by_key(|g| target_display_col.abs_diff(g.display_col))
                         .map(|g| g.char_offset)
                 };
                 nearest(false)
@@ -724,10 +728,10 @@ impl<'a> RowMap<'a> {
         // O(graphemes + segments) instead of a per-grapheme linear scan.
         let mut scope_cursor = crate::style::highlight::IntervalCursor::new(&vl.segments);
         let tab_width = self.tab_width as usize;
-        let mut col: u32 = 0;
+        let mut display_col: u32 = 0;
         for (byte_offset, grapheme_str) in vl.text.grapheme_indices(true) {
-            let width =
-                hume_rope::width::grapheme_width(grapheme_str, col as usize, tab_width) as u8;
+            let width = hume_rope::width::grapheme_width(grapheme_str, display_col as usize, tab_width)
+                as u8;
             let scope = scope_cursor.scope_at(byte_offset).or(base_scope);
 
             // A literal tab renders as a space, exactly like a buffer line's
@@ -748,19 +752,19 @@ impl<'a> RowMap<'a> {
             vrow.graphemes.push(Grapheme {
                 byte_range: 0..0, // zero-length: virtual, no buffer position
                 char_offset: usize::MAX,
-                col,
+                display_col,
                 width,
                 content,
                 indent_depth: 0,
                 scope,
             });
-            col = col.saturating_add(width as u32);
+            display_col = display_col.saturating_add(width as u32);
             if width == 2 {
                 // Both cells of a double-wide glyph stay on this row.
                 vrow.graphemes.push(Grapheme {
                     byte_range: 0..0,
                     char_offset: usize::MAX,
-                    col,
+                    display_col,
                     width: 0,
                     content: CellContent::WidthContinuation,
                     indent_depth: 0,

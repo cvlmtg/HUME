@@ -52,9 +52,9 @@ pub(crate) fn render_pane(
         .style
         .populate_sorted_sels(&pane_ctx.pane.selections, pane_ctx.pane.primary_idx);
 
-    // Gutter column widths: constant for the entire frame.
-    scratch.col_widths.clear();
-    scratch.col_widths.extend(
+    // Gutter lane widths: constant for the entire frame.
+    scratch.lane_widths.clear();
+    scratch.lane_widths.extend(
         pane_ctx
             .pane
             .providers
@@ -100,7 +100,7 @@ pub(crate) fn render_pane(
     let FrameScratch {
         format,
         style,
-        col_widths,
+        lane_widths,
         ..
     } = scratch;
     let mut rows = RowMap::new(
@@ -162,7 +162,7 @@ pub(crate) fn render_pane(
                     row.line_text,
                     row.virtual_texts,
                     screen_row,
-                    col_widths,
+                    lane_widths,
                     &compose_ctx,
                     &mut canvas,
                     row_bg,
@@ -201,7 +201,7 @@ pub(crate) fn render_pane(
                     "",
                     row.virtual_texts,
                     screen_row,
-                    col_widths,
+                    lane_widths,
                     &compose_ctx,
                     &mut canvas,
                     row_bg,
@@ -221,7 +221,7 @@ pub(crate) fn render_pane(
         }
     }
 
-    render::render_tilde_fillers(screen_row, col_widths, &compose_ctx, &mut canvas);
+    render::render_tilde_fillers(screen_row, lane_widths, &compose_ctx, &mut canvas);
 }
 
 // ---------------------------------------------------------------------------

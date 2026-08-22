@@ -57,7 +57,7 @@ fn make_graphemes(count: usize) -> Vec<Grapheme> {
         .map(|i| Grapheme {
             byte_range: i..i + 1,
             char_offset: i,
-            col: i as u32,
+            display_col: i as u32,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -194,7 +194,7 @@ fn selection_head_overrides_default() {
         &mut scratch,
     );
 
-    // Grapheme at col 2 (index 2) should have the cursor style.
+    // Grapheme at display_col 2 (index 2) should have the cursor style.
     assert_eq!(scratch.styles[2].fg, Some(ratatui::style::Color::Red));
     // Other graphemes should not.
     assert_eq!(scratch.styles[0].fg, None);
@@ -206,18 +206,18 @@ fn make_graphemes_with_sentinel() -> Vec<Grapheme> {
         .map(|i| Grapheme {
             byte_range: i..i + 1,
             char_offset: i,
-            col: i as u32,
+            display_col: i as u32,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
             scope: None,
         })
         .collect::<Vec<_>>();
-    // eol sentinel at char_offset=5, col=5 (the `\n` position).
+    // eol sentinel at char_offset=5, display_col=5 (the `\n` position).
     gs.push(Grapheme {
         byte_range: 5..5,
         char_offset: 5,
-        col: 5,
+        display_col: 5,
         width: 1,
         content: CellContent::Empty,
         indent_depth: 0,
@@ -300,16 +300,16 @@ fn selection_range_highlighted() {
         &mut scratch,
     );
 
-    assert_eq!(scratch.styles[0].bg, None, "col 0 outside selection");
+    assert_eq!(scratch.styles[0].bg, None, "display_col 0 outside selection");
     assert_eq!(
         scratch.styles[1].bg,
         Some(ratatui::style::Color::Red),
-        "col 1 inside selection"
+        "display_col 1 inside selection"
     );
     assert_eq!(
         scratch.styles[2].bg,
         Some(ratatui::style::Color::Red),
-        "col 2 inside selection"
+        "display_col 2 inside selection"
     );
 }
 
@@ -319,7 +319,7 @@ fn selection_range_highlighted() {
 #[test]
 fn backward_selection_anchor_cell_highlighted() {
     // "foo": chars 0,1,2. Backward selection: head=0, anchor=2.
-    // Expected: col 0 painted as cursor (head), cols 1 and 2 painted as selection.
+    // Expected: display_col 0 painted as cursor (head), cols 1 and 2 painted as selection.
     let rope = ropey::Rope::from_str("foo");
     let graphemes = make_graphemes(3);
     let rows = vec![make_row(0..3)];
@@ -356,18 +356,18 @@ fn backward_selection_anchor_cell_highlighted() {
     assert_eq!(
         scratch.styles[0].fg,
         Some(ratatui::style::Color::White),
-        "col 0 is the head — must have cursor fg"
+        "display_col 0 is the head — must have cursor fg"
     );
     assert_eq!(
         scratch.styles[1].bg,
         Some(ratatui::style::Color::Blue),
-        "col 1 is inside selection — must have selection bg"
+        "display_col 1 is inside selection — must have selection bg"
     );
-    // Regression: col 2 is the anchor (highest char), was rendered plain before fix.
+    // Regression: display_col 2 is the anchor (highest char), was rendered plain before fix.
     assert_eq!(
         scratch.styles[2].bg,
         Some(ratatui::style::Color::Blue),
-        "col 2 is the anchor — must have selection bg (regression)"
+        "display_col 2 is the anchor — must have selection bg (regression)"
     );
 }
 
@@ -407,18 +407,18 @@ fn insert_mode_collapsed_selection_not_highlighted() {
     assert_ne!(
         scratch.styles[1].bg,
         Some(ratatui::style::Color::Blue),
-        "col 1 is the collapsed cursor — must NOT have selection bg"
+        "display_col 1 is the collapsed cursor — must NOT have selection bg"
     );
     // Neighboring cells are also not highlighted.
     assert_ne!(
         scratch.styles[0].bg,
         Some(ratatui::style::Color::Blue),
-        "col 0 not highlighted"
+        "display_col 0 not highlighted"
     );
     assert_ne!(
         scratch.styles[2].bg,
         Some(ratatui::style::Color::Blue),
-        "col 2 not highlighted"
+        "display_col 2 not highlighted"
     );
 }
 
@@ -430,7 +430,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
     let g0 = Grapheme {
         byte_range: 0..1,
         char_offset: 0,
-        col: 0,
+        display_col: 0,
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,
@@ -439,7 +439,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
     let g1 = Grapheme {
         byte_range: 1..2,
         char_offset: 1,
-        col: 1,
+        display_col: 1,
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,
@@ -448,7 +448,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
     let g2 = Grapheme {
         byte_range: 0..1,
         char_offset: 3,
-        col: 0,
+        display_col: 0,
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,
@@ -457,7 +457,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
     let g3 = Grapheme {
         byte_range: 1..2,
         char_offset: 4,
-        col: 1,
+        display_col: 1,
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,
@@ -607,7 +607,7 @@ fn cursorline_applies_only_to_primary_head_line() {
         Grapheme {
             byte_range: 0..1,
             char_offset: 0,
-            col: 0,
+            display_col: 0,
             width: 1,
             content: crate::types::CellContent::Grapheme,
             indent_depth: 0,
@@ -616,7 +616,7 @@ fn cursorline_applies_only_to_primary_head_line() {
         Grapheme {
             byte_range: 0..1,
             char_offset: 2,
-            col: 0,
+            display_col: 0,
             width: 1,
             content: crate::types::CellContent::Grapheme,
             indent_depth: 0,
@@ -625,7 +625,7 @@ fn cursorline_applies_only_to_primary_head_line() {
         Grapheme {
             byte_range: 0..1,
             char_offset: 4,
-            col: 0,
+            display_col: 0,
             width: 1,
             content: crate::types::CellContent::Grapheme,
             indent_depth: 0,
@@ -693,7 +693,7 @@ fn virtual_rows_keep_default_style() {
         Grapheme {
             byte_range: 0..1,
             char_offset: 0,
-            col: 0,
+            display_col: 0,
             width: 1,
             content: crate::types::CellContent::Grapheme,
             indent_depth: 0,
@@ -702,7 +702,7 @@ fn virtual_rows_keep_default_style() {
         Grapheme {
             byte_range: 0..0,
             char_offset: usize::MAX,
-            col: 0,
+            display_col: 0,
             width: 1,
             content: crate::types::CellContent::Virtual { start: 0, len: 4 },
             indent_depth: 0,
@@ -754,13 +754,13 @@ fn virtual_rows_keep_default_style() {
 #[test]
 fn primary_head_gets_primary_style() {
     // Two selection heads on the same line (cols 0 and 2). Primary is first in the
-    // selections slice (col 0). Theme has distinct styles for primary vs secondary.
+    // selections slice (display_col 0). Theme has distinct styles for primary vs secondary.
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
     let rows = vec![make_row(0..5)];
     let selections = vec![
-        Selection { anchor: 0, head: 0 }, // primary (col 0)
-        Selection { anchor: 2, head: 2 }, // secondary (col 2)
+        Selection { anchor: 0, head: 0 }, // primary (display_col 0)
+        Selection { anchor: 2, head: 2 }, // secondary (display_col 2)
     ];
 
     let mut styles_map = HashMap::new();
@@ -847,29 +847,29 @@ fn primary_selection_gets_primary_style() {
     assert_eq!(
         scratch.styles[0].bg,
         Some(ratatui::style::Color::Cyan),
-        "col 0 in primary selection"
+        "display_col 0 in primary selection"
     );
     assert_eq!(
         scratch.styles[1].bg,
         Some(ratatui::style::Color::Cyan),
-        "col 1 in primary selection"
+        "display_col 1 in primary selection"
     );
     // Secondary selection: cols 3 and 4 (bytes 3..5)
     assert_eq!(
         scratch.styles[3].bg,
         Some(ratatui::style::Color::Blue),
-        "col 3 in secondary selection"
+        "display_col 3 in secondary selection"
     );
     assert_eq!(
         scratch.styles[4].bg,
         Some(ratatui::style::Color::Blue),
-        "col 4 in secondary selection"
+        "display_col 4 in secondary selection"
     );
     // Col 2 is the head of the primary selection — included in the span, so it gets primary bg.
     assert_eq!(
         scratch.styles[2].bg,
         Some(ratatui::style::Color::Cyan),
-        "col 2 is primary head — must have primary selection bg"
+        "display_col 2 is primary head — must have primary selection bg"
     );
 }
 
@@ -921,8 +921,8 @@ fn primary_head_falls_back_when_no_primary_scope() {
 #[test]
 fn head_on_wrapped_line_only_on_correct_segment() {
     // Simulate a wrapped line: line 0 has two display rows.
-    // First segment: graphemes at byte ranges 0..1 (col 0), 1..2 (col 1), 2..3 (col 2).
-    // Second segment: graphemes at byte ranges 3..4 (col 0), 4..5 (col 1).
+    // First segment: graphemes at byte ranges 0..1 (display_col 0), 1..2 (display_col 1), 2..3 (display_col 2).
+    // Second segment: graphemes at byte ranges 3..4 (display_col 0), 4..5 (display_col 1).
     // Cursor head is at char_offset=1 (first segment). It must appear only on row 0.
     // "abcde" has no newlines so all chars are on line 0 with absolute char offsets 0..5.
     let rope = ropey::Rope::from_str("abcde");
@@ -930,7 +930,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
         Grapheme {
             byte_range: 0..1,
             char_offset: 0,
-            col: 0,
+            display_col: 0,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -939,7 +939,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
         Grapheme {
             byte_range: 1..2,
             char_offset: 1,
-            col: 1,
+            display_col: 1,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -948,7 +948,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
         Grapheme {
             byte_range: 2..3,
             char_offset: 2,
-            col: 2,
+            display_col: 2,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -957,7 +957,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
         Grapheme {
             byte_range: 3..4,
             char_offset: 3,
-            col: 0,
+            display_col: 0,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -966,7 +966,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
         Grapheme {
             byte_range: 4..5,
             char_offset: 4,
-            col: 1,
+            display_col: 1,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1009,20 +1009,20 @@ fn head_on_wrapped_line_only_on_correct_segment() {
         &mut scratch,
     );
 
-    // Selection head at byte 1 → col 1 in the first segment.
+    // Selection head at byte 1 → display_col 1 in the first segment.
     assert_eq!(
         scratch.styles[1].fg,
         Some(ratatui::style::Color::Red),
-        "selection head at col 1 in first segment"
+        "selection head at display_col 1 in first segment"
     );
     // Second segment graphemes must NOT have the head style.
     assert_eq!(
         scratch.styles[3].fg, None,
-        "wrap segment col 0 must not show head style"
+        "wrap segment display_col 0 must not show head style"
     );
     assert_eq!(
         scratch.styles[4].fg, None,
-        "wrap segment col 1 must not show head style"
+        "wrap segment display_col 1 must not show head style"
     );
 }
 
@@ -1036,7 +1036,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
         Grapheme {
             byte_range: 0..1,
             char_offset: 0,
-            col: 0,
+            display_col: 0,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1045,7 +1045,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
         Grapheme {
             byte_range: 1..2,
             char_offset: 1,
-            col: 1,
+            display_col: 1,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1054,7 +1054,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
         Grapheme {
             byte_range: 2..3,
             char_offset: 2,
-            col: 2,
+            display_col: 2,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1063,7 +1063,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
         Grapheme {
             byte_range: 3..4,
             char_offset: 3,
-            col: 0,
+            display_col: 0,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1072,7 +1072,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
         Grapheme {
             byte_range: 4..5,
             char_offset: 4,
-            col: 1,
+            display_col: 1,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1119,27 +1119,27 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
     assert_eq!(
         scratch.styles[0].bg,
         Some(ratatui::style::Color::Blue),
-        "col 0 in selection"
+        "display_col 0 in selection"
     );
     assert_eq!(
         scratch.styles[1].bg,
         Some(ratatui::style::Color::Blue),
-        "col 1 in selection"
+        "display_col 1 in selection"
     );
     // Col 2 is the head of the selection (char 2 is included in [0,2]); it gets selection bg.
     assert_eq!(
         scratch.styles[2].bg,
         Some(ratatui::style::Color::Blue),
-        "col 2 is selection head — included in inclusive span"
+        "display_col 2 is selection head — included in inclusive span"
     );
     // Segment 1: no selection highlight at all.
     assert_eq!(
         scratch.styles[3].bg, None,
-        "wrap segment col 0 must not show selection"
+        "wrap segment display_col 0 must not show selection"
     );
     assert_eq!(
         scratch.styles[4].bg, None,
-        "wrap segment col 1 must not show selection"
+        "wrap segment display_col 1 must not show selection"
     );
 }
 
@@ -1227,7 +1227,7 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
     // The insert and 'c' share char_offset 2 (the insert is pushed first,
     // at the offset of the grapheme it precedes) — the exact tie
     // `resolve_grapheme_col` must break in favour of the real grapheme.
-    // Cursor at char 2 ('c') must land at col 4, not the insert's col 2.
+    // Cursor at char 2 ('c') must land at display_col 4, not the insert's display_col 2.
     let rope = ropey::Rope::from_str("abcdef");
     let mut registry = crate::theme::ScopeRegistry::new();
     let insert_scope = registry.intern("test");
@@ -1277,7 +1277,7 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
         .position(|g| g.char_offset == 2 && matches!(g.content, CellContent::Grapheme))
         .expect("'c' grapheme present");
     assert_eq!(
-        fmt.graphemes[c_idx].col, 4,
+        fmt.graphemes[c_idx].display_col, 4,
         "'c' shifts right by the insert's width"
     );
     assert_eq!(
@@ -1300,10 +1300,10 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
 
 #[test]
 fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
-    // Insert at byte 0 — the row starts with a virtual cell at col 0,
-    // then 'a' at col 1, 'b' at col 2, etc. A selection over chars 0..1
-    // ('a','b') must start its highlighted span at 'a's col (1), not the
-    // insert's col (0).
+    // Insert at byte 0 — the row starts with a virtual cell at display_col 0,
+    // then 'a' at display_col 1, 'b' at display_col 2, etc. A selection over chars 0..1
+    // ('a','b') must start its highlighted span at 'a's display_col (1), not the
+    // insert's display_col (0).
     let rope = ropey::Rope::from_str("abcdef");
     let mut registry = crate::theme::ScopeRegistry::new();
     let insert_scope = registry.intern("test");
@@ -1352,7 +1352,7 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
         .iter()
         .position(|g| matches!(g.content, CellContent::Virtual { .. }))
         .expect("insert grapheme present");
-    assert_eq!(fmt.graphemes[insert_idx].col, 0);
+    assert_eq!(fmt.graphemes[insert_idx].display_col, 0);
     assert_eq!(
         scratch.styles[insert_idx].bg, None,
         "the row-start insert cell must not be painted as part of the selection"
@@ -1368,7 +1368,7 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
         .iter()
         .position(|g| g.char_offset == 1 && matches!(g.content, CellContent::Grapheme))
         .expect("'b' grapheme present");
-    assert_eq!(fmt.graphemes[a_idx].col, 1);
+    assert_eq!(fmt.graphemes[a_idx].display_col, 1);
     assert_eq!(
         scratch.styles[a_idx].bg,
         Some(ratatui::style::Color::Blue),

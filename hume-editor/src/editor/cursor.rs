@@ -11,7 +11,7 @@
 use hume_engine::layout::gutter_width_for_line;
 use hume_engine::pane::ViewportState;
 use hume_engine::providers::GutterColumn;
-use hume_engine::rows::{ColTarget, RowMap};
+use hume_engine::rows::{DisplayColTarget, RowMap};
 
 use super::scroll::top_pos;
 
@@ -120,7 +120,7 @@ pub(crate) fn screen_to_char_offset(
     // A click asks which cell it hit, so a column past the text resolves to
     // the row's last cell rather than its last *content* cell — landing on the
     // line's `\n`, a real cursor position in HUME's inclusive model.
-    Some(rm.char_at(clicked, content_col, ColTarget::Cell))
+    Some(rm.char_at(clicked, content_col, DisplayColTarget::Cell))
 }
 
 // ---------------------------------------------------------------------------

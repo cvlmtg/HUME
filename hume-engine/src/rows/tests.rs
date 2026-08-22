@@ -709,7 +709,7 @@ fn char_at_cell_lands_on_the_eol_sentinel_past_the_text() {
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(rm.char_at(RowPos::new(0, 0), 99, ColTarget::Cell), 2);
+    assert_eq!(rm.char_at(RowPos::new(0, 0), 99, DisplayColTarget::Cell), 2);
 }
 
 #[test]
@@ -722,7 +722,7 @@ fn char_at_nearest_content_stays_off_the_eol_sentinel() {
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(RowPos::new(0, 0), 99, ColTarget::NearestContent),
+        rm.char_at(RowPos::new(0, 0), 99, DisplayColTarget::NearestContent),
         1
     );
 }
@@ -743,7 +743,7 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
     let mut rm = RowMap::new(&rope, WrapMode::None, 4, whitespace, &providers, 80, &mut s);
 
     assert_eq!(
-        rm.char_at(RowPos::new(0, 0), 99, ColTarget::NearestContent),
+        rm.char_at(RowPos::new(0, 0), 99, DisplayColTarget::NearestContent),
         1,
         "sticky column must land on 'i', not the newline indicator"
     );
@@ -763,7 +763,7 @@ fn char_at_nearest_content_skips_a_trailing_inline_insert() {
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(RowPos::new(0, 0), 10, ColTarget::NearestContent),
+        rm.char_at(RowPos::new(0, 0), 10, DisplayColTarget::NearestContent),
         1,
         "sticky column must land on 'i', not the trailing insert or the newline"
     );
@@ -778,7 +778,7 @@ fn char_at_nearest_content_falls_back_to_the_sentinel_on_an_empty_line() {
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(RowPos::new(0, 0), 5, ColTarget::NearestContent),
+        rm.char_at(RowPos::new(0, 0), 5, DisplayColTarget::NearestContent),
         0
     );
 }
@@ -793,12 +793,12 @@ fn char_at_resolves_a_column_inside_a_wide_cell_differently_per_policy() {
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(RowPos::new(0, 0), 3, ColTarget::Cell),
+        rm.char_at(RowPos::new(0, 0), 3, DisplayColTarget::Cell),
         0,
         "a click at column 3 hit the tab, so it selects the tab"
     );
     assert_eq!(
-        rm.char_at(RowPos::new(0, 0), 3, ColTarget::NearestContent),
+        rm.char_at(RowPos::new(0, 0), 3, DisplayColTarget::NearestContent),
         1,
         "a sticky column of 3 is nearer 'x' at column 4 than the tab at 0"
     );
@@ -816,12 +816,12 @@ fn char_at_on_a_virtual_row_clamps_to_the_lines_own_content() {
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(RowPos::new(1, 0), 0, ColTarget::Cell),
+        rm.char_at(RowPos::new(1, 0), 0, DisplayColTarget::Cell),
         rope.line_to_char(1),
         "the Before row resolves to line 1's first content row"
     );
     assert_eq!(
-        rm.char_at(RowPos::new(2, 1), 0, ColTarget::Cell),
+        rm.char_at(RowPos::new(2, 1), 0, DisplayColTarget::Cell),
         rope.line_to_char(2),
         "the After row resolves to line 2's last content row"
     );
@@ -940,13 +940,13 @@ fn render_row_expands_a_tab_in_a_virtual_lines_text() {
     let virtual_row = rm.render_row(RowPos::new(0, 0));
     let cells = &virtual_row.graphemes[virtual_row.row.graphemes.clone()];
     assert_eq!(cells.len(), 2, "one cell for the tab, one for 'x'");
-    assert_eq!(cells[0].col, 0);
-    assert_eq!(cells[0].width, 4, "tab at col 0, tab_width 4 -> full stop");
+    assert_eq!(cells[0].display_col, 0);
+    assert_eq!(cells[0].width, 4, "tab at display_col 0, tab_width 4 -> full stop");
     assert!(
         matches!(cells[0].content, CellContent::Indicator { .. }),
         "a tab renders as a space-filled Indicator, matching a real buffer line's tab with its indicator off"
     );
-    assert_eq!(cells[1].col, 4, "'x' lands right after the tab stop");
+    assert_eq!(cells[1].display_col, 4, "'x' lands right after the tab stop");
 }
 
 #[test]
@@ -972,13 +972,13 @@ fn render_row_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop() {
     // so it also occupies 2 columns and gets its own WidthContinuation —
     // same as any width-2 cell, tab or not), then 'x'.
     assert_eq!(cells.len(), 5);
-    assert_eq!(cells[0].col, 0);
+    assert_eq!(cells[0].display_col, 0);
     assert_eq!(cells[0].width, 2);
     assert!(matches!(cells[1].content, CellContent::WidthContinuation));
-    assert_eq!(cells[2].col, 2, "tab starts right after the wide char");
+    assert_eq!(cells[2].display_col, 2, "tab starts right after the wide char");
     assert_eq!(cells[2].width, 2, "tab_advance(2, 4) == 2");
     assert!(matches!(cells[3].content, CellContent::WidthContinuation));
-    assert_eq!(cells[4].col, 4, "'x' lands at column 4, not 3");
+    assert_eq!(cells[4].display_col, 4, "'x' lands at column 4, not 3");
 }
 
 #[test]
@@ -1096,7 +1096,7 @@ fn char_at_formats_only_as_far_as_the_target_column() {
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(rm.char_at(RowPos::new(0, 0), 5, ColTarget::Cell), 5);
+    assert_eq!(rm.char_at(RowPos::new(0, 0), 5, DisplayColTarget::Cell), 5);
 
     drop(rm);
     assert_eq!(
@@ -1129,7 +1129,7 @@ fn a_column_query_after_an_offset_query_reformats() {
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     let (pos, _) = rm.locate(3);
-    assert_eq!(rm.char_at(pos, 40, ColTarget::Cell), 40);
+    assert_eq!(rm.char_at(pos, 40, DisplayColTarget::Cell), 40);
 }
 
 #[test]

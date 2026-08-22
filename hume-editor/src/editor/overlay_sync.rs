@@ -77,7 +77,7 @@ impl Editor {
         // cursor or the viewport, so the two callers anchored at the live
         // cursor (`sync_popup_view`, `sync_menu_view`) can reuse it instead of
         // re-walking the row list (a full per-line format in wrap mode).
-        let (col, row) = match ctx.cursor_screen {
+        let (col, row) = match ctx.cursor_content_pos {
             Some(cell) if anchor_char == self.focused_cursor_char() => cell,
             _ => {
                 let vp = &self.view.panes[focused].viewport;

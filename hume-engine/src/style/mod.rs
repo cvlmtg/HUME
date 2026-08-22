@@ -25,10 +25,10 @@ pub struct StyleScratch {
     pub decorations: Vec<Decoration>,
     /// Sorted highlight intervals split by tier; built once per buffer line.
     pub tier_bufs: TierBufs,
-    /// Selection column spans for the current row (all selections, including primary).
+    /// Selection display-column spans for the current row (all selections, including primary).
     pub sel_spans: Vec<(u32, u32)>,
     /// Display columns of each selection head on the current row (all selections, including primary).
-    pub head_cols: Vec<u32>,
+    pub head_display_cols: Vec<u32>,
     /// Sorted copy of selections; populated once per frame or batch call.
     pub sorted_sels: Vec<Selection>,
     /// Index of the primary selection within `sorted_sels`. `None` if empty.
@@ -40,8 +40,8 @@ pub struct StyleScratch {
     /// fragile DocPos equality: two distinct selections could share the same head position.
     pub primary_idx_in_sorted: Option<usize>,
     /// Display column of the primary selection's head on the current row. `None` if not on this row.
-    pub primary_head_col: Option<u32>,
-    /// Column span of the primary selection on the current row. `None` if not on this row.
+    pub primary_head_display_col: Option<u32>,
+    /// Display-column span of the primary selection on the current row. `None` if not on this row.
     pub primary_sel_span: Option<(u32, u32)>,
 }
 
@@ -53,10 +53,10 @@ impl StyleScratch {
             decorations: Vec::with_capacity(256),
             tier_bufs: TierBufs::default(),
             sel_spans: Vec::new(),
-            head_cols: Vec::new(),
+            head_display_cols: Vec::new(),
             sorted_sels: Vec::new(),
             primary_idx_in_sorted: None,
-            primary_head_col: None,
+            primary_head_display_col: None,
             primary_sel_span: None,
         }
     }
@@ -84,10 +84,10 @@ impl StyleScratch {
         self.decorations.clear();
         self.tier_bufs.clear();
         self.sel_spans.clear();
-        self.head_cols.clear();
+        self.head_display_cols.clear();
         self.sorted_sels.clear();
         self.primary_idx_in_sorted = None;
-        self.primary_head_col = None;
+        self.primary_head_display_col = None;
         self.primary_sel_span = None;
     }
 }
@@ -134,15 +134,15 @@ pub(crate) fn style_row(
         &mut scratch.sel_spans,
         &mut scratch.primary_sel_span,
     );
-    collect_head_cols(
+    collect_head_display_cols(
         line_start_char,
         line_end_char,
         &scratch.sorted_sels,
         primary_idx,
         graphemes,
         &row.graphemes,
-        &mut scratch.head_cols,
-        &mut scratch.primary_head_col,
+        &mut scratch.head_display_cols,
+        &mut scratch.primary_head_display_col,
     );
 
     let mut hl = HighlightStack::new(&scratch.tier_bufs);
@@ -204,13 +204,13 @@ pub(crate) fn style_row(
         // Tier 1: selection (primary wins over secondary for style; both are highlighted)
         let in_primary_sel = scratch
             .primary_sel_span
-            .is_some_and(|(s, e)| g.col >= s && g.col < e);
+            .is_some_and(|(s, e)| g.display_col >= s && g.display_col < e);
         if in_primary_sel {
             style = style.layer(theme.ui.selection_primary);
         } else if scratch
             .sel_spans
             .iter()
-            .any(|&(s, e)| g.col >= s && g.col < e)
+            .any(|&(s, e)| g.display_col >= s && g.display_col < e)
         {
             style = style.layer(theme.ui.selection);
         }
@@ -220,7 +220,7 @@ pub(crate) fn style_row(
         // visually looks like a cursor. In bar-cursor modes (Insert, Command, …)
         // the terminal cursor overlaps this cell; in block modes it is the sole
         // visual indicator.
-        let is_primary_head = scratch.primary_head_col == Some(g.col);
+        let is_primary_head = scratch.primary_head_display_col == Some(g.display_col);
         if is_primary_head {
             let head_style = if mode.cursor_is_bar() {
                 theme.ui.cursor_insert_primary
@@ -228,7 +228,7 @@ pub(crate) fn style_row(
                 theme.ui.cursor_primary
             };
             style = style.layer(head_style);
-        } else if scratch.head_cols.contains(&g.col) {
+        } else if scratch.head_display_cols.contains(&g.display_col) {
             let head_style = if mode.cursor_is_bar() {
                 theme.ui.cursor_insert
             } else {
@@ -245,7 +245,7 @@ pub(crate) fn style_row(
 // Selection helpers
 // ---------------------------------------------------------------------------
 
-/// Collect (start_col, end_col_exclusive) spans for the given line within `row`.
+/// Collect (start_display_col, end_display_col_exclusive) spans for the given line within `row`.
 ///
 /// `line_start_char` / `line_end_char` are the half-open absolute-char range of
 /// the buffer line being rendered (from `rope.line_to_char`). Selections use
@@ -321,17 +321,18 @@ fn collect_selection_spans(
             }
         }
 
-        let col_start = char_offset_to_col(sel_char_start, graphemes, row_range).unwrap_or(0);
+        let display_col_start =
+            char_offset_to_display_col(sel_char_start, graphemes, row_range).unwrap_or(0);
         // Selections are inclusive at both ends, so the exclusive upper bound is
         // the right edge of the end grapheme (col + width), not its left edge
         // (col). Using the left edge caused backward selections to silently drop
         // their anchor cell from the highlighted span.
-        let col_end = char_offset_to_end_col(sel_char_end, graphemes, row_range)
-            .unwrap_or_else(|| row_gs.last().map_or(0, |g| g.col + g.width as u32));
-        if col_end > col_start {
-            out.push((col_start, col_end));
+        let display_col_end = char_offset_to_end_display_col(sel_char_end, graphemes, row_range)
+            .unwrap_or_else(|| row_gs.last().map_or(0, |g| g.display_col + g.width as u32));
+        if display_col_end > display_col_start {
+            out.push((display_col_start, display_col_end));
             if Some(idx) == primary_idx {
-                *primary_sel_span = Some((col_start, col_end));
+                *primary_sel_span = Some((display_col_start, display_col_end));
             }
         }
     }
@@ -342,10 +343,10 @@ fn collect_selection_spans(
 /// `line_start_char` / `line_end_char` are the half-open absolute-char range of
 /// the buffer line. Heads outside this range are skipped.
 ///
-/// Also sets `primary_head_col` when the primary selection (identified by
-/// `primary_idx`) has its head on this row.
+/// Also sets `primary_head_display_col` when the primary selection (identified
+/// by `primary_idx`) has its head on this row.
 #[allow(clippy::too_many_arguments)]
-fn collect_head_cols(
+fn collect_head_display_cols(
     line_start_char: usize,
     line_end_char: usize,
     sorted_sels: &[Selection],
@@ -353,18 +354,18 @@ fn collect_head_cols(
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
     out: &mut Vec<u32>,
-    primary_head_col: &mut Option<u32>,
+    primary_head_display_col: &mut Option<u32>,
 ) {
     out.clear();
-    *primary_head_col = None;
+    *primary_head_display_col = None;
     for (idx, sel) in sorted_sels.iter().enumerate() {
         if sel.head < line_start_char || sel.head >= line_end_char {
             continue;
         }
-        if let Some(col) = char_offset_to_col(sel.head, graphemes, row_range) {
-            out.push(col);
+        if let Some(display_col) = char_offset_to_display_col(sel.head, graphemes, row_range) {
+            out.push(display_col);
             if Some(idx) == primary_idx {
-                *primary_head_col = Some(col);
+                *primary_head_display_col = Some(display_col);
             }
         }
     }
@@ -385,7 +386,7 @@ fn collect_head_cols(
 /// `pub(crate)`: also the resolver `rows::RowMap::locate_in_line` uses, so the
 /// two column-lookup paths (selection styling, cursor placement) can't drift
 /// on how they treat a `Virtual` tie.
-pub(crate) fn resolve_grapheme_col(
+pub(crate) fn resolve_grapheme_display_col(
     char_offset: usize,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
@@ -414,31 +415,35 @@ pub(crate) fn resolve_grapheme_col(
     }) {
         idx += 1;
     }
-    row_graphemes.get(idx).map(|g| (g.col, g.width as u32))
+    row_graphemes
+        .get(idx)
+        .map(|g| (g.display_col, g.width as u32))
 }
 
-/// Left edge (`g.col`) of the grapheme at `char_offset` in this row.
+/// Left edge (`g.display_col`) of the grapheme at `char_offset` in this row.
 ///
 /// Returns `None` for the usize::MAX sentinel or for positions on an earlier
 /// wrap segment. Callers use a fallback when `None`.
-fn char_offset_to_col(
+fn char_offset_to_display_col(
     char_offset: usize,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
 ) -> Option<u32> {
-    resolve_grapheme_col(char_offset, graphemes, row_range).map(|(col, _)| col)
+    resolve_grapheme_display_col(char_offset, graphemes, row_range).map(|(display_col, _)| display_col)
 }
 
-/// Exclusive right edge (`g.col + g.width`) of the grapheme at `char_offset`.
+/// Exclusive right edge (`g.display_col + g.width`) of the grapheme at `char_offset`.
 ///
-/// Used for inclusive selection-span upper bounds: the span `[col_start, col_end)`
-/// must cover the end grapheme itself, which requires `col_end = col + width`.
-fn char_offset_to_end_col(
+/// Used for inclusive selection-span upper bounds: the span
+/// `[display_col_start, display_col_end)` must cover the end grapheme
+/// itself, which requires `display_col_end = display_col + width`.
+fn char_offset_to_end_display_col(
     char_offset: usize,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
 ) -> Option<u32> {
-    resolve_grapheme_col(char_offset, graphemes, row_range).map(|(col, width)| col + width)
+    resolve_grapheme_display_col(char_offset, graphemes, row_range)
+        .map(|(display_col, width)| display_col + width)
 }
 
 // ---------------------------------------------------------------------------

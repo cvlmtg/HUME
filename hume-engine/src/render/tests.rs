@@ -19,12 +19,12 @@ fn simple_row(graphemes: std::ops::Range<usize>) -> DisplayRow {
     }
 }
 
-fn simple_grapheme(col: u32, byte_start: usize, ch_len: usize) -> Grapheme {
+fn simple_grapheme(display_col: u32, byte_start: usize, ch_len: usize) -> Grapheme {
     Grapheme {
         byte_range: byte_start..byte_start + ch_len,
         // char_offset is not needed for render tests (selections handled in style stage).
         char_offset: byte_start,
-        col,
+        display_col,
         width: 1,
         content: CellContent::Grapheme,
         indent_depth: 0,
@@ -52,7 +52,7 @@ fn renders_simple_text() {
     };
     let mut buf = make_test_buf(20, 5);
     let theme = Theme::default();
-    let col_widths: Vec<u16> = Vec::new();
+    let lane_widths: Vec<u16> = Vec::new();
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {
         gutter_columns: &[],
@@ -78,7 +78,7 @@ fn renders_simple_text() {
         "hi",
         "",
         0,
-        &col_widths,
+        &lane_widths,
         &ctx,
         &mut canvas,
         None,
@@ -173,7 +173,7 @@ fn do_compose_row(
     };
     let mut buf = make_test_buf(w, h);
     let theme = Theme::default();
-    let col_widths: Vec<u16> = Vec::new();
+    let lane_widths: Vec<u16> = Vec::new();
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {
         gutter_columns: &[],
@@ -199,7 +199,7 @@ fn do_compose_row(
         line_str,
         virtual_texts,
         0,
-        &col_widths,
+        &lane_widths,
         &ctx,
         &mut canvas,
         None,
@@ -213,7 +213,7 @@ fn horizontal_scroll_clips_left_columns() {
         .map(|i| Grapheme {
             byte_range: (i as usize)..(i as usize + 1),
             char_offset: i as usize,
-            col: i,
+            display_col: i,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -233,7 +233,7 @@ fn horizontal_scroll_clips_left_columns() {
     let buf = do_compose_row(
         "abcde", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
-    // With h_offset=2, screen col 0 shows 'c' (buf col 2).
+    // With h_offset=2, screen display_col 0 shows 'c' (buf display_col 2).
     assert_eq!(
         buf.cell(ratatui::layout::Position { x: 0, y: 0 })
             .unwrap()
@@ -252,17 +252,17 @@ fn horizontal_scroll_clips_left_columns() {
 
 #[test]
 fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
-    // "中X": '中' is width 2 at col 0 (+ a WidthContinuation at col 1);
-    // 'X' is width 1 at col 2. With h_offset=1, '中' straddles the edge
-    // (col 0 < 1 < col 0 + width 2) — its right half is the only
+    // "中X": '中' is width 2 at display_col 0 (+ a WidthContinuation at display_col 1);
+    // 'X' is width 1 at display_col 2. With h_offset=1, '中' straddles the edge
+    // (display_col 0 < 1 < display_col 0 + width 2) — its right half is the only
     // visible cell. Before the fix, `visible_col` clamped to 0 and drew
-    // the *whole* glyph at screen col 0, shifting 'X' to look like it
-    // was still at col 1 instead of col 0.
+    // the *whole* glyph at screen display_col 0, shifting 'X' to look like it
+    // was still at display_col 1 instead of display_col 0.
     let graphemes = vec![
         Grapheme {
             byte_range: 0..3,
             char_offset: 0,
-            col: 0,
+            display_col: 0,
             width: 2,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -271,7 +271,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
         Grapheme {
             byte_range: 0..3,
             char_offset: 0,
-            col: 2,
+            display_col: 2,
             width: 0,
             content: CellContent::WidthContinuation,
             indent_depth: 0,
@@ -280,7 +280,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
         Grapheme {
             byte_range: 3..4,
             char_offset: 1,
-            col: 2,
+            display_col: 2,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -318,13 +318,13 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
 
 #[test]
 fn indent_guide_drawn_at_inner_tab_stops() {
-    // A line with indent_depth=2 and tab_width=4 should show a guide at col 4.
-    // (guides at k*tab_width for k in 1..depth, so k=1 => col 4)
+    // A line with indent_depth=2 and tab_width=4 should show a guide at display_col 4.
+    // (guides at k*tab_width for k in 1..depth, so k=1 => display_col 4)
     let graphemes: Vec<Grapheme> = (0..11u32)
         .map(|i| Grapheme {
             byte_range: (i as usize)..(i as usize + 1),
             char_offset: i as usize,
-            col: i,
+            display_col: i,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 2, // 8 spaces / 4 tab_width = depth 2
@@ -355,7 +355,7 @@ fn indent_guide_drawn_at_inner_tab_stops() {
         20,
         5,
     );
-    // A guide should appear at screen col 4 (k=1, tw=4).
+    // A guide should appear at screen display_col 4 (k=1, tw=4).
     assert_eq!(
         buf.cell(ratatui::layout::Position { x: 4, y: 0 })
             .unwrap()
@@ -381,14 +381,14 @@ fn indent_guide_drawn_at_inner_tab_stops() {
 #[test]
 fn indent_guide_hidden_when_show_indent_guides_is_false() {
     // Same fixture as indent_guide_drawn_at_inner_tab_stops (depth=2,
-    // tab_width=4, guide expected at col 4) but with the setting off —
+    // tab_width=4, guide expected at display_col 4) but with the setting off —
     // proves ComposeCtx::show_indent_guides actually gates the draw loop,
     // not just that the glyph can appear under default settings.
     let graphemes: Vec<Grapheme> = (0..11u32)
         .map(|i| Grapheme {
             byte_range: (i as usize)..(i as usize + 1),
             char_offset: i as usize,
-            col: i,
+            display_col: i,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 2,
@@ -415,7 +415,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
     };
     let mut buf = make_test_buf(20, 5);
     let theme = Theme::default();
-    let col_widths: Vec<u16> = Vec::new();
+    let lane_widths: Vec<u16> = Vec::new();
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {
         gutter_columns: &[],
@@ -441,12 +441,12 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         "        foo",
         "",
         0,
-        &col_widths,
+        &lane_widths,
         &ctx,
         &mut canvas,
         None,
     );
-    // No guide anywhere on the row, including the col-4 tab stop that
+    // No guide anywhere on the row, including the display_col-4 tab stop that
     // indent_guide_drawn_at_inner_tab_stops proves is drawn when enabled.
     for x in 0..11 {
         assert_ne!(
@@ -454,7 +454,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
                 .unwrap()
                 .symbol(),
             INDENT_GUIDE_GLYPH,
-            "no indent guide should render at col {x} when show_indent_guides is false"
+            "no indent guide should render at display_col {x} when show_indent_guides is false"
         );
     }
 }
@@ -469,7 +469,7 @@ fn indent_guide_not_drawn_on_wrap_rows() {
         .map(|i| Grapheme {
             byte_range: (i as usize)..(i as usize + 1),
             char_offset: i as usize,
-            col: i,
+            display_col: i,
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 1,
@@ -504,12 +504,12 @@ fn indent_guide_not_drawn_on_wrap_rows() {
 
 #[test]
 fn indicator_content_fills_tab_width() {
-    // A tab indicator with width=4 should write the indicator char at col 0
+    // A tab indicator with width=4 should write the indicator char at display_col 0
     // and spaces at cols 1-3.
     let graphemes = vec![Grapheme {
         byte_range: 0..1,
         char_offset: 0,
-        col: 0,
+        display_col: 0,
         width: 4,
         content: CellContent::Indicator { start: 0, len: 3 }, // "→" is 3 bytes
         indent_depth: 0,
@@ -560,13 +560,13 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
     // A decoration whose text is more than one byte/column ("AB", width
     // 2) must round-trip through the arena correctly, and the following
     // real grapheme must land at the column the insert's width shifted
-    // it to (col 2, not col 1).
+    // it to (display_col 2, not display_col 1).
     let arena = "AB";
     let graphemes = vec![
         Grapheme {
             byte_range: 0..0,
             char_offset: usize::MAX,
-            col: 0,
+            display_col: 0,
             width: 2,
             content: CellContent::Virtual { start: 0, len: 2 },
             indent_depth: 0,
@@ -654,7 +654,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
     let default_gutter_scope = registry.intern("ui.linenr");
     let mut theme = Theme::default();
     theme.bake(&registry);
-    let col_widths = vec![4u16];
+    let lane_widths = vec![4u16];
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {
         gutter_columns: &gutter_columns,
@@ -680,7 +680,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         "X",
         "",
         0,
-        &col_widths,
+        &lane_widths,
         &ctx,
         &mut canvas,
         None,
@@ -707,7 +707,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
 #[test]
 fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
     // Same overlong-gutter setup as above, but with a narrow pane_rect
-    // (width 5 = gutter(4) + 1 content col) simulating a second pane
+    // (width 5 = gutter(4) + 1 content display_col) simulating a second pane
     // starting immediately at x=5 in the same shared buffer. Pre-seed
     // the whole buffer with a marker glyph so any write past this pane's
     // own right edge is directly observable.
@@ -737,7 +737,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
     let default_gutter_scope = registry.intern("ui.linenr");
     let mut theme = Theme::default();
     theme.bake(&registry);
-    let col_widths = vec![4u16];
+    let lane_widths = vec![4u16];
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {
         gutter_columns: &gutter_columns,
@@ -763,7 +763,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         "X",
         "",
         0,
-        &col_widths,
+        &lane_widths,
         &ctx,
         &mut canvas,
         None,
@@ -835,14 +835,14 @@ impl GutterColumn for ExactFillGutter {
 #[test]
 fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     // `compose_gutter`'s leftover-fill bound must be the column's real right
-    // edge, not `pane_rect.x + col_width` — that's only correct for the
-    // *first* column (where col_start == pane_rect.x). For any column after
+    // edge, not `pane_rect.x + lane_width` — that's only correct for the
+    // *first* column (where lane_x == pane_rect.x). For any column after
     // the first, a bound that small leaves a leftover cell in a non-first
     // column unpainted (stale glyph shows through) and `gutter_x` falls
     // short of the column boundary, shifting every following column left.
     //
     // Column 0 (ExactFillGutter, width 2) exact-fills, landing gutter_x
-    // at col_start=2 for column 1 (LeftoverGutter, width 6, 4 cells):
+    // at lane_x=2 for column 1 (LeftoverGutter, width 6, 4 cells):
     // usable_per_cell = (6-1)/4 = 1, so the per-cell loop only advances
     // gutter_x to 2+5=7, one short of the column's right edge at 8.
     let graphemes = vec![simple_grapheme(0, 0, 1)];
@@ -873,7 +873,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     let default_gutter_scope = registry.intern("ui.linenr");
     let mut theme = Theme::default();
     theme.bake(&registry);
-    let col_widths = vec![2u16, 6u16];
+    let lane_widths = vec![2u16, 6u16];
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {
         gutter_columns: &gutter_columns,
@@ -899,7 +899,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         "X",
         "",
         0,
-        &col_widths,
+        &lane_widths,
         &ctx,
         &mut canvas,
         None,
@@ -921,7 +921,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     assert_eq!(
         sym(7),
         " ",
-        "column 1's leftover cell (gutter_width 8 - col_start 2 - 5 rendered = 1 leftover) \
+        "column 1's leftover cell (gutter_width 8 - lane_x 2 - 5 rendered = 1 leftover) \
          must be painted blank, not left as the stale 'Z' marker"
     );
     assert_eq!(
@@ -987,7 +987,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
     let default_gutter_scope = registry.intern("ui.linenr");
     let mut theme = Theme::default();
     theme.bake(&registry);
-    let col_widths = vec![20u16];
+    let lane_widths = vec![20u16];
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {
         gutter_columns: &gutter_columns,
@@ -1013,7 +1013,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         "X",
         "",
         0,
-        &col_widths,
+        &lane_widths,
         &ctx,
         &mut canvas,
         None,
@@ -1085,11 +1085,11 @@ impl GutterColumn for StaticIconGutter {
 
 #[test]
 fn owned_gutter_icon_renders_identically_to_static_one() {
-    fn render_with(col: Box<dyn GutterColumn>) -> ratatui::buffer::Buffer {
+    fn render_with(lane: Box<dyn GutterColumn>) -> ratatui::buffer::Buffer {
         let graphemes = vec![simple_grapheme(0, 0, 1)];
         let rows = [simple_row(0..1)];
         let styles = vec![ResolvedStyle::default()];
-        let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, col)];
+        let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, lane)];
         let visible = PaneGeometry {
             content_height: 1,
             content_width: 4,
@@ -1108,7 +1108,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
         let default_gutter_scope = registry.intern("ui.linenr");
         let mut theme = Theme::default();
         theme.bake(&registry);
-        let col_widths = vec![3u16];
+        let lane_widths = vec![3u16];
         let rope = ropey::Rope::new();
         let ctx = ComposeCtx {
             gutter_columns: &gutter_columns,
@@ -1134,7 +1134,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             "X",
             "",
             0,
-            &col_widths,
+            &lane_widths,
             &ctx,
             &mut canvas,
             None,
@@ -1225,7 +1225,7 @@ fn gutter_column_reads_rope_via_ctx() {
     let default_gutter_scope = registry.intern("ui.linenr");
     let mut theme = Theme::default();
     theme.bake(&registry);
-    let col_widths = vec![2u16];
+    let lane_widths = vec![2u16];
     let ctx = ComposeCtx {
         gutter_columns: &gutter_columns,
         visible: &visible,
@@ -1250,7 +1250,7 @@ fn gutter_column_reads_rope_via_ctx() {
         "X",
         "",
         0,
-        &col_widths,
+        &lane_widths,
         &ctx,
         &mut canvas,
         None,
@@ -1287,9 +1287,9 @@ fn clear_row_span_fills_with_blank() {
             .unwrap()
             .symbol();
         if (3..7).contains(&x) {
-            assert_eq!(sym, " ", "col {x} should be blank");
+            assert_eq!(sym, " ", "display_col {x} should be blank");
         } else {
-            assert_eq!(sym, "X", "col {x} should be untouched");
+            assert_eq!(sym, "X", "display_col {x} should be untouched");
         }
     }
 }
@@ -1353,7 +1353,7 @@ fn compose_row_dims_cells_inline() {
     };
     let mut buf = make_test_buf(2, 1);
     let theme = Theme::default();
-    let col_widths: Vec<u16> = Vec::new();
+    let lane_widths: Vec<u16> = Vec::new();
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {
         gutter_columns: &[],
@@ -1379,7 +1379,7 @@ fn compose_row_dims_cells_inline() {
         "x",
         "",
         0,
-        &col_widths,
+        &lane_widths,
         &ctx,
         &mut canvas,
         None,
@@ -1417,7 +1417,7 @@ fn compose_row_non_rgb_dim_target_is_noop() {
     };
     let mut buf = make_test_buf(2, 1);
     let theme = Theme::default();
-    let col_widths: Vec<u16> = Vec::new();
+    let lane_widths: Vec<u16> = Vec::new();
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {
         gutter_columns: &[],
@@ -1443,7 +1443,7 @@ fn compose_row_non_rgb_dim_target_is_noop() {
         "x",
         "",
         0,
-        &col_widths,
+        &lane_widths,
         &ctx,
         &mut canvas,
         None,

@@ -32,8 +32,8 @@ fn higher_priority_sign_wins_on_the_same_line() {
     let git_scope = registry.intern("git");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::new(blank_scope);
-    col.add_source(Box::new(FixedSign {
+    let mut lane = SignColumn::new(blank_scope);
+    lane.add_source(Box::new(FixedSign {
         line: 3,
         sign: Sign {
             text: "!".into(),
@@ -41,7 +41,7 @@ fn higher_priority_sign_wins_on_the_same_line() {
             priority: 10,
         },
     }));
-    col.add_source(Box::new(FixedSign {
+    lane.add_source(Box::new(FixedSign {
         line: 3,
         sign: Sign {
             text: "+".into(),
@@ -51,7 +51,7 @@ fn higher_priority_sign_wins_on_the_same_line() {
     }));
 
     let rope = ropey::Rope::new();
-    let cell = col
+    let cell = lane
         .render_row_cells(RowKind::LineStart { line_idx: 3 }, &ctx(&rope))
         .into_iter()
         .next()
@@ -67,8 +67,8 @@ fn removing_the_winner_reveals_the_next_highest() {
     let git_scope = registry.intern("git");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::new(blank_scope);
-    let winner_id = col.add_source(Box::new(FixedSign {
+    let mut lane = SignColumn::new(blank_scope);
+    let winner_id = lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "!".into(),
@@ -76,7 +76,7 @@ fn removing_the_winner_reveals_the_next_highest() {
             priority: 10,
         },
     }));
-    col.add_source(Box::new(FixedSign {
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "+".into(),
@@ -85,10 +85,10 @@ fn removing_the_winner_reveals_the_next_highest() {
         },
     }));
 
-    assert!(col.remove_source(winner_id));
+    assert!(lane.remove_source(winner_id));
 
     let rope = ropey::Rope::new();
-    let cell = col
+    let cell = lane
         .render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope))
         .into_iter()
         .next()
@@ -104,9 +104,9 @@ fn removing_the_winner_reveals_the_next_highest() {
 fn no_source_fires_renders_blank() {
     let mut registry = ScopeRegistry::new();
     let blank_scope = registry.intern("ui.linenr");
-    let col = SignColumn::new(blank_scope);
+    let lane = SignColumn::new(blank_scope);
     let rope = ropey::Rope::new();
-    let cell = col
+    let cell = lane
         .render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope))
         .into_iter()
         .next()
@@ -119,8 +119,8 @@ fn sign_absent_on_wrap_virtual_and_filler_rows() {
     let mut registry = ScopeRegistry::new();
     let scope = registry.intern("diagnostic");
     let blank_scope = registry.intern("ui.linenr");
-    let mut col = SignColumn::new(blank_scope);
-    col.add_source(Box::new(FixedSign {
+    let mut lane = SignColumn::new(blank_scope);
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "!".into(),
@@ -141,7 +141,7 @@ fn sign_absent_on_wrap_virtual_and_filler_rows() {
         },
         RowKind::Filler,
     ] {
-        let cell = col
+        let cell = lane
             .render_row_cells(kind, &ctx(&rope))
             .into_iter()
             .next()
@@ -154,20 +154,20 @@ fn sign_absent_on_wrap_virtual_and_filler_rows() {
 fn width_is_configured_not_recomputed_per_frame() {
     let mut registry = ScopeRegistry::new();
     let blank_scope = registry.intern("ui.linenr");
-    let col = SignColumn::with_width(3, blank_scope);
-    assert_eq!(col.width(0), 3);
-    assert_eq!(col.width(999_999), 3, "stable regardless of file size");
+    let lane = SignColumn::with_width(3, blank_scope);
+    assert_eq!(lane.width(0), 3);
+    assert_eq!(lane.width(999_999), 3, "stable regardless of file size");
 }
 
 #[test]
 fn set_width_overrides_the_configured_width() {
     let mut registry = ScopeRegistry::new();
     let blank_scope = registry.intern("ui.linenr");
-    let mut col = SignColumn::with_width(2, blank_scope);
-    col.set_width(0);
-    assert_eq!(col.width(0), 0, "collapsed to zero when no signs exist");
-    col.set_width(2);
-    assert_eq!(col.width(0), 2, "restored once a sign exists again");
+    let mut lane = SignColumn::with_width(2, blank_scope);
+    lane.set_width(0);
+    assert_eq!(lane.width(0), 0, "collapsed to zero when no signs exist");
+    lane.set_width(2);
+    assert_eq!(lane.width(0), 2, "restored once a sign exists again");
 }
 
 #[test]
@@ -179,8 +179,8 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     let mut registry = ScopeRegistry::new();
     let scope = registry.intern("diagnostic");
     let blank_scope = registry.intern("ui.linenr");
-    let mut col = SignColumn::with_width(2, blank_scope); // usable = 1 cell
-    col.add_source(Box::new(FixedSign {
+    let mut lane = SignColumn::with_width(2, blank_scope); // usable = 1 cell
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "▶▶▶".into(),
@@ -192,7 +192,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     let graphemes = vec![crate::types::Grapheme {
         byte_range: 0..1,
         char_offset: 0,
-        col: 0,
+        display_col: 0,
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,
@@ -203,7 +203,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         graphemes: 0..1,
     }];
     let styles = vec![crate::types::ResolvedStyle::default()];
-    let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(col))];
+    let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(lane))];
     let visible = crate::layout::PaneGeometry {
         content_height: 1,
         content_width: 6,
@@ -221,7 +221,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     let mut theme = Theme::default();
     theme.bake(&registry);
     let rope = ropey::Rope::from_str("x\n");
-    let col_widths = vec![2u16];
+    let lane_widths = vec![2u16];
     let compose_ctx = crate::render::ComposeCtx {
         gutter_columns: &gutter_columns,
         visible: &visible,
@@ -246,7 +246,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         "x",
         "",
         0,
-        &col_widths,
+        &lane_widths,
         &compose_ctx,
         &mut canvas,
         None,
@@ -274,9 +274,9 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
     let mut registry = ScopeRegistry::new();
     let blank_scope = registry.intern("ui.linenr");
     let scope = registry.intern("diagnostic");
-    let empty_col = SignColumn::with_width(0, blank_scope); // no sources — width collapsed
-    let mut content_col = SignColumn::with_width(2, blank_scope);
-    content_col.add_source(Box::new(FixedSign {
+    let empty_lane = SignColumn::with_width(0, blank_scope); // no sources — width collapsed
+    let mut content_lane = SignColumn::with_width(2, blank_scope);
+    content_lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "!".into(),
@@ -288,7 +288,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
     let graphemes = vec![crate::types::Grapheme {
         byte_range: 0..1,
         char_offset: 0,
-        col: 0,
+        display_col: 0,
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,
@@ -300,11 +300,11 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
     }];
     let styles = vec![crate::types::ResolvedStyle::default()];
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> =
-        vec![(0, Box::new(empty_col)), (1, Box::new(content_col))];
+        vec![(0, Box::new(empty_lane)), (1, Box::new(content_lane))];
     let visible = crate::layout::PaneGeometry {
         content_height: 1,
         content_width: 6,
-        gutter_width: 2, // 0 (empty_col) + 2 (content_col)
+        gutter_width: 2, // 0 (empty_lane) + 2 (content_lane)
         last_line_idx: 0,
     };
     let viewport = crate::pane::ViewportState::new(8, 1);
@@ -318,7 +318,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
     let mut theme = Theme::default();
     theme.bake(&registry);
     let rope = ropey::Rope::from_str("x\n");
-    let col_widths = vec![0u16, 2u16];
+    let lane_widths = vec![0u16, 2u16];
     let compose_ctx = crate::render::ComposeCtx {
         gutter_columns: &gutter_columns,
         visible: &visible,
@@ -343,7 +343,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         "x",
         "",
         0,
-        &col_widths,
+        &lane_widths,
         &compose_ctx,
         &mut canvas,
         None,
@@ -380,8 +380,8 @@ fn sign_scope_resolves_via_baked_theme() {
     let mut theme = Theme::new(styles_map, crate::types::ResolvedStyle::default());
     theme.bake(&registry);
 
-    let mut col = SignColumn::new(blank_scope);
-    col.add_source(Box::new(FixedSign {
+    let mut lane = SignColumn::new(blank_scope);
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "!".into(),
@@ -390,7 +390,7 @@ fn sign_scope_resolves_via_baked_theme() {
         },
     }));
     let rope = ropey::Rope::new();
-    let cell = col
+    let cell = lane
         .render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope))
         .into_iter()
         .next()
@@ -409,8 +409,8 @@ fn multi_slot_column_keeps_top_n_signs_by_priority() {
     let c = registry.intern("c");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::with_width(3, blank_scope); // 2 sign slots
-    col.add_source(Box::new(FixedSign {
+    let mut lane = SignColumn::with_width(3, blank_scope); // 2 sign slots
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "!".into(),
@@ -418,7 +418,7 @@ fn multi_slot_column_keeps_top_n_signs_by_priority() {
             priority: 10,
         },
     }));
-    col.add_source(Box::new(FixedSign {
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "+".into(),
@@ -426,7 +426,7 @@ fn multi_slot_column_keeps_top_n_signs_by_priority() {
             priority: 5,
         },
     }));
-    col.add_source(Box::new(FixedSign {
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "~".into(),
@@ -436,7 +436,7 @@ fn multi_slot_column_keeps_top_n_signs_by_priority() {
     }));
 
     let rope = ropey::Rope::new();
-    let cells = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+    let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
     assert_eq!(cells.len(), 2, "width-3 column = 2 sign slots");
     assert_eq!(cells[0].as_str(), "!", "priority 10 first");
     assert_eq!(cells[1].as_str(), "+", "priority 5 second");
@@ -448,8 +448,8 @@ fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
     let a = registry.intern("a");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::with_width(3, blank_scope); // 2 sign slots
-    col.add_source(Box::new(FixedSign {
+    let mut lane = SignColumn::with_width(3, blank_scope); // 2 sign slots
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "!".into(),
@@ -459,7 +459,7 @@ fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
     }));
 
     let rope = ropey::Rope::new();
-    let cells = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+    let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
     assert_eq!(cells.len(), 2, "still 2 cells — padded to slot count");
     assert_eq!(cells[0].as_str(), "!");
     assert_eq!(cells[1].as_str(), " ", "unused slot is blank");
@@ -472,8 +472,8 @@ fn multi_slot_column_ties_go_to_later_registered_source() {
     let b = registry.intern("b");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::with_width(3, blank_scope); // 2 sign slots
-    col.add_source(Box::new(FixedSign {
+    let mut lane = SignColumn::with_width(3, blank_scope); // 2 sign slots
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "A".into(),
@@ -481,7 +481,7 @@ fn multi_slot_column_ties_go_to_later_registered_source() {
             priority: 10,
         },
     }));
-    col.add_source(Box::new(FixedSign {
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "B".into(),
@@ -491,7 +491,7 @@ fn multi_slot_column_ties_go_to_later_registered_source() {
     }));
 
     let rope = ropey::Rope::new();
-    let cells = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+    let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
     assert_eq!(cells[0].as_str(), "B", "same priority — later source wins");
     assert_eq!(cells[1].as_str(), "A");
 }
@@ -502,8 +502,8 @@ fn width_one_column_keeps_no_signs() {
     let a = registry.intern("a");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::with_width(1, blank_scope); // 0 sign slots
-    col.add_source(Box::new(FixedSign {
+    let mut lane = SignColumn::with_width(1, blank_scope); // 0 sign slots
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "!".into(),
@@ -513,7 +513,7 @@ fn width_one_column_keeps_no_signs() {
     }));
 
     let rope = ropey::Rope::new();
-    let cells = col.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+    let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
     assert!(cells.is_empty(), "width-1 column has 0 sign slots");
 }
 
@@ -528,8 +528,8 @@ fn multi_slot_column_renders_through_compose_gutter() {
     let b = registry.intern("b");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut col = SignColumn::with_width(3, blank_scope); // 2 sign slots
-    col.add_source(Box::new(FixedSign {
+    let mut lane = SignColumn::with_width(3, blank_scope); // 2 sign slots
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "!".into(),
@@ -537,7 +537,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
             priority: 10,
         },
     }));
-    col.add_source(Box::new(FixedSign {
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "+".into(),
@@ -549,7 +549,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
     let graphemes = vec![crate::types::Grapheme {
         byte_range: 0..1,
         char_offset: 0,
-        col: 0,
+        display_col: 0,
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,
@@ -560,7 +560,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
         graphemes: 0..1,
     }];
     let styles = vec![crate::types::ResolvedStyle::default()];
-    let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(col))];
+    let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(lane))];
     let visible = crate::layout::PaneGeometry {
         content_height: 1,
         content_width: 5,
@@ -578,7 +578,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
     let mut theme = Theme::default();
     theme.bake(&registry);
     let rope = ropey::Rope::from_str("x\n");
-    let col_widths = vec![3u16];
+    let lane_widths = vec![3u16];
     let compose_ctx = crate::render::ComposeCtx {
         gutter_columns: &gutter_columns,
         visible: &visible,
@@ -603,7 +603,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
         "x",
         "",
         0,
-        &col_widths,
+        &lane_widths,
         &compose_ctx,
         &mut canvas,
         None,

@@ -7,7 +7,7 @@
 
 use hume_editing::selection::Selection;
 use hume_engine::pipeline::EngineView;
-use hume_engine::rows::{ColTarget, RowKind, RowMap};
+use hume_engine::rows::{DisplayColTarget, RowKind, RowMap};
 use hume_ops::MotionMode;
 use hume_ops::motion::{cmd_move_down, cmd_move_up};
 use hume_ops::text_object::{
@@ -64,7 +64,7 @@ fn move_vertical(
         // exactly where it was rather than snapping it to `target_col`.
         return head;
     }
-    rm.char_at(last_content, target_col, ColTarget::NearestContent)
+    rm.char_at(last_content, target_col, DisplayColTarget::NearestContent)
 }
 
 /// How `apply_visual_vertical`'s `count` should be interpreted.

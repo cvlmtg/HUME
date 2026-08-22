@@ -906,7 +906,7 @@ fn collect_seams_nested_splits_yield_one_seam_per_split_node() {
 
 #[test]
 fn focused_seam_segment_full_overlap_horizontal_adjacency() {
-    // Two panes side by side with a 1-col seam between them at x=49.
+    // Two panes side by side with a 1-display_col seam between them at x=49.
     // Each pane spans the seam's full height, so the highlighted segment
     // is the whole seam.
     let seam = rect(49, 0, 1, 50);
@@ -1344,7 +1344,7 @@ fn frame_scratch_clear_retains_capacity() {
         s.format.graphemes.push(crate::types::Grapheme {
             byte_range: 0..1,
             char_offset: 0,
-            col: 0,
+            display_col: 0,
             width: 1,
             content: crate::types::CellContent::Empty,
             indent_depth: 0,

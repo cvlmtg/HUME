@@ -172,13 +172,15 @@ pub struct Grapheme {
     /// reserved for a virtual-*row*'s cells, which have no buffer position at
     /// all (see [`crate::rows::RowMap::render_row`]).
     pub char_offset: usize,
-    /// Display column within the row (0-based, accounts for preceding widths).
-    pub col: u32,
+    /// Display column within the row (0-based, accounts for preceding
+    /// widths). Row-relative — this is the row a wrapped or virtual line
+    /// produced, not the underlying buffer line's own display column.
+    pub display_col: u32,
     /// Display width: 1 for ASCII/most Unicode, 2 for CJK, >1 for tabs.
     pub width: u8,
     /// What to render.
     pub content: CellContent,
-    /// Indent depth at this column — used for indent guide rendering.
+    /// Indent depth at this display column — used for indent guide rendering.
     pub indent_depth: u8,
     /// Scope this cell's decoration was interned with, if any. `None` for
     /// every real buffer grapheme — their style comes from the highlight

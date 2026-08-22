@@ -96,12 +96,12 @@ fn sync_line_number_style_updates_line_number_column() {
         ScopeId(1),
     )));
     set.sync_line_number_style(LineNumberStyle::Relative);
-    let col = set.gutter_columns[0]
+    let lane = set.gutter_columns[0]
         .1
         .as_any_mut()
         .downcast_mut::<LineNumberColumn>()
         .unwrap();
-    assert_eq!(col.style, LineNumberStyle::Relative);
+    assert_eq!(lane.style, LineNumberStyle::Relative);
 }
 
 #[test]
@@ -125,12 +125,12 @@ fn sync_sign_column_width_updates_registered_sign_columns() {
     let mut set = ProviderSet::new();
     set.add_gutter_column(Box::new(SignColumn::new(ScopeId(0))));
     set.sync_sign_column_width(0);
-    let col = set.gutter_columns[0]
+    let lane = set.gutter_columns[0]
         .1
         .as_any_mut()
         .downcast_mut::<SignColumn>()
         .unwrap();
-    assert_eq!(col.width(0), 0);
+    assert_eq!(lane.width(0), 0);
 }
 
 #[test]

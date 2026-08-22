@@ -240,7 +240,7 @@ impl Editor {
         // A `RenderContext` is allocated once and reused for every frame, so
         // last frame's cursor cell would otherwise be indistinguishable from
         // one step 4 resolved this frame. Cleared here, filled there.
-        ctx.cursor_screen = None;
+        ctx.cursor_content_pos = None;
 
         // Reclaim viewport-debounce/scroll-key/virtual-line-sync cache
         // entries for panes closed since the last frame. These three live on
@@ -351,7 +351,7 @@ impl Editor {
                 scrolloff,
             );
             if pid == self.state.focused_pane_id {
-                ctx.cursor_screen = cursor_screen;
+                ctx.cursor_content_pos = cursor_screen;
             }
 
             // A real visible-range change (scroll command, cursor-follow

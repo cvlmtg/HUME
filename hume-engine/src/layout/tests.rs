@@ -33,8 +33,8 @@ fn geometry_without_a_gutter_is_the_whole_viewport() {
 fn a_gutter_takes_its_width_out_of_the_content_area() {
     let rope = Rope::from_str("line1\n");
     let viewport = ViewportState::new(80, 3);
-    let column: Box<dyn GutterColumn> = Box::new(FixedWidthGutter);
-    let visible = compute_viewport(&rope, &viewport, std::iter::once(column.as_ref()));
+    let lane: Box<dyn GutterColumn> = Box::new(FixedWidthGutter);
+    let visible = compute_viewport(&rope, &viewport, std::iter::once(lane.as_ref()));
     assert_eq!(visible.gutter_width, 3);
     assert_eq!(visible.content_width, 77);
 }
@@ -45,8 +45,8 @@ fn content_width_never_reaches_zero() {
     // into, which the formatter's wrap arithmetic cannot represent.
     let rope = Rope::from_str("line1\n");
     let viewport = ViewportState::new(2, 3);
-    let column: Box<dyn GutterColumn> = Box::new(FixedWidthGutter);
-    let visible = compute_viewport(&rope, &viewport, std::iter::once(column.as_ref()));
+    let lane: Box<dyn GutterColumn> = Box::new(FixedWidthGutter);
+    let visible = compute_viewport(&rope, &viewport, std::iter::once(lane.as_ref()));
     assert_eq!(visible.content_width, 1);
 }
 

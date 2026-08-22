@@ -170,7 +170,7 @@ impl VirtualLineAnchor {
 ///
 /// Providers supply plain `text` + scoped byte-range `segments` rather than
 /// pre-built `Grapheme`s: `rows::RowMap` does the grapheme segmentation and
-/// width/col bookkeeping itself, the same as it does for real buffer lines, so
+/// width/display-column bookkeeping itself, the same as it does for real buffer lines, so
 /// providers can't get that arithmetic wrong. Virtual
 /// lines own their own layout — `text` is not subject to the buffer's wrap
 /// mode or tab width.
@@ -429,8 +429,8 @@ impl ProviderSet {
     /// Called from `prepare_frame` each frame so `:set line-number-style` takes
     /// effect without rebuilding the provider set.
     pub fn sync_line_number_style(&mut self, style: LineNumberStyle) {
-        for (_, col) in &mut self.gutter_columns {
-            if let Some(ln) = col.as_any_mut().downcast_mut::<LineNumberColumn>() {
+        for (_, lane) in &mut self.gutter_columns {
+            if let Some(ln) = lane.as_any_mut().downcast_mut::<LineNumberColumn>() {
                 ln.style = style;
             }
         }
@@ -441,8 +441,8 @@ impl ProviderSet {
     /// to `0` when no sign exists for the pane's current buffer and grow back
     /// when one appears — same downcast pattern as `sync_line_number_style`.
     pub fn sync_sign_column_width(&mut self, width: u8) {
-        for (_, col) in &mut self.gutter_columns {
-            if let Some(sc) = col.as_any_mut().downcast_mut::<SignColumn>() {
+        for (_, lane) in &mut self.gutter_columns {
+            if let Some(sc) = lane.as_any_mut().downcast_mut::<SignColumn>() {
                 sc.set_width(width);
             }
         }

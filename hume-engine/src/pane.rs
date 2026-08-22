@@ -24,7 +24,7 @@ pub struct ViewportState {
     pub top_row_offset: u16,
     /// Horizontal scroll in columns (0 when soft-wrap is on). A document
     /// column, not a terminal cell — widened past `u16` alongside
-    /// `Grapheme::col` so scrolling isn't ceilinged at column 65535 on an
+    /// `Grapheme::display_col` so scrolling isn't ceilinged at column 65535 on an
     /// unwrapped line.
     pub horizontal_offset: u32,
     /// Total width of the pane in terminal cells (gutter + content).
