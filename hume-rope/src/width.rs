@@ -49,6 +49,20 @@ pub fn grapheme_width(cluster: &str, display_col: usize, tab_width: u8) -> usize
     }
 }
 
+/// True when `cluster` measures zero terminal columns of its own — a
+/// zero-width space, a bare ZWJ, a combining mark with no base character.
+///
+/// [`grapheme_width`] clamps such a cluster up to 1 so it stays addressable
+/// by column, which is what the editing model wants. A *writer* needs the
+/// unclamped answer as well: it has reserved a cell for the cluster, and if
+/// it writes the cluster's own glyph there the terminal advances zero
+/// columns and everything after it slides one cell left. Knowing the glyph
+/// draws as nothing is what lets the writer put a visible placeholder in the
+/// cell it already reserved.
+pub fn is_zero_width(cluster: &str) -> bool {
+    cluster.width() == 0
+}
+
 /// Display columns `s` occupies when rendered starting at display column
 /// `start_display_col` — the sum of its grapheme clusters' [`grapheme_width`].
 pub fn str_width(s: &str, start_display_col: usize, tab_width: u8) -> usize {

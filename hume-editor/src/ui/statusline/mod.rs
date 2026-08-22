@@ -6,7 +6,7 @@ use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 
-use hume_engine::render::fill_rect_bg;
+use hume_engine::render::{fill_rect_bg, write_text_run};
 
 use crate::editor::Editor;
 use crate::ui::theme::EditorColors;
@@ -269,17 +269,14 @@ fn draw_section(
     spans: &[(Cow<'static, str>, Style)],
     mut x: u16,
     y: u16,
+    right_edge: u16,
 ) {
     for (text, style) in spans {
-        // Advance by what the write actually consumed, not by our own
-        // measurement of it. `set_stringn` skips graphemes it can't draw (a
-        // control character, a zero-width cluster) and pads a couple it
-        // draws wider than `unicode-width` alone reports, so re-deriving the
-        // step here would drift — leaving a gap or overlapping the next span
-        // — on exactly the inputs a Steel statusline provider or an LSP
-        // label can contain. Asking for the cursor back keeps the two in
-        // step by construction, whatever convention ratatui uses.
-        (x, _) = screen_buf.set_stringn(x, y, text.as_ref(), usize::MAX, *style);
+        // Advance by what the write consumed rather than re-measuring the
+        // span: `write_text_run` returns the column it stopped at, and it
+        // measures by the same rule `section_width` laid the spans out with,
+        // so the two cannot drift apart.
+        x = write_text_run(screen_buf, x, y, text.as_ref(), *style, right_edge);
     }
 }
 
@@ -316,7 +313,14 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
         // of even the minibuffer.
         if let Some(confirm) = editor.state.config.confirm.as_ref() {
             fill_row_colors(buf, &colors, area, y);
-            buf.set_string(area.x + 1, y, confirm.render_line(), colors.statusline);
+            write_text_run(
+                buf,
+                area.x + 1,
+                y,
+                &confirm.render_line(),
+                colors.statusline,
+                area.x + area.width,
+            );
             return;
         }
 
@@ -337,7 +341,14 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
 
             if let Some(msg) = display_msg {
                 fill_row_colors(buf, &colors, area, y);
-                buf.set_string(area.x + 1, y, msg, colors.statusline);
+                write_text_run(
+                    buf,
+                    area.x + 1,
+                    y,
+                    msg,
+                    colors.statusline,
+                    area.x + area.width,
+                );
                 return;
             }
         }
@@ -418,12 +429,17 @@ fn render_statusline(
         && center_x >= left_end
         && center_x + center_w <= right_fence;
 
-    draw_section(screen_buf, &left_spans, left_x, y);
+    // Each section is bounded by whatever sits to its right: the left
+    // section stops where the right one starts (or at the row's end when the
+    // right section didn't fit), and the right section at the row's end. Only
+    // `FilePath` shortens itself to fit, so without these an over-long
+    // element would write across its neighbour and off the row.
+    draw_section(screen_buf, &left_spans, left_x, y, right_fence);
     if right_fits {
-        draw_section(screen_buf, &right_spans, right_x, y);
+        draw_section(screen_buf, &right_spans, right_x, y, area.right());
     }
     if center_fits {
-        draw_section(screen_buf, &center_spans, center_x, y);
+        draw_section(screen_buf, &center_spans, center_x, y, right_fence);
     }
 }
 

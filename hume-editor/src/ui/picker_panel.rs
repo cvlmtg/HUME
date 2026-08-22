@@ -23,7 +23,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 
 use hume_engine::providers::OverlayProvider;
-use hume_engine::render::fill_rect_bg;
+use hume_engine::render::{fill_rect_bg, write_text_run};
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
 
@@ -199,6 +199,10 @@ pub(crate) fn draw_picker_panel(
 
     let inner_x = outer.x + 1;
     let inner_width = (outer.width - 2) as usize;
+    // One bound for every text write below: the panel's inner right edge.
+    // Each string is already truncated to fit, so this is a backstop that
+    // keeps a mis-sized one inside the border instead of over it.
+    let inner_right = inner_x + inner_width as u16;
     let input_y = outer.y + 1;
 
     let counts = if state.pending {
@@ -215,7 +219,7 @@ pub(crate) fn draw_picker_panel(
     let prompt_shown = truncate_head(&state.prompt, inner_width);
     let prompt_width = text_width(&prompt_shown);
     if prompt_width > 0 {
-        buf.set_string(inner_x, input_y, &prompt_shown, text);
+        write_text_run(buf, inner_x, input_y, &prompt_shown, text, inner_right);
     }
 
     let after_prompt_width = inner_width.saturating_sub(prompt_width);
@@ -230,14 +234,14 @@ pub(crate) fn draw_picker_panel(
     let query_width = text_width(&query_tail);
 
     let query_x = inner_x + prompt_width as u16;
-    buf.set_string(query_x, input_y, &query_tail, text);
+    write_text_run(buf, query_x, input_y, &query_tail, text, inner_right);
     let cursor_x = query_x + query_width as u16;
     if cursor_x < inner_x + inner_width as u16 {
         buf.set_string(cursor_x, input_y, " ", cursor);
     }
     if show_counts {
         let counts_x = outer.x + outer.width - 1 - counts_width as u16;
-        buf.set_string(counts_x, input_y, &counts, text);
+        write_text_run(buf, counts_x, input_y, &counts, text, inner_right);
     }
 
     let list_capacity = (outer.height - 3) as usize;
@@ -247,9 +251,9 @@ pub(crate) fn draw_picker_panel(
         if state.selected_row == Some(i) {
             let row_rect = Rect::new(inner_x, y, outer.width - 2, 1);
             fill_rect_bg(buf, row_rect, selected);
-            buf.set_string(inner_x, y, &shown, selected);
+            write_text_run(buf, inner_x, y, &shown, selected, inner_right);
         } else {
-            buf.set_string(inner_x, y, &shown, text);
+            write_text_run(buf, inner_x, y, &shown, text, inner_right);
         }
     }
 }

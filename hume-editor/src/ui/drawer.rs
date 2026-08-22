@@ -98,9 +98,23 @@ impl BottomBandProvider for DrawerWidget {
                     Rect::new(area.x, y, area.width, 1),
                     selected_style,
                 );
-                buf.set_string(area.x, y, item, selected_style);
+                hume_engine::render::write_text_run(
+                    buf,
+                    area.x,
+                    y,
+                    item,
+                    selected_style,
+                    area.x + area.width,
+                );
             } else {
-                buf.set_string(area.x, y, item, style);
+                hume_engine::render::write_text_run(
+                    buf,
+                    area.x,
+                    y,
+                    item,
+                    style,
+                    area.x + area.width,
+                );
             }
         }
     }

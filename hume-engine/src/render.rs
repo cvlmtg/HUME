@@ -93,9 +93,25 @@ impl<'a> PaneCanvas<'a> {
         set_cell(self.buf, x, y, text, blend_style(style, self.dim));
     }
 
-    fn set_string(&mut self, x: u16, y: u16, text: &str, style: ratatui::style::Style) {
-        self.buf
-            .set_string(x, y, text, blend_style(style, self.dim));
+    /// [`write_text_run`] through this pane's dim blend. The canvas has no
+    /// `set_string`: every text write a pane makes is measured against a
+    /// bound first, so all of them go through here.
+    fn write_text_run(
+        &mut self,
+        x: u16,
+        y: u16,
+        text: &str,
+        style: ratatui::style::Style,
+        right_edge: u16,
+    ) -> u16 {
+        write_text_run(
+            self.buf,
+            x,
+            y,
+            text,
+            blend_style(style, self.dim),
+            right_edge,
+        )
     }
 
     fn fill_row_bg(&mut self, x_start: u16, x_end: u16, y: u16, bg: ratatui::style::Color) {
@@ -197,16 +213,15 @@ fn compose_gutter(
             // Right-align within usable width. `usable_per_cell` bounds how
             // much of `text` may be written: a builtin column (only
             // `LineNumberColumn` today) always fits, but a future
-            // plugin-supplied column isn't guaranteed to — `set_string` only
-            // clips to the terminal buffer, not to this column's width or
-            // the pane rect, so an overlong cell would otherwise bleed into
-            // the content area or the neighbouring pane.
-            // `tab_width` of 1, not the buffer's: a gutter cell is a glyph in
-            // a fixed-width lane, with no tab stops of its own to expand
-            // against — and `set_signs!` rejects a control character in a
-            // sign outright, so no gutter text contains a tab to begin with.
-            // Passing the buffer's tab width would only suggest otherwise.
-            // For every non-tab cluster the parameter is inert.
+            // plugin-supplied column isn't guaranteed to, and an overlong
+            // cell must not bleed into the content area or the neighbouring
+            // pane. `write_text_run` measures by the same rule this
+            // truncation does, so `pad` and the separator below land where
+            // the text actually ends.
+            //
+            // `tab_width` of 1: a gutter cell is a glyph in a fixed-width
+            // lane with no tab stops of its own. For every non-tab cluster
+            // the parameter is inert.
             let (text, text_width) =
                 hume_rope::width::truncate_to_width(text, usable_per_cell as usize, 1);
             let text_width = text_width as u16;
@@ -214,7 +229,7 @@ fn compose_gutter(
             for px in 0..pad {
                 canvas.set_cell(gutter_x + px, y, " ", style);
             }
-            canvas.set_string(gutter_x + pad, y, text, style);
+            canvas.write_text_run(gutter_x + pad, y, text, style, gutter_x + usable_per_cell);
             // Only write a separator after the last cell — it's the column's
             // right padding, not a separator between sub-cells.
             if is_last {
@@ -481,6 +496,72 @@ pub(crate) fn render_tilde_fillers(
 
 /// Write `text` to the ratatui buffer cell at `(x, y)`, clipping to buffer bounds.
 #[inline]
+/// Write `text` cell by cell from `(x, y)`, stopping before `right_edge`, and
+/// return the column just past the last cell written.
+///
+/// The frame's single text writer for anything measured beforehand: UI chrome
+/// (statusline, menus, pickers, the drawer) and gutter cells. Deliberately not
+/// ratatui's `Buffer::set_string`, for two reasons.
+///
+/// **It agrees with [`hume_rope::width`], the width model everything else in
+/// the frame is measured with.** `set_string` uses its own: it discards any
+/// grapheme holding a control character or measuring zero, and adds a cell for
+/// a halfwidth dakuten. So a caller that sized a field with `str_width` and
+/// then drew it with `set_string` could reserve columns nothing was drawn in,
+/// or draw wider than it reserved. Here the advance returned is exactly
+/// `str_width(text, 0, 1)`, because that is the same per-cluster width this
+/// walks by — measurement and drawing cannot drift, since they are one model.
+/// A control character renders as a space rather than vanishing, matching what
+/// `format::push_virtual_cells` does for decoration text.
+///
+/// **`right_edge` is required, not implied.** `set_string` clips at the
+/// terminal buffer's edge and nothing narrower, so a caller drawing into a
+/// pane, a gutter lane, or a bordered box had to remember to pre-truncate or
+/// bleed past it. Taking the bound as an argument moves that from something
+/// each call site remembers to something the signature asks for. A cluster
+/// that would straddle `right_edge` is dropped whole, never split — the same
+/// rule [`hume_rope::width::truncate_to_width`] follows.
+///
+/// Chrome has no tab stops of its own, so a tab is one cell here (rendered as
+/// a space, like any other control character) rather than an advance to the
+/// next multiple of some tab width.
+pub fn write_text_run(
+    buf: &mut ratatui::buffer::Buffer,
+    x: u16,
+    y: u16,
+    text: &str,
+    style: ratatui::style::Style,
+    right_edge: u16,
+) -> u16 {
+    let mut cx = x;
+    for cluster in unicode_segmentation::UnicodeSegmentation::graphemes(text, true) {
+        let width = hume_rope::width::grapheme_width(cluster, (cx - x) as usize, 1) as u16;
+        if cx.saturating_add(width) > right_edge {
+            break;
+        }
+        // A cell was reserved for this cluster, so something visible has to
+        // go in it. A control character would otherwise be written to the
+        // terminal verbatim; a zero-width one would draw nothing and let the
+        // rest of the row slide left into the gap. Both become a space —
+        // the same substitution `format::push_virtual_cells` makes.
+        let glyph =
+            if cluster.chars().any(char::is_control) || hume_rope::width::is_zero_width(cluster) {
+                " "
+            } else {
+                cluster
+            };
+        set_cell(buf, cx, y, glyph, style);
+        // Blank the cells a double-width glyph covers, so nothing already in
+        // the buffer shows through beside it — the same thing `compose_row`
+        // does for a wide buffer grapheme.
+        for extra in 1..width {
+            set_cell(buf, cx + extra, y, " ", style);
+        }
+        cx += width;
+    }
+    cx
+}
+
 fn set_cell(
     buf: &mut ratatui::buffer::Buffer,
     x: u16,

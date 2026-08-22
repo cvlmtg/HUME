@@ -31,23 +31,62 @@ fn symbols_in(buf: &ScreenBuf, area: Rect) -> String {
 
 #[test]
 fn styled_runs_stay_adjacent_when_a_run_holds_an_undrawable_grapheme() {
-    // `set_stringn` draws nothing for a grapheme it can't render — a
-    // zero-width space here — and so consumes no cell for it. A painter that
-    // advanced by its own measurement of the run would count that cluster as
-    // one cell and start the next run one column too far right, leaving a
-    // blank column mid-row. The runs must read back as one contiguous string.
+    // A zero-width space measures one cell under the editor's width model
+    // (every cluster stays addressable) but draws as nothing, so the cell
+    // reserved for it is filled with a space rather than the cluster itself,
+    // and the next run begins right after. Writing the zero-width glyph
+    // instead would leave the terminal's cursor where it was and slide the
+    // rest of the row one column left.
     let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 3));
     let runs: StyledRow = vec![
         ("a\u{200B}b".to_string(), style()),
         ("cd".to_string(), style()),
     ];
-    paint_styled_row(&mut buf, 0, 1, &runs);
+    paint_styled_row(&mut buf, 0, 1, &runs, 20);
 
     assert_eq!(
         symbols_in(&buf, Rect::new(0, 1, 6, 1)),
-        "abcd",
-        "the second run must start in the cell right after the first run's \
-         last drawn grapheme"
+        "a bcd",
+        "the placeholder occupies the reserved cell, and the second run \
+         starts in the cell right after it"
+    );
+}
+
+#[test]
+fn styled_runs_stop_at_the_right_edge() {
+    // Runs are bounded by the caller's edge, not by the terminal buffer's: a
+    // row wider than its box must be clipped at the border rather than
+    // written over it. A cluster that would straddle the edge is dropped
+    // whole, never half-drawn.
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 3));
+    let runs: StyledRow = vec![
+        ("abc".to_string(), style()),
+        ("\u{6F22}z".to_string(), style()),
+    ];
+    // Edge at 4: "abc" fills 0..3, and 漢 would need cells 3 and 4, so it is
+    // dropped — leaving 'z' nowhere to start from either.
+    paint_styled_row(&mut buf, 0, 1, &runs, 4);
+
+    assert_eq!(symbols_in(&buf, Rect::new(0, 1, 8, 1)), "abc");
+}
+
+#[test]
+fn a_row_wider_than_the_box_is_clipped_at_the_border() {
+    // Rows reach `draw_menu_box` untruncated — the box was sized to the
+    // widest of them, then clamped to the pane it has to fit inside (see
+    // `completion_overlay`), so a long LSP label on a narrow terminal is
+    // wider than the box it lands in. It must stop at the inner edge: the
+    // right border has to survive, and nothing may be written past it.
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 5));
+    let outer = Rect::new(2, 0, 8, 3); // inner text spans x 3..9
+    let long = vec!["abcdefghij".to_string()];
+    draw_menu_box(&mut buf, outer, &long, Some(0), 0, true, styles(), None);
+
+    assert_eq!(
+        symbols_in(&buf, Rect::new(0, 1, 20, 1)),
+        "  │abcdef│",
+        "the row fills the inner width and stops; the border stands and the \
+         cells beyond it are untouched"
     );
 }
 

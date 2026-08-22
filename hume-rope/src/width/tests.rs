@@ -143,6 +143,30 @@ fn no_grapheme_cluster_exceeds_the_upper_clamp() {
     }
 }
 
+// ── is_zero_width ────────────────────────────────────────────────────────
+
+#[test]
+fn is_zero_width_separates_undrawable_clusters_from_narrow_ones() {
+    // The clusters a writer must substitute a placeholder for: each measures
+    // 0, so writing its own glyph into the reserved cell would advance the
+    // terminal by nothing.
+    assert!(is_zero_width("\u{200B}")); // zero-width space
+    assert!(is_zero_width("\u{200D}")); // zero-width joiner
+    assert!(is_zero_width("\u{0301}")); // combining acute, no base
+
+    // Ordinary clusters, including a base with a combining mark attached —
+    // that pair draws as one visible glyph and must not be substituted.
+    assert!(!is_zero_width("a"));
+    assert!(!is_zero_width("e\u{0301}"));
+    assert!(!is_zero_width("\u{6F22}"));
+
+    // Control characters are *not* covered by this predicate: the pinned
+    // `unicode-width` reports them as 1, so a writer has to test for them
+    // separately rather than assuming a zero measure catches them.
+    assert!(!is_zero_width("\t"));
+    assert!(!is_zero_width("\n"));
+}
+
 // ── str_width ────────────────────────────────────────────────────────────
 
 #[test]

@@ -9,7 +9,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::symbols::line;
 
-use hume_engine::render::fill_rect_bg;
+use hume_engine::render::{fill_rect_bg, write_text_run};
 
 use super::popup::StyledRow;
 use super::width::text_width;
@@ -197,6 +197,11 @@ pub(crate) fn draw_menu_box(
 
     // 3. Draw content rows inside the frame (offset +1 for top/left border/padding).
     let text_x = outer.x + 1;
+    // Rows arrive untruncated — `outer` was sized to the widest of them but
+    // then clamped to the pane, so a row wider than the pane would otherwise
+    // be written straight over the right border and past it. Bounding every
+    // row write at the inner edge is what keeps the box a box.
+    let text_right = outer.x + outer.width.saturating_sub(1);
     for (i, row_text) in visible_rows.iter().enumerate() {
         let y = outer.y + 1 + i as u16;
         let row_idx = scroll_offset + i;
@@ -205,14 +210,14 @@ pub(crate) fn draw_menu_box(
             // Highlight the full inner width so the selection bar is uniform.
             let inner_rect = Rect::new(text_x, y, outer.width.saturating_sub(2), 1);
             fill_rect_bg(buf, inner_rect, styles.selected);
-            buf.set_string(text_x, y, row_text, styles.selected);
+            write_text_run(buf, text_x, y, row_text, styles.selected, text_right);
         } else if let Some(runs) = styled.and_then(|rows| rows.get(row_idx)) {
             // The base fill (step 1) already covers the row — runs are
             // contiguous and together span exactly `row_text`, so there are
             // no gaps left for `styles.base` to show through.
-            paint_styled_row(buf, text_x, y, runs);
+            paint_styled_row(buf, text_x, y, runs, text_right);
         } else {
-            buf.set_string(text_x, y, row_text, styles.base);
+            write_text_run(buf, text_x, y, row_text, styles.base, text_right);
         }
     }
 }
@@ -220,13 +225,10 @@ pub(crate) fn draw_menu_box(
 /// Paint one pre-resolved styled row's runs left-to-right starting at
 /// `(x, y)` — [`draw_menu_box`]'s styled-row branch, factored out for
 /// readability.
-fn paint_styled_row(buf: &mut ScreenBuf, x: u16, y: u16, runs: &StyledRow) {
+fn paint_styled_row(buf: &mut ScreenBuf, x: u16, y: u16, runs: &StyledRow, right_edge: u16) {
     let mut cx = x;
     for (run_text, run_style) in runs {
-        // See `statusline::draw_section`: advance by the cursor the write
-        // returns rather than re-measuring the run, so a grapheme ratatui
-        // skips or widens can't shift the runs after it.
-        (cx, _) = buf.set_stringn(cx, y, run_text, usize::MAX, *run_style);
+        cx = write_text_run(buf, cx, y, run_text, *run_style, right_edge);
     }
 }
 
