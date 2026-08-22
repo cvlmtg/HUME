@@ -114,18 +114,18 @@ fn line_bgs(ed: &Editor, bid: BufferId) -> Vec<(usize, String)> {
     v
 }
 
-/// `virtual_lines_for(SOURCE, bid)`, remapped to `(line, before, text,
-/// scope, segments)` and sorted.
-fn vlines(
-    ed: &Editor,
-    bid: BufferId,
-) -> Vec<(
+/// One virtual line remapped for assertions: `(line, before, text, scope, segments)`.
+type VLine = (
     usize,
     bool,
     String,
     Option<String>,
     Vec<(usize, usize, String)>,
-)> {
+);
+
+/// `virtual_lines_for(SOURCE, bid)`, remapped to `(line, before, text,
+/// scope, segments)` and sorted.
+fn vlines(ed: &Editor, bid: BufferId) -> Vec<VLine> {
     let text = ed.state.buffers.get(bid).text();
     let mut v: Vec<_> = ed
         .state

@@ -114,7 +114,7 @@ fn no_selections_yields_default_style() {
 #[test]
 fn line_tint_applies_only_background_not_fg_or_modifiers() {
     let graphemes = make_graphemes(3);
-    let rows = vec![make_row(0..3)];
+    let rows = [make_row(0..3)];
     let mut scratch = StyleScratch::new();
 
     let mut registry = crate::theme::ScopeRegistry::new();

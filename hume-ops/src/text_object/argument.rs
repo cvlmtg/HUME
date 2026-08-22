@@ -9,6 +9,10 @@ use super::apply_text_object_by_mode;
 use crate::MotionMode;
 use crate::pair::find_bracket_pair;
 
+/// One comma segment's inclusive `(start, end)` char range, leading and
+/// trailing whitespace included.
+type Segment = (usize, usize);
+
 /// Find the tightest bracket pair among `()`, `[]`, `{}` that encloses `pos`.
 ///
 /// Tries all three bracket types and returns the pair with the smallest span.
@@ -26,7 +30,7 @@ fn find_tightest_bracket_pair(buf: &Text, pos: usize) -> Option<(usize, usize)> 
 /// Returns a vec of `(start, end)` inclusive char-index pairs, one per segment,
 /// including leading/trailing whitespace. Commas inside nested `()`, `[]`, or `{}`
 /// are skipped. Returns an empty vec for adjacent brackets (`()`).
-fn find_comma_segments(buf: &Text, open_pos: usize, close_pos: usize) -> Vec<(usize, usize)> {
+fn find_comma_segments(buf: &Text, open_pos: usize, close_pos: usize) -> Vec<Segment> {
     // Content zone: open_pos+1 ..= close_pos-1. Empty when brackets are adjacent.
     if close_pos <= open_pos + 1 {
         return Vec::new();
@@ -63,7 +67,7 @@ fn find_comma_segments(buf: &Text, open_pos: usize, close_pos: usize) -> Vec<(us
 ///
 /// If `pos` falls in a gap (e.g., on a comma between two segments), associate
 /// it with the following segment — matching Helix/Kakoune behaviour.
-fn which_segment(segments: &[(usize, usize)], pos: usize) -> Option<usize> {
+fn which_segment(segments: &[Segment], pos: usize) -> Option<usize> {
     // Direct containment.
     for (idx, &(start, end)) in segments.iter().enumerate() {
         if pos >= start && pos <= end {
@@ -91,7 +95,7 @@ fn which_segment(segments: &[(usize, usize)], pos: usize) -> Option<usize> {
 /// only-argument case re-enters [`inner_argument`] with it, which lets that
 /// case descend into a nested bracket pair instead of trimming the segment
 /// already resolved against the outer one.
-fn locate_argument(buf: &Text, pos: usize) -> Option<(Vec<(usize, usize)>, usize, usize)> {
+fn locate_argument(buf: &Text, pos: usize) -> Option<(Vec<Segment>, usize, usize)> {
     let (open_pos, close_pos) = find_tightest_bracket_pair(buf, pos)?;
 
     // Nudge: if the cursor is on a bracket itself, step into the content zone.
@@ -118,7 +122,7 @@ fn locate_argument(buf: &Text, pos: usize) -> Option<(Vec<(usize, usize)>, usize
 /// `next_grapheme_boundary`/`prev_grapheme_boundary` are required here
 /// because `start`/`end` are text positions — raw `+= 1`/`-= 1` would
 /// mis-step on multi-byte clusters.
-fn trim_segment(buf: &Text, (raw_start, raw_end): (usize, usize)) -> Option<(usize, usize)> {
+fn trim_segment(buf: &Text, (raw_start, raw_end): Segment) -> Option<(usize, usize)> {
     let mut start = raw_start;
     while start <= raw_end && matches!(buf.char_at(start), Some(' ' | '\t' | '\n' | '\r')) {
         start = next_grapheme_boundary(buf, start);
