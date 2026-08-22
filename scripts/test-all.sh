@@ -17,3 +17,6 @@ bash scripts/fetch-test-grammars.sh
 export HUME_REQUIRE_LIVE_GRAMMAR_E2E=1
 export HUME_REQUIRE_GRAMMAR_FIXTURES=1
 cargo test --all-targets
+# --all-targets excludes doctests — run them separately so a broken example
+# doesn't rot unnoticed.
+cargo test --doc

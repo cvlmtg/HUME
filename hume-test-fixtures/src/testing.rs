@@ -283,7 +283,7 @@ pub fn serialize_state(buf: &Text, sels: &SelectionSet) -> String {
 ///
 /// # Example
 ///
-/// ```
+/// ```text
 /// // Edit command (returns buffer + sels + changeset):
 /// assert_state!(
 ///     "-[h]>ello\n",

@@ -89,3 +89,7 @@ jobs:
           HUME_REQUIRE_LIVE_GRAMMAR_E2E: "1"
           HUME_REQUIRE_GRAMMAR_FIXTURES: "1"
         run: cargo test --all-targets
+
+      # --all-targets above excludes doctests; run them separately.
+      - name: Doctests
+        run: cargo test --doc
