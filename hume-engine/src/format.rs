@@ -5,7 +5,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 use crate::providers::InlineInsert;
-use crate::types::{CellContent, DisplayRow, Grapheme, RowKind};
+use crate::types::{CellContent, DisplayRow, Grapheme, RowKind, ScopeId};
 
 // ---------------------------------------------------------------------------
 // Scratch storage
@@ -329,15 +329,18 @@ pub fn format_buffer_line(
                     .as_ref()
                     .is_none_or(|w| wrap.current_display_col + ins_width as u32 > w.start);
                 if visible {
-                    push_insert_cells(
+                    push_virtual_cells(
                         virtual_texts_out,
                         graphemes_out,
-                        ins,
-                        byte_offset..byte_offset, // zero-length: virtual
-                        char_pos,
-                        indent_depth,
+                        &VirtualRun {
+                            text: &ins.text,
+                            byte_range: byte_offset..byte_offset, // zero-length: virtual
+                            char_offset: char_pos,
+                            indent_depth,
+                        },
                         tab_width,
                         &mut wrap.current_display_col,
+                        |_| Some(ins.scope),
                     );
                 } else {
                     wrap.current_display_col =
@@ -491,15 +494,18 @@ pub fn format_buffer_line(
 
         // ── Emit any trailing inline inserts ────────────────────────────────
         for ins in &inline_inserts[insert_idx..] {
-            push_insert_cells(
+            push_virtual_cells(
                 virtual_texts_out,
                 graphemes_out,
-                ins,
-                line_str.len()..line_str.len(),
-                char_pos,
-                indent_depth,
+                &VirtualRun {
+                    text: &ins.text,
+                    byte_range: line_str.len()..line_str.len(),
+                    char_offset: char_pos,
+                    indent_depth,
+                },
                 tab_width,
                 &mut wrap.current_display_col,
+                |_| Some(ins.scope),
             );
         }
 
@@ -728,56 +734,114 @@ pub(crate) fn push_arena_text(arena: &mut String, text: &str) -> (u32, u16) {
     )
 }
 
-/// Push one `Grapheme`/cell per grapheme cluster of `ins.text`, not one wide
+/// One run of virtual text to lay out, plus the buffer identity every cell it
+/// produces shares. The identity is what separates the two kinds of run:
+/// an inline insert decorates a real buffer grapheme and carries that
+/// grapheme's position, while a virtual row has no buffer position at all
+/// (`char_offset: usize::MAX`, `indent_depth: 0`).
+pub(crate) struct VirtualRun<'a> {
+    pub text: &'a str,
+    /// Always empty — a virtual cell occupies no buffer bytes. Its *value*
+    /// still matters: `RowMap`'s `NearestContent` filter reads it to tell an
+    /// `Indicator` that is real content from one that only decorates.
+    pub byte_range: Range<usize>,
+    /// For an inline insert, the char offset of the real grapheme it
+    /// precedes (not `usize::MAX`): keeps the row non-decreasing in
+    /// `char_offset`, which `resolve_grapheme_display_col`'s partition_point
+    /// requires. Mid-line inserts are pushed before that grapheme, so ties
+    /// resolve to the insert first — `resolve_grapheme_display_col` skips
+    /// forward past `Virtual` cells to reach the real one. Trailing inserts
+    /// share the EOL sentinel's offset (the `\n` position) since there is no
+    /// later real grapheme on the row to precede.
+    pub char_offset: usize,
+    pub indent_depth: u8,
+}
+
+/// Push one `Grapheme`/cell per grapheme cluster of `run.text`, not one wide
 /// cell for the whole string: a ratatui `Cell` renders its `symbol` at
-/// exactly one column, so packing a multi-character insert into a single
-/// cell leaves the columns after the first unwritten by this insert —
-/// whatever the compose stage puts there instead (real buffer content) then
-/// wins when the backend paints cell-by-cell, clobbering everything past the
-/// first character. `CellContent::Indicator` sidesteps this by keeping its
-/// own symbol to one glyph and space-filling the rest; inline-insert text
-/// (inlay hints, diagnostics) has no such luxury. Shared by both the
-/// mid-line and end-of-line insert sites in `format_buffer_line`.
-#[allow(clippy::too_many_arguments)]
-fn push_insert_cells(
-    virtual_texts_out: &mut String,
+/// exactly one column, so packing a multi-character run into a single cell
+/// leaves the columns after the first unwritten by this run — whatever the
+/// compose stage puts there instead (real buffer content) then wins when the
+/// backend paints cell-by-cell, clobbering everything past the first
+/// character.
+///
+/// The single emitter behind both kinds of virtual text — `format_buffer_line`'s
+/// mid-line and end-of-line inline inserts, and `RowMap::segment_virtual_row`'s
+/// standalone provider rows. They differ only in the identity their cells
+/// carry (`run`) and in how each cell's scope resolves (`scope_at`, a
+/// constant for an insert, an interval cursor for a virtual row), so
+/// everything column-related — tab expansion, the control-character policy,
+/// double-width continuation cells — lives here once and cannot drift
+/// between them.
+///
+/// Widths are measured against the live `display_col`, not the run's starting
+/// column, so a tab expands to the stop it actually lands on even when the
+/// caller wrapped the run onto a continuation row after measuring it.
+pub(crate) fn push_virtual_cells(
+    arena: &mut String,
     graphemes_out: &mut Vec<Grapheme>,
-    ins: &InlineInsert,
-    byte_range: Range<usize>,
-    char_offset: usize,
-    indent_depth: u8,
+    run: &VirtualRun<'_>,
     tab_width: u8,
-    current_display_col: &mut u32,
+    display_col: &mut u32,
+    mut scope_at: impl FnMut(usize) -> Option<ScopeId>,
 ) {
-    let (text_start, _) = push_arena_text(virtual_texts_out, &ins.text);
-    for (g_byte_offset, g_str) in ins.text.grapheme_indices(true) {
+    let (text_start, _) = push_arena_text(arena, run.text);
+    for (byte_offset, cluster) in run.text.grapheme_indices(true) {
         // One grapheme cluster's width is always <= tab_width (u8's own max
-        // 255), unlike a whole insert string's — no `.min(255)` cap needed
-        // before narrowing.
-        let g_width =
-            hume_rope::width::grapheme_width(g_str, *current_display_col as usize, tab_width) as u8;
+        // 255), unlike a whole run's — no `.min(255)` cap needed before
+        // narrowing.
+        let width =
+            hume_rope::width::grapheme_width(cluster, *display_col as usize, tab_width) as u8;
+
+        // A control character must never reach the terminal as a cell symbol:
+        // the backend writes each symbol verbatim, so a literal `\t` would
+        // move the terminal's own cursor to its next hardware tab stop and a
+        // `\n` would break the frame outright — both shifting everything
+        // after them. Render a space instead, across the full advance
+        // `grapheme_width` gave the cluster (a tab reaches its next stop,
+        // exactly like a buffer line's tab with whitespace indicators off;
+        // every other control character occupies the single cell it clamps
+        // to). `set-virtual-lines!` already substitutes these at the Steel
+        // boundary to keep its caller's `'segments` offsets aligned, but
+        // inline-insert text does not go through that path — an LSP server's
+        // `InlayHint.label` reaches here verbatim — so the guarantee is
+        // enforced at this chokepoint rather than at each producer.
+        let content = if cluster.chars().any(char::is_control) {
+            let (start, len) = push_arena_text(arena, " ");
+            CellContent::Indicator { start, len }
+        } else {
+            CellContent::Virtual {
+                start: text_start + byte_offset as u32,
+                len: cluster.len() as u16,
+            }
+        };
+
         graphemes_out.push(Grapheme {
-            byte_range: byte_range.clone(),
-            // Char offset of the real grapheme this insert precedes (not MAX):
-            // keeps the row non-decreasing in char_offset, which
-            // `resolve_grapheme_display_col`'s partition_point requires.
-            // Mid-line inserts are pushed before that grapheme, so ties
-            // resolve to the insert first — `resolve_grapheme_display_col`
-            // skips forward past `Virtual` cells to reach the real one.
-            // Trailing inserts share the EOL sentinel's offset (the `\n`
-            // position) since there is no later real grapheme on the row to
-            // precede.
-            char_offset,
-            display_col: *current_display_col,
-            width: g_width,
-            content: CellContent::Virtual {
-                start: text_start + g_byte_offset as u32,
-                len: g_str.len() as u16,
-            },
-            indent_depth,
-            scope: Some(ins.scope),
+            byte_range: run.byte_range.clone(),
+            char_offset: run.char_offset,
+            display_col: *display_col,
+            width,
+            content,
+            indent_depth: run.indent_depth,
+            scope: scope_at(byte_offset),
         });
-        *current_display_col = current_display_col.saturating_add(g_width as u32);
+        *display_col = display_col.saturating_add(width as u32);
+
+        // For a double-width cluster: a placeholder so the second cell is
+        // addressable and styled with the first, matching what
+        // `format_buffer_line` emits for a real buffer grapheme. Both cells
+        // of a double-wide glyph always stay on the same row.
+        if width == 2 {
+            graphemes_out.push(Grapheme {
+                byte_range: run.byte_range.clone(),
+                char_offset: run.char_offset,
+                display_col: *display_col,
+                width: 0, // zero — does not consume columns
+                content: CellContent::WidthContinuation,
+                indent_depth: run.indent_depth,
+                scope: None,
+            });
+        }
     }
 }
 

@@ -230,20 +230,29 @@ pub fn char_col_in_line(rope: &Rope, line: usize, char_pos: usize) -> usize {
 /// clamping to the last content character and snapping to a grapheme
 /// boundary.
 ///
-/// Used only by vertical selection copy (`copy_selection_vertically`), which
-/// has no channel to a per-buffer `tab_width` — its commands are registered
-/// directly in `CommandRegistry` as bare `fn` pointers, so they can't receive
-/// settings the way an `EditorCmd` can. See [`place_display_column`] for the
-/// display-column-aware sibling vertical motion uses instead, and its doc for
-/// why the two aren't unified.
+/// Callers are those with no channel to a per-buffer `tab_width`: vertical
+/// selection copy (`copy_selection_vertically`), whose commands are registered
+/// directly in `CommandRegistry` as bare `fn` pointers and so can't receive
+/// settings the way an `EditorCmd` can; buffer reload, which re-places every
+/// cursor against the new text; and `goto-location!`'s char-indexed target
+/// shape. See [`place_display_column`] for the display-column-aware sibling
+/// vertical motion uses instead, and its doc for why the two aren't unified.
+///
+/// The clamp compares against the line's *content* end, not
+/// [`line_end_exclusive`]: the latter counts the terminating `\n`, which would
+/// make a `char_col` of exactly the line's content length land on the newline
+/// while any larger one clamped back to the last real character — a
+/// non-monotonic result where moving further right moves the cursor left. An
+/// empty line still lands on its `\n`, since there `line_content_end` *is*
+/// that newline. Mirrors [`place_display_column`]'s boundary rule, in char
+/// units.
 pub fn place_char_column(rope: &Rope, line: usize, char_col: usize) -> usize {
     let line_start = rope.line_to_char(line);
-    let end_excl = line_end_exclusive(rope, line);
+    let content_end = line_content_end(rope, line);
     let target = line_start + char_col;
 
-    if target >= end_excl {
-        // Char column overshoots — clamp to the last content char on the line.
-        line_content_end(rope, line)
+    if target >= content_end {
+        content_end
     } else {
         snap_to_grapheme_boundary(rope, line_start, target)
     }
@@ -264,10 +273,19 @@ pub fn place_char_column(rope: &Rope, line: usize, char_col: usize) -> usize {
 /// onto a *shorter* line should stick to the last real character (the
 /// vim/helix convention), landing on `\n` only when the line is genuinely
 /// empty — so this checks the line's own display width first and only
-/// defers to `char_pos_at_display_col` when `target_display_col` actually
-/// fits, falling back to [`line_content_end`] otherwise. Mirrors
-/// [`place_char_column`]'s same two-tier clamp shape exactly, just in
-/// display-column units.
+/// defers to `char_pos_at_display_col` when `target_display_col` lands
+/// strictly inside the line, falling back to [`line_content_end`] otherwise.
+///
+/// The comparison is `>=`, not `>`: a target *equal* to the line's width is
+/// already one column past its last character, which is exactly the `\n`'s
+/// own column. Letting that case through to `char_pos_at_display_col` would
+/// land `9j` on a non-empty line's newline while bare `j` — which resolves
+/// through `RowMap`'s `NearestContent`, and so excludes the EOL sentinel —
+/// lands on its last real character, splitting the two column models this
+/// function exists to unify. An empty line still lands on its `\n`: its width
+/// is 0, so `0 >= 0` takes the [`line_content_end`] branch, which for an
+/// empty line *is* the newline. Mirrors [`place_char_column`]'s two-tier
+/// clamp shape, just in display-column units.
 pub fn place_display_column(
     rope: &Rope,
     line: usize,
@@ -277,7 +295,7 @@ pub fn place_display_column(
     let slice = rope.slice(..);
     let line_width =
         crate::grapheme::display_col_in_line(slice, line, line_break_char(rope, line), tab_width);
-    if target_display_col > line_width {
+    if target_display_col >= line_width {
         line_content_end(rope, line)
     } else {
         crate::grapheme::char_pos_at_display_col(slice, line, target_display_col, tab_width)

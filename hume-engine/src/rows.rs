@@ -23,9 +23,8 @@
 use std::ops::Range;
 
 use ropey::Rope;
-use unicode_segmentation::UnicodeSegmentation;
 
-use crate::format::{FormatBound, FormatScratch, format_buffer_line, push_arena_text};
+use crate::format::{FormatBound, FormatScratch, format_buffer_line};
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{
     Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLine, VirtualLineAnchor,
@@ -720,12 +719,9 @@ impl<'a> RowMap<'a> {
         let vl = &cached.virtual_lines[vl_idx];
         let provider_id = vl.provider_id;
         let base_scope = vl.base_scope;
+        let tab_width = self.tab_width;
         let vrow = &mut self.scratch.virtual_row;
         vrow.clear();
-
-        // One copy of the row's text into the arena; each cell then names a
-        // sub-range of it.
-        let (arena_base, _) = push_arena_text(&mut vrow.texts, &vl.text);
 
         // `vl.segments` was sorted by `block()` at intake, and
         // `grapheme_indices` yields byte offsets in ascending order, so a
@@ -733,52 +729,19 @@ impl<'a> RowMap<'a> {
         // O(graphemes + segments) instead of a per-grapheme linear scan.
         let mut scope_cursor = crate::style::highlight::IntervalCursor::new(&vl.segments);
         let mut display_col: u32 = 0;
-        for (byte_offset, grapheme_str) in vl.text.grapheme_indices(true) {
-            let width = hume_rope::width::grapheme_width(
-                grapheme_str,
-                display_col as usize,
-                self.tab_width,
-            ) as u8;
-            let scope = scope_cursor.scope_at(byte_offset).or(base_scope);
-
-            // A literal tab renders as a space, exactly like a buffer line's
-            // tab with its whitespace indicator off (`grapheme_display`) —
-            // decoration providers have no per-line whitespace-indicator
-            // setting to key off. Everything else stays `Virtual`, pointing
-            // at its own slice of the row's one text copy.
-            let content = if grapheme_str == "\t" {
-                let (start, len) = push_arena_text(&mut vrow.texts, " ");
-                CellContent::Indicator { start, len }
-            } else {
-                let start =
-                    arena_base.saturating_add(u32::try_from(byte_offset).unwrap_or(u32::MAX));
-                let len = u16::try_from(grapheme_str.len()).unwrap_or(u16::MAX);
-                CellContent::Virtual { start, len }
-            };
-
-            vrow.graphemes.push(Grapheme {
+        crate::format::push_virtual_cells(
+            &mut vrow.texts,
+            &mut vrow.graphemes,
+            &crate::format::VirtualRun {
+                text: &vl.text,
                 byte_range: 0..0, // zero-length: virtual, no buffer position
                 char_offset: usize::MAX,
-                display_col,
-                width,
-                content,
                 indent_depth: 0,
-                scope,
-            });
-            display_col = display_col.saturating_add(width as u32);
-            if width == 2 {
-                // Both cells of a double-wide glyph stay on this row.
-                vrow.graphemes.push(Grapheme {
-                    byte_range: 0..0,
-                    char_offset: usize::MAX,
-                    display_col,
-                    width: 0,
-                    content: CellContent::WidthContinuation,
-                    indent_depth: 0,
-                    scope: None,
-                });
-            }
-        }
+            },
+            tab_width,
+            &mut display_col,
+            |byte_offset| scope_cursor.scope_at(byte_offset).or(base_scope),
+        );
 
         let row = vrow.row.insert(DisplayRow {
             kind: crate::types::RowKind::Virtual {
@@ -791,7 +754,9 @@ impl<'a> RowMap<'a> {
         RenderRow {
             row,
             graphemes: &vrow.graphemes,
-            // A virtual row has no buffer text; every cell of it is `Virtual`.
+            // A virtual row has no buffer text — every cell resolves out of
+            // `virtual_texts` instead, whether it is `Virtual` or the
+            // `Indicator` a tab or control character becomes.
             line_text: "",
             virtual_texts: &vrow.texts,
             base_scope,

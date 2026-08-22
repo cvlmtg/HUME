@@ -816,6 +816,120 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
     );
 }
 
+/// Format `line` of a one-line buffer with a single insert at `byte_offset`,
+/// returning the scratch so a test can read cells and resolve arena text.
+fn format_with_insert(line: &str, byte_offset: usize, text: &str) -> FormatScratch {
+    let rope = Rope::from_str(line);
+    let inserts = vec![InlineInsert {
+        byte_offset,
+        text: text.into(),
+        scope: crate::types::ScopeId(0),
+    }];
+    let mut scratch = FormatScratch::new();
+    format_buffer_line(
+        &rope,
+        0,
+        4,
+        &WhitespaceConfig::default(),
+        &WrapMode::None,
+        None,
+        FormatBound::Full,
+        &inserts,
+        &mut scratch,
+    );
+    scratch
+}
+
+#[test]
+fn control_characters_in_an_inline_insert_never_reach_a_cell_symbol() {
+    // An LSP server's `InlayHint.label` reaches the formatter verbatim — no
+    // sanitiser sits between `set-inlay-hints!` and here (unlike
+    // `set-virtual-lines!`, which substitutes at the Steel boundary). The
+    // backend writes each cell's symbol to the terminal as-is, so a literal
+    // `\t` would move the terminal's own cursor to its next hardware tab
+    // stop and a `\n` would break the frame outright, shifting or destroying
+    // everything after it. Every control character must therefore become a
+    // space Indicator here.
+    let scratch = format_with_insert("x", 0, ": \tFoo\nBar");
+
+    let resolve = |g: &Grapheme| -> String {
+        match g.content {
+            CellContent::Indicator { start, len } | CellContent::Virtual { start, len } => {
+                scratch.virtual_texts[start as usize..start as usize + len as usize].to_string()
+            }
+            _ => String::new(),
+        }
+    };
+    for g in &scratch.graphemes {
+        assert!(
+            !resolve(g).contains(char::is_control),
+            "no cell may carry a control character as its symbol, got {:?}",
+            resolve(g)
+        );
+    }
+
+    // The tab still advances to its stop, and the newline still occupies the
+    // one cell `grapheme_width` clamps it to — dropping them outright would
+    // desynchronise every column after the insert instead.
+    let insert_cells: Vec<&Grapheme> = scratch
+        .graphemes
+        .iter()
+        .filter(|g| g.byte_range.is_empty() && !matches!(g.content, CellContent::Empty))
+        .collect();
+    // ": \tFoo\nBar" — cols 0,1 are ": ", the tab at col 2 runs to the next
+    // stop (4) and so occupies 2 columns, which earns it a
+    // `WidthContinuation` like any other width-2 cell (see
+    // `rows::tests::render_row_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop`).
+    // "Foo" then occupies 4..7, the `\n` sits at 7, "Bar" at 8..11.
+    let tab_cell = insert_cells[2];
+    assert_eq!(tab_cell.display_col, 2);
+    assert_eq!(tab_cell.width, 2, "tab at display col 2 reaches stop 4");
+    assert_eq!(resolve(tab_cell), " ");
+    assert!(matches!(
+        insert_cells[3].content,
+        CellContent::WidthContinuation
+    ));
+    let newline_cell = insert_cells[7];
+    assert_eq!(newline_cell.display_col, 7);
+    assert_eq!(newline_cell.width, 1);
+    assert_eq!(resolve(newline_cell), " ");
+    assert_eq!(
+        insert_cells[8].display_col, 8,
+        "'B' follows in the next cell"
+    );
+}
+
+#[test]
+fn wide_grapheme_in_an_inline_insert_gets_a_width_continuation_cell() {
+    // A double-width cluster in an inlay hint must emit the same
+    // primary-plus-continuation pair a real buffer grapheme does: the second
+    // cell is what makes that column addressable (`RowMap`'s
+    // `NearestContent`) and styled with the first (`style`'s continuation
+    // arm). Without it the two columns of one glyph disagree.
+    let scratch = format_with_insert("x", 0, "漢");
+
+    let cells: Vec<&Grapheme> = scratch
+        .graphemes
+        .iter()
+        .filter(|g| g.byte_range.is_empty() && !matches!(g.content, CellContent::Empty))
+        .collect();
+    assert_eq!(cells.len(), 2, "one primary cell plus its continuation");
+    assert_eq!(cells[0].width, 2);
+    assert_eq!(cells[0].display_col, 0);
+    assert!(matches!(cells[0].content, CellContent::Virtual { .. }));
+    assert_eq!(
+        cells[1].display_col, 2,
+        "continuation is pushed at the post-advance column, as the buffer-line \
+         emitter does for a real wide grapheme"
+    );
+    assert_eq!(cells[1].width, 0, "and consumes no columns of its own");
+    assert!(matches!(cells[1].content, CellContent::WidthContinuation));
+    assert_eq!(
+        cells[1].char_offset, cells[0].char_offset,
+        "both cells address the same buffer position"
+    );
+}
+
 #[test]
 fn trailing_insert_emits_one_cell_per_grapheme() {
     // A multi-char insert past the end of the line (diagnostics' EOL

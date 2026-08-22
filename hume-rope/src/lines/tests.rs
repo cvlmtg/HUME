@@ -356,6 +356,28 @@ fn place_char_column_within_line() {
 }
 
 #[test]
+fn place_char_column_is_monotonic_across_the_line_end_boundary() {
+    // "abc\ndef\n" — line 0 holds 'a','b','c' at chars 0,1,2 with its '\n' at
+    // char 3. A char col of exactly 3 is one past the last character, i.e.
+    // the newline's own offset, and must clamp back to 'c' like every larger
+    // column does. Clamping against `line_end_exclusive` (which counts the
+    // '\n') instead put col 3 on the newline while col 4 clamped to 'c' —
+    // moving further right moved the cursor left.
+    let buf = rope("abc\ndef\n");
+    let placed: Vec<usize> = (0..6).map(|col| place_char_column(&buf, 0, col)).collect();
+    assert_eq!(placed, vec![0, 1, 2, 2, 2, 2]);
+    assert!(
+        placed.windows(2).all(|w| w[0] <= w[1]),
+        "placement must never move left as the column grows: {placed:?}"
+    );
+    // An empty line keeps landing on its own '\n' — there the last content
+    // position *is* the newline.
+    let empty = rope("a\n\nb\n");
+    assert_eq!(place_char_column(&empty, 1, 0), 2);
+    assert_eq!(place_char_column(&empty, 1, 3), 2);
+}
+
+#[test]
 fn place_char_column_overshoot_clamps_to_line_content_end() {
     // "hi\nhello\n" — line 0 only has 2 real chars; char col 10 clamps to
     // 'i' (offset 1).
@@ -414,6 +436,29 @@ fn place_display_column_wide_cjk_before_target_lands_display_correct() {
     let buf = rope("\u{6F22}bc\nhi\n");
     assert_eq!(place_display_column(&buf, 0, 2, 4), 1); // lands on 'b'
     assert_eq!(place_display_column(&buf, 0, 3, 4), 2); // lands on 'c'
+}
+
+#[test]
+fn place_display_column_at_exactly_the_line_width_stays_on_the_last_char() {
+    // The boundary between the two clamp tiers. "abcd\nabc\n": line 1 is
+    // "abc" (chars 5,6,7 at display cols 0,1,2) with its '\n' at char 8, so
+    // the line is 3 display columns wide. A target of exactly 3 is already
+    // one column past 'c' — i.e. the newline's own column — and must clamp
+    // back to 'c' (char 7) rather than land on the '\n' (char 8).
+    //
+    // This is what keeps `9j` agreeing with bare `j`: pressing `j` from
+    // 'd' (line 0, display col 3) resolves through `RowMap`'s
+    // `NearestContent`, which excludes the EOL sentinel and so lands on
+    // 'c'. Landing on the '\n' here would split the two column models this
+    // function exists to unify.
+    let buf = rope("abcd\nabc\n");
+    assert_eq!(place_display_column(&buf, 1, 3, 4), 7);
+    // One column earlier is unambiguous, and lands on the same character.
+    assert_eq!(place_display_column(&buf, 1, 2, 4), 7);
+    // An empty line keeps the opposite behaviour: width 0, so a target of 0
+    // takes the same clamp branch, whose content end *is* the newline.
+    let empty = rope("a\n\nb\n");
+    assert_eq!(place_display_column(&empty, 1, 0, 4), 2);
 }
 
 #[test]

@@ -363,17 +363,21 @@ pub(crate) fn diagnostic_counts(lsp: &LspState, bid: BufferId) -> (usize, usize)
 }
 
 /// `line`/`character` clamped into `text`'s addressable range and converted
-/// to a grapheme column — `None` when `line` is past `text`'s last (ropey
-/// domain, so a server's past-end response and the buffer's own phantom
-/// trailing line both land here) rather than silently reporting the last
-/// line's column under a `line` that doesn't match it.
+/// to a grapheme column — `None` when `line` names no real content, rather
+/// than silently reporting a column under a `line` that doesn't match it.
+///
+/// The bound is the last *content* line, so a server's past-end response and
+/// the buffer's own phantom trailing line (the one the structural `\n`
+/// creates) both return `None`. Clamping to the ropey domain instead would
+/// admit the phantom line and report column 1 of a line that has no
+/// characters — a drawer row pointing one line past the file's end.
 fn wire_pos_to_grapheme_col(
     text: &hume_editing::text::Text,
     line: usize,
     character: usize,
     encoding: hume_rope::position_encoding::PositionEncoding,
 ) -> Option<usize> {
-    if line > text.last_ropey_line() {
+    if line > text.last_content_line() {
         return None;
     }
     let char_pos =

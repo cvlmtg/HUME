@@ -411,7 +411,9 @@ pub(crate) enum GotoTarget {
 /// Clamps a char-indexed `(line, char_col)` pair to a valid char offset in
 /// `bid`. `line` clamps to the ropey-domain last line here (a scripted
 /// target can address the buffer's own trailing phantom line); the
-/// char_col clamp and grapheme snap are `place_char_column`'s.
+/// char_col clamp and grapheme snap are `place_char_column`'s, which lands a
+/// past-the-end column on the line's last content character rather than on
+/// its `\n`.
 fn char_indexed_to_char_pos(
     state: &EditorState,
     bid: BufferId,

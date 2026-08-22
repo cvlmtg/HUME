@@ -188,6 +188,7 @@ fn references_drawer_shows_grapheme_columns_across_open_and_disk_files() {
                 loc(&other_uri, 0, 0),   // same unopened file again: 'e' -> grapheme col 1
                 loc(&missing_uri, 0, 0), // unreadable target: no column
                 loc(&uri, 5, 0),         // past the file's one content line: no column
+                loc(&uri, 1, 0),         // the buffer's own phantom line: no column
             ]),
         );
     });
@@ -198,7 +199,7 @@ fn references_drawer_shows_grapheme_columns_across_open_and_disk_files() {
         let guard = ed.state.drawer_view.read().unwrap();
         guard.as_ref().expect("drawer must open").rows.clone()
     };
-    assert_eq!(rows.len(), 5);
+    assert_eq!(rows.len(), 6);
     assert!(
         rows[0].ends_with("main.rs:1:3"),
         "open-buffer location must show grapheme col 3, got {:?}",
@@ -223,5 +224,17 @@ fn references_drawer_shows_grapheme_columns_across_open_and_disk_files() {
         rows[4].ends_with("main.rs:6"),
         "a line past the target's content must degrade to path:line, no column, got {:?}",
         rows[4]
+    );
+    // The boundary the "past the end" case above is too far away to pin: the
+    // fixture's one content line plus its structural `\n` make line 1 the
+    // buffer's own phantom trailing line, which is a *valid ropey line* but
+    // holds no content. Clamping to the ropey domain would resolve it to
+    // grapheme column 0 and render `main.rs:2:1` — a row pointing one line
+    // past the end of the file, with a column.
+    assert!(
+        rows[5].ends_with("main.rs:2"),
+        "the phantom trailing line has no content, so it must degrade to \
+         path:line with no column, got {:?}",
+        rows[5]
     );
 }
