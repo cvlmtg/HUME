@@ -2,12 +2,12 @@ use std::borrow::Cow;
 
 use ratatui::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
 
 use hume_platform::path::is_path_sep;
 
 use crate::editor::Editor;
 use crate::ui::theme::EditorColors;
+use crate::ui::width::{cell_width, text_width};
 
 /// The `FilePath` element does not implement [`super::StatuslineElement`]:
 /// its content isn't read from `Editor` directly, but computed externally by
@@ -53,7 +53,7 @@ pub(in crate::ui::statusline) fn shorten_path_to_width_with(
     max_cols: usize,
     is_sep: fn(char) -> bool,
 ) -> String {
-    if UnicodeWidthStr::width(display) <= max_cols {
+    if text_width(display) <= max_cols {
         return display.to_owned();
     }
     if max_cols == 0 {
@@ -83,25 +83,25 @@ pub(in crate::ui::statusline) fn shorten_path_to_width_with(
         components[i] = format!("{first}{sep}");
 
         let candidate = components.concat();
-        if UnicodeWidthStr::width(candidate.as_str()) <= max_cols {
+        if text_width(&candidate) <= max_cols {
             return candidate;
         }
     }
 
     // All dirs abbreviated — still too wide. Truncate the filename with `…`.
     let ellipsis = "…"; // U+2026, 1 col wide
-    let ellipsis_w = UnicodeWidthStr::width(ellipsis);
+    let ellipsis_w = text_width(ellipsis);
     let prefix = components[..n.saturating_sub(1)].concat();
     // Available columns for the filename (after prefix + ellipsis). The
     // prefix already carries its own trailing separator, if any.
-    let prefix_w = UnicodeWidthStr::width(prefix.as_str());
+    let prefix_w = text_width(&prefix);
     let available = max_cols.saturating_sub(prefix_w + ellipsis_w);
 
     let filename = &components[n - 1];
     let mut truncated = String::new();
     let mut cols_used = 0usize;
     for g in filename.graphemes(true) {
-        let gw = UnicodeWidthStr::width(g);
+        let gw = cell_width(g);
         if cols_used + gw > available {
             break;
         }

@@ -43,6 +43,7 @@ pub fn gutter_width_for_line<'a>(
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn>,
     max_line: usize,
 ) -> u16 {
+    // display-width-safe: GutterColumn::width is a cell count, not display width.
     gutter_columns.map(|c| c.width(max_line) as u16).sum()
 }
 

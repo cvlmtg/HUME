@@ -11,6 +11,7 @@ pub(crate) mod signs;
 pub mod statusline;
 pub(crate) mod theme;
 pub(crate) mod virtual_lines;
+pub(crate) mod width;
 
 use rustc_hash::FxHashMap;
 use std::sync::{Arc, RwLock};

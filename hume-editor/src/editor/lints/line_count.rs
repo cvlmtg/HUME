@@ -19,22 +19,7 @@
 //!
 //! **Opt-out**: annotate a line with `// line-count-safe: <reason>`.
 
-use super::{collect_source_rs, quoted_strings, scan_forbidden, strip_line_comment};
-
-/// Every workspace member crate name, derived from the root `Cargo.toml`'s
-/// `[workspace] members = [...]` line — the single source of truth for
-/// "what crates exist." A hand-maintained crate list can silently drop out
-/// of sync with the workspace (a renamed directory, a newly added crate);
-/// reading it back out of `Cargo.toml` can't.
-fn workspace_member_crates(workspace_root: &std::path::Path) -> Vec<String> {
-    let manifest = std::fs::read_to_string(workspace_root.join("Cargo.toml"))
-        .expect("cannot read workspace Cargo.toml");
-    let members_line = manifest
-        .lines()
-        .find(|l| l.trim_start().starts_with("members"))
-        .expect("no `members = [...]` line in workspace Cargo.toml");
-    quoted_strings(members_line)
-}
+use super::{collect_source_rs, scan_forbidden, strip_line_comment, workspace_member_crates};
 
 /// Recursively collect every `.rs` file under `dir` that [`collect_source_rs`]
 /// excludes: anything under a directory named `tests`, or a file named

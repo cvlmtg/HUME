@@ -28,6 +28,8 @@ use hume_engine::render::fill_rect_bg;
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
 
+use super::width::{cell_width, text_width};
+
 /// Maximum panel width/height in terminal cells, before the pane-fraction
 /// clamp — mirrors `MAX_POPUP_WIDTH`'s role for the popup widget.
 const MAX_PANEL_WIDTH: u16 = 100;
@@ -140,13 +142,13 @@ pub(crate) fn picker_styles(theme: &Theme) -> PickerStyles {
 /// per the store's append/pop-at-end-only editing model) stays visible.
 /// Grapheme-cluster aware, matching the project's text-boundary discipline.
 fn truncate_tail(s: &str, budget: usize) -> String {
-    if unicode_width::UnicodeWidthStr::width(s) <= budget {
+    if text_width(s) <= budget {
         return s.to_string();
     }
     let mut acc = 0usize;
     let mut pieces: Vec<&str> = Vec::new();
     for g in s.graphemes(true).rev() {
-        let w = unicode_width::UnicodeWidthStr::width(g);
+        let w = cell_width(g);
         if acc + w > budget {
             break;
         }
@@ -162,13 +164,13 @@ fn truncate_tail(s: &str, budget: usize) -> String {
 /// panel), the readable prefix matters more than the tail. Grapheme-cluster
 /// aware, same discipline as `truncate_tail`.
 fn truncate_head(s: &str, budget: usize) -> String {
-    if unicode_width::UnicodeWidthStr::width(s) <= budget {
+    if text_width(s) <= budget {
         return s.to_string();
     }
     let mut acc = 0usize;
     let mut pieces: Vec<&str> = Vec::new();
     for g in s.graphemes(true) {
-        let w = unicode_width::UnicodeWidthStr::width(g);
+        let w = cell_width(g);
         if acc + w > budget {
             break;
         }
@@ -185,7 +187,7 @@ fn truncate_head(s: &str, budget: usize) -> String {
 /// the query row must never gain a marker — the query is the user's
 /// editable text, and its bare tail (no `…`) is intentional there.
 fn truncate_tail_marked(s: &str, budget: usize) -> String {
-    if unicode_width::UnicodeWidthStr::width(s) <= budget {
+    if text_width(s) <= budget {
         return s.to_string();
     }
     if budget == 0 {
@@ -233,14 +235,14 @@ pub(crate) fn draw_picker_panel(
     } else {
         format!("{}/{}", state.matched, state.total)
     };
-    let counts_width = unicode_width::UnicodeWidthStr::width(counts.as_str());
+    let counts_width = text_width(&counts);
 
     // Clip the prompt itself only in the pathological case where it alone
     // exceeds the inner width — the common case (empty or a short label)
     // leaves this a no-op, so an empty prompt renders identically to no
     // prompt at all.
     let prompt_shown = truncate_head(&state.prompt, inner_width);
-    let prompt_width = unicode_width::UnicodeWidthStr::width(prompt_shown.as_str());
+    let prompt_width = text_width(&prompt_shown);
     if prompt_width > 0 {
         buf.set_string(inner_x, input_y, &prompt_shown, text);
     }
@@ -254,7 +256,7 @@ pub(crate) fn draw_picker_panel(
         after_prompt_width.saturating_sub(1)
     };
     let query_tail = truncate_tail(&state.query, query_budget);
-    let query_width = unicode_width::UnicodeWidthStr::width(query_tail.as_str());
+    let query_width = text_width(&query_tail);
 
     let query_x = inner_x + prompt_width as u16;
     buf.set_string(query_x, input_y, &query_tail, text);

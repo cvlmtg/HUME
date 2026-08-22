@@ -1,7 +1,8 @@
 pub(crate) mod history;
 
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
+
+use crate::ui::width::text_width;
 
 // ── MiniBuffer ────────────────────────────────────────────────────────────────
 
@@ -61,8 +62,8 @@ impl MiniBuffer {
     /// Add `area.x` to get the absolute screen column.
     pub(crate) fn statusline_cursor_col(&self) -> u16 {
         let pad: u16 = 1; // pad_left inserts one space before the MiniBuf span
-        let prompt_w = UnicodeWidthStr::width(self.prompt.as_str()) as u16;
-        let input_w = UnicodeWidthStr::width(&self.input[..self.cursor]) as u16;
+        let prompt_w = text_width(&self.prompt) as u16;
+        let input_w = text_width(&self.input[..self.cursor]) as u16;
         pad + prompt_w + input_w
     }
 

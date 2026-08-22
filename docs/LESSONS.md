@@ -450,3 +450,33 @@ path, so they waited for the next keystroke — forever, on an idle editor.
    had a consumer in the same phase. Prefer one queue with one rule; if two
    are genuinely needed, write the test that proves work queued by either is
    drained on every path.
+
+## L10 — A "bug" claim about combining marks was never checked against grapheme segmentation (2026-08-22)
+
+**Root cause:** Diagnosing a display-width bug (git-diff's tab-stop math
+undercounting wide CJK graphemes), the plan asserted a second bug as fact:
+that decomposed combining sequences (e.g. `e` + U+0301) also misrender in
+`hume-engine`'s virtual-row renderer, because `segment_virtual_row`'s
+`.clamp(1, 2)` differs from `push_insert_cells`'s `.min(255)` + skip-on-zero.
+The claim sounded structurally plausible — two different width-clamping
+policies in the same file *do* diverge somewhere — and was stated as
+established fact in a plan file before being checked.
+
+**Concrete instance:** `unicode_segmentation`'s `grapheme_indices(true)`
+merges a base character and its following combining mark into *one*
+grapheme cluster before either width-clamping policy ever sees it — `"e" +
+U+0301` arrives at `.width()` as a single two-codepoint `&str` measuring 1
+column, not two separate zero-width-adjacent codepoints. The two clamp
+policies only actually diverge on a *degenerate* cluster with no base
+character (a lone combining mark, a bare ZWJ) — a real but much narrower
+case than "combining marks misalign," which the user corrected mid-review.
+
+**Prevention rule:** A claim about how a specific Unicode construct (a
+combining sequence, a ZWJ emoji, a regional-indicator flag pair) behaves
+through a text pipeline must be checked against how that pipeline actually
+segments text — here, tracing the value through `grapheme_indices(true)`
+by hand — before it's written into a plan or a finding as fact. "Two code
+paths compute width differently" is not itself evidence that a *specific*
+input reaches the diverging branch; each path's actual input shape (one
+cluster vs. one codepoint) has to be traced, not assumed from the
+surrounding code's structure.

@@ -12,6 +12,7 @@ use ratatui::symbols::line;
 use hume_engine::render::fill_rect_bg;
 
 use super::popup::StyledRow;
+use super::width::text_width;
 
 /// Theme styles a bordered box paints with — grouped into one struct rather
 /// than three positional `Style` arguments on `draw_menu_box`, which needs
@@ -34,10 +35,7 @@ pub(crate) const MAX_MENU_ROWS: u16 = 10;
 /// Widest row's display width — stable across scrolling, so the box doesn't
 /// resize as the visible window changes.
 pub(crate) fn menu_inner_width(rows: &[String]) -> u16 {
-    rows.iter()
-        .map(|r| unicode_width::UnicodeWidthStr::width(r.as_str()))
-        .max()
-        .unwrap_or(0) as u16
+    rows.iter().map(|r| text_width(r)).max().unwrap_or(0) as u16
 }
 
 /// Outer footprint (including the 1-cell frame) for a box showing `rows`,
@@ -226,7 +224,7 @@ fn paint_styled_row(buf: &mut ScreenBuf, x: u16, y: u16, runs: &StyledRow) {
     let mut cx = x;
     for (run_text, run_style) in runs {
         buf.set_string(cx, y, run_text, *run_style);
-        cx += unicode_width::UnicodeWidthStr::width(run_text.as_str()) as u16;
+        cx += text_width(run_text) as u16;
     }
 }
 

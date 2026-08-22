@@ -110,7 +110,7 @@ fn geometry_flips_above_near_bottom_edge() {
 
 #[test]
 fn geometry_clamps_horizontally_at_right_edge() {
-    let width = unicode_display_width("a very long popup line here") as u16;
+    let width = hume_rope::width::str_width("a very long popup line here", 0, 1) as u16;
     // Pane wide enough to hold the content, but the anchor sits close
     // enough to the right edge that placing the popup there unclamped
     // would overflow.

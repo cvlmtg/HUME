@@ -6,6 +6,7 @@
 //! shared string/source-scanning helpers live in this module.
 
 mod dispatch_funnel;
+mod display_width;
 mod field_classification;
 mod grapheme;
 mod line_count;
@@ -17,6 +18,22 @@ mod statusline_writes;
 mod test_globals;
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
+
+/// Every workspace member crate name, derived from the root `Cargo.toml`'s
+/// `[workspace] members = [...]` line — the single source of truth for
+/// "what crates exist." A hand-maintained crate list can silently drop out
+/// of sync with the workspace (a renamed directory, a newly added crate);
+/// reading it back out of `Cargo.toml` can't. Shared by every lint that
+/// scans the whole workspace rather than a curated file list.
+fn workspace_member_crates(workspace_root: &std::path::Path) -> Vec<String> {
+    let manifest = std::fs::read_to_string(workspace_root.join("Cargo.toml"))
+        .expect("cannot read workspace Cargo.toml");
+    let members_line = manifest
+        .lines()
+        .find(|l| l.trim_start().starts_with("members"))
+        .expect("no `members = [...]` line in workspace Cargo.toml");
+    quoted_strings(members_line)
+}
 
 /// Collect all `.rs` files under `dir`, recursively, excluding any
 /// directory named `tests` and any file named `tests.rs`.  Results are

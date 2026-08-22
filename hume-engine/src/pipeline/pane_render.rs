@@ -60,6 +60,7 @@ pub(crate) fn render_pane(
             .providers
             .gutter_columns
             .iter()
+            // display-width-safe: GutterColumn::width is a cell count, not display width.
             .map(|(_, c)| c.width(visible.last_line_idx) as u16),
     );
 

@@ -449,10 +449,11 @@ impl Editor {
                 !(diag_empty && plugin_empty)
             };
             let width = match signcolumn.mode {
+                // display-width-safe: SignColumnConfig::width is a slot count, not display width.
                 crate::settings::SignColumnMode::Always => signcolumn.width(),
                 crate::settings::SignColumnMode::Auto => {
                     if has_signs {
-                        signcolumn.width()
+                        signcolumn.width() // display-width-safe: slot count, not display width
                     } else {
                         0
                     }

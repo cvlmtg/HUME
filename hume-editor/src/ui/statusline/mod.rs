@@ -5,12 +5,12 @@ use std::str::FromStr;
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use unicode_width::UnicodeWidthStr;
 
 use hume_engine::render::fill_rect_bg;
 
 use crate::editor::Editor;
 use crate::ui::theme::EditorColors;
+use crate::ui::width::text_width;
 
 mod elements;
 use elements::{
@@ -259,7 +259,7 @@ fn pad_right(
 fn section_width(spans: &[(Cow<'static, str>, Style)]) -> u16 {
     spans
         .iter()
-        .map(|(t, _)| UnicodeWidthStr::width(t.as_ref()) as u16)
+        .map(|(t, _)| text_width(t.as_ref()) as u16)
         .sum()
 }
 
@@ -272,7 +272,7 @@ fn draw_section(
 ) {
     for (text, style) in spans {
         screen_buf.set_string(x, y, text.as_ref(), *style);
-        x += UnicodeWidthStr::width(text.as_ref()) as u16;
+        x += text_width(text.as_ref()) as u16;
     }
 }
 

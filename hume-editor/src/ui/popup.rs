@@ -38,6 +38,7 @@ use hume_engine::types::Scope;
 use hume_scripting::host::PopupKind;
 
 use super::menu_box::{MenuBoxStyles, draw_menu_box};
+use super::width::cell_width;
 
 /// Maximum popup width in terminal columns, before any pane-width clamp.
 pub(crate) const MAX_POPUP_WIDTH: u16 = 60;
@@ -507,7 +508,7 @@ pub(crate) fn wrap_styled(runs: &[(String, Style)], max_width: u16) -> Vec<Style
                     word_end += 1;
                 }
                 let word = &paragraph[word_start..word_end];
-                let word_w: usize = word.iter().map(|(g, _)| unicode_display_width(g)).sum();
+                let word_w: usize = word.iter().map(|(g, _)| cell_width(g)).sum();
                 // Would-be width if `word` were appended to the current
                 // line — recomputed fresh each iteration (never carried
                 // across a break) so a line-break never leaves a stale
@@ -532,7 +533,7 @@ pub(crate) fn wrap_styled(runs: &[(String, Style)], max_width: u16) -> Vec<Style
                     let mut piece: Vec<(&str, Style)> = Vec::new();
                     let mut piece_w = 0usize;
                     for &(g, style) in word {
-                        let gw = unicode_display_width(g);
+                        let gw = cell_width(g);
                         if piece_w + gw > max_width && !piece.is_empty() {
                             out.push(coalesce_atoms(std::mem::take(&mut piece)));
                             piece_w = 0;
@@ -570,10 +571,6 @@ pub(crate) fn wrap_styled(runs: &[(String, Style)], max_width: u16) -> Vec<Style
     }
 
     out
-}
-
-fn unicode_display_width(s: &str) -> usize {
-    unicode_width::UnicodeWidthStr::width(s)
 }
 
 // ---------------------------------------------------------------------------
