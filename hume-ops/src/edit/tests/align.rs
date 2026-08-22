@@ -177,10 +177,10 @@ fn align_remove_tab_before_selection() {
 }
 
 #[test]
-fn align_two_columns_per_line() {
-    // Multi-column: primary line has 2 selections defining 2 column targets.
-    // Target for column 1 is derived per-line from baseline + that line's own
-    // gap to column 0, so line 1's wider gap before 'z' costs it a space
+fn align_two_slots_per_line() {
+    // Multi-slot: primary line has 2 selections defining 2 slot targets.
+    // Target for slot 1 is derived per-line from baseline + that line's own
+    // gap to slot 0, so line 1's wider gap before 'z' costs it a space
     // while line 0's 'b' gains one.
     assert_state!(
         "-[a]> -[b]>\n-[xy]>  -[z]>\n",
@@ -190,8 +190,8 @@ fn align_two_columns_per_line() {
 }
 
 #[test]
-fn align_two_columns_overflow_widens_primary() {
-    // Multi-column: another line's wider content forces target[1] past baseline,
+fn align_two_slots_overflow_widens_primary() {
+    // Multi-slot: another line's wider content forces target[1] past baseline,
     // so spaces are inserted on the primary line too (primary may move).
     assert_state!(
         "-[x]> -[y]>\n-[loooong]> -[z]>\n",
@@ -201,7 +201,7 @@ fn align_two_columns_overflow_widens_primary() {
 }
 
 #[test]
-fn align_two_columns_static_text_between() {
+fn align_two_slots_static_text_between() {
     // Regression: static non-selected text before slot 0 and between slots must
     // set the floor, not the selection edge geometry.
     //
@@ -231,7 +231,7 @@ fn align_two_columns_static_text_between() {
     assert_eq!(
         new_buf.to_string(),
         "const foo    = 444;     // foo\nconst foobar = 6757383; // bar\nconst a      = 34;      // a\n",
-        "columns must widen to clear the widest line's non-removable content"
+        "slots must widen to clear the widest line's non-removable content"
     );
 }
 

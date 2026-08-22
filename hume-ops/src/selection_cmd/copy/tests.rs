@@ -39,7 +39,7 @@ fn copy_to_next_line_on_last_line_is_noop() {
 }
 
 #[test]
-fn copy_to_next_line_clamps_column() {
+fn copy_to_next_line_clamps_char_column() {
     // "hello\nhi\n" — cursor at column 4 of line 0.
     // Line 1 is "hi\n" (only 2 real chars). Should clamp to last char 'i'.
     let (buf, sels) = parse_state("hell-[o]>\nhi\n");
@@ -229,7 +229,7 @@ fn copy_to_prev_line_on_first_line_is_noop() {
 }
 
 #[test]
-fn copy_to_prev_line_clamps_column() {
+fn copy_to_prev_line_clamps_char_column() {
     // "hi\nhello\n" — cursor at column 4 of line 1 ('o').
     // Line 0 is "hi\n" (only 2 real chars). Should clamp to last char 'i'.
     // "hi\n" = offsets 0-2, "hello\n" = offsets 3-8.

@@ -244,10 +244,11 @@ fn trimmed_window(order: &[usize]) -> Option<(usize, usize)> {
 }
 
 /// Selections follow their row: a selection confined to a single moved row is
-/// shifted by the same column offset onto the row's new home. A selection
-/// spanning multiple rows keeps its char range unchanged — the group's total
-/// length is invariant under a row permutation (rows move verbatim), so the
-/// range still points at valid text, just reordered underneath it.
+/// shifted by the same char column offset onto the row's new home. A
+/// selection spanning multiple rows keeps its char range unchanged — the
+/// group's total length is invariant under a row permutation (rows move
+/// verbatim), so the range still points at valid text, just reordered
+/// underneath it.
 fn remap_selections(
     old_buf: &Text,
     new_buf: &Text,
@@ -261,10 +262,13 @@ fn remap_selections(
         let moved = if start_line == end_line {
             line_map.get(&start_line).map(|&new_line| {
                 let old_line_start = old_buf.line_to_char(start_line);
-                let anchor_col = sel.anchor() - old_line_start;
-                let head_col = sel.head() - old_line_start;
+                let anchor_char_col = sel.anchor() - old_line_start;
+                let head_char_col = sel.head() - old_line_start;
                 let new_line_start = new_buf.line_to_char(new_line);
-                Selection::new(new_line_start + anchor_col, new_line_start + head_col)
+                Selection::new(
+                    new_line_start + anchor_char_col,
+                    new_line_start + head_char_col,
+                )
             })
         } else {
             None

@@ -170,9 +170,9 @@ fn sort_is_stable_for_equal_keys() {
 }
 
 #[test]
-fn sort_follows_a_selection_at_a_nonzero_column() {
+fn sort_follows_a_selection_at_a_nonzero_char_column() {
     // The row moves verbatim, so a selection partway through its line keeps
-    // the same column offset on its new line.
+    // the same char column offset on its new line.
     assert_state!(
         "xx-[b]>\nyy-[a]>\n",
         |(buf, sels)| sort_rows(buf, sels, SortOpts::default()).unwrap(),

@@ -162,7 +162,7 @@ fn move_down_basic() {
 }
 
 #[test]
-fn move_down_preserves_column() {
+fn move_down_preserves_display_column() {
     assert_state!(
         "hel-[l]>o\nworld\n",
         |(buf, sels)| cmd_move_down(&buf, sels, 1, MotionMode::Move, 4),
@@ -254,7 +254,7 @@ fn move_up_basic() {
 }
 
 #[test]
-fn move_up_preserves_column() {
+fn move_up_preserves_display_column() {
     assert_state!(
         "hello\nwor-[l]>d\n",
         |(buf, sels)| cmd_move_up(&buf, sels, 1, MotionMode::Move, 4),

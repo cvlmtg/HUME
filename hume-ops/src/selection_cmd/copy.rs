@@ -81,11 +81,11 @@ fn copy_selection_vertically(
             anchor_line.min(head_line) // topmost for "up"
         };
 
-        // Both endpoints' columns are loop-invariant — the original selection
-        // never changes across copies — so compute them once instead of
-        // re-deriving from the rope on every iteration.
-        let anchor_col = sel.anchor() - buf.line_to_char(anchor_line as usize);
-        let head_col = sel.head() - buf.line_to_char(head_line as usize);
+        // Both endpoints' char columns are loop-invariant — the original
+        // selection never changes across copies — so compute them once
+        // instead of re-deriving from the rope on every iteration.
+        let anchor_char_col = sel.anchor() - buf.line_to_char(anchor_line as usize);
+        let head_char_col = sel.head() - buf.line_to_char(head_line as usize);
 
         // Walk outward one line at a time, breaking as soon as a target line
         // falls off the buffer — every further step in that direction would
@@ -109,8 +109,9 @@ fn copy_selection_vertically(
             // Shift each endpoint by the same delta, clamped to the target
             // line's content and snapped to a grapheme boundary.
             let delta = target_outer - outer_line;
-            let new_anchor = place_char_column(buf, (anchor_line + delta) as usize, anchor_col);
-            let new_head = place_char_column(buf, (head_line + delta) as usize, head_col);
+            let new_anchor =
+                place_char_column(buf, (anchor_line + delta) as usize, anchor_char_col);
+            let new_head = place_char_column(buf, (head_line + delta) as usize, head_char_col);
 
             let new_sel = Selection::new(new_anchor, new_head);
 

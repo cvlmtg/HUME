@@ -203,12 +203,12 @@ fn delete_sel_region(
         if del_start >= b.old_pos() {
             // Cursor: land at the start of the merged line (what was the line
             // above the deleted one). Compute as (del_start's new_pos) minus
-            // del_start's column within its original line — this stays correct
-            // in the multi-cursor case where b.new_pos() != b.old_pos().
+            // del_start's char column within its original line — this stays
+            // correct in the multi-cursor case where b.new_pos() != b.old_pos().
             let prev_line = buf.char_to_line(del_start);
-            let col_in_line = del_start - buf.line_to_char(prev_line);
+            let char_col = del_start - buf.line_to_char(prev_line);
             b.retain(del_start - b.old_pos());
-            let cursor_new = b.new_pos().saturating_sub(col_in_line);
+            let cursor_new = b.new_pos().saturating_sub(char_col);
             // Delete from the preceding '\n' through the last content char,
             // keeping the structural trailing '\n'.
             b.delete(buf.last_content_char() + 1 - del_start);

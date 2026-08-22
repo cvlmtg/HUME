@@ -18,7 +18,7 @@ fn dedent_spaces_to_prev_tab_stop() {
 }
 
 #[test]
-fn dedent_six_spaces_to_col_four() {
+fn dedent_six_spaces_to_display_col_four() {
     // "      x\n" (6 spaces + x). cursor on 'x' (col 6). prev_stop 4. Delete 2 spaces.
     assert_state!(
         "      -[x]>\n",
@@ -90,7 +90,7 @@ fn dedent_two_cursors_in_leading_ws() {
 }
 
 #[test]
-fn dedent_at_col_one_deletes_one_space() {
+fn dedent_at_display_col_one_deletes_one_space() {
     // " x\n" (1 space + x). cursor on 'x' (col 1). prev_stop 0. Delete 1 space.
     assert_state!(
         " -[x]>\n",
@@ -663,7 +663,7 @@ fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
     // "c\n" [anchor=3, head=4]. The cursor produced for that deletion must
     // land at char 0 (start of the merged "a" line), not at char 1.
     //
-    // col_in_line = del_start - line_to_char(prev_line) = 2 - 0 = 2
+    // char_col = del_start - line_to_char(prev_line) = 2 - 0 = 2
     // retain(0); cursor_new = b.new_pos().saturating_sub(2) = 1 - 2 = 0 ✓
     use crate::edit::delete_selection;
     use hume_editing::selection::SelectionSet;

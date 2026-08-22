@@ -228,8 +228,8 @@ pub fn clear_blank_line_indent(buf: Text, sels: SelectionSet) -> (Text, Selectio
 /// - **`TabStyle::Soft`**: inserts enough spaces to reach the next tab stop.
 ///   The display column of the cursor is computed with tab expansion (see
 ///   [`hume_editing::grapheme::display_col_in_line`]); `spaces = tab_width -
-///   (col % tab_width)`, so a cursor already on a stop gets a full tab-width
-///   of spaces.
+///   (display_col % tab_width)`, so a cursor already on a stop gets a full
+///   tab-width of spaces.
 ///
 /// Non-collapsed selections are deleted first, same as `insert_char` — Tab
 /// over a selection replaces it, just like typing any other key.
@@ -247,37 +247,40 @@ pub fn insert_tab(
     // would compute its tab-stop offset from the original-buffer column, missing the
     // spaces the first cursor already inserted.
     let mut prev_line: Option<usize> = None;
-    let mut col_shift: isize = 0;
+    let mut display_col_shift: isize = 0;
     apply_edit(buf, sels, move |b, buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
         let line_idx = buf.char_to_line(start);
         if prev_line != Some(line_idx) {
-            col_shift = 0;
+            display_col_shift = 0;
             prev_line = Some(line_idx);
         }
         // Compute the effective display column of the cursor after all prior
-        // same-line edits. Cast to isize because col_shift is signed (a
-        // selection deletion can decrease it), then clamp to avoid underflow.
-        let col = (display_col_in_line(buf, line_idx, start, tab_width) as isize + col_shift).max(0)
-            as usize;
+        // same-line edits. Cast to isize because display_col_shift is signed
+        // (a selection deletion can decrease it), then clamp to avoid
+        // underflow.
+        let display_col = (display_col_in_line(buf, line_idx, start, tab_width) as isize
+            + display_col_shift)
+            .max(0) as usize;
         if !sel.is_collapsed() {
             let del_end = sel.content_end(buf) + 1;
             // Clamp del_end to the line boundary before computing the display-column
-            // width to keep col_shift accurate. A multi-line selection (del_end on
-            // a different line) would otherwise walk past the '\n' when counting
-            // columns, making col_shift wrong for later same-line cursors.
+            // width to keep display_col_shift accurate. A multi-line selection
+            // (del_end on a different line) would otherwise walk past the '\n'
+            // when counting columns, making display_col_shift wrong for later
+            // same-line cursors.
             let line_end = line_end_exclusive(buf, line_idx);
             let del_end_clamped = del_end.min(line_end);
             let del_width = display_col_in_line(buf, line_idx, del_end_clamped, tab_width)
                 - display_col_in_line(buf, line_idx, start, tab_width);
             b.delete(del_end - start);
-            col_shift -= del_width as isize;
+            display_col_shift -= del_width as isize;
         }
         let tw = tab_width.max(1) as usize;
-        let n = tw - (col % tw);
+        let n = tw - (display_col % tw);
         b.insert(&" ".repeat(n));
-        col_shift += n as isize;
+        display_col_shift += n as isize;
         new_sels.push(Selection::collapsed(b.new_pos()));
     })
 }

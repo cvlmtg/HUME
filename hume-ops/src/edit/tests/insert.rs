@@ -237,7 +237,7 @@ fn insert_tab_hard_two_cursors() {
 }
 
 #[test]
-fn insert_tab_soft_at_col0_inserts_full_width() {
+fn insert_tab_soft_at_display_col0_inserts_full_width() {
     // Soft tab at col 0, tw=4 → 4 spaces.
     assert_state!(
         "-[h]>ello\n",
@@ -247,7 +247,7 @@ fn insert_tab_soft_at_col0_inserts_full_width() {
 }
 
 #[test]
-fn insert_tab_soft_at_col2_inserts_two_spaces() {
+fn insert_tab_soft_at_display_col2_inserts_two_spaces() {
     // Soft tab at col 2, tw=4 → 2 spaces (to reach next stop at col 4).
     assert_state!(
         "he-[l]>lo\n",
@@ -257,7 +257,7 @@ fn insert_tab_soft_at_col2_inserts_two_spaces() {
 }
 
 #[test]
-fn insert_tab_soft_at_col4_inserts_full_width() {
+fn insert_tab_soft_at_display_col4_inserts_full_width() {
     // Already on a tab stop (col 4) → full tab-width of spaces.
     assert_state!(
         "abcd-[e]>\n",
@@ -267,7 +267,7 @@ fn insert_tab_soft_at_col4_inserts_full_width() {
 }
 
 #[test]
-fn insert_tab_soft_after_tab_uses_current_col() {
+fn insert_tab_soft_after_tab_uses_current_display_col() {
     // "\tx" → cursor after 'x' is at display col 5, tw=4 → 3 spaces to col 8.
     assert_state!(
         "\tx-[y]>\n",
@@ -315,7 +315,7 @@ fn insert_tab_soft_two_cursors_same_line() {
     // the spaces cursor 0 already inserted, so it aligns to the correct stop.
     //
     // "abc xyz\n": cursor 0 on 'c' (col 2), cursor 1 on 'z' (col 6). tw=4.
-    // Cursor 0: col 2 → 2 spaces to reach col 4. col_shift = +2.
+    // Cursor 0: col 2 → 2 spaces to reach col 4. display_col_shift = +2.
     // Cursor 1: original col 6 + shift 2 = effective col 8. 8 is a tab stop,
     //           so a full tw=4 spaces to reach col 12.
     // Independent oracle: after cursor 0's 2 spaces, 'z' sits at col 8;
@@ -333,7 +333,7 @@ fn insert_tab_soft_two_cursors_same_line_not_on_stop() {
     // effective col is not a multiple of tw — verifies the arithmetic mid-stop.
     //
     // "abcde fgh\n": cursor 0 on 'd' (col 3), cursor 1 on 'h' (col 8). tw=4.
-    // Cursor 0: col 3 → 1 space to reach col 4. col_shift = +1.
+    // Cursor 0: col 3 → 1 space to reach col 4. display_col_shift = +1.
     // Cursor 1: original col 8 + shift 1 = effective col 9. Next stop = 12.
     //           Spaces = 12 - 9 = 3.
     // Independent oracle: after cursor 0's 1 space, 'h' is at col 9; next stop

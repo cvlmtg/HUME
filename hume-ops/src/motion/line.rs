@@ -57,8 +57,8 @@ pub(super) fn goto_first_nonblank(buf: &Text, head: usize) -> usize {
 
 /// Move the cursor down one line, preserving the display column.
 ///
-/// `preferred_col` overrides the column computed from the current position.
-/// Pass `None` to use the current position's own display column.
+/// `preferred_display_col` overrides the column computed from the current
+/// position. Pass `None` to use the current position's own display column.
 ///
 /// **Column model:** display column — tab-aware and unicode-width-aware, via
 /// `place_display_column`/`display_col_in_line`. Matches
@@ -70,7 +70,7 @@ pub(super) fn goto_first_nonblank(buf: &Text, head: usize) -> usize {
 pub(super) fn move_down_inner(
     buf: &Text,
     head: usize,
-    preferred_col: Option<usize>,
+    preferred_display_col: Option<usize>,
     tab_width: u8,
 ) -> usize {
     let line = buf.char_to_line(head);
@@ -80,17 +80,19 @@ pub(super) fn move_down_inner(
         return head;
     }
 
-    let col = preferred_col.unwrap_or_else(|| display_col_in_line(buf, line, head, tab_width));
-    place_display_column(buf, line + 1, col, tab_width)
+    let display_col =
+        preferred_display_col.unwrap_or_else(|| display_col_in_line(buf, line, head, tab_width));
+    place_display_column(buf, line + 1, display_col, tab_width)
 }
 
 /// Move the cursor up one line, preserving the display column.
 ///
-/// See `move_down_inner` for the column model and `preferred_col` semantics.
+/// See `move_down_inner` for the column model and `preferred_display_col`
+/// semantics.
 pub(super) fn move_up_inner(
     buf: &Text,
     head: usize,
-    preferred_col: Option<usize>,
+    preferred_display_col: Option<usize>,
     tab_width: u8,
 ) -> usize {
     let line = buf.char_to_line(head);
@@ -98,6 +100,7 @@ pub(super) fn move_up_inner(
         return head; // already on the first line
     }
 
-    let col = preferred_col.unwrap_or_else(|| display_col_in_line(buf, line, head, tab_width));
-    place_display_column(buf, line - 1, col, tab_width)
+    let display_col =
+        preferred_display_col.unwrap_or_else(|| display_col_in_line(buf, line, head, tab_width));
+    place_display_column(buf, line - 1, display_col, tab_width)
 }
