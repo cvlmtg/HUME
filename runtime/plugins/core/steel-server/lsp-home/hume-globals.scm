@@ -155,6 +155,7 @@
 (#%register-global "loaded-plugins")
 (#%register-global "log!")
 (#%register-global "lsp-capabilities")
+(#%register-global "lsp-locations->grapheme-cols")
 (#%register-global "lsp-notify")
 (#%register-global "lsp-position->offset")
 (#%register-global "lsp-position-params")

@@ -66,7 +66,7 @@
             (map (lambda (d)
                    (string-append (lsp/severity-glyph (hash-ref d "severity")) " "
                                   (number->string (+ 1 (hash-ref d "line"))) ":"
-                                  (number->string (+ 1 (hash-ref d "char-col"))) " "
+                                  (number->string (+ 1 (hash-ref d "grapheme-col"))) " "
                                   (lsp/first-line (hash-ref d "message"))))
                  diags)
             (lambda (idx) (when idx (lsp/diag-jump-to! (list-ref diags idx)))))))))

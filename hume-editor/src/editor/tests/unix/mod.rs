@@ -343,6 +343,7 @@ mod async_job_steel;
 mod buffer;
 mod buffer_store;
 mod cd;
+mod column_display_agreement;
 mod command_mode;
 mod completion;
 mod dot_repeat;

@@ -551,8 +551,11 @@ pub trait DecorationHost {
     ) -> Result<(), String>;
 
     /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
-    /// decoded `{"start" "end" "line" "char-col" "severity" "message" "code"
-    /// "source"}` hashmaps, filtered then capped at 1000. `severity_floor`
+    /// decoded `{"start" "end" "line" "char-col" "grapheme-col" "severity"
+    /// "message" "code" "source"}` hashmaps, filtered then capped at 1000.
+    /// `char-col` is an addressing unit (feeds `goto-location!`);
+    /// `grapheme-col` is the display unit (the one every HUME surface shows
+    /// the user) — never render `char-col` directly. `severity_floor`
     /// is `None` for "no floor" (everything); `range` is `None` for the
     /// whole buffer. `Err` on an unknown `#:severity` name.
     fn diagnostics_for_buffer(
@@ -616,6 +619,22 @@ pub trait LspHost {
     /// (`set-inlay-hints!`) rejects that offset outright — see
     /// `wire_point_to_char_for_buffer`'s doc for why the two must differ.
     fn lsp_wire_point_to_char(&self, id: BufferId, line: usize, character: usize) -> Option<usize>;
+
+    /// `(lsp-locations->grapheme-cols locs)` — one grapheme column per
+    /// already-normalized `{uri, range}` location in `locs`, `None` for an
+    /// entry whose target file can't be resolved/read or whose line is out
+    /// of range. Backs `lsp/location-display`'s drawer rows: `goto-location!`
+    /// (raw `Location` shape) already converts wire positions correctly for
+    /// the *jump*; this is the display-side counterpart, since a wire
+    /// `character` (UTF-16 code units by default) is never the number to
+    /// show a user — see the "Column naming" invariant. Every location
+    /// shares the encoding negotiated by the currently focused buffer's
+    /// attached server, same as `goto-location!`'s wire shape. `Err` only
+    /// for a location whose shape can't be decoded at all.
+    fn lsp_locations_grapheme_cols(
+        &self,
+        locs: Vec<serde_json::Value>,
+    ) -> Result<Vec<Option<usize>>, String>;
 }
 
 /// Timer scheduling — accessed through [`EditorHost::timers`].

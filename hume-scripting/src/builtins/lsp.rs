@@ -12,7 +12,7 @@ use crate::{PendingLspServerReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    BidArg, bool_arg, cons_pair, json_params, list_to_env_pairs, list_to_strings,
+    BidArg, bool_arg, cons_pair, json_params, list_items, list_to_env_pairs, list_to_strings,
     optional_json_arg, optional_string_arg, string_arg,
 };
 use super::errors::generic_err;
@@ -390,6 +390,32 @@ pub(crate) fn lsp_range_to_offsets(
         return Ok(SteelVal::BoolV(false));
     };
     cons_pair(SteelVal::IntV(start as isize), SteelVal::IntV(end as isize))
+}
+
+/// `(lsp-locations->grapheme-cols locs)` → one grapheme column (integer) or
+/// `#f` per entry in `locs`, a list of already-normalized `{uri, range}`
+/// hashmaps — the display-side counterpart to `goto-location!`'s wire
+/// conversion. See `LspHost::lsp_locations_grapheme_cols`'s doc for why a
+/// raw wire `character` is never the right value to show a user.
+pub(crate) fn lsp_locations_to_grapheme_cols(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
+    let mut parsed = Vec::new();
+    for entry in list_items(locs, "lsp-locations->grapheme-cols locs")? {
+        parsed.push(steel_to_json(&entry).map_err(generic_err)?);
+    }
+    let grapheme_cols = ctx
+        .host
+        .lsp()
+        .ok_or_else(|| generic_err("lsp-locations->grapheme-cols: no LSP state available"))?
+        .lsp_locations_grapheme_cols(parsed)
+        .map_err(generic_err)?;
+    let entries: Vec<SteelVal> = grapheme_cols
+        .into_iter()
+        .map(|grapheme_col| match grapheme_col {
+            Some(c) => SteelVal::IntV(c as isize),
+            None => SteelVal::BoolV(false),
+        })
+        .collect();
+    Ok(SteelVal::ListV(entries.into()))
 }
 
 #[cfg(test)]

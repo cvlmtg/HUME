@@ -276,6 +276,33 @@ fn position_element_three_digit_row_and_col() {
     insta::assert_snapshot!(text, @" 143:49");
 }
 
+/// Cross-surface column-agreement fixture, shared (by construction, not by
+/// import — this crate has no path to the LSP-dependent
+/// `tests/unix/column_display_agreement.rs`) with that file's diagnostics/
+/// goto-references assertions: the line `"e\u{0301}\u{1D11E}x"` puts three
+/// different "column" units at three different values for the same
+/// position (before 'x'), an independent-oracle count from the string
+/// itself, not from any HUME helper:
+/// - grapheme: 2 — `"e\u{0301}"` (e + combining acute, one cluster) then
+///   `"\u{1D11E}"` (one astral-plane cluster) = 2 clusters before 'x'.
+/// - char: 3 — those same two clusters are 2 + 1 = 3 Rust `char`s.
+/// - UTF-16 code unit: 4 — the combining mark is 1 unit (2 so far), the
+///   astral char needs a surrogate pair (2 more = 4).
+///
+/// The statusline must show the grapheme count (displayed 3), not either of
+/// the other two — this is the fixture proving `:diagnostics` and the LSP
+/// goto/references drawer, which historically showed the char count and the
+/// UTF-16 count respectively, now agree with it.
+#[test]
+fn position_element_shows_grapheme_column_not_char_or_utf16_count() {
+    let s = "e\u{0301}\u{1D11E}x\n";
+    let head = 3; // char offset of 'x': 'e', combining mark, astral char, then 'x'
+    let ed = test_editor_with_text_and_cursor(s, head);
+    let colors = crate::ui::theme::EditorColors::default();
+    let (text, _) = render_element(StatusElement::Position, &ed, &colors, "");
+    insta::assert_snapshot!(text, @"    1:3");
+}
+
 #[test]
 fn position_element_widens_field_past_1000_lines() {
     let s = "\n".repeat(1000);

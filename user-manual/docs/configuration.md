@@ -247,7 +247,7 @@ Available elements:
 | `"FileName"` | Current buffer filename (basename) |
 | `"FilePath"` | Full path of current buffer |
 | `"Cwd"` | Working directory |
-| `"Position"` | Line and column position |
+| `"Position"` | Line and column position — column counts graphemes (`h`/`l` presses), matching `:diagnostics` and goto/references lists |
 | `"Selections"` | Number of active selections |
 | `"KittyProtocol"` | Kitty keyboard protocol indicator |
 | `"DirtyIndicator"` | `[+]` when buffer has unsaved changes |

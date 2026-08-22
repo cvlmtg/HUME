@@ -142,18 +142,23 @@
       (path->display (strip-drive-letter-slash (substring uri 7 (string-length uri))))
       uri))
 
-;;; "path/to/file.rs:12:5" — 1-based line/col, matching every other editor's
-;;; location display convention (the wire values are 0-based). `loc` must
-;;; already be normalized (`{uri, range}`).
-(define (lsp/location-display loc)
+;;; "path/to/file.rs:12:5" — 1-based line/grapheme-col, matching every other
+;;; editor's location display convention and the unit the statusline shows
+;;; (not the raw wire `character`, which counts UTF-16 code units — see the
+;;; "Column naming" invariant). `loc` must already be normalized (`{uri,
+;;; range}`); `grapheme-col` is `#f` when the target file couldn't be
+;;; resolved/read, in which case the row falls back to `path:line`.
+(define (lsp/location-display loc grapheme-col)
   (let* ((uri (hash-ref loc "uri"))
-         (start (hash-ref (hash-ref loc "range") "start")))
-    (string-append (lsp/uri->display-path uri) ":"
-                   (number->string (+ 1 (hash-ref start "line"))) ":"
-                   (number->string (+ 1 (hash-ref start "character"))))))
+         (start (hash-ref (hash-ref loc "range") "start"))
+         (prefix (string-append (lsp/uri->display-path uri) ":"
+                                (number->string (+ 1 (hash-ref start "line"))))))
+    (if grapheme-col
+        (string-append prefix ":" (number->string (+ 1 grapheme-col)))
+        prefix)))
 
 ;;; `locs`: a list of already-normalized `{uri, range}` hashmaps. Drawer rows
 ;;; are pre-formatted display strings.
 (define (lsp/show-locations! locs)
-  (show-drawer-list! (map lsp/location-display locs)
+  (show-drawer-list! (map lsp/location-display locs (lsp-locations->grapheme-cols locs))
     (lambda (idx) (when idx (goto-location! (list-ref locs idx))))))

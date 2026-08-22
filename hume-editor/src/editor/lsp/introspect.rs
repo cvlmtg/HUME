@@ -13,6 +13,7 @@ use hume_lsp::backend::ServerId;
 use super::LspState;
 use super::diagnostics::DiagSeverity;
 use super::registry::LanguageName;
+use crate::editor::Editor;
 use crate::editor::EditorState;
 use crate::editor::pane_state::PaneBufferState;
 
@@ -291,9 +292,13 @@ pub(crate) fn wire_point_to_char_for_buffer(
 /// `(diagnostics-for-buffer bid #:severity floor #:range (start . end))` —
 /// decoded, filtered, capped-at-1000 hashmaps. `start`/`end`
 /// are char offsets; `line`/`char-col` are the char-indexed start position,
-/// ready for `goto-location!` shape 2. Errors loudly on an unknown
-/// `#:severity` name (e.g. `'warn` typoed for `'warning`) rather than
-/// silently returning nothing that qualifies.
+/// ready for `goto-location!` shape 2 — an *addressing* unit, exact and
+/// lossless. `grapheme-col` is the same position as a grapheme column
+/// instead, for *display* — the one unit every HUME surface (statusline,
+/// diagnostics, LSP location lists) shows the user; never render `char-col`
+/// directly. Errors loudly on an unknown `#:severity` name (e.g. `'warn`
+/// typoed for `'warning`) rather than silently returning nothing that
+/// qualifies.
 ///
 /// With no `#:severity`, defaults to `lsp.diagnostics-severity-floor` — the
 /// same floor `update_highlight_providers`/`update_sign_providers` apply to
@@ -333,13 +338,17 @@ pub(crate) fn diagnostics_for_buffer(
             // hand plugins a `line` that later fails the fail-fast bound
             // check every decoration setter now enforces.
             let last_content_char = rope.len_chars().saturating_sub(1);
-            let line = rope.char_to_line(d.start.min(last_content_char));
-            let char_col = d.start.min(last_content_char) - rope.line_to_char(line);
+            let clamped_start = d.start.min(last_content_char);
+            let line = rope.char_to_line(clamped_start);
+            let char_col = clamped_start - rope.line_to_char(line);
+            let grapheme_col =
+                hume_rope::grapheme::grapheme_col_in_line(rope.slice(..), line, clamped_start);
             serde_json::json!({
                 "start": d.start,
                 "end": d.end,
                 "line": line,
                 "char-col": char_col,
+                "grapheme-col": grapheme_col,
                 "severity": d.severity.to_string(),
                 "message": d.message,
                 "code": d.code,
@@ -354,6 +363,108 @@ pub(crate) fn diagnostics_for_buffer(
 /// `(diagnostic-counts bid)` → `(errors, warnings)`.
 pub(crate) fn diagnostic_counts(lsp: &LspState, bid: BufferId) -> (usize, usize) {
     lsp.diagnostics.counts(bid)
+}
+
+/// `line`/`character` clamped into `text`'s addressable range and converted
+/// to a grapheme column — `None` when `line` is past `text`'s last (ropey
+/// domain, so a server's past-end response and the buffer's own phantom
+/// trailing line both land here) rather than silently reporting the last
+/// line's column under a `line` that doesn't match it.
+fn wire_pos_to_grapheme_col(
+    text: &hume_editing::text::Text,
+    line: usize,
+    character: usize,
+    encoding: hume_editing::position_encoding::PositionEncoding,
+) -> Option<usize> {
+    if line > text.last_ropey_line() {
+        return None;
+    }
+    let char_pos =
+        hume_editing::position_encoding::wire_to_char(text.rope(), line, character, encoding);
+    Some(hume_editing::grapheme::grapheme_col_in_line(
+        text, line, char_pos,
+    ))
+}
+
+/// Grapheme columns for a batch of already-normalized `{uri, range}` LSP
+/// locations (the shape `lsp/normalize-location` produces) — the display
+/// companion to `wire_to_char_for_buffer`'s address conversion, backing
+/// `lsp-locations->grapheme-cols`. `lsp/location-display` calls this once
+/// per drawer build so a goto/references row shows the same unit the
+/// statusline does, not the raw wire `character`.
+///
+/// Every location shares `focused_bid`'s attached server's negotiated
+/// encoding — that server produced every one of these responses, whichever
+/// file each location points into (same rationale `GotoTarget::Wire` uses
+/// for the actual jump, `edits.rs`'s `resolve_goto_target`).
+///
+/// Reads each distinct target file at most once: an open buffer's rope is
+/// used as-is (its unsaved text, if modified — the column reported is the
+/// one the user will land on after `goto-location!` jumps there, and that
+/// jump already carries the same staleness against a server response that
+/// may predate the edit); an unopened file is read from disk, normalized
+/// through `Text::from` exactly as `Buffer::from_file` would, and cached for
+/// the rest of this call.
+///
+/// One entry per input location, `None` for a malformed location, an
+/// unreadable/missing file, or an out-of-range line — a display gap, not a
+/// hard error, so one bad row doesn't blank the whole drawer. `Err` only for
+/// a location whose shape can't be decoded at all (missing `uri`/`range`),
+/// naming the builtin.
+pub(crate) fn location_grapheme_cols(
+    state: &EditorState,
+    lsp: &LspState,
+    focused_bid: BufferId,
+    locs: &[serde_json::Value],
+) -> Result<Vec<Option<usize>>, String> {
+    let encoding = encoding_for_buffer(state, lsp, focused_bid);
+    let mut disk_cache: rustc_hash::FxHashMap<
+        std::path::PathBuf,
+        Option<hume_editing::text::Text>,
+    > = rustc_hash::FxHashMap::default();
+
+    locs.iter()
+        .map(|loc| {
+            let uri = loc
+                .get("uri")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| {
+                    "lsp-locations->grapheme-cols: location missing 'uri'".to_string()
+                })?;
+            let line = loc
+                .pointer("/range/start/line")
+                .and_then(serde_json::Value::as_u64)
+                .ok_or_else(|| {
+                    "lsp-locations->grapheme-cols: location missing range.start.line".to_string()
+                })? as usize;
+            let character = loc
+                .pointer("/range/start/character")
+                .and_then(serde_json::Value::as_u64)
+                .ok_or_else(|| {
+                    "lsp-locations->grapheme-cols: location missing range.start.character"
+                        .to_string()
+                })? as usize;
+            let uri: lsp_types::Uri = uri
+                .parse()
+                .map_err(|_| format!("lsp-locations->grapheme-cols: bad uri {uri:?}"))?;
+            let path = hume_lsp::uri::uri_to_path(&uri)
+                .map_err(|e| format!("lsp-locations->grapheme-cols: bad uri: {e:?}"))?;
+            let resolved = Editor::resolve_buffer_path(&path, &state.cwd);
+
+            if let Some(bid) = state.buffers.find_by_path(&resolved) {
+                let text = state.buffers.get(bid).text();
+                return Ok(wire_pos_to_grapheme_col(text, line, character, encoding));
+            }
+            let cached = disk_cache.entry(resolved.clone()).or_insert_with(|| {
+                hume_platform::io::read_file(&resolved)
+                    .ok()
+                    .map(|(content, _)| hume_editing::text::Text::from(content.as_str()))
+            });
+            Ok(cached
+                .as_ref()
+                .and_then(|text| wire_pos_to_grapheme_col(text, line, character, encoding)))
+        })
+        .collect()
 }
 
 /// Ready-made `{"textDocument" {"uri"} "range" {"start" "end"}}` params from
