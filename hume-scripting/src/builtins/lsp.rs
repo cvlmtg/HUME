@@ -431,17 +431,17 @@ pub(crate) fn lsp_label_offsets_to_text(
     )
 }
 
-/// `(lsp-locations->display-parts locs)` → one `(path line grapheme-col)`
-/// list per entry in `locs`, a list of raw `Location`/`LocationLink`
-/// hashmaps — the display-side counterpart to `goto-location!`'s wire
-/// conversion, decoded through the same shared decoder. `grapheme-col` is
-/// `#f` when the target file can't be resolved/read or `line` is out of
-/// range; `path`/`line` are always present, since they come from the
-/// location itself rather than from reading the file. See
-/// `LspHost::lsp_locations_display_parts`'s doc for why a raw wire
-/// `character` is never the right value to show a user, why the path and
-/// line travel with the column, and why a location that can't be decoded at
-/// all aborts the whole call rather than producing a degraded entry.
+/// `(lsp-locations->display-parts locs)` → one `(path line col)` list per
+/// entry in `locs`, a list of raw `Location`/`LocationLink` hashmaps — the
+/// display-side counterpart to `goto-location!`'s wire conversion, decoded
+/// through the same shared decoder. `col` is an exact grapheme column when
+/// the target has an open buffer, `#f` when it's an open buffer whose line
+/// is out of range, and otherwise the location's own wire `character`
+/// verbatim — this function never reads a target file to refine that last
+/// case. `path`/`line` are always present, since they come from the
+/// location itself. See `LspHost::lsp_locations_display_parts`'s doc for the
+/// full column-unit rule and why a location that can't be decoded at all
+/// aborts the whole call rather than producing a degraded entry.
 pub(crate) fn lsp_locations_to_display_parts(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
     let mut parsed = Vec::new();
     for entry in list_items(locs, "lsp-locations->display-parts locs")? {

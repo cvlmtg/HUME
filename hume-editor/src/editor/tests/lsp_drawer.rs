@@ -37,8 +37,58 @@ fn show_drawer_list_populates_model_and_view() {
     assert!(ed.state.config.drawer.is_some());
     let guard = ed.state.drawer_view.read().unwrap();
     let view = guard.as_ref().expect("view must be populated on open");
-    assert_eq!(view.rows, vec!["one.rs:1", "two.rs:2", "three.rs:3"]);
+    assert_eq!(*view.rows, vec!["one.rs:1", "two.rs:2", "three.rs:3"]);
     assert_eq!(view.selected, 0);
+}
+
+/// `sync_drawer_view` runs unconditionally every frame while the drawer is
+/// open (the self-healing backstop this module's header comment describes),
+/// so its row list must be shared (`Arc::clone`) rather than deep-copied —
+/// a references batch can carry thousands of rows, and a plain `Vec::clone`
+/// there would reallocate all of them every frame for as long as the drawer
+/// stays open.
+///
+/// Sabotage oracle: revert `DrawerModel::items` and `DrawerViewState::rows`
+/// to a bare `Vec<String>` (with `sync_drawer_view` deep-cloning it, as
+/// before) — this test fails to compile, since there is no `Arc` left on
+/// either side for `Arc::ptr_eq` to compare.
+#[test]
+fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    arm_three_items(&mut ed, tmp.path());
+
+    let model_items = std::sync::Arc::clone(&ed.state.config.drawer.as_ref().unwrap().items);
+    let view_rows = {
+        let guard = ed.state.drawer_view.read().unwrap();
+        std::sync::Arc::clone(&guard.as_ref().unwrap().rows)
+    };
+    assert!(
+        std::sync::Arc::ptr_eq(&model_items, &view_rows),
+        "the view's row list must be the same allocation as the model's, \
+         not an independent copy"
+    );
+
+    // A fresh `show-drawer-list!` call replaces the model's `Arc` wholesale;
+    // the next sync must follow it to a *different* allocation, not keep
+    // pointing at the first one.
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "refresh" "" (lambda ()
+             (show-drawer-list! (list "replaced")
+               (lambda (idx) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":refresh");
+    let view_rows_after = {
+        let guard = ed.state.drawer_view.read().unwrap();
+        std::sync::Arc::clone(&guard.as_ref().unwrap().rows)
+    };
+    assert!(
+        !std::sync::Arc::ptr_eq(&view_rows, &view_rows_after),
+        "the view must follow a replaced model to its new row list"
+    );
+    assert_eq!(*view_rows_after, vec!["replaced"]);
 }
 
 #[test]

@@ -38,7 +38,10 @@ use hume_engine::types::Scope;
 /// not-yet-exhausted Steel callback — cleared by `Esc` or `close-drawer!`,
 /// not by `Enter` (the drawer stays open across selections).
 pub(crate) struct DrawerModel {
-    pub(crate) items: Vec<String>,
+    /// Shared with `DrawerViewState::rows` (an `Arc::clone`, not a deep
+    /// copy) — `sync_drawer_view` runs unconditionally every frame while the
+    /// drawer is open, and a references batch can carry thousands of rows.
+    pub(crate) items: Arc<Vec<String>>,
     pub(crate) selected: usize,
     /// Index of the first visible row — clamped to keep `selected` in view
     /// whenever the selection moves (`Editor::clamp_drawer_scroll`).
@@ -49,7 +52,7 @@ pub(crate) struct DrawerModel {
 /// Read-side snapshot for [`DrawerWidget`] — the same shape as
 /// [`DrawerModel`] minus the callback, which the render side never needs.
 pub(crate) struct DrawerViewState {
-    pub(crate) rows: Vec<String>,
+    pub(crate) rows: Arc<Vec<String>>,
     pub(crate) selected: usize,
     pub(crate) scroll: usize,
 }

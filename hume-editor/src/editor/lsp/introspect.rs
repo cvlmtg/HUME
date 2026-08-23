@@ -414,12 +414,12 @@ fn wire_pos_to_grapheme_col(
     ))
 }
 
-/// Filesystem path, wire line, and grapheme column for a batch of raw
+/// Filesystem path, wire line, and column for a batch of raw
 /// `Location`/`LocationLink` LSP locations — the display companion to
 /// `wire_to_char_for_buffer`'s address conversion, backing
 /// `lsp-locations->display-parts`. `lsp/location-display` calls this once
-/// per drawer build so a goto/references row shows the same unit the
-/// statusline does, not the raw wire `character`.
+/// per drawer build so a goto/references row has something to show in the
+/// column slot.
 ///
 /// Each location is decoded once, through [`hume_lsp::location::decode_location`]
 /// — the same decoder `goto-location!` uses for the jump — so the path, the
@@ -427,8 +427,7 @@ fn wire_pos_to_grapheme_col(
 /// row that read `range.start.line` a second time in Scheme, or decoded the
 /// URI a second time to render the path, could end up naming a position it
 /// didn't measure; see that function's doc for why a malformed location
-/// aborts the whole batch rather than degrading its own row, while an
-/// unreadable *file* below still only drops its own row's column.
+/// aborts the whole batch.
 /// The path is the URI's own, not [`Editor::resolve_buffer_path`]'s
 /// canonicalisation of it: resolving symlinks is right for *finding* the
 /// file, but a drawer row should echo the path the server actually sent.
@@ -438,13 +437,32 @@ fn wire_pos_to_grapheme_col(
 /// file each location points into (same rationale `GotoTarget::Wire` uses
 /// for the actual jump, `edits.rs`'s `resolve_goto_target`).
 ///
-/// Reads each distinct target file at most once: an open buffer's rope is
-/// used as-is (its unsaved text, if modified — the column reported is the
-/// one the user will land on after `goto-location!` jumps there, and that
-/// jump already carries the same staleness against a server response that
-/// may predate the edit); an unopened file is read from disk, normalized
-/// through `Text::from` exactly as `Buffer::from_file` would, and cached for
-/// the rest of this call.
+/// # The one sanctioned exception to "never render a wire unit"
+/// An **open** buffer's rope is used as-is (its unsaved text, if modified —
+/// the column reported is the one the user will land on after
+/// `goto-location!` jumps there, and that jump already carries the same
+/// staleness against a server response that may predate the edit), giving
+/// an exact grapheme column. For a target with **no open buffer** this
+/// function does not read the file — reading a whole file from disk just to
+/// refine one column for a row the user may never select is out of
+/// proportion to the value — so it reports the location's own wire
+/// `character` verbatim instead. That number is an offset in the server's
+/// negotiated encoding (a byte offset under `utf-8`, UTF-16 code units
+/// otherwise), not a grapheme count: on a line that is
+/// ASCII up to the target position — nearly all code — the two coincide
+/// exactly; they diverge only when non-ASCII text sits earlier on the same
+/// line, and then by more than one (a 3-byte CJK character counts 3, a ZWJ
+/// emoji family counts roughly 25). This is the *only* place in HUME a wire
+/// unit is rendered directly — everywhere else the "never render `char_col`
+/// or a wire position" rule holds without exception. A future refinement is
+/// to render an unmeasured column visually distinctly (e.g. italic) once the
+/// drawer can style parts of a row, rather than showing it identically to a
+/// measured one.
+///
+/// Resolving a URI's path against the buffer store is the only work left
+/// once a target isn't read — cached per distinct path (not per location)
+/// so a batch with many locations in few files pays one `canonicalize` +
+/// buffer-store scan per file, not one per location.
 pub(crate) fn location_display_parts(
     state: &EditorState,
     lsp: &LspState,
@@ -452,10 +470,8 @@ pub(crate) fn location_display_parts(
     locs: &[serde_json::Value],
 ) -> Result<Vec<hume_scripting::host::LocationDisplay>, String> {
     let encoding = encoding_for_buffer(state, lsp, focused_bid);
-    let mut disk_cache: rustc_hash::FxHashMap<
-        std::path::PathBuf,
-        Option<hume_editing::text::Text>,
-    > = rustc_hash::FxHashMap::default();
+    let mut open_buffer_cache: rustc_hash::FxHashMap<std::path::PathBuf, Option<BufferId>> =
+        rustc_hash::FxHashMap::default();
 
     locs.iter()
         .map(|loc| {
@@ -473,19 +489,18 @@ pub(crate) fn location_display_parts(
                 )
             })?;
             let resolved = Editor::resolve_buffer_path(&path, &state.cwd);
+            let open_bid = *open_buffer_cache
+                .entry(resolved.clone())
+                .or_insert_with(|| state.buffers.find_by_path(&resolved));
 
-            let grapheme_col = if let Some(bid) = state.buffers.find_by_path(&resolved) {
-                let text = state.buffers.get(bid).text();
-                wire_pos_to_grapheme_col(text, wl.line, wl.character, encoding)
-            } else {
-                let cached = disk_cache.entry(resolved.clone()).or_insert_with(|| {
-                    hume_platform::io::read_file(&resolved)
-                        .ok()
-                        .map(|(content, _)| hume_editing::text::Text::from(content.as_str()))
-                });
-                cached.as_ref().and_then(|text| {
+            let grapheme_col = match open_bid {
+                Some(bid) => {
+                    let text = state.buffers.get(bid).text();
                     wire_pos_to_grapheme_col(text, wl.line, wl.character, encoding)
-                })
+                }
+                // No open buffer to measure against — see this function's
+                // doc for why that means the wire unit itself, not a read.
+                None => Some(wl.character),
             };
             Ok(hume_scripting::host::LocationDisplay {
                 path: display_path,

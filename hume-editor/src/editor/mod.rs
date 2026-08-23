@@ -522,7 +522,7 @@ impl EditorState {
             .drawer
             .as_ref()
             .map(|d| crate::ui::drawer::DrawerViewState {
-                rows: d.items.clone(),
+                rows: Arc::clone(&d.items),
                 selected: d.selected,
                 scroll: d.scroll,
             });

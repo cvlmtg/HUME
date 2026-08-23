@@ -98,13 +98,13 @@
 ;; jump) and `lsp-locations->display-parts` (the drawer row) — nothing here
 ;; reads a location's wire fields directly any more.
 
-;;; "path/to/file.rs:12:5" — 1-based line/grapheme-col, matching every other
-;;; editor's location display convention and the unit the statusline shows
-;;; (not the raw wire `character`, which counts UTF-16 code units — see the
-;;; "Column naming" invariant). `part` is one `(path line grapheme-col)`
-;;; entry from `lsp-locations->display-parts`, whose grapheme-col is `#f`
-;;; when the target file couldn't be resolved/read — the row then falls back
-;;; to `path:line`.
+;;; "path/to/file.rs:12:5" — 1-based line/column. `part` is one
+;;; `(path line col)` entry from `lsp-locations->display-parts`: for a target
+;;; with an open buffer, `col` is an exact grapheme column (or `#f` past the
+;;; buffer's last line); for a target with no open buffer it's the
+;;; location's own raw wire `character` instead — the one place HUME renders
+;;; a wire unit directly, since resolving it exactly would mean reading a
+;;; file the user may never open. Either way, `#f` falls back to `path:line`.
 ;;;
 ;;; `path->display` is the only formatting still done here (`~` collapse,
 ;;; UNC strip) — URI decoding and the line/column themselves come from the

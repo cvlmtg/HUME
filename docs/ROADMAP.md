@@ -20,6 +20,7 @@
 - [ ] Scriptable minibuffer completers — Steel builtin to register plugin completers; core does prefix matching only, fuzzy scoring is a plugin concern.
 - [ ] Scriptable insert-mode completion sources — see `docs/COMPLETION-PICKER.md` (additive, nothing blocks on current work).
 - [ ] Styled spans in `show-popup!` — the popup takes one flat string today, so signature help marks the active parameter as `⟨…⟩` on a second line instead of highlighting it in place. Wants a `(start end scope)` span list over the popup text, the shape `set-virtual-lines!`'s `'segments` already uses. Its input already arrives: HUME declares `labelOffsetSupport`, so a server sends each parameter's offsets into the signature label.
+- [ ] Styled spans in the drawer — `lsp-locations->display-parts` shows an unopened target's column as the location's own wire unit rather than a measured grapheme column (see `docs/LSP.md`'s "User-facing column unit" decision row); once a drawer row can style part of itself, render that unmeasured column visually distinctly (e.g. italic) instead of identically to a measured one. Wants the same per-row span support as the `show-popup!` item above.
 - [ ] Auto-generated command reference + in-editor `:help` expansion.
 
 ### Editor — fixes & optimizations

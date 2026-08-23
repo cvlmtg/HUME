@@ -638,17 +638,18 @@ pub trait LspHost {
     ) -> Option<String>;
 
     /// `(lsp-locations->display-parts locs)` — the filesystem path, wire
-    /// line, and grapheme column of each raw `Location`/`LocationLink`
-    /// hashmap in `locs`, decoded through the same
-    /// `hume_lsp::location::decode_location` `goto-location!` uses. The
-    /// grapheme column is `None` for an entry whose target file can't be
-    /// resolved/read or whose line is out of range — a display gap, not a
-    /// hard error, so one unreadable file degrades only its own row. Backs
-    /// `lsp/location-display`'s drawer rows: `goto-location!` already
-    /// converts wire positions correctly for the *jump*; this is the
-    /// display-side counterpart, since a wire `character` (UTF-16 code units
-    /// by default) is never the number to show a user — see the "Column
-    /// naming" invariant.
+    /// line, and column of each raw `Location`/`LocationLink` hashmap in
+    /// `locs`, decoded through the same `hume_lsp::location::decode_location`
+    /// `goto-location!` uses. Backs `lsp/location-display`'s drawer rows:
+    /// `goto-location!` already converts wire positions correctly for the
+    /// *jump*; this is the display-side counterpart.
+    ///
+    /// The column is an exact grapheme column when the target has an open
+    /// buffer, `None` when it's an open buffer whose line is out of range,
+    /// and otherwise the location's own wire `character` verbatim — see
+    /// `LocationDisplay`'s `grapheme_col` field doc for why that last case
+    /// is the one sanctioned exception to "never render a wire unit
+    /// directly".
     ///
     /// The path and line ride along with the column because all three come
     /// from one decode: reading `range.start.line` a second time in Scheme
@@ -680,8 +681,12 @@ pub struct LocationDisplay {
     pub path: String,
     /// 0-based wire line, straight from the location's `range.start.line`.
     pub line: usize,
-    /// 0-based grapheme column, or `None` if the target file couldn't be
-    /// resolved/read or `line` is out of its range.
+    /// 0-based column — a grapheme column when the location's target has an
+    /// open buffer, `None` when it does and `line` is out of its range,
+    /// otherwise the location's own wire `character` verbatim (the display
+    /// companion never reads an unopened target's file to refine this
+    /// number; see `location_display_parts`'s doc, `hume-editor`, for the
+    /// full reasoning and the resulting unit divergence).
     pub grapheme_col: Option<usize>,
 }
 

@@ -1424,7 +1424,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
         self.state.config.drawer = Some(crate::ui::drawer::DrawerModel {
-            items,
+            items: std::sync::Arc::new(items),
             selected: 0,
             scroll: 0,
             callback,

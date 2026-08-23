@@ -5,10 +5,15 @@
 // `position_element_shows_grapheme_column_not_char_or_utf16_count` for the
 // statusline half and the independent-oracle derivation of this file's
 // shared fixture line (grapheme col 2 / char col 3 / UTF-16 col 4 before
-// 'x'). Also covers `location_display_parts`'s per-location resolution:
-// open buffer, unopened file read from disk (twice, same file, one read),
-// missing file, and an out-of-range line — each degrades to `#f` (a
-// `path:line` row) rather than a wrong number. A location that can't be
+// 'x').
+//
+// Also covers `location_display_parts`'s per-location resolution: an open
+// buffer gets an exact grapheme column; a location whose open buffer's line
+// is out of range degrades to `#f` (a `path:line` row); a target with no
+// open buffer renders its location's own wire `character` verbatim instead
+// of reading the file to measure it — the one sanctioned exception to
+// "never render a wire unit directly" (see `location_display_parts`'s doc,
+// `hume-editor/src/editor/lsp/introspect.rs`). A location that can't be
 // decoded at all (missing `range`) aborts the whole batch instead — see
 // `a_malformed_location_aborts_the_batch_instead_of_a_degraded_row` below.
 //
@@ -33,9 +38,20 @@ use hume_scripting::ScriptingHost;
 /// display column 3 (grapheme), never 4 (char) or 5 (UTF-16 + 1).
 const FIXTURE_LINE: &str = "e\u{0301}\u{1D11E}x\n";
 
+/// All-ASCII line, used where the wire-column exception must produce the
+/// *same* number as the exact grapheme column: byte offset, UTF-16 code
+/// unit count, char count, and grapheme count all coincide once nothing
+/// non-ASCII precedes the target position. `character: 4` names the space
+/// right before `'x'` — grapheme/char/UTF-16 column 4 alike.
+const ASCII_LINE: &str = "let x = 1;\n";
+
 fn write_fixture_file(dir: &Path, name: &str) -> (PathBuf, String) {
+    write_fixture_file_content(dir, name, FIXTURE_LINE)
+}
+
+fn write_fixture_file_content(dir: &Path, name: &str, content: &str) -> (PathBuf, String) {
     let file = dir.join(name);
-    std::fs::write(&file, FIXTURE_LINE).unwrap();
+    std::fs::write(&file, content).unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical)
         .unwrap()
@@ -163,18 +179,31 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
     })
 }
 
-/// Seven locations, one `lsp-references` response, exercising every path in
-/// `location_display_parts`: the focused buffer's own open rope, the same
-/// unopened file read from disk twice (one cached read, two different
-/// grapheme columns out of it), a target file that doesn't exist, a line
-/// past the target's end, the buffer's own phantom trailing line, and a
-/// target whose URI needs percent-decoding.
+/// Nine locations, one `lsp-references` response, exercising every path in
+/// `location_display_parts`: the focused buffer's own open rope, a second
+/// open buffer that isn't the focused one, an unopened non-ASCII file (twice,
+/// two different wire columns out of it, independent of each other), an
+/// unopened file that doesn't exist on disk at all, a line past an open
+/// buffer's end, that buffer's own phantom trailing line, an unopened target
+/// whose URI needs percent-decoding, and an unopened all-ASCII file.
 ///
-/// Fail oracle: revert `lsp/location-display` to render the raw wire
-/// `character` (this range's prior behavior) — row 0 would read `1:5`
-/// (character 4, 1-based) instead of the correct `1:3`.
+/// The central pin is rows 0 vs 1: the *same* wire location (`character: 4`
+/// on the fixture's non-ASCII line) renders `1:3` from the open buffer
+/// (measured grapheme column) and `1:5` from the unopened one (the raw wire
+/// `character`, 1-based) — the divergence the wire-column exception accepts.
+/// Rows 7 vs 8 are the mirror case: the same wire location on an all-ASCII
+/// line renders the same number, `1:5`, whether the buffer is open or not,
+/// because a byte offset, a UTF-16 code-unit count, and a grapheme count
+/// coincide once nothing non-ASCII precedes the target — the reason the
+/// exception is tolerable in practice.
+///
+/// Fail oracle: make the unopened branch call `wire_pos_to_grapheme_col`
+/// against a freshly-read `Text` (this function's behavior before it stopped
+/// reading files) — row 1 would read `1:3`, identical to row 0, and the
+/// divergence assertion below would fail to catch a regression back to
+/// reading the file.
 #[test]
-fn references_drawer_shows_grapheme_columns_across_open_and_disk_files() {
+fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_targets() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let (file, uri) = write_fixture_file(file_dir.path(), "main.rs");
@@ -188,21 +217,37 @@ fn references_drawer_shows_grapheme_columns_across_open_and_disk_files() {
     );
     let missing = file_dir.path().join("definitely_missing.rs");
     let missing_uri = format!("file://{}", missing.display());
+    let (ascii_open_file, ascii_open_uri) =
+        write_fixture_file_content(file_dir.path(), "ascii-open.rs", ASCII_LINE);
+    let (_ascii_closed_file, ascii_closed_uri) =
+        write_fixture_file_content(file_dir.path(), "ascii-closed.rs", ASCII_LINE);
 
     let (mut ed, _guard, _sid) = setup_refs(&file, tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/references",
             serde_json::json!([
-                loc(&uri, 0, 4),         // open buffer: 'x' -> grapheme col 3
-                loc(&other_uri, 0, 4),   // unopened disk file: same position
-                loc(&other_uri, 0, 0),   // same unopened file again: 'e' -> grapheme col 1
-                loc(&missing_uri, 0, 0), // unreadable target: no column
-                loc(&uri, 5, 0),         // past the file's one content line: no column
-                loc(&uri, 1, 0),         // the buffer's own phantom line: no column
-                loc(&spaced_uri, 0, 4),  // percent-encoded uri: decoded path + col 3
+                loc(&uri, 0, 4),              // open buffer, before 'x': displayed col 3
+                loc(&other_uri, 0, 4),        // unopened, same position: displayed col 5
+                loc(&other_uri, 0, 0),        // same unopened file again: displayed col 1
+                loc(&missing_uri, 0, 0),      // unopened target that doesn't exist: displayed col 1
+                loc(&uri, 5, 0),              // open buffer, past its one content line: no column
+                loc(&uri, 1, 0),              // open buffer, its own phantom line: no column
+                loc(&spaced_uri, 0, 4),       // percent-encoded uri: decoded path, displayed col 5
+                loc(&ascii_open_uri, 0, 4),   // a second open buffer: displayed col 5
+                loc(&ascii_closed_uri, 0, 4), // same text, unopened: displayed col 5 -- agrees
             ]),
         );
     });
+
+    // A second buffer, open but not focused, so the open-buffer branch has
+    // an all-ASCII line to measure. Refocuses `main.rs` afterward — `:e` on
+    // an already-open path dedups onto the existing buffer rather than
+    // reopening it, so `main.rs`'s attached LSP server (set below by
+    // `setup_refs`) is unaffected and `:lsp-references` still dispatches
+    // through it.
+    ed.execute_typed("e", Some(ascii_open_file.to_str().unwrap()))
+        .unwrap();
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
 
     run_references(&mut ed);
 
@@ -210,30 +255,36 @@ fn references_drawer_shows_grapheme_columns_across_open_and_disk_files() {
         let guard = ed.state.drawer_view.read().unwrap();
         guard.as_ref().expect("drawer must open").rows.clone()
     };
-    assert_eq!(rows.len(), 7);
+    assert_eq!(rows.len(), 9);
     assert!(
         rows[0].ends_with("main.rs:1:3"),
-        "open-buffer location must show grapheme col 3, got {:?}",
+        "open-buffer location must show grapheme col 2 (1-based 3), got {:?}",
         rows[0]
     );
     assert!(
-        rows[1].ends_with("other.rs:1:3"),
-        "unopened-file location must show grapheme col 3 too, got {:?}",
+        rows[1].ends_with("other.rs:1:5"),
+        "the identical position in an unopened file must show the wire \
+         character verbatim (4, 1-based 5), diverging from the open \
+         buffer's measured grapheme column, got {:?}",
         rows[1]
     );
     assert!(
         rows[2].ends_with("other.rs:1:1"),
-        "second location in the same unopened file must resolve independently, got {:?}",
+        "a second location in the same unopened file must resolve \
+         independently (wire char 0, 1-based 1), got {:?}",
         rows[2]
     );
     assert!(
-        rows[3].ends_with("missing.rs:1"),
-        "a target file that can't be read must degrade to path:line, no column, got {:?}",
+        rows[3].ends_with("missing.rs:1:1"),
+        "an unopened target that doesn't exist on disk still gets the wire \
+         column verbatim -- this function no longer touches the disk to \
+         find out, got {:?}",
         rows[3]
     );
     assert!(
         rows[4].ends_with("main.rs:6"),
-        "a line past the target's content must degrade to path:line, no column, got {:?}",
+        "an open buffer's line past its content must degrade to path:line, \
+         no column, got {:?}",
         rows[4]
     );
     // The boundary the "past the end" case above is too far away to pin: the
@@ -248,16 +299,29 @@ fn references_drawer_shows_grapheme_columns_across_open_and_disk_files() {
          path:line with no column, got {:?}",
         rows[5]
     );
-    // The row's path and its column must come from the same URI parse. When
-    // Scheme rendered the path by stripping "file://" itself, it had no
+    // The row's path and its wire column must come from the same URI parse.
+    // When Scheme rendered the path by stripping "file://" itself, it had no
     // percent-decoding: the row read "a%20name.rs" while the column beside
     // it had been read out of "a name.rs" — one row naming a file it did
     // not measure.
     assert!(
-        rows[6].ends_with("a name.rs:1:3"),
-        "a percent-encoded uri must render its decoded path and the column \
-         read from that same file, got {:?}",
+        rows[6].ends_with("a name.rs:1:5"),
+        "a percent-encoded uri must render its decoded path alongside the \
+         wire column read from that same location, got {:?}",
         rows[6]
+    );
+    assert!(
+        rows[7].ends_with("ascii-open.rs:1:5"),
+        "a second open buffer (not the focused one) must still get an \
+         exact grapheme column, got {:?}",
+        rows[7]
+    );
+    assert!(
+        rows[8].ends_with("ascii-closed.rs:1:5"),
+        "the identical position in the same text, unopened, must show the \
+         same number as row 7 -- on an all-ASCII line the wire column and \
+         the grapheme column coincide, got {:?}",
+        rows[8]
     );
 }
 
