@@ -6,9 +6,11 @@
 //! `content_line_count`, `last_content_line`, `content_lines_range`) — or a
 //! `hume_editing::text::Text` method that delegates to one of them — never a
 //! raw `len_lines()` call or a manual `+ 1` / `- 1` re-derivation of one of
-//! these functions' own result. The same applies to the char offset of a
-//! line's own line-break: `line_end_exclusive(buf, line) - 1` must be
-//! `hume_rope::lines::line_break_char(buf, line)` instead.
+//! these functions' own result. Writing a whole-buffer range out as
+//! `0..<one of the counts>` is that same re-derivation — the two
+//! `*_lines_range` functions already are that range. The rule also covers the
+//! char offset of a line's own line-break: `line_end_exclusive(buf, line) - 1`
+//! must be `hume_rope::lines::line_break_char(buf, line)` instead.
 //!
 //! `no_raw_line_count_derivations` recursively scans every workspace
 //! crate's `src/` — derived from the root `Cargo.toml`'s `members` list, so
@@ -23,8 +25,8 @@ use super::{collect_source_rs, scan_forbidden, strip_line_comment, workspace_mem
 
 /// Recursively collect every `.rs` file under `dir` that [`collect_source_rs`]
 /// excludes: anything under a directory named `tests`, or a file named
-/// `tests.rs`. Used to widen this lint's `len_lines(` check into test code
-/// (see below) — that excluded set is exactly where the wrong
+/// `tests.rs`. Used to widen this lint's `len_lines(` and `0..<count>` checks
+/// into test code (see below) — that excluded set is exactly where the wrong
 /// ropey/content-domain phantom-line convention tends to get hand-encoded.
 fn collect_test_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else {
@@ -46,6 +48,44 @@ fn collect_test_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
             out.push(path);
         }
     }
+}
+
+/// The line-count calls a zero-based range can be built over, paired with the
+/// range function that already is that range.
+const ZERO_BASED_RANGE_STEMS: [(&str, &str); 2] = [
+    ("ropey_line_count(", "ropey_lines_range"),
+    ("content_line_count(", "content_lines_range"),
+];
+
+/// The range function `code` re-derives by spelling `0..<a line count>`, if it
+/// does. `ropey_lines_range`/`content_lines_range` *are* that range, so writing
+/// it out is the same re-derivation the fixed patterns below forbid — but the
+/// receiver varies per call site (`0..ropey_line_count(rope)`,
+/// `0..text.ropey_line_count()`, `0..doc.text().ropey_line_count()`), so it
+/// can't be one fixed substring.
+///
+/// Requires the `0..` to reach the call through nothing but a receiver chain,
+/// so a range that merely shares a line with a count call (`v[0..2]` beside
+/// one) isn't flagged.
+fn zero_based_line_count_range(code: &str) -> Option<&'static str> {
+    ZERO_BASED_RANGE_STEMS.iter().find_map(|(stem, range_fn)| {
+        // Every occurrence, not just the first: one call on a line can be a
+        // plain bound while a later one on the same line opens a range.
+        code.match_indices(stem)
+            .any(|(stem_at, _)| {
+                let before = &code[..stem_at];
+                before.rfind("0..").is_some_and(|zero_at| {
+                    before[zero_at + "0..".len()..].chars().all(|c| {
+                        // Receiver chain or module path — `text.`, `doc.text().`,
+                        // `hume_rope::lines::`. A separator that can't appear in
+                        // one (a space, `;`, `,`, `]`) means the `0..` belongs to
+                        // some other range that merely shares the line.
+                        c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '(' | ')')
+                    })
+                })
+            })
+            .then_some(*range_fn)
+    })
 }
 
 /// Recursively collect every `.rs` file under `dir`, no exclusions.
@@ -192,13 +232,96 @@ fn no_raw_line_count_derivations() {
         }),
     );
 
+    // `0..<a line count>` re-derives `ropey_lines_range`/`content_lines_range`,
+    // which already are that range. Same stem-plus-qualifier shape as the
+    // `line_end_exclusive` pass above, and run over test files too for the
+    // same reason `len_lines(` is: a hand-written loop bound is where the
+    // phantom-line convention gets silently picked.
+    let count_stems: Vec<&'static str> = ZERO_BASED_RANGE_STEMS.iter().map(|(s, _)| *s).collect();
+    let ranged_paths: Vec<std::path::PathBuf> =
+        paths.iter().chain(test_paths.iter()).cloned().collect();
+    violations.extend(
+        scan_forbidden(
+            &ranged_paths,
+            workspace_root,
+            &count_stems,
+            "// line-count-safe:",
+        )
+        .into_iter()
+        .filter_map(|v| {
+            let range_fn = zero_based_line_count_range(strip_line_comment(&v.trimmed))?;
+            Some(format!(
+                "  {}:{} — `0..{}()` (use hume_rope::lines::{range_fn}) in: {}",
+                v.file,
+                v.lineno,
+                v.pattern.trim_end_matches('('),
+                v.trimmed
+            ))
+        }),
+    );
+
     assert!(
         violations.is_empty(),
         "\nManual line-count derivation detected outside hume-rope.\n\
          Use hume_rope's ropey_line_count/last_ropey_line/ropey_lines_range/\n\
          content_line_count/last_content_line/content_lines_range (or a \n\
-         Text method that delegates to one) instead.\n\
+         Text method that delegates to one) instead — including for a whole-\n\
+         buffer range, where `0..<a count>` is the *_lines_range function.\n\
          Violations:\n{}\n",
         violations.join("\n")
     );
+}
+
+/// Pins the receiver shapes `zero_based_line_count_range` must reach through,
+/// and the near-misses it must not claim. The scan above routes through this
+/// same function, so the two can't drift apart.
+#[test]
+fn zero_based_line_count_ranges_are_recognised_through_a_receiver_chain() {
+    // Fail oracle: drop the between-chars check (accept any `0..` earlier on
+    // the line) and the two indexing negatives below start failing.
+    // Each positive also pins *which* range function is named as the fix.
+    for (code, range_fn) in [
+        ("0..ropey_line_count(rope)", "ropey_lines_range"),
+        (
+            "for line in 0..text.ropey_line_count() {",
+            "ropey_lines_range",
+        ),
+        (
+            "let rows = 0..doc.text().ropey_line_count();",
+            "ropey_lines_range",
+        ),
+        (
+            "for line_idx in 0..hume_rope::lines::ropey_line_count(&rope) {",
+            "ropey_lines_range",
+        ),
+        // A plain bound first, the range second — the second occurrence counts.
+        (
+            "f(a.ropey_line_count(), 0..b.ropey_line_count())",
+            "ropey_lines_range",
+        ),
+        ("0..self.rope.content_line_count()", "content_lines_range"),
+    ] {
+        assert_eq!(
+            zero_based_line_count_range(code),
+            Some(range_fn),
+            "missed a zero-based line-count range: {code}"
+        );
+    }
+
+    for code in [
+        // A range that isn't over the count — it just shares the line.
+        "assert_eq!(v[0..2], text.content_line_count())",
+        "assert_eq!(&rows[0..2], text.ropey_line_count())",
+        // A count used as a bound, not as a range end.
+        "let total = buf.ropey_line_count();",
+        "Vec::with_capacity(text.ropey_line_count())",
+        // The range functions themselves, and a range that isn't zero-based.
+        "for line in text.content_lines_range() {",
+        "top..text.ropey_line_count()",
+    ] {
+        assert!(
+            zero_based_line_count_range(code).is_none(),
+            "false positive on: {code}"
+        );
+    }
 }

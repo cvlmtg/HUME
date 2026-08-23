@@ -31,7 +31,16 @@ pub fn last_ropey_line(rope: &Rope) -> usize {
 }
 
 /// `0..ropey_line_count(rope)` — every line index ropey considers valid,
-/// phantom line included.
+/// phantom line included. The compliant spelling for a whole-buffer walk in
+/// the ropey domain: writing the range out by hand is the same re-derivation
+/// the line-count lint forbids everywhere else, and that lint reaches test
+/// code too.
+///
+/// Deliberately kept with no production caller. Production never walks a
+/// whole buffer by line index — the render path walks a viewport window and
+/// motions scan outward from the cursor — so whole-document iteration is a
+/// test-harness shape, and the harnesses doing it have no other compliant
+/// spelling.
 pub fn ropey_lines_range(rope: &Rope) -> Range<usize> {
     0..ropey_line_count(rope)
 }

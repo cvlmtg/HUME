@@ -11,7 +11,9 @@
 //!   `ropey_lines_range`): the raw ropey count, phantom line included. Valid
 //!   on any rope, invariant or not — this is what gutter sizing and LSP
 //!   wire-position clamps want, since they must stay addressable up to
-//!   ropey's own line indexing, not just the buffer's real content.
+//!   ropey's own line indexing, not just the buffer's real content. Those
+//!   callers want a bound or a single index; the range is for a whole-buffer
+//!   walk, which only whole-document code does (see its own doc).
 //! - **Content domain** (`content_line_count`, `last_content_line`,
 //!   `content_lines_range`): the phantom line subtracted out. **Assumes the
 //!   trailing-newline invariant** (debug-asserted) — this is what
