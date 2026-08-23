@@ -253,9 +253,8 @@ impl Editor {
         // render state — `init` (hume-editor/src/lib.rs) only applies them
         // once at startup. This is the per-frame chokepoint that makes a
         // later `:set global mouse-enabled=…` take effect immediately
-        // instead of silently doing nothing until restart (see L2 in
-        // docs/LESSONS.md: resync self-triggers at the one place the value
-        // is consumed, not at every write site).
+        // instead of silently doing nothing until restart: it resyncs at
+        // the one place the value is consumed, not at every write site.
         self.resync_mouse_mode();
 
         // Re-bake the theme if any scope was interned since the last bake —

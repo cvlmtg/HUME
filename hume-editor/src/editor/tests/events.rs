@@ -8,10 +8,10 @@ use crate::editor::commands::open_pane;
 /// directly, bypassing the funnel, so the hook never reached script handlers.
 ///
 /// Verification: install an `on-mode-change` handler that calls `move-right`;
-/// the cursor advances only if the hook fired. Since C4, `handle_input` no
-/// longer drains itself (that moved to `Editor::run`'s loop, see
+/// the cursor advances only if the hook fired. `handle_input` does not
+/// drain itself (that lives in `Editor::run`'s loop, see
 /// `Editor::settle`'s doc) — an explicit `settle()` after dispatch is what
-/// now fires the queued hook.
+/// fires the queued hook.
 #[test]
 fn exit_insert_via_esc_fires_on_mode_change() {
     use crate::testing::MockHost;
@@ -53,8 +53,8 @@ fn exit_insert_via_esc_fires_on_mode_change() {
 /// A left mouse click while in Insert mode must fire `OnModeChange` exactly
 /// once for the Insert→Normal transition. The click path calls
 /// `end_insert_session`, which goes through the funnel on its own — a
-/// separate `set_mode(Normal)` after it would double-fire the hook. Since
-/// C4, `handle_input` no longer drains itself — the `settle()` below is what
+/// separate `set_mode(Normal)` after it would double-fire the hook.
+/// `handle_input` does not drain itself — the `settle()` below is what
 /// fires the queued hook. The click itself also repositions the cursor, so
 /// the `state()` diff alone doesn't distinguish "hook fired" from "click
 /// moved the cursor" — the mode assertion just above it is the load-bearing
@@ -210,8 +210,8 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
 /// `queue_event` only enqueues; hooks must be drained explicitly via
 /// `settle()` or they silently defer.
 ///
-/// `lib.rs::run()` no longer has its own separate startup drain call
-/// (SPEC.md §3 removed it as redundant): `init_scripting` + `open_extra_files`
+/// `lib.rs::run()` has no separate startup drain call of its own:
+/// `init_scripting` + `open_extra_files`
 /// enqueue `OnBufferOpen`/`OnLanguageSet` hooks before the terminal is even
 /// initialized, and the *first* iteration of `Editor::run`'s loop is what
 /// fires them, via its own `settle()` call — the same one that fires
@@ -488,7 +488,7 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
     );
 }
 
-// ── C4: settle(), merged queue, loop restructure (SPEC.md §3) ────────────────
+// ── settle(), merged queue, loop restructure ──────────────────────────────────
 
 /// **The stranded-events bug, executable.** An event raised from async
 /// work — here, `queue_diagnostics_changed`, the same call `drain_lsp` makes
@@ -545,7 +545,7 @@ fn event_raised_from_async_work_fires_on_settle_with_no_input() {
 /// grouping (`["call-0","call-a","call-b","event"]` or
 /// `["event","call-0","call-a","call-b"]`) reads differently from the
 /// correct FIFO trace and is caught either way. Pins the merge's core
-/// guarantee (SPEC.md §3): one FIFO queue, drained front-to-back, not the
+/// guarantee: one FIFO queue, drained front-to-back, not the
 /// old two-queue, two-drain-site split.
 ///
 /// Fail oracle: drain every queued `Call` before any `Event` (or vice
@@ -655,7 +655,7 @@ fn handler_queued_event_drains_within_the_same_settle_call() {
 
 /// **`prepare_frame` no longer drains.** Queuing an event and calling only
 /// `sync_viewport_dims` + `prepare_frame` (skipping `settle()`) must leave it
-/// queued; a following `settle()` call is what fires it. Pins §3's
+/// queued; a following `settle()` call is what fires it. Pins the
 /// separation of concerns: draining moved entirely out of the per-frame
 /// render-prep path.
 ///
@@ -715,8 +715,9 @@ fn prepare_frame_alone_does_not_drain_pending_work() {
 /// and confirm both the hook ran and `should_quit` is set.
 ///
 /// Fail oracle: observe `should_quit` before the hook gets a chance to
-/// drain (the pre-C4 shape) → a `:wq` that also sets `should_quit` in the
-/// same dispatch would never fire its `OnBufferSave` handler.
+/// drain (`break` on `should_quit` instead of `continue`) → a `:wq` that
+/// also sets `should_quit` in the same dispatch would never fire its
+/// `OnBufferSave` handler.
 #[test]
 fn wq_fires_on_buffer_save_before_quitting() {
     use crate::testing::MockHost;
@@ -748,8 +749,8 @@ fn wq_fires_on_buffer_save_before_quitting() {
 
 /// **Headless path.** `Editor::step` dispatches a key but does not itself
 /// settle — `hume_editor::run_keys`' loop calls `settle()` once per key,
-/// separately (this branch's chosen split from SPEC.md §3's sketch; see
-/// `Editor::step`'s doc). Pins that split: a `step()`-queued event must not
+/// separately (see `Editor::step`'s doc for why dispatch and settle stay two
+/// calls). Pins that split: a `step()`-queued event must not
 /// have fired yet, and only fires once `settle()` runs, mirroring exactly
 /// what `run_keys` does after every `step()`.
 ///
@@ -773,7 +774,7 @@ fn headless_step_then_settle_fires_a_queued_hook() {
     let before = state(&ed);
 
     // Entering Insert queues OnModeChange; `step` dispatches the key but
-    // never drains, before or after C4.
+    // never drains.
     ed.step(key('i'));
     assert_eq!(ed.state.mode, Mode::Insert, "sanity: `i` must enter Insert");
     assert!(
@@ -790,7 +791,7 @@ fn headless_step_then_settle_fires_a_queued_hook() {
     );
 }
 
-// ── OnBufferEnter / OnFocusGained (SPEC.md §4, C5) ────────────────────────────
+// ── OnBufferEnter / OnFocusGained ──────────────────────────────────────────────
 
 /// `last_entered_buffer` starts `None`, so the very first `settle()` a fresh
 /// `Editor` ever runs must observe a diff against it and fire
@@ -927,7 +928,7 @@ fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buff
     assert_eq!(ed.focused_buffer_id(), buf2);
 }
 
-/// The mixed case §4 actually names: a pass that changes **both**
+/// The mixed case: a pass that changes **both**
 /// `focused_pane_id` (a bare field write, like pane-focus cycling) *and*
 /// `pane.buffer_id` (like a buffer switch) before any `settle()` runs must
 /// still coalesce into a single `OnBufferEnter` for wherever focus ends up
@@ -999,7 +1000,7 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
 /// (`ScriptingHost::run_steel_calls`).
 ///
 /// Fail oracle: take the diff once before the drain loop instead of once per
-/// pass inside it (SPEC.md §4's C5 test matrix) → only one "entered" fires,
+/// pass inside it → only one "entered" fires,
 /// and the handler's own switch is picked up a `settle()` later.
 #[test]
 fn handler_driven_switch_produces_a_second_on_buffer_enter_in_the_same_settle_call() {

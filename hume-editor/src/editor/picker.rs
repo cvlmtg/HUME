@@ -333,8 +333,8 @@ pub(crate) fn open_picker(
 /// open) and fires its `on_select` callback exactly once with `payload`.
 /// Returns whether a session was actually closed. Shared by `Esc`, `Enter`
 /// (with the selected payload), `picker-close!`, and `open_picker`'s
-/// replace-on-open path (LESSONS.md L2 — one chokepoint, not one copy per
-/// caller).
+/// replace-on-open path — one chokepoint, not one copy per
+/// caller.
 ///
 /// `Editor::reset_config_state` is a second, deliberate exit from this
 /// "fires exactly once" contract: its wholesale `ConfigState` rebuild drops

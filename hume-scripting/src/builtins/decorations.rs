@@ -20,7 +20,8 @@ use super::errors::{generic_err, require_cap};
 /// 'before|'after)`, `offset` a char offset. LSP wire `{"line"
 /// "character"}` positions convert via `lsp-position->offset` before
 /// reaching this builtin — the Steel decoration surface speaks editor-native
-/// units only (SPEC.md §6).
+/// units only, so a caller never needs to know which server's encoding a
+/// wire position came in.
 pub(crate) fn set_inlay_hints(
     ctx: &mut SteelCtx,
     source: SteelVal,

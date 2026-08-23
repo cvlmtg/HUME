@@ -201,7 +201,7 @@ fn set_inlay_hints_errors_loudly_on_an_after_hint_at_the_trailing_newline() {
 
 /// An out-of-range char offset must error loudly at `set-extra-highlights!`
 /// rather than storing a span that never renders — the fail-fast contract
-/// SPEC.md §6 adds for every kind's host-boundary conversion.
+/// every kind's host-boundary conversion holds to.
 #[test]
 fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
     let tmp = safe_tempdir();
@@ -236,7 +236,7 @@ fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
 
 /// An out-of-range `line` must error loudly at the boundary shared by
 /// signs/virtual-lines/EOL-text/line-backgrounds, instead of the old
-/// silently-never-renders behavior (SPEC.md §6).
+/// silently-never-renders behavior.
 #[test]
 fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudly_on_an_out_of_range_line()
  {
@@ -411,10 +411,10 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
     );
 }
 
-/// Regression: before this commit, `signs`/`virtual_lines`/`eol_text` were
+/// Regression: `signs`/`virtual_lines`/`eol_text` used to be
 /// line-indexed and never remapped at all — a sign would silently drift
-/// onto the wrong line the moment a line was inserted or deleted above it
-/// (SPEC.md §5a.1). Deliberately no `attach_running_server` call: `has_any`
+/// onto the wrong line the moment a line was inserted or deleted above it.
+/// Deliberately no `attach_running_server` call: `has_any`
 /// now covers every kind, so a signs-only buffer with no LSP server still
 /// gets its edits queued for the remap chokepoint.
 #[test]
@@ -514,7 +514,7 @@ fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
     );
 }
 
-/// SPEC.md §5a.4: line-anchored kinds remap with `Assoc::After`, not
+/// Line-anchored kinds remap with `Assoc::After`, not
 /// `Assoc::Before`. An "open line above" edit — a newline inserted exactly
 /// at the decorated line's line-start offset — must leave the decoration on
 /// the original line's content, now one line further down, not stranded on
@@ -792,8 +792,8 @@ fn set_line_backgrounds_round_trips_and_replaces_per_source() {
 }
 
 /// Same drift regression as `sign_remaps_through_a_line_inserted_above_it`,
-/// for line backgrounds — SPEC.md §6/§5a.1's remap coverage applies to every
-/// line-anchored kind, not just signs.
+/// for line backgrounds — remap coverage applies to every
+/// line-anchored kind (all four implement `PointAnchored`), not just signs.
 #[test]
 fn line_background_remaps_through_a_line_inserted_above_it() {
     let tmp = safe_tempdir();

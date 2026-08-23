@@ -130,8 +130,8 @@ fn remove_buffer_bumps_generation() {
     );
 }
 
-/// Post-ship correction (SPEC.md "Post-ship corrections", reopening §6's
-/// dirty-tracking decision): `remap_through` used to bump the (then
+/// Post-ship correction to the original dirty-tracking design:
+/// `remap_through` used to bump the (then
 /// store-wide) generation unconditionally, on every queued edit in *any*
 /// LSP-attached buffer — including one with zero decorations, which
 /// `record_lsp_edits` (`doc_ops.rs`) still queues, since it gates on

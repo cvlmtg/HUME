@@ -1,6 +1,6 @@
 //! Regression tests for `TestGlobals`, the reentrant lock guarding the
 //! suite's process globals. It replaced two plain `std::sync::Mutex`es that
-//! self-deadlocked twice — `docs/LESSONS.md` L7, and again in
+//! self-deadlocked twice — once, and again in
 //! `bad_config_value_fails_plugin_load_with_prefixed_error`
 //! (`unix/git_diff_plugin.rs`) — with no panic and no assertion failure, just
 //! the test runner's generic "running for over 60s" notice on a process-wide

@@ -163,7 +163,7 @@ fn picker_close_kills_the_source_child() {
         .success();
     assert!(!alive, "closing the picker must kill its source child");
 
-    // LESSONS.md L4: keep interacting past the terminal action.
+    // Keep interacting past the terminal action.
     ed.feed_key(key('i'));
     ed.feed_key(key('Z'));
     ed.feed_key(key_esc());

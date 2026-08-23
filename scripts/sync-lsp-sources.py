@@ -5,7 +5,7 @@ Reads the pinned release tag from runtime/scheme/mason-pin.scm, downloads
 that release's compiled registry.json.zip, joins it against the checked-in
 runtime/scheme/lsp-servers.scm (server names Helix actually wires) through
 an explicit name-mapping table, and rewrites lsp-sources.scm with per-server
-install records (see docs/LSP-INSTALL.md).
+install records.
 
 Standalone and slow by design: on a from-scratch run it downloads every
 selected github asset to compute a sha256. A repeat run reuses the sha256
@@ -532,10 +532,9 @@ def main() -> None:
     # hash across a version bump — but it also means a GitHub tag re-push
     # (same version, different bytes) is never re-detected, because the
     # cached hash short-circuits the re-download that would catch it. That
-    # is exactly the threat the sha256 pin exists to catch (see
-    # docs/LSP-INSTALL.md's "Integrity" note), so `--no-cache` bypasses the
-    # cache entirely and re-hashes every asset — use it periodically, not
-    # just on a version bump, to catch re-pushed tags.
+    # is exactly the threat the sha256 pin exists to catch, so `--no-cache`
+    # bypasses the cache entirely and re-hashes every asset — use it
+    # periodically, not just on a version bump, to catch re-pushed tags.
     hash_cache = {} if no_cache else load_sha256_cache(LSP_SOURCES_SCM)
     print(
         f"sha256 cache: {len(hash_cache)} entries loaded from prior sync"

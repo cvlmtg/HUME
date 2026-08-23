@@ -273,7 +273,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "compile-grammar!" grammar::compile_grammar(src: String, out: String);
 
         // LSP server install pipeline — sha256 hashing, archive unpacking,
-        // platform id, cross-process install lock (see docs/LSP-INSTALL.md).
+        // platform id, cross-process install lock.
         // Sandbox-free — full-trust plugin model. `verify-sha256!`/`exe-on-path?`
         // /`git-clone`/`curl-fetch`/`npm-install!` are plain Scheme, atop Steel's
         // own `steel/process` stdlib (`which`, `spawn-process`).

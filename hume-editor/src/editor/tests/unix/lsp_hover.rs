@@ -452,8 +452,8 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
 
     // Bump the buffer's text_gen between send and drain — without
     // #:allow-stale this response would be dropped. No settle() call until
-    // after the edit: settle() now unconditionally drains LSP too (the
-    // settle() merge, SPEC.md §3) — draining any earlier would deliver the
+    // after the edit: settle() unconditionally drains LSP too —
+    // draining any earlier would deliver the
     // response (and run lsp-hover's close-on-mode-change dismiss) before
     // the edit ever happens, defeating the "intervening edit" this test
     // means to exercise. The `i`/`X`/Esc mode-change hooks below simply

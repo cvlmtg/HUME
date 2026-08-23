@@ -4,8 +4,7 @@
 //! primitive with a `SteelVal` callback), a confirm is Rust-native: its
 //! action is a plain enum matched inline, with no closure capturing
 //! `&mut Editor` and no round-trip through the scripting VM. It exists for
-//! editor-internal yes/no questions — disk-change reload is the first one;
-//! see `docs/ROADMAP.md`'s binary/huge-file `:e` confirm for the next.
+//! editor-internal yes/no questions — disk-change reload is the first one.
 
 use hume_engine::pipeline::BufferId;
 

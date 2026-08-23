@@ -10,10 +10,10 @@ use crate::editor::{Editor, Severity};
 
 /// A `register-lsp-server!`-registered language name — the key
 /// `LspState.configs` and every attached `ServerEntry.language` use today.
-/// Registration identity is language, one-to-one with a running server (see
-/// docs/LSP.md's registry-shape decision row): a future multi-server-per-
-/// language design would key `LspState.servers` by a distinct registration
-/// name instead, with a `LanguageName -> [registration name]` map alongside
+/// Registration identity is language, one-to-one with a running server: a
+/// future multi-server-per-language design would key `LspState.servers` by
+/// a distinct registration name instead, with a
+/// `LanguageName -> [registration name]` map alongside
 /// it — this alias exists so that future re-key finds every language-keyed
 /// signature by type, not by re-reading every `String` in this module.
 pub(crate) type LanguageName = String;
@@ -110,7 +110,6 @@ impl Editor {
     /// `register-lsp-server!` call for a language a plugin already
     /// registered must override that plugin's default — a hard error here
     /// would make user config unable to win over plugin defaults at all.
-    /// See `docs/LSP.md`'s "Multiple servers per language" decision row.
     /// Running clients on the *old* config are left alone until their next
     /// spawn — a caller that needs a fresh spawn right away (e.g.
     /// reinstalling a server) unregisters explicitly first, which this does

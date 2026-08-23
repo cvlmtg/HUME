@@ -118,8 +118,7 @@ impl From<ResolvedStyle> for ratatui::style::Style {
         if s.modifiers.contains(Modifiers::RAPID_BLINK) {
             style = style.add_modifier(ratatui::style::Modifier::RAPID_BLINK);
         }
-        // Known boundary limitation (tracked, not fixed here — see
-        // docs/ROADMAP.md open questions): Solid/Wavy/Dotted/Dashed all collapse
+        // Known boundary limitation: Solid/Wavy/Dotted/Dashed all collapse
         // to the same plain UNDERLINED modifier. ratatui's `Modifier` bitflags
         // carry no underline-*shape* bits regardless of backend, so there is
         // no injection point between this `From` impl and the terminal to

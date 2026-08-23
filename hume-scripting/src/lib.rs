@@ -288,7 +288,7 @@ impl ScriptingHost {
 ///   `steel_vm/builtin.rs`'s `GENSYM` mints for each context-aware builtin
 ///   registration (a `thread_local!` counter shared by every `Engine` on the
 ///   same test-runner thread, so its exact numbering isn't stable across
-///   runs — see `docs/LESSONS.md`'s L8). HUME itself never registers a
+///   runs). HUME itself never registers a
 ///   `#`-prefixed name.
 #[cfg(any(test, feature = "test-util"))]
 fn is_internal_name(name: &str) -> bool {

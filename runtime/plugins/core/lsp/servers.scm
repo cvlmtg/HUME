@@ -54,8 +54,10 @@
 
 ;;; Hash: language → server name, derived from the shared servers catalog
 ;;; (registration.scm's `lsp/servers-catalog`) — languages are disjoint
-;;; across servers by sync-time guarantee (see docs/LSP-INSTALL.md "v1 scope
-;;; and limitations").
+;;; across servers by sync-time guarantee: `scripts/sync-grammars.py` takes
+;;; only Helix's first-listed ("primary") language-server per language, so
+;;; no two catalog entries can claim the same language and this hash-insert
+;;; loop never silently last-wins two servers against each other.
 (define *lsp-lang->server* (hash))
 
 (for-each
@@ -167,7 +169,7 @@
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
 ;;; External tool `name`'s install needs, given its blocker is already known
-;;; to be #f. See docs/LSP-INSTALL.md "Required external tools".
+;;; to be #f.
 (define (lsp/required-tool name)
   (let* ((fields (hash-ref *lsp-sources* name))
          (kind   (cdr (lsp/field fields 'kind))))
@@ -255,9 +257,8 @@
     bin-rel))
 
 ;;; Install (or reinstall) a single server from its declared source, always
-;;; from a clean slate — doubles as the repair/upgrade path. See
-;;; docs/LSP-INSTALL.md "Commands and lifecycle" for reinstall-over-a-
-;;; running-client behaviour:
+;;; from a clean slate — doubles as the repair/upgrade path, and covers
+;;; reinstall over a running client the same way:
 ;;;   1. blocker check + tool preflight
 ;;;   2. unregister every seeded language (any running client is reaped)
 ;;;   3. purge any existing install — the receipt dies with it
@@ -298,8 +299,8 @@
 ;;; Runs `thunk` under the cross-process install lock
 ;;; (`<data>/servers/.install-lock`), releasing it exactly once regardless
 ;;; of outcome. Never re-raises `thunk`'s error through an outer
-;;; with-handler — a nested re-raise of a native-builtin error corrupts the
-;;; Steel VM's continuation stack (see LESSONS.md) — every failure path
+;;; with-handler — re-raising a native-builtin error through a nested handler
+;;; corrupts the Steel VM's continuation stack — every failure path
 ;;; terminates in a plain `log!`. Returns #t on success, #f on any failure;
 ;;; a lock the caller couldn't acquire and a `thunk` that raised both
 ;;; collapse to the same #f.

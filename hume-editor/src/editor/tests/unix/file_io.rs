@@ -33,7 +33,7 @@ fn edit_existing_buffer_switches_without_reread() {
 }
 
 /// `:e <path>` re-targeting the buffer it's already focused on is a no-op
-/// switch (SPEC.md §4, C5): it raises no `OnBufferEnter` and runs no disk
+/// switch: it raises no `OnBufferEnter` and runs no disk
 /// check, matching Vim (`:e` doesn't re-fire `BufEnter` for the buffer
 /// you're already on). Deleting the file externally and re-`:e`-ing it while
 /// still focused therefore stays silent — the deferred warning still

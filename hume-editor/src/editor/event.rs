@@ -35,8 +35,8 @@ pub(crate) enum EditorEvent {
     /// `Editor::settle()`'s fixpoint against `EditorState::last_entered_buffer`,
     /// not a hook on any individual switch primitive. `focused_buffer_id()` is
     /// a derived join of `focused_pane_id` (5 write sites) and `pane.buffer_id`
-    /// (1 write site), so no write site can serve as a chokepoint — see
-    /// SPEC.md §4. Fires once at startup (the initial buffer entering focus)
+    /// (1 write site), so no write site can serve as a chokepoint to hang a
+    /// raise on. Fires once at startup (the initial buffer entering focus)
     /// and once more per subsequent switch, coalescing a pane-focus move and a
     /// buffer switch in the same `settle()` pass into a single event.
     OnBufferEnter {
@@ -180,16 +180,17 @@ pub(crate) enum EditorEvent {
 /// list — the alternative (a hand-written match plus a hand-written const
 /// array) is the exact kind of two-places-say-the-same-thing drift a test can
 /// catch but not prevent. Still an explicit table of string literals, not a
-/// PascalCase→kebab-case computation (SPEC.md §2 rejected deriving the string
-/// itself as too magic) — this only removes writing each pair twice.
+/// PascalCase→kebab-case computation: writing each name out means a variant
+/// rename can never silently rename the Steel-facing event too — this macro
+/// only removes writing each pair twice.
 ///
 /// A variant not listed here would make `name`'s match non-exhaustive over
 /// `EditorEvent` and fail to compile — so today, with every variant
 /// Steel-visible, this is equivalent to the old exhaustive match, just
-/// written once. An internal-only variant (§1a's "N+1 Rust-only events") is
-/// out of scope for this macro as written; give `name` an `Option` return
-/// and extend it with a `$variant:ident` arm (no `=> $name`) mapping to
-/// `None` if one appears.
+/// written once. A future internal-only (Rust-only, no Steel-facing name)
+/// variant is out of scope for this macro as written; give `name` an
+/// `Option` return and extend it with a `$variant:ident` arm (no `=> $name`)
+/// mapping to `None` if one appears.
 macro_rules! editor_event_names {
     ($($variant:ident => $name:literal),+ $(,)?) => {
         impl EditorEvent {
@@ -311,10 +312,12 @@ impl EditorEvent {
 }
 
 /// One item of deferred Steel work, queued by a raise site and drained by
-/// `Editor::settle()` in FIFO order — the merge that closes the stranded-
-/// events bug (SPEC.md §3): a `Call` and an `Event` queued in the same batch
-/// now drain in insertion order, in one fixpoint, instead of two queues
-/// drained at two different points of the run loop.
+/// `Editor::settle()` in FIFO order — one merged queue closes the stranded-
+/// events bug (see `tests/events.rs`'s
+/// `event_raised_from_async_work_fires_on_settle_with_no_input`): a `Call`
+/// and an `Event` queued in the same batch drain in insertion order, in one
+/// fixpoint, instead of two queues drained at two different points of the
+/// run loop.
 ///
 /// Hooks always route through here rather than firing inline — this is a
 /// semantic guarantee of the hook model ("when X happens, then do Y"), not a

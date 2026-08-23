@@ -50,9 +50,9 @@ fn state(ed: &Editor) -> String {
 }
 
 /// Every queued `PendingWork::Call` in `pending_work`, in FIFO order,
-/// ignoring any interleaved `Event` items — mirrors the pre-C4
-/// `pending_steel_calls` queue for tests that assert on specific queued
-/// callbacks (an `lsp-request`/timer/prompt/menu/drawer/picker callback).
+/// ignoring any interleaved `Event` items — for tests that assert on
+/// specific queued callbacks (an `lsp-request`/timer/prompt/menu/drawer/
+/// picker callback).
 fn pending_calls(ed: &Editor) -> Vec<(&steel::rvals::SteelVal, &Vec<steel::rvals::SteelVal>)> {
     ed.state
         .config
@@ -482,7 +482,7 @@ impl Drop for ClaimGuard {
 /// re-acquires it on a thread that already holds it — e.g. `safe_tempdir()`
 /// called from inside a live `HumeRuntimeGuard` — blocks only on *other*
 /// threads, never on itself. A non-reentrant mutex here hung the suite twice
-/// (`docs/LESSONS.md` L7, and the `git_diff_plugin.rs` fix that prompted this
+/// (once, and again in the `git_diff_plugin.rs` fix that prompted this
 /// type) with no panic, no assertion failure — just a silent "running for
 /// over 60s" from the test runner, on a process-wide lock that then starved
 /// every other concurrently-running test too.
@@ -722,7 +722,7 @@ impl Editor {
     /// `Editor::run`'s loop (dispatch at the bottom of one iteration, settle
     /// at the top of the next). Needed by tests covering the buffer-enter
     /// disk check on focus change: that check is `OnBufferEnter`'s Rust
-    /// reaction (SPEC.md §4), observed by `settle`'s own diff, not by
+    /// reaction, observed by `settle`'s own diff, not by
     /// `handle_input` itself.
     fn feed_event(&mut self, key: KeyEvent) {
         self.handle_input(TerminalEvent::Key(key));

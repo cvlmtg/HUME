@@ -2,10 +2,14 @@
 //! hashing, archive unpacking, and a cross-process install lock.
 //!
 //! No sandbox checks — full-trust plugin model (see
-//! `user-manual/docs/plugins.md`'s "Filesystem and processes"). sha256 hashing and archive unpacking shell
-//! out to per-platform system tools (`hume_platform::process`) rather than
-//! pulling in hashing/archive crates — see `docs/LSP-INSTALL.md`'s "Required
-//! external tools" note for exactly what each platform needs installed.
+//! `user-manual/docs/plugins.md`'s "Filesystem and processes").
+//!
+//! sha256 hashing and archive unpacking shell out to per-platform system
+//! tools (`hume_platform::process`) rather than pulling in hashing/archive
+//! crates: `shasum`/`sha256sum`/`certutil` for hashing, `gzip` for `.gz`,
+//! `unzip`/`tar` for `.zip` — the OS/toolchain already ships all of these,
+//! so it costs no new install step in the common case, at the price of a
+//! hard runtime dependency on them being present.
 //!
 //! | Steel name                     | Signature              | Notes                              |
 //! |---------------------------------|------------------------|-------------------------------------|
@@ -90,9 +94,13 @@ pub(crate) fn unpack_gz(ctx: &mut SteelCtx, src: String, dest: String) -> SteelR
 /// zip entries carry the archive's own stored permissions and CI-built
 /// release zips routinely strip the exec bit.
 ///
-/// Zip-slip and symlink-entry protection is delegated to the system tool —
-/// the residual risk is bounded by the sha256 pin verified before unpacking
-/// (see `docs/LSP-INSTALL.md`'s accepted tradeoffs). `dest-dir` is created if
+/// Zip-slip and symlink-entry protection is delegated to the system tool
+/// (modern Info-ZIP strips `../` entries; bsdtar refuses them by default) —
+/// the residual risk is bounded by the sha256 pin: this runs only after
+/// `lsp/verify-sha256!` has confirmed the archive matches the maintainer-
+/// vetted, hash-locked asset recorded in `lsp-sources.scm`, so an attacker
+/// would need to compromise the pinned upstream release itself, not just
+/// something interposed at install time. `dest-dir` is created if
 /// absent (`tar -C` requires an existing directory). On error, `dest-dir` is
 /// left as-is — a dir-without-receipt is already the interrupted-install
 /// signal the installer relies on, so cleaning up here would duplicate that

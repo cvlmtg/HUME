@@ -334,7 +334,7 @@ impl Editor {
             // `line_start_offset`, so can legitimately be EOF-anchored), and
             // plugin signs store their line's line-start char offset
             // (`SignEntry::pos`, remapped through edits like every other
-            // decoration kind, SPEC.md §6).
+            // decoration kind).
             let text = self.state.buffers.get(bid).text();
             // Diagnostics only: clamped to the last content char so an
             // EOF-anchored diagnostic (server points one past the buffer's
@@ -779,7 +779,7 @@ impl Editor {
 }
 
 /// Folds per-source, line-anchored decoration entries into one winner per
-/// line — SPEC.md §5a.4: within one source, a later entry beats an earlier
+/// line: within one source, a later entry beats an earlier
 /// one that a remap collapsed onto the same line (ties resolve by store
 /// order — `SourceStore::set` sorts by position, so "later" means originally
 /// further along the buffer); across sources, tie-break by source name,

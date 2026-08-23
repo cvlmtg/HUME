@@ -293,8 +293,10 @@ impl Editor {
     /// Single interactive input boundary: dispatch one terminal event.
     ///
     /// All interactive input flows through here — key events and mouse events
-    /// alike. This no longer drains queued work itself, nor diffs focus
-    /// itself (SPEC.md §4): `Editor::run`'s loop calls `settle()` once per
+    /// alike. This does not drain queued work itself, nor diff focus
+    /// itself (see `tests/sync_dispatch.rs`'s
+    /// `mouse_click_leaves_hook_queued_until_the_next_settle`, which pins
+    /// it): `Editor::run`'s loop calls `settle()` once per
     /// iteration, at the top, and `settle()`'s own fixpoint is where a focus
     /// change made here — or by a hook handler, or by non-interactive Steel/
     /// LSP code — is observed and turned into `OnBufferEnter`. New input
@@ -330,14 +332,14 @@ impl Editor {
     /// Each iteration:
     /// 1. Sync viewport geometry, settle (drain async sources and the merged
     ///    work queue to quiescence — see `Editor::settle`'s doc; this is
-    ///    what closes the stranded-events bug, SPEC.md §3), observe
+    ///    what closes the stranded-events bug), observe
     ///    `should_quit`, then prepare the frame: sync all editor state to
     ///    the engine pane.
     /// 2. Render.
     /// 3. Block until the next terminal event.
     /// 4. Dispatch the event.
     ///
-    /// **Invariant not independently unit-testable** (SPEC.md §7): `settle()`
+    /// **Invariant not independently unit-testable**: `settle()`
     /// always runs, and `should_quit` is always observed, before this loop's
     /// `prepare_frame`/draw. `run` itself needs a live terminal and event
     /// reader, so this is verified by this function's own structure below

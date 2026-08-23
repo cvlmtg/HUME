@@ -130,8 +130,8 @@ mod tests {
     /// `cargo test --release -- --ignored` (wall-clock asserts in debug/CI
     /// builds are flaky).
     ///
-    /// Budget is 2 frames (32ms, at the project's 16ms-frame convention —
-    /// see `docs/LSP.md`), not 1: measured single-threaded cost on a
+    /// Budget is 2 frames (32ms, at the project's 16ms-frame convention),
+    /// not 1: measured single-threaded cost on a
     /// worst-case (short, low-selectivity) query against 100k items is a
     /// stable ~15.5-16.5ms, right at one frame's edge, and a keystroke
     /// dropping a single frame under the heaviest realistic query is

@@ -427,8 +427,8 @@ fn wire_pos_to_grapheme_col(
 /// row that read `range.start.line` a second time in Scheme, or decoded the
 /// URI a second time to render the path, could end up naming a position it
 /// didn't measure; see that function's doc for why a malformed location
-/// aborts the whole batch rather than degrading its own row (SPEC.md Q33b),
-/// while an unreadable *file* below still only drops its own row's column.
+/// aborts the whole batch rather than degrading its own row, while an
+/// unreadable *file* below still only drops its own row's column.
 /// The path is the URI's own, not [`Editor::resolve_buffer_path`]'s
 /// canonicalisation of it: resolving symlinks is right for *finding* the
 /// file, but a drawer row should echo the path the server actually sent.

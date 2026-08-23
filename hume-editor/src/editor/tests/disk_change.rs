@@ -1564,7 +1564,7 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     );
 }
 
-// ── OnBufferEnter / OnFocusGained (SPEC.md §4, C5) ────────────────────────────
+// ── OnBufferEnter / OnFocusGained ──────────────────────────────────────────────
 
 /// The originating bug, end to end: a picker accept switching onto a buffer
 /// whose backing file changed externally must open the reload confirm. Built
@@ -1572,8 +1572,9 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
 /// queues as a `PendingWork::Call`, drained by the next `render_to_buf`
 /// (`settle()` internally), same as `on-buffer-enter`.
 ///
-/// Fail oracle: pre-C5 code — the picker path never ran through
-/// `enter_buffer_with_jump` (a fuzzy picker doesn't dispatch `:e`/`:b`) or
+/// Fail oracle: a disk check wired only into typed commands — the picker
+/// path never ran through `enter_buffer_with_jump` (a fuzzy picker doesn't
+/// dispatch `:e`/`:b`) or
 /// `handle_input`'s tail check (the switch happens a frame later, inside the
 /// drain), so `ed.state.config.confirm` stays `None`.
 #[test]
@@ -1637,7 +1638,7 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
 
 /// A non-interactive `switch-to-buffer!` — Steel's builtin, LSP goto-
 /// definition, any async callback — onto a stale buffer must open the reload
-/// confirm too. Before C5 this path ran no check at all: the deleted
+/// confirm too. This path used to run no check at all: the deleted
 /// `enter_buffer_with_jump` was only reachable from typed commands, and
 /// `switch_to_buffer_with_jump` (what non-interactive callers use) never
 /// called it.
@@ -1708,7 +1709,7 @@ fn focus_gained_sweeps_every_open_buffer_not_just_the_focused_one() {
 
 /// `:b <other>` onto a stale buffer must run the disk check exactly once —
 /// pinning against a double-check regression from a direct call surviving
-/// alongside `settle()`'s event-driven diff (SPEC.md §4). A second run would
+/// alongside `settle()`'s event-driven diff. A second run would
 /// find the confirm already open (`can_open_confirm`'s `confirm.is_none()`
 /// guard blocks it) and fall through to `report_disk_state`'s warn fallback
 /// instead — an extra `:messages` entry alongside the confirm.

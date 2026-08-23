@@ -205,7 +205,7 @@ impl Editor {
     /// results, LSP responses, timer fires — `drain_async_sources`), then
     /// drain `state.config.pending_work` to a fixpoint.
     ///
-    /// This is the single consumer of the merged work queue (SPEC.md §3): a
+    /// This is the single consumer of the merged work queue: a
     /// `Call` (an `lsp-request` callback, a timer thunk, a prompt/menu/
     /// drawer/picker callback) and an `Event` (fired to every handler
     /// registered for its name) drain in the exact order they were queued —
@@ -261,7 +261,7 @@ impl Editor {
     /// queued hooks without an unrelated LSP/parse/timer message landing
     /// inside it and being mistaken for a reload failure.
     ///
-    /// Also the single observation point for `OnBufferEnter` (SPEC.md §4):
+    /// Also the single observation point for `OnBufferEnter`:
     /// `detect_buffer_enter` runs at the top of every pass, not just once
     /// before the loop, so a handler-driven `switch-to-buffer!` is caught by
     /// the very next pass instead of waiting a frame, and the loop's exit
@@ -336,8 +336,9 @@ impl Editor {
 
     /// Observation point for `focused_buffer_id()` — a derived join of
     /// `focused_pane_id` (5 write sites) and `pane.buffer_id` (1 write
-    /// site), so it has no write-site chokepoint to hang a raise on
-    /// (SPEC.md §4, `docs/LESSONS.md` L9). Diffed against
+    /// site), so it has no write-site chokepoint to hang a raise on: a raise
+    /// wired into just one of those six sites would miss a switch caused
+    /// through any of the other five. Diffed against
     /// `EditorState::last_entered_buffer` every pass of `settle`'s loop
     /// rather than once before it, so a pane-focus move and a buffer switch
     /// in the same pass coalesce into one event, and a handler that itself
@@ -409,7 +410,7 @@ impl Editor {
 
     /// Editor-internal reactions to an event — the Rust counterpart to Steel
     /// handlers, and the only `match` over `EditorEvent` that drives editor
-    /// behaviour (SPEC.md §4). Runs unconditionally, before `fire_one_event`
+    /// behaviour. Runs unconditionally, before `fire_one_event`
     /// and its `has_hook_handlers` early-exit: unlike a Steel handler, a
     /// Rust reaction has no registration to short-circuit on, and editor
     /// behaviour must not depend on whether a plugin happens to be

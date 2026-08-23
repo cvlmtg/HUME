@@ -324,7 +324,7 @@ impl Editor {
     }
 
     /// Run the buffer-enter disk check for `entered` — the Rust reaction to
-    /// `EditorEvent::OnBufferEnter` (SPEC.md §4), called from
+    /// `EditorEvent::OnBufferEnter`, called from
     /// `Editor::react_to_event` inside `settle`'s fixpoint. `OnBufferEnter`
     /// is itself a diff against `EditorState::last_entered_buffer`
     /// (`Editor::detect_buffer_enter`), so every focus-changing path —

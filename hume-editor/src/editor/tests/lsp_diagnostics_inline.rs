@@ -59,7 +59,7 @@ fn full_message_reaches_the_render_provider_untruncated() {
 
 /// Two entries from the *same* source landing on the same line — the shape a
 /// remap produces when an edit collapses several originally-distinct lines
-/// into one (SPEC.md §5a.4: "within one source, last entry wins"). Before
+/// into one; `last_writer_per_line` folds them, keeping the last. Before
 /// this fix, `update_eol_text_providers` pushed onto a per-line `Vec`
 /// instead of folding, so both entries survived and rendered concatenated at
 /// the same byte offset.
@@ -112,11 +112,11 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
     );
     assert_eq!(
         inserts[0].text, "second",
-        "the later entry must win, per SPEC.md \u{a7}5a.4"
+        "the later entry must win — last_writer_per_line folds left-to-right"
     );
 }
 
-/// Two sources tinting the same line — SPEC.md §5a.4's cross-source
+/// Two sources tinting the same line — the cross-source
 /// tie-break, mirroring the sign pipeline: the alphabetically *first*
 /// source wins.
 #[test]

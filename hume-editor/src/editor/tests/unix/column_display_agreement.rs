@@ -264,7 +264,7 @@ fn references_drawer_shows_grapheme_columns_across_open_and_disk_files() {
 /// A location missing `range` entirely names no destination `goto-location!`
 /// could jump to either, so `lsp-locations->display-parts` must abort the
 /// whole batch rather than render an unselectable row for it — see
-/// `hume_lsp::location::decode_location`'s doc and SPEC.md's Q33b.
+/// `hume_lsp::location::decode_location`'s doc.
 ///
 /// Sabotage oracle: loosen `decode_location` to tolerate a missing `range`
 /// (e.g. defaulting to line 0) — the drawer would open with four rows

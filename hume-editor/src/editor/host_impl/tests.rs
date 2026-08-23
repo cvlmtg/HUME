@@ -55,8 +55,9 @@ fn attach_grammar_errs_for_bad_path() {
 }
 
 // ── `virtual_line_segments_to_bytes` — validation moved here from the Steel
-// boundary (SPEC.md §5a.2); these replace the tests that used to live at
-// `hume-scripting/src/builtins/decorations/tests.rs`.
+// boundary (`VirtualLineSpec`'s segments are unvalidated char offsets; this
+// function is the sole enforcement point); these replace the tests that used
+// to live at `hume-scripting/src/builtins/decorations/tests.rs`.
 
 fn seg(start: usize, end: usize, scope: &str) -> (usize, usize, String) {
     (start, end, scope.to_string())
@@ -108,9 +109,8 @@ fn virtual_line_segments_to_bytes_rejects_segment_splitting_a_grapheme_cluster()
 }
 
 // ── `line_start_offset` / `validate_offset` — the position-contract fix
-// (post-ship code review, SPEC.md "Post-ship corrections"): a decoration
-// position must address a real char, never the buffer's trailing phantom
-// line or one-past-the-end.
+// (post-ship code review): a decoration position must address a real char,
+// never the buffer's trailing phantom line or one-past-the-end.
 
 #[test]
 fn line_start_offset_accepts_the_last_content_line() {

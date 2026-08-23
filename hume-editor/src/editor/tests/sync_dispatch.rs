@@ -786,9 +786,8 @@ fn steel_unknown_cmd_errors_and_continues() {
     );
 }
 
-/// **Finding 6, updated for the `settle()` merge (SPEC.md §3) — mouse input no
-/// longer drains pending work itself; `Editor::run`'s loop does, once per
-/// iteration, via `settle()`.** Before the merge, `handle_input` was the
+/// **Mouse input no longer drains pending work itself; `Editor::run`'s loop
+/// does, once per iteration, via `settle()`.** Before the merge, `handle_input` was the
 /// single interactive drain choke point, so a hook seeded before a mouse
 /// click was gone by the time `handle_input` returned. After the merge, the
 /// drain moved to the top of the run loop (so it also covers async work that

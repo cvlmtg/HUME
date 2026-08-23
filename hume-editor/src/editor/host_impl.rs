@@ -1152,10 +1152,9 @@ fn buffer_text<'s>(
 }
 
 /// `line`'s line-start char offset, or `Err` naming `builtin` if `line` is
-/// out of range. Signs/virtual-lines/EOL-text keep their Steel-facing
-/// `line` unit (SPEC.md §6's semantic-units-at-the-surface decision);
-/// this is the one place — already holding the rope — where that converts
-/// to the internal char-offset position model.
+/// out of range. Signs/virtual-lines/EOL-text/line-backgrounds keep their
+/// Steel-facing `line` unit — this is the one place — already holding the
+/// rope — where that converts to the internal char-offset position model.
 ///
 /// Rejects the buffer's last *ropey* line, not just any out-of-range line:
 /// the buffer invariant (every buffer ends with a structural `\n`) means

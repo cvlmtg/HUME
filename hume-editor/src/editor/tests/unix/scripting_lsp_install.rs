@@ -1,7 +1,6 @@
 // Editor-level tests for core:lsp's server install pipeline (servers.scm):
 // scan-on-load registration, :lsp-install/:lsp-uninstall/:lsp-servers,
-// receipts, orphan warnings, and the on-language-set discovery hint. See
-// docs/LSP-INSTALL.md.
+// receipts, orphan warnings, and the on-language-set discovery hint.
 //
 // Fixture servers, chosen from the real runtime/scheme/lsp-{servers,sources}.scm
 // catalogs (verified at authoring time, re-checked by these tests every run):
@@ -145,7 +144,7 @@ fn lsp_plugin_loads_with_real_lsp_catalogs() {
 /// The regression test this whole change exists to pin: loading only
 /// `core:plum` exposes no LSP commands at all (not even `:lsp-install`) and
 /// runs no receipt scan — LSP server install/uninstall/registration is
-/// core:lsp-owned end to end. See docs/LSP-INSTALL.md "Registration model".
+/// core:lsp-owned end to end.
 #[test]
 fn plum_alone_does_not_register_installed_servers() {
     let _lock = lock();
@@ -1298,11 +1297,11 @@ fn discovery_hint_does_not_fire_when_already_registered() {
 // ── cargo installer (fake shim, no network/compile) ─────────────────────────────
 //
 // A real `cargo install` compiles a full crate graph — multi-minute,
-// toolchain+network dependent, a poor fit even for the manual live-e2e gate
-// (see docs/LSP-INSTALL.md; npm-kind has no live e2e either). These tests
-// cover HUME's entire side of the contract — argv, `--root` layout, receipt,
-// registration, and the failure path — against a fake `cargo` executable
-// that does no real work.
+// toolchain+network dependent, a poor fit even for a manual live-e2e gate;
+// no live e2e exists for cargo- or npm-kind installs at all, so these tests
+// are the entire coverage of HUME's side of the contract — argv, `--root`
+// layout, receipt, registration, and the failure path — against a fake
+// `cargo` executable that does no real work.
 
 /// Write an executable fake `cargo` shim into a fresh tempdir and return that
 /// dir. The shim records its argv (one token per line) to `args_file`, then

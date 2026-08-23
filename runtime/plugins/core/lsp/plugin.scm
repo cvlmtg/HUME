@@ -28,8 +28,7 @@
 ;; Passive: reads on-disk receipts written by this plugin's own install
 ;; pipeline (servers.scm), no subprocess, no network. Runs here at load
 ;; time, or later at lazy activation — see registration.scm's
-;; `lsp/register-installed-servers!` doc comment and docs/LSP-INSTALL.md
-;; "Registration model".
+;; `lsp/register-installed-servers!` doc comment.
 
 (lsp/register-installed-servers!)
 

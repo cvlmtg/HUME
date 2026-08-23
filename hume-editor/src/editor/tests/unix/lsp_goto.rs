@@ -457,7 +457,7 @@ fn goto_missing_target_opens_new_file_buffer_and_jumps_to_it() {
 }
 
 /// The same malformed-location rule `lsp-locations->display-parts` enforces
-/// (SPEC.md's Q33b) applies to `goto-location!` too, through the shared
+/// applies to `goto-location!` too, through the shared
 /// `hume_lsp::location::decode_location`: a `Location` missing `range` must
 /// error rather than silently jumping to line 0.
 ///
@@ -521,10 +521,10 @@ fn each_command_sends_its_own_method() {
 }
 
 /// A goto-definition landing on a different, unopened file is a
-/// non-interactive `switch-to-buffer!` (via `goto-location!`) — SPEC.md §7's
-/// C5 table names this write path specifically, since it never runs through
-/// `type_cmd`/`feed_key` at all; the switch happens inside `drain_lsp`'s
-/// response handling. Must raise exactly one `OnBufferEnter`, same as every
+/// non-interactive `switch-to-buffer!` (via `goto-location!`): the switch
+/// happens inside `drain_lsp`'s response handling, never through
+/// `type_cmd`/`feed_key`, so it exercises `settle()`'s diff rather than any
+/// command-side raise. Must raise exactly one `OnBufferEnter`, same as every
 /// other focus-changing action.
 ///
 /// Fail oracle: `goto-location!`'s buffer switch bypassing `settle()`'s

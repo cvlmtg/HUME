@@ -6,9 +6,8 @@ Reads the pinned SHA from runtime/scheme/helix-pin.scm, fetches helix's
 languages.toml at that commit, and rewrites:
   - languages.scm       — (define-language! …) for every [[language]] block
   - grammar-sources.scm — tree-sitter grammar source catalog
-  - lsp-servers.scm     — LSP server registration catalog (see
-    docs/LSP-INSTALL.md), derived from [[language]].language-servers and
-    [language-server.*]
+  - lsp-servers.scm     — LSP server registration catalog, derived from
+    [[language]].language-servers and [language-server.*]
 
 Idempotent: running twice produces byte-identical files.
 """
@@ -116,9 +115,13 @@ LSP_SERVERS_HEADER = """\
 ;;;       read))
 ;;;
 ;;; One server per language — Helix's first-listed ("primary") language-server
-;;; only; see docs/LSP-INSTALL.md "v1 scope" for the multi-server rationale.
-;;; Install sources (download/build info) live in lsp-sources.scm, joined by
-;;; server name.
+;;; only. Helix lists ordered *multiple* servers for some languages (python
+;;; -> ["ty" "ruff" "jedi" "pylsp"], toml -> ["taplo" "tombi"]); the client
+;;; is single-server-per-buffer by design, so non-primary servers are not
+;;; seeded and not installable — multi-server support needs the client to
+;;; merge diagnostics and route requests per capability first, which is a
+;;; client milestone, not a sync-script one. Install sources (download/build
+;;; info) live in lsp-sources.scm, joined by server name.
 ;;;
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 ;;; Full sync: run scripts/sync-grammars.py after updating helix-pin.scm.

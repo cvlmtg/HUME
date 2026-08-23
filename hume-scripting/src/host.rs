@@ -490,8 +490,8 @@ pub trait DecorationHost {
 
     /// `(set-signs! source bid signs)` — replaces `source`'s signs for `bid`
     /// wholesale. Each entry is `(line, text, scope, priority)`; `line`
-    /// converts to that line's line-start char offset at this boundary
-    /// (SPEC.md §6) — `Err`, naming the builtin, if `line` is out of range.
+    /// converts to that line's line-start char offset at this boundary —
+    /// `Err`, naming the builtin, if `line` is out of range.
     fn set_signs(
         &mut self,
         source: String,
@@ -528,9 +528,9 @@ pub trait DecorationHost {
     /// `(set-eol-text! source bid lines)` — replaces `source`'s EOL text for
     /// `bid` wholesale. Each entry is `(line, text, scope)`; `text` is
     /// spliced in at the end of `line`, which converts to that line's
-    /// line-start char offset at this boundary (SPEC.md §6) — `Err`, naming
-    /// the builtin, if `line` is out of range. Not diagnostics-specific —
-    /// the diagnostics plugin is its first client, not its owner.
+    /// line-start char offset at this boundary — `Err`, naming the builtin,
+    /// if `line` is out of range. Not diagnostics-specific — the diagnostics
+    /// plugin is its first client, not its owner.
     fn set_eol_text(
         &mut self,
         source: String,
@@ -541,8 +541,7 @@ pub trait DecorationHost {
     /// `(set-line-backgrounds! source bid entries)` — replaces `source`'s
     /// line backgrounds for `bid` wholesale. Each entry is `(line, scope)`;
     /// `line` converts to that line's line-start char offset at this
-    /// boundary (SPEC.md §6) — `Err`, naming the builtin, if `line` is out
-    /// of range.
+    /// boundary — `Err`, naming the builtin, if `line` is out of range.
     fn set_line_backgrounds(
         &mut self,
         source: String,
@@ -662,8 +661,11 @@ pub trait LspHost {
     /// location whose shape can't be decoded at all (missing `uri`/`range`,
     /// unparseable URI): such a location names no destination `goto-location!`
     /// could reach either, so a drawer row for it would be unselectable by
-    /// construction. See `decode_location`'s doc for the full rule and
-    /// SPEC.md's Q33b for why a per-row degrade was rejected here.
+    /// construction. Degrading only this builtin wouldn't help either — the
+    /// same malformed location would still abort three lines later inside
+    /// `lsp/location-display`, which is why both routes decode through the
+    /// one shared `decode_location` instead of tolerating a bad shape here.
+    /// See `decode_location`'s doc for the full rule.
     fn lsp_locations_display_parts(
         &self,
         locs: Vec<serde_json::Value>,

@@ -1,8 +1,8 @@
 // `hume_platform::QUIT_GRACE`'s own doc comment states its budget as
 // `Editor::SHUTDOWN_GRACE` plus `hume_lsp::transport`'s `WRITER_FLUSH_GRACE`
 // per still-live LSP server, kept in step across three crates by comment
-// alone — the "chokepoint invariant enforced only by a comment" pattern
-// `docs/LESSONS.md` L4 warns against. This test ties the three real
+// alone — a chokepoint invariant enforced only by a comment is no invariant
+// at all. This test ties the three real
 // constants together so a change that breaks the promised relationship
 // fails loudly instead of silently drifting.
 

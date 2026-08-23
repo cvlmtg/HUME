@@ -1,6 +1,6 @@
 //! Direct unit tests for the pure per-line helpers `decoration_providers.rs`
-//! shares across its render bridges — `last_writer_per_line` (SPEC.md
-//! §5a.4's collapse policy) and `resolve_decoration_line` (the position
+//! shares across its render bridges — `last_writer_per_line` (the
+//! per-line collapse policy) and `resolve_decoration_line` (the position
 //! contract fix). Full-`Editor` integration coverage for the bridges that
 //! call these lives in `tests/lsp_decorations.rs` and
 //! `tests/lsp_inlay_hints.rs`; these tests isolate the shared logic itself
@@ -36,7 +36,7 @@ fn resolve_decoration_line_drops_a_position_on_the_trailing_phantom_line() {
 #[test]
 fn last_writer_per_line_keeps_the_later_entry_within_one_source() {
     // Two entries from the same source collapsed onto line 4 by a remap —
-    // SPEC.md §5a.4: "within one source, last entry wins."
+    // within one source, the last entry wins.
     let entries = vec![
         ("diagnostics".to_string(), 4, "first"),
         ("diagnostics".to_string(), 4, "second"),
@@ -47,7 +47,7 @@ fn last_writer_per_line_keeps_the_later_entry_within_one_source() {
 
 #[test]
 fn last_writer_per_line_breaks_cross_source_ties_alphabetically_first() {
-    // SPEC.md §5a.4: "across sources, break ties by source name" —
+    // Across sources, ties break by source name —
     // mirroring the sign pipeline's tie-break, which resolves to the
     // alphabetically *first* source (`update_sign_providers`'s ascending
     // pre-sort + a stable priority sort keep same-priority ties in that

@@ -245,9 +245,10 @@ pub fn exit_code_str(status: ExitStatus) -> String {
 // ── LSP server install pipeline ──────────────────────────────────────────────
 //
 // sha256 verification and archive unpacking shell out to per-platform system
-// tools rather than pulling in hashing/archive crates — see
-// `docs/LSP-INSTALL.md`'s "Required external tools" note for the exact
-// programs each platform needs.
+// tools rather than pulling in hashing/archive crates: `shasum`/`sha256sum`/
+// `certutil` below for hashing, `gzip`/`unzip`/`tar` (in
+// `hume-scripting/src/builtins/install.rs`) for unpacking — one more
+// dependency HUME's own build doesn't need to vendor or keep current.
 
 /// Compute the sha256 digest of `path` as lowercase hex, by shelling out to
 /// the platform's canonical hashing tool (`shasum -a 256` on macOS,

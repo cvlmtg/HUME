@@ -139,7 +139,7 @@ fn files_picker_esc_dismisses_cleanly() {
         "Esc must not switch buffers"
     );
 
-    // LESSONS.md L4: keep interacting past the terminal action.
+    // Keep interacting past the terminal action.
     ed.feed_key(key('i'));
     ed.feed_key(key('Z'));
     ed.feed_key(key_esc());
@@ -653,7 +653,7 @@ fn git_modified_picker_esc_dismisses_cleanly() {
         "Esc must not switch buffers"
     );
 
-    // LESSONS.md L4: keep interacting past the terminal action.
+    // Keep interacting past the terminal action.
     ed.feed_key(key('i'));
     ed.feed_key(key('Z'));
     ed.feed_key(key_esc());
@@ -723,7 +723,7 @@ fn buffers_picker_esc_is_a_no_op() {
     assert!(ed.state.config.picker.is_none());
     assert_eq!(ed.focused_buffer_id(), starting_bid);
 
-    // LESSONS.md L4: keep interacting past the terminal action.
+    // Keep interacting past the terminal action.
     ed.feed_key(key('i'));
     ed.feed_key(key('Z'));
     ed.feed_key(key_esc());

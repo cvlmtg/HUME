@@ -29,9 +29,9 @@ pub(crate) struct InlayHintEntry {
 /// One `(set-signs! …)` entry: a gutter marker on the line `pos` starts.
 /// `pos` is that line's line-start char offset, not the Steel-facing line
 /// number — the host boundary (`host_impl.rs`'s `line_start_offset`)
-/// converts at set time, so this remaps through edits with everything else
-/// (SPEC.md §6); the render side derives the current line back via
-/// `char_to_line` at rebuild. `Clone`: `decoration_providers.rs`'s
+/// converts at set time, so this remaps through edits with everything else;
+/// the render side derives the current line back via `char_to_line` at
+/// rebuild. `Clone`: `decoration_providers.rs`'s
 /// `visible_line_anchored` clones a viewport-filtered subset out from under
 /// an immutable store borrow before resolving each entry's scope (which
 /// needs `&mut self`) — same reason `EolTextEntry`/`LineBgEntry` carry it.
@@ -47,9 +47,9 @@ pub(crate) struct SignEntry {
 /// the line `pos` starts (rendered after it, or before when `before` is
 /// set). `pos` is that line's line-start char offset, not the Steel-facing
 /// line number — the host boundary (`host_impl.rs`'s `line_start_offset`)
-/// converts at set time, so this remaps through edits like every other kind
-/// (SPEC.md §6); the render side derives the current line back via
-/// `char_to_line` at rebuild. `scope` styles bytes `segments` doesn't cover
+/// converts at set time, so this remaps through edits like every other kind;
+/// the render side derives the current line back via `char_to_line` at
+/// rebuild. `scope` styles bytes `segments` doesn't cover
 /// (`ui.virtual` fallback when both are absent); `segments` are
 /// `(byte_start, byte_end, scope_name)` ranges into `text`, already
 /// sorted/non-overlapping/in-bounds — guaranteed by the host boundary
@@ -71,8 +71,8 @@ pub(crate) struct VirtualLineEntry {
 /// `pos` starts. `pos` is that line's line-start char offset, not the
 /// Steel-facing line number — the host boundary (`host_impl.rs`'s
 /// `line_start_offset`) converts at set time, so this remaps through edits
-/// like every other kind (SPEC.md §6); the render side derives the current
-/// line back via `char_to_line` at rebuild. The diagnostics plugin's
+/// like every other kind; the render side derives the current line back via
+/// `char_to_line` at rebuild. The diagnostics plugin's
 /// per-line summary (`"[n] <message>"` or a bare message) is this kind's
 /// first client, not its owner, same as every other kind here is to LSP.
 /// `Clone`: `decoration_providers.rs`'s `visible_line_anchored` clones a
@@ -96,8 +96,8 @@ pub(crate) struct ExtraHighlightEntry {
 /// line `pos` starts. `pos` is that line's line-start char offset, not the
 /// Steel-facing line number — the host boundary (`host_impl.rs`'s
 /// `line_start_offset`) converts at set time, so this remaps through edits
-/// like every other line-anchored kind (SPEC.md §6); the render side derives
-/// the current line back via `char_to_line` at rebuild. No `priority` field
+/// like every other line-anchored kind; the render side derives the current
+/// line back via `char_to_line` at rebuild. No `priority` field
 /// — unlike signs, row tints have no single-slot contention, so same-line
 /// entries from different sources break ties by source name.
 /// `Clone`: see `EolTextEntry`'s doc — same
@@ -173,7 +173,7 @@ impl PointAnchored for InlayHintEntry {
     }
 }
 
-/// `Assoc::After` for every line-anchored kind below (SPEC.md §5a.4): an
+/// `Assoc::After` for every line-anchored kind below: an
 /// insertion containing a newline landing exactly at a line-start anchor
 /// (`o` — open line above) must keep the decoration on the *original* line
 /// content — `Assoc::Before` would strand it on the newly inserted blank

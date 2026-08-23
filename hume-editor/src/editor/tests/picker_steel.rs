@@ -97,7 +97,7 @@ fn end_to_end_accept_fires_payload_then_normal_editing_resumes() {
     assert_eq!(ed.state.status_msg.clone().unwrap(), "p2");
     assert!(ed.state.config.picker.is_none());
 
-    // LESSONS.md L4: don't stop at the terminal action — keep interacting
+    // Don't stop at the terminal action — keep interacting
     // and confirm ordinary editing resumes with no further callback fire.
     ed.state.status_msg = None;
     ed.feed_key(key('i'));
@@ -226,7 +226,7 @@ fn picker_close_bang_fires_false_once_and_is_idempotent() {
     ed.settle();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
 
-    // LESSONS.md L4: keep interacting past the terminal action.
+    // Keep interacting past the terminal action.
     ed.state.status_msg = None;
     ed.feed_key(key('i'));
     ed.feed_key(key('Z'));

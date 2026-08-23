@@ -77,7 +77,8 @@
 ;; future call, but still ticking: it fires later regardless, on its own
 ;; original schedule, sending a stray duplicate. Racing two calls into the
 ;; same fixpoint drain is exactly what a merged, always-draining `settle()`
-;; makes routine (hume-editor's C4), so this is no longer a corner case.
+;; (hume-editor's event loop) makes routine, so this is no longer a corner
+;; case.
 (define (debounce ms proc)
   (let ((pending (box #f)))
     (lambda args
