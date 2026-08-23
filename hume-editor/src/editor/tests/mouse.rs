@@ -66,8 +66,8 @@ fn drag_extends_selection_from_click_anchor() {
 /// A drag whose coordinates fall inside a *different* pane's rect (a fast
 /// mouse move during a `:vsplit` drag easily crosses the seam) must be
 /// ignored, not translated as if it were still in the originating pane —
-/// `col - rect.x`/`row - rect.y` would otherwise underflow when the drag
-/// lands left of/above the originating pane's own rect origin.
+/// `rect_relative`'s `x - rect.x`/`y - rect.y` would otherwise underflow when
+/// the drag lands left of/above the originating pane's own rect origin.
 #[test]
 fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
     let mut ed =
@@ -87,7 +87,7 @@ fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
     let head_after_click = ed.current_selections().primary().head();
 
     // Drag to col 0 — inside pane A's rect (x ∈ [0, 49)), left of pane B's
-    // own rect.x (50). Without the rect.contains guard, `col - rect.x`
+    // own rect.x (50). Without `rect_relative`'s `contains` guard, `x - rect.x`
     // underflows a u16 subtraction.
     ed.handle_input(mouse_drag(0, 0));
 

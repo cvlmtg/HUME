@@ -19,7 +19,7 @@
 use hume_engine::pane::ViewportState;
 use hume_engine::pipeline::PaneId;
 use hume_engine::rows::RowMap;
-use ratatui::layout::Position;
+use ratatui::layout::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use super::commands::pane_row_map_mut;
@@ -111,14 +111,15 @@ impl Editor {
         // move easily can) is ignored rather than resolving against the
         // wrong pane.
         let pid = self.state.focused_pane_id;
-        let Some(rect) = self.view.pane_rect(pid) else {
+        let Some((pane_x, pane_y)) = self
+            .view
+            .pane_rect(pid)
+            .and_then(|rect| rect_relative(rect, x, y))
+        else {
             return;
         };
-        if !rect.contains(Position::new(x, y)) {
-            return;
-        }
 
-        if let Some(head) = self.click_to_char(pid, x - rect.x, y - rect.y) {
+        if let Some(head) = self.click_to_char(pid, pane_x, pane_y) {
             let sel = Selection::new(anchor, head);
             self.set_current_selections(SelectionSet::single(sel));
         }
@@ -171,12 +172,9 @@ impl Editor {
     /// what `click_to_char` and `screen_to_char_offset` expect. `None` for a
     /// click outside every pane's rect (statusline, tabline, a divider seam).
     fn pane_at_screen_pos(&self, x: u16, y: u16) -> Option<(PaneId, u16, u16)> {
-        let pos = Position::new(x, y);
-        self.view
-            .pane_rects()
-            .into_iter()
-            .find(|(_, rect)| rect.contains(pos))
-            .map(|(pid, rect)| (pid, x - rect.x, y - rect.y))
+        self.view.pane_rects().into_iter().find_map(|(pid, rect)| {
+            rect_relative(rect, x, y).map(|(pane_x, pane_y)| (pid, pane_x, pane_y))
+        })
     }
 
     /// Resolve a pane-relative `(x, y)` click in pane `pid` to a buffer
@@ -198,6 +196,20 @@ impl Editor {
         );
         cursor::screen_to_char_offset(x, y, gutter_w, viewport, &mut rm)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Coordinate helpers
+// ---------------------------------------------------------------------------
+
+/// Translate terminal-absolute `(x, y)` into `rect`'s own frame — the space
+/// `click_to_char` and `screen_to_char_offset` expect — or `None` when the
+/// position falls outside `rect`. The `contains` guard is what keeps the
+/// `u16` subtraction from underflowing on a position left of/above the rect
+/// origin.
+fn rect_relative(rect: Rect, x: u16, y: u16) -> Option<(u16, u16)> {
+    rect.contains(Position::new(x, y))
+        .then(|| (x - rect.x, y - rect.y))
 }
 
 // ---------------------------------------------------------------------------
