@@ -247,8 +247,10 @@ pub fn char_col_in_line(rope: &Rope, line: usize, char_pos: usize) -> usize {
 /// directly in `CommandRegistry` as bare `fn` pointers and so can't receive
 /// settings the way an `EditorCmd` can; buffer reload, which re-places every
 /// cursor against the new text; and `goto-location!`'s char-indexed target
-/// shape. See [`place_display_column`] for the display-column-aware sibling
-/// vertical motion uses instead, and its doc for why the two aren't unified.
+/// shape. Vertical motion (`hume-engine`'s `RowMap::char_at_line_display_col`)
+/// uses a display-column model instead, since it also has to place a cursor
+/// through the decoration layer (inline hints, tab expansion) this char-only
+/// function can't see.
 ///
 /// The clamp compares against the line's *content* end, not
 /// [`line_end_exclusive`]: the latter counts the terminating `\n`, which would
@@ -256,8 +258,7 @@ pub fn char_col_in_line(rope: &Rope, line: usize, char_pos: usize) -> usize {
 /// while any larger one clamped back to the last real character — a
 /// non-monotonic result where moving further right moves the cursor left. An
 /// empty line still lands on its `\n`, since there `line_content_end` *is*
-/// that newline. Mirrors [`place_display_column`]'s boundary rule, in char
-/// units.
+/// that newline.
 pub fn place_char_column(rope: &Rope, line: usize, char_col: usize) -> usize {
     let line_start = rope.line_to_char(line);
     let content_end = line_content_end(rope, line);
@@ -267,52 +268,6 @@ pub fn place_char_column(rope: &Rope, line: usize, char_col: usize) -> usize {
         content_end
     } else {
         snap_to_grapheme_boundary(rope, line_start, target)
-    }
-}
-
-/// Place the cursor at display column `target_display_col` of `line`,
-/// clamping to the last content character (or the line's own `\n` when it's
-/// empty) and snapping to a grapheme boundary. Tab-aware and
-/// unicode-width-aware — the display-column model
-/// `hume_ops::motion::move_vertical_buffer_line` (`9j`/`9k`) shares with
-/// `editor::visual_move::move_vertical`'s bare `j`/`k`.
-///
-/// Can't just return [`crate::grapheme::char_pos_at_display_col`]'s answer:
-/// that function lands ON the line's trailing `\n` once `target_display_col`
-/// reaches or passes the line's width — correct for its own caller
-/// (`dedent_tab_backward`, which wants an exact column), but not what
-/// vertical motion wants. Moving onto a *shorter* line should stick to the
-/// last real character (the vim/helix convention), landing on `\n` only when
-/// the line is genuinely empty.
-///
-/// Landing on the `\n` is precisely the signal that the target was out of
-/// range, so that one position doubles as the range check and no separate
-/// measurement of the line's width is needed — the walk that finds the
-/// position also proves whether it fits. An empty line still lands on its
-/// `\n`, since there [`line_content_end`] *is* that newline.
-///
-/// Getting this boundary wrong splits the two column models the function
-/// exists to unify: a target equal to the line's width is already one column
-/// past its last character, and returning the `\n` for it would put `9j` on
-/// a non-empty line's newline while bare `j` — which resolves through
-/// `RowMap`'s `NearestContent`, and so excludes the EOL sentinel — lands on
-/// its last real character.
-pub fn place_display_column(
-    rope: &Rope,
-    line: usize,
-    target_display_col: usize,
-    tab_width: u8,
-) -> usize {
-    let pos = crate::grapheme::char_pos_at_display_col(
-        rope.slice(..),
-        line,
-        target_display_col,
-        tab_width,
-    );
-    if pos >= line_break_char(rope, line) {
-        line_content_end(rope, line)
-    } else {
-        pos
     }
 }
 

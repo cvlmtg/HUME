@@ -51,16 +51,6 @@ pub fn place_char_column(buf: &Text, line: usize, char_col: usize) -> usize {
     hume_rope::lines::place_char_column(buf.rope(), line, char_col)
 }
 
-/// See [`hume_rope::lines::place_display_column`].
-pub fn place_display_column(
-    buf: &Text,
-    line: usize,
-    target_display_col: usize,
-    tab_width: u8,
-) -> usize {
-    hume_rope::lines::place_display_column(buf.rope(), line, target_display_col, tab_width)
-}
-
 /// See [`hume_rope::lines::char_to_line_byte`].
 pub fn char_to_line_byte(buf: &Text, char_pos: usize) -> (usize, usize) {
     hume_rope::lines::char_to_line_byte(buf.rope(), char_pos)

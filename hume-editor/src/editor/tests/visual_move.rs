@@ -1,6 +1,8 @@
 use super::*;
 use crate::editor::dispatch::ArgSource;
 use hume_editing::selection::{DisplayColOrigin, StickyDisplayCol};
+use hume_engine::providers::{Decoration, DecorationKinds, DecorationSource, InlineInsert};
+use hume_engine::types::ScopeId;
 use pretty_assertions::assert_eq;
 
 /// A `DisplayRow`-tagged latch — what `j`/`k` write while wrapping, which is
@@ -279,11 +281,307 @@ fn visual_move_up_with_explicit_count_moves_buffer_lines() {
     );
 }
 
+// ── Explicit-count (BufferLine) vertical motion ───────────────────────────
+//
+// `9j`/`9k` (`VerticalUnit::BufferLine`, `editor::visual_move::move_buffer_line`)
+// resolve their column through `RowMap::line_display_col`/
+// `char_at_line_display_col`, same as bare `j`/`k`'s `ContentRow`/`ScreenRow`
+// units — relocated from the pure-fn `hume_ops::motion::move_vertical_buffer_line`
+// suite these commands used to reach, which read a rope-only column blind to
+// the decoration layer. `WrapMode::None` throughout: these cases pin the
+// buffer-line column model itself, not its interaction with wrapping (that's
+// the "family switch" suite below).
+
+fn buffer_line_editor(content: &str, head: usize) -> Editor {
+    use hume_editing::selection::{Selection, SelectionSet};
+    use hume_editing::text::Text;
+
+    let buf = Text::from(content);
+    let sels = SelectionSet::single(Selection::collapsed(head));
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::None),
+        saved: None,
+    });
+    ed
+}
+
+#[test]
+fn explicit_count_move_down_basic() {
+    let mut ed = buffer_line_editor("hello\nworld\n", 0); // 'h'
+    ed.handle_key(key('1'));
+    ed.handle_key(key('j'));
+    assert_eq!(ed.current_selections().primary().head(), 6, "lands on 'w'");
+}
+
+#[test]
+fn explicit_count_move_down_preserves_display_column() {
+    let mut ed = buffer_line_editor("hello\nworld\n", 2); // 'l', col 2
+    ed.handle_key(key('1'));
+    ed.handle_key(key('j'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        8,
+        "col 2 of \"world\" is 'r'"
+    );
+}
+
+#[test]
+fn explicit_count_move_down_clamps_to_shorter_line() {
+    let mut ed = buffer_line_editor("hello\nab\n", 2); // 'l', col 2
+    ed.handle_key(key('1'));
+    ed.handle_key(key('j'));
+    assert_eq!(ed.current_selections().primary().head(), 7, "clamps to 'b'");
+}
+
+#[test]
+fn explicit_count_move_down_clamp_at_document_edge() {
+    let mut ed = buffer_line_editor("hello\nworld\n", 6); // already on the last line
+    ed.handle_key(key('1'));
+    ed.handle_key(key('j'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        6,
+        "head stays exactly put, not re-clamped onto the same line"
+    );
+}
+
+#[test]
+fn explicit_count_move_up_clamp_at_document_edge() {
+    let mut ed = buffer_line_editor("hello\nworld\n", 0); // already on the first line
+    ed.handle_key(key('1'));
+    ed.handle_key(key('k'));
+    assert_eq!(ed.current_selections().primary().head(), 0);
+}
+
+#[test]
+fn explicit_count_move_down_to_empty_line() {
+    let mut ed = buffer_line_editor("hello\n\nworld\n", 0); // 'h'
+    ed.handle_key(key('1'));
+    ed.handle_key(key('j'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        6,
+        "the empty line's only cell is its own '\\n'"
+    );
+}
+
+#[test]
+fn explicit_count_move_down_multi_cursor_merge() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    use hume_editing::text::Text;
+
+    // Two cursors on line 0 at different columns (2 and 4), both past line
+    // 1's width (2) — both clamp to its last char and converge there.
+    // `SelectionSet::map` must still merge them through the new
+    // `move_buffer_line` path, same as it does for every other motion.
+    let buf = Text::from("hello\nab\n");
+    let sels = SelectionSet::from_vec(vec![Selection::collapsed(2), Selection::collapsed(4)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::None),
+        saved: None,
+    });
+    ed.handle_key(key('1'));
+    ed.handle_key(key('j'));
+    let sels = ed.current_selections().clone();
+    assert_eq!(sels.len(), 1, "both cursors clamp onto 'b' and merge");
+    assert_eq!(sels.primary().head(), 7);
+}
+
+#[test]
+fn explicit_count_move_down_preserves_display_column_across_a_tab() {
+    // "\tworld" (tab_width 4): 'o' (char 2) sits at display column 5 (tab
+    // expands to 4, 'w' is 1 more). Landing must use display column 5 on the
+    // target line — 'f' (char offset 5 of "abcdefgh") — not char-offset
+    // column 2, which would be 'c'.
+    let mut ed = buffer_line_editor("\tworld\nabcdefgh\n", 2); // 'o'
+    ed.handle_key(key('1'));
+    ed.handle_key(key('j'));
+    assert_eq!(ed.current_selections().primary().head(), 12, "lands on 'f'");
+}
+
+#[test]
+fn explicit_count_move_down_preserves_display_column_across_a_wide_cjk_char() {
+    // 漢 (East Asian Wide) is 2 display columns but 1 char, so 'b' (char 1)
+    // sits at display column 2. Landing must use display column 2 — 'c' —
+    // not char-offset column 1, which would be 'b'.
+    let mut ed = buffer_line_editor("\u{6F22}bc\nabcdefgh\n", 1); // 'b'
+    ed.handle_key(key('1'));
+    ed.handle_key(key('j'));
+    assert_eq!(ed.current_selections().primary().head(), 6, "lands on 'c'");
+}
+
+#[test]
+fn explicit_count_move_up_basic() {
+    let mut ed = buffer_line_editor("hello\nworld\n", 6); // 'w'
+    ed.handle_key(key('1'));
+    ed.handle_key(key('k'));
+    assert_eq!(ed.current_selections().primary().head(), 0, "lands on 'h'");
+}
+
+#[test]
+fn explicit_count_move_up_preserves_display_column() {
+    let mut ed = buffer_line_editor("hello\nworld\n", 9); // 'l' of "world", col 3
+    ed.handle_key(key('1'));
+    ed.handle_key(key('k'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        3,
+        "col 3 of \"hello\" is 'l'"
+    );
+}
+
+#[test]
+fn explicit_count_move_up_clamps_to_shorter_line() {
+    let mut ed = buffer_line_editor("ab\nhello\n", 6); // 'l' of "hello", col 3
+    ed.handle_key(key('1'));
+    ed.handle_key(key('k'));
+    assert_eq!(ed.current_selections().primary().head(), 1, "clamps to 'b'");
+}
+
+// ── Sticky display column across a count (Q29b) ───────────────────────────
+//
+// A count-fold must hold its goal column across the whole hop instead of
+// re-deriving it from each intermediate landing — otherwise a short line
+// partway through the hop truncates it, same failure the sticky column
+// exists to prevent for repeated bare `j`/`k`. `move_buffer_line` computes
+// `target_line` directly rather than stepping through it, so this holds
+// structurally — the test guards the shortcut from regressing to a per-line
+// step loop.
+
+#[test]
+fn explicit_count_move_down_holds_display_column_through_a_short_line() {
+    let mut ed = buffer_line_editor("abcdef\nx\nabcdef\n", 3); // 'd', col 3
+    ed.handle_key(key('2'));
+    ed.handle_key(key('j'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        12,
+        "lands on line 2's 'd' — landing on 'x' first would truncate the column to 0"
+    );
+}
+
+#[test]
+fn explicit_count_move_up_holds_display_column_through_a_short_line() {
+    let mut ed = buffer_line_editor("abcdef\nx\nabcdef\n", 12); // 'd' of line 2, col 3
+    ed.handle_key(key('2'));
+    ed.handle_key(key('k'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        3,
+        "lands on line 0's 'd'"
+    );
+}
+
+#[test]
+fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_row_one() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    use hume_editing::text::Text;
+
+    let buf = Text::from("abcdefgh\nABCDEFGH\n");
+
+    // A `BufferLine`-tagged latch is this call's own domain and seeds the
+    // hop directly.
+    let seeded = SelectionSet::single(Selection::with_sticky_display_col(
+        2,
+        2,
+        StickyDisplayCol {
+            display_col: 6,
+            origin: DisplayColOrigin::BufferLine,
+        },
+    ));
+    let mut ed = Editor::for_testing(Buffer::new(buf.clone(), seeded));
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::None),
+        saved: None,
+    });
+    ed.handle_key(key('1'));
+    ed.handle_key(key('j'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        15,
+        "BufferLine latch (6) is reused: lands on 'G'"
+    );
+
+    // A `DisplayRow`-tagged one is a different quantity under wrap (see
+    // `DisplayColOrigin`) and must be re-derived from `head` instead —
+    // reusing it as a buffer-line column would be a sideways jump.
+    let ignored = SelectionSet::single(Selection::with_sticky_display_col(
+        2,
+        2,
+        StickyDisplayCol {
+            display_col: 6,
+            origin: DisplayColOrigin::DisplayRow,
+        },
+    ));
+    let mut ed = Editor::for_testing(Buffer::new(buf, ignored));
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::None),
+        saved: None,
+    });
+    ed.handle_key(key('1'));
+    ed.handle_key(key('j'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        11,
+        "DisplayRow latch is ignored: re-derives from head (col 2), lands on 'C'"
+    );
+}
+
+#[test]
+fn explicit_count_move_down_emits_a_buffer_line_tagged_sticky_column() {
+    let mut ed = buffer_line_editor("hello\nworld\n", 2); // 'l', col 2
+    ed.handle_key(key('1'));
+    ed.handle_key(key('j'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        8,
+        "lands on 'r' (col 2 of \"world\")"
+    );
+    assert_eq!(
+        ed.current_selections().primary().sticky_display_col(),
+        Some(sticky_line(2)),
+        "output must latch a BufferLine-tagged sticky column"
+    );
+}
+
+#[test]
+fn explicit_count_move_down_past_last_content_line_leaves_head_exactly_where_it_was() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    use hume_editing::text::Text;
+
+    // Already on the buffer's last content line; a further count must leave
+    // `head` untouched rather than landing on whatever this line's own width
+    // resolves the (absurdly large) latched column to.
+    let buf = Text::from("ab\ncdefgh\n");
+    let sels = SelectionSet::single(Selection::with_sticky_display_col(
+        5,
+        5,
+        StickyDisplayCol {
+            display_col: 200,
+            origin: DisplayColOrigin::BufferLine,
+        },
+    ));
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::None),
+        saved: None,
+    });
+    ed.handle_key(key('3'));
+    ed.handle_key(key('j'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        5,
+        "head must stay exactly on 'e'"
+    );
+}
+
 // ── Family switch across the fork (Q29b) ──────────────────────────────────
 //
 // Bare `j`/`k` (row domain, `editor::visual_move`) and an explicit count
-// (buffer-line domain, `hume_ops::motion::move_vertical_buffer_line`) now
-// share `Selection::sticky_display_col`, tagged by `DisplayColOrigin`. With
+// (buffer-line domain, `editor::visual_move::move_buffer_line`) now share
+// `Selection::sticky_display_col`, tagged by `DisplayColOrigin`. With
 // wrap off the two domains coincide (a row IS the line), so the column
 // survives a switch; while wrapping they're different quantities, so a
 // switch re-derives instead of misreading one as the other.
@@ -499,6 +797,121 @@ fn visual_move_per_selection_sticky_col() {
     let heads: Vec<usize> = sels.iter_sorted().map(|s| s.head()).collect();
     assert_eq!(heads[0], 76, "A returns to col 0 = char 76 on sub-row 1");
     assert_eq!(heads[1], 79, "B returns to col 3 = char 79 on sub-row 1");
+}
+
+// ── Inline decorations and the display-column model (regression) ─────────
+//
+// The two defects `RowMap::line_display_col`/`char_at_line_display_col`
+// (Step 1) and their `9j`/`9k` wiring (Step 2) fix: the retired rope-only
+// mirror (`hume_rope::lines::place_display_column`) counted buffer text and
+// tab expansion only, blind to the decoration layer — so it disagreed with
+// `RowMap` (the display authority `j`/`k` and page/wheel scroll already used)
+// whenever an inline decoration (an inlay hint, say) sat on a line a
+// buffer-line move touched.
+
+/// Emits one inline insert (an inlay hint, say) at a fixed line/byte offset.
+struct FixedInlineHint {
+    line: usize,
+    byte_offset: usize,
+    text: &'static str,
+}
+
+impl DecorationSource for FixedInlineHint {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::INLINE
+    }
+    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
+        if line_idx == self.line {
+            out.push(Decoration::Inline(InlineInsert {
+                byte_offset: self.byte_offset,
+                text: self.text.to_string(),
+                scope: ScopeId(0),
+            }));
+        }
+    }
+}
+
+/// `9j`/`9k` pressed with no prior latch resolves its column by re-deriving
+/// from `head` — the path the rope-only mirror used to own. A 3-column hint
+/// sitting before the cursor on its own line shifts the on-screen column by
+/// 3; the rope-only mirror never saw it and would land 3 columns short.
+#[test]
+fn explicit_count_first_press_resolves_column_through_a_preceding_hint() {
+    // line 0: hint "HHH" (3 cols) before "abc" — cursor on 'c' (char 2,
+    // display col 5: 3 hint cols + 'a','b'). line 1: hint-free "abcdefgh".
+    let buf = hume_editing::text::Text::from("abc\nabcdefgh\n");
+    let sels = hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::collapsed(2),
+    );
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::None),
+        saved: None,
+    });
+    ed.view.panes[ed.state.focused_pane_id]
+        .providers
+        .add_decoration_source(Box::new(FixedInlineHint {
+            line: 0,
+            byte_offset: 0,
+            text: "HHH",
+        }));
+
+    ed.handle_key(key('1'));
+    ed.handle_key(key('j'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        9,
+        "col 5 (hint-inclusive) of \"abcdefgh\" is 'f' — the rope-only mirror \
+         would have derived col 2 and landed on 'c' (char 6) instead"
+    );
+}
+
+/// Bare `j` (wrap on) latches a `DisplayRow`-tagged column — already
+/// hint-aware, since `move_vertical` always went through `RowMap`. A
+/// following `2j` crosses families (`DisplayRow` → `BufferLine`), so it
+/// can't reuse that latch (see `DisplayColOrigin`) and must re-derive from
+/// `head` instead — on a line with a hint before `head`, that re-derivation
+/// is exactly where the retired rope-only mirror went blind.
+#[test]
+fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
+    // line 0: "xyz" (plain). line 1: hint "HHH" before "abc" — bare j lands
+    // on 'a' (char 4). line 2: hint-free "abcdefgh" — 2j's target.
+    let buf = hume_editing::text::Text::from("xyz\nabc\nabcdefgh\n");
+    let sels = hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::collapsed(0),
+    );
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    // Wide enough that nothing actually wraps — only `is_wrapping()` matters,
+    // to force bare `j` to tag `DisplayRow` instead of `BufferLine`.
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::Soft { width: 200 }),
+        saved: None,
+    });
+    ed.view.panes[ed.state.focused_pane_id]
+        .providers
+        .add_decoration_source(Box::new(FixedInlineHint {
+            line: 1,
+            byte_offset: 0,
+            text: "HHH",
+        }));
+
+    ed.handle_key(key('j')); // bare j: col 0 target, clamps onto 'a' (virtual hint cells excluded)
+    assert_eq!(ed.current_selections().primary().head(), 4, "lands on 'a'");
+    assert_eq!(
+        ed.current_selections().primary().sticky_display_col(),
+        Some(sticky_row(0)),
+        "latches the DisplayRow-tagged target column (0), not the landed one"
+    );
+
+    ed.handle_key(key('2'));
+    ed.handle_key(key('j')); // 2j: crosses families, re-derives from 'a' through the hint
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        11,
+        "re-derives head's line-relative column as 3 (the hint's width) and \
+         lands on 'd' — a rope-only re-derivation would compute column 0 \
+         (blind to the hint) and land on 'a' (char 8) instead"
+    );
 }
 
 // ── Visual-line extend variants ───────────────────────────────────────────────

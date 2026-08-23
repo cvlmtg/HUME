@@ -4,21 +4,24 @@ use crate::text::Text;
 
 /// What a [`StickyDisplayCol`]'s number is measured *from*.
 ///
-/// A display column is only comparable to another one measured the same way.
-/// Under soft wrap, a continuation row renumbers its columns from its own left
-/// edge (its indent, under `WrapMode::Indent`), so the same character has a
-/// different `DisplayRow` column than `BufferLine` column — reading one as the
-/// other sends the cursor sideways. With wrapping off a row *is* the whole
-/// line, so the two coincide and either origin reads back the same number.
-/// This is why a motion switching families (`j` then `2j`, or vice versa)
-/// re-derives instead of reusing a latch tagged with the other origin.
+/// Both origins are `hume_engine::rows::RowMap` quantities — one authority,
+/// so both count tab expansion, wide glyphs and inline decorations (inlay
+/// hints, ghost text) identically. They differ only in what they're measured
+/// *from*: under soft wrap, a continuation row renumbers its columns from its
+/// own left edge (its indent, under `WrapMode::Indent`), so the same
+/// character has a different `DisplayRow` column than `BufferLine` column —
+/// reading one as the other sends the cursor sideways. With wrapping off a
+/// row *is* the whole line, so the two coincide and either origin reads back
+/// the same number. This is why a motion switching families (`j` then `2j`,
+/// or vice versa) re-derives instead of reusing a latch tagged with the other
+/// origin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DisplayColOrigin {
-    /// Column within the current display row (`hume_engine::rows::RowMap`) —
-    /// what `j`/`k`, page/half-page scroll, and the mouse wheel latch.
+    /// Column within the current display row (`RowMap::locate`) — what
+    /// `j`/`k`, page/half-page scroll, and the mouse wheel latch.
     DisplayRow,
-    /// Column within the buffer line (`hume_rope::grapheme::display_col_in_line`)
-    /// — what an explicit numeric prefix (`9j`/`9k`) latches.
+    /// Column within the buffer line (`RowMap::line_display_col`) — what an
+    /// explicit numeric prefix (`9j`/`9k`) latches.
     BufferLine,
 }
 

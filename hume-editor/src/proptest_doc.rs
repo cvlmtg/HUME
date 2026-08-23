@@ -23,8 +23,8 @@ mod tests {
         delete_char_backward, delete_char_forward, delete_selection, insert_char,
     };
     use hume_ops::motion::{
-        cmd_goto_line_end, cmd_goto_line_start, cmd_move_down, cmd_move_left, cmd_move_right,
-        cmd_move_up, cmd_select_next_uppercase_word, cmd_select_next_uppercase_word_around,
+        cmd_goto_line_end, cmd_goto_line_start, cmd_move_left, cmd_move_right,
+        cmd_select_next_uppercase_word, cmd_select_next_uppercase_word_around,
         cmd_select_next_word, cmd_select_next_word_around, cmd_select_prev_uppercase_word,
         cmd_select_prev_uppercase_word_around, cmd_select_prev_word, cmd_select_prev_word_around,
     };
@@ -264,8 +264,6 @@ mod tests {
     enum PureOp {
         MoveRight,
         MoveLeft,
-        MoveUp,
-        MoveDown,
         GotoLineStart,
         GotoLineEnd,
         SelectNextWord,
@@ -292,8 +290,6 @@ mod tests {
         prop_oneof![
             Just(PureOp::MoveRight),
             Just(PureOp::MoveLeft),
-            Just(PureOp::MoveUp),
-            Just(PureOp::MoveDown),
             Just(PureOp::GotoLineStart),
             Just(PureOp::GotoLineEnd),
             Just(PureOp::SelectNextWord),
@@ -332,8 +328,6 @@ mod tests {
         match op {
             PureOp::MoveRight => cmd_move_right(buf, sels, 1, mode),
             PureOp::MoveLeft => cmd_move_left(buf, sels, 1, mode),
-            PureOp::MoveUp => cmd_move_up(buf, sels, 1, mode, 4),
-            PureOp::MoveDown => cmd_move_down(buf, sels, 1, mode, 4),
             PureOp::GotoLineStart => cmd_goto_line_start(buf, sels, 1, mode),
             PureOp::GotoLineEnd => cmd_goto_line_end(buf, sels, 1, mode),
             PureOp::SelectNextWord => cmd_select_next_word(buf, sels, 1, mode),

@@ -53,10 +53,7 @@ pub(crate) fn apply_motion(
 mod char_move;
 use char_move::{goto_first_line, goto_last_line, move_left, move_right};
 mod line;
-use line::{
-    goto_first_nonblank, goto_line_end, goto_line_newline, goto_line_start,
-    move_vertical_buffer_line,
-};
+use line::{goto_first_nonblank, goto_line_end, goto_line_newline, goto_line_start};
 mod word;
 pub(crate) use word::prev_word_start;
 pub use word::{
@@ -91,12 +88,6 @@ mod tests;
 /// motion_cmd!(/// doc, cmd_move_right, move_right);
 /// ```
 ///
-/// A motion needing an extra runtime argument (e.g. `cmd_move_down`/
-/// `cmd_move_up`, which need a `tab_width` no other motion command does) is
-/// hand-written instead — its signature genuinely differs from every other
-/// motion command's, so forcing it through this one-shape macro would need a
-/// second arm maintained for exactly one caller.
-///
 /// `#[allow(non_snake_case)]` is emitted unconditionally to suppress the
 /// expected warning for WORD variants (`cmd_next_WORD_start` etc.) without a
 /// separate macro arm.
@@ -130,41 +121,6 @@ motion_cmd!(/// Move or extend cursors to the `\n` terminating the current line.
     cmd_goto_line_newline, goto_line_newline);
 motion_cmd!(/// Move or extend cursors to the first non-blank character on their current line.
     cmd_goto_first_nonblank, goto_first_nonblank);
-
-// Vertical motion — hand-written rather than `motion_cmd!`, for two reasons:
-// `tab_width` makes the signature genuinely differ from every other motion
-// command's (the display column `move_vertical_buffer_line` needs can't be
-// derived from `buf`/`sels`/`count`/`mode` alone), and holding the sticky
-// display column across a repeat count (see `DisplayColOrigin`) needs the
-// whole `Selection`, which `apply_motion`'s `Fn(&Text, usize) -> usize` shape
-// can't carry. Not registered in `CommandRegistry` — reached only by
-// `editor::visual_move`'s `apply_visual_vertical` (the `9j`/`9k`
-// numeric-prefix path), which already has the buffer settings access a
-// registered `fn`-pointer command wouldn't.
-
-/// Move or extend cursors down `count` buffer lines, preserving the display
-/// column across the whole hop. See [`line::move_vertical_buffer_line`].
-pub fn cmd_move_down(
-    buf: &Text,
-    sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-    tab_width: u8,
-) -> SelectionSet {
-    move_vertical_buffer_line(buf, sels, true, count, mode, tab_width)
-}
-
-/// Move or extend cursors up `count` buffer lines, preserving the display
-/// column across the whole hop. See [`line::move_vertical_buffer_line`].
-pub fn cmd_move_up(
-    buf: &Text,
-    sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-    tab_width: u8,
-) -> SelectionSet {
-    move_vertical_buffer_line(buf, sels, false, count, mode, tab_width)
-}
 
 // Paragraph motions.
 motion_cmd!(/// Move or extend cursors to the start of the next paragraph (`]p`).

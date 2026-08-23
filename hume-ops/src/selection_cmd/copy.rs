@@ -14,8 +14,9 @@ use hume_editing::text::Text;
 /// `cmd_copy_selection_on_next_line`/`_prev_line` are registered directly in
 /// `CommandRegistry` as bare `fn` pointers, and no channel to a per-buffer
 /// `tab_width` exists at that call shape. Vertical *motion* (`9j`/`9k`) uses
-/// `place_display_column` instead precisely because it isn't registered, and
-/// so is reached through code that already resolves buffer settings.
+/// `hume_engine::rows::RowMap::char_at_line_display_col` instead precisely
+/// because it isn't registered, and so is reached through code that already
+/// resolves buffer settings (and holds the `RowMap` a display column needs).
 ///
 /// Clamped to the length of its target line and snapped to a grapheme
 /// boundary. Copying stops early once a target line doesn't exist (i.e. the

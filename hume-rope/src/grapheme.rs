@@ -241,9 +241,10 @@ fn cluster_str(slice: RopeSlice<'_>, start: usize, end: usize) -> Cow<'_, str> {
 /// renderer uses, so this and `hume_engine::format::grapheme_display` always
 /// agree on where a given position lands on screen.
 ///
-/// Used by `insert_tab` (Soft style: insert spaces to the next tab stop),
-/// dedent-on-Backspace (compute the previous tab stop), and vertical motion
-/// (`place_display_column`, which reads the column a cursor is leaving).
+/// Used by `insert_tab` (Soft style: insert spaces to the next tab stop) and
+/// dedent-on-Backspace (compute the previous tab stop). Vertical motion uses
+/// `hume_engine::rows::RowMap` instead, which measures through the
+/// decoration layer this rope-only function can't see.
 pub fn display_col_in_line(
     slice: RopeSlice<'_>,
     line_idx: usize,
@@ -271,18 +272,18 @@ pub fn display_col_in_line(
 ///
 /// For `target_display_col == 0` this is the line start. When
 /// `target_display_col` is a tab stop and the line's leading content is
-/// whitespace — dedent-on-Backspace's case — the position is exact: tabs
-/// jump to multiples of `tab_width` and spaces step by one, so every tab
-/// stop along the way is hit. Otherwise the result is the closest position
-/// not exceeding `target_display_col`: a grapheme that would overshoot (a
-/// tab when not aligned, a double-width cluster straddling the target)
-/// leaves the walk at the position before it. Vertical motion relies on that
-/// weaker guarantee, landing on the cluster the column falls inside.
+/// whitespace — dedent-on-Backspace's case, this function's only caller —
+/// the position is exact: tabs jump to multiples of `tab_width` and spaces
+/// step by one, so every tab stop along the way is hit. Otherwise the result
+/// is the closest position not exceeding `target_display_col`: a grapheme
+/// that would overshoot (a tab when not aligned, a double-width cluster
+/// straddling the target) leaves the walk at the position before it.
 ///
 /// The walk never leaves the line: a `target_display_col` beyond the line's
-/// width stops on the line's `\n`. Callers that want a *cursor* position
-/// want [`crate::lines::place_display_column`] instead, which clamps that
-/// case back onto the last real character.
+/// width stops on the line's `\n`. A caller that wants a cursor position
+/// clamped back onto the last real character instead — vertical motion's
+/// case — wants `hume_engine::rows::RowMap::char_at_line_display_col`, which
+/// also sees the decoration layer this rope-only function can't.
 pub fn char_pos_at_display_col(
     slice: RopeSlice<'_>,
     line_idx: usize,

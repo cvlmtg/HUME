@@ -6,10 +6,10 @@
 //! instead of `hume-ops`'s `motion` module.
 
 use hume_editing::selection::{DisplayColOrigin, Selection, StickyDisplayCol};
+use hume_editing::text::Text;
 use hume_engine::pipeline::EngineView;
 use hume_engine::rows::{DisplayColTarget, RowKind, RowMap};
 use hume_ops::MotionMode;
-use hume_ops::motion::{cmd_move_down, cmd_move_up};
 use hume_ops::text_object::{
     apply_nearest_word_result, cmd_select_word_nearest_on_line, nearest_word_on_line,
 };
@@ -71,6 +71,38 @@ fn move_vertical(
     )
 }
 
+/// Move `head` by `count` buffer lines, landing on the target line's own
+/// line-relative display column (`RowMap::char_at_line_display_col`).
+///
+/// Distinct from `move_vertical`: a numeric-prefixed vertical move (`9j`) is a
+/// direct line-index jump matching relative-line-number gutters, not a
+/// display-row walk — virtual rows and wrap rows are both irrelevant to it.
+fn move_buffer_line(
+    rm: &mut RowMap<'_>,
+    text: &Text,
+    head: usize,
+    down: bool,
+    count: usize,
+    target_line_display_col: u32,
+) -> usize {
+    let line = text.char_to_line(head);
+    let target_line = if down {
+        // On the last content line, line + count would be the phantom
+        // trailing line (the structural \n) — clamp there is nothing past it.
+        line.saturating_add(count).min(text.last_content_line())
+    } else {
+        line.saturating_sub(count)
+    };
+    if target_line == line {
+        return head; // already at the document's first/last content line
+    }
+    rm.char_at_line_display_col(
+        target_line,
+        target_line_display_col,
+        DisplayColTarget::NearestContent,
+    )
+}
+
 /// How `apply_visual_vertical`'s `count` should be interpreted.
 pub(super) enum VerticalUnit {
     /// `count` buffer lines — `j`/`k` with an explicit numeric prefix
@@ -95,35 +127,13 @@ pub(super) fn apply_visual_vertical(
     unit: VerticalUnit,
 ) {
     let focused = state.focused_pane_id;
-    // Only an explicit count (`9j`) takes the pure buffer-line motion, to
-    // match relative-line-number gutters even while wrapping. A bare `j`/`k`
-    // always goes through `move_vertical` below so it shares one column
-    // model — the sticky *display* column `Selection::sticky_display_col`
-    // holds — with page/half-page scroll and the mouse wheel (`ScreenRow`),
-    // which must preserve display columns across virtual rows regardless of
-    // wrap mode. The cost in no-wrap mode is a per-press format of the
-    // cursor's line instead of pure rope arithmetic. Both paths still latch
-    // the same field: `hume_ops::motion::move_vertical_buffer_line` tags its
-    // own latch `BufferLine`, this path tags `DisplayRow` while wrapping —
-    // `DisplayColOrigin` is what keeps the two from being read as each
-    // other's column when a family switch (`j` then `2j`) crosses the fork.
-    let use_buffer_line_motion = matches!(unit, VerticalUnit::BufferLine);
-    if use_buffer_line_motion {
-        // `cmd_move_down`/`cmd_move_up` aren't registered in `CommandRegistry`
-        // (unlike every other named command, they need a `tab_width` no bare
-        // `fn`-pointer dispatch could supply) — resolved here instead, the
-        // same buffer-overrides lookup `mappings/insert.rs`'s `insert_tab`
-        // call site uses.
-        let buf_id = focused_buffer_id(state, view);
-        let tab_width = state
-            .buffers
-            .get(buf_id)
-            .overrides
-            .tab_width(&state.settings);
-        let motion = if down { cmd_move_down } else { cmd_move_up };
-        apply_focused_motion(state, view, |b, s| motion(b, s, count, mode, tab_width));
-        return;
-    }
+    // Every unit now resolves its column through `RowMap` — `ContentRow`/
+    // `ScreenRow` via `move_vertical`'s row walk, `BufferLine` (`9j`/`9k`) via
+    // `move_buffer_line`'s direct line jump — so all three latch a column
+    // from the same authority. `DisplayColOrigin` still distinguishes what
+    // the column is measured *from*: a wrapped `DisplayRow` latch is
+    // row-relative and a `BufferLine` latch is line-relative, and the two
+    // coincide only when nothing wraps (see `DisplayColOrigin`'s own doc).
     let content_only = !matches!(unit, VerticalUnit::ScreenRow);
 
     let buf_id = focused_buffer_id(state, view);
@@ -136,11 +146,12 @@ pub(super) fn apply_visual_vertical(
         &view.panes[focused],
     )
     .is_wrapping();
-    let origin = if wrapping {
+    let origin = if wrapping && !matches!(unit, VerticalUnit::BufferLine) {
         DisplayColOrigin::DisplayRow
     } else {
         DisplayColOrigin::BufferLine
     };
+    let is_buffer_line = matches!(unit, VerticalUnit::BufferLine);
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();
     let mut rm = pane_row_map(
@@ -158,33 +169,40 @@ pub(super) fn apply_visual_vertical(
         &mut state.panes.state,
         focused,
         buf_id,
-        |_text, sels| {
+        |text, sels| {
             // Pass 1: resolve each selection's sticky display column. A latch
             // tagged for this call's own origin is reused as-is; one tagged
-            // for the other origin is a different quantity under wrap (see
+            // for the other origin is a different quantity (see
             // `DisplayColOrigin`) and is re-derived instead, the same as no
-            // latch at all.
+            // latch at all — line-relative for `BufferLine`, row-relative
+            // otherwise, mirroring which one `move_buffer_line`/`move_vertical`
+            // below is about to consume.
             target_display_cols.extend(sels.iter_sorted().map(
                 |sel| match sel.sticky_display_col() {
                     Some(sticky) if sticky.origin == origin => sticky.display_col,
+                    _ if is_buffer_line => rm.line_display_col(sel.head()),
                     _ => rm.locate(sel.head()).1,
                 },
             ));
 
             // Pass 2: move each selection, preserving the sticky column so
-            // consecutive j/k presses reuse it.
+            // consecutive presses in the same family reuse it.
             let mut display_col_iter = target_display_cols.iter();
             sels.map(|sel| {
                 let &target_display_col =
                     display_col_iter.next().expect("one column per selection");
-                let head = move_vertical(
-                    &mut rm,
-                    sel.head(),
-                    down,
-                    count,
-                    target_display_col,
-                    content_only,
-                );
+                let head = if is_buffer_line {
+                    move_buffer_line(&mut rm, text, sel.head(), down, count, target_display_col)
+                } else {
+                    move_vertical(
+                        &mut rm,
+                        sel.head(),
+                        down,
+                        count,
+                        target_display_col,
+                        content_only,
+                    )
+                };
                 let anchor = if mode == MotionMode::Extend {
                     sel.anchor()
                 } else {
