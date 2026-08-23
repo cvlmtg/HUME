@@ -24,8 +24,8 @@ use crate::lock_ext::LockExt;
 use crate::ui::statusline::StatusLineConfig;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
-    DiffHost, DiffHunk, EditHost, EditorHost, EventHost, LanguageHost, LspHost, OptionValue,
-    OutputHost, PopupKind, SettingsHost, TimerHost, UiHost, WordDiffHunk,
+    DiffHost, DiffHunk, EditHost, EditorHost, EventHost, LanguageHost, LocationDisplay, LspHost,
+    OptionValue, OutputHost, PopupKind, SettingsHost, TimerHost, UiHost, WordDiffHunk,
 };
 
 use super::{EditorState, Severity};
@@ -876,7 +876,7 @@ impl<'a> LspHost for EditorHostImpl<'a> {
     fn lsp_locations_display_parts(
         &self,
         locs: Vec<serde_json::Value>,
-    ) -> Result<Vec<(String, Option<usize>)>, String> {
+    ) -> Result<Vec<LocationDisplay>, String> {
         let Some(lsp) = self.lsp.as_deref() else {
             return Err("lsp-locations->display-parts: no LSP state available".to_string());
         };
@@ -1285,22 +1285,15 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         Ok(summary.buffers_modified)
     }
 
-    fn goto_location_wire(
-        &mut self,
-        uri: String,
-        line: usize,
-        character: usize,
-    ) -> Result<(), String> {
+    fn goto_location_value(&mut self, loc: serde_json::Value) -> Result<(), String> {
         let Some(lsp) = self.lsp.as_deref() else {
             return Err("goto-location!: no LSP state available".to_string());
         };
-        let uri: lsp_types::Uri = uri
-            .parse()
-            .map_err(|_| format!("goto-location!: bad uri {uri:?}"))?;
+        let wl = hume_lsp::location::decode_location(&loc, "goto-location!")?;
         let target = crate::editor::lsp::edits::GotoTarget::Wire {
-            uri,
-            line,
-            character,
+            uri: wl.uri,
+            line: wl.line,
+            character: wl.character,
         };
         crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
     }

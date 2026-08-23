@@ -638,27 +638,49 @@ pub trait LspHost {
         end: usize,
     ) -> Option<String>;
 
-    /// `(lsp-locations->display-parts locs)` — the filesystem path and
-    /// grapheme column of each already-normalized `{uri, range}` location in
-    /// `locs`, the column `None` for an entry whose target file can't be
-    /// resolved/read or whose line is out of range. Backs
-    /// `lsp/location-display`'s drawer rows: `goto-location!` (raw
-    /// `Location` shape) already converts wire positions correctly for the
-    /// *jump*; this is the display-side counterpart, since a wire
-    /// `character` (UTF-16 code units by default) is never the number to
-    /// show a user — see the "Column naming" invariant.
+    /// `(lsp-locations->display-parts locs)` — the filesystem path, wire
+    /// line, and grapheme column of each raw `Location`/`LocationLink`
+    /// hashmap in `locs`, decoded through the same
+    /// `hume_lsp::location::decode_location` `goto-location!` uses. The
+    /// grapheme column is `None` for an entry whose target file can't be
+    /// resolved/read or whose line is out of range — a display gap, not a
+    /// hard error, so one unreadable file degrades only its own row. Backs
+    /// `lsp/location-display`'s drawer rows: `goto-location!` already
+    /// converts wire positions correctly for the *jump*; this is the
+    /// display-side counterpart, since a wire `character` (UTF-16 code units
+    /// by default) is never the number to show a user — see the "Column
+    /// naming" invariant.
     ///
-    /// The path rides along because it and the column come from one URI
-    /// parse: decoding the URI a second time in Scheme to render the path is
-    /// how a row ends up naming one file and reporting a column read out of
-    /// another. Every location shares the encoding negotiated by the
-    /// currently focused buffer's attached server, same as
-    /// `goto-location!`'s wire shape. `Err` only for a location whose shape
-    /// can't be decoded at all.
+    /// The path and line ride along with the column because all three come
+    /// from one decode: reading `range.start.line` a second time in Scheme
+    /// to render the row prefix is how a row ends up naming a position that
+    /// doesn't match the one its column was read from. Every location shares
+    /// the encoding negotiated by the currently focused buffer's attached
+    /// server, same as `goto-location!`'s wire shape.
+    ///
+    /// `Err` — aborting the whole batch, not just one row — only for a
+    /// location whose shape can't be decoded at all (missing `uri`/`range`,
+    /// unparseable URI): such a location names no destination `goto-location!`
+    /// could reach either, so a drawer row for it would be unselectable by
+    /// construction. See `decode_location`'s doc for the full rule and
+    /// SPEC.md's Q33b for why a per-row degrade was rejected here.
     fn lsp_locations_display_parts(
         &self,
         locs: Vec<serde_json::Value>,
-    ) -> Result<Vec<(String, Option<usize>)>, String>;
+    ) -> Result<Vec<LocationDisplay>, String>;
+}
+
+/// One `lsp-locations->display-parts` result row — see
+/// [`LspHost::lsp_locations_display_parts`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocationDisplay {
+    /// The URI's decoded display path (`hume_lsp::uri::uri_to_display_string`).
+    pub path: String,
+    /// 0-based wire line, straight from the location's `range.start.line`.
+    pub line: usize,
+    /// 0-based grapheme column, or `None` if the target file couldn't be
+    /// resolved/read or `line` is out of its range.
+    pub grapheme_col: Option<usize>,
 }
 
 /// Timer scheduling — accessed through [`EditorHost::timers`].
@@ -949,14 +971,10 @@ pub trait EditHost {
     /// `WorkspaceEdit` JSON blob. Returns the number of buffers modified.
     fn apply_workspace_edit(&mut self, edit: serde_json::Value) -> Result<usize, String>;
 
-    /// `(goto-location! target)`, raw `Location`/`LocationLink` shape —
-    /// `uri` a wire URI string, `line`/`character` wire coordinates.
-    fn goto_location_wire(
-        &mut self,
-        uri: String,
-        line: usize,
-        character: usize,
-    ) -> Result<(), String>;
+    /// `(goto-location! target)`, raw `Location`/`LocationLink` hashmap
+    /// shape — `loc` decoded through `hume_lsp::location::decode_location`,
+    /// the same decoder `lsp-locations->display-parts` uses for drawer rows.
+    fn goto_location_value(&mut self, loc: serde_json::Value) -> Result<(), String>;
 
     /// `(goto-location! target)`, `(list target line char-col)` shape with a
     /// path or `file://` URI string target — already char-indexed.

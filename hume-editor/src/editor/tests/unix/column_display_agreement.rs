@@ -5,10 +5,12 @@
 // `position_element_shows_grapheme_column_not_char_or_utf16_count` for the
 // statusline half and the independent-oracle derivation of this file's
 // shared fixture line (grapheme col 2 / char col 3 / UTF-16 col 4 before
-// 'x'). Also covers `location_grapheme_cols`'s per-location resolution:
+// 'x'). Also covers `location_display_parts`'s per-location resolution:
 // open buffer, unopened file read from disk (twice, same file, one read),
 // missing file, and an out-of-range line — each degrades to `#f` (a
-// `path:line` row) rather than a wrong number.
+// `path:line` row) rather than a wrong number. A location that can't be
+// decoded at all (missing `range`) aborts the whole batch instead — see
+// `a_malformed_location_aborts_the_batch_instead_of_a_degraded_row` below.
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -256,5 +258,45 @@ fn references_drawer_shows_grapheme_columns_across_open_and_disk_files() {
         "a percent-encoded uri must render its decoded path and the column \
          read from that same file, got {:?}",
         rows[6]
+    );
+}
+
+/// A location missing `range` entirely names no destination `goto-location!`
+/// could jump to either, so `lsp-locations->display-parts` must abort the
+/// whole batch rather than render an unselectable row for it — see
+/// `hume_lsp::location::decode_location`'s doc and SPEC.md's Q33b.
+///
+/// Sabotage oracle: loosen `decode_location` to tolerate a missing `range`
+/// (e.g. defaulting to line 0) — the drawer would open with four rows
+/// instead of erroring, and this test would fail.
+#[test]
+fn a_malformed_location_aborts_the_batch_instead_of_a_degraded_row() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path(), "main.rs");
+
+    let (mut ed, _guard, _sid) = setup_refs(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/references",
+            serde_json::json!([
+                loc(&uri, 0, 0),
+                loc(&uri, 0, 4),
+                loc(&uri, 0, 0),
+                {"uri": uri}, // missing `range` entirely
+            ]),
+        );
+    });
+
+    run_references(&mut ed);
+
+    assert!(
+        ed.state.drawer_view.read().unwrap().is_none(),
+        "a malformed location must abort before the drawer ever opens, \
+         not open it with the good rows and drop the bad one"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.contains("lsp-locations->display-parts") && msg.contains("missing range"),
+        "expected an error naming the builtin and the missing field, got {msg:?}"
     );
 }

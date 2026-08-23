@@ -16,9 +16,9 @@
     ((list? res)
      (cond
        ((null? res) (log! 'info "No definition found"))
-       ((= (length res) 1) (goto-location! (lsp/normalize-location (car res))))
-       (else (lsp/show-locations! (map lsp/normalize-location res)))))
-    (else (goto-location! (lsp/normalize-location res)))))
+       ((= (length res) 1) (goto-location! (car res)))
+       (else (lsp/show-locations! res))))
+    (else (goto-location! res))))
 
 (define (lsp/goto-request method cap)
   (lsp/guard-capability cap
@@ -59,4 +59,4 @@
               ;; `lsp/goto-response` above: `textDocument/references` only
               ;; ever returns `Location[] | null` per spec, never a bare
               ;; `Location`, so there's no single-hashmap case to guard against.
-              (else (lsp/show-locations! (map lsp/normalize-location res))))))))))
+              (else (lsp/show-locations! res)))))))))

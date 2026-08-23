@@ -414,21 +414,21 @@ fn wire_pos_to_grapheme_col(
     ))
 }
 
-/// Filesystem path and grapheme column for a batch of already-normalized
-/// `{uri, range}` LSP locations (the shape `lsp/normalize-location`
-/// produces) — the display companion to `wire_to_char_for_buffer`'s address
-/// conversion, backing `lsp-locations->display-parts`.
-/// `lsp/location-display` calls this once per drawer build so a
-/// goto/references row shows the same unit the statusline does, not the raw
-/// wire `character`.
+/// Filesystem path, wire line, and grapheme column for a batch of raw
+/// `Location`/`LocationLink` LSP locations — the display companion to
+/// `wire_to_char_for_buffer`'s address conversion, backing
+/// `lsp-locations->display-parts`. `lsp/location-display` calls this once
+/// per drawer build so a goto/references row shows the same unit the
+/// statusline does, not the raw wire `character`.
 ///
-/// The path comes back with the column because both are derived from the
-/// same `uri_to_path` parse. A drawer row that rendered its path by
-/// stripping `file://` in Scheme while the column came from this function's
-/// parse would disagree with itself on any URI needing percent-decoding or
-/// UNC-authority handling: the row would name one file and report a column
-/// read out of another. Scheme still owns the *display form* (`path->display`
-/// collapses `~` and strips UNC prefixes) — only URI decoding moved here.
+/// Each location is decoded once, through [`hume_lsp::location::decode_location`]
+/// — the same decoder `goto-location!` uses for the jump — so the path, the
+/// displayed line, and the column all come from that one decode. A drawer
+/// row that read `range.start.line` a second time in Scheme, or decoded the
+/// URI a second time to render the path, could end up naming a position it
+/// didn't measure; see that function's doc for why a malformed location
+/// aborts the whole batch rather than degrading its own row (SPEC.md Q33b),
+/// while an unreadable *file* below still only drops its own row's column.
 /// The path is the URI's own, not [`Editor::resolve_buffer_path`]'s
 /// canonicalisation of it: resolving symlinks is right for *finding* the
 /// file, but a drawer row should echo the path the server actually sent.
@@ -445,17 +445,12 @@ fn wire_pos_to_grapheme_col(
 /// may predate the edit); an unopened file is read from disk, normalized
 /// through `Text::from` exactly as `Buffer::from_file` would, and cached for
 /// the rest of this call.
-///
-/// One entry per input location, its column `None` for an unreadable/missing
-/// file or an out-of-range line — a display gap, not a hard error, so one bad
-/// row doesn't blank the whole drawer. `Err` only for a location whose shape
-/// can't be decoded at all (missing `uri`/`range`), naming the builtin.
 pub(crate) fn location_display_parts(
     state: &EditorState,
     lsp: &LspState,
     focused_bid: BufferId,
     locs: &[serde_json::Value],
-) -> Result<Vec<(String, Option<usize>)>, String> {
+) -> Result<Vec<hume_scripting::host::LocationDisplay>, String> {
     let encoding = encoding_for_buffer(state, lsp, focused_bid);
     let mut disk_cache: rustc_hash::FxHashMap<
         std::path::PathBuf,
@@ -464,48 +459,39 @@ pub(crate) fn location_display_parts(
 
     locs.iter()
         .map(|loc| {
-            let uri = loc
-                .get("uri")
-                .and_then(serde_json::Value::as_str)
-                .ok_or_else(|| {
-                    "lsp-locations->display-parts: location missing 'uri'".to_string()
-                })?;
-            let line = loc
-                .pointer("/range/start/line")
-                .and_then(serde_json::Value::as_u64)
-                .ok_or_else(|| {
-                    "lsp-locations->display-parts: location missing range.start.line".to_string()
-                })? as usize;
-            let character = loc
-                .pointer("/range/start/character")
-                .and_then(serde_json::Value::as_u64)
-                .ok_or_else(|| {
-                    "lsp-locations->display-parts: location missing range.start.character"
-                        .to_string()
-                })? as usize;
-            let uri: lsp_types::Uri = uri
-                .parse()
-                .map_err(|_| format!("lsp-locations->display-parts: bad uri {uri:?}"))?;
-            let path = hume_lsp::uri::uri_to_path(&uri)
-                .map_err(|e| format!("lsp-locations->display-parts: bad uri: {e:?}"))?;
-            let display_path = hume_lsp::uri::uri_to_display_string(&uri)
-                .map_err(|e| format!("lsp-locations->display-parts: bad uri: {e:?}"))?;
+            let wl = hume_lsp::location::decode_location(loc, "lsp-locations->display-parts")?;
+            let path = hume_lsp::uri::uri_to_path(&wl.uri).map_err(|e| {
+                format!(
+                    "lsp-locations->display-parts: cannot open {}: {e}",
+                    wl.uri.as_str()
+                )
+            })?;
+            let display_path = hume_lsp::uri::uri_to_display_string(&wl.uri).map_err(|e| {
+                format!(
+                    "lsp-locations->display-parts: cannot open {}: {e}",
+                    wl.uri.as_str()
+                )
+            })?;
             let resolved = Editor::resolve_buffer_path(&path, &state.cwd);
 
-            if let Some(bid) = state.buffers.find_by_path(&resolved) {
+            let grapheme_col = if let Some(bid) = state.buffers.find_by_path(&resolved) {
                 let text = state.buffers.get(bid).text();
-                let grapheme_col = wire_pos_to_grapheme_col(text, line, character, encoding);
-                return Ok((display_path, grapheme_col));
-            }
-            let cached = disk_cache.entry(resolved.clone()).or_insert_with(|| {
-                hume_platform::io::read_file(&resolved)
-                    .ok()
-                    .map(|(content, _)| hume_editing::text::Text::from(content.as_str()))
-            });
-            let grapheme_col = cached
-                .as_ref()
-                .and_then(|text| wire_pos_to_grapheme_col(text, line, character, encoding));
-            Ok((display_path, grapheme_col))
+                wire_pos_to_grapheme_col(text, wl.line, wl.character, encoding)
+            } else {
+                let cached = disk_cache.entry(resolved.clone()).or_insert_with(|| {
+                    hume_platform::io::read_file(&resolved)
+                        .ok()
+                        .map(|(content, _)| hume_editing::text::Text::from(content.as_str()))
+                });
+                cached.as_ref().and_then(|text| {
+                    wire_pos_to_grapheme_col(text, wl.line, wl.character, encoding)
+                })
+            };
+            Ok(hume_scripting::host::LocationDisplay {
+                path: display_path,
+                line: wl.line,
+                grapheme_col,
+            })
         })
         .collect()
 }

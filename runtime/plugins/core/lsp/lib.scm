@@ -1,7 +1,7 @@
 ;;; core:lsp/lib.scm — shared helpers used by every feature file.
 
 (provide lsp/supports? lsp/supports-for-buffer? lsp/guard-capability lsp/report-error
-         lsp/visible-lines lsp/show-locations! lsp/normalize-location lsp/text-edit->tuple
+         lsp/visible-lines lsp/show-locations! lsp/text-edit->tuple
          lsp/setup-trigger-chars!)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
@@ -92,43 +92,34 @@
     (if range (- (cdr range) (car range)) #f)))
 
 ;; ── Location display + drawer ───────────────────────────────────────────────
-;; Everything here normalizes to `{uri, range}` once, at response ingress,
-;; so nothing downstream needs its own Location/LocationLink shape dispatch.
-
-;;; A raw `Location` or `LocationLink` hashmap -> the single `{uri, range}`
-;;; shape every Steel-side consumer works with.
-(define (lsp/normalize-location loc)
-  (if (hash-contains? loc "uri")
-      loc
-      (hash "uri" (hash-ref loc "targetUri")
-            "range" (if (hash-contains? loc "targetSelectionRange")
-                        (hash-ref loc "targetSelectionRange")
-                        (hash-ref loc "targetRange")))))
+;; A raw Location/LocationLink hashmap's `{uri, range}`-vs-`{targetUri,
+;; targetRange}` shape dispatch lives in one place now:
+;; `hume_lsp::location::decode_location`, shared by `goto-location!` (the
+;; jump) and `lsp-locations->display-parts` (the drawer row) — nothing here
+;; reads a location's wire fields directly any more.
 
 ;;; "path/to/file.rs:12:5" — 1-based line/grapheme-col, matching every other
 ;;; editor's location display convention and the unit the statusline shows
 ;;; (not the raw wire `character`, which counts UTF-16 code units — see the
-;;; "Column naming" invariant). `loc` must already be normalized (`{uri,
-;;; range}`); `part` is that location's `(path . grapheme-col)` pair from
-;;; `lsp-locations->display-parts`, whose col is `#f` when the target file
-;;; couldn't be resolved/read — the row then falls back to `path:line`.
+;;; "Column naming" invariant). `part` is one `(path line grapheme-col)`
+;;; entry from `lsp-locations->display-parts`, whose grapheme-col is `#f`
+;;; when the target file couldn't be resolved/read — the row then falls back
+;;; to `path:line`.
 ;;;
-;;; The path comes from that builtin rather than from stripping "file://"
-;;; here: URI decoding (percent-escapes, UNC authorities, the extra leading
-;;; slash before a Windows drive letter) belongs to one implementation, and
-;;; it's the one that also resolved the file the column was read out of.
-;;; `path->display` still runs here — that's display form, not decoding.
-(define (lsp/location-display loc part)
-  (let* ((start (hash-ref (hash-ref loc "range") "start"))
-         (grapheme-col (cdr part))
-         (prefix (string-append (path->display (car part)) ":"
-                                (number->string (+ 1 (hash-ref start "line"))))))
+;;; `path->display` is the only formatting still done here (`~` collapse,
+;;; UNC strip) — URI decoding and the line/column themselves come from the
+;;; builtin, which read them out of the same location this row is naming.
+(define (lsp/location-display part)
+  (let* ((prefix (string-append (path->display (car part)) ":"
+                                (number->string (+ 1 (cadr part)))))
+         (grapheme-col (caddr part)))
     (if grapheme-col
         (string-append prefix ":" (number->string (+ 1 grapheme-col)))
         prefix)))
 
-;;; `locs`: a list of already-normalized `{uri, range}` hashmaps. Drawer rows
-;;; are pre-formatted display strings.
+;;; `locs`: a list of raw `Location`/`LocationLink` hashmaps, decoded once by
+;;; `lsp-locations->display-parts`. Drawer rows are pre-formatted display
+;;; strings.
 (define (lsp/show-locations! locs)
-  (show-drawer-list! (map lsp/location-display locs (lsp-locations->display-parts locs))
+  (show-drawer-list! (map lsp/location-display (lsp-locations->display-parts locs))
     (lambda (idx) (when idx (goto-location! (list-ref locs idx))))))

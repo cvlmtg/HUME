@@ -437,7 +437,8 @@ fn resolve_path_or_uri(
     if let Ok(uri) = path_or_uri.parse::<lsp_types::Uri>()
         && uri.scheme().is_some_and(|s| s.eq_lowercase("file"))
     {
-        let path = hume_lsp::uri::uri_to_path(&uri).map_err(|e| format!("bad uri: {e:?}"))?;
+        let path = hume_lsp::uri::uri_to_path(&uri)
+            .map_err(|e| format!("cannot open {path_or_uri}: {e}"))?;
         return resolve_or_open(state, view, &path);
     }
     let expanded = hume_platform::path::expand(path_or_uri);
@@ -460,7 +461,8 @@ fn resolve_goto_target(
             line,
             character,
         } => {
-            let path = hume_lsp::uri::uri_to_path(&uri).map_err(|e| format!("bad uri: {e:?}"))?;
+            let path = hume_lsp::uri::uri_to_path(&uri)
+                .map_err(|e| format!("cannot open {}: {e}", uri.as_str()))?;
             let bid = resolve_or_open(state, view, &path)?;
             let encoding = introspect::encoding_for_buffer(state, lsp, focused_bid);
             let rope = state.buffers.get(bid).text().rope();

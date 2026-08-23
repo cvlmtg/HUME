@@ -431,15 +431,17 @@ pub(crate) fn lsp_label_offsets_to_text(
     )
 }
 
-/// `(lsp-locations->display-parts locs)` → one `(path . grapheme-col)` pair
-/// per entry in `locs`, a list of already-normalized `{uri, range}` hashmaps
-/// — the display-side counterpart to `goto-location!`'s wire conversion. The
-/// column is `#f` when the target file can't be resolved/read or the line is
-/// out of range; the path is always present, since it comes from the URI
-/// itself rather than from reading the file. See
+/// `(lsp-locations->display-parts locs)` → one `(path line grapheme-col)`
+/// list per entry in `locs`, a list of raw `Location`/`LocationLink`
+/// hashmaps — the display-side counterpart to `goto-location!`'s wire
+/// conversion, decoded through the same shared decoder. `grapheme-col` is
+/// `#f` when the target file can't be resolved/read or `line` is out of
+/// range; `path`/`line` are always present, since they come from the
+/// location itself rather than from reading the file. See
 /// `LspHost::lsp_locations_display_parts`'s doc for why a raw wire
-/// `character` is never the right value to show a user, and why the path
-/// travels with it.
+/// `character` is never the right value to show a user, why the path and
+/// line travel with the column, and why a location that can't be decoded at
+/// all aborts the whole call rather than producing a degraded entry.
 pub(crate) fn lsp_locations_to_display_parts(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
     let mut parsed = Vec::new();
     for entry in list_items(locs, "lsp-locations->display-parts locs")? {
@@ -453,16 +455,20 @@ pub(crate) fn lsp_locations_to_display_parts(ctx: &mut SteelCtx, locs: SteelVal)
         .map_err(generic_err)?;
     let entries: Vec<SteelVal> = parts
         .into_iter()
-        .map(|(path, grapheme_col)| {
-            cons_pair(
-                SteelVal::StringV(path.into()),
-                match grapheme_col {
-                    Some(c) => SteelVal::IntV(c as isize),
-                    None => SteelVal::BoolV(false),
-                },
+        .map(|part| {
+            SteelVal::ListV(
+                vec![
+                    SteelVal::StringV(part.path.into()),
+                    SteelVal::IntV(part.line as isize),
+                    match part.grapheme_col {
+                        Some(c) => SteelVal::IntV(c as isize),
+                        None => SteelVal::BoolV(false),
+                    },
+                ]
+                .into(),
             )
         })
-        .collect::<Result<_, _>>()?;
+        .collect();
     Ok(SteelVal::ListV(entries.into()))
 }
 

@@ -64,44 +64,17 @@ pub(crate) fn apply_workspace_edit(ctx: &mut SteelCtx, wsedit: SteelVal) -> Stee
 
 /// `(goto-location! loc)` — `loc` is one of two shapes, dispatched here (not
 /// in Scheme): a raw `Location`/`LocationLink` hashmap (wire
-/// position, converted using the focused buffer's server encoding — correct
-/// because the caller is that server's own response callback), or `(list
-/// target line char-col)` with char-indexed `line`/`char-col` and `target` a
-/// `bid`, a path string, or a `file://` URI string.
+/// position, decoded and converted using the focused buffer's server
+/// encoding — correct because the caller is that server's own response
+/// callback), or `(list target line char-col)` with char-indexed
+/// `line`/`char-col` and `target` a `bid`, a path string, or a `file://` URI
+/// string.
 pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
     match &loc {
         SteelVal::HashMapV(_) => {
             let json = steel_to_json(&loc).map_err(generic_err)?;
-            let (uri, range) = if let Some(uri) = json.get("targetUri") {
-                (
-                    uri,
-                    json.get("targetSelectionRange")
-                        .or_else(|| json.get("targetRange")),
-                )
-            } else {
-                (
-                    json.get("uri")
-                        .ok_or_else(|| generic_err("goto-location!: missing uri"))?,
-                    json.get("range"),
-                )
-            };
-            let uri = uri
-                .as_str()
-                .ok_or_else(|| generic_err("goto-location!: uri must be a string"))?
-                .to_string();
-            let range = range.ok_or_else(|| generic_err("goto-location!: missing range"))?;
-            let line = range
-                .pointer("/start/line")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| generic_err("goto-location!: missing range.start.line"))?
-                as usize;
-            let character = range
-                .pointer("/start/character")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| generic_err("goto-location!: missing range.start.character"))?
-                as usize;
             require_cap(ctx.host.edits(), "goto-location!")?
-                .goto_location_wire(uri, line, character)
+                .goto_location_value(json)
                 .map(|()| SteelVal::Void)
                 .map_err(generic_err)
         }

@@ -9,6 +9,7 @@
 //!
 //! ## Modules
 //! - `uri`: path ↔ `file://` URI conversion.
+//! - `location`: `Location`/`LocationLink` wire-object decoding.
 //! - `codec`: JSON-RPC framing, message enum, id allocation.
 //! - `transport`: server process management — reader/writer/stderr threads.
 //! - `backend`: the `LspBackend` trait + `ThreadedLspBackend`.
@@ -21,6 +22,7 @@ pub mod backend;
 pub mod client;
 pub mod codec;
 pub mod inline;
+pub mod location;
 pub mod sync;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_util;

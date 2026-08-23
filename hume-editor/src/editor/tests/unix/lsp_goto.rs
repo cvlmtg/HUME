@@ -243,11 +243,11 @@ fn windows_drive_letter_uri_displays_without_leading_slash() {
     );
 }
 
-/// The multi-entry-array case exercises `lsp/location-display`'s row
-/// formatting (`lsp/normalize-location`), unlike the single-entry jump
-/// tests above (which only ever reach `goto-location!` directly) — the
-/// only path in core:lsp that reads a `LocationLink`'s `targetUri`/
-/// `targetSelectionRange` outside Rust's own dual-shape dispatch.
+/// The multi-entry-array case exercises `lsp-locations->display-parts`'s
+/// `LocationLink` decoding (`hume_lsp::location::decode_location`'s
+/// `targetUri`/`targetSelectionRange` branch), unlike the single-entry jump
+/// tests above, which reach the same decoder through `goto-location!`
+/// instead.
 #[test]
 fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
     let tmp = safe_tempdir();
@@ -453,6 +453,40 @@ fn goto_missing_target_opens_new_file_buffer_and_jumps_to_it() {
     assert!(
         !msg.to_lowercase().contains("error"),
         "must not report an error, got {msg:?}"
+    );
+}
+
+/// The same malformed-location rule `lsp-locations->display-parts` enforces
+/// (SPEC.md's Q33b) applies to `goto-location!` too, through the shared
+/// `hume_lsp::location::decode_location`: a `Location` missing `range` must
+/// error rather than silently jumping to line 0.
+///
+/// Sabotage oracle: loosening `decode_location` to tolerate a missing
+/// `range` would fail this test *and*
+/// `column_display_agreement.rs`'s
+/// `a_malformed_location_aborts_the_batch_instead_of_a_degraded_row`,
+/// proving both paths share the one decoder.
+#[test]
+fn location_missing_range_errors_instead_of_jumping() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to("textDocument/definition", serde_json::json!({"uri": uri}));
+    });
+    let before = state(&ed);
+
+    run_goto(&mut ed, ":lsp-goto-definition");
+
+    assert_eq!(
+        state(&ed),
+        before,
+        "a malformed location must not move the cursor"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.contains("goto-location!") && msg.contains("missing range"),
+        "expected an error naming the builtin and the missing field, got {msg:?}"
     );
 }
 
