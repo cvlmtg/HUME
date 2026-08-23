@@ -185,6 +185,7 @@ pub(crate) fn draw_picker_panel(
     text: Style,
     selected: Style,
     cursor: Style,
+    invisible_style: Style,
 ) {
     let outer = Rect::new(state.x, state.y, state.width, state.height);
     if outer.width < 3 || outer.height < 4 {
@@ -194,7 +195,7 @@ pub(crate) fn draw_picker_panel(
     fill_rect_bg(buf, outer, background);
 
     if state.border {
-        super::menu_box::draw_box_border(buf, outer, text);
+        super::menu_box::draw_box_border(buf, outer, text, invisible_style);
     }
 
     let inner_x = outer.x + 1;
@@ -219,7 +220,15 @@ pub(crate) fn draw_picker_panel(
     let prompt_shown = truncate_head(&state.prompt, inner_width);
     let prompt_width = text_width(&prompt_shown);
     if prompt_width > 0 {
-        write_text_run(buf, inner_x, input_y, &prompt_shown, text, inner_right);
+        write_text_run(
+            buf,
+            inner_x,
+            input_y,
+            &prompt_shown,
+            text,
+            invisible_style,
+            inner_right,
+        );
     }
 
     let after_prompt_width = inner_width.saturating_sub(prompt_width);
@@ -234,14 +243,38 @@ pub(crate) fn draw_picker_panel(
     let query_width = text_width(&query_tail);
 
     let query_x = inner_x + prompt_width as u16;
-    write_text_run(buf, query_x, input_y, &query_tail, text, inner_right);
+    write_text_run(
+        buf,
+        query_x,
+        input_y,
+        &query_tail,
+        text,
+        invisible_style,
+        inner_right,
+    );
     let cursor_x = query_x + query_width as u16;
     if cursor_x < inner_x + inner_width as u16 {
-        write_text_run(buf, cursor_x, input_y, " ", cursor, inner_right);
+        write_text_run(
+            buf,
+            cursor_x,
+            input_y,
+            " ",
+            cursor,
+            invisible_style,
+            inner_right,
+        );
     }
     if show_counts {
         let counts_x = outer.x + outer.width - 1 - counts_width as u16;
-        write_text_run(buf, counts_x, input_y, &counts, text, inner_right);
+        write_text_run(
+            buf,
+            counts_x,
+            input_y,
+            &counts,
+            text,
+            invisible_style,
+            inner_right,
+        );
     }
 
     let list_capacity = (outer.height - 3) as usize;
@@ -251,9 +284,17 @@ pub(crate) fn draw_picker_panel(
         if state.selected_row == Some(i) {
             let row_rect = Rect::new(inner_x, y, outer.width - 2, 1);
             fill_rect_bg(buf, row_rect, selected);
-            write_text_run(buf, inner_x, y, &shown, selected, inner_right);
+            write_text_run(
+                buf,
+                inner_x,
+                y,
+                &shown,
+                selected,
+                invisible_style,
+                inner_right,
+            );
         } else {
-            write_text_run(buf, inner_x, y, &shown, text, inner_right);
+            write_text_run(buf, inner_x, y, &shown, text, invisible_style, inner_right);
         }
     }
 }
@@ -297,6 +338,7 @@ impl OverlayProvider for PickerOverlay {
             styles.text,
             styles.selected,
             styles.cursor,
+            theme.ui.invisible.into(),
         );
     }
 }

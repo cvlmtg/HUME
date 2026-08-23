@@ -107,6 +107,7 @@ impl BottomBandProvider for DrawerWidget {
                     y,
                     item,
                     selected_style,
+                    theme.ui.invisible.into(),
                     area.x + area.width,
                 );
             } else {
@@ -116,6 +117,7 @@ impl BottomBandProvider for DrawerWidget {
                     y,
                     item,
                     style,
+                    theme.ui.invisible.into(),
                     area.x + area.width,
                 );
             }

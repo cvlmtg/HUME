@@ -250,7 +250,7 @@ fn providers_with_before_line(line: usize) -> ProviderSet {
 ///
 /// See the `_no_wrap` sibling below — row math is wrap-mode-agnostic.
 #[test]
-fn screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
+fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     let rope = Rope::from_str("a\nb\nc\n");
     let v = vp(0, 80, 10);
     let wrap = WrapMode::Soft { width: 80 };
@@ -325,11 +325,11 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {
     );
 }
 
-/// No-wrap mirror of `screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line`
+/// No-wrap mirror of `content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line`
 /// — row math is wrap-mode-agnostic (a line occupies exactly one content row
 /// with wrapping off), so the same virtual-row accounting must hold.
 #[test]
-fn screen_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() {
+fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() {
     let rope = Rope::from_str("a\nb\nc\n");
     let v = vp(0, 80, 10);
     let wrap = WrapMode::None;
@@ -427,7 +427,7 @@ impl hume_engine::providers::DecorationSource for MultiAfterLine {
 /// block above it exactly like any other line's `before` block — no
 /// special-casing at the very top of the buffer, in either wrap mode.
 #[test]
-fn screen_pos_accounts_for_before_line_0() {
+fn content_pos_accounts_for_before_line_0() {
     let rope = Rope::from_str("a\nb\n");
     let v = vp(0, 80, 10);
     let cursor_char = 0; // start of line 0
@@ -454,7 +454,7 @@ fn screen_pos_accounts_for_before_line_0() {
 /// the block is *after* the cursor's row, so it must not affect the
 /// cursor's own screen row at all (only rows below it).
 #[test]
-fn screen_pos_unaffected_by_after_on_cursors_own_last_line() {
+fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
     let rope = Rope::from_str("a\nb\n");
     let cursor_char = rope.line_to_char(1); // start of the last real line
     let mut providers = ProviderSet::new();
@@ -492,7 +492,7 @@ fn screen_pos_unaffected_by_after_on_cursors_own_last_line() {
 /// permanently overshoots the cursor, since `distance` only walks forward —
 /// yielding `None` instead of the clamped answer.
 #[test]
-fn screen_pos_clamps_a_top_row_offset_past_the_lines_current_block() {
+fn content_pos_clamps_a_top_row_offset_past_the_lines_current_block() {
     let rope = Rope::from_str("a\nb\n");
     let mut v = vp(0, 80, 10);
     v.top_row_offset = 2; // past line 0's 2-row block (before=1, content=1)
@@ -515,7 +515,7 @@ fn screen_pos_clamps_a_top_row_offset_past_the_lines_current_block() {
 /// A zero-height viewport (a pane collapsed to nothing mid-resize) has no
 /// row to place the cursor on.
 #[test]
-fn screen_pos_zero_height_returns_none() {
+fn content_pos_zero_height_returns_none() {
     let rope = Rope::from_str("a\nb\nc\n");
     let v = vp(0, 80, 0);
     let providers = no_providers();
@@ -533,7 +533,7 @@ fn screen_pos_zero_height_returns_none() {
 /// the case `ensure_cursor_visible` is supposed to prevent, but `content_pos`
 /// must still answer `None` rather than a row past the visible window.
 #[test]
-fn screen_pos_cursor_below_viewport_returns_none() {
+fn content_pos_cursor_below_viewport_returns_none() {
     let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
     let v = vp(0, 80, 2); // only rows for lines 0-1 are visible
     let providers = no_providers();

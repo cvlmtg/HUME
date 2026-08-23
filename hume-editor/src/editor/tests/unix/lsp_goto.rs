@@ -207,10 +207,13 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
 
 /// A Windows drive-letter `file://` URI (`file:///C:/...`) must display in
 /// the drawer without a leading `/` before the drive letter —
-/// `lsp/uri->display-path`'s plain 7-char scheme strip alone leaves one in
-/// ("/C:/foo"), not a valid Windows path. The second location's file need
-/// not exist: opening the drawer only formats row labels, it doesn't touch
-/// the filesystem (only selecting a row and jumping would).
+/// `hume_lsp::uri::uri_to_path`'s plain slash strip alone leaves one in
+/// ("/C:/foo"), not a valid Windows path; `uri_to_display_string` is the
+/// sibling that additionally strips it before a drive letter, which is what
+/// `location_display_parts` renders the drawer row through. The second
+/// location's file need not exist: opening the drawer only formats row
+/// labels, it doesn't touch the filesystem (only selecting a row and jumping
+/// would).
 #[test]
 fn windows_drive_letter_uri_displays_without_leading_slash() {
     let tmp = safe_tempdir();

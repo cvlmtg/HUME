@@ -269,6 +269,7 @@ fn draw_section(
     spans: &[(Cow<'static, str>, Style)],
     mut x: u16,
     y: u16,
+    invisible_style: Style,
     right_edge: u16,
 ) {
     for (text, style) in spans {
@@ -276,7 +277,15 @@ fn draw_section(
         // span: `write_text_run` returns the column it stopped at, and it
         // measures by the same rule `section_width` laid the spans out with,
         // so the two cannot drift apart.
-        x = write_text_run(screen_buf, x, y, text.as_ref(), *style, right_edge);
+        x = write_text_run(
+            screen_buf,
+            x,
+            y,
+            text.as_ref(),
+            *style,
+            invisible_style,
+            right_edge,
+        );
     }
 }
 
@@ -311,6 +320,8 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
         // row unconditionally — it's the intercept chain's top entry (see
         // `handle_key`), so it must also be the top-priority render, ahead
         // of even the minibuffer.
+        let invisible_style: Style = theme.ui.invisible.into();
+
         if let Some(confirm) = editor.state.config.confirm.as_ref() {
             fill_row_colors(buf, &colors, area, y);
             write_text_run(
@@ -319,6 +330,7 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
                 y,
                 &confirm.render_line(),
                 colors.statusline,
+                invisible_style,
                 area.x + area.width,
             );
             return;
@@ -347,13 +359,14 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
                     y,
                     msg,
                     colors.statusline,
+                    invisible_style,
                     area.x + area.width,
                 );
                 return;
             }
         }
 
-        render_statusline(buf, editor, &colors, area, y);
+        render_statusline(buf, editor, &colors, area, y, invisible_style);
     }
 }
 
@@ -367,6 +380,7 @@ fn render_statusline(
     colors: &EditorColors,
     area: Rect,
     y: u16,
+    invisible_style: Style,
 ) {
     let config = &editor.state.settings.statusline;
 
@@ -434,12 +448,33 @@ fn render_statusline(
     // right section didn't fit), and the right section at the row's end. Only
     // `FilePath` shortens itself to fit, so without these an over-long
     // element would write across its neighbour and off the row.
-    draw_section(screen_buf, &left_spans, left_x, y, right_fence);
+    draw_section(
+        screen_buf,
+        &left_spans,
+        left_x,
+        y,
+        invisible_style,
+        right_fence,
+    );
     if right_fits {
-        draw_section(screen_buf, &right_spans, right_x, y, area.right());
+        draw_section(
+            screen_buf,
+            &right_spans,
+            right_x,
+            y,
+            invisible_style,
+            area.right(),
+        );
     }
     if center_fits {
-        draw_section(screen_buf, &center_spans, center_x, y, right_fence);
+        draw_section(
+            screen_buf,
+            &center_spans,
+            center_x,
+            y,
+            invisible_style,
+            right_fence,
+        );
     }
 }
 

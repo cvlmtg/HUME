@@ -298,6 +298,7 @@ impl OverlayProvider for PopupOverlay {
                 scroll: scroll_style,
             },
             state.styled_rows.as_ref().map(|rows| rows.as_slice()),
+            theme.ui.invisible.into(),
         );
     }
 }
@@ -371,6 +372,7 @@ impl BottomBandProvider for PopupBandWidget {
                 scroll: scroll_style,
             },
             state.styled_rows.as_ref().map(|rows| rows.as_slice()),
+            theme.ui.invisible.into(),
         );
     }
 }

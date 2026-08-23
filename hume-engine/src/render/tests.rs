@@ -70,7 +70,7 @@ fn renders_simple_text() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None);
+    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
     compose_row(
         &rows[0],
         &graphemes,
@@ -134,7 +134,7 @@ fn filler_rows_have_tilde() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None);
+    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
     render_tilde_fillers(1, &[], &ctx, &mut canvas);
 
     // Rows 1–4 should have '~'
@@ -191,7 +191,7 @@ fn do_compose_row(
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None);
+    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
     compose_row(
         row,
         graphemes,
@@ -433,7 +433,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None);
+    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
     compose_row(
         &rows[0],
         &graphemes,
@@ -672,7 +672,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None);
+    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
     compose_row(
         &rows[0],
         &graphemes,
@@ -755,7 +755,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None);
+    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
     compose_row(
         &rows[0],
         &graphemes,
@@ -891,7 +891,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None);
+    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
     compose_row(
         &rows[0],
         &graphemes,
@@ -1005,7 +1005,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None);
+    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
     compose_row(
         &rows[0],
         &graphemes,
@@ -1126,7 +1126,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             rope: &rope,
             default_gutter_scope,
         };
-        let mut canvas = PaneCanvas::new(&mut buf, None);
+        let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
         compose_row(
             &rows[0],
             &graphemes,
@@ -1242,7 +1242,7 @@ fn gutter_column_reads_rope_via_ctx() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None);
+    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
     compose_row(
         &rows[0],
         &graphemes,
@@ -1371,7 +1371,11 @@ fn compose_row_dims_cells_inline() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = PaneCanvas::new(&mut buf, Some((Color::Rgb(0, 0, 0), 0.5)));
+    let mut canvas = PaneCanvas::new(
+        &mut buf,
+        Some((Color::Rgb(0, 0, 0), 0.5)),
+        ratatui::style::Style::default(),
+    );
     compose_row(
         &rows[0],
         &graphemes,
@@ -1435,7 +1439,11 @@ fn compose_row_non_rgb_dim_target_is_noop() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = PaneCanvas::new(&mut buf, Some((Color::Reset, 0.5)));
+    let mut canvas = PaneCanvas::new(
+        &mut buf,
+        Some((Color::Reset, 0.5)),
+        ratatui::style::Style::default(),
+    );
     compose_row(
         &rows[0],
         &graphemes,
@@ -1497,4 +1505,57 @@ fn fill_rect_bg_clears_stale_modifiers() {
             .modifier
             .contains(ratatui::style::Modifier::BOLD)
     );
+}
+
+// ── write_text_run ───────────────────────────────────────────────────────
+
+#[test]
+fn write_text_run_draws_a_tab_as_one_space_not_a_placeholder() {
+    // Regression test: `grapheme_width` reserves exactly one cell for a tab
+    // (chrome has no tab stops), but `write_text_run` used to test
+    // `needs_placeholder` first — true for any control character, including
+    // `\t` — and draw the 3-cell `<9>` placeholder into that one cell,
+    // corrupting whatever followed it.
+    let mut buf = make_test_buf(10, 1);
+    let style = ratatui::style::Style::default();
+    let invisible_style = ratatui::style::Style::default();
+    let after = write_text_run(&mut buf, 0, 0, "a\tb", style, invisible_style, 10);
+
+    assert_eq!(buf[(0, 0)].symbol(), "a");
+    assert_eq!(buf[(1, 0)].symbol(), " ", "a tab draws as a single space");
+    assert_eq!(buf[(2, 0)].symbol(), "b");
+    assert_eq!(
+        after, 3,
+        "advance must match one cell per cluster, not the placeholder's length"
+    );
+}
+
+#[test]
+fn write_text_run_still_shows_a_genuine_placeholder_cluster_as_its_codepoint() {
+    // A zero-width space (U+200B) measures zero columns and, unlike a ZWJ,
+    // does not join with a neighbouring character into a shared grapheme
+    // cluster — it stands alone, so `needs_placeholder` is true for it with
+    // no narrower special case the way there is for a tab: it must still
+    // render as `<200b>`, not vanish or collapse the row. It must also carry
+    // `invisible_style` rather than the surrounding text's `style` — the
+    // chrome equivalent of buffer text's Tier 2d½ layering — so a reader can
+    // tell it apart from ordinary text.
+    let mut buf = make_test_buf(10, 1);
+    let style = ratatui::style::Style::default().fg(ratatui::style::Color::White);
+    let invisible_style = ratatui::style::Style::default().fg(ratatui::style::Color::Red);
+    let after = write_text_run(&mut buf, 0, 0, "a\u{200b}b", style, invisible_style, 10);
+
+    assert_eq!(buf[(0, 0)].symbol(), "a");
+    assert_eq!(buf[(0, 0)].fg, ratatui::style::Color::White);
+    let placeholder: String = (1..=6).map(|x| buf[(x, 0)].symbol().to_string()).collect();
+    assert_eq!(placeholder, "<200b>");
+    for x in 1..=6u16 {
+        assert_eq!(
+            buf[(x, 0)].fg,
+            ratatui::style::Color::Red,
+            "placeholder cell {x} must carry invisible_style, not the surrounding text's style"
+        );
+    }
+    assert_eq!(buf[(7, 0)].symbol(), "b");
+    assert_eq!(after, 8);
 }

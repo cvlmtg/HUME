@@ -111,7 +111,7 @@ fn draw_picker_panel_clips_overlong_row_to_inner_width() {
     };
     let s = state("", &["hume-editor/src/ui/picker_panel.rs"], None, &geo);
     let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
-    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style(), style());
 
     // Right border must still be an unbroken │ column, not overrun text.
     let right = geo.x + geo.width - 1;
@@ -172,7 +172,7 @@ fn draw_picker_panel_border_input_and_rows_snapshot() {
     };
     let s = state("ab", &["item0", "item1"], Some(0), &geo);
     let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
-    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style(), style());
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @r"
     ┌────────┐
@@ -197,7 +197,7 @@ fn draw_picker_panel_no_border_leaves_plain_margin() {
     let mut s = state("ab", &["item0"], Some(0), &geo);
     s.border = false;
     let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
-    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style(), style());
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @r"
 
@@ -219,7 +219,15 @@ fn draw_picker_panel_highlights_selected_row_full_width() {
     };
     let selected_style = Style::default().bg(Color::Red);
     let s = state("", &["item0", "item1"], Some(1), &geo);
-    draw_picker_panel(&mut buf, &s, style(), style(), selected_style, style());
+    draw_picker_panel(
+        &mut buf,
+        &s,
+        style(),
+        style(),
+        selected_style,
+        style(),
+        style(),
+    );
 
     // Row 1 ("item1") is the selected row — its whole inner width (cols
     // 1..=8) must carry the selected background, not just the text cells.
@@ -255,7 +263,7 @@ fn draw_picker_panel_does_not_rewindow_rows() {
         None,
         &geo,
     );
-    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style(), style());
 
     let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
     let painted = symbols_in(&buf, outer);
@@ -279,7 +287,7 @@ fn draw_picker_panel_pending_marks_the_counter_snapshot() {
     let mut s = state("ab", &[], None, &geo);
     s.pending = true;
     let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
-    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style(), style());
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @r"
     ┌────────────┐
@@ -304,7 +312,7 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
     let mut s = state("q", &[], None, &geo_wide);
     s.matched = 3;
     s.total = 42;
-    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style(), style());
     let outer = Rect::new(geo_wide.x, geo_wide.y, geo_wide.width, geo_wide.height);
     assert!(symbols_in(&buf, outer).contains("3/42"));
 
@@ -319,7 +327,7 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
     let mut s2 = state("q", &[], None, &geo_narrow);
     s2.matched = 3;
     s2.total = 42;
-    draw_picker_panel(&mut buf2, &s2, style(), style(), style(), style());
+    draw_picker_panel(&mut buf2, &s2, style(), style(), style(), style(), style());
     let outer2 = Rect::new(
         geo_narrow.x,
         geo_narrow.y,
@@ -343,7 +351,7 @@ fn draw_picker_panel_truncates_query_tail_keeping_cursor_visible() {
         list_rows: 1,
     };
     let s = state("abcdefghij", &[], None, &geo); // matched = total = 0
-    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style(), style());
 
     let inner_x = geo.x + 1;
     let row: String = (inner_x..inner_x + 8)
@@ -369,7 +377,7 @@ fn draw_picker_panel_renders_prompt_before_query() {
     };
     let mut s = state("ab", &[], None, &geo); // matched = total = 0
     s.prompt = "f: ".to_string();
-    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style(), style());
 
     let inner_x = geo.x + 1;
     let row: String = (inner_x..inner_x + 10)
@@ -396,7 +404,7 @@ fn draw_picker_panel_prompt_wider_than_panel_clips_without_panic() {
 
     // Must not panic even though the prompt alone exceeds inner_width, and
     // must leave the query with zero budget rather than overflow the row.
-    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style(), style());
 
     let inner_x = geo.x + 1;
     let row: String = (inner_x..inner_x + 5)
@@ -419,7 +427,7 @@ fn draw_picker_panel_empty_state_is_blank_with_zero_counts() {
         list_rows: 3,
     };
     let s = state("", &[], None, &geo);
-    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style(), style());
     let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
     let painted = symbols_in(&buf, outer);
     assert!(painted.contains("0/0"));
@@ -437,7 +445,7 @@ fn draw_picker_panel_degenerate_rect_does_not_panic_or_paint() {
         list_rows: 0,
     };
     let s = state("q", &["item0"], Some(0), &geo);
-    draw_picker_panel(&mut buf, &s, style(), style(), style(), style());
+    draw_picker_panel(&mut buf, &s, style(), style(), style(), style(), style());
     assert_eq!(buf, before, "sub-3x4 outer must not panic or paint");
 }
 

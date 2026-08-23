@@ -172,13 +172,17 @@ fn highlights(ed: &Editor, bid: BufferId) -> Vec<(usize, usize, String, String)>
 
 #[test]
 fn signs_pure_addition_marks_one_plus_per_line() {
+    // `setup()` (claims `Global::Env`) runs before any `git`/`git_init` spawn
+    // below — those are unqualified-name subprocess spawns that read `PATH`,
+    // so they must run under the same claim as any other `PATH` reader (see
+    // `Global::Env`'s doc in `tests/mod.rs`).
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
     std::fs::write(repo.path().join("f.txt"), "one\nALPHA\nBETA\ntwo\nthree\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), None);
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     drain_until(&mut ed, |ed| {
@@ -201,13 +205,14 @@ fn signs_pure_addition_marks_one_plus_per_line() {
 
 #[test]
 fn signs_change_marks_tilde_per_line() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "a\nb\nc\n", "v1");
     std::fs::write(repo.path().join("f.txt"), "a\nCHANGED\nc\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), None);
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     drain_until(&mut ed, |ed| {
@@ -226,13 +231,14 @@ fn signs_change_marks_tilde_per_line() {
 
 #[test]
 fn signs_pure_deletion_marks_line_above_gap() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "a\nb\nc\nd\ne\n", "v1");
     std::fs::write(repo.path().join("f.txt"), "a\nb\nd\ne\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), None);
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     drain_until(&mut ed, |ed| {
@@ -252,13 +258,14 @@ fn signs_pure_deletion_marks_line_above_gap() {
 
 #[test]
 fn signs_deletion_at_start_clamps_to_line_zero() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "a\nb\nc\n", "v1");
     std::fs::write(repo.path().join("f.txt"), "b\nc\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), None);
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     drain_until(&mut ed, |ed| {
@@ -278,13 +285,14 @@ fn signs_deletion_at_start_clamps_to_line_zero() {
 
 #[test]
 fn signs_deletion_at_end_of_file_marks_last_content_line() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "a\nb\nc\n", "v1");
     std::fs::write(repo.path().join("f.txt"), "a\nb\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), None);
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     drain_until(&mut ed, |ed| {
@@ -317,13 +325,14 @@ fn signs_deletion_at_end_of_file_marks_last_content_line() {
 
 #[test]
 fn inline_change_renders_virtual_line_word_spans_and_tint() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\nfoo bar baz\nthree\n", "v1");
     std::fs::write(repo.path().join("f.txt"), "one\nfoo QUX baz\nthree\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     drain_until(&mut ed, |ed| {
@@ -361,14 +370,15 @@ fn inline_change_renders_virtual_line_word_spans_and_tint() {
 #[test]
 fn inline_tab_indented_deletion_keeps_a_literal_tab_that_still_renders_at_the_right_display_column()
 {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\n\ttabbed line\nthree\n", "v1");
     std::fs::write(repo.path().join("f.txt"), "one\nthree\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     drain_until(&mut ed, |ed| {
@@ -412,14 +422,15 @@ fn inline_wide_cjk_before_tab_in_a_deletion_shifts_the_tab_on_screen() {
     // that tab one column early. Now the plugin stores the line verbatim
     // and the engine expands it, so a wide char correctly shifts the stop
     // by its full 2-column width.
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\n\u{6F22}\ttabbed\nthree\n", "v1");
     std::fs::write(repo.path().join("f.txt"), "one\nthree\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     drain_until(&mut ed, |ed| {
@@ -451,13 +462,14 @@ fn inline_wide_cjk_before_tab_in_a_deletion_shifts_the_tab_on_screen() {
 
 #[test]
 fn inline_pure_addition_has_no_virtual_line_only_tint() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\nthree\n", "v1");
     std::fs::write(repo.path().join("f.txt"), "one\ntwo\nthree\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     drain_until(&mut ed, |ed| {
@@ -480,13 +492,14 @@ fn inline_pure_addition_has_no_virtual_line_only_tint() {
 
 #[test]
 fn bare_toggle_off_clears_only_that_rendering() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "signs" #t "inline" #t)"#));
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\nfoo\nthree\n", "v1");
     std::fs::write(repo.path().join("f.txt"), "one\nbar\nthree\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "signs" #t "inline" #t)"#));
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     drain_until(&mut ed, |ed| {
@@ -514,15 +527,16 @@ fn bare_toggle_off_clears_only_that_rendering() {
 
 #[test]
 fn explicit_ref_toggle_sets_ref_and_re_renders_the_other_enabled_rendering() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "signs" #t "inline" #f)"#));
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
     commit_file(repo.path(), "f.txt", "one\nCHANGED\nthree\n", "v2");
     // Working tree now matches HEAD (v2) exactly — the default-ref diff is
     // empty, isolating the effect of the explicit-ref toggle below.
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "signs" #t "inline" #f)"#));
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     // Let the buffer-open-triggered default-ref (HEAD) refresh finish first
@@ -585,13 +599,14 @@ fn explicit_ref_toggle_sets_ref_and_re_renders_the_other_enabled_rendering() {
 
 #[test]
 fn untracked_file_shows_no_diff_and_logs_nothing() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "README", "readme\n", "init");
     std::fs::write(repo.path().join("new.txt"), "hello\nworld\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), None);
     let bid = open(&mut ed, &repo.path().join("new.txt"));
     // Opening any file itself reports an Info status ("Opened new.txt"),
     // which also lands in status_msg — capture it so the assertion below
@@ -617,12 +632,13 @@ fn untracked_file_shows_no_diff_and_logs_nothing() {
 
 #[test]
 fn explicit_bad_ref_logs_warning_status_message() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), None);
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     type_cmd(&mut ed, ":toggle-git-signs not-a-real-ref-xyz");
@@ -641,15 +657,16 @@ fn explicit_bad_ref_logs_warning_status_message() {
 
 #[test]
 fn buffer_save_invalidates_cached_ref_and_refetches() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
     commit_file(repo.path(), "f.txt", "one\nCHANGED\nthree\n", "v2");
     // Dirty the working tree back to v1 — buffer opens differing from HEAD (v2).
     std::fs::write(repo.path().join("f.txt"), "one\ntwo\nthree\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     drain_until(&mut ed, |ed| {
@@ -709,13 +726,14 @@ fn buffer_save_invalidates_cached_ref_and_refetches() {
 
 #[test]
 fn buffer_close_after_open_leaves_no_stray_error() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
     std::fs::write(repo.path().join("f.txt"), "one\nCHANGED\nthree\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), None);
     open(&mut ed, &repo.path().join("f.txt"));
 
     // Let on-buffer-open run (starting its debounce timer), then close just
@@ -744,13 +762,14 @@ fn buffer_close_after_open_leaves_no_stray_error() {
 
 #[test]
 fn config_flips_default_signs_and_inline() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "signs" #f "inline" #t)"#));
+
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
     std::fs::write(repo.path().join("f.txt"), "one\nCHANGED\nthree\n").unwrap();
-
-    let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "signs" #f "inline" #t)"#));
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     drain_until(&mut ed, |ed| {

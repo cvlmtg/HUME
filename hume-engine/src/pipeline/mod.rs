@@ -291,10 +291,11 @@ impl EngineView {
 
         // A degenerate area (e.g. a terminal reporting height 0 during early
         // startup, or a genuinely tiny window) has no row to draw a chrome
-        // line into — providers write text via `Buffer::set_string`, which
-        // panics on an out-of-bounds row (unlike a background fill, which
-        // clamps), so skip both chrome rows entirely rather than handing them
-        // a `Rect` claiming a row that doesn't exist.
+        // line into — providers write text via `write_text_run`, whose
+        // `set_cell` bounds-checks against the buffer rect rather than
+        // panicking, but a chrome row drawn at an out-of-bounds `y` is still
+        // silently lost, so skip both chrome rows entirely rather than
+        // handing them a `Rect` claiming a row that doesn't exist.
         if area.height > 0 {
             // ── Render tab bar ────────────────────────────────────────────────
             if let Some(ref tabbar) = self.tabbar {
@@ -427,8 +428,18 @@ impl EngineView {
                         let style = if in_accent { accent } else { muted };
                         // One junction glyph per seam cell. Through the same
                         // writer as everything else rather than a raw cell
-                        // poke, bounded to this single cell.
-                        crate::render::write_text_run(buf, x, y, glyph, style, x + 1);
+                        // poke, bounded to this single cell. A box-drawing
+                        // glyph never needs the placeholder substitution, but
+                        // `write_text_run` takes no exemption from it.
+                        crate::render::write_text_run(
+                            buf,
+                            x,
+                            y,
+                            glyph,
+                            style,
+                            self.theme.ui.invisible.into(),
+                            x + 1,
+                        );
                     }
                 }
             }

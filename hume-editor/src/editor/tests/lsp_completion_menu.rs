@@ -662,7 +662,7 @@ fn stale_anchor_after_switching_focus_to_another_buffer_skips_render() {
 // silently-misplaced popup, not a panic.
 
 #[test]
-fn completion_popup_anchor_matches_an_independent_screen_pos_walk_when_wrapped() {
+fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let pid = ed.state.focused_pane_id;
     // Explicit non-zero width, independent of the terminal size passed to

@@ -17,6 +17,7 @@ mod resync_derived_state;
 mod scm_headers;
 mod statusline_writes;
 mod test_globals;
+mod test_globals_spawn;
 mod text_writer;
 
 // ── Shared helpers ───────────────────────────────────────────────────────────

@@ -114,9 +114,9 @@ These options have a global default that every buffer without its own override r
 | `whitespace-space` | `none` \| `all` \| `trailing` | `none` | When to render space indicators. Also reveals invisible Unicode spaces (non-breaking and ideographic) with a distinct `⍽` marker |
 | `whitespace-tab` | `none` \| `all` \| `trailing` | `none` | When to render tab indicators |
 | `whitespace-newline` | `none` \| `all` | `none` | When to render newline indicators |
+| `language` | string | *(auto-detected)* | Language for syntax highlighting |
 
 Characters the terminal cannot be shown — control characters, and invisible ones such as a zero-width space or a bidirectional override — are always displayed as their codepoint (`<200b>`), highlighted, whatever the options above are set to. They are not whitespace you can choose to hide: left invisible they misalign the rest of the line, and an unseen bidirectional override can make code read differently from how it runs.
-| `language` | string | *(auto-detected)* | Language for syntax highlighting |
 
 ## Text wrap
 

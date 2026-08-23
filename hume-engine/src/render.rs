@@ -59,6 +59,12 @@ pub(crate) struct ComposeCtx<'a> {
 pub(crate) struct PaneCanvas<'a> {
     buf: &'a mut ratatui::buffer::Buffer,
     dim: Option<DimTarget>,
+    /// Resolved from `theme.ui.invisible` once per frame — layered onto a
+    /// [`write_text_run`] placeholder cell so it reads distinctly from
+    /// ordinary text (buffer text gets this same layering via `style_row`'s
+    /// Tier 2d½; chrome has no per-cell style tiers of its own, so the canvas
+    /// carries the one style every write needs for it).
+    invisible_style: ratatui::style::Style,
 }
 
 /// Flattened, per-cell-ready form of a `(Color, f32)` dim target.
@@ -80,13 +86,18 @@ impl<'a> PaneCanvas<'a> {
     pub(crate) fn new(
         buf: &'a mut ratatui::buffer::Buffer,
         dim: Option<(ratatui::style::Color, f32)>,
+        invisible_style: ratatui::style::Style,
     ) -> Self {
         // Non-RGB target is a no-op — mirrors the prior `dim_rect` semantics.
         let dim = dim.and_then(|(color, factor)| match color {
             ratatui::style::Color::Rgb(r, g, b) => Some(DimTarget { r, g, b, factor }),
             _ => None,
         });
-        Self { buf, dim }
+        Self {
+            buf,
+            dim,
+            invisible_style,
+        }
     }
 
     fn set_cell(&mut self, x: u16, y: u16, text: &str, style: ratatui::style::Style) {
@@ -110,6 +121,7 @@ impl<'a> PaneCanvas<'a> {
             y,
             text,
             blend_style(style, self.dim),
+            blend_style(self.invisible_style, self.dim),
             right_edge,
         )
     }
@@ -219,22 +231,29 @@ fn compose_gutter(
             // truncation does, so `pad` and the separator below land where
             // the text actually ends.
             //
-            // `tab_width` of 1: a gutter cell is a glyph in a fixed-width
-            // lane with no tab stops of its own. For every non-tab cluster
-            // the parameter is inert.
-            let (text, text_width) =
-                hume_rope::width::truncate_to_width(text, usable_per_cell as usize, 1);
+            // A gutter cell is a glyph in a fixed-width lane with no tab
+            // stops of its own — the same convention `hume-editor`'s chrome
+            // measurements use, hence the shared constant rather than a bare
+            // `1`. For every non-tab cluster the parameter is inert.
+            let (text, text_width) = hume_rope::width::truncate_to_width(
+                text,
+                usable_per_cell as usize,
+                hume_rope::width::CHROME_TAB_WIDTH,
+            );
             let text_width = text_width as u16;
             let pad = usable_per_cell.saturating_sub(text_width);
             for px in 0..pad {
                 canvas.set_cell(gutter_x + px, y, " ", style);
             }
-            canvas.write_text_run(gutter_x + pad, y, text, style, gutter_x + usable_per_cell);
+            // `after` is where the write actually stopped — used below
+            // instead of a second `gutter_x + pad + text_width` measurement,
+            // so the separator's position can't drift from the draw.
+            let after =
+                canvas.write_text_run(gutter_x + pad, y, text, style, gutter_x + usable_per_cell);
             // Only write a separator after the last cell — it's the column's
             // right padding, not a separator between sub-cells.
             if is_last {
-                let sep_x = gutter_x + pad + text_width;
-                canvas.set_cell(sep_x, y, " ", style);
+                canvas.set_cell(after, y, " ", style);
                 gutter_x += usable_per_cell + 1;
             } else {
                 gutter_x += usable_per_cell;
@@ -500,8 +519,6 @@ pub(crate) fn render_tilde_fillers(
 // Cell write helper
 // ---------------------------------------------------------------------------
 
-/// Write `text` to the ratatui buffer cell at `(x, y)`, clipping to buffer bounds.
-#[inline]
 /// Write `text` cell by cell from `(x, y)`, stopping before `right_edge`, and
 /// return the column just past the last cell written.
 ///
@@ -517,8 +534,17 @@ pub(crate) fn render_tilde_fillers(
 /// or draw wider than it reserved. Here the advance returned is exactly
 /// `str_width(text, 0, 1)`, because that is the same per-cluster width this
 /// walks by — measurement and drawing cannot drift, since they are one model.
-/// A control character renders as a space rather than vanishing, matching what
-/// `format::push_virtual_cells` does for decoration text.
+/// Chrome has no tab stops of its own, so a tab measures and draws as exactly
+/// one cell — a plain space — rather than advancing to the next multiple of
+/// some tab width. Any other cluster the terminal must not be shown as itself
+/// (a different control character, or one measuring zero columns) draws as
+/// its codepoint placeholder instead, the same substitution buffer text gets
+/// from `format::grapheme_display` — `grapheme_width` already sized the run
+/// for that placeholder, so it spans exactly the columns reserved for it.
+/// That placeholder is drawn in `invisible_style` (the caller's resolved
+/// `theme.ui.invisible`) rather than `style`, so it reads distinctly from
+/// ordinary text — buffer text gets the same layering via `style_row`'s
+/// Tier 2d½; chrome has no per-cell style tiers, so this is its equivalent.
 ///
 /// **`right_edge` is required, not implied.** `set_string` clips at the
 /// terminal buffer's edge and nothing narrower, so a caller drawing into a
@@ -527,46 +553,63 @@ pub(crate) fn render_tilde_fillers(
 /// each call site remembers to something the signature asks for. A cluster
 /// that would straddle `right_edge` is dropped whole, never split — the same
 /// rule [`hume_rope::width::truncate_to_width`] follows.
-///
-/// Chrome has no tab stops of its own, so a tab is one cell here (rendered as
-/// a space, like any other control character) rather than an advance to the
-/// next multiple of some tab width.
+#[inline]
 pub fn write_text_run(
     buf: &mut ratatui::buffer::Buffer,
     x: u16,
     y: u16,
     text: &str,
     style: ratatui::style::Style,
+    invisible_style: ratatui::style::Style,
     right_edge: u16,
 ) -> u16 {
     let mut cx = x;
     for cluster in unicode_segmentation::UnicodeSegmentation::graphemes(text, true) {
-        let width = hume_rope::width::grapheme_width(cluster, (cx - x) as usize, 1) as u16;
+        let width = hume_rope::width::grapheme_width(
+            cluster,
+            (cx - x) as usize,
+            hume_rope::width::CHROME_TAB_WIDTH,
+        ) as u16;
         if cx.saturating_add(width) > right_edge {
             break;
         }
-        // A cluster the terminal must not be shown as itself is drawn as its
-        // codepoint, the same substitution buffer text gets
-        // (`format::grapheme_display`). `grapheme_width` above already sized
-        // the run for that placeholder, so it spans exactly the columns
-        // reserved for it — one cell per character of `<200b>`.
-        let placeholder = hume_rope::width::needs_placeholder(cluster)
-            .then(|| hume_rope::width::placeholder(cluster));
-        match &placeholder {
-            Some(p) => {
-                for (i, ch) in p.as_str().chars().enumerate() {
-                    let mut glyph = [0u8; 4];
-                    set_cell(buf, cx + i as u16, y, ch.encode_utf8(&mut glyph), style);
-                }
+        if cluster == "\t" {
+            // Tested before `needs_placeholder` — a tab is a control
+            // character and would otherwise fall into that branch below,
+            // drawing a multi-cell `<9>` into the single cell `grapheme_width`
+            // reserved for it. Chrome's tab is exactly one cell (see this
+            // function's doc), so it draws as one plain space, matching
+            // `format::grapheme_display`'s own tab-before-placeholder order.
+            set_cell(buf, cx, y, " ", style);
+        } else if let Some(p) = hume_rope::width::needs_placeholder(cluster)
+            .then(|| hume_rope::width::placeholder(cluster))
+        {
+            // A cluster the terminal must not be shown as itself is drawn as
+            // its codepoint, the same substitution buffer text gets
+            // (`format::grapheme_display`). `grapheme_width` above already
+            // sized the run for that placeholder, so it spans exactly the
+            // columns reserved for it — one cell per character of `<200b>`.
+            // `patch`, not a bare replace, so a row's own background (a
+            // selected menu row, a cursorline) still shows through — only the
+            // fields `invisible_style` actually sets (fg, modifiers) override.
+            let placeholder_style = style.patch(invisible_style);
+            for (i, ch) in p.as_str().chars().enumerate() {
+                let mut glyph = [0u8; 4];
+                set_cell(
+                    buf,
+                    cx + i as u16,
+                    y,
+                    ch.encode_utf8(&mut glyph),
+                    placeholder_style,
+                );
             }
-            None => {
-                set_cell(buf, cx, y, cluster, style);
-                // Blank the cells a double-width glyph covers, so nothing
-                // already in the buffer shows through beside it — the same
-                // thing `compose_row` does for a wide buffer grapheme.
-                for extra in 1..width {
-                    set_cell(buf, cx + extra, y, " ", style);
-                }
+        } else {
+            set_cell(buf, cx, y, cluster, style);
+            // Blank the cells a double-width glyph covers, so nothing
+            // already in the buffer shows through beside it — the same
+            // thing `compose_row` does for a wide buffer grapheme.
+            for extra in 1..width {
+                set_cell(buf, cx + extra, y, " ", style);
             }
         }
         cx += width;

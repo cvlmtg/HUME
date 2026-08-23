@@ -52,7 +52,7 @@ Some Normal-mode keys wait for a second key before doing anything. Either they o
 
 | Prefix | Keys | Purpose |
 |--------|------|---------|
-| Goto | `g` + key | Jump within the current line, or to the start/end of the file — see [Moving Around](moving-around.md) |
+| Goto | `g` + key | Jump to a position in the buffer, or transform the selected text's case — see [Key Reference](key-reference.md) |
 | Match | `m` + key | Select text objects and surrounding delimiters — see [Selections](selections.md) |
 | Match WORD | `M M` | Select the WORD under the cursor — see [Selections](selections.md) |
 | View | `z` + key | Scroll the view to a position — see [Moving Around](moving-around.md) |

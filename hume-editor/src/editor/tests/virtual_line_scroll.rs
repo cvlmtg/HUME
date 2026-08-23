@@ -70,7 +70,7 @@ fn cell(buf: &ratatui::buffer::Buffer, x: u16, y: u16) -> String {
 }
 
 #[test]
-fn screen_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
+fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     // Cursor on line 0, `Before(0)` block above it, viewport resting at its
     // default (top_line=0, top_row_offset=0, cursor already comfortably
     // visible — no auto-scroll needed). This is exactly the scenario
@@ -252,7 +252,7 @@ impl DecorationSource for HintOnLine0 {
 }
 
 #[test]
-fn screen_pos_counts_an_inline_hints_extra_wrap_row() {
+fn content_pos_counts_an_inline_hints_extra_wrap_row() {
     // Line 0 is "abcdef" — 6 columns, which fits the 10-column content width
     // on its own. The 6-column hint makes 12, wrapping it onto a second row:
     //

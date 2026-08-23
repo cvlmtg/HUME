@@ -91,12 +91,13 @@ impl Selection {
 
     /// A directional selection with a preserved sticky display column.
     ///
-    /// Used by the two vertical motion paths (`editor::visual_move`'s row-domain
-    /// `j`/`k`/scroll/wheel, and `hume-ops`'s buffer-line `9j`/`9k`) to carry
-    /// the column across consecutive vertical moves, and by word-snap
-    /// (`text_object::apply_nearest_word_result`) to pass an existing latch
-    /// through unchanged. All other code uses [`Self::new`] or
-    /// [`Self::collapsed`], which reset `sticky_display_col` to `None`.
+    /// Used by `editor::visual_move`'s vertical motion (row-domain `j`/`k`/
+    /// scroll/wheel, and buffer-line `9j`/`9k` — all three units share one
+    /// path there) to carry the column across consecutive vertical moves,
+    /// and by word-snap (`text_object::apply_nearest_word_result`) to pass
+    /// an existing latch through unchanged. All other code uses
+    /// [`Self::new`] or [`Self::collapsed`], which reset
+    /// `sticky_display_col` to `None`.
     pub fn with_sticky_display_col(
         anchor: usize,
         head: usize,

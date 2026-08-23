@@ -13,6 +13,13 @@
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+/// The `tab_width` every caller measuring UI chrome text (a popup, a picker,
+/// a menu, the statusline, the minibuffer) passes — chrome has no tab stops
+/// of its own, so a tab there is pinned to exactly one cell, same as any
+/// other character. Named so that convention is stated once rather than
+/// repeated as a bare `1` at every chrome measurement/draw call site.
+pub const CHROME_TAB_WIDTH: u8 = 1;
+
 /// Columns a `\t` at display column `display_col` occupies — the distance to
 /// the next tab stop of width `tw`. Always in `[1, tw]`: a tab already
 /// sitting on a stop advances a full `tw` rather than zero. `tw < 1` is

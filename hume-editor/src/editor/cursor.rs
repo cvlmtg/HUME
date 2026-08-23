@@ -94,36 +94,36 @@ pub(crate) fn gutter_width<'a>(
 // Screen-to-buffer reverse mapping
 // ---------------------------------------------------------------------------
 
-/// Convert a pane-relative `(screen_x, screen_y)` click position to a buffer
-/// char offset.
+/// Convert a pane-content-relative `(content_x, content_y)` click position to
+/// a buffer char offset.
 ///
 /// `gutter_w` is the width of the gutter in terminal columns (from
 /// [`gutter_width`]). Clicks in the gutter return `None`; every other click
 /// resolves, clamped to the document's last row if it lands past the end.
 ///
-/// The coordinate space is pane-relative: `(0, 0)` is the top-left cell of
-/// the pane. `MouseEvent.column`/`.row` are terminal-absolute — callers
-/// translate through `Editor::pane_at_screen_pos` (`editor/src/editor/mouse.rs`)
-/// first, which also decides which pane a click landed in when more than one
-/// is on screen (a `:split`/`:vsplit`).
+/// The coordinate space is pane-relative, not terminal-absolute: `(0, 0)` is
+/// the top-left cell of the pane. `MouseEvent.column`/`.row` are
+/// terminal-absolute — callers translate through `Editor::pane_at_screen_pos`
+/// (`editor/src/editor/mouse.rs`) first, which also decides which pane a
+/// click landed in when more than one is on screen (a `:split`/`:vsplit`).
 pub(crate) fn screen_to_char_offset(
-    screen_x: u16,
-    screen_y: u16,
+    content_x: u16,
+    content_y: u16,
     gutter_w: u16,
     viewport: &ViewportState,
     rm: &mut RowMap<'_>,
 ) -> Option<usize> {
     // Clicks inside the gutter (line numbers etc.) do not map to text.
-    if screen_x < gutter_w {
+    if content_x < gutter_w {
         return None;
     }
-    // Screen column past the gutter, plus horizontal scroll (0 while wrapping
-    // — see `scroll::ensure_cursor_visible_horizontal`), reconstructed back
-    // into a document display column.
-    let display_col = ((screen_x - gutter_w) as u32).saturating_add(viewport.horizontal_offset);
+    // Pane-content column past the gutter, plus horizontal scroll (0 while
+    // wrapping — see `scroll::ensure_cursor_visible_horizontal`),
+    // reconstructed back into a document display column.
+    let display_col = ((content_x - gutter_w) as u32).saturating_add(viewport.horizontal_offset);
 
     let top = rm.clamp(top_pos(viewport));
-    let clicked = rm.advance(top, screen_y as isize);
+    let clicked = rm.advance(top, content_y as isize);
     // A click asks which cell it hit, so a column past the text resolves to
     // the row's last cell rather than its last *content* cell — landing on the
     // line's `\n`, a real cursor position in HUME's inclusive model.

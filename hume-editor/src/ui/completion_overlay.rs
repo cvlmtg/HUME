@@ -89,6 +89,7 @@ impl OverlayProvider for MinibufCompletionOverlay {
                 scroll: scroll_style,
             },
             None,
+            theme.ui.invisible.into(),
         );
     }
 }
