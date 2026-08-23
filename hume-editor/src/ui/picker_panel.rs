@@ -119,6 +119,7 @@ pub(crate) fn panel_geometry(pane_area: Rect) -> Option<PanelGeometry> {
 /// cursor). `Theme::resolve_raw`'s prefix-trim already degrades each of
 /// these to `default` when a theme omits it, so no custom fallback layer is
 /// needed here.
+#[derive(Clone, Copy)]
 pub(crate) struct PickerStyles {
     pub(crate) background: Style,
     pub(crate) text: Style,
@@ -181,20 +182,17 @@ fn truncate_tail_marked(s: &str, budget: usize) -> String {
 pub(crate) fn draw_picker_panel(
     canvas: &mut Canvas,
     state: &PickerViewState,
-    background: Style,
-    text: Style,
-    selected: Style,
-    cursor: Style,
+    styles: PickerStyles,
 ) {
     let outer = Rect::new(state.x, state.y, state.width, state.height);
     if outer.width < 3 || outer.height < 4 {
         return;
     }
 
-    canvas.fill_rect_bg(outer, background);
+    canvas.fill_rect_bg(outer, styles.background);
 
     if state.border {
-        super::menu_box::draw_box_border(canvas, outer, text);
+        super::menu_box::draw_box_border(canvas, outer, styles.text);
     }
 
     let inner_x = outer.x + 1;
@@ -219,7 +217,7 @@ pub(crate) fn draw_picker_panel(
     let prompt_shown = truncate_head(&state.prompt, inner_width);
     let prompt_width = text_width(&prompt_shown);
     if prompt_width > 0 {
-        canvas.write_text_run(inner_x, input_y, &prompt_shown, text, inner_right);
+        canvas.write_text_run(inner_x, input_y, &prompt_shown, styles.text, inner_right);
     }
 
     let after_prompt_width = inner_width.saturating_sub(prompt_width);
@@ -234,14 +232,14 @@ pub(crate) fn draw_picker_panel(
     let query_width = text_width(&query_tail);
 
     let query_x = inner_x + prompt_width as u16;
-    canvas.write_text_run(query_x, input_y, &query_tail, text, inner_right);
+    canvas.write_text_run(query_x, input_y, &query_tail, styles.text, inner_right);
     let cursor_x = query_x + query_width as u16;
     if cursor_x < inner_x + inner_width as u16 {
-        canvas.write_text_run(cursor_x, input_y, " ", cursor, inner_right);
+        canvas.write_text_run(cursor_x, input_y, " ", styles.cursor, inner_right);
     }
     if show_counts {
         let counts_x = outer.x + outer.width - 1 - counts_width as u16;
-        canvas.write_text_run(counts_x, input_y, &counts, text, inner_right);
+        canvas.write_text_run(counts_x, input_y, &counts, styles.text, inner_right);
     }
 
     let list_capacity = (outer.height - 3) as usize;
@@ -250,10 +248,10 @@ pub(crate) fn draw_picker_panel(
         let shown = truncate_tail_marked(row_text, inner_width);
         if state.selected_row == Some(i) {
             let row_rect = Rect::new(inner_x, y, outer.width - 2, 1);
-            canvas.fill_rect_bg(row_rect, selected);
-            canvas.write_text_run(inner_x, y, &shown, selected, inner_right);
+            canvas.fill_rect_bg(row_rect, styles.selected);
+            canvas.write_text_run(inner_x, y, &shown, styles.selected, inner_right);
         } else {
-            canvas.write_text_run(inner_x, y, &shown, text, inner_right);
+            canvas.write_text_run(inner_x, y, &shown, styles.text, inner_right);
         }
     }
 }
@@ -291,14 +289,7 @@ impl OverlayProvider for PickerOverlay {
 
         let styles = picker_styles(theme);
         let mut canvas = Canvas::new(buf, theme, None);
-        draw_picker_panel(
-            &mut canvas,
-            state,
-            styles.background,
-            styles.text,
-            styles.selected,
-            styles.cursor,
-        );
+        draw_picker_panel(&mut canvas, state, styles);
     }
 }
 
