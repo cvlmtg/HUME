@@ -233,3 +233,77 @@ fn wire_range_to_char_range_round_trips_through_char_range_to_wire_range() {
         assert_eq!(wire_range_to_char_range(&text, start, end, enc), (1, 8));
     }
 }
+
+// ── wire_offset_to_char ──────────────────────────────────────────────────
+
+/// A `SignatureInformation.label`-shaped string: no newlines, and all three
+/// code-unit counts different past the first char.
+/// ```text
+/// char:   a   é    😀      b
+/// byte:   0   1    3       7      (end 8)
+/// char:   0   1    2       3      (end 4)
+/// utf16:  0   1    2       4      (end 5)
+/// ```
+const LABEL: &str = "aé\u{1F600}b";
+
+#[test]
+fn wire_offset_to_char_counts_bytes_in_utf8_and_code_units_in_utf16() {
+    let text = RopeSlice::from(LABEL);
+    // 😀 starts at byte 3 and at UTF-16 unit 2 — one char index, two
+    // different offsets naming it.
+    assert_eq!(wire_offset_to_char(text, 3, PositionEncoding::Utf8), 2);
+    assert_eq!(wire_offset_to_char(text, 2, PositionEncoding::Utf16), 2);
+    // 'b' follows it by 4 bytes, but by only 2 UTF-16 units.
+    assert_eq!(wire_offset_to_char(text, 7, PositionEncoding::Utf8), 3);
+    assert_eq!(wire_offset_to_char(text, 4, PositionEncoding::Utf16), 3);
+}
+
+#[test]
+fn wire_offset_to_char_rounds_a_split_char_down_to_its_start() {
+    let text = RopeSlice::from(LABEL);
+    // Byte 2 is é's continuation byte; UTF-16 unit 3 is 😀's low surrogate.
+    // Both name a position inside a char, and both round back to its start.
+    assert_eq!(wire_offset_to_char(text, 2, PositionEncoding::Utf8), 1);
+    assert_eq!(wire_offset_to_char(text, 3, PositionEncoding::Utf16), 2);
+}
+
+#[test]
+fn wire_offset_to_char_clamps_past_the_end_of_the_text() {
+    let text = RopeSlice::from(LABEL);
+    for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
+        assert_eq!(wire_offset_to_char(text, 9_999, enc), 4);
+    }
+}
+
+// ── wire_offsets_to_byte_range ───────────────────────────────────────────
+
+#[test]
+fn wire_offsets_to_byte_range_slices_the_same_text_from_either_encoding() {
+    // One 😀, named by two different offset pairs — the divergence any
+    // hardcoded-UTF-16 scan gets wrong the moment a server negotiates utf-8.
+    assert_eq!(
+        &LABEL[wire_offsets_to_byte_range(LABEL, 3, 7, PositionEncoding::Utf8)],
+        "\u{1F600}"
+    );
+    assert_eq!(
+        &LABEL[wire_offsets_to_byte_range(LABEL, 2, 4, PositionEncoding::Utf16)],
+        "\u{1F600}"
+    );
+}
+
+#[test]
+fn wire_offsets_to_byte_range_clamps_a_past_end_pair_to_the_whole_tail() {
+    assert_eq!(
+        &LABEL[wire_offsets_to_byte_range(LABEL, 1, 9_999, PositionEncoding::Utf16)],
+        "é\u{1F600}b"
+    );
+}
+
+#[test]
+fn wire_offsets_to_byte_range_orders_a_reversed_pair_into_an_empty_range() {
+    // Indexing a `&str` with a reversed range panics, so unlike
+    // `wire_range_to_char_range` this one must not pass one through.
+    let range = wire_offsets_to_byte_range(LABEL, 4, 2, PositionEncoding::Utf16);
+    assert!(range.is_empty());
+    assert_eq!(&LABEL[range], "");
+}

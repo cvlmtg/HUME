@@ -155,6 +155,7 @@
 (#%register-global "loaded-plugins")
 (#%register-global "log!")
 (#%register-global "lsp-capabilities")
+(#%register-global "lsp-label-offsets->text")
 (#%register-global "lsp-locations->display-parts")
 (#%register-global "lsp-notify")
 (#%register-global "lsp-position->offset")

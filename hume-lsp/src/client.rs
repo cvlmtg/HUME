@@ -12,8 +12,9 @@ use lsp_types::{
     CompletionItemCapability, DidChangeConfigurationClientCapabilities,
     DidChangeConfigurationParams, FailureHandlingKind, GeneralClientCapabilities, GotoCapability,
     HoverClientCapabilities, InitializeParams, InitializeResult, InitializedParams, MarkupKind,
-    PositionEncodingKind, PublishDiagnosticsClientCapabilities, RenameClientCapabilities,
-    ResourceOperationKind, ServerCapabilities, TextDocumentClientCapabilities,
+    ParameterInformationSettings, PositionEncodingKind, PublishDiagnosticsClientCapabilities,
+    RenameClientCapabilities, ResourceOperationKind, ServerCapabilities,
+    SignatureHelpClientCapabilities, SignatureInformationSettings, TextDocumentClientCapabilities,
     TextDocumentSyncClientCapabilities, WindowClientCapabilities, WorkspaceClientCapabilities,
     WorkspaceEditClientCapabilities, WorkspaceFolder,
 };
@@ -739,7 +740,25 @@ fn build_client_capabilities() -> ClientCapabilities {
                 }),
                 ..Default::default()
             }),
-            signature_help: Some(Default::default()),
+            // Without `label_offset_support` a server must describe each
+            // parameter by repeating its text, which only *names* the
+            // parameter — locating it back inside the signature label means
+            // substring-searching for it, and a label like
+            // `fn f(a: T, b: T)` has no unique match to find. The offset
+            // form says where it is outright, which is what marking the
+            // active parameter in place will need. The offsets count code
+            // units in the negotiated encoding, so they convert host-side
+            // (`lsp-label-offsets->text`) — Scheme has no way to know what
+            // was negotiated.
+            signature_help: Some(SignatureHelpClientCapabilities {
+                signature_information: Some(SignatureInformationSettings {
+                    parameter_information: Some(ParameterInformationSettings {
+                        label_offset_support: Some(true),
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
             rename: Some(RenameClientCapabilities::default()),
             references: Some(Default::default()),
             definition: Some(GotoCapability::default()),

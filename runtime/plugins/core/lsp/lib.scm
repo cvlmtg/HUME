@@ -2,7 +2,6 @@
 
 (provide lsp/supports? lsp/supports-for-buffer? lsp/guard-capability lsp/report-error
          lsp/visible-lines lsp/show-locations! lsp/normalize-location lsp/text-edit->tuple
-         lsp/utf16-offset->char-index
          lsp/setup-trigger-chars!)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
@@ -80,20 +79,6 @@
     (list (cons (hash-ref start "line") (hash-ref start "character"))
           (cons (hash-ref end "line") (hash-ref end "character"))
           (hash-ref te "newText"))))
-
-;; ── UTF-16 offset conversion ────────────────────────────────────────────────
-;; LSP wire positions are UTF-16 code-unit offsets; Steel strings index by
-;; Unicode scalar value, which only diverges for astral-plane chars (a
-;; surrogate pair, 2 units, but 1 Steel char). Only signature-help's
-;; offset-form parameter labels expose a raw offset pair to Steel code.
-
-;;; `offset`: a UTF-16 code-unit offset into `s` -> the char index
-;;; `string-ref`/`substring` expect.
-(define (lsp/utf16-offset->char-index s offset)
-  (let loop ((i 0) (n (string-length s)) (units 0))
-    (if (or (>= i n) (>= units offset))
-        i
-        (loop (+ i 1) n (+ units (if (>= (char->integer (string-ref s i)) #x10000) 2 1))))))
 
 ;; ── Viewport ────────────────────────────────────────────────────────────────
 ;; `(viewport-range bid)` is a synchronous Rust builtin; see hover.scm's

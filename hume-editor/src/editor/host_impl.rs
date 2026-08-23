@@ -856,6 +856,23 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         )
     }
 
+    fn lsp_label_offsets_to_text(
+        &self,
+        id: BufferId,
+        label: &str,
+        start: usize,
+        end: usize,
+    ) -> Option<String> {
+        crate::editor::lsp::introspect::label_slice_for_buffer(
+            self.state,
+            self.lsp.as_deref()?,
+            id,
+            label,
+            start,
+            end,
+        )
+    }
+
     fn lsp_locations_display_parts(
         &self,
         locs: Vec<serde_json::Value>,

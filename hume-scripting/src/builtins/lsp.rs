@@ -13,7 +13,7 @@ use crate::{PendingLspServerReg, SteelCtx};
 use super::SteelResult;
 use super::args::{
     BidArg, bool_arg, cons_pair, json_params, list_items, list_to_env_pairs, list_to_strings,
-    optional_json_arg, optional_string_arg, string_arg,
+    optional_json_arg, optional_string_arg, string_arg, usize_arg,
 };
 use super::errors::generic_err;
 
@@ -390,6 +390,45 @@ pub(crate) fn lsp_range_to_offsets(
         return Ok(SteelVal::BoolV(false));
     };
     cons_pair(SteelVal::IntV(start as isize), SteelVal::IntV(end as isize))
+}
+
+/// `(lsp-label-offsets->text bid label offsets)` → the slice of `label` that
+/// a `ParameterInformation.label` `[start, end)` wire offset pair names, or
+/// `#f` if `bid` has no attached server (no negotiated encoding to count the
+/// offsets in).
+///
+/// `offsets` is the raw two-element list straight off the wire, handed over
+/// undecoded the way `goto-location!` takes a raw `Location`. The offsets
+/// count code units in the negotiated encoding, so Scheme can neither
+/// convert them nor index by them — that is the whole reason this builtin
+/// exists rather than a Scheme helper.
+pub(crate) fn lsp_label_offsets_to_text(
+    ctx: &mut SteelCtx,
+    bid: BidArg,
+    label: SteelVal,
+    offsets: SteelVal,
+) -> SteelResult {
+    let id = bid.0;
+    let label = string_arg(label, "lsp-label-offsets->text label")?;
+    let items = list_items(offsets, "lsp-label-offsets->text offsets")?;
+    let [start, end] = <[SteelVal; 2]>::try_from(items).map_err(|got| {
+        generic_err(format!(
+            "lsp-label-offsets->text: offsets must be a two-element (start end) list, got {} element(s)",
+            got.len()
+        ))
+    })?;
+    let start = usize_arg(start, "lsp-label-offsets->text offsets")?;
+    let end = usize_arg(end, "lsp-label-offsets->text offsets")?;
+    Ok(
+        match ctx
+            .host
+            .lsp()
+            .and_then(|lsp| lsp.lsp_label_offsets_to_text(id, &label, start, end))
+        {
+            Some(text) => SteelVal::StringV(text.into()),
+            None => SteelVal::BoolV(false),
+        },
+    )
 }
 
 /// `(lsp-locations->display-parts locs)` → one `(path . grapheme-col)` pair

@@ -620,6 +620,24 @@ pub trait LspHost {
     /// `wire_point_to_char_for_buffer`'s doc for why the two must differ.
     fn lsp_wire_point_to_char(&self, id: BufferId, line: usize, character: usize) -> Option<usize>;
 
+    /// Backs `(lsp-label-offsets->text bid label offsets)` — the
+    /// `[start, end)` slice of `label` named by a
+    /// `ParameterInformation.label` wire offset pair (unpacked from that
+    /// builtin's `offsets` list), in the encoding `id`'s attached server
+    /// negotiated. `None` if `id` is unknown or has no attached server.
+    ///
+    /// `label` is server-authored display text (a
+    /// `SignatureInformation.label`), never document text, so no buffer
+    /// holds it and the other converters here don't fit. `id` names the
+    /// server, not the text being indexed.
+    fn lsp_label_offsets_to_text(
+        &self,
+        id: BufferId,
+        label: &str,
+        start: usize,
+        end: usize,
+    ) -> Option<String>;
+
     /// `(lsp-locations->display-parts locs)` — the filesystem path and
     /// grapheme column of each already-normalized `{uri, range}` location in
     /// `locs`, the column `None` for an entry whose target file can't be

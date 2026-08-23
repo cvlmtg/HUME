@@ -37,14 +37,31 @@ fn setup(
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard, RequestLog) {
+    setup_with_capabilities(
+        file,
+        tmp,
+        serde_json::json!({"signatureHelpProvider": {"triggerCharacters": ["(", ","]}}),
+        configure,
+    )
+}
+
+/// [`setup`] with the server's advertised capabilities spelled out, for the
+/// one test that needs the handshake to negotiate a non-default position
+/// encoding. `configure` runs too late to supply them — `respond_to` queues
+/// per method, so a second `initialize` reply would sit behind the first
+/// forever.
+fn setup_with_capabilities(
+    file: &Path,
+    tmp: &Path,
+    capabilities: serde_json::Value,
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
+) -> (Editor, RealRuntimeGuard, RequestLog) {
     let guard = RealRuntimeGuard::new();
 
     let (mut backend, _notifications, requests) = RecordingLspBackend::new();
     backend.respond_to(
         "initialize",
-        serde_json::json!({"capabilities": {
-            "signatureHelpProvider": {"triggerCharacters": ["(", ","]}
-        }}),
+        serde_json::json!({ "capabilities": capabilities }),
     );
     let sid = backend
         .start("rust-analyzer", &[], Path::new("."), &[])
@@ -426,5 +443,48 @@ fn offset_form_label_with_an_astral_char_marks_the_correct_slice() {
     assert_eq!(
         popup_lines(&mut ed),
         vec!["😀 a".to_string(), "⟨a⟩".to_string()]
+    );
+}
+
+#[test]
+fn offset_form_label_is_read_in_the_negotiated_encoding_not_always_utf16() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _requests) = setup_with_capabilities(
+        &file,
+        tmp.path(),
+        serde_json::json!({
+            "signatureHelpProvider": {"triggerCharacters": ["(", ","]},
+            "positionEncoding": "utf-8",
+        }),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/signatureHelp",
+                serde_json::json!({
+                    "signatures": [{
+                        // "é" is 2 UTF-8 bytes but 1 UTF-16 unit, so the two
+                        // encodings disagree about every offset past it.
+                        // "a: i32" spans bytes [6, 12) and UTF-16 units
+                        // [5, 11) — this server negotiated utf-8, so it
+                        // sends the byte pair. Reading it as UTF-16 slices
+                        // ": i32)" instead.
+                        "label": "fn é(a: i32)",
+                        "parameters": [{"label": [6, 12]}],
+                    }],
+                    "activeSignature": 0,
+                    "activeParameter": 0,
+                }),
+            );
+        },
+    );
+    position_after_foo(&mut ed);
+    ed.feed_key(key('i'));
+    ed.settle();
+    type_char_and_settle(&mut ed, '(');
+
+    assert_eq!(
+        popup_lines(&mut ed),
+        vec!["fn é(a: i32)".to_string(), "⟨a: i32⟩".to_string()]
     );
 }

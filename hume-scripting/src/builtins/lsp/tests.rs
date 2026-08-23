@@ -601,3 +601,70 @@ fn lsp_range_to_offsets_errors_on_malformed_start() {
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("lsp-range->offsets"), "got: {msg}");
 }
+
+/// The raw `[start, end]` shape a `ParameterInformation.label` arrives in.
+fn offset_pair(items: &[isize]) -> SteelVal {
+    items
+        .iter()
+        .map(|n| SteelVal::IntV(*n))
+        .collect::<Vec<_>>()
+        .into_steelval()
+        .unwrap()
+}
+
+#[test]
+fn lsp_label_offsets_to_text_without_lsp_host_returns_false() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = lsp_label_offsets_to_text(
+        &mut ctx,
+        BidArg(BufferId::default()),
+        SteelVal::StringV("fn foo(a: i32)".into()),
+        offset_pair(&[7, 13]),
+    );
+    assert_eq!(result.unwrap(), SteelVal::BoolV(false));
+}
+
+#[test]
+fn lsp_label_offsets_to_text_errors_on_a_wrong_length_offset_list() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    for offsets in [offset_pair(&[7]), offset_pair(&[7, 13, 20])] {
+        let result = lsp_label_offsets_to_text(
+            &mut ctx,
+            BidArg(BufferId::default()),
+            SteelVal::StringV("fn foo(a: i32)".into()),
+            offsets,
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("lsp-label-offsets->text"), "got: {msg}");
+    }
+}
+
+#[test]
+fn lsp_label_offsets_to_text_errors_on_a_negative_offset() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = lsp_label_offsets_to_text(
+        &mut ctx,
+        BidArg(BufferId::default()),
+        SteelVal::StringV("fn foo(a: i32)".into()),
+        offset_pair(&[-1, 13]),
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("lsp-label-offsets->text"), "got: {msg}");
+}
+
+#[test]
+fn lsp_label_offsets_to_text_errors_on_a_non_string_label() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = lsp_label_offsets_to_text(
+        &mut ctx,
+        BidArg(BufferId::default()),
+        SteelVal::IntV(5),
+        offset_pair(&[7, 13]),
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("lsp-label-offsets->text"), "got: {msg}");
+}

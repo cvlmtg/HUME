@@ -286,6 +286,33 @@ pub(crate) fn wire_point_to_char_for_buffer(
     (offset < len_chars).then_some(offset)
 }
 
+/// `label` sliced by a `ParameterInformation.label` `[start, end)` wire
+/// offset pair, for `lsp-label-offsets->text`.
+///
+/// The one place a wire offset indexes a *server-authored string* rather
+/// than a document: the offsets address `SignatureInformation.label`, which
+/// never reaches a buffer, so none of the `bid`-anchored converters above
+/// fit. `id` is here only to name the server whose negotiated encoding the
+/// offsets are counted in — the same negotiation their `Position` siblings
+/// ride, since a server converts every outgoing offset through one layer.
+///
+/// `None` when `id` has no attached server, refusing rather than guessing
+/// UTF-16 for the same reason [`wire_to_char_for_buffer`] does: the wrong
+/// answer is invisible until the label holds a non-ASCII character.
+pub(crate) fn label_slice_for_buffer(
+    state: &EditorState,
+    lsp: &LspState,
+    id: BufferId,
+    label: &str,
+    start: usize,
+    end: usize,
+) -> Option<String> {
+    let encoding = negotiated_encoding(state, lsp, id)?;
+    let range =
+        hume_rope::position_encoding::wire_offsets_to_byte_range(label, start, end, encoding);
+    Some(label[range].to_string())
+}
+
 /// `(diagnostics-for-buffer bid #:severity floor #:range (start . end))` —
 /// decoded, filtered, capped-at-1000 hashmaps. `start`/`end`
 /// are char offsets; `line`/`char-col` are the char-indexed start position,

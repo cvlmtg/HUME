@@ -56,6 +56,20 @@ fn initialize_params_advertise_the_v1_capability_set() {
     assert!(td.publish_diagnostics.is_some());
     assert!(td.rename.is_some());
     assert!(td.inlay_hint.is_some());
+    // Without this, a conforming server sends each parameter as a bare
+    // substring of the signature label instead of a `[start, end)` offset
+    // pair into it — and `lsp-label-offsets->text` (the only reader of those
+    // offsets) would then never see one.
+    assert_eq!(
+        td.signature_help
+            .expect("signature_help capability must be declared")
+            .signature_information
+            .expect("signature_information must be declared")
+            .parameter_information
+            .expect("parameter_information must be declared")
+            .label_offset_support,
+        Some(true)
+    );
     let ws = caps.workspace.unwrap();
     assert_eq!(ws.apply_edit, Some(true));
     assert_eq!(ws.configuration, Some(true));
