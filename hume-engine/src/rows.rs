@@ -578,8 +578,21 @@ impl<'a> RowMap<'a> {
         // Only up to the target column: no cell further right can be the one
         // this column resolves to, under either policy.
         self.ensure_formatted(pos.line, FormatBound::ToDisplayCol(target_display_col));
+        self.resolve_in_row(pos.line, sub, target_display_col, target)
+    }
 
-        let line_start = self.rope.line_to_char(pos.line);
+    /// Shared core of [`RowMap::char_at`] and [`RowMap::char_at_line_display_col`]:
+    /// which char offset on content row `sub` of `line` resolves to
+    /// `target_display_col`, under `target`'s policy. Requires `line` to be
+    /// formatted into the scratch at least up to `target_display_col`.
+    fn resolve_in_row(
+        &self,
+        line: usize,
+        sub: usize,
+        target_display_col: u32,
+        target: DisplayColTarget,
+    ) -> usize {
+        let line_start = self.rope.line_to_char(line);
         let Some(row) = self.scratch.display_rows.get(sub) else {
             return line_start;
         };
@@ -643,6 +656,90 @@ impl<'a> RowMap<'a> {
                     .unwrap_or(line_start)
             }
         }
+    }
+
+    /// `(indent, span)` for content row `sub` of the line currently in the
+    /// scratch. `indent` is the display column the row's first cell starts
+    /// at — 0 on a line's own first row, `indent_display_cols` on a wrap
+    /// continuation row (see [`crate::types::Grapheme::display_col`]).
+    /// `span` is the row's own content width with that indent excluded, so
+    /// summing `span` across every row before `sub`, plus the indent-excluded
+    /// offset within `sub`, converts a row-relative column into one relative
+    /// to the whole buffer line.
+    fn row_shape(&self, sub: usize) -> (u32, u32) {
+        let Some(row) = self.scratch.display_rows.get(sub) else {
+            return (0, 0);
+        };
+        let graphemes = &self.scratch.graphemes[row.graphemes.clone()];
+        let Some(first) = graphemes.first() else {
+            return (0, 0);
+        };
+        let last = graphemes.last().expect("non-empty checked above");
+        let indent = first.display_col;
+        let span = last.display_col.saturating_add(last.width as u32) - indent;
+        (indent, span)
+    }
+
+    /// The display column `char_offset` sits at, measured from its own
+    /// buffer line's start rather than from its display row's — the column a
+    /// numeric-prefixed vertical move (`9j`/`9k`) latches, since it targets
+    /// the same buffer-line column on its landing line regardless of which
+    /// row of that (possibly wrapped) line it lands on.
+    ///
+    /// Continuation-row indent is excluded (see [`RowMap::row_shape`]) and
+    /// inline virtual cells (inlay hints, ghost text) are included, same as
+    /// [`RowMap::locate`] — the two differ only in what they're measured
+    /// from, and coincide under `WrapMode::None`, where a line is exactly one
+    /// row with no indent.
+    pub fn line_display_col(&mut self, char_offset: usize) -> u32 {
+        debug_assert!(
+            char_offset <= self.rope.len_chars(),
+            "line_display_col: char_offset {char_offset} is out of range for \
+             a buffer of {} chars — see the debug_assert in RowMap::locate",
+            self.rope.len_chars()
+        );
+        let (line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
+        self.ensure_formatted(line, FormatBound::ToByte(target_byte));
+        let (sub, row_display_col) = self.locate_in_line(line, target_byte, char_offset);
+        let (row_indent, _) = self.row_shape(sub);
+        let preceding: u32 = (0..sub).map(|j| self.row_shape(j).1).sum();
+        preceding + row_display_col.saturating_sub(row_indent)
+    }
+
+    /// Inverse of [`RowMap::line_display_col`]: the char offset
+    /// `target_line_display_col` resolves to on `line`, under `target`'s
+    /// policy.
+    ///
+    /// A line-relative column past the line's total width clamps to its last
+    /// row, where `target`'s own clamp rule (see [`DisplayColTarget`])
+    /// applies — the same "stick to the last real character, land on `\n`
+    /// only when the line is empty" rule bare `j`/`k` already gets from
+    /// [`RowMap::char_at`].
+    pub fn char_at_line_display_col(
+        &mut self,
+        line: usize,
+        target_line_display_col: u32,
+        target: DisplayColTarget,
+    ) -> usize {
+        let content_rows = self.block(line).content;
+        // Only up to the target column: while wrapping, `ensure_formatted`
+        // promotes this to `Full` regardless (a row-relative bound can't
+        // usefully clip a line-relative target), and without wrapping
+        // `content_rows == 1` so the two columns coincide.
+        self.ensure_formatted(line, FormatBound::ToDisplayCol(target_line_display_col));
+        let mut remaining = target_line_display_col;
+        let mut sub = 0;
+        let mut row_indent = 0;
+        for j in 0..content_rows {
+            let (indent, span) = self.row_shape(j);
+            sub = j;
+            row_indent = indent;
+            if j + 1 == content_rows || remaining < span {
+                break;
+            }
+            remaining -= span;
+        }
+        self.resolve_in_row(line, sub, remaining + row_indent, target)
     }
 
     /// The char range one content row covers, as `(start, end_exclusive)`.
