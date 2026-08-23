@@ -2,11 +2,10 @@ use std::borrow::Cow;
 use std::fmt;
 use std::str::FromStr;
 
-use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 
-use hume_engine::render::{fill_rect_bg, write_text_run};
+use hume_engine::render::Canvas;
 
 use crate::editor::Editor;
 use crate::ui::theme::EditorColors;
@@ -265,11 +264,10 @@ fn section_width(spans: &[(Cow<'static, str>, Style)]) -> u16 {
 
 /// Draw a section's spans left-to-right starting at `x`.
 fn draw_section(
-    screen_buf: &mut ScreenBuf,
+    canvas: &mut Canvas,
     spans: &[(Cow<'static, str>, Style)],
     mut x: u16,
     y: u16,
-    invisible_style: Style,
     right_edge: u16,
 ) {
     for (text, style) in spans {
@@ -277,15 +275,7 @@ fn draw_section(
         // span: `write_text_run` returns the column it stopped at, and it
         // measures by the same rule `section_width` laid the spans out with,
         // so the two cannot drift apart.
-        x = write_text_run(
-            screen_buf,
-            x,
-            y,
-            text.as_ref(),
-            *style,
-            invisible_style,
-            right_edge,
-        );
+        x = canvas.write_text_run(x, y, text.as_ref(), *style, right_edge);
     }
 }
 
@@ -315,22 +305,19 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
             .then(|| editor.state.mode());
         let colors = EditorColors::from_theme(theme, mode);
         let y = area.y;
+        let mut canvas = Canvas::new(buf, theme, None);
 
         // An open confirm overlay (disk-change reload, …) owns the whole
         // row unconditionally — it's the intercept chain's top entry (see
         // `handle_key`), so it must also be the top-priority render, ahead
         // of even the minibuffer.
-        let invisible_style: Style = theme.ui.invisible.into();
-
         if let Some(confirm) = editor.state.config.confirm.as_ref() {
-            fill_row_colors(buf, &colors, area, y);
-            write_text_run(
-                buf,
+            fill_row_colors(&mut canvas, &colors, area, y);
+            canvas.write_text_run(
                 area.x + 1,
                 y,
                 &confirm.render_line(),
                 colors.statusline,
-                invisible_style,
                 area.x + area.width,
             );
             return;
@@ -352,35 +339,26 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
             };
 
             if let Some(msg) = display_msg {
-                fill_row_colors(buf, &colors, area, y);
-                write_text_run(
-                    buf,
-                    area.x + 1,
-                    y,
-                    msg,
-                    colors.statusline,
-                    invisible_style,
-                    area.x + area.width,
-                );
+                fill_row_colors(&mut canvas, &colors, area, y);
+                canvas.write_text_run(area.x + 1, y, msg, colors.statusline, area.x + area.width);
                 return;
             }
         }
 
-        render_statusline(buf, editor, &colors, area, y, invisible_style);
+        render_statusline(&mut canvas, editor, &colors, area, y);
     }
 }
 
-fn fill_row_colors(buf: &mut ScreenBuf, colors: &EditorColors, area: Rect, y: u16) {
-    fill_rect_bg(buf, Rect::new(area.x, y, area.width, 1), colors.statusline);
+fn fill_row_colors(canvas: &mut Canvas, colors: &EditorColors, area: Rect, y: u16) {
+    canvas.fill_rect_bg(Rect::new(area.x, y, area.width, 1), colors.statusline);
 }
 
 fn render_statusline(
-    screen_buf: &mut ScreenBuf,
+    canvas: &mut Canvas,
     editor: &Editor,
     colors: &EditorColors,
     area: Rect,
     y: u16,
-    invisible_style: Style,
 ) {
     let config = &editor.state.settings.statusline;
 
@@ -394,7 +372,7 @@ fn render_statusline(
         (&config.left, &config.center, &config.right)
     };
 
-    fill_row_colors(screen_buf, colors, area, y);
+    fill_row_colors(canvas, colors, area, y);
 
     // ── FilePath two-pass sizing ──────────────────────────────────────────────
     // The FilePath element is flexible: it shrinks when the row is narrow.
@@ -448,33 +426,12 @@ fn render_statusline(
     // right section didn't fit), and the right section at the row's end. Only
     // `FilePath` shortens itself to fit, so without these an over-long
     // element would write across its neighbour and off the row.
-    draw_section(
-        screen_buf,
-        &left_spans,
-        left_x,
-        y,
-        invisible_style,
-        right_fence,
-    );
+    draw_section(canvas, &left_spans, left_x, y, right_fence);
     if right_fits {
-        draw_section(
-            screen_buf,
-            &right_spans,
-            right_x,
-            y,
-            invisible_style,
-            area.right(),
-        );
+        draw_section(canvas, &right_spans, right_x, y, area.right());
     }
     if center_fits {
-        draw_section(
-            screen_buf,
-            &center_spans,
-            center_x,
-            y,
-            invisible_style,
-            right_fence,
-        );
+        draw_section(canvas, &center_spans, center_x, y, right_fence);
     }
 }
 

@@ -407,7 +407,16 @@ impl EngineView {
             // them once so the per-cell loop only does a membership check.
             let corners = focused_rect.map(focused_pane_corners);
 
-            for seam in &ctx.seams {
+            // Clamped once per seam, ahead of `canvas` below — it needs an
+            // immutable `&Buffer` and the canvas holds an exclusive `&mut`
+            // for the whole seam pass.
+            let seam_bounds: Vec<(u16, u16, u16, u16)> = ctx
+                .seams
+                .iter()
+                .map(|seam| crate::render::clamp_rect_to_buf(buf, seam.rect))
+                .collect();
+            let mut canvas = crate::render::Canvas::new(buf, &self.theme, None);
+            for (seam, &(x0, y0, x1, y1)) in ctx.seams.iter().zip(seam_bounds.iter()) {
                 let base = match seam.direction {
                     Direction::Horizontal => ARM_N | ARM_S,
                     Direction::Vertical => ARM_E | ARM_W,
@@ -417,7 +426,6 @@ impl EngineView {
                 // loop below only needs a bounds check, not a repeated call.
                 let accent_rect = focused_rect.and_then(|fr| focused_seam_segment(seam.rect, fr));
 
-                let (x0, y0, x1, y1) = crate::render::clamp_rect_to_buf(buf, seam.rect);
                 for y in y0..y1 {
                     for x in x0..x1 {
                         let arms = ctx.seam_arms.get(&(x, y)).copied().unwrap_or(0);
@@ -431,15 +439,7 @@ impl EngineView {
                         // poke, bounded to this single cell. A box-drawing
                         // glyph never needs the placeholder substitution, but
                         // `write_text_run` takes no exemption from it.
-                        crate::render::write_text_run(
-                            buf,
-                            x,
-                            y,
-                            glyph,
-                            style,
-                            self.theme.ui.invisible.into(),
-                            x + 1,
-                        );
+                        canvas.write_text_run(x, y, glyph, style, x + 1);
                     }
                 }
             }

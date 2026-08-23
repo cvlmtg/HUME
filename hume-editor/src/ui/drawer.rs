@@ -31,6 +31,7 @@ use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 
 use hume_engine::providers::BottomBandProvider;
+use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
 
@@ -80,7 +81,8 @@ impl BottomBandProvider for DrawerWidget {
 
         let style = theme.resolve_by_name(Scope("ui.drawer")).into();
         let selected_style = theme.resolve_by_name(Scope("ui.menu.selected")).into();
-        hume_engine::render::fill_rect_bg(buf, area, style);
+        let mut canvas = Canvas::new(buf, theme, None);
+        canvas.fill_rect_bg(area, style);
 
         // Row 0 is a blank padding row (visual gap from the pane above);
         // rows 1.. show the scroll-adjusted, visible slice of items.
@@ -96,30 +98,10 @@ impl BottomBandProvider for DrawerWidget {
             let y = area.y + 1 + i as u16;
             if row_idx == state.selected {
                 // Highlight bar always wins, same as `draw_menu_box`.
-                hume_engine::render::fill_rect_bg(
-                    buf,
-                    Rect::new(area.x, y, area.width, 1),
-                    selected_style,
-                );
-                hume_engine::render::write_text_run(
-                    buf,
-                    area.x,
-                    y,
-                    item,
-                    selected_style,
-                    theme.ui.invisible.into(),
-                    area.x + area.width,
-                );
+                canvas.fill_rect_bg(Rect::new(area.x, y, area.width, 1), selected_style);
+                canvas.write_text_run(area.x, y, item, selected_style, area.x + area.width);
             } else {
-                hume_engine::render::write_text_run(
-                    buf,
-                    area.x,
-                    y,
-                    item,
-                    style,
-                    theme.ui.invisible.into(),
-                    area.x + area.width,
-                );
+                canvas.write_text_run(area.x, y, item, style, area.x + area.width);
             }
         }
     }

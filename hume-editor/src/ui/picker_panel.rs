@@ -23,7 +23,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 
 use hume_engine::providers::OverlayProvider;
-use hume_engine::render::{fill_rect_bg, write_text_run};
+use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
 
@@ -179,23 +179,22 @@ fn truncate_tail_marked(s: &str, budget: usize) -> String {
 /// `state.selected_row` highlighted across the full inner width. `rows` is
 /// never re-windowed here — the store already scrolled it.
 pub(crate) fn draw_picker_panel(
-    buf: &mut ScreenBuf,
+    canvas: &mut Canvas,
     state: &PickerViewState,
     background: Style,
     text: Style,
     selected: Style,
     cursor: Style,
-    invisible_style: Style,
 ) {
     let outer = Rect::new(state.x, state.y, state.width, state.height);
     if outer.width < 3 || outer.height < 4 {
         return;
     }
 
-    fill_rect_bg(buf, outer, background);
+    canvas.fill_rect_bg(outer, background);
 
     if state.border {
-        super::menu_box::draw_box_border(buf, outer, text, invisible_style);
+        super::menu_box::draw_box_border(canvas, outer, text);
     }
 
     let inner_x = outer.x + 1;
@@ -220,15 +219,7 @@ pub(crate) fn draw_picker_panel(
     let prompt_shown = truncate_head(&state.prompt, inner_width);
     let prompt_width = text_width(&prompt_shown);
     if prompt_width > 0 {
-        write_text_run(
-            buf,
-            inner_x,
-            input_y,
-            &prompt_shown,
-            text,
-            invisible_style,
-            inner_right,
-        );
+        canvas.write_text_run(inner_x, input_y, &prompt_shown, text, inner_right);
     }
 
     let after_prompt_width = inner_width.saturating_sub(prompt_width);
@@ -243,38 +234,14 @@ pub(crate) fn draw_picker_panel(
     let query_width = text_width(&query_tail);
 
     let query_x = inner_x + prompt_width as u16;
-    write_text_run(
-        buf,
-        query_x,
-        input_y,
-        &query_tail,
-        text,
-        invisible_style,
-        inner_right,
-    );
+    canvas.write_text_run(query_x, input_y, &query_tail, text, inner_right);
     let cursor_x = query_x + query_width as u16;
     if cursor_x < inner_x + inner_width as u16 {
-        write_text_run(
-            buf,
-            cursor_x,
-            input_y,
-            " ",
-            cursor,
-            invisible_style,
-            inner_right,
-        );
+        canvas.write_text_run(cursor_x, input_y, " ", cursor, inner_right);
     }
     if show_counts {
         let counts_x = outer.x + outer.width - 1 - counts_width as u16;
-        write_text_run(
-            buf,
-            counts_x,
-            input_y,
-            &counts,
-            text,
-            invisible_style,
-            inner_right,
-        );
+        canvas.write_text_run(counts_x, input_y, &counts, text, inner_right);
     }
 
     let list_capacity = (outer.height - 3) as usize;
@@ -283,18 +250,10 @@ pub(crate) fn draw_picker_panel(
         let shown = truncate_tail_marked(row_text, inner_width);
         if state.selected_row == Some(i) {
             let row_rect = Rect::new(inner_x, y, outer.width - 2, 1);
-            fill_rect_bg(buf, row_rect, selected);
-            write_text_run(
-                buf,
-                inner_x,
-                y,
-                &shown,
-                selected,
-                invisible_style,
-                inner_right,
-            );
+            canvas.fill_rect_bg(row_rect, selected);
+            canvas.write_text_run(inner_x, y, &shown, selected, inner_right);
         } else {
-            write_text_run(buf, inner_x, y, &shown, text, invisible_style, inner_right);
+            canvas.write_text_run(inner_x, y, &shown, text, inner_right);
         }
     }
 }
@@ -331,14 +290,14 @@ impl OverlayProvider for PickerOverlay {
         }
 
         let styles = picker_styles(theme);
+        let mut canvas = Canvas::new(buf, theme, None);
         draw_picker_panel(
-            buf,
+            &mut canvas,
             state,
             styles.background,
             styles.text,
             styles.selected,
             styles.cursor,
-            theme.ui.invisible.into(),
         );
     }
 }

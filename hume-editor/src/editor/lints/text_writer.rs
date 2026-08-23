@@ -1,8 +1,9 @@
 //! # One text writer for the frame
 //!
-//! Text is written to the terminal buffer with
-//! `hume_engine::render::write_text_run`, never with ratatui's
-//! `Buffer::set_string`/`set_stringn`.
+//! Text is written to the terminal buffer through `hume_engine::render::Canvas`
+//! — its `write_text_run`/`fill_rect_bg` methods outside `hume-engine`, or the
+//! `pub(crate)` free functions of the same names inside it — never with
+//! ratatui's `Buffer::set_string`/`set_stringn`.
 //!
 //! The two measure differently. `set_string` discards a grapheme holding a
 //! control character or measuring zero columns, and `cell_width` reports any
@@ -20,6 +21,12 @@
 //! rows arrive untruncated and the box is clamped to the pane, so a long
 //! completion label was written over its own right border and past it.
 //!
+//! A cluster the terminal must not be shown as itself (a control character,
+//! or one measuring zero columns) draws as its `<200b>`-style codepoint
+//! placeholder, styled `ui.virtual.invisible` — `Canvas` resolves that once
+//! from the `&Theme` passed to `Canvas::new`, so no caller threads a style
+//! for it.
+//!
 //! **Opt-out**: `// static-glyph-safe: <reason>` for a write of text that is
 //! a compile-time constant — box-drawing borders, a scrollbar thumb, a
 //! literal space. Those cannot contain a control character, a zero-width
@@ -33,7 +40,7 @@
 use super::{collect_source_rs, scan_forbidden, workspace_member_crates};
 
 /// Scan every workspace crate's source for a ratatui string write that should
-/// instead go through `hume_engine::render::write_text_run`.
+/// instead go through `hume_engine::render::Canvas::write_text_run`.
 #[test]
 fn text_is_written_through_one_writer() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR")
@@ -83,13 +90,14 @@ fn text_is_written_through_one_writer() {
 
     assert!(
         violations.is_empty(),
-        "\nRatatui text write detected outside `hume_engine::render::write_text_run`.\n\
+        "\nRatatui text write detected outside `hume_engine::render::Canvas`.\n\
          `set_string` measures by its own rule (it drops control and zero-width \
          graphemes, and widens a halfwidth dakuten) and clips only at the terminal \
          buffer, so a field measured with `hume_rope::width` can end up drawn at a \
          different width or past its pane, lane, or border.\n\
-         Use `write_text_run(buf, x, y, text, style, right_edge)` — it advances by \
-         exactly `str_width` and takes the bound as an argument.\n\
+         Use `canvas.write_text_run(x, y, text, style, right_edge)` — it advances by \
+         exactly `str_width`, takes the bound as an argument, and resolves the \
+         invisible-placeholder style from the `&Theme` given to `Canvas::new`.\n\
          A write of compile-time-constant glyph text may be annotated \
          `// static-glyph-safe: <reason>`.\n\
          Violations:\n{}\n",

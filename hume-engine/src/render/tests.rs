@@ -70,7 +70,7 @@ fn renders_simple_text() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
+    let mut canvas = Canvas::new(&mut buf, &theme, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -134,7 +134,7 @@ fn filler_rows_have_tilde() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
+    let mut canvas = Canvas::new(&mut buf, &theme, None);
     render_tilde_fillers(1, &[], &ctx, &mut canvas);
 
     // Rows 1–4 should have '~'
@@ -191,7 +191,7 @@ fn do_compose_row(
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
+    let mut canvas = Canvas::new(&mut buf, &theme, None);
     compose_row(
         row,
         graphemes,
@@ -433,7 +433,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
+    let mut canvas = Canvas::new(&mut buf, &theme, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -672,7 +672,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
+    let mut canvas = Canvas::new(&mut buf, &theme, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -755,7 +755,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
+    let mut canvas = Canvas::new(&mut buf, &theme, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -891,7 +891,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
+    let mut canvas = Canvas::new(&mut buf, &theme, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -1005,7 +1005,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
+    let mut canvas = Canvas::new(&mut buf, &theme, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -1126,7 +1126,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             rope: &rope,
             default_gutter_scope,
         };
-        let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
+        let mut canvas = Canvas::new(&mut buf, &theme, None);
         compose_row(
             &rows[0],
             &graphemes,
@@ -1242,7 +1242,7 @@ fn gutter_column_reads_rope_via_ctx() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = PaneCanvas::new(&mut buf, None, ratatui::style::Style::default());
+    let mut canvas = Canvas::new(&mut buf, &theme, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -1325,7 +1325,7 @@ fn clear_row_span_empty_range_no_panic() {
 
 // ── fused dim (compose path) ───────────────────────────────────────
 
-/// `dim` on `PaneCanvas` must blend each written cell's fg/bg toward the
+/// `dim` on `Canvas` must blend each written cell's fg/bg toward the
 /// target inline. Verifies the same lerp oracle (255→0 at 0.5 ⇒ 128) holds
 /// through `compose_row`.
 #[test]
@@ -1371,11 +1371,7 @@ fn compose_row_dims_cells_inline() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = PaneCanvas::new(
-        &mut buf,
-        Some((Color::Rgb(0, 0, 0), 0.5)),
-        ratatui::style::Style::default(),
-    );
+    let mut canvas = Canvas::new(&mut buf, &theme, Some((Color::Rgb(0, 0, 0), 0.5)));
     compose_row(
         &rows[0],
         &graphemes,
@@ -1439,11 +1435,7 @@ fn compose_row_non_rgb_dim_target_is_noop() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = PaneCanvas::new(
-        &mut buf,
-        Some((Color::Reset, 0.5)),
-        ratatui::style::Style::default(),
-    );
+    let mut canvas = Canvas::new(&mut buf, &theme, Some((Color::Reset, 0.5)));
     compose_row(
         &rows[0],
         &graphemes,

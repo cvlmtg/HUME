@@ -15,6 +15,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 
 use hume_engine::providers::OverlayProvider;
+use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
 
@@ -76,8 +77,9 @@ impl OverlayProvider for MinibufCompletionOverlay {
         let selected_style: Style = theme.resolve_by_name(Scope("ui.menu.selected")).into();
         let scroll_style: Style = theme.resolve_by_name(Scope("ui.menu.scroll")).into();
 
+        let mut canvas = Canvas::new(buf, theme, None);
         draw_menu_box(
-            buf,
+            &mut canvas,
             Rect::new(popup_x, popup_y, outer_w, outer_h),
             &view.rows,
             Some(selected),
@@ -89,7 +91,6 @@ impl OverlayProvider for MinibufCompletionOverlay {
                 scroll: scroll_style,
             },
             None,
-            theme.ui.invisible.into(),
         );
     }
 }

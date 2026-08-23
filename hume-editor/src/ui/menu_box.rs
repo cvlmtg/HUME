@@ -4,12 +4,11 @@
 //! position and outer size are resolved, painting the frame, scroll
 //! window, and rows is identical — that shared part lives here.
 
-use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::symbols::line;
 
-use hume_engine::render::{fill_rect_bg, write_text_run};
+use hume_engine::render::Canvas;
 
 use super::popup::StyledRow;
 use super::width::text_width;
@@ -79,12 +78,7 @@ fn scroll_window(rows: &[String], scroll: usize, max_height: usize) -> (usize, &
 /// Shared by every bordered box overlay — [`draw_menu_box`] and
 /// `super::picker_panel::draw_picker_panel` — so the frame glyphs stay
 /// identical without a copy per caller.
-pub(crate) fn draw_box_border(
-    buf: &mut ScreenBuf,
-    outer: Rect,
-    style: Style,
-    invisible_style: Style,
-) {
+pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: Style) {
     let right = outer.x + outer.width - 1;
     let bottom = outer.y + outer.height - 1;
     let fill_w = (outer.width - 2) as usize;
@@ -95,48 +89,16 @@ pub(crate) fn draw_box_border(
     // than carry an exemption from the one-writer rule for no benefit, and
     // the bound keeps a mis-sized box from drawing past its own footprint.
     let edge = outer.x + outer.width;
-    write_text_run(buf, outer.x, outer.y, "┌", style, invisible_style, edge);
-    write_text_run(
-        buf,
-        outer.x + 1,
-        outer.y,
-        &horiz,
-        style,
-        invisible_style,
-        edge,
-    );
-    write_text_run(buf, right, outer.y, "┐", style, invisible_style, edge);
-    write_text_run(buf, outer.x, bottom, "└", style, invisible_style, edge);
-    write_text_run(
-        buf,
-        outer.x + 1,
-        bottom,
-        &horiz,
-        style,
-        invisible_style,
-        edge,
-    );
-    write_text_run(buf, right, bottom, "┘", style, invisible_style, edge);
+    canvas.write_text_run(outer.x, outer.y, "┌", style, edge);
+    canvas.write_text_run(outer.x + 1, outer.y, &horiz, style, edge);
+    canvas.write_text_run(right, outer.y, "┐", style, edge);
+    canvas.write_text_run(outer.x, bottom, "└", style, edge);
+    canvas.write_text_run(outer.x + 1, bottom, &horiz, style, edge);
+    canvas.write_text_run(right, bottom, "┘", style, edge);
 
     for row in 1..outer.height - 1 {
-        write_text_run(
-            buf,
-            outer.x,
-            outer.y + row,
-            line::VERTICAL,
-            style,
-            invisible_style,
-            edge,
-        );
-        write_text_run(
-            buf,
-            right,
-            outer.y + row,
-            line::VERTICAL,
-            style,
-            invisible_style,
-            edge,
-        );
+        canvas.write_text_run(outer.x, outer.y + row, line::VERTICAL, style, edge);
+        canvas.write_text_run(right, outer.y + row, line::VERTICAL, style, edge);
     }
 }
 
@@ -190,7 +152,7 @@ fn scrollbar_thumb(view: usize, total: usize, scroll: usize) -> Option<(usize, u
 /// row that has `selected == Some(row_idx)`: the highlight bar always wins.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_menu_box(
-    buf: &mut ScreenBuf,
+    canvas: &mut Canvas,
     outer: Rect,
     rows: &[String],
     selected: Option<usize>,
@@ -198,7 +160,6 @@ pub(crate) fn draw_menu_box(
     border: bool,
     styles: MenuBoxStyles,
     styled: Option<&[StyledRow]>,
-    invisible_style: Style,
 ) {
     if rows.is_empty() || outer.height < 3 || outer.width < 3 {
         return;
@@ -213,11 +174,11 @@ pub(crate) fn draw_menu_box(
     // 1. Fill the entire outer rectangle with the popup background. This
     //    gives a solid, opaque backdrop — no buffer content bleeds through.
     //    For border=false it also acts as the visible 1-cell margin.
-    fill_rect_bg(buf, outer, styles.base);
+    canvas.fill_rect_bg(outer, styles.base);
 
     // 2. Optionally overdraw the 1-cell frame with box-drawing characters.
     if border {
-        draw_box_border(buf, outer, styles.base, invisible_style);
+        draw_box_border(canvas, outer, styles.base);
     }
 
     // 2b. Scrollbar thumb on the right border, overdrawing the track cells
@@ -229,13 +190,11 @@ pub(crate) fn draw_menu_box(
     {
         let right = outer.x + outer.width - 1;
         for row in thumb_start..thumb_start + thumb_len {
-            write_text_run(
-                buf,
+            canvas.write_text_run(
                 right,
                 outer.y + 1 + row as u16,
                 line::THICK_VERTICAL,
                 styles.scroll,
-                invisible_style,
                 right + 1,
             );
         }
@@ -255,31 +214,15 @@ pub(crate) fn draw_menu_box(
         if selected == Some(row_idx) {
             // Highlight the full inner width so the selection bar is uniform.
             let inner_rect = Rect::new(text_x, y, outer.width.saturating_sub(2), 1);
-            fill_rect_bg(buf, inner_rect, styles.selected);
-            write_text_run(
-                buf,
-                text_x,
-                y,
-                row_text,
-                styles.selected,
-                invisible_style,
-                text_right,
-            );
+            canvas.fill_rect_bg(inner_rect, styles.selected);
+            canvas.write_text_run(text_x, y, row_text, styles.selected, text_right);
         } else if let Some(runs) = styled.and_then(|rows| rows.get(row_idx)) {
             // The base fill (step 1) already covers the row — runs are
             // contiguous and together span exactly `row_text`, so there are
             // no gaps left for `styles.base` to show through.
-            paint_styled_row(buf, text_x, y, runs, invisible_style, text_right);
+            paint_styled_row(canvas, text_x, y, runs, text_right);
         } else {
-            write_text_run(
-                buf,
-                text_x,
-                y,
-                row_text,
-                styles.base,
-                invisible_style,
-                text_right,
-            );
+            canvas.write_text_run(text_x, y, row_text, styles.base, text_right);
         }
     }
 }
@@ -287,25 +230,10 @@ pub(crate) fn draw_menu_box(
 /// Paint one pre-resolved styled row's runs left-to-right starting at
 /// `(x, y)` — [`draw_menu_box`]'s styled-row branch, factored out for
 /// readability.
-fn paint_styled_row(
-    buf: &mut ScreenBuf,
-    x: u16,
-    y: u16,
-    runs: &StyledRow,
-    invisible_style: Style,
-    right_edge: u16,
-) {
+fn paint_styled_row(canvas: &mut Canvas, x: u16, y: u16, runs: &StyledRow, right_edge: u16) {
     let mut cx = x;
     for (run_text, run_style) in runs {
-        cx = write_text_run(
-            buf,
-            cx,
-            y,
-            run_text,
-            *run_style,
-            invisible_style,
-            right_edge,
-        );
+        cx = canvas.write_text_run(cx, y, run_text, *run_style, right_edge);
     }
 }
 

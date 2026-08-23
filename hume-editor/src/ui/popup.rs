@@ -33,6 +33,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 
 use hume_engine::providers::{BottomBandProvider, OverlayProvider, SyntaxSpans};
+use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
 use hume_scripting::host::PopupKind;
@@ -285,8 +286,9 @@ impl OverlayProvider for PopupOverlay {
             .map(|s| theme.resolve_by_name(Scope(s)).into())
             .unwrap_or(style);
         let scroll_style = theme.resolve_by_name(Scope(self.scroll_scope)).into();
+        let mut canvas = Canvas::new(buf, theme, None);
         draw_menu_box(
-            buf,
+            &mut canvas,
             outer,
             &state.lines,
             state.selected,
@@ -298,7 +300,6 @@ impl OverlayProvider for PopupOverlay {
                 scroll: scroll_style,
             },
             state.styled_rows.as_ref().map(|rows| rows.as_slice()),
-            theme.ui.invisible.into(),
         );
     }
 }
@@ -359,8 +360,9 @@ impl BottomBandProvider for PopupBandWidget {
         let Some(state) = guard.as_ref() else { return };
         let style = theme.resolve_by_name(Scope("ui.popup")).into();
         let scroll_style = theme.resolve_by_name(Scope("ui.popup.scroll")).into();
+        let mut canvas = Canvas::new(buf, theme, None);
         draw_menu_box(
-            buf,
+            &mut canvas,
             area,
             &state.lines,
             None,
@@ -372,7 +374,6 @@ impl BottomBandProvider for PopupBandWidget {
                 scroll: scroll_style,
             },
             state.styled_rows.as_ref().map(|rows| rows.as_slice()),
-            theme.ui.invisible.into(),
         );
     }
 }

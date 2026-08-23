@@ -47,7 +47,8 @@ pub(crate) struct ComposeCtx<'a> {
     pub default_gutter_scope: ScopeId,
 }
 
-/// The pane's drawing surface — every cell write for a pane goes through here.
+/// The frame's drawing surface — every cell write, pane or chrome, goes
+/// through here.
 ///
 /// Wraps the ratatui `Buffer` and, when set, a dim target: fg/bg is blended
 /// toward it on every write. This is the single chokepoint for the non-focused
@@ -55,8 +56,15 @@ pub(crate) struct ComposeCtx<'a> {
 /// directly, so a future write site cannot forget to dim. Replaces the old
 /// `dim_rect` post-pass (a second full-rect walk after `render_pane`) without
 /// reopening that gap: the blend still happens exactly once per cell, just
-/// inline in the single write instead of a separate sweep.
-pub(crate) struct PaneCanvas<'a> {
+/// inline in the single write instead of a separate sweep. Chrome (menus,
+/// pickers, the drawer, the statusline) is never dimmed, so it always passes
+/// `dim: None` — the field only ever blends for a pane.
+///
+/// Also the single place `theme.ui.invisible` is resolved: [`Canvas::new`]
+/// converts it once, so a placeholder cell written through
+/// [`Canvas::write_text_run`] never needs that style hand-threaded down from
+/// the caller's own `&Theme`.
+pub struct Canvas<'a> {
     buf: &'a mut ratatui::buffer::Buffer,
     dim: Option<DimTarget>,
     /// Resolved from `theme.ui.invisible` once per frame — layered onto a
@@ -70,7 +78,7 @@ pub(crate) struct PaneCanvas<'a> {
 /// Flattened, per-cell-ready form of a `(Color, f32)` dim target.
 ///
 /// Resolving `Color::Rgb(..)` out of the enum happens once here, in
-/// `PaneCanvas::new`, rather than on every `blend_color`/`blend_style` call —
+/// `Canvas::new`, rather than on every `blend_color`/`blend_style` call —
 /// `dim` is loop-invariant for the whole pane, so re-matching it per cell
 /// (once per gutter cell, per grapheme, per indent-guide cell) was pure
 /// per-frame overhead.
@@ -82,11 +90,11 @@ struct DimTarget {
     factor: f32,
 }
 
-impl<'a> PaneCanvas<'a> {
-    pub(crate) fn new(
+impl<'a> Canvas<'a> {
+    pub fn new(
         buf: &'a mut ratatui::buffer::Buffer,
+        theme: &Theme,
         dim: Option<(ratatui::style::Color, f32)>,
-        invisible_style: ratatui::style::Style,
     ) -> Self {
         // Non-RGB target is a no-op — mirrors the prior `dim_rect` semantics.
         let dim = dim.and_then(|(color, factor)| match color {
@@ -96,7 +104,7 @@ impl<'a> PaneCanvas<'a> {
         Self {
             buf,
             dim,
-            invisible_style,
+            invisible_style: theme.ui.invisible.into(),
         }
     }
 
@@ -104,10 +112,11 @@ impl<'a> PaneCanvas<'a> {
         set_cell(self.buf, x, y, text, blend_style(style, self.dim));
     }
 
-    /// [`write_text_run`] through this pane's dim blend. The canvas has no
-    /// `set_string`: every text write a pane makes is measured against a
-    /// bound first, so all of them go through here.
-    fn write_text_run(
+    /// [`write_text_run`] through this canvas's dim blend and resolved
+    /// invisible style. There is no `set_string` equivalent here: every text
+    /// write the frame makes is measured against a bound first, so all of
+    /// them go through this one method.
+    pub fn write_text_run(
         &mut self,
         x: u16,
         y: u16,
@@ -124,6 +133,15 @@ impl<'a> PaneCanvas<'a> {
             blend_style(self.invisible_style, self.dim),
             right_edge,
         )
+    }
+
+    /// [`fill_rect_bg`] through this canvas's dim blend — the chrome-facing
+    /// counterpart of the pane-only [`Canvas::fill_row_bg`]. Blending is
+    /// currently always a no-op here (chrome passes `dim: None`), but routing
+    /// through the canvas keeps every write, pane or chrome, going through
+    /// one blend point rather than two conventions.
+    pub fn fill_rect_bg(&mut self, rect: ratatui::layout::Rect, style: ratatui::style::Style) {
+        fill_rect_bg(self.buf, rect, blend_style(style, self.dim));
     }
 
     fn fill_row_bg(&mut self, x_start: u16, x_end: u16, y: u16, bg: ratatui::style::Color) {
@@ -178,7 +196,7 @@ fn compose_gutter(
     compose_ctx: &ComposeCtx,
     row_bg: Option<ratatui::style::Color>,
     y: u16,
-    canvas: &mut PaneCanvas,
+    canvas: &mut Canvas,
 ) {
     let mut gutter_x = compose_ctx.pane_rect.x;
     // A column's configured width (in particular `signcolumn`'s up-to-127
@@ -311,7 +329,7 @@ pub(crate) fn compose_row(
     screen_row: u16,
     lane_widths: &[u16],
     compose_ctx: &ComposeCtx,
-    canvas: &mut PaneCanvas,
+    canvas: &mut Canvas,
     // Background colour to fill the entire row (gutter + content) before
     // writing graphemes. Used for cursorline highlighting so the tint
     // extends to the right edge even past the last character.
@@ -487,7 +505,7 @@ pub(crate) fn render_tilde_fillers(
     start_screen_row: u16,
     lane_widths: &[u16],
     compose_ctx: &ComposeCtx,
-    canvas: &mut PaneCanvas,
+    canvas: &mut Canvas,
 ) {
     let mut screen_row = start_screen_row;
     while screen_row
@@ -523,8 +541,11 @@ pub(crate) fn render_tilde_fillers(
 /// return the column just past the last cell written.
 ///
 /// The frame's single text writer for anything measured beforehand: UI chrome
-/// (statusline, menus, pickers, the drawer) and gutter cells. Deliberately not
-/// ratatui's `Buffer::set_string`, for two reasons.
+/// (statusline, menus, pickers, the drawer) and gutter cells. `pub(crate)` —
+/// a caller outside this crate goes through [`Canvas::write_text_run`], which
+/// also supplies `invisible_style` (resolved once from `&Theme` at
+/// [`Canvas::new`]) and the pane's dim blend. Deliberately not ratatui's
+/// `Buffer::set_string`, for two reasons.
 ///
 /// **It agrees with [`hume_rope::width`], the width model everything else in
 /// the frame is measured with.** `set_string` uses its own: it discards any
@@ -554,7 +575,7 @@ pub(crate) fn render_tilde_fillers(
 /// that would straddle `right_edge` is dropped whole, never split — the same
 /// rule [`hume_rope::width::truncate_to_width`] follows.
 #[inline]
-pub fn write_text_run(
+pub(crate) fn write_text_run(
     buf: &mut ratatui::buffer::Buffer,
     x: u16,
     y: u16,
@@ -654,8 +675,9 @@ pub(crate) fn clamp_rect_to_buf(
 ///
 /// `Buffer::set_style` only rewrites `Style`, leaving previous glyphs visible.
 /// Opaque overlays (popups, statusline fills) need to overwrite the symbol too.
+/// `pub(crate)` — a caller outside this crate goes through [`Canvas::fill_rect_bg`].
 #[inline]
-pub fn fill_rect_bg(
+pub(crate) fn fill_rect_bg(
     buf: &mut ratatui::buffer::Buffer,
     rect: ratatui::layout::Rect,
     style: ratatui::style::Style,
