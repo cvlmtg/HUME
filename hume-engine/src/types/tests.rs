@@ -166,6 +166,7 @@ fn resolved_style_to_ratatui_style() {
         r.add_modifier
             .contains(ratatui::style::Modifier::UNDERLINED)
     );
+    assert_eq!(r.underline_color, Some(ratatui::style::Color::Green));
 }
 
 #[test]
