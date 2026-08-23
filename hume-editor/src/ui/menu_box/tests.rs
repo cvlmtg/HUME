@@ -31,12 +31,11 @@ fn symbols_in(buf: &ScreenBuf, area: Rect) -> String {
 
 #[test]
 fn styled_runs_stay_adjacent_when_a_run_holds_an_undrawable_grapheme() {
-    // A zero-width space measures one cell under the editor's width model
-    // (every cluster stays addressable) but draws as nothing, so the cell
-    // reserved for it is filled with a space rather than the cluster itself,
-    // and the next run begins right after. Writing the zero-width glyph
-    // instead would leave the terminal's cursor where it was and slide the
-    // rest of the row one column left.
+    // A zero-width space draws as nothing, so writing it into the cell
+    // reserved for it would leave the terminal's cursor where it was and
+    // slide the rest of the row one column left. It renders as its codepoint
+    // instead — the same substitution buffer text gets — and the next run
+    // begins after the whole placeholder.
     let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 3));
     let runs: StyledRow = vec![
         ("a\u{200B}b".to_string(), style()),
@@ -45,10 +44,10 @@ fn styled_runs_stay_adjacent_when_a_run_holds_an_undrawable_grapheme() {
     paint_styled_row(&mut buf, 0, 1, &runs, 20);
 
     assert_eq!(
-        symbols_in(&buf, Rect::new(0, 1, 6, 1)),
-        "a bcd",
-        "the placeholder occupies the reserved cell, and the second run \
-         starts in the cell right after it"
+        symbols_in(&buf, Rect::new(0, 1, 12, 1)),
+        "a<200b>bcd",
+        "the placeholder spans the columns reserved for it, and the second \
+         run starts in the cell right after it"
     );
 }
 

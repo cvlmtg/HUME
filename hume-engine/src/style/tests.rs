@@ -1218,6 +1218,71 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
     );
 }
 
+#[test]
+fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
+    // The placeholder must not read as ordinary text: it carries
+    // `ui.virtual.invisible` regardless of the syntax colour at that
+    // position, which is what lets a theme make a bidi override catch the
+    // eye. Its neighbours keep their own styling.
+    let rope = ropey::Rope::from_str("a\u{202E}b");
+    let mut registry = crate::theme::ScopeRegistry::new();
+    registry.intern("ui.virtual.invisible");
+    let mut fmt = crate::format::FormatScratch::new();
+    crate::format::format_buffer_line(
+        &rope,
+        0,
+        4,
+        &crate::pane::WhitespaceConfig::default(),
+        &crate::pane::WrapMode::None,
+        None,
+        crate::format::FormatBound::Full,
+        &[],
+        &mut fmt,
+    );
+
+    let mut styles_map = HashMap::new();
+    styles_map.insert(
+        "ui.virtual.invisible",
+        ResolvedStyle {
+            fg: Some(ratatui::style::Color::Red),
+            ..Default::default()
+        },
+    );
+    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    theme.bake(&registry);
+
+    let mut scratch = StyleScratch::new();
+    apply_styles(
+        &fmt.display_rows,
+        &fmt.graphemes,
+        &[],
+        EditorMode::Normal,
+        &theme,
+        &rope,
+        &mut scratch,
+    );
+
+    let placeholder_idx = fmt
+        .graphemes
+        .iter()
+        .position(|g| matches!(g.content, CellContent::Placeholder { .. }))
+        .expect("the bidi override must produce a placeholder cell");
+    assert_eq!(
+        scratch.styles[placeholder_idx].fg,
+        Some(ratatui::style::Color::Red),
+        "the placeholder must carry ui.virtual.invisible"
+    );
+    let a_idx = fmt
+        .graphemes
+        .iter()
+        .position(|g| g.char_offset == 0 && matches!(g.content, CellContent::Grapheme))
+        .expect("'a' grapheme present");
+    assert_eq!(
+        scratch.styles[a_idx].fg, None,
+        "the text around it keeps its own styling"
+    );
+}
+
 // ── Inline-insert char_offset partition invariant (B2) ────────────────
 
 /// Drive the real formatter with a mid-row insert, then style the result —

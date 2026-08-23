@@ -38,6 +38,10 @@
 "ui.virtual" = { fg = "muted" }
 "ui.virtual.whitespace" = { fg = "surface" }
 "ui.virtual.indent-guide" = { fg = "muted" }
+# The `<200b>` stand-in for a character the terminal must not be shown.
+# Deliberately not muted like the rest of `ui.virtual`: a bidi override
+# hiding in source is exactly what this has to catch the eye for.
+"ui.virtual.invisible" = { fg = "bg", bg = "red" }
 "ui.virtual.inlay-hint" = { fg = "muted" }
 "ui.virtual.inlay-hint.parameter" = { fg = "muted" }
 "ui.virtual.inlay-hint.type" = { fg = "muted" }

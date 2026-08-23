@@ -106,22 +106,27 @@ fn grapheme_width_decomposed_e_acute_is_one_display_column() {
 }
 
 #[test]
-fn grapheme_width_lone_combining_mark_clamps_to_one() {
-    // A combining mark with no base character is a genuinely zero-width
-    // cluster (measures 0 via unicode-width). Clamped up to 1 so it still
-    // occupies an addressable cell.
-    assert_eq!(grapheme_width("\u{0301}", 0, 4), 1);
+fn grapheme_width_of_an_unrenderable_cluster_is_its_placeholder() {
+    // A combining mark with no base character measures 0 and cannot be
+    // drawn as itself, so it occupies its `<301>` placeholder — five cells,
+    // not the one cell a clamp would have given it.
+    assert_eq!(grapheme_width("\u{0301}", 0, 4), 5);
+    assert_eq!(placeholder("\u{0301}").as_str(), "<301>");
+
+    // A control character is the same case even though it measures 1.
+    assert_eq!(grapheme_width("\u{1b}", 0, 4), 4);
+    assert_eq!(placeholder("\u{1b}").as_str(), "<1b>");
 }
 
 #[test]
-fn no_grapheme_cluster_exceeds_the_upper_clamp() {
-    // `grapheme_width`'s upper clamp is defensive, not load-bearing: the
+fn no_grapheme_cluster_exceeds_the_upper_cap() {
+    // `grapheme_width`'s upper cap is defensive, not load-bearing: the
     // pinned `unicode-width` already measures every one of these multi-code-
-    // point clusters as 2, so nothing reaches the clamp to be cut down. This
+    // point clusters as 2, so nothing reaches the cap to be cut down. This
     // test exists to notice if that ever stops being true — a `unicode-width`
     // bump that started summing a ZWJ sequence's parts (5 code points, 3 of
     // them emoji) would silently turn one glyph into a 6-column cell, and the
-    // clamp would start doing real work with no other test to say so.
+    // cap would start doing real work with no other test to say so.
     for cluster in [
         "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}", // ZWJ family
         "\u{1F1EC}\u{1F1E7}",                          // regional-indicator flag
@@ -143,28 +148,75 @@ fn no_grapheme_cluster_exceeds_the_upper_clamp() {
     }
 }
 
-// ── is_zero_width ────────────────────────────────────────────────────────
+// ── needs_placeholder / placeholder ──────────────────────────────────────
 
 #[test]
-fn is_zero_width_separates_undrawable_clusters_from_narrow_ones() {
-    // The clusters a writer must substitute a placeholder for: each measures
-    // 0, so writing its own glyph into the reserved cell would advance the
-    // terminal by nothing.
-    assert!(is_zero_width("\u{200B}")); // zero-width space
-    assert!(is_zero_width("\u{200D}")); // zero-width joiner
-    assert!(is_zero_width("\u{0301}")); // combining acute, no base
+fn needs_placeholder_covers_both_reasons_a_cluster_cannot_be_drawn() {
+    // Measures zero: written as itself the terminal advances nothing and the
+    // rest of the row slides left.
+    assert!(needs_placeholder("\u{200B}")); // zero-width space
+    assert!(needs_placeholder("\u{200D}")); // zero-width joiner
+    assert!(needs_placeholder("\u{0301}")); // combining acute, no base
+
+    // Holds a control character: the terminal would act on it. These measure
+    // *1*, not 0 — the pinned `unicode-width` gives any character no other
+    // rule claims a width of 1 — so a zero-measure test alone would let an
+    // ESC through to the terminal.
+    assert!(needs_placeholder("\t"));
+    assert!(needs_placeholder("\n"));
+    assert!(needs_placeholder("\u{1b}"));
+    assert_eq!(unicode_width::UnicodeWidthStr::width("\u{1b}"), 1);
 
     // Ordinary clusters, including a base with a combining mark attached —
     // that pair draws as one visible glyph and must not be substituted.
-    assert!(!is_zero_width("a"));
-    assert!(!is_zero_width("e\u{0301}"));
-    assert!(!is_zero_width("\u{6F22}"));
+    assert!(!needs_placeholder("a"));
+    assert!(!needs_placeholder("e\u{0301}"));
+    assert!(!needs_placeholder("\u{6F22}"));
+}
 
-    // Control characters are *not* covered by this predicate: the pinned
-    // `unicode-width` reports them as 1, so a writer has to test for them
-    // separately rather than assuming a zero measure catches them.
-    assert!(!is_zero_width("\t"));
-    assert!(!is_zero_width("\n"));
+#[test]
+fn needs_placeholder_covers_the_bidi_overrides() {
+    // The Trojan Source characters (CVE-2021-42574) are
+    // `Default_Ignorable_Code_Point`s, the same class as a zero-width space,
+    // so the same rule catches them. Showing the codepoint rather than a
+    // blank is the whole point: an override that rendered like a space would
+    // be invisible exactly where it matters.
+    for bidi in [
+        "\u{202A}", "\u{202B}", "\u{202D}", "\u{202E}", "\u{2066}", "\u{2069}",
+    ] {
+        assert_eq!(
+            unicode_width::UnicodeWidthStr::width(bidi),
+            0,
+            "expected a zero measure for {bidi:?}"
+        );
+        assert!(needs_placeholder(bidi));
+    }
+    assert_eq!(placeholder("\u{202E}").as_str(), "<202e>");
+}
+
+#[test]
+fn placeholder_is_the_codepoint_in_angle_brackets() {
+    // The form Vim and Neovim show. Lowercase hex, no padding, so the width
+    // varies with the codepoint — which is why `grapheme_width` reports the
+    // placeholder's own length rather than a constant.
+    assert_eq!(placeholder("\u{200B}").as_str(), "<200b>");
+    assert_eq!(placeholder("\u{7}").as_str(), "<7>");
+    // The widest form there is, which is what the inline buffer is sized
+    // for — six hex digits and two brackets.
+    assert_eq!(placeholder("\u{10FFFF}").as_str(), "<10ffff>");
+
+    // Every placeholder is ASCII, so its byte length is its display width,
+    // and that is the width `grapheme_width` reports for a cluster needing
+    // one. `\u{10FFFF}` is not in this list: it is unassigned rather than
+    // unrenderable, measures 1, and the terminal draws it as tofu — visible
+    // and one cell, so it misaligns nothing and needs no substitution.
+    for cluster in ["\u{200B}", "\u{7}", "\u{202E}", "\u{1b}"] {
+        assert!(needs_placeholder(cluster));
+        let p = placeholder(cluster);
+        assert!(p.as_str().is_ascii());
+        assert_eq!(grapheme_width(cluster, 0, 4), p.as_str().len());
+    }
+    assert!(!needs_placeholder("\u{10FFFF}"));
 }
 
 // ── str_width ────────────────────────────────────────────────────────────

@@ -193,6 +193,15 @@ pub(crate) fn style_row(
         // Each theme.resolve(id) is an O(1) Vec index.
         style = hl.layer_at(g.byte_range.start, style, theme);
 
+        // Tier 2d½: an unrenderable cluster's stand-in. Layered over the
+        // syntax highlight so `<202e>` reads as a placeholder rather than as
+        // whatever token it sits inside — these are the characters a reader
+        // most needs to notice. Under Tier 2e so a decoration that carries
+        // its own scope still wins.
+        if matches!(g.content, crate::types::CellContent::Placeholder { .. }) {
+            style = style.layer(theme.ui.invisible);
+        }
+
         // Tier 2e: the cell's own scope (inline-insert decorations). Layered
         // after syntax/search/diagnostic/bracket highlights so a decoration's
         // scope wins over whatever highlight tier would otherwise apply at

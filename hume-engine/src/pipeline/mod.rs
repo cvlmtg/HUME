@@ -425,7 +425,10 @@ impl EngineView {
                             x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
                         }) || corners.is_some_and(|cs| cs.contains(&Some((x, y))));
                         let style = if in_accent { accent } else { muted };
-                        buf[(x, y)].set_symbol(glyph).set_style(style);
+                        // One junction glyph per seam cell. Through the same
+                        // writer as everything else rather than a raw cell
+                        // poke, bounded to this single cell.
+                        crate::render::write_text_run(buf, x, y, glyph, style, x + 1);
                     }
                 }
             }

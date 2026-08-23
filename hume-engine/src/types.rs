@@ -215,6 +215,13 @@ pub enum CellContent {
     Grapheme,
     /// A substitution: whitespace indicator, tab fill character.
     Indicator { start: u32, len: u16 },
+    /// The stand-in for a cluster the terminal must not be shown as itself —
+    /// a control character it would act on, or an invisible one it would
+    /// collapse. Drawn exactly like an [`CellContent::Indicator`], but a
+    /// distinct variant because the style stage gives it its own scope
+    /// (`ui.virtual.invisible`): these are the characters a reader most needs
+    /// to notice, bidi overrides among them.
+    Placeholder { start: u32, len: u16 },
     /// The right-hand padding cell of a double-width character.
     WidthContinuation,
     /// Empty: tilde filler past EOF, or padding past end of line.

@@ -627,7 +627,13 @@ impl<'a> RowMap<'a> {
                             CellContent::Grapheme | CellContent::WidthContinuation => true,
                             CellContent::Empty => admit_eol,
                             CellContent::Virtual { .. } => false,
-                            CellContent::Indicator { .. } => !g.byte_range.is_empty(),
+                            // Same rule as `Indicator`: a placeholder standing
+                            // in for real buffer text is a position the cursor
+                            // can land on; one standing in for decoration text
+                            // has an empty byte range and is not.
+                            CellContent::Indicator { .. } | CellContent::Placeholder { .. } => {
+                                !g.byte_range.is_empty()
+                            }
                         })
                         .min_by_key(|g| target_display_col.abs_diff(g.display_col))
                         .map(|g| g.char_offset)

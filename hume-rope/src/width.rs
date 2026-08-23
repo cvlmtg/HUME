@@ -36,31 +36,97 @@ pub fn prev_tab_stop(display_col: usize, tw: u8) -> usize {
 
 /// Display columns one grapheme cluster occupies when rendered starting at
 /// display column `display_col`. A tab advances to the next `tab_width`
-/// stop; every other cluster is measured with `unicode-width` and clamped to
-/// `[1, 2]` — the lower bound keeps every cluster occupying at least one
-/// cell (so it stays addressable by column even for a degenerate cluster
-/// with no base character, e.g. a lone combining mark), the upper bound
-/// matches the two-cell layout the renderer gives every wide grapheme.
+/// stop; a cluster the terminal must not be shown ([`needs_placeholder`])
+/// occupies its [`placeholder`]; every other cluster is measured with
+/// `unicode-width`, capped at the two-cell layout the renderer gives a wide
+/// grapheme. Nothing measures zero — a cluster that would have needs a
+/// placeholder instead, which is never empty.
 pub fn grapheme_width(cluster: &str, display_col: usize, tab_width: u8) -> usize {
     if cluster == "\t" {
         tab_advance(display_col, tab_width)
+    } else if needs_placeholder(cluster) {
+        placeholder(cluster).as_str().len()
     } else {
-        cluster.width().clamp(1, 2)
+        cluster.width().min(2)
     }
 }
 
-/// True when `cluster` measures zero terminal columns of its own — a
-/// zero-width space, a bare ZWJ, a combining mark with no base character.
+/// True when `cluster` must not be written to the terminal as itself.
 ///
-/// [`grapheme_width`] clamps such a cluster up to 1 so it stays addressable
-/// by column, which is what the editing model wants. A *writer* needs the
-/// unclamped answer as well: it has reserved a cell for the cluster, and if
-/// it writes the cluster's own glyph there the terminal advances zero
-/// columns and everything after it slides one cell left. Knowing the glyph
-/// draws as nothing is what lets the writer put a visible placeholder in the
-/// cell it already reserved.
-pub fn is_zero_width(cluster: &str) -> bool {
-    cluster.width() == 0
+/// Two disjoint reasons, and a writer has to test for both — they do not
+/// imply each other:
+///
+/// - **It holds a control character.** The backend writes a cell's symbol
+///   verbatim, so a literal `\t` would move the terminal's own cursor to its
+///   next hardware tab stop and an `ESC` would start an escape sequence out
+///   of file content. `unicode-width` measures these as *1* (its rule 7,
+///   "all other characters have width 1"), so a zero measure does not catch
+///   them.
+/// - **It measures zero columns** — a zero-width space, a bare ZWJ, a
+///   combining mark with no base character, or a bidi override. Written as
+///   itself the terminal advances nothing and the rest of the row slides
+///   left of where every display-column computation says it is.
+///
+/// The second group is `Default_Ignorable_Code_Point`, which is why it also
+/// covers the bidi overrides behind Trojan Source (CVE-2021-42574) — the
+/// reason these are shown as their codepoint rather than as a blank: a
+/// U+202E that renders like a space is exactly the attack.
+pub fn needs_placeholder(cluster: &str) -> bool {
+    cluster.chars().any(char::is_control) || cluster.width() == 0
+}
+
+/// Longest [`placeholder`], `<10ffff>`.
+const MAX_PLACEHOLDER: usize = 8;
+
+/// The visible stand-in for a cluster [`needs_placeholder`] rejects: its
+/// codepoint in angle-bracket hex, `<200b>`.
+///
+/// Matches what Vim and Neovim show (`<200b>`, highlighted as `SpecialKey`)
+/// and what Emacs's `glyphless-char-display` shows on a text terminal
+/// (`[200B]`). Showing the codepoint rather than a generic marker is what
+/// lets a reader tell a harmless zero-width space from a bidi override.
+///
+/// Inline stack storage, no allocation — this is on the per-cell render
+/// path. A degenerate cluster of more than one such character reports its
+/// first; nothing in practice produces one.
+pub struct Placeholder {
+    buf: [u8; MAX_PLACEHOLDER],
+    len: usize,
+}
+
+impl Placeholder {
+    pub fn as_str(&self) -> &str {
+        // Only ASCII is ever written below, so the slice is valid UTF-8 and
+        // its byte length is also its display width.
+        std::str::from_utf8(&self.buf[..self.len]).unwrap_or("<?>")
+    }
+}
+
+impl std::fmt::Write for Placeholder {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        let end = self.len + s.len();
+        if end > self.buf.len() {
+            return Err(std::fmt::Error);
+        }
+        self.buf[self.len..end].copy_from_slice(s.as_bytes());
+        self.len = end;
+        Ok(())
+    }
+}
+
+/// The [`Placeholder`] for `cluster`. Meaningful only when
+/// [`needs_placeholder`] is true of it.
+pub fn placeholder(cluster: &str) -> Placeholder {
+    use std::fmt::Write as _;
+    let codepoint = cluster.chars().next().map_or(0, u32::from);
+    let mut out = Placeholder {
+        buf: [0; MAX_PLACEHOLDER],
+        len: 0,
+    };
+    // Cannot overflow the buffer: a codepoint is at most `10ffff`, six hex
+    // digits between the two brackets.
+    let _ = write!(out, "<{codepoint:x}>");
+    out
 }
 
 /// Display columns `s` occupies when rendered starting at display column

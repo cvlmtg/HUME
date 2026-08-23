@@ -841,20 +841,21 @@ fn format_with_insert(line: &str, byte_offset: usize, text: &str) -> FormatScrat
 }
 
 #[test]
-fn control_characters_in_an_inline_insert_never_reach_a_cell_symbol() {
+fn control_characters_in_an_inline_insert_render_as_their_codepoint() {
     // An LSP server's `InlayHint.label` reaches the formatter verbatim — no
     // sanitiser sits between `set-inlay-hints!` and here (unlike
     // `set-virtual-lines!`, which substitutes at the Steel boundary). The
     // backend writes each cell's symbol to the terminal as-is, so a literal
     // `\t` would move the terminal's own cursor to its next hardware tab
-    // stop and a `\n` would break the frame outright, shifting or destroying
-    // everything after it. Every control character must therefore become a
-    // space Indicator here.
+    // stop and a `\n` would break the frame outright. Both are shown as
+    // their codepoint instead, the way Vim does.
     let scratch = format_with_insert("x", 0, ": \tFoo\nBar");
 
     let resolve = |g: &Grapheme| -> String {
         match g.content {
-            CellContent::Indicator { start, len } | CellContent::Virtual { start, len } => {
+            CellContent::Indicator { start, len }
+            | CellContent::Placeholder { start, len }
+            | CellContent::Virtual { start, len } => {
                 scratch.virtual_texts[start as usize..start as usize + len as usize].to_string()
             }
             _ => String::new(),
@@ -868,9 +869,6 @@ fn control_characters_in_an_inline_insert_never_reach_a_cell_symbol() {
         );
     }
 
-    // The tab still advances to its stop, and the newline still occupies the
-    // one cell `grapheme_width` clamps it to — dropping them outright would
-    // desynchronise every column after the insert instead.
     let insert_cells: Vec<&Grapheme> = scratch
         .graphemes
         .iter()
@@ -880,23 +878,155 @@ fn control_characters_in_an_inline_insert_never_reach_a_cell_symbol() {
     // stop (4) and so occupies 2 columns, which earns it a
     // `WidthContinuation` like any other width-2 cell (see
     // `rows::tests::render_row_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop`).
-    // "Foo" then occupies 4..7, the `\n` sits at 7, "Bar" at 8..11.
+    // "Foo" then occupies 4..7, and the `\n` renders as `<a>` from col 7.
     let tab_cell = insert_cells[2];
     assert_eq!(tab_cell.display_col, 2);
     assert_eq!(tab_cell.width, 2, "tab at display col 2 reaches stop 4");
-    assert_eq!(resolve(tab_cell), " ");
+    assert_eq!(resolve(tab_cell), " ", "a tab keeps its stop expansion");
     assert!(matches!(
         insert_cells[3].content,
         CellContent::WidthContinuation
     ));
     let newline_cell = insert_cells[7];
     assert_eq!(newline_cell.display_col, 7);
-    assert_eq!(newline_cell.width, 1);
-    assert_eq!(resolve(newline_cell), " ");
+    assert_eq!(resolve(newline_cell), "<a>");
+    assert_eq!(newline_cell.width, 3, "the placeholder's own width");
     assert_eq!(
-        insert_cells[8].display_col, 8,
-        "'B' follows in the next cell"
+        insert_cells[8].display_col, 10,
+        "'B' follows the whole placeholder"
     );
+}
+
+#[test]
+fn an_invisible_cluster_in_buffer_text_renders_as_its_codepoint() {
+    // A zero-width space draws as nothing, so writing it into a cell would
+    // advance the terminal by nothing and slide every later grapheme left of
+    // the display column the engine believes it is at. It is shown as
+    // `<200b>` instead of a blank so a reader can see it is there *and*
+    // which character it is — a bidi override rendered as a space is the
+    // Trojan Source attack.
+    let rope = Rope::from_str("a\u{200B}b");
+    let mut scratch = FormatScratch::new();
+    format_buffer_line(
+        &rope,
+        0,
+        4,
+        &WhitespaceConfig::default(),
+        &WrapMode::None,
+        None,
+        FormatBound::Full,
+        &[],
+        &mut scratch,
+    );
+
+    let cells = &scratch.graphemes;
+    assert_eq!(cells.len(), 3, "one cell per cluster: 'a', ZWSP, 'b'");
+    let CellContent::Placeholder { start, len } = cells[1].content else {
+        panic!(
+            "an invisible cluster must not render as its own glyph, got {:?}",
+            cells[1].content
+        );
+    };
+    assert_eq!(
+        &scratch.virtual_texts[start as usize..start as usize + len as usize],
+        "<200b>"
+    );
+    assert_eq!(cells[1].display_col, 1);
+    assert_eq!(cells[1].width, 6);
+    assert_eq!(
+        cells[2].display_col, 7,
+        "'b' follows the whole placeholder, not one cell"
+    );
+}
+
+#[test]
+fn a_control_character_in_buffer_text_never_reaches_the_terminal() {
+    // The hole a zero-measure test alone leaves open: `unicode-width` calls a
+    // control character 1 column, so an ESC would have fallen through to
+    // `CellContent::Grapheme` and been written to the terminal verbatim —
+    // letting the contents of an opened file drive the editor's own display.
+    let rope = Rope::from_str("a\u{1b}b");
+    let mut scratch = FormatScratch::new();
+    format_buffer_line(
+        &rope,
+        0,
+        4,
+        &WhitespaceConfig::default(),
+        &WrapMode::None,
+        None,
+        FormatBound::Full,
+        &[],
+        &mut scratch,
+    );
+
+    let cells = &scratch.graphemes;
+    let CellContent::Placeholder { start, len } = cells[1].content else {
+        panic!(
+            "a control character must never render as itself, got {:?}",
+            cells[1].content
+        );
+    };
+    assert_eq!(
+        &scratch.virtual_texts[start as usize..start as usize + len as usize],
+        "<1b>"
+    );
+    assert_eq!(cells[2].display_col, 5, "'b' follows the placeholder");
+}
+
+#[test]
+fn a_bidi_override_is_distinguishable_from_a_zero_width_space() {
+    // The reason for showing the codepoint rather than a generic marker: the
+    // Trojan Source characters are the same `Default_Ignorable` class as a
+    // zero-width space, so a single marker glyph would render an attack and
+    // a stray invisible space identically.
+    let placeholder_for = |text: &str| {
+        let rope = Rope::from_str(text);
+        let mut scratch = FormatScratch::new();
+        format_buffer_line(
+            &rope,
+            0,
+            4,
+            &WhitespaceConfig::default(),
+            &WrapMode::None,
+            None,
+            FormatBound::Full,
+            &[],
+            &mut scratch,
+        );
+        let CellContent::Placeholder { start, len } = scratch.graphemes[0].content else {
+            panic!("expected a placeholder cell");
+        };
+        scratch.virtual_texts[start as usize..start as usize + len as usize].to_string()
+    };
+    assert_eq!(placeholder_for("\u{202E}"), "<202e>");
+    assert_eq!(placeholder_for("\u{200B}"), "<200b>");
+    assert_ne!(placeholder_for("\u{202E}"), placeholder_for("\u{200B}"));
+}
+
+#[test]
+fn an_invisible_cluster_in_an_inline_insert_renders_as_its_codepoint() {
+    // Same rule on the decoration side: an LSP `InlayHint.label` reaches the
+    // formatter verbatim, so an invisible cluster in one would otherwise be
+    // written raw into the cell reserved for it.
+    let scratch = format_with_insert("x", 0, "a\u{200B}b");
+
+    let insert_cells: Vec<&Grapheme> = scratch
+        .graphemes
+        .iter()
+        .filter(|g| g.byte_range.is_empty() && !matches!(g.content, CellContent::Empty))
+        .collect();
+    assert_eq!(insert_cells.len(), 3);
+    let CellContent::Placeholder { start, len } = insert_cells[1].content else {
+        panic!(
+            "an invisible cluster must not render as its own glyph, got {:?}",
+            insert_cells[1].content
+        );
+    };
+    assert_eq!(
+        &scratch.virtual_texts[start as usize..start as usize + len as usize],
+        "<200b>"
+    );
+    assert_eq!(insert_cells[2].display_col, 7);
 }
 
 #[test]

@@ -130,6 +130,11 @@ pub struct UiScopes {
     pub virtual_text: ResolvedStyle,
     /// Indent-guide column markers.
     pub indent_guide: ResolvedStyle,
+    /// `ui.virtual.invisible` — the `<200b>` stand-in a cluster the terminal
+    /// must not be shown is drawn as. Dot-fallback reaches `ui.virtual`, so a
+    /// theme that defines nothing still renders these muted rather than as
+    /// ordinary text.
+    pub invisible: ResolvedStyle,
     /// Primary selection-head highlight (Normal/Extend/… modes). Falls back to `cursor` if unset.
     pub cursor_primary: ResolvedStyle,
     /// Primary selection-head highlight in Insert mode. Falls back to `cursor_insert` if unset.
@@ -315,6 +320,7 @@ impl Theme {
             virtual_text: self.resolve_raw("ui.virtual"),
             // dot-fallback to ui.virtual for themes that don't define the guide explicitly
             indent_guide: self.resolve_raw("ui.virtual.indent-guide"),
+            invisible: self.resolve_raw("ui.virtual.invisible"),
             // Primary cursor: dot-notation fallback ui.cursor.primary → ui.cursor is correct.
             cursor_primary: self.resolve_raw("ui.cursor.primary"),
             // Primary insert cursor: prefer ui.cursor.primary.insert, then ui.cursor.insert,

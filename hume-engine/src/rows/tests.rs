@@ -138,7 +138,9 @@ fn row_text(r: &RenderRow<'_>) -> String {
     r.graphemes[r.row.graphemes.clone()]
         .iter()
         .filter_map(|g| match g.content {
-            CellContent::Virtual { start, len } | CellContent::Indicator { start, len } => {
+            CellContent::Virtual { start, len }
+            | CellContent::Indicator { start, len }
+            | CellContent::Placeholder { start, len } => {
                 let start = start as usize;
                 Some(r.virtual_texts[start..start + len as usize].to_string())
             }

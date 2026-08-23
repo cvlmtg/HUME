@@ -85,16 +85,21 @@ pub(crate) fn draw_box_border(buf: &mut ScreenBuf, outer: Rect, style: Style) {
     let fill_w = (outer.width - 2) as usize;
     let horiz: String = "─".repeat(fill_w);
 
-    buf.set_string(outer.x, outer.y, "┌", style);
-    buf.set_string(outer.x + 1, outer.y, &horiz, style);
-    buf.set_string(right, outer.y, "┐", style);
-    buf.set_string(outer.x, bottom, "└", style);
-    buf.set_string(outer.x + 1, bottom, &horiz, style);
-    buf.set_string(right, bottom, "┘", style);
+    // Border glyphs are constants a cell wide, so they need none of
+    // `write_text_run`'s substitution — but they go through it anyway rather
+    // than carry an exemption from the one-writer rule for no benefit, and
+    // the bound keeps a mis-sized box from drawing past its own footprint.
+    let edge = outer.x + outer.width;
+    write_text_run(buf, outer.x, outer.y, "┌", style, edge);
+    write_text_run(buf, outer.x + 1, outer.y, &horiz, style, edge);
+    write_text_run(buf, right, outer.y, "┐", style, edge);
+    write_text_run(buf, outer.x, bottom, "└", style, edge);
+    write_text_run(buf, outer.x + 1, bottom, &horiz, style, edge);
+    write_text_run(buf, right, bottom, "┘", style, edge);
 
     for row in 1..outer.height - 1 {
-        buf.set_string(outer.x, outer.y + row, line::VERTICAL, style);
-        buf.set_string(right, outer.y + row, line::VERTICAL, style);
+        write_text_run(buf, outer.x, outer.y + row, line::VERTICAL, style, edge);
+        write_text_run(buf, right, outer.y + row, line::VERTICAL, style, edge);
     }
 }
 
@@ -186,11 +191,13 @@ pub(crate) fn draw_menu_box(
     {
         let right = outer.x + outer.width - 1;
         for row in thumb_start..thumb_start + thumb_len {
-            buf.set_string(
+            write_text_run(
+                buf,
                 right,
                 outer.y + 1 + row as u16,
                 line::THICK_VERTICAL,
                 styles.scroll,
+                right + 1,
             );
         }
     }

@@ -706,6 +706,26 @@ fn grapheme_display(
         return (width, content);
     }
 
+    // A cluster the terminal must not be shown as itself: a control
+    // character it would act on, or an invisible one it would collapse. Both
+    // render as their codepoint, `<200b>`, the way Vim and Emacs show them —
+    // never as a blank, which would leave a bidi override looking exactly
+    // like a space. `grapheme_width` already sized this cell for the
+    // placeholder, so the text fits the columns reserved for it.
+    //
+    // Not gated by any `whitespace-*` setting: these are unrenderable rather
+    // than merely invisible, and a reader who cannot see them cannot review
+    // what they do. Same substitution `push_virtual_cells` and
+    // `render::write_text_run` make, so the whole frame answers this the
+    // same way.
+    if hume_rope::width::needs_placeholder(grapheme_str) {
+        let (start, len) = push_arena_text(
+            virtual_texts,
+            hume_rope::width::placeholder(grapheme_str).as_str(),
+        );
+        return (width, CellContent::Placeholder { start, len });
+    }
+
     // Regular grapheme.
     (width, CellContent::Grapheme)
 }
@@ -793,22 +813,26 @@ pub(crate) fn push_virtual_cells(
         let width =
             hume_rope::width::grapheme_width(cluster, *display_col as usize, tab_width) as u8;
 
-        // A control character must never reach the terminal as a cell symbol:
-        // the backend writes each symbol verbatim, so a literal `\t` would
-        // move the terminal's own cursor to its next hardware tab stop and a
-        // `\n` would break the frame outright — both shifting everything
-        // after them. Render a space instead, across the full advance
-        // `grapheme_width` gave the cluster (a tab reaches its next stop,
-        // exactly like a buffer line's tab with whitespace indicators off;
-        // every other control character occupies the single cell it clamps
-        // to). `set-virtual-lines!` already substitutes these at the Steel
-        // boundary to keep its caller's `'segments` offsets aligned, but
-        // inline-insert text does not go through that path — an LSP server's
-        // `InlayHint.label` reaches here verbatim — so the guarantee is
-        // enforced at this chokepoint rather than at each producer.
-        let content = if cluster.chars().any(char::is_control) {
+        // A cluster the terminal must not be shown as itself renders as its
+        // codepoint, exactly as buffer text does (`grapheme_display`), and
+        // occupies the columns `grapheme_width` sized for that placeholder.
+        // A tab keeps its stop expansion, drawn blank like a buffer line's
+        // tab with the indicator off — decoration providers have no
+        // per-line whitespace setting to key off.
+        //
+        // `set-virtual-lines!` already substitutes control characters at the
+        // Steel boundary to keep its caller's `'segments` offsets aligned,
+        // but inline-insert text does not go through that path — an LSP
+        // server's `InlayHint.label` reaches here verbatim — so the
+        // guarantee is enforced at this chokepoint rather than at each
+        // producer.
+        let content = if cluster == "\t" {
             let (start, len) = push_arena_text(arena, " ");
             CellContent::Indicator { start, len }
+        } else if hume_rope::width::needs_placeholder(cluster) {
+            let (start, len) =
+                push_arena_text(arena, hume_rope::width::placeholder(cluster).as_str());
+            CellContent::Placeholder { start, len }
         } else {
             CellContent::Virtual {
                 start: text_start + byte_offset as u32,

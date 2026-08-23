@@ -385,15 +385,21 @@ pub(crate) fn compose_row(
                     }
                 }
             }
-            CellContent::Indicator { start, len } => {
+            CellContent::Indicator { start, len } | CellContent::Placeholder { start, len } => {
                 let s = resolve_arena_text(virtual_texts, *start, *len);
-                canvas.set_cell(screen_x, y, s, ratatui_style);
-                // Fill remaining tab/wide cells with spaces.
-                for extra in 1..g.width as u16 {
-                    let ex = screen_x + extra;
-                    if ex < right_edge {
-                        canvas.set_cell(ex, y, " ", ratatui_style);
-                    }
+                // The indicator's text may be wider than one cell — an
+                // unrenderable cluster's `<200b>` placeholder spans as many
+                // cells as it has characters — so it is written across the
+                // span rather than into the first cell. A one-glyph
+                // indicator (a whitespace marker, a tab's `→`) writes one
+                // cell and leaves the rest to the fill below, exactly as
+                // before.
+                let cell_end = (screen_x + g.width as u16).min(right_edge);
+                let after = canvas.write_text_run(screen_x, y, s, ratatui_style, cell_end);
+                // Fill the reserved cells the text didn't cover: a tab's
+                // expanse beyond its marker, or a wide cell's second column.
+                for ex in after..cell_end {
+                    canvas.set_cell(ex, y, " ", ratatui_style);
                 }
             }
             CellContent::Virtual { start, len } => {
@@ -539,23 +545,29 @@ pub fn write_text_run(
         if cx.saturating_add(width) > right_edge {
             break;
         }
-        // A cell was reserved for this cluster, so something visible has to
-        // go in it. A control character would otherwise be written to the
-        // terminal verbatim; a zero-width one would draw nothing and let the
-        // rest of the row slide left into the gap. Both become a space —
-        // the same substitution `format::push_virtual_cells` makes.
-        let glyph =
-            if cluster.chars().any(char::is_control) || hume_rope::width::is_zero_width(cluster) {
-                " "
-            } else {
-                cluster
-            };
-        set_cell(buf, cx, y, glyph, style);
-        // Blank the cells a double-width glyph covers, so nothing already in
-        // the buffer shows through beside it — the same thing `compose_row`
-        // does for a wide buffer grapheme.
-        for extra in 1..width {
-            set_cell(buf, cx + extra, y, " ", style);
+        // A cluster the terminal must not be shown as itself is drawn as its
+        // codepoint, the same substitution buffer text gets
+        // (`format::grapheme_display`). `grapheme_width` above already sized
+        // the run for that placeholder, so it spans exactly the columns
+        // reserved for it — one cell per character of `<200b>`.
+        let placeholder = hume_rope::width::needs_placeholder(cluster)
+            .then(|| hume_rope::width::placeholder(cluster));
+        match &placeholder {
+            Some(p) => {
+                for (i, ch) in p.as_str().chars().enumerate() {
+                    let mut glyph = [0u8; 4];
+                    set_cell(buf, cx + i as u16, y, ch.encode_utf8(&mut glyph), style);
+                }
+            }
+            None => {
+                set_cell(buf, cx, y, cluster, style);
+                // Blank the cells a double-width glyph covers, so nothing
+                // already in the buffer shows through beside it — the same
+                // thing `compose_row` does for a wide buffer grapheme.
+                for extra in 1..width {
+                    set_cell(buf, cx + extra, y, " ", style);
+                }
+            }
         }
         cx += width;
     }
@@ -574,7 +586,7 @@ fn set_cell(
         && y < area.y + area.height
         && let Some(cell) = buf.cell_mut(ratatui::layout::Position { x, y })
     {
-        cell.set_symbol(text);
+        cell.set_symbol(text); // static-glyph-safe: `write_text_run`'s own cell primitive
         cell.set_style(style);
     }
 }
@@ -608,6 +620,7 @@ pub fn fill_rect_bg(
     let (x0, y0, x1, y1) = clamp_rect_to_buf(buf, rect);
     for y in y0..y1 {
         for x in x0..x1 {
+            // static-glyph-safe: blanks a cell, writes no text
             buf[(x, y)].set_char(' ').set_style(style);
         }
     }
