@@ -33,6 +33,8 @@ fn process_is_alive(pid: u32) -> bool {
 
 #[test]
 fn end_to_end_drain_streams_lines_into_the_store() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
@@ -69,6 +71,8 @@ fn end_to_end_drain_streams_lines_into_the_store() {
 
 #[test]
 fn coalesced_push_reranks_against_the_live_query() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
     ed.state.config.picker.as_mut().unwrap().insert_char('z');
@@ -103,6 +107,8 @@ fn coalesced_push_reranks_against_the_live_query() {
 
 #[test]
 fn nonzero_exit_reports_a_status_message_with_stderr() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
@@ -130,6 +136,8 @@ fn nonzero_exit_reports_a_status_message_with_stderr() {
 
 #[test]
 fn close_picker_kills_the_source_child() {
+    // Spawns "sleep" and "kill" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
@@ -153,6 +161,8 @@ fn close_picker_kills_the_source_child() {
 
 #[test]
 fn replacing_the_session_kills_the_previous_source_child() {
+    // Spawns "sleep" and "kill" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
@@ -179,6 +189,8 @@ fn replacing_the_session_kills_the_previous_source_child() {
 
 #[test]
 fn a_second_attach_source_kills_the_first_source_child() {
+    // Spawns "sleep" and "kill" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 

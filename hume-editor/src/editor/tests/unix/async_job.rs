@@ -30,6 +30,8 @@ fn process_is_alive(pid: u32) -> bool {
 
 #[test]
 fn end_to_end_drain_delivers_the_full_result_exactly_once() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     let args = vec!["-c".to_string(), "printf 'hi'".to_string()];
     let id = spawn_async(&mut ed, "sh", args, SteelVal::BoolV(false));
@@ -59,6 +61,8 @@ fn end_to_end_drain_delivers_the_full_result_exactly_once() {
 
 #[test]
 fn nonzero_exit_and_stderr_reach_the_callback() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     let args = vec!["-c".to_string(), "echo boom >&2; exit 3".to_string()];
     spawn_async(&mut ed, "sh", args, SteelVal::BoolV(false));
@@ -98,6 +102,8 @@ fn missing_binary_fires_the_callback_synchronously_with_code_negative_one() {
 
 #[test]
 fn cancel_kills_the_child_and_drops_the_callback_without_firing_it() {
+    // Spawns "sleep" and "kill" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     let args = vec!["30".to_string()];
     let id = spawn_async(&mut ed, "sleep", args, SteelVal::BoolV(false));

@@ -437,7 +437,12 @@ impl Editor {
 #[derive(Clone, Copy, Debug)]
 enum Global {
     /// `HUME_RUNTIME`, `TMPDIR`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `HOME`,
-    /// `PATH` — every env var a guard in this tree redirects.
+    /// `PATH` — every env var a guard in this tree redirects. Also claimed by
+    /// a test with no guard of its own that spawns a subprocess by
+    /// unqualified name (`Command::new("tree-sitter")`, `Command::new("sh")`,
+    /// …): the OS resolves that name against process `PATH` at the spawn
+    /// instant, so such a test is a `PATH` *reader* racing every `PATH`
+    /// mutator just as much as a `set_var` call would.
     Env,
     /// The process current directory.
     Cwd,

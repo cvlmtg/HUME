@@ -225,6 +225,13 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
 /// curl, or tree-sitter is absent or GitHub is unreachable.
 #[test]
 fn install_real_json_grammar_e2e() {
+    // git/curl/tree-sitter are all spawned by unqualified name below (and by
+    // the live-e2e probe itself), so this test is a `PATH` reader for its
+    // whole duration — `scripting_lsp_install.rs` narrows process `PATH` to
+    // an empty or shim-only dir in several tests, and a spawn landing inside
+    // that window resolves to nothing (see `Global::Env`'s doc).
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+
     if hume_test_fixtures::skip_unless_live_grammar_e2e("install_real_json_grammar_e2e") {
         return;
     }

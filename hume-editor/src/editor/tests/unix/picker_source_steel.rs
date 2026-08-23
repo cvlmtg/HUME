@@ -24,6 +24,8 @@ fn call(ed: &mut Editor, name: &str) {
 
 #[test]
 fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
@@ -59,6 +61,8 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
 
 #[test]
 fn nul_delimited_source_splits_on_nul() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
@@ -83,6 +87,8 @@ fn nul_delimited_source_splits_on_nul() {
 
 #[test]
 fn nonzero_exit_reports_a_status_message() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
@@ -108,6 +114,8 @@ fn nonzero_exit_reports_a_status_message() {
 
 #[test]
 fn picker_close_kills_the_source_child() {
+    // Spawns "sleep" and "kill" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
