@@ -2,6 +2,17 @@ use super::*;
 use crate::changeset::ChangeSetBuilder;
 use pretty_assertions::assert_eq;
 
+/// Test-only shorthand: these tests exercise merge/translate invalidation,
+/// not `DisplayColOrigin` itself, so every latch below is `BufferLine`
+/// arbitrarily — origin-aware behaviour is pinned separately in
+/// `hume-ops`/`hume-editor`.
+fn sticky(display_col: u32) -> StickyDisplayCol {
+    StickyDisplayCol {
+        display_col,
+        origin: DisplayColOrigin::BufferLine,
+    }
+}
+
 // ── SelectionSet ──────────────────────────────────────────────────────────
 
 #[test]
@@ -66,8 +77,8 @@ fn merge_clears_sticky_display_col_on_extended_selection() {
     // Merging two overlapping selections clears sticky_display_col on the
     // result — neither side's latched column is valid once the head moves
     // to the union boundary.
-    let a = Selection::with_sticky_display_col(0, 5, 42); // sticky_display_col latched
-    let b = Selection::with_sticky_display_col(3, 8, 99); // sticky_display_col latched
+    let a = Selection::with_sticky_display_col(0, 5, sticky(42)); // sticky_display_col latched
+    let b = Selection::with_sticky_display_col(3, 8, sticky(99)); // sticky_display_col latched
     let mut set = SelectionSet::from_vec_unchecked(vec![a, b], 0);
     // The two selections overlap → they merge into one.
     set.merge_overlapping_in_place();
@@ -487,9 +498,9 @@ fn translate_in_place_remaps_positions_and_resets_sticky_display_col_only_on_tou
     // sel0: collapsed at 1, on the untouched line0.
     // sel1: range (5,6), fully inside the edited span on line1.
     // sel2: collapsed at 9, on the untouched line2.
-    let sel0 = Selection::with_sticky_display_col(1, 1, 5);
-    let sel1 = Selection::with_sticky_display_col(5, 6, 9); // forward: anchor <= head
-    let sel2 = Selection::with_sticky_display_col(9, 9, 7);
+    let sel0 = Selection::with_sticky_display_col(1, 1, sticky(5));
+    let sel1 = Selection::with_sticky_display_col(5, 6, sticky(9)); // forward: anchor <= head
+    let sel2 = Selection::with_sticky_display_col(9, 9, sticky(7));
     let mut set = SelectionSet::from_vec(vec![sel0, sel1, sel2], 0);
 
     // Replace "bbb" (positions 4..7) with "XY" — net -1 char, entirely
@@ -508,7 +519,7 @@ fn translate_in_place_remaps_positions_and_resets_sticky_display_col_only_on_tou
     // sel0: untouched line, position unchanged, sticky_display_col preserved.
     let s0 = set.iter_sorted().next().unwrap();
     assert_eq!((s0.anchor(), s0.head()), (1, 1));
-    assert_eq!(s0.sticky_display_col(), Some(5));
+    assert_eq!(s0.sticky_display_col(), Some(sticky(5)));
 
     // sel1: collapses onto the replacement point (old positions 5,6 both
     // fell inside the deleted "bbb"), direction preserved, sticky_display_col
@@ -521,7 +532,7 @@ fn translate_in_place_remaps_positions_and_resets_sticky_display_col_only_on_tou
     // sticky_display_col preserved.
     let s2 = set.iter_sorted().nth(2).unwrap();
     assert_eq!((s2.anchor(), s2.head()), (8, 8));
-    assert_eq!(s2.sticky_display_col(), Some(7));
+    assert_eq!(s2.sticky_display_col(), Some(sticky(7)));
 }
 
 #[test]
@@ -531,8 +542,8 @@ fn translate_in_place_insert_exactly_at_line_start_touches_that_line() {
     // range [3,3). It must count as touching line1 (matching the
     // pre-batch `touches_line` behavior: `old >= line_start`), not line0.
     let buf_pre = Text::from("aa\nbb");
-    let sel0 = Selection::with_sticky_display_col(1, 1, 5); // head=1, on line0
-    let sel1 = Selection::with_sticky_display_col(4, 4, 9); // head=4, on line1
+    let sel0 = Selection::with_sticky_display_col(1, 1, sticky(5)); // head=1, on line0
+    let sel1 = Selection::with_sticky_display_col(4, 4, sticky(9)); // head=4, on line1
     let mut set = SelectionSet::from_vec(vec![sel0, sel1], 0);
 
     let mut b = ChangeSetBuilder::new(6);
@@ -546,7 +557,7 @@ fn translate_in_place_insert_exactly_at_line_start_touches_that_line() {
     let s0 = set.iter_sorted().next().unwrap();
     assert_eq!(
         s0.sticky_display_col(),
-        Some(5),
+        Some(sticky(5)),
         "line0 wasn't touched — insert lands after it"
     );
     let s1 = set.iter_sorted().nth(1).unwrap();
@@ -586,8 +597,8 @@ fn translate_in_place_merges_selections_collapsed_onto_same_point() {
     // that removes the entire content ("abcdef") both collapse to
     // position 0 and must merge into a single selection.
     let buf_pre = Text::from("abcdef");
-    let sel0 = Selection::with_sticky_display_col(1, 1, 3);
-    let sel1 = Selection::with_sticky_display_col(4, 4, 8);
+    let sel0 = Selection::with_sticky_display_col(1, 1, sticky(3));
+    let sel1 = Selection::with_sticky_display_col(4, 4, sticky(8));
     let mut set = SelectionSet::from_vec(vec![sel0, sel1], 0);
 
     let mut b = ChangeSetBuilder::new(7);

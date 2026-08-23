@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_editing::selection::{DisplayColOrigin, StickyDisplayCol};
 use hume_test_fixtures::assert_state;
 
 // ── goto_line_start ───────────────────────────────────────────────────────
@@ -256,7 +257,7 @@ fn move_up_basic() {
 #[test]
 fn move_up_preserves_display_column_across_a_tab() {
     // The upward twin of `move_down_preserves_display_column_across_a_tab`:
-    // both directions share `to_line_keeping_display_col`, but only down was
+    // both directions share `move_vertical_buffer_line`, but only down was
     // asserted on anything but ASCII. Cursor on 'o' (char offset 2) of the
     // tabbed line sits at display column 5 (tab expands to 4, 'w' is 1
     // more); moving up must land on display column 5 of the plain line —
@@ -316,6 +317,117 @@ fn move_down_count_3() {
         |(buf, sels)| cmd_move_down(&buf, sels, 3, MotionMode::Move, 4),
         "a\nb\nc\n-[d]>\ne\n"
     );
+}
+
+// ── sticky display column across a count (Q29b) ──────────────────────────
+//
+// A count-fold must hold its goal column across the whole hop instead of
+// re-deriving it from each intermediate landing — otherwise a short line
+// partway through the hop truncates it, same failure the sticky column
+// exists to prevent for repeated bare `j`/`k`. See `move_vertical_buffer_line`.
+
+#[test]
+fn move_down_count_2_holds_display_column_through_a_short_line() {
+    // Fail oracle: re-deriving the column after landing on "x" (the
+    // per-step behaviour this replaces) would drop it to column 0, landing
+    // on 'a' instead of 'd'.
+    assert_state!(
+        "abc-[d]>ef\nx\nabcdef\n",
+        |(buf, sels)| cmd_move_down(&buf, sels, 2, MotionMode::Move, 4),
+        "abcdef\nx\nabc-[d]>ef\n"
+    );
+}
+
+#[test]
+fn move_up_count_2_holds_display_column_through_a_short_line() {
+    // Upward twin of the above.
+    assert_state!(
+        "abcdef\nx\nabc-[d]>ef\n",
+        |(buf, sels)| cmd_move_up(&buf, sels, 2, MotionMode::Move, 4),
+        "abc-[d]>ef\nx\nabcdef\n"
+    );
+}
+
+#[test]
+fn move_down_reuses_a_buffer_line_latch_but_rederives_a_display_row_one() {
+    // A `BufferLine`-tagged latch is this call's own domain and seeds the
+    // hop directly; a `DisplayRow`-tagged one is a different quantity under
+    // wrap (see `DisplayColOrigin`) and must be re-derived from `head`
+    // instead — reusing it as a buffer-line column would be a sideways jump.
+    let buf = Text::from("abcdefgh\nABCDEFGH\n");
+
+    let seeded = SelectionSet::single(Selection::with_sticky_display_col(
+        2,
+        2,
+        StickyDisplayCol {
+            display_col: 6,
+            origin: DisplayColOrigin::BufferLine,
+        },
+    ));
+    let result = cmd_move_down(&buf, seeded, 1, MotionMode::Move, 4);
+    assert_eq!(
+        result.primary().head(),
+        15,
+        "BufferLine latch (6) is reused: lands on 'G'"
+    );
+
+    let ignored = SelectionSet::single(Selection::with_sticky_display_col(
+        2,
+        2,
+        StickyDisplayCol {
+            display_col: 6,
+            origin: DisplayColOrigin::DisplayRow,
+        },
+    ));
+    let result = cmd_move_down(&buf, ignored, 1, MotionMode::Move, 4);
+    assert_eq!(
+        result.primary().head(),
+        11,
+        "DisplayRow latch is ignored: re-derives from head (col 2), lands on 'C'"
+    );
+}
+
+#[test]
+fn move_down_emits_a_buffer_line_tagged_sticky_column() {
+    let buf = Text::from("hello\nworld\n");
+    let sels = SelectionSet::single(Selection::collapsed(2)); // 'l', display col 2
+    let result = cmd_move_down(&buf, sels, 1, MotionMode::Move, 4);
+    assert_eq!(
+        result.primary().head(),
+        8,
+        "lands on 'r' (col 2 of \"world\")"
+    );
+    assert_eq!(
+        result.primary().sticky_display_col(),
+        Some(StickyDisplayCol {
+            display_col: 2,
+            origin: DisplayColOrigin::BufferLine,
+        }),
+        "output must latch a BufferLine-tagged sticky column"
+    );
+}
+
+#[test]
+fn move_down_past_last_content_line_leaves_head_exactly_where_it_was() {
+    // Already on the buffer's last content line; a further count must leave
+    // `head` untouched rather than re-deriving via `place_display_column` at
+    // the latched goal column, which could choose a different character on
+    // this same line. Oracle: a naive re-derivation would move off 'e'
+    // (char 5) toward line 1's end, since the latch (200) far exceeds the
+    // line's actual width.
+    let buf = Text::from("ab\ncdefgh\n");
+    let sel = Selection::with_sticky_display_col(
+        5,
+        5,
+        StickyDisplayCol {
+            display_col: 200,
+            origin: DisplayColOrigin::BufferLine,
+        },
+    );
+    let sels = SelectionSet::single(sel);
+
+    let result = cmd_move_down(&buf, sels, 3, MotionMode::Move, 4);
+    assert_eq!(result.primary().head(), 5, "head must stay exactly on 'e'");
 }
 
 // ── multi-cursor goto_line motions ────────────────────────────────────────

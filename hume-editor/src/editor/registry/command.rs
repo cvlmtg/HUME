@@ -64,8 +64,11 @@ pub(crate) struct CmdMeta {
     /// Move results — replaying such a step would advance past the intended word.
     pub reaching: bool,
     /// Whether this command is a visual-line motion (`move-down`/`move-up`).
-    /// The preferred display column is preserved across consecutive visual-line
-    /// moves and cleared for any other command.
+    /// Read only by `step_capture_pre_jump`, alongside `is_jump`/`is_motion`,
+    /// to decide whether to snapshot the pre-move selection for the jump
+    /// list — it does not gate the sticky display column, which a
+    /// `Selection` carries and clears by construction regardless of this
+    /// flag (see `Selection::sticky_display_col`).
     pub is_visual_move: bool,
     /// Whether `.` should replay this command.
     ///

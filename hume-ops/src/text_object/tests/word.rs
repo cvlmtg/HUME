@@ -1,6 +1,16 @@
 use super::super::*;
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::selection::{DisplayColOrigin, Selection, SelectionSet, StickyDisplayCol};
 use hume_test_fixtures::assert_state;
+
+/// Test-only shorthand: these tests exercise the word-snap pass-through, not
+/// `DisplayColOrigin` itself, so every latch below is `BufferLine`
+/// arbitrarily.
+fn sticky(display_col: u32) -> StickyDisplayCol {
+    StickyDisplayCol {
+        display_col,
+        origin: DisplayColOrigin::BufferLine,
+    }
+}
 
 // ── Word ──────────────────────────────────────────────────────────────────
 
@@ -535,14 +545,14 @@ fn nearest_on_whitespace_only_line_is_noop() {
 fn nearest_preserves_sticky_display_col_on_word() {
     // sel.sticky_display_col = Some(5) must survive the snap to a word.
     let buf = Text::from("hello world\n");
-    let sels = SelectionSet::single(Selection::with_sticky_display_col(6, 6, 5));
+    let sels = SelectionSet::single(Selection::with_sticky_display_col(6, 6, sticky(5)));
     let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false);
     let sel = result.primary();
     // "world" spans chars 6–10.
     assert_eq!((sel.anchor(), sel.head()), (6, 10), "expected word range");
     assert_eq!(
         sel.sticky_display_col(),
-        Some(5),
+        Some(sticky(5)),
         "sticky_display_col must be preserved"
     );
 }
@@ -554,13 +564,13 @@ fn nearest_preserves_sticky_display_col_on_whitespace() {
     let buf = Text::from("hi   world\n");
     //                    0123456789
     // spaces at 2,3,4; head=3 (space), prev word = "hi" ends at 1.
-    let sels = SelectionSet::single(Selection::with_sticky_display_col(3, 3, 3));
+    let sels = SelectionSet::single(Selection::with_sticky_display_col(3, 3, sticky(3)));
     let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false);
     let sel = result.primary();
     assert_eq!((sel.anchor(), sel.head()), (0, 1), "expected 'hi' range");
     assert_eq!(
         sel.sticky_display_col(),
-        Some(3),
+        Some(sticky(3)),
         "sticky_display_col must be preserved"
     );
 }
@@ -604,11 +614,11 @@ fn nearest_extend_grows_selection_to_snapped_word() {
 #[test]
 fn nearest_extend_preserves_sticky_display_col() {
     let buf = Text::from("hello world\n");
-    let sels = SelectionSet::single(Selection::with_sticky_display_col(0, 5, 7)); // anchor=0, head=5 (space)
+    let sels = SelectionSet::single(Selection::with_sticky_display_col(0, 5, sticky(7))); // anchor=0, head=5 (space)
     let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Extend, false);
     assert_eq!(
         result.primary().sticky_display_col(),
-        Some(7),
+        Some(sticky(7)),
         "sticky_display_col must survive extend mode"
     );
 }

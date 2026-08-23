@@ -89,14 +89,23 @@ fn d4a_search_pattern_is_per_buffer() {
 #[test]
 fn d4b_sticky_col_is_per_selection() {
     use hume_editing::changeset::ChangeSetBuilder;
-    use hume_editing::selection::{Selection, SelectionSet};
+    use hume_editing::selection::{DisplayColOrigin, Selection, SelectionSet, StickyDisplayCol};
     use hume_editing::text::Text;
 
     // "abc\ndef\n" — two lines.
     let text = Text::from("abc\ndef\n");
 
     // Selection on line 1 (char offset 4 = 'd'), sticky_display_col = 0.
-    let sel = Selection::with_sticky_display_col(4, 4, 0);
+    // Origin is incidental to this test (translate_in_place invalidation
+    // doesn't look at it) — BufferLine is as good as DisplayRow here.
+    let sel = Selection::with_sticky_display_col(
+        4,
+        4,
+        StickyDisplayCol {
+            display_col: 0,
+            origin: DisplayColOrigin::BufferLine,
+        },
+    );
     let mut sels = SelectionSet::single(sel);
 
     // CS that inserts at the start of line 0 only: "abc\n" → "Xabc\n"
@@ -113,14 +122,24 @@ fn d4b_sticky_col_is_per_selection() {
     assert_eq!(sels.primary().head(), 5, "head mapped past insert");
     assert_eq!(
         sels.primary().sticky_display_col(),
-        Some(0),
+        Some(StickyDisplayCol {
+            display_col: 0,
+            origin: DisplayColOrigin::BufferLine,
+        }),
         "sticky_display_col preserved on untouched line"
     );
 
     // Now a CS that touches line 1 (inserts at position of 'd'):
     // sticky_display_col should reset. Re-build sels with the updated head
     // but set sticky_display_col back to show it was latched.
-    let sel2 = Selection::with_sticky_display_col(5, 5, 0);
+    let sel2 = Selection::with_sticky_display_col(
+        5,
+        5,
+        StickyDisplayCol {
+            display_col: 0,
+            origin: DisplayColOrigin::BufferLine,
+        },
+    );
     let mut sels2 = SelectionSet::single(sel2);
 
     // "Xabc\ndef\n" (after first edit) — "d" is now at char 5 (line 1).

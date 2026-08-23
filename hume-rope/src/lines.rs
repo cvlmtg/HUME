@@ -273,9 +273,9 @@ pub fn place_char_column(rope: &Rope, line: usize, char_col: usize) -> usize {
 /// Place the cursor at display column `target_display_col` of `line`,
 /// clamping to the last content character (or the line's own `\n` when it's
 /// empty) and snapping to a grapheme boundary. Tab-aware and
-/// unicode-width-aware — the display-column model `move_down_inner`/
-/// `move_up_inner` (`9j`/`9k`) share with `editor::visual_move::move_vertical`'s
-/// bare `j`/`k`.
+/// unicode-width-aware — the display-column model
+/// `hume_ops::motion::move_vertical_buffer_line` (`9j`/`9k`) shares with
+/// `editor::visual_move::move_vertical`'s bare `j`/`k`.
 ///
 /// Can't just return [`crate::grapheme::char_pos_at_display_col`]'s answer:
 /// that function lands ON the line's trailing `\n` once `target_display_col`

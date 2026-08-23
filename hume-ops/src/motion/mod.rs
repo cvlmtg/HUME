@@ -54,8 +54,8 @@ mod char_move;
 use char_move::{goto_first_line, goto_last_line, move_left, move_right};
 mod line;
 use line::{
-    goto_first_nonblank, goto_line_end, goto_line_newline, goto_line_start, move_down_inner,
-    move_up_inner,
+    goto_first_nonblank, goto_line_end, goto_line_newline, goto_line_start,
+    move_vertical_buffer_line,
 };
 mod word;
 pub(crate) use word::prev_word_start;
@@ -131,15 +131,19 @@ motion_cmd!(/// Move or extend cursors to the `\n` terminating the current line.
 motion_cmd!(/// Move or extend cursors to the first non-blank character on their current line.
     cmd_goto_first_nonblank, goto_first_nonblank);
 
-// Vertical motion — hand-written rather than `motion_cmd!`: `tab_width` makes
-// this signature genuinely differ from every other motion command's (the
-// display column `move_down_inner`/`move_up_inner` need can't be derived
-// from `buf`/`sels`/`count`/`mode` alone). Not registered in
-// `CommandRegistry` — reached only by `editor::visual_move`'s
-// `apply_visual_vertical` (the `9j`/`9k` numeric-prefix path), which already
-// has the buffer settings access a registered `fn`-pointer command wouldn't.
+// Vertical motion — hand-written rather than `motion_cmd!`, for two reasons:
+// `tab_width` makes the signature genuinely differ from every other motion
+// command's (the display column `move_vertical_buffer_line` needs can't be
+// derived from `buf`/`sels`/`count`/`mode` alone), and holding the sticky
+// display column across a repeat count (see `DisplayColOrigin`) needs the
+// whole `Selection`, which `apply_motion`'s `Fn(&Text, usize) -> usize` shape
+// can't carry. Not registered in `CommandRegistry` — reached only by
+// `editor::visual_move`'s `apply_visual_vertical` (the `9j`/`9k`
+// numeric-prefix path), which already has the buffer settings access a
+// registered `fn`-pointer command wouldn't.
 
-/// Move or extend cursors down one line, preserving the display column.
+/// Move or extend cursors down `count` buffer lines, preserving the display
+/// column across the whole hop. See [`line::move_vertical_buffer_line`].
 pub fn cmd_move_down(
     buf: &Text,
     sels: SelectionSet,
@@ -147,12 +151,11 @@ pub fn cmd_move_down(
     mode: MotionMode,
     tab_width: u8,
 ) -> SelectionSet {
-    apply_motion(buf, sels, mode, count, |b, h| {
-        move_down_inner(b, h, tab_width)
-    })
+    move_vertical_buffer_line(buf, sels, true, count, mode, tab_width)
 }
 
-/// Move or extend cursors up one line, preserving the display column.
+/// Move or extend cursors up `count` buffer lines, preserving the display
+/// column across the whole hop. See [`line::move_vertical_buffer_line`].
 pub fn cmd_move_up(
     buf: &Text,
     sels: SelectionSet,
@@ -160,9 +163,7 @@ pub fn cmd_move_up(
     mode: MotionMode,
     tab_width: u8,
 ) -> SelectionSet {
-    apply_motion(buf, sels, mode, count, |b, h| {
-        move_up_inner(b, h, tab_width)
-    })
+    move_vertical_buffer_line(buf, sels, false, count, mode, tab_width)
 }
 
 // Paragraph motions.

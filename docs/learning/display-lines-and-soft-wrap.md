@@ -83,6 +83,24 @@ across consecutive vertical moves. Any horizontal movement (or any non-vertical
 command) resets the latch. This matches how virtually every text editor handles
 vertical movement with short lines.
 
+The same guarantee applies to a counted move like `9j`: the column it started
+with survives even if a narrower line sits somewhere in the middle of the
+nine-line hop, exactly as if `j` had been pressed nine times in a row.
+
+There is one subtlety a counted move has to get right that a single press
+doesn't: while wrapping, a display row's column is measured from that row's
+own left edge, not from the start of the buffer line it belongs to — a
+continuation row that starts a few columns in renumbers its columns from
+zero. So the column a bare `j` latches while hopping between display rows and
+the column a counted move latches while hopping between buffer lines are two
+different numbers for the same character whenever a line wraps. HUME tracks
+which of the two a latched column was measured in, and only reuses it for a
+move that counts the same way — a move that counts differently re-measures
+the column from where the cursor actually sits rather than misreading the
+other kind of column as its own. With wrapping off a display row and a buffer
+line are the same thing, so the two always agree and a mixed run of plain and
+counted vertical moves keeps its column throughout.
+
 ## Connection to LSP and future features
 
 Inline decorations — a mechanism that injects cells *inside* a row at byte

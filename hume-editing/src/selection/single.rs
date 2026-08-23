@@ -2,6 +2,34 @@ use crate::grapheme::next_grapheme_boundary;
 use crate::lines::is_line_start;
 use crate::text::Text;
 
+/// What a [`StickyDisplayCol`]'s number is measured *from*.
+///
+/// A display column is only comparable to another one measured the same way.
+/// Under soft wrap, a continuation row renumbers its columns from its own left
+/// edge (its indent, under `WrapMode::Indent`), so the same character has a
+/// different `DisplayRow` column than `BufferLine` column — reading one as the
+/// other sends the cursor sideways. With wrapping off a row *is* the whole
+/// line, so the two coincide and either origin reads back the same number.
+/// This is why a motion switching families (`j` then `2j`, or vice versa)
+/// re-derives instead of reusing a latch tagged with the other origin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DisplayColOrigin {
+    /// Column within the current display row (`hume_engine::rows::RowMap`) —
+    /// what `j`/`k`, page/half-page scroll, and the mouse wheel latch.
+    DisplayRow,
+    /// Column within the buffer line (`hume_rope::grapheme::display_col_in_line`)
+    /// — what an explicit numeric prefix (`9j`/`9k`) latches.
+    BufferLine,
+}
+
+/// A display column together with the frame it was measured in. See
+/// [`DisplayColOrigin`] for why the two can't be compared directly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StickyDisplayCol {
+    pub display_col: u32,
+    pub origin: DisplayColOrigin,
+}
+
 /// A single selection range within a buffer.
 ///
 /// Both `anchor` and `head` are **char offsets** — indices into the buffer's
@@ -30,12 +58,12 @@ pub struct Selection {
     pub(crate) anchor: usize,
     /// The moving end / cursor position.
     pub(crate) head: usize,
-    /// Sticky display column for visual j/k motion. `None` means "not latched
+    /// Sticky display column for vertical motion. `None` means "not latched
     /// — recompute on next vertical move." Any horizontal motion or edit that
     /// touches this selection's line resets this to `None` by construction
     /// (constructors set it to `None`; `with_sticky_display_col` sets it, and
     /// `shift` carries it through a same-line edit).
-    pub(crate) sticky_display_col: Option<u32>,
+    pub(crate) sticky_display_col: Option<StickyDisplayCol>,
 }
 
 impl Selection {
@@ -60,10 +88,17 @@ impl Selection {
 
     /// A directional selection with a preserved sticky display column.
     ///
-    /// Used *only* by visual j/k motion to carry the column across consecutive
-    /// vertical moves. All other code uses [`Self::new`] or [`Self::collapsed`] which reset
-    /// `sticky_display_col` to `None` by construction.
-    pub fn with_sticky_display_col(anchor: usize, head: usize, sticky_display_col: u32) -> Self {
+    /// Used by the two vertical motion paths (`editor::visual_move`'s row-domain
+    /// `j`/`k`/scroll/wheel, and `hume-ops`'s buffer-line `9j`/`9k`) to carry
+    /// the column across consecutive vertical moves, and by word-snap
+    /// (`text_object::apply_nearest_word_result`) to pass an existing latch
+    /// through unchanged. All other code uses [`Self::new`] or
+    /// [`Self::collapsed`], which reset `sticky_display_col` to `None`.
+    pub fn with_sticky_display_col(
+        anchor: usize,
+        head: usize,
+        sticky_display_col: StickyDisplayCol,
+    ) -> Self {
         Self {
             anchor,
             head,
@@ -101,8 +136,8 @@ impl Selection {
         self.head
     }
 
-    /// Sticky display column for visual j/k motion, or `None` when not latched.
-    pub fn sticky_display_col(&self) -> Option<u32> {
+    /// Sticky display column for vertical motion, or `None` when not latched.
+    pub fn sticky_display_col(&self) -> Option<StickyDisplayCol> {
         self.sticky_display_col
     }
 

@@ -5,7 +5,7 @@
 //! `(&Text, SelectionSet) -> SelectionSet` motion signature — so they live here
 //! instead of `hume-ops`'s `motion` module.
 
-use hume_editing::selection::Selection;
+use hume_editing::selection::{DisplayColOrigin, Selection, StickyDisplayCol};
 use hume_engine::pipeline::EngineView;
 use hume_engine::rows::{DisplayColTarget, RowKind, RowMap};
 use hume_ops::MotionMode;
@@ -102,9 +102,11 @@ pub(super) fn apply_visual_vertical(
     // holds — with page/half-page scroll and the mouse wheel (`ScreenRow`),
     // which must preserve display columns across virtual rows regardless of
     // wrap mode. The cost in no-wrap mode is a per-press format of the
-    // cursor's line instead of pure rope arithmetic; `move_down_inner`'s
-    // display-column model (same as `move_vertical`'s) is now reached only
-    // via `BufferLine`.
+    // cursor's line instead of pure rope arithmetic. Both paths still latch
+    // the same field: `hume_ops::motion::move_vertical_buffer_line` tags its
+    // own latch `BufferLine`, this path tags `DisplayRow` while wrapping —
+    // `DisplayColOrigin` is what keeps the two from being read as each
+    // other's column when a family switch (`j` then `2j`) crosses the fork.
     let use_buffer_line_motion = matches!(unit, VerticalUnit::BufferLine);
     if use_buffer_line_motion {
         // `cmd_move_down`/`cmd_move_up` aren't registered in `CommandRegistry`
@@ -125,6 +127,20 @@ pub(super) fn apply_visual_vertical(
     let content_only = !matches!(unit, VerticalUnit::ScreenRow);
 
     let buf_id = focused_buffer_id(state, view);
+    // A latch this path wrote is tagged by whether wrapping was on at the
+    // time — see `DisplayColOrigin`. Resolved once per call, before the row
+    // map borrows the pane, since neither borrow is mutable.
+    let wrapping = effective_wrap_mode(
+        state.buffers.get(buf_id),
+        &state.settings,
+        &view.panes[focused],
+    )
+    .is_wrapping();
+    let origin = if wrapping {
+        DisplayColOrigin::DisplayRow
+    } else {
+        DisplayColOrigin::BufferLine
+    };
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();
     let mut rm = pane_row_map(
@@ -143,13 +159,17 @@ pub(super) fn apply_visual_vertical(
         focused,
         buf_id,
         |_text, sels| {
-            // Pass 1: resolve each selection's sticky display column from
-            // sel.sticky_display_col, computing it fresh on the first j/k
-            // press.
-            target_display_cols.extend(sels.iter_sorted().map(|sel| {
-                sel.sticky_display_col()
-                    .unwrap_or_else(|| rm.locate(sel.head()).1)
-            }));
+            // Pass 1: resolve each selection's sticky display column. A latch
+            // tagged for this call's own origin is reused as-is; one tagged
+            // for the other origin is a different quantity under wrap (see
+            // `DisplayColOrigin`) and is re-derived instead, the same as no
+            // latch at all.
+            target_display_cols.extend(sels.iter_sorted().map(
+                |sel| match sel.sticky_display_col() {
+                    Some(sticky) if sticky.origin == origin => sticky.display_col,
+                    _ => rm.locate(sel.head()).1,
+                },
+            ));
 
             // Pass 2: move each selection, preserving the sticky column so
             // consecutive j/k presses reuse it.
@@ -170,7 +190,14 @@ pub(super) fn apply_visual_vertical(
                 } else {
                     head
                 };
-                Selection::with_sticky_display_col(anchor, head, target_display_col)
+                Selection::with_sticky_display_col(
+                    anchor,
+                    head,
+                    StickyDisplayCol {
+                        display_col: target_display_col,
+                        origin,
+                    },
+                )
             })
         },
     );

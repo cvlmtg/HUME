@@ -2,7 +2,7 @@ mod single;
 #[cfg(test)]
 pub mod testing;
 
-pub use single::{Selection, is_selection_linewise};
+pub use single::{DisplayColOrigin, Selection, StickyDisplayCol, is_selection_linewise};
 
 use crate::changeset::{Assoc, ChangeSet, PosMapCursor};
 use crate::error::ValidationError;
