@@ -147,6 +147,37 @@ pub(crate) fn style_row(
 
     let mut hl = HighlightStack::new(&scratch.tier_bufs);
 
+    // Tiers 4 and 3 are properties of the *row*, not of any grapheme in it,
+    // so they resolve once here rather than per grapheme below.
+    //
+    // Tier 4: provider line-background tint (lowest) — a full-row
+    // *background* a `DecorationSource` requested for this line (e.g.
+    // git-diff's changed-line highlight). Only `bg` is layered, not the
+    // scope's whole resolved style: the row-fill paint site
+    // (`pane_render.rs`'s `row_bg`) can only ever contribute a background —
+    // it has no per-grapheme fg/modifiers to paint — so a `LineBg`-scoped fg
+    // or modifier applied here would only ever show up on content cells,
+    // never on the gutter or the row's trailing fill past end-of-line.
+    // Constraining both paint sites to `bg` is what keeps them in agreement
+    // "by construction" instead of by convention. Layered below cursorline so
+    // the cursor's own line always reads clearly even inside a tinted block;
+    // a theme whose cursorline has no `bg` falls through to the tint
+    // automatically (`ResolvedStyle::layer` only overrides on `Some(bg)`).
+    //
+    // Tier 3: selection-head-line background tint, applied to every grapheme
+    // on the line that contains a selection head. `theme.ui` fields are O(1)
+    // struct-field reads — no HashMap lookup.
+    let mut row_base = theme.default;
+    if let Some(scope) = line_tint {
+        row_base = row_base.layer(ResolvedStyle {
+            bg: theme.resolve(scope).bg,
+            ..ResolvedStyle::default()
+        });
+    }
+    if is_head_line {
+        row_base = row_base.layer(theme.ui.cursorline);
+    }
+
     for (g_idx, g) in graphemes[row.graphemes.clone()].iter().enumerate() {
         let g_idx = row.graphemes.start + g_idx;
 
@@ -158,36 +189,7 @@ pub(crate) fn style_row(
             continue;
         }
 
-        let mut style = theme.default;
-
-        // Tier 4: provider line-background tint (lowest) — a full-row
-        // *background* a `DecorationSource` requested for this line (e.g.
-        // git-diff's changed-line highlight). Only `bg` is layered, not the
-        // scope's whole resolved style: the row-fill paint site
-        // (`pane_render.rs`'s `row_bg`) can only ever contribute a
-        // background — it has no per-grapheme fg/modifiers to paint — so a
-        // `LineBg`-scoped fg or modifier applied here would only ever show
-        // up on content cells, never on the gutter or the row's trailing
-        // fill past end-of-line. Constraining both paint sites to `bg` is
-        // what keeps them in agreement "by construction" instead of by
-        // convention. Layered below cursorline so
-        // the cursor's own line always reads clearly even inside a tinted
-        // block; a theme whose cursorline has no `bg` falls through to the
-        // tint automatically (`ResolvedStyle::layer` only overrides on
-        // `Some(bg)`).
-        if let Some(scope) = line_tint {
-            style = style.layer(ResolvedStyle {
-                bg: theme.resolve(scope).bg,
-                ..ResolvedStyle::default()
-            });
-        }
-
-        // Tier 3: selection-head-line background tint.
-        // Applied to every grapheme on the line that contains a selection head.
-        // theme.ui fields are O(1) struct-field reads — no HashMap lookup.
-        if is_head_line {
-            style = style.layer(theme.ui.cursorline);
-        }
+        let mut style = row_base;
 
         // Tier 2a–2d: highlights layered in ascending priority.
         // Each theme.resolve(id) is an O(1) Vec index.

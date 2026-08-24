@@ -245,10 +245,19 @@ impl<'a> Canvas<'a> {
     pub fn fill_rect_bg(&mut self, rect: ratatui::layout::Rect, style: ratatui::style::Style) {
         let style = blend_style(style, self.dim);
         let (x0, y0, x1, y1) = clamp_rect_to_buf(self.buf, rect);
+        if x0 >= x1 {
+            return;
+        }
+        // One `index_of` per row rather than per cell — cells within a row are
+        // contiguous in ratatui's row-major backing Vec, and indexing a
+        // `Buffer` by position re-runs the whole bounds check every cell.
+        // Same reason `clear_row_span` below fills through a slice.
         for y in y0..y1 {
-            for x in x0..x1 {
+            let start = self.buf.index_of(x0, y);
+            let end = start + (x1 - x0) as usize;
+            for cell in &mut self.buf.content[start..end] {
                 // static-glyph-safe: blanks a cell, writes no text
-                self.buf[(x, y)].set_char(' ').set_style(style);
+                cell.set_char(' ').set_style(style);
             }
         }
     }
@@ -347,6 +356,9 @@ fn compose_gutter(
         primary_head_line: compose_ctx.primary_head_line,
         rope: compose_ctx.rope,
     };
+    // Constant for the whole row; resolved once so the per-cell loop and the
+    // leftover-width fill below can't drift apart on it.
+    let cell_bg = row_bg.or(compose_ctx.theme.ui.background.bg);
     for ((_, lane_provider), &lane_width) in
         compose_ctx.gutter_columns.iter().zip(lane_widths.iter())
     {
@@ -369,11 +381,7 @@ fn compose_gutter(
         for (cell_idx, cell) in cells.iter().enumerate() {
             let is_last = cell_idx == cells.len() - 1;
             let text = cell.as_str();
-            let style = gutter_cell_style(
-                cell.scope,
-                compose_ctx.theme,
-                row_bg.or(compose_ctx.theme.ui.background.bg),
-            );
+            let style = gutter_cell_style(cell.scope, compose_ctx.theme, cell_bg);
 
             // Right-align within usable width. `usable_per_cell` bounds how
             // much of `text` may be written: a builtin column (only
@@ -422,11 +430,7 @@ fn compose_gutter(
         // unpainted and `gutter_x` short of the column boundary for any
         // non-first column with uneven leftover.
         if gutter_x < lane_x + lane_width {
-            let style = gutter_cell_style(
-                last_scope,
-                compose_ctx.theme,
-                row_bg.or(compose_ctx.theme.ui.background.bg),
-            );
+            let style = gutter_cell_style(last_scope, compose_ctx.theme, cell_bg);
             while gutter_x < lane_x + lane_width {
                 canvas.set_cell(gutter_x, y, " ", style);
                 gutter_x += 1;
@@ -619,10 +623,7 @@ pub(crate) fn compose_row(
     // that continuation rows don't clobber content at guide positions.
     // Drawn after content so they appear on top of leading-whitespace cells.
     if compose_ctx.show_indent_guides && matches!(row.kind, RowKind::LineStart { .. }) {
-        let depth = graphemes[row.graphemes.clone()]
-            .first()
-            .map(|g| g.indent_depth)
-            .unwrap_or(0);
+        let depth = row_graphemes.first().map(|g| g.indent_depth).unwrap_or(0);
         let tw = hume_rope::width::indent_stop(1, compose_ctx.tab_width);
         // Draw a guide at each inner tab-stop. These positions are
         // guaranteed to lie within the leading whitespace.
@@ -709,11 +710,9 @@ fn set_cell(
     text: &str,
     style: ratatui::style::Style,
 ) {
-    let area = buf.area();
-    if x < area.x + area.width
-        && y < area.y + area.height
-        && let Some(cell) = buf.cell_mut(ratatui::layout::Position { x, y })
-    {
+    // `cell_mut` bounds-checks against the buffer's whole area, so it already
+    // rejects everything a manual check here could.
+    if let Some(cell) = buf.cell_mut(ratatui::layout::Position { x, y }) {
         cell.set_symbol(text); // static-glyph-safe: `write_text_run`'s own cell primitive
         cell.set_style(style);
     }

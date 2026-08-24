@@ -91,6 +91,10 @@ pub struct RenderContext {
     /// render so junction glyphs (`┬ ┴ ├ ┤ ┼`) can be drawn where seams
     /// cross. Reused scratch storage, same rationale as `seams`.
     pub(crate) seam_arms: FxHashMap<(u16, u16), u8>,
+    /// Each seam's rect clamped to the terminal buffer, computed ahead of the
+    /// seam pass because that pass holds an exclusive `&mut` on the buffer.
+    /// Reused scratch storage, same rationale as `seams`.
+    pub(crate) seam_bounds: Vec<(u16, u16, u16, u16)>,
     /// Scratch for cursor-position computation (`cursor::content_pos` and scroll).
     /// Distinct from `frame.format` — used outside the render pipeline, where
     /// borrowing `frame` simultaneously would conflict.
@@ -113,6 +117,7 @@ impl RenderContext {
             pane_rects: Vec::new(),
             seams: Vec::new(),
             seam_arms: FxHashMap::default(),
+            seam_bounds: Vec::new(),
             cursor_format: FormatScratch::new(),
             cursor_content_pos: None,
         }
@@ -403,13 +408,14 @@ impl EngineView {
             // Clamped once per seam, ahead of `canvas` below — it needs an
             // immutable `&Buffer` and the canvas holds an exclusive `&mut`
             // for the whole seam pass.
-            let seam_bounds: Vec<(u16, u16, u16, u16)> = ctx
-                .seams
-                .iter()
-                .map(|seam| crate::render::clamp_rect_to_buf(buf, seam.rect))
-                .collect();
+            ctx.seam_bounds.clear();
+            ctx.seam_bounds.extend(
+                ctx.seams
+                    .iter()
+                    .map(|seam| crate::render::clamp_rect_to_buf(buf, seam.rect)),
+            );
             let mut canvas = crate::render::Canvas::new(buf, &self.theme, None);
-            for (seam, &(x0, y0, x1, y1)) in ctx.seams.iter().zip(seam_bounds.iter()) {
+            for (seam, &(x0, y0, x1, y1)) in ctx.seams.iter().zip(ctx.seam_bounds.iter()) {
                 let base = match seam.direction {
                     Direction::Horizontal => ARM_N | ARM_S,
                     Direction::Vertical => ARM_E | ARM_W,
