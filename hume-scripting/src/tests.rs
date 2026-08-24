@@ -30,8 +30,8 @@ fn process_and_fs_globals_are_available_unrequired() {
                  (function? Err?)
                  (function? Ok->value)
                  (function? Err->value)
-                 ; needed by plum/list-dir (Phase 1 helper): sort takes an
-                 ; explicit comparator ((sort lst less?)), not 1-arg.
+                 ; needed by stdlib/list-subdirs (Phase 1 helper): sort takes
+                 ; an explicit comparator ((sort lst less?)), not 1-arg.
                  (function? sort)
                  (function? string<?)
                  (function? file-name))
@@ -53,7 +53,7 @@ fn process_and_fs_globals_are_available_unrequired() {
         .eval_source(downcase_src, &mut null_host3)
         .expect("string-downcase probe failed");
 
-    // Round-trip proof, not just presence: `plum/list-dir` depends on
+    // Round-trip proof, not just presence: `stdlib/list-subdirs` depends on
     // `sort` taking `(lst less?)` and `file-name` extracting a basename.
     let mut host2 = ScriptingHost::new();
     let mut null_host2 = NullHost;

@@ -19,8 +19,7 @@
 //! Two capture threads, not one: reading stdout to EOF and then stderr
 //! would deadlock on a child that fills its stderr pipe while this thread
 //! is still blocked reading stdout — the same hazard the Scheme sync path
-//! documents at `runtime/plugins/core/pickers/plugin.scm`'s
-//! `pickers/run-stdout-raw`.
+//! documents at `runtime/plugins/core/stdlib/plugin.scm`'s `stdlib/run`.
 
 use std::io;
 use std::path::Path;

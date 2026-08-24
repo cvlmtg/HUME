@@ -7,8 +7,10 @@
 ;;; activation, or right after an install/uninstall. core:plum (the plugin
 ;;; manager) is not involved — it manages ordinary plugins and grammars only.
 ;;;
-;;; Depends on core:stdlib (diagnostic navigation calls
-;;; stdlib/cursor-char-index) — load it first.
+;;; Depends on core:stdlib (`lsp/register-installed-servers!` below calls
+;;; stdlib/list-subdirs at load time; diagnostic navigation and `:lsp-install`
+;;; call stdlib/cursor-char-index/stdlib/resolve-lang-arg via call!) — load
+;;; it first.
 
 (require "lib.scm")
 (require "registration.scm")
@@ -22,6 +24,11 @@
 (require "sighelp.scm")
 (require "completion.scm")
 (require "inlay.scm")
+
+;; The load-time call below needs core:stdlib already activated, not just
+;; declared — same reasoning as core:vim-keybind/plugin.scm's guard.
+(unless (member "core:stdlib" (loaded-plugins))
+  (error "core:lsp: requires core:stdlib — (load-plugin \"core:stdlib\") before (load-plugin \"core:lsp\")"))
 
 ;; ── Register installed servers ────────────────────────────────────────────────
 ;;

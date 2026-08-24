@@ -1,49 +1,25 @@
 ;;; core:plum/lib.scm
 
-(provide plum/valid-dir-entry? plum/batch-run
-         plum/run! plum/list-dir plum/read-file)
-
-;; ── Directory entry filter ────────────────────────────────────────────────────
-
-;;; Return #t if `name` is a valid, traversable directory entry (not "." or "..").
-(define (plum/valid-dir-entry? name)
-  (and (not (equal? name "."))
-       (not (equal? name ".."))))
+(provide plum/batch-run plum/run! plum/read-file)
 
 ;; ── Process spawning ──────────────────────────────────────────────────────────
-;; `run-inline-output!` handles `#:inline-output` commands (process-group
-;; safety for Ctrl+C); `plum/run!` is for everything else that runs with the
-;; TUI's raw mode still on.
+;; Built on core:stdlib's `stdlib/run` (call! via core:stdlib — load it first,
+;; see plugin.scm's header).
 
 ;;; Spawn `cmd`/`args`, capturing stdout+stderr; blocks until exit. Raises,
 ;;; naming `cmd` and stderr, on nonzero exit, spawn failure, or wait failure.
-;;; stdin is piped and closed immediately — never inherited from HUME's own
-;;; terminal, or the child's reads would race the editor's key reads.
-;;; Gotcha (pinned by a permanent hume-scripting test): grab `child-stderr`
-;;; before `wait`, or it returns `#f` even though the stream was piped.
 (define (plum/run! cmd args #:cwd [dir #f])
-  (let* ([base (with-stdin-piped (with-stderr-piped (with-stdout-piped (command cmd args))))]
-         [builder (if dir (with-current-dir base dir) base)]
-         [spawned (spawn-process builder)])
-    (if (Ok? spawned)
-        (let* ([child (Ok->value spawned)]
-               [stderr-port (child-stderr child)])
-          (close-output-port (child-stdin child))
-          (let ([wait-result (wait child)])
-            (if (Ok? wait-result)
-                (let ([code (Ok->value wait-result)])
-                  (unless (= code 0)
-                    (let ([stderr (trim (read-port-to-string stderr-port))])
-                      (error (string-append cmd ": failed (exit " (number->string code) "): " stderr)))))
-                (error (string-append cmd ": wait failed: " (to-string (Err->value wait-result)))))))
-        (error (string-append cmd ": cannot spawn: " (to-string (Err->value spawned)))))))
+  (let* ([result (call! "stdlib/run" cmd args dir)]
+         [stderr (cadr result)]
+         [code (caddr result)])
+    (cond
+      ((not code)
+       (error (string-append cmd ": " stderr)))
+      ((not (= code 0))
+       (error (string-append cmd ": failed (exit " (number->string code) "): " (trim stderr)))))))
 
 ;; ── Filesystem helpers ────────────────────────────────────────────────────────
 ;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports`.
-
-;;; Sorted list of basenames in `dir` (`read-dir` itself returns full paths).
-(define (plum/list-dir dir)
-  (sort (map file-name (read-dir dir)) string<?))
 
 ;;; Full contents of the file at `path`, as a string.
 (define (plum/read-file path)

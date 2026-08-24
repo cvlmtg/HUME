@@ -258,12 +258,6 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
-;;; Resolve the target language for `:lsp-install`: a string argument wins;
-;;; otherwise the current buffer's language. `arg` is a string only when the
-;;; user typed one — the minibuffer passes the default count 1 otherwise.
-(define (lsp/resolve-lsp-lang-arg arg)
-  (if (string? arg) arg (buffer-language (current-buffer))))
-
 ;;; Runs `thunk` under the cross-process install lock
 ;;; (`<data>/servers/.install-lock`), releasing it exactly once regardless
 ;;; of outcome. Never re-raises `thunk`'s error through an outer
@@ -316,10 +310,9 @@
 (define-command! "lsp-install"
   "Download and verify the language server for a language (default: the current buffer's language), then register it."
   (lambda (arg)
-    (let ((lang (lsp/resolve-lsp-lang-arg arg)))
+    (let ((lang (call! "stdlib/resolve-lang-arg" "lsp-install" arg)))
       (cond
-        ((not (string? lang))
-         (log! 'warn "lsp-install: no language given and current buffer has no language set"))
+        ((not lang) (begin))
         ((not (hash-contains? *lsp-lang->server* lang))
          (log! 'warn (string-append "lsp-install: no language server is seeded for \"" lang "\"")))
         (else

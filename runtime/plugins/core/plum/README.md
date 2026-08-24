@@ -4,7 +4,8 @@
 from GitHub, and installs the tree-sitter grammars that power syntax highlighting.
 
 Requires `core:stdlib` declared (or loaded) first — grammar/plugin install and cleanup call
-`stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file` via `call!`.
+`stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file`,
+`stdlib/list-subdirs`, `stdlib/run`, `stdlib/resolve-lang-arg` via `call!`.
 
 ## Usage
 
@@ -60,10 +61,12 @@ PLUM bundles two independent subsystems:
 - `grammars.scm` — tree-sitter **grammar** install pipeline (`:plum-install-grammar` etc);
   builds on the source catalog and path helpers core registers at startup (see "Grammar
   sources and the Helix pin" below).
-- `lib.scm` — shared utilities: directory/file/process helpers (`plum/valid-dir-entry?`,
-  `plum/list-dir`, `plum/read-file`, `plum/write-file`, `plum/delete-dir`, `plum/delete-file`,
-  `plum/run!`, `plum/find`) and `plum/batch-run` (batch installs), used by `plugins.scm` and
-  `grammars.scm` as needed.
+- `lib.scm` — shared utilities: `plum/read-file`, `plum/run!` (a `core:stdlib`
+  `stdlib/run` wrapper that raises instead of returning a status), and `plum/batch-run`
+  (batch installs), used by `plugins.scm` and `grammars.scm` as needed. Directory listing,
+  filesystem cleanup, and list search live in `core:stdlib` (`stdlib/list-subdirs`,
+  `stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file`) — reached
+  via `call!`, not local wrappers.
 
 ### Plugin discovery
 

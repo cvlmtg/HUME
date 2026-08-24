@@ -74,7 +74,13 @@ fn setup(
     }
 
     let mut host = ScriptingHost::new();
-    eval_with_real_host(&mut ed, &mut host, r#"(load-plugin "core:lsp")"#, tmp);
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(load-plugin "core:stdlib")
+(load-plugin "core:lsp")"#,
+        tmp,
+    );
     ed.scripting = Some(host);
 
     (ed, guard, sid)

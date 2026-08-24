@@ -144,13 +144,10 @@
 
 ;;; Resolve the target grammar for a `:` grammar command: a string argument
 ;;; wins; otherwise fall back to the current buffer's language. Returns the
-;;; name, or #f after logging a warning. `arg` is a string only when the user
-;;; typed one — the minibuffer passes the default count 1 otherwise.
+;;; name, or #f after logging a warning.
 (define (plum/resolve-grammar-arg cmd arg)
-  (let ((name (if (string? arg) arg (buffer-language (current-buffer)))))
-    (cond ((not (string? name))
-           (log! 'warn (string-append cmd ": no grammar name given and current buffer has no language set"))
-           #f)
+  (let ((name (call! "stdlib/resolve-lang-arg" cmd arg)))
+    (cond ((not name) #f)
           ((not (grammar-source-known? name))
            (log! 'warn (string-append cmd ": unknown grammar \"" name "\" — see :plum-list-grammars"))
            #f)

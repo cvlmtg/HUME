@@ -19,13 +19,14 @@ plugin's command body calls one of them at runtime.
 require this — see the Caveat below.
 
 **Caveat**: `core:git-diff`, `core:pickers`, and `core:vim-keybind` all validate their
-`#:config` through the commands below, so each checks `(loaded-plugins)` for `"core:stdlib"`
-synchronously at *its own load time*, by design (fail fast instead of a config read silently
-resolving to `#void` — see the Config helpers section below). A merely *declared*,
-not-yet-activated `core:stdlib` doesn't show up in `(loaded-plugins)`, so all three need
-`core:stdlib` loaded eagerly first, as above. The zero-trigger form is for consumers that only
-reach `core:stdlib` via `call!` at runtime (e.g. `core:lsp`'s diagnostics navigation) with none
-of these config reads in the mix.
+`#:config` through the commands below, and `core:lsp` lists installed servers through
+`stdlib/list-subdirs`, so each checks `(loaded-plugins)` for `"core:stdlib"` synchronously at
+*its own load time*, by design (fail fast instead of a config read silently resolving to
+`#void` — see the Config helpers section below). A merely *declared*, not-yet-activated
+`core:stdlib` doesn't show up in `(loaded-plugins)`, so all four need `core:stdlib` loaded
+eagerly first, as above. The zero-trigger form is for consumers that only reach `core:stdlib`
+via `call!` at runtime (e.g. `core:plum`'s grammar/plugin install commands) with none of
+these load-time reads in the mix.
 
 ## Commands
 
@@ -48,9 +49,28 @@ All three accept `#f` and return `#f` — callers only need to check `(current-s
 | `stdlib/write-file`      | Write content to a path, creating or truncating it                   |
 | `stdlib/delete-dir`      | Recursively delete a directory; idempotent                           |
 | `stdlib/delete-file`     | Delete a file; idempotent                                             |
+| `stdlib/list-subdirs`    | Sorted basenames of a directory's subdirectories                     |
 
 Thin wrappers over Steel's `steel/filesystem`/`steel/ports` — `core:plum` and `core:lsp`
 both call into these rather than each carrying its own copy.
+
+### Subprocess
+
+| Command      | Effect                                                                       |
+|--------------|-------------------------------------------------------------------------------|
+| `stdlib/run` | Spawn a command, blocking until exit; returns `(stdout stderr exit-code)`, with `exit-code` `#f` and the failure reason in `stderr`'s place on spawn/wait failure |
+
+`core:plum` (`plum/run!`) and `core:pickers` (`pickers/run-stdout-raw`) both build their
+raise-vs-`#f` failure policy on top of this — see their own doc comments.
+
+### Command arguments
+
+| Command                    | Effect                                                              |
+|------------------------------|----------------------------------------------------------------------|
+| `stdlib/resolve-lang-arg`  | A typed language-name argument, else the current buffer's language, else `#f` after a warning naming the given command |
+
+The typed-string-vs-integer distinction this resolves comes from how HUME's minibuffer
+dispatch marshals a `:` command's argument — see the command's own doc comment.
 
 ### Plugin config
 

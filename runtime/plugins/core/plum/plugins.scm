@@ -18,7 +18,7 @@
   (let ((pdir (plum/plugins-dir)))
     (if (not (path-exists? pdir))
         '()
-        (let user-loop ((users (filter plum/valid-dir-entry? (plum/list-dir pdir)))
+        (let user-loop ((users (call! "stdlib/list-subdirs" pdir))
                         (result '()))
           (cond
             ((null? users)
@@ -26,7 +26,7 @@
             (else
              (let* ((user  (car users))
                     (udir  (path-join pdir user)))
-               (let repo-loop ((repos (filter plum/valid-dir-entry? (plum/list-dir udir)))
+               (let repo-loop ((repos (call! "stdlib/list-subdirs" udir))
                                (acc result))
                  (cond
                    ((null? repos)

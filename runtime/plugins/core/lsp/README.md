@@ -7,8 +7,9 @@ end — install, uninstall, registration, and runtime management (`servers.scm`,
 `registration.scm`) — see `docs/LSP-INSTALL.md`. `core:plum` (the plugin manager) is not
 involved.
 
-Requires `core:stdlib` declared (or loaded) first — diagnostics navigation calls
-`stdlib/cursor-char-index` via `call!`.
+Requires `core:stdlib` **loaded**, not just declared, first — `core:lsp` scans installed
+servers via `stdlib/list-subdirs` at its own load time; diagnostics navigation and
+`:lsp-install` call `stdlib/cursor-char-index`/`stdlib/resolve-lang-arg` via `call!`.
 
 ## Usage
 
@@ -18,7 +19,7 @@ your `init.scm`, plus at least one `register-lsp-server!` call if you're not rel
 `:lsp-install`:
 
 ```scheme
-(declare-plugin "core:stdlib")
+(load-plugin "core:stdlib")
 
 (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
 

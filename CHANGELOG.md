@@ -8,6 +8,14 @@
 - **Breaking**: `core:pickers` and `core:vim-keybind` now require `core:stdlib` loaded first —
   their `#:config` validation moved into `core:stdlib`'s new `stdlib/config-boolean`/
   `stdlib/config-string`/`stdlib/config-enum` commands, the same helpers `core:git-diff` uses.
+- **Breaking**: `core:lsp` now requires `core:stdlib` loaded first, not just declared — it
+  scans installed servers via `core:stdlib`'s new `stdlib/list-subdirs` at its own load time.
+  New `stdlib/run` (shared subprocess spawn, used by `core:plum`/`core:pickers`) and
+  `stdlib/resolve-lang-arg` (shared `:` command language-argument resolution, used by
+  `core:plum`/`core:lsp`) round out this round of plugin-internal deduplication.
+- Fixed `:plum-list`/`:plum-install`/`:plum-update` raising instead of skipping a stray file
+  (e.g. `.DS_Store`) found alongside a directory it expected to walk, in
+  `<data>/plugins/<user>/<repo>/`.
 - New `buffer-text`/`buffer-lines` scripting builtins return a buffer's live, unsaved content — the full text, or its content lines (optionally a `#:start`/`#:end` range), excluding the phantom trailing line past the buffer's structural newline.
 - New `diff-words` scripting builtin computes a word-level diff between two texts, returning 0-based char-offset hunk tuples plus a flag for when the comparison was too large to refine precisely.
 - New `diff-lines`/`diff-buffer-lines` scripting builtins compute a line-level diff between two texts, or between a text and a buffer's live content, returning 0-based hunk tuples ready to feed into `set-signs!`/`set-virtual-lines!`.

@@ -4,8 +4,9 @@
 ;;; Deliberately no native (Rust) picker definitions: a fixed native set
 ;;; would need a Rust PR for every new finder.
 ;;;
-;;; Depends on core:stdlib (config validation calls stdlib/config-boolean via
-;;; call!) — load it first, same as core:plum/core:lsp.
+;;; Depends on core:stdlib (config validation calls stdlib/config-boolean,
+;;; the sync probe calls stdlib/run, via call!) — load it first, same as
+;;; core:plum/core:lsp.
 
 ;; See core:vim-keybind/plugin.scm for why this checks `(loaded-plugins)`
 ;; rather than `(declared-plugins)`.
@@ -26,28 +27,17 @@
 ;; Sync spawn for fast small-output probes (git rev-parse class);
 ;; enumeration-scale output streams via `picker-source-spawn!` instead.
 ;; Unlike plum/run!, returns `#f` on nonzero exit rather than raising — a
-;; failed probe (not a repo, no fd) is a normal branch here.
+;; failed probe (not a repo, no fd) is a normal branch here. Built on
+;; core:stdlib's `stdlib/run` (call! via core:stdlib — load it first, see
+;; plugin.scm's header).
 
 ;;; Raw (untrimmed) stdout of `cmd args` if it spawns and exits 0, else `#f`.
-;;; Piped stdin/stdout/stderr, never inherited. Stdout port grabbed BEFORE
-;;; `wait`. Untrimmed because `-z`-delimited multi-entry output (e.g. `git
-;;; status`) can have a leading space as *significant data* in its first
-;;; entry — trimming the whole blob would eat it.
+;;; Untrimmed because `-z`-delimited multi-entry output (e.g. `git status`)
+;;; can have a leading space as *significant data* in its first entry —
+;;; trimming the whole blob would eat it.
 (define (pickers/run-stdout-raw cmd args)
-  (let* ([base (with-stdin-piped (with-stderr-piped (with-stdout-piped (command cmd args))))]
-         [spawned (spawn-process base)])
-    (if (Ok? spawned)
-        (let* ([child (Ok->value spawned)]
-               [out (child-stdout child)])
-          (close-output-port (child-stdin child))
-          ;; Drain BEFORE wait — a child that fills its pipe buffer blocks on
-          ;; write until read, so waiting first can deadlock past one buffer.
-          (let ([output (read-port-to-string out)])
-            (let ([wait-result (wait child)])
-              (if (and (Ok? wait-result) (= (Ok->value wait-result) 0))
-                  output
-                  #f))))
-        #f)))
+  (let ([result (call! "stdlib/run" cmd args #f)])
+    (and (equal? (caddr result) 0) (car result))))
 
 ;;; `pickers/run-stdout-raw`, trimmed — for single-value probes (git
 ;;; rev-parse class) where leading/trailing whitespace is never data.

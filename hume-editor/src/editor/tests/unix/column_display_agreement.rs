@@ -89,7 +89,13 @@ fn setup_diagnostics(file: &Path, tmp: &Path) -> (Editor, RealRuntimeGuard) {
     ed.drain_lsp();
 
     let mut host = ScriptingHost::new();
-    eval_with_real_host(&mut ed, &mut host, r#"(load-plugin "core:lsp")"#, tmp);
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(load-plugin "core:stdlib")
+(load-plugin "core:lsp")"#,
+        tmp,
+    );
     ed.scripting = Some(host);
 
     (ed, guard)
@@ -159,7 +165,13 @@ fn setup_refs(
     }
 
     let mut host = ScriptingHost::new();
-    eval_with_real_host(&mut ed, &mut host, r#"(load-plugin "core:lsp")"#, tmp);
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(load-plugin "core:stdlib")
+(load-plugin "core:lsp")"#,
+        tmp,
+    );
     ed.scripting = Some(host);
 
     (ed, guard, sid)

@@ -39,11 +39,11 @@ Leaving PLUM out only removes these commands. Already-installed plugins and gram
 Language server support: hover, go-to-definition, references, diagnostics, rename, formatting, code actions, signature help, completions, and inlay hints. It also downloads and manages the servers themselves (`:lsp-install`, `:lsp-uninstall`, `:lsp-servers`), and the running processes (`:lsp-status`, `:lsp-stop`, `:lsp-restart`).
 
 ```scheme
-(declare-plugin "core:stdlib")
+(load-plugin "core:stdlib")
 (declare-plugin "core:lsp")
 ```
 
-Requires `core:stdlib`. Declared lazily like this, it wakes up on the first buffer with a detected language, or the first `:lsp-*` command you type.
+Requires `core:stdlib` loaded, not just declared. `core:lsp` itself is still declared lazily here — it wakes up on the first buffer with a detected language, or the first `:lsp-*` command you type.
 
 See [Language Servers](lsp.md) for setup, the full command and key tables, and settings.
 
@@ -55,7 +55,7 @@ your HUME config. Requires `core:lsp`, which provides the editor-side features t
 registered server useful.
 
 ```scheme
-(declare-plugin "core:stdlib")
+(load-plugin "core:stdlib")
 (declare-plugin "core:lsp")
 (declare-plugin "core:steel-server")
 ```

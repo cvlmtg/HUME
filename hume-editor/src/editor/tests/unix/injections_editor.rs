@@ -94,10 +94,10 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
 }
 
 /// `:plum-list` exercises `plugins.scm`'s `plum/installed-plugins` (built on
-/// `plum/list-dir`, a Steel `read-dir`-backed helper) against a real (empty)
-/// data dir — no network. Pins that plugin discovery via Steel's stdlib
-/// process/fs helpers (see `user-manual/docs/plugins.md`'s "Filesystem and
-/// processes") works for loading and basic discovery.
+/// `core:stdlib`'s `stdlib/list-subdirs`, a Steel `read-dir`-backed helper)
+/// against a real (empty) data dir — no network. Pins that plugin discovery
+/// via Steel's stdlib process/fs helpers (see `user-manual/docs/plugins.md`'s
+/// "Filesystem and processes") works for loading and basic discovery.
 #[test]
 fn plum_list_runs_with_no_errors_against_empty_data_dir() {
     let _lock = TEST_GLOBALS.claim(Global::Env);
@@ -118,6 +118,47 @@ fn plum_list_runs_with_no_errors_against_empty_data_dir() {
     assert!(
         errors.is_empty(),
         ":plum-list against an empty data dir must not error: {errors:?}"
+    );
+}
+
+/// A stray file directly inside `<data>/plugins/` (e.g. a macOS `.DS_Store`)
+/// used to make `plum/installed-plugins` raise: `stdlib/list-subdirs`'s
+/// predecessor (the plum-local `plum/valid-dir-entry?`) only filtered `"."`/
+/// `".."`, which `read-dir` never returns, so the stray name passed straight
+/// through and `read-dir` was then called on it as if it were a "user"
+/// directory — `Path::read_dir` on a non-directory errors, and that error
+/// propagated uncaught out of `:plum-list`.
+///
+/// Fail oracle: revert `stdlib/list-subdirs` to list every entry instead of
+/// filtering by `is-dir?` → this test's `errors.is_empty()` fails, catching
+/// the same raise a real `.DS_Store` next to an installed plugin used to hit.
+#[test]
+fn plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir() {
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+
+    // `load_plum` points `XDG_DATA_HOME` at `data_tmp`; HUME's data dir is
+    // `$XDG_DATA_HOME/hume/` (`hume_platform::dirs::data_dir`), so the plugin
+    // walk plum/`plugins-dir` reads is `<data_tmp>/hume/plugins/`.
+    let data_tmp = safe_tempdir();
+    let plugins_dir = data_tmp.path().join("hume").join("plugins");
+    std::fs::create_dir_all(&plugins_dir).unwrap();
+    std::fs::write(plugins_dir.join(".DS_Store"), "").unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-list");
+
+    let errors: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        ":plum-list must skip a stray file in <data>/plugins/, not raise: {errors:?}"
     );
 }
 
@@ -228,10 +269,10 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
 }
 
 /// `:plum-install-grammar` with no argument and no buffer language must warn
-/// with the "no grammar name given" message. A `(equal? name "")` guard is
-/// dead here — `name` is `#f`, not `""` — so it must not be relied on to
-/// catch this; letting a `#f` name fall through produces an opaque
-/// install-failure warning instead.
+/// with core:stdlib's shared "no language given" message (`stdlib/resolve-lang-arg`).
+/// A `(equal? name "")` guard is dead here — `name` is `#f`, not `""` — so it
+/// must not be relied on to catch this; letting a `#f` name fall through
+/// produces an opaque install-failure warning instead.
 #[test]
 fn plum_install_grammar_no_arg_no_language_warns() {
     let _lock = TEST_GLOBALS.claim(Global::Env);
@@ -250,9 +291,12 @@ fn plum_install_grammar_no_arg_no_language_warns() {
         .collect();
     assert!(
         ed.state.message_log.entries().any(|e| {
-            e.severity == Severity::Warning && e.text.contains("no grammar name given")
+            // Wording comes from core:stdlib's shared `stdlib/resolve-lang-arg`
+            // (the same resolver `:lsp-install` uses), not a plum-specific
+            // "no grammar name given" message.
+            e.severity == Severity::Warning && e.text.contains("no language given")
         }),
-        "expected 'no grammar name given' warning, got: {msgs:?}"
+        "expected 'no language given' warning, got: {msgs:?}"
     );
 }
 

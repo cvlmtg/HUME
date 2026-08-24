@@ -2400,6 +2400,141 @@ fn core_stdlib_config_commands() {
     );
 }
 
+/// `stdlib/list-subdirs` must return only subdirectory basenames, sorted,
+/// filtering out a stray file that sits alongside them (e.g. `.DS_Store`) —
+/// the case `core:plum`'s plugin walk used to raise on before this helper
+/// existed (see `injections_editor.rs`'s
+/// `plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir`).
+///
+/// Independent oracle: a directory tree built directly via `std::fs`, with
+/// the expected sorted subdir list written out by hand.
+#[test]
+fn core_stdlib_list_subdirs_filters_stray_files() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+
+    let scan_dir = safe_tempdir();
+    std::fs::create_dir_all(scan_dir.path().join("beta")).unwrap();
+    std::fs::create_dir_all(scan_dir.path().join("alpha")).unwrap();
+    std::fs::write(scan_dir.path().join("stray.txt"), "not a dir").unwrap();
+    let dir = scan_dir.path().to_string_lossy().replace('\\', "\\\\");
+
+    let assertions = format!(
+        r#"
+(let ([got (call! "stdlib/list-subdirs" "{dir}")])
+  (unless (equal? got (list "alpha" "beta"))
+    (error (string-append "list-subdirs must return only sorted subdir names, got "
+                           (to-string got)))))
+"#
+    );
+
+    let result = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_source(&assertions, &mut ih)
+    };
+    assert!(
+        result.is_ok(),
+        "stdlib/list-subdirs assertions must pass: {result:?}"
+    );
+}
+
+/// `stdlib/run` must cover all three subprocess outcomes it promises:
+/// success with captured stdout, a nonzero exit with captured stderr, and a
+/// spawn failure (nonexistent binary) reporting exit-code `#f` with the
+/// failure reason standing in for stderr.
+///
+/// Independent oracle: each case's expected shape is asserted directly
+/// against the real `sh`/nonexistent-binary spawn, not against any of
+/// `stdlib/run`'s own internals.
+#[test]
+fn core_stdlib_run_covers_success_failure_and_spawn_error() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+
+    let assertions = r#"
+(let ([r (call! "stdlib/run" "echo" (list "hello-world") #f)])
+  (unless (and (string-contains? (car r) "hello-world") (equal? (caddr r) 0))
+    (error (string-append "stdlib/run success case: " (to-string r)))))
+
+(let ([r (call! "stdlib/run" "sh" (list "-c" "echo err-msg 1>&2; exit 3") #f)])
+  (unless (and (string-contains? (cadr r) "err-msg") (equal? (caddr r) 3))
+    (error (string-append "stdlib/run nonzero-exit case: " (to-string r)))))
+
+(let ([r (call! "stdlib/run" "hume-definitely-not-a-real-binary-xyz" '() #f)])
+  (unless (not (caddr r))
+    (error (string-append "stdlib/run spawn-failure case: " (to-string r)))))
+"#;
+
+    let result = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_source(assertions, &mut ih)
+    };
+    assert!(
+        result.is_ok(),
+        "stdlib/run assertions must pass: {result:?}"
+    );
+}
+
+/// `stdlib/resolve-lang-arg` must resolve a typed string argument first,
+/// fall back to the current buffer's language when the argument isn't a
+/// string, and return `#f` plus a `cmd`-naming warning when neither is
+/// available.
+///
+/// `current-buffer`/`set-buffer-language!` refuse outside dispatch (`Init`
+/// session evals reject `current-buffer`), so unlike the other `stdlib`
+/// command tests this defines a throwaway probe command and dispatches it
+/// via `:`, the same shape `run_probe` (`tests/mod.rs`) uses — rather than
+/// `eval_source`'s bare init-mode assertions.
+///
+/// Independent oracle: the buffer's language is set via `set-buffer-language!`
+/// (a command already covered elsewhere), and the expected fallback value is
+/// asserted literally, not derived from `stdlib/resolve-lang-arg` itself.
+#[test]
+fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
+    use crate::editor::Severity;
+
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+
+    let define_probe = r#"
+(define-command! "probe-resolve-lang-arg" ""
+  (lambda ()
+    (unless (equal? (call! "stdlib/resolve-lang-arg" "probe-cmd" "rust") "rust")
+      (error "resolve-lang-arg: typed string argument must win"))
+    (unless (equal? (call! "stdlib/resolve-lang-arg" "probe-cmd" 1) #f)
+      (error "resolve-lang-arg: no typed arg and no buffer language must return #f"))
+    (set-buffer-language! (current-buffer) "python")
+    (unless (equal? (call! "stdlib/resolve-lang-arg" "probe-cmd" 1) "python")
+      (error "resolve-lang-arg: non-string arg must fall back to the buffer's language"))))
+"#;
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_source(define_probe, &mut ih)
+            .expect("define probe-resolve-lang-arg command");
+    }
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":probe-resolve-lang-arg");
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "resolve-lang-arg assertions must all pass: {errors:?}"
+    );
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Warning
+                && e.text.contains("probe-cmd")
+                && e.text.contains("no language given")),
+        "the no-fallback case must log a warning naming the calling command"
+    );
+}
+
 // ── One registry, one dispatcher: lazy-activation dispatch parity ───────────
 
 /// A lazy command's first dispatch leaves identical bookkeeping whether

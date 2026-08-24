@@ -16,14 +16,14 @@ doesn't carry, or a `$PATH` copy you want to take precedence), register it by ha
 instead — see [Registering a language server](#registering-a-language-server).
 
 ```scheme
-(declare-plugin "core:stdlib")   ; core:lsp depends on it
+(load-plugin "core:stdlib")      ; core:lsp depends on it, and needs it loaded, not just declared
 (declare-plugin "core:lsp")
 ```
 
-Declaring is recommended — it keeps startup fast, and `core:lsp` activates the first time
-any file with a recognized language opens, or you run one of its commands directly
-(including `:lsp-install`). If you use LSP in every session and would rather it load from
-the start, swap `declare-plugin` for `load-plugin`:
+Declaring `core:lsp` is recommended — it keeps startup fast, and `core:lsp` activates the
+first time any file with a recognized language opens, or you run one of its commands
+directly (including `:lsp-install`). If you use LSP in every session and would rather it
+load from the start, swap `declare-plugin` for `load-plugin`:
 
 ```scheme
 (load-plugin "core:lsp")

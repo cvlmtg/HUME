@@ -35,20 +35,6 @@
         ((equal? (car (car fields)) key) (car fields))
         (else (lsp/field (cdr fields) key))))
 
-;; ── Directory entry filter + listing ──────────────────────────────────────────
-
-;;; #t if `name` is a server subdirectory of `parent` — filters out stray
-;;; non-directory entries `read-dir` returns alongside them. The systematic
-;;; case is `.install-lock` (`servers.scm`'s cross-process install sentinel,
-;;; created directly in this same directory); `.DS_Store` is incidental and
-;;; macOS-only.
-(define (lsp/valid-dir-entry? parent name)
-  (is-dir? (path-join parent name)))
-
-;;; Sorted list of basenames in `dir`.
-(define (lsp/list-dir dir)
-  (sort (map file-name (read-dir dir)) string<?))
-
 ;; ── Paths ─────────────────────────────────────────────────────────────────────
 
 (define (lsp/servers-dir) (path-join (data-dir) "servers"))
@@ -123,8 +109,7 @@
                (lsp/register-server-languages!
                  name
                  (path-join (lsp/server-dir name) (lsp/receipt-bin receipt)))))))
-        (filter (lambda (name) (lsp/valid-dir-entry? sdir name))
-                (lsp/list-dir sdir))))))
+        (call! "stdlib/list-subdirs" sdir)))))
 
 (define-command! "lsp-rescan-servers"
   "Re-scan installed language servers on disk and register any not yet registered."

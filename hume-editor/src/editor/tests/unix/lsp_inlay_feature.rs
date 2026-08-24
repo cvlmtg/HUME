@@ -64,7 +64,13 @@ fn setup(
     }
 
     let mut host = ScriptingHost::new();
-    eval_with_real_host(&mut ed, &mut host, r#"(load-plugin "core:lsp")"#, tmp);
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(load-plugin "core:stdlib")
+(load-plugin "core:lsp")"#,
+        tmp,
+    );
     ed.scripting = Some(host);
 
     (ed, guard, requests)
@@ -598,7 +604,8 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:lsp")"#,
+        r#"(load-plugin "core:stdlib")
+(load-plugin "core:lsp")"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -697,7 +704,8 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:lsp")"#,
+        r#"(load-plugin "core:stdlib")
+(load-plugin "core:lsp")"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

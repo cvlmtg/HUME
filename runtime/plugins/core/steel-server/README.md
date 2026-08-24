@@ -19,7 +19,7 @@ global `cargo install` until upstream carries it.)
 ## Usage
 
 ```scheme
-(declare-plugin "core:stdlib")
+(load-plugin "core:stdlib")
 (declare-plugin "core:lsp")
 (declare-plugin "core:steel-server")
 ```
