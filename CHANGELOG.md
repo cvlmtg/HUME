@@ -1,10 +1,8 @@
 # Changelog
 
 ## Unreleased
-- New `core:git-diff` plugin: live, VSCode-style inline git diff. `:toggle-git-signs` renders
-  gutter `+`/`-`/`~` signs; `:toggle-inline-diff` renders virtual deleted lines, word-level
-  highlights, and a background tint on changed lines — both against a configurable git ref,
-  `#:config` keys `signs`/`inline`/`ref`. Requires `core:stdlib` declared or loaded first.
+
+### Breaking changes
 - **Breaking**: `core:pickers` and `core:vim-keybind` now require `core:stdlib` declared or
   loaded first — their `#:config` validation moved into `core:stdlib`'s new
   `stdlib/config-boolean`/`stdlib/config-string`/`stdlib/config-enum` commands, the same
@@ -19,9 +17,42 @@
   `:plum-install`, `:plum-cleanup`, `:plum-update`, `:plum-list`) — the `-plugins` suffix
   matches the `-grammar(s)` suffix the grammar commands already carry, ahead of an
   upcoming `:plum-install-theme`.
-- Fixed `:plum-list-plugins`/`:plum-install-plugins`/`:plum-update-plugins` raising instead of skipping a stray file
-  (e.g. `.DS_Store`) found alongside a directory it expected to walk, in
-  `<data>/plugins/<user>/<repo>/`.
+- **Breaking**: `set-inline-diagnostics!` is renamed `set-eol-text!` and now takes a `source` argument first: `(set-eol-text! source bid entries)`, matching every other decoration setter's `(set-X! source bid entries)` shape.
+- **Breaking**: `set-inlay-hints!` now takes a `source` argument first — `(set-inlay-hints! source bid hints)` — and each hint's position is a plain buffer char offset instead of an LSP wire `{"line" ... "character" ...}` hashmap. Convert a wire position first with the new `lsp-position->offset`/`lsp-range->offsets` builtins.
+- **Breaking**: `set-virtual-lines!`'s entries are now hashmaps (`(hash 'line ... 'text ... 'scope ... 'anchor ... 'segments ...)`) instead of positional `(line text scope)` lists, and `'segments` are char offsets, not byte offsets.
+- **Breaking**: `declare-plugin`'s `#:events` entries must now be symbols (e.g. `'(on-buffer-save)`), matching `register-hook!`. The string form (`'("on-buffer-save")`) that older releases accepted is now rejected.
+- **Breaking**: `(viewport-range bid)` now returns `(first-line . end-line)`, 0-based end-exclusive — `end-line` was previously the last visible line, inclusive. Drop any `(+ 1 (cdr vr))` adjustment; the pair now passes straight through as `buffer-lines`' `#:start`/`#:end`. The `on-viewport-change` hook's third argument is renamed `end-line` to match.
+
+### Editing
+- `C` now honours a count prefix: `3C` duplicates each selection onto the 3 lines below in one step instead of ignoring the count and copying onto just one.
+- `.` (dot-repeat) no longer replays `C`/`copy-selection-on-{next,prev}-line` as part of a selection: it duplicates whatever selection already exists rather than establishing one, so recording it could silently drop the selection step that built the real extent.
+- `core:vim-keybind`'s `C` (default `'smart` config) now takes `copy-selection-on-next-line` with any count prefix, not just when a real selection is already active.
+- The kill ring now dedupes its entries.
+- `p`/`P` now run new `smart-paste-after`/`smart-paste-before` commands. The old `paste-after`/`paste-before` still exist for scripting but are unbound by default and no longer have any smart-paste behavior: bare, they always read the kill-ring head with no clipboard fallback, and always replace a selection outright.
+- Smart-paste now decides its source by buffer state instead of the previous command's name: the kill ring while nothing has been edited since your last delete/change/yank, the clipboard once something has. Pasting text that matches what's already selected now appends alongside it instead of replacing it.
+- New `:sort` command sorts each run of adjacent selected rows by their selected text, with `-r` (reverse) and `-i` (case-insensitive) flags; numeric keys are auto-detected.
+
+### Files & buffers
+- HUME now notices when an open file changes on disk — another program, a formatter, `git checkout` — and prompts to reload the next time that buffer gets focus again (switching buffers/panes, a pane close, a picker accept, LSP goto-definition, etc.); Insert mode and the command line just warn instead, and prompt on the next such focus change. Controlled by the `autoread` option (default on; `#f` warns only). Answering `[k]eep` silences the prompt until the file changes again — `:checktime` still flags it regardless. `:w`/`:wa` refuse to overwrite a changed file unless forced with `!`.
+
+### Panes & interface
+- The buffer picker (`g b`) now shows each buffer's full display path instead of a `:pwd`-relative one.
+- New `core:pickers` picker, `g m`, lists files with staged or unstaged git changes. Untracked-file inclusion is configurable via `#:config (hash "untracked" #t | #f)`.
+- `picker!` gains a `#:pending` flag that shows a loading indicator until the first batch of results is pushed, for pickers (like `g m`) that populate asynchronously.
+- Scrollable popups and menus now show a scrollbar.
+- The whole statusline now tints with the current mode's color, not just the mode indicator. Opt out with the new `statusline.mode-colors` option.
+- `:messages` entries are now colored by severity.
+
+### Configuration & options
+- `:reload-config` is now a full reset: keymaps, options, hooks, commands, and plugins all go back to their defaults before `init.scm` re-runs. Buffers, undo history, and running language servers are untouched.
+- `mouse-enabled`/`mouse-select` and `jump-list-capacity` now apply immediately when changed with `:set`, instead of only at startup.
+- `wrap-mode` is now a buffer option: set it per file type from an `on-language-set` hook, or globally. `:set global wrap-mode=…` now applies to buffers that are already open, not just ones opened afterward; `:set pane wrap-mode=…` and `:wrap` still pin a single pane above both, but now remember that pin separately for each buffer the pane shows — switching to another buffer resolves that buffer's own setting instead of carrying the pin along, and switching back restores it. `:wrap` turning wrapping back on, with nothing to restore, now falls back to the configured global style instead of always hardcoding `indent`.
+
+### Plugins & scripting
+- New `core:git-diff` plugin: live, VSCode-style inline git diff. `:toggle-git-signs` renders
+  gutter `+`/`-`/`~` signs; `:toggle-inline-diff` renders virtual deleted lines, word-level
+  highlights, and a background tint on changed lines — both against a configurable git ref,
+  `#:config` keys `signs`/`inline`/`ref`. Requires `core:stdlib` declared or loaded first.
 - New `buffer-text`/`buffer-lines` scripting builtins return a buffer's live, unsaved content — the full text, or its content lines (optionally a `#:start`/`#:end` range), excluding the phantom trailing line past the buffer's structural newline.
 - New `diff-words` scripting builtin computes a word-level diff between two texts, returning 0-based char-offset hunk tuples plus a flag for when the comparison was too large to refine precisely.
 - New `diff-lines`/`diff-buffer-lines` scripting builtins compute a line-level diff between two texts, or between a text and a buffer's live content, returning 0-based hunk tuples ready to feed into `set-signs!`/`set-virtual-lines!`.
@@ -30,42 +61,27 @@
 - New `on-option-change` hook fires `(key value)` after a global setting is changed via `:set global`, `set-option!`, or `:theme`.
 - New `on-text-changed` hook fires `(buffer-id)` when a buffer's text changes — edits, undo, redo, `:e!` reload, and read-only view refreshes (`:messages`, `:ls`, `:plugin-status`) alike, coalesced into one fire per triggering command rather than one per underlying mutation.
 - New `spawn-async!`/`cancel-async!` scripting builtins run a subprocess in the background: `callback` fires once with `(stdout stderr exit-code)` when it finishes, without blocking the editor.
-- **Breaking**: `set-inline-diagnostics!` is renamed `set-eol-text!` and now takes a `source` argument first: `(set-eol-text! source bid entries)`, matching every other decoration setter's `(set-X! source bid entries)` shape.
-- **Breaking**: `set-inlay-hints!` now takes a `source` argument first — `(set-inlay-hints! source bid hints)` — and each hint's position is a plain buffer char offset instead of an LSP wire `{"line" ... "character" ...}` hashmap. Convert a wire position first with the new `lsp-position->offset`/`lsp-range->offsets` builtins.
-- **Breaking**: `set-virtual-lines!`'s entries are now hashmaps (`(hash 'line ... 'text ... 'scope ... 'anchor ... 'segments ...)`) instead of positional `(line text scope)` lists, and `'segments` are char offsets, not byte offsets.
-- **Breaking**: `declare-plugin`'s `#:events` entries must now be symbols (e.g. `'(on-buffer-save)`), matching `register-hook!`. The string form (`'("on-buffer-save")`) that older releases accepted is now rejected.
-- **Breaking**: `(viewport-range bid)` now returns `(first-line . end-line)`, 0-based end-exclusive — `end-line` was previously the last visible line, inclusive. Drop any `(+ 1 (cdr vr))` adjustment; the pair now passes straight through as `buffer-lines`' `#:start`/`#:end`. The `on-viewport-change` hook's third argument is renamed `end-line` to match.
-- `C` now honours a count prefix: `3C` duplicates each selection onto the 3 lines below in one step instead of ignoring the count and copying onto just one.
-- Fixed `C`/`copy-selection-on-{next,prev}-line` landing a copy one column off when a tab or wide (e.g. CJK) grapheme precedes the cursor — it now targets the same display column `9j`/`9k` land on, instead of a raw char offset.
-- Fixed `C`/`copy-selection-on-{next,prev}-line` on a selection spanning more than one buffer line: it used to shift the copy just one line away, which overlapped the original and merged into it instead of duplicating it. Each copy is now offset by the selection's own line span, landing cleanly above or below it.
-- `.` (dot-repeat) no longer replays `C`/`copy-selection-on-{next,prev}-line` as part of a selection: it duplicates whatever selection already exists rather than establishing one, so recording it could silently drop the selection step that built the real extent.
-- `core:vim-keybind`'s `C` (default `'smart` config) now takes `copy-selection-on-next-line` with any count prefix, not just when a real selection is already active.
-- The kill ring now dedupes its entries.
-- `p`/`P` now run new `smart-paste-after`/`smart-paste-before` commands. The old `paste-after`/`paste-before` still exist for scripting but are unbound by default and no longer have any smart-paste behavior: bare, they always read the kill-ring head with no clipboard fallback, and always replace a selection outright.
-- Smart-paste now decides its source by buffer state instead of the previous command's name: the kill ring while nothing has been edited since your last delete/change/yank, the clipboard once something has. Pasting text that matches what's already selected now appends alongside it instead of replacing it.
 - `core:steel-server` no longer flags HUME's own commands and configuration functions as unknown identifiers while you edit `init.scm` or a plugin file.
-- The buffer picker (`g b`) now shows each buffer's full display path instead of a `:pwd`-relative one.
-- New `core:pickers` picker, `g m`, lists files with staged or unstaged git changes. Untracked-file inclusion is configurable via `#:config (hash "untracked" #t | #f)`.
-- `picker!` gains a `#:pending` flag that shows a loading indicator until the first batch of results is pushed, for pickers (like `g m`) that populate asynchronously.
-- Fixed a bug where the fuzzy picker silently ignored Ctrl+u/Ctrl+d; they now move the selection by half a page, matching the drawer and scrollable popups.
-- HUME now notices when an open file changes on disk — another program, a formatter, `git checkout` — and prompts to reload the next time that buffer gets focus again (switching buffers/panes, a pane close, a picker accept, LSP goto-definition, etc.); Insert mode and the command line just warn instead, and prompt on the next such focus change. Controlled by the `autoread` option (default on; `#f` warns only). Answering `[k]eep` silences the prompt until the file changes again — `:checktime` still flags it regardless. `:w`/`:wa` refuse to overwrite a changed file unless forced with `!`.
-- New `:sort` command sorts each run of adjacent selected rows by their selected text, with `-r` (reverse) and `-i` (case-insensitive) flags; numeric keys are auto-detected.
-- Scrollable popups and menus now show a scrollbar.
-- The whole statusline now tints with the current mode's color, not just the mode indicator. Opt out with the new `statusline.mode-colors` option.
-- `:reload-config` is now a full reset: keymaps, options, hooks, commands, and plugins all go back to their defaults before `init.scm` re-runs. Buffers, undo history, and running language servers are untouched.
 - Syntax highlighting no longer requires the `core:plum` plugin to be loaded — installed grammars register automatically at startup.
 - `set-option!` can now be called from a hook or command body, not just `init.scm`.
 - `get-option` takes an optional buffer id to read a specific buffer's overrides.
-- Fixed a bug where a closed terminal with no controlling process could leave a HUME process spinning at 100% CPU.
+- New `on-buffer-enter` and `on-focus-gained` hooks: the former fires whenever the focused buffer changes, the latter when the terminal regains focus.
+
+### Terminal & compatibility
 - Quitting with Ctrl-C/SIGTERM/SIGHUP/SIGQUIT now shuts down language servers gracefully and exits with the conventional `128 + signal` code.
-- `mouse-enabled`/`mouse-select` and `jump-list-capacity` now apply immediately when changed with `:set`, instead of only at startup.
+- Tagged release builds now show a clean `--version` string, with no commit-hash suffix.
+
+### Fixes
+- Fixed `:plum-list-plugins`/`:plum-install-plugins`/`:plum-update-plugins` raising instead of skipping a stray file
+  (e.g. `.DS_Store`) found alongside a directory it expected to walk, in
+  `<data>/plugins/<user>/<repo>/`.
+- Fixed `C`/`copy-selection-on-{next,prev}-line` landing a copy one column off when a tab or wide (e.g. CJK) grapheme precedes the cursor — it now targets the same display column `9j`/`9k` land on, instead of a raw char offset.
+- Fixed `C`/`copy-selection-on-{next,prev}-line` on a selection spanning more than one buffer line: it used to shift the copy just one line away, which overlapped the original and merged into it instead of duplicating it. Each copy is now offset by the selection's own line span, landing cleanly above or below it.
+- Fixed a bug where the fuzzy picker silently ignored Ctrl+u/Ctrl+d; they now move the selection by half a page, matching the drawer and scrollable popups.
+- Fixed a bug where a closed terminal with no controlling process could leave a HUME process spinning at 100% CPU.
 - Fixed a bug where opening a `.tsx`/`.jsx` file made the language server log an "Invalid languageId" warning.
-- `:messages` entries are now colored by severity.
 - Quitting with an attached language server no longer leaves the screen frozen in the alternate screen while it shuts down: the terminal is restored first.
 - Fixed a bug where `d`/`c`/`p` on a read-only buffer could still overwrite the kill ring or a named register before refusing the edit.
-- New `on-buffer-enter` and `on-focus-gained` hooks: the former fires whenever the focused buffer changes, the latter when the terminal regains focus.
-- Tagged release builds now show a clean `--version` string, with no commit-hash suffix.
-- `wrap-mode` is now a buffer option: set it per file type from an `on-language-set` hook, or globally. `:set global wrap-mode=…` now applies to buffers that are already open, not just ones opened afterward; `:set pane wrap-mode=…` and `:wrap` still pin a single pane above both, but now remember that pin separately for each buffer the pane shows — switching to another buffer resolves that buffer's own setting instead of carrying the pin along, and switching back restores it. `:wrap` turning wrapping back on, with nothing to restore, now falls back to the configured global style instead of always hardcoding `indent`.
 - Fixed a bug where a hover or diagnostic popup stayed on screen when you scrolled or clicked with the mouse; it now closes on any mouse input, the same as on any keypress.
 
 ## [0.10.0] - 2026-07-24
