@@ -13,7 +13,13 @@ fn bwd(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> Select
 fn fwd_ext(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
     find_char_forward(&text, sels, 1, MotionMode::Extend, ch, kind)
 }
-fn fwd_count(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind, n: usize) -> SelectionSet {
+fn fwd_count(
+    text: BufferText,
+    sels: SelectionSet,
+    ch: char,
+    kind: FindKind,
+    n: usize,
+) -> SelectionSet {
     find_char_forward(&text, sels, n, MotionMode::Move, ch, kind)
 }
 

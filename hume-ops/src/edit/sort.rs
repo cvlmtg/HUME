@@ -96,13 +96,13 @@ pub fn sort_rows(
 
     b.retain_rest();
     let cs = b.finish();
-    let new_buf = cs
+    let new_text = cs
         .apply(&text)
         .expect("sort produced an invalid changeset — this is a bug");
 
-    let new_sels = remap_selections(&text, &new_buf, &sels, &line_map);
-    new_sels.debug_assert_valid(&new_buf);
-    Ok((new_buf, new_sels, cs))
+    let new_sels = remap_selections(&text, &new_text, &sels, &line_map);
+    new_sels.debug_assert_valid(&new_text);
+    Ok((new_text, new_sels, cs))
 }
 
 /// Walk every selection and build one [`Row`] per distinct line it touches,
@@ -258,20 +258,20 @@ fn trimmed_window(order: &[usize]) -> Option<(usize, usize)> {
 /// own `\n` (what `x` selects), which the clamp would silently pull back onto
 /// the last character.
 fn remap_selections(
-    old_buf: &BufferText,
-    new_buf: &BufferText,
+    old_text: &BufferText,
+    new_text: &BufferText,
     sels: &SelectionSet,
     line_map: &rustc_hash::FxHashMap<usize, usize>,
 ) -> SelectionSet {
     let mut new_sels = Vec::with_capacity(sels.len());
     for sel in sels.iter_sorted() {
-        let start_line = old_buf.char_to_line(sel.start());
-        let end_line = old_buf.char_to_line(sel.end_inclusive(old_buf));
+        let start_line = old_text.char_to_line(sel.start());
+        let end_line = old_text.char_to_line(sel.end_inclusive(old_text));
         let moved = if start_line == end_line {
             line_map.get(&start_line).map(|&new_line| {
-                let anchor_char_col = char_col_in_line(old_buf, start_line, sel.anchor());
-                let head_char_col = char_col_in_line(old_buf, start_line, sel.head());
-                let new_line_start = new_buf.line_to_char(new_line);
+                let anchor_char_col = char_col_in_line(old_text, start_line, sel.anchor());
+                let head_char_col = char_col_in_line(old_text, start_line, sel.head());
+                let new_line_start = new_text.line_to_char(new_line);
                 Selection::new(
                     new_line_start + anchor_char_col,
                     new_line_start + head_char_col,

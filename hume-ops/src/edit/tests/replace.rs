@@ -88,10 +88,10 @@ fn replace_around_cursors_zero_span_matches_insert_str() {
     // logic.
     let text = BufferText::from("foo bar\n");
     let sels = SelectionSet::from_vec(vec![Selection::collapsed(0), Selection::collapsed(4)], 0);
-    let (buf_replace, sels_replace, cs_replace) =
+    let (text_replace, sels_replace, cs_replace) =
         replace_around_cursors(text.clone(), sels.clone(), 0, 0, "X");
-    let (buf_insert, sels_insert, cs_insert) = insert_str(text, sels, "X");
-    assert_eq!(buf_replace.to_string(), buf_insert.to_string());
+    let (text_insert, sels_insert, cs_insert) = insert_str(text, sels, "X");
+    assert_eq!(text_replace.to_string(), text_insert.to_string());
     assert_eq!(sels_replace, sels_insert);
     assert_eq!(cs_replace, cs_insert);
 }
@@ -111,14 +111,14 @@ fn replace_around_cursors_does_not_delete_the_structural_trailing_newline_after_
         "sanity: bare CR survives, \\n is appended"
     );
     let sels = SelectionSet::from_vec(vec![Selection::collapsed(0)], 0);
-    let (new_buf, new_sels, _cs) = replace_around_cursors(text, sels, 0, 10, "X");
+    let (new_text, new_sels, _cs) = replace_around_cursors(text, sels, 0, 10, "X");
     assert_eq!(
-        new_buf.to_string(),
+        new_text.to_string(),
         "X\r\n",
         "structural trailing newline (and the CR before it) must survive"
     );
     assert!(
-        new_sels.primary().head() < new_buf.len_chars(),
+        new_sels.primary().head() < new_text.len_chars(),
         "cursor must land before the structural newline, not on/after it"
     );
 }

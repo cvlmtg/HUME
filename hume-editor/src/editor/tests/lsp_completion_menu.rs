@@ -638,7 +638,10 @@ fn stale_anchor_after_switching_focus_to_another_buffer_skips_render() {
     // Switch focus to a different buffer without dismissing the session —
     // `sync_completion_menu_view` builds its `RowMap` over whichever buffer
     // is focused *now*, not the one the session was opened against.
-    let other = ed.open_buffer(Buffer::new(BufferText::from("other\n"), SelectionSet::default()));
+    let other = ed.open_buffer(Buffer::new(
+        BufferText::from("other\n"),
+        SelectionSet::default(),
+    ));
     ed.switch_to_buffer_with_jump(other);
 
     let mut ctx = RenderContext::new();

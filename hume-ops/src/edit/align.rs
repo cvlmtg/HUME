@@ -77,7 +77,8 @@ pub fn align_selections(
                     slot: None,
                 };
             }
-            let anchor_display_col = display_col_in_line(&text, start_line, sel.anchor(), tab_width);
+            let anchor_display_col =
+                display_col_in_line(&text, start_line, sel.anchor(), tab_width);
             let line_start = text.line_to_char(start_line);
             let sel_start = sel.start();
             let rem = (line_start..sel_start)

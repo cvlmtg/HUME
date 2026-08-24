@@ -494,7 +494,7 @@ fn validate_passes_when_head_is_last_valid_char() {
 fn translate_in_place_remaps_positions_and_resets_sticky_display_col_only_on_touched_lines() {
     // "aaa\nbbb\nccc\n" (12 chars): line0 = aaa\n [0,4), line1 = bbb\n [4,8),
     // line2 = ccc\n [8,12).
-    let buf_pre = BufferText::from("aaa\nbbb\nccc");
+    let text_pre = BufferText::from("aaa\nbbb\nccc");
 
     // sel0: collapsed at 1, on the untouched line0.
     // sel1: range (5,6), fully inside the edited span on line1.
@@ -513,7 +513,7 @@ fn translate_in_place_remaps_positions_and_resets_sticky_display_col_only_on_tou
     b.retain_rest();
     let cs = b.finish();
 
-    set.translate_in_place(&cs, &buf_pre);
+    set.translate_in_place(&cs, &text_pre);
 
     assert_eq!(set.len(), 3, "no selection should merge here");
 
@@ -542,7 +542,7 @@ fn translate_in_place_insert_exactly_at_line_start_touches_that_line() {
     // Insert("X") at old position 3 — exactly line1's start — is a point
     // range [3,3). It must count as touching line1 (matching the
     // pre-batch `touches_line` behavior: `old >= line_start`), not line0.
-    let buf_pre = BufferText::from("aa\nbb");
+    let text_pre = BufferText::from("aa\nbb");
     let sel0 = Selection::with_sticky_display_col(1, 1, sticky(5)); // head=1, on line0
     let sel1 = Selection::with_sticky_display_col(4, 4, sticky(9)); // head=4, on line1
     let mut set = SelectionSet::from_vec(vec![sel0, sel1], 0);
@@ -553,7 +553,7 @@ fn translate_in_place_insert_exactly_at_line_start_touches_that_line() {
     b.retain_rest();
     let cs = b.finish();
 
-    set.translate_in_place(&cs, &buf_pre);
+    set.translate_in_place(&cs, &text_pre);
 
     let s0 = set.iter_sorted().next().unwrap();
     assert_eq!(
@@ -574,7 +574,7 @@ fn translate_in_place_backward_selection_keeps_direction() {
     // "abcde\n" (6 chars). A backward selection (anchor=4, head=1) sits
     // entirely after the edit; verify anchor/head land on the correct
     // (shifted) ends rather than being swapped.
-    let buf_pre = BufferText::from("abcde");
+    let text_pre = BufferText::from("abcde");
     let sel = Selection::new(4, 1); // backward: head < anchor
     let mut set = SelectionSet::single(sel);
 
@@ -584,7 +584,7 @@ fn translate_in_place_backward_selection_keeps_direction() {
     b.retain_rest();
     let cs = b.finish();
 
-    set.translate_in_place(&cs, &buf_pre);
+    set.translate_in_place(&cs, &text_pre);
 
     let s = set.primary();
     assert_eq!(s.anchor(), 6); // was 4, shifted by 2
@@ -597,7 +597,7 @@ fn translate_in_place_merges_selections_collapsed_onto_same_point() {
     // "abcdef\n" (7 chars). Two collapsed selections inside a deletion
     // that removes the entire content ("abcdef") both collapse to
     // position 0 and must merge into a single selection.
-    let buf_pre = BufferText::from("abcdef");
+    let text_pre = BufferText::from("abcdef");
     let sel0 = Selection::with_sticky_display_col(1, 1, sticky(3));
     let sel1 = Selection::with_sticky_display_col(4, 4, sticky(8));
     let mut set = SelectionSet::from_vec(vec![sel0, sel1], 0);
@@ -607,7 +607,7 @@ fn translate_in_place_merges_selections_collapsed_onto_same_point() {
     b.retain_rest(); // keep the structural trailing \n
     let cs = b.finish();
 
-    set.translate_in_place(&cs, &buf_pre);
+    set.translate_in_place(&cs, &text_pre);
 
     assert_eq!(set.len(), 1, "both selections collapse onto the same point");
     let s = set.primary();

@@ -1812,7 +1812,10 @@ fn identity_reload_fires_no_on_text_changed() {
 fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
-    let bid_b = ed.open_buffer(Buffer::new(BufferText::from("hello\n"), SelectionSet::default()));
+    let bid_b = ed.open_buffer(Buffer::new(
+        BufferText::from("hello\n"),
+        SelectionSet::default(),
+    ));
     ed.switch_to_buffer_with_jump(bid_b);
 
     let mut host = hume_scripting::ScriptingHost::new();

@@ -130,8 +130,13 @@ fn frame_tick_up_to_date_returns_no_request() {
     }
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req) =
-        Syntax::attach(Arc::clone(&bundle), bid, 0, &BufferText::from(""), &empty_langs());
+    let (mut syn, _req) = Syntax::attach(
+        Arc::clone(&bundle),
+        bid,
+        0,
+        &BufferText::from(""),
+        &empty_langs(),
+    );
     // parsed_gen == text_gen (0) already — up to date.
     let outcome = syn.frame_tick(bid, 0, &BufferText::from(""), &empty_langs());
     assert!(
@@ -363,8 +368,13 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
 
     let bid = fresh_bid();
     let source = "```rust\nfn main() {}\n```\n";
-    let (mut syn, _req) =
-        Syntax::attach(Arc::clone(&markdown), bid, 0, &BufferText::from(source), &langs);
+    let (mut syn, _req) = Syntax::attach(
+        Arc::clone(&markdown),
+        bid,
+        0,
+        &BufferText::from(source),
+        &langs,
+    );
 
     // Parse root + resolve injections directly (mirrors `do_parse` in
     // `parse_worker.rs`, inlined so the test controls the exact result).

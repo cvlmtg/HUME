@@ -19,7 +19,10 @@ use super::apply_edit;
 /// next lines produce no separator — the newline is simply removed.
 ///
 /// After the join, every inserted space becomes a 1-char selection.
-pub fn join_lines_select_spaces(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn join_lines_select_spaces(
+    text: BufferText,
+    sels: SelectionSet,
+) -> (BufferText, SelectionSet, ChangeSet) {
     // Fast path: no selection spans or reaches a joinable line pair.
     // Return unchanged to avoid resetting cursors (all on last line → no-op).
     let has_work = sels.iter_sorted().any(|sel| {
@@ -35,7 +38,7 @@ pub fn join_lines_select_spaces(text: BufferText, sels: SelectionSet) -> (Buffer
 
     let mut space_positions: Vec<usize> = Vec::new();
 
-    let (new_buf, fallback_sels, cs) = apply_edit(text, sels, |b, text, _i, sel, new_sels| {
+    let (new_text, fallback_sels, cs) = apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let start_line = text.char_to_line(sel.start());
         let mut end_line = text.char_to_line(sel.end_inclusive(text));
         if start_line == end_line {
@@ -91,5 +94,5 @@ pub fn join_lines_select_spaces(text: BufferText, sels: SelectionSet) -> (Buffer
         SelectionSet::from_vec(sels, 0)
     };
 
-    (new_buf, new_sel_set, cs)
+    (new_text, new_sel_set, cs)
 }

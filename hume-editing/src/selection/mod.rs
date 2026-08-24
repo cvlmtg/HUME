@@ -363,7 +363,7 @@ impl SelectionSet {
     ///   the no-overlap invariant is restored (a deletion spanning multiple
     ///   selections can collapse them).
     ///
-    /// `buf_pre` must be the buffer text **before** the edit — the pre-edit line
+    /// `text_pre` must be the buffer text **before** the edit — the pre-edit line
     /// map is needed to identify which line each head resided on before mapping.
     ///
     /// Runs in O(selections + ops) rather than O(selections × ops): selections
@@ -371,15 +371,15 @@ impl SelectionSet {
     /// position mapping walk their respective changeset data with a single
     /// forward-only cursor shared across all selections, instead of
     /// re-scanning the whole changeset per selection.
-    pub fn translate_in_place(&mut self, cs: &ChangeSet, buf_pre: &BufferText) {
+    pub fn translate_in_place(&mut self, cs: &ChangeSet, text_pre: &BufferText) {
         let edits = cs.edited_old_ranges();
         let mut edit_idx = 0usize;
         let mut mapper = PosMapCursor::new(cs.ops());
 
         for sel in &mut self.selections {
-            let pre_line = buf_pre.char_to_line(sel.head);
-            let line_start = buf_pre.line_to_char(pre_line);
-            let line_end = crate::lines::line_end_exclusive(buf_pre, pre_line);
+            let pre_line = text_pre.char_to_line(sel.head);
+            let line_start = text_pre.line_to_char(pre_line);
+            let line_end = crate::lines::line_end_exclusive(text_pre, pre_line);
 
             // Drop edits that end entirely before this line — heads (and thus
             // pre-edit lines) strictly increase across selections in a sorted,

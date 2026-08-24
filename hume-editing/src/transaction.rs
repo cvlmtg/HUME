@@ -17,8 +17,8 @@ use crate::text::BufferText;
 /// text:
 ///
 /// ```text
-/// let inv_cs = cs.invert(&old_buf);          // must happen BEFORE apply
-/// let new_buf = cs.apply(&old_buf);          // borrows old_buf; original intact
+/// let inv_cs = cs.invert(&old_text);          // must happen BEFORE apply
+/// let new_text = cs.apply(&old_text);          // borrows old_text; original intact
 ///
 /// let forward = Transaction::new(cs,     post_edit_sels);  // for redo
 /// let inverse = Transaction::new(inv_cs, pre_edit_sels);   // push to undo stack
@@ -60,8 +60,8 @@ impl Transaction {
     /// - [`TransactionError::Validation`] if any selection head or anchor is
     ///   out of bounds for the post-apply buffer.
     pub fn apply(&self, text: &BufferText) -> Result<(BufferText, SelectionSet), TransactionError> {
-        let new_buf = self.changes.apply(text)?;
-        self.selection.validate(new_buf.len_chars())?;
+        let new_text = self.changes.apply(text)?;
+        self.selection.validate(new_text.len_chars())?;
         // Canonicalize before handing the set to the editor: a plugin-built
         // Transaction can carry unsorted or overlapping selections, which
         // downstream code only debug-asserts against. Identity on sets that
@@ -69,7 +69,7 @@ impl Transaction {
         // round-trips are unaffected.
         let mut sels = self.selection.clone();
         sels.merge_overlapping_in_place();
-        Ok((new_buf, sels))
+        Ok((new_text, sels))
     }
 
     /// The selection state recorded in this transaction.

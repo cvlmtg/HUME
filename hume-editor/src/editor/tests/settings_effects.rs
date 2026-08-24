@@ -482,7 +482,10 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
         r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "tab-width" 8)))"#,
     );
     let focused_bid = ed.focused_buffer_id();
-    let bid2 = ed.open_buffer(Buffer::new(BufferText::from("x\n"), SelectionSet::default()));
+    let bid2 = ed.open_buffer(Buffer::new(
+        BufferText::from("x\n"),
+        SelectionSet::default(),
+    ));
     assert_ne!(bid2, focused_bid, "second buffer must not be focused");
 
     let lang = ed.state.config.languages.intern("rust");
@@ -516,7 +519,10 @@ fn get_option_explicit_bid_reads_hook_target_not_focused_buffer() {
         r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "tab-width" 8)))"#,
     );
     let focused_bid = ed.focused_buffer_id();
-    let bid2 = ed.open_buffer(Buffer::new(BufferText::from("x\n"), SelectionSet::default()));
+    let bid2 = ed.open_buffer(Buffer::new(
+        BufferText::from("x\n"),
+        SelectionSet::default(),
+    ));
     assert_ne!(bid2, focused_bid, "second buffer must not be focused");
 
     let lang = ed.state.config.languages.intern("rust");

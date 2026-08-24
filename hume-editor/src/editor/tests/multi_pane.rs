@@ -147,7 +147,7 @@ fn d4b_sticky_col_is_per_selection() {
 
     // "Xabc\ndef\n" (after first edit) — "d" is now at char 5 (line 1).
     // Insert at char 5 (start of "def" in new rope); use the pre-edit BufferText for
-    // translate_in_place (buf_pre = before-this-edit text).
+    // translate_in_place (text_pre = before-this-edit text).
     let text2 = BufferText::from("Xabc\ndef\n");
     let mut b2 = ChangeSetBuilder::new(text2.len_chars());
     b2.retain(5); // skip "Xabc\n"

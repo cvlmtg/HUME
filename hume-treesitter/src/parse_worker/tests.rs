@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap;
 use hume_engine::pipeline::BufferId;
 
 use super::ParseBackend as _;
-use super::{ParseOutcome, ParseRequest, BufferText, ThreadedParseBackend, coalesce_one};
+use super::{BufferText, ParseOutcome, ParseRequest, ThreadedParseBackend, coalesce_one};
 use crate::registry::GrammarBundle;
 use crate::test_support::{empty_langs, fresh_bid};
 use hume_test_fixtures::skip_unless_grammars;

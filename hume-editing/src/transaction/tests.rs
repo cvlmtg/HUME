@@ -16,8 +16,8 @@ fn transaction_apply() {
     let sels = SelectionSet::single(Selection::collapsed(1));
     let txn = Transaction::new(cs, sels.clone());
 
-    let (new_buf, new_sels) = txn.apply(&text).unwrap();
-    assert_eq!(new_buf.to_string(), "!hello\n");
+    let (new_text, new_sels) = txn.apply(&text).unwrap();
+    assert_eq!(new_text.to_string(), "!hello\n");
     assert_eq!(new_sels.primary().head, 1);
 }
 

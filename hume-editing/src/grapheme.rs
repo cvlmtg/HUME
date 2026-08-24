@@ -20,7 +20,12 @@ pub fn grapheme_col_in_line(text: &BufferText, line_idx: usize, char_pos: usize)
 }
 
 /// See [`hume_rope::grapheme::display_col_in_line`].
-pub fn display_col_in_line(text: &BufferText, line_idx: usize, char_pos: usize, tab_width: u8) -> usize {
+pub fn display_col_in_line(
+    text: &BufferText,
+    line_idx: usize,
+    char_pos: usize,
+    tab_width: u8,
+) -> usize {
     hume_rope::grapheme::display_col_in_line(text.full_slice(), line_idx, char_pos, tab_width)
 }
 

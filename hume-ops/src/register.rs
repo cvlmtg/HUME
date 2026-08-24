@@ -346,7 +346,7 @@ fn entry_is_whitespace(entry: &[String]) -> bool {
 ///
 /// ```text
 /// let yanked = yank_selections(&text, &sels);
-/// let (new_buf, new_sels, _cs) = delete_selection(text, sels);
+/// let (new_text, new_sels, _cs) = delete_selection(text, sels);
 /// kill_ring.push(yanked);
 /// ```
 ///

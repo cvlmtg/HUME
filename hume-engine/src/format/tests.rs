@@ -58,7 +58,7 @@ fn eol_sentinel_emitted_on_non_empty_line() {
 #[test]
 fn eol_sentinel_emitted_for_non_lf_line_break() {
     // "a\rb\n" — ropey (unicode_lines) splits line 0 at the bare '\r'
-    // ("a\r"), which `Text::from` never normalizes (only "\r\n" pairs are
+    // ("a\r"), which `BufferText::from` never normalizes (only "\r\n" pairs are
     // collapsed). The sentinel must still be emitted: `had_newline` has to
     // be derived from what `strip_line_ending` actually removed, not from
     // an `ends_with('\n')` check that a non-LF terminator never satisfies.
@@ -713,7 +713,7 @@ fn strip_line_ending_no_newline_unchanged() {
 
 #[test]
 fn strip_line_ending_crlf_stripped_as_one_unit() {
-    // A literal "\r\n" pair can reach the rope (Text::from's CRLF strip
+    // A literal "\r\n" pair can reach the rope (BufferText::from's CRLF strip
     // leaves one behind in the "\r\r\n" edge case) — both chars go, not
     // just the \n.
     let mut buf = "hello\r\n".to_string();

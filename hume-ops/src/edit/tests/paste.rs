@@ -4,11 +4,19 @@ use pretty_assertions::assert_eq;
 
 // ── paste_after ───────────────────────────────────────────────────────────
 
-fn pa(text: BufferText, sels: SelectionSet, values: &[String]) -> (BufferText, SelectionSet, ChangeSet) {
+fn pa(
+    text: BufferText,
+    sels: SelectionSet,
+    values: &[String],
+) -> (BufferText, SelectionSet, ChangeSet) {
     paste_after(text, sels, values)
 }
 
-fn pb(text: BufferText, sels: SelectionSet, values: &[String]) -> (BufferText, SelectionSet, ChangeSet) {
+fn pb(
+    text: BufferText,
+    sels: SelectionSet,
+    values: &[String],
+) -> (BufferText, SelectionSet, ChangeSet) {
     paste_before(text, sels, values)
 }
 
@@ -194,8 +202,8 @@ fn paste_before_replaces_selection() {
 fn paste_after_empty_values_is_noop() {
     let (text, sels) = hume_test_fixtures::testing::parse_state("-[h]>ello\n");
     let buf_str = text.to_string();
-    let (new_buf, new_sels, _cs) = paste_after(text, sels.clone(), &[]);
-    assert_eq!(new_buf.to_string(), buf_str);
+    let (new_text, new_sels, _cs) = paste_after(text, sels.clone(), &[]);
+    assert_eq!(new_text.to_string(), buf_str);
     assert_eq!(new_sels, sels);
 }
 
@@ -203,8 +211,8 @@ fn paste_after_empty_values_is_noop() {
 fn paste_before_empty_values_is_noop() {
     let (text, sels) = hume_test_fixtures::testing::parse_state("-[h]>ello\n");
     let buf_str = text.to_string();
-    let (new_buf, new_sels, _cs) = paste_before(text, sels.clone(), &[]);
-    assert_eq!(new_buf.to_string(), buf_str);
+    let (new_text, new_sels, _cs) = paste_before(text, sels.clone(), &[]);
+    assert_eq!(new_text.to_string(), buf_str);
     assert_eq!(new_sels, sels);
 }
 
@@ -435,8 +443,8 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
         ],
         0,
     );
-    let (new_buf, _new_sels, _cs) = pa(text, sels, &["X\n".to_string()]);
-    let result = new_buf.to_string();
+    let (new_text, _new_sels, _cs) = pa(text, sels, &["X\n".to_string()]);
+    let result = new_text.to_string();
     assert_eq!(
         result, "ab\nX\ny\nX\noo\n",
         "each selection replaced; gaps on own lines"

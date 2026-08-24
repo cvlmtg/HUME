@@ -176,9 +176,9 @@ fn align_remove_tab_before_selection() {
         ],
         0,
     );
-    let (new_buf, _new_sels, _cs) = align_selections(text, sels, 4);
+    let (new_text, _new_sels, _cs) = align_selections(text, sels, 4);
     assert_eq!(
-        new_buf.to_string(),
+        new_text.to_string(),
         "  =\n =\n",
         "tab counts toward removal (2 chars removed, not skipped at the tab), \
          though the freed width overshoots by the tab's extra column"
@@ -206,9 +206,9 @@ fn align_accounts_for_a_tab_before_the_alignment_point() {
         ],
         0,
     );
-    let (new_buf, _new_sels, _cs) = align_selections(text, sels, 4);
+    let (new_text, _new_sels, _cs) = align_selections(text, sels, 4);
     assert_eq!(
-        new_buf.to_string(),
+        new_text.to_string(),
         "a\tx = 1\nbb    = 2\n",
         "secondary's '=' must reach display col 6, matching primary's, not grapheme col 4"
     );
@@ -252,8 +252,9 @@ fn align_two_slots_static_text_between() {
         selection::{Selection, SelectionSet},
         text::BufferText,
     };
-    let text =
-        BufferText::from("const foo = 444; // foo\nconst foobar = 6757383; // bar\nconst a = 34; // a\n");
+    let text = BufferText::from(
+        "const foo = 444; // foo\nconst foobar = 6757383; // bar\nconst a = 34; // a\n",
+    );
     let sels = SelectionSet::from_vec(
         vec![
             Selection::collapsed(10), // primary: '=' on line 0
@@ -265,9 +266,9 @@ fn align_two_slots_static_text_between() {
         ],
         0,
     );
-    let (new_buf, _new_sels, _cs) = align_selections(text, sels, 4);
+    let (new_text, _new_sels, _cs) = align_selections(text, sels, 4);
     assert_eq!(
-        new_buf.to_string(),
+        new_text.to_string(),
         "const foo    = 444;     // foo\nconst foobar = 6757383; // bar\nconst a      = 34;      // a\n",
         "slots must widen to clear the widest line's non-removable content"
     );

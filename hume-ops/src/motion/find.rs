@@ -29,7 +29,11 @@ pub(super) fn find_char_on_line_forward(text: &BufferText, head: usize, ch: char
 ///
 /// Returns the char offset of the first match, or `None` if not found before
 /// the line start.
-pub(super) fn find_char_on_line_backward(text: &BufferText, head: usize, ch: char) -> Option<usize> {
+pub(super) fn find_char_on_line_backward(
+    text: &BufferText,
+    head: usize,
+    ch: char,
+) -> Option<usize> {
     let line = text.char_to_line(head);
     let line_start = text.line_to_char(line);
     if head == line_start {

@@ -85,7 +85,11 @@ fn delete_pair_square() {
 
 #[test]
 fn delete_pair_quote() {
-    assert_state!("\"-[\"]>\n", |(text, sels)| delete_pair(text, sels), "-[\n]>");
+    assert_state!(
+        "\"-[\"]>\n",
+        |(text, sels)| delete_pair(text, sels),
+        "-[\n]>"
+    );
 }
 
 #[test]

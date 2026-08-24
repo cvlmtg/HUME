@@ -95,16 +95,25 @@ fn push_capitalized(out: &mut String, word: &str) {
 }
 
 /// Lowercase the text in each selection.
-pub fn make_text_lowercase(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn make_text_lowercase(
+    text: BufferText,
+    sels: SelectionSet,
+) -> (BufferText, SelectionSet, ChangeSet) {
     transform_case(text, sels, CaseTransform::Lower)
 }
 
 /// Uppercase the text in each selection.
-pub fn make_text_uppercase(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn make_text_uppercase(
+    text: BufferText,
+    sels: SelectionSet,
+) -> (BufferText, SelectionSet, ChangeSet) {
     transform_case(text, sels, CaseTransform::Upper)
 }
 
 /// Capitalize each word in each selection (Title Case).
-pub fn make_text_capitalized(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn make_text_capitalized(
+    text: BufferText,
+    sels: SelectionSet,
+) -> (BufferText, SelectionSet, ChangeSet) {
     transform_case(text, sels, CaseTransform::Capitalize)
 }

@@ -20,7 +20,10 @@ use crate::motion::prev_word_start;
 ///   is on the trailing `\n` (the structural last character of every buffer).
 /// - **Multi-character selection**: delete the entire selected region. Cursor
 ///   lands on `start()`.
-pub fn delete_char_forward(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn delete_char_forward(
+    text: BufferText,
+    sels: SelectionSet,
+) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         if sel.is_collapsed() {
             let p = sel.head();
@@ -48,7 +51,10 @@ pub fn delete_char_forward(text: BufferText, sels: SelectionSet) -> (BufferText,
 /// - **Multi-character selection**: delete the entire selected region. Cursor
 ///   lands on `start()`. (Same as `delete_char_forward` for selections —
 ///   Delete and Backspace both clear a selection.)
-pub fn delete_char_backward(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn delete_char_backward(
+    text: BufferText,
+    sels: SelectionSet,
+) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         if sel.is_collapsed() {
             let p = sel.head();
@@ -130,7 +136,10 @@ pub fn dedent_tab_backward(
 ///
 /// Non-yanking by design: Ctrl-W is readline-style word-rubout, not a kill —
 /// the deleted text is not pushed to the kill ring or any register.
-pub fn delete_word_backward(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn delete_word_backward(
+    text: BufferText,
+    sels: SelectionSet,
+) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         if sel.is_collapsed() {
             let p = sel.head();
@@ -171,10 +180,13 @@ pub fn delete_word_backward(text: BufferText, sels: SelectionSet) -> (BufferText
 ///
 /// ```text
 /// let yanked = yank_selections(&text, &sels);
-/// let (new_buf, new_sels, _cs) = delete_selection(text, sels);
+/// let (new_text, new_sels, _cs) = delete_selection(text, sels);
 /// kill_ring.push(yanked);
 /// ```
-pub fn delete_selection(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn delete_selection(
+    text: BufferText,
+    sels: SelectionSet,
+) -> (BufferText, SelectionSet, ChangeSet) {
     // Semantically, pressing `d` on a cursor deletes the char under it, and
     // pressing `d` on a selection deletes the selected region — exactly what
     // delete_char_forward does. There is no functional difference between the
@@ -213,7 +225,10 @@ pub fn change_span(text: &BufferText, sel: &Selection) -> (usize, usize) {
 ///
 /// The caller is responsible for yanking before calling this; use
 /// [`change_span`] to extract the same content range for the kill ring.
-pub fn delete_selection_content(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn delete_selection_content(
+    text: BufferText,
+    sels: SelectionSet,
+) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let (start, stop) = change_span(text, sel);
         b.retain(start - b.old_pos());

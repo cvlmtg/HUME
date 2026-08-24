@@ -158,7 +158,9 @@ macro_rules! surround_cmd {
             _count: usize,
             _mode: MotionMode,
         ) -> SelectionSet {
-            select_surround(text, sels, |b, pos| find_bracket_pair(b, pos, $open, $close))
+            select_surround(text, sels, |b, pos| {
+                find_bracket_pair(b, pos, $open, $close)
+            })
         }
     };
     ($name:ident, quote, $quote:literal) => {

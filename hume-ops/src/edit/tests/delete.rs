@@ -676,9 +676,9 @@ fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
         ],
         1, // primary is the last-line cursor
     );
-    let (new_buf, new_sels, _cs) = delete_selection(text, sels);
+    let (new_text, new_sels, _cs) = delete_selection(text, sels);
     // 'b' deleted and "c\n" merged into preceding line → "a\n"
-    assert_eq!(new_buf.to_string(), "a\n");
+    assert_eq!(new_text.to_string(), "a\n");
     // Primary cursor must land at char 0 (start of merged "a" line).
     assert_eq!(
         new_sels.primary().head(),

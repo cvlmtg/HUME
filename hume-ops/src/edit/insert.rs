@@ -19,7 +19,11 @@ use super::apply_edit;
 ///
 /// This covers single-cursor typing, multicursor typing, and "replace
 /// selection with typed character" — all via the same loop.
-pub fn insert_char(text: BufferText, sels: SelectionSet, ch: char) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn insert_char(
+    text: BufferText,
+    sels: SelectionSet,
+    ch: char,
+) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
@@ -190,7 +194,10 @@ pub fn insert_newline_indent(
 /// with the cursor still on a blank auto-indented line (`:help autoindent`:
 /// "type `<Esc>` ... the indent is deleted again"). Selections not on a blank
 /// line are left untouched (identity edit).
-pub fn clear_blank_line_indent(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn clear_blank_line_indent(
+    text: BufferText,
+    sels: SelectionSet,
+) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         if sel.is_collapsed() {
             let head = sel.head();

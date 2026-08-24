@@ -65,7 +65,10 @@ impl Editor {
             // `:w`-creates-it semantics as `:e` on a missing file (see
             // `Buffer::from_file_or_new`, `Editor::open_or_dedup`).
             Some(ref path) => Buffer::from_file_or_new(path, &startup_cwd)?,
-            None => Buffer::new(BufferText::empty(), SelectionSet::single(Selection::collapsed(0))),
+            None => Buffer::new(
+                BufferText::empty(),
+                SelectionSet::single(Selection::collapsed(0)),
+            ),
         };
         // Record the user-typed path (symlinks unresolved) for user-facing display,
         // overwriting `Buffer::from_file`'s canonical-derived default.

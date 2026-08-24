@@ -95,7 +95,12 @@ pub fn cmd_inner_word(
 /// mid-line, so a leading run that reaches it is ordinary inter-word spacing
 /// that happens to sit at the row split, not indentation, and stays
 /// absorbable up to that floor.
-pub fn expand_word_unit(text: &BufferText, start: usize, end: usize, min_start: usize) -> (usize, usize) {
+pub fn expand_word_unit(
+    text: &BufferText,
+    start: usize,
+    end: usize,
+    min_start: usize,
+) -> (usize, usize) {
     let min_start_is_bol = min_start == 0
         || classify_char(
             text.char_at(prev_grapheme_boundary(text, min_start))
@@ -183,7 +188,8 @@ pub fn word_unit_at(
     // that one by the normal rule instead.
     let is_word = |c: CharClass| c != CharClass::Space && c != CharClass::Eol;
     let next_pos = next_grapheme_boundary(text, end);
-    let word_pos = if next_pos < text.len_chars() && is_word(classify_char(text.char_at(next_pos)?)) {
+    let word_pos = if next_pos < text.len_chars() && is_word(classify_char(text.char_at(next_pos)?))
+    {
         next_pos
     } else if start > 0 {
         let prev_pos = prev_grapheme_boundary(text, start);

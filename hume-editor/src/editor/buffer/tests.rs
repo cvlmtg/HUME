@@ -740,7 +740,10 @@ fn text_gen_not_bumped_when_undo_at_root() {
 fn reload_from_text_keeps_buffer_not_dirty() {
     let mut d = doc("-[a]>lpha\nbeta\ngamma\n");
     assert!(!d.is_dirty());
-    d.reload_from(BufferText::from("alpha\nBETA\ngamma\n"), SelectionSet::default());
+    d.reload_from(
+        BufferText::from("alpha\nBETA\ngamma\n"),
+        SelectionSet::default(),
+    );
     assert!(!d.is_dirty(), "freshly reloaded buffer is clean");
     assert_eq!(d.text().to_string(), "alpha\nBETA\ngamma\n");
 }
@@ -820,7 +823,10 @@ fn reload_from_text_inverse_is_fine_grained() {
     // full-buffer delete-all. The inverse is what `undo` returns.
     use hume_editing::changeset::Operation;
     let mut d = doc("-[a]>lpha\nbeta\ngamma\n");
-    d.reload_from(BufferText::from("alpha\nBETA\ngamma\n"), SelectionSet::default());
+    d.reload_from(
+        BufferText::from("alpha\nBETA\ngamma\n"),
+        SelectionSet::default(),
+    );
     let (_, inv_cs) = d
         .buf
         .undo()

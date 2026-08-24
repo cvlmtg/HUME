@@ -149,7 +149,7 @@ impl History {
     /// # Arguments
     ///
     /// - `forward_cs`: the ChangeSet that was applied to produce the new state.
-    /// - `inverse_cs`: `forward_cs.invert(&pre_edit_buf)` — reverses the edit.
+    /// - `inverse_cs`: `forward_cs.invert(&pre_edit_text)` — reverses the edit.
     /// - `pre_edit_sels`: cursor positions before the edit (stored in `inverse`
     ///   so undo restores them).
     /// - `post_edit_sels`: cursor positions after the edit (stored in `forward`

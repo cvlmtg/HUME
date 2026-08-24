@@ -12,7 +12,12 @@ use hume_editing::text::BufferText;
 // ---------------------------------------------------------------------------
 
 /// Scan left from `pos` (exclusive) to find an unmatched `open` bracket.
-pub(crate) fn scan_left_for_open(text: &BufferText, pos: usize, open: char, close: char) -> Option<usize> {
+pub(crate) fn scan_left_for_open(
+    text: &BufferText,
+    pos: usize,
+    open: char,
+    close: char,
+) -> Option<usize> {
     let mut depth = 0usize;
     let mut cursor = text.chars_at(pos);
     while let Some((i, ch)) = cursor.prev() {
@@ -91,7 +96,11 @@ pub fn find_bracket_pair(
 /// closing quotes. Returns the pair that contains `pos`.
 ///
 /// If `pos` is ON a quote char, parity resolves whether it is open or close.
-pub(crate) fn find_quote_pair(text: &BufferText, pos: usize, quote: char) -> Option<(usize, usize)> {
+pub(crate) fn find_quote_pair(
+    text: &BufferText,
+    pos: usize,
+    quote: char,
+) -> Option<(usize, usize)> {
     let line = text.char_to_line(pos);
     let line_start = text.line_to_char(line);
     let line_end = line_end_exclusive(text, line);

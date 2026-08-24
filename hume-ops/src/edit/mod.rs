@@ -43,7 +43,7 @@ pub use sort::{SortOpts, SortRefusal, sort_rows};
 // sibling in this directory (insert/delete/paste/replace/case/join/align)
 // builds on it.
 //
-// The ChangeSet is returned so the undo system can call `cs.invert(&old_buf)`
+// The ChangeSet is returned so the undo system can call `cs.invert(&old_text)`
 // to produce the inverse transaction. The caller (Document) holds the pre-edit
 // buffer and handles the invert timing constraint.
 
@@ -68,29 +68,29 @@ pub fn repeat_edit(
     sels: SelectionSet,
     cmd: impl Fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    let mut current_buf = text;
+    let mut current_text = text;
     let mut current_sels = sels;
     let mut composed: Option<ChangeSet> = None;
 
     for _ in 0..count {
-        let (new_buf, new_sels, cs) = cmd(current_buf, current_sels);
+        let (new_text, new_sels, cs) = cmd(current_text, current_sels);
         // ChangeSet::compose(A, B) produces A→C from A→B and B→C, combining
         // N individual edits into one for purposes of undo/redo granularity.
         composed = Some(match composed {
             None => cs,
             Some(prev) => prev.compose(cs),
         });
-        current_buf = new_buf;
+        current_text = new_text;
         current_sels = new_sels;
     }
 
     let cs = composed.unwrap_or_else(|| {
         // count == 0: produce an identity changeset (all Retain).
-        let mut b = ChangeSetBuilder::new(current_buf.len_chars());
+        let mut b = ChangeSetBuilder::new(current_text.len_chars());
         b.retain_rest();
         b.finish()
     });
-    (current_buf, current_sels, cs)
+    (current_text, current_sels, cs)
 }
 
 /// Core loop for all editing operations.
@@ -112,7 +112,11 @@ pub fn repeat_edit(
 /// closure only captures `Copy` values (like `char`), requiring `FnMut` keeps
 /// the bound consistent and allows future closures to close over counters or
 /// accumulators without changing the helper's signature.
-pub fn apply_edit<F>(text: BufferText, sels: SelectionSet, mut f: F) -> (BufferText, SelectionSet, ChangeSet)
+pub fn apply_edit<F>(
+    text: BufferText,
+    sels: SelectionSet,
+    mut f: F,
+) -> (BufferText, SelectionSet, ChangeSet)
 where
     F: FnMut(&mut ChangeSetBuilder, &BufferText, usize, &Selection, &mut Vec<Selection>),
 {
@@ -129,12 +133,12 @@ where
     // bookkeeping. invert() must be called against the pre-edit buffer — the
     // caller (Buffer) holds that buffer and handles the timing constraint.
     let cs = b.finish();
-    let new_buf = cs
+    let new_text = cs
         .apply(&text)
         .expect("edit operation produced an invalid changeset — this is a bug");
     let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx);
-    new_sel_set.debug_assert_valid(&new_buf);
-    (new_buf, new_sel_set, cs)
+    new_sel_set.debug_assert_valid(&new_text);
+    (new_text, new_sel_set, cs)
 }
 
 /// Delete the grapheme cluster at `p` and push a cursor result onto `new_sels`.

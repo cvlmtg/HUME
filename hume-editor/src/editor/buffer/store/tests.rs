@@ -161,7 +161,9 @@ fn take_text_changed_reports_a_touched_buffer_once() {
     let (mut store, mut ev) = store_with_engine();
     let id = make_id(&mut ev);
     store.open(id, make_buf());
-    store.get_mut(id).set_view_content(BufferText::from("edited\n"));
+    store
+        .get_mut(id)
+        .set_view_content(BufferText::from("edited\n"));
 
     assert_eq!(store.take_text_changed(), vec![id]);
     assert_eq!(
@@ -178,9 +180,15 @@ fn take_text_changed_coalesces_multiple_mutations_into_one_report() {
     let (mut store, mut ev) = store_with_engine();
     let id = make_id(&mut ev);
     store.open(id, make_buf());
-    store.get_mut(id).set_view_content(BufferText::from("first\n"));
-    store.get_mut(id).set_view_content(BufferText::from("second\n"));
-    store.get_mut(id).set_view_content(BufferText::from("third\n"));
+    store
+        .get_mut(id)
+        .set_view_content(BufferText::from("first\n"));
+    store
+        .get_mut(id)
+        .set_view_content(BufferText::from("second\n"));
+    store
+        .get_mut(id)
+        .set_view_content(BufferText::from("third\n"));
 
     assert_eq!(store.take_text_changed(), vec![id]);
 }
@@ -194,7 +202,9 @@ fn take_text_changed_ignores_untouched_siblings() {
     let b = make_id(&mut ev);
     store.open(a, make_buf());
     store.open(b, make_buf());
-    store.get_mut(b).set_view_content(BufferText::from("only b\n"));
+    store
+        .get_mut(b)
+        .set_view_content(BufferText::from("only b\n"));
 
     assert_eq!(store.take_text_changed(), vec![b]);
 }
