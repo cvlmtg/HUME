@@ -66,7 +66,7 @@
 //! line above, so `cargo fmt` doesn't hoist a trailing comment past it) —
 //! same convention and marker as [`super::test_globals`]'s two lints.
 
-use super::strip_line_comment;
+use super::{collect_all_rs, strip_line_comment};
 
 /// A construct that, once seen in a `#[test] fn` body, is trusted to already
 /// hold (or have just claimed) `Global::Env` for the rest of that body — see
@@ -82,29 +82,6 @@ const AUTO_CLAIM_MARKERS: &[&str] = &[
 ];
 
 const OPT_OUT_MARKER: &str = "// test-global-safe:";
-
-/// Collect every `.rs` file under `dir`, recursively — this lint's whole job
-/// is scanning the test tree itself, so (unlike `collect_source_rs`, this
-/// module's sibling lints' helper) there is no `tests`-directory exclusion.
-/// Mirrors `test_globals.rs`'s own `collect_all_rs`, duplicated rather than
-/// shared since that one is `fn`-private to its module.
-fn collect_all_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return;
-    };
-    let mut entries: Vec<_> = rd.flatten().collect();
-    entries.sort_by_key(|e| e.file_name());
-    for entry in entries {
-        let path = entry.path();
-        let name = entry.file_name();
-        let n = name.to_string_lossy();
-        if path.is_dir() {
-            collect_all_rs(&path, out);
-        } else if path.is_file() && n.ends_with(".rs") {
-            out.push(path);
-        }
-    }
-}
 
 /// Net change in brace depth `line` contributes — `{`/`}` characters inside
 /// a string or char literal don't count. Without this, a line like
@@ -135,11 +112,30 @@ fn brace_delta(line: &str) -> i64 {
         match c {
             '"' => in_string = true,
             '\'' if chars.peek() == Some(&'\\') => {
-                // Escaped char literal '\x' — consume the rest of it so its
-                // backslash can't be mistaken for a string escape below.
-                chars.next();
-                chars.next();
-                chars.next();
+                // An escaped char literal ('\n', '\x41', '\u{301}', '\'') —
+                // consumed so its content (which may itself hold a brace,
+                // `\u{...}`'s) can't be mistaken for real nesting below. The
+                // escape has no fixed length, so its shape decides how much
+                // to skip: a `\u{...}` escape runs to its own closing `}`;
+                // every other escape (`\n`, `\x41`, `\'`, ...) is exactly
+                // one more character. Either way, the char literal's own
+                // closing quote follows immediately after.
+                chars.next(); // the '\'
+                match chars.next() {
+                    Some('u') => {
+                        for inner in chars.by_ref() {
+                            if inner == '}' {
+                                break;
+                            }
+                        }
+                    }
+                    Some('x') => {
+                        chars.next();
+                        chars.next();
+                    }
+                    _ => {} // one escaped character, already consumed above
+                }
+                chars.next(); // the literal's closing quote
             }
             '\'' => {
                 // Could be a char literal ('x') or a lifetime ('a); either
@@ -154,6 +150,26 @@ fn brace_delta(line: &str) -> i64 {
         }
     }
     delta
+}
+
+#[test]
+fn brace_delta_handles_a_unicode_escape_char_literal() {
+    // `'\u{301}'` (a combining acute — appears verbatim in
+    // `hume-editor/src/editor/tests/commands.rs`) has a brace *inside* its
+    // escape, not a fixed-length escape like `'\n'` or `'\x41'`. Treating
+    // the escaped-char-literal arm as always 4 characters wide (`'`, `\`,
+    // one more, `'`) leaves the escape's own `{301}` in the outer stream,
+    // where its `}` is miscounted as a real closing brace.
+    assert_eq!(brace_delta("let c = '\\u{301}';"), 0);
+    // Sanity: the fixed-length escapes this handles correctly stay correct.
+    assert_eq!(brace_delta("let c = '\\n';"), 0);
+    assert_eq!(brace_delta("let c = '\\x41';"), 0);
+    assert_eq!(
+        brace_delta("let c = '\\'';"),
+        0,
+        "escaped quote char literal"
+    );
+    assert_eq!(brace_delta("fn f() {"), 1);
 }
 
 /// If `line` spawns a subprocess by an unqualified program name — a

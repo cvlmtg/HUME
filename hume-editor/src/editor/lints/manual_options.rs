@@ -11,7 +11,7 @@
 //! cross-checks each documented key's own scope, catching a row moved to the
 //! wrong table (e.g. a global-only key documented under "Buffer options").
 
-use super::{first_column_keys, section_after};
+use super::{first_cell_keys, section_after};
 
 /// Fail oracle: add a new entry to `define_settings!` (any section) or
 /// to `user-manual/docs/configuration.md`'s option tables without the
@@ -25,8 +25,8 @@ fn user_manual_option_tables_match_all_setting_keys() {
     let text = std::fs::read_to_string(&manual_path)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", manual_path.display()));
 
-    let global_documented = first_column_keys(section_after(&text, "## Global options"));
-    let buffer_documented = first_column_keys(section_after(&text, "## Buffer options"));
+    let global_documented = first_cell_keys(section_after(&text, "## Global options"));
+    let buffer_documented = first_cell_keys(section_after(&text, "## Buffer options"));
     let mut documented = global_documented.clone();
     documented.extend(buffer_documented.clone());
 

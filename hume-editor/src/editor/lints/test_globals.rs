@@ -28,28 +28,7 @@
 //! allowlist below too, since the marker alone would leave the new file
 //! unexamined for every *other* raw call it might add later.
 
-use super::scan_forbidden;
-
-/// Like `collect_source_rs`, but with no `tests`-directory exclusion — this
-/// module's whole job is scanning the test tree itself, which
-/// `collect_source_rs` deliberately skips.
-fn collect_all_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return;
-    };
-    let mut entries: Vec<_> = rd.flatten().collect();
-    entries.sort_by_key(|e| e.file_name());
-    for entry in entries {
-        let path = entry.path();
-        let name = entry.file_name();
-        let n = name.to_string_lossy();
-        if path.is_dir() {
-            collect_all_rs(&path, out);
-        } else if path.is_file() && n.ends_with(".rs") {
-            out.push(path);
-        }
-    }
-}
+use super::{collect_all_rs, scan_forbidden};
 
 fn test_tree_rs_files(root: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut paths = Vec::new();

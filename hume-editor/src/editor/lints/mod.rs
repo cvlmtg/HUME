@@ -59,6 +59,71 @@ fn collect_source_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     }
 }
 
+/// Collect all `.rs` files under `dir`, recursively, with no exclusions —
+/// [`collect_source_rs`]'s sibling for a lint whose whole job is scanning
+/// what that one deliberately skips (a `tests/` tree). Results are sorted
+/// for deterministic test output, same as `collect_source_rs`.
+fn collect_all_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut entries: Vec<_> = rd.flatten().collect();
+    entries.sort_by_key(|e| e.file_name());
+    for entry in entries {
+        let path = entry.path();
+        let name = entry.file_name();
+        let n = name.to_string_lossy();
+        if path.is_dir() {
+            collect_all_rs(&path, out);
+        } else if path.is_file() && n.ends_with(".rs") {
+            out.push(path);
+        }
+    }
+}
+
+/// Every source file every whole-workspace lint in this module scans:
+/// enumerate crates from the root `Cargo.toml` (skipping any named in
+/// `skip_crates` — a lint excluding its own implementation crate, e.g.
+/// `hume-rope`), assert each has a `src/` (a silently-empty scan would let
+/// a renamed crate escape unnoticed), collect via [`collect_source_rs`],
+/// then retain out this `lints/` directory's own pattern literals and any
+/// path in `extra_excludes` (a lint excluding one specific implementation
+/// file while still scanning the rest of that file's crate, e.g.
+/// `hume-rope/src/width.rs`). The ~20-line version of this every
+/// whole-workspace lint used to repeat inline.
+fn workspace_source_paths(
+    workspace_root: &std::path::Path,
+    skip_crates: &[&str],
+    extra_excludes: &[std::path::PathBuf],
+) -> Vec<std::path::PathBuf> {
+    let crates: Vec<String> = workspace_member_crates(workspace_root)
+        .into_iter()
+        .filter(|c| !skip_crates.contains(&c.as_str()))
+        .collect();
+    assert!(
+        !crates.is_empty(),
+        "workspace_member_crates found no members — Cargo.toml parsing broke"
+    );
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    for c in &crates {
+        let src_dir = workspace_root.join(c).join("src");
+        // Fail loudly on a crate whose `src/` moved: `collect_source_rs`
+        // returns silently on an unreadable directory, so a renamed crate
+        // would otherwise pass every lint by having nothing to check.
+        assert!(
+            src_dir.is_dir(),
+            "workspace member {c} has no src/ at {} — this lint would silently scan nothing",
+            src_dir.display()
+        );
+        collect_source_rs(&src_dir, &mut paths);
+    }
+    // This lints/ directory holds the pattern literals scanned for above —
+    // excluded so a lint never flags itself.
+    let lints_dir = workspace_root.join("hume-editor/src/editor/lints");
+    paths.retain(|p| !p.starts_with(&lints_dir) && !extra_excludes.contains(p));
+    paths
+}
+
 /// The portion of `line` before any line comment (`//`), skipping `//`
 /// that appears inside a string literal — a naive `line.find("//")`
 /// would truncate a call like `write_global(key, "a//b", ...)`
@@ -105,34 +170,41 @@ fn strip_line_comment(line: &str) -> &str {
     line
 }
 
-/// One forbidden-pattern hit found by [`scan_forbidden`].
+/// One violation found by [`scan_lines`]/[`scan_forbidden`].
 struct Violation {
     /// `path` relative to the caller's `display_root` (or the absolute path,
     /// if `path` doesn't start with `display_root`).
     file: String,
     /// 1-based line number.
     lineno: usize,
-    pattern: &'static str,
+    /// The forbidden substring (`scan_forbidden`) or whatever else `scan_lines`'s
+    /// `find` callback reports finding (`column_naming`: the untagged identifier).
+    pattern: String,
     /// The offending line, trimmed of leading/trailing whitespace.
     trimmed: String,
 }
 
-/// Scan `paths` for any of `forbidden` patterns in active (non-test,
-/// non-comment) code — the skeleton shared by every forbidden-pattern lint
-/// in this module (`#[cfg(test)] mod tests { … }` tracking via brace depth,
-/// comment stripping, and a two-tier opt-out).
+/// Shared skeleton for every line-by-line lint in this module: walks
+/// `paths` tracking `#[cfg(test)] mod tests { … }` extent (skipped
+/// entirely) and a two-tier opt-out, then calls `find` on each surviving,
+/// comment-stripped line to collect whatever it reports. `scan_forbidden`
+/// (below) is the common case — a fixed forbidden-substring list;
+/// `column_naming` is the odd one out, extracting and predicate-testing
+/// identifiers instead of matching literal substrings, which is why this
+/// exists as the more general form underneath both.
 ///
-/// An opt-out comment containing `marker` (e.g. `"// grapheme-safe:"`)
-/// suppresses a hit when it appears on the violation line itself, or on the
-/// line immediately above it — `cargo fmt` hoists trailing comments onto
-/// their own line, so the marker often ends up above the forbidden pattern
-/// rather than beside it, and a same-line-only check silently stops working
-/// under formatting.
-fn scan_forbidden(
+/// **Opt-out**: a comment containing `marker` (e.g. `"// grapheme-safe:"`)
+/// suppresses a hit on the violation line itself; on the line *above*, only
+/// when the marker starts that line (after trimming) — `cargo fmt` hoists a
+/// trailing comment onto its own line, so the marker often ends up above
+/// the forbidden pattern rather than beside it, but a marker merely
+/// *appearing* somewhere on an unrelated previous line must not silently
+/// exempt code it was never meant to.
+fn scan_lines(
     paths: &[std::path::PathBuf],
     display_root: &std::path::Path,
-    forbidden: &[&'static str],
     marker: &str,
+    mut find: impl FnMut(&str) -> Vec<String>,
 ) -> Vec<Violation> {
     let mut violations = Vec::new();
 
@@ -151,9 +223,8 @@ fn scan_forbidden(
         let mut brace_depth: i64 = 0;
         let mut test_entry_depth: i64 = 0;
         let mut saw_cfg_test = false;
-        // Previous non-blank source line, kept so an opt-out marker on the
-        // line *above* a violation suppresses it (see the preceding-line
-        // opt-out rationale above).
+        // The previous source line (blank or not), kept so an opt-out
+        // marker alone on the line *above* a violation suppresses it.
         let mut prev_line: &str = "";
 
         for (lineno, line) in src.lines().enumerate() {
@@ -187,26 +258,45 @@ fn scan_forbidden(
             if line.contains(marker) {
                 continue;
             }
+            // Preceding-line opt-out — a *trailing* marker up there exempts
+            // only its own line, not this one; only a marker occupying that
+            // whole line reaches down to the line below it.
+            if prev_for_exempt.trim_start().starts_with(marker) {
+                continue;
+            }
 
             let code = strip_line_comment(line);
-            for &pattern in forbidden {
-                if code.contains(pattern) {
-                    // Preceding-line opt-out.
-                    if prev_for_exempt.contains(marker) {
-                        continue;
-                    }
-                    violations.push(Violation {
-                        file: file.clone(),
-                        lineno: lineno + 1,
-                        pattern,
-                        trimmed: trimmed.to_string(),
-                    });
-                }
+            for pattern in find(code) {
+                violations.push(Violation {
+                    file: file.clone(),
+                    lineno: lineno + 1,
+                    pattern,
+                    trimmed: trimmed.to_string(),
+                });
             }
         }
     }
 
     violations
+}
+
+/// Scan `paths` for any of `forbidden` patterns in active (non-test,
+/// non-comment) code — [`scan_lines`] specialized to a fixed
+/// forbidden-substring list, the shape every lint in this module but
+/// `column_naming` needs.
+fn scan_forbidden(
+    paths: &[std::path::PathBuf],
+    display_root: &std::path::Path,
+    forbidden: &[&'static str],
+    marker: &str,
+) -> Vec<Violation> {
+    scan_lines(paths, display_root, marker, |code| {
+        forbidden
+            .iter()
+            .filter(|&&pattern| code.contains(pattern))
+            .map(|&pattern| pattern.to_string())
+            .collect()
+    })
 }
 
 /// Extracts every double-quoted string literal's contents from `s`,
@@ -232,10 +322,10 @@ fn section_after<'a>(text: &'a str, heading: &str) -> &'a str {
     &after[..end]
 }
 
-/// Every `` `key` `` in a markdown table's first column: a line trimmed
+/// Every `` `key` `` in a markdown table's leading cell: a line trimmed
 /// to start with `` | ` `` (no other content in this file's tables looks
 /// like that once scoped to one `## `-delimited section).
-fn first_column_keys(section: &str) -> std::collections::BTreeSet<String> {
+fn first_cell_keys(section: &str) -> std::collections::BTreeSet<String> {
     section
         .lines()
         .filter_map(|line| {

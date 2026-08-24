@@ -21,7 +21,10 @@
 //!
 //! **Opt-out**: annotate a line with `// line-count-safe: <reason>`.
 
-use super::{collect_source_rs, scan_forbidden, strip_line_comment, workspace_member_crates};
+use super::{
+    collect_all_rs, scan_forbidden, strip_line_comment, workspace_member_crates,
+    workspace_source_paths,
+};
 
 /// Recursively collect every `.rs` file under `dir` that [`collect_source_rs`]
 /// excludes: anything under a directory named `tests`, or a file named
@@ -88,21 +91,6 @@ fn zero_based_line_count_range(code: &str) -> Option<&'static str> {
     })
 }
 
-/// Recursively collect every `.rs` file under `dir`, no exclusions.
-fn collect_all_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in rd.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_all_rs(&path, out);
-        } else if path.is_file() && path.extension().is_some_and(|e| e == "rs") {
-            out.push(path);
-        }
-    }
-}
-
 /// Scan every workspace crate's source for manual line-count derivations
 /// that should instead call one of `hume-rope`'s six line-count functions.
 ///
@@ -117,32 +105,16 @@ fn no_raw_line_count_derivations() {
     let workspace_root = root.parent().expect("workspace root");
 
     // Every workspace crate's src/ except hume-rope, the implementation.
+    let paths = workspace_source_paths(workspace_root, &["hume-rope"], &[]);
+    // Re-derived (not read back out of `paths`) for the test-tree scan
+    // below, which walks `collect_test_rs` — a different traversal than
+    // `workspace_source_paths`'s own `collect_source_rs` — over the same
+    // crate set.
     let crates: Vec<String> = workspace_member_crates(workspace_root)
         .into_iter()
         .filter(|c| c != "hume-rope")
         .collect();
-    assert!(
-        !crates.is_empty(),
-        "workspace_member_crates found no members — Cargo.toml parsing broke"
-    );
-    // Fail loudly on a missing src/ dir rather than let collect_source_rs's
-    // silent-on-read_dir-failure behavior scan zero files for it — a crate
-    // with no src/ would otherwise pass this lint by having nothing to check.
-    for c in &crates {
-        let src_dir = workspace_root.join(c).join("src");
-        assert!(
-            src_dir.is_dir(),
-            "workspace member {c:?} has no src/ dir at {src_dir:?}"
-        );
-    }
-    let mut paths: Vec<std::path::PathBuf> = Vec::new();
-    for c in &crates {
-        collect_source_rs(&workspace_root.join(c).join("src"), &mut paths);
-    }
-    // This lints/ directory holds the pattern literals scanned for below —
-    // excluded so this file never flags itself.
     let lints_dir = workspace_root.join("hume-editor/src/editor/lints");
-    paths.retain(|p| !p.starts_with(&lints_dir));
 
     // Forbidden patterns — manual line-count derivations. Bare `- 1`/`+ 1`
     // arithmetic on a line count stored in a local variable first is not

@@ -34,7 +34,7 @@
 //!   termina's `MouseEvent::column` or tree-sitter's `Point::column`
 //!   (each uses its own, non-display-column convention).
 
-use super::{collect_source_rs, strip_line_comment, workspace_member_crates};
+use super::{scan_lines, workspace_source_paths};
 
 const OPT_OUT_MARKER: &str = "// column-name-safe:";
 
@@ -157,13 +157,6 @@ fn identifiers_outside_strings(line: &str) -> Vec<&str> {
     out
 }
 
-/// One untagged-column-identifier hit.
-struct Violation {
-    file: String,
-    lineno: usize,
-    ident: String,
-}
-
 /// Whether `ident` would be reported — the same test the scan below applies,
 /// factored out so it can be exercised directly on names no file contains.
 fn is_untagged(ident: &str) -> bool {
@@ -241,69 +234,15 @@ fn no_untagged_column_identifiers() {
         .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
     let root = std::path::Path::new(&manifest);
     let workspace_root = root.parent().expect("workspace root");
+    let paths = workspace_source_paths(workspace_root, &[], &[]);
 
-    let crates = workspace_member_crates(workspace_root);
-    assert!(
-        !crates.is_empty(),
-        "workspace_member_crates found no members — Cargo.toml parsing broke"
-    );
-
-    let mut paths: Vec<std::path::PathBuf> = Vec::new();
-    for c in &crates {
-        let src_dir = workspace_root.join(c).join("src");
-        // Fail loudly on a crate whose `src/` moved: `collect_source_rs`
-        // returns silently on an unreadable directory, so a renamed crate
-        // would otherwise pass this lint by having nothing to check.
-        assert!(
-            src_dir.is_dir(),
-            "workspace member {c} has no src/ at {} — this lint would silently scan nothing",
-            src_dir.display()
-        );
-        collect_source_rs(&src_dir, &mut paths);
-    }
-    // This lints/ directory holds the pattern literals scanned for above —
-    // excluded so this file never flags itself.
-    let lints_dir = workspace_root.join("hume-editor/src/editor/lints");
-    paths.retain(|p| !p.starts_with(&lints_dir));
-
-    let mut violations = Vec::new();
-    for path in &paths {
-        let file = path
-            .strip_prefix(workspace_root)
-            .unwrap_or(path)
-            .display()
-            .to_string();
-        let src = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-
-        // Previous source line, kept so an opt-out marker cargo fmt hoisted
-        // onto its own line still exempts the code beneath it.
-        let mut prev_line: &str = "";
-        for (lineno, line) in src.lines().enumerate() {
-            let prev_for_exempt = prev_line;
-            prev_line = line;
-
-            // A *trailing* marker exempts only the line it sits on. Only a
-            // marker occupying its whole line reaches down to the next one —
-            // otherwise annotating one upstream name would silently exempt
-            // whatever happened to follow it.
-            let hoisted_above = prev_for_exempt.trim_start().starts_with(OPT_OUT_MARKER);
-            if line.contains(OPT_OUT_MARKER) || hoisted_above {
-                continue;
-            }
-
-            let code = strip_line_comment(line);
-            for ident in identifiers_outside_strings(code) {
-                if is_untagged(ident) {
-                    violations.push(Violation {
-                        file: file.clone(),
-                        lineno: lineno + 1,
-                        ident: ident.to_string(),
-                    });
-                }
-            }
-        }
-    }
+    let violations = scan_lines(&paths, workspace_root, OPT_OUT_MARKER, |code| {
+        identifiers_outside_strings(code)
+            .into_iter()
+            .filter(|ident| is_untagged(ident))
+            .map(str::to_string)
+            .collect()
+    });
 
     assert!(
         violations.is_empty(),
@@ -317,7 +256,7 @@ fn no_untagged_column_identifiers() {
          Violations:\n{}\n",
         violations
             .iter()
-            .map(|v| format!("  {}:{} — `{}`", v.file, v.lineno, v.ident))
+            .map(|v| format!("  {}:{} — `{}`", v.file, v.lineno, v.pattern))
             .collect::<Vec<_>>()
             .join("\n")
     );

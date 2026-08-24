@@ -27,6 +27,12 @@
 //! from the `&Theme` passed to `Canvas::new`, so no caller threads a style
 //! for it.
 //!
+//! `ratatui::widgets`/`ratatui::text` are banned outright, not just their
+//! individual string-write methods: `Paragraph`, `Block`, `List`, `Tabs`,
+//! and `Line`/`Span` each measure and draw text through ratatui's own rule,
+//! the same gap as `set_string` — nothing in this workspace has a
+//! legitimate reason to import from either module.
+//!
 //! **Opt-out**: `// static-glyph-safe: <reason>` for a write of text that is
 //! a compile-time constant — box-drawing borders, a scrollbar thumb, a
 //! literal space. Those cannot contain a control character, a zero-width
@@ -37,7 +43,7 @@
 //! and any `tests.rs`) and this `lints/` directory. A test painting into its
 //! own scratch buffer has no frame to corrupt.
 
-use super::{collect_source_rs, scan_forbidden, workspace_member_crates};
+use super::{scan_forbidden, workspace_source_paths};
 
 /// Scan every workspace crate's source for a ratatui string write that should
 /// instead go through `hume_engine::render::Canvas::write_text_run`.
@@ -47,34 +53,28 @@ fn text_is_written_through_one_writer() {
         .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
     let root = std::path::Path::new(&manifest);
     let workspace_root = root.parent().expect("workspace root");
-
-    let crates = workspace_member_crates(workspace_root);
-    assert!(
-        !crates.is_empty(),
-        "workspace_member_crates found no members — Cargo.toml parsing broke"
-    );
-    let mut paths: Vec<std::path::PathBuf> = Vec::new();
-    for c in &crates {
-        let src_dir = workspace_root.join(c).join("src");
-        assert!(
-            src_dir.is_dir(),
-            "workspace member {c:?} has no src/ dir at {src_dir:?}"
-        );
-        collect_source_rs(&src_dir, &mut paths);
-    }
-    // This lints/ directory holds the pattern literals scanned for below —
-    // excluded so this file never flags itself.
-    let lints_dir = workspace_root.join("hume-editor/src/editor/lints");
-    paths.retain(|p| !p.starts_with(&lints_dir));
+    let paths = workspace_source_paths(workspace_root, &[], &[]);
 
     // `set_symbol`/`set_char` write one cell straight through the `Cell` API,
     // bypassing both writers — caught here too, since the reason to reach for
-    // them is the same.
+    // them is the same. Both a method call and UFCS spelling are covered
+    // (`Buffer::set_string(&mut buf, …)` bypasses just as much as
+    // `buf.set_string(…)` does). `ratatui::widgets`/`ratatui::text` (the
+    // module a `use` statement would name first) are banned outright: those
+    // widgets (`Paragraph`, `Block`, `List`, `Tabs`, `Line`/`Span`) measure
+    // and draw text with their own rule, and nothing in this workspace has
+    // a legitimate reason to import one — see this module's doc.
     let forbidden = [
         ".set_string(",
+        "Buffer::set_string(",
         ".set_stringn(",
+        "Buffer::set_stringn(",
         ".set_symbol(",
+        "Cell::set_symbol(",
         ".set_char(",
+        "Cell::set_char(",
+        "ratatui::widgets",
+        "ratatui::text",
     ];
 
     let violations: Vec<String> =

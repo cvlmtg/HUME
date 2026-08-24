@@ -30,7 +30,7 @@
 //! *is* a display-width measurement but reads a decision `classify` already
 //! made rather than computing a second one.
 
-use super::{collect_source_rs, scan_forbidden, workspace_member_crates};
+use super::{scan_forbidden, workspace_source_paths};
 
 /// Scan every workspace crate's source for direct `unicode-width` use that
 /// should instead go through `hume_rope::width`.
@@ -41,34 +41,15 @@ fn no_raw_display_width() {
     let root = std::path::Path::new(&manifest);
     let workspace_root = root.parent().expect("workspace root");
 
-    let crates = workspace_member_crates(workspace_root);
-    assert!(
-        !crates.is_empty(),
-        "workspace_member_crates found no members — Cargo.toml parsing broke"
-    );
-    for c in &crates {
-        let src_dir = workspace_root.join(c).join("src");
-        assert!(
-            src_dir.is_dir(),
-            "workspace member {c:?} has no src/ dir at {src_dir:?}"
-        );
-    }
-    let mut paths: Vec<std::path::PathBuf> = Vec::new();
-    for c in &crates {
-        collect_source_rs(&workspace_root.join(c).join("src"), &mut paths);
-    }
     // The implementation itself.
     let width_rs = workspace_root.join("hume-rope/src/width.rs");
-    paths.retain(|p| p != &width_rs);
-    // This lints/ directory holds the pattern literals scanned for below —
-    // excluded so this file never flags itself.
-    let lints_dir = workspace_root.join("hume-editor/src/editor/lints");
-    paths.retain(|p| !p.starts_with(&lints_dir));
+    let paths = workspace_source_paths(workspace_root, &[], &[width_rs]);
 
     let forbidden = [
         "unicode_width",
         "UnicodeWidthStr",
         "UnicodeWidthChar",
+        "width_cjk",
         ".width(",
     ];
 
