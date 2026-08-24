@@ -10,7 +10,7 @@ plugin might need, exposed via `call!` so cross-plugin code never has to re-deri
 ```
 
 With no explicit `#:commands`/`#:events`/`#:languages`, this reads `core:stdlib`'s own
-`manifest.scm`, which declares all three commands below as activation triggers — `call!`
+`manifest.scm`, which declares every command below as an activation trigger — `call!`
 dispatch activates an unactivated plugin inline before retrying the call, so a
 lazily-declared `core:stdlib` still activates transparently the first time another
 plugin's command body calls one of them at runtime.
@@ -39,6 +39,18 @@ navigation) with no `core:vim-keybind` `'smart` mode in the mix.
 All three accept `#f` and return `#f` — callers only need to check `(current-selections)` for
 `#f` once, at the call site, rather than re-checking inside every helper.
 
+### Filesystem + list search
+
+| Command                 | Effect                                                              |
+|--------------------------|----------------------------------------------------------------------|
+| `stdlib/find`            | First element of the given list satisfying the given predicate, or `#f` |
+| `stdlib/write-file`      | Write content to a path, creating or truncating it                   |
+| `stdlib/delete-dir`      | Recursively delete a directory; idempotent                           |
+| `stdlib/delete-file`     | Delete a file; idempotent                                             |
+
+Thin wrappers over Steel's `steel/filesystem`/`steel/ports` — `core:plum` and `core:lsp`
+both call into these rather than each carrying its own copy.
+
 ## How it works
 
 HUME's scripting surface has two layers, and `core:stdlib` is the outermost:
@@ -49,7 +61,7 @@ HUME's scripting surface has two layers, and `core:stdlib` is the outermost:
 
 Cross-plugin access in HUME is `call!`-only — plugins never `require` each other's modules
 (that would break the namespace isolation each plugin gets). That's why the public API here
-is exposed as three `define-command!`-registered commands rather than a `provide`d library.
+is exposed as `define-command!`-registered commands rather than a `provide`d library.
 
 The internal accessors (`stdlib/selection-anchor`, `stdlib/selection-head`,
 `stdlib/selection-primary?`, `stdlib/primary-selection`) exist so nothing outside this file

@@ -4,19 +4,21 @@
 (require "lib.scm")
 
 ;; ── Response handling ────────────────────────────────────────────────────────
-;; Shared by all four goto-family methods (and references, always-drawer
-;; variant below): null/empty -> "no results"; a single Location hashmap ->
+;; Shared by all four goto-family methods and `lsp-references` below:
+;; err -> report it; null/empty -> "no results"; a single Location hashmap ->
 ;; jump directly; a Location[]/LocationLink[] array -> jump if it has exactly
-;; one entry, else list them in the drawer.
+;; one entry (unless `always-drawer?`), else list them in the drawer.
 
-(define (lsp/goto-response err res)
+(define (lsp/goto-response err res #:always-drawer? [always-drawer? #f]
+                                    #:what [what "goto"]
+                                    #:not-found-msg [not-found-msg "No definition found"])
   (cond
-    (err (lsp/report-error "goto" err))
-    ((void? res) (log! 'info "No definition found"))
+    (err (lsp/report-error what err))
+    ((void? res) (log! 'info not-found-msg))
     ((list? res)
      (cond
-       ((null? res) (log! 'info "No definition found"))
-       ((= (length res) 1) (goto-location! (car res)))
+       ((null? res) (log! 'info not-found-msg))
+       ((and (not always-drawer?) (= (length res) 1)) (goto-location! (car res)))
        (else (lsp/show-locations! res))))
     (else (goto-location! res))))
 
@@ -41,7 +43,11 @@
 
 ;; ── References ───────────────────────────────────────────────────────────
 ;; Always the drawer, even for one result — "where is this used" expects a
-;; list, unlike goto's "take me there".
+;; list, unlike goto's "take me there". Delegates to `lsp/goto-response`'s
+;; err/void/null cascade rather than re-implementing it — the bare-Location
+;; `else` branch it also carries is simply unreached here:
+;; `textDocument/references` only ever returns `Location[] | null` per spec,
+;; never a bare `Location`.
 
 (define-command! "lsp-references" "List references to the symbol under the cursor."
   (lambda ()
@@ -51,12 +57,6 @@
           (hash-insert (lsp-position-params (current-buffer))
                        "context" (hash "includeDeclaration" #t))
           (lambda (err res)
-            (cond
-              (err (lsp/report-error "references" err))
-              ((void? res) (log! 'info "No references found"))
-              ((null? res) (log! 'info "No references found"))
-              ;; No separate bare-Location branch here, unlike
-              ;; `lsp/goto-response` above: `textDocument/references` only
-              ;; ever returns `Location[] | null` per spec, never a bare
-              ;; `Location`, so there's no single-hashmap case to guard against.
-              (else (lsp/show-locations! res)))))))))
+            (lsp/goto-response err res #:always-drawer? #t
+                                       #:what "references"
+                                       #:not-found-msg "No references found")))))))

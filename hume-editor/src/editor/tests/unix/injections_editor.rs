@@ -1,11 +1,13 @@
 use super::*;
 
 /// Load the real `core:plum` plugin (the actual `runtime/plugins/core/plum/`
-/// sources, not a synthetic copy) into `ed`, pointing `HUME_RUNTIME` at the
-/// repo's real `runtime/` dir (so the real `grammar-sources.scm` catalog is
-/// used) and `XDG_DATA_HOME` at `data_dir`. Env vars are process-global —
-/// callers must hold a `TEST_GLOBALS.claim(Global::Env)` for the test's
-/// duration.
+/// sources, not a synthetic copy) plus its `core:stdlib` dependency
+/// (`plum/fetch-query!` etc. call `stdlib/find`/`stdlib/write-file`/
+/// `stdlib/delete-dir`/`stdlib/delete-file` via `call!`) into `ed`, pointing
+/// `HUME_RUNTIME` at the repo's real `runtime/` dir (so the real
+/// `grammar-sources.scm` catalog is used) and `XDG_DATA_HOME` at `data_dir`.
+/// Env vars are process-global — callers must hold a
+/// `TEST_GLOBALS.claim(Global::Env)` for the test's duration.
 fn load_plum(ed: &mut Editor, data_dir: &std::path::Path) {
     let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -14,7 +16,11 @@ fn load_plum(ed: &mut Editor, data_dir: &std::path::Path) {
     let config_tmp = safe_tempdir();
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
-    std::fs::write(hume_config.join("init.scm"), r#"(load-plugin "core:plum")"#).unwrap();
+    std::fs::write(
+        hume_config.join("init.scm"),
+        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:plum\")",
+    )
+    .unwrap();
 
     unsafe {
         std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());

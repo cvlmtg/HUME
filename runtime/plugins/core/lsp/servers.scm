@@ -5,38 +5,6 @@
 
 (require "registration.scm")
 
-;; ── Filesystem + list-search helpers ────────────────────────────────────────
-;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports`, duplicated
-;; from plum/lib.scm's same-named helpers — plugins never require each
-;; other's modules.
-
-;;; First element of `lst` satisfying `pred?`, or `#f`.
-(define (lsp/find pred? lst)
-  (cond ((null? lst) #f)
-        ((pred? (car lst)) (car lst))
-        (else (lsp/find pred? (cdr lst)))))
-
-;;; Write `content` to `path`, creating or truncating it.
-(define (lsp/write-file path content)
-  (let ([port (open-output-file path)])
-    (write-string content port)
-    (close-output-port port)))
-
-;;; Recursively delete `dir`. Idempotent — a missing directory is not an
-;;; error; several call sites (e.g. clearing a stale install before a
-;;; reinstall) rely on being able to call this whether or not anything is
-;;; there yet.
-(define (lsp/delete-dir dir)
-  (when (path-exists? dir)
-    (delete-directory! dir)))
-
-;;; Delete the file at `path`. Idempotent — a missing file is not an error;
-;;; cleanup-on-failure call sites (e.g. removing a partial download) must
-;;; tolerate the file never having been created.
-(define (lsp/delete-file path)
-  (when (path-exists? path)
-    (delete-file! path)))
-
 ;; ── Source registry ──────────────────────────────────────────────────────────
 
 ;;; Hash: name → source-entry fields, the tagged-alist tail from
@@ -104,7 +72,7 @@
 
 ;;; Write `name`'s receipt — the install commit point.
 (define (lsp/write-receipt! name version bin)
-  (lsp/write-file (lsp/receipt-path name)
+  (call! "stdlib/write-file" (lsp/receipt-path name)
     (string-append "((name . " (lsp/scheme-quote name) ")"
                    " (version . " (lsp/scheme-quote version) ")"
                    " (bin . " (lsp/scheme-quote bin) "))")))
@@ -121,7 +89,7 @@
                               expected)))
          (actual (string-downcase (sha256-file path))))
     (unless (equal? actual expected-hex)
-      (lsp/delete-file path)
+      (call! "stdlib/delete-file" path)
       (error (string-append "lsp/verify-sha256!: sha256 mismatch for '" path
                             "': expected " expected-hex ", got " actual)))))
 
@@ -139,7 +107,7 @@
 ;;; current platform, or `#f` if `name`'s github source has none.
 (define (lsp/find-target targets)
   (let ((want (string->symbol (hume-target))))
-    (lsp/find (lambda (t) (equal? (list-ref t 0) want)) targets)))
+    (call! "stdlib/find" (lambda (t) (equal? (list-ref t 0) want)) targets)))
 
 ;;; #f when `name` is installable on this platform, else a human-readable
 ;;; reason — single source for :lsp-install's error, :lsp-servers's
@@ -208,15 +176,15 @@
          (archive (path-join dir asset))
          (url     (string-append "https://github.com/" repo "/releases/download/"
                                  version "/" asset)))
-    ;; `dir` was only ever purged by `lsp/delete-dir` above, never recreated —
-    ;; `curl` needs the parent directory to already exist.
+    ;; `dir` was only ever purged by `stdlib/delete-dir` above, never
+    ;; recreated — `curl` needs the parent directory to already exist.
     (create-directory! dir)
     (run-inline-output! "curl" (list "-fsSL" "-o" archive "--" url))
     (lsp/verify-sha256! archive sha)
     (cond
       ((equal? fmt 'gz) (unpack-gz archive (path-join dir bin)))
       ((equal? fmt 'zip) (unpack-zip archive dir bin)))
-    (lsp/delete-file archive)
+    (call! "stdlib/delete-file" archive)
     (unless (path-exists? (path-join dir bin))
       (error (string-append "lsp/install-github!: " name
                             ": expected binary not found after unpack: " bin)))
@@ -277,7 +245,7 @@
          (dir           (lsp/server-dir name)))
     (for-each (lambda (lang-entry) (unregister-lsp-server! (car lang-entry)))
               (cdr (lsp/field server-fields 'languages)))
-    (lsp/delete-dir dir)
+    (call! "stdlib/delete-dir" dir)
     (let ((bin-rel (cond
                      ((equal? kind 'github) (lsp/install-github! name source-fields dir))
                      ((equal? kind 'cargo)  (lsp/install-cargo! name source-fields dir))
@@ -385,7 +353,7 @@
                 (log! 'info (string-append "LSP: shutting down and removing " name "..."))
                 (after 0 (lambda ()
                            (when (lsp/with-install-lock! (string-append "uninstall " name)
-                                   (lambda () (lsp/delete-dir dir)))
+                                   (lambda () (call! "stdlib/delete-dir" dir)))
                              (log! 'info (string-append "LSP: removed " name))))))
               (log! 'info (string-append "LSP: nothing to uninstall for " name))))))))
 

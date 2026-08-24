@@ -2,7 +2,7 @@
 
 (provide lsp/supports? lsp/supports-for-buffer? lsp/guard-capability lsp/report-error
          lsp/visible-lines lsp/show-locations! lsp/text-edit->tuple
-         lsp/setup-trigger-chars!)
+         lsp/setup-trigger-chars! lsp/format-position)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
 
@@ -98,6 +98,13 @@
 ;; jump) and `lsp-locations->display-parts` (the drawer row) — nothing here
 ;; reads a location's wire fields directly any more.
 
+;;; "12:5" — 1-based line/column from 0-based `line`/`col`. The single
+;;; formatter for every "L:C" HUME shows a user (`lsp/location-display`
+;;; below, `:diagnostics`'s drawer rows) — one place both agree what a
+;;; position reads as.
+(define (lsp/format-position line col)
+  (string-append (number->string (+ 1 line)) ":" (number->string (+ 1 col))))
+
 ;;; "path/to/file.rs:12:5" — 1-based line/column. `part` is one
 ;;; `(path line col)` entry from `lsp-locations->display-parts`: for a target
 ;;; with an open buffer, `col` is an exact grapheme column (or `#f` past the
@@ -110,12 +117,13 @@
 ;;; UNC strip) — URI decoding and the line/column themselves come from the
 ;;; builtin, which read them out of the same location this row is naming.
 (define (lsp/location-display part)
-  (let* ((prefix (string-append (path->display (car part)) ":"
-                                (number->string (+ 1 (cadr part)))))
+  (let* ((path (path->display (car part)))
+         (line (cadr part))
          (grapheme-col (caddr part)))
-    (if grapheme-col
-        (string-append prefix ":" (number->string (+ 1 grapheme-col)))
-        prefix)))
+    (string-append path ":"
+      (if grapheme-col
+          (lsp/format-position line grapheme-col)
+          (number->string (+ 1 line))))))
 
 ;;; `locs`: a list of raw `Location`/`LocationLink` hashmaps, decoded once by
 ;;; `lsp-locations->display-parts`. Drawer rows are pre-formatted display

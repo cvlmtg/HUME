@@ -58,9 +58,9 @@
   (let ((tmp (path-join (grammar-sources-dir) (string-append "_fetch_" name "_" filename))))
     (run-inline-output! "curl" (list "-fsSL" "-o" tmp "--" (plum/helix-query-url name filename)))
     (let ((content (with-handler
-                     (lambda (err) (plum/delete-file tmp) (raise-error err))
+                     (lambda (err) (call! "stdlib/delete-file" tmp) (raise-error err))
                      (plum/read-file tmp))))
-      (plum/delete-file tmp)
+      (call! "stdlib/delete-file" tmp)
       content)))
 
 ;;; Fetch `name`'s `filename` query and fully resolve any `; inherits:` chain
@@ -78,7 +78,7 @@
     (if (not content)
         ""
         (let* ((lines (split-many content "\n"))
-               (inherits-line (plum/find plum/inherits-line? lines)))
+               (inherits-line (call! "stdlib/find" plum/inherits-line? lines)))
           (if inherits-line
               (string-join
                 (append
@@ -91,7 +91,7 @@
 ;;; Fetch and fully resolve `name`'s `filename` query, writing the result to
 ;;; `dest`. Raises on a 404 for the grammar's own query.
 (define (plum/fetch-query! name filename dest)
-  (plum/write-file dest (plum/resolve-query name filename #f)))
+  (call! "stdlib/write-file" dest (plum/resolve-query name filename #f)))
 
 ;; ── Injection dependencies ────────────────────────────────────────────────────
 
@@ -174,7 +174,7 @@
          (hl-path  (grammar-highlights-path name)))
     (plum/install-grammar-deps! name)
     ;; git clone refuses a non-empty dest — clear any stale source tree first.
-    (plum/delete-dir src-dir)
+    (call! "stdlib/delete-dir" src-dir)
     ;; Blobless clone (skip file-history blobs) at the pinned rev, then
     ;; checkout that exact revision.
     (run-inline-output! "git" (list "clone" "--filter=blob:none" "--" url src-dir))
@@ -231,4 +231,4 @@
           (log! 'info "PLUM: no orphan grammars to remove")
           (plum/batch-run "removed grammar" orphans
             (lambda (name)
-              (plum/delete-file (grammar-output-path name))))))))
+              (call! "stdlib/delete-file" (grammar-output-path name))))))))

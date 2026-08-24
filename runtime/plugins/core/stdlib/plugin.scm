@@ -45,6 +45,39 @@
 (define (stdlib/cursor-char-index sels)
   (stdlib/selection-head (stdlib/primary-selection sels)))
 
+;; ── Filesystem + list-search helpers (internal) ─────────────────────────────
+;;
+;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports` — the single
+;; copy `core:plum` and `core:lsp` both call into via `call!` rather than
+;; each carrying its own (their previous copies were byte-identical modulo
+;; a plugin-name prefix).
+
+;;; First element of `lst` satisfying `pred?`, or `#f`.
+(define (stdlib/find pred? lst)
+  (cond ((null? lst) #f)
+        ((pred? (car lst)) (car lst))
+        (else (stdlib/find pred? (cdr lst)))))
+
+;;; Write `content` to `path`, creating or truncating it.
+(define (stdlib/write-file path content)
+  (let ([port (open-output-file path)])
+    (write-string content port)
+    (close-output-port port)))
+
+;;; Recursively delete `dir`. Idempotent — a missing directory is not an
+;;; error, unlike Steel's own `delete-directory!` — callers rely on this to
+;;; clear a possibly-absent stale directory before a first-time
+;;; clone/install.
+(define (stdlib/delete-dir dir)
+  (when (path-exists? dir)
+    (delete-directory! dir)))
+
+;;; Delete the file at `path`. Idempotent, unlike `delete-file!` — cleanup
+;;; call sites must tolerate the file never having been created.
+(define (stdlib/delete-file path)
+  (when (path-exists? path)
+    (delete-file! path)))
+
 ;; ── call!-able commands (public API) ────────────────────────────────────────
 ;;
 ;; Command name and Steel binding of the same name live in separate
@@ -62,3 +95,19 @@
 (define-command! "stdlib/cursor-char-index"
   "0-indexed head char offset of the primary selection in the given list, or #f."
   (lambda (sels) (stdlib/cursor-char-index sels)))
+
+(define-command! "stdlib/find"
+  "First element of the given list satisfying the given predicate, or #f."
+  (lambda (pred? lst) (stdlib/find pred? lst)))
+
+(define-command! "stdlib/write-file"
+  "Write the given content to the given path, creating or truncating it."
+  (lambda (path content) (stdlib/write-file path content)))
+
+(define-command! "stdlib/delete-dir"
+  "Recursively delete the given directory. Idempotent."
+  (lambda (dir) (stdlib/delete-dir dir)))
+
+(define-command! "stdlib/delete-file"
+  "Delete the file at the given path. Idempotent."
+  (lambda (path) (stdlib/delete-file path)))

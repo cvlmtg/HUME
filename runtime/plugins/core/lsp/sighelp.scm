@@ -16,17 +16,21 @@
         param-label
         (lsp-label-offsets->text bid sig-label param-label))))
 
+;;; Clamp a server-sent index (active signature, active parameter) into
+;;; `[0, (length lst) - 1]` rather than trusting it verbatim.
+(define (lsp/clamp-index idx lst)
+  (max 0 (min idx (- (length lst) 1))))
+
 ;;; The chosen signature's label, plus the active parameter's own text
 ;;; marked with `⟨…⟩` on a second line (no styling API in `show-popup!`
 ;;; v1). No active parameter, no parameters at all, or an unsliceable
-;;; label ⇒ bare label. `active-idx` is clamped into range rather than
-;;; trusted verbatim.
+;;; label ⇒ bare label.
 (define (lsp/sighelp-text bid sig active-idx)
   (let* ((label (hash-ref sig "label"))
          (params (if (hash-contains? sig "parameters") (hash-ref sig "parameters") (list))))
     (if (or (not active-idx) (null? params))
         label
-        (let* ((idx (max 0 (min active-idx (- (length params) 1))))
+        (let* ((idx (lsp/clamp-index active-idx params))
                (text (lsp/param-text bid label (list-ref params idx))))
           (if text (string-append label "\n⟨" text "⟩") label)))))
 
@@ -37,7 +41,7 @@
     (if (null? sigs)
         (close-popup!)
         (let* ((active-sig-idx (if (hash-contains? res "activeSignature") (hash-ref res "activeSignature") 0))
-               (idx (max 0 (min active-sig-idx (- (length sigs) 1))))
+               (idx (lsp/clamp-index active-sig-idx sigs))
                (sig (list-ref sigs idx))
                (active-param-idx (if (hash-contains? res "activeParameter") (hash-ref res "activeParameter") #f)))
           (show-popup! (lsp/sighelp-text bid sig active-param-idx))))))

@@ -3,9 +3,13 @@
 **PLUM** — the HUME **PLU**gin **M**anager. Installs and updates third-party Steel plugins
 from GitHub, and installs the tree-sitter grammars that power syntax highlighting.
 
+Requires `core:stdlib` declared (or loaded) first — grammar/plugin install and cleanup call
+`stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file` via `call!`.
+
 ## Usage
 
 ```scheme
+(declare-plugin "core:stdlib")
 (declare-plugin "core:plum")
 ```
 

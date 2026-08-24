@@ -1,8 +1,7 @@
 ;;; core:plum/lib.scm
 
-(provide plum/valid-dir-entry? plum/batch-run plum/find
-         plum/run! plum/list-dir plum/read-file plum/write-file
-         plum/delete-dir plum/delete-file)
+(provide plum/valid-dir-entry? plum/batch-run
+         plum/run! plum/list-dir plum/read-file)
 
 ;; ── Directory entry filter ────────────────────────────────────────────────────
 
@@ -10,14 +9,6 @@
 (define (plum/valid-dir-entry? name)
   (and (not (equal? name "."))
        (not (equal? name ".."))))
-
-;; ── List search ───────────────────────────────────────────────────────────────
-
-;;; First element of `lst` satisfying `pred?`, or `#f`.
-(define (plum/find pred? lst)
-  (cond ((null? lst) #f)
-        ((pred? (car lst)) (car lst))
-        (else (plum/find pred? (cdr lst)))))
 
 ;; ── Process spawning ──────────────────────────────────────────────────────────
 ;; `run-inline-output!` handles `#:inline-output` commands (process-group
@@ -60,25 +51,6 @@
     (let ([content (read-port-to-string port)])
       (close-input-port port)
       content)))
-
-;;; Write `content` to `path`, creating or truncating it.
-(define (plum/write-file path content)
-  (let ([port (open-output-file path)])
-    (write-string content port)
-    (close-output-port port)))
-
-;;; Recursively delete `dir`. Idempotent — a missing directory is not an
-;;; error, unlike Steel's own `delete-directory!` — callers rely on this to
-;;; clear a possibly-absent stale source tree before a first-time clone.
-(define (plum/delete-dir dir)
-  (when (path-exists? dir)
-    (delete-directory! dir)))
-
-;;; Delete the file at `path`. Idempotent, unlike `delete-file!` — cleanup
-;;; call sites must tolerate the file never having been created.
-(define (plum/delete-file path)
-  (when (path-exists? path)
-    (delete-file! path)))
 
 ;; ── Batch runner ──────────────────────────────────────────────────────────────
 

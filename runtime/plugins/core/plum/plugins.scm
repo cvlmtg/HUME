@@ -79,7 +79,7 @@
       (if (null? orphans)
           (log! 'info "PLUM: nothing to remove")
           (plum/batch-run "removed" orphans
-            (lambda (name) (plum/delete-dir (plum/plugin-dir name))))))))
+            (lambda (name) (call! "stdlib/delete-dir" (plum/plugin-dir name))))))))
 
 (define-command! "plum-update"
   "Run git pull in every installed third-party plugin directory."
