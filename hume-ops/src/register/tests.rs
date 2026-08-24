@@ -136,37 +136,37 @@ fn constants_have_expected_values() {
 #[test]
 fn yank_single_cursor() {
     // Cursor on 'h' — yank captures just 'h'.
-    let (buf, sels) = parse_state("-[h]>ello\n");
-    assert_eq!(yank_selections(&buf, &sels), vec!["h"]);
+    let (text, sels) = parse_state("-[h]>ello\n");
+    assert_eq!(yank_selections(&text, &sels), vec!["h"]);
 }
 
 #[test]
 fn yank_multi_char_selection() {
     // Selection covers "hell".
-    let (buf, sels) = parse_state("-[hell]>o\n");
-    assert_eq!(yank_selections(&buf, &sels), vec!["hell"]);
+    let (text, sels) = parse_state("-[hell]>o\n");
+    assert_eq!(yank_selections(&text, &sels), vec!["hell"]);
 }
 
 #[test]
 fn yank_backward_selection_same_text() {
     // Direction doesn't change the yanked text — it's always start()..=end().
-    let (buf, sels) = parse_state("<[hell]-o\n");
-    assert_eq!(yank_selections(&buf, &sels), vec!["hell"]);
+    let (text, sels) = parse_state("<[hell]-o\n");
+    assert_eq!(yank_selections(&text, &sels), vec!["hell"]);
 }
 
 #[test]
 fn yank_multi_cursor_document_order() {
     // Two cursors — one on 'h', one on 'o'. Returned in document order.
-    let (buf, sels) = parse_state("-[h]>ell-[o]>\n");
-    let yanked = yank_selections(&buf, &sels);
+    let (text, sels) = parse_state("-[h]>ell-[o]>\n");
+    let yanked = yank_selections(&text, &sels);
     assert_eq!(yanked, vec!["h", "o"]);
 }
 
 #[test]
 fn yank_full_line_including_newline() {
     // Selection covers "hello\n" — result ends with '\n' (linewise heuristic).
-    let (buf, sels) = parse_state("-[hello\n]>");
-    assert_eq!(yank_selections(&buf, &sels), vec!["hello\n"]);
+    let (text, sels) = parse_state("-[hello\n]>");
+    assert_eq!(yank_selections(&text, &sels), vec!["hello\n"]);
 }
 
 #[test]
@@ -174,22 +174,22 @@ fn yank_grapheme_cluster() {
     // "e\u{0301}" is two chars (e + combining acute) but one grapheme cluster.
     // A cursor on 'e' (pos 0) covers that grapheme — yank must include the
     // combining mark so the yanked text is the complete grapheme "é".
-    let (buf, sels) = parse_state("-[e]>\u{0301}x\n");
-    assert_eq!(yank_selections(&buf, &sels), vec!["e\u{0301}"]);
+    let (text, sels) = parse_state("-[e]>\u{0301}x\n");
+    assert_eq!(yank_selections(&text, &sels), vec!["e\u{0301}"]);
 }
 
 #[test]
 fn yank_on_structural_newline() {
     // Cursor on the trailing '\n' — captures the newline itself.
-    let (buf, sels) = parse_state("hello-[\n]>");
-    assert_eq!(yank_selections(&buf, &sels), vec!["\n"]);
+    let (text, sels) = parse_state("hello-[\n]>");
+    assert_eq!(yank_selections(&text, &sels), vec!["\n"]);
 }
 
 #[test]
 fn yank_empty_buffer() {
     // Empty buffer is just "\n"; cursor on it — yank captures the newline.
-    let (buf, sels) = parse_state("-[\n]>");
-    assert_eq!(yank_selections(&buf, &sels), vec!["\n"]);
+    let (text, sels) = parse_state("-[\n]>");
+    assert_eq!(yank_selections(&text, &sels), vec!["\n"]);
 }
 
 // ── KillRing ──────────────────────────────────────────────────────────────

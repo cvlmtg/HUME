@@ -9,14 +9,14 @@ use hume_editing::text::BufferText;
 /// step function here is idempotent once clamped at a buffer edge, so a huge
 /// count prefix (e.g. `999999999x`) does O(lines moved) work, not O(count).
 fn repeat_motion(
-    buf: &BufferText,
+    text: &BufferText,
     sel: Selection,
     count: usize,
     step: impl Fn(&BufferText, Selection) -> Selection,
 ) -> Selection {
     let mut s = sel;
     for _ in 0..count {
-        let next = step(buf, s);
+        let next = step(text, s);
         if next == s {
             break;
         }
@@ -41,18 +41,18 @@ fn repeat_motion(
 /// or last line are head-relative (checked against the line the head is
 /// about to leave), not selection-end-relative — a backward selection whose
 /// far edge sits on the last line must still be able to shrink via `x`.
-fn extend_line_span(buf: &BufferText, sel: Selection, delta: isize) -> Selection {
-    if !is_selection_linewise(buf, &sel) {
-        let top_line = buf.char_to_line(sel.start());
-        let bottom_line = buf.char_to_line(sel.end());
-        let end = line_break_char(buf, bottom_line);
-        return Selection::directed(buf.line_to_char(top_line), end, delta > 0);
+fn extend_line_span(text: &BufferText, sel: Selection, delta: isize) -> Selection {
+    if !is_selection_linewise(text, &sel) {
+        let top_line = text.char_to_line(sel.start());
+        let bottom_line = text.char_to_line(sel.end());
+        let end = line_break_char(text, bottom_line);
+        return Selection::directed(text.line_to_char(top_line), end, delta > 0);
     }
 
-    let anchor_line = buf.char_to_line(sel.anchor());
-    let head_line = buf.char_to_line(sel.head());
+    let anchor_line = text.char_to_line(sel.anchor());
+    let head_line = text.char_to_line(sel.head());
     if delta > 0 {
-        if line_end_exclusive(buf, head_line) >= buf.len_chars() {
+        if line_end_exclusive(text, head_line) >= text.len_chars() {
             return sel; // head already on the last line — clamp
         }
     } else if head_line == 0 {
@@ -69,8 +69,8 @@ fn extend_line_span(buf: &BufferText, sel: Selection, delta: isize) -> Selection
 
     let lo = anchor_line.min(new_head_line);
     let hi = anchor_line.max(new_head_line);
-    let end = line_break_char(buf, hi);
-    Selection::directed(buf.line_to_char(lo), end, anchor_line <= new_head_line)
+    let end = line_break_char(text, hi);
+    Selection::directed(text.line_to_char(lo), end, anchor_line <= new_head_line)
 }
 
 /// One `x` press (`Move` mode): re-anchors to select the full current line,
@@ -78,17 +78,17 @@ fn extend_line_span(buf: &BufferText, sel: Selection, delta: isize) -> Selection
 /// Always produces a forward selection. `count` replays this exactly as if
 /// `x` were pressed `count` times in a row: it moves, landing on a single
 /// line, rather than growing a span (that's `Ctrl+x` / [`extend_line_span`]).
-fn move_select_line(buf: &BufferText, sel: Selection) -> Selection {
-    let bottom_line = buf.char_to_line(sel.end());
-    let end_excl = line_end_exclusive(buf, bottom_line);
+fn move_select_line(text: &BufferText, sel: Selection) -> Selection {
+    let bottom_line = text.char_to_line(sel.end());
+    let end_excl = line_end_exclusive(text, bottom_line);
     // If selection already ends on the trailing `\n`, jump to the next line.
-    let target_line = if sel.ends_on_newline(buf) && end_excl < buf.len_chars() {
+    let target_line = if sel.ends_on_newline(text) && end_excl < text.len_chars() {
         bottom_line + 1
     } else {
-        buf.char_to_line(sel.start())
+        text.char_to_line(sel.start())
     };
-    let start = buf.line_to_char(target_line);
-    let end = line_break_char(buf, target_line);
+    let start = text.line_to_char(target_line);
+    let end = line_break_char(text, target_line);
     Selection::new(start, end)
 }
 
@@ -101,16 +101,16 @@ fn move_select_line(buf: &BufferText, sel: Selection) -> Selection {
 /// `Extend` — grows or shrinks toward covering one more line downward, `count`
 /// times; see `extend_line_span`.
 pub fn cmd_select_line(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
     let result = sels.map(|sel| match mode {
-        MotionMode::Move => repeat_motion(buf, sel, count, move_select_line),
-        MotionMode::Extend => repeat_motion(buf, sel, count, |b, s| extend_line_span(b, s, 1)),
+        MotionMode::Move => repeat_motion(text, sel, count, move_select_line),
+        MotionMode::Extend => repeat_motion(text, sel, count, |b, s| extend_line_span(b, s, 1)),
     });
-    result.debug_assert_valid(buf);
+    result.debug_assert_valid(text);
     result
 }
 
@@ -120,16 +120,16 @@ pub fn cmd_select_line(
 /// replays this exactly as if `X` were pressed `count` times in a row: it
 /// moves, landing on a single line, rather than growing a span (that's
 /// `Ctrl+X` / [`extend_line_span`]).
-fn move_select_line_backward(buf: &BufferText, sel: Selection) -> Selection {
-    let top_line = buf.char_to_line(sel.start());
+fn move_select_line_backward(text: &BufferText, sel: Selection) -> Selection {
+    let top_line = text.char_to_line(sel.start());
     // If selection already starts at line start, jump to previous line.
-    let target_line = if is_line_start(buf, &sel) && top_line > 0 {
+    let target_line = if is_line_start(text, &sel) && top_line > 0 {
         top_line - 1
     } else {
         top_line
     };
-    let start = buf.line_to_char(target_line);
-    let end = line_break_char(buf, target_line);
+    let start = text.line_to_char(target_line);
+    let end = line_break_char(text, target_line);
     Selection::new(end, start) // backward: anchor=`\n`, head=line_start
 }
 
@@ -142,15 +142,15 @@ fn move_select_line_backward(buf: &BufferText, sel: Selection) -> Selection {
 /// `Extend` — grows or shrinks toward covering one more line upward, `count`
 /// times; see `extend_line_span`.
 pub fn cmd_select_line_backward(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
     let result = sels.map(|sel| match mode {
-        MotionMode::Move => repeat_motion(buf, sel, count, move_select_line_backward),
-        MotionMode::Extend => repeat_motion(buf, sel, count, |b, s| extend_line_span(b, s, -1)),
+        MotionMode::Move => repeat_motion(text, sel, count, move_select_line_backward),
+        MotionMode::Extend => repeat_motion(text, sel, count, |b, s| extend_line_span(b, s, -1)),
     });
-    result.debug_assert_valid(buf);
+    result.debug_assert_valid(text);
     result
 }

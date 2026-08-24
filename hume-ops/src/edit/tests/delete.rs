@@ -12,7 +12,7 @@ fn dedent_spaces_to_prev_tab_stop() {
     // "    x\n": cursor on 'x' (char 4, col 4). prev_stop 0. Delete [0,4) = 4 spaces.
     assert_state!(
         "    -[x]>\n",
-        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        |(text, sels)| dedent_tab_backward(text, sels, 4),
         "-[x]>\n"
     );
 }
@@ -22,7 +22,7 @@ fn dedent_six_spaces_to_display_col_four() {
     // "      x\n" (6 spaces + x). cursor on 'x' (col 6). prev_stop 4. Delete 2 spaces.
     assert_state!(
         "      -[x]>\n",
-        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        |(text, sels)| dedent_tab_backward(text, sels, 4),
         "    -[x]>\n"
     );
 }
@@ -32,7 +32,7 @@ fn dedent_hard_tab_to_prev_stop() {
     // "\t\tx\n": two tabs (col 8). cursor on 'x' (col 8). prev_stop 4. Delete 1 tab.
     assert_state!(
         "\t\t-[x]>\n",
-        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        |(text, sels)| dedent_tab_backward(text, sels, 4),
         "\t-[x]>\n"
     );
 }
@@ -42,7 +42,7 @@ fn dedent_single_tab_to_zero() {
     // "\tx\n": one tab (col 4). cursor on 'x' (col 4). prev_stop 0. Delete the tab.
     assert_state!(
         "\t-[x]>\n",
-        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        |(text, sels)| dedent_tab_backward(text, sels, 4),
         "-[x]>\n"
     );
 }
@@ -53,7 +53,7 @@ fn dedent_mid_indent_snaps_to_prev_stop() {
     // a space mid-indent. "    \n" cursor at char 2 (col 2). prev_stop 0. Delete 2 spaces.
     assert_state!(
         "  -[ ]>  \n",
-        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        |(text, sels)| dedent_tab_backward(text, sels, 4),
         "-[ ]>  \n"
     );
 }
@@ -64,7 +64,7 @@ fn dedent_mixed_tabs_spaces() {
     // Delete [0,3) = "  \t".
     assert_state!(
         "  \t-[x]>\n",
-        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        |(text, sels)| dedent_tab_backward(text, sels, 4),
         "-[x]>\n"
     );
 }
@@ -74,7 +74,7 @@ fn dedent_tab_width_8() {
     // "        x\n" (8 spaces). cursor on 'x' (col 8). tw=8 → prev_stop 0. Delete 8.
     assert_state!(
         "        -[x]>\n",
-        |(buf, sels)| dedent_tab_backward(buf, sels, 8),
+        |(text, sels)| dedent_tab_backward(text, sels, 8),
         "-[x]>\n"
     );
 }
@@ -84,7 +84,7 @@ fn dedent_two_cursors_in_leading_ws() {
     // Two lines, each "  x", cursor on 'x' (col 2). prev_stop 0. Delete 2 each.
     assert_state!(
         "  -[x]>\n  -[y]>\n",
-        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        |(text, sels)| dedent_tab_backward(text, sels, 4),
         "-[x]>\n-[y]>\n"
     );
 }
@@ -94,7 +94,7 @@ fn dedent_at_display_col_one_deletes_one_space() {
     // " x\n" (1 space + x). cursor on 'x' (col 1). prev_stop 0. Delete 1 space.
     assert_state!(
         " -[x]>\n",
-        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        |(text, sels)| dedent_tab_backward(text, sels, 4),
         "-[x]>\n"
     );
 }
@@ -111,7 +111,7 @@ fn dedent_two_cursors_same_line_independent() {
     // cursor 1 deletes the last space before '\n'. Result: "  \n".
     assert_state!(
         "  -[ ]>  -[\n]>",
-        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        |(text, sels)| dedent_tab_backward(text, sels, 4),
         "-[ ]> -[\n]>"
     );
 }
@@ -131,7 +131,7 @@ fn dedent_two_cursors_same_line_target_overlap() {
     // the space at col 5..6 (clamped start). Net: 2 spaces removed → 4 remain.
     assert_state!(
         "     -[ ]>-[\n]>",
-        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        |(text, sels)| dedent_tab_backward(text, sels, 4),
         "    -[\n]>"
     );
 }
@@ -148,7 +148,7 @@ fn dedent_two_cursors_same_line_same_target() {
     // Independent oracle: all 4 spaces deleted.
     assert_state!(
         "   -[ ]>-[\n]>",
-        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        |(text, sels)| dedent_tab_backward(text, sels, 4),
         "-[\n]>"
     );
 }
@@ -161,7 +161,7 @@ fn dedent_mid_indent_with_content() {
     // cursor from dedenting (only chars *before* the cursor matter).
     assert_state!(
         " -[ ]>x\n",
-        |(buf, sels)| dedent_tab_backward(buf, sels, 4),
+        |(text, sels)| dedent_tab_backward(text, sels, 4),
         "-[ ]>x\n"
     );
 }
@@ -173,7 +173,7 @@ fn delete_forward_at_cursor_start() {
     // Cursor on 'h'; deletes 'h'; cursor stays at 0 (now on 'e').
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| delete_char_forward(buf, sels),
+        |(text, sels)| delete_char_forward(text, sels),
         "-[e]>llo\n"
     );
 }
@@ -182,7 +182,7 @@ fn delete_forward_at_cursor_start() {
 fn delete_forward_at_cursor_middle() {
     assert_state!(
         "h-[e]>llo\n",
-        |(buf, sels)| delete_char_forward(buf, sels),
+        |(text, sels)| delete_char_forward(text, sels),
         "h-[l]>lo\n"
     );
 }
@@ -191,7 +191,7 @@ fn delete_forward_at_cursor_middle() {
 fn delete_forward_at_eof_is_noop() {
     assert_state!(
         "hello-[\n]>",
-        |(buf, sels)| delete_char_forward(buf, sels),
+        |(text, sels)| delete_char_forward(text, sels),
         "hello-[\n]>"
     );
 }
@@ -200,7 +200,7 @@ fn delete_forward_at_eof_is_noop() {
 fn delete_forward_empty_buffer_is_noop() {
     assert_state!(
         "-[\n]>",
-        |(buf, sels)| delete_char_forward(buf, sels),
+        |(text, sels)| delete_char_forward(text, sels),
         "-[\n]>"
     );
 }
@@ -210,7 +210,7 @@ fn delete_forward_selection() {
     // Selection [0,3] inclusive → remove [0,4) → "o", cursor at 0.
     assert_state!(
         "-[hell]>o\n",
-        |(buf, sels)| delete_char_forward(buf, sels),
+        |(text, sels)| delete_char_forward(text, sels),
         "-[o]>\n"
     );
 }
@@ -222,7 +222,7 @@ fn delete_forward_two_cursors() {
     // Result: "elo", cursors at 0 and 1.
     assert_state!(
         "-[h]>e-[l]>lo\n",
-        |(buf, sels)| delete_char_forward(buf, sels),
+        |(text, sels)| delete_char_forward(text, sels),
         "-[e]>-[l]>o\n"
     );
 }
@@ -232,7 +232,7 @@ fn delete_forward_adjacent_cursors_merge() {
     // Cursors at 2 and 3. Both delete forward; both land at 2 → merge.
     assert_state!(
         "he-[l]>-[l]>o\n",
-        |(buf, sels)| delete_char_forward(buf, sels),
+        |(text, sels)| delete_char_forward(text, sels),
         "he-[o]>\n"
     );
 }
@@ -242,7 +242,7 @@ fn delete_forward_grapheme_cluster() {
     // "e\u{0301}x": é is 2 chars, 1 grapheme. Cursor at 0 deletes whole cluster.
     assert_state!(
         "-[e\u{0301}]>x\n",
-        |(buf, sels)| delete_char_forward(buf, sels),
+        |(text, sels)| delete_char_forward(text, sels),
         "-[x]>\n"
     );
 }
@@ -254,7 +254,7 @@ fn delete_backward_at_cursor_end() {
     // Cursor at EOF (offset 5); backspace deletes 'o'; cursor at 4.
     assert_state!(
         "hello-[\n]>",
-        |(buf, sels)| delete_char_backward(buf, sels),
+        |(text, sels)| delete_char_backward(text, sels),
         "hell-[\n]>"
     );
 }
@@ -264,7 +264,7 @@ fn delete_backward_at_cursor_middle() {
     // Cursor at 3 ('l'); backspace deletes 'l' at 2; cursor at 2.
     assert_state!(
         "hel-[l]>o\n",
-        |(buf, sels)| delete_char_backward(buf, sels),
+        |(text, sels)| delete_char_backward(text, sels),
         "he-[l]>o\n"
     );
 }
@@ -273,7 +273,7 @@ fn delete_backward_at_cursor_middle() {
 fn delete_backward_at_start_is_noop() {
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| delete_char_backward(buf, sels),
+        |(text, sels)| delete_char_backward(text, sels),
         "-[h]>ello\n"
     );
 }
@@ -282,7 +282,7 @@ fn delete_backward_at_start_is_noop() {
 fn delete_backward_empty_buffer_is_noop() {
     assert_state!(
         "-[\n]>",
-        |(buf, sels)| delete_char_backward(buf, sels),
+        |(text, sels)| delete_char_backward(text, sels),
         "-[\n]>"
     );
 }
@@ -292,7 +292,7 @@ fn delete_backward_selection() {
     // Same as delete_forward for multi-char selections: removes selected region.
     assert_state!(
         "-[hell]>o\n",
-        |(buf, sels)| delete_char_backward(buf, sels),
+        |(text, sels)| delete_char_backward(text, sels),
         "-[o]>\n"
     );
 }
@@ -305,7 +305,7 @@ fn delete_backward_two_cursors() {
     // Result: "hlo", cursors at 1 and 2.
     assert_state!(
         "he-[l]>l-[o]>\n",
-        |(buf, sels)| delete_char_backward(buf, sels),
+        |(text, sels)| delete_char_backward(text, sels),
         "h-[l]>-[o]>\n"
     );
 }
@@ -316,7 +316,7 @@ fn delete_backward_grapheme_cluster() {
     // prev_grapheme_boundary(2) = 0. Deletes entire é cluster.
     assert_state!(
         "e\u{0301}-[x]>\n",
-        |(buf, sels)| delete_char_backward(buf, sels),
+        |(text, sels)| delete_char_backward(text, sels),
         "-[x]>\n"
     );
 }
@@ -327,7 +327,7 @@ fn delete_backward_adjacent_cursors_merge() {
     // delete offset 2 in original. Both cursors land at 1 → merge.
     assert_state!(
         "he-[l]>-[l]>o\n",
-        |(buf, sels)| delete_char_backward(buf, sels),
+        |(text, sels)| delete_char_backward(text, sels),
         "h-[l]>o\n"
     );
 }
@@ -339,7 +339,7 @@ fn delete_word_backward_at_end_of_word() {
     // Cursor after "hello"; Ctrl-W deletes the word; cursor at buffer start.
     assert_state!(
         "hello-[\n]>",
-        |(buf, sels)| delete_word_backward(buf, sels),
+        |(text, sels)| delete_word_backward(text, sels),
         "-[\n]>"
     );
 }
@@ -349,7 +349,7 @@ fn delete_word_backward_mid_word() {
     // Cursor at offset 3 (inside "hello" on 'l'); deletes "hel" → cursor after "lo".
     assert_state!(
         "hel-[l]>o\n",
-        |(buf, sels)| delete_word_backward(buf, sels),
+        |(text, sels)| delete_word_backward(text, sels),
         "-[l]>o\n"
     );
 }
@@ -359,7 +359,7 @@ fn delete_word_backward_skips_whitespace() {
     // Cursor after "hello world" whitespace + "world"; deletes back past whitespace.
     assert_state!(
         "hello world-[\n]>",
-        |(buf, sels)| delete_word_backward(buf, sels),
+        |(text, sels)| delete_word_backward(text, sels),
         "hello -[\n]>"
     );
 }
@@ -368,7 +368,7 @@ fn delete_word_backward_skips_whitespace() {
 fn delete_word_backward_at_start_is_noop() {
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| delete_word_backward(buf, sels),
+        |(text, sels)| delete_word_backward(text, sels),
         "-[h]>ello\n"
     );
 }
@@ -377,7 +377,7 @@ fn delete_word_backward_at_start_is_noop() {
 fn delete_word_backward_empty_buffer_is_noop() {
     assert_state!(
         "-[\n]>",
-        |(buf, sels)| delete_word_backward(buf, sels),
+        |(text, sels)| delete_word_backward(text, sels),
         "-[\n]>"
     );
 }
@@ -387,7 +387,7 @@ fn delete_word_backward_selection() {
     // Multi-char selection: delegates to delete_sel_region.
     assert_state!(
         "-[hell]>o\n",
-        |(buf, sels)| delete_word_backward(buf, sels),
+        |(text, sels)| delete_word_backward(text, sels),
         "-[o]>\n"
     );
 }
@@ -398,7 +398,7 @@ fn delete_word_backward_two_cursors() {
     // (offsets 0..5), second deletes "world" (offsets 6..11).
     assert_state!(
         "hello-[\n]>world-[\n]>",
-        |(buf, sels)| delete_word_backward(buf, sels),
+        |(text, sels)| delete_word_backward(text, sels),
         "-[\n]>-[\n]>"
     );
 }
@@ -412,7 +412,7 @@ fn delete_word_backward_two_cursors_same_word() {
     //   overlap-skip → retain [2,5) → cursor 2 at new offset 3, NOT 0.
     assert_state!(
         "fo-[o]>ba-[r]>\n",
-        |(buf, sels)| delete_word_backward(buf, sels),
+        |(text, sels)| delete_word_backward(text, sels),
         "-[o]>ba-[r]>\n"
     );
 }
@@ -422,7 +422,7 @@ fn delete_word_backward_punctuation_group() {
     // Cursor after "foo.bar()"; punctuation group "()" is one word.
     assert_state!(
         "foo.bar()-[\n]>",
-        |(buf, sels)| delete_word_backward(buf, sels),
+        |(text, sels)| delete_word_backward(text, sels),
         "foo.bar-[\n]>"
     );
 }
@@ -432,7 +432,7 @@ fn delete_word_backward_only_whitespace_goes_to_start() {
     // Buffer containing only whitespace before cursor.
     assert_state!(
         "   -[x]>\n",
-        |(buf, sels)| delete_word_backward(buf, sels),
+        |(text, sels)| delete_word_backward(text, sels),
         "-[x]>\n"
     );
 }
@@ -444,7 +444,7 @@ fn delete_selection_cursor_deletes_char() {
     // Cursor on 'h' — deletes 'h'; cursor lands on 'e' (what was next).
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "-[e]>llo\n"
     );
 }
@@ -454,7 +454,7 @@ fn delete_selection_cursor_at_end_of_word() {
     // Cursor on 'o' (last word char) — deletes 'o'; cursor lands on '\n'.
     assert_state!(
         "hell-[o]>\n",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "hell-[\n]>"
     );
 }
@@ -464,7 +464,7 @@ fn delete_selection_cursor_on_structural_newline_is_noop() {
     // Cursor on the trailing '\n' — buffer invariant, no-op.
     assert_state!(
         "hello-[\n]>",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "hello-[\n]>"
     );
 }
@@ -474,7 +474,7 @@ fn delete_selection_empty_buffer_is_noop() {
     // Only the structural '\n' — cursor is on it, no-op.
     assert_state!(
         "-[\n]>",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "-[\n]>"
     );
 }
@@ -484,7 +484,7 @@ fn delete_selection_multi_char_forward() {
     // Forward selection covering "hell" — cursor lands at start (pos 0).
     assert_state!(
         "-[hell]>o\n",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "-[o]>\n"
     );
 }
@@ -494,7 +494,7 @@ fn delete_selection_multi_char_backward() {
     // Backward selection — same result as forward; cursor lands at start.
     assert_state!(
         "<[hell]-o\n",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "-[o]>\n"
     );
 }
@@ -504,7 +504,7 @@ fn delete_selection_two_cursors() {
     // Cursors on 'h' (pos 0) and 'l' (pos 2) — both deleted independently.
     assert_state!(
         "-[h]>el-[l]>o\n",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "-[e]>l-[o]>\n"
     );
 }
@@ -515,7 +515,7 @@ fn delete_selection_adjacent_selections_merge_cursors() {
     // land at 0 and merge into one.
     assert_state!(
         "-[h]>-[e]>llo\n",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "-[l]>lo\n"
     );
 }
@@ -526,7 +526,7 @@ fn delete_selection_grapheme_cluster() {
     // Cursor on 'e' (pos 0) deletes the entire cluster (both chars).
     assert_state!(
         "-[e]>\u{0301}x\n",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "-[x]>\n"
     );
 }
@@ -541,7 +541,7 @@ fn delete_selection_multi_char_ends_at_grapheme_base() {
     // With the fix: chars 0-4 deleted → " x\n" (correct).
     assert_state!(
         "-[cafe]>\u{0301} x\n",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "-[ ]>x\n"
     );
 }
@@ -555,7 +555,7 @@ fn delete_selection_last_line_removes_line_not_content() {
     // entirely — result "foo\n", cursor at start of "foo" (pos 0 = 'f').
     assert_state!(
         "foo\n-[bar\n]>",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "-[f]>oo\n"
     );
 }
@@ -566,7 +566,7 @@ fn delete_selection_last_line_with_empty_preceding_line() {
     // empty line ('\n' at pos 4).
     assert_state!(
         "foo\n\n-[bar\n]>",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "foo\n-[\n]>"
     );
 }
@@ -577,7 +577,7 @@ fn delete_selection_last_line_single_line_still_empties() {
     // normal cap applies: only content deleted, structural '\n' kept.
     assert_state!(
         "-[foo\n]>",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "-[\n]>"
     );
 }
@@ -588,7 +588,7 @@ fn delete_selection_whole_buffer_caps_at_last_content_char() {
     // "foo\n" is not at line boundary for preceding detection (start==0).
     assert_state!(
         "-[foo\nbar\n]>",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "-[\n]>"
     );
 }
@@ -600,7 +600,7 @@ fn delete_selection_partial_last_line_still_caps() {
     // "ar", leaves "foo\nb\n", cursor at pos 5 = '\n' (deletion point).
     assert_state!(
         "foo\nb-[ar\n]>",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "foo\nb-[\n]>"
     );
 }
@@ -611,7 +611,7 @@ fn delete_selection_three_lines_delete_last() {
     // After delete: "a\nb\n", cursor at start of "b" line (pos 2).
     assert_state!(
         "a\nb\n-[c\n]>",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "a\n-[b]>\n"
     );
 }
@@ -628,7 +628,7 @@ fn delete_selection_blank_last_line_one_above() {
     // blank last line; result is "a\n", cursor on 'a' (pos 0 = line start).
     assert_state!(
         "a\n-[\n]>",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "-[a]>\n"
     );
 }
@@ -640,7 +640,7 @@ fn delete_selection_two_blank_lines_removes_one() {
     // last line '\n' at pos 2.
     assert_state!(
         "a\n\n-[\n]>",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "a\n-[\n]>"
     );
 }
@@ -651,7 +651,7 @@ fn delete_selection_lone_blank_line_is_noop() {
     // No line above exists, so deletion is a no-op (invariant preserved).
     assert_state!(
         "-[\n]>",
-        |(buf, sels)| delete_selection(buf, sels),
+        |(text, sels)| delete_selection(text, sels),
         "-[\n]>"
     );
 }
@@ -667,7 +667,7 @@ fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
     // retain(0); cursor_new = b.new_pos().saturating_sub(2) = 1 - 2 = 0 ✓
     use crate::edit::delete_selection;
     use hume_editing::selection::SelectionSet;
-    let buf = hume_editing::text::BufferText::from("ab\nc\n");
+    let text = hume_editing::text::BufferText::from("ab\nc\n");
     // primary=1 so the last-line selection is the primary; we assert its cursor.
     let sels = SelectionSet::from_vec(
         vec![
@@ -676,7 +676,7 @@ fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
         ],
         1, // primary is the last-line cursor
     );
-    let (new_buf, new_sels, _cs) = delete_selection(buf, sels);
+    let (new_buf, new_sels, _cs) = delete_selection(text, sels);
     // 'b' deleted and "c\n" merged into preceding line → "a\n"
     assert_eq!(new_buf.to_string(), "a\n");
     // Primary cursor must land at char 0 (start of merged "a" line).

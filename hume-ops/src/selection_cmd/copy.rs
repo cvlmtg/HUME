@@ -32,12 +32,12 @@ use hume_editing::text::BufferText;
 /// copy after it to that line's column. If no copy was added (last-line edge
 /// case) the primary stays on the original.
 pub fn cmd_copy_selection_on_next_line(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
-    copy_selection_vertically(buf, sels, 1, count)
+    copy_selection_vertically(text, sels, 1, count)
 }
 
 /// Duplicate each selection onto each of the `count` lines above it and add
@@ -45,19 +45,19 @@ pub fn cmd_copy_selection_on_next_line(
 ///
 /// Mirror of [`cmd_copy_selection_on_next_line`] — shifts up instead of down.
 pub fn cmd_copy_selection_on_prev_line(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
-    copy_selection_vertically(buf, sels, -1, count)
+    copy_selection_vertically(text, sels, -1, count)
 }
 
 /// Core implementation for copy-to-next/prev-line. `direction` is `1` for
 /// down and `-1` for up; `count` is how many lines in that direction to
 /// duplicate onto.
 fn copy_selection_vertically(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     direction: isize,
     count: usize,
@@ -71,8 +71,8 @@ fn copy_selection_vertically(
 
     for i in 0..original_len {
         let sel = all_sels[i];
-        let anchor_line = buf.char_to_line(sel.anchor()) as isize;
-        let head_line = buf.char_to_line(sel.head()) as isize;
+        let anchor_line = text.char_to_line(sel.anchor()) as isize;
+        let head_line = text.char_to_line(sel.head()) as isize;
 
         // The outermost line in the copy direction determines the offset target.
         let outer_line = if direction > 0 {
@@ -84,8 +84,8 @@ fn copy_selection_vertically(
         // Both endpoints' char columns are loop-invariant — the original
         // selection never changes across copies — so compute them once
         // instead of re-deriving from the rope on every iteration.
-        let anchor_char_col = char_col_in_line(buf, anchor_line as usize, sel.anchor());
-        let head_char_col = char_col_in_line(buf, head_line as usize, sel.head());
+        let anchor_char_col = char_col_in_line(text, anchor_line as usize, sel.anchor());
+        let head_char_col = char_col_in_line(text, head_line as usize, sel.head());
 
         // Walk outward one line at a time, breaking as soon as a target line
         // falls off the buffer — every further step in that direction would
@@ -102,7 +102,7 @@ fn copy_selection_vertically(
 
             // Past the last real content line — the phantom trailing line
             // (and anything further) has no content to copy onto.
-            if target_outer_usize > buf.last_content_line() {
+            if target_outer_usize > text.last_content_line() {
                 break;
             }
 
@@ -110,8 +110,8 @@ fn copy_selection_vertically(
             // line's content and snapped to a grapheme boundary.
             let delta = target_outer - outer_line;
             let new_anchor =
-                place_char_column(buf, (anchor_line + delta) as usize, anchor_char_col);
-            let new_head = place_char_column(buf, (head_line + delta) as usize, head_char_col);
+                place_char_column(text, (anchor_line + delta) as usize, anchor_char_col);
+            let new_head = place_char_column(text, (head_line + delta) as usize, head_char_col);
 
             let new_sel = Selection::new(new_anchor, new_head);
 
@@ -124,7 +124,7 @@ fn copy_selection_vertically(
 
     let desired_primary = primary_copy_idx.unwrap_or(primary_idx);
     let new_set = SelectionSet::from_vec(all_sels, desired_primary);
-    new_set.debug_assert_valid(buf);
+    new_set.debug_assert_valid(text);
     new_set
 }
 

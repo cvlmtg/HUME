@@ -334,7 +334,7 @@ impl BufferText {
     ///
     /// Using `Range<usize>` (rather than two separate `from`/`to` parameters)
     /// matches ropey's own convention and makes call sites read naturally:
-    /// `buf.remove(5..11)` mirrors `buf.slice(5..11)`.
+    /// `text.remove(5..11)` mirrors `text.slice(5..11)`.
     ///
     /// # Panics
     /// Panics if `range.start > range.end` or `range.end > self.len_chars()`.

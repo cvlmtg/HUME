@@ -30,22 +30,22 @@ enum CaseTransform {
 /// `σ` even at a word's end. `insert` (not `insert_char`) is used since case
 /// mapping can also change the char count (e.g. `ß` → `SS`).
 fn transform_case(
-    buf: BufferText,
+    text: BufferText,
     sels: SelectionSet,
     kind: CaseTransform,
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let sel_start = sel.start();
-        let sel_end = next_grapheme_boundary(buf, sel.end()); // exclusive
+        let sel_end = next_grapheme_boundary(text, sel.end()); // exclusive
 
         b.retain(sel_start - b.old_pos());
         let new_sel_start = b.new_pos();
 
-        let text: String = buf.slice(sel_start..sel_end).chars().collect();
+        let selected: String = text.slice(sel_start..sel_end).chars().collect();
         let mapped = match kind {
-            CaseTransform::Lower => text.to_lowercase(),
-            CaseTransform::Upper => text.to_uppercase(),
-            CaseTransform::Capitalize => capitalize_words(&text),
+            CaseTransform::Lower => selected.to_lowercase(),
+            CaseTransform::Upper => selected.to_uppercase(),
+            CaseTransform::Capitalize => capitalize_words(&selected),
         };
         b.delete(sel_end - sel_start);
         b.insert(&mapped);
@@ -95,16 +95,16 @@ fn push_capitalized(out: &mut String, word: &str) {
 }
 
 /// Lowercase the text in each selection.
-pub fn make_text_lowercase(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
-    transform_case(buf, sels, CaseTransform::Lower)
+pub fn make_text_lowercase(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+    transform_case(text, sels, CaseTransform::Lower)
 }
 
 /// Uppercase the text in each selection.
-pub fn make_text_uppercase(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
-    transform_case(buf, sels, CaseTransform::Upper)
+pub fn make_text_uppercase(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+    transform_case(text, sels, CaseTransform::Upper)
 }
 
 /// Capitalize each word in each selection (Title Case).
-pub fn make_text_capitalized(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
-    transform_case(buf, sels, CaseTransform::Capitalize)
+pub fn make_text_capitalized(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+    transform_case(text, sels, CaseTransform::Capitalize)
 }

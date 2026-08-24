@@ -345,20 +345,20 @@ fn entry_is_whitespace(entry: &[String]) -> bool {
 /// a register on yank or captured before a delete:
 ///
 /// ```text
-/// let yanked = yank_selections(&buf, &sels);
-/// let (new_buf, new_sels, _cs) = delete_selection(buf, sels);
+/// let yanked = yank_selections(&text, &sels);
+/// let (new_buf, new_sels, _cs) = delete_selection(text, sels);
 /// kill_ring.push(yanked);
 /// ```
 ///
 /// Selections are always inclusive, so the text spans `start()..=end()` —
-/// internally `buf.slice(start..end+1)`.
-pub fn yank_selections(buf: &BufferText, sels: &SelectionSet) -> Vec<String> {
+/// internally `text.slice(start..end+1)`.
+pub fn yank_selections(text: &BufferText, sels: &SelectionSet) -> Vec<String> {
     sels.iter_sorted()
         .map(|sel| {
             // end_inclusive() gives the last codepoint of the final grapheme
             // (handles multi-codepoint clusters like e + \u{0301}); +1 converts
             // to an exclusive upper bound for the slice.
-            buf.slice(sel.start()..sel.end_inclusive(buf) + 1)
+            text.slice(sel.start()..sel.end_inclusive(text) + 1)
                 .to_string()
         })
         .collect()

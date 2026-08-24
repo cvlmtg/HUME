@@ -56,7 +56,7 @@ pub struct StickyDisplayCol {
 /// point. The cursor block sits on that character, matching Helix/Kakoune's
 /// inclusive model.
 ///
-/// `head` must always be a valid char index (`< buf.len_chars()`). Since every
+/// `head` must always be a valid char index (`< text.len_chars()`). Since every
 /// buffer always ends with a trailing `\n`, there is always at least one
 /// character to sit on — even in an "empty" buffer.
 ///
@@ -190,27 +190,27 @@ impl Selection {
     ///
     /// Use this (not `end()`) when computing char ranges for deletion or
     /// buffer slices — all edit operations should use `end_inclusive`.
-    pub fn end_inclusive(&self, buf: &BufferText) -> usize {
+    pub fn end_inclusive(&self, text: &BufferText) -> usize {
         // next_grapheme_boundary returns one past the cluster; subtract 1 to
         // get the last codepoint index (inclusive upper bound for the range).
-        next_grapheme_boundary(buf, self.end()).saturating_sub(1)
+        next_grapheme_boundary(text, self.end()).saturating_sub(1)
     }
 
     /// Returns `true` if the far end of the selection sits on a `\n`.
     ///
     /// A selection produced by `select-line` always ends on the line's trailing
     /// `\n`. Charwise and word selections end on content characters.
-    pub fn ends_on_newline(&self, buf: &BufferText) -> bool {
-        buf.char_at(self.end()) == Some('\n')
+    pub fn ends_on_newline(&self, text: &BufferText) -> bool {
+        text.char_at(self.end()) == Some('\n')
     }
 
     /// The last char offset to delete from this selection without touching the
     /// structural trailing `\n`.
     ///
-    /// Equivalent to `end_inclusive(buf).min(buf.last_content_char())`. Use
+    /// Equivalent to `end_inclusive(text).min(text.last_content_char())`. Use
     /// instead of inlining that expression to make the protection intent clear.
-    pub fn content_end(&self, buf: &BufferText) -> usize {
-        self.end_inclusive(buf).min(buf.last_content_char())
+    pub fn content_end(&self, text: &BufferText) -> usize {
+        self.end_inclusive(text).min(text.last_content_char())
     }
 
     /// Swap anchor and head. A forward selection becomes backward and vice
@@ -269,8 +269,8 @@ impl Selection {
 ///
 /// Counterpart to `is_register_linewise` in `ops::register`, which answers
 /// "is this *register text* linewise?" at paste time.
-pub fn is_selection_linewise(buf: &BufferText, sel: &Selection) -> bool {
-    sel.ends_on_newline(buf) && is_line_start(buf, sel)
+pub fn is_selection_linewise(text: &BufferText, sel: &Selection) -> bool {
+    sel.ends_on_newline(text) && is_line_start(text, sel)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────

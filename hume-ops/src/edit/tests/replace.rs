@@ -14,7 +14,7 @@ fn replace_around_cursors_single_cursor_baseline() {
     // everything after untouched.
     assert_state!(
         "he-[l]>lo\n",
-        |(buf, sels)| replace_around_cursors(buf, sels, 2, 0, "XYZ"),
+        |(text, sels)| replace_around_cursors(text, sels, 2, 0, "XYZ"),
         "XYZ-[l]>lo\n"
     );
 }
@@ -25,7 +25,7 @@ fn replace_around_cursors_two_cursors_uniform_spacing() {
     // each right after its own typed "st", both get the same replacement.
     assert_state!(
         "st-[ ]>st-[\n]>",
-        |(buf, sels)| replace_around_cursors(buf, sels, 2, 0, "XY"),
+        |(text, sels)| replace_around_cursors(text, sels, 2, 0, "XY"),
         "XY-[ ]>XY-[\n]>"
     );
 }
@@ -37,7 +37,7 @@ fn replace_around_cursors_forward_consumes_chars_ahead_of_head() {
     // server's range extends past the live cursor.
     assert_state!(
         "he-[l]>lo\n",
-        |(buf, sels)| replace_around_cursors(buf, sels, 1, 1, "XYZ"),
+        |(text, sels)| replace_around_cursors(text, sels, 1, 1, "XYZ"),
         "hXYZ-[l]>o\n"
     );
 }
@@ -48,7 +48,7 @@ fn replace_around_cursors_clamps_underflow_at_buffer_start() {
     // — clamped to the buffer start (0) rather than underflowing.
     assert_state!(
         "ab-[c]>de\n",
-        |(buf, sels)| replace_around_cursors(buf, sels, 5, 0, "Z"),
+        |(text, sels)| replace_around_cursors(text, sels, 5, 0, "Z"),
         "Z-[c]>de\n"
     );
 }
@@ -62,7 +62,7 @@ fn replace_around_cursors_clamps_when_cursors_are_closer_than_back() {
     // "Z", it just eats one char ('c') instead of two ("b","c").
     assert_state!(
         "ab-[c]>-[d]>ef\n",
-        |(buf, sels)| replace_around_cursors(buf, sels, 2, 0, "Z"),
+        |(text, sels)| replace_around_cursors(text, sels, 2, 0, "Z"),
         "Z-[Z]>-[d]>ef\n"
     );
 }
@@ -75,7 +75,7 @@ fn replace_around_cursors_snaps_start_outward_past_a_combining_mark() {
     // to 3, deleting the whole cluster instead of orphaning the accent.
     assert_state!(
         "cafe\u{0301} -[x]>\n",
-        |(buf, sels)| replace_around_cursors(buf, sels, 2, 0, "Z"),
+        |(text, sels)| replace_around_cursors(text, sels, 2, 0, "Z"),
         "cafZ-[x]>\n"
     );
 }
@@ -86,11 +86,11 @@ fn replace_around_cursors_zero_span_matches_insert_str() {
     // Independent oracle: insert_str is a separately implemented op, so
     // agreement here isn't circular against replace_around_cursors's own
     // logic.
-    let buf = BufferText::from("foo bar\n");
+    let text = BufferText::from("foo bar\n");
     let sels = SelectionSet::from_vec(vec![Selection::collapsed(0), Selection::collapsed(4)], 0);
     let (buf_replace, sels_replace, cs_replace) =
-        replace_around_cursors(buf.clone(), sels.clone(), 0, 0, "X");
-    let (buf_insert, sels_insert, cs_insert) = insert_str(buf, sels, "X");
+        replace_around_cursors(text.clone(), sels.clone(), 0, 0, "X");
+    let (buf_insert, sels_insert, cs_insert) = insert_str(text, sels, "X");
     assert_eq!(buf_replace.to_string(), buf_insert.to_string());
     assert_eq!(sels_replace, sels_insert);
     assert_eq!(cs_replace, cs_insert);
@@ -104,14 +104,14 @@ fn replace_around_cursors_does_not_delete_the_structural_trailing_newline_after_
     // in the two-char cluster `\r\n`. `forward` reaching past the end must
     // floor back to that cluster's start instead of ceiling through it and
     // deleting the structural newline.
-    let buf = BufferText::from("ab\r");
+    let text = BufferText::from("ab\r");
     assert_eq!(
-        buf.to_string(),
+        text.to_string(),
         "ab\r\n",
         "sanity: bare CR survives, \\n is appended"
     );
     let sels = SelectionSet::from_vec(vec![Selection::collapsed(0)], 0);
-    let (new_buf, new_sels, _cs) = replace_around_cursors(buf, sels, 0, 10, "X");
+    let (new_buf, new_sels, _cs) = replace_around_cursors(text, sels, 0, 10, "X");
     assert_eq!(
         new_buf.to_string(),
         "X\r\n",
@@ -139,7 +139,7 @@ fn replace_span_around_cursors_word_start_before_uses_each_cursors_own_token_len
     // hardcoded `back = 3`, so it isn't circular against the fix.
     assert_state!(
         "foo-[ ]>x(o-[)]>\n",
-        |(buf, sels)| replace_span_around_cursors(buf, sels, word_start_before, 0, "Z"),
+        |(text, sels)| replace_span_around_cursors(text, sels, word_start_before, 0, "Z"),
         "Z-[ ]>x(Z-[)]>\n"
     );
 }
@@ -156,10 +156,10 @@ fn replace_span_around_cursors_skips_typed_chars_before_scanning_each_cursors_pr
     let typed = 2;
     assert_state!(
         "foogo-[ ]>x(ogo-[)]>\n",
-        |(buf, sels)| replace_span_around_cursors(
-            buf,
+        |(text, sels)| replace_span_around_cursors(
+            text,
             sels,
-            move |buf, head| word_start_before(buf, head.saturating_sub(typed)),
+            move |text, head| word_start_before(text, head.saturating_sub(typed)),
             0,
             "Z"
         ),
@@ -174,7 +174,7 @@ fn replace_cursor_single_char() {
     // Cursor on 'h'; replace with 'x' → cursor stays on 'x'.
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "-[x]>ello\n"
     );
 }
@@ -184,7 +184,7 @@ fn replace_cursor_middle() {
     // Cursor on 'l' at offset 2; replace with 'x'.
     assert_state!(
         "he-[l]>lo\n",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "he-[x]>lo\n"
     );
 }
@@ -194,7 +194,7 @@ fn replace_cursor_on_structural_newline_is_noop() {
     // Structural trailing '\n' is skipped like any other '\n'.
     assert_state!(
         "hello-[\n]>",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "hello-[\n]>"
     );
 }
@@ -204,7 +204,7 @@ fn replace_cursor_on_mid_buffer_newline_is_noop() {
     // Cursor on the '\n' between two lines — preserved, not replaced.
     assert_state!(
         "hello-[\n]>world\n",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "hello-[\n]>world\n"
     );
 }
@@ -214,7 +214,7 @@ fn replace_empty_buffer_is_noop() {
     // Text is just the structural '\n'.
     assert_state!(
         "-[\n]>",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "-[\n]>"
     );
 }
@@ -224,7 +224,7 @@ fn replace_forward_selection() {
     // Forward selection covers "hell" (offsets 0-3); replace each with 'x'.
     assert_state!(
         "-[hell]>o\n",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "-[xxxx]>o\n"
     );
 }
@@ -234,7 +234,7 @@ fn replace_backward_selection() {
     // Backward selection anchor=3, head=0 covers "hell"; direction preserved.
     assert_state!(
         "<[hell]-o\n",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "<[xxxx]-o\n"
     );
 }
@@ -244,7 +244,7 @@ fn replace_whole_line() {
     // Forward selection covers all content chars (not the structural '\n').
     assert_state!(
         "-[hello]>\n",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "-[xxxxx]>\n"
     );
 }
@@ -254,7 +254,7 @@ fn replace_two_cursors() {
     // Two cursors; each independently replaced.
     assert_state!(
         "-[h]>ell-[o]>\n",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "-[x]>ell-[x]>\n"
     );
 }
@@ -264,7 +264,7 @@ fn replace_two_selections() {
     // Two non-overlapping selections each get all their chars replaced.
     assert_state!(
         "-[he]>l-[lo]>\n",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "-[xx]>l-[xx]>\n"
     );
 }
@@ -275,7 +275,7 @@ fn replace_grapheme_cluster_cursor() {
     // Text shrinks by 1 char; cursor lands on 'x'.
     assert_state!(
         "caf-[e]>\u{0301}z\n",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "caf-[x]>z\n"
     );
 }
@@ -286,7 +286,7 @@ fn replace_multiline_selection_skips_newline() {
     // only the visible characters are replaced. Lines stay separate.
     assert_state!(
         "-[hello\nworld]>\n",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "-[xxxxx\nxxxxx]>\n"
     );
 }
@@ -298,7 +298,7 @@ fn replace_selection_including_structural_trailing_newline_preserves_newline() {
     // Before the fix this path existed but had no explicit test.
     assert_state!(
         "-[hello\n]>",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "-[xxxxx\n]>"
     );
 }
@@ -310,7 +310,7 @@ fn smart_replace_opening_bracket_to_opening() {
     // Two cursors on `(` and `)`, replace with `[` → `[` and `]`.
     assert_state!(
         "-[(]>hello-[)]>\n",
-        |(buf, sels)| replace_selections(buf, sels, '['),
+        |(text, sels)| replace_selections(text, sels, '['),
         "-[[]>hello-[]]>\n"
     );
 }
@@ -320,7 +320,7 @@ fn smart_replace_asym_to_sym() {
     // `(` and `)` replaced with `"` → both become `"`.
     assert_state!(
         "-[(]>hello-[)]>\n",
-        |(buf, sels)| replace_selections(buf, sels, '"'),
+        |(text, sels)| replace_selections(text, sels, '"'),
         "-[\"]>hello-[\"]>\n"
     );
 }
@@ -330,7 +330,7 @@ fn smart_replace_sym_to_asym_uses_index() {
     // Two cursors on `"` and `"`, replace with `(` → `(` and `)`.
     assert_state!(
         "-[\"]>hello-[\"]>\n",
-        |(buf, sels)| replace_selections(buf, sels, '('),
+        |(text, sels)| replace_selections(text, sels, '('),
         "-[(]>hello-[)]>\n"
     );
 }
@@ -340,7 +340,7 @@ fn smart_replace_sym_to_sym() {
     // Two cursors on `"` and `"`, replace with `'` → both `'`.
     assert_state!(
         "-[\"]>hello-[\"]>\n",
-        |(buf, sels)| replace_selections(buf, sels, '\''),
+        |(text, sels)| replace_selections(text, sels, '\''),
         "-[']>hello-[']>\n"
     );
 }
@@ -350,7 +350,7 @@ fn smart_replace_non_delimiter_is_literal() {
     // Cursor on `x`, replace with `[` → literal `[` (no smart logic).
     assert_state!(
         "-[x]>hello\n",
-        |(buf, sels)| replace_selections(buf, sels, '['),
+        |(text, sels)| replace_selections(text, sels, '['),
         "-[[]>hello\n"
     );
 }
@@ -360,7 +360,7 @@ fn smart_replace_range_selection_no_smart_logic() {
     // Range selection (not a cursor) — all chars become `[`, no smart logic.
     assert_state!(
         "-[(he]>llo)\n",
-        |(buf, sels)| replace_selections(buf, sels, '['),
+        |(text, sels)| replace_selections(text, sels, '['),
         "-[[[[]>llo)\n"
     );
 }
@@ -370,7 +370,7 @@ fn smart_replace_non_pair_replacement_is_literal() {
     // Replacement is not a pair char — always literal, even on delimiters.
     assert_state!(
         "-[(]>hello-[)]>\n",
-        |(buf, sels)| replace_selections(buf, sels, 'x'),
+        |(text, sels)| replace_selections(text, sels, 'x'),
         "-[x]>hello-[x]>\n"
     );
 }

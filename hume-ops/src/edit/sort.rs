@@ -43,14 +43,14 @@ struct Row {
 /// the selected text on that row. Groups sort independently — text never moves
 /// between groups.
 pub fn sort_rows(
-    buf: BufferText,
+    text: BufferText,
     sels: SelectionSet,
     opts: SortOpts,
 ) -> Result<(BufferText, SelectionSet, ChangeSet), SortRefusal> {
-    let rows = collect_rows(&buf, &sels);
+    let rows = collect_rows(&text, &sels);
     let groups = group_adjacent(&rows);
 
-    let mut b = ChangeSetBuilder::new(buf.len_chars());
+    let mut b = ChangeSetBuilder::new(text.len_chars());
     let mut any_group = false;
     let mut any_edit = false;
     // Old line -> new line, populated only for rows that actually move.
@@ -75,15 +75,15 @@ pub fn sort_rows(
         };
         any_edit = true;
 
-        let edit_start = buf.line_to_char(rows[group[lo]].line);
-        let edit_end = line_end_exclusive(&buf, rows[group[hi]].line);
+        let edit_start = text.line_to_char(rows[group[lo]].line);
+        let edit_end = line_end_exclusive(&text, rows[group[hi]].line);
         b.retain(edit_start - b.old_pos());
         b.delete(edit_end - edit_start);
         for &local in &order[lo..=hi] {
             let line = rows[group[local]].line;
-            let start = buf.line_to_char(line);
-            let end = line_end_exclusive(&buf, line);
-            b.insert(&buf.slice(start..end).to_string());
+            let start = text.line_to_char(line);
+            let end = line_end_exclusive(&text, line);
+            b.insert(&text.slice(start..end).to_string());
         }
     }
 
@@ -97,10 +97,10 @@ pub fn sort_rows(
     b.retain_rest();
     let cs = b.finish();
     let new_buf = cs
-        .apply(&buf)
+        .apply(&text)
         .expect("sort produced an invalid changeset — this is a bug");
 
-    let new_sels = remap_selections(&buf, &new_buf, &sels, &line_map);
+    let new_sels = remap_selections(&text, &new_buf, &sels, &line_map);
     new_sels.debug_assert_valid(&new_buf);
     Ok((new_buf, new_sels, cs))
 }
@@ -112,23 +112,23 @@ pub fn sort_rows(
 /// Rows come out sorted ascending and deduplicated by construction: selections
 /// are visited via `iter_sorted()` (ascending, non-overlapping), and each one
 /// walks its own lines in order.
-fn collect_rows(buf: &BufferText, sels: &SelectionSet) -> Vec<Row> {
+fn collect_rows(text: &BufferText, sels: &SelectionSet) -> Vec<Row> {
     let mut rows: Vec<Row> = Vec::new();
     for sel in sels.iter_sorted() {
-        let start_line = buf.char_to_line(sel.start());
-        let end_line = buf.char_to_line(sel.end_inclusive(buf));
+        let start_line = text.char_to_line(sel.start());
+        let end_line = text.char_to_line(sel.end_inclusive(text));
         for line in start_line..=end_line {
-            let line_start = buf.line_to_char(line);
+            let line_start = text.line_to_char(line);
             // This line's own trailing '\n'.
-            let nl = line_break_char(buf, line);
+            let nl = line_break_char(text, line);
             let fragment = if nl > line_start {
                 // On the selection's own start/end line, clamp to the part of
                 // the line actually selected; on lines in between (a
                 // multi-line span), the whole line's content qualifies.
                 let seg_start = sel.start().max(line_start);
-                let seg_end_incl = sel.end_inclusive(buf).min(nl - 1);
+                let seg_end_incl = sel.end_inclusive(text).min(nl - 1);
                 if seg_start <= seg_end_incl {
-                    buf.slice(seg_start..seg_end_incl + 1).to_string()
+                    text.slice(seg_start..seg_end_incl + 1).to_string()
                 } else {
                     String::new()
                 }

@@ -9,7 +9,7 @@ fn insert_char_at_cursor_start() {
     // Cursor on 'h'; 'x' inserted before it; cursor advances to 'h'.
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| insert_char(buf, sels, 'x'),
+        |(text, sels)| insert_char(text, sels, 'x'),
         "x-[h]>ello\n"
     );
 }
@@ -19,7 +19,7 @@ fn insert_char_at_cursor_middle() {
     // Cursor on second 'l' (offset 3); 'x' inserted, cursor on 'l'.
     assert_state!(
         "hel-[l]>o\n",
-        |(buf, sels)| insert_char(buf, sels, 'x'),
+        |(text, sels)| insert_char(text, sels, 'x'),
         "helx-[l]>o\n"
     );
 }
@@ -29,7 +29,7 @@ fn insert_char_at_cursor_eof() {
     // Cursor at EOF (offset 5); 'x' appended; cursor at new EOF.
     assert_state!(
         "hello-[\n]>",
-        |(buf, sels)| insert_char(buf, sels, 'x'),
+        |(text, sels)| insert_char(text, sels, 'x'),
         "hellox-[\n]>"
     );
 }
@@ -38,7 +38,7 @@ fn insert_char_at_cursor_eof() {
 fn insert_char_into_empty_buffer() {
     assert_state!(
         "-[\n]>",
-        |(buf, sels)| insert_char(buf, sels, 'x'),
+        |(text, sels)| insert_char(text, sels, 'x'),
         "x-[\n]>"
     );
 }
@@ -49,7 +49,7 @@ fn insert_char_replaces_forward_selection() {
     // Delete [0,4), insert 'x', cursor at 1.
     assert_state!(
         "-[hell]>o\n",
-        |(buf, sels)| insert_char(buf, sels, 'x'),
+        |(text, sels)| insert_char(text, sels, 'x'),
         "x-[o]>\n"
     );
 }
@@ -63,7 +63,7 @@ fn insert_char_replaces_selection_grapheme_base() {
     // Result: chars 0-4 deleted, 'Z' inserted → "Z x\n", cursor at 1 (' ').
     assert_state!(
         "-[cafe]>\u{0301} x\n",
-        |(buf, sels)| insert_char(buf, sels, 'Z'),
+        |(text, sels)| insert_char(text, sels, 'Z'),
         "Z-[ ]>x\n"
     );
 }
@@ -72,7 +72,7 @@ fn insert_char_replaces_selection_grapheme_base() {
 fn insert_char_replaces_whole_buffer() {
     assert_state!(
         "-[hello]>\n",
-        |(buf, sels)| insert_char(buf, sels, 'x'),
+        |(text, sels)| insert_char(text, sels, 'x'),
         "x-[\n]>"
     );
 }
@@ -84,7 +84,7 @@ fn insert_char_replaces_backward_selection() {
     // Text "hello" → remove "hell" → "o", insert 'x' → "xo".
     assert_state!(
         "<[hell]-o\n",
-        |(buf, sels)| insert_char(buf, sels, 'x'),
+        |(text, sels)| insert_char(text, sels, 'x'),
         "x-[o]>\n"
     );
 }
@@ -96,7 +96,7 @@ fn insert_char_two_cursors() {
     // Result: "xfoox bar", cursors at 1 and 5.
     assert_state!(
         "-[f]>oo-[ ]>bar\n",
-        |(buf, sels)| insert_char(buf, sels, 'x'),
+        |(text, sels)| insert_char(text, sels, 'x'),
         "x-[f]>oox-[ ]>bar\n"
     );
 }
@@ -106,7 +106,7 @@ fn insert_char_unicode() {
     // Insert a multi-byte char (2 bytes in UTF-8, 1 char offset).
     assert_state!(
         "caf-[é]>\n",
-        |(buf, sels)| insert_char(buf, sels, 'à'),
+        |(text, sels)| insert_char(text, sels, 'à'),
         "cafà-[é]>\n"
     );
 }
@@ -121,7 +121,7 @@ fn insert_char_unicode() {
 fn insert_str_at_cursor_start() {
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| insert_str(buf, sels, "xyz"),
+        |(text, sels)| insert_str(text, sels, "xyz"),
         "xyz-[h]>ello\n"
     );
 }
@@ -130,7 +130,7 @@ fn insert_str_at_cursor_start() {
 fn insert_str_at_cursor_eof() {
     assert_state!(
         "hello-[\n]>",
-        |(buf, sels)| insert_str(buf, sels, "xyz"),
+        |(text, sels)| insert_str(text, sels, "xyz"),
         "helloxyz-[\n]>"
     );
 }
@@ -140,7 +140,7 @@ fn insert_str_replaces_forward_selection() {
     // Selection covers "hell" (4 chars); replaced by "xyz".
     assert_state!(
         "-[hell]>o\n",
-        |(buf, sels)| insert_str(buf, sels, "xyz"),
+        |(text, sels)| insert_str(text, sels, "xyz"),
         "xyz-[o]>\n"
     );
 }
@@ -149,7 +149,7 @@ fn insert_str_replaces_forward_selection() {
 fn insert_str_replaces_backward_selection() {
     assert_state!(
         "<[hell]-o\n",
-        |(buf, sels)| insert_str(buf, sels, "xyz"),
+        |(text, sels)| insert_str(text, sels, "xyz"),
         "xyz-[o]>\n"
     );
 }
@@ -159,7 +159,7 @@ fn insert_str_two_cursors() {
     // Cursors at 0 and 3; "xy" inserted at both.
     assert_state!(
         "-[f]>oo-[ ]>bar\n",
-        |(buf, sels)| insert_str(buf, sels, "xy"),
+        |(text, sels)| insert_str(text, sels, "xy"),
         "xy-[f]>ooxy-[ ]>bar\n"
     );
 }
@@ -171,7 +171,7 @@ fn insert_str_unicode_grapheme() {
     // mid-cluster.
     assert_state!(
         "caf-[é]>\n",
-        |(buf, sels)| insert_str(buf, sels, "e\u{0301}"),
+        |(text, sels)| insert_str(text, sels, "e\u{0301}"),
         "cafe\u{0301}-[é]>\n"
     );
 }
@@ -182,7 +182,7 @@ fn insert_str_multiline() {
     // \n is untouched.
     assert_state!(
         "h-[e]>llo\n",
-        |(buf, sels)| insert_str(buf, sels, "X\nY"),
+        |(text, sels)| insert_str(text, sels, "X\nY"),
         "hX\nY-[e]>llo\n"
     );
 }
@@ -191,7 +191,7 @@ fn insert_str_multiline() {
 fn insert_str_empty_is_identity() {
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| insert_str(buf, sels, ""),
+        |(text, sels)| insert_str(text, sels, ""),
         "-[h]>ello\n"
     );
 }
@@ -203,7 +203,7 @@ fn insert_tab_hard_at_cursor() {
     // Hard tab at col 0 → inserts '\t', cursor stays on the original char.
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Hard, 4),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Hard, 4),
         "\t-[h]>ello\n"
     );
 }
@@ -212,7 +212,7 @@ fn insert_tab_hard_at_cursor() {
 fn insert_tab_hard_mid_line() {
     assert_state!(
         "hel-[l]>o\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Hard, 4),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Hard, 4),
         "hel\t-[l]>o\n"
     );
 }
@@ -222,7 +222,7 @@ fn insert_tab_hard_replaces_selection() {
     // Tab over a selection replaces it, same as typing any char.
     assert_state!(
         "-[hell]>o\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Hard, 4),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Hard, 4),
         "\t-[o]>\n"
     );
 }
@@ -231,7 +231,7 @@ fn insert_tab_hard_replaces_selection() {
 fn insert_tab_hard_two_cursors() {
     assert_state!(
         "-[f]>oo-[ ]>bar\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Hard, 4),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Hard, 4),
         "\t-[f]>oo\t-[ ]>bar\n"
     );
 }
@@ -241,7 +241,7 @@ fn insert_tab_soft_at_display_col0_inserts_full_width() {
     // Soft tab at col 0, tw=4 → 4 spaces.
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 4),
         "    -[h]>ello\n"
     );
 }
@@ -251,7 +251,7 @@ fn insert_tab_soft_at_display_col2_inserts_two_spaces() {
     // Soft tab at col 2, tw=4 → 2 spaces (to reach next stop at col 4).
     assert_state!(
         "he-[l]>lo\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 4),
         "he  -[l]>lo\n"
     );
 }
@@ -261,7 +261,7 @@ fn insert_tab_soft_at_display_col4_inserts_full_width() {
     // Already on a tab stop (col 4) → full tab-width of spaces.
     assert_state!(
         "abcd-[e]>\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 4),
         "abcd    -[e]>\n"
     );
 }
@@ -271,7 +271,7 @@ fn insert_tab_soft_after_tab_uses_current_display_col() {
     // "\tx" → cursor after 'x' is at display col 5, tw=4 → 3 spaces to col 8.
     assert_state!(
         "\tx-[y]>\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 4),
         "\tx   -[y]>\n"
     );
 }
@@ -281,7 +281,7 @@ fn insert_tab_soft_tab_width_8() {
     // tw=8 at col 0 → 8 spaces.
     assert_state!(
         "-[h]>i\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 8),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 8),
         "        -[h]>i\n"
     );
 }
@@ -292,7 +292,7 @@ fn insert_tab_soft_replaces_selection() {
     // cursor's column (which is the selection start).
     assert_state!(
         "-[hell]>o\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 4),
         "    -[o]>\n"
     );
 }
@@ -304,7 +304,7 @@ fn insert_tab_soft_two_cursors_different_lines() {
     // Line 1: cursor on 'z' (col 2) → 2 spaces to reach col 4.
     assert_state!(
         "ab-[c]>\nxy-[z]>\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 4),
         "ab  -[c]>\nxy  -[z]>\n"
     );
 }
@@ -322,7 +322,7 @@ fn insert_tab_soft_two_cursors_same_line() {
     //                     next stop = 12; spaces needed = 4.
     assert_state!(
         "ab-[c]> xy-[z]>\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 4),
         "ab  -[c]> xy    -[z]>\n"
     );
 }
@@ -340,7 +340,7 @@ fn insert_tab_soft_two_cursors_same_line_not_on_stop() {
     //                     at col 12; spaces needed = 3.
     assert_state!(
         "abc-[d]>e fg-[h]>\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 4),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 4),
         "abc -[d]>e fg   -[h]>\n"
     );
 }
@@ -351,12 +351,12 @@ fn insert_tab_soft_tab_width_1() {
     // inserted regardless of the cursor's column.
     assert_state!(
         "-[h]>i\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 1),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 1),
         " -[h]>i\n"
     );
     assert_state!(
         "he-[l]>lo\n",
-        |(buf, sels)| insert_tab(buf, sels, TabStyle::Soft, 1),
+        |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 1),
         "he -[l]>lo\n"
     );
 }
@@ -369,7 +369,7 @@ fn insert_char_newline() {
     // before the cursor character, cursor stays on the original char (now shifted).
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| insert_char(buf, sels, '\n'),
+        |(text, sels)| insert_char(text, sels, '\n'),
         "\n-[h]>ello\n"
     );
 }
@@ -381,7 +381,7 @@ fn newline_indent_copies_tab_indent() {
     // "\tfoo" cursor on 'f' → new line gets "\t", cursor on 'f' (new line).
     assert_state!(
         "\t-[f]>oo\n",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "\t\n\t-[f]>oo\n"
     );
 }
@@ -391,7 +391,7 @@ fn newline_indent_copies_space_indent() {
     // "    bar" cursor on 'b' → new line gets "    ".
     assert_state!(
         "    -[b]>ar\n",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "    \n    -[b]>ar\n"
     );
 }
@@ -401,7 +401,7 @@ fn newline_indent_no_indent_on_bare_line() {
     // "foo" cursor on 'o' (last char) → new line bare.
     assert_state!(
         "fo-[o]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "fo\n-[o]>\n"
     );
 }
@@ -412,7 +412,7 @@ fn newline_indent_at_line_start_no_indent_before_cursor() {
     // is bare, original 'f' moves to new line.
     assert_state!(
         "-[f]>oo\n",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "\n-[f]>oo\n"
     );
 }
@@ -423,7 +423,7 @@ fn newline_indent_mid_line_preserves_content_before_cursor() {
     // old line; new line gets indent; cursor on 'o'.
     assert_state!(
         "\tfo-[o]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "\tfo\n\t-[o]>\n"
     );
 }
@@ -433,7 +433,7 @@ fn newline_indent_mixed_indent() {
     // "\t  x" cursor on 'x' → new line gets "\t  ".
     assert_state!(
         "\t  -[x]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "\t  \n\t  -[x]>\n"
     );
 }
@@ -444,7 +444,7 @@ fn newline_indent_replaces_selection() {
     // Cursor lands on the structural trailing '\n' (the retained original).
     assert_state!(
         "\t-[foo]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "\t\n\t-[\n]>"
     );
 }
@@ -454,7 +454,7 @@ fn newline_indent_second_line() {
     // "a\n\tb\n" cursor on 'b' (line 1, indented) → new line gets "\t".
     assert_state!(
         "a\n\t-[b]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "a\n\t\n\t-[b]>\n"
     );
 }
@@ -465,7 +465,7 @@ fn newline_indent_two_cursors_different_indents() {
     // Line 0 "  a" (cursor on 'a'), line 1 "\tb" (cursor on 'b').
     assert_state!(
         "  -[a]>\n\t-[b]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "  \n  -[a]>\n\t\n\t-[b]>\n"
     );
 }
@@ -478,7 +478,7 @@ fn newline_indent_cursor_on_structural_newline() {
     // `insert_char` behaviour for a cursor on the structural newline.
     assert_state!(
         "  x-[\n]>",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "  x\n  -[\n]>"
     );
 }
@@ -493,7 +493,7 @@ fn newline_indent_replaces_multi_line_selection() {
     // single-line selection case.
     assert_state!(
         "\t-[ab\n\txy]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "\t\n\t-[\n]>"
     );
 }
@@ -505,7 +505,7 @@ fn newline_indent_trims_blank_line_on_second_enter() {
     // forward) before opening a fresh indented line below it.
     assert_state!(
         "x\n  -[\n]>",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "x\n\n  -[\n]>"
     );
 }
@@ -517,7 +517,7 @@ fn newline_indent_trims_blank_line_cursor_mid_whitespace() {
     // not just the region before the cursor.
     assert_state!(
         "x\n -[ ]> \n",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "x\n\n   -[\n]>"
     );
 }
@@ -530,7 +530,7 @@ fn newline_indent_trim_blank_false_preserves_pre_existing_blank_line() {
     // the non-blank-line case.
     assert_state!(
         "x\n  -[\n]>",
-        |(buf, sels)| insert_newline_indent(buf, sels, false),
+        |(text, sels)| insert_newline_indent(text, sels, false),
         "x\n  \n  -[\n]>"
     );
 }
@@ -544,7 +544,7 @@ fn newline_indent_two_cursors_same_blank_line_merge() {
     // panic, no duplicate newline.
     assert_state!(
         "-[ ]> -[ ]>\n",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "\n   -[\n]>"
     );
 }
@@ -564,7 +564,7 @@ fn newline_indent_two_cursors_second_on_blank_line_newline_no_underflow() {
     // landing on its own freshly opened line — no crash.
     assert_state!(
         "-[ ]> -[\n]>",
-        |(buf, sels)| insert_newline_indent(buf, sels, true),
+        |(text, sels)| insert_newline_indent(text, sels, true),
         "\n  -[\n]>  -[\n]>"
     );
 }
@@ -577,7 +577,7 @@ fn clear_blank_line_indent_clears_whitespace_only_line() {
     // cursor lands on the resulting (now truly empty) line's '\n'.
     assert_state!(
         "-[ ]> \n",
-        |(buf, sels)| clear_blank_line_indent(buf, sels),
+        |(text, sels)| clear_blank_line_indent(text, sels),
         "-[\n]>"
     );
 }
@@ -587,7 +587,7 @@ fn clear_blank_line_indent_no_op_on_content_line() {
     // Cursor on a line with real content: identity edit, nothing cleared.
     assert_state!(
         "-[f]>oo\n",
-        |(buf, sels)| clear_blank_line_indent(buf, sels),
+        |(text, sels)| clear_blank_line_indent(text, sels),
         "-[f]>oo\n"
     );
 }
@@ -599,7 +599,7 @@ fn clear_blank_line_indent_multi_cursor_only_clears_blank_line() {
     // identity edit.
     assert_state!(
         "-[f]>oo\n -[ ]>\n",
-        |(buf, sels)| clear_blank_line_indent(buf, sels),
+        |(text, sels)| clear_blank_line_indent(text, sels),
         "-[f]>oo\n-[\n]>"
     );
 }
@@ -611,7 +611,7 @@ fn clear_blank_line_indent_two_cursors_same_line_merge() {
     // merge into one, no panic.
     assert_state!(
         "-[ ]> -[ ]>\n",
-        |(buf, sels)| clear_blank_line_indent(buf, sels),
+        |(text, sels)| clear_blank_line_indent(text, sels),
         "-[\n]>"
     );
 }
@@ -628,7 +628,7 @@ fn clear_blank_line_indent_second_cursor_on_blank_line_newline_no_underflow() {
     // final position and merge, same as the mid-whitespace case above.
     assert_state!(
         "-[ ]> -[\n]>",
-        |(buf, sels)| clear_blank_line_indent(buf, sels),
+        |(text, sels)| clear_blank_line_indent(text, sels),
         "-[\n]>"
     );
 }
@@ -642,7 +642,7 @@ fn clear_blank_line_indent_preserves_non_collapsed_selection() {
     // selection B covers "ar" in "bar" on line2.
     assert_state!(
         "foo\n-[ ]>\nb-[ar]>\n",
-        |(buf, sels)| clear_blank_line_indent(buf, sels),
+        |(text, sels)| clear_blank_line_indent(text, sels),
         "foo\n-[\n]>b-[ar]>\n"
     );
 }
@@ -654,7 +654,7 @@ fn insert_char_combining_codepoint() {
     // the cursor lands on 'h' (now at position 1).
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| insert_char(buf, sels, '\u{0301}'),
+        |(text, sels)| insert_char(text, sels, '\u{0301}'),
         "\u{0301}-[h]>ello\n"
     );
 }

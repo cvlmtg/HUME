@@ -22,7 +22,7 @@ use hume_editing::word::{CharClass, classify_char};
 /// The direction (forward/backward) of the original selection is preserved on
 /// every piece. The primary becomes the first piece of the original primary.
 pub fn cmd_split_selection_on_newlines(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
@@ -36,8 +36,8 @@ pub fn cmd_split_selection_on_newlines(
     for sel in sels.iter_sorted() {
         let start = sel.start();
         let end = sel.end();
-        let start_line = buf.char_to_line(start);
-        let end_line = buf.char_to_line(end);
+        let start_line = text.char_to_line(start);
+        let end_line = text.char_to_line(end);
         let forward = sel.anchor() <= sel.head();
 
         let first_piece_idx = new_sels.len();
@@ -47,20 +47,20 @@ pub fn cmd_split_selection_on_newlines(
             new_sels.push(*sel);
         } else {
             // First line piece: from selection start to end of line content.
-            let first_end = line_content_end(buf, start_line);
+            let first_end = line_content_end(text, start_line);
             let sel = Selection::directed(start, first_end, forward);
             new_sels.push(sel);
 
             // Middle lines: full lines.
             for line in (start_line + 1)..end_line {
-                let ls = buf.line_to_char(line);
-                let le = line_content_end(buf, line);
+                let ls = text.line_to_char(line);
+                let le = line_content_end(text, line);
                 let sel = Selection::directed(ls, le, forward);
                 new_sels.push(sel);
             }
 
             // Last line piece: from line start to selection end.
-            let last_ls = buf.line_to_char(end_line);
+            let last_ls = text.line_to_char(end_line);
             let sel = Selection::directed(last_ls, end, forward);
             new_sels.push(sel);
         }
@@ -74,7 +74,7 @@ pub fn cmd_split_selection_on_newlines(
     // sorts and merges, but the input is already sorted and disjoint, so both
     // are no-ops here and the primary index is preserved.
     let new_set = SelectionSet::from_vec(new_sels, new_primary);
-    new_set.debug_assert_valid(buf);
+    new_set.debug_assert_valid(text);
     new_set
 }
 
@@ -90,7 +90,7 @@ pub fn cmd_split_selection_on_newlines(
 /// Returns `None` when no matches are found in any selection — the caller
 /// should keep the original selections unchanged.
 pub fn select_matches_within(
-    buf: &BufferText,
+    text: &BufferText,
     sels: &SelectionSet,
     regex: &Regex,
 ) -> Option<SelectionSet> {
@@ -100,7 +100,7 @@ pub fn select_matches_within(
 
     for (i, sel) in sels.iter_sorted().enumerate() {
         let piece_start = new_sels.len();
-        let matches = find_matches_in_range(buf, regex, sel.start(), sel.end_inclusive(buf));
+        let matches = find_matches_in_range(text, regex, sel.start(), sel.end_inclusive(text));
 
         for (s, e) in matches {
             new_sels.push(Selection::new(s, e));
@@ -119,7 +119,7 @@ pub fn select_matches_within(
     // Matches within non-overlapping selections can't overlap each other,
     // so no merge is needed.
     let new_set = SelectionSet::from_vec(new_sels, new_primary);
-    new_set.debug_assert_valid(buf);
+    new_set.debug_assert_valid(text);
     Some(new_set)
 }
 
@@ -132,7 +132,7 @@ pub fn select_matches_within(
 /// the entire selection is whitespace the selection collapses to a cursor at
 /// the original `head`.
 pub fn cmd_trim_selection_whitespace(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
@@ -147,11 +147,11 @@ pub fn cmd_trim_selection_whitespace(
         // codebase — Space covers ' '/'\t', Eol covers '\n'.
         while start <= end
             && matches!(
-                buf.char_at(start).map(classify_char),
+                text.char_at(start).map(classify_char),
                 Some(CharClass::Space | CharClass::Eol)
             )
         {
-            start = next_grapheme_boundary(buf, start);
+            start = next_grapheme_boundary(text, start);
         }
 
         // If we consumed everything, the selection is all whitespace.
@@ -163,16 +163,16 @@ pub fn cmd_trim_selection_whitespace(
         let mut new_end = end;
         while new_end > start
             && matches!(
-                buf.char_at(new_end).map(classify_char),
+                text.char_at(new_end).map(classify_char),
                 Some(CharClass::Space | CharClass::Eol)
             )
         {
-            new_end = prev_grapheme_boundary(buf, new_end);
+            new_end = prev_grapheme_boundary(text, new_end);
         }
 
         Selection::directed(start, new_end, forward)
     });
-    new_sels.debug_assert_valid(buf);
+    new_sels.debug_assert_valid(text);
     new_sels
 }
 

@@ -31,7 +31,7 @@ pub enum FindKind {
 /// Uses `map` (which always merges) so that selections which converge to the
 /// same position after the motion are automatically merged.
 pub(crate) fn apply_motion(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     mode: MotionMode,
     count: usize,
@@ -40,13 +40,13 @@ pub(crate) fn apply_motion(
     let result = sels.map(|sel| {
         // Apply the motion `count` times, feeding each result as the next
         // input. `fold` starting from the current head position.
-        let new_head = (0..count).fold(sel.head(), |h, _| motion(buf, h));
+        let new_head = (0..count).fold(sel.head(), |h, _| motion(text, h));
         match mode {
             MotionMode::Move => Selection::collapsed(new_head),
             MotionMode::Extend => Selection::new(sel.anchor(), new_head),
         }
     });
-    result.debug_assert_valid(buf);
+    result.debug_assert_valid(text);
     result
 }
 
@@ -77,7 +77,7 @@ mod tests;
 // (BufferText, SelectionSet)` — so they can be used directly with `assert_state!`
 // and, eventually, the command dispatch table.
 //
-// Pure motions do not modify the buffer, so `buf` passes through unchanged.
+// Pure motions do not modify the buffer, so `text` passes through unchanged.
 //
 // The `motion_cmd!` macro below generates each command, so the table is just
 // data — name, mode, motion — with no repeated scaffolding.
@@ -95,8 +95,8 @@ macro_rules! motion_cmd {
     ($(#[$attr:meta])* $name:ident, $motion:expr) => {
         $(#[$attr])*
         #[allow(non_snake_case)]
-        pub fn $name(buf: &BufferText, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
-            apply_motion(buf, sels, mode, count, $motion)
+        pub fn $name(text: &BufferText, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
+            apply_motion(text, sels, mode, count, $motion)
         }
     };
 }

@@ -12,9 +12,9 @@ use hume_editing::text::BufferText;
 // ---------------------------------------------------------------------------
 
 /// Scan left from `pos` (exclusive) to find an unmatched `open` bracket.
-pub(crate) fn scan_left_for_open(buf: &BufferText, pos: usize, open: char, close: char) -> Option<usize> {
+pub(crate) fn scan_left_for_open(text: &BufferText, pos: usize, open: char, close: char) -> Option<usize> {
     let mut depth = 0usize;
-    let mut cursor = buf.chars_at(pos);
+    let mut cursor = text.chars_at(pos);
     while let Some((i, ch)) = cursor.prev() {
         if ch == close {
             depth += 1;
@@ -30,13 +30,13 @@ pub(crate) fn scan_left_for_open(buf: &BufferText, pos: usize, open: char, close
 
 /// Scan right from `pos` (exclusive) to find an unmatched `close` bracket.
 pub(crate) fn scan_right_for_close(
-    buf: &BufferText,
+    text: &BufferText,
     pos: usize,
     open: char,
     close: char,
 ) -> Option<usize> {
     let mut depth = 0usize;
-    for (i, ch) in buf.chars_at(pos) {
+    for (i, ch) in text.chars_at(pos) {
         if ch == open {
             depth += 1;
         } else if ch == close {
@@ -55,26 +55,26 @@ pub(crate) fn scan_right_for_close(
 /// If ON a close bracket, that bracket is the end.
 /// Otherwise, scans both directions for the enclosing pair.
 pub fn find_bracket_pair(
-    buf: &BufferText,
+    text: &BufferText,
     pos: usize,
     open: char,
     close: char,
 ) -> Option<(usize, usize)> {
-    match buf.char_at(pos)? {
+    match text.char_at(pos)? {
         ch if ch == open => {
             // Cursor is on an open bracket — scan right for the matching close.
-            let close_pos = scan_right_for_close(buf, pos + 1, open, close)?;
+            let close_pos = scan_right_for_close(text, pos + 1, open, close)?;
             Some((pos, close_pos))
         }
         ch if ch == close => {
             // Cursor is on a close bracket — scan left for the matching open.
-            let open_pos = scan_left_for_open(buf, pos, open, close)?;
+            let open_pos = scan_left_for_open(text, pos, open, close)?;
             Some((open_pos, pos))
         }
         _ => {
             // Cursor is inside — scan both directions.
-            let open_pos = scan_left_for_open(buf, pos, open, close)?;
-            let close_pos = scan_right_for_close(buf, pos, open, close)?;
+            let open_pos = scan_left_for_open(text, pos, open, close)?;
+            let close_pos = scan_right_for_close(text, pos, open, close)?;
             Some((open_pos, close_pos))
         }
     }
@@ -91,15 +91,15 @@ pub fn find_bracket_pair(
 /// closing quotes. Returns the pair that contains `pos`.
 ///
 /// If `pos` is ON a quote char, parity resolves whether it is open or close.
-pub(crate) fn find_quote_pair(buf: &BufferText, pos: usize, quote: char) -> Option<(usize, usize)> {
-    let line = buf.char_to_line(pos);
-    let line_start = buf.line_to_char(line);
-    let line_end = line_end_exclusive(buf, line);
+pub(crate) fn find_quote_pair(text: &BufferText, pos: usize, quote: char) -> Option<(usize, usize)> {
+    let line = text.char_to_line(pos);
+    let line_start = text.line_to_char(line);
+    let line_end = line_end_exclusive(text, line);
 
     // Single pass: track the opening quote position; on every second hit we
     // have a complete pair and can test whether `pos` falls inside it.
     let mut open: Option<usize> = None;
-    for (i, ch) in buf.chars_at(line_start).take(line_end - line_start) {
+    for (i, ch) in text.chars_at(line_start).take(line_end - line_start) {
         if ch == quote {
             match open {
                 None => open = Some(i), // odd occurrence → opening quote

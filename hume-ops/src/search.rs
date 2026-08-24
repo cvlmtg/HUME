@@ -44,7 +44,7 @@ pub fn compile_search_regex(pattern: &str) -> Option<Regex> {
 
 // ── find_next_match ───────────────────────────────────────────────────────────
 
-/// Find the next regex match in `buf`, starting from char offset `from_char`.
+/// Find the next regex match in `text`, starting from char offset `from_char`.
 ///
 /// # Direction
 ///
@@ -65,32 +65,32 @@ pub fn compile_search_regex(pattern: &str) -> Option<Regex> {
 /// Returns `None` when no match exists anywhere in the buffer, or when the
 /// match is zero-width (which would cause the cursor to appear stuck).
 pub fn find_next_match(
-    buf: &BufferText,
+    text: &BufferText,
     regex: &Regex,
     from_char: usize,
     direction: SearchDirection,
 ) -> Option<(usize, usize, bool)> {
-    let from_byte = buf.char_to_byte(from_char);
-    let total_bytes = buf.len_bytes();
+    let from_byte = text.char_to_byte(from_char);
+    let total_bytes = text.len_bytes();
 
     match direction {
         SearchDirection::Forward => {
             // Primary: search from_byte..end
-            if let Some((s, e)) = search_match_in(buf, regex, from_byte..total_bytes, false) {
+            if let Some((s, e)) = search_match_in(text, regex, from_byte..total_bytes, false) {
                 return Some((s, e, false));
             }
             // Wrap: search 0..from_byte
-            if let Some((s, e)) = search_match_in(buf, regex, 0..from_byte, false) {
+            if let Some((s, e)) = search_match_in(text, regex, 0..from_byte, false) {
                 return Some((s, e, true));
             }
         }
         SearchDirection::Backward => {
             // Primary: search 0..from_byte, take the last match
-            if let Some((s, e)) = search_match_in(buf, regex, 0..from_byte, true) {
+            if let Some((s, e)) = search_match_in(text, regex, 0..from_byte, true) {
                 return Some((s, e, false));
             }
             // Wrap: search from_byte..end, take the last match
-            if let Some((s, e)) = search_match_in(buf, regex, from_byte..total_bytes, true) {
+            if let Some((s, e)) = search_match_in(text, regex, from_byte..total_bytes, true) {
                 return Some((s, e, true));
             }
         }
@@ -101,35 +101,35 @@ pub fn find_next_match(
 
 // ── find_all_matches ──────────────────────────────────────────────────────────
 
-/// Return all non-overlapping regex matches in `buf` as char-offset ranges.
+/// Return all non-overlapping regex matches in `text` as char-offset ranges.
 ///
 /// Results are `(start_char, end_char_inclusive)` pairs in document order.
 /// Zero-width matches are skipped.
 ///
 /// Used by `SearchMatchHighlighter` to convert matches to line-relative byte
 /// ranges for the engine's highlight provider system.
-pub fn find_all_matches(buf: &BufferText, regex: &Regex) -> Vec<(usize, usize)> {
-    find_matches_in_range(buf, regex, 0, buf.len_chars() - 1)
+pub fn find_all_matches(text: &BufferText, regex: &Regex) -> Vec<(usize, usize)> {
+    find_matches_in_range(text, regex, 0, text.len_chars() - 1)
 }
 
 // ── find_matches_in_range ─────────────────────────────────────────────────────
 
-/// Return all non-overlapping regex matches within a char range of `buf`.
+/// Return all non-overlapping regex matches within a char range of `text`.
 ///
 /// Only matches that fall entirely within `[start_char, end_char]` (inclusive)
 /// are returned. Results are `(start_char, end_char_inclusive)` pairs in
 /// document order. Zero-width matches are skipped.
 pub fn find_matches_in_range(
-    buf: &BufferText,
+    text: &BufferText,
     regex: &Regex,
     start_char: usize,
     end_char: usize, // inclusive
 ) -> Vec<(usize, usize)> {
-    let start_byte = buf.char_to_byte(start_char);
+    let start_byte = text.char_to_byte(start_char);
     // end_char is inclusive — we need the byte *after* the last char in range.
-    let end_byte = buf.char_to_byte(end_char + 1);
+    let end_byte = text.char_to_byte(end_char + 1);
 
-    let cursor = RopeyCursor::new(buf.full_slice());
+    let cursor = RopeyCursor::new(text.full_slice());
     let mut input = Input::new(cursor);
     input.set_range(start_byte..end_byte);
 
@@ -137,8 +137,8 @@ pub fn find_matches_in_range(
         .find_iter(input)
         .filter(|m| m.start() < m.end()) // skip zero-width matches
         .map(|m| {
-            let s = buf.byte_to_char(m.start());
-            let e = buf.byte_to_char(m.end()) - 1;
+            let s = text.byte_to_char(m.start());
+            let e = text.byte_to_char(m.end()) - 1;
             (s, e)
         })
         .collect()
@@ -253,7 +253,7 @@ pub fn find_match_from_cache(
 /// acceptable for typical buffer sizes. A reverse-DFA approach could be
 /// added later for very large files.
 fn search_match_in(
-    buf: &BufferText,
+    text: &BufferText,
     regex: &Regex,
     byte_range: std::ops::Range<usize>,
     take_last: bool,
@@ -261,7 +261,7 @@ fn search_match_in(
     if byte_range.is_empty() {
         return None;
     }
-    let cursor = RopeyCursor::new(buf.full_slice());
+    let cursor = RopeyCursor::new(text.full_slice());
     let mut input = Input::new(cursor);
     input.set_range(byte_range);
     let m = if take_last {
@@ -272,8 +272,8 @@ fn search_match_in(
     } else {
         regex.find(input).filter(|m| m.start() < m.end())?
     };
-    let start = buf.byte_to_char(m.start());
-    let end_incl = buf.byte_to_char(m.end()) - 1;
+    let start = text.byte_to_char(m.start());
+    let end_incl = text.byte_to_char(m.end()) - 1;
     Some((start, end_incl))
 }
 

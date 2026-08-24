@@ -19,13 +19,13 @@ use hume_editing::text::BufferText;
 /// two overlapping selections with different heads might collapse to the same
 /// position and need to be merged.
 pub fn cmd_collapse_selection_to_head(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.map(|s| Selection::collapsed(s.head()));
-    new_sels.debug_assert_valid(buf);
+    new_sels.debug_assert_valid(text);
     new_sels
 }
 
@@ -37,13 +37,13 @@ pub fn cmd_collapse_selection_to_head(
 /// lands on the right end. Uses `map` (which always merges) for the same
 /// deduplication reason as the head variant.
 pub fn cmd_collapse_selection_to_anchor(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.map(|s| Selection::collapsed(s.anchor()));
-    new_sels.debug_assert_valid(buf);
+    new_sels.debug_assert_valid(text);
     new_sels
 }
 
@@ -53,14 +53,14 @@ pub fn cmd_collapse_selection_to_anchor(
 /// Does not change any range bounds, so overlaps cannot arise — uses plain
 /// `map` (no merge needed).
 pub fn cmd_flip_selections(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     // `flip` only swaps anchor/head — no range change → no new overlaps.
     let new_sels = sels.map(|s| s.flip());
-    new_sels.debug_assert_valid(buf);
+    new_sels.debug_assert_valid(text);
     new_sels
 }
 
@@ -70,14 +70,14 @@ pub fn cmd_flip_selections(
 /// character to the last (the structural trailing `\n`). Head is placed at
 /// the end so the cursor sits at the bottom — consistent with Helix `%`.
 pub fn cmd_select_all(
-    buf: &BufferText,
+    text: &BufferText,
     _sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
-    let end = buf.len_chars().saturating_sub(1);
+    let end = text.len_chars().saturating_sub(1);
     let sels = SelectionSet::single(Selection::new(0, end));
-    sels.debug_assert_valid(buf);
+    sels.debug_assert_valid(text);
     sels
 }
 
@@ -86,13 +86,13 @@ pub fn cmd_select_all(
 /// The result is a single-selection set. This is a destructive reduction —
 /// any non-primary cursors or ranges are lost.
 pub fn cmd_keep_primary_selection(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.keep_primary();
-    new_sels.debug_assert_valid(buf);
+    new_sels.debug_assert_valid(text);
     new_sels
 }
 
@@ -102,7 +102,7 @@ pub fn cmd_keep_primary_selection(
 /// empty). After removal the primary wraps to the start if it was the last
 /// selection in document order.
 pub fn cmd_remove_primary_selection(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     count: usize,
     _mode: MotionMode,
@@ -115,31 +115,31 @@ pub fn cmd_remove_primary_selection(
         let idx = sels.primary_index();
         sels = sels.remove(idx);
     }
-    sels.debug_assert_valid(buf);
+    sels.debug_assert_valid(text);
     sels
 }
 
 /// Move the primary selection to the next one in document order, wrapping.
 pub fn cmd_cycle_primary_forward(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.cycle_primary(1);
-    new_sels.debug_assert_valid(buf);
+    new_sels.debug_assert_valid(text);
     new_sels
 }
 
 /// Move the primary selection to the previous one in document order, wrapping.
 pub fn cmd_cycle_primary_backward(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.cycle_primary(-1);
-    new_sels.debug_assert_valid(buf);
+    new_sels.debug_assert_valid(text);
     new_sels
 }
 

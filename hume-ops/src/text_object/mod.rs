@@ -43,15 +43,15 @@ pub use word::{
 /// Uses `map` (which always merges) so that multiple cursors landing on the
 /// same range (e.g., both cursors inside the same bracket pair) are merged.
 pub(crate) fn apply_text_object(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     text_object: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
-    let result = sels.map(|sel| match text_object(buf, sel.head()) {
+    let result = sels.map(|sel| match text_object(text, sel.head()) {
         Some((start, end)) => Selection::new(start, end),
         None => sel,
     });
-    result.debug_assert_valid(buf);
+    result.debug_assert_valid(text);
     result
 }
 
@@ -62,13 +62,13 @@ pub(crate) fn apply_text_object(
 /// is unchanged.
 ///
 /// Two-pass strategy for outward growth:
-/// 1. Try `text_object(buf, sel.head)`. If the result is *larger* than the current
+/// 1. Try `text_object(text, sel.head)`. If the result is *larger* than the current
 ///    selection, use it — this handles the initial extend-from-cursor case.
 /// 2. If the result is a subset (union doesn't grow), retry from the position just
 ///    past `sel.end()`. For bracket/quote text objects this escapes the current pair
 ///    and causes the search to find the next enclosing pair instead.
 pub(crate) fn apply_text_object_extend(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     text_object: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
@@ -76,7 +76,7 @@ pub(crate) fn apply_text_object_extend(
         let forward = sel.anchor() <= sel.head();
 
         // First try from head (correct for initial extend from a cursor).
-        if let Some((start, end)) = text_object(buf, sel.head()) {
+        if let Some((start, end)) = text_object(text, sel.head()) {
             let new_start = sel.start().min(start);
             let new_end = sel.end().max(end);
             if new_start != sel.start() || new_end != sel.end() {
@@ -86,9 +86,9 @@ pub(crate) fn apply_text_object_extend(
 
         // Result was a subset (no growth). Retry from one past the selection end so
         // bracket/quote searches find the enclosing pair rather than the current one.
-        let past_end = next_grapheme_boundary(buf, sel.end());
-        if past_end < buf.len_chars()
-            && let Some((start, end)) = text_object(buf, past_end)
+        let past_end = next_grapheme_boundary(text, sel.end());
+        if past_end < text.len_chars()
+            && let Some((start, end)) = text_object(text, past_end)
         {
             let new_start = sel.start().min(start);
             let new_end = sel.end().max(end);
@@ -97,21 +97,21 @@ pub(crate) fn apply_text_object_extend(
 
         sel
     });
-    result.debug_assert_valid(buf);
+    result.debug_assert_valid(text);
     result
 }
 
 /// Dispatch to [`apply_text_object`] or [`apply_text_object_extend`] based on `mode`.
 #[inline]
 fn apply_text_object_by_mode(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     mode: MotionMode,
     f: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     match mode {
-        MotionMode::Move => apply_text_object(buf, sels, f),
-        MotionMode::Extend => apply_text_object_extend(buf, sels, f),
+        MotionMode::Move => apply_text_object(text, sels, f),
+        MotionMode::Extend => apply_text_object_extend(text, sels, f),
     }
 }
 

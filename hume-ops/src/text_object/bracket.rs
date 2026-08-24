@@ -17,30 +17,30 @@ pub(super) fn inner_of_pair(open: usize, close: usize) -> Option<(usize, usize)>
     Some((open + 1, close - 1))
 }
 
-fn inner_bracket(buf: &BufferText, pos: usize, open: char, close: char) -> Option<(usize, usize)> {
-    let (open_pos, close_pos) = find_bracket_pair(buf, pos, open, close)?;
+fn inner_bracket(text: &BufferText, pos: usize, open: char, close: char) -> Option<(usize, usize)> {
+    let (open_pos, close_pos) = find_bracket_pair(text, pos, open, close)?;
     inner_of_pair(open_pos, close_pos)
 }
 
 macro_rules! bracket_cmds {
     ($inner_name:ident, $around_name:ident, $open:literal, $close:literal) => {
         pub fn $inner_name(
-            buf: &BufferText,
+            text: &BufferText,
             sels: SelectionSet,
             _count: usize,
             mode: MotionMode,
         ) -> SelectionSet {
-            apply_text_object_by_mode(buf, sels, mode, |b, pos| {
+            apply_text_object_by_mode(text, sels, mode, |b, pos| {
                 inner_bracket(b, pos, $open, $close)
             })
         }
         pub fn $around_name(
-            buf: &BufferText,
+            text: &BufferText,
             sels: SelectionSet,
             _count: usize,
             mode: MotionMode,
         ) -> SelectionSet {
-            apply_text_object_by_mode(buf, sels, mode, |b, pos| {
+            apply_text_object_by_mode(text, sels, mode, |b, pos| {
                 find_bracket_pair(b, pos, $open, $close)
             })
         }

@@ -64,12 +64,12 @@ pub const DEFAULT_PAIRS: &[Pair] = &[
 ///
 /// Multi-cursor: every selection is processed independently by `apply_edit`.
 pub fn insert_pair_close(
-    buf: BufferText,
+    text: BufferText,
     sels: SelectionSet,
     open: char,
     close: char,
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(buf, sels, |b, _buf, _i, sel, new_sels| {
+    apply_edit(text, sels, |b, _buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
         // Simple auto-close: insert open + close.
@@ -89,16 +89,16 @@ pub fn insert_pair_close(
 ///
 /// Only meaningful for cursor (single-character) selections; for non-cursor
 /// selections the caller should fall back to `delete_char_backward`.
-pub fn delete_pair(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+pub fn delete_pair(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         debug_assert!(
             sel.is_collapsed(),
             "delete_pair called on non-collapsed selection"
         );
 
         let p = sel.head();
-        let prev = prev_grapheme_boundary(buf, p);
-        let next = next_grapheme_boundary(buf, p);
+        let prev = prev_grapheme_boundary(text, p);
+        let next = next_grapheme_boundary(text, p);
 
         if prev < b.old_pos() {
             // A previous selection already consumed this region — treat as no-op.
@@ -117,7 +117,7 @@ pub fn delete_pair(buf: BufferText, sels: SelectionSet) -> (BufferText, Selectio
 // ── Context check ─────────────────────────────────────────────────────────────
 
 /// Returns `true` if auto-pairing `pair` is appropriate when the cursor is at
-/// `head` in `buf`.
+/// `head` in `text`.
 ///
 /// Two conditions must hold:
 /// 1. The character at `head` (what the cursor sits on) is "innocuous":
@@ -129,9 +129,9 @@ pub fn delete_pair(buf: BufferText, sels: SelectionSet) -> (BufferText, Selectio
 ///
 /// Callers are responsible for the all-or-nothing multi-cursor check; this
 /// function evaluates a single cursor position.
-pub fn should_auto_pair_at(buf: &BufferText, head: usize, pair: &Pair, ap_pairs: &[Pair]) -> bool {
+pub fn should_auto_pair_at(text: &BufferText, head: usize, pair: &Pair, ap_pairs: &[Pair]) -> bool {
     // Check 1: next char (the char the cursor sits on) must be innocuous.
-    let next_ok = match buf.char_at(head) {
+    let next_ok = match text.char_at(head) {
         None => true,                                     // EOF
         Some(c) if c.is_whitespace() => true,             // space, tab, newline, …
         Some(c) => ap_pairs.iter().any(|p| p.close == c), // a configured close char
@@ -142,8 +142,8 @@ pub fn should_auto_pair_at(buf: &BufferText, head: usize, pair: &Pair, ap_pairs:
 
     // Check 2 (symmetric pairs only): prev char must NOT be a word char.
     if pair.is_symmetric() && head > 0 {
-        let prev_pos = prev_grapheme_boundary(buf, head);
-        if buf
+        let prev_pos = prev_grapheme_boundary(text, head);
+        if text
             .char_at(prev_pos)
             .is_some_and(|c| classify_char(c) == CharClass::Word)
         {

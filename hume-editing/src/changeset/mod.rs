@@ -263,7 +263,7 @@ impl ChangeSet {
 
     // ── apply ────────────────────────────────────────────────────────────────
 
-    /// Apply this changeset to `buf`, producing a new buffer.
+    /// Apply this changeset to `text`, producing a new buffer.
     ///
     /// Clones the buffer's rope and mutates the clone via `Rope::remove`/
     /// `Rope::insert` (each O(log n)); retains are free. Total cost O(k log n)
@@ -280,22 +280,22 @@ impl ChangeSet {
     ///
     /// # Errors
     ///
-    /// - [`ApplyError::LengthMismatch`] if `buf.len_chars() != self.len_before`.
+    /// - [`ApplyError::LengthMismatch`] if `text.len_chars() != self.len_before`.
     /// - [`ApplyError::TrailingNewlineMissing`] if the result rope doesn't end
     ///   with `\n` (the changeset deleted the structural trailing newline).
     ///
-    /// On error the original `buf` is untouched — the caller still owns it.
-    pub fn apply(&self, buf: &BufferText) -> Result<BufferText, ApplyError> {
-        if buf.len_chars() != self.len_before {
+    /// On error the original `text` is untouched — the caller still owns it.
+    pub fn apply(&self, text: &BufferText) -> Result<BufferText, ApplyError> {
+        if text.len_chars() != self.len_before {
             return Err(ApplyError::LengthMismatch {
-                buf_len: buf.len_chars(),
+                buf_len: text.len_chars(),
                 expected: self.len_before,
             });
         }
 
         // Clone the rope (O(1) — ropey uses Arc-based tree nodes). We mutate
-        // the clone so that `buf` remains valid on the error path.
-        let mut rope = buf.rope().clone();
+        // the clone so that `text` remains valid on the error path.
+        let mut rope = text.rope().clone();
 
         // `delta` tracks the net char-count shift from all mutations so far.
         // Changeset positions are in old-doc space; `old_pos + delta` gives
@@ -333,7 +333,7 @@ impl ChangeSet {
         if !crate::text::is_valid_buffer_rope(&rope) {
             return Err(ApplyError::TrailingNewlineMissing);
         }
-        Ok(BufferText::from_rope(rope, buf.line_ending()))
+        Ok(BufferText::from_rope(rope, text.line_ending()))
     }
 
     // ── map_pos ──────────────────────────────────────────────────────────────
@@ -479,23 +479,23 @@ impl ChangeSet {
 
     /// Produce a changeset that undoes `self`.
     ///
-    /// Applying `self` to `buf` gives a new buffer; applying the inverted
-    /// changeset to that new buffer gives back `buf`. This is the foundation
+    /// Applying `self` to `text` gives a new buffer; applying the inverted
+    /// changeset to that new buffer gives back `text`. This is the foundation
     /// of undo.
     ///
-    /// Requires the **original** buffer (`buf`) because `Delete` operations
+    /// Requires the **original** buffer (`text`) because `Delete` operations
     /// need the actual deleted text to produce `Insert` operations in the
     /// inverse.
     ///
     /// # Panics
-    /// Panics if `buf.len_chars() != self.len_before`.
+    /// Panics if `text.len_chars() != self.len_before`.
     #[must_use]
-    pub fn invert(&self, buf: &BufferText) -> ChangeSet {
+    pub fn invert(&self, text: &BufferText) -> ChangeSet {
         assert_eq!(
-            buf.len_chars(),
+            text.len_chars(),
             self.len_before,
             "ChangeSet::invert: buffer length {} doesn't match len_before {}",
-            buf.len_chars(),
+            text.len_chars(),
             self.len_before,
         );
 
@@ -510,8 +510,8 @@ impl ChangeSet {
                 }
                 Operation::Delete(n) => {
                     // To undo a deletion, re-insert the deleted text.
-                    let text = buf.slice(old_pos..old_pos + n).to_string();
-                    push_merge(&mut inv_ops, Operation::Insert(text));
+                    let removed = text.slice(old_pos..old_pos + n).to_string();
+                    push_merge(&mut inv_ops, Operation::Insert(removed));
                     old_pos += n;
                 }
                 Operation::Insert(s) => {

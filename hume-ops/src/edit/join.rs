@@ -19,41 +19,41 @@ use super::apply_edit;
 /// next lines produce no separator — the newline is simply removed.
 ///
 /// After the join, every inserted space becomes a 1-char selection.
-pub fn join_lines_select_spaces(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn join_lines_select_spaces(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
     // Fast path: no selection spans or reaches a joinable line pair.
     // Return unchanged to avoid resetting cursors (all on last line → no-op).
     let has_work = sels.iter_sorted().any(|sel| {
-        let start = buf.char_to_line(sel.start());
-        let end = buf.char_to_line(sel.end_inclusive(&buf));
-        start != end || start < buf.last_content_line()
+        let start = text.char_to_line(sel.start());
+        let end = text.char_to_line(sel.end_inclusive(&text));
+        start != end || start < text.last_content_line()
     });
     if !has_work {
-        let mut b = ChangeSetBuilder::new(buf.len_chars());
+        let mut b = ChangeSetBuilder::new(text.len_chars());
         b.retain_rest();
-        return (buf, sels, b.finish());
+        return (text, sels, b.finish());
     }
 
     let mut space_positions: Vec<usize> = Vec::new();
 
-    let (new_buf, fallback_sels, cs) = apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
-        let start_line = buf.char_to_line(sel.start());
-        let mut end_line = buf.char_to_line(sel.end_inclusive(buf));
+    let (new_buf, fallback_sels, cs) = apply_edit(text, sels, |b, text, _i, sel, new_sels| {
+        let start_line = text.char_to_line(sel.start());
+        let mut end_line = text.char_to_line(sel.end_inclusive(text));
         if start_line == end_line {
             // Clamp to the last content line: a cursor there must not join
             // with the trailing structural-newline line — it would delete
             // the structural '\n' and panic in the changeset validator.
-            end_line = (end_line + 1).min(buf.last_content_line());
+            end_line = (end_line + 1).min(text.last_content_line());
         }
 
         for line in start_line..end_line {
-            let nl_pos = line_break_char(buf, line);
-            let next_start = line_end_exclusive(buf, line);
-            let next_end_excl = line_end_exclusive(buf, line + 1);
+            let nl_pos = line_break_char(text, line);
+            let next_start = line_end_exclusive(text, line);
+            let next_end_excl = line_end_exclusive(text, line + 1);
 
             let content_start = {
                 let mut p = next_start;
                 while p < next_end_excl {
-                    match buf.char_at(p) {
+                    match text.char_at(p) {
                         Some(c) if c == ' ' || c == '\t' || c == '\r' => p += 1,
                         _ => break,
                     }

@@ -7,7 +7,7 @@ use hume_test_fixtures::assert_state;
 fn inner_paren_cursor_inside() {
     assert_state!(
         "(-[h]>ello)\n",
-        |(buf, sels)| cmd_inner_paren(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
         "(-[hello]>)\n"
     );
 }
@@ -17,7 +17,7 @@ fn around_paren_cursor_inside() {
     // around includes the parens themselves; head = `)`.
     assert_state!(
         "(-[h]>ello)\n",
-        |(buf, sels)| cmd_around_paren(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_paren(&text, sels, 0, MotionMode::Move),
         "-[(hello)]>\n"
     );
 }
@@ -27,7 +27,7 @@ fn inner_paren_cursor_on_open() {
     // Cursor ON `(` — treated as if inside; same result as cursor inside.
     assert_state!(
         "-[(]>hello)\n",
-        |(buf, sels)| cmd_inner_paren(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
         "(-[hello]>)\n"
     );
 }
@@ -36,7 +36,7 @@ fn inner_paren_cursor_on_open() {
 fn inner_paren_cursor_on_close() {
     assert_state!(
         "(hello-[)]>\n",
-        |(buf, sels)| cmd_inner_paren(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
         "(-[hello]>)\n"
     );
 }
@@ -45,7 +45,7 @@ fn inner_paren_cursor_on_close() {
 fn inner_paren_empty_is_noop() {
     assert_state!(
         "-[(]>)\n",
-        |(buf, sels)| cmd_inner_paren(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
         "-[(]>)\n"
     );
 }
@@ -56,7 +56,7 @@ fn inner_paren_nested_cursor_on_inner() {
     // anchor == head, so serialises as a cursor.
     assert_state!(
         "(a(-[b]>)c)\n",
-        |(buf, sels)| cmd_inner_paren(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
         "(a(-[b]>)c)\n"
     );
 }
@@ -67,7 +67,7 @@ fn inner_paren_nested_cursor_on_outer_content() {
     // is the outer `(...)`, selects `a(b)c`.
     assert_state!(
         "(-[a]>(b)c)\n",
-        |(buf, sels)| cmd_inner_paren(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
         "(-[a(b)c]>)\n"
     );
 }
@@ -76,7 +76,7 @@ fn inner_paren_nested_cursor_on_outer_content() {
 fn inner_brace_basic() {
     assert_state!(
         "{-[h]>ello}\n",
-        |(buf, sels)| cmd_inner_brace(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_brace(&text, sels, 0, MotionMode::Move),
         "{-[hello]>}\n"
     );
 }
@@ -85,7 +85,7 @@ fn inner_brace_basic() {
 fn inner_bracket_basic() {
     assert_state!(
         "[-[h]>ello]\n",
-        |(buf, sels)| cmd_inner_bracket(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_bracket(&text, sels, 0, MotionMode::Move),
         "[-[hello]>]\n"
     );
 }
@@ -94,7 +94,7 @@ fn inner_bracket_basic() {
 fn inner_angle_basic() {
     assert_state!(
         "<-[h]>ello>\n",
-        |(buf, sels)| cmd_inner_angle(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_angle(&text, sels, 0, MotionMode::Move),
         "<-[hello]>>\n"
     );
 }
@@ -103,7 +103,7 @@ fn inner_angle_basic() {
 fn inner_paren_no_match_is_noop() {
     assert_state!(
         "hel-[l]>o\n",
-        |(buf, sels)| cmd_inner_paren(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
         "hel-[l]>o\n"
     );
 }
@@ -114,7 +114,7 @@ fn inner_paren_multiline() {
     // anchor = `\n` after `(`, head = `\n` before `)`.
     assert_state!(
         "(\n-[h]>ello\n)\n",
-        |(buf, sels)| cmd_inner_paren(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
         "(-[\nhello\n]>)\n"
     );
 }
@@ -124,7 +124,7 @@ fn inner_paren_two_cursors_same_pair_merge() {
     // Both cursors inside the same parens — both map to the same range → merge.
     assert_state!(
         "(-[h]>el-[l]>o)\n",
-        |(buf, sels)| cmd_inner_paren(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
         "(-[hello]>)\n"
     );
 }
@@ -135,7 +135,7 @@ fn inner_paren_two_cursors_same_pair_merge() {
 fn around_brace_basic() {
     assert_state!(
         "{-[h]>ello}\n",
-        |(buf, sels)| cmd_around_brace(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_brace(&text, sels, 0, MotionMode::Move),
         "-[{hello}]>\n"
     );
 }
@@ -144,7 +144,7 @@ fn around_brace_basic() {
 fn around_bracket_basic() {
     assert_state!(
         "[-[h]>ello]\n",
-        |(buf, sels)| cmd_around_bracket(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_bracket(&text, sels, 0, MotionMode::Move),
         "-[[hello]]>\n"
     );
 }
@@ -153,7 +153,7 @@ fn around_bracket_basic() {
 fn around_angle_basic() {
     assert_state!(
         "<-[h]>ello>\n",
-        |(buf, sels)| cmd_around_angle(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_angle(&text, sels, 0, MotionMode::Move),
         "-[<hello>]>\n"
     );
 }
@@ -164,7 +164,7 @@ fn around_angle_basic() {
 fn inner_brace_multiline() {
     assert_state!(
         "{\n-[h]>ello\n}\n",
-        |(buf, sels)| cmd_inner_brace(&buf, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_brace(&text, sels, 0, MotionMode::Move),
         "{-[\nhello\n]>}\n"
     );
 }
@@ -178,7 +178,7 @@ fn extend_inner_paren_grows_selection() {
     // Serialized: ]> at position 12 (before ')') → "-[hello (world]>) foo\n".
     assert_state!(
         "-[hello (w]>orld) foo\n",
-        |(buf, sels)| cmd_inner_paren(&buf, sels, 0, MotionMode::Extend),
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Extend),
         "-[hello (world]>) foo\n"
     );
 }
@@ -189,9 +189,9 @@ fn extend_text_object_noop_on_no_match() {
     // inner_paren on "hello\n" finds no parens → returns None → sel unchanged.
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| {
-            let s1 = cmd_inner_word(&buf, sels, 0, MotionMode::Move); // selects "hello" (0,4)
-            cmd_inner_paren(&buf, s1, 0, MotionMode::Extend) // no parens → no-op → "hello" unchanged
+        |(text, sels)| {
+            let s1 = cmd_inner_word(&text, sels, 0, MotionMode::Move); // selects "hello" (0,4)
+            cmd_inner_paren(&text, s1, 0, MotionMode::Extend) // no parens → no-op → "hello" unchanged
         },
         "-[hello]>\n"
     );
@@ -205,7 +205,7 @@ fn extend_around_paren_grows_selection() {
     //   Union: min(0,6)=0, max(7,13)=13 → (0,13) = "hello (world)".
     assert_state!(
         "-[hello (w]>orld) foo\n",
-        |(buf, sels)| cmd_around_paren(&buf, sels, 0, MotionMode::Extend),
+        |(text, sels)| cmd_around_paren(&text, sels, 0, MotionMode::Extend),
         "-[hello (world)]> foo\n"
     );
 }
@@ -224,7 +224,7 @@ fn extend_around_paren_from_matched_pair_grows_outward() {
     // scan_right finds ')' at 8 → (0,8). Union: (0,8). Grows.
     assert_state!(
         "(a -[(b)]> a)\n",
-        |(buf, sels)| cmd_around_paren(&buf, sels, 0, MotionMode::Extend),
+        |(text, sels)| cmd_around_paren(&text, sels, 0, MotionMode::Extend),
         "-[(a (b) a)]>\n"
     );
 }
@@ -237,7 +237,7 @@ fn extend_inner_paren_from_matched_pair_grows_outward() {
     // Union: (1,7). anchor=1, head=7 → "(-[a (b) a]>)\n".
     assert_state!(
         "(a -[(b)]> a)\n",
-        |(buf, sels)| cmd_inner_paren(&buf, sels, 0, MotionMode::Extend),
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Extend),
         "(-[a (b) a]>)\n"
     );
 }
@@ -253,7 +253,7 @@ fn extend_around_paren_no_outer_pair_is_noop() {
     // '(' at 0 (depth=0→continues), exits at i=0 → None. No-op.
     assert_state!(
         "-[(a b)]>\n",
-        |(buf, sels)| cmd_around_paren(&buf, sels, 0, MotionMode::Extend),
+        |(text, sels)| cmd_around_paren(&text, sels, 0, MotionMode::Extend),
         "-[(a b)]>\n"
     );
 }

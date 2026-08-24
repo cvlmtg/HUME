@@ -43,7 +43,7 @@ impl Transaction {
     /// Apply this transaction to a buffer, returning the new buffer and the
     /// new selection state.
     ///
-    /// Takes `buf` by reference so the original buffer remains available to
+    /// Takes `text` by reference so the original buffer remains available to
     /// the caller on the error path — no undo needed. On success the caller
     /// should drop the old buffer (or push an inverse transaction to the undo
     /// stack before doing so).
@@ -55,12 +55,12 @@ impl Transaction {
     /// corruption or a crash.
     ///
     /// # Errors
-    /// - [`TransactionError::Apply`] if the changeset is invalid for `buf`
+    /// - [`TransactionError::Apply`] if the changeset is invalid for `text`
     ///   (length mismatch or deleted the structural trailing `\n`).
     /// - [`TransactionError::Validation`] if any selection head or anchor is
     ///   out of bounds for the post-apply buffer.
-    pub fn apply(&self, buf: &BufferText) -> Result<(BufferText, SelectionSet), TransactionError> {
-        let new_buf = self.changes.apply(buf)?;
+    pub fn apply(&self, text: &BufferText) -> Result<(BufferText, SelectionSet), TransactionError> {
+        let new_buf = self.changes.apply(text)?;
         self.selection.validate(new_buf.len_chars())?;
         // Canonicalize before handing the set to the editor: a plugin-built
         // Transaction can carry unsorted or overlapping selections, which

@@ -8,28 +8,28 @@ use super::bracket::inner_of_pair;
 use crate::MotionMode;
 use crate::pair::find_quote_pair;
 
-fn inner_quote(buf: &BufferText, pos: usize, quote: char) -> Option<(usize, usize)> {
-    let (open, close) = find_quote_pair(buf, pos, quote)?;
+fn inner_quote(text: &BufferText, pos: usize, quote: char) -> Option<(usize, usize)> {
+    let (open, close) = find_quote_pair(text, pos, quote)?;
     inner_of_pair(open, close)
 }
 
 macro_rules! quote_cmds {
     ($inner_name:ident, $around_name:ident, $quote:literal) => {
         pub fn $inner_name(
-            buf: &BufferText,
+            text: &BufferText,
             sels: SelectionSet,
             _count: usize,
             mode: MotionMode,
         ) -> SelectionSet {
-            apply_text_object_by_mode(buf, sels, mode, |b, pos| inner_quote(b, pos, $quote))
+            apply_text_object_by_mode(text, sels, mode, |b, pos| inner_quote(b, pos, $quote))
         }
         pub fn $around_name(
-            buf: &BufferText,
+            text: &BufferText,
             sels: SelectionSet,
             _count: usize,
             mode: MotionMode,
         ) -> SelectionSet {
-            apply_text_object_by_mode(buf, sels, mode, |b, pos| find_quote_pair(b, pos, $quote))
+            apply_text_object_by_mode(text, sels, mode, |b, pos| find_quote_pair(b, pos, $quote))
         }
     };
 }

@@ -31,15 +31,15 @@ use crate::register;
 /// The replaced selection is discarded; it is never pushed to the kill ring or
 /// clipboard (rule: "when pasting over a selection the replaced text is not copied").
 fn paste_impl(
-    buf: BufferText,
+    text: BufferText,
     sels: SelectionSet,
     values: &[String],
     before: bool,
 ) -> (BufferText, SelectionSet, ChangeSet) {
     if values.is_empty() {
-        let mut b = ChangeSetBuilder::new(buf.len_chars());
+        let mut b = ChangeSetBuilder::new(text.len_chars());
         b.retain_rest();
-        return (buf, sels, b.finish());
+        return (text, sels, b.finish());
     }
 
     let n_sels = sels.len();
@@ -53,62 +53,62 @@ fn paste_impl(
         String::new()
     };
 
-    apply_edit(buf, sels, |b, buf, i, sel, new_sels| {
-        let text: &str = if n_sels == n_vals {
+    apply_edit(text, sels, |b, text, i, sel, new_sels| {
+        let content: &str = if n_sels == n_vals {
             &values[i]
         } else {
             &joined
         };
 
         if sel.is_collapsed() {
-            if register::is_register_linewise(text) {
+            if register::is_register_linewise(content) {
                 // Linewise cursor paste: insert as whole new line(s).
                 // insert advances new_pos() by the char count of the inserted text,
-                // so new_pos() - text.chars().count() is the first inserted char.
-                let line = buf.char_to_line(sel.head());
+                // so new_pos() - content.chars().count() is the first inserted char.
+                let line = text.char_to_line(sel.head());
                 let insert_at = if before {
-                    buf.line_to_char(line)
+                    text.line_to_char(line)
                 } else {
-                    line_end_exclusive(buf, line)
+                    line_end_exclusive(text, line)
                 };
                 // saturating_sub guards against same-line multi-cursor underflow.
                 b.retain(insert_at.saturating_sub(b.old_pos()));
-                b.insert(text);
-                let count = text.chars().count();
+                b.insert(content);
+                let count = content.chars().count();
                 new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
             } else {
                 // Charwise cursor paste.
                 let insert_at = if before {
                     sel.start()
                 } else {
-                    (sel.end_inclusive(buf) + 1).min(buf.len_chars() - 1)
+                    (sel.end_inclusive(text) + 1).min(text.len_chars() - 1)
                 };
                 b.retain(insert_at - b.old_pos());
-                if text.is_empty() {
+                if content.is_empty() {
                     new_sels.push(Selection::collapsed(sel.head()));
                 } else {
-                    b.insert(text);
-                    let count = text.chars().count();
+                    b.insert(content);
+                    let count = content.chars().count();
                     new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
                 }
             }
-        } else if register::is_register_linewise(text) {
+        } else if register::is_register_linewise(content) {
             // Linewise over a non-collapsed selection: replace the selected fragment
             // with the pasted line(s). Unselected text before/after on the same line
             // is retained and pushed onto its own line by the pasted '\n'.
             let start = sel.start();
-            let end_incl = sel.end_inclusive(buf);
+            let end_incl = sel.end_inclusive(text);
 
             // Prefix a '\n' only when retained text precedes the paste on this line
             // and does not already end in '\n' (i.e. we're not at a line start). When
             // the previous edit ended right at `start` (start == b.old_pos()), the
             // prior paste already supplied the separating '\n'.
-            let needs_prefix = start > b.old_pos() && !is_line_start(buf, sel);
+            let needs_prefix = start > b.old_pos() && !is_line_start(text, sel);
 
             // Consume the line's trailing '\n' when the selection ends right before it,
             // so the pasted line's own '\n' doesn't create a blank line.
-            let last_line = buf.char_to_line(end_incl);
-            let newline_pos = line_break_char(buf, last_line);
+            let last_line = text.char_to_line(end_incl);
+            let newline_pos = line_break_char(text, last_line);
             let del_end = if end_incl + 1 == newline_pos {
                 newline_pos + 1
             } else {
@@ -120,21 +120,21 @@ fn paste_impl(
             if needs_prefix {
                 b.insert("\n");
             }
-            b.insert(text);
-            let count = text.chars().count();
+            b.insert(content);
+            let count = content.chars().count();
             new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
         } else {
             // Charwise over a non-collapsed selection: delete and inline-insert.
             let start = sel.start();
-            let end_incl = sel.content_end(buf);
+            let end_incl = sel.content_end(text);
             let end_excl = end_incl + 1;
             b.retain(start - b.old_pos());
             b.delete(end_excl - start);
-            b.insert(text);
-            if text.is_empty() {
+            b.insert(content);
+            if content.is_empty() {
                 new_sels.push(Selection::collapsed(b.new_pos()));
             } else {
-                let count = text.chars().count();
+                let count = content.chars().count();
                 new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
             }
         }
@@ -149,11 +149,11 @@ fn paste_impl(
 /// gets its own slot); otherwise all values joined and applied at every
 /// selection. An empty `values` slice is a no-op.
 pub fn paste_after(
-    buf: BufferText,
+    text: BufferText,
     sels: SelectionSet,
     values: &[String],
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    paste_impl(buf, sels, values, false)
+    paste_impl(text, sels, values, false)
 }
 
 /// Paste `values` before/onto each selection (normal-mode `P`) — mirrors
@@ -161,9 +161,9 @@ pub fn paste_after(
 /// selections (see `paste_impl`'s matrix). An empty `values` slice is a
 /// no-op.
 pub fn paste_before(
-    buf: BufferText,
+    text: BufferText,
     sels: SelectionSet,
     values: &[String],
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    paste_impl(buf, sels, values, true)
+    paste_impl(text, sels, values, true)
 }

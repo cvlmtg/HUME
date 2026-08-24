@@ -10,9 +10,9 @@ fn run_surround(
     cursor_pos: usize,
     f: impl Fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet,
 ) -> Vec<(usize, usize)> {
-    let buf = BufferText::from(text);
+    let text = BufferText::from(text);
     let sels = SelectionSet::single(Selection::collapsed(cursor_pos));
-    let result = f(&buf, sels, 0, MotionMode::Move);
+    let result = f(&text, sels, 0, MotionMode::Move);
     result
         .iter_sorted()
         .map(|s| (s.anchor(), s.head()))
@@ -93,9 +93,9 @@ fn surround_quote_no_match() {
 #[test]
 fn surround_multi_cursor_different_pairs() {
     // (a) [b] — cursor on 'a' (pos 1) and 'b' (pos 5).
-    let buf = BufferText::from("(a) [b]\n");
+    let text = BufferText::from("(a) [b]\n");
     let sels = SelectionSet::from_vec(vec![Selection::collapsed(1), Selection::collapsed(5)], 0);
-    let result = cmd_surround_paren(&buf, sels, 0, MotionMode::Move);
+    let result = cmd_surround_paren(&text, sels, 0, MotionMode::Move);
     // Only the first cursor is inside parens; second is not.
     // First → cursors on ( and ), second preserved.
     let pairs: Vec<_> = result
@@ -108,9 +108,9 @@ fn surround_multi_cursor_different_pairs() {
 #[test]
 fn surround_multi_cursor_same_pair_merges() {
     // (hello) — two cursors both inside the same parens (pos 1 and 3).
-    let buf = BufferText::from("(hello)\n");
+    let text = BufferText::from("(hello)\n");
     let sels = SelectionSet::from_vec(vec![Selection::collapsed(1), Selection::collapsed(3)], 0);
-    let result = cmd_surround_paren(&buf, sels, 0, MotionMode::Move);
+    let result = cmd_surround_paren(&text, sels, 0, MotionMode::Move);
     // Both produce cursors on (0,0) and (6,6) — merge_overlapping deduplicates.
     let pairs: Vec<_> = result
         .iter_sorted()
@@ -123,9 +123,9 @@ fn surround_multi_cursor_same_pair_merges() {
 fn surround_with_range_selection_uses_head() {
     // (hello) — range selection spanning 'ell' (anchor=2, head=4).
     // find_bracket_pair searches from head (pos 4), finds the enclosing ().
-    let buf = BufferText::from("(hello)\n");
+    let text = BufferText::from("(hello)\n");
     let sels = SelectionSet::single(Selection::new(2, 4));
-    let result = cmd_surround_paren(&buf, sels, 0, MotionMode::Move);
+    let result = cmd_surround_paren(&text, sels, 0, MotionMode::Move);
     let pairs: Vec<_> = result
         .iter_sorted()
         .map(|s| (s.anchor(), s.head()))
@@ -137,9 +137,9 @@ fn surround_with_range_selection_uses_head() {
 fn surround_with_backward_range_selection() {
     // (hello) — backward selection (anchor=4, head=2).
     // head is at pos 2, still inside the parens.
-    let buf = BufferText::from("(hello)\n");
+    let text = BufferText::from("(hello)\n");
     let sels = SelectionSet::single(Selection::new(4, 2));
-    let result = cmd_surround_paren(&buf, sels, 0, MotionMode::Move);
+    let result = cmd_surround_paren(&text, sels, 0, MotionMode::Move);
     let pairs: Vec<_> = result
         .iter_sorted()
         .map(|s| (s.anchor(), s.head()))
@@ -223,7 +223,7 @@ fn smart_replace_non_pair_replacement_literal() {
 fn wrap_cursor_selection() {
     assert_state!(
         "-[h]>ello\n",
-        |(buf, sels)| wrap_each_selection(buf, sels, '[', ']'),
+        |(text, sels)| wrap_each_selection(text, sels, '[', ']'),
         "[h-[]]>ello\n"
     );
 }
@@ -232,7 +232,7 @@ fn wrap_cursor_selection() {
 fn wrap_forward_selection() {
     assert_state!(
         "-[hello]>\n",
-        |(buf, sels)| wrap_each_selection(buf, sels, '(', ')'),
+        |(text, sels)| wrap_each_selection(text, sels, '(', ')'),
         "(hello-[)]>\n"
     );
 }
@@ -241,7 +241,7 @@ fn wrap_forward_selection() {
 fn wrap_backward_selection() {
     assert_state!(
         "<[hello]-\n",
-        |(buf, sels)| wrap_each_selection(buf, sels, '(', ')'),
+        |(text, sels)| wrap_each_selection(text, sels, '(', ')'),
         "(hello-[)]>\n"
     );
 }
@@ -250,7 +250,7 @@ fn wrap_backward_selection() {
 fn wrap_partial_word() {
     assert_state!(
         "foo -[bar]> baz\n",
-        |(buf, sels)| wrap_each_selection(buf, sels, '[', ']'),
+        |(text, sels)| wrap_each_selection(text, sels, '[', ']'),
         "foo [bar-[]]> baz\n"
     );
 }
@@ -259,7 +259,7 @@ fn wrap_partial_word() {
 fn wrap_multi_cursor_selections() {
     assert_state!(
         "-[ab]>c-[de]>f\n",
-        |(buf, sels)| wrap_each_selection(buf, sels, '(', ')'),
+        |(text, sels)| wrap_each_selection(text, sels, '(', ')'),
         "(ab-[)]>c(de-[)]>f\n"
     );
 }
@@ -270,7 +270,7 @@ fn wrap_multi_line_selection() {
     // included in the wrap — end_inclusive clamping to len_chars()-2 guards this.
     assert_state!(
         "-[foo\nbar]> baz\n",
-        |(buf, sels)| wrap_each_selection(buf, sels, '"', '"'),
+        |(text, sels)| wrap_each_selection(text, sels, '"', '"'),
         "\"foo\nbar-[\"]> baz\n"
     );
 }

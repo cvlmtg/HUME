@@ -19,12 +19,12 @@ use super::apply_edit;
 ///
 /// This covers single-cursor typing, multicursor typing, and "replace
 /// selection with typed character" — all via the same loop.
-pub fn insert_char(buf: BufferText, sels: SelectionSet, ch: char) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+pub fn insert_char(text: BufferText, sels: SelectionSet, ch: char) -> (BufferText, SelectionSet, ChangeSet) {
+    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
         if !sel.is_collapsed() {
-            b.delete(sel.content_end(buf) + 1 - start);
+            b.delete(sel.content_end(text) + 1 - start);
         }
         b.insert_char(ch);
         // new_pos() is one past the inserted char — the cursor sits on the
@@ -38,19 +38,23 @@ pub fn insert_char(buf: BufferText, sels: SelectionSet, ch: char) -> (BufferText
 /// [`insert_char`], used for pasted text so a paste is one edit rather than
 /// one `insert_char` call per character.
 ///
-/// Same shape as `insert_char`: single-character selections get `text`
+/// Same shape as `insert_char`: single-character selections get `inserted`
 /// inserted before the cursor; non-collapsed selections are replaced. The
 /// cursor lands at `new_pos()` (one past the inserted text) in both cases —
-/// no manual position arithmetic, so a multi-char `text` can't land mid
+/// no manual position arithmetic, so a multi-char `inserted` can't land mid
 /// grapheme-cluster.
-pub fn insert_str(buf: BufferText, sels: SelectionSet, text: &str) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+pub fn insert_str(
+    text: BufferText,
+    sels: SelectionSet,
+    inserted: &str,
+) -> (BufferText, SelectionSet, ChangeSet) {
+    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
         if !sel.is_collapsed() {
-            b.delete(sel.content_end(buf) + 1 - start);
+            b.delete(sel.content_end(text) + 1 - start);
         }
-        b.insert(text);
+        b.insert(inserted);
         let sel = Selection::collapsed(b.new_pos());
         new_sels.push(sel);
     })
@@ -64,8 +68,8 @@ pub fn insert_str(buf: BufferText, sels: SelectionSet, text: &str) -> (BufferTex
 /// non-whitespace char, and every line's char content ends in `\n` (buffer
 /// invariant), so a whitespace-only line is the one case where the scan runs
 /// all the way to that `\n` without finding one.
-fn is_blank_indented_line(buf: &BufferText, line_start: usize, ws_end: usize) -> bool {
-    ws_end > line_start && buf.char_at(ws_end) == Some('\n')
+fn is_blank_indented_line(text: &BufferText, line_start: usize, ws_end: usize) -> bool {
+    ws_end > line_start && text.char_at(ws_end) == Some('\n')
 }
 
 /// `Some((line_start, ws_end))` if `pos` sits on a blank, auto-indented line
@@ -76,11 +80,11 @@ fn is_blank_indented_line(buf: &BufferText, line_start: usize, ws_end: usize) ->
 /// `clear_blank_line_indent` so exiting Insert mode away from a blank line
 /// doesn't run an identity edit — which would still bump `text_gen` and
 /// record a spurious pending tree-sitter edit) and the edit ops below.
-pub fn blank_line_ws_range(buf: &BufferText, pos: usize) -> Option<(usize, usize)> {
-    let line = buf.char_to_line(pos);
-    let line_start = buf.line_to_char(line);
-    let ws_end = leading_whitespace_end(buf, line);
-    is_blank_indented_line(buf, line_start, ws_end).then_some((line_start, ws_end))
+pub fn blank_line_ws_range(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
+    let line = text.char_to_line(pos);
+    let line_start = text.line_to_char(line);
+    let ws_end = leading_whitespace_end(text, line);
+    is_blank_indented_line(text, line_start, ws_end).then_some((line_start, ws_end))
 }
 
 /// Shared per-selection prelude for [`insert_newline_indent`] and
@@ -91,15 +95,15 @@ pub fn blank_line_ws_range(buf: &BufferText, pos: usize) -> Option<(usize, usize
 /// backwards past what the builder already emitted.
 fn line_context_if_unconsumed(
     b: &ChangeSetBuilder,
-    buf: &BufferText,
+    text: &BufferText,
     pos: usize,
 ) -> Option<(usize, usize)> {
     if pos < b.old_pos() {
         return None;
     }
-    let line_idx = buf.char_to_line(pos);
-    let line_start = buf.line_to_char(line_idx);
-    let ws_end = leading_whitespace_end(buf, line_idx);
+    let line_idx = text.char_to_line(pos);
+    let line_start = text.line_to_char(line_idx);
+    let ws_end = leading_whitespace_end(text, line_idx);
     Some((line_start, ws_end))
 }
 
@@ -116,13 +120,13 @@ fn line_context_if_unconsumed(
 /// is always safe since `pos >= b.old_pos()` per [`line_context_if_unconsumed`]).
 fn try_trim_blank_line(
     b: &mut ChangeSetBuilder,
-    buf: &BufferText,
+    text: &BufferText,
     sel: &Selection,
     line_start: usize,
     ws_end: usize,
 ) -> bool {
     if !sel.is_collapsed()
-        || !is_blank_indented_line(buf, line_start, ws_end)
+        || !is_blank_indented_line(text, line_start, ws_end)
         || line_start < b.old_pos()
     {
         return false;
@@ -152,24 +156,24 @@ fn try_trim_blank_line(
 /// already-blank line (nothing to vacate yet); `true` once auto-indent has
 /// landed there (threaded through from `EditorState::autoindent_pending`).
 pub fn insert_newline_indent(
-    buf: BufferText,
+    text: BufferText,
     sels: SelectionSet,
     trim_blank: bool,
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let start = sel.start();
-        let Some((line_start, ws_end)) = line_context_if_unconsumed(b, buf, start) else {
+        let Some((line_start, ws_end)) = line_context_if_unconsumed(b, text, start) else {
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
         };
 
-        if !(trim_blank && try_trim_blank_line(b, buf, sel, line_start, ws_end)) {
+        if !(trim_blank && try_trim_blank_line(b, text, sel, line_start, ws_end)) {
             b.retain(start - b.old_pos());
             if !sel.is_collapsed() {
-                b.delete(sel.content_end(buf) + 1 - start);
+                b.delete(sel.content_end(text) + 1 - start);
             }
         }
-        let indent = buf.slice(line_start..ws_end).to_string();
+        let indent = text.slice(line_start..ws_end).to_string();
         b.insert_char('\n');
         if !indent.is_empty() {
             b.insert(&indent);
@@ -186,15 +190,15 @@ pub fn insert_newline_indent(
 /// with the cursor still on a blank auto-indented line (`:help autoindent`:
 /// "type `<Esc>` ... the indent is deleted again"). Selections not on a blank
 /// line are left untouched (identity edit).
-pub fn clear_blank_line_indent(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+pub fn clear_blank_line_indent(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
+    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         if sel.is_collapsed() {
             let head = sel.head();
-            let Some((line_start, ws_end)) = line_context_if_unconsumed(b, buf, head) else {
+            let Some((line_start, ws_end)) = line_context_if_unconsumed(b, text, head) else {
                 new_sels.push(Selection::collapsed(b.new_pos()));
                 return;
             };
-            if !try_trim_blank_line(b, buf, sel, line_start, ws_end) {
+            if !try_trim_blank_line(b, text, sel, line_start, ws_end) {
                 b.retain(head - b.old_pos());
             }
             new_sels.push(Selection::collapsed(b.new_pos()));
@@ -211,7 +215,7 @@ pub fn clear_blank_line_indent(buf: BufferText, sels: SelectionSet) -> (BufferTe
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
         }
-        let end_incl = sel.end_inclusive(buf);
+        let end_incl = sel.end_inclusive(text);
         b.retain(start - b.old_pos());
         let delta = b.new_pos() as isize - b.old_pos() as isize;
         b.retain(end_incl + 1 - start);
@@ -234,13 +238,13 @@ pub fn clear_blank_line_indent(buf: BufferText, sels: SelectionSet) -> (BufferTe
 /// Non-collapsed selections are deleted first, same as `insert_char` — Tab
 /// over a selection replaces it, just like typing any other key.
 pub fn insert_tab(
-    buf: BufferText,
+    text: BufferText,
     sels: SelectionSet,
     style: TabStyle,
     tab_width: u8,
 ) -> (BufferText, SelectionSet, ChangeSet) {
     if style == TabStyle::Hard {
-        return insert_char(buf, sels, '\t');
+        return insert_char(text, sels, '\t');
     }
     // Track the accumulated display-column shift from insertions/deletions made by
     // earlier cursors on the same line. Without this, the second cursor on a line
@@ -248,10 +252,10 @@ pub fn insert_tab(
     // spaces the first cursor already inserted.
     let mut prev_line: Option<usize> = None;
     let mut display_col_shift: isize = 0;
-    apply_edit(buf, sels, move |b, buf, _i, sel, new_sels| {
+    apply_edit(text, sels, move |b, text, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
-        let line_idx = buf.char_to_line(start);
+        let line_idx = text.char_to_line(start);
         if prev_line != Some(line_idx) {
             display_col_shift = 0;
             prev_line = Some(line_idx);
@@ -260,20 +264,20 @@ pub fn insert_tab(
         // same-line edits. Cast to isize because display_col_shift is signed
         // (a selection deletion can decrease it), then clamp to avoid
         // underflow.
-        let display_col = (display_col_in_line(buf, line_idx, start, tab_width) as isize
+        let display_col = (display_col_in_line(text, line_idx, start, tab_width) as isize
             + display_col_shift)
             .max(0) as usize;
         if !sel.is_collapsed() {
-            let del_end = sel.content_end(buf) + 1;
+            let del_end = sel.content_end(text) + 1;
             // Clamp del_end to the line boundary before computing the display-column
             // width to keep display_col_shift accurate. A multi-line selection
             // (del_end on a different line) would otherwise walk past the '\n'
             // when counting columns, making display_col_shift wrong for later
             // same-line cursors.
-            let line_end = line_end_exclusive(buf, line_idx);
+            let line_end = line_end_exclusive(text, line_idx);
             let del_end_clamped = del_end.min(line_end);
-            let del_width = display_col_in_line(buf, line_idx, del_end_clamped, tab_width)
-                - display_col_in_line(buf, line_idx, start, tab_width);
+            let del_width = display_col_in_line(text, line_idx, del_end_clamped, tab_width)
+                - display_col_in_line(text, line_idx, start, tab_width);
             b.delete(del_end - start);
             display_col_shift -= del_width as isize;
         }

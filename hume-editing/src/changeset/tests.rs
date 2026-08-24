@@ -157,81 +157,81 @@ fn is_identity_false_for_real_changes() {
 #[test]
 fn apply_identity() {
     // "hello\n" = 6 chars; identity changeset retains all 6.
-    let buf = BufferText::from("hello");
+    let text = BufferText::from("hello");
     let mut b = ChangeSetBuilder::new(6);
     b.retain_rest();
     let cs = b.finish();
 
-    assert_eq!(cs.apply(&buf).unwrap().to_string(), "hello\n");
+    assert_eq!(cs.apply(&text).unwrap().to_string(), "hello\n");
 }
 
 #[test]
 fn apply_insert_at_start() {
     // "world\n" = 6 chars; insert "hello " before it.
-    let buf = BufferText::from("world");
+    let text = BufferText::from("world");
     let mut b = ChangeSetBuilder::new(6);
     b.insert("hello ");
     b.retain_rest();
     let cs = b.finish();
 
-    assert_eq!(cs.apply(&buf).unwrap().to_string(), "hello world\n");
+    assert_eq!(cs.apply(&text).unwrap().to_string(), "hello world\n");
 }
 
 #[test]
 fn apply_insert_at_end() {
     // "hello\n" = 6 chars; insert " world" before the trailing \n.
-    let buf = BufferText::from("hello");
+    let text = BufferText::from("hello");
     let mut b = ChangeSetBuilder::new(6);
     b.retain(5); // retain "hello"
     b.insert(" world");
     b.retain_rest(); // retain "\n"
     let cs = b.finish();
 
-    assert_eq!(cs.apply(&buf).unwrap().to_string(), "hello world\n");
+    assert_eq!(cs.apply(&text).unwrap().to_string(), "hello world\n");
 }
 
 #[test]
 fn apply_insert_in_middle() {
     // "helo\n" = 5 chars; insert "l" at position 3.
-    let buf = BufferText::from("helo");
+    let text = BufferText::from("helo");
     let mut b = ChangeSetBuilder::new(5);
     b.retain(3);
     b.insert("l");
     b.retain_rest();
     let cs = b.finish();
 
-    assert_eq!(cs.apply(&buf).unwrap().to_string(), "hello\n");
+    assert_eq!(cs.apply(&text).unwrap().to_string(), "hello\n");
 }
 
 #[test]
 fn apply_delete_at_start() {
     // "hello world\n" = 12 chars; delete "hello " (6 chars).
-    let buf = BufferText::from("hello world");
+    let text = BufferText::from("hello world");
     let mut b = ChangeSetBuilder::new(12);
     b.delete(6); // delete "hello "
     b.retain_rest();
     let cs = b.finish();
 
-    assert_eq!(cs.apply(&buf).unwrap().to_string(), "world\n");
+    assert_eq!(cs.apply(&text).unwrap().to_string(), "world\n");
 }
 
 #[test]
 fn apply_delete_at_end() {
     // "hello world\n" = 12 chars; delete " world" (6 chars at pos 5–10).
-    let buf = BufferText::from("hello world");
+    let text = BufferText::from("hello world");
     let mut b = ChangeSetBuilder::new(12);
     b.retain(5);
     b.delete(6); // delete " world"
     b.retain_rest(); // retain "\n"
     let cs = b.finish();
 
-    assert_eq!(cs.apply(&buf).unwrap().to_string(), "hello\n");
+    assert_eq!(cs.apply(&text).unwrap().to_string(), "hello\n");
 }
 
 #[test]
 fn apply_replace() {
     // "hello world\n" = 12 chars; replace "world" with "rust".
-    let buf = BufferText::from("hello world");
+    let text = BufferText::from("hello world");
     let mut b = ChangeSetBuilder::new(12);
     b.retain(6);
     b.delete(5); // delete "world"
@@ -239,13 +239,13 @@ fn apply_replace() {
     b.retain_rest(); // retain "\n"
     let cs = b.finish();
 
-    assert_eq!(cs.apply(&buf).unwrap().to_string(), "hello rust\n");
+    assert_eq!(cs.apply(&text).unwrap().to_string(), "hello rust\n");
 }
 
 #[test]
 fn apply_multi_edit() {
     // "hello world\n" = 12 chars; two cursors insert "!" at positions 0 and 6.
-    let buf = BufferText::from("hello world");
+    let text = BufferText::from("hello world");
     let mut b = ChangeSetBuilder::new(12);
     b.insert("!");
     b.retain(6);
@@ -253,31 +253,31 @@ fn apply_multi_edit() {
     b.retain_rest();
     let cs = b.finish();
 
-    assert_eq!(cs.apply(&buf).unwrap().to_string(), "!hello !world\n");
+    assert_eq!(cs.apply(&text).unwrap().to_string(), "!hello !world\n");
 }
 
 #[test]
 fn apply_delete_entire_buffer() {
     // "hello\n" = 6 chars; delete the content "hello" (5 chars), leaving "\n".
-    let buf = BufferText::from("hello");
+    let text = BufferText::from("hello");
     let mut b = ChangeSetBuilder::new(6);
     b.delete(5);
     b.retain_rest(); // retain the structural trailing \n
     let cs = b.finish();
 
-    assert_eq!(cs.apply(&buf).unwrap().to_string(), "\n");
+    assert_eq!(cs.apply(&text).unwrap().to_string(), "\n");
 }
 
 #[test]
 fn apply_empty_buffer_insert() {
     // BufferText::empty() = "\n" (1 char); insert "x" before the trailing \n.
-    let buf = BufferText::empty();
+    let text = BufferText::empty();
     let mut b = ChangeSetBuilder::new(1);
     b.insert("x");
     b.retain_rest(); // retain "\n"
     let cs = b.finish();
 
-    assert_eq!(cs.apply(&buf).unwrap().to_string(), "x\n");
+    assert_eq!(cs.apply(&text).unwrap().to_string(), "x\n");
 }
 
 // ── map_pos tests ────────────────────────────────────────────────────────
@@ -737,11 +737,11 @@ fn edited_old_ranges_keeps_disjoint_edits_separate() {
 #[test]
 fn invert_identity() {
     // "hello\n" = 6 chars.
-    let buf = BufferText::from("hello");
+    let text = BufferText::from("hello");
     let mut b = ChangeSetBuilder::new(6);
     b.retain_rest();
     let cs = b.finish();
-    let inv = cs.invert(&buf);
+    let inv = cs.invert(&text);
 
     assert!(inv.is_identity());
     assert_eq!(inv.len_before, 6);
@@ -752,12 +752,12 @@ fn invert_identity() {
 fn invert_insert() {
     // Insert "XX" at start of "hello\n" → "XXhello\n" (8 chars).
     // Inverse should delete 2 chars at start.
-    let buf = BufferText::from("hello");
+    let text = BufferText::from("hello");
     let mut b = ChangeSetBuilder::new(6);
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
-    let inv = cs.invert(&buf);
+    let inv = cs.invert(&text);
 
     assert_eq!(inv.len_before, 8); // "XXhello\n"
     assert_eq!(inv.len_after, 6); // back to "hello\n"
@@ -768,12 +768,12 @@ fn invert_insert() {
 fn invert_delete() {
     // Delete first 3 chars of "hello\n" → "lo\n" (3 chars).
     // Inverse should insert "hel" at start.
-    let buf = BufferText::from("hello");
+    let text = BufferText::from("hello");
     let mut b = ChangeSetBuilder::new(6);
     b.delete(3);
     b.retain_rest();
     let cs = b.finish();
-    let inv = cs.invert(&buf);
+    let inv = cs.invert(&text);
 
     assert_eq!(inv.len_before, 3); // "lo\n"
     assert_eq!(inv.len_after, 6); // back to "hello\n"
@@ -786,7 +786,7 @@ fn invert_delete() {
 #[test]
 fn invert_roundtrip() {
     // "hello world\n" = 12 chars.
-    let buf = BufferText::from("hello world");
+    let text = BufferText::from("hello world");
     let mut b = ChangeSetBuilder::new(12);
     b.retain(6);
     b.delete(5);
@@ -794,8 +794,8 @@ fn invert_roundtrip() {
     b.retain_rest(); // retain "\n"
     let cs = b.finish();
 
-    let inv = cs.invert(&buf);
-    let result = cs.apply(&buf).unwrap();
+    let inv = cs.invert(&text);
+    let result = cs.apply(&text).unwrap();
     assert_eq!(result.to_string(), "hello rust\n");
 
     let restored = inv.apply(&result).unwrap();
@@ -805,7 +805,7 @@ fn invert_roundtrip() {
 #[test]
 fn invert_replace() {
     // "abcde\n" = 6 chars.
-    let buf = BufferText::from("abcde");
+    let text = BufferText::from("abcde");
     let mut b = ChangeSetBuilder::new(6);
     b.retain(1);
     b.delete(3); // delete "bcd"
@@ -813,8 +813,8 @@ fn invert_replace() {
     b.retain_rest();
     let cs = b.finish();
 
-    let inv = cs.invert(&buf);
-    let result = cs.apply(&buf).unwrap();
+    let inv = cs.invert(&text);
+    let result = cs.apply(&text).unwrap();
     assert_eq!(result.to_string(), "aXYe\n");
 
     let restored = inv.apply(&result).unwrap();
@@ -824,7 +824,7 @@ fn invert_replace() {
 #[test]
 fn invert_multi_edit() {
     // "hello world\n" = 12 chars; two inserts at different positions.
-    let buf = BufferText::from("hello world");
+    let text = BufferText::from("hello world");
     let mut b = ChangeSetBuilder::new(12);
     b.insert("!");
     b.retain(6);
@@ -832,8 +832,8 @@ fn invert_multi_edit() {
     b.retain_rest();
     let cs = b.finish();
 
-    let inv = cs.invert(&buf);
-    let result = cs.apply(&buf).unwrap();
+    let inv = cs.invert(&text);
+    let result = cs.apply(&text).unwrap();
     assert_eq!(result.to_string(), "!hello !world\n");
 
     let restored = inv.apply(&result).unwrap();
@@ -885,7 +885,7 @@ fn compose_two_inserts() {
     // A: insert "X" at 0 → "Xabc\n" (4→5)
     // B: insert "Y" at 2 in "Xabc\n" → "XaYbc\n" (5→6)
     // Composed: "abc\n" → "XaYbc\n"
-    let buf = BufferText::from("abc");
+    let text = BufferText::from("abc");
 
     let mut a_b = ChangeSetBuilder::new(4);
     a_b.insert("X");
@@ -899,10 +899,10 @@ fn compose_two_inserts() {
     let b = b_b.finish();
 
     // Step-by-step oracle: apply a then b separately.
-    let mid = a.clone().apply(&buf).unwrap();
+    let mid = a.clone().apply(&text).unwrap();
     let step_by_step = b.clone().apply(&mid).unwrap();
     let composed = a.compose(b);
-    let direct = composed.apply(&buf).unwrap();
+    let direct = composed.apply(&text).unwrap();
     assert_eq!(direct.to_string(), step_by_step.to_string());
     assert_eq!(direct.to_string(), "XaYbc\n");
 }
@@ -913,7 +913,7 @@ fn compose_insert_then_delete() {
     // A: insert "XY" at 0 → "XYabc\n" (4→6)
     // B: delete 2 at 0 in "XYabc\n" → "abc\n" (6→4)
     // Composed: identity on "abc\n"
-    let buf = BufferText::from("abc");
+    let text = BufferText::from("abc");
 
     let mut a_b = ChangeSetBuilder::new(4);
     a_b.insert("XY");
@@ -927,7 +927,7 @@ fn compose_insert_then_delete() {
 
     let composed = a.compose(b);
     assert!(composed.is_identity(), "insert then delete should cancel");
-    assert_eq!(composed.apply(&buf).unwrap().to_string(), "abc\n");
+    assert_eq!(composed.apply(&text).unwrap().to_string(), "abc\n");
 }
 
 #[test]
@@ -936,7 +936,7 @@ fn compose_delete_then_insert() {
     // A: delete 3 at start → "lo\n" (6→3)
     // B: insert "XY" at 0 in "lo\n" → "XYlo\n" (3→5)
     // Composed: "hello\n" → "XYlo\n"
-    let buf = BufferText::from("hello");
+    let text = BufferText::from("hello");
 
     let mut a_b = ChangeSetBuilder::new(6);
     a_b.delete(3);
@@ -948,10 +948,10 @@ fn compose_delete_then_insert() {
     b_b.retain_rest();
     let b = b_b.finish();
 
-    let mid = a.clone().apply(&buf).unwrap();
+    let mid = a.clone().apply(&text).unwrap();
     let step_by_step = b.clone().apply(&mid).unwrap();
     let composed = a.compose(b);
-    let direct = composed.apply(&buf).unwrap();
+    let direct = composed.apply(&text).unwrap();
     assert_eq!(direct.to_string(), step_by_step.to_string());
     assert_eq!(direct.to_string(), "XYlo\n");
 }
@@ -963,7 +963,7 @@ fn compose_complex() {
     // B: retain 1, delete 3, retain rest on "abXYde\n"
     //    → delete "bXY" → "ade\n" (7→4)
     // Composed: "abcde\n" → "ade\n"
-    let buf = BufferText::from("abcde");
+    let text = BufferText::from("abcde");
 
     let mut a_b = ChangeSetBuilder::new(6);
     a_b.retain(2);
@@ -978,10 +978,10 @@ fn compose_complex() {
     b_b.retain_rest();
     let b = b_b.finish();
 
-    let mid = a.clone().apply(&buf).unwrap();
+    let mid = a.clone().apply(&text).unwrap();
     let step_by_step = b.clone().apply(&mid).unwrap();
     let composed = a.compose(b);
-    let direct = composed.apply(&buf).unwrap();
+    let direct = composed.apply(&text).unwrap();
     assert_eq!(direct.to_string(), step_by_step.to_string());
     assert_eq!(direct.to_string(), "ade\n");
 }
@@ -993,7 +993,7 @@ fn compose_partial_insert_retain() {
     // B: retain 2, delete 2, retain rest on "ABCDxyz\n"
     //    → "AB" + "xyz\n" = "ABxyz\n" (8→6)
     // Composed: "xyz\n" → "ABxyz\n"
-    let buf = BufferText::from("xyz");
+    let text = BufferText::from("xyz");
 
     let mut a_b = ChangeSetBuilder::new(4);
     a_b.insert("ABCD");
@@ -1006,10 +1006,10 @@ fn compose_partial_insert_retain() {
     b_b.retain_rest();
     let b = b_b.finish();
 
-    let mid = a.clone().apply(&buf).unwrap();
+    let mid = a.clone().apply(&text).unwrap();
     let step_by_step = b.clone().apply(&mid).unwrap();
     let composed = a.compose(b);
-    let direct = composed.apply(&buf).unwrap();
+    let direct = composed.apply(&text).unwrap();
     assert_eq!(direct.to_string(), step_by_step.to_string());
     assert_eq!(direct.to_string(), "ABxyz\n");
 }
@@ -1090,9 +1090,9 @@ proptest! {
     /// Applying a changeset then its inverse restores the original buffer.
     #[test]
     fn prop_invert_roundtrip(text in arb_text(20)) {
-        let buf = BufferText::from(text.as_str());
-        let doc_len = buf.len_chars(); // includes trailing \n
-        let original_content = buf.to_string();
+        let text = BufferText::from(text.as_str());
+        let doc_len = text.len_chars(); // includes trailing \n
+        let original_content = text.to_string();
 
         let half = doc_len / 2;
         let mut b = ChangeSetBuilder::new(doc_len);
@@ -1101,9 +1101,9 @@ proptest! {
         b.retain_rest();
         let cs = b.finish();
 
-        // Invert before apply — buf remains valid on error since apply takes &BufferText.
-        let inv = cs.invert(&buf);
-        let result = cs.apply(&buf).unwrap();
+        // Invert before apply — text remains valid on error since apply takes &BufferText.
+        let inv = cs.invert(&text);
+        let result = cs.apply(&text).unwrap();
         let restored = inv.apply(&result).unwrap();
         prop_assert_eq!(restored.to_string(), original_content);
     }
@@ -1112,8 +1112,8 @@ proptest! {
     /// sequentially.
     #[test]
     fn prop_compose_equivalence(text in arb_text(20)) {
-        let buf = BufferText::from(text.as_str());
-        let doc_len = buf.len_chars(); // includes trailing \n
+        let text = BufferText::from(text.as_str());
+        let doc_len = text.len_chars(); // includes trailing \n
 
         // First changeset: delete first quarter, insert "AB".
         let q1 = doc_len / 4;
@@ -1123,7 +1123,7 @@ proptest! {
         b1.retain_rest();
         let cs1 = b1.finish();
 
-        let mid = cs1.apply(&buf).unwrap();
+        let mid = cs1.apply(&text).unwrap();
         let mid_len = mid.len_chars();
 
         // Second changeset: retain half, insert "CD", retain rest.
@@ -1136,7 +1136,7 @@ proptest! {
 
         let step_by_step = cs2.clone().apply(&mid).unwrap();
         let composed = cs1.compose(cs2);
-        let direct = composed.apply(&buf).unwrap();
+        let direct = composed.apply(&text).unwrap();
 
         prop_assert_eq!(direct.to_string(), step_by_step.to_string());
     }
@@ -1148,18 +1148,18 @@ proptest! {
         _text in arb_text(30),
         cs in arb_text(30).prop_flat_map(|t| {
             // Use BufferText::from to get the actual length (includes \n).
-            let buf = BufferText::from(t.as_str());
-            let len = buf.len_chars();
+            let text = BufferText::from(t.as_str());
+            let len = text.len_chars();
             arb_changeset(len).prop_map(move |cs| (t.clone(), cs))
         })
     ) {
         let (text, cs) = cs;
-        let buf = BufferText::from(text.as_str());
-        let original_content = buf.to_string();
+        let text = BufferText::from(text.as_str());
+        let original_content = text.to_string();
 
-        // Invert before apply — buf remains valid on error since apply takes &BufferText.
-        let inv = cs.invert(&buf);
-        let result = cs.apply(&buf).unwrap();
+        // Invert before apply — text remains valid on error since apply takes &BufferText.
+        let inv = cs.invert(&text);
+        let result = cs.apply(&text).unwrap();
         let restored = inv.apply(&result).unwrap();
         prop_assert_eq!(restored.to_string(), original_content);
     }
@@ -1173,8 +1173,8 @@ proptest! {
     fn prop_compose_associativity(
         text in arb_text(20),
     ) {
-        let buf = BufferText::from(text.as_str());
-        let doc_len = buf.len_chars(); // includes trailing \n
+        let text = BufferText::from(text.as_str());
+        let doc_len = text.len_chars(); // includes trailing \n
 
         // Build three sequential changesets A→B, B→C, C→D.
         let q = doc_len / 4;
@@ -1184,7 +1184,7 @@ proptest! {
         b1.retain_rest();
         let a = b1.finish();
 
-        let mid1 = a.clone().apply(&buf).unwrap();
+        let mid1 = a.clone().apply(&text).unwrap();
         let mid1_len = mid1.len_chars();
 
         let h = mid1_len / 2;
@@ -1212,8 +1212,8 @@ proptest! {
         let bc = b.compose(c);
         let a_bc = a.compose(bc);
 
-        let result_left = ab_c.apply(&buf).unwrap();
-        let result_right = a_bc.apply(&buf).unwrap();
+        let result_left = ab_c.apply(&text).unwrap();
+        let result_right = a_bc.apply(&text).unwrap();
         prop_assert_eq!(result_left.to_string(), result_right.to_string());
     }
 }
@@ -1225,7 +1225,7 @@ fn apply_returns_err_if_trailing_newline_deleted() {
     // "hi\n" = 3 chars. Delete all 3 chars including the structural '\n'.
     // This is what a buggy plugin might produce via the raw builder.
     // apply() must return Err and leave the original buffer untouched.
-    let buf = BufferText::from("hi");
+    let text = BufferText::from("hi");
     // Construct the changeset directly to bypass the builder's finish()
     // assert (which catches old_pos != doc_len) and reach apply's
     // trailing-newline check.
@@ -1234,21 +1234,21 @@ fn apply_returns_err_if_trailing_newline_deleted() {
         len_before: 3,
         len_after: 0,
     };
-    let err = cs.apply(&buf).unwrap_err();
+    let err = cs.apply(&text).unwrap_err();
     assert_eq!(err, ApplyError::TrailingNewlineMissing);
     // Original buffer is untouched — we can still use it.
-    assert_eq!(buf.to_string(), "hi\n");
+    assert_eq!(text.to_string(), "hi\n");
 }
 
 #[test]
 fn apply_returns_err_on_length_mismatch() {
     // Changeset built for 10 chars, buffer has 3.
-    let buf = BufferText::from("hi");
+    let text = BufferText::from("hi");
     let mut b = ChangeSetBuilder::new(10);
     b.retain_rest();
     let cs = b.finish();
 
-    let err = cs.apply(&buf).unwrap_err();
+    let err = cs.apply(&text).unwrap_err();
     assert_eq!(
         err,
         ApplyError::LengthMismatch {
@@ -1257,5 +1257,5 @@ fn apply_returns_err_on_length_mismatch() {
         }
     );
     // Original buffer is untouched.
-    assert_eq!(buf.to_string(), "hi\n");
+    assert_eq!(text.to_string(), "hi\n");
 }

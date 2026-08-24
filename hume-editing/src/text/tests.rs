@@ -9,57 +9,57 @@ fn from_rope_is_raw() {
     // by the editing-operation guards (e.g. delete_char_forward is a no-op
     // on the structural \n).
     let rope = Rope::from_str("hello\n");
-    let buf = BufferText::from_rope(rope, LineEnding::Lf);
-    assert_eq!(buf.to_string(), "hello\n");
+    let text = BufferText::from_rope(rope, LineEnding::Lf);
+    assert_eq!(text.to_string(), "hello\n");
 }
 
 #[test]
 fn empty_buffer() {
-    let buf = BufferText::empty();
-    assert_eq!(buf.len_chars(), 1); // structural trailing \n
-    assert_eq!(buf.ropey_line_count(), 2); // "\n" → line 0 = "\n", line 1 = ""
-    assert!(buf.is_empty());
-    assert_eq!(buf.to_string(), "\n");
+    let text = BufferText::empty();
+    assert_eq!(text.len_chars(), 1); // structural trailing \n
+    assert_eq!(text.ropey_line_count(), 2); // "\n" → line 0 = "\n", line 1 = ""
+    assert!(text.is_empty());
+    assert_eq!(text.to_string(), "\n");
 }
 
 #[test]
 fn from_str_ascii() {
-    let buf = BufferText::from("hello\nworld");
-    assert_eq!(buf.len_chars(), 12); // "hello\nworld\n"
-    assert_eq!(buf.ropey_line_count(), 3); // line 0, line 1, trailing empty line
-    assert!(!buf.is_empty());
-    assert_eq!(buf.to_string(), "hello\nworld\n");
+    let text = BufferText::from("hello\nworld");
+    assert_eq!(text.len_chars(), 12); // "hello\nworld\n"
+    assert_eq!(text.ropey_line_count(), 3); // line 0, line 1, trailing empty line
+    assert!(!text.is_empty());
+    assert_eq!(text.to_string(), "hello\nworld\n");
 }
 
 #[test]
 fn from_str_lf_line_ending() {
-    let buf = BufferText::from("hello\n");
-    assert_eq!(buf.line_ending(), LineEnding::Lf);
+    let text = BufferText::from("hello\n");
+    assert_eq!(text.line_ending(), LineEnding::Lf);
 }
 
 #[test]
 fn from_str_crlf_normalized() {
-    let buf = BufferText::from("hello\r\nworld\r\n");
+    let text = BufferText::from("hello\r\nworld\r\n");
     // \r stripped — content is pure LF
-    assert_eq!(buf.to_string(), "hello\nworld\n");
-    assert_eq!(buf.len_chars(), 12); // "hello\nworld\n"
-    assert_eq!(buf.line_ending(), LineEnding::CrLf);
+    assert_eq!(text.to_string(), "hello\nworld\n");
+    assert_eq!(text.len_chars(), 12); // "hello\nworld\n"
+    assert_eq!(text.line_ending(), LineEnding::CrLf);
 }
 
 #[test]
 fn from_str_mixed_crlf_lf() {
     // Mixed: CRLF wins if any \r\n present.
-    let buf = BufferText::from("hello\r\nworld\n");
-    assert_eq!(buf.to_string(), "hello\nworld\n");
-    assert_eq!(buf.line_ending(), LineEnding::CrLf);
+    let text = BufferText::from("hello\r\nworld\n");
+    assert_eq!(text.to_string(), "hello\nworld\n");
+    assert_eq!(text.line_ending(), LineEnding::CrLf);
 }
 
 #[test]
 fn from_str_bare_cr_preserved() {
     // Old Mac bare \r is left as-is (treated as content, not a line ending).
-    let buf = BufferText::from("hello\rworld\n");
-    assert_eq!(buf.to_string(), "hello\rworld\n");
-    assert_eq!(buf.line_ending(), LineEnding::Lf);
+    let text = BufferText::from("hello\rworld\n");
+    assert_eq!(text.to_string(), "hello\rworld\n");
+    assert_eq!(text.line_ending(), LineEnding::Lf);
 }
 
 #[test]
@@ -69,23 +69,23 @@ fn from_str_cr_then_crlf_leaves_bare_cr() {
     // pushed as-is; only the second '\r' pairs with the following '\n' and is
     // dropped. The rope therefore still contains a literal "\r\n" — this is
     // the case that disproves "content is always \r-free after loading".
-    let buf = BufferText::from("\r\r\n");
-    assert_eq!(buf.to_string(), "\r\n");
-    assert_eq!(buf.line_ending(), LineEnding::CrLf);
+    let text = BufferText::from("\r\r\n");
+    assert_eq!(text.to_string(), "\r\n");
+    assert_eq!(text.line_ending(), LineEnding::CrLf);
 }
 
 #[test]
 fn from_str_trailing_newline() {
     // A trailing newline creates an extra empty line.
-    let buf = BufferText::from("hello\n");
-    assert_eq!(buf.ropey_line_count(), 2);
+    let text = BufferText::from("hello\n");
+    assert_eq!(text.ropey_line_count(), 2);
 }
 
 #[test]
 fn line_tokens_count_matches_ropey_line_count_and_keeps_terminators() {
-    let buf = BufferText::from("a\nb\n");
-    let tokens: Vec<_> = buf.line_tokens().collect();
-    assert_eq!(tokens.len(), buf.ropey_line_count());
+    let text = BufferText::from("a\nb\n");
+    let tokens: Vec<_> = text.line_tokens().collect();
+    assert_eq!(tokens.len(), text.ropey_line_count());
     assert_eq!(tokens, vec!["a\n", "b\n", ""]);
 }
 
@@ -94,15 +94,15 @@ fn line_tokens_splits_on_non_lf_unicode_breaks() {
     // ropey's default `unicode_lines` feature breaks on far more than `\n` —
     // form feed (U+000C) here. `BufferText::from` only collapses `\r\n`, so a bare
     // FF reaches the rope untouched and still terminates a token.
-    let buf = BufferText::from("a\u{0C}b\n");
-    let tokens: Vec<_> = buf.line_tokens().collect();
+    let text = BufferText::from("a\u{0C}b\n");
+    let tokens: Vec<_> = text.line_tokens().collect();
     assert_eq!(tokens, vec!["a\u{0C}", "b\n", ""]);
 }
 
 #[test]
 fn line_tokens_at_starts_at_the_requested_line() {
-    let buf = BufferText::from("a\nb\nc\n");
-    let tokens: Vec<_> = buf.line_tokens_at(1).collect();
+    let text = BufferText::from("a\nb\nc\n");
+    let tokens: Vec<_> = text.line_tokens_at(1).collect();
     assert_eq!(tokens, vec!["b\n", "c\n", ""]);
 }
 
@@ -123,64 +123,64 @@ fn from_str_unicode() {
     // "é" can be represented as a single char (U+00E9) or as two chars
     // (U+0065 + U+0301 combining accent). `BufferText::from` accepts whatever
     // Rust gives us. Here we use the precomposed form — one char.
-    let buf = BufferText::from("café");
-    assert_eq!(buf.len_chars(), 5); // c a f é \n
+    let text = BufferText::from("café");
+    assert_eq!(text.len_chars(), 5); // c a f é \n
 }
 
 #[test]
 fn line_to_char() {
-    let buf = BufferText::from("hello\nworld\nfoo");
-    assert_eq!(buf.line_to_char(0), 0); // "hello" starts at 0
-    assert_eq!(buf.line_to_char(1), 6); // "world" starts after "hello\n"
-    assert_eq!(buf.line_to_char(2), 12); // "foo" starts after "world\n"
+    let text = BufferText::from("hello\nworld\nfoo");
+    assert_eq!(text.line_to_char(0), 0); // "hello" starts at 0
+    assert_eq!(text.line_to_char(1), 6); // "world" starts after "hello\n"
+    assert_eq!(text.line_to_char(2), 12); // "foo" starts after "world\n"
 }
 
 #[test]
 fn char_to_line() {
-    let buf = BufferText::from("hello\nworld\nfoo");
-    assert_eq!(buf.char_to_line(0), 0); // 'h' is on line 0
-    assert_eq!(buf.char_to_line(5), 0); // '\n' is still line 0
-    assert_eq!(buf.char_to_line(6), 1); // 'w' is on line 1
-    assert_eq!(buf.char_to_line(12), 2); // 'f' is on line 2
+    let text = BufferText::from("hello\nworld\nfoo");
+    assert_eq!(text.char_to_line(0), 0); // 'h' is on line 0
+    assert_eq!(text.char_to_line(5), 0); // '\n' is still line 0
+    assert_eq!(text.char_to_line(6), 1); // 'w' is on line 1
+    assert_eq!(text.char_to_line(12), 2); // 'f' is on line 2
 }
 
 #[test]
 fn insert_at_start() {
-    let buf = BufferText::from("world");
-    let new = buf.insert(0, "hello ");
+    let text = BufferText::from("world");
+    let new = text.insert(0, "hello ");
     assert_eq!(new.to_string(), "hello world\n");
     // Original is unchanged — structural sharing.
-    assert_eq!(buf.to_string(), "world\n");
+    assert_eq!(text.to_string(), "world\n");
 }
 
 #[test]
 fn insert_at_end() {
     // Insert before the trailing \n (position 5 in "hello\n").
-    let buf = BufferText::from("hello");
-    let new = buf.insert(5, " world");
+    let text = BufferText::from("hello");
+    let new = text.insert(5, " world");
     assert_eq!(new.to_string(), "hello world\n");
 }
 
 #[test]
 fn insert_in_middle() {
-    let buf = BufferText::from("helo");
-    let new = buf.insert(3, "l"); // "hel" + "l" + "o\n"
+    let text = BufferText::from("helo");
+    let new = text.insert(3, "l"); // "hel" + "l" + "o\n"
     assert_eq!(new.to_string(), "hello\n");
 }
 
 #[test]
 fn remove_whole() {
-    let buf = BufferText::from("hello");
-    let new = buf.remove(0..5); // removes "hello", leaving "\n"
+    let text = BufferText::from("hello");
+    let new = text.remove(0..5); // removes "hello", leaving "\n"
     assert_eq!(new.to_string(), "\n");
     assert!(new.is_empty());
-    assert_eq!(buf.to_string(), "hello\n"); // original unchanged
+    assert_eq!(text.to_string(), "hello\n"); // original unchanged
 }
 
 #[test]
 fn remove_range() {
-    let buf = BufferText::from("hello world");
-    let new = buf.remove(5..11); // remove " world"
+    let text = BufferText::from("hello world");
+    let new = text.remove(5..11); // remove " world"
     assert_eq!(new.to_string(), "hello\n");
 }
 
@@ -194,8 +194,8 @@ fn insert_then_remove_is_identity() {
 
 #[test]
 fn slice() {
-    let buf = BufferText::from("hello world");
-    let s: String = buf.slice(6..11).to_string();
+    let text = BufferText::from("hello world");
+    let s: String = text.slice(6..11).to_string();
     assert_eq!(s, "world");
 }
 
@@ -212,21 +212,21 @@ fn equality() {
 
 #[test]
 fn char_at_first_position() {
-    let buf = BufferText::from("hello");
-    assert_eq!(buf.char_at(0), Some('h'));
+    let text = BufferText::from("hello");
+    assert_eq!(text.char_at(0), Some('h'));
 }
 
 #[test]
 fn char_at_last_position() {
     // "hello" + structural '\n' → last char is '\n' at len_chars()-1.
-    let buf = BufferText::from("hello");
-    assert_eq!(buf.char_at(buf.len_chars() - 1), Some('\n'));
+    let text = BufferText::from("hello");
+    assert_eq!(text.char_at(text.len_chars() - 1), Some('\n'));
 }
 
 #[test]
 fn char_at_out_of_bounds() {
-    let buf = BufferText::from("hello");
-    assert_eq!(buf.char_at(buf.len_chars()), None);
+    let text = BufferText::from("hello");
+    assert_eq!(text.char_at(text.len_chars()), None);
 }
 
 // ── single-char buffer ────────────────────────────────────────────────────
@@ -234,19 +234,19 @@ fn char_at_out_of_bounds() {
 #[test]
 fn single_char_buffer_has_two_chars() {
     // "x" gets the structural '\n' appended → len_chars() == 2.
-    let buf = BufferText::from("x");
-    assert_eq!(buf.len_chars(), 2);
-    assert!(!buf.is_empty());
-    assert_eq!(buf.char_at(0), Some('x'));
-    assert_eq!(buf.char_at(1), Some('\n'));
+    let text = BufferText::from("x");
+    assert_eq!(text.len_chars(), 2);
+    assert!(!text.is_empty());
+    assert_eq!(text.char_at(0), Some('x'));
+    assert_eq!(text.char_at(1), Some('\n'));
 }
 
 // ── remove with empty range ───────────────────────────────────────────────
 
 #[test]
 fn remove_empty_range_is_identity() {
-    let buf = BufferText::from("hello");
-    let same = buf.remove(3..3);
+    let text = BufferText::from("hello");
+    let same = text.remove(3..3);
     assert_eq!(same.to_string(), "hello\n");
 }
 
@@ -255,8 +255,8 @@ fn remove_empty_range_is_identity() {
 #[test]
 fn insert_grapheme_cluster() {
     // Insert a two-char grapheme (e + combining acute) at position 0.
-    let buf = BufferText::from("hello");
-    let new = buf.insert(0, "e\u{0301}");
+    let text = BufferText::from("hello");
+    let new = text.insert(0, "e\u{0301}");
     // 'e' + U+0301 + "hello" + '\n' = 8 chars.
     assert_eq!(new.len_chars(), 8);
     assert_eq!(new.char_at(0), Some('e'));
@@ -267,8 +267,8 @@ fn insert_grapheme_cluster() {
 #[test]
 fn remove_grapheme_cluster_range() {
     // Remove a two-char grapheme cluster.
-    let buf = BufferText::from("e\u{0301}hello");
-    // buf: 'e'(0) U+0301(1) 'h'(2) 'e'(3) ... '\n'(7) = 8 chars.
-    let new = buf.remove(0..2); // remove the 'e' + combining accent
+    let text = BufferText::from("e\u{0301}hello");
+    // text: 'e'(0) U+0301(1) 'h'(2) 'e'(3) ... '\n'(7) = 8 chars.
+    let new = text.remove(0..2); // remove the 'e' + combining accent
     assert_eq!(new.to_string(), "hello\n");
 }

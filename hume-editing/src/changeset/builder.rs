@@ -16,7 +16,7 @@ use super::{ChangeSet, Operation, push_merge};
 /// # Usage pattern
 ///
 /// ```text
-/// let mut b = ChangeSetBuilder::new(buf.len_chars());
+/// let mut b = ChangeSetBuilder::new(text.len_chars());
 /// b.retain(5);        // skip first 5 chars
 /// b.delete(3);        // delete next 3
 /// b.insert("hello");  // insert replacement
@@ -91,8 +91,8 @@ impl ChangeSetBuilder {
     /// `&str` directly in Rust: `str` is a UTF-8 byte sequence and a `char`
     /// is a Unicode scalar value that may encode to 1–4 bytes.
     pub fn insert_char(&mut self, ch: char) -> &mut Self {
-        let mut buf = [0u8; 4];
-        self.insert(ch.encode_utf8(&mut buf))
+        let mut text = [0u8; 4];
+        self.insert(ch.encode_utf8(&mut text))
     }
 
     /// Current position in the old document (chars consumed so far).

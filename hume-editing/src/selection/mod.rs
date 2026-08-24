@@ -235,16 +235,16 @@ impl SelectionSet {
     /// Call this at every chokepoint where a `(BufferText, SelectionSet)` pair is
     /// produced: edit operations, motions, and `Transaction::apply`.
     #[inline]
-    pub fn debug_assert_valid(&self, buf: &BufferText) {
-        let buf_len = buf.len_chars();
+    pub fn debug_assert_valid(&self, text: &BufferText) {
+        let buf_len = text.len_chars();
         debug_assert!(
             buf_len > 0,
             "BufferText must have at least 1 char (the structural \\n)"
         );
         debug_assert!(
-            buf.char_at(buf_len - 1) == Some('\n'),
+            text.char_at(buf_len - 1) == Some('\n'),
             "BufferText must end with structural '\\n', but last char is {:?}",
-            buf.char_at(buf_len - 1),
+            text.char_at(buf_len - 1),
         );
         for (i, sel) in self.selections.iter().enumerate() {
             debug_assert!(

@@ -17,11 +17,11 @@ type Segment = (usize, usize);
 ///
 /// Tries all three bracket types and returns the pair with the smallest span.
 /// Tightest means innermost — for nested structures, we want the closest pair.
-fn find_tightest_bracket_pair(buf: &BufferText, pos: usize) -> Option<(usize, usize)> {
+fn find_tightest_bracket_pair(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
     const PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
     PAIRS
         .iter()
-        .filter_map(|&(open, close)| find_bracket_pair(buf, pos, open, close))
+        .filter_map(|&(open, close)| find_bracket_pair(text, pos, open, close))
         .min_by_key(|&(o, c)| c - o)
 }
 
@@ -30,7 +30,7 @@ fn find_tightest_bracket_pair(buf: &BufferText, pos: usize) -> Option<(usize, us
 /// Returns a vec of `(start, end)` inclusive char-index pairs, one per segment,
 /// including leading/trailing whitespace. Commas inside nested `()`, `[]`, or `{}`
 /// are skipped. Returns an empty vec for adjacent brackets (`()`).
-fn find_comma_segments(buf: &BufferText, open_pos: usize, close_pos: usize) -> Vec<Segment> {
+fn find_comma_segments(text: &BufferText, open_pos: usize, close_pos: usize) -> Vec<Segment> {
     // Content zone: open_pos+1 ..= close_pos-1. Empty when brackets are adjacent.
     if close_pos <= open_pos + 1 {
         return Vec::new();
@@ -42,7 +42,7 @@ fn find_comma_segments(buf: &BufferText, open_pos: usize, close_pos: usize) -> V
     let mut seg_start = content_start;
     let mut depth = 0usize;
 
-    for (i, ch) in buf
+    for (i, ch) in text
         .chars_at(content_start)
         .take(content_end - content_start + 1)
     {
@@ -95,8 +95,8 @@ fn which_segment(segments: &[Segment], pos: usize) -> Option<usize> {
 /// only-argument case re-enters [`inner_argument`] with it, which lets that
 /// case descend into a nested bracket pair instead of trimming the segment
 /// already resolved against the outer one.
-fn locate_argument(buf: &BufferText, pos: usize) -> Option<(Vec<Segment>, usize, usize)> {
-    let (open_pos, close_pos) = find_tightest_bracket_pair(buf, pos)?;
+fn locate_argument(text: &BufferText, pos: usize) -> Option<(Vec<Segment>, usize, usize)> {
+    let (open_pos, close_pos) = find_tightest_bracket_pair(text, pos)?;
 
     // Nudge: if the cursor is on a bracket itself, step into the content zone.
     let pos = if pos == open_pos {
@@ -107,7 +107,7 @@ fn locate_argument(buf: &BufferText, pos: usize) -> Option<(Vec<Segment>, usize,
         pos
     };
 
-    let segments = find_comma_segments(buf, open_pos, close_pos);
+    let segments = find_comma_segments(text, open_pos, close_pos);
     if segments.is_empty() {
         return None;
     }
@@ -122,14 +122,14 @@ fn locate_argument(buf: &BufferText, pos: usize) -> Option<(Vec<Segment>, usize,
 /// `next_grapheme_boundary`/`prev_grapheme_boundary` are required here
 /// because `start`/`end` are text positions — raw `+= 1`/`-= 1` would
 /// mis-step on multi-byte clusters.
-fn trim_segment(buf: &BufferText, (raw_start, raw_end): Segment) -> Option<(usize, usize)> {
+fn trim_segment(text: &BufferText, (raw_start, raw_end): Segment) -> Option<(usize, usize)> {
     let mut start = raw_start;
-    while start <= raw_end && matches!(buf.char_at(start), Some(' ' | '\t' | '\n' | '\r')) {
-        start = next_grapheme_boundary(buf, start);
+    while start <= raw_end && matches!(text.char_at(start), Some(' ' | '\t' | '\n' | '\r')) {
+        start = next_grapheme_boundary(text, start);
     }
     let mut end = raw_end;
-    while end > start && matches!(buf.char_at(end), Some(' ' | '\t' | '\n' | '\r')) {
-        end = prev_grapheme_boundary(buf, end);
+    while end > start && matches!(text.char_at(end), Some(' ' | '\t' | '\n' | '\r')) {
+        end = prev_grapheme_boundary(text, end);
     }
     // Segment is entirely whitespace — nothing to select.
     if start > raw_end {
@@ -144,9 +144,9 @@ fn trim_segment(buf: &BufferText, (raw_start, raw_end): Segment) -> Option<(usiz
 ///
 /// Works for function arguments `foo(a, b)`, array items `[1, 2]`, object
 /// fields `{x: 1, y: 2}`, and any comma-separated list inside brackets.
-fn inner_argument(buf: &BufferText, pos: usize) -> Option<(usize, usize)> {
-    let (segments, idx, _) = locate_argument(buf, pos)?;
-    trim_segment(buf, segments[idx])
+fn inner_argument(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
+    let (segments, idx, _) = locate_argument(text, pos)?;
+    trim_segment(text, segments[idx])
 }
 
 /// Around argument: the item plus its separator comma, so that deleting around
@@ -158,15 +158,15 @@ fn inner_argument(buf: &BufferText, pos: usize) -> Option<(usize, usize)> {
 ///   yields `foo(bbb)` with no leading space.
 /// - **Non-first arg**: extend start back to include the preceding comma,
 ///   so `delete(around bbb)` in `foo(aaa, bbb)` yields `foo(aaa)`.
-fn around_argument(buf: &BufferText, pos: usize) -> Option<(usize, usize)> {
-    let (segments, idx, nudged_pos) = locate_argument(buf, pos)?;
+fn around_argument(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
+    let (segments, idx, nudged_pos) = locate_argument(text, pos)?;
 
     if segments.len() == 1 {
         // Only argument — no separator to eat; same as inner. Re-enter
         // inner_argument (rather than trimming `segments[idx]` directly) so
         // a cursor on the outer bracket of `foo((a))` still resolves to the
         // nested pair's argument, not the whole `(a)` outer segment.
-        return inner_argument(buf, nudged_pos);
+        return inner_argument(text, nudged_pos);
     }
 
     let (raw_start, raw_end) = segments[idx];
@@ -175,8 +175,8 @@ fn around_argument(buf: &BufferText, pos: usize) -> Option<(usize, usize)> {
         // of the next argument's content, so no orphan space is left behind.
         let (next_raw_start, next_raw_end) = segments[1];
         let mut end = next_raw_start;
-        while end <= next_raw_end && matches!(buf.char_at(end), Some(' ' | '\t')) {
-            end = next_grapheme_boundary(buf, end);
+        while end <= next_raw_end && matches!(text.char_at(end), Some(' ' | '\t')) {
+            end = next_grapheme_boundary(text, end);
         }
         // `end` is now the first content char of the next segment.
         // Our range is raw_start ..= (end - 1), eating "aaa, ".
@@ -191,19 +191,19 @@ fn around_argument(buf: &BufferText, pos: usize) -> Option<(usize, usize)> {
 }
 
 pub fn cmd_inner_argument(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     _count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    apply_text_object_by_mode(buf, sels, mode, inner_argument)
+    apply_text_object_by_mode(text, sels, mode, inner_argument)
 }
 
 pub fn cmd_around_argument(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     _count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    apply_text_object_by_mode(buf, sels, mode, around_argument)
+    apply_text_object_by_mode(text, sels, mode, around_argument)
 }

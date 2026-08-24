@@ -7,7 +7,7 @@ use hume_test_fixtures::assert_state;
 fn lowercase_uppercase_selection() {
     assert_state!(
         "-[HELLO]> world\n",
-        |(buf, sels)| make_text_lowercase(buf, sels),
+        |(text, sels)| make_text_lowercase(text, sels),
         "-[hello]> world\n"
     );
 }
@@ -16,7 +16,7 @@ fn lowercase_uppercase_selection() {
 fn lowercase_mixed_case_selection() {
     assert_state!(
         "-[HeLLo]>\n",
-        |(buf, sels)| make_text_lowercase(buf, sels),
+        |(text, sels)| make_text_lowercase(text, sels),
         "-[hello]>\n"
     );
 }
@@ -25,7 +25,7 @@ fn lowercase_mixed_case_selection() {
 fn uppercase_lowercase_selection() {
     assert_state!(
         "-[hello]> world\n",
-        |(buf, sels)| make_text_uppercase(buf, sels),
+        |(text, sels)| make_text_uppercase(text, sels),
         "-[HELLO]> world\n"
     );
 }
@@ -35,7 +35,7 @@ fn uppercase_preserves_backward_selection_direction() {
     // Backward selection anchor=5, head=0; direction preserved after transform.
     assert_state!(
         "<[hello]-\n",
-        |(buf, sels)| make_text_uppercase(buf, sels),
+        |(text, sels)| make_text_uppercase(text, sels),
         "<[HELLO]-\n"
     );
 }
@@ -46,7 +46,7 @@ fn uppercase_multiline_selection_skips_newline() {
     // independently, so line structure is unaffected.
     assert_state!(
         "-[hello\nworld]>\n",
-        |(buf, sels)| make_text_uppercase(buf, sels),
+        |(text, sels)| make_text_uppercase(text, sels),
         "-[HELLO\nWORLD]>\n"
     );
 }
@@ -56,7 +56,7 @@ fn capitalize_multi_word_selection() {
     // Each word's first letter is uppercased, the rest lowercased (Title Case).
     assert_state!(
         "-[hELLO wORLD]>\n",
-        |(buf, sels)| make_text_capitalized(buf, sels),
+        |(text, sels)| make_text_capitalized(text, sels),
         "-[Hello World]>\n"
     );
 }
@@ -67,7 +67,7 @@ fn capitalize_single_char_cursor() {
     // so it is uppercased with no special-casing needed.
     assert_state!(
         "-[h]>i\n",
-        |(buf, sels)| make_text_capitalized(buf, sels),
+        |(text, sels)| make_text_capitalized(text, sels),
         "-[H]>i\n"
     );
 }
@@ -78,7 +78,7 @@ fn capitalize_non_word_chars_break_words() {
     // gets its own capital letter.
     assert_state!(
         "-[abc-def]>\n",
-        |(buf, sels)| make_text_capitalized(buf, sels),
+        |(text, sels)| make_text_capitalized(text, sels),
         "-[Abc-Def]>\n"
     );
 }
@@ -89,7 +89,7 @@ fn capitalize_multiline_selection_resets_word_state_at_newline() {
     // second line is capitalized independently of the first line's ending.
     assert_state!(
         "-[hello\nworld]>\n",
-        |(buf, sels)| make_text_capitalized(buf, sels),
+        |(text, sels)| make_text_capitalized(text, sels),
         "-[Hello\nWorld]>\n"
     );
 }
@@ -101,7 +101,7 @@ fn uppercase_grows_selection_when_case_mapping_changes_char_count() {
     // resulting selection must grow to cover both.
     assert_state!(
         "-[ß]>\n",
-        |(buf, sels)| make_text_uppercase(buf, sels),
+        |(text, sels)| make_text_uppercase(text, sels),
         "-[SS]>\n"
     );
 }
@@ -117,7 +117,7 @@ fn uppercase_grows_selection_when_case_mapping_changes_char_count() {
 fn lowercase_resolves_mid_word_sigma_by_context() {
     assert_state!(
         "-[ΟΣΟ]>\n",
-        |(buf, sels)| make_text_lowercase(buf, sels),
+        |(text, sels)| make_text_lowercase(text, sels),
         "-[οσο]>\n"
     );
 }
@@ -128,7 +128,7 @@ fn lowercase_resolves_word_final_sigma_by_context() {
     // final-sigma context) instead of "οος".
     assert_state!(
         "-[ΟΟΣ]>\n",
-        |(buf, sels)| make_text_lowercase(buf, sels),
+        |(text, sels)| make_text_lowercase(text, sels),
         "-[οος]>\n"
     );
 }
@@ -137,12 +137,12 @@ fn lowercase_resolves_word_final_sigma_by_context() {
 fn uppercase_sigma_variants_both_map_to_capital_sigma() {
     assert_state!(
         "-[οσο]>\n",
-        |(buf, sels)| make_text_uppercase(buf, sels),
+        |(text, sels)| make_text_uppercase(text, sels),
         "-[ΟΣΟ]>\n"
     );
     assert_state!(
         "-[οος]>\n",
-        |(buf, sels)| make_text_uppercase(buf, sels),
+        |(text, sels)| make_text_uppercase(text, sels),
         "-[ΟΟΣ]>\n"
     );
 }
@@ -153,7 +153,7 @@ fn capitalize_resolves_mid_word_sigma_by_context() {
     // string, so the mid-word sigma stays 'σ', not the final form 'ς'.
     assert_state!(
         "-[οσο]>\n",
-        |(buf, sels)| make_text_capitalized(buf, sels),
+        |(text, sels)| make_text_capitalized(text, sels),
         "-[Οσο]>\n"
     );
 }
@@ -164,7 +164,7 @@ fn capitalize_resolves_word_final_sigma_by_context() {
     // default-mapping trap as lowercase).
     assert_state!(
         "-[ΟΟΣ]>\n",
-        |(buf, sels)| make_text_capitalized(buf, sels),
+        |(text, sels)| make_text_capitalized(text, sels),
         "-[Οος]>\n"
     );
 }

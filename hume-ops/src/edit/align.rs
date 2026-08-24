@@ -45,7 +45,7 @@ use super::apply_edit;
 /// a tab. Insertion has no such gap: an inserted run is always spaces, each
 /// exactly one display column, so `amount > 0` lands exactly on `target`.
 pub fn align_selections(
-    buf: BufferText,
+    text: BufferText,
     sels: SelectionSet,
     tab_width: u8,
 ) -> (BufferText, SelectionSet, ChangeSet) {
@@ -60,14 +60,14 @@ pub fn align_selections(
         slot: Option<usize>,       // None = multiline or extra (slot >= N)
     }
 
-    let primary_line = buf.char_to_line(sels.primary().anchor());
+    let primary_line = text.char_to_line(sels.primary().anchor());
     let mut slots_on_line = rustc_hash::FxHashMap::<usize, usize>::default();
 
     let mut meta: Vec<SelMeta> = sels
         .iter_sorted()
         .map(|sel| {
-            let start_line = buf.char_to_line(sel.start());
-            let is_multiline = start_line != buf.char_to_line(sel.end_inclusive(&buf));
+            let start_line = text.char_to_line(sel.start());
+            let is_multiline = start_line != text.char_to_line(sel.end_inclusive(&text));
             if is_multiline {
                 return SelMeta {
                     start_line,
@@ -77,12 +77,12 @@ pub fn align_selections(
                     slot: None,
                 };
             }
-            let anchor_display_col = display_col_in_line(&buf, start_line, sel.anchor(), tab_width);
-            let line_start = buf.line_to_char(start_line);
+            let anchor_display_col = display_col_in_line(&text, start_line, sel.anchor(), tab_width);
+            let line_start = text.line_to_char(start_line);
             let sel_start = sel.start();
             let rem = (line_start..sel_start)
                 .rev()
-                .take_while(|&p| matches!(buf.char_at(p), Some(' ') | Some('\t')))
+                .take_while(|&p| matches!(text.char_at(p), Some(' ') | Some('\t')))
                 .count()
                 .saturating_sub(1);
             let counter = slots_on_line.entry(start_line).or_insert(0);
@@ -103,10 +103,10 @@ pub fn align_selections(
 
     if n_slots == 0 {
         // Primary is multiline — no slot structure, everything passes through.
-        let mut b = ChangeSetBuilder::new(buf.len_chars());
+        let mut b = ChangeSetBuilder::new(text.len_chars());
         b.retain_rest();
         let cs = b.finish();
-        return (buf, sels, cs);
+        return (text, sels, cs);
     }
 
     // Mark slots >= n_slots as extras → pass through.
@@ -189,12 +189,12 @@ pub fn align_selections(
     let mut current_line = usize::MAX;
     let mut line_shift = 0isize;
 
-    apply_edit(buf, sels, |b, buf, i, sel, new_sels| {
+    apply_edit(text, sels, |b, text, i, sel, new_sels| {
         let sel_start = sel.start();
-        let sel_end = sel.end_inclusive(buf);
+        let sel_end = sel.end_inclusive(text);
         let content_len = sel_end + 1 - sel_start;
         let forward = sel.anchor() <= sel.head();
-        let start_line = buf.char_to_line(sel_start);
+        let start_line = text.char_to_line(sel_start);
 
         if start_line != current_line {
             current_line = start_line;
@@ -219,7 +219,7 @@ pub fn align_selections(
                 // from earlier edits on this line to get the current anchor
                 // display column.
                 let anchor_display_col_orig =
-                    display_col_in_line(buf, start_line, sel.anchor(), tab_width);
+                    display_col_in_line(text, start_line, sel.anchor(), tab_width);
                 let anchor_display_col_now =
                     (anchor_display_col_orig as isize + line_shift).max(0) as usize;
                 let amount = target as isize - anchor_display_col_now as isize;

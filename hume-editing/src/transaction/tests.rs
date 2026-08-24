@@ -7,7 +7,7 @@ use pretty_assertions::assert_eq;
 #[test]
 fn transaction_apply() {
     // "hello\n" = 6 chars; insert "!" at start → "!hello\n".
-    let buf = BufferText::from("hello");
+    let text = BufferText::from("hello");
     let mut b = ChangeSetBuilder::new(6);
     b.insert("!");
     b.retain_rest();
@@ -16,7 +16,7 @@ fn transaction_apply() {
     let sels = SelectionSet::single(Selection::collapsed(1));
     let txn = Transaction::new(cs, sels.clone());
 
-    let (new_buf, new_sels) = txn.apply(&buf).unwrap();
+    let (new_buf, new_sels) = txn.apply(&text).unwrap();
     assert_eq!(new_buf.to_string(), "!hello\n");
     assert_eq!(new_sels.primary().head, 1);
 }
@@ -24,7 +24,7 @@ fn transaction_apply() {
 #[test]
 fn transaction_apply_rejects_out_of_bounds_selection() {
     // "hi\n" = 3 chars; a no-op changeset; but selection points to index 99.
-    let buf = BufferText::from("hi");
+    let text = BufferText::from("hi");
     let mut b = ChangeSetBuilder::new(3);
     b.retain_rest();
     let cs = b.finish();
@@ -34,7 +34,7 @@ fn transaction_apply_rejects_out_of_bounds_selection() {
     let sels = SelectionSet::single(Selection::collapsed(99));
     let txn = Transaction::new(cs, sels);
 
-    let err = txn.apply(&buf).unwrap_err();
+    let err = txn.apply(&text).unwrap_err();
     assert!(
         matches!(
             err,
@@ -54,7 +54,7 @@ fn transaction_apply_canonicalizes_selections() {
     // A plugin-built Transaction may carry overlapping/unsorted selections
     // (constructed via from_vec_unchecked). apply must hand back a
     // canonical set, not propagate the invariant violation.
-    let buf = BufferText::from("hello world");
+    let text = BufferText::from("hello world");
     let mut b = ChangeSetBuilder::new(12);
     b.retain_rest();
     let cs = b.finish();
@@ -65,7 +65,7 @@ fn transaction_apply_canonicalizes_selections() {
     );
     let txn = Transaction::new(cs, sels);
 
-    let (_, new_sels) = txn.apply(&buf).unwrap();
+    let (_, new_sels) = txn.apply(&text).unwrap();
     assert_eq!(new_sels.len(), 1);
     assert_eq!(new_sels.primary().start(), 0);
     assert_eq!(new_sels.primary().end(), 9);
@@ -74,13 +74,13 @@ fn transaction_apply_canonicalizes_selections() {
 #[test]
 fn transaction_apply_rejects_length_mismatch() {
     // Changeset built for 10 chars, but buffer is 3 chars.
-    let buf = BufferText::from("hi");
+    let text = BufferText::from("hi");
     let mut b = ChangeSetBuilder::new(10);
     b.retain_rest();
     let cs = b.finish();
 
     let txn = Transaction::new(cs, SelectionSet::single(Selection::collapsed(0)));
-    let err = txn.apply(&buf).unwrap_err();
+    let err = txn.apply(&text).unwrap_err();
     assert!(
         matches!(
             err,

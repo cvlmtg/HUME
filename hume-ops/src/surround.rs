@@ -56,19 +56,19 @@ fn is_symmetric(ch: char) -> bool {
 /// Cursor placement: lands on the `close` character after the wrapped content.
 /// Multi-cursor: each selection is wrapped independently via `apply_edit`.
 pub fn wrap_each_selection(
-    buf: BufferText,
+    text: BufferText,
     sels: SelectionSet,
     open: char,
     close: char,
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
+    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let start = sel.start();
         let end_incl = sel
-            .end_inclusive(buf)
-            .min(buf.len_chars().saturating_sub(2));
+            .end_inclusive(text)
+            .min(text.len_chars().saturating_sub(2));
         // When `start` sits on (or past) the structural trailing '\n', there's nothing
         // user-visible to wrap. Skip so `insert_char(close)` is never placed after '\n'.
-        if start >= buf.len_chars() - 1 {
+        if start >= text.len_chars() - 1 {
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
         }
@@ -123,7 +123,7 @@ pub(crate) fn smart_replace_char(replacement: char, current: char, sel_index: us
 /// Shared implementation: map each selection to two cursors on the pair
 /// endpoints, or preserve unchanged on no-match.
 fn select_surround(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     find_pair: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
@@ -135,7 +135,7 @@ fn select_surround(
         if i == primary_idx {
             new_primary = new_sels.len();
         }
-        if let Some((open_pos, close_pos)) = find_pair(buf, sel.head()) {
+        if let Some((open_pos, close_pos)) = find_pair(text, sel.head()) {
             new_sels.push(Selection::collapsed(open_pos));
             new_sels.push(Selection::collapsed(close_pos));
         } else {
@@ -144,7 +144,7 @@ fn select_surround(
     }
 
     let result = SelectionSet::from_vec(new_sels, new_primary);
-    result.debug_assert_valid(buf);
+    result.debug_assert_valid(text);
     result
 }
 
@@ -153,22 +153,22 @@ fn select_surround(
 macro_rules! surround_cmd {
     ($name:ident, bracket, $open:literal, $close:literal) => {
         pub fn $name(
-            buf: &BufferText,
+            text: &BufferText,
             sels: SelectionSet,
             _count: usize,
             _mode: MotionMode,
         ) -> SelectionSet {
-            select_surround(buf, sels, |b, pos| find_bracket_pair(b, pos, $open, $close))
+            select_surround(text, sels, |b, pos| find_bracket_pair(b, pos, $open, $close))
         }
     };
     ($name:ident, quote, $quote:literal) => {
         pub fn $name(
-            buf: &BufferText,
+            text: &BufferText,
             sels: SelectionSet,
             _count: usize,
             _mode: MotionMode,
         ) -> SelectionSet {
-            select_surround(buf, sels, |b, pos| find_quote_pair(b, pos, $quote))
+            select_surround(text, sels, |b, pos| find_quote_pair(b, pos, $quote))
         }
     };
 }

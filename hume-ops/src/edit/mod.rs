@@ -64,11 +64,11 @@ pub use sort::{SortOpts, SortRefusal, sort_rows};
 #[cfg(any(test, feature = "test-util"))]
 pub fn repeat_edit(
     count: usize,
-    buf: BufferText,
+    text: BufferText,
     sels: SelectionSet,
     cmd: impl Fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    let mut current_buf = buf;
+    let mut current_buf = text;
     let mut current_sels = sels;
     let mut composed: Option<ChangeSet> = None;
 
@@ -97,7 +97,7 @@ pub fn repeat_edit(
 ///
 /// The closure `f` receives:
 ///   - `b`        — the changeset builder (original-buffer coordinate space)
-///   - `buf`      — shared borrow of the original buffer for read-only queries
+///   - `text`      — shared borrow of the original buffer for read-only queries
 ///   - `i`        — 0-based iteration index in sorted order (N-to-N paste uses this)
 ///   - `sel`      — the current selection
 ///   - `new_sels` — accumulator for result selections; `f` must push exactly one entry
@@ -112,16 +112,16 @@ pub fn repeat_edit(
 /// closure only captures `Copy` values (like `char`), requiring `FnMut` keeps
 /// the bound consistent and allows future closures to close over counters or
 /// accumulators without changing the helper's signature.
-pub fn apply_edit<F>(buf: BufferText, sels: SelectionSet, mut f: F) -> (BufferText, SelectionSet, ChangeSet)
+pub fn apply_edit<F>(text: BufferText, sels: SelectionSet, mut f: F) -> (BufferText, SelectionSet, ChangeSet)
 where
     F: FnMut(&mut ChangeSetBuilder, &BufferText, usize, &Selection, &mut Vec<Selection>),
 {
-    let mut b = ChangeSetBuilder::new(buf.len_chars());
+    let mut b = ChangeSetBuilder::new(text.len_chars());
     let mut new_sels = Vec::with_capacity(sels.len());
     let primary_idx = sels.primary_index();
 
     for (i, sel) in sels.iter_sorted().enumerate() {
-        f(&mut b, &buf, i, sel, &mut new_sels);
+        f(&mut b, &text, i, sel, &mut new_sels);
     }
 
     b.retain_rest();
@@ -130,7 +130,7 @@ where
     // caller (Buffer) holds that buffer and handles the timing constraint.
     let cs = b.finish();
     let new_buf = cs
-        .apply(&buf)
+        .apply(&text)
         .expect("edit operation produced an invalid changeset — this is a bug");
     let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx);
     new_sel_set.debug_assert_valid(&new_buf);
@@ -147,18 +147,18 @@ where
 /// translates them to result-buffer positions internally.
 fn delete_one_grapheme(
     b: &mut ChangeSetBuilder,
-    buf: &BufferText,
+    text: &BufferText,
     new_sels: &mut Vec<Selection>,
     p: usize,
 ) {
-    if p + 1 >= buf.len_chars() {
+    if p + 1 >= text.len_chars() {
         // Cursor is on the structural trailing '\n' — cannot delete it.
         b.retain(p - b.old_pos());
         let sel = Selection::collapsed(b.new_pos());
         new_sels.push(sel);
         return;
     }
-    let end = next_grapheme_boundary(buf, p);
+    let end = next_grapheme_boundary(text, p);
     b.retain(p - b.old_pos());
     b.delete(end - p);
     let sel = Selection::collapsed(b.new_pos());
@@ -169,7 +169,7 @@ fn delete_one_grapheme(
 ///
 /// Uses `sel.end_inclusive()` so that multi-codepoint grapheme clusters
 /// (e.g. `e + \u{0301}`) are deleted atomically. The deletion is capped at
-/// the last content character (`buf.len_chars() - 2`) so that the structural
+/// the last content character (`text.len_chars() - 2`) so that the structural
 /// trailing `\n` is never removed — matching the protection in
 /// `delete_one_grapheme`.
 ///
@@ -184,7 +184,7 @@ fn delete_one_grapheme(
 /// identical selection branches.
 fn delete_sel_region(
     b: &mut ChangeSetBuilder,
-    buf: &BufferText,
+    text: &BufferText,
     sel: &Selection,
     new_sels: &mut Vec<Selection>,
 ) {
@@ -194,30 +194,30 @@ fn delete_sel_region(
     // line boundary, ends on '\n'). `end_inclusive > last_content_char` confirms
     // the selection reaches the structural trailing '\n' (i.e. this is the last
     // line). `start > 0` confirms there is a line above to merge into.
-    let on_last_line = sel.end_inclusive(buf) > buf.last_content_char();
-    if on_last_line && is_selection_linewise(buf, sel) && start > 0 {
+    let on_last_line = sel.end_inclusive(text) > text.last_content_char();
+    if on_last_line && is_selection_linewise(text, sel) && start > 0 {
         // Consume the preceding '\n' instead of the structural one so the last
         // line disappears rather than becoming an empty trailing line (vim
         // `dd`-on-last-line convention).
-        let del_start = hume_editing::grapheme::prev_grapheme_boundary(buf, start);
+        let del_start = hume_editing::grapheme::prev_grapheme_boundary(text, start);
         if del_start >= b.old_pos() {
             // Cursor: land at the start of the merged line (what was the line
             // above the deleted one). Compute as (del_start's new_pos) minus
             // del_start's char column within its original line — this stays
             // correct in the multi-cursor case where b.new_pos() != b.old_pos().
-            let prev_line = buf.char_to_line(del_start);
-            let char_col = hume_editing::lines::char_col_in_line(buf, prev_line, del_start);
+            let prev_line = text.char_to_line(del_start);
+            let char_col = hume_editing::lines::char_col_in_line(text, prev_line, del_start);
             b.retain(del_start - b.old_pos());
             let cursor_new = b.new_pos().saturating_sub(char_col);
             // Delete from the preceding '\n' through the last content char,
             // keeping the structural trailing '\n'.
-            b.delete(buf.last_content_char() + 1 - del_start);
+            b.delete(text.last_content_char() + 1 - del_start);
             new_sels.push(Selection::collapsed(cursor_new));
             return;
         }
     }
     // Normal path: cap at the last content char so the structural '\n' is never removed.
-    let end_incl = sel.content_end(buf);
+    let end_incl = sel.content_end(text);
     b.retain(start - b.old_pos());
     b.delete(end_incl + 1 - start); // end_incl inclusive → +1 for exclusive bound
     new_sels.push(Selection::collapsed(b.new_pos()));
