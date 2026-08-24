@@ -4,12 +4,13 @@
 - New `core:git-diff` plugin: live, VSCode-style inline git diff. `:toggle-git-signs` renders
   gutter `+`/`-`/`~` signs; `:toggle-inline-diff` renders virtual deleted lines, word-level
   highlights, and a background tint on changed lines — both against a configurable git ref,
-  `#:config` keys `signs`/`inline`/`ref`. Requires `core:stdlib` loaded first.
-- **Breaking**: `core:pickers` and `core:vim-keybind` now require `core:stdlib` loaded first —
-  their `#:config` validation moved into `core:stdlib`'s new `stdlib/config-boolean`/
-  `stdlib/config-string`/`stdlib/config-enum` commands, the same helpers `core:git-diff` uses.
-- **Breaking**: `core:lsp` now requires `core:stdlib` loaded first, not just declared — it
-  scans installed servers via `core:stdlib`'s new `stdlib/list-subdirs` at its own load time.
+  `#:config` keys `signs`/`inline`/`ref`. Requires `core:stdlib` declared or loaded first.
+- **Breaking**: `core:pickers` and `core:vim-keybind` now require `core:stdlib` declared or
+  loaded first — their `#:config` validation moved into `core:stdlib`'s new
+  `stdlib/config-boolean`/`stdlib/config-string`/`stdlib/config-enum` commands, the same
+  helpers `core:git-diff` uses.
+- **Breaking**: `core:lsp` now requires `core:stdlib` declared or loaded first — it scans
+  installed servers via `core:stdlib`'s new `stdlib/list-subdirs` at its own load time.
   New `stdlib/run` (shared subprocess spawn, used by `core:plum`/`core:pickers`) and
   `stdlib/resolve-lang-arg` (shared `:` command language-argument resolution, used by
   `core:plum`/`core:lsp`) round out this round of plugin-internal deduplication.

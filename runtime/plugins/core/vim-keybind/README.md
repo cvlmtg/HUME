@@ -5,13 +5,13 @@ natively, and the visual-mode `o` flip alias.
 
 ## Usage
 
-Requires `core:stdlib` loaded **eagerly** first — not just declared. Config validation
-(`change-to-eol`, any value) calls `stdlib/config-enum` via `call!` at *this plugin's own load
-time*, and a merely lazily-declared `core:stdlib` doesn't show up in `(loaded-plugins)` until
-something activates it. Loading it eagerly guarantees it's already up before this check runs:
+Requires `core:stdlib` declared or loaded first. Config validation (`change-to-eol`, any
+value) calls `stdlib/config-enum` via `call!` at *this plugin's own load time* — a bare
+`(declare-plugin "core:stdlib")` is enough, since `call!`'s lazy-miss retry inline-activates it
+before the config read runs:
 
 ```scheme
-(load-plugin "core:stdlib")
+(declare-plugin "core:stdlib")
 (load-plugin "core:vim-keybind")
 ```
 
@@ -78,8 +78,8 @@ back to `:e #` on those terminals).
 `"change-to-eol"` is resolved via `core:stdlib`'s `stdlib/config-enum` — `(plugin-config)`'s
 hash, defaulting to `'smart` when the key is absent, erroring on anything outside
 `'on`/`'smart`/`'off`. Because that resolution itself calls into `core:stdlib`, the plugin
-checks `(loaded-plugins)` for `"core:stdlib"` unconditionally at load time, before reading
+checks `(declared-plugins)` for `"core:stdlib"` unconditionally at load time, before reading
 config at all — every mode needs `core:stdlib` now, not just `'smart` (which additionally calls
-`stdlib/all-single-char?` at runtime, per "How it works" above). Checking eagerly here means a
+`stdlib/all-single-char?` at runtime, per "How it works" above). Checking at load time means a
 missing dependency is a load error naming `core:stdlib`, not a wrong-branch bug that only
 surfaces at the first `C` keypress.

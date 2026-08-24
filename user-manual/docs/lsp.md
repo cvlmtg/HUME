@@ -16,7 +16,7 @@ doesn't carry, or a `$PATH` copy you want to take precedence), register it by ha
 instead — see [Registering a language server](#registering-a-language-server).
 
 ```scheme
-(load-plugin "core:stdlib")      ; core:lsp depends on it, and needs it loaded, not just declared
+(declare-plugin "core:stdlib")   ; core:lsp depends on it — declared or loaded, either works
 (declare-plugin "core:lsp")
 ```
 

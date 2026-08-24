@@ -310,12 +310,11 @@ fn every_default_lsp_binding_dispatches_without_error() {
     drop(guard);
 }
 
-/// Loading `core:lsp` without `core:stdlib` loaded first must fail
-/// `eval_init` at load time, naming `core:stdlib` — `lsp/register-installed-servers!`
-/// calls `stdlib/list-subdirs` via `call!` at the top of the plugin body, and
-/// `call!` on an unactivated plugin's command logs an error and returns
-/// `#void` rather than raising, so without this guard a missing dependency
-/// would silently drop the load-time server scan instead of failing loudly.
+/// Loading `core:lsp` without `core:stdlib` declared or loaded first must
+/// fail `eval_init` at load time, naming `core:stdlib` — `core:lsp`'s
+/// `(declared-plugins)` guard rejects a `core:stdlib` that was never
+/// declared or loaded at all, before `lsp/register-installed-servers!` ever
+/// reaches its load-time `stdlib/list-subdirs` call.
 #[test]
 fn missing_stdlib_errors_at_load() {
     let guard = RealRuntimeGuard::new();

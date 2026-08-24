@@ -17,10 +17,10 @@
 (require "diff.scm")
 (require "render.scm")
 
-;; See core:vim-keybind/plugin.scm for why this checks `(loaded-plugins)`
-;; rather than `(declared-plugins)`.
-(unless (member "core:stdlib" (loaded-plugins))
-  (error "core:git-diff: requires core:stdlib — (load-plugin \"core:stdlib\") before (load-plugin \"core:git-diff\")"))
+;; See core:vim-keybind/plugin.scm for why `(declared-plugins)` is enough
+;; here.
+(unless (member "core:stdlib" (declared-plugins))
+  (error "core:git-diff: requires core:stdlib — (declare-plugin \"core:stdlib\") or (load-plugin \"core:stdlib\") before (load-plugin \"core:git-diff\")"))
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 ;; `(plugin-config)` only returns the real hash while this body is being

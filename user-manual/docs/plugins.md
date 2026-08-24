@@ -156,21 +156,19 @@ When forwarding a `count` argument to another command, a count of `0` means "as 
 `call!` with an unknown command name logs an error and no-ops instead of aborting the command body — a missing plugin dependency shows up as an error in `:messages`, not as a crash, so check dependencies up front rather than relying on the error to be noticed.
 :::
 
-If your plugin calls another plugin's commands via `call!`, check that the other plugin is available before you rely on it. Which check to use depends on when you need the dependency:
+If your plugin calls another plugin's commands via `call!`, check that the other plugin is available before you rely on it — whether that call sits at your plugin's own top level or inside a command a key press later fires makes no difference: `call!` activates a lazily-declared dependency on demand either way, so the usual check is `(declared-plugins)`:
 
-- **Needed immediately** — your plugin body calls into the dependency at the top level, before any key is pressed. Check `(loaded-plugins)`: a lazily-declared plugin that hasn't activated yet won't show up in it, and there's no key press coming to trigger that activation.
+```scheme
+(unless (member "core:stdlib" (declared-plugins))
+  (error "my-plugin: requires core:stdlib — declare or load it before my-plugin"))
+```
 
-  ```scheme
-  (unless (member "core:stdlib" (loaded-plugins))
-    (error "my-plugin: requires core:stdlib — load it before my-plugin"))
-  ```
+This is enough as long as the command you're calling is one of the dependency's own activation entries — its `manifest.scm` defaults, or an explicit `#:commands`/`#:events`/`#:languages` list that includes it. If whoever declared the dependency wrote a narrower list that leaves your command out, there's no activation stub for it: `call!` logs an error and returns `#void` instead of raising, and the check above can't catch it, since the plugin genuinely is declared — just not for the command you need. When you don't control how a dependency gets declared and want a stronger guarantee, check `(loaded-plugins)` instead: it only lists plugins that have actually finished activating, so a `#void` on the specific command name never happens — the trade-off is that this forces the dependency to be loaded eagerly, not just declared.
 
-- **Needed later, inside a command** — the dependency is only called from within a `lambda` that a key press fires. `call!` activates a lazily-declared plugin on demand, so it doesn't matter yet whether the dependency has activated — only that it was declared at all. Check `(declared-plugins)` instead:
-
-  ```scheme
-  (unless (member "core:stdlib" (declared-plugins))
-    (error "my-plugin: requires core:stdlib — declare or load it before my-plugin"))
-  ```
+```scheme
+(unless (member "core:stdlib" (loaded-plugins))
+  (error "my-plugin: requires core:stdlib loaded eagerly — load it before my-plugin"))
+```
 
 Either check fails loudly at load time (startup or `:reload-config`), naming exactly what's missing, instead of leaving the bug to surface later at whatever moment the dependent command actually runs.
 
@@ -315,7 +313,7 @@ A plugin can read the `#:config` value its user passed to `load-plugin` or `decl
   (bind-key! 'normal "C" "my-command"))
 ```
 
-`stdlib/config-string` and `stdlib/config-enum` (the latter takes a list of allowed symbols) cover the other common config shapes. Since this call happens in your plugin's own body, at load time, check `(loaded-plugins)` for `"core:stdlib"` first — see "Depending on another plugin" above.
+`stdlib/config-string` and `stdlib/config-enum` (the latter takes a list of allowed symbols) cover the other common config shapes. Since this call happens in your plugin's own body, at load time, check `(declared-plugins)` for `"core:stdlib"` first — see "Depending on another plugin" above.
 
 Document the keys your plugin understands so users know what to pass.
 

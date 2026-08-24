@@ -6,8 +6,9 @@ built on HUME's generic picker widget (see the ["Custom
 pickers"](../../../../user-manual/docs/plugins.md#custom-pickers) section of
 the plugin API docs).
 
-Requires `core:stdlib` loaded first — config validation calls `stdlib/config-boolean` via
-`call!` while this plugin's own body is evaluating.
+Requires `core:stdlib` declared or loaded first — config validation calls
+`stdlib/config-boolean` via `call!` while this plugin's own body is evaluating, and `call!`'s
+lazy-miss retry inline-activates a merely declared `core:stdlib` before the read runs.
 
 ## Usage
 
@@ -15,7 +16,7 @@ Loads eagerly — it binds keys, which must be live from the first keystroke,
 not deferred to a first-use trigger:
 
 ```scheme
-(load-plugin "core:stdlib")
+(declare-plugin "core:stdlib")
 (load-plugin "core:pickers")
 ```
 

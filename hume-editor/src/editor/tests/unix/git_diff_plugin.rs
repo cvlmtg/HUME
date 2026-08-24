@@ -836,11 +836,10 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
     );
 }
 
-/// Loading `core:git-diff` without `core:stdlib` loaded first must fail
-/// `eval_init` at load time, naming `core:stdlib` — `call!` on an
-/// unactivated plugin's command logs an error and returns `#void` rather
-/// than raising, so without this guard a missing dependency would silently
-/// hand every config read its own `#void` instead of failing loudly.
+/// Loading `core:git-diff` without `core:stdlib` declared or loaded first
+/// must fail `eval_init` at load time, naming `core:stdlib` —
+/// `core:git-diff`'s `(declared-plugins)` guard rejects it before any of
+/// its config reads ever reach `call!`.
 #[test]
 fn missing_stdlib_errors_at_load() {
     use crate::editor::scripting_setup::make_init_host;

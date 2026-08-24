@@ -527,11 +527,10 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
     );
 }
 
-/// Loading `core:pickers` without `core:stdlib` loaded first must fail
-/// `eval_init` at load time, naming `core:stdlib` — `call!` on an
-/// unactivated plugin's command logs an error and returns `#void` rather
-/// than raising, so without this guard a missing dependency would silently
-/// hand `pickers/untracked` its own `#void` instead of failing loudly.
+/// Loading `core:pickers` without `core:stdlib` declared or loaded first
+/// must fail `eval_init` at load time, naming `core:stdlib` —
+/// `core:pickers`'s `(declared-plugins)` guard rejects it before its
+/// `pickers/untracked` config read ever reaches `call!`.
 #[test]
 fn missing_stdlib_errors_at_load() {
     let guard = HumeRuntimeGuard::new();

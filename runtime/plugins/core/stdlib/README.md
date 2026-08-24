@@ -20,13 +20,15 @@ require this — see the Caveat below.
 
 **Caveat**: `core:git-diff`, `core:pickers`, and `core:vim-keybind` all validate their
 `#:config` through the commands below, and `core:lsp` lists installed servers through
-`stdlib/list-subdirs`, so each checks `(loaded-plugins)` for `"core:stdlib"` synchronously at
-*its own load time*, by design (fail fast instead of a config read silently resolving to
-`#void` — see the Config helpers section below). A merely *declared*, not-yet-activated
-`core:stdlib` doesn't show up in `(loaded-plugins)`, so all four need `core:stdlib` loaded
-eagerly first, as above. The zero-trigger form is for consumers that only reach `core:stdlib`
-via `call!` at runtime (e.g. `core:plum`'s grammar/plugin install commands) with none of
-these load-time reads in the mix.
+`stdlib/list-subdirs`, so each checks `(declared-plugins)` for `"core:stdlib"` at *its own
+load time* — a bare `(declare-plugin "core:stdlib")`, as above, is enough: the check passing
+means `call!`'s lazy-miss retry can inline-activate `core:stdlib` before the config read runs,
+same as it would for a call reached later from inside a command. This breaks only if
+`core:stdlib` itself is declared with an explicit `#:commands`/`#:events`/`#:languages` that
+omits a helper one of these four needs — that override leaves no activation stub for it, so
+`call!` logs an error and returns `#void` instead of raising, and the config read silently
+resolves to `#void`. Stick to the zero-trigger form above unless you have a specific reason to
+override it.
 
 ## Commands
 

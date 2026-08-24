@@ -39,11 +39,11 @@ Leaving PLUM out only removes these commands. Already-installed plugins and gram
 Language server support: hover, go-to-definition, references, diagnostics, rename, formatting, code actions, signature help, completions, and inlay hints. It also downloads and manages the servers themselves (`:lsp-install`, `:lsp-uninstall`, `:lsp-servers`), and the running processes (`:lsp-status`, `:lsp-stop`, `:lsp-restart`).
 
 ```scheme
-(load-plugin "core:stdlib")
+(declare-plugin "core:stdlib")
 (declare-plugin "core:lsp")
 ```
 
-Requires `core:stdlib` loaded, not just declared. `core:lsp` itself is still declared lazily here — it wakes up on the first buffer with a detected language, or the first `:lsp-*` command you type.
+Requires `core:stdlib` declared or loaded first. `core:lsp` itself is still declared lazily here — it wakes up on the first buffer with a detected language, or the first `:lsp-*` command you type.
 
 See [Language Servers](lsp.md) for setup, the full command and key tables, and settings.
 
@@ -55,7 +55,7 @@ your HUME config. Requires `core:lsp`, which provides the editor-side features t
 registered server useful.
 
 ```scheme
-(load-plugin "core:stdlib")
+(declare-plugin "core:stdlib")
 (declare-plugin "core:lsp")
 (declare-plugin "core:steel-server")
 ```
@@ -83,15 +83,15 @@ inside a repo, `fd`-backed otherwise), `g b` opens a buffer switcher, `g m` open
 over files with staged or unstaged git changes.
 
 ```scheme
-(load-plugin "core:stdlib")
+(declare-plugin "core:stdlib")
 (load-plugin "core:pickers")
 ```
 
-Must be loaded eagerly, and `core:stdlib` must be loaded eagerly before it. By default the
-modified-files picker includes untracked files; turn them off with `#:config`:
+Must be loaded eagerly (`core:stdlib` only needs to be declared or loaded before it). By
+default the modified-files picker includes untracked files; turn them off with `#:config`:
 
 ```scheme
-(load-plugin "core:stdlib")
+(declare-plugin "core:stdlib")
 (load-plugin "core:pickers" #:config (hash "untracked" #f))
 ```
 
@@ -105,11 +105,11 @@ Live, VSCode-style inline git diff. As you type, compares the buffer against a g
 added/changed lines with a background tint, and word-level highlights inside changed lines.
 
 ```scheme
-(load-plugin "core:stdlib")
+(declare-plugin "core:stdlib")
 (declare-plugin "core:git-diff")
 ```
 
-Requires `core:stdlib` loaded eagerly before it. Declared lazily like this, it wakes on the
+Requires `core:stdlib` declared or loaded before it. Declared lazily like this, it wakes on the
 first buffer opened (signs default on) or the first `:toggle-git-signs`/`:toggle-inline-diff`
 you type.
 
@@ -129,7 +129,7 @@ No default key bindings — bind them yourself, e.g. `(bind-key! 'normal "g Shif
 Configure with `#:config`:
 
 ```scheme
-(load-plugin "core:stdlib")
+(declare-plugin "core:stdlib")
 (declare-plugin "core:git-diff"
   #:config (hash "signs" #t "inline" #f "ref" "HEAD"))
 ```
@@ -148,11 +148,11 @@ for them; HUME's four bundled themes do.
 Vim muscle memory: `$`, `^`, `0`, `G` (last line), `C` and `D` (change/delete to end of line), `Ctrl+6` (alternate file, kitty only), and `o` in Extend mode to swap the selection's ends.
 
 ```scheme
-(load-plugin "core:stdlib")
+(declare-plugin "core:stdlib")
 (load-plugin "core:vim-keybind")
 ```
 
-Must be loaded eagerly, and `core:stdlib` must be loaded eagerly before it.
+Must be loaded eagerly (`core:stdlib` only needs to be declared or loaded before it).
 
 By default (`'smart`), `C` is context-sensitive: on a bare cursor with no count it changes to end of line as in vim, but with a real selection, or any count prefix (e.g. `3C`), it runs HUME's own `copy-selection-on-next-line`, so that command stays fully reachable. Change this with `#:config`:
 
@@ -185,10 +185,10 @@ Must be loaded eagerly.
 
 ## core:stdlib
 
-A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:git-diff`, `core:pickers`, `core:vim-keybind`, and `core:lsp` all depend on it, so load it before them:
+A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:git-diff`, `core:pickers`, `core:vim-keybind`, and `core:lsp` all depend on it, so declare or load it before them:
 
 ```scheme
-(load-plugin "core:stdlib")
+(declare-plugin "core:stdlib")
 ```
 
 If you're writing a plugin yourself, see [Plugins](plugins.md) for what it offers.

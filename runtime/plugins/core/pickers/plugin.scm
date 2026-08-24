@@ -8,10 +8,10 @@
 ;;; the sync probe calls stdlib/run, via call!) — load it first, same as
 ;;; core:plum/core:lsp.
 
-;; See core:vim-keybind/plugin.scm for why this checks `(loaded-plugins)`
-;; rather than `(declared-plugins)`.
-(unless (member "core:stdlib" (loaded-plugins))
-  (error "core:pickers: requires core:stdlib — (load-plugin \"core:stdlib\") before (load-plugin \"core:pickers\")"))
+;; See core:vim-keybind/plugin.scm for why `(declared-plugins)` is enough
+;; here.
+(unless (member "core:stdlib" (declared-plugins))
+  (error "core:pickers: requires core:stdlib — (declare-plugin \"core:stdlib\") or (load-plugin \"core:stdlib\") before (load-plugin \"core:pickers\")"))
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 ;; `(plugin-config)` only returns the real hash while this body is being

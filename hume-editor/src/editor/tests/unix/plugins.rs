@@ -858,7 +858,8 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
         r#"(define-command! "a-cmd" "doc" (lambda () (call! "move-right")))"#,
     )
     .unwrap();
-    // Plugin B — command activation entry; body calls "a-cmd" inline (no load-plugin).
+    // Plugin B — command activation entry; b-cmd's body calls "a-cmd" inline
+    // (no load-plugin), reached only once a keypress dispatches b-cmd itself.
     let dir_b = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&dir_b).unwrap();
     std::fs::write(
@@ -933,6 +934,160 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
         ),
         "dep A must be Loaded after B calls (call! \"a-cmd\")"
     );
+}
+
+/// Nested inline activation reached from a plugin's own top-level body (not
+/// a command a keypress later dispatches), with both plugins genuinely
+/// multi-file: B's `plugin.scm` `require`s a sibling file, then top-level
+/// `(call! "a-cmd")`s a second, also multi-file, plugin A — re-entering
+/// `hm.eval-string` while B's own `require` chain is still on the Steel call
+/// stack. This is the shape `core:git-diff`/`core:lsp`'s own `core:stdlib`
+/// guard exists to protect (both `require` several sibling files before
+/// their guard runs).
+///
+/// Characterization test: the underlying nested-activation machinery is
+/// already covered against `NullHost` with single-file plugins by
+/// `nested_activation_commit_survives_enclosing_plugin_failure`
+/// (`hume-scripting/src/activation/tests.rs`) — this pins the same contract
+/// through the real editor host with multi-file plugins, so it passes
+/// before and after the dependency-guard change; no red run.
+#[test]
+fn nested_activation_multi_file_via_real_editor_host() {
+    use hume_scripting::attribution::PluginId;
+
+    let dir = safe_tempdir();
+
+    // Each plugin's top-level body checks its own helper.scm binding twice —
+    // once right after `require`, once after the nested call! — so a stack
+    // mis-scoping that corrupts either plugin's module bindings fails loudly
+    // as an eval_init error, not silently.
+    let dir_a = dir.path().join("plugins").join("user").join("tpa");
+    std::fs::create_dir_all(&dir_a).unwrap();
+    std::fs::write(
+        dir_a.join("helper.scm"),
+        "(provide a-helper-marker)\n(define a-helper-marker 9)\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir_a.join("plugin.scm"),
+        "(require \"helper.scm\")\n\
+         (unless (equal? a-helper-marker 9)\n\
+         \x20 (error \"A's own helper.scm binding must be visible in A's body\"))\n\
+         (define-command! \"a-cmd\" \"doc\" (lambda () (+ 1 0)))",
+    )
+    .unwrap();
+
+    let dir_b = dir.path().join("plugins").join("user").join("tpb");
+    std::fs::create_dir_all(&dir_b).unwrap();
+    std::fs::write(
+        dir_b.join("helper.scm"),
+        "(provide b-helper-marker)\n(define b-helper-marker 7)\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir_b.join("plugin.scm"),
+        "(require \"helper.scm\")\n\
+         (call! \"a-cmd\")\n\
+         (unless (equal? b-helper-marker 7)\n\
+         \x20 (error \"B's own helper.scm binding must survive nested activation of A\"))\n\
+         (define-command! \"b-cmd\" \"doc\" (lambda () (+ 1 0)))",
+    )
+    .unwrap();
+
+    // A is merely declared — its activation must come from B's nested call!,
+    // not from its own top-level load. B loads eagerly, running its body
+    // (and the nested call! into A) during this eval_init.
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        "(declare-plugin \"user/tpa\" #:commands '(\"a-cmd\"))\n\
+         (load-plugin \"user/tpb\")",
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed — B's top-level call! must inline-activate multi-file A");
+    ed.scripting = Some(host);
+
+    let id_a = PluginId::User {
+        user: "user".to_string(),
+        repo: "tpa".to_string(),
+    };
+    let id_b = PluginId::User {
+        user: "user".to_string(),
+        repo: "tpb".to_string(),
+    };
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
+            Some(PluginStatus::Loaded)
+        ),
+        "A must be Loaded — its multi-file require completed under nested activation"
+    );
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
+            Some(PluginStatus::Loaded)
+        ),
+        "B must be Loaded — its own multi-file require completed despite nesting a call! mid-body"
+    );
+}
+
+/// A plugin body's `(plugin-config)` read must resolve to its own `#:config`
+/// even after nested-activating a dependency in between — `plugin-config`
+/// resolves off the top of `plugin_stack`
+/// (`hume-scripting/src/builtins/plugins.rs`), which `%finish-lazy-activation`
+/// pops back to the enclosing plugin once the nested activation completes.
+///
+/// Fail oracle: if the stack were left unpopped (or popped twice) after A's
+/// nested activation, B's `(plugin-config)` read below would see A's hash
+/// instead of B's own, the `hash-ref`/`equal?` check inside B's body would
+/// raise, and `eval_init` would fail.
+#[test]
+fn plugin_config_scoped_correctly_after_nested_activation() {
+    let dir = safe_tempdir();
+
+    let dir_a = dir.path().join("plugins").join("user").join("tpa");
+    std::fs::create_dir_all(&dir_a).unwrap();
+    std::fs::write(
+        dir_a.join("plugin.scm"),
+        "(define-command! \"a-cmd\" \"doc\" (lambda () (call! \"move-right\")))",
+    )
+    .unwrap();
+
+    let dir_b = dir.path().join("plugins").join("user").join("tpb");
+    std::fs::create_dir_all(&dir_b).unwrap();
+    std::fs::write(
+        dir_b.join("plugin.scm"),
+        "(call! \"a-cmd\")\n\
+         (unless (equal? (hash-ref (plugin-config) \"y\") 2)\n\
+         \x20 (error \"B's plugin-config must be B's own after A's nested activation\"))\n\
+         (define-command! \"b-cmd\" \"doc\" (lambda () (call! \"move-right\")))",
+    )
+    .unwrap();
+
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        "(declare-plugin \"user/tpa\" #:commands '(\"a-cmd\") #:config (hash \"x\" 1))\n\
+         (declare-plugin \"user/tpb\" #:commands '(\"b-cmd\") #:config (hash \"y\" 2))",
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+    {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed — B must see its own #:config after nested-activating A");
 }
 
 /// A lazy plugin activated via the in-Steel `call!` path whose body tries to
@@ -2061,6 +2216,67 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
         ),
         "manifest.scm's #:commands entries must be registered as Lazy stubs, \
          including \"stdlib/all-single-char?\""
+    );
+}
+
+/// A bare `(declare-plugin "core:stdlib")` leaves it `Declared` (proven
+/// above) with a live `Lazy` stub for every helper its own `manifest.scm`
+/// exports. Loading `core:pickers` next must still succeed: its body-time
+/// `call!` into `stdlib/config-boolean` hits that stub, and
+/// `%dispatch-command`'s lazy-miss retry
+/// (`hume-scripting/src/builtins/bootstrap.scm`) inline-activates
+/// `core:stdlib` to `Loaded` before the config read runs.
+///
+/// Flip: a dependency guard checking `(loaded-plugins)` instead of
+/// `(declared-plugins)` rejects this — `core:stdlib` is `Declared`, not yet
+/// `Loaded`, when `core:pickers`'s guard runs — and `init_scripting` logs an
+/// error naming `core:stdlib` instead of ever reaching `core:pickers`'s
+/// config read.
+#[test]
+fn declared_core_stdlib_serves_dependent_body_time_call() {
+    use crate::editor::Severity;
+    use hume_scripting::attribution::PluginId;
+
+    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("hume-editor/ must have a parent (the repo root)")
+        .join("runtime");
+
+    let (ed, _dirs) = setup_editor_with_init_scripting(
+        "(declare-plugin \"core:stdlib\")\n(load-plugin \"core:pickers\")",
+        Some(&runtime_dir),
+    );
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "declared (not loaded) core:stdlib must serve core:pickers's body-time \
+         config read without error; got: {errors:?}"
+    );
+
+    let id_stdlib = PluginId::Core("stdlib".to_string());
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id_stdlib),
+            Some(PluginStatus::Loaded)
+        ),
+        "core:stdlib must be inline-activated to Loaded by core:pickers's \
+         body-time call! — staying Declared would mean the config read \
+         either errored or silently reached an unactivated stub"
+    );
+    let id_pickers = PluginId::Core("pickers".to_string());
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id_pickers),
+            Some(PluginStatus::Loaded)
+        ),
+        "core:pickers must itself be Loaded — its own eager load-plugin completed"
     );
 }
 

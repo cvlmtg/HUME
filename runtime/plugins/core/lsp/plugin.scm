@@ -25,10 +25,10 @@
 (require "completion.scm")
 (require "inlay.scm")
 
-;; The load-time call below needs core:stdlib already activated, not just
-;; declared — same reasoning as core:vim-keybind/plugin.scm's guard.
-(unless (member "core:stdlib" (loaded-plugins))
-  (error "core:lsp: requires core:stdlib — (load-plugin \"core:stdlib\") before (load-plugin \"core:lsp\")"))
+;; See core:vim-keybind/plugin.scm for why `(declared-plugins)` is enough
+;; here.
+(unless (member "core:stdlib" (declared-plugins))
+  (error "core:lsp: requires core:stdlib — (declare-plugin \"core:stdlib\") or (load-plugin \"core:stdlib\") before (load-plugin \"core:lsp\")"))
 
 ;; ── Register installed servers ────────────────────────────────────────────────
 ;;
