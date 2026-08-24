@@ -32,6 +32,21 @@
 - [ ] `:sort --lexicographic` override — for when numeric auto-detection guesses wrong (e.g. `1.10` vs `1.9`). Not worth shipping until it actually bites.
 - [ ] Non-`file:` LSP location URIs (jdtls's `jdt://`, deno's `deno:`) — `goto-location!`/`lsp-locations->display-parts` reject them outright (`hume_lsp::uri::uri_to_path` only understands `file:`); a server sending one is conforming, HUME just has no reader for it yet. The error now names the URI and the unsupported scheme rather than printing `UriError`'s `Debug` form, but the destination is still unreachable.
 
+### Performance — deferred
+
+Structural work found during a cheap-wins sweep. Each is real but wants a design decision, an invalidation contract, or a wide signature change — none is a small edit. Nothing here is measured as dominant: the benchmark harness is itself the first item.
+
+- [ ] Criterion benchmark harness over `Editor::render_to_buf` — the workspace has none, so every item below is reasoned from allocation and complexity counts rather than from a profile. Build this before betting on any of them.
+- [ ] `Operation::Insert` carrying its own char length — five sites re-derive it with `chars().count()`, and `compose` re-counts a growing accumulator once per keystroke of an insert session (quadratic over the session). Touches every match site on the variant.
+- [ ] Frame-level damage tracking — every frame re-formats, re-styles and re-composes every visible row; only ratatui's cell diff limits terminal writes. The largest single win and the largest correctness risk (several per-frame sync steps have side effects).
+- [ ] Decoration-bridge unification — six per-frame `update_*` bridges each re-snapshot the pane list and re-derive the same visible ranges. They deliberately straddle the scroll step (the sign and EOL bridges filter against the *previous* frame's viewport), so a shared snapshot is not behaviour-preserving without also settling that ordering. Wants one snapshot plus a generation/dirty gate.
+- [ ] Rows are formatted twice per frame under soft wrap — the scroll step and the render step each build a `RowMap` over their own `FormatScratch` (separate to avoid a borrow conflict), and counting a line's wrap rows means formatting it.
+- [ ] One chunk-walking cursor for `display_col_in_line` / `char_pos_at_display_col` — both pay ~6 O(log n) rope descents per grapheme where a single resumable cursor would make them O(line). A grapheme-level sibling of `CharCursor` would do the same for the word motions, which interleave `char_at` with `next_grapheme_boundary`.
+- [ ] `find_tightest_bracket_pair` runs three unbounded whole-buffer scans (`()`, `[]`, `{}`), each scanning to both ends when unmatched — one combined pass tracking three depths would replace six. Paragraph motions similarly re-descend per line where `lines_at` would traverse once.
+- [ ] `Buffer::apply_edit` clones the whole `ChangeSet` per edit (once to record the revision, once into an open group's accumulator) — fine while typing, a full extra copy of the payload on a large paste. `Rc`/`Arc` on the propagated value fixes it structurally.
+- [ ] Interning for names cloned per dispatch or per frame — `KeymapCommand`'s `Cow<'static, str>` allocates on every dispatch of a Steel-bound key (built-ins are borrowed and free); decoration entries carry `String` scopes resolved at render time rather than `ScopeId`s resolved at set time, which is what forces the collect-owned-then-resolve dance in the render bridges.
+- [ ] Statusline recomputes per frame — the `FilePath` two-pass sizing re-renders any section containing it (the default left section), and `DiagnosticsElement` scans the whole diagnostics store for its counts. Both want caching against a generation, not a mechanical fix.
+
 ### Plugins
 
 - [ ] PLUM: pin plugins to commit / tag / branch.
