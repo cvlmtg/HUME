@@ -17,10 +17,10 @@ There are two ways to bring a plugin into the editor from `init.scm`:
   #:commands '("my-cmd"))
 ```
 
-**Eager plugins** (`load-plugin`) evaluate their body immediately. Use this for plugins
-that install options, bindings, or hooks that need to be in place from the first
-keystroke — theme plugins, paste-style overrides, or anything without a natural
-"first use" trigger.
+**Eager plugins** (`load-plugin`) evaluate their body immediately. Use this for a plugin
+whose only possible trigger is something its own body sets up — a key binding it adds or
+overrides, an option, a hook — since nothing outside the plugin could ever fire first and
+wake it.
 
 **Lazy plugins** (`declare-plugin`) don't evaluate their body until the first activation
 entry is exercised. This keeps startup fast: a Rust formatting plugin whose commands you
@@ -240,9 +240,14 @@ a registered command by name:
 `call!` dispatches by command name. If the command belongs to a lazy plugin that hasn't
 activated yet, calling it triggers activation inline before the call proceeds.
 
-A plugin that only performs side effects at load time — setting options, registering
-hooks, binding keys — and registers no commands has no natural `#:commands` activation
-entry. Such a plugin must use `load-plugin` (eager).
+A key binding, unlike a command, has no activation entry of its own — a plugin's
+`bind-key!` calls only take effect once its body has already run. So it's not enough for
+a lazy plugin to register a command; something has to be able to *reach* that command
+before the plugin's own bindings exist. A plugin that rebinds a key which already does
+something is a sharper case of the same problem: until it activates, that key keeps doing
+whatever it did before, which is often worse than doing nothing. Either way, if a
+plugin's own bindings are the only path to its commands — nothing else can dispatch them,
+no event or language would ever fire first — it must use `load-plugin` (eager).
 
 ---
 

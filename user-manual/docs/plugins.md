@@ -54,11 +54,17 @@ There are two ways to bring a plugin into the editor from `init.scm`:
 
 **Lazy plugins** (`declare-plugin`) record a *manifest* of what the plugin offers, but don't evaluate the body until the first activation entry is exercised. This keeps startup fast, and is the recommended default: a language-server or formatting plugin whose commands you might never call costs nothing until you do.
 
-**Eager plugins** (`load-plugin`) evaluate their body immediately. Use this for plugins that install options, hooks, or key bindings that must be in place from the first keystroke — themes, paste-style overrides, or anything without a natural "first use" trigger.
+**Eager plugins** (`load-plugin`) evaluate their body immediately. Use this for a plugin whose only way of being triggered is one of the things its own body sets up — a key binding it adds or overrides, an option, a hook — since nothing else could ever wake it.
 
 A lazy plugin needs at least one activation entry, or it could never activate. Declare them yourself:
 
-- **`#:commands`** — command names the plugin provides. HUME creates placeholder stubs so the names appear in `:` Tab completion immediately; the first dispatch triggers real definition.
+- **`#:commands`** — command names the plugin provides. HUME creates placeholder stubs so the names appear in `:` Tab completion immediately; the first dispatch triggers real definition. A key you bind to one of these names in your own `init.scm` works the same way — pressing it activates the plugin, then runs the command, so a lazy plugin's commands are key-bindable from the start even though the plugin's *own* bindings aren't in place yet:
+
+  ```scheme
+  (declare-plugin "alice/rust-tools" #:commands '("rust-check"))
+  (bind-key! 'normal "<space>r" "rust-check")
+  ; pressing <space>r the first time loads alice/rust-tools, then runs rust-check
+  ```
 - **`#:events`** — lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
 - **`#:languages`** — buffer language names that trigger loading.
 

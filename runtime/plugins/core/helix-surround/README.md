@@ -5,8 +5,9 @@ the Helix layout.
 
 ## Usage
 
-Loads eagerly — it rebinds keys, which must be live from the first keystroke, not deferred
-to a first-use trigger:
+Loads eagerly — it takes over `m s`, which by default *selects* a surrounding pair, and
+removes `m w` outright. Declared lazily, `m s` would keep selecting instead of wrapping
+until something else happened to trigger the plugin:
 
 ```scheme
 (load-plugin "core:helix-surround")

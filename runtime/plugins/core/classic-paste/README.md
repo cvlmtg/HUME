@@ -5,8 +5,9 @@ as an alternative to HUME's default smart-p heuristic.
 
 ## Usage
 
-Loads eagerly — it rebinds keys, which must be live from the first keystroke, not deferred
-to a first-use trigger:
+Loads eagerly — it replaces `p`/`P`/`Ctrl+V`/`Ctrl+Shift+V`'s default behavior. Declared
+lazily, those keys would keep pasting the default way until something else happened to
+trigger the plugin:
 
 ```scheme
 (load-plugin "core:classic-paste")

@@ -9,7 +9,7 @@ There are two ways to bring a plugin in:
 (load-plugin "core:plum")       ; eager — loads at startup
 ```
 
-Plugins that rebind keys have to be loaded eagerly, since their bindings must exist before you press anything. Those are marked below. See [Plugins](plugins.md#how-plugins-are-loaded) for the difference in detail.
+A plugin's key bindings only exist once its body has run, so a lazily declared plugin needs some other trigger — a command, an event, a language — to fire before you'd press one of its keys. The plugins marked below have no such trigger, so they're loaded eagerly instead. See [Plugins](plugins.md#how-plugins-are-loaded) for the difference in detail.
 
 ## core:stdlib
 
@@ -57,7 +57,7 @@ Language server support: hover, go-to-definition, references, diagnostics, renam
 (declare-plugin "core:lsp")
 ```
 
-Requires `core:stdlib` declared or loaded first. `core:lsp` itself is still declared lazily here — it wakes up on the first buffer with a detected language, or the first `:lsp-*` command you type.
+Requires `core:stdlib` declared or loaded first. `core:lsp` itself is still declared lazily here — it wakes up on the first buffer with a detected language, or the first `:lsp-*` command you type, and its key bindings go live at that same moment, before there's a buffer they'd need to act on.
 
 See [Language Servers](lsp.md) for setup, the full command and key tables, and settings.
 
@@ -101,7 +101,7 @@ over files with staged or unstaged git changes.
 (load-plugin "core:pickers")
 ```
 
-Must be loaded eagerly (`core:stdlib` only needs to be declared or loaded before it). By
+Must be loaded eagerly (`core:stdlib` only needs to be declared or loaded before it) — its keys are the only way to reach its commands, so declared lazily it would have no trigger to ever wake it up. By
 default the modified-files picker includes untracked files; turn them off with `#:config`:
 
 ```scheme
@@ -166,7 +166,7 @@ Vim muscle memory: `$`, `^`, `0`, `G` (last line), `C` and `D` (change/delete to
 (load-plugin "core:vim-keybind")
 ```
 
-Must be loaded eagerly (`core:stdlib` only needs to be declared or loaded before it).
+Must be loaded eagerly (`core:stdlib` only needs to be declared or loaded before it) — it replaces keys HUME already binds, and most of what it rebinds (`goto-line-start`, `goto-last-line`, and the rest) are built-in commands, not plugin commands, so there's no first dispatch to trigger loading. Declared lazily, `$`/`^`/`0`/`G` would keep doing HUME's default thing until something unrelated woke the plugin up.
 
 By default (`'smart`), `C` is context-sensitive: on a bare cursor with no count it changes to end of line as in vim, but with a real selection, or any count prefix (e.g. `3C`), it runs HUME's own `copy-selection-on-next-line`, so that command stays fully reachable. Change this with `#:config`:
 
@@ -185,7 +185,7 @@ Helix-style surround keys: `m s` wraps the selection, `m d` deletes a surroundin
 (load-plugin "core:helix-surround")
 ```
 
-Must be loaded eagerly. Note that it takes over `m s` — which by default *selects* a surrounding pair — and removes `m w`, so wrapping lives on `m s` alone once it's loaded.
+Must be loaded eagerly: it takes over `m s` — which by default *selects* a surrounding pair — and removes `m w` outright, so wrapping lives on `m s` alone once it's loaded. Declared lazily, `m s` would silently keep selecting instead of wrapping until something else triggered the plugin.
 
 ## core:classic-paste
 
@@ -195,4 +195,4 @@ GUI-style paste, if you'd rather not have `p` choose a source for you: `p` / `P`
 (load-plugin "core:classic-paste")
 ```
 
-Must be loaded eagerly.
+Must be loaded eagerly — it replaces `p`/`P`/`Ctrl+V`/`Ctrl+Shift+V`'s default behavior, so until it loads `p` keeps pasting the default way instead of erroring or doing nothing.

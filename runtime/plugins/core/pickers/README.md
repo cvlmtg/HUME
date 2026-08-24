@@ -12,8 +12,8 @@ lazy-miss retry inline-activates a merely declared `core:stdlib` before the read
 
 ## Usage
 
-Loads eagerly — it binds keys, which must be live from the first keystroke,
-not deferred to a first-use trigger:
+Loads eagerly — its keys are the only way to reach its commands, so declared
+lazily it would have no trigger to ever wake it up:
 
 ```scheme
 (declare-plugin "core:stdlib")

@@ -5,6 +5,11 @@ natively, and the visual-mode `o` flip alias.
 
 ## Usage
 
+Loads eagerly — it replaces keys HUME already binds (`0`, `^`, `$`, `G`, `o` in Extend
+mode), and most of what it rebinds are built-in commands rather than plugin commands, so
+there's no dispatch that could ever trigger it if it were declared lazily. Declared
+lazily, those keys would keep doing HUME's default thing instead.
+
 Requires `core:stdlib` declared or loaded first. Config validation (`change-to-eol`, any
 value) calls `stdlib/config-enum` via `call!` at *this plugin's own load time* — a bare
 `(declare-plugin "core:stdlib")` is enough, since `call!`'s lazy-miss retry inline-activates it

@@ -9,8 +9,7 @@ keyboard: type a few characters, watch the list narrow, `Enter` to go there.
 (load-plugin "core:pickers")
 ```
 
-Must be loaded eagerly — it binds `g f` and `g b`, which need to be live from the first
-keystroke.
+Must be loaded eagerly — `g f` and `g b` are the only way to reach its commands, so declared lazily it would have no trigger to ever wake it up.
 
 ## Picking files
 
