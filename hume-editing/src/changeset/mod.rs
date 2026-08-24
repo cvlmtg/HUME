@@ -139,13 +139,16 @@ fn advance_op(
     let remainder = match op {
         Operation::Retain(k) if k > n => Some(Operation::Retain(k - n)),
         Operation::Delete(k) if k > n => Some(Operation::Delete(k - n)),
-        Operation::Insert(s) => {
-            let total = s.chars().count();
-            if total > n {
-                let rest: String = s.chars().skip(n).collect();
-                Some(Operation::Insert(rest))
-            } else {
-                None
+        Operation::Insert(mut s) => {
+            // `nth` stops at the boundary instead of counting the whole
+            // string, and `s` is owned, so the tail is taken in place — no
+            // second scan and no fresh allocation for the remainder.
+            match s.char_indices().nth(n) {
+                Some((byte_idx, _)) => {
+                    s.drain(..byte_idx);
+                    Some(Operation::Insert(s))
+                }
+                None => None,
             }
         }
         _ => None, // fully consumed
@@ -323,8 +326,12 @@ impl ChangeSet {
                     let pos = old_pos
                         .checked_add_signed(delta)
                         .expect("changeset apply: rope position underflow");
+                    // Ropey tracks its own char count in O(1), so the insert's
+                    // char length is read off the rope rather than by scanning
+                    // `s` a second time.
+                    let before = rope.len_chars();
                     rope.insert(pos, s);
-                    delta += s.chars().count() as isize;
+                    delta += (rope.len_chars() - before) as isize;
                 }
             }
         }
@@ -628,8 +635,15 @@ impl ChangeSet {
                         // Insert + Retain → Insert (first `min` chars)
                         // (A inserted text that B retains.)
                         (Operation::Insert(s), Operation::Retain(_)) => {
-                            let text: String = s.chars().take(min).collect();
-                            push_merge(&mut result, Operation::Insert(text));
+                            // Slice at the `min`-th char boundary rather than
+                            // re-encoding the prefix char by char. `min <=
+                            // a_len`, so a shorter-than-`min` string can only
+                            // mean the whole of it.
+                            let end = s
+                                .char_indices()
+                                .nth(min)
+                                .map_or(s.len(), |(byte_idx, _)| byte_idx);
+                            push_merge(&mut result, Operation::Insert(s[..end].to_string()));
                         }
                         // Insert + Delete → cancel
                         // (A inserted text that B immediately deletes —

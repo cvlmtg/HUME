@@ -27,15 +27,16 @@ pub(super) fn write_pane_mirror(
 ) {
     use hume_engine::types::Selection as EngineSelection;
     let primary_head = sels.primary().head();
+    // Sorted after the mirror is filled rather than through a scratch `Vec` of
+    // references, so the pane's own storage — reused across frames — is the
+    // only buffer involved.
     pane.selections.clear();
-    pane.selections.extend(
-        sels.iter_head_sorted()
-            .into_iter()
-            .map(|s| EngineSelection {
-                anchor: s.anchor(),
-                head: s.head(),
-            }),
-    );
+    pane.selections
+        .extend(sels.iter_sorted().map(|s| EngineSelection {
+            anchor: s.anchor(),
+            head: s.head(),
+        }));
+    pane.selections.sort_by_key(|s| s.head);
     pane.primary_idx = pane
         .selections
         .iter()

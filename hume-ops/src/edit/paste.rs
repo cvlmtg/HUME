@@ -63,8 +63,8 @@ fn paste_impl(
         if sel.is_collapsed() {
             if register::is_register_linewise(content) {
                 // Linewise cursor paste: insert as whole new line(s).
-                // insert advances new_pos() by the char count of the inserted text,
-                // so new_pos() - content.chars().count() is the first inserted char.
+                // `new_pos()` before the insert is where the pasted text
+                // starts; after it, one past where it ends.
                 let line = text.char_to_line(sel.head());
                 let insert_at = if before {
                     text.line_to_char(line)
@@ -73,9 +73,9 @@ fn paste_impl(
                 };
                 // saturating_sub guards against same-line multi-cursor underflow.
                 b.retain(insert_at.saturating_sub(b.old_pos()));
+                let paste_start = b.new_pos();
                 b.insert(content);
-                let count = content.chars().count();
-                new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
+                new_sels.push(Selection::new(paste_start, b.new_pos() - 1));
             } else {
                 // Charwise cursor paste.
                 let insert_at = if before {
@@ -87,9 +87,9 @@ fn paste_impl(
                 if content.is_empty() {
                     new_sels.push(Selection::collapsed(sel.head()));
                 } else {
+                    let paste_start = b.new_pos();
                     b.insert(content);
-                    let count = content.chars().count();
-                    new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
+                    new_sels.push(Selection::new(paste_start, b.new_pos() - 1));
                 }
             }
         } else if register::is_register_linewise(content) {
@@ -120,9 +120,11 @@ fn paste_impl(
             if needs_prefix {
                 b.insert("\n");
             }
+            // Captured after the separating '\n' so the selection covers the
+            // pasted content alone, not the prefix.
+            let paste_start = b.new_pos();
             b.insert(content);
-            let count = content.chars().count();
-            new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
+            new_sels.push(Selection::new(paste_start, b.new_pos() - 1));
         } else {
             // Charwise over a non-collapsed selection: delete and inline-insert.
             let start = sel.start();
@@ -130,12 +132,12 @@ fn paste_impl(
             let end_excl = end_incl + 1;
             b.retain(start - b.old_pos());
             b.delete(end_excl - start);
+            let paste_start = b.new_pos();
             b.insert(content);
             if content.is_empty() {
                 new_sels.push(Selection::collapsed(b.new_pos()));
             } else {
-                let count = content.chars().count();
-                new_sels.push(Selection::new(b.new_pos() - count, b.new_pos() - 1));
+                new_sels.push(Selection::new(paste_start, b.new_pos() - 1));
             }
         }
     })

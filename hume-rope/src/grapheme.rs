@@ -231,7 +231,7 @@ fn cluster_str(slice: RopeSlice<'_>, start: usize, end: usize) -> Cow<'_, str> {
     if local_end <= chunk.len() {
         Cow::Borrowed(&chunk[local_start..local_end])
     } else {
-        Cow::Owned(slice.slice(start..end).chars().collect())
+        Cow::Owned(slice.slice(start..end).to_string())
     }
 }
 

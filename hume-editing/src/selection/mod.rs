@@ -84,18 +84,6 @@ impl SelectionSet {
         self.selections.iter()
     }
 
-    /// Return all selections sorted by ascending `head` order.
-    ///
-    /// The engine layer (`EngineView::panes`) requires selections sorted by
-    /// `head`, which differs from `start()` when anchor > head (backward
-    /// selections). This function allocates a scratch `Vec` and sorts it —
-    /// the allocation is intentional and visible in the return type.
-    pub fn iter_head_sorted(&self) -> Vec<&Selection> {
-        let mut v: Vec<&Selection> = self.selections.iter().collect();
-        v.sort_by_key(|s| s.head);
-        v
-    }
-
     /// Apply `f` to every selection and return a canonicalized `SelectionSet`.
     ///
     /// After applying `f` the result is sorted by `start()`, overlapping or

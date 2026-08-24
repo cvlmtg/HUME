@@ -325,8 +325,13 @@ pub fn line_segments(
         let line_newline = line_break_char(rope, line);
         let seg_start = start.max(rope.line_to_char(line));
         let seg_end = end_char_excl.min(line_newline);
-        let (_, byte_start) = char_to_line_byte(rope, seg_start);
-        let (_, byte_end) = char_to_line_byte(rope, seg_end);
+        // Both ends are clamped to `line` above, so the line each resolves to
+        // is already known — subtracting this line's own byte offset gives the
+        // same answer as `char_to_line_byte` without re-deriving the line or
+        // its start byte once per end.
+        let line_start_byte = rope.line_to_byte(line);
+        let byte_start = rope.char_to_byte(seg_start) - line_start_byte;
+        let byte_end = rope.char_to_byte(seg_end) - line_start_byte;
         (line, byte_start, byte_end)
     })
 }

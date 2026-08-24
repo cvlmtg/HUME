@@ -412,8 +412,7 @@ impl History {
         // Put the "from" ancestor set in a HashSet for O(1) lookup.
         // We need to find the first node in ancestors_to that also appears
         // in ancestors_from — that is the LCA.
-        let from_set: std::collections::HashSet<RevisionId> =
-            ancestors_from.iter().copied().collect();
+        let from_set: rustc_hash::FxHashSet<RevisionId> = ancestors_from.iter().copied().collect();
 
         // Find the LCA: walk ancestors_to until we hit a node in from_set.
         let lca = *ancestors_to

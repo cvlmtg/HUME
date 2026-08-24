@@ -41,7 +41,7 @@ fn transform_case(
         b.retain(sel_start - b.old_pos());
         let new_sel_start = b.new_pos();
 
-        let selected: String = text.slice(sel_start..sel_end).chars().collect();
+        let selected = text.slice(sel_start..sel_end).to_string();
         let mapped = match kind {
             CaseTransform::Lower => selected.to_lowercase(),
             CaseTransform::Upper => selected.to_uppercase(),

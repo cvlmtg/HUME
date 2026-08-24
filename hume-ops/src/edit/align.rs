@@ -219,8 +219,10 @@ pub fn align_selections(
                 // Adjust the original anchor display column by the net shift
                 // from earlier edits on this line to get the current anchor
                 // display column.
-                let anchor_display_col_orig =
-                    display_col_in_line(text, start_line, sel.anchor(), tab_width);
+                // Measured in pass 1 from the same (still unedited) text —
+                // a `Some(slot)` meta is exactly one that took pass 1's
+                // single-line branch, which is what populates this field.
+                let anchor_display_col_orig = meta[i].anchor_display_col;
                 let anchor_display_col_now =
                     (anchor_display_col_orig as isize + line_shift).max(0) as usize;
                 let amount = target as isize - anchor_display_col_now as isize;

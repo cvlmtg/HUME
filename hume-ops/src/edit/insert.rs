@@ -270,9 +270,10 @@ pub fn insert_tab(
         // same-line edits. Cast to isize because display_col_shift is signed
         // (a selection deletion can decrease it), then clamp to avoid
         // underflow.
-        let display_col = (display_col_in_line(text, line_idx, start, tab_width) as isize
-            + display_col_shift)
-            .max(0) as usize;
+        // Walks the line prefix grapheme by grapheme, so it's measured once
+        // and reused by the deletion-width computation below.
+        let start_display_col = display_col_in_line(text, line_idx, start, tab_width);
+        let display_col = (start_display_col as isize + display_col_shift).max(0) as usize;
         if !sel.is_collapsed() {
             let del_end = sel.content_end(text) + 1;
             // Clamp del_end to the line boundary before computing the display-column
@@ -282,8 +283,8 @@ pub fn insert_tab(
             // same-line cursors.
             let line_end = line_end_exclusive(text, line_idx);
             let del_end_clamped = del_end.min(line_end);
-            let del_width = display_col_in_line(text, line_idx, del_end_clamped, tab_width)
-                - display_col_in_line(text, line_idx, start, tab_width);
+            let del_width =
+                display_col_in_line(text, line_idx, del_end_clamped, tab_width) - start_display_col;
             b.delete(del_end - start);
             display_col_shift -= del_width as isize;
         }
