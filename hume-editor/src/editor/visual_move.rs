@@ -1,9 +1,11 @@
-//! Visual-line movement commands (`j`/`k` with soft-wrap).
+//! Vertical commands that need a `RowMap` — unavailable in the pure
+//! `(&BufferText, SelectionSet) -> SelectionSet` motion signature — so they
+//! live here instead of `hume-ops`'s `motion`/`selection_cmd` modules.
 //!
-//! When soft-wrap is active, `j`/`k` move by one display row rather than one
-//! buffer line. These commands need a `RowMap` — unavailable in the pure
-//! `(&BufferText, SelectionSet) -> SelectionSet` motion signature — so they live here
-//! instead of `hume-ops`'s `motion` module.
+//! Two families: `j`/`k` movement, which under soft-wrap moves by one display
+//! row rather than one buffer line; and `copy-selection-on-{next,prev}-line`
+//! (`C`), which needs the same display-column authority to land a duplicated
+//! selection under a tab or wide grapheme without wrap in play at all.
 
 use hume_editing::selection::{DisplayColOrigin, Selection, SelectionSet, StickyDisplayCol};
 use hume_editing::text::BufferText;
@@ -242,21 +244,27 @@ pub(super) fn apply_visual_vertical(
 // Vertical selection copy
 // ---------------------------------------------------------------------------
 
-/// Duplicate each selection onto each of the `count` lines in `direction`
-/// (`1` down, `-1` up) and add them to the selection set, landing each copy's
-/// anchor and head on the *display* column of the original — needs a
-/// `RowMap`, so, like the visual-line motions above, this lives here rather
-/// than in `hume-ops`'s pure `(&BufferText, SelectionSet) -> SelectionSet`
-/// signature (see this module's doc comment).
+/// Duplicate each selection onto each of the `count` lines below it (`down:
+/// true`) or above it (`false`) and add them to the selection set, landing
+/// each copy's anchor and head on the *display* column of the original —
+/// needs a `RowMap`, so, like the
+/// visual-line motions above, this lives here rather than in `hume-ops`'s
+/// pure `(&BufferText, SelectionSet) -> SelectionSet` signature (see this
+/// module's doc comment).
 ///
 /// `DisplayColTarget::NearestContent` reproduces the clamp rule a plain
 /// column placement already needs: stick to the last real character on a
 /// short target line, land on `\n` only when that line is empty.
 ///
-/// Clamped the same way a rope-only version would be, and stops early once a
-/// target line doesn't exist (i.e. the selection's outermost line is the
-/// last real line) — a `count` larger than the remaining lines just clamps
-/// at the last one, it doesn't wrap or error.
+/// Each successive copy is offset by the *selection's own line span* (1 for
+/// a single-line selection, more for one spanning several buffer lines), not
+/// by one line — stepping by one would leave a multi-line copy overlapping
+/// the selection it came from, which `SelectionSet::from_vec`'s merge would
+/// then fold back into a single, grown selection instead of a duplicate.
+/// Clamped to how many whole spans fit before the buffer's last real content
+/// line (or its start, going up) — a `count` larger than that just lands the
+/// last copy that fits, it doesn't wrap, error, or land partially past the
+/// end.
 ///
 /// The primary advances to the furthest copy of the original primary. Every
 /// copy's column is re-derived from the *original* selection, not the
@@ -270,9 +278,10 @@ fn copy_selection_vertically(
     rm: &mut RowMap<'_>,
     text: &BufferText,
     sels: SelectionSet,
-    direction: isize,
+    down: bool,
     count: usize,
 ) -> SelectionSet {
+    let direction: isize = if down { 1 } else { -1 };
     let primary_idx = sels.primary_index();
     // Collect originals into `all_sels`. Copies are appended below.
     let mut all_sels: Vec<Selection> = sels.iter_sorted().copied().collect();
@@ -286,11 +295,12 @@ fn copy_selection_vertically(
         let head_line = text.char_to_line(sel.head()) as isize;
 
         // The outermost line in the copy direction determines the offset target.
-        let outer_line = if direction > 0 {
+        let outer_line = if down {
             anchor_line.max(head_line) // bottommost for "down"
         } else {
             anchor_line.min(head_line) // topmost for "up"
         };
+        let span = (anchor_line - head_line).unsigned_abs() as isize + 1;
 
         // Both endpoints' display columns are loop-invariant — the original
         // selection never changes across copies — so compute them once
@@ -298,28 +308,20 @@ fn copy_selection_vertically(
         let anchor_display_col = rm.line_display_col(sel.anchor());
         let head_display_col = rm.line_display_col(sel.head());
 
-        // Walk outward one line at a time, breaking as soon as a target line
-        // falls off the buffer — every further step in that direction would
-        // too, so this is O(lines available), not O(count) even for a
-        // `usize::MAX` count prefix.
-        let mut target_outer = outer_line;
-        for _ in 0..count {
-            target_outer += direction;
+        // How many whole `span`-line steps fit between the selection and the
+        // buffer's edge in `direction`, floor-divided — the last step that
+        // still lands fully on real content. Kept in `usize` throughout: a
+        // `count` of `usize::MAX` must clamp here without ever appearing in
+        // an `isize` computation, which `available.min(count)` guarantees.
+        let available = if down {
+            (text.last_content_line() as isize - outer_line).max(0) / span
+        } else {
+            outer_line / span
+        } as usize;
+        let steps = available.min(count);
 
-            if target_outer < 0 {
-                break; // would go before the start of the buffer
-            }
-            let target_outer_usize = target_outer as usize;
-
-            // Past the last real content line — the phantom trailing line
-            // (and anything further) has no content to copy onto.
-            if target_outer_usize > text.last_content_line() {
-                break;
-            }
-
-            // Shift each endpoint by the same delta, landing on the target
-            // line's own display column.
-            let delta = target_outer - outer_line;
+        for step in 1..=steps {
+            let delta = step as isize * span * direction;
             let new_anchor = rm.char_at_line_display_col(
                 (anchor_line + delta) as usize,
                 anchor_display_col,
@@ -349,14 +351,16 @@ fn copy_selection_vertically(
 /// Shared body of [`cmd_copy_selection_on_next_line`]/[`cmd_copy_selection_on_prev_line`].
 ///
 /// Builds the `RowMap` [`copy_selection_vertically`] needs before entering
-/// `apply_doc_motion` — one `RowMap` line-format per target line, the same
-/// cost `9j`/`9k` already pay for the same reason (a rope-only column can't
-/// see tabs or the decoration layer).
+/// `apply_doc_motion`. One `RowMap` line-format per selection per target
+/// line — for a lone cursor this is the same per-line cost `9j`/`9k` already
+/// pay for the same reason (a rope-only column can't see tabs or the
+/// decoration layer); with `count` copies of several selections the cost
+/// multiplies, since `RowMap` caches only the one line it last formatted.
 fn copy_selection_on_line(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
-    direction: isize,
+    down: bool,
 ) {
     let focused = state.focused_pane_id;
     let buf_id = focused_buffer_id(state, view);
@@ -372,7 +376,7 @@ fn copy_selection_on_line(
         &mut state.panes.state,
         focused,
         buf_id,
-        |text, sels| copy_selection_vertically(&mut rm, text, sels, direction, count),
+        |text, sels| copy_selection_vertically(&mut rm, text, sels, down, count),
     );
 }
 
@@ -427,7 +431,7 @@ pub(super) fn cmd_copy_selection_on_next_line(
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    copy_selection_on_line(state, view, count, 1);
+    copy_selection_on_line(state, view, count, true);
     Ok(())
 }
 
@@ -438,7 +442,7 @@ pub(super) fn cmd_copy_selection_on_prev_line(
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    copy_selection_on_line(state, view, count, -1);
+    copy_selection_on_line(state, view, count, false);
     Ok(())
 }
 

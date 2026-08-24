@@ -71,7 +71,10 @@ impl CommandRegistry {
         // EditorCmd, not the `selection!` macro (`MappableCommand::Selection`):
         // the display-column placement of each copy needs a `RowMap`, which
         // that signature has no channel for. See
-        // `visual_move.rs::copy_selection_vertically`.
+        // `visual_move.rs::copy_selection_vertically`. `.extendable()`
+        // restores the extendability `Selection` carries implicitly — without
+        // it, a one-shot Ctrl+key extend of this command is silently dropped
+        // (see the Ctrl+key guard in `mappings/normal.rs`).
         ecmd(
             "copy-selection-on-next-line",
             "Duplicate each selection on the line below.",

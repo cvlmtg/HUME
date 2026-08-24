@@ -1,13 +1,14 @@
 //! `copy-selection-on-next-line`/`-prev-line` (`C`) — duplicate each
-//! selection onto the lines above/below it.
+//! selection onto the lines above/below it, landing each copy on the
+//! *display* column of the original (`hume-editor::editor::visual_move::
+//! copy_selection_vertically`) rather than a raw char offset — the same
+//! `RowMap` authority `9j`/`9k` use, and why these tests live here instead
+//! of in `hume-ops`'s pure `(&BufferText, SelectionSet) -> SelectionSet`
+//! suite.
 //!
-//! Relocated from `hume-ops`'s pure-fn suite: the command's placement now
-//! needs a `RowMap` (`hume-editor::editor::visual_move::
-//! copy_selection_vertically`) to land on a *display* column rather than a
-//! char offset — the same fix `9j`/`9k` already got (see
-//! `hume-rope::lines::place_char_column`'s doc for why it's no longer this
-//! command's caller). `WrapMode::None` throughout — these pin the buffer-line
-//! column model itself, not its interaction with wrapping.
+//! `WrapMode::None` throughout except the one wrap-interaction case at the
+//! end of the file — these pin the buffer-line column model itself, not its
+//! interaction with wrapping.
 
 use super::*;
 use crate::editor::dispatch::ArgSource;
@@ -161,25 +162,12 @@ fn copy_next_line_count_3_range_selection() {
 fn copy_next_line_count_3_multiple_cursors() {
     // Two cursors on line 0 at cols 1 and 2; count=3 gives each 3 copies (6
     // new selections total), landing on the correct columns of lines 1-3.
-    // "f-[o]>-[o]>\nbar\nbaz\nqux\n": f(0) o(1) o(2) \n(3) bar(4-6) \n(7)
-    // baz(8-10) \n(11) qux(12-14) \n(15).
-    // Col 1 → offsets 5, 9, 13 on lines 1-3. Col 2 → offsets 6, 10, 14.
-    let mut ed = copy_test_editor("f-[o]>-[o]>\nbar\nbaz\nqux\n");
-    run_copy(&mut ed, true, 3);
-    assert_eq!(ed.current_selections().len(), 8); // 2 originals + 2*3 copies
-    let heads: Vec<usize> = ed
-        .current_selections()
-        .iter_sorted()
-        .map(|s| s.head())
-        .collect();
-    assert!(heads.contains(&1), "original col-1 cursor");
-    assert!(heads.contains(&2), "original col-2 cursor");
-    assert!(heads.contains(&5), "col-1 copy on line 1");
-    assert!(heads.contains(&6), "col-2 copy on line 1");
-    assert!(heads.contains(&9), "col-1 copy on line 2");
-    assert!(heads.contains(&10), "col-2 copy on line 2");
-    assert!(heads.contains(&13), "col-1 copy on line 3");
-    assert!(heads.contains(&14), "col-2 copy on line 3");
+    assert_copy_state(
+        "f-[o]>-[o]>\nbar\nbaz\nqux\n",
+        true,
+        3,
+        "f-[o]>-[o]>\nb-[a]>-[r]>\nb-[a]>-[z]>\nq-[u]>-[x]>\n",
+    );
 }
 
 #[test]
@@ -194,26 +182,13 @@ fn copy_next_line_count_3_does_not_equal_three_presses() {
     //
     // A press-by-press repeat would clamp col 4 down to col 1 on "hi" (only 2
     // chars), then carry that clamped col 1 forward onto "world" — landing on
-    // 'o' (offset 10). Re-deriving from the original instead lands the
-    // "world" copy on col 4 directly — 'd' (offset 13).
-    let mut ed = copy_test_editor("hell-[o]>\nhi\nworld\n");
-    run_copy(&mut ed, true, 3);
-    assert_eq!(ed.current_selections().len(), 3); // original + one copy per real line below
-    let heads: Vec<usize> = ed
-        .current_selections()
-        .iter_sorted()
-        .map(|s| s.head())
-        .collect();
-    assert!(heads.contains(&4), "original cursor at col 4 of line 0");
-    assert!(
-        heads.contains(&7),
-        "line 1 copy clamped to 'i', last char of \"hi\""
-    );
-    assert!(
-        heads.contains(&13),
-        "line 2 copy re-derives col 4 from the original, landing on 'd' of \"world\" \
-         (offset 13) rather than the col-1-carried-forward offset 10 a press-by-press \
-         repeat would produce"
+    // 'o' (offset 10, i.e. `worl-[o]>d`). Re-deriving from the original
+    // instead lands the "world" copy on col 4 directly — 'd'.
+    assert_copy_state(
+        "hell-[o]>\nhi\nworld\n",
+        true,
+        3,
+        "hell-[o]>\nh-[i]>\nworl-[d]>\n",
     );
 }
 
@@ -282,6 +257,73 @@ fn copy_next_line_preserves_display_column_across_a_wide_cjk_char() {
     assert_eq!(ed.current_selections().primary().head(), 6);
 }
 
+#[test]
+fn copy_next_multi_line_selection_lands_below_itself() {
+    // Selection spans lines 0-1 (anchor 'h' at line 0 col 0, head 'w' at
+    // line 1 col 0) — 2 buffer lines. Stepping by 1 line would leave the
+    // copy on lines 1-2, overlapping the original, and
+    // `SelectionSet::from_vec`'s merge would fold the two into a single,
+    // grown selection instead of duplicating it. Stepping by the
+    // selection's own span (2) instead lands the copy on lines 2-3, clear of
+    // the original — two selections, not one.
+    assert_copy_state(
+        "-[hello\nw]>orld\nfoo\nbar\n",
+        true,
+        1,
+        "-[hello\nw]>orld\n-[foo\nb]>ar\n",
+    );
+}
+
+#[test]
+fn copy_next_line_onto_empty_target_line_lands_on_its_own_newline() {
+    // "a\n\nworld\n": line 1 is empty. `DisplayColTarget::NearestContent`'s
+    // `admit_eol` fallback is what lands a copy there on the line's own '\n'
+    // instead of failing to find a content cell that doesn't exist — mirrors
+    // `9j`'s own `explicit_count_move_down_to_empty_line`.
+    assert_copy_state("-[a]>\n\nworld\n", true, 1, "-[a]>\n-[\n]>world\n");
+}
+
+#[test]
+fn copy_next_line_preserves_display_column_across_a_wrapped_source_line() {
+    use hume_editing::selection::Selection;
+
+    // Reuses the fixture from `visual_move.rs`'s
+    // `wrapped_j_then_count_2_rederives_instead_of_reading_the_row_latch_as_a_line_column`:
+    // line 0 and line 1 are both long enough to wrap into two display rows
+    // each under `Indent { width: 76 }`. `copy_selection_vertically` always
+    // measures in the buffer-line domain (`line_display_col`/
+    // `char_at_line_display_col`), which sums across a line's own wrapped
+    // rows rather than reading whichever row the cursor happens to sit on —
+    // so with the cursor on line 0's second display row (buffer-line col
+    // 79), the copy must land on line 1's second display row at the *same*
+    // buffer-line col 79 (char 160), not wherever col 79 counted from line
+    // 1's own row 0 would be.
+    let line0: String = "a".repeat(80);
+    let line1: String = "b".repeat(100);
+    let content = format!("{line0}\n{line1}\n");
+    let text = BufferText::from(content.as_str());
+    let sels = SelectionSet::single(Selection::collapsed(79)); // last 'a', buffer-line col 79
+    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
+        saved: None,
+    });
+
+    run_copy(&mut ed, true, 1);
+    assert_eq!(ed.current_selections().len(), 2);
+    let heads: Vec<usize> = ed
+        .current_selections()
+        .iter_sorted()
+        .map(|s| s.head())
+        .collect();
+    assert!(heads.contains(&79), "original cursor unchanged");
+    assert!(
+        heads.contains(&160),
+        "copy lands on line 1's buffer-line col 79 (char 160), same as `2j` \
+         from this same fixture"
+    );
+}
+
 // ── copy-selection-on-prev-line ────────────────────────────────────────────
 
 #[test]
@@ -310,6 +352,7 @@ fn copy_to_prev_line_on_first_line_is_noop() {
     let mut ed = copy_test_editor("f-[o]>o\nbar\n");
     run_copy(&mut ed, false, 1);
     assert_eq!(ed.current_selections().len(), 1); // no copy added
+    assert_eq!(ed.current_selections().primary().head(), 1); // cursor unchanged
 }
 
 #[test]
