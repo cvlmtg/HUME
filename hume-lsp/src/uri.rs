@@ -244,7 +244,7 @@ fn is_drive_letter_segment(segment: &str) -> bool {
 /// Errors exactly as [`uri_to_path`] does.
 pub fn uri_to_display_string(uri: &lsp_types::Uri) -> Result<String, UriError> {
     let path = uri_to_path(uri)?;
-    let display = path.display().to_string();
+    let display = normalize_separators(&path.display().to_string());
     Ok(match display.strip_prefix('/') {
         Some(rest) if rest.split('/').next().is_some_and(is_drive_letter_segment) => {
             rest.to_string()
