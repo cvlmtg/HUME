@@ -1,6 +1,10 @@
 //! Per-frame sync of the popup / docked-popup / menu / LSP-completion-menu /
-//! picker overlay views into their shared `Arc` buffers. Driven by
-//! `prepare_frame`'s step 10, after `last_pane_area` is current.
+//! picker overlay views into their shared `Arc` buffers. The docked popup
+//! (`sync_popup_band_view`) syncs from `prepare_frame`'s step 0 — it only
+//! needs `last_terminal_area`, which the pre-settle `sync_viewport_dims`
+//! already wrote this frame. The cursor-anchored overlays (`sync_popup_view`
+//! and the rest of this module) need the focused pane's post-scroll rect
+//! instead, so they sync later, from step 7.
 
 use hume_engine::pipeline::RenderContext;
 

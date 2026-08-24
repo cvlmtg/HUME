@@ -279,6 +279,131 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
 }
 
 #[test]
+fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame() {
+    use ratatui::layout::Rect;
+    let tmp = safe_tempdir();
+    // `editor_from` (`Editor::for_testing`) never registers `bottom_bands` —
+    // only `Editor::open`'s real startup path does — so a docked popup there
+    // never actually shrinks `pane_area`. This test asserts on that
+    // geometry, so it needs the real registration.
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let tall = (0..30)
+        .map(|i| format!("line{i}"))
+        .collect::<Vec<_>>()
+        .join("\\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable #:anchor 'bottom)))"#
+        ),
+    );
+    type_cmd(&mut ed, ":go");
+
+    let rect = Rect::new(0, 0, 80, 25);
+    let _ = ed.render_to_buf(rect); // frame 1: band visible
+    assert!(popup_band_lines(&ed).is_some(), "sanity: band showing");
+    let band_top = ed.view.pane_area(rect).height;
+    assert!(
+        band_top < rect.height - 1,
+        "sanity: band must shrink the pane"
+    );
+
+    ed.feed_key(key('l')); // any non-scroll key dismisses a docked popup
+    assert!(
+        ed.state.config.popup.is_none(),
+        "sanity: model closed by the dismiss key"
+    );
+
+    let pid = ed.state.focused_pane_id;
+    let buf = ed.render_to_buf(rect); // frame 2: the close frame
+    assert_eq!(
+        ed.view.panes[pid].viewport.height,
+        ed.view.pane_area(rect).height,
+        "viewport height must match the pane rect this frame's render painted into"
+    );
+    for y in band_top..rect.height - 1 {
+        // rect.height - 1 excludes the statusline row.
+        assert!(
+            (0..rect.width).any(|x| buf[(x, y)].symbol() != " "),
+            "row {y} (vacated by the closed band) must be repainted this frame, not left blank"
+        );
+    }
+}
+
+#[test]
+fn settle_driven_close_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame() {
+    use ratatui::layout::Rect;
+    let tmp = safe_tempdir();
+    // See the sibling test above: needs `Editor::open`'s real `bottom_bands`
+    // registration for the pane-shrinking geometry this test asserts on.
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let tall = (0..30)
+        .map(|i| format!("line{i}"))
+        .collect::<Vec<_>>()
+        .join("\\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable #:anchor 'bottom)))"#
+        ),
+    );
+    type_cmd(&mut ed, ":go");
+
+    let rect = Rect::new(0, 0, 80, 25);
+    let _ = ed.render_to_buf(rect); // frame 1: band visible
+    assert!(popup_band_lines(&ed).is_some(), "sanity: band showing");
+    let band_top = ed.view.pane_area(rect).height;
+    assert!(
+        band_top < rect.height - 1,
+        "sanity: band must shrink the pane"
+    );
+
+    // Register the real `lib.scm:38` hook only now — done as a separate
+    // `run()` (registering earlier would have it fire on the Command-mode
+    // entry/exit `:go`'s own dispatch triggers, closing the popup before
+    // frame 1 finished, since a docked popup is otherwise indistinguishable
+    // from any other mode transition to this unconditional hook).
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(register-hook! 'on-mode-change (lambda (old new) (close-popup!)))"#,
+    );
+
+    // `EditorState::set_mode` only queues `OnModeChange` (the same funnel a
+    // programmatic mode change — LSP callback, plugin command — goes
+    // through); unlike a keypress it never runs through `handle_key`'s
+    // any-key-closes-a-docked-popup intercept, so the popup is still open
+    // here. The `on-mode-change` hook (mirroring `lib.scm`'s real one) only
+    // runs when `render_to_buf`'s `settle()` drains the queued event —
+    // reproducing the settle-time close window a real hook uses.
+    ed.state.set_mode(Mode::Insert);
+    assert!(
+        ed.state.config.popup.is_some(),
+        "sanity: popup still open before settle drains the queued hook"
+    );
+
+    let pid = ed.state.focused_pane_id;
+    let buf = ed.render_to_buf(rect); // frame 2: settle() drains the hook, which closes the popup
+    assert!(
+        ed.state.config.popup.is_none(),
+        "sanity: hook must have closed the popup during settle"
+    );
+    assert_eq!(
+        ed.view.panes[pid].viewport.height,
+        ed.view.pane_area(rect).height,
+        "viewport height must match the pane rect this frame's render painted into"
+    );
+    for y in band_top..rect.height - 1 {
+        assert!(
+            (0..rect.width).any(|x| buf[(x, y)].symbol() != " "),
+            "row {y} (vacated by the closed band) must be repainted this frame, not left blank"
+        );
+    }
+}
+
+#[test]
 fn docked_popup_renders_as_a_band_above_the_statusline_and_shrinks_the_pane() {
     // Appearance + layout lock: the docked popup must actually reserve
     // chrome space (pane shrinks), not float over content like the cursor

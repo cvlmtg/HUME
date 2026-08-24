@@ -186,6 +186,12 @@ impl Editor {
     /// Must run before `settle()`: `drain_due_timers` fires `OnViewportChange`
     /// off each pane's *current* bounds (`timer_bridge.rs`), so the bounds
     /// have to be current before that drain runs, not after.
+    ///
+    /// `prepare_frame`'s step 0 calls this a second time, from the stored
+    /// `last_terminal_area`, after re-syncing the bottom-band views — so a
+    /// band-height change `settle()` made (a hook-driven `close-popup!`, a
+    /// settle-drained `close-drawer!`) is re-partitioned into `viewport`
+    /// before this same frame renders, instead of lagging a frame behind.
     pub(super) fn sync_viewport_dims(&mut self, terminal_width: u16, terminal_height: u16) {
         // Shared rect list every per-pane step below drives off — partitioned
         // through the same `EngineView::pane_area` that `render` uses, so
@@ -261,13 +267,41 @@ impl Editor {
         // catches up on interning from the *previous* frame, from command
         // dispatch between frames (e.g. `:theme`), or from the `settle()`
         // call every caller makes immediately before this one. This frame's
-        // own steps (3, 5 below) can themselves intern new scopes — extra
+        // own steps (0, 3, 5 below) can themselves intern new scopes — extra
         // highlights, inline diagnostics, virtual lines, a newly attached
         // grammar's capture names — so a second `bake_if_stale` runs at the
         // very end of this function, right before `render_into` gets to
         // resolve anything. Without it, a scope interned mid-frame and
         // resolved by that same frame's render is past the end of `baked`.
+        //
+        // Must run before step 0: a docked popup attaches its syntax (and
+        // interns its grammar's capture-name scopes) at `show-popup!`
+        // dispatch time, before this frame's `prepare_frame` — step 0's
+        // `sync_popup_band_view` resolves those scopes to concrete styles
+        // synchronously while building the band's styled rows, so they must
+        // already be baked by the time it runs.
         self.view.theme.bake_if_stale(&self.view.registry);
+
+        // 0. Re-sync the bottom-band views (docked popup, drawer) from their
+        //    now-settled models, then re-partition viewport dims from them.
+        //    Every caller runs `settle()` immediately before this function, and
+        //    a settled drain (`close-popup!` from a hook/callback) or the
+        //    pre-dispatch any-key dismissal (mappings/mod.rs) can change a
+        //    band's height after the pre-settle `sync_viewport_dims` ran —
+        //    leaving `viewport.height` partitioned against a band `render`
+        //    will no longer draw, so the pane paints short and the vacated
+        //    rows stay blank until the next event wakes the loop.
+        //    Re-partitioning here, from the same settled views render's own
+        //    `pane_area` reads, keeps them agreeing. `last_terminal_area` is
+        //    fresh: the pre-settle sync wrote it from this frame's
+        //    `term.size()`. Skipped when no terminal geometry was ever
+        //    established (headless callers relying on `Pane::new` defaults).
+        self.sync_popup_band_view();
+        self.state.sync_drawer_view();
+        let area = self.view.last_terminal_area;
+        if area.width > 0 && area.height > 0 {
+            self.sync_viewport_dims(area.width, area.height);
+        }
 
         // 1. Sync line-number style provider for every pane (depends on that
         //    pane's own buffer overrides). Must run after `settle()`: a
@@ -381,23 +415,18 @@ impl Editor {
         // 6. Sync completion-popup view to the shared Arc for `MinibufCompletionOverlay`.
         self.sync_minibuf_completion_view();
 
-        // 7. Sync the popup-, menu-, LSP-completion-menu-, and
-        //    picker-overlay views. Their geometry needs the focused pane's
-        //    current-frame rect via `EngineView::pane_rect` (popup/menu/
-        //    completion) or `last_pane_area` directly (picker) — both
-        //    written by `sync_viewport_dims`, called by every caller of
-        //    this function before it.
+        // 7. Sync the cursor-anchored popup, menu, LSP-completion-menu, and
+        //    picker overlay views. Their geometry needs step 4's scroll
+        //    result (`ctx.cursor_content_pos`) or the current-frame
+        //    `last_pane_area`/`pane_rect` — both only settled after step 0
+        //    re-partitions and step 4 scrolls — which is why these stay
+        //    here while the bottom bands (docked popup, drawer) sync in
+        //    step 0 instead: those have no cursor-relative geometry, only
+        //    the settled model, so they don't need to wait on scroll.
         self.sync_popup_view(ctx);
-        self.sync_popup_band_view();
         self.sync_menu_view(ctx);
         self.sync_completion_menu_view(ctx);
         self.sync_picker_view();
-        // The drawer has no cursor-relative geometry, so it doesn't need
-        // step 7's ordering — but it's synced here unconditionally anyway
-        // (self-healing), on top of every direct mutation-site call, so the
-        // view can never drift from `state.config.drawer` for a frame. See
-        // `EditorState::sync_drawer_view`'s doc.
-        self.state.sync_drawer_view();
 
         // Second bake — see the comment on the early call above. Cheap when
         // nothing changed (one `usize` comparison); catches every scope this
