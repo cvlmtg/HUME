@@ -70,7 +70,10 @@ impl Cluster {
     pub fn width(&self) -> usize {
         match self {
             Cluster::Tab { width } | Cluster::Plain { width, .. } => *width,
-            Cluster::Placeholder(p) => p.as_str().len(),
+            // A placeholder is ASCII-only ([`Placeholder::as_str`]), so its
+            // byte length is also its column count — read directly rather
+            // than through `as_str`, which re-validates the bytes as UTF-8.
+            Cluster::Placeholder(p) => p.len,
         }
     }
 }
@@ -85,15 +88,27 @@ impl Cluster {
 /// for it.
 pub fn classify(cluster: &str, display_col: usize, tab_width: u8) -> Cluster {
     if cluster == "\t" {
-        Cluster::Tab {
+        return Cluster::Tab {
             width: tab_advance(display_col, tab_width),
-        }
-    } else if needs_placeholder(cluster) {
+        };
+    }
+    // Printable ASCII — the overwhelming majority of what a source file is,
+    // and the one case decidable without measuring: never a control
+    // character, never zero-width, always one column. `unicode-width` has no
+    // ASCII shortcut of its own (every char walks its lookup tables carrying
+    // an emoji-sequence state machine), so this branch is what keeps the
+    // common cluster off them.
+    if let [0x20..=0x7e] = cluster.as_bytes() {
+        return Cluster::Plain { width: 1 };
+    }
+    // Measured once and shared by both the placeholder test and the plain
+    // width, rather than through `needs_placeholder`, which would measure a
+    // second time for the plain case.
+    let w = cluster.width();
+    if placeholder_at_width(cluster, w) {
         Cluster::Placeholder(placeholder(cluster))
     } else {
-        Cluster::Plain {
-            width: cluster.width().min(2),
-        }
+        Cluster::Plain { width: w.min(2) }
     }
 }
 
@@ -133,7 +148,14 @@ pub fn grapheme_width(cluster: &str, display_col: usize, tab_width: u8) -> usize
 /// reason these are shown as their codepoint rather than as a blank: a
 /// U+202E that renders like a space is exactly the attack.
 pub fn needs_placeholder(cluster: &str) -> bool {
-    cluster.chars().any(char::is_control) || cluster.width() == 0
+    placeholder_at_width(cluster, cluster.width())
+}
+
+/// [`needs_placeholder`] for a caller that has already measured `cluster` —
+/// `w` must be `cluster.width()`. Split out so [`classify`] can decide from
+/// one measurement instead of taking a second one through the predicate.
+fn placeholder_at_width(cluster: &str, w: usize) -> bool {
+    w == 0 || cluster.chars().any(char::is_control)
 }
 
 /// Longest [`placeholder`], `<10ffff>`.
