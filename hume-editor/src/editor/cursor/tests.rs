@@ -144,10 +144,10 @@ fn nowrap_viewport_scrolled() {
     assert_eq!(got, Some(4));
 }
 
-/// Horizontal scroll: content_col = screen_x - gutter_w + h_offset.
+/// Horizontal scroll: content_x = screen_x - gutter_w + h_offset.
 #[test]
 fn nowrap_horizontal_scroll() {
-    // "abcde\n" with h_offset=2: screen col 0 maps to content col 2 = 'c' (char 2).
+    // "abcde\n" with h_offset=2: screen_x 0 maps to content_x 2 = 'c' (char 2).
     let rope = Rope::from_str("abcde\n");
     let mut v = vp(0, 80, 10);
     v.horizontal_offset = 2;

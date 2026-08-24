@@ -60,6 +60,14 @@ small set:
   visual width (most are 1 column; CJK double-width characters are 2);
 - an **indicator** — a placeholder glyph standing in for a tab or a
   whitespace run when the user has asked to see them;
+- a **placeholder** — a stand-in for a character the terminal must never be
+  shown as itself: a control character it would act on, or an invisible one
+  (a bidi override is the dangerous case — rendered as itself it can look
+  exactly like a harmless space) it would otherwise vanish. Drawn as its
+  codepoint in angle brackets, the way Vim and Emacs show these, so nothing
+  hides in a line that looks empty. Unlike the indicator above, this one
+  isn't optional — it applies regardless of the user's whitespace-display
+  setting;
 - a **width continuation** — the empty second cell of a 2-wide CJK character,
   which inherits its neighbour's style;
 - a **virtual** cell — text injected by a provider that isn't backed by

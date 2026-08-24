@@ -51,7 +51,11 @@ line it is (so double-clicking or the cursor position can identify the right
 character).
 
 Tab characters are expanded to the nearest tab stop *before* the wrap
-calculation, so wide-tab lines behave predictably.
+calculation, so wide-tab lines behave predictably. That width is fixed at
+the column the tab was first measured against — if wrapping later moves it
+to a continuation row and renumbers its column from zero, the tab keeps its
+original width rather than re-expanding to whatever a fresh tab stop at the
+new column would give.
 
 ## Visual-line movement (`j` and `k` in wrap mode)
 

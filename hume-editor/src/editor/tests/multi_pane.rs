@@ -841,9 +841,9 @@ fn insert_mode_hides_cursor_only_in_focused_pane() {
 fn split_pane_gets_gutter_column() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let pid_a = ed.state.focused_pane_id;
-    let initial_gutter_cols = ed.view.panes[pid_a].providers.gutter_columns().count();
+    let initial_gutter_column_count = ed.view.panes[pid_a].providers.gutter_columns().count();
     assert!(
-        initial_gutter_cols > 0,
+        initial_gutter_column_count > 0,
         "sanity: the initial pane must itself have a gutter column"
     );
 
@@ -852,7 +852,7 @@ fn split_pane_gets_gutter_column() {
 
     assert_eq!(
         ed.view.panes[pid_b].providers.gutter_columns().count(),
-        initial_gutter_cols,
+        initial_gutter_column_count,
         "split pane must have the same gutter columns as the initial pane"
     );
 }

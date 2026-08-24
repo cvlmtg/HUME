@@ -2,11 +2,11 @@
 //!
 //! Every "how many terminal columns does this text occupy" computation must
 //! go through `hume_rope::width` (`tab_advance`, `grapheme_width`,
-//! `str_width`) — never a direct `unicode-width` call. Before this module
-//! existed, `hume-engine`'s renderer, `hume-rope`'s editing-ops tab math, and
-//! `hume-editor`'s UI chrome each measured display width independently, and
-//! the conventions silently forked (see `hume_rope::width`'s module doc for
-//! the drift that caused).
+//! `str_width`) — never a direct `unicode-width` call. `hume-engine`'s
+//! renderer, `hume-ops`'s editing-ops tab math, and `hume-editor`'s UI
+//! chrome all measure display width through that one module rather than
+//! each carrying its own convention, which could silently disagree with
+//! the others at a tab stop or an unrenderable cluster.
 //!
 //! `no_raw_display_width` recursively scans every workspace crate's `src/` —
 //! derived from the root `Cargo.toml`'s `members` list, so a renamed or

@@ -452,7 +452,7 @@ impl Editor {
             let p = sel.head();
             let line_idx = buf.char_to_line(p);
             let line_start = buf.line_to_char(line_idx);
-            // `p > line_start` rules out col 0 (nothing to dedent). `p <=
+            // `p > line_start` rules out char_col 0 (nothing to dedent). `p <=
             // leading_whitespace_end` keeps the all-or-nothing "in leading ws"
             // rule: at exactly the end the cursor sits on the first content
             // char and still qualifies.

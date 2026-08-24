@@ -112,24 +112,6 @@ pub fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: usize) -> usize
     }
 }
 
-/// Count grapheme clusters in the char range `[from_char, to_char)`.
-///
-/// `to_char` is an **exclusive** upper bound — the character at `to_char` is
-/// not itself counted. For example, if the cursor sits at char offset `c`,
-/// `grapheme_count(slice, line_start, c)` returns the number of grapheme
-/// clusters that precede the cursor on that line — its 0-based grapheme
-/// column.
-///
-/// If `to_char < from_char` the range is treated as empty and 0 is returned.
-///
-/// # Why chunk-based?
-///
-/// The naïve alternative is `slice.slice(from..to).to_string().graphemes(true).count()`,
-/// which allocates a heap String proportional to line length. Long lines
-/// (minified JSON, generated files, log files with no newlines) can be
-/// arbitrarily wide. This implementation uses the same chunk-at-a-time
-/// `GraphemeCursor` strategy as `next_grapheme_boundary` — O(log n) per
-/// cluster with no heap allocation.
 /// Byte offset of the start of the grapheme cluster ending at `byte_pos` —
 /// the `&str` sibling of [`prev_grapheme_boundary`], for the short, already
 /// contiguous strings the UI edits in place (a minibuffer prompt, a picker
@@ -159,6 +141,24 @@ pub fn next_str_boundary(s: &str, byte_pos: usize) -> usize {
         .unwrap_or(s.len())
 }
 
+/// Count grapheme clusters in the char range `[from_char, to_char)`.
+///
+/// `to_char` is an **exclusive** upper bound — the character at `to_char` is
+/// not itself counted. For example, if the cursor sits at char offset `c`,
+/// `grapheme_count(slice, line_start, c)` returns the number of grapheme
+/// clusters that precede the cursor on that line — its 0-based grapheme
+/// column.
+///
+/// If `to_char < from_char` the range is treated as empty and 0 is returned.
+///
+/// # Why chunk-based?
+///
+/// The naïve alternative is `slice.slice(from..to).to_string().graphemes(true).count()`,
+/// which allocates a heap String proportional to line length. Long lines
+/// (minified JSON, generated files, log files with no newlines) can be
+/// arbitrarily wide. This implementation uses the same chunk-at-a-time
+/// `GraphemeCursor` strategy as `next_grapheme_boundary` — O(log n) per
+/// cluster with no heap allocation.
 pub(crate) fn grapheme_count(slice: RopeSlice<'_>, from_char: usize, to_char: usize) -> usize {
     let to_char = to_char.max(from_char);
     if from_char == to_char {

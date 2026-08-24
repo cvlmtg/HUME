@@ -315,8 +315,9 @@ fn collect_selection_spans(
 
         // Clamp the selection to this line's char range.
         let sel_char_start = start.max(line_start_char);
-        // `usize::MAX` signals "extends past the end of this row" — the col fallback
-        // below will then use the last grapheme's trailing column.
+        // `usize::MAX` signals "extends past the end of this row" — the
+        // display_col fallback below will then use the last grapheme's
+        // trailing column.
         let sel_char_end = if end < line_end_char { end } else { usize::MAX };
 
         // For rows with real content, skip if the selection doesn't intersect
@@ -333,9 +334,9 @@ fn collect_selection_spans(
         let display_col_start =
             char_offset_to_display_col(sel_char_start, graphemes, row_range).unwrap_or(0);
         // Selections are inclusive at both ends, so the exclusive upper bound is
-        // the right edge of the end grapheme (col + width), not its left edge
-        // (col). Using the left edge caused backward selections to silently drop
-        // their anchor cell from the highlighted span.
+        // the right edge of the end grapheme (display_col + width), not its
+        // left edge (display_col). Using the left edge caused backward
+        // selections to silently drop their anchor cell from the highlighted span.
         let display_col_end = char_offset_to_end_display_col(sel_char_end, graphemes, row_range)
             .unwrap_or_else(|| row_gs.last().map_or(0, |g| g.display_col + g.width as u32));
         if display_col_end > display_col_start {
@@ -381,7 +382,7 @@ fn collect_head_display_cols(
 }
 
 /// Binary-search for the grapheme in `row_range` whose `char_offset` equals or
-/// immediately follows `char_offset`, returning `(col, width)`.
+/// immediately follows `char_offset`, returning `(display_col, width)`.
 ///
 /// Returns `None` when `char_offset` is the sentinel `usize::MAX` (meaning
 /// "extend to end of row"), or when it falls before this row's first grapheme

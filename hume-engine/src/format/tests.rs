@@ -196,7 +196,7 @@ fn soft_and_word_differ_at_same_width() {
 
 #[test]
 fn soft_wrap_defers_wide_char_whole_to_next_row_when_it_would_straddle_column() {
-    // width=5: "abcd" fills cols 0..4 (current_col=4). The next grapheme
+    // width=5: "abcd" fills cols 0..4 (current_display_col=4). The next grapheme
     // '中' (CJK, display width 2) would need cols 4..6, straddling the
     // wrap column — `maybe_wrap` checks *before* placing a grapheme, so
     // it must defer '中' whole to the next row rather than splitting its
@@ -593,7 +593,7 @@ fn word_wrap_breaks_at_whitespace() {
 #[test]
 fn word_wrap_space_ends_previous_row_not_starts_continuation() {
     // "a b" at width 2 (B11 boundary case): 'a' fits at col0; the space
-    // fits exactly at col1 (current_col becomes 2); 'b' then overflows
+    // fits exactly at col1 (current_display_col becomes 2); 'b' then overflows
     // (2+1>2), backtracking to the space. The space (char offset 1) must
     // end row0 ("a "), not become row1's leading cell — splitting so the
     // new row would start with the space, rather than after it, was the
@@ -733,7 +733,7 @@ fn do_format_windowed(
 #[test]
 fn long_line_no_wrap_clips_to_window_without_panic() {
     // 70,000 ASCII chars — without clipping this would overflow `u16`
-    // (`current_col`) long before reaching the end. With a window of
+    // (`current_display_col`) long before reaching the end. With a window of
     // [0, 80+slack) only a small prefix should be pushed.
     let text: String = "a".repeat(70_000);
     let (rows, graphemes) = do_format_windowed(&text, WrapMode::None, Some(0..80));

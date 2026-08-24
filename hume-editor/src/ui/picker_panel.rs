@@ -27,7 +27,7 @@ use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
 
-use super::width::{text_width, truncate_text, truncate_text_tail};
+use super::width::{ELLIPSIS, ELLIPSIS_WIDTH, text_width, truncate_text, truncate_text_tail};
 
 /// Maximum panel width/height in terminal cells, before the pane-fraction
 /// clamp — mirrors `MAX_POPUP_WIDTH`'s role for the popup widget.
@@ -154,8 +154,8 @@ fn truncate_tail_marked(s: &str, budget: usize) -> std::borrow::Cow<'_, str> {
     if budget == 0 {
         return std::borrow::Cow::Borrowed("");
     }
-    let (tail, _) = truncate_text_tail(s, budget - 1);
-    std::borrow::Cow::Owned(format!("…{tail}"))
+    let (tail, _) = truncate_text_tail(s, budget.saturating_sub(ELLIPSIS_WIDTH));
+    std::borrow::Cow::Owned(format!("{ELLIPSIS}{tail}"))
 }
 
 /// Paint the panel into `state`'s resolved outer rect. Pure function of its

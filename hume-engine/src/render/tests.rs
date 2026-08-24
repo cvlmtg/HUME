@@ -230,7 +230,7 @@ fn horizontal_scroll_clips_left_columns() {
     let buf = do_compose_row(
         "abcde", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
-    // With h_offset=2, screen display_col 0 shows 'c' (buf display_col 2).
+    // With h_offset=2, screen_x 0 shows 'c' (buf display_col 2).
     assert_eq!(
         buf.cell(ratatui::layout::Position { x: 0, y: 0 })
             .unwrap()
@@ -252,9 +252,10 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
     // "中X": '中' is width 2 at display_col 0 (+ a WidthContinuation at display_col 1);
     // 'X' is width 1 at display_col 2. With h_offset=1, '中' straddles the edge
     // (display_col 0 < 1 < display_col 0 + width 2) — its right half is the only
-    // visible cell. Before the fix, `visible_col` clamped to 0 and drew
-    // the *whole* glyph at screen display_col 0, shifting 'X' to look like it
-    // was still at display_col 1 instead of display_col 0.
+    // visible cell. `content_x` (`g.display_col.saturating_sub(h_offset)`)
+    // clamps to 0, and the straddle branch below must draw only that visible
+    // remainder as spaces — drawing the *whole* glyph there instead would
+    // shift 'X' to look like it sits at screen_x 0 rather than screen_x 1.
     let graphemes = vec![
         Grapheme {
             byte_range: 0..3,
@@ -444,14 +445,14 @@ fn indent_guide_drawn_at_inner_tab_stops() {
         20,
         5,
     );
-    // A guide should appear at screen display_col 4 (k=1, tw=4).
+    // A guide should appear at screen_x 4 (k=1, tw=4).
     assert_eq!(
         buf.cell(ratatui::layout::Position { x: 4, y: 0 })
             .unwrap()
             .symbol(),
         INDENT_GUIDE_GLYPH
     );
-    // Col 0 has the space content (no guide at depth boundary).
+    // screen_x 0 has the space content (no guide at depth boundary).
     assert_ne!(
         buf.cell(ratatui::layout::Position { x: 0, y: 0 })
             .unwrap()

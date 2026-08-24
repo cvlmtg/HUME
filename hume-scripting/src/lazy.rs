@@ -153,27 +153,32 @@ impl LazyRegistry {
 
         rows.sort_by(|a, b| a.0.cmp(&b.0));
 
+        // Padded by display width, not `str::len`/Rust's own `{:<w$}` (both
+        // count chars/bytes, not terminal cells) — this table becomes buffer
+        // content in a read-only view, rendered through the normal
+        // grapheme-width-aware pipeline, so its own padding must agree with
+        // that pipeline's unit.
         let id_width = rows
             .iter()
-            .map(|(id, _, _)| id.len())
+            .map(|(id, _, _)| {
+                hume_rope::width::str_width(id, 0, hume_rope::width::CHROME_TAB_WIDTH)
+            })
             .max()
             .expect("rows non-empty")
             .max(6);
 
         let mut out = format!(
-            "{:<w$}  {:<8}  {}\n",
-            "plugin",
+            "{}  {:<8}  {}\n",
+            pad_to_display_width("plugin", id_width),
             "state",
             "activations",
-            w = id_width
         );
         for (id, state, activations) in &rows {
             out.push_str(&format!(
-                "{:<w$}  {:<8}  {}\n",
-                id,
+                "{}  {:<8}  {}\n",
+                pad_to_display_width(id, id_width),
                 state,
                 activations,
-                w = id_width
             ));
         }
         out
@@ -228,6 +233,17 @@ impl LazyRegistry {
             parts.join("  ")
         }
     }
+}
+
+/// Right-pad `s` with spaces to `width` display columns — [`format_status`]'s
+/// own padding, since Rust's `{:<w$}` measures by char count, not
+/// `hume_rope::width`, the unit the buffer view this table becomes will
+/// actually render it in.
+///
+/// [`format_status`]: LazyRegistry::format_status
+fn pad_to_display_width(s: &str, width: usize) -> String {
+    let w = hume_rope::width::str_width(s, 0, hume_rope::width::CHROME_TAB_WIDTH);
+    format!("{s}{}", " ".repeat(width.saturating_sub(w)))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

@@ -493,7 +493,7 @@ pub(crate) fn location_display_parts(
                 .entry(resolved.clone())
                 .or_insert_with(|| state.buffers.find_by_path(&resolved));
 
-            let grapheme_col = match open_bid {
+            let grapheme_col_or_wire = match open_bid {
                 Some(bid) => {
                     let text = state.buffers.get(bid).text();
                     wire_pos_to_grapheme_col(text, wl.line, wl.character, encoding)
@@ -505,7 +505,7 @@ pub(crate) fn location_display_parts(
             Ok(hume_scripting::host::LocationDisplay {
                 path: display_path,
                 line: wl.line,
-                grapheme_col,
+                grapheme_col_or_wire,
             })
         })
         .collect()

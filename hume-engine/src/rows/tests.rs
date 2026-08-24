@@ -1302,13 +1302,13 @@ fn line_display_col_excludes_wrap_indent() {
     // (`locate`) disagrees with the line-relative one — proving
     // `line_display_col` isn't just forwarding `locate`'s answer verbatim.
     let last = rope.len_chars() - 1;
-    let (pos, row_col) = rm.locate(last);
+    let (pos, row_display_col) = rm.locate(last);
     assert!(
         pos.row > 0,
         "the line must actually wrap for this test to mean anything"
     );
     assert_ne!(
-        row_col, last as u32,
+        row_display_col, last as u32,
         "row-relative column must differ from the line-relative one on an indented row"
     );
 }

@@ -106,9 +106,9 @@
   (string-append (number->string (+ 1 line)) ":" (number->string (+ 1 col))))
 
 ;;; "path/to/file.rs:12:5" — 1-based line/column. `part` is one
-;;; `(path line col)` entry from `lsp-locations->display-parts`: for a target
-;;; with an open buffer, `col` is an exact grapheme column (or `#f` past the
-;;; buffer's last line); for a target with no open buffer it's the
+;;; `(path line grapheme-col-or-wire)` entry from `lsp-locations->display-parts`:
+;;; for a target with an open buffer, it's an exact grapheme column (or `#f`
+;;; past the buffer's last line); for a target with no open buffer it's the
 ;;; location's own raw wire `character` instead — the one place HUME renders
 ;;; a wire unit directly, since resolving it exactly would mean reading a
 ;;; file the user may never open. Either way, `#f` falls back to `path:line`.
@@ -119,10 +119,10 @@
 (define (lsp/location-display part)
   (let* ((path (path->display (car part)))
          (line (cadr part))
-         (grapheme-col (caddr part)))
+         (grapheme-col-or-wire (caddr part)))
     (string-append path ":"
-      (if grapheme-col
-          (lsp/format-position line grapheme-col)
+      (if grapheme-col-or-wire
+          (lsp/format-position line grapheme-col-or-wire)
           (number->string (+ 1 line))))))
 
 ;;; `locs`: a list of raw `Location`/`LocationLink` hashmaps, decoded once by

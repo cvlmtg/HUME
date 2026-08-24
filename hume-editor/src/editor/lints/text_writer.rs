@@ -1,31 +1,13 @@
 //! # One text writer for the frame
 //!
-//! Text is written to the terminal buffer through `hume_engine::render::Canvas`
-//! — its `write_text_run`/`fill_rect_bg` methods outside `hume-engine`, or the
-//! `pub(crate)` free functions of the same names inside it — never with
-//! ratatui's `Buffer::set_string`/`set_stringn`.
+//! Text is written to the terminal buffer through `hume_engine::render::Canvas`'s
+//! `write_text_run`/`fill_rect_bg` methods, never ratatui's
+//! `Buffer::set_string`/`set_stringn` — see [`Canvas::write_text_run`]'s own
+//! doc for why: the measurement/draw model the two disagree on, the
+//! `right_edge` bound `set_string` has no equivalent of, and the placeholder
+//! substitution for a cluster the terminal must not be shown as itself.
 //!
-//! The two measure differently. `set_string` discards a grapheme holding a
-//! control character or measuring zero columns, and `cell_width` reports any
-//! single-byte string as 1 without consulting `unicode-width` and adds a cell
-//! per halfwidth dakuten. HUME sizes every field with `hume_rope::width`
-//! instead, so a caller that measured with `str_width` and drew with
-//! `set_string` could reserve columns nothing was drawn in, or draw wider
-//! than it reserved — and the two conventions drift independently, since one
-//! of them lives in a dependency. `write_text_run` walks by `grapheme_width`,
-//! which makes its advance exactly `str_width`: measurement and drawing are
-//! one model and cannot disagree.
-//!
-//! It also takes a `right_edge`, which `set_string` has no equivalent of — it
-//! clips at the terminal buffer and nothing narrower. That gap was live: menu
-//! rows arrive untruncated and the box is clamped to the pane, so a long
-//! completion label was written over its own right border and past it.
-//!
-//! A cluster the terminal must not be shown as itself (a control character,
-//! or one measuring zero columns) draws as its `<200b>`-style codepoint
-//! placeholder, styled `ui.virtual.invisible` — `Canvas` resolves that once
-//! from the `&Theme` passed to `Canvas::new`, so no caller threads a style
-//! for it.
+//! [`Canvas::write_text_run`]: hume_engine::render::Canvas::write_text_run
 //!
 //! `ratatui::widgets`/`ratatui::text` are banned outright, not just their
 //! individual string-write methods: `Paragraph`, `Block`, `List`, `Tabs`,

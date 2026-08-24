@@ -2,9 +2,10 @@
 //! terminal cells does this text occupy", shared by every crate that renders
 //! or aligns text: `hume-engine` (buffer lines, virtual decoration rows),
 //! `hume-ops` (tab insert/dedent), and `hume-editor` (popups, pickers, the
-//! statusline). Before this module existed each of those forked its own
-//! column-counting convention; see the git history around this module's
-//! introduction for the drift that caused.
+//! statusline). A caller measuring or drawing display width goes through
+//! this module rather than re-deriving its own tab/placeholder rules —
+//! two independent conventions can silently disagree at the exact cells
+//! where a tab stop or an unrenderable cluster falls.
 //!
 //! Distinct from grapheme *indexing* (`crate::grapheme`, which counts
 //! clusters, not cells) and from LSP wire positions

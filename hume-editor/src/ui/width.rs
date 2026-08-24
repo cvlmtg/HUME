@@ -2,11 +2,24 @@
 //! statusline, the minibuffer) — text with no tab-width context of its own,
 //! unlike a buffer line or a decoration's virtual row. Every measurement
 //! still funnels through `hume_rope::width`, the workspace's single source
-//! of truth, with `col` fixed at 0 and `tab_width` at
+//! of truth, with `display_col` fixed at 0 and `tab_width` at
 //! [`hume_rope::width::CHROME_TAB_WIDTH`] — both inert for any non-tab
 //! cluster, the only kind this text has.
 
 use hume_rope::width::CHROME_TAB_WIDTH;
+
+/// The truncation marker every chrome truncator (`picker_panel`'s tail
+/// clip, `file_path`'s dir/filename shortener) prefixes or appends when it
+/// drops text — one glyph, one place its width is asserted, so the two
+/// truncators can't silently disagree on how many cells it reserves.
+pub(crate) const ELLIPSIS: &str = "…";
+
+/// [`ELLIPSIS`]'s display width — always exactly 1: U+2026 HORIZONTAL
+/// ELLIPSIS is a single narrow, non-combining Unicode scalar, not a cluster
+/// `hume_rope::width` could ever measure differently. A `const` rather than
+/// a call to `text_width(ELLIPSIS)` since that measurement isn't itself
+/// `const`-evaluable, but the invariant it would report is fixed.
+pub(crate) const ELLIPSIS_WIDTH: usize = 1;
 
 /// Display width of `s`.
 pub(crate) fn text_width(s: &str) -> usize {

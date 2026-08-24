@@ -118,8 +118,16 @@ impl<'a> Canvas<'a> {
     /// and return the column just past the last cell written.
     ///
     /// The frame's single text writer for anything measured beforehand: UI
-    /// chrome (statusline, menus, pickers, the drawer) and gutter cells.
-    /// There is no `set_string` equivalent here, for two reasons.
+    /// chrome (statusline, menus, pickers, the drawer), gutter cells, and —
+    /// inside `compose_row`, for a `CellContent::Indicator`/`Placeholder`
+    /// cell — a pane-content whitespace glyph or unrenderable-cluster
+    /// stand-in. That last case still measures against `CHROME_TAB_WIDTH`
+    /// (this method's fixed tab width, not the pane's real one) safely: the
+    /// resolved string is always a pre-built glyph (`→`, `<200b>`) that
+    /// itself never contains a literal `\t` needing the pane's own tab-stop
+    /// math to re-measure — a real buffer tab's cell is written directly by
+    /// `compose_row`'s own tab-arm, never routed through here. There is no
+    /// `set_string` equivalent here, for two reasons.
     ///
     /// **It agrees with [`hume_rope::width`], the width model everything
     /// else in the frame is measured with.** `set_string` uses its own: it
@@ -680,10 +688,10 @@ pub(crate) fn render_tilde_fillers(
         // pane's left edge, ignoring/overriding the line-number gutter, never
         // shifted into the content area.
         compose_gutter(RowKind::Filler, lane_widths, compose_ctx, None, y, canvas);
-        let content_x = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
+        let content_x_origin = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
         match compose_ctx.theme.ui.background.bg {
-            Some(bg) => canvas.fill_row_bg(content_x, right_edge, y, bg),
-            None => canvas.clear_row_span(content_x, right_edge, y),
+            Some(bg) => canvas.fill_row_bg(content_x_origin, right_edge, y, bg),
+            None => canvas.clear_row_span(content_x_origin, right_edge, y),
         }
         canvas.set_cell(compose_ctx.pane_rect.x, y, "~", compose_ctx.tilde_style);
         screen_row += 1;

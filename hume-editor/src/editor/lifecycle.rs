@@ -394,15 +394,14 @@ impl Editor {
             let size = term.size()?;
             self.sync_viewport_dims(size.width, size.height);
             self.settle();
-            // NEW observation point, downstream of `settle()`. `should_quit`
-            // is also checked after dispatch below (`:508`, `continue` rather
-            // than `break`) — that keeps the loop going for exactly one more
-            // iteration, which reaches `settle()` here before this check
-            // breaks it. That's what makes `:wq` correct: it queues
-            // `OnBufferSave` and sets `should_quit` in the same dispatch, and
-            // without this second pass through `settle()` the hook would
-            // never fire — the old code observed `should_quit` immediately
-            // after dispatch, before any drain ran.
+            // Observed here, downstream of `settle()` — not right after
+            // dispatch. `should_quit` is also checked after dispatch below
+            // (`:508`, `continue` rather than `break`), which keeps the loop
+            // going for exactly one more iteration so it reaches `settle()`
+            // here before this check breaks it. That's what makes `:wq`
+            // correct: it queues `OnBufferSave` and sets `should_quit` in the
+            // same dispatch, and the hook needs this second pass through
+            // `settle()` to actually fire before the loop exits.
             if self.state.should_quit {
                 break;
             }

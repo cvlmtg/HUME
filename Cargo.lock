@@ -1162,6 +1162,7 @@ version = "0.1.0"
 dependencies = [
  "hume-engine",
  "hume-platform",
+ "hume-rope",
  "num-bigint",
  "num-traits",
  "rustc-hash",

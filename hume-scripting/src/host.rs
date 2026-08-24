@@ -647,7 +647,7 @@ pub trait LspHost {
     /// The column is an exact grapheme column when the target has an open
     /// buffer, `None` when it's an open buffer whose line is out of range,
     /// and otherwise the location's own wire `character` verbatim — see
-    /// `LocationDisplay`'s `grapheme_col` field doc for why that last case
+    /// `LocationDisplay`'s `grapheme_col_or_wire` field doc for why that last case
     /// is the one sanctioned exception to "never render a wire unit
     /// directly".
     ///
@@ -686,8 +686,10 @@ pub struct LocationDisplay {
     /// otherwise the location's own wire `character` verbatim (the display
     /// companion never reads an unopened target's file to refine this
     /// number; see `location_display_parts`'s doc, `hume-editor`, for the
-    /// full reasoning and the resulting unit divergence).
-    pub grapheme_col: Option<usize>,
+    /// full reasoning and the resulting unit divergence). Named for both
+    /// possible units, not just the common one — see CLAUDE.md's "Column
+    /// naming" invariant's one sanctioned exception.
+    pub grapheme_col_or_wire: Option<usize>,
 }
 
 /// Timer scheduling — accessed through [`EditorHost::timers`].

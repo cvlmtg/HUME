@@ -7,7 +7,7 @@ use hume_platform::path::is_path_sep;
 
 use crate::editor::Editor;
 use crate::ui::theme::EditorColors;
-use crate::ui::width::{text_width, truncate_text};
+use crate::ui::width::{ELLIPSIS, ELLIPSIS_WIDTH, text_width, truncate_text};
 
 /// The `FilePath` element does not implement [`super::StatuslineElement`]:
 /// its content isn't read from `Editor` directly, but computed externally by
@@ -92,13 +92,11 @@ pub(in crate::ui::statusline) fn shorten_path_to_width_with(
     }
 
     // All dirs abbreviated — still too wide. Truncate the filename with `…`.
-    let ellipsis = "…"; // U+2026, 1 col wide
-    let ellipsis_w = text_width(ellipsis);
     let prefix = components[..n.saturating_sub(1)].concat();
     // Available columns for the filename (after prefix + ellipsis). The
     // prefix already carries its own trailing separator, if any.
     let prefix_w = text_width(&prefix);
-    let available = max_display_cols.saturating_sub(prefix_w + ellipsis_w);
+    let available = max_display_cols.saturating_sub(prefix_w + ELLIPSIS_WIDTH);
 
     let filename = &components[n - 1];
     let (truncated, _) = truncate_text(filename, available);
@@ -106,12 +104,12 @@ pub(in crate::ui::statusline) fn shorten_path_to_width_with(
     if truncated.is_empty() {
         // Not even one grapheme of filename fits; just show the ellipsis.
         if prefix.is_empty() {
-            ellipsis.to_owned()
+            ELLIPSIS.to_owned()
         } else {
-            format!("{prefix}{ellipsis}")
+            format!("{prefix}{ELLIPSIS}")
         }
     } else {
-        format!("{prefix}{truncated}{ellipsis}")
+        format!("{prefix}{truncated}{ELLIPSIS}")
     }
 }
 

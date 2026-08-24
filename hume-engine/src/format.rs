@@ -513,7 +513,7 @@ pub fn format_buffer_line(
         // the style stage finds no grapheme at the `\n` position and leaves the cursor
         // invisible in block-cursor modes.
         //
-        // For truly empty lines (just "\n") this is the only grapheme (col 0).
+        // For truly empty lines (just "\n") this is the only grapheme (display_col 0).
         // For non-empty lines it sits one column past the last visible character.
         if had_newline {
             // A row that fits exactly `wrap_width` columns of real content
