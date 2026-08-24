@@ -308,13 +308,14 @@ Keep `manifest.scm` to just the `declare-plugin` call — it runs whenever a use
 
 ### Configuring a plugin
 
-A plugin can read the `#:config` value its user passed to `load-plugin` or `declare-plugin` with `(plugin-config)`. It returns whatever was passed — typically a hash — or an empty hash if nothing was passed:
+A plugin can read the `#:config` value its user passed to `load-plugin` or `declare-plugin` with `(plugin-config)`. It returns whatever was passed — typically a hash — or an empty hash if nothing was passed. Rather than picking it apart with raw `hash-contains?`/`hash-ref` and hand-rolling a type check, go through `core:stdlib`'s config helpers, which default a missing key and raise an error naming your plugin and the offending key if the resolved value is the wrong type:
 
 ```scheme
-(define cfg (plugin-config))
-(unless (and (hash-contains? cfg "disable-binding") (hash-ref cfg "disable-binding"))
+(unless (call! "stdlib/config-boolean" "my-plugin" (plugin-config) "disable-binding" #f)
   (bind-key! 'normal "C" "my-command"))
 ```
+
+`stdlib/config-string` and `stdlib/config-enum` (the latter takes a list of allowed symbols) cover the other common config shapes. Since this call happens in your plugin's own body, at load time, check `(loaded-plugins)` for `"core:stdlib"` first — see "Depending on another plugin" above.
 
 Document the keys your plugin understands so users know what to pass.
 

@@ -423,11 +423,16 @@ fn smart_change_to_eol_without_stdlib_errors_at_load() {
     );
 }
 
-/// `'off` never calls into `core:stdlib`, so it must load fine without it.
+/// `core:vim-keybind`'s `core:stdlib` guard is unconditional (its config
+/// read always calls `stdlib/config-enum`, whatever `change-to-eol` resolves
+/// to) — `'off` fails to load without `core:stdlib` too, naming it. Replaces
+/// the former `change_to_eol_off_does_not_require_stdlib`, which pinned the
+/// opposite contract from when only `'smart` depended on `core:stdlib`.
 #[test]
-fn change_to_eol_off_does_not_require_stdlib() {
+fn change_to_eol_off_also_requires_stdlib() {
     let guard = HumeRuntimeGuard::new();
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
+    // Deliberately no `write_core_plugin(&guard, "stdlib", ...)`.
 
     let init_dir = safe_tempdir();
     let init_path = init_dir.path().join("init.scm");
@@ -439,9 +444,47 @@ fn change_to_eol_off_does_not_require_stdlib() {
 
     let mut ed = editor_from("-[h]>ello\n");
     let mut host = ScriptingHost::new();
-    {
+    let err = {
         let mut ih = make_init_host(&mut ed.state, &mut ed.view);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
-    .expect("'off change-to-eol must load without core:stdlib");
+    .expect_err("'off change-to-eol without core:stdlib must fail eval_init");
+    assert!(
+        err.message.contains("core:stdlib"),
+        "error must name the missing dependency; got: {err:?}"
+    );
+}
+
+/// A `change-to-eol` value outside `'on`/`'smart`/`'off` must fail the load
+/// with `stdlib/config-enum`'s message — naming the plugin, the key, and the
+/// offending value — rather than the dispatch `cond`'s old `else` arm (now
+/// dead: `config-enum` has already rejected anything not in the allowed set).
+#[test]
+fn change_to_eol_bogus_value_fails_load_with_enum_message() {
+    let guard = HumeRuntimeGuard::new();
+    write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
+    write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
+
+    let init_dir = safe_tempdir();
+    let init_path = init_dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:vim-keybind\" #:config (hash \"change-to-eol\" 'bogus))",
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let mut host = ScriptingHost::new();
+    let err = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect_err("a bogus change-to-eol value must fail eval_init");
+    assert!(
+        err.message.contains("core:vim-keybind")
+            && err.message.contains("change-to-eol")
+            && err.message.contains("bogus"),
+        "error must name the plugin, the key, and the offending value; got: {:?}",
+        err.message
+    );
 }

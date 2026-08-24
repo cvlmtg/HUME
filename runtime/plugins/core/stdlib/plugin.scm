@@ -78,6 +78,46 @@
   (when (path-exists? path)
     (delete-file! path)))
 
+;; ── Plugin-config helpers (internal) ────────────────────────────────────────
+;;
+;; `#:config` is an untyped hash — every plugin reading one needs the same
+;; "key present? else default; then type-check what's there" shape, raising
+;; an error naming both the plugin and the key so a bad value fails at load,
+;; not wherever the untyped value happens to misbehave later. `core:git-diff`,
+;; `core:pickers`, and `core:vim-keybind` all read `(plugin-config)` this way
+;; (see their plugin.scm headers for the `core:stdlib` load-order dependency
+;; this creates).
+
+;;; `key`'s value in `cfg`, or `default` when the key is absent.
+(define (stdlib/config-value cfg key default)
+  (if (hash-contains? cfg key) (hash-ref cfg key) default))
+
+;;; `stdlib/config-value`, rejecting a non-boolean with a `plugin`-prefixed error.
+(define (stdlib/config-boolean plugin cfg key default)
+  (let ([v (stdlib/config-value cfg key default)])
+    (unless (boolean? v)
+      (error (string-append plugin ": \"" key "\" must be #t or #f")))
+    v))
+
+;;; `stdlib/config-value`, rejecting a non-string with a `plugin`-prefixed error.
+(define (stdlib/config-string plugin cfg key default)
+  (let ([v (stdlib/config-value cfg key default)])
+    (unless (string? v)
+      (error (string-append plugin ": \"" key "\" must be a string")))
+    v))
+
+;;; `stdlib/config-value`, rejecting anything not in `allowed` (a list of
+;;; symbols) with a `plugin`-prefixed error naming the allowed set and the
+;;; offending value.
+(define (stdlib/config-enum plugin cfg key default allowed)
+  (let ([v (stdlib/config-value cfg key default)])
+    (unless (member v allowed)
+      (error (string-append
+              plugin ": \"" key "\" must be one of "
+              (string-join (map (lambda (s) (string-append "'" (symbol->string s))) allowed) ", ")
+              ", got " (to-string v))))
+    v))
+
 ;; ── call!-able commands (public API) ────────────────────────────────────────
 ;;
 ;; Command name and Steel binding of the same name live in separate
@@ -111,3 +151,15 @@
 (define-command! "stdlib/delete-file"
   "Delete the file at the given path. Idempotent."
   (lambda (path) (stdlib/delete-file path)))
+
+(define-command! "stdlib/config-boolean"
+  "The given key's value in the given #:config hash, or the given default if absent; errors (naming the given plugin) if the resolved value isn't #t or #f."
+  (lambda (plugin cfg key default) (stdlib/config-boolean plugin cfg key default)))
+
+(define-command! "stdlib/config-string"
+  "The given key's value in the given #:config hash, or the given default if absent; errors (naming the given plugin) if the resolved value isn't a string."
+  (lambda (plugin cfg key default) (stdlib/config-string plugin cfg key default)))
+
+(define-command! "stdlib/config-enum"
+  "The given key's value in the given #:config hash, or the given default if absent; errors (naming the given plugin) if the resolved value isn't in the given list of allowed symbols."
+  (lambda (plugin cfg key default allowed) (stdlib/config-enum plugin cfg key default allowed)))

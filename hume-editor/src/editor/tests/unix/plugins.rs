@@ -2336,6 +2336,70 @@ fn core_stdlib_selection_commands() {
     );
 }
 
+/// The `core:stdlib` config-validation commands — `stdlib/config-boolean`,
+/// `stdlib/config-string`, `stdlib/config-enum` — must resolve a present key,
+/// fall back to the given default when the key is absent, and raise an error
+/// naming both the given plugin and the offending key when the resolved
+/// value fails its type/membership check.
+///
+/// Each wrong-type/wrong-value case is wrapped in `with-handler`, which
+/// checks the caught error's message via `string-contains?`/`to-string` and,
+/// if it doesn't name what's expected, raises a *new* `(error ...)` — never
+/// `(raise-error err)` on the caught value itself, which corrupts the VM's
+/// continuation stack when a native-builtin error crosses a second
+/// with-handler (see `hume-scripting/src/tests/unix.rs`).
+#[test]
+fn core_stdlib_config_commands() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+
+    let assertions = r#"
+(unless (equal? (call! "stdlib/config-boolean" "p" (hash "k" #f) "k" #t) #f)
+  (error "config-boolean: present key wins over default"))
+(unless (equal? (call! "stdlib/config-boolean" "p" (hash) "k" #t) #t)
+  (error "config-boolean: absent key falls back to default"))
+(with-handler
+  (lambda (err)
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+      (error (string-append "config-boolean: error must name plugin and key: " (to-string err)))))
+  (begin
+    (call! "stdlib/config-boolean" "p" (hash "k" "not-a-bool") "k" #t)
+    (error "config-boolean: expected a raise on a non-boolean value")))
+
+(unless (equal? (call! "stdlib/config-string" "p" (hash "k" "custom") "k" "default") "custom")
+  (error "config-string: present key wins over default"))
+(unless (equal? (call! "stdlib/config-string" "p" (hash) "k" "default") "default")
+  (error "config-string: absent key falls back to default"))
+(with-handler
+  (lambda (err)
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+      (error (string-append "config-string: error must name plugin and key: " (to-string err)))))
+  (begin
+    (call! "stdlib/config-string" "p" (hash "k" 'not-a-string) "k" "default")
+    (error "config-string: expected a raise on a non-string value")))
+
+(unless (equal? (call! "stdlib/config-enum" "p" (hash "k" 'on) "k" 'smart '(on smart off)) 'on)
+  (error "config-enum: present key wins over default"))
+(unless (equal? (call! "stdlib/config-enum" "p" (hash) "k" 'smart '(on smart off)) 'smart)
+  (error "config-enum: absent key falls back to default"))
+(with-handler
+  (lambda (err)
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+      (error (string-append "config-enum: error must name plugin and key: " (to-string err)))))
+  (begin
+    (call! "stdlib/config-enum" "p" (hash "k" 'bogus) "k" 'smart '(on smart off))
+    (error "config-enum: expected a raise on a disallowed value")))
+"#;
+
+    let result = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_source(assertions, &mut ih)
+    };
+    assert!(
+        result.is_ok(),
+        "stdlib config command assertions must all pass: {result:?}"
+    );
+}
+
 // ── One registry, one dispatcher: lazy-activation dispatch parity ───────────
 
 /// A lazy command's first dispatch leaves identical bookkeeping whether

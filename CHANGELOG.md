@@ -4,7 +4,10 @@
 - New `core:git-diff` plugin: live, VSCode-style inline git diff. `:toggle-git-signs` renders
   gutter `+`/`-`/`~` signs; `:toggle-inline-diff` renders virtual deleted lines, word-level
   highlights, and a background tint on changed lines — both against a configurable git ref,
-  `#:config` keys `signs`/`inline`/`ref`.
+  `#:config` keys `signs`/`inline`/`ref`. Requires `core:stdlib` loaded first.
+- **Breaking**: `core:pickers` and `core:vim-keybind` now require `core:stdlib` loaded first —
+  their `#:config` validation moved into `core:stdlib`'s new `stdlib/config-boolean`/
+  `stdlib/config-string`/`stdlib/config-enum` commands, the same helpers `core:git-diff` uses.
 - New `buffer-text`/`buffer-lines` scripting builtins return a buffer's live, unsaved content — the full text, or its content lines (optionally a `#:start`/`#:end` range), excluding the phantom trailing line past the buffer's structural newline.
 - New `diff-words` scripting builtin computes a word-level diff between two texts, returning 0-based char-offset hunk tuples plus a flag for when the comparison was too large to refine precisely.
 - New `diff-lines`/`diff-buffer-lines` scripting builtins compute a line-level diff between two texts, or between a text and a buffer's live content, returning 0-based hunk tuples ready to feed into `set-signs!`/`set-virtual-lines!`.

@@ -4,9 +4,14 @@ Live, VSCode-style inline git diff. As you type, compares the buffer against a g
 (default `HEAD`) and renders gutter `+`/`-`/`~` signs, deleted lines as virtual rows,
 added/changed lines with a background tint, and word-level highlights inside changed lines.
 
+Requires `core:stdlib` **loaded** (not just declared) first — config validation calls
+`stdlib/config-boolean`/`stdlib/config-string` via `call!` while this plugin's own body is
+evaluating, before any lazy activation could kick in.
+
 ## Usage
 
 ```scheme
+(load-plugin "core:stdlib")
 (declare-plugin "core:git-diff")
 ```
 
@@ -66,6 +71,7 @@ No default key bindings — bind them yourself, e.g.:
 Pass via `#:config` on `declare-plugin`/`load-plugin`:
 
 ```scheme
+(load-plugin "core:stdlib")
 (declare-plugin "core:git-diff"
   #:config (hash "signs" #t "inline" #f "ref" "HEAD"))
 ```

@@ -41,10 +41,13 @@ fn setup(tmp: &Path, config_expr: Option<&str>) -> (Editor, RealRuntimeGuard) {
     let guard = RealRuntimeGuard::new();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let mut host = ScriptingHost::new();
-    let load = match config_expr {
+    let load_git_diff = match config_expr {
         Some(cfg) => format!("(load-plugin \"core:git-diff\" #:config {cfg})"),
         None => "(load-plugin \"core:git-diff\")".to_string(),
     };
+    // core:git-diff's config validation depends on core:stdlib (see
+    // plugin.scm's header) — load it first, same as the shipped init.scm.example.
+    let load = format!("(load-plugin \"core:stdlib\")\n{load_git_diff}");
     eval_with_real_host(&mut ed, &mut host, &load, tmp);
     ed.scripting = Some(host);
     (ed, guard)
@@ -802,7 +805,7 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
     let init_path = tmp.path().join("init.scm");
     std::fs::write(
         &init_path,
-        r#"(load-plugin "core:git-diff" #:config (hash "signs" "yes"))"#,
+        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:git-diff\" #:config (hash \"signs\" \"yes\"))",
     )
     .unwrap();
 
@@ -830,5 +833,34 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
             Some(PluginStatus::Failed)
         ),
         "core:git-diff must be marked Failed after its body raises"
+    );
+}
+
+/// Loading `core:git-diff` without `core:stdlib` loaded first must fail
+/// `eval_init` at load time, naming `core:stdlib` — `call!` on an
+/// unactivated plugin's command logs an error and returns `#void` rather
+/// than raising, so without this guard a missing dependency would silently
+/// hand every config read its own `#void` instead of failing loudly.
+#[test]
+fn missing_stdlib_errors_at_load() {
+    use crate::editor::scripting_setup::make_init_host;
+
+    let tmp = safe_tempdir();
+    let _guard = RealRuntimeGuard::new();
+    let init_path = tmp.path().join("init.scm");
+    // Deliberately no `(load-plugin "core:stdlib")`.
+    std::fs::write(&init_path, r#"(load-plugin "core:git-diff")"#).unwrap();
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let err = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect_err("core:git-diff without core:stdlib must fail eval_init");
+    assert!(
+        err.message.contains("core:stdlib"),
+        "error must name the missing dependency; got: {:?}",
+        err.message
     );
 }

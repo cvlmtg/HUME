@@ -9,10 +9,18 @@
 ;;; `toggle-git-signs` renders gutter `+`/`-`/`~` marks, `toggle-inline-diff`
 ;;; renders virtual deleted lines, word highlights, and the full-row
 ;;; background tint.
+;;;
+;;; Depends on core:stdlib (config validation calls stdlib/config-boolean,
+;;; stdlib/config-string via call!) — load it first, same as core:plum/core:lsp.
 
 (require "state.scm")
 (require "diff.scm")
 (require "render.scm")
+
+;; See core:vim-keybind/plugin.scm for why this checks `(loaded-plugins)`
+;; rather than `(declared-plugins)`.
+(unless (member "core:stdlib" (loaded-plugins))
+  (error "core:git-diff: requires core:stdlib — (load-plugin \"core:stdlib\") before (load-plugin \"core:git-diff\")"))
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 ;; `(plugin-config)` only returns the real hash while this body is being
@@ -20,33 +28,18 @@
 ;; hook handler.
 (define git-diff/cfg (plugin-config))
 
-;;; SSOT for "was this key given in #:config, or do we fall back to
-;;; `default`" — `cfg-bool` and the `ref` default below both need it.
-(define (git-diff/cfg-value key default)
-  (if (hash-contains? git-diff/cfg key) (hash-ref git-diff/cfg key) default))
-
-(define (git-diff/cfg-bool key default)
-  (let ([v (git-diff/cfg-value key default)])
-    (unless (boolean? v)
-      (error (string-append "core:git-diff: \"" key "\" must be #t or #f")))
-    v))
-
 ;; Signs default on (cheap, no line-shifting side effects); inline rendering
 ;; defaults off (moves virtual rows into the buffer's visual flow) — see
 ;; README.md's Config table.
-(define git-diff/signs-default (git-diff/cfg-bool "signs" #t))
-(define git-diff/inline-default (git-diff/cfg-bool "inline" #f))
+(define git-diff/signs-default (call! "stdlib/config-boolean" "core:git-diff" git-diff/cfg "signs" #t))
+(define git-diff/inline-default (call! "stdlib/config-boolean" "core:git-diff" git-diff/cfg "inline" #f))
 
 ;; The config-default git ref — read and validated now so a bad config
 ;; value fails at load, not on the first debounced refresh. This is only
 ;; the *default*: `git-diff/buffer-ref` below resolves the ref actually
 ;; used per buffer, falling back to this when no runtime override
 ;; (`state.scm`'s "ref" field) is set.
-(define git-diff/ref
-  (let ([v (git-diff/cfg-value "ref" "HEAD")])
-    (unless (string? v)
-      (error "core:git-diff: \"ref\" must be a string"))
-    v))
+(define git-diff/ref (call! "stdlib/config-string" "core:git-diff" git-diff/cfg "ref" "HEAD"))
 
 ;; Per-buffer ref resolution — a runtime override (set via an explicit-ref
 ;; toggle invocation, see the commands below) wins over the config default.

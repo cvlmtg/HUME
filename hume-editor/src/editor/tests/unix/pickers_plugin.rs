@@ -48,13 +48,16 @@ fn setup_with_config(
     extra_source: &str,
 ) -> Editor {
     write_core_plugin(guard, "pickers", PICKERS_PLUGIN);
+    // core:pickers' config validation depends on core:stdlib (see
+    // plugin.scm's header) — stage and load it first, same as core:git-diff.
+    write_core_plugin(guard, "stdlib", STDLIB_PLUGIN);
     let mut ed = editor_from(input);
     let mut host = ScriptingHost::new();
-    let load = match config_expr {
+    let load_pickers = match config_expr {
         Some(cfg) => format!("(load-plugin \"core:pickers\" #:config {cfg})"),
         None => "(load-plugin \"core:pickers\")".to_string(),
     };
-    let source = format!("{load}\n{extra_source}");
+    let source = format!("(load-plugin \"core:stdlib\")\n{load_pickers}\n{extra_source}");
     eval_with_real_host(&mut ed, &mut host, &source, tmp);
     ed.scripting = Some(host);
     ed
@@ -500,11 +503,12 @@ fn git_modified_picker_untracked_default_lists_files_inside_untracked_directory(
 fn git_modified_picker_invalid_untracked_config_fails_load() {
     let guard = HumeRuntimeGuard::new();
     write_core_plugin(&guard, "pickers", PICKERS_PLUGIN);
+    write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
     let tmp = safe_tempdir();
     let init_path = tmp.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(load-plugin \"core:pickers\" #:config (hash \"untracked\" 'bogus))",
+        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:pickers\" #:config (hash \"untracked\" 'bogus))",
     )
     .unwrap();
 
@@ -519,6 +523,34 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
     assert!(
         err.message.contains("untracked"),
         "error must name the offending config key, not just fail generically; got: {}",
+        err.message
+    );
+}
+
+/// Loading `core:pickers` without `core:stdlib` loaded first must fail
+/// `eval_init` at load time, naming `core:stdlib` — `call!` on an
+/// unactivated plugin's command logs an error and returns `#void` rather
+/// than raising, so without this guard a missing dependency would silently
+/// hand `pickers/untracked` its own `#void` instead of failing loudly.
+#[test]
+fn missing_stdlib_errors_at_load() {
+    let guard = HumeRuntimeGuard::new();
+    write_core_plugin(&guard, "pickers", PICKERS_PLUGIN);
+    // Deliberately no `write_core_plugin(&guard, "stdlib", ...)`.
+    let tmp = safe_tempdir();
+    let init_path = tmp.path().join("init.scm");
+    std::fs::write(&init_path, "(load-plugin \"core:pickers\")").unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let mut host = ScriptingHost::new();
+    let result = {
+        let mut ih = crate::editor::scripting_setup::make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    };
+    let err = result.expect_err("core:pickers without core:stdlib must fail eval_init");
+    assert!(
+        err.message.contains("core:stdlib"),
+        "error must name the missing dependency; got: {}",
         err.message
     );
 }

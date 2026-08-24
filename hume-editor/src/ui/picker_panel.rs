@@ -208,7 +208,7 @@ pub(crate) fn draw_picker_panel(
     // tail-truncation below).
     let (prompt_shown, prompt_width) = truncate_text(&state.prompt, inner_width);
     if prompt_width > 0 {
-        canvas.write_text_run(inner_x, input_y, &prompt_shown, styles.text, inner_right);
+        canvas.write_text_run(inner_x, input_y, prompt_shown, styles.text, inner_right);
     }
 
     let after_prompt_width = inner_width.saturating_sub(prompt_width);
@@ -225,7 +225,7 @@ pub(crate) fn draw_picker_panel(
     let (query_tail, query_width) = truncate_text_tail(&state.query, query_budget);
 
     let query_x = inner_x + prompt_width as u16;
-    canvas.write_text_run(query_x, input_y, &query_tail, styles.text, inner_right);
+    canvas.write_text_run(query_x, input_y, query_tail, styles.text, inner_right);
     let cursor_x = query_x + query_width as u16;
     if cursor_x < inner_x + inner_width as u16 {
         canvas.write_text_run(cursor_x, input_y, " ", styles.cursor, inner_right);

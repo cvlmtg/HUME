@@ -18,13 +18,14 @@ plugin's command body calls one of them at runtime.
 `(load-plugin "core:stdlib")` also works, loading it eagerly instead. Some dependents
 require this — see the Caveat below.
 
-**Caveat**: `core:vim-keybind`'s `'smart` `change-to-eol` mode checks `(loaded-plugins)` for
-`"core:stdlib"` synchronously at *`core:vim-keybind`'s own load time*, by design (fail fast
-instead of a wrong-branch bug at the first `C` keypress — see that plugin's README). A merely
-*declared*, not-yet-activated `core:stdlib` doesn't show up in `(loaded-plugins)`, so `'smart`
-mode still needs `core:stdlib` loaded eagerly first, as above. The zero-trigger form is for
-consumers that only reach `core:stdlib` via `call!` at runtime (e.g. `core:lsp`'s diagnostics
-navigation) with no `core:vim-keybind` `'smart` mode in the mix.
+**Caveat**: `core:git-diff`, `core:pickers`, and `core:vim-keybind` all validate their
+`#:config` through the commands below, so each checks `(loaded-plugins)` for `"core:stdlib"`
+synchronously at *its own load time*, by design (fail fast instead of a config read silently
+resolving to `#void` — see the Config helpers section below). A merely *declared*,
+not-yet-activated `core:stdlib` doesn't show up in `(loaded-plugins)`, so all three need
+`core:stdlib` loaded eagerly first, as above. The zero-trigger form is for consumers that only
+reach `core:stdlib` via `call!` at runtime (e.g. `core:lsp`'s diagnostics navigation) with none
+of these config reads in the mix.
 
 ## Commands
 
@@ -50,6 +51,18 @@ All three accept `#f` and return `#f` — callers only need to check `(current-s
 
 Thin wrappers over Steel's `steel/filesystem`/`steel/ports` — `core:plum` and `core:lsp`
 both call into these rather than each carrying its own copy.
+
+### Plugin config
+
+| Command                 | Effect                                                              |
+|--------------------------|----------------------------------------------------------------------|
+| `stdlib/config-boolean` | The given key's value in the given `#:config` hash, or the given default if absent; errors if it isn't `#t`/`#f` |
+| `stdlib/config-string`  | Same, erroring if the resolved value isn't a string                  |
+| `stdlib/config-enum`    | Same, erroring if the resolved value isn't in the given list of allowed symbols |
+
+Every error names the calling plugin (its first argument) and the offending key, so a bad
+`#:config` value fails at load time with a message pointing at exactly what to fix — the same
+shape `core:git-diff`, `core:pickers`, and `core:vim-keybind` all use for their own config.
 
 ## How it works
 

@@ -83,13 +83,15 @@ inside a repo, `fd`-backed otherwise), `g b` opens a buffer switcher, `g m` open
 over files with staged or unstaged git changes.
 
 ```scheme
+(load-plugin "core:stdlib")
 (load-plugin "core:pickers")
 ```
 
-Must be loaded eagerly. By default the modified-files picker includes untracked files;
-turn them off with `#:config`:
+Must be loaded eagerly, and `core:stdlib` must be loaded eagerly before it. By default the
+modified-files picker includes untracked files; turn them off with `#:config`:
 
 ```scheme
+(load-plugin "core:stdlib")
 (load-plugin "core:pickers" #:config (hash "untracked" #f))
 ```
 
@@ -103,11 +105,13 @@ Live, VSCode-style inline git diff. As you type, compares the buffer against a g
 added/changed lines with a background tint, and word-level highlights inside changed lines.
 
 ```scheme
+(load-plugin "core:stdlib")
 (declare-plugin "core:git-diff")
 ```
 
-Declared lazily like this, it wakes on the first buffer opened (signs default on) or the
-first `:toggle-git-signs`/`:toggle-inline-diff` you type.
+Requires `core:stdlib` loaded eagerly before it. Declared lazily like this, it wakes on the
+first buffer opened (signs default on) or the first `:toggle-git-signs`/`:toggle-inline-diff`
+you type.
 
 | Command | Effect |
 |---------|--------|
@@ -125,6 +129,7 @@ No default key bindings — bind them yourself, e.g. `(bind-key! 'normal "g Shif
 Configure with `#:config`:
 
 ```scheme
+(load-plugin "core:stdlib")
 (declare-plugin "core:git-diff"
   #:config (hash "signs" #t "inline" #f "ref" "HEAD"))
 ```
@@ -155,7 +160,8 @@ By default (`'smart`), `C` is context-sensitive: on a bare cursor with no count 
 (load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'on))
 ```
 
-`'on` always changes to end of line; `'off` leaves `C` alone. Both of those skip the selection check, so with them `core:stdlib` isn't needed at all.
+`'on` always changes to end of line; `'off` leaves `C` alone. `core:stdlib` is required for
+every mode, not just `'smart` — config validation itself goes through it.
 
 ## core:helix-surround
 
@@ -179,7 +185,7 @@ Must be loaded eagerly.
 
 ## core:stdlib
 
-A toolkit of small helpers that other plugins build on, rather than something you use directly. Several bundled plugins depend on it, so load it before them:
+A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:git-diff`, `core:pickers`, `core:vim-keybind`, and `core:lsp` all depend on it, so load it before them:
 
 ```scheme
 (load-plugin "core:stdlib")

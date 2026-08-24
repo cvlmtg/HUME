@@ -6,12 +6,16 @@ built on HUME's generic picker widget (see the ["Custom
 pickers"](../../../../user-manual/docs/plugins.md#custom-pickers) section of
 the plugin API docs).
 
+Requires `core:stdlib` loaded first — config validation calls `stdlib/config-boolean` via
+`call!` while this plugin's own body is evaluating.
+
 ## Usage
 
 Loads eagerly — it binds keys, which must be live from the first keystroke,
 not deferred to a first-use trigger:
 
 ```scheme
+(load-plugin "core:stdlib")
 (load-plugin "core:pickers")
 ```
 
@@ -84,5 +88,6 @@ finishes. Set `"untracked"` to `#f` to skip it and populate sooner.
 | `"untracked"` | `#f`          | Untracked files are excluded (`--untracked-files=no`). |
 
 ```scheme
+(load-plugin "core:stdlib")
 (load-plugin "core:pickers" #:config (hash "untracked" #f))
 ```

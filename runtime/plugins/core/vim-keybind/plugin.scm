@@ -1,4 +1,18 @@
 ;;; core:vim-keybind
+;;;
+;;; Depends on core:stdlib (config validation calls stdlib/config-enum via
+;;; call!) — load it first, same as core:plum/core:lsp.
+
+;; Checks `(loaded-plugins)`, not `(declared-plugins)`: this read happens at
+;; the top of the plugin body, not inside a command a keypress triggers
+;; later, so there's no lazy-activation opportunity for `call!` to trigger —
+;; a merely *declared* core:stdlib would still be Loading/unactivated right
+;; now, and `call!` on an unactivated plugin's command logs an error and
+;; returns #void rather than raising (hume-scripting/src/builtins/commands.rs),
+;; which would silently hand every config read its own #void instead of the
+;; real value. See user-manual/docs/plugins.md "Depending on another plugin".
+(unless (member "core:stdlib" (loaded-plugins))
+  (error "core:vim-keybind: requires core:stdlib — (load-plugin \"core:stdlib\") before (load-plugin \"core:vim-keybind\")"))
 
 ;; No #:repeatable needed — see README's dot-repeat note.
 (define-command! "vim-change-to-eol"
@@ -51,17 +65,10 @@
 ;; change-to-eol; 'off → leave C at HUME's default (copy-selection-on-next-line).
 (define cfg (plugin-config))
 (define change-to-eol
-  (if (hash-contains? cfg "change-to-eol")
-      (hash-ref cfg "change-to-eol")
-      'smart))
-;; Check now, at load time, so a missing core:stdlib is a load error, not a
-;; silent wrong-branch bug the first time C is pressed.
-(when (and (equal? change-to-eol 'smart) (not (member "core:stdlib" (loaded-plugins))))
-  (error "core:vim-keybind: 'smart change-to-eol requires core:stdlib — (load-plugin \"core:stdlib\") before (load-plugin \"core:vim-keybind\")"))
+  (call! "stdlib/config-enum" "core:vim-keybind" cfg "change-to-eol" 'smart '(on smart off)))
 (cond
   ((equal? change-to-eol 'on)    (bind-key! 'normal "C" "vim-change-to-eol"))
   ((equal? change-to-eol 'smart) (bind-key! 'normal "C" "vim-change-to-eol-or-copy-line"))
-  ((equal? change-to-eol 'off)   (begin))
-  (else (error "core:vim-keybind: change-to-eol must be 'on, 'smart, or 'off")))
+  ((equal? change-to-eol 'off)   (begin)))
 (bind-key! 'normal "D" "vim-delete-to-eol")
 (bind-key! 'normal "G" "goto-last-line")

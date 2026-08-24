@@ -5,11 +5,10 @@ natively, and the visual-mode `o` flip alias.
 
 ## Usage
 
-Requires `core:stdlib` loaded **eagerly** first — not just declared. The default `'smart`
-`change-to-eol` mode checks `(loaded-plugins)` for `"core:stdlib"` at *this plugin's own load
-time*, and a merely lazily-declared `core:stdlib` doesn't show up there until something
-activates it. Loading it eagerly guarantees it's already up before this check runs (see
-[Config](#config) to opt out with `'on`/`'off` instead, which don't need `core:stdlib` at all):
+Requires `core:stdlib` loaded **eagerly** first — not just declared. Config validation
+(`change-to-eol`, any value) calls `stdlib/config-enum` via `call!` at *this plugin's own load
+time*, and a merely lazily-declared `core:stdlib` doesn't show up in `(loaded-plugins)` until
+something activates it. Loading it eagerly guarantees it's already up before this check runs:
 
 ```scheme
 (load-plugin "core:stdlib")
@@ -76,11 +75,11 @@ identical bytes. Under the kitty keyboard protocol this arrives as `Char('6')` +
 legacy terminals emit `0x1E`, which HUME does not currently surface as this binding (fall
 back to `:e #` on those terminals).
 
-The `#:config` read follows the standard pattern: `(plugin-config)` returns the hash passed
-at `load-plugin` time (or an empty one). `"change-to-eol"` is checked with `hash-contains?`
-before `hash-ref` so a config-less load defaults to `'smart` instead of erroring.
-
-Only `'smart` needs `core:stdlib` (`vim-change-to-eol-or-copy-line` is the only command that
-calls it); the plugin checks `(loaded-plugins)` for `"core:stdlib"` at load time and errors
-immediately if it's resolved to `'smart` without it — otherwise a missing dependency would
-only surface once at the first `C` keypress, as a wrong-branch bug instead of a load error.
+`"change-to-eol"` is resolved via `core:stdlib`'s `stdlib/config-enum` — `(plugin-config)`'s
+hash, defaulting to `'smart` when the key is absent, erroring on anything outside
+`'on`/`'smart`/`'off`. Because that resolution itself calls into `core:stdlib`, the plugin
+checks `(loaded-plugins)` for `"core:stdlib"` unconditionally at load time, before reading
+config at all — every mode needs `core:stdlib` now, not just `'smart` (which additionally calls
+`stdlib/all-single-char?` at runtime, per "How it works" above). Checking eagerly here means a
+missing dependency is a load error naming `core:stdlib`, not a wrong-branch bug that only
+surfaces at the first `C` keypress.

@@ -3,6 +3,14 @@
 ;;; `picker-source-spawn!`) — exactly what a third-party picker plugin gets.
 ;;; Deliberately no native (Rust) picker definitions: a fixed native set
 ;;; would need a Rust PR for every new finder.
+;;;
+;;; Depends on core:stdlib (config validation calls stdlib/config-boolean via
+;;; call!) — load it first, same as core:plum/core:lsp.
+
+;; See core:vim-keybind/plugin.scm for why this checks `(loaded-plugins)`
+;; rather than `(declared-plugins)`.
+(unless (member "core:stdlib" (loaded-plugins))
+  (error "core:pickers: requires core:stdlib — (load-plugin \"core:stdlib\") before (load-plugin \"core:pickers\")"))
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 ;; `(plugin-config)` only returns the real hash while this body is being
@@ -12,10 +20,7 @@
 ;; listing a bare directory row isn't useful, so this isn't git's own
 ;; three-way `--untracked-files` choice, just on/off.
 (define pickers/untracked
-  (let ([cfg (plugin-config)])
-    (if (hash-contains? cfg "untracked") (hash-ref cfg "untracked") #t)))
-(unless (boolean? pickers/untracked)
-  (error "core:pickers: \"untracked\" must be #t or #f"))
+  (call! "stdlib/config-boolean" "core:pickers" (plugin-config) "untracked" #t))
 
 ;; ── Sync probe ──────────────────────────────────────────────────────────────
 ;; Sync spawn for fast small-output probes (git rev-parse class);
