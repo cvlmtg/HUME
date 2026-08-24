@@ -2,9 +2,7 @@
 //! `hume-treesitter`'s injection-layer flattening (nested grammar layers,
 //! `R` = nesting depth) and `hume-editor`'s diagnostic/extra-highlight
 //! flattening (`R` = `std::cmp::Reverse<u8>` priority — see
-//! [`flatten_overlapping_spans`]'s doc for why the wrapper). Two independent
-//! implementations of this exact sweep existed before this module: this one
-//! now backs both.
+//! [`flatten_overlapping_spans`]'s doc for why the wrapper).
 
 /// Which span wins when two spans have exactly equal `rank` and overlap —
 /// see [`flatten_overlapping_spans`]. The two current callers genuinely

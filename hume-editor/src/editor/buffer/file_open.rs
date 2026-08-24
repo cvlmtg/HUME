@@ -402,7 +402,7 @@ impl Editor {
     /// forward jump history unconditionally, so a same-buffer call would
     /// corrupt it for nothing.
     ///
-    /// External-change detection no longer lives here: every genuine switch
+    /// External-change detection does not run here: every genuine switch
     /// this produces raises `EditorEvent::OnBufferEnter`, observed by
     /// `Editor::settle`'s diff regardless of caller — interactive or not. A
     /// no-op call raises nothing, matching Vim's `BufEnter`, which doesn't

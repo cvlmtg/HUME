@@ -741,7 +741,7 @@ fn char_at_nearest_content_stays_off_the_eol_sentinel() {
 #[test]
 fn locate_resolves_the_eol_sentinel_of_an_exactly_full_wrapped_row() {
     // "abcde\n" at wrap width 5 fits exactly — no room left on row 0 for the
-    // sentinel, so `format.rs` wraps it onto row 1's own column 0 (B5's fix).
+    // sentinel, so `format.rs` wraps it onto row 1's own column 0.
     // The cursor addressing this same head position must resolve to that
     // same row/column, not to row 0's one-past-the-end column (which would
     // land the cursor on the seam past the pane's right edge).

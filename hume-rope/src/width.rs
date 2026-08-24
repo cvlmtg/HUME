@@ -46,12 +46,11 @@ pub fn prev_tab_stop(display_col: usize, tw: u8) -> usize {
 /// text — decided once by [`classify`] and carrying each variant's own
 /// display width, so every caller that needs to know not just *how wide* a
 /// cluster is but *what to draw* for it reads that off one decision instead
-/// of re-deriving it. Before this existed, `format::grapheme_display`,
-/// `format::push_virtual_cells`, and `render::write_text_run` each
-/// re-tested `cluster == "\t"` before [`needs_placeholder`], in that order,
-/// for the same reason ([`classify`]'s own doc) — three copies of one
-/// ordering hazard, and two of the three rebuilt a [`Placeholder`]
-/// `grapheme_width` had already thrown away.
+/// of re-deriving it: `format::grapheme_display`, `format::push_virtual_cells`,
+/// and `render::write_text_run` all need `cluster == "\t"` tested before
+/// [`needs_placeholder`], in that order ([`classify`]'s own doc) — one
+/// ordering hazard, checked once instead of at each call site, with no
+/// [`Placeholder`] rebuilt after `grapheme_width` already discarded it.
 pub enum Cluster {
     /// A tab, expanding to the next `tab_width` stop.
     Tab { width: usize },

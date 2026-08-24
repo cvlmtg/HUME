@@ -39,7 +39,7 @@ Keep the folder intact either way: the binary looks for its runtime files (theme
 hume --version
 ```
 
-prints something like `hume 0.9.0-f460770`. The same string is available inside the editor with `:version`.
+prints something like `hume x.y.z-f460770`. The same string is available inside the editor with `:version`.
 
 ## Building from source
 

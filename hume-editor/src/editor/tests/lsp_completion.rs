@@ -303,9 +303,9 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
 fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
     let tmp = safe_tempdir();
     // textEdit replaces chars [0, 3) ("abc"); additionalTextEdits targets
-    // [2, 4) ("cd") — the two overlap at chars 2-3. Before the commit under
-    // review, both landed in one batched `ChangeSet` that rejected overlap;
-    // splitting them apart dropped that check.
+    // [2, 4) ("cd") — the two overlap at chars 2-3. Both edits must land in
+    // one batched `ChangeSet` so the overlap is rejected; applying them
+    // separately would drop that check.
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,

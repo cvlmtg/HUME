@@ -89,8 +89,8 @@ fn collect_all_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
 /// then retain out this `lints/` directory's own pattern literals and any
 /// path in `extra_excludes` (a lint excluding one specific implementation
 /// file while still scanning the rest of that file's crate, e.g.
-/// `hume-rope/src/width.rs`). The ~20-line version of this every
-/// whole-workspace lint used to repeat inline.
+/// `hume-rope/src/width.rs`) — the shared setup every whole-workspace lint
+/// needs.
 fn workspace_source_paths(
     workspace_root: &std::path::Path,
     skip_crates: &[&str],

@@ -99,7 +99,7 @@ LSP server management:
 Jump-shaped actions (goto/rename/diagnostic-nav) live under `g`; response/action-shaped ones
 (references list, hover popup, code-action menu) live under `z` instead, freeing `g R`/`g k`/`g a`
 for the fuzzy-finder picker prefix (`core:pickers`). No collisions with HUME's native
-leaves at the time these were bound — `g`'s (`g g e h l s`) or `z`'s (`z z t b`) — re-check
+leaves — `g`'s (`g g e h l s u U C`) or `z`'s (`z z t b`) — re-check
 `keymap/defaults.rs` if you rebind any of them.
 
 `lsp-fmt` and `diagnostics` are typed-command only (`:lsp-fmt`, `:diagnostics`) — no default key.
@@ -146,6 +146,6 @@ already configures them.
 `registration.scm` also defines `:lsp-status`/`:lsp-stop`/`:lsp-restart` — thin wrappers
 over the `lsp-show-status!`/`lsp-stop!`/`lsp-restart!` Rust builtins, which queue the
 actual work for the end-of-eval drain (the Steel-eval-time host doesn't hold `&mut
-Editor`, only `Editor::apply_lsp_server_ops` does). These are `core:lsp` commands, not
+Editor`, only `Editor::apply_lsp_server_op` does). These are `core:lsp` commands, not
 ambient Rust builtins — a `register-lsp-server!` config with no `core:lsp` loaded has no
 way to inspect, stop, or restart the server it spawns.

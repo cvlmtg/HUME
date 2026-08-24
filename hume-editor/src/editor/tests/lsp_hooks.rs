@@ -154,7 +154,7 @@ fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
     );
 }
 
-/// R5's fix: `register-trigger-chars!` is keyed `(source, language)`, not
+/// `register-trigger-chars!` is keyed `(source, language)`, not
 /// globally per source — a second language attaching under the same source
 /// must not clobber the first's chars, and a char typed in the wrong
 /// language's buffer must not fire at all.

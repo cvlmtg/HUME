@@ -393,9 +393,9 @@ fn wrap_toggle_on_zeroes_horizontal_offset_only() {
 }
 
 /// `:set pane wrap-mode=…`'s half of the same horizontal-offset rule
-/// (`set_focused_wrap_override`, forked from `toggle_focused_wrap` in the
-/// same commit): zeroes horizontal scroll when the pin actually changes the
-/// pane's *effective* mode.
+/// (`set_focused_wrap_override`, forked from `toggle_focused_wrap`): zeroes
+/// horizontal scroll when the pin actually changes the pane's *effective*
+/// mode.
 #[test]
 fn set_pane_wrap_mode_zeroes_horizontal_offset_on_an_effective_change() {
     let mut ed = editor_from("-[a]>b\n");

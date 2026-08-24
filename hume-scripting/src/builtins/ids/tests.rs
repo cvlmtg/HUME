@@ -104,7 +104,7 @@ fn equal_compares_by_value_through_a_real_steel_eval() {
 
 /// A `SteelBufferId` must be usable as a Steel hash key: two distinct
 /// wrappings of the same `BufferId` must hash-collide and `hash-ref` the
-/// same entry — the concrete capability R3/D's per-buffer state needs.
+/// same entry — the concrete capability per-buffer plugin state needs.
 #[test]
 fn buffer_id_is_usable_as_a_steel_hash_key() {
     let mut engine = steel::steel_vm::engine::Engine::new();

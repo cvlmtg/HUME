@@ -325,7 +325,7 @@ fn declare_plugin_command_name_with_quote_errors() {
     );
 }
 
-// ── G1: cmd_owners not seeded for absent-path plugins ─────────────────────
+// ── cmd_owners not seeded for absent-path plugins ──────────────────────────
 
 /// When a declared plugin is absent on disk, `cmd_owners` must NOT be pre-seeded.
 ///
@@ -355,7 +355,7 @@ fn declare_plugin_absent_on_disk_does_not_seed_cmd_owners() {
     );
 }
 
-// ── G4: absent plugin logging ──────────────────────────────────────────────
+// ── Absent plugin logging ──────────────────────────────────────────────────
 
 /// `declare-plugin "core:X"` absent on disk → `Error` log (typo / broken
 /// HUME_RUNTIME; PLUM never installs core: plugins so it can't catch this).
@@ -438,7 +438,7 @@ fn load_plugin_core_absent_logs_error() {
     );
 }
 
-// ── G4: activation command name collision (symmetric checks) ─────────────
+// ── Activation command name collision (symmetric checks) ─────────────────
 
 /// `define-command!` rejects a name already claimed as a lazy plugin's `Lazy`
 /// stub, even when the eager `define-command!` runs first.

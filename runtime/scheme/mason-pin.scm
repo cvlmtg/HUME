@@ -15,6 +15,6 @@
 ;;; To upgrade: change the tag below, then run scripts/sync-lsp-sources.py to
 ;;; regenerate lsp-sources.scm. If the preceding helix-pin.scm bump renamed or
 ;;; dropped any LSP servers, run scripts/sync-grammars.py first — see
-;;; scripts/sync-readme.md for the run order.
+;;; scripts/README.md for the run order.
 
 "2026-07-20-precious-hemp"

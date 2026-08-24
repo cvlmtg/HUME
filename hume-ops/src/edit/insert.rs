@@ -144,9 +144,8 @@ fn try_trim_blank_line(
 /// selection.
 ///
 /// This is auto-indent on Enter: the indent of the line containing each
-/// selection's `start` is copied verbatim onto the new line (no smart indent
-/// — tree-sitter `indent.scm` is a separate roadmap milestone). Computed on
-/// the pre-edit buffer.
+/// selection's `start` is copied verbatim onto the new line (no smart
+/// indent). Computed on the pre-edit buffer.
 ///
 /// Cursor placement matches `insert_char`'s "stay on the original char" rule:
 /// collapsed cursor lands on the first char after the inserted indent (the

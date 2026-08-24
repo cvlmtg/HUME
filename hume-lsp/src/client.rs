@@ -767,13 +767,12 @@ fn build_client_capabilities() -> ClientCapabilities {
             implementation: Some(GotoCapability::default()),
             formatting: Some(Default::default()),
             range_formatting: Some(Default::default()),
-            // Manual smoke testing found rust-analyzer withholds
-            // diagnostic-derived quickfixes entirely without
-            // code_action_literal_support declared — the flag saying the
-            // client understands CodeAction objects, not just legacy
-            // Command[]. A byte-perfect request (correct diagnostic
-            // round-tripped verbatim, correct overlapping range) still
-            // came back empty until this was added.
+            // rust-analyzer withholds diagnostic-derived quickfixes
+            // entirely without code_action_literal_support declared — the
+            // flag saying the client understands CodeAction objects, not
+            // just legacy Command[]. Without it, even a byte-perfect
+            // request (correct diagnostic round-tripped verbatim, correct
+            // overlapping range) comes back empty.
             code_action: Some(CodeActionClientCapabilities {
                 code_action_literal_support: Some(CodeActionLiteralSupport {
                     code_action_kind: CodeActionKindLiteralSupport {

@@ -185,9 +185,9 @@ pub(crate) enum EditorEvent {
 /// only removes writing each pair twice.
 ///
 /// A variant not listed here would make `name`'s match non-exhaustive over
-/// `EditorEvent` and fail to compile — so today, with every variant
-/// Steel-visible, this is equivalent to the old exhaustive match, just
-/// written once. A future internal-only (Rust-only, no Steel-facing name)
+/// `EditorEvent` and fail to compile — so with every variant Steel-visible,
+/// this is an exhaustive match written once. A future internal-only
+/// (Rust-only, no Steel-facing name)
 /// variant is out of scope for this macro as written; give `name` an
 /// `Option` return and extend it with a `$variant:ident` arm (no `=> $name`)
 /// mapping to `None` if one appears.

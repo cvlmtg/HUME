@@ -419,12 +419,12 @@ fn inline_tab_indented_deletion_keeps_a_literal_tab_that_still_renders_at_the_ri
 
 #[test]
 fn inline_wide_cjk_before_tab_in_a_deletion_shifts_the_tab_on_screen() {
-    // The bug this whole change fixes: the plugin used to expand a deleted
-    // line's tabs itself, counting one Steel char (not one display column)
-    // per preceding character — a wide CJK grapheme before a tab landed
-    // that tab one column early. Now the plugin stores the line verbatim
-    // and the engine expands it, so a wide char correctly shifts the stop
-    // by its full 2-column width.
+    // Regression guard: the plugin used to expand a deleted line's tabs
+    // itself, counting one Steel char (not one display column) per
+    // preceding character — a wide CJK grapheme before a tab landed that
+    // tab one column early. The plugin stores the line verbatim and the
+    // engine expands it, so a wide char correctly shifts the stop by its
+    // full 2-column width.
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = safe_tempdir();
     let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));

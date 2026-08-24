@@ -325,7 +325,7 @@ fn finish_lazy_activation_failure_transitions_to_failed() {
     );
 }
 
-// ── Partial-define rollback (D2) ─────────────────────────────────────────
+// ── Partial-define rollback ───────────────────────────────────────────────
 
 /// A plugin body that defines one command and then errors: the plugin
 /// transitions to `Failed` and `finish_lazy_activation` rolls back the
@@ -688,7 +688,7 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
     );
 }
 
-// ── G4: self-ownership exemption ──────────────────────────────────────────
+// ── Self-ownership exemption ────────────────────────────────────────────────
 
 /// A lazy plugin is allowed to call `define-command!` for its own activation
 /// command inside its body, even though that name is still claimed as its

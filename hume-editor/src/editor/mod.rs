@@ -441,7 +441,7 @@ pub(crate) struct EditorState {
     /// Set by `set_mode` on any exit from Insert — `set_mode` only has
     /// `&mut EditorState` (many callers are free functions that never touch
     /// `Editor`/`LspState`), but the LSP completion session it must dismiss
-    /// now lives on `LspState`. Consumed (session + ui + view all cleared)
+    /// lives on `LspState`. Consumed (session + ui + view all cleared)
     /// by `Editor::take_pending_lsp_completion_dismiss`, called
     /// unconditionally from `handle_key`, `handle_mouse`, and (top and tail)
     /// `Editor::settle` — the latter is called every frame by every settle

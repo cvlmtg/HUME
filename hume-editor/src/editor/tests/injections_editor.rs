@@ -1,4 +1,4 @@
-// Editor-level tests for tree-sitter injection support (M11): real markdown +
+// Editor-level tests for tree-sitter injection support: real markdown +
 // markdown.inline + rust grammar fixtures, exercised through the full
 // setup_buffer_syntax / reparse_stale_buffers / bake_pending_edits path.
 //

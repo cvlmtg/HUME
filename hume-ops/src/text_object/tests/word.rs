@@ -348,7 +348,7 @@ fn around_uppercase_word_no_trailing_space_uses_leading() {
 #[test]
 #[allow(non_snake_case)]
 fn around_uppercase_word_first_word_of_line_uses_uppercase_word_boundary() {
-    // B1 regression: word_unit_at must call inner_word_impl with the right
+    // Regression: word_unit_at must call inner_word_impl with the right
     // predicate (is_uppercase_word_boundary, not is_word_boundary). This
     // test catches that by using a WORD that contains punctuation —
     // `is_word_boundary` would split "foo.bar" into two words while

@@ -257,8 +257,7 @@ impl Buffer {
     /// every open chokepoint — `Editor::open_or_dedup`,
     /// `lifecycle::open_or_dedup_and_notify` (Steel `open-buffer!`, LSP
     /// goto/workspace-edit), and `Editor::open`'s first-CLI-arg case — so
-    /// they can't diverge on tolerance the way `:e` and `open-buffer!` did
-    /// before this existed.
+    /// they can't diverge on tolerance.
     ///
     /// A path with no basename (`/`, `..`) still errors — `Buffer::set_path`
     /// would panic on it in debug.

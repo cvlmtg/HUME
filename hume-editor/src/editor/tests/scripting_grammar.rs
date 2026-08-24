@@ -1,6 +1,6 @@
 // Editor-level tests for the tree-sitter grammar wiring: setup_buffer_syntax,
 // reparse_stale_buffers, sweep_buffers_for_grammars, the register-grammar!
-// Steel builtin, and the M9.3 install pipeline.
+// Steel builtin, and the grammar install pipeline.
 //
 // Tests that use the grammar fixture (grammar_fixture()) require the shared
 // library built by `scripts/fetch-test-grammars.sh`.  Each gates on
@@ -733,7 +733,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
 }
 
 // ---------------------------------------------------------------------------
-// M9.4 — Off-main-thread parse worker
+// Off-main-thread parse worker
 // ---------------------------------------------------------------------------
 
 /// The reparse path is two-phase: the first `reparse_stale_buffers` call after an

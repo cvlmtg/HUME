@@ -7,7 +7,7 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 - `README.md` — Project description
 - `docs/CRATES.md` — Workspace crates, what each owns, dependency edges
 - `docs/ROADMAP.md` — Open questions and milestones
-- `docs/LSP.md` — LSP design, prerequisites, and task breakdown
+- `docs/LSP.md` — LSP design, architecture, and decisions
 - `docs/LEARNING.md` — Concepts and Rust patterns explained as they arise
 
 ## Architectural invariants (quick orientation)

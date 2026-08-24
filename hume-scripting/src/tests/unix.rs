@@ -96,8 +96,7 @@ fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
 /// wrapped in `dynamic-wind` instead of catch-and-reraise. This would
 /// otherwise be a safe way to guarantee `declare-plugin`'s manifest
 /// cleanup (`%finish-manifest-declare!`) runs without an inner handler,
-/// but `cleanup-ran` never fires — confirms the decision (see
-/// `project_steel_raii_vs_dynamicwind.md`) to keep cleanup-on-unwind in
+/// but `cleanup-ran` never fires — confirms cleanup-on-unwind stays in
 /// Rust (explicit push/pop), never Steel `dynamic-wind`. Pinned like the
 /// test above: a steel-core fix flips `cleanup-ran` to `#t` and this
 /// starts failing — revisit then.

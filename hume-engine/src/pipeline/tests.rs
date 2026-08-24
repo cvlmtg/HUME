@@ -18,7 +18,7 @@ fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
     }
 }
 
-// ── Virtual-row scope styling (B3/B4) ───────────────────────────────
+// ── Virtual-row scope styling ────────────────────────────────────────
 
 /// Emits one `Before(0)` row whose first grapheme carries `scope` and whose
 /// second carries none.
@@ -209,7 +209,7 @@ fn virtual_row_resolves_scopes_from_unsorted_segments() {
     }
 }
 
-// ── top_skip vs virtual lines (B5) ──────────────────────────────────
+// ── top_skip vs virtual lines ─────────────────────────────────────────
 
 /// Emits one virtual line anchored to a fixed line index, only when that
 /// line is in the visible range — smoke-tests the whole virtual-line path
@@ -460,7 +460,7 @@ fn virtual_before_block_taller_than_viewport_exposes_every_row() {
     }
 }
 
-// ── Provider id stamping (G3) ────────────────────────────────────────
+// ── Provider id stamping ─────────────────────────────────────────────
 
 /// Reports a deliberately wrong `provider_id` — the pipeline must not
 /// trust it.
@@ -566,7 +566,7 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
     );
 }
 
-// ── CJK line-row estimate feeds the viewport (B6) ───────────────────
+// ── CJK line-row estimate feeds the viewport ──────────────────────────
 
 #[test]
 fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
@@ -661,7 +661,7 @@ fn scrolled_pane_renders_from_top_line_onward() {
 #[test]
 fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
     // Filler rows past EOF must still get their gutter column consulted
-    // — before B10's fix, only compose_row's gutter loop ran for real
+    // — before the fix, only compose_row's gutter loop ran for real
     // rows; render_tilde_fillers never called it, so a filler row's
     // gutter area was silently blank regardless of what a custom
     // GutterColumn would render for RowKind::Filler.
@@ -1337,7 +1337,7 @@ fn remove_leaf_missing_target_is_noop() {
     assert_eq!(tree, before);
 }
 
-// ── Bottom band partition (U6) ───────────────────────────────────────
+// ── Bottom band partition ──────────────────────────────────────────────
 
 /// A band that always reports a fixed height, regardless of `max` — lets
 /// tests probe `pane_area`'s chrome arithmetic without a real `DrawerModel`/

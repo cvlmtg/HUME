@@ -27,9 +27,10 @@ If you're writing a plugin yourself, see [Plugins](plugins.md) for what it offer
 
 ## core:plum
 
-**PLUM** — the HUME **PLU**gin **M**anager — installs and updates third-party plugins from GitHub, and installs the tree-sitter grammars that power syntax highlighting.
+**PLUM** — the HUME **PLU**gin **M**anager — installs and updates third-party plugins from GitHub, and installs the tree-sitter grammars that power syntax highlighting. Its install and cleanup commands depend on `core:stdlib`.
 
 ```scheme
+(declare-plugin "core:stdlib")
 (declare-plugin "core:plum")
 ```
 

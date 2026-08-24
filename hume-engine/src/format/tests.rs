@@ -167,8 +167,8 @@ fn soft_wrap_splits_at_exact_column_not_whitespace() {
 #[test]
 fn soft_and_word_differ_at_same_width() {
     // Same input/width as above; Word backtracks to the space, keeping it
-    // as row0's last cell ("hello ", 6 graphemes — B11: the space ends
-    // the row it was seen on, not the continuation row's first cell),
+    // as row0's last cell ("hello ", 6 graphemes — the space ends the row
+    // it was seen on, not the continuation row's first cell),
     // while Soft splits mid-word ("hello w", 7 graphemes). This is the
     // regression guard: before the fix both produced identical output.
     let (soft_rows, soft_graphemes) = do_format("hello world", WrapMode::Soft { width: 7 });
@@ -592,7 +592,7 @@ fn word_wrap_breaks_at_whitespace() {
 
 #[test]
 fn word_wrap_space_ends_previous_row_not_starts_continuation() {
-    // "a b" at width 2 (B11 boundary case): 'a' fits at col0; the space
+    // "a b" at width 2 (a boundary case): 'a' fits at col0; the space
     // fits exactly at col1 (current_display_col becomes 2); 'b' then overflows
     // (2+1>2), backtracking to the space. The space (char offset 1) must
     // end row0 ("a "), not become row1's leading cell — splitting so the
@@ -730,7 +730,7 @@ fn strip_line_ending_non_lf_unicode_break_stripped() {
     assert_eq!(buf, "hello");
 }
 
-// ── h_window clipping (B1) ───────────────────────────────────────────
+// ── h_window clipping ─────────────────────────────────────────────────
 
 fn do_format_windowed(
     text: &str,
@@ -794,7 +794,7 @@ fn long_line_no_wrap_window_scrolled_right_has_correct_display_cols() {
     assert!(graphemes.iter().all(|g| g.display_col >= 65_000));
 }
 
-// ── Inline-insert char_offset partition invariant (B2) ──────────────
+// ── Inline-insert char_offset partition invariant ─────────────────────
 
 #[test]
 fn row_char_offsets_are_non_decreasing_with_inline_inserts() {
@@ -845,7 +845,7 @@ fn row_char_offsets_are_non_decreasing_with_inline_inserts() {
     );
 }
 
-// ── Inline-insert width clamp (B7) ──────────────────────────────────
+// ── Inline-insert width clamp ──────────────────────────────────────────
 
 #[test]
 fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {

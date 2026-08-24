@@ -405,7 +405,7 @@ impl CommandRegistry {
         )
         .reg(self);
 
-        // ── Editor commands — pane focus stubs (M9+) ─────────────────────────
+        // ── Editor commands — pane focus stubs ────────────────────────────────
         ecmd(
             "pane-focus-next",
             "Focus the next pane.",

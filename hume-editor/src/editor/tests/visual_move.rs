@@ -852,13 +852,11 @@ fn visual_move_per_selection_sticky_col() {
 
 // ── Inline decorations and the display-column model (regression) ─────────
 //
-// The two defects `RowMap::line_display_col`/`char_at_line_display_col`
-// (Step 1) and their `9j`/`9k` wiring (Step 2) fix: the retired rope-only
-// mirror (`hume_rope::lines::place_display_column`) counted buffer text and
-// tab expansion only, blind to the decoration layer — so it disagreed with
-// `RowMap` (the display authority `j`/`k` and page/wheel scroll already used)
-// whenever an inline decoration (an inlay hint, say) sat on a line a
-// buffer-line move touched.
+// `RowMap::line_display_col`/`char_at_line_display_col` and their `9j`/`9k`
+// wiring must count through the decoration layer, not just buffer text and
+// tab expansion — so vertical motion agrees with `RowMap` (the display
+// authority `j`/`k` and page/wheel scroll already use) whenever an inline
+// decoration (an inlay hint, say) sits on a line a buffer-line move touches.
 
 /// Emits one inline insert (an inlay hint, say) at a fixed line/byte offset.
 struct FixedInlineHint {

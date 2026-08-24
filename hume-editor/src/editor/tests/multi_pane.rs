@@ -2,11 +2,11 @@ use super::*;
 use crate::editor::commands::open_pane;
 use pretty_assertions::assert_eq;
 
-// ── D1–D6: Multi-pane contract tests ──────────────────────────────────────────
+// ── Multi-pane contract tests ──────────────────────────────────────────────────
 //
 // These tests lock the SSOT invariants for per-pane, per-buffer, and per-search state.
 
-/// D1 — Each pane maintains its own cursor independently for the same buffer.
+/// Each pane maintains its own cursor independently for the same buffer.
 ///
 /// Two panes on the same buffer; set them to different positions; verify
 /// `switch_focused_pane` restores each pane's cursor exactly.
@@ -165,7 +165,7 @@ fn d4b_sticky_col_is_per_selection() {
     );
 }
 
-/// D5 — `EditGroup` is per-(pane, buffer); insert sessions are independent across
+/// `EditGroup` is per-(pane, buffer); insert sessions are independent across
 /// panes on the same buffer.  Two separate i…Esc sessions each produce one revision.
 #[test]
 fn d5_insert_session_is_pane_buffer_scoped() {
@@ -228,7 +228,7 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     );
 }
 
-/// D6 — `panes.transient[pid]` snapshots are per-pane and never aliased.
+/// `panes.transient[pid]` snapshots are per-pane and never aliased.
 #[test]
 fn d6_search_mode_snapshot_is_per_pane() {
     use hume_editing::selection::{Selection, SelectionSet};
@@ -275,7 +275,7 @@ fn d6_search_mode_snapshot_is_per_pane() {
     );
 }
 
-/// D2 — An edit in the focused pane translates non-acting pane selections via the CS.
+/// An edit in the focused pane translates non-acting pane selections via the CS.
 ///
 /// Pane A deletes char 0; pane B's cursor at position 9 must slide to 8.
 #[test]
@@ -304,10 +304,10 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
     );
 }
 
-/// D3 — Undo in the focused pane propagates the inverse CS to non-acting panes.
+/// Undo in the focused pane propagates the inverse CS to non-acting panes.
 ///
-/// After the D2 edit (delete 'a'), undo restores 'a'; pane B's cursor at 8
-/// must ride the inverse CS back to 9.
+/// After a delete of 'a' in the focused pane, undo restores 'a'; pane B's
+/// cursor at 8 must ride the inverse CS back to 9.
 #[test]
 fn d3_undo_restores_acting_pane_and_translates_others() {
     use hume_editing::selection::{Selection, SelectionSet};
@@ -1137,7 +1137,7 @@ fn quit_in_grid_promotes_correct_sibling() {
     }
 }
 
-// ── wrap_mode: pane override → buffer override → global (M11) ─────────────────
+// ── wrap_mode: pane override → buffer override → global ───────────────────────
 
 /// A same-buffer split (`:split` with no path) inherits the source pane's
 /// live override — not the global default. This lets a `:wrap`-toggled

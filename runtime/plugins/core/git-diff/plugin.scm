@@ -112,11 +112,11 @@
     (if enabled?
         (begin
           ;; Paint from whatever's already in state first — a toggle
-          ;; should feel instant, and `force-refresh!` no longer resets
+          ;; should feel instant, and `force-refresh!` does not reset
           ;; `hunks` itself (diff.scm), so this is also what keeps state
           ;; in sync with the screen: without it, a refresh that
           ;; legitimately comes back empty would look identical to state's
-          ;; untouched old value and `apply-hunks!` would skip clearing it.
+          ;; untouched value and `apply-hunks!` would skip clearing it.
           (git-diff/render-for! key bid (git-diff/buffer-hunks bid))
           ;; Then refresh for real — through neither the debounce nor a
           ;; sticky `'unavailable` cache (diff.scm's force-refresh!).

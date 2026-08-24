@@ -4,11 +4,11 @@ Design document for the insert-mode completion menu driven by multiple Steel-reg
 
 The sibling fuzzy-finder (picker) shipped as `core:pickers` (roadmap for what's left: `docs/FUZZY-FINDERS.md`). The two share the "Rust store, Steel policy" architectural pattern, and prospectively the fuzzy matcher if `Q-B6` ever unifies them; see `hume-editor/src/editor/picker.rs`'s module doc for why they stay separate session types (item shape, query origin, accept semantics, lifetime, scale, and scroll model all differ).
 
-**Status: design only — not scheduled, no implementation started.** Written against the `lsp` branch (post Step 4 / F11). This document is the single place to resume from; it assumes the reader has *no* memory of the exploration that produced it.
+**Status: A1 (the widget/render-layer rename pass) has landed; A2–A4 (multi-source merge, source plugin, buffer-words) are design only — not scheduled.** This document is the single place to resume from; it assumes the reader has *no* memory of the exploration that produced it.
 
 **Headline conclusions** (the "do we need to lay foundations now?" answer):
 
-1. **No foundation work is required now.** This design is additive. The lsp branch's completion architecture is already source-agnostic in the ways that matter. Nothing currently being built needs to change shape to keep it possible.
+1. **No foundation work is required now.** This design is additive. The completion architecture is already source-agnostic in the ways that matter. Nothing currently being built needs to change shape to keep it possible.
 2. The one guardrail while other work proceeds: **don't deepen LSP coupling in the completion store**. `CompletionSession` today parses generic completion-item JSON and only touches LSP specifics inside the `text_edit` branch of `accept`. Keep it that way — new LSP-specific fields belong in the Steel plugin (which already receives the raw item), not in new Rust parsing.
 3. Completion shares its "Rust store, Steel policy" split with the shipped picker (`core:pickers`), and prospectively its fuzzy matcher too if `Q-B6` ever unifies them (not yet — completion keeps `subsequence_match_pos`) — but not a data structure: `CompletionSession` and `PickerSession` are siblings, not the same type. See `hume-editor/src/editor/picker.rs`'s module doc for the rationale.
 
@@ -26,41 +26,41 @@ Same rules as `docs/LSP.md`:
 These are settled project decisions (see `docs/LSP.md` Decisions table) and this design must respect them:
 
 - **Frequency cut**: per-user-intent work (a trigger keypress, a response arriving, a selection made) may run in Steel; per-keystroke filtering, per-frame rendering, and unbounded-collection work must be Rust.
-- **Bulk-data guardrail**: bulk item lists never cross the Rust↔Steel boundary on recurring paths. One-time ingest at user-intent frequency is the calibrated exception (P8 spike: ~1ms for 1k completion items through the boundary — acceptable; do not assume this scales to 100k file paths).
+- **Bulk-data guardrail**: bulk item lists never cross the Rust↔Steel boundary on recurring paths. One-time ingest at user-intent frequency is the calibrated exception (measured: ~1ms for 1k completion items through the boundary — acceptable; do not assume this scales to 100k file paths).
 - **Steel never on the render path**: Steel writes models/stores; Rust providers render from `Arc<RwLock<…>>` snapshots each frame.
 - **Rust-rendered, Steel-fed widgets**: "LSP is their first client, not their owner."
 
 ---
 
-## Current state — verified inventory (`lsp` branch)
+## Current state — verified inventory
 
 Everything below was read from source, not recalled. This is the substrate this design builds on.
 
 ### Insert-mode completion stack (the thing this design extends)
 
-**Rust store — `hume-editor/src/editor/lsp/completion.rs`:**
+**Rust store — `hume-editor/src/editor/lsp/completion/` (`mod.rs`, `item/mod.rs`, `accept.rs`):**
 
-- `StoredCompletionItem` — decoded from raw `serde_json::Value` (deliberately not `lsp_types` structs): `label: String`, `kind: Option<i64>` (raw LSP kind number, display-only, no reader maps it), `detail: Option<String>`, `sort_text`/`filter_text`/`insert_text` (each falling back to `label` when absent — `string_or_label` helper), `text_edit: Option<WireEdit>` (via `text_edit_from_json`, handles both `Edit` and `InsertReplaceEdit` shapes), and `raw: serde_json::Value` — the **full unparsed item**, handed back to Steel on accept so Rust never grows readers for LSP fields it doesn't need.
-- `CompletionSession` — **singleton, one per editor** (field `EditorState.lsp_completion: Option<CompletionSession>`), replaced wholesale by each `begin`. Fields: `bid`, `anchor` (char offset of token start = primary selection head at begin time), `items`, `filtered: Vec<u32>` (ranked indices), `rank_scratch` (reused per-keystroke, no allocation), `filter: String`, `incomplete: bool` (server's `isIncomplete`), `generation_at_begin: u64` (buffer `text_gen` stamp).
-- Methods: `begin(state, bid, items_json, incomplete)`, `update_filter(state, text)` (re-ranks and **re-stamps the generation** — a legitimate keystroke must not look like buffer-changed-under-us), `top(n)` (returns `{label, kind, detail}` JSON — note `to_json` exposes only these three fields), `accept(state, lsp, idx)`.
+- `StoredCompletionItem` — **typed via `lsp_types::CompletionItem`**, with a lenient JSON-field fallback (`from_json_lenient`) for items that fail strict deserialize (a real-world server population: spec drift concentrates in completion items and `$/progress`). Fields: `label: String`, `kind: Option<i64>` (raw LSP kind number read straight from JSON — display-only, no reader maps it to a name), `detail: Option<String>`, `sort_text`/`filter_text`/`insert_text` (each falling back to `label` when absent), `text_edit: Option<lsp_types::TextEdit>`, `additional_text_edits: Vec<lsp_types::TextEdit>` + `has_additional_text_edits: bool` (distinguishes "server sent no key at all" from "server sent an empty array" — only the former means `completionItem/resolve` might have more to offer), and `raw: serde_json::Value` — the **full unparsed item**, handed back to Steel on accept so Rust never grows readers for LSP fields it doesn't need. Snippet syntax (`insertTextFormat: Snippet`) is stripped from `insert_text`/`text_edit` at store ingress (`strip_snippet`); `raw` keeps the pristine text.
+- `CompletionSession` — **singleton, one per editor** (field `LspState.completion: Option<CompletionSession>`, on the LSP-subsystem state so it dies with `:lsp-stop`), replaced wholesale by each `begin`. Tracks `bid`, `pane_id` (accept only proceeds while this pane is still focused), `anchor_at_begin` + `rope_at_begin` (the coordinate system the server's `textEdit` range was computed against) + `cs_since_begin: ChangeSet` (every edit observed since `begin`, composed — the position-mapping transform from that frozen snapshot to the live document), `items`, `filtered: Vec<u32>` (ranked indices), `rank_scratch` (reused per-keystroke, no allocation), `filter: String`, `incomplete: bool` (server's `isIncomplete`).
+- Methods: `begin(state, bid, items_json, incomplete)`, `update_filter(state, text)`, `top(n)` (returns `{label, kind, detail}` JSON — `to_json` exposes only these three fields), `accept(state, lsp, idx)`.
 - Filtering: `subsequence_match_pos` (case-insensitive ASCII subsequence, returns first-match char index) + `is_prefix_match`; rank key is `(prefix_match desc, match_pos asc, sort_text asc)`. Hand-rolled — **no fuzzy crate anywhere in the workspace** (verified: no nucleo / fuzzy-matcher / skim in any `Cargo.toml`).
-- **Accept path** — the only LSP-coupled logic: uses the item's `text_edit` if present; otherwise **synthesizes** a `WireEdit` from `insert_text` spanning `anchor..(anchor + filter.chars().count())`, converting via `char_to_wire` with `introspect::encoding_for_buffer` (which defaults to `PositionEncoding::Utf16` when the buffer has **no attached server** — and since the same encoding converts back inside `edits::apply_text_edits`, the round-trip is self-consistent: **accept works today for buffers with no LSP server**, as long as the item has no `text_edit`). Applied gen-checked against `generation_at_begin` as one undo step. After the main edit lands, queues `EditorEvent::OnCompletionAccept` with `(bid, raw-item)` — Rust already applied `additionalTextEdits` and (if needed) `completionItem/resolve` atomically with the main edit; the hook is a plain extension point for anything the completion store doesn't itself parse (e.g. `command`).
-- `LspCompletionUi { selected }` — UI selection kept as a separate `EditorState.lsp_completion_ui` field so session logic stays render-free.
-- `EditorState::clear_lsp_completion` — clears session + UI + view; called from `set_mode` (any Insert exit) and the Insert key paths.
+- **Accept path** (`accept.rs`) — the only LSP-coupled logic: applies the item's `text_edit` at every cursor via `replace_around_cursors` when present (safe everywhere, per the LSP containment guarantee on the server's own range); otherwise computes each cursor's own preceding-token span (`replace_span_around_cursors` / `word_start_before`) and synthesizes an edit from `insert_text` — no such containment guarantee exists for a synthesized range, so it can't reuse one uniform span across cursors. Rust applies the main edit, any `additional_text_edits`, and (when the item lacks `additionalTextEdits` entirely and the server advertises `resolveProvider`) a synchronous `completionItem/resolve` round trip, all atomically as one undo step. After it lands, queues `EditorEvent::OnCompletionAccept` with `(bid, raw-item)` — a plain extension point for anything the completion store doesn't itself parse (e.g. `command`).
+- `CompletionMenuUi { selected }` — UI selection kept as a separate `LspState.completion_ui` field so session logic stays render-free.
+- `clear_completion_menu(state, lsp)` — free function, not a method (called from `EditorHostImpl`, `set_mode` on any Insert exit, and `picker::open_picker`); clears session + UI + the shared `completion_menu_view` Arc.
 
 **Steel-facing surface** (this is what makes it already-mostly-scriptable):
 
-- Builtins in `hume-scripting/src/builtins/lsp.rs`, registered in `builtins/mod.rs`, host-trait methods in `hume-scripting/src/host.rs`, implementations in `hume-editor/src/editor/host_impl.rs`:
-  - `(completion-begin! bid items #:incomplete f)` — Scheme wrapper over `%completion-begin!`; `items` is a list of completion-item hashmaps (LSP `CompletionItem` JSON shape). Replaces any open session. Host impl: `completion_begin`.
+- Builtins in `hume-scripting/src/builtins/completion.rs`, registered in `builtins/mod.rs`, host-trait methods in `hume-scripting/src/host.rs`, implementations in `hume-editor/src/editor/host_impl.rs`:
+  - `(completion-begin! bid items #:incomplete f)` — `items` is a list of completion-item hashmaps (LSP `CompletionItem` JSON shape). Replaces any open session.
   - `(completion-update-filter! text)`, `(completion-top n)`, `(completion-accept! idx)` (idx into the *ranked* order), `(completion-dismiss!)`.
-  - `(register-trigger-chars! source chars)` — writes `EditorState.trigger_chars: HashMap<String, Vec<char>>`; `EditorState::is_trigger_char` checks the union across sources. **Already multi-source by design.**
-- Hooks (`hume-scripting/src/hooks.rs`): `OnTriggerChar` `(bid ch)` — fired from Insert mode after a registered char lands; `OnCompletionAccept` `(bid raw-item)`; `OnCompletionRefilter` `(bid filter-text)` — fired per keystroke **only while `incomplete` is set**.
+  - `(register-trigger-chars! source language chars)` — writes `EditorState.trigger_chars: FxHashMap<(String, String), Vec<char>>`, keyed `(source, language)` so a second language attaching under the same source never clobbers the first's chars. **Already multi-source by design.**
+- Hooks (`hume-scripting/src/hooks.rs`): `OnTriggerChar` `(bid ch source)` — fired from Insert mode after a registered char lands, once per source registered for that char under `bid`'s language; `OnCompletionAccept` `(bid raw-item)`; `OnCompletionRefilter` `(bid filter-text)` — fired per keystroke **only while `incomplete` is set**.
 
 **The LSP feature plugin — `runtime/plugins/core/lsp/completion.scm`** (the model for what any source looks like):
 
-- `lsp/request-and-begin-completions`: `lsp-request "textDocument/completion"` → decode (`CompletionItem[]` or `CompletionList`) → strip snippets (`lsp/strip-snippet-item` rewrites `insertTextFormat == 2` items to plain text — v1 has no tabstop UI) → `completion-begin!`.
-- Entry points: `(define-command! "lsp-completion-trigger" …)` (Ctrl+Space is bound to that command name) and the `on-trigger-char` hook filtered by `*completion-chars*` (populated on `on-lsp-attach` from `completionProvider.triggerCharacters`, cleared on detach).
-- `on-completion-accept` handler: applies `additionalTextEdits`, or resolves via `completionItem/resolve` then applies.
+- `lsp/request-and-begin-completions`: `lsp-request "textDocument/completion"` → decode (`CompletionItem[]` or `CompletionList`) → `completion-begin!`. Snippet stripping happens Rust-side at store ingress — items arriving here already have plain `insertText`/`textEdit.newText`.
+- Entry points: `(define-command! "lsp-completion-trigger" …)` (Ctrl+Space is bound to that command name) and the `on-trigger-char` hook filtered by the server's registered trigger characters (populated on `on-lsp-attach` from `completionProvider.triggerCharacters`, cleared on detach).
+- No `on-completion-accept` handler here, deliberately: Rust applies the main edit, `additionalTextEdits`, and `completionItem/resolve` atomically.
 - `on-completion-refilter` handler: re-requests (isIncomplete flow).
 
 **Insert-mode key handling — `hume-editor/src/editor/mappings/insert.rs`:**
@@ -72,7 +72,7 @@ Everything below was read from source, not recalled. This is the substrate this 
 
 **Rendering:**
 
-- `Editor::sync_lsp_completion_view` (`hume-editor/src/editor/lifecycle.rs`, runs in `prepare_frame` step 9): `session.top(8)` → `completion_row_label` (`"label  detail"`, uniform style — per-part dimming would need segment-styled rows, which nothing requires yet) → `resolve_popup_geometry` → writes a `PopupState` into `EditorState.lsp_completion_view: Arc<RwLock<Option<PopupState>>>`.
+- `sync_completion_menu_view` (`hume-editor/src/editor/overlay_sync.rs`, runs in `prepare_frame`): `session.top(8)` → `StoredCompletionItem::menu_row_label` (`"label  detail"`, uniform style — per-part dimming would need segment-styled rows, which nothing requires yet) → `resolve_popup_geometry` → writes a `PopupState` into `EditorState.completion_menu_view: Arc<RwLock<Option<PopupState>>>`.
 - Painted by the **generic** `PopupOverlay` (`hume-editor/src/ui/popup.rs`) — registered in `build_pane` (`hume-editor/src/ui/mod.rs`) as a third instance with its own `Arc`, scopes `ui.menu` / `ui.menu.selected` (same theme scopes as the selection menu). `PopupState { lines, x, y, selected }`; geometry (below-right preferred, flip above, clamp, max width `min(60, pane_width - 4)`, max height ⅓ pane) resolved once per frame on the write side.
 
 ### What is genuinely LSP-coupled vs. already generic
@@ -83,16 +83,15 @@ Everything below was read from source, not recalled. This is the substrate this 
 | Session store, filter, rank, top-N | Fully generic |
 | `accept` with `text_edit` present | LSP wire positions — but isolated to one branch |
 | `accept` fallback (no `text_edit`) | Generic; works with no server attached (UTF-16 default round-trips) |
-| Trigger chars | Generic, already multi-source (`register-trigger-chars!` keyed by source name) |
+| Trigger chars | Generic, already multi-source (`register-trigger-chars!` keyed `(source, language)`) |
 | Trigger *ownership* (`lsp-completion-trigger` command, `on-trigger-char` subscription) | Lives in `core:lsp` plugin — needs relocation (task A3) |
 | `on-completion-accept` post-processing | LSP-specific by content, but it's Steel — each source brings its own handler |
-| Naming (`lsp_completion*` fields, `editor/lsp/completion.rs` path, `LspCompletionUi`) | Cosmetic LSP residue — rename in A1 |
-| Snippet stripping | Correctly lives in the LSP source plugin; stays there |
+| Snippet stripping | Rust-side, at store ingress (`strip_snippet`) — a second source with its own snippet dialect would need its own stripping before handing items to the store |
 
 ### Adjacent infrastructure this design leans on
 
-- **Async Rust→Steel callbacks**: `lsp-request` queues `PendingLspRequest` on `SteelCtx.pending_lsp_requests`; after eval, `flush_pending_lsp_requests` / `send_one_lsp_request` (`hume-editor/src/editor/lsp/bridge.rs`) register a boxed callback keyed `(ServerId, RequestId)`; reader threads → mpsc → `drain_lsp` each frame → `dispatch_completed` → `Editor::queue_steel_call(callback, args)` (`scripting_setup.rs`). Staleness: response dropped if the buffer's `text_gen` moved, unless `#:allow-stale`. **This is the template for any "async work finishes → call Steel closure" need.**
-- **Timers**: `(after ms thunk)` / `(cancel-timer! id)` builtins; `(debounce ms proc)` is pure Scheme over them (bootstrap in `builtins/mod.rs`).
+- **Async Rust→Steel callbacks**: `lsp-request` queues an `Effect::LspRequest(PendingLspRequest)`; `apply_script_effects` (`scripting_setup.rs`) applies queued effects in emission order, and `send_one_lsp_request` (`hume-editor/src/editor/lsp/bridge.rs`) registers a boxed callback keyed `(ServerId, RequestId)`; reader threads → mpsc → `drain_lsp` each frame → `dispatch_completed` → `Editor::queue_steel_call(callback, args)`. Staleness: response dropped if the buffer's `text_gen` moved, unless `#:allow-stale`. **This is the template for any "async work finishes → call Steel closure" need.**
+- **Timers**: `(after ms thunk)` / `(cancel-timer! id)` builtins; `(debounce ms proc)` is pure Scheme over them (`builtins/bootstrap.scm`).
 - **Generic widgets** (all in `host_impl.rs` + `ui/popup.rs` + `ui/drawer.rs`):
   - `(show-popup! text #:anchor 'cursor)` / `(close-popup!)` — `PopupModel`, hover-style text panel.
   - `(show-menu! items on-select)` / `(close-menu!)` — `MenuModel { items, selected, callback }`; callback fires exactly once (selection or dismissal); **blocked in Insert mode** (`show_menu` returns Err — deliberate, the completion menu owns that slot). Keys intercepted by `handle_menu_key` (`mappings/mod.rs`) ahead of keymap dispatch.
@@ -147,11 +146,11 @@ One source class this contract can't serve yet: an **external-command-backed sou
 
 Rust work for incremental:
 
-1. `completion-begin!` grows the same `#:source`/`#:priority` keywords (the first-arriving source is a tagged contributor like any other; it already has `#:incomplete`) and returns an opaque **session token** (monotonic `u64` on `EditorState`, bumped per begin). `completion-add-items!` takes the token and is a silent no-op if it doesn't match the current session — this kills the whole class of late-async-callback races (user dismissed and retriggered; source from the *previous* trigger finally answers). The existing `generation_at_begin` guard is orthogonal (it protects the *edit*, not session identity) and stays as-is.
+1. `completion-begin!` grows the same `#:source`/`#:priority` keywords (the first-arriving source is a tagged contributor like any other; it already has `#:incomplete`) and returns an opaque **session token** (monotonic `u64` on `EditorState`, bumped per begin). `completion-add-items!` takes the token and is a silent no-op if it doesn't match the current session — this kills the whole class of late-async-callback races (user dismissed and retriggered; source from the *previous* trigger finally answers). The existing edit-position-mapping guard (`rope_at_begin`/`cs_since_begin`) is orthogonal (it protects the *edit*, not session identity) and stays as-is.
 2. **Merge is replace-per-source, not append**: an add first evicts any items already tagged with that source name, then inserts the new list. Same-source re-emission (the isIncomplete refilter flow below re-invokes a source on the *same* session) is therefore idempotent — no duplicates — while other sources' items are untouched.
-3. `StoredCompletionItem` gains `source: Box<str>` (or an interned id) — used for the eviction in (2), for a rank tiebreaker (source priority, passed once at begin/add time), and available to `completion_row_label` for display. `to_json` grows a `"source"` field.
+3. `StoredCompletionItem` gains `source: Box<str>` (or an interned id) — used for the eviction in (2), for a rank tiebreaker (source priority, passed once at begin/add time), and available to `menu_row_label` for display. `to_json` grows a `"source"` field.
 4. `update_filter`'s rank key becomes `(prefix_match, match_pos, source_priority, sort_text)`. Exact position of `source_priority` in the key: see Q-A3.
-5. Merge must **preserve the user's current selection** if possible (re-rank moves rows under the cursor — v1: reset selection to 0 on merge, matching what `refilter_lsp_completion_after_edit` already does by clearing `lsp_completion_ui`; smarter selection-tracking is a polish item).
+5. Merge must **preserve the user's current selection** if possible (re-rank moves rows under the cursor — v1: reset selection to 0 on merge, matching what `refilter_lsp_completion_after_edit` already does by clearing `completion_ui`; smarter selection-tracking is a polish item).
 
 **Accept stays per-source via the existing hook.** `on-completion-accept` receives the raw item, which now carries `"source"` — the `core:lsp` plugin's handler guards on `(equal? (hash-ref item "source") "lsp")` before doing `additionalTextEdits`/resolve. Other sources register their own handlers or none. No Rust change.
 
@@ -159,33 +158,28 @@ Rust work for incremental:
 
 **Buffer-words needs one bounded builtin** (`(buffer-words bid prefix max-n)`): Rust scans the buffer with the existing word segmentation (`hume-editing/src/word.rs`), returns ≤ max-n distinct words matching prefix (case-insensitive subsequence or prefix — see Q-A5). Bounded output at user-intent frequency = guardrail-compliant. Steel wraps it into a source in ~10 lines.
 
-**Renames (A1 — DONE, landed at the widget/render layer only):** `EditorState.lsp_completion_view` → `completion_menu_view`, `LspCompletionUi` → `CompletionMenuUi`, `clear_lsp_completion` → `clear_completion_menu`, `sync_lsp_completion_view` → `sync_completion_menu_view`. Comment headers "LSP completion menu" updated.
+**Store/module relocation belongs to A2, not a standalone rename.** The session stays on `LspState.completion`/`LspState.completion_ui`, and the module stays at `editor/lsp/completion/` — because the session deliberately lives on `LspState` so it dies with the LSP subsystem (`:lsp-stop` clears it via `lsp_stop_one`), and the store still parses `lsp_types::CompletionItem` directly. Relocating store + module onto `EditorState`/`editor/completion_session.rs` is real estate that only earns its keep once a second source exists, so it's **A2**'s job (session token + multi-source merge), not a rename done ahead of it. `CompletionSession`/`StoredCompletionItem` are already generic names.
 
-Two corrections against the original A1 sketch above, discovered at implementation time:
-
-1. **Bare `completion_view`/`sync_completion_view`/`clear_completion` were already taken** — by the *minibuffer* command-line completer (`EditorState.completion_view`, `Editor::sync_completion_view`). HUME has two completion systems; the insert-mode menu's de-LSP'd names needed a distinguishing qualifier (`completion_menu*`), not the bare form. The minibuffer completer was symmetrically renamed to `minibuf_completion*` (`EditorState.minibuf_completion`, `MinibufCompletionState`, `minibuf_completion_view`, `sync_minibuf_completion_view`) so neither system hides behind a bare `completion` name.
-2. **The session stays on `LspState.completion`/`LspState.completion_ui`, and the module stays at `editor/lsp/completion.rs`.** The original A1 sketch proposed moving both onto `EditorState`/`editor/completion_session.rs` — but the session deliberately lives on `LspState` today so it dies with the LSP subsystem (`:lsp-stop` clears it via `lsp_stop_one`), and the store still parses `lsp_types::CompletionItem` directly. Relocating store + module is real estate that only earns its keep once a second source exists — it now belongs to **A2** (session token + multi-source merge), not to the rename pass. `CompletionSession`/`StoredCompletionItem` were already generic names and are unchanged.
-3. **Not caught by A1, belongs to A2's rename surface too:** `EditorState.lsp_completion_dismiss_pending` and `Editor::take_pending_lsp_completion_dismiss` (`editor/lsp/completion.rs`). This is the deferred-dismiss flag `set_mode` sets on any Insert-mode exit — it can't clear the session directly because `set_mode` only has `&mut EditorState` and the session lives on the sibling `LspState`, so it defers to a flag consumed (with a full `&mut Editor` borrow) at the next `Editor::settle()` chokepoint. It's honestly LSP-scoped *today* for the same reason `LspState.completion` is (single source, single owner) — but once A2 moves the session off `LspState` and makes it source-agnostic, this flag stops being an LSP concept and should become `completion_dismiss_pending` / `take_pending_completion_dismiss` alongside that move. Don't rename it standalone before A2 — it would just repeat this same exercise once the session actually relocates.
+**A2's rename surface also covers the dismiss-pending flag**: `EditorState.lsp_completion_dismiss_pending` and `Editor::take_pending_lsp_completion_dismiss` (`editor/mod.rs`). This is the deferred-dismiss flag `set_mode` sets on any Insert-mode exit — it can't clear the session directly because `set_mode` only has `&mut EditorState` and the session lives on the sibling `LspState`, so it defers to a flag consumed (with a full `&mut Editor` borrow) at the next `Editor::settle()` chokepoint. It's honestly LSP-scoped *today* for the same reason `LspState.completion` is (single source, single owner) — but once A2 moves the session off `LspState` and makes it source-agnostic, this flag stops being an LSP concept and should become `completion_dismiss_pending` / `take_pending_completion_dismiss` alongside that move.
 
 ### Task breakdown
 
 | ID | Task | Depends | Size |
 |----|------|---------|------|
-| A1 | ~~Rename pass: de-LSP the session/store/view names (see list above). No behavior change.~~ **DONE** — widget/render-layer names only; store/module relocation deferred into A2 (see corrections above). | — | S (mechanical, wide) |
-| A2 | Session token + `completion-add-items!` (replace-per-source merge) + `source` tag + per-source `#:incomplete` (session flag = OR of latest per-source flags) + priority tiebreaker + per-source rank/display plumbing. Rust: `completion_session.rs`, host trait + `host_impl.rs`, builtin + bootstrap wrapper in `hume-scripting`. Also carries the store/module relocation off `LspState`/`editor/lsp/completion.rs` (deferred from A1, correction 2 above) and the `lsp_completion_dismiss_pending`/`take_pending_lsp_completion_dismiss` rename (correction 3 above). Tests: token mismatch no-op, merge re-rank, same-source re-add replaces (no duplicates), late add flips `incomplete`, selection reset, source tiebreak. | A1 | M |
+| A1 | **DONE** — rename pass: de-LSP the widget/render-layer session/store/view names (see the inventory above). Store/module relocation deferred into A2 (see above). | — | S (mechanical, wide) |
+| A2 | Session token + `completion-add-items!` (replace-per-source merge) + `source` tag + per-source `#:incomplete` (session flag = OR of latest per-source flags) + priority tiebreaker + per-source rank/display plumbing. Rust: `completion_session.rs`, host trait + `host_impl.rs`, builtin + bootstrap wrapper in `hume-scripting`. Also carries the store/module relocation off `LspState`/`editor/lsp/completion/` (deferred from A1, see above) and the `lsp_completion_dismiss_pending`/`take_pending_lsp_completion_dismiss` rename (see above). Tests: token mismatch no-op, merge re-rank, same-source re-add replaces (no duplicates), late add flips `incomplete`, selection reset, source tiebreak. | A1 | M |
 | A3 | `core:completion` plugin: source registry, coordinator (begin/add orchestration, per-source incomplete tracking, trigger-char union, refilter fan-out), move `lsp-completion-trigger` + `on-trigger-char` + `on-completion-refilter` out of `core:lsp`; `core:lsp` re-shapes into a registered source (its `on-completion-accept` handler gains the source guard). Tests: two mock sources (fast sync + slow `after`-delayed), late-arrival merge, stale-token drop, accept-hook source filtering. | A2 | M |
 | A4 | `buffer-words` builtin + the buffer-words source plugin (`core:buffer-words` or part of `core:completion` — Q-A6). Tests: dedup, bound, prefix vs subsequence per the Q-A5 decision, no-panic on huge buffer. | A3 | S–M |
 
-Estimated total: comparable to one-and-a-half LSP Step 4 cards. No architectural risk; every piece lands behind existing seams.
+No architectural risk; every remaining piece lands behind existing seams.
 
 ---
 
 ## What to do *now* (foundation checklist)
 
-1. **Nothing structural.** Verified: no current abstraction blocks this design; no in-flight lsp-branch work needs redirecting.
+1. **Nothing structural.** Verified: no current abstraction blocks this design; no in-flight LSP work needs redirecting.
 2. **Hold the line on store purity**: any new completion feature that wants Rust to parse another LSP-specific `CompletionItem` field should instead read it in Steel from the `raw` item (accept hook) — that's the existing design intent, keep honoring it.
-3. **Optional, zero-risk, anytime**: the A1 rename pass can land independently whenever the lsp branch is quiet (it churns many lines; do it in a lull, not mid-feature).
-4. ROADMAP already points here — the Future-section "Scriptable completion sources" line. Nothing left to groom.
+3. ROADMAP points here at the "Scriptable insert-mode completion sources" line (`docs/ROADMAP.md`). Nothing left to groom.
 
 ## Decisions
 
@@ -214,6 +208,6 @@ Each carries a default per the usage rules.
 
 **Q-A6 — buffer-words packaging.** Own plugin (`core:buffer-words`, lazy-loadable, deletable) vs. bundled into `core:completion`. *Default: own plugin — it's the reference example of a third-party-shaped source, and dogfooding the registration API from a *separate* plugin proves cross-plugin registration works.*
 
-**Q-A7 — kind display.** `kind: i64` is currently display-unused (`completion_row_label` shows `label  detail` only). Map kind→short label/icon in Rust (`completion_row_label`) with a static table, themable? Non-LSP sources reuse LSP kind numbers? *Default: static Rust map (LSP kind numbers as the universal enum — sources pick the closest; 1=Text fits buffer-words), single-char column, no per-kind theming in v1. Note: per-part styling (dimmed detail, colored kind) needs segment-styled popup rows — a `PopupState` extension that's its own small task; don't smuggle it in.*
+**Q-A7 — kind display.** `kind: i64` is currently display-unused (`menu_row_label` shows `label  detail` only). Map kind→short label/icon in Rust (`menu_row_label`) with a static table, themable? Non-LSP sources reuse LSP kind numbers? *Default: static Rust map (LSP kind numbers as the universal enum — sources pick the closest; 1=Text fits buffer-words), single-char column, no per-kind theming in v1. Note: per-part styling (dimmed detail, colored kind) needs segment-styled popup rows — a `PopupState` extension that's its own small task; don't smuggle it in.*
 
 **Q-B6** (unifying completion's matcher with the picker's, tracked in `docs/FUZZY-FINDERS.md`) is the one open picker question that loops back to this document — noted in the Gaps section above.

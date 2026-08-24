@@ -764,8 +764,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
                 );
                 // The `Ok` arm needs no wake: the job thread wakes the loop
                 // itself on completion. This callback has no background
-                // thread behind it — `settle()`'s fixpoint (unlike the old
-                // single-pass `drain_pending_steel_calls`) does pick it up
+                // thread behind it — `settle()`'s fixpoint does pick it up
                 // within the same `settle()` call even when `spawn-async!`
                 // was itself invoked from a queued Steel callback, but this
                 // wake is kept anyway: cheap, harmless if the loop is already

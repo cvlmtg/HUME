@@ -453,9 +453,9 @@ fn define_language_language_id_keyword_round_trips_through_real_prelude() {
 /// fixture) so this fails if a future `scripts/sync-grammars.py` run ever
 /// drops the `#:language-id` overrides again.
 ///
-/// Flip: this test fails today on `main` (before this change), since
-/// `lsp_language_id_of` doesn't exist yet and `tsx`'s bundled identity has no
-/// override — proving it actually exercises the bug.
+/// Fail oracle: drop `tsx`'s `#:language-id` override from `languages.scm`
+/// (or have `lsp_language_id_of` fall back to `name_of`) → the assertion
+/// below sees `"tsx"` instead of `"typescriptreact"` and fails.
 #[test]
 fn tsx_bundled_language_id_is_typescriptreact() {
     let _lock = TEST_GLOBALS.claim(Global::Env);

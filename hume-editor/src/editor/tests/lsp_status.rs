@@ -103,7 +103,7 @@ fn lsp_stop_with_no_matching_server_stops_nothing() {
     assert_eq!(ed.lsp_stop(None), 0);
 }
 
-/// Minor A: a queued didChange entry left over from before the stop must
+/// A queued didChange entry left over from before the stop must
 /// not survive to be flushed against a future server's didOpen baseline —
 /// it would desync that server's document state on the very first edit.
 #[test]

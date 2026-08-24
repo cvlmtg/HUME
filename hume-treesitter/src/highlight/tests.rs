@@ -102,7 +102,7 @@ fn same_start_three_way_tie_resolves_by_seq() {
 
 #[test]
 fn scratch_reuse_across_calls_leaves_no_stale_events() {
-    // Regression for O1: `events`/`stack` are caller-owned scratch reused
+    // Regression: `events`/`stack` are caller-owned scratch reused
     // across calls (mirroring TsState in the real highlighter). A second,
     // disjoint call through the same scratch must not see the first
     // call's intervals leak through.

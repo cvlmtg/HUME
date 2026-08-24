@@ -228,8 +228,7 @@ impl Editor {
 
             // ── Newline ───────────────────────────────────────────────────────
             // Auto-indent: copy the current line's leading whitespace onto the
-            // new line. No smart indent (tree-sitter indent.scm is a separate
-            // roadmap milestone).
+            // new line. No smart indent.
             //
             // `trim_blank` (vim autoindent parity): only vacate a blank
             // line's whitespace if it was auto-inserted by *this* session's

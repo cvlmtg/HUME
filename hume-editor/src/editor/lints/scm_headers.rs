@@ -70,11 +70,11 @@ fn header_drift(template: &str, generated: &str) -> Option<String> {
 }
 
 /// Fail oracle: append a header paragraph to a generated file without
-/// touching its template — the false negative `header_drift` used to
-/// have, since it only compared *template* lines and never checked
-/// whether `generated` had anything left over. A template exactly as
-/// long as the generated header (the common case) passed clean either
-/// way, so this needs a case where `generated` genuinely has more.
+/// touching its template. `header_drift` compares *template* lines against
+/// `generated` but must also flag anything `generated` has left over past
+/// the template's length — a template exactly as long as the generated
+/// header (the common case) passes clean either way, so this needs a case
+/// where `generated` genuinely has more.
 #[test]
 fn header_drift_catches_a_hand_appended_header_paragraph() {
     let template = ";;; one\n;;; two";

@@ -43,10 +43,10 @@ fn no_raw_char_stepping_in_motion_code() {
     paths.push(workspace_root.join("hume-editing/src/lines.rs"));
     paths.push(workspace_root.join("hume-editing/src/word.rs"));
     // The line-boundary helpers that walk grapheme boundaries
-    // (snap_to_grapheme_boundary, line_content_end, place_char_column) moved
-    // to hume-rope — scan their new home too. hume-rope/src/grapheme.rs (the
+    // (snap_to_grapheme_boundary, line_content_end, place_char_column) live
+    // in hume-rope — scan them there. hume-rope/src/grapheme.rs (the
     // boundary-detection implementation itself) and cursor.rs (CharCursor,
-    // deliberately char-level) stay out of scope, same as before the move.
+    // deliberately char-level) stay out of scope.
     paths.push(workspace_root.join("hume-rope/src/lines.rs"));
 
     // Forbidden patterns — raw +1/-1 steps on char-position variables.

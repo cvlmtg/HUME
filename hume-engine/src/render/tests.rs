@@ -245,7 +245,7 @@ fn horizontal_scroll_clips_left_columns() {
     );
 }
 
-// ── Double-width straddle at the h-scroll edge (B9) ─────────────────
+// ── Double-width straddle at the h-scroll edge ───────────────────────
 
 #[test]
 fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
@@ -642,7 +642,7 @@ fn indicator_content_fills_tab_width() {
     );
 }
 
-// ── Virtual/Indicator content arena (G1) ────────────────────────────
+// ── Virtual/Indicator content arena ───────────────────────────────────
 
 #[test]
 fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
@@ -691,7 +691,7 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
     );
 }
 
-// ── Gutter text overflow (B8) ────────────────────────────────────────
+// ── Gutter text overflow ───────────────────────────────────────────────
 
 struct OverlongGutter;
 impl GutterColumn for OverlongGutter {
@@ -1243,7 +1243,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
     }
 }
 
-// ── GutterColumn gets buffer context (G2) ───────────────────────────
+// ── GutterColumn gets buffer context ──────────────────────────────────
 
 /// Gutter column that reads the first character of the row's own buffer
 /// line straight out of `ctx.rope` — exercises the `GutterRowCtx`

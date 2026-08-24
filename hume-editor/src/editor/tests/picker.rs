@@ -2,7 +2,7 @@
 // chokepoint (`picker::open_picker`), and the per-frame write side
 // (`sync_picker_view`). Sessions are still constructed directly rather than
 // through the `picker!` Steel builtin — see `tests/picker_steel.rs` for
-// end-to-end coverage of the Steel surface itself (B4).
+// end-to-end coverage of the Steel surface itself.
 
 use super::*;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};

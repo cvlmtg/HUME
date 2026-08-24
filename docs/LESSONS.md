@@ -25,9 +25,9 @@ Cursor/text assertions passed.  Nine bookkeeping regressions shipped.
    assert only the primary effect.
 
 2. **Single-funnel lint** — all execution of native-command `fun` fields must
-   go through `run_native_body` in `commands/mod.rs` (wrapped by
+   go through `run_native_body` in `commands/pipeline.rs` (wrapped by
    `run_dispatch_pipeline` for bookkeeping).  The lint
-   `single_native_dispatch_funnel` in `lints.rs` enforces this: any second
+   `single_native_dispatch_funnel` in `lints/dispatch_funnel.rs` enforces this: any second
    `match cmd` that binds a native variant's `fun` outside that file fails the
    build.
 
@@ -106,8 +106,8 @@ does (as in the `ScopeRegistry` case above). Fixed alongside the `04591455`/
 ever asking; the question surfaced only as a passing remark in the final
 summary ("say the word if you want…"), which is not asking.
 
-**Concrete instance:** hume-editing review, finding F6 (`classify_char`
-treats Unicode whitespace as `Punctuation`). Plan deferred the decision to
+**Concrete instance:** hume-editing review found `classify_char` treats
+Unicode whitespace as `Punctuation`. Plan deferred the decision to
 the user; implementation skipped the question entirely.
 
 **Prevention rule:** If a plan marks an item "ask user", that is a blocking

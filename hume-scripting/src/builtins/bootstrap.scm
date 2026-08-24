@@ -76,9 +76,9 @@
 ;; timer's id out from under it — orphaned, no longer cancellable by any
 ;; future call, but still ticking: it fires later regardless, on its own
 ;; original schedule, sending a stray duplicate. Racing two calls into the
-;; same fixpoint drain is exactly what a merged, always-draining `settle()`
-;; (hume-editor's event loop) makes routine, so this is no longer a corner
-;; case.
+;; same fixpoint drain is routine under `settle()`'s merged, always-draining
+;; event loop (hume-editor), so this is a real case to guard, not a corner
+;; one.
 (define (debounce ms proc)
   (let ((pending (box #f)))
     (lambda args

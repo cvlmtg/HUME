@@ -430,11 +430,10 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
 /// plugin's "bar" entry is dropped (logged as an Error, first-writer-wins),
 /// and both plugins remain `Declared` (neither is stuck or hard-errored).
 ///
-/// Ported from a `MockHost`-driven version in `hume-editor/tests/scripting.rs`
-/// to a real `Editor` + `EditorHostImpl` — collision detection is
-/// `CommandRegistry`'s decision, and testing it through a hand-rolled
-/// `MockHost` copy of the same rules risked silently drifting from the real
-/// behavior it was meant to prove.
+/// Runs against a real `Editor` + `EditorHostImpl`, not a hand-rolled
+/// `MockHost` — collision detection is `CommandRegistry`'s decision, and a
+/// `MockHost` copy of the same rules would risk silently drifting from the
+/// real behavior it's meant to prove.
 ///
 /// Flip: remove the `register_lazy_command` collision check → "bar" would
 /// register twice, the second `Lazy { plugin: pb, .. }` silently overwriting
@@ -529,8 +528,8 @@ fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
 /// `#:events` plugin activates on first matching hook fire; its handler
 /// runs in the same fire that caused activation.
 ///
-/// Flip: without A3 (`activate_lazy_event_plugins` at the top of
-/// `queue_event`), the plugin stays `Declared` and the cursor never moves.
+/// Flip: without `activate_lazy_event_plugins` at the top of
+/// `queue_event`, the plugin stays `Declared` and the cursor never moves.
 #[test]
 fn event_trigger_activates_on_first_fire() {
     use hume_scripting::attribution::PluginId;
@@ -1875,7 +1874,7 @@ fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
     );
 }
 
-// ── G2: post-init language-activation lint ───────────────────────────────────────
+// ── Post-init language-activation lint ─────────────────────────────────────────────
 
 /// Helper: create a `user/tp` plugin file, write init.scm, run `init_scripting`.
 ///

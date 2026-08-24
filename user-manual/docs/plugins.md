@@ -22,6 +22,7 @@ See [How plugins are loaded](#how-plugins-are-loaded) for the difference between
 If a plugin supports configuration, pass it with `#:config`:
 
 ```scheme
+(declare-plugin "core:stdlib")
 (load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'off))
 ```
 
@@ -62,7 +63,7 @@ A lazy plugin needs at least one activation entry, or it could never activate. D
 
   ```scheme
   (declare-plugin "alice/rust-tools" #:commands '("rust-check"))
-  (bind-key! 'normal "<space>r" "rust-check")
+  (bind-key! 'normal "space r" "rust-check")
   ; pressing <space>r the first time loads alice/rust-tools, then runs rust-check
   ```
 - **`#:events`** — lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).

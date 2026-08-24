@@ -420,8 +420,8 @@ fn viewport_range_is_false_for_a_buffer_not_shown_in_any_pane() {
     );
 
     // Only two buffers exist, so "the one that isn't the focused buffer"
-    // unambiguously picks out the hidden one — relies on R4's equal?/hash
-    // fix (`equality_hint`) for buffer-id comparison across independently
+    // unambiguously picks out the hidden one — relies on `equal?`/hash
+    // (`equality_hint`) for buffer-id comparison across independently
     // decoded `(buffers)` entries.
     let fired = run_probe(
         &mut ed,

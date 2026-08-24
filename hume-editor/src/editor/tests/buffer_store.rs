@@ -421,9 +421,9 @@ fn p6_reload_collapses_multi_selection_to_primary() {
     );
 }
 
-// ── :e! undo-retention (RELOAD.md) ────────────────────────────────────────────
+// ── :e! undo-retention ──────────────────────────────────────────────────────
 //
-// `:e!` now records the reload as an ordinary edit in the existing undo tree
+// `:e!` records the reload as an ordinary edit in the existing undo tree
 // instead of discarding history. `u` reverts to the pre-reload buffer (full
 // prior tree intact beneath); `Ctrl-r` re-applies the reload.
 

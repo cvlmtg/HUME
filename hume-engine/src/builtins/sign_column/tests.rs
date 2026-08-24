@@ -174,7 +174,7 @@ fn set_width_overrides_the_configured_width() {
 fn sign_text_truncates_to_column_width_end_to_end() {
     // Full compose path (not just SignColumn::render_row in isolation):
     // a 3-glyph sign in a width-2 column must come out clipped by
-    // `render::compose_gutter` (B8's gutter clipping), same as every
+    // `render::compose_gutter`'s gutter clipping, same as every
     // other gutter column — SignColumn adds no truncation of its own.
     let mut registry = ScopeRegistry::new();
     let scope = registry.intern("diagnostic");

@@ -67,8 +67,8 @@ impl EditorColors {
         let statusline = style_for(mode_scope(mode));
         // `resolve_by_name`'s dot-notation fallback would otherwise land an
         // absent "ui.statusline.separator" on the untinted base
-        // "ui.statusline" scope — the wrong target now that the row itself
-        // is mode-tinted. Check for an explicit entry first and fall back to
+        // "ui.statusline" scope — the wrong target, since the row itself is
+        // mode-tinted. Check for an explicit entry first and fall back to
         // the row's own (already-resolved) style instead.
         let statusline_separator = if theme.raw_contains("ui.statusline.separator") {
             style_for("ui.statusline.separator")

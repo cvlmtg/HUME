@@ -3,14 +3,14 @@
 
 use super::*;
 
-// ── G3: zero-entry error distinguishes collided vs not-supplied ───────────
+// ── Zero-entry error distinguishes collided vs not-supplied ────────────────
 
 /// When ALL provided `#:commands` entries collide with built-ins, the
 /// error message must mention "conflicted", not suggest adding #:commands
 /// (which the user already did).
 ///
 /// Collision filtering only runs once the plugin is confirmed present on
-/// disk (absent plugins skip it entirely — see G4 below), so this test needs
+/// disk (absent plugins skip it entirely), so this test needs
 /// a real on-disk plugin, unlike a same-named `core:` plugin that would
 /// otherwise hit the absent-path branch first.
 ///

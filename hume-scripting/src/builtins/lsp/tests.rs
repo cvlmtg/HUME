@@ -421,7 +421,7 @@ fn pending_unregister(language: &str) -> Effect {
     })
 }
 
-/// R1: `lsp-registered-for-language?` reads through the `Effect::LspServerOp`
+/// `lsp-registered-for-language?` reads through the `Effect::LspServerOp`
 /// entries queued this eval before falling back to the host — a
 /// `Register` queued this eval must be visible immediately, not only
 /// after the next drain.

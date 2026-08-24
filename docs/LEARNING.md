@@ -13,10 +13,10 @@ How text is stored and mutated, and the invariants that must always hold.
 
 | Topic | File |
 |-------|------|
-| Unicode Position Model: Bytes, Chars, and Grapheme Clusters | [docs/learning/unicode-position-model.md](docs/learning/unicode-position-model.md) |
-| Changesets: Describing Edits as Data | [docs/learning/changesets.md](docs/learning/changesets.md) |
-| The Undo Tree: Branches, Not a Stack | [docs/learning/undo-tree.md](docs/learning/undo-tree.md) |
-| Buffer Invariants and Plugin Safety | [docs/learning/buffer-invariants.md](docs/learning/buffer-invariants.md) |
+| Unicode Position Model: Bytes, Chars, and Grapheme Clusters | [learning/unicode-position-model.md](learning/unicode-position-model.md) |
+| Changesets: Describing Edits as Data | [learning/changesets.md](learning/changesets.md) |
+| The Undo Tree: Branches, Not a Stack | [learning/undo-tree.md](learning/undo-tree.md) |
+| Buffer Invariants and Plugin Safety | [learning/buffer-invariants.md](learning/buffer-invariants.md) |
 
 ### Selection & motion
 
@@ -25,13 +25,13 @@ produce selections.
 
 | Topic | File |
 |-------|------|
-| Edit Operations: Acting on Selections | [docs/learning/edit-operations.md](docs/learning/edit-operations.md) |
-| Motions vs Text Objects | [docs/learning/motions-vs-text-objects.md](docs/learning/motions-vs-text-objects.md) |
-| Move vs Extend: Separating Position from Anchor Semantics | [docs/learning/motion-mode.md](docs/learning/motion-mode.md) |
-| Word Motions: Selecting the Whole Word | [docs/learning/word-motions.md](docs/learning/word-motions.md) |
-| CharClass: Word Boundaries and the Eol Split | [docs/learning/charclass.md](docs/learning/charclass.md) |
-| Inner vs Around: The Text Object Convention | [docs/learning/inner-vs-around.md](docs/learning/inner-vs-around.md) |
-| Quote Scanning: Parity Instead of Depth | [docs/learning/quote-scanning.md](docs/learning/quote-scanning.md) |
+| Edit Operations: Acting on Selections | [learning/edit-operations.md](learning/edit-operations.md) |
+| Motions vs Text Objects | [learning/motions-vs-text-objects.md](learning/motions-vs-text-objects.md) |
+| Move vs Extend: Separating Position from Anchor Semantics | [learning/motion-mode.md](learning/motion-mode.md) |
+| Word Motions: Selecting the Whole Word | [learning/word-motions.md](learning/word-motions.md) |
+| CharClass: Word Boundaries and the Eol Split | [learning/charclass.md](learning/charclass.md) |
+| Inner vs Around: The Text Object Convention | [learning/inner-vs-around.md](learning/inner-vs-around.md) |
+| Quote Scanning: Parity Instead of Depth | [learning/quote-scanning.md](learning/quote-scanning.md) |
 
 ### Architecture
 
@@ -39,10 +39,10 @@ How rendering, dispatch, and the engine/editor boundary are structured.
 
 | Topic | File |
 |-------|------|
-| The Command/Keymap/Dispatch Architecture | [docs/learning/command-keymap-dispatch.md](docs/learning/command-keymap-dispatch.md) |
-| The Rendering Pipeline: Engine, Providers, and the 4-Stage Pipeline | [docs/learning/rendering-pipeline.md](docs/learning/rendering-pipeline.md) |
-| Display Lines and Soft Wrap | [docs/learning/display-lines-and-soft-wrap.md](docs/learning/display-lines-and-soft-wrap.md) |
-| Splits and Panes: One Buffer, Many Views | [docs/learning/splits-and-panes.md](docs/learning/splits-and-panes.md) |
+| The Command/Keymap/Dispatch Architecture | [learning/command-keymap-dispatch.md](learning/command-keymap-dispatch.md) |
+| The Rendering Pipeline: Engine, Providers, and the 4-Stage Pipeline | [learning/rendering-pipeline.md](learning/rendering-pipeline.md) |
+| Display Lines and Soft Wrap | [learning/display-lines-and-soft-wrap.md](learning/display-lines-and-soft-wrap.md) |
+| Splits and Panes: One Buffer, Many Views | [learning/splits-and-panes.md](learning/splits-and-panes.md) |
 
 ### Languages & syntax
 
@@ -52,9 +52,9 @@ language servers add semantic features like diagnostics and completion.
 
 | Topic | File |
 |-------|------|
-| Language Identity and Detection | [docs/learning/language-identity.md](docs/learning/language-identity.md) |
-| Tree-sitter: Grammars, Queries, and Plum | [docs/learning/tree-sitter-pipeline.md](docs/learning/tree-sitter-pipeline.md) |
-| LSP: One Protocol Between Editors and Languages | [docs/learning/lsp.md](docs/learning/lsp.md) |
+| Language Identity and Detection | [learning/language-identity.md](learning/language-identity.md) |
+| Tree-sitter: Grammars, Queries, and Plum | [learning/tree-sitter-pipeline.md](learning/tree-sitter-pipeline.md) |
+| LSP: One Protocol Between Editors and Languages | [learning/lsp.md](learning/lsp.md) |
 
 ### Plugins & registers
 
@@ -63,10 +63,10 @@ text and paste.
 
 | Topic | File |
 |-------|------|
-| Plugin Architecture: Loading, Activation, and Isolation | [docs/learning/plugin-architecture.md](docs/learning/plugin-architecture.md) |
-| Plugin Attribution: Who Owns What | [docs/learning/plugin-attribution.md](docs/learning/plugin-attribution.md) |
-| Runaway-Script Protection: The Watchdog Timer | [docs/learning/runaway-script-protection.md](docs/learning/runaway-script-protection.md) |
-| Kill Ring and Smart-p: Two Sources of Paste | [docs/learning/kill-ring-and-smart-p.md](docs/learning/kill-ring-and-smart-p.md) |
+| Plugin Architecture: Loading, Activation, and Isolation | [learning/plugin-architecture.md](learning/plugin-architecture.md) |
+| Plugin Attribution: Who Owns What | [learning/plugin-attribution.md](learning/plugin-attribution.md) |
+| Runaway-Script Protection: The Watchdog Timer | [learning/runaway-script-protection.md](learning/runaway-script-protection.md) |
+| Kill Ring and Smart-p: Two Sources of Paste | [learning/kill-ring-and-smart-p.md](learning/kill-ring-and-smart-p.md) |
 
 ### Vimgolf
 
@@ -74,4 +74,4 @@ How HUME's editing model compares on real challenges, and what the idioms look l
 
 | Topic | File |
 |-------|------|
-| HUME as a Golf Club | [docs/learning/vimgolf.md](docs/learning/vimgolf.md) |
+| HUME as a Golf Club | [learning/vimgolf.md](learning/vimgolf.md) |

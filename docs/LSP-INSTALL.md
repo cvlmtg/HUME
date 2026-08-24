@@ -130,10 +130,8 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   [v1 scope](#v1-scope-and-limitations) for the full rule and why.
 - Field encoding (empty tail never `#f`, canonical JSON `config` string, delivered both ways
   by `core:lsp/registration.scm`, decoded once via `(json-parse)` at the one consuming site):
-  see `lsp-servers.scm`'s own header comment. That encoding replaced an earlier
-  nested-alist-plus-`#(...)`-vector one that needed a hand-rolled Scheme-side walker and a
-  Python-side array/object-disambiguation hack, purely because plain sexpr syntax can't tell
-  an empty JSON array from an empty JSON object — a JSON string has no such ambiguity. See
+  see `lsp-servers.scm`'s own header comment. A JSON string sidesteps the fact that plain
+  sexpr syntax can't tell an empty JSON array from an empty JSON object. See
   [Config delivery & per-server audit](#config-delivery--per-server-audit) for why delivering
   the same blob two ways is correct rather than a mismatch.
 
@@ -228,12 +226,7 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   Developer Mode. One less moving part on every platform.
 - **Windows spawn wrinkle**: npm's `node_modules/.bin` entries on Windows are `.cmd` shims,
   which `CreateProcess` cannot spawn directly. The client's single process-spawn site
-  (`hume-lsp`'s transport) wraps `.cmd`/`.bat` commands in `cmd /C`, cfg-gated. The
-  *installer's* own `npm install` invocation (`hume-platform::process::npm_install`) spawns
-  `npm.cmd` directly via `Command::new` instead — Rust's std has applied safe `.bat`/`.cmd`
-  argument escaping since 1.77.2 (CVE-2024-24576), so this avoids the double
-  command-line-parsing a `cmd /C npm …` wrapper would add. A defense-in-depth allowlist
-  (`[A-Za-z0-9@/._+-]`) on every package spec runs before spawn either way, cfg-independent.
+  (`hume-lsp`'s transport) wraps `.cmd`/`.bat` commands in `cmd /C`, cfg-gated.
 - **Cross-process install lock**: `:lsp-install`/`:lsp-uninstall` acquire
   `<data>/servers/.install-lock` (O_EXCL — `acquire-install-lock!`/`release-install-lock!`)
   before mutating `servers/`, so two HUME processes racing the same operation refuse rather
@@ -366,16 +359,16 @@ lists) stays in the plugin — Rust never reads them.
   typescript-language-server registers for typescript, tsx, javascript, jsx — N entries in
   the registry, same config.
 
-## Implementation steps
+## Implementation shape
 
-Shipped in three steps, each a pure consumer of the previous step's contract: a Python-only
-data pipeline (`mason-pin.scm`; extended `sync-grammars.py` → `lsp-servers.scm`; new
-`sync-lsp-sources.py` → `lsp-sources.scm`, with the Helix→Mason name-mapping table and
-unmatched-server report; shared `sync_common.py`); Rust platform primitives (below); and
-`servers.scm` itself (Steel, pure consumer of the previous two — scan-on-load registration,
+Each layer is a pure consumer of the one below it: a Python-only data pipeline
+(`mason-pin.scm`; `sync-grammars.py` → `lsp-servers.scm`; `sync-lsp-sources.py` →
+`lsp-sources.scm`, with the Helix→Mason name-mapping table and unmatched-server report;
+shared `sync_common.py`); Rust platform primitives (below); and `servers.scm` itself (Steel,
+a pure consumer of the previous two — scan-on-load registration,
 `lsp-install`/`lsp-uninstall`/`lsp-servers`/`lsp-rescan-servers` commands, receipts, orphan
-warnings, npm install path, missing-server hint, user-manual + `init.scm.example` docs — `core:plum`'s
-`grammars.scm` is the template. Lives in `core:lsp` — see
+warnings, npm install path, missing-server hint, user-manual + `init.scm.example` docs —
+`core:plum`'s `grammars.scm` is the template. Lives in `core:lsp` — see
 [Placement](#placement-corelsp-owns-the-server-lifecycle-end-to-end)).
 Marshalling gotcha: the minibuffer passes the integer `1` to an arity-1 Steel command
 invoked with no argument — the `lsp-install` no-arg branch must test "argument is a

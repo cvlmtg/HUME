@@ -175,8 +175,8 @@ impl LspState {
     /// meaningful default to reconstruct against. A field added to this
     /// struct in the future needs an explicit line here (keep or clear) —
     /// there's no compiler nudge for that the way `ConfigState`'s wholesale
-    /// rebuild gets one, so treat this list with the same suspicion as
-    /// `EditorState`'s old field-by-field reset.
+    /// rebuild gets one, so a reviewer must check this list by hand against
+    /// each new field.
     pub(crate) fn reset_config(&mut self) {
         self.callbacks.clear();
         self.configs.clear();

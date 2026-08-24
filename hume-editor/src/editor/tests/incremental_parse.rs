@@ -1,4 +1,4 @@
-// Integration tests for incremental tree-sitter parsing (M9.5).
+// Integration tests for incremental tree-sitter parsing.
 //
 // Verifies end-to-end: edits record pending InputEdits, reparse_stale_buffers
 // uses them to build old_tree for incremental re-parsing, and pending_edits are
@@ -224,7 +224,8 @@ fn incremental_tree_matches_full_reparse() {
 /// After an edit, a single `reparse_stale_buffers` call must bake the pending
 /// edits into the committed tree (coordinate-aligning it with the live text)
 /// before the background precise parse is installed.  This is the key invariant
-/// that prevents the pre-M9.5-fix highlight flicker.
+/// that prevents highlight flicker: without it, the committed tree's
+/// coordinates lag the live text until the precise parse lands.
 ///
 /// With InlineParseBackend, `post` resolves immediately into the queue but does
 /// NOT drain in the same call.  So after exactly one `reparse_stale_buffers`:

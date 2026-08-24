@@ -1146,7 +1146,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
     );
 }
 
-// ── Inline-insert scope styling (B3) ─────────────────────────────────
+// ── Inline-insert scope styling ─────────────────────────────────────────
 
 #[test]
 fn inline_insert_scope_is_layered_but_neighbour_is_not() {
@@ -1283,7 +1283,7 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
     );
 }
 
-// ── Inline-insert char_offset partition invariant (B2) ────────────────
+// ── Inline-insert char_offset partition invariant ───────────────────────
 
 /// Drive the real formatter with a mid-row insert, then style the result —
 /// end-to-end coverage that `resolve_grapheme_display_col`'s partition_point lands

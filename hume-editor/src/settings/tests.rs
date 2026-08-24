@@ -849,7 +849,7 @@ fn has_declared_resync_matches_keys_with_derived_state() {
     }
 }
 
-// ── Pane-scope chokepoint lint (A8) ────────────────────────────────────────
+// ── Pane-scope chokepoint lint ───────────────────────────────────────────────
 
 #[test]
 fn every_pane_scoped_key_has_a_typed_set_arm() {

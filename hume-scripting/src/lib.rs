@@ -266,8 +266,8 @@ impl ScriptingHost {
 /// plugin/config code — used by [`ScriptingHost::host_global_names`] to keep
 /// the generated `steel-language-server` host-globals file to the surface a
 /// plugin author would actually type. Checked against a full generated list
-/// of every name these patterns *don't* match (260 entries, at the time of
-/// writing) to confirm none of them is a legitimate public name.
+/// of every name these patterns *don't* match to confirm none of them is a
+/// legitimate public name.
 ///
 /// - `%`-prefixed (`%register-lsp-server!`, `%dispatch-command`, …): HUME's
 ///   private-primitive convention — each has a public Scheme wrapper of the
