@@ -1,7 +1,6 @@
-;;; core:git-diff — state.scm
-;;;
-;;; Per-buffer state, one `(box (hash))` keyed by buffer id — the same
-;;; per-key mutable-table idiom `debounce-by` uses
+;;; core:git-diff — state.scm (see README.md "File layout"). Per-buffer
+;;; state, one `(box (hash))` keyed by buffer id — the same per-key
+;;; mutable-table idiom `debounce-by` uses
 ;;; (hume-scripting/src/builtins/bootstrap.scm). Steel's `hash` is
 ;;; persistent, so mutation is swap-the-box, not in-place update.
 ;;;

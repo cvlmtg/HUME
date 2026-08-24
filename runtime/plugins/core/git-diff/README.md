@@ -83,6 +83,9 @@ Pass via `#:config` on `declare-plugin`/`load-plugin`:
 | `"inline"` | bool | `#f` | Whether inline rendering starts on for a newly opened buffer |
 | `"ref"` | string | `"HEAD"` | The default git ref a buffer diffs against, until overridden per-buffer via `:toggle-git-signs`/`:toggle-inline-diff` — see Commands |
 
+Signs default on: cheap, with no line-shifting side effects. Inline rendering defaults off:
+it moves virtual rows into the buffer's visual flow, which not every user wants on by default.
+
 ## How it works
 
 ### File layout

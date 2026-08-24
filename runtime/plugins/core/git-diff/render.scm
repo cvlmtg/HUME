@@ -1,12 +1,8 @@
-;;; core:git-diff — render.scm
-;;;
-;;; Pure `hunks → decoration records` functions, one per rendering, each
-;;; ending in exactly one setter call (`render-inline!` is the one
-;;; exception — see its own comment). State stores the verbatim hunk tuples
-;;; `diff-buffer-lines` returns, never a derived shape (state.scm's
-;;; additivity invariant), so every function here is a pure view over that
-;;; one shared shape: gutter signs, virtual deleted lines + word highlights,
-;;; and the full-row background tint.
+;;; core:git-diff — render.scm (see README.md "File layout"). Pure
+;;; `hunks → decoration records` functions, one per rendering, each ending
+;;; in exactly one setter call (`render-inline!` is the one exception — see
+;;; its own comment) — every function here is a pure view over the one
+;;; hunk shape state.scm stores (its additivity invariant).
 
 (provide git-diff/render-signs! git-diff/render-inline! git-diff/render-line-bgs!
          git-diff/render-for!)

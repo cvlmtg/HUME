@@ -25,8 +25,8 @@
 (require "completion.scm")
 (require "inlay.scm")
 
-;; See core:vim-keybind/plugin.scm for why `(declared-plugins)` is enough
-;; here.
+;; See user-manual/docs/plugins.md "Depending on another plugin" for why
+;; `(declared-plugins)` is enough here.
 (unless (member "core:stdlib" (declared-plugins))
   (error "core:lsp: requires core:stdlib — (declare-plugin \"core:stdlib\") or (load-plugin \"core:stdlib\") before (load-plugin \"core:lsp\")"))
 

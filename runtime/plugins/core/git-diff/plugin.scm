@@ -1,15 +1,6 @@
 ;;; core:git-diff — plugin.scm
 ;;;
-;;; Entry point. HUME resolves and `require`s this file when the plugin
-;;; loads (eager) or lazily activates (lazy) — see manifest.scm and
-;;; README.md "Usage".
-;;;
-;;; Wires config, per-buffer state, and the git-ref fetch/diff pipeline to
-;;; the buffer lifecycle hooks and the two toggle commands below —
-;;; `toggle-git-signs` renders gutter `+`/`-`/`~` marks, `toggle-inline-diff`
-;;; renders virtual deleted lines, word highlights, and the full-row
-;;; background tint.
-;;;
+;;; Entry point (see manifest.scm and README.md "Usage" and "File layout").
 ;;; Depends on core:stdlib (config validation calls stdlib/config-boolean,
 ;;; stdlib/config-string via call!) — load it first, same as core:plum/core:lsp.
 
@@ -17,8 +8,8 @@
 (require "diff.scm")
 (require "render.scm")
 
-;; See core:vim-keybind/plugin.scm for why `(declared-plugins)` is enough
-;; here.
+;; See user-manual/docs/plugins.md "Depending on another plugin" for why
+;; `(declared-plugins)` is enough here.
 (unless (member "core:stdlib" (declared-plugins))
   (error "core:git-diff: requires core:stdlib — (declare-plugin \"core:stdlib\") or (load-plugin \"core:stdlib\") before (load-plugin \"core:git-diff\")"))
 
@@ -28,9 +19,7 @@
 ;; hook handler.
 (define git-diff/cfg (plugin-config))
 
-;; Signs default on (cheap, no line-shifting side effects); inline rendering
-;; defaults off (moves virtual rows into the buffer's visual flow) — see
-;; README.md's Config table.
+;; See README.md's Config table for these defaults.
 (define git-diff/signs-default (call! "stdlib/config-boolean" "core:git-diff" git-diff/cfg "signs" #t))
 (define git-diff/inline-default (call! "stdlib/config-boolean" "core:git-diff" git-diff/cfg "inline" #f))
 
@@ -87,12 +76,9 @@
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
 ;; Shared body for both toggles below — they differ only in which flag they
-;; flip. `arg` is a string only when the user typed one on the `:` command
-;; line (HUME's minibuffer dispatch hands a bare invocation or a keymap
-;; press an integer instead — see hume-editor/src/editor/dispatch.rs's
-;; `ArgSource` marshalling), so `(string? arg)` is the idiom to distinguish
-;; "ref given" from "bare toggle", same as HUME's own
-;; `lsp-install`/`lsp-stop`.
+;; flip. `arg` is a string only when typed (see core:stdlib README's
+;; `stdlib/resolve-lang-arg` entry for why); `(string? arg)` distinguishes
+;; "ref given" from "bare toggle", same idiom as `lsp-install`/`lsp-stop`.
 ;;
 ;; An explicit ref is a *set*, never a flip: the rendering ends up on and
 ;; pointed at `arg`, even if it was already on against that same ref (which

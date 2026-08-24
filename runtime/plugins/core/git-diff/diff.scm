@@ -1,10 +1,6 @@
-;;; core:git-diff — diff.scm
-;;;
-;;; Ref-content fetch (`spawn-async!` + `git show`) and the native line-diff
-;;; call (`diff-buffer-lines`), debounced per buffer. Word diff
+;;; core:git-diff — diff.scm (see README.md "File layout"). Word diff
 ;;; (`diff-words`) is not called here — it's called from `render.scm`,
-;;; where the records it feeds are built, rather than threading a parallel
-;;; word-diff structure between the two files.
+;;; where the records it feeds are built.
 
 (require "state.scm")
 (require "render.scm")

@@ -58,8 +58,9 @@ share a basename (two `mod.rs` files, say).
 `picker-git-modified` runs `git status --porcelain -z --no-renames
 --untracked-files=<mode>` in the background — not the line-streaming source
 `picker-files` uses, since the picker needs the whole, parsed output at
-once, not individual rows as they arrive — and lists every entry exactly as
-git prints it: the two-letter status code (`M `,
+once, not individual rows as they arrive. It opens empty immediately, marked
+pending until `git status` completes, then populates in one batch, and lists
+every entry exactly as git prints it: the two-letter status code (`M `,
 `A `, ` M`, `??`, …) followed by the path, relative to the repo root. `-z`
 avoids git's C-quoting of paths with whitespace or non-ASCII; `--no-renames`
 guarantees one field per entry (a rename otherwise prints as two NUL-separated
@@ -89,6 +90,6 @@ finishes. Set `"untracked"` to `#f` to skip it and populate sooner.
 | `"untracked"` | `#f`          | Untracked files are excluded (`--untracked-files=no`). |
 
 ```scheme
-(load-plugin "core:stdlib")
+(declare-plugin "core:stdlib")
 (load-plugin "core:pickers" #:config (hash "untracked" #f))
 ```

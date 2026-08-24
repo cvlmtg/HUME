@@ -3,25 +3,10 @@
 ;;; Depends on core:stdlib (config validation calls stdlib/config-enum via
 ;;; call!) — declare or load it first, same as core:plum/core:lsp.
 
-;; `(declared-plugins)` is enough here, even though this read happens at the
-;; top of the plugin body rather than inside a command a keypress triggers
-;; later: `%dispatch-command`'s lazy-miss retry
-;; (hume-scripting/src/builtins/bootstrap.scm) activates a merely *declared*
-;; core:stdlib inline, the same as it would for a call reached from inside a
-;; command — the body-vs-command distinction only matters for whether the
-;; call is reachable at all, not for whether a Declared dependency can serve
-;; it. A bare `(declare-plugin "core:stdlib")` takes core:stdlib's own
-;; manifest.scm defaults, which register a Lazy stub for every helper this
-;; plugin calls, including stdlib/config-enum.
-;;
-;; This still fails loudly if core:stdlib was never declared or loaded at
-;; all. It does NOT catch a `(declare-plugin "core:stdlib" #:commands ...)`
-;; that overrides the manifest and omits stdlib/config-enum from its own
-;; list — that leaves no stub, so `call!` here logs an error and returns
-;; #void instead of raising, and the config read below silently resolves to
-;; #void. A caller who overrides core:stdlib's own declaration owns that
-;; failure mode. See user-manual/docs/plugins.md "Depending on another
-;; plugin".
+;; See user-manual/docs/plugins.md "Depending on another plugin" for why
+;; `(declared-plugins)` is enough here, even read at the top of the plugin
+;; body — and why this does not catch an override that leaves no
+;; `stdlib/config-enum` stub for the config read below.
 (unless (member "core:stdlib" (declared-plugins))
   (error "core:vim-keybind: requires core:stdlib — (declare-plugin \"core:stdlib\") or (load-plugin \"core:stdlib\") before (load-plugin \"core:vim-keybind\")"))
 
@@ -36,12 +21,10 @@
   ;; even 1, is an explicit ask for the multicursor copy, so it wins over the
   ;; collapsed-cursor vim gesture and is forwarded verbatim.
   ;;
-  ;; `:` invocation hands an arity-1 command's typed argument over as a string
-  ;; (ArgSource::Minibuf in hume-editor/src/editor/dispatch.rs), while ordinary
-  ;; key dispatch always supplies an integer — normalize the string case here
-  ;; so `(= count 0)` below doesn't raise a type error. `:` with no argument at
-  ;; all injects an integer 1, so the vim gesture is unreachable from the
-  ;; command line regardless — consistent with "any count means copy".
+  ;; `:` invocation hands a typed argument over as a string rather than an
+  ;; integer (see core:stdlib README's `stdlib/resolve-lang-arg` entry for
+  ;; why) — normalize it here so `(= count 0)` below doesn't raise a type
+  ;; error.
   (lambda (count)
     (let ((n (if (string? count)
                  (or (string->number count)

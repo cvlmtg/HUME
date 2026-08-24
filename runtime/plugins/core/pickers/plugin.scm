@@ -8,28 +8,21 @@
 ;;; the sync probe calls stdlib/run, via call!) — load it first, same as
 ;;; core:plum/core:lsp.
 
-;; See core:vim-keybind/plugin.scm for why `(declared-plugins)` is enough
-;; here.
+;; See user-manual/docs/plugins.md "Depending on another plugin" for why
+;; `(declared-plugins)` is enough here.
 (unless (member "core:stdlib" (declared-plugins))
   (error "core:pickers: requires core:stdlib — (declare-plugin \"core:stdlib\") or (load-plugin \"core:stdlib\") before (load-plugin \"core:pickers\")"))
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 ;; `(plugin-config)` only returns the real hash while this body is being
-;; evaluated — read it now into a `define`, never from inside a command.
-;; "untracked" controls whether picker-git-modified lists untracked files at
-;; all (default #t). No collapsed-directory middle ground — a *file* picker
-;; listing a bare directory row isn't useful, so this isn't git's own
-;; three-way `--untracked-files` choice, just on/off.
+;; evaluated — read it now into a `define`, never from inside a command. See
+;; README's Config table for what "untracked" controls.
 (define pickers/untracked
   (call! "stdlib/config-boolean" "core:pickers" (plugin-config) "untracked" #t))
 
 ;; ── Sync probe ──────────────────────────────────────────────────────────────
-;; Sync spawn for fast small-output probes (git rev-parse class);
-;; enumeration-scale output streams via `picker-source-spawn!` instead.
 ;; Unlike plum/run!, returns `#f` on nonzero exit rather than raising — a
-;; failed probe (not a repo, no fd) is a normal branch here. Built on
-;; core:stdlib's `stdlib/run` (call! via core:stdlib — load it first, see
-;; plugin.scm's header).
+;; failed probe (not a repo, no fd) is a normal branch here.
 
 ;;; Raw (untrimmed) stdout of `cmd args` if it spawns and exits 0, else `#f`.
 ;;; Untrimmed because `-z`-delimited multi-entry output (e.g. `git status`)
@@ -102,33 +95,20 @@
 ;;; NUL, `git status -z`'s entry separator/terminator.
 (define pickers/nul "\x0;")
 
-;;; Parse `git status --porcelain -z --no-renames` output into a list of
-;;; (display . path) items. Each entry is "XY path" (repo-root-relative, per
-;;; `man git-status`): display is the entry verbatim, path is the same string
-;;; with the 3-char status prefix stripped. `-z` guarantees an unquoted path
-;;; and a trailing NUL, so the final split fragment (and the sole fragment of
-;;; an empty, clean-tree output) is always "" — filtered out.
+;;; `-z`'s trailing NUL means the final split fragment (and the sole fragment
+;;; of an empty, clean-tree output) is always "" — filtered out.
 (define (pickers/parse-git-status output)
   (map (lambda (entry) (cons entry (substring entry 3 (string-length entry))))
        (filter (lambda (s) (not (equal? s ""))) (split-many output pickers/nul))))
 
 ;;; Open the git-modified-files picker for the given absolute repo `root`.
 ;;; Opens the picker empty immediately, then populates it once the async
-;;; `git status` completes — same "open empty, populate on arrival" shape as
-;;; `pickers/open-files-picker!`, via `spawn-async!` rather than
-;;; `picker-source-spawn!`: a streaming source's display *is* its payload,
-;;; but this picker needs an "XY "-prefixed display and a bare-path payload
-;;; built together from the fully parsed output, so `spawn-async!`'s
-;;; whole-output-at-once shape fits, not per-line batches. `#:pending #t`
-;;; marks the empty open as "results still arriving" — unlike
-;;; `picker-source-spawn!`'s source, `spawn-async!` gives the picker store no
-;;; signal of its own that a fetch is in flight. `on-select`
-;;; resolves the chosen repo-root-relative path against `root` before
-;;; opening it: `open-buffer!` resolves a relative path against the editor's
-;;; cwd (`:pwd`), which only coincides with the repo root when `:pwd` *is*
-;;; the repo root — from any subdirectory an unjoined path opens the wrong
-;;; file. Dismissing without selecting cancels the outstanding `git status`
-;;; job — no point letting it keep running once nothing can show its result.
+;;; `git status` completes, via `spawn-async!` rather than
+;;; `picker-source-spawn!`: this picker needs an "XY "-prefixed display and a
+;;; bare-path payload built together from the fully parsed output, not a
+;;; streaming source's per-line display-is-payload shape. Dismissing without
+;;; selecting cancels the outstanding `git status` job — no point letting it
+;;; keep running once nothing can show its result.
 (define (pickers/open-git-picker! root)
   (let* ([job-id #f]
          [token (picker! '()
