@@ -183,6 +183,32 @@ fn wire_to_char_clamps_surrogate_pair_split_down_not_mid_char() {
 }
 
 #[test]
+fn wire_to_line_char_col_matches_wire_to_char_minus_line_start() {
+    let text = fixture();
+    for &(line, character) in &[(0usize, 1usize), (1, 3), (2, 2)] {
+        for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
+            let (clamped_line, char_col) = wire_to_line_char_col(&text, line, character, enc);
+            assert_eq!(clamped_line, line);
+            assert_eq!(
+                text.line_to_char(clamped_line) + char_col,
+                wire_to_char(&text, line, character, enc)
+            );
+        }
+    }
+}
+
+#[test]
+fn wire_to_line_char_col_is_line_relative_not_absolute() {
+    // Line 1 ("cé\n") starts at char 3 — a request for character=1 (the
+    // 'é') must come back as column 1, not the absolute char index 4.
+    let text = fixture();
+    assert_eq!(
+        wire_to_line_char_col(&text, 1, 1, PositionEncoding::Utf8),
+        (1, 1)
+    );
+}
+
+#[test]
 fn wire_to_char_minimum_buffer_is_a_bare_newline() {
     let text = Rope::from_str("\n");
     assert_eq!(wire_to_char(&text, 0, 0, PositionEncoding::Utf8), 0);

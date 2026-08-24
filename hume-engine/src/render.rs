@@ -414,11 +414,24 @@ pub(crate) fn compose_row(
         match &g.content {
             CellContent::Grapheme => {
                 if g.byte_range.start <= g.byte_range.end && g.byte_range.end <= line_str.len() {
-                    let text = &line_str[g.byte_range.clone()];
-                    canvas.set_cell(screen_x, y, text, ratatui_style);
-                    // For double-width chars, blank the continuation cell.
-                    if g.width >= 2 && screen_x + 1 < right_edge {
-                        canvas.set_cell(screen_x + 1, y, " ", ratatui_style);
+                    if screen_x + g.width as u16 > right_edge {
+                        // A wide grapheme whose right half would cross
+                        // `right_edge` cannot be drawn — there is no such
+                        // thing as half a glyph, and the cell past the edge
+                        // belongs to whatever the terminal renders next (a
+                        // neighbouring pane, the divider seam). Render spaces
+                        // for the columns that are ours, mirroring the
+                        // h-scroll straddle policy below.
+                        for sx in screen_x..right_edge {
+                            canvas.set_cell(sx, y, " ", ratatui_style);
+                        }
+                    } else {
+                        let text = &line_str[g.byte_range.clone()];
+                        canvas.set_cell(screen_x, y, text, ratatui_style);
+                        // For double-width chars, blank the continuation cell.
+                        if g.width >= 2 {
+                            canvas.set_cell(screen_x + 1, y, " ", ratatui_style);
+                        }
                     }
                 }
             }
@@ -441,7 +454,23 @@ pub(crate) fn compose_row(
             }
             CellContent::Virtual { start, len } => {
                 let s = resolve_arena_text(virtual_texts, *start, *len);
-                canvas.set_cell(screen_x, y, s, ratatui_style);
+                if screen_x + g.width as u16 > right_edge {
+                    // Same straddle policy as `Grapheme` above: a wide
+                    // decoration glyph (an inlay hint containing CJK text)
+                    // cannot be drawn half-on-screen.
+                    for sx in screen_x..right_edge {
+                        canvas.set_cell(sx, y, " ", ratatui_style);
+                    }
+                } else {
+                    canvas.set_cell(screen_x, y, s, ratatui_style);
+                    // For a double-width decoration glyph, blank the
+                    // continuation cell so it picks up this cell's style
+                    // instead of whatever the row fill left there — the same
+                    // thing the `Grapheme` arm does for buffer text.
+                    if g.width >= 2 {
+                        canvas.set_cell(screen_x + 1, y, " ", ratatui_style);
+                    }
+                }
             }
             CellContent::Empty => {
                 canvas.set_cell(screen_x, y, " ", ratatui_style);

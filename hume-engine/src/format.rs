@@ -309,26 +309,14 @@ pub fn format_buffer_line(
                 break 'lines;
             }
             let ins = &inline_inserts[insert_idx];
-            let ins_width = hume_rope::width::str_width(
-                &ins.text,
-                wrap.current_display_col as usize,
-                tab_width,
-            )
-            .min(255) as u8;
-            if ins_width > 0 {
-                wrap.maybe_wrap(
-                    ins_width,
-                    wrap_width,
-                    indent_display_cols,
-                    line_idx,
-                    indent_depth,
-                    rows_out,
-                    graphemes_out,
-                );
-                let visible = h_window
-                    .as_ref()
-                    .is_none_or(|w| wrap.current_display_col + ins_width as u32 > w.start);
-                if visible {
+            if wrap_width == u32::MAX && h_window.is_none() {
+                // No wrapping and no horizontal window: `maybe_wrap` below
+                // would be a no-op and the visibility check would
+                // short-circuit on `h_window`'s own `None` — the only thing
+                // the insert's width would answer in that case is "is it
+                // empty", cheaper to ask directly than to walk every
+                // grapheme cluster to sum a width nothing downstream reads.
+                if !ins.text.is_empty() {
                     push_virtual_cells(
                         virtual_texts_out,
                         graphemes_out,
@@ -342,9 +330,55 @@ pub fn format_buffer_line(
                         &mut wrap.current_display_col,
                         |_| Some(ins.scope),
                     );
-                } else {
-                    wrap.current_display_col =
-                        wrap.current_display_col.saturating_add(ins_width as u32);
+                }
+            } else {
+                // `wrap_width`/`h_window` are mutually exclusive
+                // (`RowMap::with_h_window`'s own debug_assert: h_window is a
+                // `WrapMode::None`-only clip), so exactly one of the two
+                // branches below ever does anything to `ins_width`:
+                // `maybe_wrap` moves `current_display_col` only when
+                // wrapping, and the `visible` check only reads `ins_width`
+                // when `h_window` is `Some` — which is only when not
+                // wrapping, i.e. before `maybe_wrap` had any chance to move
+                // anything. Either way `ins_width` is measured at the exact
+                // column it's later used against; nothing here can go stale.
+                let ins_width = hume_rope::width::str_width(
+                    &ins.text,
+                    wrap.current_display_col as usize,
+                    tab_width,
+                )
+                .min(255) as u8;
+                if ins_width > 0 {
+                    wrap.maybe_wrap(
+                        ins_width,
+                        wrap_width,
+                        indent_display_cols,
+                        line_idx,
+                        indent_depth,
+                        rows_out,
+                        graphemes_out,
+                    );
+                    let visible = h_window
+                        .as_ref()
+                        .is_none_or(|w| wrap.current_display_col + ins_width as u32 > w.start);
+                    if visible {
+                        push_virtual_cells(
+                            virtual_texts_out,
+                            graphemes_out,
+                            &VirtualRun {
+                                text: &ins.text,
+                                byte_range: byte_offset..byte_offset, // zero-length: virtual
+                                char_offset: char_pos,
+                                indent_depth,
+                            },
+                            tab_width,
+                            &mut wrap.current_display_col,
+                            |_| Some(ins.scope),
+                        );
+                    } else {
+                        wrap.current_display_col =
+                            wrap.current_display_col.saturating_add(ins_width as u32);
+                    }
                 }
             }
             insert_idx += 1;
@@ -402,17 +436,6 @@ pub fn format_buffer_line(
             width
         };
 
-        // ── Track word-break position ─────────────────────────────────────
-        if is_ws && !in_leading_ws {
-            // `graphemes_out.len()` is the index the space itself is about to
-            // occupy (it hasn't been pushed yet — that happens below). Record
-            // one past it, so a wrap split at `last_ws_g_idx` starts the new
-            // row after the space, leaving it as the previous row's last
-            // cell instead of the continuation row's first.
-            wrap.last_ws_g_idx = graphemes_out.len() + 1;
-            wrap.last_ws_was_set = true;
-        }
-
         // ── Emit grapheme ─────────────────────────────────────────────────
         let char_count = grapheme_str.chars().count();
         // Read after `maybe_wrap`, which rewrites `current_display_col` when it moves
@@ -454,6 +477,20 @@ pub fn format_buffer_line(
             });
         }
 
+        // ── Track word-break position ─────────────────────────────────────
+        // Recorded after the emit above (the grapheme and, for a two-column
+        // cluster, its `WidthContinuation`) so `graphemes_out.len()` already
+        // points one past every cell this whitespace grapheme occupies. A
+        // tab landing on a 2-column stop pushes both its own cell and a
+        // continuation cell; recording the boundary before either was pushed
+        // (as a bare `+ 1`) assumed one cell per whitespace grapheme and left
+        // a split at this boundary stranding the continuation as the next
+        // row's first cell while the tab itself stayed on the previous row.
+        if is_ws && !in_leading_ws {
+            wrap.last_ws_g_idx = graphemes_out.len();
+            wrap.last_ws_was_set = true;
+        }
+
         // Checked here, at the very end of the iteration, so the grapheme that
         // satisfies the bound is emitted whole — with any inline inserts that
         // precede it and its own width-continuation cell. Stopping earlier
@@ -481,6 +518,21 @@ pub fn format_buffer_line(
         // For truly empty lines (just "\n") this is the only grapheme (col 0).
         // For non-empty lines it sits one column past the last visible character.
         if had_newline {
+            // A row that fits exactly `wrap_width` columns of real content
+            // has no column left for the sentinel itself — wrap it onto a
+            // fresh continuation row (its own `maybe_wrap` call, same as any
+            // other cell) rather than letting it land one column past the
+            // pane's own right edge, where the cursor it stands in for would
+            // render invisible or bleed into the divider seam.
+            wrap.maybe_wrap(
+                1,
+                wrap_width,
+                indent_display_cols,
+                line_idx,
+                indent_depth,
+                rows_out,
+                graphemes_out,
+            );
             graphemes_out.push(Grapheme {
                 byte_range: line_str.len()..line_str.len(),
                 char_offset: char_pos, // char offset of the `\n`

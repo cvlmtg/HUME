@@ -322,16 +322,24 @@ fn virtual_line_spec_keeps_a_literal_tab_in_text() {
 }
 
 #[test]
-fn virtual_line_spec_maps_other_control_characters_to_a_space() {
-    // A control character other than tab has no sensible one-row
-    // rendering, so it becomes a literal space rather than erroring —
-    // 1-for-1, so a caller's `'segments` char offsets stay valid.
+fn virtual_line_spec_keeps_a_control_character_verbatim() {
+    // A control character other than tab is not this builtin's problem to
+    // solve: the engine's own placeholder substitution
+    // (`hume_rope::width::needs_placeholder`/`placeholder`) is what stands
+    // between it and the terminal, the same chokepoint every other text
+    // source (buffer content, inline inserts) goes through. Blanking it here
+    // instead would be a second, weaker copy of that policy — CLAUDE.md's
+    // display-columns invariant says unrenderable text is shown as its
+    // codepoint, never as a blank a bidi override could hide behind.
     let entry = hashmap(vec![
         ("line", SteelVal::IntV(0)),
         ("text", SteelVal::StringV("a\u{7}b".into())), // BEL
     ]);
-    let specs = virtual_line_specs(list(vec![entry])).expect("mapped, not rejected");
-    assert_eq!(specs[0].text, "a b");
+    let specs = virtual_line_specs(list(vec![entry])).expect("accepted, not rejected");
+    assert_eq!(
+        specs[0].text, "a\u{7}b",
+        "verbatim — no Steel-side substitution"
+    );
 }
 
 #[test]

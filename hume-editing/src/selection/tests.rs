@@ -10,6 +10,7 @@ fn sticky(display_col: u32) -> StickyDisplayCol {
     StickyDisplayCol {
         display_col,
         origin: DisplayColOrigin::BufferLine,
+        wrap_width: None,
     }
 }
 

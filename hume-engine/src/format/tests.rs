@@ -270,36 +270,51 @@ fn soft_wrap_recomputes_tab_width_at_post_wrap_column() {
 }
 
 #[test]
-fn soft_wrap_exact_fit_row_keeps_eol_sentinel_on_same_row() {
+fn soft_wrap_exact_fit_row_wraps_the_eol_sentinel_to_a_continuation_row() {
     // "abcde\n" wrapped at width 5 fits exactly, so no content wrap
-    // triggers. The EOL sentinel, emitted after the main loop, bypasses
-    // `maybe_wrap` entirely (see the "End-of-line sentinel" comment) and
-    // lands at col 5 without pushing a wrap continuation row. Pins that a
-    // cursor on the trailing '\n' of an exactly-full soft-wrapped row
-    // still renders on that row, not a phantom wrap row.
+    // triggers — but the EOL sentinel needs a column of its own, and there
+    // isn't one left on a row that's already full. It wraps the same way
+    // any other cell that wouldn't fit does: onto a fresh continuation row,
+    // at that row's column 0, rather than landing one column past the
+    // pane's own right edge.
     //
-    // Row 1 here is the trailing empty ropey line's own sentinel (same
+    // Row 2 here is the trailing empty ropey line's own sentinel (same
     // as plain "hello\n" in `eol_sentinel_emitted_on_non_empty_line`),
-    // not a continuation of line 0.
+    // not a further continuation of line 0.
     let (rows, graphemes) = do_format("abcde\n", WrapMode::Soft { width: 5 });
-    assert_eq!(rows.len(), 2, "line 0's row + the phantom trailing line");
     assert_eq!(
-        rows[0].kind,
-        RowKind::LineStart { line_idx: 0 },
-        "line 0 must not have wrapped into a second row of its own"
+        rows.len(),
+        3,
+        "line 0's row + its wrapped sentinel row + the phantom trailing line"
     );
-    assert_eq!(rows[1].kind, RowKind::LineStart { line_idx: 1 });
+    assert_eq!(rows[0].kind, RowKind::LineStart { line_idx: 0 });
+    assert_eq!(
+        rows[1].kind,
+        RowKind::Wrap {
+            line_idx: 0,
+            wrap_row: 1
+        },
+        "the sentinel's row is a continuation of line 0"
+    );
+    assert_eq!(rows[2].kind, RowKind::LineStart { line_idx: 1 });
 
     let row0 = &graphemes[rows[0].graphemes.clone()];
-    assert_eq!(row0.len(), 6, "5 content graphemes + 1 eol sentinel");
-    let sentinel = &row0[5];
+    assert_eq!(
+        row0.len(),
+        5,
+        "exactly the 5 content graphemes, no sentinel"
+    );
+
+    let row1 = &graphemes[rows[1].graphemes.clone()];
+    assert_eq!(row1.len(), 1, "the sentinel alone");
+    let sentinel = &row1[0];
     assert!(
         matches!(sentinel.content, CellContent::Empty),
         "sentinel must be Empty"
     );
     assert_eq!(
-        sentinel.display_col, 5,
-        "sentinel sits one column past the wrap width"
+        sentinel.display_col, 0,
+        "sentinel sits at its own row's first column"
     );
     assert_eq!(sentinel.char_offset, 5, "sentinel at the \\n char offset");
 }
@@ -594,6 +609,36 @@ fn word_wrap_space_ends_previous_row_not_starts_continuation() {
     assert_eq!(row0[1].char_offset, 1, "row0[1] is the space");
     assert_eq!(row1.len(), 1, "row1 is \"b\" only");
     assert_eq!(row1[0].char_offset, 2, "row1[0] is 'b'");
+}
+
+#[test]
+fn word_wrap_keeps_a_two_column_tabs_continuation_cell_on_its_own_row() {
+    // "ab\tXXXXXXXXXXXX" at width 10, tab_width 4: the tab at display col 2
+    // expands to columns 2-3 (advance 2, so it also gets a
+    // `WidthContinuation` cell like a CJK character does). Word wrap
+    // backtracks to the last whitespace boundary on overflow — that boundary
+    // must include the tab's continuation cell, not just the tab's own cell,
+    // or the continuation strands itself as the next row's first cell while
+    // its primary stays behind on the previous row.
+    let (rows, graphemes) = do_format("ab\tXXXXXXXXXXXX", WrapMode::Word { width: 10 });
+    assert!(rows.len() >= 2, "the line must wrap");
+    let row0 = &graphemes[rows[0].graphemes.clone()];
+    let row1 = &graphemes[rows[1].graphemes.clone()];
+
+    let (tab_idx, _) = row0
+        .iter()
+        .enumerate()
+        .find(|(_, g)| matches!(g.content, CellContent::Indicator { .. }))
+        .expect("the tab's own Indicator cell must be on row0");
+    assert!(
+        tab_idx + 1 < row0.len()
+            && matches!(row0[tab_idx + 1].content, CellContent::WidthContinuation),
+        "the tab's WidthContinuation cell must stay on row0, right after the tab"
+    );
+    assert!(
+        !matches!(row1[0].content, CellContent::WidthContinuation),
+        "row1 must not start with the tab's stranded continuation cell"
+    );
 }
 
 #[test]

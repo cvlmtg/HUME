@@ -280,7 +280,15 @@ pub(crate) fn cmd_align_selections(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_focused_edit(state, view, align_selections);
+    let buf_id = focused_buffer_id(state, view);
+    let tab_width = state
+        .buffers
+        .get(buf_id)
+        .overrides
+        .tab_width(&state.settings);
+    apply_focused_edit(state, view, move |buf, sels| {
+        align_selections(buf, sels, tab_width)
+    });
     Ok(())
 }
 

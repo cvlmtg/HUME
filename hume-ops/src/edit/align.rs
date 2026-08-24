@@ -1,8 +1,8 @@
 //! `align-selections` — align each selection's anchor to the primary
-//! selection's anchor grapheme column.
+//! selection's anchor display column.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::grapheme::grapheme_col_in_line;
+use hume_editing::grapheme::display_col_in_line;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::Text;
 
@@ -17,12 +17,13 @@ use super::apply_edit;
 /// through unchanged (shifted by the accumulated edit delta so they don't drift).
 ///
 /// **Target per slot** — `target[k] = max(baseline[k], fit_need[k])`:
-/// - `baseline[k]` = anchor grapheme column of the primary line's k-th
-///   selection (the primary row's positions are a floor).
-/// - `fit_need[k]` = the minimum anchor grapheme column such that every
+/// - `baseline[k]` = anchor display column (`tab_width`-expanded, wide
+///   graphemes counted at their true screen width) of the primary line's
+///   k-th selection (the primary row's positions are a floor).
+/// - `fit_need[k]` = the minimum anchor display column such that every
 ///   line's slot-`k` selection can reach it. A selection can only compress
 ///   the contiguous space/tab run immediately before its left edge (down to
-///   1 grapheme column); all other text on the line is fixed-width and sets
+///   1 display column); all other text on the line is fixed-width and sets
 ///   a hard floor.
 /// - Slots are computed left-to-right: `fit_need[k]` depends on `target[k-1]`.
 ///
@@ -33,16 +34,30 @@ use super::apply_edit;
 ///
 /// **Primary may move** — when another line forces a slot to widen past the
 /// baseline, spaces are inserted before the primary line's selections too.
-pub fn align_selections(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
+///
+/// **Compression is char-counted, not display-counted** — the removable
+/// whitespace run before a selection (`rem`) still measures in characters:
+/// each space or tab in the run is one removable unit, regardless of the
+/// tab's actual display width at its position. Deleting `rem` characters
+/// frees at least `rem` display columns (a tab is never narrower than a
+/// space), so compression never removes too little — but it can occasionally
+/// remove one column *more* than strictly needed when the freed run contains
+/// a tab. Insertion has no such gap: an inserted run is always spaces, each
+/// exactly one display column, so `amount > 0` lands exactly on `target`.
+pub fn align_selections(
+    buf: Text,
+    sels: SelectionSet,
+    tab_width: u8,
+) -> (Text, SelectionSet, ChangeSet) {
     // ── Pass 1: measure ────────────────────────────────────────────────────────
 
     // Geometry for each selection in sorted order (matches apply_edit iteration).
     struct SelMeta {
         start_line: usize,
         is_multiline: bool,
-        anchor_grapheme_col: usize, // grapheme col of sel.anchor() (left for forward, right for backward)
-        rem: usize,                 // chars removable before sel.start() while keeping ≥1 space
-        slot: Option<usize>,        // None = multiline or extra (slot >= N)
+        anchor_display_col: usize, // display col of sel.anchor() (left for forward, right for backward)
+        rem: usize,                // chars removable before sel.start() while keeping ≥1 space
+        slot: Option<usize>,       // None = multiline or extra (slot >= N)
     }
 
     let primary_line = buf.char_to_line(sels.primary().anchor());
@@ -57,12 +72,12 @@ pub fn align_selections(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, C
                 return SelMeta {
                     start_line,
                     is_multiline: true,
-                    anchor_grapheme_col: 0,
+                    anchor_display_col: 0,
                     rem: 0,
                     slot: None,
                 };
             }
-            let anchor_grapheme_col = grapheme_col_in_line(&buf, start_line, sel.anchor());
+            let anchor_display_col = display_col_in_line(&buf, start_line, sel.anchor(), tab_width);
             let line_start = buf.line_to_char(start_line);
             let sel_start = sel.start();
             let rem = (line_start..sel_start)
@@ -76,7 +91,7 @@ pub fn align_selections(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, C
             SelMeta {
                 start_line,
                 is_multiline: false,
-                anchor_grapheme_col,
+                anchor_display_col,
                 rem,
                 slot: Some(slot),
             }
@@ -103,13 +118,13 @@ pub fn align_selections(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, C
 
     // ── Pass 2: targets ────────────────────────────────────────────────────────
 
-    // baseline[k] = original anchor grapheme column of the primary line's k-th slot.
+    // baseline[k] = original anchor display column of the primary line's k-th slot.
     let mut baseline = vec![0usize; n_slots];
     for m in &meta {
         if m.start_line == primary_line
             && let Some(slot) = m.slot
         {
-            baseline[slot] = m.anchor_grapheme_col;
+            baseline[slot] = m.anchor_display_col;
         }
     }
 
@@ -125,24 +140,24 @@ pub fn align_selections(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, C
     let mut targets = vec![0usize; n_slots];
 
     // k == 0: the only thing slot-0 can compress is its own preceding whitespace
-    // (down to 1 grapheme column). So the minimum reachable anchor is
-    // anchor_grapheme_col₀ − rem₀. Compute in isize to handle the (unlikely)
-    // backward-selection case where anchor_grapheme_col < rem; clamp to 0.
+    // (down to 1 display column). So the minimum reachable anchor is
+    // anchor_display_col₀ − rem₀. Compute in isize to handle the (unlikely)
+    // backward-selection case where anchor_display_col < rem; clamp to 0.
     let fit_0 = by_line
         .values()
         .filter_map(|ms| ms.iter().find(|m| m.slot == Some(0)))
-        .map(|m| m.anchor_grapheme_col as isize - m.rem as isize)
+        .map(|m| m.anchor_display_col as isize - m.rem as isize)
         .max()
         .unwrap_or(0)
         .max(0) as usize;
     targets[0] = baseline[0].max(fit_0);
 
     // k >= 1: placing target[k-1] shifts every anchor on that line by
-    // (target[k-1] − anchor_grapheme_col_{k-1}). Slot k then shifts by the
+    // (target[k-1] − anchor_display_col_{k-1}). Slot k then shifts by the
     // same amount, so its new anchor is
-    // anchor_grapheme_col_k + (target[k-1] − anchor_grapheme_col_{k-1}). The
+    // anchor_display_col_k + (target[k-1] − anchor_display_col_{k-1}). The
     // minimum feasible target[k] (leaving at least 1 space before slot k) is:
-    //   target[k-1] + (anchor_grapheme_col_k − anchor_grapheme_col_{k-1}) − rem_k
+    //   target[k-1] + (anchor_display_col_k − anchor_display_col_{k-1}) − rem_k
     // where rem_k is the whitespace slot k may compress (avail − 1).
     for k in 1..n_slots {
         let fit_k = by_line
@@ -152,7 +167,7 @@ pub fn align_selections(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, C
                 let cur = ms.iter().find(|m| m.slot == Some(k))?;
                 Some(
                     targets[k - 1] as isize
-                        + (cur.anchor_grapheme_col as isize - prev.anchor_grapheme_col as isize)
+                        + (cur.anchor_display_col as isize - prev.anchor_display_col as isize)
                         - cur.rem as isize,
                 )
             })
@@ -165,9 +180,12 @@ pub fn align_selections(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, C
     // ── Pass 3: apply ──────────────────────────────────────────────────────────
 
     // `line_shift` tracks the net chars inserted/removed on the current line so
-    // far, converting original-buffer anchor grapheme columns to post-edit
-    // grapheme columns. Spaces and tabs are each 1 grapheme = 1 grapheme
-    // column, so chars == grapheme columns here.
+    // far, approximating the shift from original-buffer anchor display
+    // columns to post-edit ones. An inserted run is always spaces, so an
+    // insertion's char delta equals its display-column delta exactly; a
+    // deletion's char delta is only a lower bound on its display-column
+    // delta when the removed run contains a tab (see `align_selections`'s
+    // own doc). `amount`'s sign selects which case applies on this line.
     let mut current_line = usize::MAX;
     let mut line_shift = 0isize;
 
@@ -197,13 +215,14 @@ pub fn align_selections(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, C
             }
             Some(slot) => {
                 let target = targets[slot];
-                // Adjust the original anchor grapheme column by the net shift
+                // Adjust the original anchor display column by the net shift
                 // from earlier edits on this line to get the current anchor
-                // grapheme column.
-                let anchor_grapheme_col_orig = grapheme_col_in_line(buf, start_line, sel.anchor());
-                let anchor_grapheme_col_now =
-                    (anchor_grapheme_col_orig as isize + line_shift).max(0) as usize;
-                let amount = target as isize - anchor_grapheme_col_now as isize;
+                // display column.
+                let anchor_display_col_orig =
+                    display_col_in_line(buf, start_line, sel.anchor(), tab_width);
+                let anchor_display_col_now =
+                    (anchor_display_col_orig as isize + line_shift).max(0) as usize;
+                let amount = target as isize - anchor_display_col_now as isize;
 
                 if amount > 0 {
                     b.retain(sel_start - b.old_pos());

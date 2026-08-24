@@ -9,7 +9,7 @@ fn align_single_selection_noop() {
     // Only the primary: always at target col, no change.
     assert_state!(
         "foo -[=]> 1\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "foo -[=]> 1\n"
     );
 }
@@ -20,7 +20,7 @@ fn align_forward_insert_spaces() {
     // One space inserted before secondary to reach col 4.
     assert_state!(
         "foo -[=]> 1\nfo -[=]> 2\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "foo -[=]> 1\nfo  -[=]> 2\n"
     );
 }
@@ -32,7 +32,7 @@ fn align_forward_multiple_spaces_inserted() {
     // "foo = 1" has no selection — just buffer content.
     assert_state!(
         "foo = 1\nab-[=]>c\n-[=]>de\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "foo = 1\nab-[=]>c\n  -[=]>de\n"
     );
 }
@@ -45,7 +45,7 @@ fn align_forward_two_secondaries_insert() {
     // "fo = 3"       — secondary '=' at col 3, needs 4 spaces
     assert_state!(
         "foobar -[=]> 1\nfoo -[=]> 2\nfo -[=]> 3\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "foobar -[=]> 1\nfoo    -[=]> 2\nfo     -[=]> 3\n"
     );
 }
@@ -58,7 +58,7 @@ fn align_forward_remove_spaces() {
     // Line 0: insert 1 space → col 4. Line 1: remove 2 spaces → col 4.
     assert_state!(
         "fo -[=]> 1\nfoo   -[=]> 2\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "fo  -[=]> 1\nfoo -[=]> 2\n"
     );
 }
@@ -71,7 +71,7 @@ fn align_forward_clamped_removal_one_space_left() {
     // Line 0: insert 4 spaces → col 6. Line 1: remove 1 space → col 6.
     assert_state!(
         "ab-[=]>\nabcde  -[=]>\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "ab    -[=]>\nabcde -[=]>\n"
     );
 }
@@ -84,7 +84,7 @@ fn align_clamped_exactly_one_space_available_removes_nothing() {
     // Line 0: insert 1 space → col 4. Line 1: amount=0 → unchanged.
     assert_state!(
         "fo -[=]>\nfoo -[=]>\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "fo  -[=]>\nfoo -[=]>\n"
     );
 }
@@ -97,7 +97,7 @@ fn align_bidirectional_insert_and_remove() {
     // max_remove = N-1 = 2 → remove 2, col 4.
     assert_state!(
         "foo -[=]>\nfo -[=]>\nfoo   -[=]>\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "foo -[=]>\nfo  -[=]>\nfoo -[=]>\n"
     );
 }
@@ -107,7 +107,7 @@ fn align_direction_preserved_forward() {
     // Forward selection spans multiple chars; direction preserved after align.
     assert_state!(
         "foo -[== ]> 1\nfo -[== ]> 2\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "foo -[== ]> 1\nfo  -[== ]> 2\n"
     );
 }
@@ -119,7 +119,7 @@ fn align_backward_selection_right_aligns() {
     // "foo = 2"  — secondary, backward '=' anchor at col 4. Insert 1 space.
     assert_state!(
         "foo  <[=]- 1\nfoo <[=]- 2\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "foo  <[=]- 1\nfoo  <[=]- 2\n"
     );
 }
@@ -131,7 +131,7 @@ fn align_multiline_passthrough() {
     // buffer positions shift by +1 (the space inserted for the single-line sel).
     assert_state!(
         "foo -[=]>\nfo -[=]>\nfoo -[bar\nbaz]>\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "foo -[=]>\nfo  -[=]>\nfoo -[bar\nbaz]>\n"
     );
 }
@@ -141,7 +141,7 @@ fn align_primary_unchanged() {
     // Primary selection itself is never modified (amount == 0).
     assert_state!(
         "foo -[=]>\nfoo -[=]>\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "foo -[=]>\nfoo -[=]>\n"
     );
 }
@@ -152,12 +152,20 @@ fn align_remove_tab_before_selection() {
     // chain-breaker — checking `== Some(' ')` alone would stop the scan at
     // the tab and yield avail=0, silently skipping all removal.
     //
-    // Buffer " =\n  \t=\n":
-    //   Line 0: ' '+'=' (primary '=' at grapheme col 1)  → target_col=1
-    //   Line 1: ' ',' ','\t','=' (secondary '=' at grapheme col 3) → amount=-2
+    // Buffer " =\n  \t=\n", tab_width 4:
+    //   Line 0: ' '+'=' — primary '=' at display col 1.
+    //   Line 1: ' ',' ','\t','=' — secondary '=' at display col 4 (the tab
+    //     at position 2 advances only to column 4, `tab_advance(2, 4)`).
     //
-    // Reverse scan continues through the tab and spaces, avail=3,
-    // remove=min(2, 3-1)=2 → removes ' '+'\t' → '=' lands at col 1. ✓
+    // fit_0 = max(line 0: 1-0, line 1: 4-2) = 2, so target[0] = 2 — wider
+    // than either line's own baseline, which moves the *primary* too
+    // (inserts 1 space: " =" → "  ="). Secondary's removal is char-counted,
+    // not display-counted (`align_selections`'s own doc): removing the 2
+    // chars closest to '=' (a space and the tab) frees 1+2=3 display
+    // columns, one more than the 2 needed, so '=' lands at display col 1,
+    // not the target's col 2 — the documented residual imprecision of a tab
+    // inside the compressible run itself, distinct from (and narrower than)
+    // the cross-line baseline bug this fix closes.
     use crate::edit::align_selections;
     use hume_editing::selection::SelectionSet;
     let buf = hume_editing::text::Text::from(" =\n  \t=\n");
@@ -168,11 +176,41 @@ fn align_remove_tab_before_selection() {
         ],
         0,
     );
-    let (new_buf, _new_sels, _cs) = align_selections(buf, sels);
+    let (new_buf, _new_sels, _cs) = align_selections(buf, sels, 4);
     assert_eq!(
         new_buf.to_string(),
-        " =\n =\n",
-        "tab should count toward alignment removal"
+        "  =\n =\n",
+        "tab counts toward removal (2 chars removed, not skipped at the tab), \
+         though the freed width overshoots by the tab's extra column"
+    );
+}
+
+#[test]
+fn align_accounts_for_a_tab_before_the_alignment_point() {
+    // Primary "a\tx = 1" at tab_width 4: 'a' (col 0→1), '\t' (col 1→4,
+    // `tab_advance(1, 4)`), 'x' (col 4→5), ' ' (col 5→6) — '=' sits at
+    // *display* col 6 though it's only the 4th grapheme cluster on the
+    // line. Secondary "bb = 2" has no tab, so its grapheme and display
+    // columns agree (3). Aligning by grapheme column alone would insert
+    // just enough spaces to match column 4 — landing secondary's '=' two
+    // display columns left of primary's, visibly ragged despite matching
+    // grapheme counts. Aligning by display column inserts enough to match
+    // column 6, where both actually line up on screen.
+    use crate::edit::align_selections;
+    use hume_editing::selection::SelectionSet;
+    let buf = hume_editing::text::Text::from("a\tx = 1\nbb = 2\n");
+    let sels = SelectionSet::from_vec(
+        vec![
+            hume_editing::selection::Selection::collapsed(4), // primary: '=' in "a\tx = 1"
+            hume_editing::selection::Selection::collapsed(11), // secondary: '=' in "bb = 2"
+        ],
+        0,
+    );
+    let (new_buf, _new_sels, _cs) = align_selections(buf, sels, 4);
+    assert_eq!(
+        new_buf.to_string(),
+        "a\tx = 1\nbb    = 2\n",
+        "secondary's '=' must reach display col 6, matching primary's, not grapheme col 4"
     );
 }
 
@@ -184,7 +222,7 @@ fn align_two_slots_per_line() {
     // while line 0's 'b' gains one.
     assert_state!(
         "-[a]> -[b]>\n-[xy]>  -[z]>\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "-[a]>  -[b]>\n-[xy]> -[z]>\n"
     );
 }
@@ -195,7 +233,7 @@ fn align_two_slots_overflow_widens_primary() {
     // so spaces are inserted on the primary line too (primary may move).
     assert_state!(
         "-[x]> -[y]>\n-[loooong]> -[z]>\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "-[x]>       -[y]>\n-[loooong]> -[z]>\n"
     );
 }
@@ -227,7 +265,7 @@ fn align_two_slots_static_text_between() {
         ],
         0,
     );
-    let (new_buf, _new_sels, _cs) = align_selections(buf, sels);
+    let (new_buf, _new_sels, _cs) = align_selections(buf, sels, 4);
     assert_eq!(
         new_buf.to_string(),
         "const foo    = 444;     // foo\nconst foobar = 6757383; // bar\nconst a      = 34;      // a\n",
@@ -242,7 +280,7 @@ fn align_extras_on_same_line_pass_through() {
     // edit delta — selection count is preserved.
     assert_state!(
         "foo -[x]>\na -[b]> -[c]>\n",
-        |(buf, sels)| align_selections(buf, sels),
+        |(buf, sels)| align_selections(buf, sels, 4),
         "foo -[x]>\na   -[b]> -[c]>\n"
     );
 }

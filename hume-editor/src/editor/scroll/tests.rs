@@ -157,22 +157,26 @@ fn cursor_sub_row_wrapped() {
 
 // ── ensure_cursor_visible (wrap) top/bottom margin enforcement ───────────
 //
-// 10 lines of "ab\n". Under Soft{width:2}, "ab" fills the wrap column
-// exactly → 1 display row per line, exercising the wrapped code path
-// (Soft is_wrapping=true) even though no line actually wraps. Viewport
-// height=8, margin=2. Checks that scrolling lands the cursor exactly on
-// the margin, both scrolling up (top) and down (bottom).
+// 10 lines of "ab\n". Under Soft{width:3}, "ab" (2 columns) fits with a
+// column to spare → 1 display row per line, exercising the wrapped code
+// path (Soft is_wrapping=true) even though no line actually wraps. Width 3
+// rather than 2 keeps the trailing '\n's own sentinel on that same row too
+// — at width 2 "ab" would exactly fill it, wrapping the sentinel onto a row
+// of its own (see `format_buffer_line`'s end-of-line sentinel handling) and
+// complicating this test's arithmetic with a concern orthogonal to what it
+// checks. Viewport height=8, margin=2. Checks that scrolling lands the
+// cursor exactly on the margin, both scrolling up (top) and down (bottom).
 
 #[test]
 fn wrap_cursor_within_top_margin_scrolls_up() {
     let r = rope(&"ab\n".repeat(10));
-    let mut v = ViewportState::new(2, 8);
+    let mut v = ViewportState::new(3, 8);
     v.top_line = 3;
     v.top_row_offset = 0;
     let cursor_char = r.line_to_char(3);
     let providers = no_providers();
     let mut s = FormatScratch::new();
-    let mut rm = map(&r, WrapMode::Soft { width: 2 }, &providers, 2, &mut s);
+    let mut rm = map(&r, WrapMode::Soft { width: 3 }, &providers, 3, &mut s);
     let cursor_pos = rm.locate_row(cursor_char);
     ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 2);
     assert_eq!(v.top_line, 1);
@@ -182,13 +186,13 @@ fn wrap_cursor_within_top_margin_scrolls_up() {
 #[test]
 fn wrap_cursor_within_bottom_margin_scrolls_down() {
     let r = rope(&"ab\n".repeat(10));
-    let mut v = ViewportState::new(2, 8);
+    let mut v = ViewportState::new(3, 8);
     v.top_line = 0;
     v.top_row_offset = 0;
     let cursor_char = r.line_to_char(7);
     let providers = no_providers();
     let mut s = FormatScratch::new();
-    let mut rm = map(&r, WrapMode::Soft { width: 2 }, &providers, 2, &mut s);
+    let mut rm = map(&r, WrapMode::Soft { width: 3 }, &providers, 3, &mut s);
     let cursor_pos = rm.locate_row(cursor_char);
     ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 2);
     assert_eq!(v.top_line, 2);

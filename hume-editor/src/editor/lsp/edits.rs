@@ -13,7 +13,7 @@ use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_lsp::codec::ResponseError;
-use hume_rope::position_encoding::{PositionEncoding, wire_to_char};
+use hume_rope::position_encoding::{PositionEncoding, wire_to_line_char_col};
 
 use super::LspState;
 use super::introspect;
@@ -465,8 +465,20 @@ fn resolve_goto_target(
                 .map_err(|e| format!("cannot open {}: {e}", uri.as_str()))?;
             let bid = resolve_or_open(state, view, &path)?;
             let encoding = introspect::encoding_for_buffer(state, lsp, focused_bid);
-            let rope = state.buffers.get(bid).text().rope();
-            Ok((bid, wire_to_char(rope, line, character, encoding)))
+            let buf = state.buffers.get(bid);
+            // Decoded in two steps, not `wire_to_char` directly: a server
+            // naming a position between a base character and a combining
+            // mark must still land the cursor on the cluster's own start —
+            // `place_char_column` is what every other goto target already
+            // snaps through (`char_indexed_to_char_pos`), so the wire target
+            // gets the same grapheme-boundary guarantee instead of landing
+            // wherever the raw code-unit offset happens to fall.
+            let (line, char_col) =
+                wire_to_line_char_col(buf.text().rope(), line, character, encoding);
+            Ok((
+                bid,
+                hume_editing::lines::place_char_column(buf.text(), line, char_col),
+            ))
         }
         GotoTarget::Path {
             path_or_uri,
@@ -525,10 +537,19 @@ pub(crate) fn goto_location(
         hume_editing::selection::Selection::collapsed(char_pos),
     );
 
+    // Center by display row, the same way `zz` does (`scroll_cursor_to_row`)
+    // — not by buffer line, which only agrees with it when nothing wraps.
+    // A hand-rolled `top_line = cursor_line - height/2` also never touches
+    // `top_row_offset`, leaving it stale; `scroll_cursor_to_row` writes both
+    // together so the pair stays self-consistent.
     let height = view.panes[pid].viewport.height as usize;
-    let rope = state.buffers.get(bid).text().rope();
-    let cursor_line = rope.char_to_line(char_pos);
-    view.panes[pid].viewport.top_line = cursor_line.saturating_sub(height / 2);
+    let (mut rm, viewport) = crate::editor::commands::pane_row_map_mut(
+        state.buffers.get(bid),
+        &state.settings,
+        &mut view.panes[pid],
+        &mut state.motion_format_scratch,
+    );
+    crate::editor::scroll::scroll_cursor_to_row(viewport, &mut rm, char_pos, height / 2);
 
     Ok(())
 }

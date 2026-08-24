@@ -177,9 +177,16 @@ pub(super) fn apply_visual_vertical(
             // latch at all — line-relative for `BufferLine`, row-relative
             // otherwise, mirroring which one `move_buffer_line`/`move_vertical`
             // below is about to consume.
+            let current_wrap_width = rm.resolved_wrap_width();
             target_display_cols.extend(sels.iter_sorted().map(
                 |sel| match sel.sticky_display_col() {
-                    Some(sticky) if sticky.origin == origin => sticky.display_col,
+                    Some(sticky)
+                        if sticky.origin == origin
+                            && (origin == DisplayColOrigin::BufferLine
+                                || sticky.wrap_width == current_wrap_width) =>
+                    {
+                        sticky.display_col
+                    }
                     _ if is_buffer_line => rm.line_display_col(sel.head()),
                     _ => rm.locate(sel.head()).1,
                 },
@@ -214,6 +221,16 @@ pub(super) fn apply_visual_vertical(
                     StickyDisplayCol {
                         display_col: target_display_col,
                         origin,
+                        // Meaningless for `BufferLine` (see `StickyDisplayCol`'s
+                        // doc) — stored as `None` uniformly rather than
+                        // whatever the wrap mode happened to resolve to at
+                        // write time, so equality on the latch doesn't
+                        // depend on an origin-irrelevant field.
+                        wrap_width: if origin == DisplayColOrigin::DisplayRow {
+                            current_wrap_width
+                        } else {
+                            None
+                        },
                     },
                 )
             })

@@ -538,6 +538,56 @@ fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
     );
 }
 
+/// `goto_location` must center the jump the same way `zz` does — by display
+/// row, via `scroll::scroll_cursor_to_row` — not by re-deriving a
+/// buffer-line-based centering of its own. The two only agree when nothing
+/// wraps; under wrap they diverge, and a hand-rolled line-based centering
+/// leaves `top_row_offset` untouched entirely (`clamp_viewport_top`'s own
+/// doc names this exact call site as why it has to self-heal).
+#[test]
+fn goto_location_centers_by_display_row_not_buffer_line_under_wrap() {
+    // Each line is 25 'x's, wrapped at width 10 into three display rows —
+    // 10 + 10 + 5, the last one short of the wrap width so it doesn't also
+    // trigger the trailing '\n' sentinel's own wrap onto a further row
+    // (`format_buffer_line`'s end-of-line sentinel handling). A jump deep
+    // into the file makes buffer-line and display-row centering diverge
+    // sharply: line-based would center on line 20 directly; display-row
+    // must center on line 20's own first row, three times as far down.
+    let content: String = (0..30).map(|_| format!("{}\n", "x".repeat(25))).collect();
+    let text = hume_editing::text::Text::from(content.as_str());
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(0));
+    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let pid = ed.state.focused_pane_id;
+    ed.execute_typed("set", Some("pane wrap-mode=soft:10"))
+        .unwrap();
+    ed.view.panes[pid].viewport.height = 10;
+
+    let tmp = safe_tempdir();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (goto-location! (list (current-buffer) 20 0))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    let cursor_char = ed.current_selections().primary().head();
+    let bid = ed.focused_buffer_id();
+    let (mut rm, viewport) = crate::editor::commands::pane_row_map_mut(
+        ed.state.buffers.get(bid),
+        &ed.state.settings,
+        &mut ed.view.panes[pid],
+        &mut ed.state.motion_format_scratch,
+    );
+    let top = crate::editor::scroll::top_pos(viewport);
+    let cursor_pos = rm.locate_row(cursor_char);
+    assert_eq!(
+        rm.distance(top, cursor_pos, 20),
+        Some(5),
+        "the cursor must land exactly height/2 (5) DISPLAY rows below the new top"
+    );
+}
+
 /// A directory target genuinely can't be opened (`Buffer::from_file_or_new`
 /// only tolerates `NotFound`, not `IsADirectory`) — a plain missing path
 /// would not do here: `resolve_or_open` shares `:e`'s tolerance for those

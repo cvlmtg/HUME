@@ -144,6 +144,37 @@ fn single_location_hashmap_jumps_directly() {
 }
 
 #[test]
+fn wire_target_inside_a_combining_sequence_snaps_to_the_clusters_start() {
+    // "e\u{0301}" (e + combining acute) is one grapheme cluster, two chars —
+    // both single UTF-16 code units, so character=1 is a perfectly valid
+    // wire position (no surrogate-pair splitting involved) that still lands
+    // *inside* the cluster: between its base character and its combining
+    // mark. The day-one grapheme invariant says a cursor may never sit
+    // there.
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    std::fs::write(&file, "e\u{0301}\n").unwrap();
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&canonical)
+        .unwrap()
+        .as_str()
+        .to_string();
+
+    let tmp = safe_tempdir();
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to("textDocument/definition", loc(&uri, 0, 1));
+    });
+
+    run_goto(&mut ed, ":lsp-goto-definition");
+
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        0,
+        "a wire position between a base char and its combining mark must snap to the cluster's start"
+    );
+}
+
+#[test]
 fn single_element_array_jumps_directly() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();

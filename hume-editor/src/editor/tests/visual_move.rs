@@ -6,20 +6,27 @@ use hume_engine::types::ScopeId;
 use pretty_assertions::assert_eq;
 
 /// A `DisplayRow`-tagged latch — what `j`/`k` write while wrapping, which is
-/// how every fixture in this file (except the `WrapMode::None` ones) is pinned.
+/// how every fixture in this file (except the `WrapMode::None` ones) is
+/// pinned. `wrap_width: Some(76)` matches `visual_test_editor`'s fixed
+/// `WrapMode::Indent { width: 76 }` — an explicit, non-sentinel width, so it
+/// stays 76 regardless of the fixture's 80×24 viewport.
 fn sticky_row(display_col: u32) -> StickyDisplayCol {
     StickyDisplayCol {
         display_col,
         origin: DisplayColOrigin::DisplayRow,
+        wrap_width: Some(76),
     }
 }
 
 /// A `BufferLine`-tagged latch — what `9j`/`9k` write, and what `j`/`k` write
 /// too once wrapping is off (a row IS the line there — see `DisplayColOrigin`).
+/// `wrap_width` is never read for this origin (see `StickyDisplayCol`'s own
+/// doc), so `None` here is as good as any other value.
 fn sticky_line(display_col: u32) -> StickyDisplayCol {
     StickyDisplayCol {
         display_col,
         origin: DisplayColOrigin::BufferLine,
+        wrap_width: None,
     }
 }
 
@@ -489,6 +496,7 @@ fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_r
         StickyDisplayCol {
             display_col: 6,
             origin: DisplayColOrigin::BufferLine,
+            wrap_width: None,
         },
     ));
     let mut ed = Editor::for_testing(Buffer::new(buf.clone(), seeded));
@@ -513,6 +521,7 @@ fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_r
         StickyDisplayCol {
             display_col: 6,
             origin: DisplayColOrigin::DisplayRow,
+            wrap_width: None,
         },
     ));
     let mut ed = Editor::for_testing(Buffer::new(buf, ignored));
@@ -526,6 +535,47 @@ fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_r
         ed.current_selections().primary().head(),
         11,
         "DisplayRow latch is ignored: re-derives from head (col 2), lands on 'C'"
+    );
+}
+
+#[test]
+fn resize_invalidates_a_display_row_latch_measured_at_the_old_wrap_width() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    use hume_editing::text::Text;
+
+    // Line 0 ("0123456789ABCDE", 15 chars) wraps under a content-width-driven
+    // `Soft { width: 0 }`. Line 1 ("FGHIJ") gives `j` somewhere to land after
+    // line 0's own wrap rows are exhausted, so the second press below crosses
+    // out of the resized block entirely — the case a stale sticky column
+    // would misplace worst.
+    let buf = Text::from("0123456789ABCDE\nFGHIJ\n");
+    let sels = SelectionSet::single(Selection::collapsed(2)); // '2', row 0 col 2
+    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    let pid = ed.state.focused_pane_id;
+    ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),
+        saved: None,
+    });
+    ed.view.panes[pid].viewport.width = 10; // content_width 10 (no gutter in this harness)
+    ed.view.panes[pid].viewport.height = 24;
+
+    // At width 10: row 0 = "0123456789" (chars 0-9), row 1 = "ABCDE" (chars
+    // 10-14). `j` from col 2 of row 0 lands on row 1's col 2 = 'C' (char 12),
+    // latching a `DisplayRow` column of 2 measured against width 10.
+    ed.handle_key(key('j'));
+    assert_eq!(ed.current_selections().primary().head(), 12, "lands on 'C'");
+
+    // Resize to width 8: line 0 re-flows to row 0 = "01234567" (chars 0-7),
+    // row 1 = "89ABCDE" (chars 8-14) — 'C' (char 12) is now row 1's col 4,
+    // not col 2. A `j` from here must re-derive from head's *current* column
+    // (4) rather than reuse the stale latch (2) measured for width 10.
+    ed.view.panes[pid].viewport.width = 8;
+
+    ed.handle_key(key('j'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        20,
+        "lands on line 1's col 4 ('J'), not col 2 ('H') from the stale latch"
     );
 }
 
@@ -561,6 +611,7 @@ fn explicit_count_move_down_past_last_content_line_leaves_head_exactly_where_it_
         StickyDisplayCol {
             display_col: 200,
             origin: DisplayColOrigin::BufferLine,
+            wrap_width: None,
         },
     ));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
@@ -899,7 +950,14 @@ fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
     assert_eq!(ed.current_selections().primary().head(), 4, "lands on 'a'");
     assert_eq!(
         ed.current_selections().primary().sticky_display_col(),
-        Some(sticky_row(0)),
+        // Not `sticky_row(0)`: that helper's `wrap_width` matches
+        // `visual_test_editor`'s width-76 fixture, not this test's own
+        // `WrapMode::Soft { width: 200 }`.
+        Some(StickyDisplayCol {
+            display_col: 0,
+            origin: DisplayColOrigin::DisplayRow,
+            wrap_width: Some(200),
+        }),
         "latches the DisplayRow-tagged target column (0), not the landed one"
     );
 

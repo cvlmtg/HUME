@@ -317,6 +317,98 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
 }
 
 #[test]
+fn wide_grapheme_at_the_right_edge_does_not_bleed_past_the_pane() {
+    // A CJK glyph whose left cell sits at the pane's last content column: its
+    // right half would fall on whatever the terminal draws next — the
+    // neighbouring pane in a vsplit, or the divider seam. It must not be
+    // drawn at all; the column renders blank instead, mirroring the h-scroll
+    // straddle case above.
+    let graphemes = vec![Grapheme {
+        byte_range: 0..3,
+        char_offset: 0,
+        display_col: 4,
+        width: 2,
+        content: CellContent::Grapheme,
+        indent_depth: 0,
+        scope: None,
+    }];
+    let rows = [simple_row(0..1)];
+    let styles = vec![ResolvedStyle::default(); 1];
+    let visible = PaneGeometry {
+        content_height: 5,
+        content_width: 5,
+        gutter_width: 0,
+        last_line_idx: 0,
+    };
+    let viewport = ViewportState::new(5, 5);
+    let buf = do_compose_row(
+        "中", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 5, 5,
+    );
+    assert_eq!(
+        buf.cell(ratatui::layout::Position { x: 4, y: 0 })
+            .unwrap()
+            .symbol(),
+        " ",
+        "a wide glyph that would straddle the right edge must not be drawn"
+    );
+}
+
+#[test]
+fn virtual_width_continuation_cell_is_styled_not_left_blank() {
+    // An inlay hint containing a CJK glyph: the primary `Virtual` cell and
+    // its `WidthContinuation` companion (as `push_virtual_cells` emits for a
+    // real double-width cluster) must both end up in the decoration's own
+    // background — the continuation cell is skipped by the per-cell loop
+    // (it carries no drawable content of its own), so it has to inherit the
+    // primary's style from the same write that draws the primary, not be
+    // left for the row fill underneath.
+    let arena = "中";
+    let hint_style = ResolvedStyle {
+        bg: Some(ratatui::style::Color::Rgb(200, 0, 0)),
+        ..Default::default()
+    };
+    let graphemes = vec![
+        Grapheme {
+            byte_range: 0..0,
+            char_offset: usize::MAX,
+            display_col: 0,
+            width: 2,
+            content: CellContent::Virtual { start: 0, len: 3 },
+            indent_depth: 0,
+            scope: None,
+        },
+        Grapheme {
+            byte_range: 0..0,
+            char_offset: usize::MAX,
+            display_col: 2,
+            width: 0,
+            content: CellContent::WidthContinuation,
+            indent_depth: 0,
+            scope: None,
+        },
+    ];
+    let rows = [simple_row(0..2)];
+    let styles = vec![hint_style; 2];
+    let visible = PaneGeometry {
+        content_height: 5,
+        content_width: 20,
+        gutter_width: 0,
+        last_line_idx: 0,
+    };
+    let viewport = ViewportState::new(20, 5);
+    let buf = do_compose_row(
+        "", arena, &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+    );
+    assert_eq!(
+        buf.cell(ratatui::layout::Position { x: 1, y: 0 })
+            .unwrap()
+            .bg,
+        ratatui::style::Color::Rgb(200, 0, 0),
+        "the wide glyph's continuation cell must carry the decoration's own background"
+    );
+}
+
+#[test]
 fn indent_guide_drawn_at_inner_tab_stops() {
     // A line with indent_depth=2 and tab_width=4 should show a guide at display_col 4.
     // (guides at k*tab_width for k in 1..depth, so k=1 => display_col 4)

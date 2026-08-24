@@ -104,6 +104,7 @@ fn d4b_sticky_col_is_per_selection() {
         StickyDisplayCol {
             display_col: 0,
             origin: DisplayColOrigin::BufferLine,
+            wrap_width: None,
         },
     );
     let mut sels = SelectionSet::single(sel);
@@ -125,6 +126,7 @@ fn d4b_sticky_col_is_per_selection() {
         Some(StickyDisplayCol {
             display_col: 0,
             origin: DisplayColOrigin::BufferLine,
+            wrap_width: None,
         }),
         "sticky_display_col preserved on untouched line"
     );
@@ -138,6 +140,7 @@ fn d4b_sticky_col_is_per_selection() {
         StickyDisplayCol {
             display_col: 0,
             origin: DisplayColOrigin::BufferLine,
+            wrap_width: None,
         },
     );
     let mut sels2 = SelectionSet::single(sel2);

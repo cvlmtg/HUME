@@ -290,10 +290,12 @@ fn cell_symbol(buf: &ratatui::buffer::Buffer, x: u16, y: u16) -> String {
 
 #[test]
 fn before_virtual_line_skipped_one_row_at_a_time() {
-    // Line 0's block under Before(0) is [V, aaaa, bbbb, cccc] — 4 rows.
-    // `top_row_offset` walks through it uniformly, the same as it would a
-    // plain wrap row: each unit of offset drops exactly one block row,
-    // virtual or real.
+    // Line 0's block under Before(0) is [V, aaaa, bbbb, cccc, <eol>] — 5
+    // rows: "aaaabbbbcccc" wraps into three content rows at width 4, and
+    // "cccc" exactly fills the last one, so the trailing '\n's own sentinel
+    // wraps onto a row of its own. `top_row_offset` walks through the whole
+    // block uniformly, the same as it would a plain wrap row: each unit of
+    // offset drops exactly one block row, virtual or real.
     let offset1 = render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::Before(0));
     assert_eq!(
         cell_symbol(&offset1, 0, 0),
@@ -313,10 +315,17 @@ fn before_virtual_line_skipped_one_row_at_a_time() {
     assert_eq!(
         cell_symbol(&offset3, 0, 0),
         "c",
-        "offset 3 reaches the block's last row"
+        "offset 3 reaches wrap row 2"
     );
 
-    // Offset 4 is past the end of a 4-row block: not an address in the
+    let offset4 = render_wrapped_pane_with_virtual_line(4, VirtualLineAnchor::Before(0));
+    assert_eq!(
+        cell_symbol(&offset4, 0, 0),
+        " ",
+        "offset 4 reaches the block's last row, the wrapped eol sentinel"
+    );
+
+    // Offset 5 is past the end of a 5-row block: not an address in the
     // document, so it clamps to the block's last row — the same address
     // `scroll::clamp_viewport_top` resolves to, which is the point (production
     // never reaches this case directly, since the clamp runs every frame
@@ -325,10 +334,10 @@ fn before_virtual_line_skipped_one_row_at_a_time() {
     // Fail oracle: treating an over-large offset as rows-to-skip instead of
     // clamping would carry over into line 1, disagreeing with the clamp's
     // own "line 0's last row" answer.
-    let past_end = render_wrapped_pane_with_virtual_line(4, VirtualLineAnchor::Before(0));
+    let past_end = render_wrapped_pane_with_virtual_line(5, VirtualLineAnchor::Before(0));
     assert_eq!(
         cell_symbol(&past_end, 0, 0),
-        "c",
+        " ",
         "an offset past the block clamps to its last row, as the clamp does"
     );
 }
@@ -349,14 +358,20 @@ fn before_virtual_line_renders_when_not_skipped() {
 #[test]
 fn after_virtual_line_renders_below_skipped_rows() {
     // top_row_offset=1 skips wrap row 0. The After(0) virtual line sits
-    // below all of line 0's wrap rows, which are not skipped (the budget
-    // is exhausted by wrap row 0 alone) — it must still render, after
-    // wrap rows 1 and 2.
+    // below all of line 0's wrap rows — two more content rows plus the
+    // trailing '\n's own wrapped sentinel row — none of which are skipped
+    // (the budget is exhausted by wrap row 0 alone) — it must still render,
+    // after wrap rows 1, 2, and the sentinel.
     let buf = render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::After(0));
     assert_eq!(cell_symbol(&buf, 0, 0), "b", "wrap row 1");
     assert_eq!(cell_symbol(&buf, 0, 1), "c", "wrap row 2");
     assert_eq!(
         cell_symbol(&buf, 0, 2),
+        " ",
+        "the trailing newline's wrapped sentinel row"
+    );
+    assert_eq!(
+        cell_symbol(&buf, 0, 3),
         "V",
         "After(0) virtual line still renders"
     );
@@ -556,9 +571,13 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
 #[test]
 fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
     // Two lines of 20 '中' chars each (true width 40 per line). At
-    // WrapMode::Soft { width: 20 } each line wraps into exactly 2 rows,
-    // so the two lines together supply exactly 4 real rows — matching
-    // a 4-row viewport with nothing left over for tilde fillers.
+    // WrapMode::Soft { width: 20 } each line wraps into two content rows of
+    // exactly 20 columns — and since the second row exactly fills the wrap
+    // width, the trailing '\n's own sentinel wraps onto a row of its own
+    // rather than landing past the pane's edge. Line 0 therefore supplies 3
+    // rows (content, content, blank sentinel) before line 1 begins — a
+    // 4-row viewport shows those three plus line 1's own first row, with
+    // nothing left over for tilde fillers.
     let line: String = "中".repeat(20);
     let rope = ropey::Rope::from_str(&format!("{line}\n{line}\n"));
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
@@ -589,11 +608,12 @@ fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
     let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
     render_pane(&pane_ctx, &mut scratch, &mut buf);
 
+    let expected = ["中", "中", " ", "中"];
     for y in 0..4u16 {
         let sym = cell_symbol(&buf, 0, y);
         assert_eq!(
-            sym, "中",
-            "row {y} must be real CJK content, not a tilde filler"
+            sym, expected[y as usize],
+            "row {y} must be real content (a CJK glyph or the wrapped sentinel), not a tilde filler"
         );
     }
 }

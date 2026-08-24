@@ -182,13 +182,15 @@ fn block_without_providers_is_content_only() {
 
 #[test]
 fn block_counts_one_content_row_per_wrap_row() {
-    // "abcdefgh" is 8 columns wrapped at 4 → "abcd" / "efgh" = 2 rows.
+    // "abcdefgh" is 8 columns wrapped at 4 → "abcd" / "efgh" = 2 rows, and
+    // "efgh" exactly fills its row, so the trailing '\n's own sentinel wraps
+    // onto a third row rather than landing past the pane's edge.
     let rope = Rope::from_str("abcdefgh\n");
     let providers = ProviderSet::new();
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
-    assert_eq!(rm.block(0).content, 2);
+    assert_eq!(rm.block(0).content, 3);
 }
 
 #[test]
@@ -311,13 +313,16 @@ fn mixed_block_providers() -> ProviderSet {
 
 #[test]
 fn kind_classifies_every_row_of_a_mixed_block() {
+    // "abcdefgh\n" at width 4 supplies 3 content rows, not 2: "efgh" exactly
+    // fills the wrap width, so the trailing '\n's own sentinel wraps onto a
+    // row of its own (see `content_row_char_bounds_scopes_to_one_wrap_row`).
     let rope = Rope::from_str("abcdefgh\n");
     let providers = mixed_block_providers();
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
-    assert_eq!(rm.block(0).total(), 5);
-    let kinds: Vec<RowKind> = (0..5).map(|row| rm.kind(RowPos::new(0, row))).collect();
+    assert_eq!(rm.block(0).total(), 6);
+    let kinds: Vec<RowKind> = (0..6).map(|row| rm.kind(RowPos::new(0, row))).collect();
     assert_eq!(
         kinds,
         vec![
@@ -325,6 +330,7 @@ fn kind_classifies_every_row_of_a_mixed_block() {
             RowKind::Before(1),
             RowKind::Content(0),
             RowKind::Content(1),
+            RowKind::Content(2),
             RowKind::After(0),
         ]
     );
@@ -339,12 +345,12 @@ fn clamp_pulls_line_and_row_into_the_document() {
 
     assert_eq!(
         rm.clamp(RowPos::new(0, 99)),
-        RowPos::new(0, 4),
+        RowPos::new(0, 5),
         "row clamps to the block's last row"
     );
     assert_eq!(
         rm.clamp(RowPos::new(99, 99)),
-        RowPos::new(0, 4),
+        RowPos::new(0, 5),
         "line clamps to the last real line, then row to its block"
     );
     assert_eq!(
@@ -621,6 +627,9 @@ fn new_panics_on_zero_content_width() {
 
 #[test]
 fn wrap_width_one_emits_one_grapheme_per_row_without_hanging() {
+    // One grapheme per row at wrap width 1, plus a 5th row for the trailing
+    // '\n's own sentinel: every row at width 1 exactly fills, so the
+    // sentinel always wraps onto a row of its own here.
     let rope = Rope::from_str("abcd\n");
     let providers = ProviderSet::new();
     let mut s = FormatScratch::new();
@@ -635,7 +644,7 @@ fn wrap_width_one_emits_one_grapheme_per_row_without_hanging() {
     );
 
     let breakdown = rm.block(0);
-    assert_eq!(breakdown.content, 4, "one grapheme per row at wrap width 1");
+    assert_eq!(breakdown.content, 5);
 }
 
 // ---------------------------------------------------------------------------
@@ -807,6 +816,27 @@ fn char_at_resolves_a_column_inside_a_wide_cell_differently_per_policy() {
 }
 
 #[test]
+fn char_at_nearest_content_prefers_real_content_over_a_width_continuation_tie() {
+    // "中x\n": '中' is CJK (width 2, columns 0-1); its WidthContinuation cell
+    // sits at column 2, sharing '中's char_offset, and 'x' also starts at
+    // column 2. A sticky column of 2 ties between the continuation cell and
+    // 'x' — the continuation must not win the tie: it would silently answer
+    // '中's char_offset instead of 'x's, landing a vertical move one glyph
+    // too far left whenever the sticky column matches the cell right after a
+    // wide grapheme.
+    let rope = Rope::from_str("中x\n");
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        rm.char_at(RowPos::new(0, 0), 2, DisplayColTarget::NearestContent),
+        1,
+        "sticky column 2 must land on 'x' (char 1), not '中' via its continuation cell"
+    );
+}
+
+#[test]
 fn char_at_on_a_virtual_row_clamps_to_the_lines_own_content() {
     // A virtual row carries no buffer position, so an address on one resolves
     // against the nearest content row of the line it is anchored to.
@@ -835,15 +865,22 @@ fn char_at_on_a_virtual_row_clamps_to_the_lines_own_content() {
 
 #[test]
 fn content_row_char_bounds_scopes_to_one_wrap_row() {
-    // "abcdefgh\n" at width 4: row 0 covers chars 0..4, row 1 covers 4..9
-    // (the next line starts at char 9).
+    // "abcdefgh\n" at width 4: row 0 covers chars 0..4, row 1 covers 4..8.
+    // Row 1 ("efgh") exactly fills the wrap width, so the trailing '\n's own
+    // sentinel wraps onto a row of its own (char 8, the '\n' itself) instead
+    // of being folded into row 1's bounds.
     let rope = Rope::from_str("abcdefgh\n");
     let providers = ProviderSet::new();
     let mut s = FormatScratch::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(rm.content_row_char_bounds(RowPos::new(0, 0)), Some((0, 4)));
-    assert_eq!(rm.content_row_char_bounds(RowPos::new(0, 1)), Some((4, 9)));
+    assert_eq!(rm.content_row_char_bounds(RowPos::new(0, 1)), Some((4, 8)));
+    assert_eq!(
+        rm.content_row_char_bounds(RowPos::new(0, 2)),
+        Some((8, 9)),
+        "the wrapped sentinel row covers just the '\\n' itself"
+    );
 }
 
 #[test]

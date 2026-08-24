@@ -31,6 +31,18 @@ pub enum DisplayColOrigin {
 pub struct StickyDisplayCol {
     pub display_col: u32,
     pub origin: DisplayColOrigin,
+    /// The wrap column `display_col` was measured against when `origin` is
+    /// [`DisplayColOrigin::DisplayRow`] (`RowMap::resolved_wrap_width`);
+    /// meaningless for [`DisplayColOrigin::BufferLine`], which counts a
+    /// buffer line's own characters and never depends on wrap geometry —
+    /// still populated there for a uniform constructor, just never read. A
+    /// pane resize changes what column a `DisplayRow` latch's number means
+    /// (the same row-relative column addresses a different buffer position
+    /// once rows re-flow at a new width), so a reader compares this against
+    /// the row map's *current* resolved width and re-derives on a mismatch
+    /// instead of reusing a column measured for a wrap geometry that no
+    /// longer exists.
+    pub wrap_width: Option<u16>,
 }
 
 /// A single selection range within a buffer.

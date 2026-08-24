@@ -165,14 +165,15 @@ fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
     }
     // A tab renders like a real buffer line's tab — the engine expands it to
     // the next tab stop (`hume_engine::rows::segment_virtual_row`), so
-    // callers no longer need to expand it themselves. Any other control
-    // character has no sensible one-row rendering and becomes a literal
-    // space, char-for-char, so a caller's `'segments` offsets (validated
-    // below) stay aligned with `text`.
-    let text: String = text
-        .chars()
-        .map(|c| if c != '\t' && c.is_control() { ' ' } else { c })
-        .collect();
+    // callers no longer need to expand it themselves. Any other unrenderable
+    // character (a control character, an invisible one) is left verbatim:
+    // `push_virtual_cells` substitutes it with its codepoint placeholder,
+    // the same chokepoint every other text source goes through — a
+    // char-for-char blank here would be a second, weaker copy of that
+    // policy, and one that hides exactly what the codepoint substitution
+    // exists to surface (a bidi override rendering like a space, say).
+    // Leaving `text` untouched also keeps a caller's `'segments` offsets
+    // (validated below) trivially aligned with it.
 
     let before = match field("anchor") {
         None => false,

@@ -72,18 +72,38 @@ pub fn wire_offset_to_char(text: RopeSlice<'_>, offset: usize, enc: PositionEnco
     }
 }
 
-/// `(line, character)` → char offset.
+/// `(line, character)` → `(clamped line, line-relative char column)`.
 ///
-/// Out-of-range input clamps rather than errors — servers send past-end
-/// positions routinely. `line` past EOF clamps to the last line here;
-/// `character` clamps to the line's content end because that is the extent
-/// of the slice handed to [`wire_offset_to_char`], which owns the rest of
-/// the clamp contract.
-pub fn wire_to_char(text: &Rope, line: usize, character: usize, enc: PositionEncoding) -> usize {
+/// The wire-domain half of [`wire_to_char`], split out so a caller that
+/// still needs to *place* the result — snap it to a grapheme boundary, land
+/// it on the motion-domain line end rather than the wire-domain one — can
+/// feed the column to `hume_editing::lines::place_char_column` instead of
+/// treating the raw code-unit offset as a final cursor position. `line`
+/// past EOF clamps to the last line here; `character` clamps to the line's
+/// wire-domain content end because that is the extent of the slice handed
+/// to [`wire_offset_to_char`], which owns the rest of the clamp contract.
+pub fn wire_to_line_char_col(
+    text: &Rope,
+    line: usize,
+    character: usize,
+    enc: PositionEncoding,
+) -> (usize, usize) {
     let line = line.min(last_ropey_line(text));
     let line_start = text.line_to_char(line);
     let content = text.slice(line_start..line_content_end_char(text, line));
-    line_start + wire_offset_to_char(content, character, enc)
+    (line, wire_offset_to_char(content, character, enc))
+}
+
+/// `(line, character)` → char offset.
+///
+/// Out-of-range input clamps rather than errors — servers send past-end
+/// positions routinely. See [`wire_to_line_char_col`] for the clamp
+/// contract; this just folds its `(line, column)` pair into one absolute
+/// offset; a caller that must additionally land on a grapheme boundary
+/// wants that function directly, not this one.
+pub fn wire_to_char(text: &Rope, line: usize, character: usize, enc: PositionEncoding) -> usize {
+    let (line, char_col) = wire_to_line_char_col(text, line, character, enc);
+    text.line_to_char(line) + char_col
 }
 
 /// A wire `(line, character)` range's two ends → `(start_char, end_char)`,

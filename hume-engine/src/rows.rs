@@ -219,6 +219,18 @@ impl<'a> RowMap<'a> {
         self.wrap_mode.is_wrapping()
     }
 
+    /// The wrap column display rows are actually laid out against — `None`
+    /// for `WrapMode::None`, otherwise the *resolved* width (the mode's own
+    /// explicit width, or `content_width` when the mode used the `0`
+    /// sentinel). Distinct from [`RowMap::content_width`]: an explicit wrap
+    /// width doesn't move when the pane resizes, so a resize-driven
+    /// staleness check (a `DisplayRow`-relative sticky column surviving a
+    /// wrap-width change) must compare this, not the raw content width, or
+    /// it invalidates latches a resize never actually affected.
+    pub fn resolved_wrap_width(&self) -> Option<u16> {
+        self.wrap_mode.wrap_width()
+    }
+
     /// Width available for content — the same `content_width` the caller
     /// passed to [`RowMap::new`] (gutter already subtracted). The one column
     /// bound `locate`'s columns are relative to, so a caller sizing anything
@@ -610,20 +622,29 @@ impl<'a> RowMap<'a> {
                     .char_offset
             }
             DisplayColTarget::NearestContent => {
-                // Eligibility by content type: `Grapheme`/`WidthContinuation`
-                // are real content, always eligible. `Empty` (EOL sentinel)
-                // has a buffer position but isn't content, so it only
-                // answers when nothing else can (an empty line) — gated on
-                // `admit_eol`. `Virtual` (inline-insert) carries the real
-                // grapheme's `char_offset` it precedes, so minimising
-                // distance against it elsewhere on the row would land on a
-                // character that cell isn't at — excluded outright, not just
-                // deprioritised. `Indicator` covers tab/space glyphs, which
-                // *are* real content, except the newline indicator, which
-                // shares the EOL sentinel's column and must be excluded the
-                // same way — singled out by `byte_range` being empty, just
-                // like the sentinel it's drawn on top of (`format.rs`'s
-                // newline-indicator push).
+                // Eligibility by content type: `Grapheme` is real content,
+                // always eligible. `WidthContinuation` is excluded even
+                // though it shares its primary's `char_offset` (so admitting
+                // it can never answer anything the primary itself wouldn't):
+                // its `display_col` sits one column *past* the wide glyph,
+                // which is exactly where the next real cell starts, so a
+                // target landing on that boundary ties between the two — and
+                // `min_by_key` keeps the first tied element, which is the
+                // continuation (pushed immediately after its primary, ahead
+                // of whatever comes next). Left in, that tie silently wins
+                // over the following cell's own, distinct `char_offset`.
+                // `Empty` (EOL sentinel) has a buffer position but isn't
+                // content, so it only answers when nothing else can (an empty
+                // line) — gated on `admit_eol`. `Virtual` (inline-insert)
+                // carries the real grapheme's `char_offset` it precedes, so
+                // minimising distance against it elsewhere on the row would
+                // land on a character that cell isn't at — excluded outright,
+                // not just deprioritised. `Indicator` covers tab/space
+                // glyphs, which *are* real content, except the newline
+                // indicator, which shares the EOL sentinel's column and must
+                // be excluded the same way — singled out by `byte_range`
+                // being empty, just like the sentinel it's drawn on top of
+                // (`format.rs`'s newline-indicator push).
                 //
                 // An exhaustive match (not a chain of exclusion filters) so a
                 // future `CellContent` variant forces a decision here instead
@@ -637,7 +658,8 @@ impl<'a> RowMap<'a> {
                         // formats content rows, but guarded defensively.
                         .filter(|g| g.char_offset != usize::MAX)
                         .filter(|g| match g.content {
-                            CellContent::Grapheme | CellContent::WidthContinuation => true,
+                            CellContent::Grapheme => true,
+                            CellContent::WidthContinuation => false,
                             CellContent::Empty => admit_eol,
                             CellContent::Virtual { .. } => false,
                             // Same rule as `Indicator`: a placeholder standing
