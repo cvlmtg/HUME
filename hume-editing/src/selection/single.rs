@@ -77,7 +77,8 @@ pub struct Selection {
     /// — recompute on next vertical move." Any horizontal motion or edit that
     /// touches this selection's line resets this to `None` by construction
     /// (constructors set it to `None`; `with_sticky_display_col` sets it, and
-    /// `shift` carries it through a same-line edit).
+    /// `SelectionSet::translate_in_place` carries it through an edit on a
+    /// different line).
     pub(crate) sticky_display_col: Option<StickyDisplayCol>,
 }
 
@@ -222,39 +223,6 @@ impl Selection {
             anchor: self.head,
             head: self.anchor,
             sticky_display_col: None,
-        }
-    }
-
-    /// Move both anchor and head by `delta` chars (positive = forward).
-    ///
-    /// Used when an edit *before* this selection shifts all offsets.
-    ///
-    /// # Panics
-    /// Panics if the shift would move either end below zero (underflow).
-    /// This is always a bug in the caller — an edit cannot shift a selection
-    /// to a negative position.
-    #[cfg(test)]
-    #[must_use]
-    pub(crate) fn shift(self, delta: isize) -> Self {
-        // `checked_add_signed` (stable since Rust 1.66) adds a signed delta to
-        // a usize and returns None on overflow *or* underflow. Compared to the
-        // previous `(x as isize + delta) as usize` cast pair, this fails loudly
-        // in *both* debug and release builds — the cast silently wraps in
-        // release, producing a huge position that corrupts the buffer.
-        let anchor = self
-            .anchor
-            .checked_add_signed(delta)
-            .expect("shift underflow: anchor cannot go below zero");
-        let head = self
-            .head
-            .checked_add_signed(delta)
-            .expect("shift underflow: head cannot go below zero");
-        // Shifting changes the absolute position but not the column relationship,
-        // so preserve sticky_display_col.
-        Self {
-            anchor,
-            head,
-            sticky_display_col: self.sticky_display_col,
         }
     }
 }

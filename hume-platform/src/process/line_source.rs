@@ -174,10 +174,8 @@ impl SpawnedLineSource {
 
     /// The child's OS process id, for a signal-0 liveness probe independent
     /// of this handle's own state — not for signalling it directly (that's
-    /// `Drop`'s job). Test-support only: every caller is cross-crate test
-    /// code (`hume-editor`'s `tests/unix/picker_source.rs`), so this can't be
-    /// `#[cfg(test)]`-gated the way a same-crate test-only method would be.
-    #[doc(hidden)]
+    /// `Drop`'s job). Test-support only.
+    #[cfg(any(test, feature = "test-util"))]
     pub fn pid(&self) -> u32 {
         self.child.id()
     }

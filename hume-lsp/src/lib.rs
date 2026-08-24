@@ -21,6 +21,7 @@
 pub mod backend;
 pub mod client;
 pub mod codec;
+#[cfg(any(test, feature = "test-util"))]
 pub mod inline;
 pub mod location;
 pub mod sync;

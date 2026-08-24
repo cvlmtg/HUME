@@ -68,6 +68,10 @@ impl SignColumn {
         }
     }
 
+    /// No production caller — production always starts at `DEFAULT_WIDTH`
+    /// via `new` and resizes through `set_width`; kept as a test helper for
+    /// constructing a lane already at a specific width.
+    #[cfg(test)]
     pub fn with_width(width: u8, blank_scope: ScopeId) -> Self {
         Self {
             width,

@@ -311,8 +311,7 @@ impl ChangeSet {
                 }
                 Operation::Delete(n) => {
                     // `checked_add_signed` fails loudly in both debug and release
-                    // if delta somehow drives old_pos below zero — matching the
-                    // pattern used in `Selection::shift`.
+                    // if delta somehow drives old_pos below zero.
                     let start = old_pos
                         .checked_add_signed(delta)
                         .expect("changeset apply: rope position underflow");

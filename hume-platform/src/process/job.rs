@@ -165,11 +165,9 @@ const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(5);
 
 impl SpawnedJob {
     /// The child's OS process id, for a signal-0 liveness probe independent
-    /// of this handle's own state. Test-support only: every caller is
-    /// cross-crate test code, so this can't be `#[cfg(test)]`-gated the way
-    /// a same-crate test-only method would be — mirrors
+    /// of this handle's own state. Test-support only — mirrors
     /// `SpawnedLineSource::pid`.
-    #[doc(hidden)]
+    #[cfg(any(test, feature = "test-util"))]
     pub fn pid(&self) -> u32 {
         self.child.id()
     }

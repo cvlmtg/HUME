@@ -68,7 +68,7 @@ fn curl_fetch_for_test(
 /// and the execute path auto-sweeps open buffers of that language.
 ///
 /// Exercises: register_grammar command branch → attach_grammar → theme.bake →
-/// pending_grammar_sweeps → SteelCmdResult.grammar_sweeps → sweep_buffers_for_grammars
+/// Effect::GrammarSweep → apply_script_effects → sweep_buffers_for_grammars
 /// → setup_buffer_syntax → Buffer.syntax (Syntax::attach).
 ///
 /// Flip: if the command body ran in init mode (queuing instead of attaching),

@@ -60,8 +60,7 @@ fn extend_line_span(text: &BufferText, sel: Selection, delta: isize) -> Selectio
     }
     // `checked_add_signed` fails loudly on overflow/underflow in both debug
     // and release builds — unlike the `(x as isize + delta) as usize` cast
-    // pair, which silently wraps in release (see the same reasoning at
-    // `hume-editing`'s `Selection::shift`). The clamps above guarantee this
+    // pair, which silently wraps in release. The clamps above guarantee this
     // can't actually underflow/overflow for delta = ±1.
     let new_head_line = head_line
         .checked_add_signed(delta)

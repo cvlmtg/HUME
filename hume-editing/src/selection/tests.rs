@@ -166,8 +166,9 @@ fn map_relocates_primary_by_content() {
         vec![Selection::collapsed(0), Selection::collapsed(5)],
         1, // primary is the second one
     );
-    // shift(1) is order-preserving; primary should track to its new position.
-    let shifted = set.map(|s| s.shift(1));
+    // Shifting both selections by 1 is order-preserving; primary should
+    // track to its new position.
+    let shifted = set.map(|s| Selection::collapsed(s.head + 1));
     assert_eq!(shifted.primary().head, 6); // was 5, shifted by 1
 }
 

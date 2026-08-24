@@ -167,22 +167,6 @@ fn flip_reverses_direction() {
     assert_eq!(fwd.flip().flip(), fwd); // double-flip is identity
 }
 
-#[test]
-fn shift_positive() {
-    let s = Selection::new(2, 7);
-    let shifted = s.shift(3);
-    assert_eq!(shifted.anchor, 5);
-    assert_eq!(shifted.head, 10);
-}
-
-#[test]
-fn shift_negative() {
-    let s = Selection::new(5, 10);
-    let shifted = s.shift(-3);
-    assert_eq!(shifted.anchor, 2);
-    assert_eq!(shifted.head, 7);
-}
-
 // ── Selection::directed ───────────────────────────────────────────────────
 
 #[test]
@@ -208,13 +192,4 @@ fn directed_cursor_is_same_regardless_of_direction() {
     assert!(fwd.is_collapsed());
     assert!(bwd.is_collapsed());
     assert_eq!(fwd, bwd);
-}
-
-// ── Selection::shift panic ────────────────────────────────────────────────
-
-#[test]
-#[should_panic(expected = "shift underflow")]
-fn shift_underflow_panics() {
-    let sel = Selection::collapsed(2);
-    let _ = sel.shift(-3); // 2 + (-3) underflows
 }

@@ -80,6 +80,10 @@ impl LineNumberColumn {
         }
     }
 
+    /// No production caller — production always starts `Hybrid` via `new`
+    /// and changes style through settings; kept as a test helper for
+    /// constructing a column already in a specific style.
+    #[cfg(test)]
     pub fn with_style(
         style: LineNumberStyle,
         default_scope: ScopeId,

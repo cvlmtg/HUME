@@ -52,18 +52,20 @@ pub fn prev_tab_stop(display_col: usize, tw: u8) -> usize {
 /// for the same reason ([`classify`]'s own doc) — three copies of one
 /// ordering hazard, and two of the three rebuilt a [`Placeholder`]
 /// `grapheme_width` had already thrown away.
-pub enum Cluster<'a> {
+pub enum Cluster {
     /// A tab, expanding to the next `tab_width` stop.
     Tab { width: usize },
     /// A cluster the terminal must not be shown as itself — see
     /// [`needs_placeholder`]. Carries its own [`Placeholder`] so a caller
     /// never has to build it twice.
     Placeholder(Placeholder),
-    /// Every other cluster, measured with `unicode-width`.
-    Plain { text: &'a str, width: usize },
+    /// Every other cluster, measured with `unicode-width`. The cluster text
+    /// itself isn't carried — every caller already holds it (it's what was
+    /// passed to [`classify`]) and reads it from there instead.
+    Plain { width: usize },
 }
 
-impl Cluster<'_> {
+impl Cluster {
     /// Display columns this cluster occupies. Never zero — see
     /// [`grapheme_width`]'s own doc for why.
     pub fn width(&self) -> usize {
@@ -82,7 +84,7 @@ impl Cluster<'_> {
 /// testing [`needs_placeholder`] before ruling out `"\t"` would draw a
 /// multi-cell placeholder into the single cell [`tab_advance`] reserves
 /// for it.
-pub fn classify(cluster: &str, display_col: usize, tab_width: u8) -> Cluster<'_> {
+pub fn classify(cluster: &str, display_col: usize, tab_width: u8) -> Cluster {
     if cluster == "\t" {
         Cluster::Tab {
             width: tab_advance(display_col, tab_width),
@@ -91,7 +93,6 @@ pub fn classify(cluster: &str, display_col: usize, tab_width: u8) -> Cluster<'_>
         Cluster::Placeholder(placeholder(cluster))
     } else {
         Cluster::Plain {
-            text: cluster,
             width: cluster.width().min(2),
         }
     }
