@@ -1,10 +1,13 @@
 name: CI
 
 on:
+  # `*.x` covers the maintenance branches cut from a release tag (see
+  # docs/RELEASING.md) — a backport lands with no review from `main`'s CI
+  # otherwise, which is the last place to be running unchecked.
   push:
-    branches: [main]
+    branches: [main, '*.x']
   pull_request:
-    branches: [main]
+    branches: [main, '*.x']
   workflow_dispatch:
 
 env:
@@ -19,6 +22,21 @@ permissions:
   contents: read
 
 jobs:
+  # Separate from the test matrix: formatting is platform-independent, so this
+  # runs once rather than three times, and it fails in seconds instead of after
+  # a full build.
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - run: cargo fmt --all -- --check
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
