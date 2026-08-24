@@ -11,6 +11,20 @@ There are two ways to bring a plugin in:
 
 Plugins that rebind keys have to be loaded eagerly, since their bindings must exist before you press anything. Those are marked below. See [Plugins](plugins.md#how-plugins-are-loaded) for the difference in detail.
 
+## core:stdlib
+
+A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:git-diff`, `core:pickers`, `core:vim-keybind`, and `core:lsp` all depend on it, so declare or load it before them:
+
+```scheme
+(declare-plugin "core:stdlib")
+```
+
+::: warning Always declare it bare
+Don't pass `#:commands`/`#:events`/`#:languages` to `core:stdlib`'s own `declare-plugin` call — leave it exactly as above. Every plugin that depends on `core:stdlib` relies on its default activation list; a custom one can leave out a helper a dependent plugin needs, and that dependent plugin will then misbehave instead of failing with a clear error.
+:::
+
+If you're writing a plugin yourself, see [Plugins](plugins.md) for what it offers.
+
 ## core:plum
 
 **PLUM** — the HUME **PLU**gin **M**anager — installs and updates third-party plugins from GitHub, and installs the tree-sitter grammars that power syntax highlighting.
@@ -182,13 +196,3 @@ GUI-style paste, if you'd rather not have `p` choose a source for you: `p` / `P`
 ```
 
 Must be loaded eagerly.
-
-## core:stdlib
-
-A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:git-diff`, `core:pickers`, `core:vim-keybind`, and `core:lsp` all depend on it, so declare or load it before them:
-
-```scheme
-(declare-plugin "core:stdlib")
-```
-
-If you're writing a plugin yourself, see [Plugins](plugins.md) for what it offers.
