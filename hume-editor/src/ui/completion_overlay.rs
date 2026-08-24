@@ -12,12 +12,10 @@ use crate::lock_ext::LockExt;
 
 use ratatui::buffer::Buffer as ScreenBuf;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
 
 use hume_engine::providers::OverlayProvider;
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
-use hume_engine::types::Scope;
 
 use super::menu_box::{MAX_MENU_ROWS, MenuBoxStyles, draw_menu_box, outer_dims};
 
@@ -73,10 +71,6 @@ impl OverlayProvider for MinibufCompletionOverlay {
             .saturating_sub(1)
             .min(pane_area.x + pane_area.width.saturating_sub(outer_w));
 
-        let menu_style: Style = theme.resolve_by_name(Scope("ui.menu")).into();
-        let selected_style: Style = theme.resolve_by_name(Scope("ui.menu.selected")).into();
-        let scroll_style: Style = theme.resolve_by_name(Scope("ui.menu.scroll")).into();
-
         let mut canvas = Canvas::new(buf, theme, None);
         draw_menu_box(
             &mut canvas,
@@ -85,11 +79,7 @@ impl OverlayProvider for MinibufCompletionOverlay {
             Some(selected),
             0,
             view.border,
-            MenuBoxStyles {
-                base: menu_style,
-                selected: selected_style,
-                scroll: scroll_style,
-            },
+            MenuBoxStyles::resolve(theme, "ui.menu"),
             None,
         );
     }

@@ -4,9 +4,10 @@
 - hume-engine
 - hume-treesitter
 - hume-lsp
+- hume-ops
 - hume-editor
 ## Description
-Rope-domain primitives for line counts, line ranges, grapheme boundaries, and rope-position math, shared by every crate that needs to answer "how many lines" or "which line is last." Distinguishes *ropey domain* (ropey's own line indexing, including the phantom trailing line the buffer invariant's structural `\n` creates) from *content domain* (that phantom line excluded); its six functions are the single source of truth for line-count/range math workspace-wide. Its `width` module (`tab_advance`, `grapheme_width`, `str_width`) is likewise the single source of truth for display-column math — the only crate visible to both `hume-editing` (editing-ops tab math) and `hume-engine` (the renderer), so it's where the two converge on one convention.
+Rope-domain primitives for line counts, line ranges, grapheme boundaries, and rope-position math, shared by every crate that needs to answer "how many lines" or "which line is last." Distinguishes *ropey domain* (ropey's own line indexing, including the phantom trailing line the buffer invariant's structural `\n` creates) from *content domain* (that phantom line excluded); its six functions are the single source of truth for line-count/range math workspace-wide. Its `width` module (`tab_advance`, `grapheme_width`, `str_width`) is likewise the single source of truth for display-column math — depended on directly by every crate that measures it: `hume-ops` (editing-ops tab math), `hume-engine` (the renderer), and `hume-editor` (UI chrome), so all three converge on one convention.
 
 # hume-platform
 ### Used by
@@ -43,6 +44,7 @@ Rendering pipeline and pane geometry — the layout tree (splits and panes), the
 # hume-ops
 ### Depends on
 - hume-editing
+- hume-rope
 - hume-test-fixtures *(dev-only)*
 ### Used by
 - hume-editor

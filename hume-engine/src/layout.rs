@@ -31,20 +31,34 @@ pub struct PaneGeometry {
 // Stage 1: compute_viewport
 // ---------------------------------------------------------------------------
 
-/// Sum of all gutter column widths for the given `max_line` (0-based last line index).
+/// Per-lane widths of `gutter_columns` for the given `max_line` (0-based
+/// last line index), one entry per column in order — the single computation
+/// [`gutter_width_for_line`] sums and `pane_render`'s per-frame
+/// `scratch.lane_widths` collects, so a lane's width can't drift between the
+/// pane geometry pass and what `compose_gutter` actually paints.
 ///
-/// Pass the last line index of the entire file so gutter width is stable across scrolling.
+/// Pass the last line index of the entire file so gutter width is stable
+/// across scrolling.
 ///
 /// Takes an iterator (rather than a slice) so callers can feed it
 /// `ProviderSet::gutter_columns()` directly — `ProviderSet` stores
 /// `(ProviderId, Box<dyn GutterColumn>)` pairs internally, which isn't a
 /// shape this purely-arithmetic function needs to know about.
+pub fn lane_widths<'a>(
+    gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
+    max_line: usize,
+) -> impl Iterator<Item = u16> + 'a {
+    // display-width-safe: GutterColumn::width is a cell count, not display width.
+    gutter_columns.map(move |c| c.width(max_line) as u16)
+}
+
+/// Sum of all gutter column widths for the given `max_line` — see
+/// [`lane_widths`], which this sums.
 pub fn gutter_width_for_line<'a>(
-    gutter_columns: impl Iterator<Item = &'a dyn GutterColumn>,
+    gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
     max_line: usize,
 ) -> u16 {
-    // display-width-safe: GutterColumn::width is a cell count, not display width.
-    gutter_columns.map(|c| c.width(max_line) as u16).sum()
+    lane_widths(gutter_columns, max_line).sum()
 }
 
 /// Compute the `PaneGeometry` for a pane given its current state.
@@ -53,7 +67,7 @@ pub fn gutter_width_for_line<'a>(
 pub fn compute_viewport<'a>(
     rope: &Rope,
     viewport: &ViewportState,
-    gutter_columns: impl Iterator<Item = &'a dyn GutterColumn>,
+    gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
 ) -> PaneGeometry {
     // 0-based index of the last line — the single source of truth for
     // GutterColumn::width(). Using the whole-file last line (not just what is

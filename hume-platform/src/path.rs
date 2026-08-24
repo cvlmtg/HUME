@@ -282,9 +282,11 @@ pub fn split_path_at_sep(s: &str) -> (&str, &str) {
 /// UNC paths (`\\?\UNC\…`) are left alone — `None` — since they are rare
 /// and the `\\` prefix they'd collapse to is already a valid UNC path.
 /// Shared by [`strip_unc_prefix`] and [`strip_unc_prefix_cow`], which only
-/// differ in whether the caller needs an owned result.
+/// differ in whether the caller needs an owned result, and by
+/// `hume_lsp::uri::path_to_uri`, which needs the borrowed `&str` form
+/// directly rather than either's owned/`Cow` `PathBuf` wrapping.
 #[cfg(windows)]
-fn strip_verbatim(p: &Path) -> Option<&str> {
+pub fn strip_verbatim(p: &Path) -> Option<&str> {
     const VERBATIM: &str = r"\\?\";
     match p.to_str() {
         Some(s) if s.starts_with(VERBATIM) && !s[VERBATIM.len()..].starts_with("UNC\\") => {

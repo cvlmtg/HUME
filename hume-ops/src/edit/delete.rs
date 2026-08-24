@@ -104,7 +104,7 @@ pub fn dedent_tab_backward(
         let p = sel.head();
         let line_idx = buf.char_to_line(p);
         let display_col = display_col_in_line(buf, line_idx, p, tab_width);
-        let prev_stop = hume_editing::width::prev_tab_stop(display_col, tab_width);
+        let prev_stop = hume_rope::width::prev_tab_stop(display_col, tab_width);
         // Clamp target up to the boundary already consumed by a prior same-line
         // cursor, so the second cursor still deletes whatever space remains
         // between that boundary and its own head.

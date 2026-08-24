@@ -5,7 +5,7 @@
 //! panel is a *fixed-size* box (sized as a fraction of the panes region,
 //! independent of item count) with a two-zone layout (input row + list) and
 //! an edge-anchored scroll model owned by `PickerSession` — `menu_box`'s
-//! `visible_window` centers the selection instead, a different and
+//! selected-row window centers the selection instead, a different and
 //! conflicting scroll model. The only thing shared is the border-drawing
 //! routine itself, [`super::menu_box::draw_box_border`].
 //!
@@ -239,13 +239,17 @@ pub(crate) fn draw_picker_panel(
     for (i, row_text) in state.rows.iter().take(list_capacity).enumerate() {
         let y = outer.y + 2 + i as u16;
         let shown = truncate_tail_marked(row_text, inner_width);
-        if state.selected_row == Some(i) {
-            let row_rect = Rect::new(inner_x, y, outer.width - 2, 1);
-            canvas.fill_rect_bg(row_rect, styles.selected);
-            canvas.write_text_run(inner_x, y, &shown, styles.selected, inner_right);
-        } else {
-            canvas.write_text_run(inner_x, y, &shown, styles.text, inner_right);
-        }
+        super::menu_box::draw_list_row(
+            canvas,
+            inner_x,
+            y,
+            outer.width - 2,
+            inner_right,
+            &shown,
+            state.selected_row == Some(i),
+            styles.selected,
+            styles.text,
+        );
     }
 }
 
@@ -269,14 +273,8 @@ impl OverlayProvider for PickerOverlay {
 
         let outer = Rect::new(state.x, state.y, state.width, state.height);
         // Defensive clip: the write side computed this rect against this
-        // same pane's region this same frame (`PopupOverlay`'s precedent) —
-        // should never trigger, but painting outside the pane is worse than
-        // a dropped frame of content.
-        if outer.x < pane_rect.x
-            || outer.y < pane_rect.y
-            || outer.x + outer.width > pane_rect.x + pane_rect.width
-            || outer.y + outer.height > pane_rect.y + pane_rect.height
-        {
+        // same pane's region this same frame — see `fits_inside`'s doc.
+        if !super::menu_box::fits_inside(outer, pane_rect) {
             return;
         }
 

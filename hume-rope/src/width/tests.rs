@@ -278,6 +278,28 @@ fn indent_depth_zero_tab_width_no_panic() {
     assert_eq!(depth, 2); // tw=1, col=2, depth=2
 }
 
+// ── indent_stop ──────────────────────────────────────────────────────────
+
+#[test]
+fn indent_stop_is_the_inverse_of_indent_depth() {
+    // indent_depth("\t\tfoo", 4) == 2; the depth-2 stop is display col 8.
+    assert_eq!(indent_stop(2, 4), 8);
+    assert_eq!(indent_depth("\t\tfoo", 4), indent_stop(2, 4) as u8 / 4);
+}
+
+#[test]
+fn indent_stop_zero_k_is_column_zero() {
+    assert_eq!(indent_stop(0, 4), 0);
+}
+
+#[test]
+fn indent_stop_zero_tab_width_clamps_to_one() {
+    // Mirrors indent_depth_zero_tab_width_no_panic's clamp, so the two
+    // functions agree at tab_width == 0 instead of one silently collapsing
+    // to column 0 while the other doesn't.
+    assert_eq!(indent_stop(3, 0), 3);
+}
+
 // ── truncate_to_width ────────────────────────────────────────────────────
 
 #[test]

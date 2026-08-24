@@ -84,7 +84,7 @@ impl Editor {
                 super::cursor::content_pos(vp, &mut rm, anchor_char)?
             }
         };
-        let anchor = (content_x + gutter_w + pane_rect.x, row + pane_rect.y);
+        let anchor = super::mouse::content_pos_to_screen(content_x, row, gutter_w, pane_rect);
         // Reserve 2 cells on each axis for the popup's 1-cell frame, so
         // content + border together fit the same envelope this budget used
         // to give to content alone.

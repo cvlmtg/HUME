@@ -52,11 +52,18 @@ impl RowPos {
     }
 }
 
-/// What a display row is. The payload is the row's index within its own group,
-/// so `Content(2)` is a line's third content row and `Before(0)` is the first
+/// Which slot of a line's visual block a display row falls in — virtual rows
+/// anchored before it, its own wrap/content rows, or virtual rows anchored
+/// after. The payload is the row's index within its own group, so
+/// `Content(2)` is a line's third content row and `Before(0)` is the first
 /// virtual row above it.
+///
+/// Named `BlockSlot` rather than `RowKind` to stay distinct from
+/// [`crate::types::RowKind`] (`LineStart`/`Wrap`/`Virtual`/`Filler`) — a
+/// different question about the same row: that one classifies how a row was
+/// produced, this one where it sits within its line's block.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum RowKind {
+pub enum BlockSlot {
     Before(usize),
     Content(usize),
     After(usize),
@@ -346,8 +353,8 @@ impl<'a> RowMap<'a> {
         RowPos::new(line, pos.row.min(total.saturating_sub(1)))
     }
 
-    /// What kind of row `pos` addresses.
-    pub fn kind(&mut self, pos: RowPos) -> RowKind {
+    /// Which block slot `pos` addresses.
+    pub fn slot(&mut self, pos: RowPos) -> BlockSlot {
         let b = self.block(pos.line);
         debug_assert!(
             pos.row < b.total(),
@@ -357,11 +364,11 @@ impl<'a> RowMap<'a> {
             b.total()
         );
         if pos.row < b.before {
-            RowKind::Before(pos.row)
+            BlockSlot::Before(pos.row)
         } else if pos.row < b.before + b.content {
-            RowKind::Content(pos.row - b.before)
+            BlockSlot::Content(pos.row - b.before)
         } else {
-            RowKind::After(pos.row - b.before - b.content)
+            BlockSlot::After(pos.row - b.before - b.content)
         }
     }
 
@@ -807,8 +814,8 @@ impl<'a> RowMap<'a> {
     /// for real lines, so a provider handing over plain text and scoped byte
     /// ranges cannot get that arithmetic wrong.
     pub fn render_row(&mut self, pos: RowPos) -> RenderRow<'_> {
-        match self.kind(pos) {
-            RowKind::Content(sub) => {
+        match self.slot(pos) {
+            BlockSlot::Content(sub) => {
                 // `Full`: the render stage emits whole rows, and its own
                 // clipping is the map's `h_window`, applied inside the format.
                 self.ensure_formatted(pos.line, FormatBound::Full);
@@ -820,8 +827,8 @@ impl<'a> RowMap<'a> {
                     base_scope: None,
                 }
             }
-            RowKind::Before(i) => self.segment_virtual_row(pos.line, i),
-            RowKind::After(i) => {
+            BlockSlot::Before(i) => self.segment_virtual_row(pos.line, i),
+            BlockSlot::After(i) => {
                 let before = self.block(pos.line).before;
                 self.segment_virtual_row(pos.line, before + i)
             }
@@ -859,7 +866,7 @@ impl<'a> RowMap<'a> {
             &mut vrow.graphemes,
             &crate::format::VirtualRun {
                 text: &vl.text,
-                byte_range: 0..0, // zero-length: virtual, no buffer position
+                byte_offset: 0, // no buffer position
                 char_offset: usize::MAX,
                 indent_depth: 0,
             },

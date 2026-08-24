@@ -12,6 +12,7 @@ test-util = []
 
 [dependencies]
 hume-editing = { path = "../hume-editing" }
+hume-rope = { path = "../hume-rope" }
 regex-cursor = "0.1.5"
 unicode-segmentation.workspace = true
 rustc-hash.workspace = true

@@ -1,5 +1,5 @@
 use crate::render::{self, ComposeCtx};
-use crate::rows::{RowKind, RowMap, RowPos};
+use crate::rows::{BlockSlot, RowMap, RowPos};
 use crate::types::ResolvedStyle;
 
 use super::{FrameScratch, PaneRenderCtx};
@@ -54,15 +54,10 @@ pub(crate) fn render_pane(
 
     // Gutter lane widths: constant for the entire frame.
     scratch.lane_widths.clear();
-    scratch.lane_widths.extend(
-        pane_ctx
-            .pane
-            .providers
-            .gutter_columns
-            .iter()
-            // display-width-safe: GutterColumn::width is a cell count, not display width.
-            .map(|(_, c)| c.width(visible.last_line_idx) as u16),
-    );
+    scratch.lane_widths.extend(layout::lane_widths(
+        pane_ctx.pane.providers.gutter_columns(),
+        visible.last_line_idx,
+    ));
 
     // Bundle per-frame constants so compose_row call sites stay concise.
     let compose_ctx = ComposeCtx {
@@ -77,7 +72,6 @@ pub(crate) fn render_pane(
         show_indent_guides: pane_ctx.settings.show_indent_guides,
         pane_rect: pane_ctx.rect,
         theme: pane_ctx.theme,
-        pane_bg: pane_ctx.theme.ui.background.bg,
         rope: pane_ctx.rope,
         default_gutter_scope: pane_ctx.default_gutter_scope,
     };
@@ -128,8 +122,8 @@ pub(crate) fn render_pane(
     let mut screen_row = 0u16;
 
     while screen_row < height {
-        match rows.kind(pos) {
-            RowKind::Content(_) => {
+        match rows.slot(pos) {
+            BlockSlot::Content(_) => {
                 let line = line.get_or_insert_with(|| {
                     LineStyle::enter(pos.line, last_content_line, pane_ctx, style)
                 });
@@ -168,7 +162,7 @@ pub(crate) fn render_pane(
                     row_bg,
                 );
             }
-            RowKind::Before(_) | RowKind::After(_) => {
+            BlockSlot::Before(_) | BlockSlot::After(_) => {
                 let row = rows.render_row(pos);
                 // Virtual rows are skipped by the style stage (no highlight
                 // tiers, no cursor/selection), but each grapheme can still

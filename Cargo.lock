@@ -1123,6 +1123,7 @@ name = "hume-ops"
 version = "0.1.0"
 dependencies = [
  "hume-editing",
+ "hume-rope",
  "hume-test-fixtures",
  "pretty_assertions",
  "regex-cursor",

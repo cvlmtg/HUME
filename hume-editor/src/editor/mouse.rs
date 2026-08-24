@@ -216,6 +216,21 @@ fn rect_relative(rect: Rect, x: u16, y: u16) -> Option<(u16, u16)> {
         .then(|| (x - rect.x, y - rect.y))
 }
 
+/// Translate a pane-content-relative `(content_x, row)` cell — relative to
+/// the pane's content area, past the `gutter_w`-wide gutter — into an
+/// absolute terminal cell. The inverse of [`rect_relative`], for the two
+/// call sites (the popup/menu anchor, the Insert-mode bar cursor) that need
+/// to go the other way: a content-relative position `pane_row_map`'s cursor
+/// walk already resolved, placed onto the screen.
+pub(super) fn content_pos_to_screen(
+    content_x: u16,
+    row: u16,
+    gutter_w: u16,
+    pane_rect: Rect,
+) -> (u16, u16) {
+    (content_x + gutter_w + pane_rect.x, row + pane_rect.y)
+}
+
 // ---------------------------------------------------------------------------
 // Viewport scroll helpers (no cursor movement)
 // ---------------------------------------------------------------------------

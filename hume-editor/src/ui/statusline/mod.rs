@@ -105,26 +105,37 @@ pub enum StatusElement {
     Diagnostics,
 }
 
+/// Wire-format name for every [`StatusElement`] variant — the single source
+/// both directions of the name↔variant mapping read from, so adding a
+/// variant is one entry here instead of three hand-kept-in-sync lists
+/// (`Display`, `FromStr`, and the error message's own name list, which had
+/// already drifted out of alphabetical order from the other two).
+const ELEMENT_NAMES: &[(&str, StatusElement)] = &[
+    ("Mode", StatusElement::Mode),
+    ("Separator", StatusElement::Separator),
+    ("FileName", StatusElement::FileName),
+    ("FilePath", StatusElement::FilePath),
+    ("Cwd", StatusElement::Cwd),
+    ("Position", StatusElement::Position),
+    ("Selections", StatusElement::Selections),
+    ("KittyProtocol", StatusElement::KittyProtocol),
+    ("DirtyIndicator", StatusElement::DirtyIndicator),
+    ("LineEnding", StatusElement::LineEnding),
+    ("SearchMatches", StatusElement::SearchMatches),
+    ("MiniBuf", StatusElement::MiniBuf),
+    ("MacroRecording", StatusElement::MacroRecording),
+    ("Language", StatusElement::Language),
+    ("ReadOnly", StatusElement::ReadOnly),
+    ("Diagnostics", StatusElement::Diagnostics),
+];
+
 impl fmt::Display for StatusElement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            StatusElement::Mode => "Mode",
-            StatusElement::Separator => "Separator",
-            StatusElement::FileName => "FileName",
-            StatusElement::FilePath => "FilePath",
-            StatusElement::Cwd => "Cwd",
-            StatusElement::Position => "Position",
-            StatusElement::Selections => "Selections",
-            StatusElement::KittyProtocol => "KittyProtocol",
-            StatusElement::DirtyIndicator => "DirtyIndicator",
-            StatusElement::LineEnding => "LineEnding",
-            StatusElement::SearchMatches => "SearchMatches",
-            StatusElement::MiniBuf => "MiniBuf",
-            StatusElement::MacroRecording => "MacroRecording",
-            StatusElement::Language => "Language",
-            StatusElement::ReadOnly => "ReadOnly",
-            StatusElement::Diagnostics => "Diagnostics",
-        })
+        let (name, _) = ELEMENT_NAMES
+            .iter()
+            .find(|(_, elem)| elem == self)
+            .expect("every StatusElement variant has an ELEMENT_NAMES entry");
+        f.write_str(name)
     }
 }
 
@@ -132,29 +143,15 @@ impl FromStr for StatusElement {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Mode" => Ok(StatusElement::Mode),
-            "Separator" => Ok(StatusElement::Separator),
-            "FileName" => Ok(StatusElement::FileName),
-            "FilePath" => Ok(StatusElement::FilePath),
-            "Cwd" => Ok(StatusElement::Cwd),
-            "Position" => Ok(StatusElement::Position),
-            "Selections" => Ok(StatusElement::Selections),
-            "KittyProtocol" => Ok(StatusElement::KittyProtocol),
-            "DirtyIndicator" => Ok(StatusElement::DirtyIndicator),
-            "LineEnding" => Ok(StatusElement::LineEnding),
-            "SearchMatches" => Ok(StatusElement::SearchMatches),
-            "MiniBuf" => Ok(StatusElement::MiniBuf),
-            "MacroRecording" => Ok(StatusElement::MacroRecording),
-            "Language" => Ok(StatusElement::Language),
-            "ReadOnly" => Ok(StatusElement::ReadOnly),
-            "Diagnostics" => Ok(StatusElement::Diagnostics),
-            _ => Err(format!(
-                "unknown element '{s}'; valid names: Cwd Diagnostics DirtyIndicator FilePath \
-                 FileName KittyProtocol Language LineEnding MacroRecording MiniBuf Mode Position \
-                 ReadOnly SearchMatches Selections Separator"
-            )),
-        }
+        ELEMENT_NAMES
+            .iter()
+            .find(|(name, _)| *name == s)
+            .map(|(_, elem)| *elem)
+            .ok_or_else(|| {
+                let mut names: Vec<&str> = ELEMENT_NAMES.iter().map(|(name, _)| *name).collect();
+                names.sort_unstable();
+                format!("unknown element '{s}'; valid names: {}", names.join(" "))
+            })
     }
 }
 

@@ -54,15 +54,6 @@ fn windows_verbatim_prefix_is_stripped() {
 }
 
 #[test]
-fn strip_verbatim_prefix_strips_but_not_unc() {
-    assert_eq!(strip_verbatim_prefix(r"\\?\C:\foo"), r"C:\foo");
-    assert_eq!(
-        strip_verbatim_prefix(r"\\?\UNC\server\share"),
-        r"\\?\UNC\server\share"
-    );
-}
-
-#[test]
 fn windows_unc_path_round_trips() {
     let path = Path::new(r"\\myserver\share\x.rs");
     assert_eq!(round_trip(path), path);

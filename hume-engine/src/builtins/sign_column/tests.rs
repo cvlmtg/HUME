@@ -234,7 +234,6 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
-        pane_bg: None,
         rope: &rope,
         default_gutter_scope: blank_scope,
     };
@@ -331,7 +330,6 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
-        pane_bg: None,
         rope: &rope,
         default_gutter_scope: blank_scope,
     };
@@ -591,7 +589,6 @@ fn multi_slot_column_renders_through_compose_gutter() {
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
-        pane_bg: None,
         rope: &rope,
         default_gutter_scope: blank_scope,
     };

@@ -299,11 +299,11 @@ fn no_wrap_block_counts_without_running_the_formatter() {
 }
 
 // ---------------------------------------------------------------------------
-// kind() / clamp() / last_line()
+// slot() / clamp() / last_line()
 // ---------------------------------------------------------------------------
 
 /// Line 0 wrapped into 2 content rows, with 2 Before rows and 1 After row:
-/// a 5-row block whose every row kind is hand-known.
+/// a 5-row block whose every row slot is hand-known.
 fn mixed_block_providers() -> ProviderSet {
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 2)));
@@ -312,7 +312,7 @@ fn mixed_block_providers() -> ProviderSet {
 }
 
 #[test]
-fn kind_classifies_every_row_of_a_mixed_block() {
+fn slot_classifies_every_row_of_a_mixed_block() {
     // "abcdefgh\n" at width 4 supplies 3 content rows, not 2: "efgh" exactly
     // fills the wrap width, so the trailing '\n's own sentinel wraps onto a
     // row of its own (see `content_row_char_bounds_scopes_to_one_wrap_row`).
@@ -322,16 +322,16 @@ fn kind_classifies_every_row_of_a_mixed_block() {
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(rm.block(0).total(), 6);
-    let kinds: Vec<RowKind> = (0..6).map(|row| rm.kind(RowPos::new(0, row))).collect();
+    let slots: Vec<BlockSlot> = (0..6).map(|row| rm.slot(RowPos::new(0, row))).collect();
     assert_eq!(
-        kinds,
+        slots,
         vec![
-            RowKind::Before(0),
-            RowKind::Before(1),
-            RowKind::Content(0),
-            RowKind::Content(1),
-            RowKind::Content(2),
-            RowKind::After(0),
+            BlockSlot::Before(0),
+            BlockSlot::Before(1),
+            BlockSlot::Content(0),
+            BlockSlot::Content(1),
+            BlockSlot::Content(2),
+            BlockSlot::After(0),
         ]
     );
 }

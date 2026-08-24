@@ -157,16 +157,12 @@ pub(crate) fn build_pane(
     providers.add_overlay(Box::new(PopupOverlay {
         data: Arc::clone(popup_view),
         scope: "ui.popup",
-        selected_scope: None,
-        scroll_scope: "ui.popup.scroll",
     }));
     // Registered last so the selection menu paints on top of a hover popup
     // (both showing at once is unusual, but the architecture allows it).
     providers.add_overlay(Box::new(PopupOverlay {
         data: Arc::clone(menu_view),
         scope: "ui.menu",
-        selected_scope: Some("ui.menu.selected"),
-        scroll_scope: "ui.menu.scroll",
     }));
     // The LSP completion menu — same widget shape as the selection menu
     // (selected-row styling), registered last (highest z-order): an
@@ -175,8 +171,6 @@ pub(crate) fn build_pane(
     providers.add_overlay(Box::new(PopupOverlay {
         data: Arc::clone(completion_menu_view),
         scope: "ui.menu",
-        selected_scope: Some("ui.menu.selected"),
-        scroll_scope: "ui.menu.scroll",
     }));
     // Registered last (highest z-order): the picker is full-modal and its
     // key routing sits above every other intercept (`handle_key`), so its

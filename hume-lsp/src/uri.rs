@@ -62,7 +62,10 @@ pub fn path_to_uri(path: &Path) -> Result<lsp_types::Uri, UriError> {
     }
 
     let path_str = path.to_str().ok_or(UriError::NotUtf8)?;
-    let stripped = strip_verbatim_prefix(path_str);
+    #[cfg(windows)]
+    let stripped = hume_platform::path::strip_verbatim(path).unwrap_or(path_str);
+    #[cfg(not(windows))]
+    let stripped = path_str;
 
     #[cfg(windows)]
     if let Some((host, rest)) = unc_host_and_rest(stripped) {
@@ -110,8 +113,8 @@ fn ensure_leading_slash(s: String) -> String {
 
 /// `\\server\share\rest` or `\\?\UNC\server\share\rest` -> `(server,
 /// "share\rest")`; `None` for anything else, including a plain local
-/// `\\?\`-verbatim path (already stripped by [`strip_verbatim_prefix`]
-/// before this runs).
+/// `\\?\`-verbatim path (already stripped by
+/// [`hume_platform::path::strip_verbatim`] before this runs).
 #[cfg(windows)]
 fn unc_host_and_rest(s: &str) -> Option<(&str, &str)> {
     let rest = s
@@ -272,24 +275,6 @@ fn percent_encode_path(path_str: &str) -> String {
         }
     }
     out
-}
-
-/// Strip a `\\?\` verbatim prefix (but not a `\\?\UNC\` one), mirroring
-/// `hume_platform::path::strip_unc_prefix`'s convention — this crate cannot
-/// depend on `hume-platform`, so the pattern is duplicated rather than
-/// imported.
-#[cfg(windows)]
-fn strip_verbatim_prefix(s: &str) -> &str {
-    const VERBATIM: &str = r"\\?\";
-    match s.strip_prefix(VERBATIM) {
-        Some(rest) if !rest.starts_with("UNC\\") => rest,
-        _ => s,
-    }
-}
-
-#[cfg(not(windows))]
-fn strip_verbatim_prefix(s: &str) -> &str {
-    s
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

@@ -31,10 +31,12 @@ pub(crate) struct ComposeCtx<'a> {
     /// From the `indent-guides` setting — gates the draw loop below.
     pub show_indent_guides: bool,
     pub pane_rect: ratatui::layout::Rect,
+    /// `theme.ui.background.bg` is read directly wherever a row/gutter cell
+    /// falls back to the pane's own background (trailing cells past the
+    /// last grapheme, blank gutter cells) rather than through a cached copy
+    /// on this struct — `theme` is already here, so a copy would only be
+    /// another place that value could drift from it.
     pub theme: &'a Theme,
-    /// Background colour from `ui.background`, threaded to every row so trailing
-    /// cells and gutter cells use the theme bg rather than the terminal default.
-    pub pane_bg: Option<ratatui::style::Color>,
     /// Buffer rope, passed to `GutterColumn::render_row` via `GutterRowCtx`
     /// so gutter providers (git-signs, diagnostics) can query buffer content
     /// without pre-owning it.
@@ -53,10 +55,9 @@ pub(crate) struct ComposeCtx<'a> {
 /// Wraps the ratatui `Buffer` and, when set, a dim target: fg/bg is blended
 /// toward it on every write. This is the single chokepoint for the non-focused
 /// pane dim effect — `compose_row` / `render_tilde_fillers` never touch `buf`
-/// directly, so a future write site cannot forget to dim. Replaces the old
-/// `dim_rect` post-pass (a second full-rect walk after `render_pane`) without
-/// reopening that gap: the blend still happens exactly once per cell, just
-/// inline in the single write instead of a separate sweep. Chrome (menus,
+/// directly, so a future write site cannot forget to dim: the blend happens
+/// exactly once per cell, inline in the single write, never a separate sweep
+/// over an already-drawn rect. Chrome (menus,
 /// pickers, the drawer, the statusline) is never dimmed, so it always passes
 /// `dim: None` — the field only ever blends for a pane.
 ///
@@ -68,7 +69,7 @@ pub struct Canvas<'a> {
     buf: &'a mut ratatui::buffer::Buffer,
     dim: Option<DimTarget>,
     /// Resolved from `theme.ui.invisible` once per frame — layered onto a
-    /// [`write_text_run`] placeholder cell so it reads distinctly from
+    /// [`Canvas::write_text_run`] placeholder cell so it reads distinctly from
     /// ordinary text (buffer text gets this same layering via `style_row`'s
     /// Tier 2d½; chrome has no per-cell style tiers of its own, so the canvas
     /// carries the one style every write needs for it).
@@ -78,8 +79,8 @@ pub struct Canvas<'a> {
 /// Flattened, per-cell-ready form of a `(Color, f32)` dim target.
 ///
 /// Resolving `Color::Rgb(..)` out of the enum happens once here, in
-/// `Canvas::new`, rather than on every `blend_color`/`blend_style` call —
-/// `dim` is loop-invariant for the whole pane, so re-matching it per cell
+/// `Canvas::new`, rather than on every `blend_style` call — `dim` is
+/// loop-invariant for the whole pane, so re-matching it per cell
 /// (once per gutter cell, per grapheme, per indent-guide cell) was pure
 /// per-frame overhead.
 #[derive(Clone, Copy)]
@@ -96,7 +97,8 @@ impl<'a> Canvas<'a> {
         theme: &Theme,
         dim: Option<(ratatui::style::Color, f32)>,
     ) -> Self {
-        // Non-RGB target is a no-op — mirrors the prior `dim_rect` semantics.
+        // Non-RGB colors (indexed/named) have no numeric target to blend
+        // toward, so they pass through undimmed — see `blend_toward`.
         let dim = dim.and_then(|(color, factor)| match color {
             ratatui::style::Color::Rgb(r, g, b) => Some(DimTarget { r, g, b, factor }),
             _ => None,
@@ -112,10 +114,43 @@ impl<'a> Canvas<'a> {
         set_cell(self.buf, x, y, text, blend_style(style, self.dim));
     }
 
-    /// [`write_text_run`] through this canvas's dim blend and resolved
-    /// invisible style. There is no `set_string` equivalent here: every text
-    /// write the frame makes is measured against a bound first, so all of
-    /// them go through this one method.
+    /// Write `text` cell by cell from `(x, y)`, stopping before `right_edge`,
+    /// and return the column just past the last cell written.
+    ///
+    /// The frame's single text writer for anything measured beforehand: UI
+    /// chrome (statusline, menus, pickers, the drawer) and gutter cells.
+    /// There is no `set_string` equivalent here, for two reasons.
+    ///
+    /// **It agrees with [`hume_rope::width`], the width model everything
+    /// else in the frame is measured with.** `set_string` uses its own: it
+    /// discards any grapheme holding a control character or measuring zero,
+    /// and adds a cell for a halfwidth dakuten. So a caller that sized a
+    /// field with `str_width` and then drew it with `set_string` could
+    /// reserve columns nothing was drawn in, or draw wider than it reserved.
+    /// Here the advance returned is exactly `str_width(text, 0, 1)`, because
+    /// that is the same per-cluster width this walks by — measurement and
+    /// drawing cannot drift, since they are one model. Chrome has no tab
+    /// stops of its own, so a tab measures and draws as exactly one cell — a
+    /// plain space — rather than advancing to the next multiple of some tab
+    /// width. Any other cluster the terminal must not be shown as itself (a
+    /// control character, or one measuring zero columns) draws as its
+    /// codepoint placeholder instead, the same substitution buffer text gets
+    /// from `format::grapheme_display` — `grapheme_width` already sized the
+    /// run for that placeholder, so it spans exactly the columns reserved
+    /// for it. That placeholder is drawn in this canvas's resolved
+    /// `theme.ui.invisible` rather than `style`, so it reads distinctly from
+    /// ordinary text — buffer text gets the same layering via `style_row`'s
+    /// Tier 2d½; chrome has no per-cell style tiers, so this is its
+    /// equivalent.
+    ///
+    /// **`right_edge` is required, not implied.** `set_string` clips at the
+    /// terminal buffer's edge and nothing narrower, so a caller drawing into
+    /// a pane, a gutter lane, or a bordered box had to remember to
+    /// pre-truncate or bleed past it. Taking the bound as an argument moves
+    /// that from something each call site remembers to something the
+    /// signature asks for. A cluster that would straddle `right_edge` is
+    /// dropped whole, never split — the same rule
+    /// [`hume_rope::width::truncate_to_width`] follows.
     pub fn write_text_run(
         &mut self,
         x: u16,
@@ -124,35 +159,127 @@ impl<'a> Canvas<'a> {
         style: ratatui::style::Style,
         right_edge: u16,
     ) -> u16 {
-        write_text_run(
-            self.buf,
-            x,
-            y,
-            text,
-            blend_style(style, self.dim),
-            blend_style(self.invisible_style, self.dim),
-            right_edge,
-        )
+        let style = blend_style(style, self.dim);
+        let invisible_style = blend_style(self.invisible_style, self.dim);
+        let mut cx = x;
+        for cluster in unicode_segmentation::UnicodeSegmentation::graphemes(text, true) {
+            // Classified once — tab vs. placeholder vs. plain is decided
+            // here, not re-tested per branch below (a tab is also a control
+            // character, so testing `needs_placeholder` first would draw a
+            // multi-cell `<9>` into the single cell reserved for it;
+            // `classify` itself orders that check, matching
+            // `format::grapheme_display`'s own tab-before-placeholder order).
+            let classified = hume_rope::width::classify(
+                cluster,
+                (cx - x) as usize,
+                hume_rope::width::CHROME_TAB_WIDTH,
+            );
+            // display-width-safe: Cluster::width() reads classify()'s own decision — not a second raw measurement.
+            let width = classified.width() as u16;
+            if cx.saturating_add(width) > right_edge {
+                break;
+            }
+            match classified {
+                hume_rope::width::Cluster::Tab { .. } => {
+                    // Chrome's tab is exactly one cell (see this method's
+                    // doc), so it draws as one plain space.
+                    set_cell(self.buf, cx, y, " ", style);
+                }
+                hume_rope::width::Cluster::Placeholder(p) => {
+                    // A cluster the terminal must not be shown as itself is
+                    // drawn as its codepoint, the same substitution buffer
+                    // text gets (`format::grapheme_display`). `classify`
+                    // above already sized the run for that placeholder, so
+                    // it spans exactly the columns reserved for it — one
+                    // cell per character of `<200b>`. `patch`, not a bare
+                    // replace, so a row's own background (a selected menu
+                    // row, a cursorline) still shows through — only the
+                    // fields `invisible_style` actually sets (fg, modifiers)
+                    // override.
+                    let placeholder_style = style.patch(invisible_style);
+                    for (i, ch) in p.as_str().chars().enumerate() {
+                        let mut glyph = [0u8; 4];
+                        set_cell(
+                            self.buf,
+                            cx + i as u16,
+                            y,
+                            ch.encode_utf8(&mut glyph),
+                            placeholder_style,
+                        );
+                    }
+                }
+                hume_rope::width::Cluster::Plain { .. } => {
+                    set_cell(self.buf, cx, y, cluster, style);
+                    // Blank the cells a double-width glyph covers, so
+                    // nothing already in the buffer shows through beside it
+                    // — the same thing `compose_row` does for a wide buffer
+                    // grapheme.
+                    for extra in 1..width {
+                        set_cell(self.buf, cx + extra, y, " ", style);
+                    }
+                }
+            }
+            cx += width;
+        }
+        cx
     }
 
-    /// [`fill_rect_bg`] through this canvas's dim blend — the chrome-facing
-    /// counterpart of the pane-only [`Canvas::fill_row_bg`]. Blending is
-    /// currently always a no-op here (chrome passes `dim: None`), but routing
-    /// through the canvas keeps every write, pane or chrome, going through
-    /// one blend point rather than two conventions.
+    /// Paint every cell of `rect` with a space glyph and `style`, clipping to
+    /// buffer bounds, through this canvas's dim blend.
+    ///
+    /// `Buffer::set_style` only rewrites `Style`, leaving previous glyphs
+    /// visible. Opaque overlays (popups, statusline fills) need to overwrite
+    /// the symbol too. The chrome-facing counterpart of the pane-only
+    /// [`Canvas::fill_row_bg`]; blending is currently always a no-op there
+    /// (chrome passes `dim: None`), but routing both through this one method
+    /// keeps every write, pane or chrome, going through one blend point
+    /// rather than two conventions.
     pub fn fill_rect_bg(&mut self, rect: ratatui::layout::Rect, style: ratatui::style::Style) {
-        fill_rect_bg(self.buf, rect, blend_style(style, self.dim));
+        let style = blend_style(style, self.dim);
+        let (x0, y0, x1, y1) = clamp_rect_to_buf(self.buf, rect);
+        for y in y0..y1 {
+            for x in x0..x1 {
+                // static-glyph-safe: blanks a cell, writes no text
+                self.buf[(x, y)].set_char(' ').set_style(style);
+            }
+        }
     }
 
+    /// Fill a horizontal span with spaces using an explicit background
+    /// colour — used for cursorline highlighting so the tint extends past
+    /// the last grapheme. A bg-only [`Canvas::fill_rect_bg`] style blends
+    /// identically to blending the colour alone, so this needs no separate
+    /// blend step of its own.
     fn fill_row_bg(&mut self, x_start: u16, x_end: u16, y: u16, bg: ratatui::style::Color) {
-        fill_row_bg(self.buf, x_start, x_end, y, blend_color(bg, self.dim));
+        self.fill_rect_bg(
+            ratatui::layout::Rect::new(x_start, y, x_end.saturating_sub(x_start), 1),
+            ratatui::style::Style::default().bg(bg),
+        );
     }
 
+    /// Fill a horizontal span of cells on row `y` with blank `Cell::default()`.
+    ///
+    /// Uses a single slice fill instead of per-cell `set_cell` calls. Cells
+    /// within a row are contiguous in ratatui's row-major backing Vec, so one
+    /// `index_of` + `fill` replaces N bounds-checked function calls. Clips
+    /// silently if `x_end` extends past the buffer boundary.
+    ///
     /// Writes `Cell::default()` (terminal-default colours), taken only when
-    /// `pane_bg` is `None` — which is exactly when `dim` is `None` too (the
-    /// pipeline gates both on the same `theme.ui.background.bg`). No blend needed.
+    /// `theme.ui.background.bg` is `None` — which is exactly when `dim` is
+    /// `None` too (the pipeline gates both on that same value). No blend needed.
     fn clear_row_span(&mut self, x_start: u16, x_end: u16, y: u16) {
-        clear_row_span(self.buf, x_start, x_end, y);
+        if x_start >= x_end {
+            return;
+        }
+        let area = self.buf.area();
+        let x_start = x_start.max(area.x);
+        let x_end = x_end.min(area.x + area.width);
+        if x_start >= x_end || y >= area.y + area.height {
+            return;
+        }
+        let start = self.buf.index_of(x_start, y);
+        let end = self.buf.index_of(x_end - 1, y) + 1;
+        self.buf.content[start..end].fill(ratatui::buffer::Cell::default());
     }
 }
 
@@ -237,7 +364,7 @@ fn compose_gutter(
             let style = gutter_cell_style(
                 cell.scope,
                 compose_ctx.theme,
-                row_bg.or(compose_ctx.pane_bg),
+                row_bg.or(compose_ctx.theme.ui.background.bg),
             );
 
             // Right-align within usable width. `usable_per_cell` bounds how
@@ -290,7 +417,7 @@ fn compose_gutter(
             let style = gutter_cell_style(
                 last_scope,
                 compose_ctx.theme,
-                row_bg.or(compose_ctx.pane_bg),
+                row_bg.or(compose_ctx.theme.ui.background.bg),
             );
             while gutter_x < lane_x + lane_width {
                 canvas.set_cell(gutter_x, y, " ", style);
@@ -352,7 +479,7 @@ pub(crate) fn compose_row(
 
     // Fill trailing cells with row bg (cursorline) or pane bg, so the theme
     // background shows past the last grapheme rather than the terminal default.
-    match row_bg.or(compose_ctx.pane_bg) {
+    match row_bg.or(compose_ctx.theme.ui.background.bg) {
         Some(bg) => canvas.fill_row_bg(content_x_origin, right_edge, y, bg),
         None => canvas.clear_row_span(content_x_origin, right_edge, y),
     }
@@ -488,13 +615,13 @@ pub(crate) fn compose_row(
             .first()
             .map(|g| g.indent_depth)
             .unwrap_or(0);
-        let tw = compose_ctx.tab_width.max(1) as u16;
-        // Draw a guide at each inner tab-stop: display col = k*tw for k in 1..depth.
-        // These positions are guaranteed to lie within the leading whitespace.
+        let tw = hume_rope::width::indent_stop(1, compose_ctx.tab_width);
+        // Draw a guide at each inner tab-stop. These positions are
+        // guaranteed to lie within the leading whitespace.
         for k in 1..depth {
-            let guide_display_col = k as u32 * tw as u32;
+            let guide_display_col = hume_rope::width::indent_stop(k as u32, compose_ctx.tab_width);
             // Account for horizontal scroll.
-            if guide_display_col + tw as u32 > h_offset {
+            if guide_display_col + tw > h_offset {
                 let content_x = guide_display_col.saturating_sub(h_offset);
                 debug_assert!(
                     u16::try_from(content_x).is_ok(),
@@ -545,15 +672,16 @@ pub(crate) fn render_tilde_fillers(
     {
         let y = compose_ctx.pane_rect.y + screen_row;
         let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
-        // Gutter first — it already paints a real background (row_bg/pane_bg
-        // patched with the column's scope, see `compose_gutter`) across the
+        // Gutter first — it already paints a real background (row_bg, or
+        // theme.ui.background.bg, patched with the column's scope, see
+        // `compose_gutter`) across the
         // whole gutter width, including column 0. The tilde below patches its
         // fg on top of that, matching editor convention: `~` sits at the
         // pane's left edge, ignoring/overriding the line-number gutter, never
         // shifted into the content area.
         compose_gutter(RowKind::Filler, lane_widths, compose_ctx, None, y, canvas);
         let content_x = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
-        match compose_ctx.pane_bg {
+        match compose_ctx.theme.ui.background.bg {
             Some(bg) => canvas.fill_row_bg(content_x, right_edge, y, bg),
             None => canvas.clear_row_span(content_x, right_edge, y),
         }
@@ -565,114 +693,6 @@ pub(crate) fn render_tilde_fillers(
 // ---------------------------------------------------------------------------
 // Cell write helper
 // ---------------------------------------------------------------------------
-
-/// Write `text` cell by cell from `(x, y)`, stopping before `right_edge`, and
-/// return the column just past the last cell written.
-///
-/// The frame's single text writer for anything measured beforehand: UI chrome
-/// (statusline, menus, pickers, the drawer) and gutter cells. `pub(crate)` —
-/// a caller outside this crate goes through [`Canvas::write_text_run`], which
-/// also supplies `invisible_style` (resolved once from `&Theme` at
-/// [`Canvas::new`]) and the pane's dim blend. Deliberately not ratatui's
-/// `Buffer::set_string`, for two reasons.
-///
-/// **It agrees with [`hume_rope::width`], the width model everything else in
-/// the frame is measured with.** `set_string` uses its own: it discards any
-/// grapheme holding a control character or measuring zero, and adds a cell for
-/// a halfwidth dakuten. So a caller that sized a field with `str_width` and
-/// then drew it with `set_string` could reserve columns nothing was drawn in,
-/// or draw wider than it reserved. Here the advance returned is exactly
-/// `str_width(text, 0, 1)`, because that is the same per-cluster width this
-/// walks by — measurement and drawing cannot drift, since they are one model.
-/// Chrome has no tab stops of its own, so a tab measures and draws as exactly
-/// one cell — a plain space — rather than advancing to the next multiple of
-/// some tab width. Any other cluster the terminal must not be shown as itself
-/// (a different control character, or one measuring zero columns) draws as
-/// its codepoint placeholder instead, the same substitution buffer text gets
-/// from `format::grapheme_display` — `grapheme_width` already sized the run
-/// for that placeholder, so it spans exactly the columns reserved for it.
-/// That placeholder is drawn in `invisible_style` (the caller's resolved
-/// `theme.ui.invisible`) rather than `style`, so it reads distinctly from
-/// ordinary text — buffer text gets the same layering via `style_row`'s
-/// Tier 2d½; chrome has no per-cell style tiers, so this is its equivalent.
-///
-/// **`right_edge` is required, not implied.** `set_string` clips at the
-/// terminal buffer's edge and nothing narrower, so a caller drawing into a
-/// pane, a gutter lane, or a bordered box had to remember to pre-truncate or
-/// bleed past it. Taking the bound as an argument moves that from something
-/// each call site remembers to something the signature asks for. A cluster
-/// that would straddle `right_edge` is dropped whole, never split — the same
-/// rule [`hume_rope::width::truncate_to_width`] follows.
-#[inline]
-pub(crate) fn write_text_run(
-    buf: &mut ratatui::buffer::Buffer,
-    x: u16,
-    y: u16,
-    text: &str,
-    style: ratatui::style::Style,
-    invisible_style: ratatui::style::Style,
-    right_edge: u16,
-) -> u16 {
-    let mut cx = x;
-    for cluster in unicode_segmentation::UnicodeSegmentation::graphemes(text, true) {
-        // Classified once — tab vs. placeholder vs. plain is decided here,
-        // not re-tested per branch below (a tab is also a control
-        // character, so testing `needs_placeholder` first would draw a
-        // multi-cell `<9>` into the single cell reserved for it; `classify`
-        // itself orders that check, matching `format::grapheme_display`'s
-        // own tab-before-placeholder order).
-        let classified = hume_rope::width::classify(
-            cluster,
-            (cx - x) as usize,
-            hume_rope::width::CHROME_TAB_WIDTH,
-        );
-        // display-width-safe: Cluster::width() reads classify()'s own decision — not a second raw measurement.
-        let width = classified.width() as u16;
-        if cx.saturating_add(width) > right_edge {
-            break;
-        }
-        match classified {
-            hume_rope::width::Cluster::Tab { .. } => {
-                // Chrome's tab is exactly one cell (see this function's
-                // doc), so it draws as one plain space.
-                set_cell(buf, cx, y, " ", style);
-            }
-            hume_rope::width::Cluster::Placeholder(p) => {
-                // A cluster the terminal must not be shown as itself is
-                // drawn as its codepoint, the same substitution buffer text
-                // gets (`format::grapheme_display`). `classify` above
-                // already sized the run for that placeholder, so it spans
-                // exactly the columns reserved for it — one cell per
-                // character of `<200b>`. `patch`, not a bare replace, so a
-                // row's own background (a selected menu row, a cursorline)
-                // still shows through — only the fields `invisible_style`
-                // actually sets (fg, modifiers) override.
-                let placeholder_style = style.patch(invisible_style);
-                for (i, ch) in p.as_str().chars().enumerate() {
-                    let mut glyph = [0u8; 4];
-                    set_cell(
-                        buf,
-                        cx + i as u16,
-                        y,
-                        ch.encode_utf8(&mut glyph),
-                        placeholder_style,
-                    );
-                }
-            }
-            hume_rope::width::Cluster::Plain { .. } => {
-                set_cell(buf, cx, y, cluster, style);
-                // Blank the cells a double-width glyph covers, so nothing
-                // already in the buffer shows through beside it — the same
-                // thing `compose_row` does for a wide buffer grapheme.
-                for extra in 1..width {
-                    set_cell(buf, cx + extra, y, " ", style);
-                }
-            }
-        }
-        cx += width;
-    }
-    cx
-}
 
 fn set_cell(
     buf: &mut ratatui::buffer::Buffer,
@@ -707,26 +727,6 @@ pub(crate) fn clamp_rect_to_buf(
     (x0, y0, x1, y1)
 }
 
-/// Paint every cell of `rect` with a space glyph and `style`, clipping to buffer bounds.
-///
-/// `Buffer::set_style` only rewrites `Style`, leaving previous glyphs visible.
-/// Opaque overlays (popups, statusline fills) need to overwrite the symbol too.
-/// `pub(crate)` — a caller outside this crate goes through [`Canvas::fill_rect_bg`].
-#[inline]
-pub(crate) fn fill_rect_bg(
-    buf: &mut ratatui::buffer::Buffer,
-    rect: ratatui::layout::Rect,
-    style: ratatui::style::Style,
-) {
-    let (x0, y0, x1, y1) = clamp_rect_to_buf(buf, rect);
-    for y in y0..y1 {
-        for x in x0..x1 {
-            // static-glyph-safe: blanks a cell, writes no text
-            buf[(x, y)].set_char(' ').set_style(style);
-        }
-    }
-}
-
 /// Blend `color` toward `target` by `factor` (0.0 = unchanged, 1.0 = fully
 /// `target`). Non-RGB colors (indexed/named) are returned unchanged — HUME
 /// requires true-color themes (see project CLAUDE.md), so callers only ever
@@ -745,15 +745,6 @@ fn blend_toward(
     Color::Rgb(lerp(r, target.0), lerp(g, target.1), lerp(b, target.2))
 }
 
-/// Blend a single colour toward `dim`'s target, if any.
-#[inline]
-fn blend_color(color: ratatui::style::Color, dim: Option<DimTarget>) -> ratatui::style::Color {
-    let Some(target) = dim else {
-        return color;
-    };
-    blend_toward(color, (target.r, target.g, target.b), target.factor)
-}
-
 /// Blend both fg and bg of `style` toward `dim`'s target, if any. `None`
 /// fg/bg are left as-is (no colour to blend).
 #[inline]
@@ -768,46 +759,6 @@ fn blend_style(mut style: ratatui::style::Style, dim: Option<DimTarget>) -> rata
         }
     }
     style
-}
-
-/// Fill a horizontal span with spaces using an explicit background colour.
-///
-/// Used for cursorline highlighting so the tint extends past the last grapheme.
-#[inline]
-fn fill_row_bg(
-    buf: &mut ratatui::buffer::Buffer,
-    x_start: u16,
-    x_end: u16,
-    y: u16,
-    bg: ratatui::style::Color,
-) {
-    fill_rect_bg(
-        buf,
-        ratatui::layout::Rect::new(x_start, y, x_end.saturating_sub(x_start), 1),
-        ratatui::style::Style::default().bg(bg),
-    );
-}
-
-/// Fill a horizontal span of cells on row `y` with blank `Cell::default()`.
-///
-/// Uses a single slice fill instead of per-cell `set_cell` calls.
-/// Cells within a row are contiguous in ratatui's row-major backing Vec, so
-/// one `index_of` + `fill` replaces N bounds-checked function calls.
-/// Clips silently if `x_end` extends past the buffer boundary.
-#[inline]
-fn clear_row_span(buf: &mut ratatui::buffer::Buffer, x_start: u16, x_end: u16, y: u16) {
-    if x_start >= x_end {
-        return;
-    }
-    let area = buf.area();
-    let x_start = x_start.max(area.x);
-    let x_end = x_end.min(area.x + area.width);
-    if x_start >= x_end || y >= area.y + area.height {
-        return;
-    }
-    let start = buf.index_of(x_start, y);
-    let end = buf.index_of(x_end - 1, y) + 1;
-    buf.content[start..end].fill(ratatui::buffer::Cell::default());
 }
 
 // ---------------------------------------------------------------------------

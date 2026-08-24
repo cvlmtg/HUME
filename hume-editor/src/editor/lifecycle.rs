@@ -429,13 +429,13 @@ impl Editor {
                 // so the bar cursor lands inside the pane, not at the
                 // origin. The focused pane is always a live layout leaf (see
                 // `close_focused_pane`/`split_pane_onto`), so this can't miss.
-                let (ox, oy) = self
+                let pane_rect = self
                     .view
                     .pane_rect(self.state.focused_pane_id)
-                    .map(|r| (r.x, r.y))
                     .expect("focused pane must have a rect after prepare_frame");
-                ctx.cursor_content_pos
-                    .map(|(content_x, row)| (content_x + gutter_w + ox, row + oy))
+                ctx.cursor_content_pos.map(|(content_x, row)| {
+                    super::mouse::content_pos_to_screen(content_x, row, gutter_w, pane_rect)
+                })
             } else {
                 None
             };

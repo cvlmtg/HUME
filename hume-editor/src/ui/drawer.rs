@@ -64,12 +64,25 @@ pub(crate) struct DrawerWidget {
     pub(crate) data: Arc<RwLock<Option<DrawerViewState>>>,
 }
 
+/// Outer row count for a drawer showing `items` rows, capped at `max` — the
+/// single source of truth for this arithmetic, shared by
+/// [`DrawerWidget::height`] (what the engine paints against) and
+/// `Editor::drawer_visible_rows` (what the Ctrl+u/Ctrl+d half-page handlers
+/// and `clamp_drawer_scroll` page against), mirroring how `ui::popup`'s own
+/// `band_capacity` is shared by its band widget and visible-rows helper.
+///
+/// `+1` reserves row 0, the blank padding row (visual gap from the pane
+/// above) — always present regardless of item count.
+pub(crate) fn band_capacity(items: usize, max: u16) -> u16 {
+    (items as u16 + 1).min(max)
+}
+
 impl BottomBandProvider for DrawerWidget {
     fn height(&self, max: u16) -> u16 {
         let guard = self.data.read_or_panic();
         guard
             .as_ref()
-            .map_or(0, |s| (s.rows.len() as u16 + 1).min(max))
+            .map_or(0, |s| band_capacity(s.rows.len(), max))
     }
 
     fn render(&self, area: Rect, theme: &Theme, buf: &mut ScreenBuf) {
@@ -96,13 +109,17 @@ impl BottomBandProvider for DrawerWidget {
         {
             let row_idx = state.scroll + i;
             let y = area.y + 1 + i as u16;
-            if row_idx == state.selected {
-                // Highlight bar always wins, same as `draw_menu_box`.
-                canvas.fill_rect_bg(Rect::new(area.x, y, area.width, 1), selected_style);
-                canvas.write_text_run(area.x, y, item, selected_style, area.x + area.width);
-            } else {
-                canvas.write_text_run(area.x, y, item, style, area.x + area.width);
-            }
+            super::menu_box::draw_list_row(
+                &mut canvas,
+                area.x,
+                y,
+                area.width,
+                area.x + area.width,
+                item,
+                row_idx == state.selected,
+                selected_style,
+                style,
+            );
         }
     }
 }

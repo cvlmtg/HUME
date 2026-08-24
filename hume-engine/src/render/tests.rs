@@ -66,7 +66,6 @@ fn renders_simple_text() {
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
-        pane_bg: None,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
@@ -130,7 +129,6 @@ fn filler_rows_have_tilde() {
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
-        pane_bg: None,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
@@ -187,7 +185,6 @@ fn do_compose_row(
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
-        pane_bg: None,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
@@ -521,7 +518,6 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         show_indent_guides: false,
         pane_rect,
         theme: &theme,
-        pane_bg: None,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
@@ -760,7 +756,6 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
-        pane_bg: None,
         rope: &rope,
         default_gutter_scope,
     };
@@ -843,7 +838,6 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
-        pane_bg: None,
         rope: &rope,
         default_gutter_scope,
     };
@@ -979,7 +973,6 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
-        pane_bg: None,
         rope: &rope,
         default_gutter_scope,
     };
@@ -1093,7 +1086,6 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
-        pane_bg: None,
         rope: &rope,
         default_gutter_scope,
     };
@@ -1214,7 +1206,6 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             show_indent_guides: true,
             pane_rect,
             theme: &theme,
-            pane_bg: None,
             rope: &rope,
             default_gutter_scope,
         };
@@ -1330,7 +1321,6 @@ fn gutter_column_reads_rope_via_ctx() {
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
-        pane_bg: None,
         rope: &rope,
         default_gutter_scope,
     };
@@ -1371,8 +1361,9 @@ fn clear_row_span_fills_with_blank() {
     for x in 0..10 {
         set_cell(&mut buf, x, 1, "X", ratatui::style::Style::default());
     }
+    let theme = Theme::default();
     // Clear the middle 4 columns of row 1.
-    clear_row_span(&mut buf, 3, 7, 1);
+    Canvas::new(&mut buf, &theme, None).clear_row_span(3, 7, 1);
     for x in 0..10 {
         let sym = buf
             .cell(ratatui::layout::Position { x, y: 1 })
@@ -1392,8 +1383,9 @@ fn clear_row_span_clips_right_edge() {
     for x in 0..10 {
         set_cell(&mut buf, x, 0, "X", ratatui::style::Style::default());
     }
+    let theme = Theme::default();
     // x_end extends past the buffer's right edge — should clip, not panic.
-    clear_row_span(&mut buf, 8, 20, 0);
+    Canvas::new(&mut buf, &theme, None).clear_row_span(8, 20, 0);
     for x in 0..10 {
         let sym = buf
             .cell(ratatui::layout::Position { x, y: 0 })
@@ -1410,9 +1402,11 @@ fn clear_row_span_clips_right_edge() {
 #[test]
 fn clear_row_span_empty_range_no_panic() {
     let mut buf = make_test_buf(10, 3);
+    let theme = Theme::default();
     // x_start == x_end and x_start > x_end should both be no-ops.
-    clear_row_span(&mut buf, 5, 5, 0);
-    clear_row_span(&mut buf, 7, 3, 0);
+    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    canvas.clear_row_span(5, 5, 0);
+    canvas.clear_row_span(7, 3, 0);
 }
 
 // ── fused dim (compose path) ───────────────────────────────────────
@@ -1459,7 +1453,6 @@ fn compose_row_dims_cells_inline() {
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
-        pane_bg: Some(Color::Rgb(0, 0, 0)),
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
@@ -1523,7 +1516,6 @@ fn compose_row_non_rgb_dim_target_is_noop() {
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
-        pane_bg: Some(Color::Rgb(0, 0, 0)),
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
@@ -1568,8 +1560,8 @@ fn fill_rect_bg_clears_stale_modifiers() {
     );
 
     let menu_style: ratatui::style::Style = ResolvedStyle::default().into();
-    fill_rect_bg(
-        &mut buf,
+    let theme = Theme::default();
+    Canvas::new(&mut buf, &theme, None).fill_rect_bg(
         ratatui::layout::Rect {
             x: 0,
             y: 0,
@@ -1602,8 +1594,8 @@ fn write_text_run_draws_a_tab_as_one_space_not_a_placeholder() {
     // corrupting whatever followed it.
     let mut buf = make_test_buf(10, 1);
     let style = ratatui::style::Style::default();
-    let invisible_style = ratatui::style::Style::default();
-    let after = write_text_run(&mut buf, 0, 0, "a\tb", style, invisible_style, 10);
+    let theme = Theme::default();
+    let after = Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "a\tb", style, 10);
 
     assert_eq!(buf[(0, 0)].symbol(), "a");
     assert_eq!(buf[(1, 0)].symbol(), " ", "a tab draws as a single space");
@@ -1626,8 +1618,12 @@ fn write_text_run_still_shows_a_genuine_placeholder_cluster_as_its_codepoint() {
     // tell it apart from ordinary text.
     let mut buf = make_test_buf(10, 1);
     let style = ratatui::style::Style::default().fg(ratatui::style::Color::White);
-    let invisible_style = ratatui::style::Style::default().fg(ratatui::style::Color::Red);
-    let after = write_text_run(&mut buf, 0, 0, "a\u{200b}b", style, invisible_style, 10);
+    let mut theme = Theme::default();
+    theme.ui.invisible = ResolvedStyle {
+        fg: Some(ratatui::style::Color::Red),
+        ..Default::default()
+    };
+    let after = Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "a\u{200b}b", style, 10);
 
     assert_eq!(buf[(0, 0)].symbol(), "a");
     assert_eq!(buf[(0, 0)].fg, ratatui::style::Color::White);

@@ -35,7 +35,6 @@ use ratatui::style::Style;
 use hume_engine::providers::{BottomBandProvider, OverlayProvider, SyntaxSpans};
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
-use hume_engine::types::Scope;
 use hume_scripting::host::PopupKind;
 
 use super::menu_box::{MenuBoxStyles, draw_menu_box};
@@ -239,20 +238,10 @@ pub(crate) struct PopupState {
 /// its own `Arc`, for the selection menu and completion menu.
 pub(crate) struct PopupOverlay {
     pub(crate) data: Arc<RwLock<Option<PopupState>>>,
-    /// Scope resolved for the background/text fill (`ui.popup` for hover
-    /// popups, `ui.menu` for menus).
+    /// Root scope for the background/text fill (`ui.popup` for hover popups,
+    /// `ui.menu` for menus) — [`MenuBoxStyles::resolve`] derives the
+    /// highlighted-row and scrollbar-thumb styles from it.
     pub(crate) scope: &'static str,
-    /// Scope for the highlighted row, used when `state.selected.is_some()`
-    /// (menus only — `None` for plain popups, which never highlight a row).
-    pub(crate) selected_scope: Option<&'static str>,
-    /// Scope for the scrollbar thumb (`ui.popup.scroll` / `ui.menu.scroll`).
-    /// Falls back to `scope`'s own style via the theme's dot-notation chain
-    /// when a theme doesn't define it — see `Theme::resolve_raw`. Unlike the
-    /// statusline separator (`EditorColors::from_theme`, `ui/theme.rs`), this
-    /// fallback target is never mode-tinted, so an absent scope only degrades
-    /// the thumb to the border's own color rather than painting the wrong
-    /// background — a plain dot-fallback is safe here.
-    pub(crate) scroll_scope: &'static str,
 }
 
 impl OverlayProvider for PopupOverlay {
@@ -270,22 +259,12 @@ impl OverlayProvider for PopupOverlay {
         let outer = Rect::new(state.x, state.y, state.outer_w, state.outer_h);
 
         // Defensive clip: the write side computed (x, y) against this same
-        // pane's rect this same frame, so this should never trigger — but
-        // painting outside the pane is worse than a dropped frame of content.
-        if outer.x < pane_rect.x
-            || outer.y < pane_rect.y
-            || outer.x + outer.width > pane_rect.x + pane_rect.width
-            || outer.y + outer.height > pane_rect.y + pane_rect.height
-        {
+        // pane's rect this same frame, so this should never trigger — see
+        // `fits_inside`'s doc.
+        if !super::menu_box::fits_inside(outer, pane_rect) {
             return;
         }
 
-        let style = theme.resolve_by_name(Scope(self.scope)).into();
-        let selected_style = self
-            .selected_scope
-            .map(|s| theme.resolve_by_name(Scope(s)).into())
-            .unwrap_or(style);
-        let scroll_style = theme.resolve_by_name(Scope(self.scroll_scope)).into();
         let mut canvas = Canvas::new(buf, theme, None);
         draw_menu_box(
             &mut canvas,
@@ -294,11 +273,7 @@ impl OverlayProvider for PopupOverlay {
             state.selected,
             state.scroll,
             state.border,
-            MenuBoxStyles {
-                base: style,
-                selected: selected_style,
-                scroll: scroll_style,
-            },
+            MenuBoxStyles::resolve(theme, self.scope),
             state.styled_rows.as_ref().map(|rows| rows.as_slice()),
         );
     }
@@ -358,8 +333,6 @@ impl BottomBandProvider for PopupBandWidget {
         }
         let guard = self.data.read_or_panic();
         let Some(state) = guard.as_ref() else { return };
-        let style = theme.resolve_by_name(Scope("ui.popup")).into();
-        let scroll_style = theme.resolve_by_name(Scope("ui.popup.scroll")).into();
         let mut canvas = Canvas::new(buf, theme, None);
         draw_menu_box(
             &mut canvas,
@@ -368,11 +341,7 @@ impl BottomBandProvider for PopupBandWidget {
             None,
             state.scroll,
             state.border,
-            MenuBoxStyles {
-                base: style,
-                selected: style,
-                scroll: scroll_style,
-            },
+            MenuBoxStyles::resolve(theme, "ui.popup"),
             state.styled_rows.as_ref().map(|rows| rows.as_slice()),
         );
     }

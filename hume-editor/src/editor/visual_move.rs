@@ -8,7 +8,7 @@
 use hume_editing::selection::{DisplayColOrigin, Selection, StickyDisplayCol};
 use hume_editing::text::Text;
 use hume_engine::pipeline::EngineView;
-use hume_engine::rows::{DisplayColTarget, RowKind, RowMap};
+use hume_engine::rows::{BlockSlot, DisplayColTarget, RowMap};
 use hume_ops::MotionMode;
 use hume_ops::text_object::{
     apply_nearest_word_result, cmd_select_word_nearest_on_line, nearest_word_on_line,
@@ -50,7 +50,7 @@ fn move_vertical(
             break; // document start/end — clamp to the last row reached
         };
         pos = next;
-        let is_content = matches!(rm.kind(pos), RowKind::Content(_));
+        let is_content = matches!(rm.slot(pos), BlockSlot::Content(_));
         if is_content {
             last_content = pos;
         }
@@ -242,12 +242,16 @@ pub(super) fn apply_visual_vertical(
 // Public commands
 // ---------------------------------------------------------------------------
 
-pub(super) fn cmd_visual_move_down(
+/// Shared body of [`cmd_visual_move_down`]/[`cmd_visual_move_up`] — the two
+/// differ only in `down`, so they delegate here rather than each carrying
+/// their own copy of the count-unit decision.
+fn visual_move_vertical(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
+    down: bool,
     mode: MotionMode,
-) -> Result<(), CommandError> {
+) {
     // A count typed by the user (e.g. `9j`) means "9 buffer lines" — matching
     // relative-line-number gutters — even when soft-wrap is on.
     let unit = if state.explicit_count {
@@ -255,7 +259,16 @@ pub(super) fn cmd_visual_move_down(
     } else {
         VerticalUnit::ContentRow
     };
-    apply_visual_vertical(state, view, count, true, mode, unit);
+    apply_visual_vertical(state, view, count, down, mode, unit);
+}
+
+pub(super) fn cmd_visual_move_down(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    count: usize,
+    mode: MotionMode,
+) -> Result<(), CommandError> {
+    visual_move_vertical(state, view, count, true, mode);
     Ok(())
 }
 
@@ -265,12 +278,7 @@ pub(super) fn cmd_visual_move_up(
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let unit = if state.explicit_count {
-        VerticalUnit::BufferLine
-    } else {
-        VerticalUnit::ContentRow
-    };
-    apply_visual_vertical(state, view, count, false, mode, unit);
+    visual_move_vertical(state, view, count, false, mode);
     Ok(())
 }
 

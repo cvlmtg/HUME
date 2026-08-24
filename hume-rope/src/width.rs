@@ -216,6 +216,14 @@ pub fn indent_depth(line: &str, tab_width: u8) -> u8 {
     (display_col / tw).min(u8::MAX as usize) as u8
 }
 
+/// Display column of the `k`-th indent stop (`k` indent levels of
+/// `tab_width` display columns each) — the inverse of [`indent_depth`].
+/// `tab_width < 1` is clamped to 1, the same clamp `indent_depth` applies, so
+/// the two can never disagree about what one indent level is worth.
+pub fn indent_stop(k: u32, tab_width: u8) -> u32 {
+    k * (tab_width as u32).max(1)
+}
+
 /// Longest prefix of `s` whose display width fits within `max_display_width`
 /// display columns, and that prefix's width. Never splits a grapheme
 /// cluster: one that would overshoot the budget is dropped whole, so the

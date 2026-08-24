@@ -9,6 +9,8 @@ use ratatui::style::Style;
 use ratatui::symbols::line;
 
 use hume_engine::render::Canvas;
+use hume_engine::theme::Theme;
+use hume_engine::types::Scope;
 
 use super::popup::StyledRow;
 use super::width::text_width;
@@ -27,8 +29,39 @@ pub(crate) struct MenuBoxStyles {
     pub(crate) scroll: Style,
 }
 
+impl MenuBoxStyles {
+    /// Resolve all three styles from one root scope (`"ui.popup"` or
+    /// `"ui.menu"`) — the single place that pairs each root with its
+    /// `.selected`/`.scroll` leaves, so the three every popup/menu overlay
+    /// paints with can't drift out of sync with each other. Leaf names are
+    /// paired here rather than built with `format!` because `Scope` requires
+    /// a `&'static str`, which a runtime-joined `String` can't provide.
+    ///
+    /// A root with no `.selected` leaf (`"ui.popup"` — hover popups never
+    /// highlight a row) falls back to `base`, matching what an undefined
+    /// theme scope would already resolve to via `Theme::resolve_by_name`'s
+    /// own dot-notation chain.
+    pub(crate) fn resolve(theme: &Theme, scope: &'static str) -> Self {
+        let (selected_scope, scroll_scope): (Option<&'static str>, &'static str) = match scope {
+            "ui.menu" => (Some("ui.menu.selected"), "ui.menu.scroll"),
+            "ui.popup" => (None, "ui.popup.scroll"),
+            _ => (None, scope),
+        };
+        let base: Style = theme.resolve_by_name(Scope(scope)).into();
+        let selected = selected_scope
+            .map(|s| theme.resolve_by_name(Scope(s)).into())
+            .unwrap_or(base);
+        let scroll: Style = theme.resolve_by_name(Scope(scroll_scope)).into();
+        Self {
+            base,
+            selected,
+            scroll,
+        }
+    }
+}
+
 /// Maximum number of visible rows inside a menu/popup box (excluding the
-/// 1-cell frame). Both overlays scroll past this using [`visible_window`].
+/// 1-cell frame). Both overlays scroll past this using [`window`].
 pub(crate) const MAX_MENU_ROWS: u16 = 10;
 
 /// Widest row's display width — stable across scrolling, so the box doesn't
@@ -48,30 +81,33 @@ pub(crate) fn outer_dims(rows: &[String], row_cap: u16) -> (u16, u16) {
     (outer_w, outer_h)
 }
 
-/// Return `(scroll_offset, visible_slice)` such that `selected` is inside
-/// the visible window of `max_height` entries.
-fn visible_window(rows: &[String], selected: usize, max_height: usize) -> (usize, &[String]) {
+/// Return `(scroll_offset, visible_slice)` for a window of `max_height`
+/// entries starting as close to `desired_start` as `rows` allows — clamped so
+/// the window never runs past the end. Shared by both callers in
+/// `draw_menu_box`: a menu passes `sel.saturating_sub(max_height / 2)` to
+/// keep the selected row anchored near the window's center; a plain popup
+/// passes `scroll` directly, so the window start is exactly the scroll
+/// position.
+fn window(rows: &[String], desired_start: usize, max_height: usize) -> (usize, &[String]) {
     let total = rows.len();
     if total <= max_height {
         return (0, rows);
     }
-    // Keep `selected` visible by anchoring the window.
-    let start = selected
-        .saturating_sub(max_height / 2)
-        .min(total - max_height);
+    let start = desired_start.min(total - max_height);
     (start, &rows[start..start + max_height])
 }
 
-/// Return `(scroll_offset, visible_slice)` for a plain popup (no selected
-/// row) windowed from `scroll` — unlike [`visible_window`], the window start
-/// is exactly `scroll`, clamped so it never runs past the end of `rows`.
-fn scroll_window(rows: &[String], scroll: usize, max_height: usize) -> (usize, &[String]) {
-    let total = rows.len();
-    if total <= max_height {
-        return (0, rows);
-    }
-    let start = scroll.min(total - max_height);
-    (start, &rows[start..start + max_height])
+/// Whether `outer` fits entirely inside `pane_rect`. Shared by every overlay
+/// that positions itself against a pane rect resolved earlier in the frame
+/// (`PopupOverlay`, `PickerOverlay`) as a defensive backstop: the write side
+/// already computed `outer` against this same rect this same frame, so this
+/// should never return `false` — but painting outside the pane is worse than
+/// a dropped frame of content.
+pub(crate) fn fits_inside(outer: Rect, pane_rect: Rect) -> bool {
+    outer.x >= pane_rect.x
+        && outer.y >= pane_rect.y
+        && outer.x + outer.width <= pane_rect.x + pane_rect.width
+        && outer.y + outer.height <= pane_rect.y + pane_rect.height
 }
 
 /// Overdraws `outer`'s 1-cell frame with box-drawing glyphs (`┌─┐└┘│`).
@@ -167,8 +203,8 @@ pub(crate) fn draw_menu_box(
 
     let inner_h = (outer.height - 2) as usize;
     let (scroll_offset, visible_rows) = match selected {
-        Some(sel) => visible_window(rows, sel, inner_h),
-        None => scroll_window(rows, scroll, inner_h),
+        Some(sel) => window(rows, sel.saturating_sub(inner_h / 2), inner_h),
+        None => window(rows, scroll, inner_h),
     };
 
     // 1. Fill the entire outer rectangle with the popup background. This
@@ -210,20 +246,55 @@ pub(crate) fn draw_menu_box(
     for (i, row_text) in visible_rows.iter().enumerate() {
         let y = outer.y + 1 + i as u16;
         let row_idx = scroll_offset + i;
+        let is_selected = selected == Some(row_idx);
 
-        if selected == Some(row_idx) {
-            // Highlight the full inner width so the selection bar is uniform.
-            let inner_rect = Rect::new(text_x, y, outer.width.saturating_sub(2), 1);
-            canvas.fill_rect_bg(inner_rect, styles.selected);
-            canvas.write_text_run(text_x, y, row_text, styles.selected, text_right);
-        } else if let Some(runs) = styled.and_then(|rows| rows.get(row_idx)) {
+        // Highlight bar always wins, even over a styled row — a selected row
+        // never needs per-run markdown styling, just the plain highlight.
+        if !is_selected && let Some(runs) = styled.and_then(|rows| rows.get(row_idx)) {
             // The base fill (step 1) already covers the row — runs are
             // contiguous and together span exactly `row_text`, so there are
             // no gaps left for `styles.base` to show through.
             paint_styled_row(canvas, text_x, y, runs, text_right);
         } else {
-            canvas.write_text_run(text_x, y, row_text, styles.base, text_right);
+            draw_list_row(
+                canvas,
+                text_x,
+                y,
+                outer.width.saturating_sub(2),
+                text_right,
+                row_text,
+                is_selected,
+                styles.selected,
+                styles.base,
+            );
         }
+    }
+}
+
+/// Paint one row of a scrolling list: a full-width highlight-bar fill plus
+/// its text in `selected_style` when `is_selected`, or just the text in
+/// `base_style` otherwise. Shared by every list-style overlay
+/// ([`draw_menu_box`], `super::picker_panel::draw_picker_panel`,
+/// `super::drawer::DrawerWidget::render`) so the fill-then-write shape can't
+/// drift between them — each caller still owns its own row-index bookkeeping
+/// and text truncation, which differ in kind, not just in value, between them.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn draw_list_row(
+    canvas: &mut Canvas,
+    x: u16,
+    y: u16,
+    highlight_width: u16,
+    right_edge: u16,
+    text: &str,
+    is_selected: bool,
+    selected_style: Style,
+    base_style: Style,
+) {
+    if is_selected {
+        canvas.fill_rect_bg(Rect::new(x, y, highlight_width, 1), selected_style);
+        canvas.write_text_run(x, y, text, selected_style, right_edge);
+    } else {
+        canvas.write_text_run(x, y, text, base_style, right_edge);
     }
 }
 

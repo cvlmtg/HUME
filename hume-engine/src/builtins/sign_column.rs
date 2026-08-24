@@ -87,7 +87,10 @@ impl SignColumn {
     }
 
     /// Remove the sign source registered under `id`. Returns `true` if one
-    /// was removed.
+    /// was removed. No production caller — sign sources are registered for
+    /// a buffer's lifetime and never individually retracted; kept as a test
+    /// helper for exercising multi-source lane resolution.
+    #[cfg(test)]
     pub fn remove_source(&mut self, id: ProviderId) -> bool {
         let before = self.sources.len();
         self.sources.retain(|(pid, _)| *pid != id);

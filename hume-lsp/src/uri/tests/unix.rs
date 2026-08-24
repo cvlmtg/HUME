@@ -110,6 +110,10 @@ fn uri_to_path_rejects_non_localhost_authority() {
 // ── Windows-shaped: string-level, runs on every OS ──────────────────────
 
 #[test]
-fn strip_verbatim_prefix_is_a_no_op_off_windows() {
-    assert_eq!(strip_verbatim_prefix(r"\\?\C:\foo"), r"\\?\C:\foo");
+fn a_windows_shaped_verbatim_prefix_round_trips_unmodified_off_windows() {
+    // `\\?\` is meaningful only to the Windows path API — off Windows it's
+    // just ordinary filename bytes, so verbatim-prefix stripping must never
+    // fire here.
+    let path = Path::new(r"/tmp/\\?\C:\foo");
+    assert_eq!(round_trip(path), path);
 }

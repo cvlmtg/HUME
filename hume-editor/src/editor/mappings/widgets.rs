@@ -247,18 +247,19 @@ impl Editor {
         capacity.saturating_sub(2) as usize
     }
 
-    /// Number of drawer rows visible at once — the same capacity
-    /// `DrawerProvider::height` will paint against next frame. `max` mirrors
-    /// that provider's own ceiling (half the last-rendered *terminal*
-    /// height, not the already-chrome-reduced pane height). Shared by
-    /// `clamp_drawer_scroll` and the Ctrl+u/Ctrl+d half-page handlers so
-    /// "half a page" always agrees with what's on screen.
+    /// Number of drawer rows visible at once — computed via
+    /// `crate::ui::drawer::band_capacity`, the same helper
+    /// `DrawerWidget::height` calls to size what it paints next frame. `max`
+    /// mirrors that provider's own ceiling (half the last-rendered
+    /// *terminal* height, not the already-chrome-reduced pane height).
+    /// Shared by `clamp_drawer_scroll` and the Ctrl+u/Ctrl+d half-page
+    /// handlers so "half a page" always agrees with what's on screen.
     fn drawer_visible_rows(&self) -> usize {
         let max = self.view.last_terminal_area.height / 2;
         let Some(drawer) = self.state.config.drawer.as_ref() else {
             return 0;
         };
-        let capacity = (drawer.items.len() as u16 + 1).min(max);
+        let capacity = crate::ui::drawer::band_capacity(drawer.items.len(), max);
         capacity.saturating_sub(1) as usize
     }
 

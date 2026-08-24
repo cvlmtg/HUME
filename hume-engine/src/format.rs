@@ -247,11 +247,11 @@ pub fn format_buffer_line(
 
     // `WrapMode { width }` stays terminal-bounded (`u16`) — widened here since
     // it's compared against `current_display_col`, which now tracks a document column
-    // that can exceed a `u16`.
-    let wrap_width = wrap_mode.wrap_width().map_or(u32::MAX, u32::from); // u32::MAX = sentinel for "no wrap"
+    // that can exceed a `u16`. `None` means no wrap.
+    let wrap_width: Option<u32> = wrap_mode.wrap_width().map(u32::from);
     // For indent-wrap, continuation rows start at this column.
     let indent_display_cols: u32 = if matches!(wrap_mode, WrapMode::Indent { .. }) {
-        (indent_depth as u32) * (tab_width as u32)
+        hume_rope::width::indent_stop(indent_depth as u32, tab_width)
     } else {
         0
     };
@@ -273,7 +273,6 @@ pub fn format_buffer_line(
         row_g_start: graphemes_out.len(),
         // Word-wrap state: remember the last whitespace position in the current row.
         last_ws_g_idx: graphemes_out.len(), // grapheme index of last ws boundary
-        last_ws_was_set: false,
         word_break,
     };
 
@@ -309,7 +308,7 @@ pub fn format_buffer_line(
                 break 'lines;
             }
             let ins = &inline_inserts[insert_idx];
-            if wrap_width == u32::MAX && h_window.is_none() {
+            if wrap_width.is_none() && h_window.is_none() {
                 // No wrapping and no horizontal window: `maybe_wrap` below
                 // would be a no-op and the visibility check would
                 // short-circuit on `h_window`'s own `None` — the only thing
@@ -322,7 +321,7 @@ pub fn format_buffer_line(
                         graphemes_out,
                         &VirtualRun {
                             text: &ins.text,
-                            byte_range: byte_offset..byte_offset, // zero-length: virtual
+                            byte_offset,
                             char_offset: char_pos,
                             indent_depth,
                         },
@@ -367,7 +366,7 @@ pub fn format_buffer_line(
                             graphemes_out,
                             &VirtualRun {
                                 text: &ins.text,
-                                byte_range: byte_offset..byte_offset, // zero-length: virtual
+                                byte_offset,
                                 char_offset: char_pos,
                                 indent_depth,
                             },
@@ -488,7 +487,6 @@ pub fn format_buffer_line(
         // row's first cell while the tab itself stayed on the previous row.
         if is_ws && !in_leading_ws {
             wrap.last_ws_g_idx = graphemes_out.len();
-            wrap.last_ws_was_set = true;
         }
 
         // Checked here, at the very end of the iteration, so the grapheme that
@@ -551,7 +549,7 @@ pub fn format_buffer_line(
                 graphemes_out,
                 &VirtualRun {
                     text: &ins.text,
-                    byte_range: line_str.len()..line_str.len(),
+                    byte_offset: line_str.len(),
                     char_offset: char_pos,
                     indent_depth,
                 },
@@ -584,7 +582,7 @@ pub fn format_buffer_line(
     }
 
     // Close the last row.
-    close_current_row(rows_out, graphemes_out, wrap.row_g_start);
+    close_row_at(rows_out, wrap.row_g_start, graphemes_out.len());
 }
 
 // ---------------------------------------------------------------------------
@@ -593,16 +591,18 @@ pub fn format_buffer_line(
 
 /// Mutable state for the word-wrap / soft-wrap pass inside `format_buffer_line`.
 ///
-/// Grouping these five fields avoids threading them as separate `&mut`
+/// Grouping these four fields avoids threading them as separate `&mut`
 /// parameters through `maybe_wrap`.
 struct WrapState {
     current_display_col: u32,
     wrap_row: u16,
     /// Index into `graphemes_out` where the current display row began.
     row_g_start: usize,
-    /// Grapheme index of the last seen whitespace boundary (for word-wrap backtracking).
+    /// Grapheme index of the last seen whitespace boundary in the current
+    /// row (for word-wrap backtracking) — `== row_g_start` means none has
+    /// been seen yet, since a split resets both to the same value in the
+    /// same `maybe_wrap` call.
     last_ws_g_idx: usize,
-    last_ws_was_set: bool,
     /// Whether to backtrack to the last whitespace boundary on overflow.
     /// True for `Word`/`Indent`; false for `Soft`, which always splits at the
     /// exact wrap column even mid-word.
@@ -612,21 +612,24 @@ struct WrapState {
 impl WrapState {
     /// If adding `width` columns to `current_display_col` would overflow `wrap_width`,
     /// close the current row and start a new one. Implements word-wrap
-    /// backtracking: when `word_break` is set and `last_ws_was_set`, the row
-    /// splits at the last whitespace position; otherwise it splits at the
-    /// current grapheme (soft break, may split a word).
+    /// backtracking: when `word_break` is set and a whitespace boundary has
+    /// been seen in the current row, the row splits there; otherwise it
+    /// splits at the current grapheme (soft break, may split a word).
     #[allow(clippy::too_many_arguments)]
     fn maybe_wrap(
         &mut self,
         width: u8,
-        wrap_width: u32,
+        wrap_width: Option<u32>,
         indent_display_cols: u32,
         line_idx: usize,
         indent_depth: u8,
         rows_out: &mut Vec<DisplayRow>,
         graphemes_out: &mut [Grapheme],
     ) {
-        if wrap_width == u32::MAX || self.current_display_col + width as u32 <= wrap_width {
+        let Some(wrap_width) = wrap_width else {
+            return;
+        };
+        if self.current_display_col + width as u32 <= wrap_width {
             return;
         }
         if self.current_display_col == 0 {
@@ -638,12 +641,11 @@ impl WrapState {
         // Determine split point: backtrack to last whitespace only when word
         // breaking is enabled (Word/Indent); Soft always splits at the current
         // grapheme, mid-word if necessary.
-        let split_at =
-            if self.word_break && self.last_ws_was_set && self.last_ws_g_idx > self.row_g_start {
-                self.last_ws_g_idx
-            } else {
-                graphemes_out.len() // soft break: split here
-            };
+        let split_at = if self.word_break && self.last_ws_g_idx > self.row_g_start {
+            self.last_ws_g_idx
+        } else {
+            graphemes_out.len() // soft break: split here
+        };
 
         // Close current row at split_at.
         close_row_at(rows_out, self.row_g_start, split_at);
@@ -651,7 +653,6 @@ impl WrapState {
         // Start new row.
         self.wrap_row += 1;
         self.row_g_start = split_at;
-        self.last_ws_was_set = false;
 
         // Recalculate `current_display_col` for graphemes in [split_at..] on the new row.
         let mut new_display_col = indent_display_cols;
@@ -677,12 +678,9 @@ impl WrapState {
 // Row closing helpers
 // ---------------------------------------------------------------------------
 
-fn close_current_row(rows_out: &mut [DisplayRow], graphemes_out: &[Grapheme], row_g_start: usize) {
-    if let Some(row) = rows_out.last_mut() {
-        row.graphemes = row_g_start..graphemes_out.len();
-    }
-}
-
+/// Close the last row in `rows_out`, spanning `[row_g_start, split_at)`.
+/// `split_at` is either a mid-row wrap boundary or, for the final row on a
+/// line, `graphemes_out.len()` (every grapheme emitted for the line so far).
 fn close_row_at(rows_out: &mut [DisplayRow], row_g_start: usize, split_at: usize) {
     if let Some(row) = rows_out.last_mut() {
         row.graphemes = row_g_start..split_at;
@@ -747,27 +745,23 @@ fn grapheme_display(
         }
 
         hume_rope::width::Cluster::Plain { width, .. } => {
-            let content = if grapheme_str == " " {
-                // Space
-                if should_render_whitespace(whitespace.space, is_trailing) {
-                    let (start, len) = push_arena_text(virtual_texts, whitespace.space_char);
-                    CellContent::Indicator { start, len }
+            // Space and the invisible Unicode spaces (NBSP, ideographic
+            // space) are gated by the same `space` render mode — NBSP/
+            // ideographic space get a distinct glyph so a stray
+            // non-breaking space stands out from an ordinary one.
+            let content = if matches!(grapheme_str, " " | "\u{A0}" | "\u{3000}")
+                && should_render_whitespace(whitespace.space, is_trailing)
+            {
+                let glyph = if grapheme_str == " " {
+                    whitespace.space_char
                 } else {
-                    CellContent::Grapheme
-                }
-            } else if grapheme_str == "\u{A0}" || grapheme_str == "\u{3000}" {
-                // Invisible Unicode spaces (NBSP, ideographic space): gated
-                // by the same `space` render mode but with a distinct
-                // glyph, so stray non-breaking spaces stand out from
-                // ordinary ones.
-                if should_render_whitespace(whitespace.space, is_trailing) {
-                    let (start, len) = push_arena_text(virtual_texts, whitespace.nbsp_char);
-                    CellContent::Indicator { start, len }
-                } else {
-                    CellContent::Grapheme
-                }
+                    whitespace.nbsp_char
+                };
+                let (start, len) = push_arena_text(virtual_texts, glyph);
+                CellContent::Indicator { start, len }
             } else {
-                // Regular grapheme.
+                // Regular grapheme (or a space-family one with the
+                // indicator off).
                 CellContent::Grapheme
             };
             (width as u8, content)
@@ -806,10 +800,14 @@ pub(crate) fn push_arena_text(arena: &mut String, text: &str) -> (u32, u16) {
 /// (`char_offset: usize::MAX`, `indent_depth: 0`).
 pub(crate) struct VirtualRun<'a> {
     pub text: &'a str,
-    /// Always empty — a virtual cell occupies no buffer bytes. Its *value*
-    /// still matters: `RowMap`'s `NearestContent` filter reads it to tell an
-    /// `Indicator` that is real content from one that only decorates.
-    pub byte_range: Range<usize>,
+    /// A virtual cell occupies no buffer bytes, so this is never a real span
+    /// — just the one position each of `push_virtual_cells`'s output
+    /// `Grapheme`s reuses for both ends of their own (always-empty)
+    /// `byte_range`. That value still matters: `RowMap`'s `NearestContent`
+    /// filter reads emptiness to tell an `Indicator` that is real content
+    /// from one that only decorates, and `style_row` reads it as the byte
+    /// position highlighting layers against.
+    pub byte_offset: usize,
     /// For an inline insert, the char offset of the real grapheme it
     /// precedes (not `usize::MAX`): keeps the row non-decreasing in
     /// `char_offset`, which `resolve_grapheme_display_col`'s partition_point
@@ -888,7 +886,7 @@ pub(crate) fn push_virtual_cells(
         };
 
         graphemes_out.push(Grapheme {
-            byte_range: run.byte_range.clone(),
+            byte_range: run.byte_offset..run.byte_offset,
             char_offset: run.char_offset,
             display_col: *display_col,
             width,
@@ -904,7 +902,7 @@ pub(crate) fn push_virtual_cells(
         // of a double-wide glyph always stay on the same row.
         if width == 2 {
             graphemes_out.push(Grapheme {
-                byte_range: run.byte_range.clone(),
+                byte_range: run.byte_offset..run.byte_offset,
                 char_offset: run.char_offset,
                 display_col: *display_col,
                 width: 0, // zero — does not consume columns
