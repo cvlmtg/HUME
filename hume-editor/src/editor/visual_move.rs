@@ -5,7 +5,7 @@
 //! `(&BufferText, SelectionSet) -> SelectionSet` motion signature — so they live here
 //! instead of `hume-ops`'s `motion` module.
 
-use hume_editing::selection::{DisplayColOrigin, Selection, StickyDisplayCol};
+use hume_editing::selection::{DisplayColOrigin, Selection, SelectionSet, StickyDisplayCol};
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
 use hume_engine::rows::{BlockSlot, DisplayColTarget, RowMap};
@@ -239,6 +239,144 @@ pub(super) fn apply_visual_vertical(
 }
 
 // ---------------------------------------------------------------------------
+// Vertical selection copy
+// ---------------------------------------------------------------------------
+
+/// Duplicate each selection onto each of the `count` lines in `direction`
+/// (`1` down, `-1` up) and add them to the selection set, landing each copy's
+/// anchor and head on the *display* column of the original — needs a
+/// `RowMap`, so, like the visual-line motions above, this lives here rather
+/// than in `hume-ops`'s pure `(&BufferText, SelectionSet) -> SelectionSet`
+/// signature (see this module's doc comment).
+///
+/// `DisplayColTarget::NearestContent` reproduces the clamp rule a plain
+/// column placement already needs: stick to the last real character on a
+/// short target line, land on `\n` only when that line is empty.
+///
+/// Clamped the same way a rope-only version would be, and stops early once a
+/// target line doesn't exist (i.e. the selection's outermost line is the
+/// last real line) — a `count` larger than the remaining lines just clamps
+/// at the last one, it doesn't wrap or error.
+///
+/// The primary advances to the furthest copy of the original primary. Every
+/// copy's column is re-derived from the *original* selection, not the
+/// previous copy — so this is not equivalent to `count` separate presses of
+/// the count-1 command, which would re-clamp against each intermediate line
+/// in turn. Re-deriving from the original means a single short line in the
+/// middle of the run only clamps that one copy, instead of collapsing every
+/// copy after it to that line's column. If no copy was added (last-line edge
+/// case) the primary stays on the original.
+fn copy_selection_vertically(
+    rm: &mut RowMap<'_>,
+    text: &BufferText,
+    sels: SelectionSet,
+    direction: isize,
+    count: usize,
+) -> SelectionSet {
+    let primary_idx = sels.primary_index();
+    // Collect originals into `all_sels`. Copies are appended below.
+    let mut all_sels: Vec<Selection> = sels.iter_sorted().copied().collect();
+    let original_len = all_sels.len();
+    // Index in `all_sels` for the furthest copy of the old primary, if one was added.
+    let mut primary_copy_idx: Option<usize> = None;
+
+    for i in 0..original_len {
+        let sel = all_sels[i];
+        let anchor_line = text.char_to_line(sel.anchor()) as isize;
+        let head_line = text.char_to_line(sel.head()) as isize;
+
+        // The outermost line in the copy direction determines the offset target.
+        let outer_line = if direction > 0 {
+            anchor_line.max(head_line) // bottommost for "down"
+        } else {
+            anchor_line.min(head_line) // topmost for "up"
+        };
+
+        // Both endpoints' display columns are loop-invariant — the original
+        // selection never changes across copies — so compute them once
+        // instead of re-deriving on every iteration.
+        let anchor_display_col = rm.line_display_col(sel.anchor());
+        let head_display_col = rm.line_display_col(sel.head());
+
+        // Walk outward one line at a time, breaking as soon as a target line
+        // falls off the buffer — every further step in that direction would
+        // too, so this is O(lines available), not O(count) even for a
+        // `usize::MAX` count prefix.
+        let mut target_outer = outer_line;
+        for _ in 0..count {
+            target_outer += direction;
+
+            if target_outer < 0 {
+                break; // would go before the start of the buffer
+            }
+            let target_outer_usize = target_outer as usize;
+
+            // Past the last real content line — the phantom trailing line
+            // (and anything further) has no content to copy onto.
+            if target_outer_usize > text.last_content_line() {
+                break;
+            }
+
+            // Shift each endpoint by the same delta, landing on the target
+            // line's own display column.
+            let delta = target_outer - outer_line;
+            let new_anchor = rm.char_at_line_display_col(
+                (anchor_line + delta) as usize,
+                anchor_display_col,
+                DisplayColTarget::NearestContent,
+            );
+            let new_head = rm.char_at_line_display_col(
+                (head_line + delta) as usize,
+                head_display_col,
+                DisplayColTarget::NearestContent,
+            );
+
+            let new_sel = Selection::new(new_anchor, new_head);
+
+            if i == primary_idx {
+                primary_copy_idx = Some(all_sels.len());
+            }
+            all_sels.push(new_sel);
+        }
+    }
+
+    let desired_primary = primary_copy_idx.unwrap_or(primary_idx);
+    let new_set = SelectionSet::from_vec(all_sels, desired_primary);
+    new_set.debug_assert_valid(text);
+    new_set
+}
+
+/// Shared body of [`cmd_copy_selection_on_next_line`]/[`cmd_copy_selection_on_prev_line`].
+///
+/// Builds the `RowMap` [`copy_selection_vertically`] needs before entering
+/// `apply_doc_motion` — one `RowMap` line-format per target line, the same
+/// cost `9j`/`9k` already pay for the same reason (a rope-only column can't
+/// see tabs or the decoration layer).
+fn copy_selection_on_line(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    count: usize,
+    direction: isize,
+) {
+    let focused = state.focused_pane_id;
+    let buf_id = focused_buffer_id(state, view);
+    let mut rm = pane_row_map(
+        state.buffers.get(buf_id),
+        &state.settings,
+        &view.panes[focused],
+        &mut state.motion_format_scratch,
+    );
+
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.state,
+        focused,
+        buf_id,
+        |text, sels| copy_selection_vertically(&mut rm, text, sels, direction, count),
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Public commands
 // ---------------------------------------------------------------------------
 
@@ -279,6 +417,28 @@ pub(super) fn cmd_visual_move_up(
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     visual_move_vertical(state, view, count, false, mode);
+    Ok(())
+}
+
+/// Duplicate each selection on the line below.
+pub(super) fn cmd_copy_selection_on_next_line(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    copy_selection_on_line(state, view, count, 1);
+    Ok(())
+}
+
+/// Duplicate each selection on the line above.
+pub(super) fn cmd_copy_selection_on_prev_line(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    copy_selection_on_line(state, view, count, -1);
     Ok(())
 }
 

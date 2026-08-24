@@ -242,15 +242,15 @@ pub fn char_col_in_line(rope: &Rope, line: usize, char_pos: usize) -> usize {
 /// clamping to the last content character and snapping to a grapheme
 /// boundary.
 ///
-/// Callers are those with no channel to a per-buffer `tab_width`: vertical
-/// selection copy (`copy_selection_vertically`), whose commands are registered
-/// directly in `CommandRegistry` as bare `fn` pointers and so can't receive
-/// settings the way an `EditorCmd` can; buffer reload, which re-places every
-/// cursor against the new text; and `goto-location!`'s char-indexed target
-/// shape. Vertical motion (`hume-engine`'s `RowMap::char_at_line_display_col`)
-/// uses a display-column model instead, since it also has to place a cursor
-/// through the decoration layer (inline hints, tab expansion) this char-only
-/// function can't see.
+/// Callers are those with no `RowMap` to resolve a display column through:
+/// buffer reload, which re-places every cursor against the new text before
+/// any pane/viewport exists to build one; and `goto-location!`'s char-indexed
+/// target shape. Every command that places a cursor through the decoration
+/// layer (inline hints, tab expansion) instead uses a display-column model —
+/// `RowMap::char_at_line_display_col` — including vertical motion (`9j`/`9k`)
+/// and vertical selection copy (`copy-selection-on-next/prev-line`), both of
+/// which need `hume-editor`'s `RowMap` and so live there rather than as a
+/// pure `hume-ops` fn over this char-only one.
 ///
 /// The clamp compares against the line's *content* end, not
 /// [`line_end_exclusive`]: the latter counts the terminating `\n`, which would

@@ -543,6 +543,39 @@ fn undo_clears_selection_recipe() {
     );
 }
 
+/// `x C` (select-line, then duplicate the selection onto the next line) must
+/// leave an EMPTY selection recipe, not `[copy-selection-on-next-line]`.
+///
+/// `RepeatableAction::selection_recipe`'s own invariant (see its doc comment)
+/// is "one in-place Move-mode establish, then extend appends" — a step that
+/// can be soundly replayed alone, from a fresh cursor, to rebuild the same
+/// extent. `copy-selection-on-next-line` duplicates whatever selection is
+/// already there; it establishes nothing on its own, so recording it would
+/// replay as "duplicate a bare cursor," silently dropping the `x` that built
+/// the real extent. `copy-selection-on-next-line` is an `EditorCmd` (it needs
+/// a `RowMap` for display-column placement), and `EditorCmd`'s `CmdMeta`
+/// hardcodes `tracks_selection: false` — this test pins that as intentional
+/// for this command, not an incidental side effect of the variant it happens
+/// to be implemented as.
+#[test]
+fn copy_selection_on_next_line_does_not_enter_the_selection_recipe() {
+    let mut ed = editor_from("-[a]>aa\nbbb\n");
+
+    ed.feed_key(key('x')); // select-line: "aaa\n" selected
+    assert_eq!(
+        ed.state.selection_recipe.len(),
+        1,
+        "setup: select-line must establish a 1-step recipe"
+    );
+
+    ed.feed_key(key('C')); // duplicate the selection onto "bbb\n"
+    assert_eq!(
+        ed.state.selection_recipe.len(),
+        0,
+        "copy-selection-on-next-line must not itself become a recipe step"
+    );
+}
+
 /// `f`/`t` are NOT repeatable (they have `=`/`-` for that). Pressing `.`
 /// after a find/till motion should be a no-op.
 #[test]

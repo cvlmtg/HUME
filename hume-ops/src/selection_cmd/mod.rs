@@ -1,7 +1,5 @@
-mod copy;
 mod matching;
 
-pub use copy::{cmd_copy_selection_on_next_line, cmd_copy_selection_on_prev_line};
 pub use matching::{
     cmd_split_selection_on_newlines, cmd_trim_selection_whitespace, select_matches_within,
 };

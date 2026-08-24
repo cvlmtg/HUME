@@ -1,12 +1,14 @@
 use std::borrow::Cow;
 
+use crate::editor::commands::{cmd_copy_selection_on_next_line, cmd_copy_selection_on_prev_line};
 use crate::editor::registry::{CommandRegistry, MappableCommand};
 use hume_ops::selection_cmd::{
-    cmd_collapse_selection_to_head, cmd_copy_selection_on_next_line,
-    cmd_copy_selection_on_prev_line, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
+    cmd_collapse_selection_to_head, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
     cmd_flip_selections, cmd_keep_primary_selection, cmd_remove_primary_selection, cmd_select_all,
     cmd_split_selection_on_newlines, cmd_trim_selection_whitespace,
 };
+
+use super::builder::ecmd;
 
 impl CommandRegistry {
     pub(super) fn register_selections(&mut self) {
@@ -66,17 +68,23 @@ impl CommandRegistry {
             "Trim leading and trailing whitespace from each selection.",
             cmd_trim_selection_whitespace
         );
-        super::selection!(
-            self,
+        // EditorCmd, not the `selection!` macro (`MappableCommand::Selection`):
+        // the display-column placement of each copy needs a `RowMap`, which
+        // that signature has no channel for. See
+        // `visual_move.rs::copy_selection_vertically`.
+        ecmd(
             "copy-selection-on-next-line",
             "Duplicate each selection on the line below.",
-            cmd_copy_selection_on_next_line
-        );
-        super::selection!(
-            self,
+            cmd_copy_selection_on_next_line,
+        )
+        .extendable()
+        .reg(self);
+        ecmd(
             "copy-selection-on-prev-line",
             "Duplicate each selection on the line above.",
-            cmd_copy_selection_on_prev_line
-        );
+            cmd_copy_selection_on_prev_line,
+        )
+        .extendable()
+        .reg(self);
     }
 }

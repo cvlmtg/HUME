@@ -384,5 +384,6 @@ pub(in crate::editor) use pipeline::{
 
 // Visual-line commands live in visual_move.rs; re-export for the registry glob.
 pub(super) use super::visual_move::{
-    cmd_visual_move_down, cmd_visual_move_up, cmd_visual_select_word_nearest_on_line,
+    cmd_copy_selection_on_next_line, cmd_copy_selection_on_prev_line, cmd_visual_move_down,
+    cmd_visual_move_up, cmd_visual_select_word_nearest_on_line,
 };

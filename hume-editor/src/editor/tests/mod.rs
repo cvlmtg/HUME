@@ -815,6 +815,7 @@ mod buffer_text_steel;
 mod command_mode;
 mod commands;
 mod completion;
+mod copy_selection;
 mod diff_steel;
 mod disk_change;
 mod dot_repeat;
