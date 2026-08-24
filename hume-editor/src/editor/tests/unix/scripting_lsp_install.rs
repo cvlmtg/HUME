@@ -858,8 +858,8 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
 }
 
 /// `declared-plugins` includes `core:*` names. PLUM's own install-list logic
-/// must still exclude them — `:plum-install`/`:plum-list` must never treat a
-/// bundled core plugin as something to `git clone`. `:plum-list`'s trailing
+/// must still exclude them — `:plum-install-plugins`/`:plum-list-plugins` must never treat a
+/// bundled core plugin as something to `git clone`. `:plum-list-plugins`'s trailing
 /// "PLUM missing:" status is the safe way to observe `plum/missing-plugins`'s
 /// output without ever touching the network.
 #[test]
@@ -875,7 +875,7 @@ fn plum_missing_plugins_excludes_declared_core_plugins() {
          (declare-plugin \"core:lsp\" #:languages '(\"rust\"))",
     );
 
-    type_cmd(&mut ed, ":plum-list");
+    type_cmd(&mut ed, ":plum-list-plugins");
 
     let status = ed.state.status_msg.as_deref().unwrap_or("");
     assert!(

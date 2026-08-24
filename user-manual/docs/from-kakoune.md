@@ -174,7 +174,7 @@ One thing that does not carry over: Kakoune's user mode (the `Space` leader) and
 
 Kakoune has neither a package manager nor LSP support in the core; both come from outside, via plug.kak and kakoune-lsp.
 
-Both ship with HUME. [PLUM](core-plugins.md#core-plum) is the built-in plugin manager — declare a plugin in `init.scm`, run `:plum-install`, and it is fetched from GitHub:
+Both ship with HUME. [PLUM](core-plugins.md#core-plum) is the built-in plugin manager — declare a plugin in `init.scm`, run `:plum-install-plugins`, and it is fetched from GitHub:
 
 ```scheme
 (load-plugin "username/my-plugin")

@@ -37,7 +37,7 @@ fn log_absent_core(ctx: &mut SteelCtx, name: &str, verb: &str) {
 /// Logs the "plugin file absent on disk" outcome, per plugin kind: `core:`
 /// plugins go through [`log_absent_core`] (typo or broken `HUME_RUNTIME` —
 /// never installed by PLUM); `user/repo` plugins log a softer Info (not yet
-/// installed — PLUM will fetch it on `:plum-install`).
+/// installed — PLUM will fetch it on `:plum-install-plugins`).
 ///
 /// Shared by `declare_plugin` and `begin_manifest_declare`'s identical
 /// absent-on-disk fork.
@@ -53,7 +53,7 @@ fn log_absent_plugin(ctx: &mut SteelCtx, plugin_id: &PluginId, name: &str, verb:
 
 /// PLUM compat: records `name` in `declared_plugins` if not already present
 /// (case-insensitive), regardless of whether the plugin resolves on disk —
-/// PLUM reads this list to know what to install on `:plum-install`.
+/// PLUM reads this list to know what to install on `:plum-install-plugins`.
 ///
 /// Shared by `declare_plugin`, `load_plugin`, and `begin_manifest_declare`.
 fn record_declared(ctx: &mut SteelCtx, name: &str) {
@@ -262,7 +262,7 @@ pub(crate) fn declare_plugin(
     // collision-checking (which claims the name in the editor's registry) would
     // be pointless and would leave the name claimed with no path to clean it up
     // via drop_activations_for's usual load/fail transition.  For user/ plugins,
-    // log Info — absent is expected before :plum-install.  For core: plugins,
+    // log Info — absent is expected before :plum-install-plugins.  For core: plugins,
     // absent means a typo or broken HUME_RUNTIME; PLUM never installs core:
     // plugins, so it can't catch the error.  `declared_plugins` is already
     // recorded above for PLUM.
@@ -410,7 +410,7 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
 ///
 /// If not yet declared, resolves its path and registers it now: absent on
 /// disk → silent skip + record in `declared_plugins` for PLUM to install on
-/// the next `:plum-install`. If already declared, queues it for activation;
+/// the next `:plum-install-plugins`. If already declared, queues it for activation;
 /// if already `Loaded`/`Failed`, `begin_lazy_activation`'s idempotency guard
 /// no-ops it.
 pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) -> SteelResult {
@@ -454,7 +454,7 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
             }
             None => {
                 // core: absent → error (typo or HUME_RUNTIME broken; PLUM won't catch it).
-                // user/ absent → silent (PLUM installs it on :plum-install).
+                // user/ absent → silent (PLUM installs it on :plum-install-plugins).
                 if matches!(&id, PluginId::Core(_)) {
                     log_absent_core(ctx, &name, "load-plugin");
                 }

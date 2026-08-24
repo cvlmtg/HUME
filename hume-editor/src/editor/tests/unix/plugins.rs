@@ -815,7 +815,7 @@ fn declare_plugin_no_triggers_is_hard_error() {
 /// `declared-plugins` but absent from `loaded-plugins`.
 ///
 /// Flip: if this errored, users could not declare third-party plugins before
-/// running `:plum-install` on a fresh setup.
+/// running `:plum-install-plugins` on a fresh setup.
 #[test]
 fn load_plugin_absent_top_level_silently_skips() {
     let dir = safe_tempdir();
@@ -2332,11 +2332,11 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
     assert!(
         matches!(
-            ed.state.config.registry.get_mappable("plum-list"),
+            ed.state.config.registry.get_mappable("plum-list-plugins"),
             Some(MappableCommand::Lazy { .. })
         ),
         "manifest.scm's #:commands entries must be registered as Lazy stubs, \
-         including \"plum-list\""
+         including \"plum-list-plugins\""
     );
     assert!(
         ed.scripting

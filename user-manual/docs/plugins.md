@@ -15,7 +15,7 @@ Add a `declare-plugin` or `load-plugin` call to your `init.scm`:
 (load-plugin "username/my-theme")
 ```
 
-Then run `:plum-install` to clone it from GitHub. PLUM never installs anything on its own, so nothing is fetched behind your back at startup; once the plugin is on disk, its commands and key bindings are available from the next launch.
+Then run `:plum-install-plugins` to clone it from GitHub. PLUM never installs anything on its own, so nothing is fetched behind your back at startup; once the plugin is on disk, its commands and key bindings are available from the next launch.
 
 See [How plugins are loaded](#how-plugins-are-loaded) for the difference between the two verbs.
 

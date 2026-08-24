@@ -37,10 +37,10 @@ PLUM never installs anything on its own: the commands below do the work when you
 
 | Command | Effect |
 |---------|--------|
-| `:plum-install` | Install all declared plugins not yet on disk |
-| `:plum-cleanup` | Remove on-disk plugins no longer declared |
-| `:plum-update` | Pull the latest version of every installed third-party plugin |
-| `:plum-list` | Show declared / installed / orphan / missing plugins |
+| `:plum-install-plugins` | Install all declared plugins not yet on disk |
+| `:plum-cleanup-plugins` | Remove on-disk plugins no longer declared |
+| `:plum-update-plugins` | Pull the latest version of every installed third-party plugin |
+| `:plum-list-plugins` | Show declared / installed / orphan / missing plugins |
 | `:plum-install-grammar <lang>` | Install and compile one grammar |
 | `:plum-ensure-grammars` | Install every grammar you have a language for |
 | `:plum-list-grammars` | Show the grammar catalog and what's installed |

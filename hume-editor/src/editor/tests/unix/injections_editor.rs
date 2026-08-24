@@ -93,7 +93,7 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
     );
 }
 
-/// `:plum-list` exercises `plugins.scm`'s `plum/installed-plugins` (built on
+/// `:plum-list-plugins` exercises `plugins.scm`'s `plum/installed-plugins` (built on
 /// `core:stdlib`'s `stdlib/list-subdirs`, a Steel `read-dir`-backed helper)
 /// against a real (empty) data dir — no network. Pins that plugin discovery
 /// via Steel's stdlib process/fs helpers (see `user-manual/docs/plugins.md`'s
@@ -106,7 +106,7 @@ fn plum_list_runs_with_no_errors_against_empty_data_dir() {
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
-    type_cmd(&mut ed, ":plum-list");
+    type_cmd(&mut ed, ":plum-list-plugins");
 
     let errors: Vec<&str> = ed
         .state
@@ -117,7 +117,7 @@ fn plum_list_runs_with_no_errors_against_empty_data_dir() {
         .collect();
     assert!(
         errors.is_empty(),
-        ":plum-list against an empty data dir must not error: {errors:?}"
+        ":plum-list-plugins against an empty data dir must not error: {errors:?}"
     );
 }
 
@@ -127,7 +127,7 @@ fn plum_list_runs_with_no_errors_against_empty_data_dir() {
 /// `".."`, which `read-dir` never returns, so the stray name passed straight
 /// through and `read-dir` was then called on it as if it were a "user"
 /// directory — `Path::read_dir` on a non-directory errors, and that error
-/// propagated uncaught out of `:plum-list`.
+/// propagated uncaught out of `:plum-list-plugins`.
 ///
 /// Fail oracle: revert `stdlib/list-subdirs` to list every entry instead of
 /// filtering by `is-dir?` → this test's `errors.is_empty()` fails, catching
@@ -147,7 +147,7 @@ fn plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir() {
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
-    type_cmd(&mut ed, ":plum-list");
+    type_cmd(&mut ed, ":plum-list-plugins");
 
     let errors: Vec<&str> = ed
         .state
@@ -158,7 +158,7 @@ fn plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir() {
         .collect();
     assert!(
         errors.is_empty(),
-        ":plum-list must skip a stray file in <data>/plugins/, not raise: {errors:?}"
+        ":plum-list-plugins must skip a stray file in <data>/plugins/, not raise: {errors:?}"
     );
 }
 
@@ -173,10 +173,10 @@ fn git_ok(dir: &std::path::Path, args: &[&str]) {
     assert!(status.success(), "git {args:?} in {dir:?} failed");
 }
 
-/// `:plum-update` exercises `plum/run!` (Phase 1 helper, now backing
+/// `:plum-update-plugins` exercises `plum/run!` (Phase 1 helper, now backing
 /// `git-pull`'s replacement) against a REAL local git repo — no network. A
 /// local "origin" gets a second commit after the "installed" clone is made,
-/// then `:plum-update` must actually run `git pull` (via Steel's
+/// then `:plum-update-plugins` must actually run `git pull` (via Steel's
 /// `spawn-process` + `with-current-dir`, not the removed `git-pull`
 /// builtin) and fast-forward the clone to match.
 #[test]
@@ -213,7 +213,7 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
-    type_cmd(&mut ed, ":plum-update");
+    type_cmd(&mut ed, ":plum-update-plugins");
 
     let errors: Vec<&str> = ed
         .state
@@ -224,7 +224,7 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
         .collect();
     assert!(
         errors.is_empty(),
-        ":plum-update against a local origin must not error: {errors:?}"
+        ":plum-update-plugins against a local origin must not error: {errors:?}"
     );
     let content = std::fs::read_to_string(clone_dir.join("plugin.scm")).unwrap();
     assert_eq!(
@@ -233,10 +233,10 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
     );
 }
 
-/// `:plum-cleanup` exercises `plum/delete-dir` (Phase 1 helper, now backing
+/// `:plum-cleanup-plugins` exercises `plum/delete-dir` (Phase 1 helper, now backing
 /// `delete-dir`'s replacement) against a real on-disk orphan plugin — no
 /// network. Nothing in `init.scm` declares it, so it's an orphan by
-/// definition; `:plum-cleanup` must remove its directory.
+/// definition; `:plum-cleanup-plugins` must remove its directory.
 #[test]
 fn plum_cleanup_removes_orphan_plugin_directory() {
     let _lock = TEST_GLOBALS.claim(Global::Env);
@@ -249,7 +249,7 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
-    type_cmd(&mut ed, ":plum-cleanup");
+    type_cmd(&mut ed, ":plum-cleanup-plugins");
 
     let errors: Vec<&str> = ed
         .state
@@ -260,11 +260,11 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
         .collect();
     assert!(
         errors.is_empty(),
-        ":plum-cleanup must not error: {errors:?}"
+        ":plum-cleanup-plugins must not error: {errors:?}"
     );
     assert!(
         !orphan_dir.exists(),
-        "plum/delete-dir-backed plum-cleanup must remove the orphan plugin directory"
+        "plum/delete-dir-backed plum-cleanup-plugins must remove the orphan plugin directory"
     );
 }
 

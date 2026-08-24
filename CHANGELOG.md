@@ -14,7 +14,12 @@
   New `stdlib/run` (shared subprocess spawn, used by `core:plum`/`core:pickers`) and
   `stdlib/resolve-lang-arg` (shared `:` command language-argument resolution, used by
   `core:plum`/`core:lsp`) round out this round of plugin-internal deduplication.
-- Fixed `:plum-list`/`:plum-install`/`:plum-update` raising instead of skipping a stray file
+- **Breaking**: `core:plum`'s plugin commands are renamed `:plum-install-plugins`,
+  `:plum-cleanup-plugins`, `:plum-update-plugins`, `:plum-list-plugins` (were
+  `:plum-install`, `:plum-cleanup`, `:plum-update`, `:plum-list`) — the `-plugins` suffix
+  matches the `-grammar(s)` suffix the grammar commands already carry, ahead of an
+  upcoming `:plum-install-theme`.
+- Fixed `:plum-list-plugins`/`:plum-install-plugins`/`:plum-update-plugins` raising instead of skipping a stray file
   (e.g. `.DS_Store`) found alongside a directory it expected to walk, in
   `<data>/plugins/<user>/<repo>/`.
 - New `buffer-text`/`buffer-lines` scripting builtins return a buffer's live, unsaved content — the full text, or its content lines (optionally a `#:start`/`#:end` range), excluding the phantom trailing line past the buffer's structural newline.

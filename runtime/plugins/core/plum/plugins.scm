@@ -58,7 +58,7 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
-(define-command! "plum-install"
+(define-command! "plum-install-plugins"
   "Install all declared plugins that are not yet on disk."
   (lambda ()
     (let ((missing (plum/missing-plugins)))
@@ -72,7 +72,7 @@
             (when (> n 0)
               (log! 'info "PLUM: run :reload-config to activate the newly installed plugins")))))))
 
-(define-command! "plum-cleanup"
+(define-command! "plum-cleanup-plugins"
   "Remove on-disk plugins that are no longer declared in init.scm."
   (lambda ()
     (let ((orphans (plum/orphan-plugins)))
@@ -81,7 +81,7 @@
           (plum/batch-run "removed" orphans
             (lambda (name) (call! "stdlib/delete-dir" (plum/plugin-dir name))))))))
 
-(define-command! "plum-update"
+(define-command! "plum-update-plugins"
   "Run git pull in every installed third-party plugin directory."
   (lambda ()
     (let ((installed (plum/installed-plugins)))
@@ -92,7 +92,7 @@
             (when (> n 0)
               (log! 'info "PLUM: run :reload-config to pick up the updated plugins")))))))
 
-(define-command! "plum-list"
+(define-command! "plum-list-plugins"
   "Log the declared, installed, orphan, and missing plugin lists."
   (lambda ()
     (let ((declared   (declared-plugins))

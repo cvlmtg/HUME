@@ -391,7 +391,7 @@ fn declare_plugin_core_absent_logs_error() {
 }
 
 /// `declare-plugin "user/X"` absent on disk → `Info` log (not yet installed;
-/// PLUM will surface it on :plum-install — no change needed in HUME).
+/// PLUM will surface it on :plum-install-plugins — no change needed in HUME).
 ///
 /// Fail oracle: swap Info→Error → assertion fires.
 #[test]
@@ -583,7 +583,7 @@ fn declare_plugin_bang_direct_zero_trigger_call_errors() {
 /// trigger-ful path.
 ///
 /// Fail oracle: routing "not installed yet" to the same hard error as "installed
-/// but missing manifest.scm" would break the declare-then-:plum-install flow for
+/// but missing manifest.scm" would break the declare-then-:plum-install-plugins flow for
 /// every zero-trigger declare of an as-yet-uninstalled plugin.
 #[test]
 fn manifest_declare_absent_dir_soft_logs_and_records_declared_plugins() {

@@ -30,12 +30,12 @@ type one.
 
 Plugin management:
 
-| Command         | Effect                                                   |
-|------------------|-----------------------------------------------------------|
-| `:plum-install`  | Install all plugins declared in `init.scm` not yet on disk |
-| `:plum-cleanup`  | Remove on-disk plugins no longer declared                  |
-| `:plum-update`   | Run `git pull` in every installed third-party plugin       |
-| `:plum-list`     | Log declared / installed / orphan / missing plugin lists   |
+| Command                 | Effect                                                     |
+|-------------------------|------------------------------------------------------------|
+| `:plum-install-plugins` | Install all plugins declared in `init.scm` not yet on disk |
+| `:plum-cleanup-plugins` | Remove on-disk plugins no longer declared                  |
+| `:plum-update-plugins`  | Run `git pull` in every installed third-party plugin       |
+| `:plum-list-plugins`    | Log declared / installed / orphan / missing plugin lists   |
 
 Grammar management:
 
@@ -57,7 +57,7 @@ LSP language servers are `core:lsp`'s own responsibility (`:lsp-install`, `:lsp-
 PLUM bundles two independent subsystems:
 
 - `plugin.scm` — entry point; `require`s the two subsystems below.
-- `plugins.scm` — third-party **plugin** install/update/cleanup (`:plum-install` etc).
+- `plugins.scm` — third-party **plugin** install/update/cleanup (`:plum-install-plugins` etc).
 - `grammars.scm` — tree-sitter **grammar** install pipeline (`:plum-install-grammar` etc);
   builds on the source catalog and path helpers core registers at startup (see "Grammar
   sources and the Helix pin" below).
@@ -73,7 +73,7 @@ PLUM bundles two independent subsystems:
 Declared plugins live in `init.scm`; installed plugins are discovered by walking
 `<data>/plugins/<user>/<repo>/` and checking for a `plugin.scm` in each leaf directory
 (`plum/installed-plugins`). "Missing" and "orphan" are just set differences between the
-declared list and that walk — nothing is cached, so `:plum-list` always reflects the current
+declared list and that walk — nothing is cached, so `:plum-list-plugins` always reflects the current
 disk state.
 
 ### Grammar sources and the Helix pin
