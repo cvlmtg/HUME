@@ -121,12 +121,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     let head = ed.doc().text().line_to_char(10);
     ed.set_current_selections(SelectionSet::single(Selection::collapsed(head)));
 
-    ed.handle_input(TerminalEvent::Mouse(MouseEvent {
-        kind: MouseEventKind::ScrollUp,
-        column: 0,
-        row: 0,
-        modifiers: Modifiers::NONE,
-    }));
+    ed.handle_input(mouse_wheel(false));
 
     assert_eq!(
         ed.view.panes[pid].viewport.top_line, 7,
@@ -148,12 +143,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
 fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
-    ed.handle_input(TerminalEvent::Mouse(MouseEvent {
-        kind: MouseEventKind::ScrollUp,
-        column: 0,
-        row: 0,
-        modifiers: Modifiers::NONE,
-    }));
+    ed.handle_input(mouse_wheel(false));
 
     let pid = ed.state.focused_pane_id;
     assert_eq!(ed.view.panes[pid].viewport.top_line, 0);

@@ -23,7 +23,6 @@ use hume_engine::providers::{
 };
 use hume_engine::types::ScopeId;
 use ratatui::layout::Rect;
-use termina::event::{Event as TerminalEvent, MouseEvent, MouseEventKind};
 
 /// Emits one `Before(0)` virtual row, texted "V".
 struct OneBeforeLine;
@@ -122,14 +121,7 @@ fn mouse_wheel_moves_one_row_at_a_time_through_a_before_block() {
     ed.state.settings.mouse_scroll_lines = 1;
     ed.view.panes[ed.state.focused_pane_id].viewport.height = 2;
 
-    let scroll_down = || {
-        TerminalEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::ScrollDown,
-            column: 0,
-            row: 0,
-            modifiers: termina::event::Modifiers::NONE,
-        })
-    };
+    let scroll_down = || mouse_wheel(true);
 
     assert_eq!(ed.viewport().top_line, 0);
     assert_eq!(

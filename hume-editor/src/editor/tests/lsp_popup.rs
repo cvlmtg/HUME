@@ -703,6 +703,111 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
     );
 }
 
+// ── Mouse dismissal ──────────────────────────────────────────────────────
+
+#[test]
+fn a_mouse_wheel_closes_a_scrollable_popup_and_still_scrolls() {
+    // Buffer taller than the viewport, so the wheel tick genuinely has
+    // somewhere to scroll — distinguishes "dismissed" from "dismissed and
+    // the event's own effect was swallowed along with it".
+    let tmp = safe_tempdir();
+    let mut lines = String::from("-[x]>line0\n");
+    for i in 1..40 {
+        lines.push_str(&format!("line{i}\n"));
+    }
+    let mut ed = editor_from(&lines);
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda () (show-popup! "hello" #:kind 'scrollable)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+    assert!(popup_view(&ed).is_some(), "sanity: showing");
+    let top_before = ed.viewport().top_line;
+
+    ed.handle_input(mouse_wheel(true));
+
+    assert!(
+        ed.state.config.popup.is_none(),
+        "a mouse wheel tick must close a scrollable popup"
+    );
+    assert_eq!(
+        ed.viewport().top_line,
+        top_before + ed.state.settings.mouse_scroll_lines,
+        "the wheel tick must still scroll the buffer in the same event"
+    );
+}
+
+#[test]
+fn a_mouse_click_closes_a_scrollable_popup() {
+    // Normal-mode click: no mode change happens, so this can't pass via the
+    // `on-mode-change` hook masking the missing mouse-side dismissal.
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda () (show-popup! "hello" #:kind 'scrollable)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+    assert!(popup_view(&ed).is_some(), "sanity: showing");
+
+    ed.handle_input(mouse_left_down(3, 0));
+
+    assert!(
+        ed.state.config.popup.is_none(),
+        "a mouse click must close a scrollable popup"
+    );
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        3,
+        "the click must still move the cursor to the clicked char"
+    );
+}
+
+#[test]
+fn a_sticky_popup_survives_mouse_input() {
+    // Regression guard, not a red/green case: signature help's default
+    // `'sticky` popup must stay untouched by mouse input, same as by keys.
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda () (show-popup! "hello")))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+    assert!(
+        matches!(
+            ed.state.config.popup.as_ref().map(|p| p.kind),
+            Some(hume_scripting::host::PopupKind::Sticky)
+        ),
+        "sanity: sticky by default"
+    );
+
+    ed.handle_input(mouse_wheel(true));
+
+    assert!(
+        matches!(
+            ed.state.config.popup.as_ref().map(|p| p.kind),
+            Some(hume_scripting::host::PopupKind::Sticky)
+        ),
+        "a sticky popup must be untouched by mouse input"
+    );
+}
+
 #[test]
 fn scrollable_popup_paints_its_scrolled_window() {
     // Appearance lock: the painted rows actually shift after Ctrl+d, not

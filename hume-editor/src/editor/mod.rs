@@ -243,6 +243,22 @@ impl ConfigState {
             confirm: None,
         }
     }
+
+    /// Close an open `Scrollable` popup, leaving a `Sticky` one alone. Called
+    /// from both input paths (`Editor::handle_key`, `Editor::handle_mouse`):
+    /// hover-style content is pinned to a cursor position the very event
+    /// dismissing it is about to move, so it would otherwise stay painted
+    /// describing a symbol the cursor has left. A `Sticky` popup (signature
+    /// help) belongs to an ongoing Insert session instead, and is closed by
+    /// the `on-mode-change` hook.
+    pub(super) fn dismiss_scrollable_popup(&mut self) {
+        if matches!(
+            self.popup.as_ref().map(|p| p.kind),
+            Some(hume_scripting::host::PopupKind::Scrollable)
+        ) {
+            self.popup = None;
+        }
+    }
 }
 
 /// The keymap every session and every `:reload-config` starts from: the

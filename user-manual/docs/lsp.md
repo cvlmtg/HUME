@@ -262,7 +262,8 @@ dismisses the menu. Signature help pops up automatically as you type an argument
 function the server knows about, and inlay hints (see below) appear inline once enabled.
 
 `g n` and `g p` show the full diagnostic message in a popup after they jump; it clears on
-your next keypress. Each line with a problem also gets a short summary at its end.
+your next keypress or mouse action. Each line with a problem also gets a short summary at
+its end.
 
 ## Settings
 

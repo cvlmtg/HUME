@@ -121,6 +121,23 @@ fn mouse_left_down(x: u16, y: u16) -> TerminalEvent {
     })
 }
 
+/// A wheel-scroll event at (0, 0) — every current caller scrolls the focused
+/// pane, which hit-testing never depends on, so the coordinates are fixed
+/// rather than parameterized. `down` picks the direction, matching
+/// `Editor::mouse_scroll`'s own `down: bool` (`editor/mouse.rs`).
+fn mouse_wheel(down: bool) -> TerminalEvent {
+    TerminalEvent::Mouse(MouseEvent {
+        kind: if down {
+            MouseEventKind::ScrollDown
+        } else {
+            MouseEventKind::ScrollUp
+        },
+        column: 0,
+        row: 0,
+        modifiers: Modifiers::NONE,
+    })
+}
+
 /// Type a colon command into the editor via `handle_key`, going through the
 /// mini-buffer path (and thus `%`/`#` expansion). Useful when testing typed
 /// commands that must be verified end-to-end through the keymap dispatcher.

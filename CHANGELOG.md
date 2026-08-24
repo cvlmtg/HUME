@@ -46,6 +46,7 @@
 - New `on-buffer-enter` and `on-focus-gained` hooks: the former fires whenever the focused buffer changes, the latter when the terminal regains focus.
 - Tagged release builds now show a clean `--version` string, with no commit-hash suffix.
 - `wrap-mode` is now a buffer option: set it per file type from an `on-language-set` hook, or globally. `:set global wrap-mode=…` now applies to buffers that are already open, not just ones opened afterward; `:set pane wrap-mode=…` and `:wrap` still pin a single pane above both, but now remember that pin separately for each buffer the pane shows — switching to another buffer resolves that buffer's own setting instead of carrying the pin along, and switching back restores it. `:wrap` turning wrapping back on, with nothing to restore, now falls back to the configured global style instead of always hardcoding `indent`.
+- Fixed a bug where a hover or diagnostic popup stayed on screen when you scrolled or clicked with the mouse; it now closes on any mouse input, the same as on any keypress.
 
 ## [0.10.0] - 2026-07-24
 

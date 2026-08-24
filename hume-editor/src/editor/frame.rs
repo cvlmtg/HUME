@@ -286,8 +286,9 @@ impl Editor {
         //    now-settled models, then re-partition viewport dims from them.
         //    Every caller runs `settle()` immediately before this function, and
         //    a settled drain (`close-popup!` from a hook/callback) or the
-        //    pre-dispatch any-key dismissal (mappings/mod.rs) can change a
-        //    band's height after the pre-settle `sync_viewport_dims` ran —
+        //    pre-dispatch dismissal on any key or mouse event
+        //    (mappings/mod.rs, mouse.rs) can change a band's height after
+        //    the pre-settle `sync_viewport_dims` ran —
         //    leaving `viewport.height` partitioned against a band `render`
         //    will no longer draw, so the pane paints short and the vacated
         //    rows stay blank until the next event wakes the loop.

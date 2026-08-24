@@ -46,28 +46,18 @@ impl Editor {
         // consumes Ctrl+u/Ctrl+d to scroll when there's actually content past
         // one screenful; otherwise (and for any other key) it closes the
         // popup and falls through to normal dispatch this same call, so a
-        // short popup never blocks buffer half-page scroll.
-        match self.state.config.popup.as_ref().map(|p| p.kind) {
-            Some(PopupKind::Scrollable) => {
-                let ctrl = key.modifiers.contains(Modifiers::CONTROL);
-                match key.code {
-                    KeyCode::Char('d') if ctrl => {
-                        if self.scroll_popup(true) {
-                            return;
-                        }
-                        self.state.config.popup = None;
-                    }
-                    KeyCode::Char('u') if ctrl => {
-                        if self.scroll_popup(false) {
-                            return;
-                        }
-                        self.state.config.popup = None;
-                    }
-                    _ => self.state.config.popup = None,
-                }
-            }
-            Some(PopupKind::Sticky) | None => {}
+        // short popup never blocks buffer half-page scroll. The close itself
+        // is `ConfigState::dismiss_scrollable_popup`, shared with
+        // `handle_mouse` — any input event dismisses a `Scrollable` popup,
+        // not just keys.
+        if self.state.config.popup.as_ref().map(|p| p.kind) == Some(PopupKind::Scrollable)
+            && key.modifiers.contains(Modifiers::CONTROL)
+            && let KeyCode::Char(c @ ('u' | 'd')) = key.code
+            && self.scroll_popup(c == 'd')
+        {
+            return;
         }
+        self.state.config.dismiss_scrollable_popup();
 
         // ── Confirm intercept ──────────────────────────────────────────────
         // First of the overlay intercepts below (after the popup dismissal/

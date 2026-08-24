@@ -50,8 +50,9 @@
         (show-popup! text #:kind 'scrollable #:lang lang #:anchor 'bottom))))
 
 ;; ── Dismiss ─────────────────────────────────────────────────────────────────
-;; Closes on any key but Ctrl+u/d (page, per `#:kind 'scrollable`), or on any
-;; mode change — that registration lives in lib.scm, shared with sighelp.scm.
+;; Closes on any key or mouse input but Ctrl+u/d (page, per `#:kind
+;; 'scrollable`), or on any mode change — that registration lives in
+;; lib.scm, shared with sighelp.scm.
 
 ;; ── Command ─────────────────────────────────────────────────────────────────
 

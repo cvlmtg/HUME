@@ -15,6 +15,10 @@
 //! Scroll wheel events move both the viewport and all cursors by the configured
 //! number of lines (Vim-style). Moving the cursor with the viewport prevents
 //! `ensure_cursor_visible` from snapping the viewport back on the next frame.
+//!
+//! Every mouse event dismisses an open `Scrollable` popup first — see
+//! [`Editor::handle_mouse`] — matching `handle_key`'s any-key dismissal
+//! (`editor/mappings/mod.rs`).
 
 use hume_engine::pane::ViewportState;
 use hume_engine::pipeline::PaneId;
@@ -37,6 +41,11 @@ impl Editor {
     /// Hook draining happens in the caller (`handle_input`) — this method only
     /// performs the dispatch.
     pub(super) fn handle_mouse(&mut self, mouse: MouseEvent) {
+        // Any mouse event dismisses a scrollable popup, same as any key —
+        // see `ConfigState::dismiss_scrollable_popup`. Before the dispatch
+        // below, so the event still performs its own action (a wheel notch
+        // still scrolls, a click still moves the cursor).
+        self.state.config.dismiss_scrollable_popup();
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
                 // column-name-safe: termina's MouseEvent::column is a terminal-absolute x
