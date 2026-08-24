@@ -172,9 +172,13 @@ impl Editor {
     /// what `click_to_char` and `screen_to_char_offset` expect. `None` for a
     /// click outside every pane's rect (statusline, tabline, a divider seam).
     fn pane_at_screen_pos(&self, x: u16, y: u16) -> Option<(PaneId, u16, u16)> {
-        self.view.pane_rects().into_iter().find_map(|(pid, rect)| {
-            rect_relative(rect, x, y).map(|(pane_x, pane_y)| (pid, pane_x, pane_y))
-        })
+        let (pid, rect) = self.view.layout.find_containing(
+            Position::new(x, y),
+            self.view.last_pane_area,
+            self.view.reserve_seam,
+        )?;
+        let (pane_x, pane_y) = rect_relative(rect, x, y)?;
+        Some((pid, pane_x, pane_y))
     }
 
     /// Resolve a pane-relative `(x, y)` click in pane `pid` to a buffer

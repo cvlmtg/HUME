@@ -18,14 +18,18 @@ pub(crate) fn cell_width(g: &str) -> usize {
     hume_rope::width::grapheme_width(g, 0, CHROME_TAB_WIDTH)
 }
 
-/// Longest prefix of `s` fitting `max_display_width` display cells.
-/// Grapheme-cluster aware, never splits a cluster.
-pub(crate) fn truncate_text(s: &str, max_display_width: usize) -> &str {
-    hume_rope::width::truncate_to_width(s, max_display_width, CHROME_TAB_WIDTH).0
+/// Longest prefix of `s` fitting `max_display_width` display cells, and
+/// that prefix's width. Grapheme-cluster aware, never splits a cluster.
+/// Returns the width alongside the text so a caller that needs both (to
+/// place whatever comes after) doesn't re-measure what this already
+/// computed.
+pub(crate) fn truncate_text(s: &str, max_display_width: usize) -> (&str, usize) {
+    hume_rope::width::truncate_to_width(s, max_display_width, CHROME_TAB_WIDTH)
 }
 
 /// Longest suffix of `s` (kept from the end) fitting `max_display_width`
-/// display cells. Grapheme-cluster aware, never splits a cluster.
-pub(crate) fn truncate_text_tail(s: &str, max_display_width: usize) -> &str {
-    hume_rope::width::truncate_suffix_to_width(s, max_display_width, CHROME_TAB_WIDTH).0
+/// display cells, and that suffix's width. Grapheme-cluster aware, never
+/// splits a cluster.
+pub(crate) fn truncate_text_tail(s: &str, max_display_width: usize) -> (&str, usize) {
+    hume_rope::width::truncate_suffix_to_width(s, max_display_width)
 }

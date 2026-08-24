@@ -24,8 +24,11 @@
 //! lint.
 //!
 //! **Opt-out**: annotate a line with `// display-width-safe: <reason>` — the
-//! two known-legitimate cases are `SignColumnConfig::width`/`GutterColumn::width`,
-//! whose `.width()` is a gutter *cell count*, not a display-width measurement.
+//! known-legitimate cases are `SignColumnConfig::width`/`GutterColumn::width`,
+//! whose `.width()` is a gutter *cell count*, not a display-width
+//! measurement, and `hume_rope::width::Cluster::width()`, whose `.width()`
+//! *is* a display-width measurement but reads a decision `classify` already
+//! made rather than computing a second one.
 
 use super::{collect_source_rs, scan_forbidden, workspace_member_crates};
 

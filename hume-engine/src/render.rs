@@ -615,51 +615,58 @@ pub(crate) fn write_text_run(
 ) -> u16 {
     let mut cx = x;
     for cluster in unicode_segmentation::UnicodeSegmentation::graphemes(text, true) {
-        let width = hume_rope::width::grapheme_width(
+        // Classified once — tab vs. placeholder vs. plain is decided here,
+        // not re-tested per branch below (a tab is also a control
+        // character, so testing `needs_placeholder` first would draw a
+        // multi-cell `<9>` into the single cell reserved for it; `classify`
+        // itself orders that check, matching `format::grapheme_display`'s
+        // own tab-before-placeholder order).
+        let classified = hume_rope::width::classify(
             cluster,
             (cx - x) as usize,
             hume_rope::width::CHROME_TAB_WIDTH,
-        ) as u16;
+        );
+        // display-width-safe: Cluster::width() reads classify()'s own decision — not a second raw measurement.
+        let width = classified.width() as u16;
         if cx.saturating_add(width) > right_edge {
             break;
         }
-        if cluster == "\t" {
-            // Tested before `needs_placeholder` — a tab is a control
-            // character and would otherwise fall into that branch below,
-            // drawing a multi-cell `<9>` into the single cell `grapheme_width`
-            // reserved for it. Chrome's tab is exactly one cell (see this
-            // function's doc), so it draws as one plain space, matching
-            // `format::grapheme_display`'s own tab-before-placeholder order.
-            set_cell(buf, cx, y, " ", style);
-        } else if let Some(p) = hume_rope::width::needs_placeholder(cluster)
-            .then(|| hume_rope::width::placeholder(cluster))
-        {
-            // A cluster the terminal must not be shown as itself is drawn as
-            // its codepoint, the same substitution buffer text gets
-            // (`format::grapheme_display`). `grapheme_width` above already
-            // sized the run for that placeholder, so it spans exactly the
-            // columns reserved for it — one cell per character of `<200b>`.
-            // `patch`, not a bare replace, so a row's own background (a
-            // selected menu row, a cursorline) still shows through — only the
-            // fields `invisible_style` actually sets (fg, modifiers) override.
-            let placeholder_style = style.patch(invisible_style);
-            for (i, ch) in p.as_str().chars().enumerate() {
-                let mut glyph = [0u8; 4];
-                set_cell(
-                    buf,
-                    cx + i as u16,
-                    y,
-                    ch.encode_utf8(&mut glyph),
-                    placeholder_style,
-                );
+        match classified {
+            hume_rope::width::Cluster::Tab { .. } => {
+                // Chrome's tab is exactly one cell (see this function's
+                // doc), so it draws as one plain space.
+                set_cell(buf, cx, y, " ", style);
             }
-        } else {
-            set_cell(buf, cx, y, cluster, style);
-            // Blank the cells a double-width glyph covers, so nothing
-            // already in the buffer shows through beside it — the same
-            // thing `compose_row` does for a wide buffer grapheme.
-            for extra in 1..width {
-                set_cell(buf, cx + extra, y, " ", style);
+            hume_rope::width::Cluster::Placeholder(p) => {
+                // A cluster the terminal must not be shown as itself is
+                // drawn as its codepoint, the same substitution buffer text
+                // gets (`format::grapheme_display`). `classify` above
+                // already sized the run for that placeholder, so it spans
+                // exactly the columns reserved for it — one cell per
+                // character of `<200b>`. `patch`, not a bare replace, so a
+                // row's own background (a selected menu row, a cursorline)
+                // still shows through — only the fields `invisible_style`
+                // actually sets (fg, modifiers) override.
+                let placeholder_style = style.patch(invisible_style);
+                for (i, ch) in p.as_str().chars().enumerate() {
+                    let mut glyph = [0u8; 4];
+                    set_cell(
+                        buf,
+                        cx + i as u16,
+                        y,
+                        ch.encode_utf8(&mut glyph),
+                        placeholder_style,
+                    );
+                }
+            }
+            hume_rope::width::Cluster::Plain { .. } => {
+                set_cell(buf, cx, y, cluster, style);
+                // Blank the cells a double-width glyph covers, so nothing
+                // already in the buffer shows through beside it — the same
+                // thing `compose_row` does for a wide buffer grapheme.
+                for extra in 1..width {
+                    set_cell(buf, cx + extra, y, " ", style);
+                }
             }
         }
         cx += width;

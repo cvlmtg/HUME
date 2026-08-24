@@ -154,7 +154,7 @@ fn truncate_tail_marked_leaves_short_strings_unchanged() {
 fn truncate_tail_marked_prefixes_ellipsis_and_keeps_tail() {
     let source = "hume-editor/src/ui/picker_panel.rs";
     let out = truncate_tail_marked(source, 12);
-    assert_eq!(unicode_width::UnicodeWidthStr::width(out.as_str()), 12);
+    assert_eq!(unicode_width::UnicodeWidthStr::width(out.as_ref()), 12);
     let kept = out
         .strip_prefix('…')
         .unwrap_or_else(|| panic!("clipped string must lead with …, got {out:?}"));

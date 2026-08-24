@@ -101,7 +101,7 @@ pub(in crate::ui::statusline) fn shorten_path_to_width_with(
     let available = max_display_cols.saturating_sub(prefix_w + ellipsis_w);
 
     let filename = &components[n - 1];
-    let truncated = truncate_text(filename, available);
+    let (truncated, _) = truncate_text(filename, available);
 
     if truncated.is_empty() {
         // Not even one grapheme of filename fits; just show the ellipsis.

@@ -5,8 +5,7 @@ use slotmap::{SlotMap, new_key_type};
 use crate::format::FormatScratch;
 use crate::pane::{Pane, WhitespaceConfig, WrapMode};
 use crate::providers::{
-    BottomBandProvider, DEFAULT_GUTTER_SCOPE, GutterCell, StatuslineProvider, SyntaxSpans,
-    TabBarProvider,
+    BottomBandProvider, DEFAULT_GUTTER_SCOPE, StatuslineProvider, SyntaxSpans, TabBarProvider,
 };
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
@@ -43,8 +42,6 @@ pub struct FrameScratch {
     pub format: FormatScratch,
     /// Buffers for the Style stage (Stage 3).
     pub style: StyleScratch,
-    /// Scratch storage for gutter cells rendered per row.
-    pub gutter_cells: Vec<GutterCell>,
     /// Pre-computed gutter lane widths used by the render stage.
     pub lane_widths: Vec<u16>,
 }
@@ -54,7 +51,6 @@ impl FrameScratch {
         Self {
             format: FormatScratch::new(),
             style: StyleScratch::new(),
-            gutter_cells: Vec::new(),
             lane_widths: Vec::new(),
         }
     }
@@ -63,7 +59,6 @@ impl FrameScratch {
     pub fn clear(&mut self) {
         self.format.clear();
         self.style.clear();
-        self.gutter_cells.clear();
         self.lane_widths.clear();
     }
 }
@@ -85,7 +80,7 @@ impl Default for FrameScratch {
 /// frames all internal `Vec`s have stabilised capacity and no further heap
 /// allocations occur.
 pub struct RenderContext {
-    /// Engine pipeline scratch (format, style, inline inserts, gutter cells).
+    /// Engine pipeline scratch (format, style, gutter lane widths).
     pub(crate) frame: FrameScratch,
     /// Pane rects computed by the layout stage.
     pub(crate) pane_rects: Vec<(PaneId, ratatui::layout::Rect)>,
@@ -221,10 +216,8 @@ impl EngineView {
     /// The current on-screen rect of `pid`, or `None` if `last_pane_area` has
     /// no area yet (before the first `prepare_frame`).
     pub fn pane_rect(&self, pid: PaneId) -> Option<ratatui::layout::Rect> {
-        self.pane_rects()
-            .into_iter()
-            .find(|(p, _)| *p == pid)
-            .map(|(_, r)| r)
+        self.layout
+            .find_rect(pid, self.last_pane_area, self.reserve_seam)
     }
 
     /// Partition `area` into the pane-content rect, reserving a tab-bar row at

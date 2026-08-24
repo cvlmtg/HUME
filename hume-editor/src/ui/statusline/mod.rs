@@ -377,12 +377,20 @@ fn render_statusline(
     // ── FilePath two-pass sizing ──────────────────────────────────────────────
     // The FilePath element is flexible: it shrinks when the row is narrow.
     // Measure pass: render with FilePath = "" to find the total fixed width.
-    // Final pass: shorten the path to the remaining budget, then render for real.
+    // Final pass: shorten the path to the remaining budget, then render for
+    // real — but only the section(s) that actually place `FilePath`. It
+    // contributes no width to a section that doesn't contain it, so that
+    // section's measure-pass spans are already its final ones; re-rendering
+    // it again would just reallocate every other element's `Cow` a second
+    // time for an identical result.
     let filepath_full = elements::file_path::statusline_display_path(editor);
-    let filepath_display: String = if filepath_full.is_empty() {
-        String::new()
+    let (left_spans, center_spans, right_spans) = if filepath_full.is_empty() {
+        (
+            pad_left(render_section(left_elems, editor, colors, ""), colors),
+            render_section(center_elems, editor, colors, ""),
+            pad_right(render_section(right_elems, editor, colors, ""), colors),
+        )
     } else {
-        // Measure pass — FilePath contributes no width.
         let m_left = pad_left(render_section(left_elems, editor, colors, ""), colors);
         let m_center = render_section(center_elems, editor, colors, "");
         let m_right = pad_right(render_section(right_elems, editor, colors, ""), colors);
@@ -392,18 +400,31 @@ fn render_statusline(
         // Subtract 1 for the inter-element space that render_section inserts
         // before a non-empty FilePath span (conservatively safe for all cases).
         let budget = (area.width as usize).saturating_sub(fixed_w + 1);
-        elements::file_path::shorten_path_to_width(&filepath_full, budget)
-    };
+        let filepath_display = elements::file_path::shorten_path_to_width(&filepath_full, budget);
 
-    let left_spans = pad_left(
-        render_section(left_elems, editor, colors, &filepath_display),
-        colors,
-    );
-    let center_spans = render_section(center_elems, editor, colors, &filepath_display);
-    let right_spans = pad_right(
-        render_section(right_elems, editor, colors, &filepath_display),
-        colors,
-    );
+        let left = if left_elems.contains(&StatusElement::FilePath) {
+            pad_left(
+                render_section(left_elems, editor, colors, &filepath_display),
+                colors,
+            )
+        } else {
+            m_left
+        };
+        let center = if center_elems.contains(&StatusElement::FilePath) {
+            render_section(center_elems, editor, colors, &filepath_display)
+        } else {
+            m_center
+        };
+        let right = if right_elems.contains(&StatusElement::FilePath) {
+            pad_right(
+                render_section(right_elems, editor, colors, &filepath_display),
+                colors,
+            )
+        } else {
+            m_right
+        };
+        (left, center, right)
+    };
 
     let left_w = section_width(&left_spans);
     let center_w = section_width(&center_spans);

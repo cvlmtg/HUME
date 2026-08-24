@@ -704,11 +704,12 @@ fn is_whitespace_grapheme(s: &str) -> bool {
 
 /// Compute the display `width` and `CellContent` for one grapheme cluster.
 ///
-/// Width is one `hume_rope::width::grapheme_width` call for every branch —
-/// tab, space, NBSP/ideographic space, and regular graphemes alike — so this
-/// and every other column computation in the workspace (editing ops, Steel
-/// decorations, UI chrome) agree on where a given cluster lands. What varies
-/// per branch below is only which `CellContent` renders it.
+/// Width and rendering kind both come from one `hume_rope::width::classify`
+/// call — tab, space, NBSP/ideographic space, and regular graphemes alike —
+/// so this and every other column computation in the workspace (editing
+/// ops, Steel decorations, UI chrome) agree on where a given cluster lands,
+/// and the tab-before-placeholder ordering (a tab is also a control
+/// character) is decided once instead of re-tested here.
 fn grapheme_display(
     grapheme_str: &str,
     current_display_col: u32,
@@ -717,69 +718,61 @@ fn grapheme_display(
     is_trailing: bool,
     virtual_texts: &mut String,
 ) -> (u8, CellContent) {
-    let width =
-        hume_rope::width::grapheme_width(grapheme_str, current_display_col as usize, tab_width)
-            as u8;
+    match hume_rope::width::classify(grapheme_str, current_display_col as usize, tab_width) {
+        hume_rope::width::Cluster::Tab { width } => {
+            let content = if should_render_whitespace(whitespace.tab, is_trailing) {
+                let (start, len) = push_arena_text(virtual_texts, whitespace.tab_char);
+                CellContent::Indicator { start, len }
+            } else {
+                // Tabs render as spaces when the indicator is off.
+                let (start, len) = push_arena_text(virtual_texts, " ");
+                CellContent::Indicator { start, len }
+            };
+            (width as u8, content)
+        }
 
-    // Tab: expand to next tab stop.
-    if grapheme_str == "\t" {
-        let content = if should_render_whitespace(whitespace.tab, is_trailing) {
-            let (start, len) = push_arena_text(virtual_texts, whitespace.tab_char);
-            CellContent::Indicator { start, len }
-        } else {
-            // Tabs render as spaces when the indicator is off.
-            let (start, len) = push_arena_text(virtual_texts, " ");
-            CellContent::Indicator { start, len }
-        };
-        return (width, content);
+        // A cluster the terminal must not be shown as itself: a control
+        // character it would act on, or an invisible one it would
+        // collapse. Renders as its codepoint, `<200b>`, the way Vim and
+        // Emacs show them — never as a blank, which would leave a bidi
+        // override looking exactly like a space. Not gated by any
+        // `whitespace-*` setting: these are unrenderable rather than
+        // merely invisible, and a reader who cannot see them cannot
+        // review what they do. Same substitution `push_virtual_cells` and
+        // `render::write_text_run` make, so the whole frame answers this
+        // the same way.
+        hume_rope::width::Cluster::Placeholder(p) => {
+            let (start, len) = push_arena_text(virtual_texts, p.as_str());
+            (len as u8, CellContent::Placeholder { start, len })
+        }
+
+        hume_rope::width::Cluster::Plain { width, .. } => {
+            let content = if grapheme_str == " " {
+                // Space
+                if should_render_whitespace(whitespace.space, is_trailing) {
+                    let (start, len) = push_arena_text(virtual_texts, whitespace.space_char);
+                    CellContent::Indicator { start, len }
+                } else {
+                    CellContent::Grapheme
+                }
+            } else if grapheme_str == "\u{A0}" || grapheme_str == "\u{3000}" {
+                // Invisible Unicode spaces (NBSP, ideographic space): gated
+                // by the same `space` render mode but with a distinct
+                // glyph, so stray non-breaking spaces stand out from
+                // ordinary ones.
+                if should_render_whitespace(whitespace.space, is_trailing) {
+                    let (start, len) = push_arena_text(virtual_texts, whitespace.nbsp_char);
+                    CellContent::Indicator { start, len }
+                } else {
+                    CellContent::Grapheme
+                }
+            } else {
+                // Regular grapheme.
+                CellContent::Grapheme
+            };
+            (width as u8, content)
+        }
     }
-
-    // Space
-    if grapheme_str == " " {
-        let content = if should_render_whitespace(whitespace.space, is_trailing) {
-            let (start, len) = push_arena_text(virtual_texts, whitespace.space_char);
-            CellContent::Indicator { start, len }
-        } else {
-            CellContent::Grapheme
-        };
-        return (width, content);
-    }
-
-    // Invisible Unicode spaces (NBSP, ideographic space): gated by the same
-    // `space` render mode but with a distinct glyph, so stray non-breaking
-    // spaces stand out from ordinary ones.
-    if grapheme_str == "\u{A0}" || grapheme_str == "\u{3000}" {
-        let content = if should_render_whitespace(whitespace.space, is_trailing) {
-            let (start, len) = push_arena_text(virtual_texts, whitespace.nbsp_char);
-            CellContent::Indicator { start, len }
-        } else {
-            CellContent::Grapheme
-        };
-        return (width, content);
-    }
-
-    // A cluster the terminal must not be shown as itself: a control
-    // character it would act on, or an invisible one it would collapse. Both
-    // render as their codepoint, `<200b>`, the way Vim and Emacs show them —
-    // never as a blank, which would leave a bidi override looking exactly
-    // like a space. `grapheme_width` already sized this cell for the
-    // placeholder, so the text fits the columns reserved for it.
-    //
-    // Not gated by any `whitespace-*` setting: these are unrenderable rather
-    // than merely invisible, and a reader who cannot see them cannot review
-    // what they do. Same substitution `push_virtual_cells` and
-    // `render::write_text_run` make, so the whole frame answers this the
-    // same way.
-    if hume_rope::width::needs_placeholder(grapheme_str) {
-        let (start, len) = push_arena_text(
-            virtual_texts,
-            hume_rope::width::placeholder(grapheme_str).as_str(),
-        );
-        return (width, CellContent::Placeholder { start, len });
-    }
-
-    // Regular grapheme.
-    (width, CellContent::Grapheme)
 }
 
 /// Push `text` into a per-frame text arena (`FormatScratch::virtual_texts`
@@ -862,15 +855,16 @@ pub(crate) fn push_virtual_cells(
         // One grapheme cluster's width is always <= tab_width (u8's own max
         // 255), unlike a whole run's — no `.min(255)` cap needed before
         // narrowing.
-        let width =
-            hume_rope::width::grapheme_width(cluster, *display_col as usize, tab_width) as u8;
+        let classified = hume_rope::width::classify(cluster, *display_col as usize, tab_width);
+        // display-width-safe: Cluster::width() reads classify()'s own decision — not a second raw measurement.
+        let width = classified.width() as u8;
 
         // A cluster the terminal must not be shown as itself renders as its
         // codepoint, exactly as buffer text does (`grapheme_display`), and
-        // occupies the columns `grapheme_width` sized for that placeholder.
-        // A tab keeps its stop expansion, drawn blank like a buffer line's
-        // tab with the indicator off — decoration providers have no
-        // per-line whitespace setting to key off.
+        // occupies the columns `classify` sized for that placeholder. A tab
+        // keeps its stop expansion, drawn blank like a buffer line's tab
+        // with the indicator off — decoration providers have no per-line
+        // whitespace setting to key off.
         //
         // `set-virtual-lines!` already substitutes control characters at the
         // Steel boundary to keep its caller's `'segments` offsets aligned,
@@ -878,18 +872,19 @@ pub(crate) fn push_virtual_cells(
         // server's `InlayHint.label` reaches here verbatim — so the
         // guarantee is enforced at this chokepoint rather than at each
         // producer.
-        let content = if cluster == "\t" {
-            let (start, len) = push_arena_text(arena, " ");
-            CellContent::Indicator { start, len }
-        } else if hume_rope::width::needs_placeholder(cluster) {
-            let (start, len) =
-                push_arena_text(arena, hume_rope::width::placeholder(cluster).as_str());
-            CellContent::Placeholder { start, len }
-        } else {
-            CellContent::Virtual {
+        let content = match classified {
+            hume_rope::width::Cluster::Tab { .. } => {
+                let (start, len) = push_arena_text(arena, " ");
+                CellContent::Indicator { start, len }
+            }
+            hume_rope::width::Cluster::Placeholder(p) => {
+                let (start, len) = push_arena_text(arena, p.as_str());
+                CellContent::Placeholder { start, len }
+            }
+            hume_rope::width::Cluster::Plain { .. } => CellContent::Virtual {
                 start: text_start + byte_offset as u32,
                 len: cluster.len() as u16,
-            }
+            },
         };
 
         graphemes_out.push(Grapheme {

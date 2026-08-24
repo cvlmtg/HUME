@@ -89,6 +89,17 @@ pub(crate) struct CompletionSession {
     /// Buffer generation as of the last `begin`/`update_filter` call —
     /// `accept!` rejects if the buffer changed by any other path since.
     generation_at_begin: u64,
+    /// Row labels for the current `filtered` set and their menu box width
+    /// (`menu_box::menu_inner_width`), built lazily by
+    /// [`Self::menu_labels_and_width`] and invalidated by `update_filter`.
+    /// `filtered` only changes there — not on menu navigation (selecting a
+    /// different row) or on an unrelated frame redraw — so caching here
+    /// means `sync_completion_menu_view`'s once-a-frame call doesn't
+    /// re-format and re-measure every candidate for a menu whose contents
+    /// haven't moved. `Arc`, not a plain `Vec`, so a caller building a
+    /// `PopupState` (which itself shares its `lines` by `Arc`) gets a cheap
+    /// refcount bump instead of a fresh clone of every label.
+    menu_cache: Option<(std::sync::Arc<Vec<String>>, u16)>,
 }
 
 /// Insert-mode UI state for an open completion session — kept separate from
@@ -195,6 +206,7 @@ impl CompletionSession {
             incomplete,
             // Real value stamped by `update_filter`, just below.
             generation_at_begin: 0,
+            menu_cache: None,
         };
         session.update_filter(state, String::new());
         Some(session)
@@ -208,6 +220,7 @@ impl CompletionSession {
     pub(crate) fn update_filter(&mut self, state: &EditorState, text: String) {
         self.filter = text;
         self.generation_at_begin = state.buffers.get(self.bid).text_gen;
+        self.menu_cache = None;
         self.rank_scratch.clear();
         for (i, item) in self.items.iter().enumerate() {
             if let Some(pos) = subsequence_match_pos(&self.filter, &item.filter_text) {
@@ -233,6 +246,30 @@ impl CompletionSession {
             .take(n)
             .map(|&i| self.items[i as usize].to_json())
             .collect()
+    }
+
+    /// Row labels for every candidate in `filtered` (not just the visible
+    /// window — the menu box's width has to stay stable as the user scrolls
+    /// past wider or narrower rows, see `menu_box::menu_inner_width`'s own
+    /// doc) and the box width they measure to. Built once per `filtered` set
+    /// — see [`Self::menu_cache`]'s doc — so a caller redrawing the same
+    /// unchanged menu every frame reads the cache instead of reformatting
+    /// and re-measuring every candidate again.
+    pub(crate) fn menu_labels_and_width(&mut self) -> (std::sync::Arc<Vec<String>>, u16) {
+        if self.menu_cache.is_none() {
+            let labels: Vec<String> = self
+                .filtered
+                .iter()
+                .map(|&i| self.items[i as usize].menu_row_label())
+                .collect();
+            let width = crate::ui::menu_box::menu_inner_width(&labels);
+            self.menu_cache = Some((std::sync::Arc::new(labels), width));
+        }
+        let (labels, width) = self
+            .menu_cache
+            .as_ref()
+            .expect("populated by the check above");
+        (std::sync::Arc::clone(labels), *width)
     }
 }
 

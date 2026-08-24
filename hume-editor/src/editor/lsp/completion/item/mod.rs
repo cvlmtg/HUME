@@ -163,6 +163,17 @@ impl StoredCompletionItem {
             "detail": self.detail,
         })
     }
+
+    /// Formats this item as `"label  detail"`, uniformly styled — per-part
+    /// dimming would need segment-styled rows, which no card requires. The
+    /// menu's own row label: reads `label`/`detail` directly rather than
+    /// going through [`Self::to_json`], since the menu never needs `kind`.
+    pub(super) fn menu_row_label(&self) -> String {
+        match self.detail.as_deref() {
+            Some(detail) if !detail.is_empty() => format!("{}  {detail}", self.label),
+            _ => self.label.clone(),
+        }
+    }
 }
 
 /// Rewrites `${n:default}` -> `default` (empty string if no `:default`) and

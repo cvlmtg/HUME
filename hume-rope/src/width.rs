@@ -41,6 +41,61 @@ pub fn prev_tab_stop(display_col: usize, tw: u8) -> usize {
     (display_col.saturating_sub(1) / tw) * tw
 }
 
+/// How a grapheme cluster renders — tab, unrenderable placeholder, or plain
+/// text — decided once by [`classify`] and carrying each variant's own
+/// display width, so every caller that needs to know not just *how wide* a
+/// cluster is but *what to draw* for it reads that off one decision instead
+/// of re-deriving it. Before this existed, `format::grapheme_display`,
+/// `format::push_virtual_cells`, and `render::write_text_run` each
+/// re-tested `cluster == "\t"` before [`needs_placeholder`], in that order,
+/// for the same reason ([`classify`]'s own doc) — three copies of one
+/// ordering hazard, and two of the three rebuilt a [`Placeholder`]
+/// `grapheme_width` had already thrown away.
+pub enum Cluster<'a> {
+    /// A tab, expanding to the next `tab_width` stop.
+    Tab { width: usize },
+    /// A cluster the terminal must not be shown as itself — see
+    /// [`needs_placeholder`]. Carries its own [`Placeholder`] so a caller
+    /// never has to build it twice.
+    Placeholder(Placeholder),
+    /// Every other cluster, measured with `unicode-width`.
+    Plain { text: &'a str, width: usize },
+}
+
+impl Cluster<'_> {
+    /// Display columns this cluster occupies. Never zero — see
+    /// [`grapheme_width`]'s own doc for why.
+    pub fn width(&self) -> usize {
+        match self {
+            Cluster::Tab { width } | Cluster::Plain { width, .. } => *width,
+            Cluster::Placeholder(p) => p.as_str().len(),
+        }
+    }
+}
+
+/// Classifies `cluster` for rendering at display column `display_col` and
+/// measures its width in the same pass — the one decision every caller
+/// that draws text (not just measures it) must consume rather than
+/// re-derive. Re-deriving it independently is not just duplicated work but
+/// a duplicated *ordering* hazard: a tab is also a control character, so
+/// testing [`needs_placeholder`] before ruling out `"\t"` would draw a
+/// multi-cell placeholder into the single cell [`tab_advance`] reserves
+/// for it.
+pub fn classify(cluster: &str, display_col: usize, tab_width: u8) -> Cluster<'_> {
+    if cluster == "\t" {
+        Cluster::Tab {
+            width: tab_advance(display_col, tab_width),
+        }
+    } else if needs_placeholder(cluster) {
+        Cluster::Placeholder(placeholder(cluster))
+    } else {
+        Cluster::Plain {
+            text: cluster,
+            width: cluster.width().min(2),
+        }
+    }
+}
+
 /// Display columns one grapheme cluster occupies when rendered starting at
 /// display column `display_col`. A tab advances to the next `tab_width`
 /// stop; a cluster the terminal must not be shown ([`needs_placeholder`])
@@ -48,14 +103,12 @@ pub fn prev_tab_stop(display_col: usize, tw: u8) -> usize {
 /// `unicode-width`, capped at the two-cell layout the renderer gives a wide
 /// grapheme. Nothing measures zero — a cluster that would have needs a
 /// placeholder instead, which is never empty.
+///
+/// A measure-only caller wants this; a caller that also draws the cluster
+/// wants [`classify`] instead, so it doesn't re-decide what this function
+/// already decided.
 pub fn grapheme_width(cluster: &str, display_col: usize, tab_width: u8) -> usize {
-    if cluster == "\t" {
-        tab_advance(display_col, tab_width)
-    } else if needs_placeholder(cluster) {
-        placeholder(cluster).as_str().len()
-    } else {
-        cluster.width().min(2)
-    }
+    classify(cluster, display_col, tab_width).width()
 }
 
 /// True when `cluster` must not be written to the terminal as itself.
@@ -185,15 +238,18 @@ pub fn truncate_to_width(s: &str, max_display_width: usize, tab_width: u8) -> (&
 /// that suffix's width. Never splits a grapheme cluster.
 ///
 /// Measures back-to-front, accumulating width from the kept end rather than
-/// from `s`'s own start — exact for tab-free text or `tab_width == 1` (the
-/// UI-chrome convention every caller of this variant uses today). A tab's
+/// from `s`'s own start — exact for tab-free text, which is what every
+/// caller of this function has: chrome text, always measured at
+/// [`CHROME_TAB_WIDTH`], the only tab width this function knows. A tab's
 /// true expansion depends on what precedes it on screen, which a suffix
-/// alone can't know; this doesn't attempt to model that.
-pub fn truncate_suffix_to_width(s: &str, max_display_width: usize, tab_width: u8) -> (&str, usize) {
+/// alone can't know; this doesn't attempt to model that, which is why the
+/// convention is fixed rather than a parameter a caller could pass some
+/// other width to and get a silently wrong answer.
+pub fn truncate_suffix_to_width(s: &str, max_display_width: usize) -> (&str, usize) {
     let mut display_col = 0usize;
     let mut start = s.len();
     for (byte_idx, g) in s.grapheme_indices(true).rev() {
-        let w = grapheme_width(g, display_col, tab_width);
+        let w = grapheme_width(g, display_col, CHROME_TAB_WIDTH);
         if display_col + w > max_display_width {
             break;
         }

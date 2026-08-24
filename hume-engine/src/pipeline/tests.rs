@@ -877,6 +877,77 @@ fn layout_tree_collect_appends_without_clearing() {
     assert_eq!(out.len(), 2); // appended, not replaced
 }
 
+#[test]
+fn find_rect_matches_collect_rects_into_for_each_pane() {
+    // A 4th id from the same slotmap as id_a/id_b/id_c (never inserted into
+    // the tree below) — `pane_ids`'s own doc: a *fresh* map's first key can
+    // coincide with another fresh map's first key, so "unknown" must come
+    // from this same call, not a separate one.
+    let [id_a, id_b, id_c, unknown] = pane_ids();
+    // A 3-pane tree: (a | (b / c)) — a horizontal split whose right side is
+    // itself split vertically.
+    let tree = LayoutTree::Split {
+        direction: Direction::Horizontal,
+        ratio: 0.5,
+        children: Box::new((
+            LayoutTree::Leaf(id_a),
+            LayoutTree::Split {
+                direction: Direction::Vertical,
+                ratio: 0.5,
+                children: Box::new((LayoutTree::Leaf(id_b), LayoutTree::Leaf(id_c))),
+            },
+        )),
+    };
+    let area = rect(0, 0, 100, 50);
+    let mut collected = Vec::new();
+    tree.collect_rects_into(area, true, &mut collected);
+
+    for &(pid, expected_rect) in &collected {
+        assert_eq!(
+            tree.find_rect(pid, area, true),
+            Some(expected_rect),
+            "find_rect must agree with collect_rects_into for {pid:?}"
+        );
+    }
+    // A pid absent from the tree finds nothing.
+    assert_eq!(tree.find_rect(unknown, area, true), None);
+}
+
+#[test]
+fn find_containing_matches_collect_rects_into_by_position() {
+    let [id_a, id_b, id_c] = pane_ids();
+    let tree = LayoutTree::Split {
+        direction: Direction::Horizontal,
+        ratio: 0.5,
+        children: Box::new((
+            LayoutTree::Leaf(id_a),
+            LayoutTree::Split {
+                direction: Direction::Vertical,
+                ratio: 0.5,
+                children: Box::new((LayoutTree::Leaf(id_b), LayoutTree::Leaf(id_c))),
+            },
+        )),
+    };
+    let area = rect(0, 0, 100, 50);
+    let mut collected = Vec::new();
+    tree.collect_rects_into(area, true, &mut collected);
+
+    // One interior point per leaf — same pane and rect either way.
+    for &(pid, r) in &collected {
+        let pos = ratatui::layout::Position::new(r.x, r.y);
+        assert_eq!(
+            tree.find_containing(pos, area, true),
+            Some((pid, r)),
+            "find_containing must agree with collect_rects_into at {pos:?}"
+        );
+    }
+    // A point in the horizontal seam column (x=49, reserved by the a|bc
+    // split) falls inside no leaf's rect.
+    let seam_pos = ratatui::layout::Position::new(49, 0);
+    assert!(collected.iter().all(|&(_, r)| !r.contains(seam_pos)));
+    assert_eq!(tree.find_containing(seam_pos, area, true), None);
+}
+
 // ── Seams ────────────────────────────────────────────────────────────
 
 #[test]

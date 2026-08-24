@@ -294,47 +294,52 @@ impl Editor {
     /// [`Self::sync_menu_view`] and for the same reason: it needs
     /// `EngineView::pane_rect`, which reads `last_pane_area` — only current
     /// after step 9 runs.
-    pub(super) fn sync_completion_menu_view(&self, ctx: &mut RenderContext) {
+    pub(super) fn sync_completion_menu_view(&mut self, ctx: &mut RenderContext) {
         if self.lsp.completion.is_none()
             && self.state.completion_menu_view.read_or_panic().is_none()
         {
             return;
         }
 
-        let resolved = self.lsp.completion.as_ref().and_then(|session| {
-            // `session.anchor()` is a char offset captured when the session
-            // began; it isn't remapped through edits, so an out-of-band
-            // shrink (LSP applyEdit, file reload) or a pane switch since can
-            // leave it pointing past the focused buffer's current end, or at
-            // a buffer that isn't even the one on screen. `RowMap::locate`
-            // (reached via `popup_anchor_and_bounds`) has no way to tell a
-            // stale offset from a live one, so check both here.
+        // `session.anchor()` is a char offset captured when the session
+        // began; it isn't remapped through edits, so an out-of-band shrink
+        // (LSP applyEdit, file reload) or a pane switch since can leave it
+        // pointing past the focused buffer's current end, or at a buffer
+        // that isn't even the one on screen. `RowMap::locate` (reached via
+        // `popup_anchor_and_bounds`) has no way to tell a stale offset from
+        // a live one, so check both here.
+        //
+        // Two sequential immutable-then-mutable borrows of `self`, not one
+        // closure over `self.lsp.completion`: `popup_anchor_and_bounds`
+        // needs `&self` as a whole (pane/viewport/cursor state), which
+        // can't overlap the `&mut` `menu_labels_and_width` needs below.
+        let resolved = (|| -> Option<crate::ui::popup::PopupState> {
+            let session = self.lsp.completion.as_ref()?;
             if session.bid() != self.focused_buffer_id() {
                 return None;
             }
+            let anchor_char = session.anchor();
             let len = self.state.buffers.get(session.bid()).text().len_chars();
-            if session.anchor() >= len {
+            if anchor_char >= len {
                 return None;
             }
             let (anchor, pane_rect, _max_width, _max_height) =
-                self.popup_anchor_and_bounds(ctx, session.anchor())?;
-            let lines: Vec<String> = session
-                .top(usize::MAX)
-                .iter()
-                .map(completion_row_label)
-                .collect();
-            let (outer_w, outer_h) =
-                crate::ui::menu_box::outer_dims(&lines, crate::ui::menu_box::MAX_MENU_ROWS);
+                self.popup_anchor_and_bounds(ctx, anchor_char)?;
+
+            let selected_idx = self.lsp.completion_ui.as_ref().map_or(0, |ui| ui.selected);
+            let session = self.lsp.completion.as_mut()?;
+            let (lines, inner_w) = session.menu_labels_and_width();
+            let outer_w = inner_w + 2;
+            let outer_h = (lines.len() as u16).min(crate::ui::menu_box::MAX_MENU_ROWS) + 2;
             let (x, y, outer_w, outer_h) =
                 crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
             let selected = if lines.is_empty() {
                 None
             } else {
-                let idx = self.lsp.completion_ui.as_ref().map_or(0, |ui| ui.selected);
-                Some(idx.min(lines.len() - 1))
+                Some(selected_idx.min(lines.len() - 1))
             };
             Some(crate::ui::popup::PopupState {
-                lines: std::sync::Arc::new(lines),
+                lines,
                 x,
                 y,
                 outer_w,
@@ -344,7 +349,7 @@ impl Editor {
                 styled_rows: None, // menus never highlight per-span, only per-row
                 border: self.state.settings.popup_border,
             })
-        });
+        })();
 
         *self.state.completion_menu_view.write_or_panic() = resolved;
     }
@@ -392,19 +397,5 @@ impl Editor {
         };
 
         *self.state.picker_view.write_or_panic() = resolved;
-    }
-}
-
-/// Formats one `completion_top` row (a decoded `{label, kind, detail}`
-/// hashmap) as `"label  detail"`, uniformly styled — per-part dimming would
-/// need segment-styled rows, which no card requires.
-fn completion_row_label(item: &serde_json::Value) -> String {
-    let label = item
-        .get("label")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    match item.get("detail").and_then(|v| v.as_str()) {
-        Some(detail) if !detail.is_empty() => format!("{label}  {detail}"),
-        _ => label.to_string(),
     }
 }

@@ -137,35 +137,25 @@ pub(crate) fn picker_styles(theme: &Theme) -> PickerStyles {
     }
 }
 
-/// Remove leading graphemes from `s` until its display width fits `budget`,
-/// keeping the *tail* — so the cursor cell (always at the end of the query,
-/// per the store's append/pop-at-end-only editing model) stays visible.
-fn truncate_tail(s: &str, budget: usize) -> String {
-    truncate_text_tail(s, budget).to_string()
-}
-
-/// Remove trailing graphemes from `s` until its display width fits `budget`,
-/// keeping the *head* — the prompt is a fixed label, not something the user
-/// is editing, so if it must be clipped at all (a pathologically narrow
-/// panel), the readable prefix matters more than the tail.
-fn truncate_head(s: &str, budget: usize) -> String {
-    truncate_text(s, budget).to_string()
-}
-
 /// Clip `s` to `budget` display cells, keeping the *tail* and prefixing a
 /// `…` marker when anything was dropped — for list rows (e.g. file paths)
 /// the distinguishing part (the basename) sits at the end. Grapheme-cluster
-/// aware via [`truncate_tail`]. Kept distinct from `truncate_tail` because
-/// the query row must never gain a marker — the query is the user's
+/// aware via [`truncate_text_tail`]. Kept distinct from the query row's own
+/// tail-truncation (`draw_picker_panel`'s direct `truncate_text_tail` call)
+/// because the query row must never gain a marker — the query is the user's
 /// editable text, and its bare tail (no `…`) is intentional there.
-fn truncate_tail_marked(s: &str, budget: usize) -> String {
+///
+/// Borrows `s` unchanged on the (common) no-truncation path instead of
+/// allocating a copy of every visible row every frame.
+fn truncate_tail_marked(s: &str, budget: usize) -> std::borrow::Cow<'_, str> {
     if text_width(s) <= budget {
-        return s.to_string();
+        return std::borrow::Cow::Borrowed(s);
     }
     if budget == 0 {
-        return String::new();
+        return std::borrow::Cow::Borrowed("");
     }
-    format!("…{}", truncate_tail(s, budget - 1))
+    let (tail, _) = truncate_text_tail(s, budget - 1);
+    std::borrow::Cow::Owned(format!("…{tail}"))
 }
 
 /// Paint the panel into `state`'s resolved outer rect. Pure function of its
@@ -213,9 +203,10 @@ pub(crate) fn draw_picker_panel(
     // Clip the prompt itself only in the pathological case where it alone
     // exceeds the inner width — the common case (empty or a short label)
     // leaves this a no-op, so an empty prompt renders identically to no
-    // prompt at all.
-    let prompt_shown = truncate_head(&state.prompt, inner_width);
-    let prompt_width = text_width(&prompt_shown);
+    // prompt at all. The readable prefix matters more than the tail for a
+    // fixed label, so this keeps the *head* (unlike the query's own
+    // tail-truncation below).
+    let (prompt_shown, prompt_width) = truncate_text(&state.prompt, inner_width);
     if prompt_width > 0 {
         canvas.write_text_run(inner_x, input_y, &prompt_shown, styles.text, inner_right);
     }
@@ -228,8 +219,10 @@ pub(crate) fn draw_picker_panel(
     } else {
         after_prompt_width.saturating_sub(1)
     };
-    let query_tail = truncate_tail(&state.query, query_budget);
-    let query_width = text_width(&query_tail);
+    // Remove leading graphemes until the query fits `query_budget`, keeping
+    // the *tail* — so the cursor cell (always at the end of the query, per
+    // the store's append/pop-at-end-only editing model) stays visible.
+    let (query_tail, query_width) = truncate_text_tail(&state.query, query_budget);
 
     let query_x = inner_x + prompt_width as u16;
     canvas.write_text_run(query_x, input_y, &query_tail, styles.text, inner_right);

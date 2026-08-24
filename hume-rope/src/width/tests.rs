@@ -321,23 +321,23 @@ fn truncate_to_width_never_splits_a_decomposed_cluster() {
 
 #[test]
 fn truncate_suffix_to_width_whole_string_fits() {
-    assert_eq!(truncate_suffix_to_width("ab", 5, 1), ("ab", 2));
+    assert_eq!(truncate_suffix_to_width("ab", 5), ("ab", 2));
 }
 
 #[test]
 fn truncate_suffix_to_width_keeps_the_tail() {
-    assert_eq!(truncate_suffix_to_width("abc", 2, 1), ("bc", 2));
+    assert_eq!(truncate_suffix_to_width("abc", 2), ("bc", 2));
 }
 
 #[test]
 fn truncate_suffix_to_width_drops_a_whole_wide_cluster_that_would_overshoot() {
     assert_eq!(
-        truncate_suffix_to_width("\u{6F22}\u{6F22}", 3, 1),
+        truncate_suffix_to_width("\u{6F22}\u{6F22}", 3),
         ("\u{6F22}", 2)
     );
 }
 
 #[test]
 fn truncate_suffix_to_width_zero_budget_is_empty() {
-    assert_eq!(truncate_suffix_to_width("abc", 0, 1), ("", 0));
+    assert_eq!(truncate_suffix_to_width("abc", 0), ("", 0));
 }

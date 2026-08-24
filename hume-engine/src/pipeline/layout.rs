@@ -75,6 +75,72 @@ impl LayoutTree {
         }
     }
 
+    /// `pid`'s own rect, without collecting every other leaf's — the single-
+    /// target sibling of [`Self::collect_rects_into`], for callers (a single
+    /// pane lookup, a mouse-motion hit test) that don't need the whole
+    /// partition and would otherwise allocate one just to search it.
+    pub fn find_rect(
+        &self,
+        pid: PaneId,
+        area: ratatui::layout::Rect,
+        reserve_seam: bool,
+    ) -> Option<ratatui::layout::Rect> {
+        match self {
+            LayoutTree::Leaf(id) => (*id == pid).then_some(area),
+            LayoutTree::Split {
+                direction,
+                ratio,
+                children,
+            } => {
+                let (r1, _seam, r2) = split_rect(
+                    area,
+                    *direction == Direction::Vertical,
+                    *ratio,
+                    reserve_seam,
+                );
+                children
+                    .0
+                    .find_rect(pid, r1, reserve_seam)
+                    .or_else(|| children.1.find_rect(pid, r2, reserve_seam))
+            }
+        }
+    }
+
+    /// The leaf pane whose rect contains `pos`, and that rect — the
+    /// position-search sibling of [`Self::find_rect`], for a mouse hit test
+    /// that would otherwise collect every leaf's rect just to scan it for
+    /// containment. Descends only the child whose rect contains `pos`
+    /// (`O(depth)`, not `O(panes)`), falling through to the other child only
+    /// when neither matches at a given split (a click in the seam gap),
+    /// where the eventual `None` is still correct, just found less directly.
+    pub fn find_containing(
+        &self,
+        pos: ratatui::layout::Position,
+        area: ratatui::layout::Rect,
+        reserve_seam: bool,
+    ) -> Option<(PaneId, ratatui::layout::Rect)> {
+        match self {
+            LayoutTree::Leaf(id) => area.contains(pos).then_some((*id, area)),
+            LayoutTree::Split {
+                direction,
+                ratio,
+                children,
+            } => {
+                let (r1, _seam, r2) = split_rect(
+                    area,
+                    *direction == Direction::Vertical,
+                    *ratio,
+                    reserve_seam,
+                );
+                if r1.contains(pos) {
+                    children.0.find_containing(pos, r1, reserve_seam)
+                } else {
+                    children.1.find_containing(pos, r2, reserve_seam)
+                }
+            }
+        }
+    }
+
     /// Compute the 1-cell seam divider drawn between sibling panes at every
     /// split node, given the total area. Walks the same recursion as
     /// `collect_rects_into`, off the same `split_rect` math, so seams always
