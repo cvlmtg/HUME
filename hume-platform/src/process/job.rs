@@ -8,10 +8,11 @@
 //! done". The capture thread this module spawns is free to block, so it
 //! reads stdout to EOF, joins the stderr thread, then polls the child's
 //! real exit status (never a blocking `wait`, which would hold the shared
-//! [`TrackedChild`] slot's lock for the child's entire remaining lifetime
-//! and starve a concurrent `cancel-async!`/[`SpawnedJob::drop`]), and only
-//! then sends the complete result. [`SpawnedJob::try_take_result`] is a
-//! pure receive with no reaping of its own — unlike
+//! [`TrackedChild`](crate::process::tracked::TrackedChild) slot's lock for
+//! the child's entire remaining lifetime and starve a concurrent
+//! `cancel-async!`/`SpawnedJob`'s `Drop`), and only then sends the complete
+//! result. [`SpawnedJob::try_take_result`](crate::process::job::SpawnedJob::try_take_result)
+//! is a pure receive with no reaping of its own — unlike
 //! `line_source::SpawnedLineSource::finish`, which reaps on the main thread
 //! because EOF really is completion for a line source.
 //!
@@ -35,9 +36,9 @@ use crate::process::child::{
 use crate::process::tracked::TrackedChild;
 
 /// The complete output of a finished [`SpawnedJob`]: whole stdout (never
-/// *silently* truncated — capped at [`JOB_STDOUT_CAP`], but exceeding it
+/// *silently* truncated — capped at `JOB_STDOUT_CAP`, but exceeding it
 /// fails the job rather than handing back a short prefix), whole stderr
-/// (capped at [`STDERR_CAPTURE_CAP`] — diagnostic only, truncation there is
+/// (capped at `STDERR_CAPTURE_CAP` — diagnostic only, truncation there is
 /// fine), and exit status (`None` on a stdout read failure/overflow, or if
 /// the capture thread's own exit-status poll errored, or the thread
 /// panicked before sending — the last three vanishingly rare).
@@ -69,7 +70,7 @@ pub struct SpawnedJob {
 
 /// Spawns `cmd` with `args` (direct argv, no shell), piped stdio, stdin
 /// closed immediately. One thread reads stderr to EOF (capped, lenient); a
-/// second reads stdout to EOF (capped at [`JOB_STDOUT_CAP`], strict — a
+/// second reads stdout to EOF (capped at `JOB_STDOUT_CAP`, strict — a
 /// read error or overflow fails the job), joins the first, then sends the
 /// combined capture once and fires `wake`.
 pub fn spawn_job(

@@ -76,7 +76,7 @@ fn claim_exit() -> bool {
 ///
 /// The terminator thread ([`spawn_terminator`]'s force-exit arms) and the
 /// main thread (`hume-editor`'s `run`, after its own graceful shutdown) can
-/// both reach an exit path once [`QUIT_GRACE`] elapses — its budget is sized
+/// both reach an exit path once `QUIT_GRACE` elapses — its budget is sized
 /// to just barely exceed the main thread's worst-case teardown, so with
 /// enough attached LSP servers the two windows overlap. Without a single
 /// winner, both would write terminal-restore sequences to the same
@@ -120,14 +120,14 @@ fn force_exit(term: &terminal::SharedTerm, code: i32) -> ! {
 /// recording tool closing after capture) doesn't reliably deliver SIGHUP,
 /// and without an independent watch the event reader's idle wait spins at
 /// 100% CPU forever instead of returning (the read primitive maps EOF to
-/// "no event", not an error). See [`unix::spawn_terminator`] for how Unix
+/// "no event", not an error). See `unix::spawn_terminator` for how Unix
 /// multiplexes both wake sources on one thread.
 ///
 /// `request_quit` is called with the exit code the process should use —
 /// `128 + signo` on Unix, 130 on Windows (`ctrlc` doesn't expose which
 /// control event fired) — and routes through the editor's normal quit path
 /// (graceful LSP `shutdown`) rather than tearing the terminal down here.
-/// This thread then waits up to [`QUIT_GRACE`] for the main loop to exit on
+/// This thread then waits up to `QUIT_GRACE` for the main loop to exit on
 /// its own before force-restoring and exiting with that code anyway. A pty
 /// hangup can't take this route: the main loop's event reader is pinned at
 /// tty EOF and never wakes, so this thread force-exits with 130 immediately.

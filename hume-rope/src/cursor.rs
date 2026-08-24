@@ -43,7 +43,7 @@ impl Iterator for CharCursor<'_> {
 impl CharCursor<'_> {
     /// Step back and yield the char just before the cursor position.
     ///
-    /// Not a [`DoubleEndedIterator`](std::iter::DoubleEndedIterator) impl —
+    /// Not a [`DoubleEndedIterator`] impl —
     /// that trait means "consume from the far end of the same forward
     /// sequence," not "walk backward from here," which is what callers
     /// (bracket-pair scans) actually need.

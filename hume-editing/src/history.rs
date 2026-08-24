@@ -156,7 +156,7 @@ impl History {
     ///   so redo restores them).
     ///
     /// If `undo-levels` trimming promotes a child of the root to become the
-    /// new root (see [`Self::enforce_undo_levels`]), returns the id of that
+    /// new root (see `Self::enforce_undo_levels`), returns the id of that
     /// promoted revision — callers holding an external `RevisionId` (e.g. a
     /// "clean" save point) must remap it to [`Self::ROOT`] if it matches, so
     /// that state stays reachable. Promotion also overwrites whatever state

@@ -14,8 +14,8 @@ use crate::types::{ResolvedStyle, Scope, ScopeId};
 /// Maps scope name strings to compact [`ScopeId`] integers.
 ///
 /// Two registration entry points share one map and interning path:
-/// - [`intern`] for `&'static str` — used by engine builtins and theme loaders.
-/// - [`intern_runtime`] for `&str` — used by Steel-loaded language configs
+/// - [`ScopeRegistry::intern`] for `&'static str` — used by engine builtins and theme loaders.
+/// - [`ScopeRegistry::intern_runtime`] for `&str` — used by Steel-loaded language configs
 ///   where scope names are runtime strings.
 ///
 /// Interning is cold (construction, a runtime language/grammar load,
@@ -221,10 +221,10 @@ impl Theme {
 
     /// Pre-resolve all scopes interned in `registry` into a flat `Vec`.
     ///
-    /// After baking, [`resolve`] is an O(1) `Vec` index — no hashing.
+    /// After baking, [`Self::resolve`] is an O(1) `Vec` index — no hashing.
     ///
     /// Unconditional — always re-resolves every interned scope, even ones
-    /// already baked. In production, prefer [`bake_if_stale`], which skips the
+    /// already baked. In production, prefer [`Self::bake_if_stale`], which skips the
     /// work when nothing changed; it's what `prepare_frame` calls every frame.
     /// Call `bake` directly only when you need an immediate, unconditional
     /// re-bake against a specific registry (e.g. tests).
@@ -238,7 +238,7 @@ impl Theme {
         self.ui = self.compute_ui();
     }
 
-    /// Re-bake only if scopes were interned since the last [`bake`] call.
+    /// Re-bake only if scopes were interned since the last [`Self::bake`] call.
     ///
     /// `ScopeRegistry` is append-only and `bake` sizes `baked` to exactly
     /// `registry.len()`, so `baked.len() != registry.len()` is precisely "new
@@ -256,7 +256,7 @@ impl Theme {
 
     /// Look up the style for an interned scope.
     ///
-    /// **O(1)** after [`bake`]. Returns `default` for IDs created after the
+    /// **O(1)** after [`Self::bake`]. Returns `default` for IDs created after the
     /// last `bake()` call (a programming error — debug-assert helps catch it).
     #[inline]
     pub fn resolve(&self, id: ScopeId) -> ResolvedStyle {
@@ -275,7 +275,7 @@ impl Theme {
     ///
     /// **Slow path** (one `FxHashMap` lookup per dot segment). Use this only for
     /// non-hot call sites such as gutter-cell rendering (~100 calls/frame).
-    /// On the per-grapheme hot path, intern the scope and use [`resolve`].
+    /// On the per-grapheme hot path, intern the scope and use [`Self::resolve`].
     pub fn resolve_by_name(&self, scope: Scope) -> ResolvedStyle {
         self.resolve_raw(scope.0)
     }

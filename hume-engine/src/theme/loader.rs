@@ -29,7 +29,7 @@ const MAX_DEPTH: usize = 8;
 /// wins. Child scopes override parent scopes from `inherits` chains.
 ///
 /// Returns a fully-resolved, un-baked [`Theme`]. Call [`Theme::bake`] with
-/// the live [`ScopeRegistry`] before the first render.
+/// the live [`crate::theme::ScopeRegistry`] before the first render.
 pub fn load_theme(name: &str, search_paths: &[PathBuf]) -> Result<Theme, ThemeError> {
     let mut visited: FxHashSet<PathBuf> = FxHashSet::default();
     let (scopes, default) = load_recursive(name, search_paths, &mut visited, 0)?;

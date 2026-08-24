@@ -397,7 +397,7 @@ pub fn init(
     ratatui::Terminal::new(TerminaBackend::new(term))
 }
 
-/// Undo everything [`init`] did: run [`write_unwind_escapes`] then leave raw
+/// Undo everything [`init`] did: run `write_unwind_escapes` then leave raw
 /// mode. Both are attempted even if the first fails — the goal is to leave
 /// the shell as usable as possible. The first error encountered is returned;
 /// a second is silently discarded.
@@ -545,7 +545,7 @@ pub fn leave_inline_output(
 /// Reapply the mouse-tracking mode to match `mouse_enabled`/`mouse_select`.
 ///
 /// Always disables tracking first (a harmless no-op for modes not currently
-/// set — see [`write_mouse_disable`]) then re-enables per the new flags, so
+/// set — see `write_mouse_disable`) then re-enables per the new flags, so
 /// it's safe to call whenever the desired mode changes at runtime, not just
 /// once at startup (unlike [`init`], which only applies the startup mode).
 pub fn set_mouse_mode(

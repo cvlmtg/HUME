@@ -20,7 +20,7 @@ use crate::codec::{self, Message};
 /// editor's main loop wakes and drains it instead of rechecking on a poll
 /// cadence. Type-erased to keep `termina`/`ratatui` types out of this
 /// crate's API even though it depends on `hume-platform` for
-/// [`TrackedChild`](hume_platform::process::tracked::TrackedChild) —
+/// [`TrackedChild`] —
 /// production wraps `termina::PlatformWaker::wake`.
 pub type WakeCallback = Arc<dyn Fn() + Send + Sync>;
 

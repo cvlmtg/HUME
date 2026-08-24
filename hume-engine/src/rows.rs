@@ -715,7 +715,7 @@ impl<'a> RowMap<'a> {
     /// the same buffer-line column on its landing line regardless of which
     /// row of that (possibly wrapped) line it lands on.
     ///
-    /// Continuation-row indent is excluded (see [`RowMap::row_shape`]) and
+    /// Continuation-row indent is excluded (see `RowMap::row_shape`) and
     /// inline virtual cells (inlay hints, ghost text) are included, same as
     /// [`RowMap::locate`] — the two differ only in what they're measured
     /// from, and coincide under `WrapMode::None`, where a line is exactly one

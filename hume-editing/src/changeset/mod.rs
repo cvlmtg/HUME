@@ -155,7 +155,7 @@ fn advance_op(
 
 // ── Position mapping cursor ──────────────────────────────────────────────────
 
-/// A resumable, monotone version of [`ChangeSet::map_pos`] for batch queries.
+/// A resumable, monotone version of `ChangeSet::map_pos` for batch queries.
 ///
 /// Each `map()` call must receive `pos` values in non-decreasing order across
 /// the cursor's lifetime — it never revisits an earlier op, so a caller
@@ -185,7 +185,7 @@ impl<'a> PosMapCursor<'a> {
     /// Walks forward from `(idx, old, new)` — wherever the previous call left
     /// off — rather than restarting at op 0, since ops fully behind a past
     /// query can never matter again for a non-decreasing sequence of queries.
-    /// [`ChangeSet::map_pos`] is a one-shot convenience built on top of this:
+    /// `ChangeSet::map_pos` is a one-shot convenience built on top of this:
     /// it opens a fresh cursor and delegates a single query to it.
     pub fn map(&mut self, pos: usize, assoc: Assoc) -> usize {
         while self.idx < self.ops.len() {
@@ -367,7 +367,7 @@ impl ChangeSet {
 
     /// Map a sorted slice of positions in place, through one [`PosMapCursor`]
     /// pass — O(ops + n) total instead of O(ops × n) for `n` fresh
-    /// [`ChangeSet::map_pos`] calls. Used by callers remapping stored
+    /// `ChangeSet::map_pos` calls. Used by callers remapping stored
     /// positions (diagnostics, bookmarks) through every edit.
     ///
     /// # Panics

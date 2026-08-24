@@ -5,8 +5,8 @@
 //! destructors — the `Drop` impls that normally kill `hume-lsp`'s LSP
 //! servers and the picker's line-source children (`spawn_line_source`)
 //! never fire on a signal/hangup force-exit. Every long-lived child
-//! registers itself here via [`TrackedChild::new`] at spawn time;
-//! [`kill_tracked_children`] is called from `force_exit` immediately before
+//! registers itself here via [`TrackedChild::new`](crate::process::tracked::TrackedChild::new)
+//! at spawn time; `kill_tracked_children` is called from `force_exit` immediately before
 //! tearing the terminal down and exiting, as a fail-safe alongside each
 //! type's own `Drop` (which still runs, and still owns cleanup, on every
 //! normal exit).
@@ -192,8 +192,8 @@ impl TrackedChild {
     }
 
     /// Kill (group-directed when this child leads its own process group —
-    /// see [`TrackedInner::kill`]) + wait. Safe to call more than once,
-    /// including racing a concurrent [`kill_tracked_children`] — see the
+    /// see `TrackedInner::kill`) + wait. Safe to call more than once,
+    /// including racing a concurrent `kill_tracked_children` — see the
     /// type doc.
     pub fn reap(&self) -> Option<std::process::ExitStatus> {
         let mut inner = lock_recovering(&self.0);

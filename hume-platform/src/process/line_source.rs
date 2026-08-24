@@ -8,12 +8,13 @@
 //! separate from the spawn/thread machinery so the boundary-carry logic is
 //! unit-testable without ever touching a real process.
 //!
-//! [`spawn_line_source`] is the other half: spawns `cmd` with piped stdio,
-//! closes stdin immediately (same non-inherited-stdin contract as PLUM's
-//! `plum/run!`), and bridges stdout/stderr to `mpsc` channels via two reader
-//! threads — mirrors `hume-lsp`'s `transport.rs` (thread/channel ownership,
-//! the bounded-channel backpressure, `Drop` = kill+wait). No writer thread:
-//! this is a one-shot streaming source, not a bidirectional protocol.
+//! [`spawn_line_source`](crate::process::line_source::spawn_line_source) is
+//! the other half: spawns `cmd` with piped stdio, closes stdin immediately
+//! (same non-inherited-stdin contract as PLUM's `plum/run!`), and bridges
+//! stdout/stderr to `mpsc` channels via two reader threads — mirrors
+//! `hume-lsp`'s `transport.rs` (thread/channel ownership, the bounded-channel
+//! backpressure, `Drop` = kill+wait). No writer thread: this is a one-shot
+//! streaming source, not a bidirectional protocol.
 
 use std::io::{self, Read};
 use std::path::Path;
@@ -117,7 +118,7 @@ pub struct SpawnedLineSource {
 
 /// The outcome of a finished [`SpawnedLineSource`]: exit status (`None` only
 /// if the OS gave none back even after a kill+wait fallback — vanishingly
-/// rare) and whatever stderr was captured, capped at [`STDERR_CAPTURE_CAP`].
+/// rare) and whatever stderr was captured, capped at `STDERR_CAPTURE_CAP`.
 pub struct SourceExit {
     pub status: Option<ExitStatus>,
     pub stderr: String,

@@ -238,7 +238,7 @@ impl<'a> Canvas<'a> {
     /// `Buffer::set_style` only rewrites `Style`, leaving previous glyphs
     /// visible. Opaque overlays (popups, statusline fills) need to overwrite
     /// the symbol too. The chrome-facing counterpart of the pane-only
-    /// [`Canvas::fill_row_bg`]; blending is currently always a no-op there
+    /// `Canvas::fill_row_bg`; blending is currently always a no-op there
     /// (chrome passes `dim: None`), but routing both through this one method
     /// keeps every write, pane or chrome, going through one blend point
     /// rather than two conventions.

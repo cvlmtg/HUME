@@ -113,7 +113,7 @@ impl LineDiff {
 
 /// Line-level diff with an explicit deadline, for callers that want a tighter
 /// budget than the public default (e.g. scripting, tests). The public
-/// [`diff_lines`] uses [`DIFF_LINE_DEADLINE`].
+/// [`diff_lines`] uses `DIFF_LINE_DEADLINE`.
 ///
 /// Generic over the token type — `LineHunkKind` carries no payload, so
 /// nothing here requires `&str`; a caller that already has, say,
@@ -212,7 +212,7 @@ pub struct WordHunk {
 /// Result of a word-level diff.
 ///
 /// `deadline_hit()` reports whether Myers could not finish within
-/// [`DIFF_WORD_DEADLINE`] and returned a coarse (Replace-all) result. Unlike
+/// `DIFF_WORD_DEADLINE` and returned a coarse (Replace-all) result. Unlike
 /// [`LineDiff`], word-level has a single algorithm, so the deadline hit is
 /// independent state with nothing to derive from — hence the private field
 /// behind the accessor.
@@ -225,14 +225,14 @@ pub struct WordDiff {
 }
 
 impl WordDiff {
-    /// `true` when Myers could not finish within [`DIFF_WORD_DEADLINE`] and
+    /// `true` when Myers could not finish within `DIFF_WORD_DEADLINE` and
     /// returned a coarse (Replace-all) result.
     pub fn deadline_hit(&self) -> bool {
         self.deadline_hit
     }
 }
 
-/// Word-level diff using Myers, protected by [`DIFF_WORD_DEADLINE`].
+/// Word-level diff using Myers, protected by `DIFF_WORD_DEADLINE`.
 ///
 /// # Contract
 ///
@@ -256,7 +256,7 @@ pub fn diff_words(old: &str, new: &str) -> WordDiff {
 
 /// Word-level diff with an explicit deadline, for callers that want a tighter
 /// budget than the public default (e.g. scripting, tests). The public
-/// [`diff_words`] uses [`DIFF_WORD_DEADLINE`].
+/// [`diff_words`] uses `DIFF_WORD_DEADLINE`.
 ///
 /// Myers' divide-and-conquer recursion still produces a coherent (if coarser)
 /// result when it hits the deadline — the ranges always partition the input —

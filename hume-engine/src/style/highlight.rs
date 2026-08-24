@@ -92,7 +92,7 @@ impl<'a> HighlightStack<'a> {
 ///
 /// Each interval is `(byte_start, byte_end, ScopeId)` — the `ScopeId` maps to
 /// a pre-baked [`ResolvedStyle`] via an O(1) `Vec` index in [`Theme::resolve`].
-/// Indexed by `HighlightTier as usize`; see [`HighlightStack`].
+/// Indexed by `HighlightTier as usize`; see `HighlightStack`.
 #[derive(Default)]
 pub struct TierBufs([Vec<(usize, usize, ScopeId)>; TIER_COUNT]);
 

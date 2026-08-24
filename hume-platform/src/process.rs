@@ -502,9 +502,9 @@ pub fn no_windows_compiler_found() -> bool {
 /// concept.
 ///
 /// Pair with [`tracked::TrackedChild::new`] for a long-lived child: a group
-/// leader lets [`tracked::kill_tracked_children`] reach the child's own
+/// leader lets `tracked::kill_tracked_children` reach the child's own
 /// children with one `killpg` (rust-analyzer's `proc-macro-srv`, build
-/// scripts, ...) instead of leaving them orphaned. [`NewProcessGroup`]'s
+/// scripts, ...) instead of leaving them orphaned. `NewProcessGroup`'s
 /// other use — Ctrl+C isolation for `run_inline_output`'s short-lived
 /// children — doesn't need this wrapper, just the trait: a plain `.status()`
 /// call has nothing to track.
