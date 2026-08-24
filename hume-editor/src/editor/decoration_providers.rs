@@ -504,10 +504,12 @@ impl Editor {
 
             let mut by_line: rustc_hash::FxHashMap<usize, Vec<InlineInsert>> =
                 rustc_hash::FxHashMap::default();
-            for entry in self.state.config.decorations.inlay_hints_for_buffer(bid) {
-                if !visible.contains(&entry.pos) {
-                    continue;
-                }
+            for entry in self
+                .state
+                .config
+                .decorations
+                .inlay_hints_in_range(bid, visible.clone())
+            {
                 // `before`: byte offset of the char at `pos` itself, so the
                 // hint text is spliced in immediately before it. `after`:
                 // the next char boundary, so it's spliced in immediately

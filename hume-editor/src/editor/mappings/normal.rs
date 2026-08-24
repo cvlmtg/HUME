@@ -241,7 +241,10 @@ impl Editor {
         // only `Interior` commits the key (so the sequence accumulates correctly
         // across keypresses). On `NoMatch` the key is not yet in `pending_keys`,
         // so the normal-trie path below can push it as usual.
-        if self.state.mode() == EditorMode::Extend && !key.modifiers.contains(Modifiers::CONTROL) {
+        if self.state.mode() == EditorMode::Extend
+            && !self.state.config.keymap.extend.is_empty()
+            && !key.modifiers.contains(Modifiers::CONTROL)
+        {
             let mut seq = self.state.pending_keys.clone();
             seq.push(key);
             match self.state.config.keymap.extend.walk(&seq) {

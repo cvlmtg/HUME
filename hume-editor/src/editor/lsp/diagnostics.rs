@@ -197,9 +197,23 @@ impl DiagnosticsStore {
         range: Range<usize>,
         floor: DiagSeverity,
     ) -> impl Iterator<Item = &StoredDiag> {
+        let mut out: Vec<&StoredDiag> = self.for_range_unsorted(bid, range, floor).collect();
+        out.sort_by_key(|d| d.start);
+        out.into_iter()
+    }
+
+    /// [`Self::for_range`] without the cross-server ordering pass — for a
+    /// caller whose own result doesn't depend on the order it sees these in
+    /// (the sign bridge folds them into a per-line winner; the underline
+    /// bridge re-sorts what it builds). Lazy, so it never collects at all.
+    pub(crate) fn for_range_unsorted(
+        &self,
+        bid: BufferId,
+        range: Range<usize>,
+        floor: DiagSeverity,
+    ) -> impl Iterator<Item = &StoredDiag> {
         let (lo, hi) = (range.start, range.end);
-        let mut out: Vec<&StoredDiag> = self
-            .store
+        self.store
             .groups_for_buffer(bid)
             .flat_map(move |(_server, diags)| {
                 // Each server's slice is sorted by `start`
@@ -210,9 +224,6 @@ impl DiagnosticsStore {
                 diags[..upper].iter()
             })
             .filter(move |d| d.severity <= floor && d.end > lo)
-            .collect();
-        out.sort_by_key(|d| d.start);
-        out.into_iter()
     }
 }
 

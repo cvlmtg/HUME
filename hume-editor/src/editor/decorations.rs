@@ -13,6 +13,8 @@
 //! enough that its per-pane sync gates on `generation` instead (see that
 //! field's doc).
 
+use std::ops::Range;
+
 use rustc_hash::FxHashMap;
 
 use hume_editing::changeset::{Assoc, ChangeSet};
@@ -333,6 +335,22 @@ impl<K, T> SourceStore<K, T> {
     }
 }
 
+impl<K, T: Positioned> SourceStore<K, T> {
+    /// Every source's entries for `bid` whose `pos` falls in `range`.
+    ///
+    /// Each source's slice is `pos`-sorted (`set`), so both bounds come from
+    /// a binary search — a caller filtering a viewport out of a buffer-wide
+    /// store pays for the entries it keeps, not for every entry the servers
+    /// published.
+    pub(crate) fn in_range(&self, bid: BufferId, range: Range<usize>) -> impl Iterator<Item = &T> {
+        self.groups_for_buffer(bid).flat_map(move |(_source, es)| {
+            let lo = es.partition_point(|e| e.pos() < range.start);
+            let hi = es.partition_point(|e| e.pos() < range.end);
+            es[lo..hi].iter()
+        })
+    }
+}
+
 impl<K: Ord, T: Positioned> SourceStore<K, T> {
     /// Replaces `source`'s entries for `bid` wholesale, sorted by `pos` (see
     /// `Positioned`'s doc). `slot` itself stays sorted ascending by `source`
@@ -502,12 +520,25 @@ impl DecorationStores {
         self.touch(bid);
     }
 
-    /// All inlay hints for `bid`, across every source.
+    /// All inlay hints for `bid`, across every source — assertion helper for
+    /// tests that check what a server published rather than what a viewport
+    /// shows. Production reads go through [`Self::inlay_hints_in_range`].
+    #[cfg(test)]
     pub(crate) fn inlay_hints_for_buffer(
         &self,
         bid: BufferId,
     ) -> impl Iterator<Item = &InlayHintEntry> {
         self.inlay_hints.for_buffer(bid).map(|(_, e)| e)
+    }
+
+    /// Inlay hints for `bid` anchored inside `range` — the per-frame render
+    /// bridge's view, which only ever wants the viewport's worth.
+    pub(crate) fn inlay_hints_in_range(
+        &self,
+        bid: BufferId,
+        range: Range<usize>,
+    ) -> impl Iterator<Item = &InlayHintEntry> {
+        self.inlay_hints.in_range(bid, range)
     }
 
     /// Replaces `source`'s signs for `bid` wholesale.

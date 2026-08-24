@@ -205,8 +205,8 @@ impl Editor {
                         .buffers
                         .get(buf)
                         .language
-                        .map(|id| self.state.config.languages.name_of(id).to_owned());
-                    for source in self.state.trigger_sources_for(ch, language.as_deref()) {
+                        .map(|id| self.state.config.languages.name_of(id));
+                    for source in self.state.trigger_sources_for(ch, language) {
                         self.state.queue_event(EditorEvent::OnTriggerChar {
                             buffer: buf,
                             ch,

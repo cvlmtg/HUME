@@ -216,6 +216,14 @@ impl KeyTrie {
         self.map.insert(TrieKey::from(key), node);
     }
 
+    /// True when nothing is bound — every [`Self::walk`] would return
+    /// [`WalkResult::NoMatch`]. Lets a caller skip building the sequence to
+    /// walk with, which for the Extend trie (empty until a plugin binds into
+    /// it) is the usual case.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
     fn bind_leaf(&mut self, key: KeyEvent, cmd: KeymapCommand) {
         self.bind(key, KeyTrieNode::Leaf(cmd));
     }

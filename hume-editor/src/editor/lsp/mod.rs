@@ -384,13 +384,17 @@ impl LspState {
     /// at or above `floor` severity — the render write side reads this
     /// directly (no JSON round-trip; that's
     /// `introspect::diagnostics_for_buffer`'s job for Steel).
+    ///
+    /// Unordered: both render callers impose their own structure on the
+    /// result (a per-line severity winner, a re-sorted highlight span list),
+    /// so neither pays for the cross-server sort.
     pub(crate) fn diagnostics_for_range(
         &self,
         bid: BufferId,
         range: std::ops::Range<usize>,
         floor: DiagSeverity,
     ) -> impl Iterator<Item = &StoredDiag> {
-        self.diagnostics.for_range(bid, range, floor)
+        self.diagnostics.for_range_unsorted(bid, range, floor)
     }
 
     /// Drops every diagnostic for `bid`, across every server — called from
