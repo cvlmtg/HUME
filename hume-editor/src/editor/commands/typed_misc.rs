@@ -459,9 +459,9 @@ pub(crate) fn typed_sort(
 
     let pre_len = ed.doc().text().len_chars();
     let pre_sels = ed.current_selections().clone();
-    super::apply_focused_edit(&mut ed.state, &ed.view, move |buf, sels| {
+    super::apply_focused_edit(&mut ed.state, &ed.view, move |text, sels| {
         debug_assert_eq!(
-            buf.len_chars(),
+            text.len_chars(),
             pre_len,
             "sort_rows must run against the same buffer just read"
         );

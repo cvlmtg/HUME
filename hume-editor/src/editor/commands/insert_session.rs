@@ -29,9 +29,9 @@ pub(super) fn is_group_open_current(state: &EditorState, view: &EngineView) -> b
 /// instead of running an identity one (see
 /// [`hume_ops::edit::blank_line_ws_range`]'s doc comment).
 pub(super) fn has_blank_line_cursor(state: &EditorState, view: &EngineView) -> bool {
-    let buf = doc(state, view).text();
+    let text = doc(state, view).text();
     current_selections(state, view).iter_sorted().any(|sel| {
-        sel.is_collapsed() && hume_ops::edit::blank_line_ws_range(buf, sel.head()).is_some()
+        sel.is_collapsed() && hume_ops::edit::blank_line_ws_range(text, sel.head()).is_some()
     })
 }
 
@@ -166,7 +166,7 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
     }
     let valid_pins = pinned.filter(|a| a.len() == current_selections(state, view).len());
     let spans: Option<Vec<Option<(usize, usize)>>> = valid_pins.map(|anchors| {
-        let buf = doc(state, view).text();
+        let text = doc(state, view).text();
         current_selections(state, view)
             .iter_sorted()
             .zip(anchors.iter())
@@ -175,7 +175,7 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
                 (head > anchor).then(|| {
                     (
                         anchor,
-                        hume_editing::grapheme::prev_grapheme_boundary(buf, head),
+                        hume_editing::grapheme::prev_grapheme_boundary(text, head),
                     )
                 })
             })

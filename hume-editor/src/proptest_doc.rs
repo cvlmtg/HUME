@@ -77,16 +77,16 @@ mod tests {
     ///
     /// Called after every operation in every proptest. A panic here means the
     /// code under test produced an invalid state.
-    fn assert_invariants(buf: &BufferText, sels: &SelectionSet) {
+    fn assert_invariants(text: &BufferText, sels: &SelectionSet) {
         // Text invariant 1: always ends with structural '\n'.
         assert!(
-            buf.to_string().ends_with('\n'),
+            text.to_string().ends_with('\n'),
             "buffer must end with \\n, got: {:?}",
-            buf.to_string()
+            text.to_string()
         );
 
         // Text invariant 2: len_chars > 0 (at minimum the structural '\n').
-        let len = buf.len_chars();
+        let len = text.len_chars();
         assert!(len > 0, "buffer must have at least 1 char");
 
         // SelectionSet invariant 1: never empty.
@@ -96,13 +96,13 @@ mod tests {
         for sel in sels.iter_sorted() {
             assert!(
                 sel.head() < len,
-                "selection head {} out of bounds (buf len {})",
+                "selection head {} out of bounds (text len {})",
                 sel.head(),
                 len
             );
             assert!(
                 sel.anchor() < len,
-                "selection anchor {} out of bounds (buf len {})",
+                "selection anchor {} out of bounds (text len {})",
                 sel.anchor(),
                 len
             );
@@ -201,9 +201,9 @@ mod tests {
 
     /// Generate a random `(BufferText, SelectionSet)` pair.
     fn arb_initial_state(max_buf_len: usize) -> impl Strategy<Value = (BufferText, SelectionSet)> {
-        arb_buffer(max_buf_len).prop_flat_map(|buf| {
-            let buf_len = buf.len_chars();
-            arb_selection_set(buf_len, 3).prop_map(move |sels| (buf.clone(), sels))
+        arb_buffer(max_buf_len).prop_flat_map(|text| {
+            let buf_len = text.len_chars();
+            arb_selection_set(buf_len, 3).prop_map(move |sels| (text.clone(), sels))
         })
     }
 
@@ -320,41 +320,41 @@ mod tests {
     /// Apply a `PureOp` with the given `MotionMode`, returning the new
     /// `SelectionSet` (buffer unchanged).
     fn apply_pure_op(
-        buf: &BufferText,
+        text: &BufferText,
         sels: SelectionSet,
         op: &PureOp,
         mode: MotionMode,
     ) -> SelectionSet {
         match op {
-            PureOp::MoveRight => cmd_move_right(buf, sels, 1, mode),
-            PureOp::MoveLeft => cmd_move_left(buf, sels, 1, mode),
-            PureOp::GotoLineStart => cmd_goto_line_start(buf, sels, 1, mode),
-            PureOp::GotoLineEnd => cmd_goto_line_end(buf, sels, 1, mode),
-            PureOp::SelectNextWord => cmd_select_next_word(buf, sels, 1, mode),
-            PureOp::SelectPrevWord => cmd_select_prev_word(buf, sels, 1, mode),
-            PureOp::SelectNextUppercaseWord => cmd_select_next_uppercase_word(buf, sels, 1, mode),
-            PureOp::SelectPrevUppercaseWord => cmd_select_prev_uppercase_word(buf, sels, 1, mode),
-            PureOp::SelectNextWordAround => cmd_select_next_word_around(buf, sels, 1, mode),
-            PureOp::SelectPrevWordAround => cmd_select_prev_word_around(buf, sels, 1, mode),
+            PureOp::MoveRight => cmd_move_right(text, sels, 1, mode),
+            PureOp::MoveLeft => cmd_move_left(text, sels, 1, mode),
+            PureOp::GotoLineStart => cmd_goto_line_start(text, sels, 1, mode),
+            PureOp::GotoLineEnd => cmd_goto_line_end(text, sels, 1, mode),
+            PureOp::SelectNextWord => cmd_select_next_word(text, sels, 1, mode),
+            PureOp::SelectPrevWord => cmd_select_prev_word(text, sels, 1, mode),
+            PureOp::SelectNextUppercaseWord => cmd_select_next_uppercase_word(text, sels, 1, mode),
+            PureOp::SelectPrevUppercaseWord => cmd_select_prev_uppercase_word(text, sels, 1, mode),
+            PureOp::SelectNextWordAround => cmd_select_next_word_around(text, sels, 1, mode),
+            PureOp::SelectPrevWordAround => cmd_select_prev_word_around(text, sels, 1, mode),
             PureOp::SelectNextUppercaseWordAround => {
-                cmd_select_next_uppercase_word_around(buf, sels, 1, mode)
+                cmd_select_next_uppercase_word_around(text, sels, 1, mode)
             }
             PureOp::SelectPrevUppercaseWordAround => {
-                cmd_select_prev_uppercase_word_around(buf, sels, 1, mode)
+                cmd_select_prev_uppercase_word_around(text, sels, 1, mode)
             }
-            PureOp::InnerWord => cmd_inner_word(buf, sels, 0, mode),
-            PureOp::AroundWord => cmd_around_word(buf, sels, 0, mode),
-            PureOp::SelectWordAround => cmd_select_word_around(buf, sels, 0, mode),
+            PureOp::InnerWord => cmd_inner_word(text, sels, 0, mode),
+            PureOp::AroundWord => cmd_around_word(text, sels, 0, mode),
+            PureOp::SelectWordAround => cmd_select_word_around(text, sels, 0, mode),
             PureOp::SelectUppercaseWordAround => {
-                cmd_select_uppercase_word_around(buf, sels, 0, mode)
+                cmd_select_uppercase_word_around(text, sels, 0, mode)
             }
-            PureOp::InnerLine => cmd_inner_line(buf, sels, 0, mode),
+            PureOp::InnerLine => cmd_inner_line(text, sels, 0, mode),
             // Selection-manipulation commands don't use mode; pass it anyway for API uniformity.
-            PureOp::CollapseSelection => cmd_collapse_selection_to_head(buf, sels, 0, mode),
-            PureOp::FlipSelections => cmd_flip_selections(buf, sels, 0, mode),
-            PureOp::KeepPrimarySelection => cmd_keep_primary_selection(buf, sels, 0, mode),
-            PureOp::CyclePrimaryForward => cmd_cycle_primary_forward(buf, sels, 0, mode),
-            PureOp::CyclePrimaryBackward => cmd_cycle_primary_backward(buf, sels, 0, mode),
+            PureOp::CollapseSelection => cmd_collapse_selection_to_head(text, sels, 0, mode),
+            PureOp::FlipSelections => cmd_flip_selections(text, sels, 0, mode),
+            PureOp::KeepPrimarySelection => cmd_keep_primary_selection(text, sels, 0, mode),
+            PureOp::CyclePrimaryForward => cmd_cycle_primary_forward(text, sels, 0, mode),
+            PureOp::CyclePrimaryBackward => cmd_cycle_primary_backward(text, sels, 0, mode),
         }
     }
 
@@ -366,10 +366,10 @@ mod tests {
         /// invariants at any point in the sequence.
         #[test]
         fn prop_random_edit_sequence_preserves_invariants(
-            (buf, sels) in arb_initial_state(30),
+            (text, sels) in arb_initial_state(30),
             ops in proptest::collection::vec(arb_edit_op(), 1..=25),
         ) {
-            let mut doc = DocHelper::new(buf, sels);
+            let mut doc = DocHelper::new(text, sels);
             assert_invariants(doc.text(), &doc.sels);
 
             for op in &ops {
@@ -383,17 +383,17 @@ mod tests {
         /// invariants at any point in the sequence.
         #[test]
         fn prop_random_pure_ops_preserve_invariants(
-            (buf, sels) in arb_initial_state(30),
+            (text, sels) in arb_initial_state(30),
             ops in proptest::collection::vec((arb_pure_op(), arb_motion_mode()), 1..=25),
         ) {
-            let cur_buf = buf;
+            let cur_text = text;
             let mut cur_sels = sels;
-            assert_invariants(&cur_buf, &cur_sels);
+            assert_invariants(&cur_text, &cur_sels);
 
             for (op, mode) in &ops {
-                let new_sels = apply_pure_op(&cur_buf, cur_sels, op, *mode);
-                assert_invariants(&cur_buf, &new_sels);
-                // cur_buf is unchanged — pure ops never modify the buffer
+                let new_sels = apply_pure_op(&cur_text, cur_sels, op, *mode);
+                assert_invariants(&cur_text, &new_sels);
+                // cur_text is unchanged — pure ops never modify the buffer
                 cur_sels = new_sels;
             }
         }
@@ -402,7 +402,7 @@ mod tests {
         /// original buffer content and selection state.
         #[test]
         fn prop_undo_reverses_single_edit(
-            (buf, sels) in arb_initial_state(30),
+            (text, sels) in arb_initial_state(30),
             op in prop_oneof![
                 prop_oneof![
                     Just(b'a'), Just(b'b'), Just(b'c'), Just(b' '), Just(b'\n'),
@@ -412,10 +412,10 @@ mod tests {
                 Just(EditOp::DeleteSelection),
             ],
         ) {
-            let original_content = buf.to_string();
+            let original_content = text.to_string();
             let original_sels = sels.clone();
 
-            let mut doc = DocHelper::new(buf, sels);
+            let mut doc = DocHelper::new(text, sels);
             apply_edit_op(&mut doc, &op);
             doc.undo();
 
@@ -427,7 +427,7 @@ mod tests {
         /// state as immediately after the edit (undo+redo is identity).
         #[test]
         fn prop_undo_redo_identity(
-            (buf, sels) in arb_initial_state(30),
+            (text, sels) in arb_initial_state(30),
             op in prop_oneof![
                 prop_oneof![
                     Just(b'a'), Just(b'b'), Just(b'c'), Just(b' '), Just(b'\n'),
@@ -437,7 +437,7 @@ mod tests {
                 Just(EditOp::DeleteSelection),
             ],
         ) {
-            let mut doc = DocHelper::new(buf, sels);
+            let mut doc = DocHelper::new(text, sels);
             apply_edit_op(&mut doc, &op);
 
             let after_content = doc.text().to_string();
@@ -454,7 +454,7 @@ mod tests {
         /// original buffer content and selections.
         #[test]
         fn prop_full_undo_restores_initial(
-            (buf, sels) in arb_initial_state(30),
+            (text, sels) in arb_initial_state(30),
             // Only plain edits — no undo/redo — so undo count == edit count.
             ops in proptest::collection::vec(
                 prop_oneof![
@@ -468,10 +468,10 @@ mod tests {
                 1..=10,
             ),
         ) {
-            let original_content = buf.to_string();
+            let original_content = text.to_string();
             let original_sels = sels.clone();
 
-            let mut doc = DocHelper::new(buf, sels);
+            let mut doc = DocHelper::new(text, sels);
             let n = ops.len();
 
             for op in &ops {
@@ -491,10 +491,10 @@ mod tests {
         /// intermediate state is valid.
         #[test]
         fn prop_interleaved_edit_undo_preserves_invariants(
-            (buf, sels) in arb_initial_state(30),
+            (text, sels) in arb_initial_state(30),
             ops in proptest::collection::vec(arb_edit_op(), 1..=30),
         ) {
-            let mut doc = DocHelper::new(buf, sels);
+            let mut doc = DocHelper::new(text, sels);
             assert_invariants(doc.text(), &doc.sels);
 
             for op in &ops {

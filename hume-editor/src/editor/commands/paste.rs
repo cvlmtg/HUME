@@ -136,7 +136,7 @@ impl EditorState {
 /// rather than replacing, so this rule only has visible effect on a real
 /// (non-collapsed) selection.
 fn collapse_if_repeat(
-    buf: &BufferText,
+    text: &BufferText,
     sels: SelectionSet,
     values: &[String],
     before: bool,
@@ -145,7 +145,7 @@ fn collapse_if_repeat(
         && sels
             .iter_sorted()
             .zip(values)
-            .all(|(sel, v)| buf.slice(sel.start()..sel.end_inclusive(buf) + 1) == *v);
+            .all(|(sel, v)| text.slice(sel.start()..sel.end_inclusive(text) + 1) == *v);
     if !repeats {
         return sels;
     }
@@ -153,7 +153,7 @@ fn collapse_if_repeat(
         if before {
             Selection::collapsed(s.start())
         } else {
-            Selection::collapsed(s.end_inclusive(buf))
+            Selection::collapsed(s.end_inclusive(text))
         }
     })
 }

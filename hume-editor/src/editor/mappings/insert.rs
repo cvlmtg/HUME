@@ -444,19 +444,19 @@ impl Editor {
     /// of modern editors. The boundary itself comes from the shared
     /// [`leading_whitespace_end`] primitive.
     fn should_dedent_backspace(&self) -> bool {
-        let buf = self.doc().text();
+        let text = self.doc().text();
         self.current_selections().iter_sorted().all(|sel| {
             if !sel.is_collapsed() {
                 return false;
             }
             let p = sel.head();
-            let line_idx = buf.char_to_line(p);
-            let line_start = buf.line_to_char(line_idx);
+            let line_idx = text.char_to_line(p);
+            let line_start = text.line_to_char(line_idx);
             // `p > line_start` rules out char_col 0 (nothing to dedent). `p <=
             // leading_whitespace_end` keeps the all-or-nothing "in leading ws"
             // rule: at exactly the end the cursor sits on the first content
             // char and still qualifies.
-            p > line_start && p <= leading_whitespace_end(buf, line_idx)
+            p > line_start && p <= leading_whitespace_end(text, line_idx)
         })
     }
 
@@ -476,15 +476,15 @@ impl Editor {
     ///
     /// Used by Backspace to decide whether to delete both brackets or just one.
     fn is_between_pair(&self, pairs: &[hume_ops::auto_pairs::Pair]) -> bool {
-        let buf = self.doc().text();
+        let text = self.doc().text();
         self.current_selections().iter_sorted().all(|sel| {
             if !sel.is_collapsed() || sel.head() == 0 {
                 return false;
             }
             // prev_grapheme_boundary handles multi-codepoint clusters; bracket/quote
             // chars are always single codepoints, but using it keeps the logic uniform.
-            let prev = hume_editing::grapheme::prev_grapheme_boundary(buf, sel.head());
-            match (buf.char_at(prev), buf.char_at(sel.head())) {
+            let prev = hume_editing::grapheme::prev_grapheme_boundary(text, sel.head());
+            match (text.char_at(prev), text.char_at(sel.head())) {
                 (Some(before), Some(at)) => pairs.iter().any(|p| p.open == before && p.close == at),
                 _ => false,
             }
@@ -499,10 +499,10 @@ impl Editor {
         pair: &hume_ops::auto_pairs::Pair,
         ap_pairs: &[hume_ops::auto_pairs::Pair],
     ) -> bool {
-        let buf = self.doc().text();
+        let text = self.doc().text();
         self.current_selections().iter_sorted().all(|sel| {
             !sel.is_collapsed()
-                || hume_ops::auto_pairs::should_auto_pair_at(buf, sel.head(), pair, ap_pairs)
+                || hume_ops::auto_pairs::should_auto_pair_at(text, sel.head(), pair, ap_pairs)
         })
     }
 }

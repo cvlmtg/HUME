@@ -594,9 +594,9 @@ fn resolve_pane_settings_honours_the_buffer_rung() {
 // that toggled wrap off in an earlier, unrelated buffer.
 
 fn open_second_buffer(ed: &mut Editor) -> BufferId {
-    let buf = BufferText::from("other buffer\n");
+    let text = BufferText::from("other buffer\n");
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(0));
-    let bid = ed.open_buffer(Buffer::new(buf, sels));
+    let bid = ed.open_buffer(Buffer::new(text, sels));
     ed.switch_to_buffer_with_jump(bid);
     bid
 }

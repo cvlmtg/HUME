@@ -1308,9 +1308,9 @@ fn split_inherits_focused_panes_selection_and_scroll() {
     use hume_editing::selection::Selection;
 
     let content: String = (0..200).map(|i| format!("line {i}\n")).collect();
-    let buf = BufferText::from(content.as_str());
+    let text = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
-    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    let mut ed = Editor::for_testing(Buffer::new(text, sels));
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
 

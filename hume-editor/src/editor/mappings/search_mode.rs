@@ -139,11 +139,11 @@ impl Editor {
             let pt = &self.state.panes.transient[pid];
             match &pt.pre_search_sels {
                 Some(sels) => {
-                    let buf = self.doc().text();
+                    let text = self.doc().text();
                     let primary = sels.primary();
                     match direction {
                         SearchDirection::Forward => primary.start(),
-                        SearchDirection::Backward => primary.end_inclusive(buf),
+                        SearchDirection::Backward => primary.end_inclusive(text),
                     }
                 }
                 None => 0,

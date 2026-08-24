@@ -376,9 +376,9 @@ fn scroll_test_editor_kitty() -> Editor {
     // 30 single-char lines — same shape as page_scroll tests.
     // Viewport height = 24 → half-page = 12.
     let content = "a\n".repeat(30);
-    let buf = BufferText::from(content.as_str());
+    let text = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
-    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    let mut ed = Editor::for_testing(Buffer::new(text, sels));
     ed.kitty_enabled = true;
     ed
 }

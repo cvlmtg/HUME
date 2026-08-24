@@ -95,7 +95,7 @@ fn no_raw_char_stepping_in_motion_code() {
     assert!(
         violations.is_empty(),
         "\nRaw char-level stepping detected in motion/selection code.\n\
-         Use next_grapheme_boundary(buf, pos) or prev_grapheme_boundary(buf, pos) instead.\n\
+         Use next_grapheme_boundary(text, pos) or prev_grapheme_boundary(text, pos) instead.\n\
          Violations:\n{}\n",
         violations.join("\n")
     );

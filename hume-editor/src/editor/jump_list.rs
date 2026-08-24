@@ -36,8 +36,8 @@ pub(crate) struct JumpEntry {
 impl JumpEntry {
     /// Build a jump entry from the current selection state, deriving
     /// `primary_line` from the buffer so callers don't have to.
-    pub(crate) fn new(selections: SelectionSet, buf: &BufferText, buffer_id: BufferId) -> Self {
-        let primary_line = buf.char_to_line(selections.primary().head());
+    pub(crate) fn new(selections: SelectionSet, text: &BufferText, buffer_id: BufferId) -> Self {
+        let primary_line = text.char_to_line(selections.primary().head());
         Self {
             buffer_id,
             selections,

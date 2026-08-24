@@ -150,8 +150,8 @@ fn commit_changeset(state: &mut EditorState, bid: BufferId, cs: ChangeSet) -> Ch
         state.focused_pane_id,
         bid,
         move |text, mut sels| {
-            let buf_pre = text.clone();
-            sels.translate_in_place(&cs, &buf_pre);
+            let text_pre = text.clone();
+            sels.translate_in_place(&cs, &text_pre);
             let new_text = cs
                 .apply(&text)
                 .expect("cs built from this buffer's own rope, just above");

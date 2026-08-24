@@ -13,9 +13,9 @@ fn view_test_editor() -> Editor {
     use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
     let content = "a\n".repeat(50);
-    let buf = BufferText::from(content.as_str());
+    let text = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
-    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    let mut ed = Editor::for_testing(Buffer::new(text, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::None),
         saved: None,
@@ -106,12 +106,12 @@ fn zz_in_wrap_mode_walks_display_rows() {
     //   line 1: "abcdefghijklmnop" → 4 rows ("abcd", "efgh", "ijkl", "mnop")
     //   line 2: "line2"          → 2 rows
     let content = "line0\nabcdefghijklmnop\nline2\n";
-    let buf = BufferText::from(content);
+    let text = BufferText::from(content);
 
     // Cursor on "i" (line 1, char 8 within line; chars 8-11 are sub-row 2).
-    let head = buf.rope().line_to_char(1) + 8;
+    let head = text.rope().line_to_char(1) + 8;
     let sels = SelectionSet::single(Selection::collapsed(head));
-    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    let mut ed = Editor::for_testing(Buffer::new(text, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 4 }),
         saved: None,
@@ -134,12 +134,12 @@ fn zt_in_wrap_mode_anchors_cursor_row_at_top() {
     use hume_editing::text::BufferText;
 
     let content = "line0\nabcdefghijklmnop\nline2\n";
-    let buf = BufferText::from(content);
+    let text = BufferText::from(content);
 
     // Cursor on "j" (line 1, char 9; chars 8-11 → sub-row 2).
-    let head = buf.rope().line_to_char(1) + 9;
+    let head = text.rope().line_to_char(1) + 9;
     let sels = SelectionSet::single(Selection::collapsed(head));
-    let mut ed = Editor::for_testing(Buffer::new(buf, sels));
+    let mut ed = Editor::for_testing(Buffer::new(text, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 4 }),
         saved: None,

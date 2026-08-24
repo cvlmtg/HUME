@@ -144,11 +144,11 @@ fn search_jump(
 
     // Capture anchor before the loop (extend mode keeps the original anchor fixed).
     let (mut from_char, anchor) = {
-        let buf = doc(state, view).text();
+        let text = doc(state, view).text();
         let primary = current_selections(state, view).primary();
         let from = match direction {
             // Step past the current match so we don't re-find it on the first jump.
-            SearchDirection::Forward => next_grapheme_boundary(buf, primary.end_inclusive(buf)),
+            SearchDirection::Forward => next_grapheme_boundary(text, primary.end_inclusive(text)),
             SearchDirection::Backward => primary.start(),
         };
         (
@@ -313,7 +313,7 @@ pub(crate) fn cmd_search_word_under_cursor(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let buf = doc(state, view).text();
+    let text = doc(state, view).text();
     let primary = current_selections(state, view).primary();
 
     // Always search the word under the head, regardless of any existing selection
@@ -324,27 +324,27 @@ pub(crate) fn cmd_search_word_under_cursor(
     // newline regex; on whitespace, it would expand to the whitespace run itself
     // and set a bare-space pattern (Vim instead scans to the nearest word — HUME
     // deliberately no-ops rather than adding that scan).
-    match classify_char(buf.char_at(primary.head()).unwrap_or('\n')) {
+    match classify_char(text.char_at(primary.head()).unwrap_or('\n')) {
         CharClass::Eol | CharClass::Space => return Ok(()),
         _ => {}
     }
-    let Some((start, end_incl)) = inner_word_impl(buf, primary.head(), is_word_boundary) else {
+    let Some((start, end_incl)) = inner_word_impl(text, primary.head(), is_word_boundary) else {
         return Ok(());
     };
-    let text = buf.slice(start..end_incl + 1).to_string();
+    let word = text.slice(start..end_incl + 1).to_string();
 
     // Wrap in `\b…\b` when the run is Word-class, matching Vim's whole-word `*`
     // behaviour. inner_word_impl returns a uniform same-class run, so checking the
     // first character's class is sufficient — the last character is guaranteed to
     // share it. Punctuation runs stay literal.
     //
-    // Computed here (before set_primary_selection) so the immutable `buf` borrow
+    // Computed here (before set_primary_selection) so the immutable `text` borrow
     // ends before we mutably borrow state.
-    let whole_word = classify_char(buf.char_at(start).unwrap_or('\n')) == CharClass::Word;
+    let whole_word = classify_char(text.char_at(start).unwrap_or('\n')) == CharClass::Word;
 
     set_primary_selection(state, view, Selection::new(start, end_incl));
 
-    let escaped = escape_regex(&text);
+    let escaped = escape_regex(&word);
     let pattern = if whole_word {
         format!(r"\b{escaped}\b")
     } else {
@@ -365,10 +365,10 @@ pub(crate) fn cmd_search_selection(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let buf = doc(state, view).text();
+    let text = doc(state, view).text();
     let primary = current_selections(state, view).primary();
-    let text = buf
-        .slice(primary.start()..primary.end_inclusive(buf) + 1)
+    let selected = text
+        .slice(primary.start()..primary.end_inclusive(text) + 1)
         .to_string();
 
     // No-op on a bare structural newline (a collapsed cursor sitting on one) —
@@ -377,11 +377,11 @@ pub(crate) fn cmd_search_selection(
     // *contains* a newline (e.g. a whole-line selection) keeps the literal
     // semantics this command promises — only the single-newline case is
     // guarded.
-    if text == "\n" {
+    if selected == "\n" {
         return Ok(());
     }
 
-    let pattern = escape_regex(&text);
+    let pattern = escape_regex(&selected);
     set_search_pattern(state, view, pattern)
 }
 

@@ -17,12 +17,12 @@ impl StatuslineElement for PositionElement {
     type Data = (usize, usize, usize);
 
     fn read(editor: &Editor) -> Self::Data {
-        let buf = editor.doc().text();
+        let text = editor.doc().text();
         let head = editor.current_selections().primary().head();
-        let head_line = buf.char_to_line(head);
-        let grapheme_col = grapheme_col_in_line(buf, head_line, head);
+        let head_line = text.char_to_line(head);
+        let grapheme_col = grapheme_col_in_line(text, head_line, head);
         // Largest 1-based line number this buffer can display.
-        let max_row = buf.content_line_count();
+        let max_row = text.content_line_count();
         (head_line + 1, grapheme_col + 1, max_row)
     }
 

@@ -9,8 +9,8 @@
 //! these functions' own result. Writing a whole-buffer range out as
 //! `0..<one of the counts>` is that same re-derivation — the two
 //! `*_lines_range` functions already are that range. The rule also covers the
-//! char offset of a line's own line-break: `line_end_exclusive(buf, line) - 1`
-//! must be `hume_rope::lines::line_break_char(buf, line)` instead.
+//! char offset of a line's own line-break: `line_end_exclusive(text, line) - 1`
+//! must be `hume_rope::lines::line_break_char(text, line)` instead.
 //!
 //! `no_raw_line_count_derivations` recursively scans every workspace
 //! crate's `src/` — derived from the root `Cargo.toml`'s `members` list, so

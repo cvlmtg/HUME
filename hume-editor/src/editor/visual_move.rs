@@ -305,8 +305,8 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
 
     if !effective_wrap_mode(doc, &state.settings, &view.panes[state.focused_pane_id]).is_wrapping()
     {
-        apply_focused_motion(state, view, |buf, sels| {
-            cmd_select_word_nearest_on_line(buf, sels, 0, mode, around)
+        apply_focused_motion(state, view, |text, sels| {
+            cmd_select_word_nearest_on_line(text, sels, 0, mode, around)
         });
         return Ok(());
     }

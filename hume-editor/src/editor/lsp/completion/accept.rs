@@ -349,11 +349,11 @@ impl CompletionSession {
                     replace_span_around_cursors(
                         b,
                         s,
-                        move |buf, head| {
+                        move |text, head| {
                             if head == primary_head {
-                                word_start_before(buf, anchor)
+                                word_start_before(text, anchor)
                             } else {
-                                word_start_before(buf, head.saturating_sub(typed))
+                                word_start_before(text, head.saturating_sub(typed))
                             }
                         },
                         forward,

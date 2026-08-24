@@ -162,12 +162,12 @@ impl Editor {
                 .get(focused)
                 .map(|r| Arc::clone(&r.highlights.bracket))
             {
-                let buf = self.doc().text();
+                let text = self.doc().text();
                 let head = self.state.panes.state[focused][self.focused_buffer_id()]
                     .selections
                     .primary()
                     .head();
-                if let Some(ch) = buf.char_at(head) {
+                if let Some(ch) = text.char_at(head) {
                     let pair = match ch {
                         '(' | ')' => Some(('(', ')')),
                         '[' | ']' => Some(('[', ']')),
@@ -176,12 +176,12 @@ impl Editor {
                         _ => None,
                     };
                     if let Some((open, close)) = pair
-                        && let Some((op, cp)) = find_bracket_pair(buf, head, open, close)
+                        && let Some((op, cp)) = find_bracket_pair(text, head, open, close)
                     {
                         let match_pos = if head == op { cp } else { op };
-                        let (line, byte) = char_to_line_byte(buf, match_pos);
+                        let (line, byte) = char_to_line_byte(text, match_pos);
                         // Single-char match: byte_end = byte + utf8 length of the char.
-                        let ch_len = buf.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
+                        let ch_len = text.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
                         bracket_arc.write_or_panic().push((
                             line,
                             byte,
@@ -847,7 +847,7 @@ fn visible_line_anchored<'a, E: Clone + 'a>(
 /// matches are the one caller, always one fixed scope per call. See
 /// [`line_segments`].
 fn push_match_highlight_lines(
-    buf: &hume_editing::text::BufferText,
+    text: &hume_editing::text::BufferText,
     start: usize,
     end_char_excl: usize,
     scope: hume_engine::types::ScopeId,
@@ -856,7 +856,7 @@ fn push_match_highlight_lines(
     if start >= end_char_excl {
         return;
     }
-    data.extend(line_segments(buf, start, end_char_excl).map(|(l, s, e)| (l, s, e, scope)));
+    data.extend(line_segments(text, start, end_char_excl).map(|(l, s, e)| (l, s, e, scope)));
 }
 
 /// Push one `(line, byte_start, byte_end, priority, scope)` quintuple per
@@ -865,7 +865,7 @@ fn push_match_highlight_lines(
 /// for [`flatten_priority_overlaps`] to resolve same-line overlaps from
 /// (lower `priority` wins — see that function).
 fn push_priority_highlight_lines(
-    buf: &hume_editing::text::BufferText,
+    text: &hume_editing::text::BufferText,
     start: usize,
     end_char_excl: usize,
     priority: u8,
@@ -876,7 +876,7 @@ fn push_priority_highlight_lines(
         return;
     }
     data.extend(
-        line_segments(buf, start, end_char_excl).map(|(l, s, e)| (l, s, e, priority, scope)),
+        line_segments(text, start, end_char_excl).map(|(l, s, e)| (l, s, e, priority, scope)),
     );
 }
 

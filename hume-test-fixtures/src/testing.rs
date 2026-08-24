@@ -38,34 +38,34 @@ use hume_editing::text::BufferText;
 ///
 /// - **Non-mutating** (motions, text objects, selection commands): take
 ///   `&BufferText`, return `SelectionSet`. The buffer is unchanged — the macro
-///   provides its clone via `original_buf`.
+///   provides its clone via `original_text`.
 /// - **Mutating** (edits): take `BufferText` by value, return
 ///   `(BufferText, SelectionSet, ChangeSet)`. The returned buffer
-///   is the edited one — `original_buf` is ignored.
+///   is the edited one — `original_text` is ignored.
 ///
 /// This trait lets `assert_state!` accept both families without change.
 pub trait IntoTestResult {
-    fn into_test_result(self, original_buf: BufferText) -> (BufferText, SelectionSet);
+    fn into_test_result(self, original_text: BufferText) -> (BufferText, SelectionSet);
 }
 
 /// Non-mutating commands return only the new `SelectionSet`.
 /// The buffer didn't change, so we pair it with the caller's clone.
 impl IntoTestResult for SelectionSet {
-    fn into_test_result(self, original_buf: BufferText) -> (BufferText, SelectionSet) {
-        (original_buf, self)
+    fn into_test_result(self, original_text: BufferText) -> (BufferText, SelectionSet) {
+        (original_text, self)
     }
 }
 
 /// `(BufferText, SelectionSet)` pair — emitted by internal helpers that don't produce a `ChangeSet`.
 impl IntoTestResult for (BufferText, SelectionSet) {
-    fn into_test_result(self, _original_buf: BufferText) -> (BufferText, SelectionSet) {
+    fn into_test_result(self, _original_text: BufferText) -> (BufferText, SelectionSet) {
         self
     }
 }
 
 /// Standard edit commands.
 impl IntoTestResult for (BufferText, SelectionSet, ChangeSet) {
-    fn into_test_result(self, _original_buf: BufferText) -> (BufferText, SelectionSet) {
+    fn into_test_result(self, _original_text: BufferText) -> (BufferText, SelectionSet) {
         (self.0, self.1)
     }
 }
@@ -223,8 +223,8 @@ pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
 ///
 /// This is the inverse of `parse_state`. It is used in assertions so that
 /// diffs show the annotated marker text rather than raw char offsets.
-pub fn serialize_state(buf: &BufferText, sels: &SelectionSet) -> String {
-    let full = buf.to_string();
+pub fn serialize_state(text: &BufferText, sels: &SelectionSet) -> String {
+    let full = text.to_string();
     // Include the structural trailing \n in the serialized output so that
     // DSL strings are explicit about buffer content. Every valid buffer ends
     // with \n, so every serialized string ends with \n too.
@@ -287,14 +287,14 @@ pub fn serialize_state(buf: &BufferText, sels: &SelectionSet) -> String {
 /// // Edit command (returns buffer + sels + changeset):
 /// assert_state!(
 ///     "-[h]>ello\n",
-///     |(buf, sels)| delete_char_forward(buf, sels),
+///     |(text, sels)| delete_char_forward(text, sels),
 ///     "-[e]>llo\n",
 /// );
 ///
 /// // Motion command (returns SelectionSet only):
 /// assert_state!(
 ///     "-[h]>ello\n",
-///     |(buf, sels)| cmd_move_right(&buf, sels, 1, MotionMode::Move),
+///     |(text, sels)| cmd_move_right(&text, sels, 1, MotionMode::Move),
 ///     "h-[e]>llo\n",
 /// );
 /// ```
@@ -307,18 +307,18 @@ macro_rules! assert_state {
         use pretty_assertions::assert_eq;
         use $crate::testing::{parse_state, serialize_state};
 
-        let (buf, sels) = parse_state($initial);
+        let (text, sels) = parse_state($initial);
         // Clone before the op: non-mutating commands return only `SelectionSet`,
         // so `IntoTestResult` re-pairs it with this clone. Mutating commands
         // return a new buffer and ignore the clone. Rope clones are O(log n).
-        let buf_copy = buf.clone();
-        let (result_buf, result_sels) =
-            $crate::testing::IntoTestResult::into_test_result($op((buf, sels)), buf_copy);
-        let (expected_buf, expected_sels) = parse_state($expected);
+        let text_copy = text.clone();
+        let (result_text, result_sels) =
+            $crate::testing::IntoTestResult::into_test_result($op((text, sels)), text_copy);
+        let (expected_text, expected_sels) = parse_state($expected);
 
         assert_eq!(
-            serialize_state(&result_buf, &result_sels),
-            serialize_state(&expected_buf, &expected_sels),
+            serialize_state(&result_text, &result_sels),
+            serialize_state(&expected_text, &expected_sels),
         );
     }};
 }

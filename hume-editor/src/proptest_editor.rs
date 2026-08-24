@@ -19,21 +19,21 @@ mod tests {
     // ── Invariant checker ─────────────────────────────────────────────────────
 
     fn assert_editor_invariants(ed: &Editor) {
-        let buf = ed.doc().text();
+        let text = ed.doc().text();
         let sels = ed.current_selections();
 
         // Text always ends with structural '\n'.
         assert!(
-            buf.to_string().ends_with('\n'),
+            text.to_string().ends_with('\n'),
             "buffer must end with \\n, got: {:?}",
-            buf.to_string()
+            text.to_string()
         );
 
         // SelectionSet is non-empty.
         assert!(sels.len() > 0, "selection set must not be empty");
 
         // All selection positions are within the buffer.
-        let len = buf.len_chars();
+        let len = text.len_chars();
         for sel in sels.iter_sorted() {
             assert!(
                 sel.head() < len,
@@ -128,8 +128,8 @@ mod tests {
             Just("-[a]>a bb cc aa bb cc\n"), // repeated words for search
         ]
         .prop_map(|s| {
-            let (buf, sels) = parse_state(s);
-            Editor::for_testing(Buffer::new(buf, sels))
+            let (text, sels) = parse_state(s);
+            Editor::for_testing(Buffer::new(text, sels))
         })
     }
 

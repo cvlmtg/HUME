@@ -31,8 +31,8 @@ use super::{Editor, Mode, Severity};
 
 /// Build an Editor pre-loaded with the given state string (same DSL as other tests).
 fn editor_from(input: &str) -> Editor {
-    let (buf, sels) = parse_state(input);
-    Editor::for_testing(Buffer::new(buf, sels))
+    let (text, sels) = parse_state(input);
+    Editor::for_testing(Buffer::new(text, sels))
 }
 
 /// Build a kitty-protocol-enabled editor for testing Ctrl+motion bindings.
@@ -169,11 +169,11 @@ fn reg(ed: &Editor, name: char) -> Vec<String> {
 
 /// Build a 20-line buffer with the cursor on a given line for jump list tests.
 fn jump_editor(cursor_line: usize) -> Editor {
-    let text: String = (0..20).map(|i| format!("line {i}\n")).collect();
-    let buf = BufferText::from(text.as_str());
-    let pos = buf.line_to_char(cursor_line);
+    let content: String = (0..20).map(|i| format!("line {i}\n")).collect();
+    let text = BufferText::from(content.as_str());
+    let pos = text.line_to_char(cursor_line);
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(pos));
-    let doc = Buffer::new(buf, sels);
+    let doc = Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);
     ed.state.mode = Mode::Normal;
     ed

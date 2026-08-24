@@ -92,7 +92,7 @@ fn finish_edit(
     buf_id: BufferId,
     new_sels: SelectionSet,
     cs: &ChangeSet,
-    buf_pre: &BufferText,
+    text_pre: &BufferText,
     rope_pre: &ropey::Rope,
 ) {
     pane_state[focused_pane_id][buf_id].selections = new_sels;
@@ -107,7 +107,7 @@ fn finish_edit(
         return;
     }
     buffers.bump_edit_seq();
-    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, cs, buf_pre);
+    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, cs, text_pre);
     let text_gen = buffers.get(buf_id).text_gen;
     record_syntax_edits(buffers, buf_id, text_gen, cs, rope_pre);
     record_lsp_edits(buffers, decorations, buf_id, text_gen, cs, rope_pre);
@@ -152,8 +152,8 @@ pub(crate) fn apply_doc_edit(
         return;
     }
     // O(1) clones — ropey uses structural sharing (reference-counted tree nodes).
-    let buf_pre = buffers.get(buf_id).text().clone();
-    let rope_pre = buf_pre.rope().clone();
+    let text_pre = buffers.get(buf_id).text().clone();
+    let rope_pre = text_pre.rope().clone();
     let sels = std::mem::take(&mut pane_state[focused_pane_id][buf_id].selections);
     let (new_sels, cs) = buffers.get_mut(buf_id).apply_edit(sels, cmd);
     finish_edit(
@@ -164,7 +164,7 @@ pub(crate) fn apply_doc_edit(
         buf_id,
         new_sels,
         &cs,
-        &buf_pre,
+        &text_pre,
         &rope_pre,
     );
 }
@@ -194,8 +194,8 @@ pub(crate) fn apply_doc_edit_grouped(
         // not a stale/mismatched-length one.
         return ChangeSet::identity(buffers.get(buf_id).text().len_chars());
     }
-    let buf_pre = buffers.get(buf_id).text().clone();
-    let rope_pre = buf_pre.rope().clone();
+    let text_pre = buffers.get(buf_id).text().clone();
+    let rope_pre = text_pre.rope().clone();
     let sels = std::mem::take(&mut pane_state[focused_pane_id][buf_id].selections);
     let doc = buffers.get_mut(buf_id);
     let pbs = &mut pane_state[focused_pane_id][buf_id];
@@ -211,7 +211,7 @@ pub(crate) fn apply_doc_edit_grouped(
         buf_id,
         new_sels,
         &cs,
-        &buf_pre,
+        &text_pre,
         &rope_pre,
     );
     cs
@@ -234,8 +234,8 @@ pub(crate) fn apply_doc_edit_regrouped(
     if buffers.get(buf_id).is_read_only() {
         return;
     }
-    let buf_pre = buffers.get(buf_id).text().clone();
-    let rope_pre = buf_pre.rope().clone();
+    let text_pre = buffers.get(buf_id).text().clone();
+    let rope_pre = text_pre.rope().clone();
     // Borrow paste_group from pane_state; NLL ends this borrow after the call.
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     let (new_sels, propagation_cs) = buffers
@@ -249,7 +249,7 @@ pub(crate) fn apply_doc_edit_regrouped(
         buf_id,
         new_sels,
         &propagation_cs,
-        &buf_pre,
+        &text_pre,
         &rope_pre,
     );
 }
@@ -270,11 +270,11 @@ pub(crate) fn apply_doc_undo(
         pane_state[focused_pane_id][buf_id].edit_group.is_none(),
         "apply_doc_undo called while an edit group is open on this buffer"
     );
-    // buf_pre/rope_pre are the current (post-edit) text: undo's CS maps
+    // text_pre/rope_pre are the current (post-edit) text: undo's CS maps
     // post-edit positions back to pre-edit, so non-acting panes' heads must be
     // translated through that CS.
-    let buf_pre = buffers.get(buf_id).text().clone();
-    let rope_pre = buf_pre.rope().clone();
+    let text_pre = buffers.get(buf_id).text().clone();
+    let rope_pre = text_pre.rope().clone();
     if let Some((new_sels, cs)) = buffers.get_mut(buf_id).undo() {
         finish_edit(
             buffers,
@@ -284,7 +284,7 @@ pub(crate) fn apply_doc_undo(
             buf_id,
             new_sels,
             &cs,
-            &buf_pre,
+            &text_pre,
             &rope_pre,
         );
     }
@@ -306,8 +306,8 @@ pub(crate) fn apply_doc_redo(
         pane_state[focused_pane_id][buf_id].edit_group.is_none(),
         "apply_doc_redo called while an edit group is open on this buffer"
     );
-    let buf_pre = buffers.get(buf_id).text().clone();
-    let rope_pre = buf_pre.rope().clone();
+    let text_pre = buffers.get(buf_id).text().clone();
+    let rope_pre = text_pre.rope().clone();
     if let Some((new_sels, cs)) = buffers.get_mut(buf_id).redo() {
         finish_edit(
             buffers,
@@ -317,7 +317,7 @@ pub(crate) fn apply_doc_redo(
             buf_id,
             new_sels,
             &cs,
-            &buf_pre,
+            &text_pre,
             &rope_pre,
         );
     }
@@ -337,9 +337,9 @@ pub(crate) fn apply_doc_motion(
     f: impl FnOnce(&BufferText, SelectionSet) -> SelectionSet,
 ) {
     let new_sels = {
-        let buf = buffers.get(buf_id).text();
+        let text = buffers.get(buf_id).text();
         let sels = std::mem::take(&mut pane_state[focused_pane_id][buf_id].selections);
-        f(buf, sels)
+        f(text, sels)
     };
     pane_state[focused_pane_id][buf_id].selections = new_sels;
 }
@@ -385,7 +385,7 @@ pub(crate) fn commit_edit_group(
 /// Propagate `cs` to every pane except `focused_pane_id` that views `buf_id`,
 /// keeping their selections valid after an edit the focused pane performed.
 ///
-/// `buf_pre` must be the buffer text **before** the edit — `translate_in_place`
+/// `text_pre` must be the buffer text **before** the edit — `translate_in_place`
 /// uses it to identify which line each head was on pre-edit, which governs
 /// whether `Selection.sticky_display_col` is reset after the translation.
 ///
@@ -398,7 +398,7 @@ pub(crate) fn propagate_cs_to_panes(
     focused_pane_id: PaneId,
     buf_id: BufferId,
     cs: &ChangeSet,
-    buf_pre: &hume_editing::text::BufferText,
+    text_pre: &hume_editing::text::BufferText,
 ) {
     // Collect IDs first; can't iterate and mutate the same SecondaryMap.
     let affected: Vec<PaneId> = pane_state
@@ -410,6 +410,6 @@ pub(crate) fn propagate_cs_to_panes(
     for pid in affected {
         pane_state[pid][buf_id]
             .selections
-            .translate_in_place(cs, buf_pre);
+            .translate_in_place(cs, text_pre);
     }
 }

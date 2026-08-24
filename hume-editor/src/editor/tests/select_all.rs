@@ -102,8 +102,8 @@ fn star_on_partial_selection_expands_to_word() {
 
     // Independent oracle: the pattern must actually match "hello" in the buffer.
     let sp = ed.search_pattern().expect("search pattern must be set");
-    let buf = ed.doc().text();
-    let matches = hume_ops::search::find_all_matches(buf, &sp.regex);
+    let text = ed.doc().text();
+    let matches = hume_ops::search::find_all_matches(text, &sp.regex);
     assert_eq!(
         matches,
         vec![(0, 4)],
@@ -179,8 +179,8 @@ fn star_whole_word_skips_substring_matches() {
     // The pattern must match standalone "as" (position 0) but NOT the "as"
     // inside "last" (positions 4-5). Expected matches: exactly one, at char 0.
     let sp = ed.search_pattern().expect("search pattern must be set");
-    let buf = ed.doc().text();
-    let matches = hume_ops::search::find_all_matches(buf, &sp.regex);
+    let text = ed.doc().text();
+    let matches = hume_ops::search::find_all_matches(text, &sp.regex);
     assert_eq!(matches, vec![(0, 1)], "only standalone 'as' must match");
 }
 
@@ -189,11 +189,11 @@ fn star_whole_word_skips_substring_matches() {
 fn star_punctuation_run_stays_literal() {
     // Buffer: "a -> b\n". Collapsed cursor on '-' (position 2).
     let mut ed = editor_from("-[a]>b\n");
-    let buf = hume_editing::text::BufferText::from("a -> b\n");
+    let text = hume_editing::text::BufferText::from("a -> b\n");
     let sels = hume_editing::selection::SelectionSet::single(
         hume_editing::selection::Selection::collapsed(2),
     );
-    *ed.doc_mut() = crate::editor::buffer::Buffer::new(buf, sels.clone());
+    *ed.doc_mut() = crate::editor::buffer::Buffer::new(text, sels.clone());
     ed.set_current_selections(sels);
 
     ed.handle_key(key('*'));
@@ -222,8 +222,8 @@ fn search_selection_uses_literal_text() {
     // Independent oracle: matches both the substring inside "hello" (1..4) and
     // the standalone "ell" (6..9) — proving it's substring, not whole-word, search.
     let sp = ed.search_pattern().expect("search pattern must be set");
-    let buf = ed.doc().text();
-    let matches = hume_ops::search::find_all_matches(buf, &sp.regex);
+    let text = ed.doc().text();
+    let matches = hume_ops::search::find_all_matches(text, &sp.regex);
     assert_eq!(matches, vec![(1, 3), (6, 8)]);
 }
 
@@ -250,8 +250,8 @@ fn search_selection_escapes_metacharacters() {
 
     // Oracle: the escaped '.' must NOT match "axb" as a wildcard.
     let sp = ed.search_pattern().expect("search pattern must be set");
-    let buf = ed.doc().text();
-    let matches = hume_ops::search::find_all_matches(buf, &sp.regex);
+    let text = ed.doc().text();
+    let matches = hume_ops::search::find_all_matches(text, &sp.regex);
     assert_eq!(matches, vec![(0, 2)], "escaped '.' must not match 'axb'");
 }
 

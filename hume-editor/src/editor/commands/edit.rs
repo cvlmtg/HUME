@@ -286,8 +286,8 @@ pub(crate) fn cmd_align_selections(
         .get(buf_id)
         .overrides
         .tab_width(&state.settings);
-    apply_focused_edit(state, view, move |buf, sels| {
-        align_selections(buf, sels, tab_width)
+    apply_focused_edit(state, view, move |text, sels| {
+        align_selections(text, sels, tab_width)
     });
     Ok(())
 }
