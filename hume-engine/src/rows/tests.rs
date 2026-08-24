@@ -739,6 +739,21 @@ fn char_at_nearest_content_stays_off_the_eol_sentinel() {
 }
 
 #[test]
+fn locate_resolves_the_eol_sentinel_of_an_exactly_full_wrapped_row() {
+    // "abcde\n" at wrap width 5 fits exactly — no room left on row 0 for the
+    // sentinel, so `format.rs` wraps it onto row 1's own column 0 (B5's fix).
+    // The cursor addressing this same head position must resolve to that
+    // same row/column, not to row 0's one-past-the-end column (which would
+    // land the cursor on the seam past the pane's right edge).
+    let rope = Rope::from_str("abcde\n");
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::Soft { width: 5 }, &providers, &mut s);
+
+    assert_eq!(rm.locate(5), (RowPos::new(0, 1), 0));
+}
+
+#[test]
 fn char_at_nearest_content_stays_off_the_newline_indicator() {
     // Same scenario as the sibling test above, but with the newline
     // indicator (`whitespace-newline`) enabled: `format.rs` pushes it at the
@@ -812,6 +827,44 @@ fn char_at_resolves_a_column_inside_a_wide_cell_differently_per_policy() {
         rm.char_at(RowPos::new(0, 0), 3, DisplayColTarget::NearestContent),
         1,
         "a sticky column of 3 is nearer 'x' at column 4 than the tab at 0"
+    );
+}
+
+#[test]
+fn char_at_cell_on_the_right_half_of_a_wide_grapheme_selects_the_grapheme() {
+    // "中x\n": '中' spans display cols 0-1 (its own cell at col 0, width 2)
+    // plus a separate WidthContinuation entry at col 1 (width 0, sharing
+    // '中's char_offset). A click at col 1 — the glyph's right half — must
+    // resolve to '中' via its own cell's span (0..2), not skip past it to
+    // the WidthContinuation entry or fall through to 'x'.
+    let rope = Rope::from_str("中x\n");
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        rm.char_at(RowPos::new(0, 0), 1, DisplayColTarget::Cell),
+        0,
+        "clicking the wide glyph's right half must select the glyph itself"
+    );
+}
+
+#[test]
+fn char_at_cell_inside_a_placeholder_selects_the_placeholder() {
+    // "a\u{200b}b\n": 'a' at col 0, the zero-width space's `<200b>`
+    // placeholder spans cols 1-6 (width 6), 'b' at col 7. A click anywhere
+    // in the placeholder's span — not just its first cell — must resolve to
+    // the character it stands in for, the same as clicking any other
+    // multi-column cell.
+    let rope = Rope::from_str("a\u{200b}b\n");
+    let providers = ProviderSet::new();
+    let mut s = FormatScratch::new();
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        rm.char_at(RowPos::new(0, 0), 3, DisplayColTarget::Cell),
+        1,
+        "a click inside the placeholder's span must select the char it stands in for"
     );
 }
 

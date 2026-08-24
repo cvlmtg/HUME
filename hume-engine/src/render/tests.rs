@@ -1640,3 +1640,66 @@ fn write_text_run_still_shows_a_genuine_placeholder_cluster_as_its_codepoint() {
     assert_eq!(buf[(7, 0)].symbol(), "b");
     assert_eq!(after, 8);
 }
+
+#[test]
+fn write_text_run_drops_a_wide_grapheme_whole_at_the_right_edge() {
+    // "中" is width 2; a right_edge of 1 can't fit it even partially —
+    // dropped whole, same rule `truncate_to_width` follows, not clipped to
+    // its first column.
+    let mut buf = make_test_buf(10, 1);
+    let style = ratatui::style::Style::default();
+    let theme = Theme::default();
+    let after = Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "中", style, 1);
+
+    assert_eq!(
+        buf[(0, 0)].symbol(),
+        " ",
+        "a cluster that can't fit at all must write nothing"
+    );
+    assert_eq!(after, 0, "advance must not move past an unwritten cluster");
+}
+
+#[test]
+fn write_text_run_blanks_the_continuation_cell_of_a_wide_grapheme() {
+    // A width-2 grapheme writes its glyph into the first cell and blanks
+    // the second — nothing left over from whatever the buffer held before.
+    let mut buf = make_test_buf(10, 1);
+    buf[(1, 0)].set_symbol("X"); // stale content the blank must overwrite
+    let style = ratatui::style::Style::default().fg(ratatui::style::Color::White);
+    let theme = Theme::default();
+    Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "中", style, 10);
+
+    assert_eq!(buf[(0, 0)].symbol(), "中");
+    assert_eq!(
+        buf[(1, 0)].symbol(),
+        " ",
+        "the continuation cell must be blanked, not left as stale content"
+    );
+    assert_eq!(
+        buf[(1, 0)].fg,
+        ratatui::style::Color::White,
+        "the blanked continuation cell must still carry the run's style"
+    );
+}
+
+#[test]
+fn write_text_run_drops_a_placeholder_whole_when_it_would_straddle_the_right_edge() {
+    // `<200b>` needs 6 cells; a right_edge that only leaves 3 after 'a'
+    // must drop the whole placeholder rather than writing a partial
+    // `<20` — and, since drop-whole breaks the walk, 'a' is the only thing
+    // written at all.
+    let mut buf = make_test_buf(10, 1);
+    let style = ratatui::style::Style::default();
+    let theme = Theme::default();
+    let after = Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "a\u{200b}b", style, 4);
+
+    assert_eq!(buf[(0, 0)].symbol(), "a");
+    for x in 1..4u16 {
+        assert_eq!(
+            buf[(x, 0)].symbol(),
+            " ",
+            "cell {x} must stay untouched — the placeholder that would reach it was dropped whole"
+        );
+    }
+    assert_eq!(after, 1, "advance must stop before the dropped placeholder");
+}

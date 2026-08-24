@@ -254,6 +254,14 @@ fn str_width_honors_nonzero_start_display_col() {
     assert_eq!(str_width("\t", 2, 4), 2);
 }
 
+#[test]
+fn str_width_of_a_placeholder_cluster_is_its_codepoint_length() {
+    // A zero-width space (U+200B) measures 0 by unicode-width, but its
+    // `<200b>` placeholder occupies 6 cells — `str_width` must report the
+    // placeholder's width, not the cluster's own zero.
+    assert_eq!(str_width("\u{200b}", 0, 4), 6);
+}
+
 // ── indent_depth ─────────────────────────────────────────────────────────
 
 #[test]
@@ -269,6 +277,14 @@ fn indent_depth_with_tabs() {
     assert_eq!(indent_depth("\t\tfoo", 4), 2);
     // Mixed: tab (0→4) then space (4→5), depth = 5/4 = 1.
     assert_eq!(indent_depth("\t foo", 4), 1);
+}
+
+#[test]
+fn indent_depth_saturates_at_u8_max() {
+    // 300 spaces at tab_width=1 is 300 indent levels — past u8's 255 max.
+    // Must saturate, not wrap or panic.
+    let indent = " ".repeat(300);
+    assert_eq!(indent_depth(&indent, 1), u8::MAX);
 }
 
 #[test]
@@ -329,6 +345,14 @@ fn truncate_to_width_tab_expands_against_real_stops() {
 #[test]
 fn truncate_to_width_zero_budget_is_empty() {
     assert_eq!(truncate_to_width("abc", 0, 4), ("", 0));
+}
+
+#[test]
+fn truncate_to_width_drops_a_whole_placeholder_that_would_overshoot() {
+    // 'a' (1 col) fits budget 4, but the zero-width space's `<200b>`
+    // placeholder needs 6 more (1+6=7 > 4) — dropped whole, same rule a
+    // wide grapheme follows, never split into "<20".
+    assert_eq!(truncate_to_width("a\u{200b}", 4, 4), ("a", 1));
 }
 
 #[test]

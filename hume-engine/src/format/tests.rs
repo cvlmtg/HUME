@@ -642,6 +642,33 @@ fn word_wrap_keeps_a_two_column_tabs_continuation_cell_on_its_own_row() {
 }
 
 #[test]
+fn placeholder_wraps_whole_to_a_new_row_when_it_would_straddle_the_wrap_boundary() {
+    // "abc" fills display cols 0-2 of a width-6 row, leaving 3 columns —
+    // not the 6 a zero-width space's `<200b>` placeholder needs (6 chars,
+    // `needs_placeholder` reports it via its own byte length). `maybe_wrap`
+    // sees the placeholder's real width before it's ever split into cells,
+    // so it must move the whole thing to a fresh row rather than letting it
+    // straddle the boundary.
+    let (rows, graphemes) = do_format("abc\u{200b}", WrapMode::Soft { width: 6 });
+    assert!(rows.len() >= 2, "the line must wrap before the placeholder");
+    let row0 = &graphemes[rows[0].graphemes.clone()];
+    let row1 = &graphemes[rows[1].graphemes.clone()];
+    assert!(
+        row0.iter()
+            .all(|g| !matches!(g.content, CellContent::Placeholder { .. })),
+        "the placeholder must not be split onto row0"
+    );
+    let ph = row1
+        .first()
+        .expect("row1 must have at least the placeholder");
+    assert!(matches!(ph.content, CellContent::Placeholder { .. }));
+    assert_eq!(
+        ph.display_col, 0,
+        "wrapped placeholder starts at its new row's own column 0"
+    );
+}
+
+#[test]
 fn indent_wrap_continuation_starts_at_indent_display_col() {
     // "    long" with 4 spaces of indent (depth=1, tab_width=4), width=6.
     // First row: "    lo", continuation row starts at display col 4.
