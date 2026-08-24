@@ -1,4 +1,4 @@
-//! Text-edit application and cursor navigation primitives fed by LSP
+//! BufferText-edit application and cursor navigation primitives fed by LSP
 //! responses (code actions, rename, go-to-definition), but not LSP
 //! transport themselves.
 

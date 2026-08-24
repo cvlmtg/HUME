@@ -437,9 +437,9 @@ impl Editor {
         cursor_line: usize,
     ) -> BufferId {
         use hume_editing::selection::{Selection, SelectionSet};
-        use hume_editing::text::Text;
+        use hume_editing::text::BufferText;
 
-        let text = Text::from(content);
+        let text = BufferText::from(content);
         let bid = if let Some(existing) = self.state.buffers.find_by_label(label) {
             self.state.buffers.get_mut(existing).set_view_content(text);
             existing

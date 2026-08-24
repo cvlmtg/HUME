@@ -7,7 +7,7 @@ use crate::settings::BufferOverrides;
 use hume_editing::changeset::{ChangeSet, changesets_from_line_diff};
 use hume_editing::history::{History, RevisionId};
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_platform::io::FileMeta;
 
 mod disk;
@@ -65,7 +65,7 @@ pub(crate) struct LastInsert {
 /// `SelectionSet` + a `ChangeSet` for propagation to non-acting panes, and
 /// handle undo bookkeeping internally.
 pub(crate) struct Buffer {
-    text: Text,
+    text: BufferText,
     history: History,
     /// The revision at which the buffer was last saved (or first opened).
     /// `None` means the saved state was overwritten by an `undo-levels`
@@ -132,7 +132,7 @@ pub(crate) struct Buffer {
     /// no registered server, before the open-time attach attempt runs, or
     /// after the attached server is detached.
     pub(crate) lsp_server: Option<hume_lsp::backend::ServerId>,
-    /// Text mutations queued for `textDocument/didChange` conversion, in
+    /// BufferText mutations queued for `textDocument/didChange` conversion, in
     /// order. Recorded at the same chokepoint as tree-sitter's pending
     /// edits (`doc_ops.rs`'s five apply functions); drained by the LSP
     /// per-frame flush. Always empty when `lsp_server` is `None`.
@@ -177,7 +177,7 @@ impl Buffer {
     ///
     /// `initial_sels` are stored in the history root so `initial_sels()` can
     /// recover them for seeding `PaneBufferState` on first open or `:e!` reload.
-    pub(crate) fn new(text: Text, initial_sels: SelectionSet) -> Self {
+    pub(crate) fn new(text: BufferText, initial_sels: SelectionSet) -> Self {
         let text_len = text.len_chars();
         let history = History::new(initial_sels, text_len);
         let saved_revision = Some(history.current_id());
@@ -219,7 +219,7 @@ impl Buffer {
     /// caller contract for `replace_buffer_in_place`.
     pub(crate) fn from_file(path: &Path) -> io::Result<Self> {
         let (content, meta) = hume_platform::io::read_file(path)?;
-        let text = Text::from(content.as_str());
+        let text = BufferText::from(content.as_str());
         let sels = SelectionSet::default();
         let mut buf = Self::new(text, sels);
         buf.set_path(Some(meta.resolved_path().to_path_buf()));
@@ -234,7 +234,7 @@ impl Buffer {
     /// set so the buffer participates in `find_by_path` dedup and displays
     /// its intended name.
     pub(crate) fn new_file(path: PathBuf) -> Self {
-        let mut buf = Self::new(Text::empty(), SelectionSet::default());
+        let mut buf = Self::new(BufferText::empty(), SelectionSet::default());
         buf.set_path(Some(path));
         buf
     }
@@ -280,14 +280,14 @@ impl Buffer {
     /// Used when closing the last buffer to keep the "always ≥1 buffer open"
     /// invariant without leaving the editor in an invalid state.
     pub(crate) fn scratch() -> Self {
-        Self::new(Text::empty(), SelectionSet::default())
+        Self::new(BufferText::empty(), SelectionSet::default())
     }
 
     /// Create a read-only view buffer from in-memory content.
     ///
     /// Used for `:messages`, `:ls`, and `:plugin-status`. The buffer has no
     /// backing file, no language detection, and blocks all user edits.
-    pub(crate) fn read_only_view(text: Text, label: String) -> Self {
+    pub(crate) fn read_only_view(text: BufferText, label: String) -> Self {
         let mut buf = Self::new(text, SelectionSet::default());
         buf.read_only = true;
         buf.label = Some(label);
@@ -299,7 +299,7 @@ impl Buffer {
     /// Resets history to a clean root and clears search state so the refreshed
     /// buffer is non-dirty and has no stale match data. This is a system
     /// refresh — it intentionally bypasses the `read_only` guard in `doc_ops`.
-    pub(crate) fn set_view_content(&mut self, text: Text) {
+    pub(crate) fn set_view_content(&mut self, text: BufferText) {
         let text_len = text.len_chars();
         let undo_levels = self.history.undo_levels();
         self.history = History::new(SelectionSet::default(), text_len);
@@ -326,7 +326,7 @@ impl Buffer {
 
     /// Replace the buffer text and bump `text_gen` so `reparse_stale_buffers`
     /// knows a new parse is needed. All text-mutating paths go through here.
-    fn set_text(&mut self, text: Text) {
+    fn set_text(&mut self, text: BufferText) {
         self.text = text;
         self.text_gen += 1;
     }
@@ -437,7 +437,7 @@ impl Buffer {
     /// only place that already knows which branch ran.
     pub(crate) fn reload_from_text(
         &mut self,
-        new_text: Text,
+        new_text: BufferText,
         pre_sels: SelectionSet,
         post_sels: SelectionSet,
     ) -> bool {
@@ -446,7 +446,7 @@ impl Buffer {
         self.disk_state = disk::DiskState::InSync;
 
         // Build the CS pair from immutable borrows of both texts, before
-        // `set_text` mutates `self.text`. The helper takes `&Text` on both
+        // `set_text` mutates `self.text`. The helper takes `&BufferText` on both
         // sides; `new_text` is still owned by us here so the borrow is fine.
         let (forward, inverse) = changesets_from_line_diff(&self.text, &new_text);
 
@@ -540,7 +540,7 @@ impl Buffer {
     pub(crate) fn apply_edit(
         &mut self,
         sels: SelectionSet,
-        cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+        cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
     ) -> (SelectionSet, ChangeSet) {
         // Clone the buffer for the edit — O(log n) via ropey structural sharing.
         let (new_text, new_sels, cs) = cmd(self.text.clone(), sels.clone());
@@ -568,7 +568,7 @@ impl Buffer {
         &mut self,
         sels: SelectionSet,
         edit_group: &mut Option<EditGroup>,
-        cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+        cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
     ) -> (SelectionSet, ChangeSet) {
         let group = edit_group
             .as_mut()
@@ -605,7 +605,7 @@ impl Buffer {
     pub(crate) fn apply_edit_regrouped(
         &mut self,
         edit_group: &mut Option<EditGroup>,
-        cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+        cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
     ) -> (SelectionSet, ChangeSet) {
         let group = edit_group
             .as_mut()
@@ -710,7 +710,7 @@ impl Buffer {
     }
 
     /// The current buffer contents.
-    pub(crate) fn text(&self) -> &Text {
+    pub(crate) fn text(&self) -> &BufferText {
         &self.text
     }
 

@@ -1,5 +1,5 @@
 use crate::error::ApplyError;
-use crate::text::Text;
+use crate::text::BufferText;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -285,7 +285,7 @@ impl ChangeSet {
     ///   with `\n` (the changeset deleted the structural trailing newline).
     ///
     /// On error the original `buf` is untouched — the caller still owns it.
-    pub fn apply(&self, buf: &Text) -> Result<Text, ApplyError> {
+    pub fn apply(&self, buf: &BufferText) -> Result<BufferText, ApplyError> {
         if buf.len_chars() != self.len_before {
             return Err(ApplyError::LengthMismatch {
                 buf_len: buf.len_chars(),
@@ -333,7 +333,7 @@ impl ChangeSet {
         if !crate::text::is_valid_buffer_rope(&rope) {
             return Err(ApplyError::TrailingNewlineMissing);
         }
-        Ok(Text::from_rope(rope, buf.line_ending()))
+        Ok(BufferText::from_rope(rope, buf.line_ending()))
     }
 
     // ── map_pos ──────────────────────────────────────────────────────────────
@@ -490,7 +490,7 @@ impl ChangeSet {
     /// # Panics
     /// Panics if `buf.len_chars() != self.len_before`.
     #[must_use]
-    pub fn invert(&self, buf: &Text) -> ChangeSet {
+    pub fn invert(&self, buf: &BufferText) -> ChangeSet {
         assert_eq!(
             buf.len_chars(),
             self.len_before,

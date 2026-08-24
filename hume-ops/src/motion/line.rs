@@ -1,11 +1,11 @@
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::lines::{line_break_char, line_content_end, line_end_exclusive};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 // ── Line motions (inner) ──────────────────────────────────────────────────────
 
 /// Jump to the first character on the current line.
-pub(super) fn goto_line_start(buf: &Text, head: usize) -> usize {
+pub(super) fn goto_line_start(buf: &BufferText, head: usize) -> usize {
     buf.line_to_char(buf.char_to_line(head))
 }
 
@@ -13,7 +13,7 @@ pub(super) fn goto_line_start(buf: &Text, head: usize) -> usize {
 ///
 /// On an empty line (containing only `\n`), the cursor stays on the newline —
 /// there is no other character to land on.
-pub(super) fn goto_line_end(buf: &Text, head: usize) -> usize {
+pub(super) fn goto_line_end(buf: &BufferText, head: usize) -> usize {
     // The core logic lives in hume_editing::lines::line_content_end, which is
     // also used by selection_cmd.rs — one implementation, two callers.
     line_content_end(buf, buf.char_to_line(head))
@@ -25,7 +25,7 @@ pub(super) fn goto_line_end(buf: &Text, head: usize) -> usize {
 /// therefore lands on the `\n` itself only on empty lines), this always
 /// returns the `\n` position. Used by `cmd_open_line_below` to make the
 /// insertion point uniform across empty and non-empty lines.
-pub(super) fn goto_line_newline(buf: &Text, head: usize) -> usize {
+pub(super) fn goto_line_newline(buf: &BufferText, head: usize) -> usize {
     let line = buf.char_to_line(head);
     line_break_char(buf, line)
 }
@@ -35,7 +35,7 @@ pub(super) fn goto_line_newline(buf: &Text, head: usize) -> usize {
 /// "Blank" means ASCII space or tab. If no non-blank character exists on the
 /// line (e.g. a line of only spaces), the motion is a no-op and the cursor
 /// stays at its current position.
-pub(super) fn goto_first_nonblank(buf: &Text, head: usize) -> usize {
+pub(super) fn goto_first_nonblank(buf: &BufferText, head: usize) -> usize {
     let line = buf.char_to_line(head);
     let line_start = buf.line_to_char(line);
     let end_excl = line_end_exclusive(buf, line);

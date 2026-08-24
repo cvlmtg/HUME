@@ -27,45 +27,45 @@ use hume_editing::selection::{Selection, SelectionSet};
 /// (anchor and head both included); `-` always marks anchor, `>`/`<` always
 /// marks head, and the arrow direction shows which way the selection faces.
 /// Multiple selections in one string: `-[he]>llo -[wor]>ld\n`
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 // ── IntoTestResult ────────────────────────────────────────────────────────────
 
-/// Convert a command's return value into `(Text, SelectionSet)` for
+/// Convert a command's return value into `(BufferText, SelectionSet)` for
 /// assertion purposes.
 ///
 /// Commands have two distinct signature families:
 ///
 /// - **Non-mutating** (motions, text objects, selection commands): take
-///   `&Text`, return `SelectionSet`. The buffer is unchanged — the macro
+///   `&BufferText`, return `SelectionSet`. The buffer is unchanged — the macro
 ///   provides its clone via `original_buf`.
-/// - **Mutating** (edits): take `Text` by value, return
-///   `(Text, SelectionSet, ChangeSet)`. The returned buffer
+/// - **Mutating** (edits): take `BufferText` by value, return
+///   `(BufferText, SelectionSet, ChangeSet)`. The returned buffer
 ///   is the edited one — `original_buf` is ignored.
 ///
 /// This trait lets `assert_state!` accept both families without change.
 pub trait IntoTestResult {
-    fn into_test_result(self, original_buf: Text) -> (Text, SelectionSet);
+    fn into_test_result(self, original_buf: BufferText) -> (BufferText, SelectionSet);
 }
 
 /// Non-mutating commands return only the new `SelectionSet`.
 /// The buffer didn't change, so we pair it with the caller's clone.
 impl IntoTestResult for SelectionSet {
-    fn into_test_result(self, original_buf: Text) -> (Text, SelectionSet) {
+    fn into_test_result(self, original_buf: BufferText) -> (BufferText, SelectionSet) {
         (original_buf, self)
     }
 }
 
-/// `(Text, SelectionSet)` pair — emitted by internal helpers that don't produce a `ChangeSet`.
-impl IntoTestResult for (Text, SelectionSet) {
-    fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) {
+/// `(BufferText, SelectionSet)` pair — emitted by internal helpers that don't produce a `ChangeSet`.
+impl IntoTestResult for (BufferText, SelectionSet) {
+    fn into_test_result(self, _original_buf: BufferText) -> (BufferText, SelectionSet) {
         self
     }
 }
 
 /// Standard edit commands.
-impl IntoTestResult for (Text, SelectionSet, ChangeSet) {
-    fn into_test_result(self, _original_buf: Text) -> (Text, SelectionSet) {
+impl IntoTestResult for (BufferText, SelectionSet, ChangeSet) {
+    fn into_test_result(self, _original_buf: BufferText) -> (BufferText, SelectionSet) {
         (self.0, self.1)
     }
 }
@@ -84,12 +84,12 @@ fn char_count(s: &str) -> usize {
 
 // ── State parsing ─────────────────────────────────────────────────────────────
 
-/// Parse a marker-annotated string into `(Text, SelectionSet)`.
+/// Parse a marker-annotated string into `(BufferText, SelectionSet)`.
 ///
 /// The markers are stripped from the returned buffer. Panics with a
 /// descriptive message if the string contains no selection markers, or if a
 /// marker is malformed (e.g. a `-[` with no matching `]>`).
-pub fn parse_state(input: &str) -> (Text, SelectionSet) {
+pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
     // Single pass, tracking whether we're inside `-[…]>` or `<[…]-` (see
     // `State` below). Any char not starting one of the four two-char tokens
     // (recognised by peeking one char ahead) is literal text.
@@ -214,16 +214,16 @@ pub fn parse_state(input: &str) -> (Text, SelectionSet) {
         input
     );
 
-    let buf = Text::from(text.as_str());
+    let buf = BufferText::from(text.as_str());
     let sel_set = SelectionSet::from_vec(selections, 0);
     (buf, sel_set)
 }
 
-/// Serialize `(Text, SelectionSet)` back to the marker format.
+/// Serialize `(BufferText, SelectionSet)` back to the marker format.
 ///
 /// This is the inverse of `parse_state`. It is used in assertions so that
 /// diffs show the annotated marker text rather than raw char offsets.
-pub fn serialize_state(buf: &Text, sels: &SelectionSet) -> String {
+pub fn serialize_state(buf: &BufferText, sels: &SelectionSet) -> String {
     let full = buf.to_string();
     // Include the structural trailing \n in the serialized output so that
     // DSL strings are explicit about buffer content. Every valid buffer ends
@@ -273,9 +273,9 @@ pub fn serialize_state(buf: &Text, sels: &SelectionSet) -> String {
 /// the state described by `$expected`.
 ///
 /// Both `$initial` and `$expected` are marker-annotated strings (see module
-/// docs for the format). `$op` is a closure that takes `(Text, SelectionSet)`
+/// docs for the format). `$op` is a closure that takes `(BufferText, SelectionSet)`
 /// and returns either:
-/// - `(Text, SelectionSet, ChangeSet[, Vec<String>])` — for edit commands
+/// - `(BufferText, SelectionSet, ChangeSet[, Vec<String>])` — for edit commands
 ///   that modify the buffer, or
 /// - `SelectionSet` — for motion/selection commands that only move cursors.
 ///

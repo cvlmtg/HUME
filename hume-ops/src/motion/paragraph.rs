@@ -1,5 +1,5 @@
 use hume_editing::lines::is_empty_line;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 // ── Paragraph motions (inner) ─────────────────────────────────────────────────
 
@@ -12,7 +12,7 @@ use hume_editing::text::Text;
 /// Lands on the first char of the next paragraph, or the buffer's last valid
 /// position (the structural trailing `\n`) if there is no paragraph below
 /// (EOF). At EOF already: no-op.
-pub(super) fn next_paragraph(buf: &Text, head: usize) -> usize {
+pub(super) fn next_paragraph(buf: &BufferText, head: usize) -> usize {
     let mut line = buf.char_to_line(head);
     // Deliberately the ropey count, not content_line_count(): the phantom
     // trailing line is empty like any other (is_empty_line agrees), so the
@@ -48,7 +48,7 @@ pub(super) fn next_paragraph(buf: &Text, head: usize) -> usize {
 ///
 /// Lands on the first (topmost) empty line of the gap above, or line 0 if
 /// there is no paragraph above. At line 0 already: no-op.
-pub(super) fn prev_paragraph(buf: &Text, head: usize) -> usize {
+pub(super) fn prev_paragraph(buf: &BufferText, head: usize) -> usize {
     let mut line = buf.char_to_line(head);
 
     // Phase 1: skip empty lines backward (handles starting inside a gap).

@@ -92,7 +92,7 @@ impl CommandRegistry {
         .repeatable()
         .reg(self);
         // Bound at `mii`. An `EditorCmd`, not a `Selection`, because it reads
-        // buffer state (`Buffer::last_insert`) beyond the current `Text` +
+        // buffer state (`Buffer::last_insert`) beyond the current `BufferText` +
         // `SelectionSet` — no `around` counterpart; see the doc comment on
         // `cmd_select_last_insertion` itself.
         ecmd(

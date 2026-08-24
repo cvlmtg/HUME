@@ -291,7 +291,7 @@ fn lsp_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
     // 0,1,2,3,5,6 — é occupies chars 3..5. Selection anchor=0, head=3
     // (inclusive) covers "caf" plus é's first char only.
     let content = "caf\u{0065}\u{0301}\n";
-    let mut ed = Editor::for_testing(Buffer::new(Text::from(content), SelectionSet::default()));
+    let mut ed = Editor::for_testing(Buffer::new(BufferText::from(content), SelectionSet::default()));
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-range-grapheme.rs")));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));

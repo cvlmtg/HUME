@@ -1,7 +1,7 @@
 use crate::changeset::ChangeSet;
 use crate::error::TransactionError;
 use crate::selection::SelectionSet;
-use crate::text::Text;
+use crate::text::BufferText;
 
 /// A `Transaction` bundles a text change with the resulting selection state.
 ///
@@ -59,7 +59,7 @@ impl Transaction {
     ///   (length mismatch or deleted the structural trailing `\n`).
     /// - [`TransactionError::Validation`] if any selection head or anchor is
     ///   out of bounds for the post-apply buffer.
-    pub fn apply(&self, buf: &Text) -> Result<(Text, SelectionSet), TransactionError> {
+    pub fn apply(&self, buf: &BufferText) -> Result<(BufferText, SelectionSet), TransactionError> {
         let new_buf = self.changes.apply(buf)?;
         self.selection.validate(new_buf.len_chars())?;
         // Canonicalize before handing the set to the editor: a plugin-built

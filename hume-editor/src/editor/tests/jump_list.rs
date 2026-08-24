@@ -171,7 +171,7 @@ fn search_next_records_jump() {
 fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
     // Two "editor" matches on the same line.
     let text = "the editor and the editor\nother line\n";
-    let buf = hume_editing::text::Text::from(text);
+    let buf = hume_editing::text::BufferText::from(text);
     let sels = hume_editing::selection::SelectionSet::single(
         hume_editing::selection::Selection::collapsed(0),
     );

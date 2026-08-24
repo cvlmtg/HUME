@@ -1,5 +1,5 @@
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 use super::MotionMode;
 
@@ -16,7 +16,7 @@ pub enum FindKind {
 
 /// Apply an inner motion to every selection in the set, repeated `count` times.
 ///
-/// `motion` is a plain function `fn(&Text, head) -> new_head`. It knows
+/// `motion` is a plain function `fn(&BufferText, head) -> new_head`. It knows
 /// nothing about anchors or multi-cursor — it computes exactly one new
 /// position from one old position. `apply_motion` handles the anchor
 /// semantics (via `mode`) and multi-cursor bookkeeping.
@@ -31,11 +31,11 @@ pub enum FindKind {
 /// Uses `map` (which always merges) so that selections which converge to the
 /// same position after the motion are automatically merged.
 pub(crate) fn apply_motion(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     mode: MotionMode,
     count: usize,
-    motion: impl Fn(&Text, usize) -> usize,
+    motion: impl Fn(&BufferText, usize) -> usize,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         // Apply the motion `count` times, feeding each result as the next
@@ -73,8 +73,8 @@ mod tests;
 
 // ── Named commands (public API) ───────────────────────────────────────────────
 //
-// Named commands follow the edit convention — `(Text, SelectionSet) ->
-// (Text, SelectionSet)` — so they can be used directly with `assert_state!`
+// Named commands follow the edit convention — `(BufferText, SelectionSet) ->
+// (BufferText, SelectionSet)` — so they can be used directly with `assert_state!`
 // and, eventually, the command dispatch table.
 //
 // Pure motions do not modify the buffer, so `buf` passes through unchanged.
@@ -83,7 +83,7 @@ mod tests;
 // data — name, mode, motion — with no repeated scaffolding.
 
 /// Generate a named motion command whose motion function takes only
-/// `(&Text, head)`:
+/// `(&BufferText, head)`:
 /// ```text
 /// motion_cmd!(/// doc, cmd_move_right, move_right);
 /// ```
@@ -95,7 +95,7 @@ macro_rules! motion_cmd {
     ($(#[$attr:meta])* $name:ident, $motion:expr) => {
         $(#[$attr])*
         #[allow(non_snake_case)]
-        pub fn $name(buf: &Text, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
+        pub fn $name(buf: &BufferText, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
             apply_motion(buf, sels, mode, count, $motion)
         }
     };

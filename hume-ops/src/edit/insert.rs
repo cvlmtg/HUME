@@ -5,7 +5,7 @@ use hume_editing::grapheme::display_col_in_line;
 use hume_editing::lines::{leading_whitespace_end, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::tab_style::TabStyle;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 use super::apply_edit;
 
@@ -19,7 +19,7 @@ use super::apply_edit;
 ///
 /// This covers single-cursor typing, multicursor typing, and "replace
 /// selection with typed character" — all via the same loop.
-pub fn insert_char(buf: Text, sels: SelectionSet, ch: char) -> (Text, SelectionSet, ChangeSet) {
+pub fn insert_char(buf: BufferText, sels: SelectionSet, ch: char) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
@@ -43,7 +43,7 @@ pub fn insert_char(buf: Text, sels: SelectionSet, ch: char) -> (Text, SelectionS
 /// cursor lands at `new_pos()` (one past the inserted text) in both cases —
 /// no manual position arithmetic, so a multi-char `text` can't land mid
 /// grapheme-cluster.
-pub fn insert_str(buf: Text, sels: SelectionSet, text: &str) -> (Text, SelectionSet, ChangeSet) {
+pub fn insert_str(buf: BufferText, sels: SelectionSet, text: &str) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
@@ -64,7 +64,7 @@ pub fn insert_str(buf: Text, sels: SelectionSet, text: &str) -> (Text, Selection
 /// non-whitespace char, and every line's char content ends in `\n` (buffer
 /// invariant), so a whitespace-only line is the one case where the scan runs
 /// all the way to that `\n` without finding one.
-fn is_blank_indented_line(buf: &Text, line_start: usize, ws_end: usize) -> bool {
+fn is_blank_indented_line(buf: &BufferText, line_start: usize, ws_end: usize) -> bool {
     ws_end > line_start && buf.char_at(ws_end) == Some('\n')
 }
 
@@ -76,7 +76,7 @@ fn is_blank_indented_line(buf: &Text, line_start: usize, ws_end: usize) -> bool 
 /// `clear_blank_line_indent` so exiting Insert mode away from a blank line
 /// doesn't run an identity edit — which would still bump `text_gen` and
 /// record a spurious pending tree-sitter edit) and the edit ops below.
-pub fn blank_line_ws_range(buf: &Text, pos: usize) -> Option<(usize, usize)> {
+pub fn blank_line_ws_range(buf: &BufferText, pos: usize) -> Option<(usize, usize)> {
     let line = buf.char_to_line(pos);
     let line_start = buf.line_to_char(line);
     let ws_end = leading_whitespace_end(buf, line);
@@ -91,7 +91,7 @@ pub fn blank_line_ws_range(buf: &Text, pos: usize) -> Option<(usize, usize)> {
 /// backwards past what the builder already emitted.
 fn line_context_if_unconsumed(
     b: &ChangeSetBuilder,
-    buf: &Text,
+    buf: &BufferText,
     pos: usize,
 ) -> Option<(usize, usize)> {
     if pos < b.old_pos() {
@@ -116,7 +116,7 @@ fn line_context_if_unconsumed(
 /// is always safe since `pos >= b.old_pos()` per [`line_context_if_unconsumed`]).
 fn try_trim_blank_line(
     b: &mut ChangeSetBuilder,
-    buf: &Text,
+    buf: &BufferText,
     sel: &Selection,
     line_start: usize,
     ws_end: usize,
@@ -152,10 +152,10 @@ fn try_trim_blank_line(
 /// already-blank line (nothing to vacate yet); `true` once auto-indent has
 /// landed there (threaded through from `EditorState::autoindent_pending`).
 pub fn insert_newline_indent(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
     trim_blank: bool,
-) -> (Text, SelectionSet, ChangeSet) {
+) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let start = sel.start();
         let Some((line_start, ws_end)) = line_context_if_unconsumed(b, buf, start) else {
@@ -186,7 +186,7 @@ pub fn insert_newline_indent(
 /// with the cursor still on a blank auto-indented line (`:help autoindent`:
 /// "type `<Esc>` ... the indent is deleted again"). Selections not on a blank
 /// line are left untouched (identity edit).
-pub fn clear_blank_line_indent(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
+pub fn clear_blank_line_indent(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         if sel.is_collapsed() {
             let head = sel.head();
@@ -234,11 +234,11 @@ pub fn clear_blank_line_indent(buf: Text, sels: SelectionSet) -> (Text, Selectio
 /// Non-collapsed selections are deleted first, same as `insert_char` — Tab
 /// over a selection replaces it, just like typing any other key.
 pub fn insert_tab(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
     style: TabStyle,
     tab_width: u8,
-) -> (Text, SelectionSet, ChangeSet) {
+) -> (BufferText, SelectionSet, ChangeSet) {
     if style == TabStyle::Hard {
         return insert_char(buf, sels, '\t');
     }

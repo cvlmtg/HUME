@@ -806,7 +806,7 @@ fn mouse_click_leaves_hook_queued_until_the_next_settle() {
     use termina::event::Event as TerminalEvent;
 
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(
-        hume_editing::text::Text::from("hello\n"),
+        hume_editing::text::BufferText::from("hello\n"),
         hume_editing::selection::SelectionSet::default(),
     ));
 

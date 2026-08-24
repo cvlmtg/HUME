@@ -40,7 +40,7 @@ fn content_lines_range_is_zero_to_content_line_count() {
 #[test]
 #[should_panic(expected = "trailing-newline invariant violated")]
 fn content_line_count_asserts_the_trailing_newline_invariant() {
-    // No trailing '\n' — violates the invariant every hume_editing::Text
+    // No trailing '\n' — violates the invariant every hume_editing::BufferText
     // upholds by construction. Debug builds must catch this loudly rather
     // than silently returning a wrong content line count.
     content_line_count(&Rope::from_str("a\nb\nc"));

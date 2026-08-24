@@ -2,7 +2,7 @@ use super::MotionMode;
 use crate::text_object::{expand_word_unit, word_unit_at};
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, classify_char, is_uppercase_word_boundary, is_word_boundary};
 
 // ── Word motions (inner) ──────────────────────────────────────────────────────
@@ -16,7 +16,7 @@ use hume_editing::word::{CharClass, classify_char, is_uppercase_word_boundary, i
 /// The `is_boundary` parameter is `is_word_boundary` for `w` and
 /// `is_uppercase_word_boundary` for `W`.
 pub(super) fn next_word_start(
-    buf: &Text,
+    buf: &BufferText,
     head: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
 ) -> usize {
@@ -53,7 +53,7 @@ pub(super) fn next_word_start(
 /// Two-phase backward scan: skip Space/Eol backward, then skip backward while
 /// in the same category, landing on the first char of that group.
 pub(crate) fn prev_word_start(
-    buf: &Text,
+    buf: &BufferText,
     head: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
 ) -> usize {
@@ -111,7 +111,7 @@ pub(crate) fn prev_word_start(
 /// This is Phase 2 of `next_word_end` run from a known starting position,
 /// without the initial skip-whitespace step.
 pub(super) fn find_word_end_from(
-    buf: &Text,
+    buf: &BufferText,
     start: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
 ) -> usize {
@@ -149,7 +149,7 @@ pub(super) fn find_word_end_from(
 /// class, stopping at the first boundary or buffer start. See
 /// [`find_word_end_from`]'s doc for why this isn't always "same class".
 pub(super) fn find_word_start_from(
-    buf: &Text,
+    buf: &BufferText,
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
 ) -> usize {
@@ -174,7 +174,7 @@ pub(super) fn find_word_start_from(
 /// carrying extra state) is what guarantees whole words stay selected even as
 /// the selection direction flips back and forth.
 pub(super) fn anchor_unit(
-    buf: &Text,
+    buf: &BufferText,
     anchor: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
 ) -> (usize, usize) {
@@ -209,7 +209,7 @@ pub(super) fn anchor_unit(
 /// scan lands on a newline between lines, it calls `next_word_start` a second
 /// time from the newline to reach the first word on the next line.
 pub(super) fn select_next_word(
-    buf: &Text,
+    buf: &BufferText,
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
 ) -> Option<(usize, usize)> {
@@ -252,7 +252,7 @@ pub(super) fn select_next_word(
 /// the start of the current word). If `pos` is in whitespace or at the start
 /// of a word, we jump to the preceding word.
 pub(super) fn select_prev_word(
-    buf: &Text,
+    buf: &BufferText,
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
 ) -> Option<(usize, usize)> {
@@ -323,12 +323,12 @@ pub(super) fn select_prev_word(
 /// it's the origin that stays correct across repeated backward presses on
 /// both bare and around selections.
 pub(super) fn apply_word_select(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     count: usize,
     around: bool,
     backward: bool,
-    motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
+    motion: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         let mut current = sel;
@@ -386,12 +386,12 @@ pub(super) fn apply_word_select(
 /// If `motion` returns `None`, iteration stops early and the last selection is
 /// kept.
 pub(super) fn apply_word_select_extend(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     count: usize,
     around: bool,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
-    motion: impl Fn(&Text, usize) -> Option<(usize, usize)>,
+    motion: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         let mut current = sel;
@@ -432,7 +432,7 @@ pub(super) fn apply_word_select_extend(
 }
 
 type IsBoundary = fn(CharClass, CharClass) -> bool;
-type SelectWord = fn(&Text, usize, IsBoundary) -> Option<(usize, usize)>;
+type SelectWord = fn(&BufferText, usize, IsBoundary) -> Option<(usize, usize)>;
 
 /// Shared dispatch for the eight word-select commands below: branches on
 /// `mode` (fresh re-anchor for `Move`, grow/shrink for `Extend` — see
@@ -447,7 +447,7 @@ type SelectWord = fn(&Text, usize, IsBoundary) -> Option<(usize, usize)>;
 /// whether whitespace is included in the unit.
 #[allow(clippy::too_many_arguments)]
 fn word_select_cmd(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     count: usize,
     mode: MotionMode,
@@ -477,7 +477,7 @@ macro_rules! word_select_variant {
     ($name:ident, $doc:expr, $around:expr, $backward:expr, $is_boundary:expr, $select_word:expr) => {
         #[doc = $doc]
         pub fn $name(
-            buf: &Text,
+            buf: &BufferText,
             sels: SelectionSet,
             count: usize,
             mode: MotionMode,

@@ -86,7 +86,7 @@ fn replace_around_cursors_zero_span_matches_insert_str() {
     // Independent oracle: insert_str is a separately implemented op, so
     // agreement here isn't circular against replace_around_cursors's own
     // logic.
-    let buf = Text::from("foo bar\n");
+    let buf = BufferText::from("foo bar\n");
     let sels = SelectionSet::from_vec(vec![Selection::collapsed(0), Selection::collapsed(4)], 0);
     let (buf_replace, sels_replace, cs_replace) =
         replace_around_cursors(buf.clone(), sels.clone(), 0, 0, "X");
@@ -99,12 +99,12 @@ fn replace_around_cursors_zero_span_matches_insert_str() {
 #[test]
 fn replace_around_cursors_does_not_delete_the_structural_trailing_newline_after_a_bare_cr() {
     // A source ending in a lone `\r` (old-Mac line ending) is left as-is by
-    // `normalize_crlf` (only `\r\n` pairs are stripped), then `Text::from`
+    // `normalize_crlf` (only `\r\n` pairs are stripped), then `BufferText::from`
     // appends the buffer's own structural trailing `\n` — so the rope ends
     // in the two-char cluster `\r\n`. `forward` reaching past the end must
     // floor back to that cluster's start instead of ceiling through it and
     // deleting the structural newline.
-    let buf = Text::from("ab\r");
+    let buf = BufferText::from("ab\r");
     assert_eq!(
         buf.to_string(),
         "ab\r\n",

@@ -12,9 +12,9 @@ use pretty_assertions::assert_eq;
 
 fn page_test_editor() -> Editor {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
     let content = "a\n".repeat(30);
-    let buf = Text::from(content.as_str());
+    let buf = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     // Pin the pane so it doesn't inherit whatever the default buffer/global

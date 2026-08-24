@@ -112,12 +112,12 @@ fn char_range_to_wire_range_astral_char_diverges_utf8_vs_utf16() {
 
 // ── CRLF line terminator ─────────────────────────────────────────────────
 //
-// `hume_editing::text::Text` normalizes `\r\n` to `\n` on load, but a `\r\n`
-// can still reach a live rope in one edge case: `Text::from`'s single-pass
+// `hume_editing::text::BufferText` normalizes `\r\n` to `\n` on load, but a `\r\n`
+// can still reach a live rope in one edge case: `BufferText::from`'s single-pass
 // CRLF strip leaves a literal `\r\n` behind when the input has a bare `\r`
 // immediately before a `\r\n` pair (e.g. `"\r\r\n"` → `"\r\n"` — see
 // `text::tests::from_str_cr_then_crlf_leaves_bare_cr`). These functions take
-// a raw `&Rope`, not a `&Text`, so a `\r\n`-bearing rope is constructed
+// a raw `&Rope`, not a `&BufferText`, so a `\r\n`-bearing rope is constructed
 // directly here rather than routing through that edge case.
 
 #[test]

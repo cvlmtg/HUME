@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 use hume_editing::changeset::ChangeSetBuilder;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_engine::providers::SyntaxSpans;
 
@@ -64,11 +64,11 @@ fn parse_done_for(
 // ── attach ────────────────────────────────────────────────────────────────
 
 // No test exercises the `text.len_bytes() == 0` short-circuit branch in
-// `attach`: `Text`'s public constructors always enforce the trailing-`\n`
+// `attach`: `BufferText`'s public constructors always enforce the trailing-`\n`
 // buffer invariant (see hume-editing/src/text.rs), so `len_bytes()` is
-// never 0 for any `Text` reachable from a real `Buffer`. The branch is
+// never 0 for any `BufferText` reachable from a real `Buffer`. The branch is
 // preserved verbatim from the pre-consolidation code (parse.rs) as
-// defense-in-depth; it is not exercisable through the public `Text` API.
+// defense-in-depth; it is not exercisable through the public `BufferText` API.
 
 #[test]
 fn attach_nonempty_text_returns_request_and_sets_in_flight() {
@@ -77,7 +77,7 @@ fn attach_nonempty_text_returns_request_and_sets_in_flight() {
     }
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (syn, req) = Syntax::attach(bundle, bid, 0, &Text::from("{}\n"), &empty_langs());
+    let (syn, req) = Syntax::attach(bundle, bid, 0, &BufferText::from("{}\n"), &empty_langs());
     assert!(
         req.is_some(),
         "non-empty text must produce a full-parse request"
@@ -105,7 +105,7 @@ fn attach_sync_parses_immediately_and_produces_real_highlight_spans() {
         return;
     }
     let bundle = make_bundle_with_real_highlights("markdown", "tree_sitter_markdown");
-    let text = Text::from("# heading\n");
+    let text = BufferText::from("# heading\n");
     let syn = Syntax::attach_sync(Arc::clone(&bundle), &text, &empty_langs());
 
     assert!(
@@ -131,9 +131,9 @@ fn frame_tick_up_to_date_returns_no_request() {
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
     let (mut syn, _req) =
-        Syntax::attach(Arc::clone(&bundle), bid, 0, &Text::from(""), &empty_langs());
+        Syntax::attach(Arc::clone(&bundle), bid, 0, &BufferText::from(""), &empty_langs());
     // parsed_gen == text_gen (0) already — up to date.
-    let outcome = syn.frame_tick(bid, 0, &Text::from(""), &empty_langs());
+    let outcome = syn.frame_tick(bid, 0, &BufferText::from(""), &empty_langs());
     assert!(
         outcome.request.is_none(),
         "up-to-date buffer must not re-request"
@@ -151,13 +151,13 @@ fn frame_tick_dedups_while_in_flight_at_same_gen() {
         Arc::clone(&bundle),
         bid,
         1,
-        &Text::from("{}\n"),
+        &BufferText::from("{}\n"),
         &empty_langs(),
     );
     assert!(req.is_some());
     // parsed_gen is still 0 (attach doesn't install), text_gen is 1 —
     // frame_tick must see the existing in-flight request and dedup.
-    let outcome = syn.frame_tick(bid, 1, &Text::from("{}\n"), &empty_langs());
+    let outcome = syn.frame_tick(bid, 1, &BufferText::from("{}\n"), &empty_langs());
     assert!(
         outcome.request.is_none(),
         "a request already in flight for this text_gen must not be re-posted"
@@ -175,11 +175,11 @@ fn frame_tick_reposts_after_further_edit() {
         Arc::clone(&bundle),
         bid,
         1,
-        &Text::from("{}\n"),
+        &BufferText::from("{}\n"),
         &empty_langs(),
     );
     // Text advances to gen 2 before the gen-1 result arrives.
-    let outcome = syn.frame_tick(bid, 2, &Text::from("{\"a\":1}\n"), &empty_langs());
+    let outcome = syn.frame_tick(bid, 2, &BufferText::from("{\"a\":1}\n"), &empty_langs());
     assert!(
         outcome.request.is_some(),
         "a newer text_gen than the in-flight one must trigger a fresh request"
@@ -198,7 +198,7 @@ fn frame_tick_old_tree_present_iff_chain_baked() {
         Arc::clone(&bundle),
         bid,
         0,
-        &Text::from("{}\n"),
+        &BufferText::from("{}\n"),
         &empty_langs(),
     );
     let done = parse_done_for(&bundle, bid, 0, "{}\n");
@@ -214,7 +214,7 @@ fn frame_tick_old_tree_present_iff_chain_baked() {
     b.retain_rest();
     let cs = b.finish();
     syn.record_edit(1, &cs, &rope_pre);
-    let outcome = syn.frame_tick(bid, 1, &Text::from("{\"a\":1}\n"), &empty_langs());
+    let outcome = syn.frame_tick(bid, 1, &BufferText::from("{\"a\":1}\n"), &empty_langs());
     assert!(
         outcome.request.unwrap().old_tree.is_some(),
         "a baked contiguous chain must produce an old_tree for incremental parse"
@@ -233,7 +233,7 @@ fn frame_tick_old_tree_present_iff_chain_baked() {
     let cs2 = b2.finish();
     // Skip a generation to break the chain (record at gen 3, not 2).
     syn.record_edit(3, &cs2, &rope2);
-    let outcome2 = syn.frame_tick(bid, 3, &Text::from("{x\"a\":1}\n"), &empty_langs());
+    let outcome2 = syn.frame_tick(bid, 3, &BufferText::from("{x\"a\":1}\n"), &empty_langs());
     assert!(
         outcome2.chain_break.is_some(),
         "a gapped chain must be reported as a break"
@@ -257,7 +257,7 @@ fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
         Arc::clone(&bundle),
         bid,
         0,
-        &Text::from("{}\n"),
+        &BufferText::from("{}\n"),
         &empty_langs(),
     );
     syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
@@ -272,7 +272,7 @@ fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
     syn.record_edit(1, &cs, &rope_pre);
     assert_eq!(syn.pending_edits().len(), 1);
 
-    let outcome = syn.frame_tick(bid, 1, &Text::from("{\"a\":1}\n"), &empty_langs());
+    let outcome = syn.frame_tick(bid, 1, &BufferText::from("{\"a\":1}\n"), &empty_langs());
     assert!(
         outcome.chain_break.is_none(),
         "contiguous chain must not report a break"
@@ -305,7 +305,7 @@ fn bake_mid_chain_gap_rejected() {
         Arc::clone(&bundle),
         bid,
         0,
-        &Text::from("{}\n"),
+        &BufferText::from("{}\n"),
         &empty_langs(),
     );
     syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
@@ -321,7 +321,7 @@ fn bake_mid_chain_gap_rejected() {
     syn.record_edit(1, &cs, &rope_pre);
     syn.record_edit(3, &cs, &rope_pre);
 
-    let outcome = syn.frame_tick(bid, 3, &Text::from("{x}\n"), &empty_langs());
+    let outcome = syn.frame_tick(bid, 3, &BufferText::from("{x}\n"), &empty_langs());
     assert!(
         outcome.chain_break.is_some(),
         "gapped chain must be rejected"
@@ -364,7 +364,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
     let bid = fresh_bid();
     let source = "```rust\nfn main() {}\n```\n";
     let (mut syn, _req) =
-        Syntax::attach(Arc::clone(&markdown), bid, 0, &Text::from(source), &langs);
+        Syntax::attach(Arc::clone(&markdown), bid, 0, &BufferText::from(source), &langs);
 
     // Parse root + resolve injections directly (mirrors `do_parse` in
     // `parse_worker.rs`, inlined so the test controls the exact result).
@@ -408,7 +408,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
     syn.record_edit(1, &cs, &rope_pre);
 
     let new_source = format!("{prefix}{source}");
-    let outcome = syn.frame_tick(bid, 1, &Text::from(new_source.as_str()), &langs);
+    let outcome = syn.frame_tick(bid, 1, &BufferText::from(new_source.as_str()), &langs);
     assert!(
         outcome.chain_break.is_none(),
         "contiguous chain must not report a break"
@@ -443,7 +443,7 @@ fn install_stale_text_gen_discarded() {
         Arc::clone(&bundle),
         bid,
         0,
-        &Text::from("{}\n"),
+        &BufferText::from("{}\n"),
         &empty_langs(),
     );
     // current_text_gen has moved to 5; a done for gen 0 must be discarded.
@@ -472,7 +472,7 @@ fn install_config_gen_mismatch_discarded_without_clearing_newer_in_flight() {
         Arc::clone(&new_bundle),
         bid,
         1,
-        &Text::from("{}\n"),
+        &BufferText::from("{}\n"),
         &empty_langs(),
     );
     assert!(
@@ -515,7 +515,7 @@ fn install_matching_done_clears_in_flight_and_drains_pending() {
         Arc::clone(&bundle),
         bid,
         0,
-        &Text::from("{}\n"),
+        &BufferText::from("{}\n"),
         &empty_langs(),
     );
     assert!(
@@ -535,7 +535,7 @@ fn install_matching_done_clears_in_flight_and_drains_pending() {
     // frame_tick at the new gen: bake early-outs (layers still None from
     // the in-flight initial parse), so pending_edits survives; a fresh
     // request for gen 1 is posted and recorded as in-flight.
-    let outcome = syn.frame_tick(bid, 1, &Text::from("{x}\n"), &empty_langs());
+    let outcome = syn.frame_tick(bid, 1, &BufferText::from("{x}\n"), &empty_langs());
     assert!(
         outcome.request.is_some(),
         "gen-1 edit must trigger a fresh request"
@@ -570,7 +570,7 @@ fn install_parse_failed_advances_parsed_gen_only() {
         Arc::clone(&bundle),
         bid,
         0,
-        &Text::from("{}\n"),
+        &BufferText::from("{}\n"),
         &empty_langs(),
     );
     let done = ParseDone {
@@ -609,7 +609,7 @@ fn clear_layers_keeps_attachment_next_tick_full_reparses() {
         Arc::clone(&bundle),
         bid,
         0,
-        &Text::from("{}\n"),
+        &BufferText::from("{}\n"),
         &empty_langs(),
     );
     syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
@@ -626,7 +626,7 @@ fn clear_layers_keeps_attachment_next_tick_full_reparses() {
         "attachment must survive clear_layers"
     );
 
-    let outcome = syn.frame_tick(bid, 1, &Text::from("{\"a\":1}\n"), &empty_langs());
+    let outcome = syn.frame_tick(bid, 1, &BufferText::from("{\"a\":1}\n"), &empty_langs());
     assert!(
         outcome.request.unwrap().old_tree.is_none(),
         "with layers cleared, the next tick must request a full reparse"

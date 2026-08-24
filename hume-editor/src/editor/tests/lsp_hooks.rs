@@ -191,7 +191,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
         .insert_server_key_for_test("python".to_string(), PathBuf::from("."), sid_b);
 
     let bid_b = ed.open_buffer(Buffer::new(
-        Text::from("x\n"),
+        BufferText::from("x\n"),
         SelectionSet::single(Selection::collapsed(0)),
     ));
     let lang = ed.state.config.languages.intern("python");
@@ -255,7 +255,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
     // registration doesn't leak into "python"'s buffer either.
     ed.switch_to_buffer_without_jump(bid_b);
     let mut plain_b = Editor::for_testing(Buffer::new(
-        Text::from("x\n"),
+        BufferText::from("x\n"),
         SelectionSet::single(Selection::collapsed(0)),
     ));
     ed.feed_key(key('i'));

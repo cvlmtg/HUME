@@ -1,6 +1,6 @@
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 use crate::MotionMode;
 
@@ -43,9 +43,9 @@ pub use word::{
 /// Uses `map` (which always merges) so that multiple cursors landing on the
 /// same range (e.g., both cursors inside the same bracket pair) are merged.
 pub(crate) fn apply_text_object(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
-    text_object: impl Fn(&Text, usize) -> Option<(usize, usize)>,
+    text_object: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let result = sels.map(|sel| match text_object(buf, sel.head()) {
         Some((start, end)) => Selection::new(start, end),
@@ -68,9 +68,9 @@ pub(crate) fn apply_text_object(
 ///    past `sel.end()`. For bracket/quote text objects this escapes the current pair
 ///    and causes the search to find the next enclosing pair instead.
 pub(crate) fn apply_text_object_extend(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
-    text_object: impl Fn(&Text, usize) -> Option<(usize, usize)>,
+    text_object: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         let forward = sel.anchor() <= sel.head();
@@ -104,10 +104,10 @@ pub(crate) fn apply_text_object_extend(
 /// Dispatch to [`apply_text_object`] or [`apply_text_object_extend`] based on `mode`.
 #[inline]
 fn apply_text_object_by_mode(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     mode: MotionMode,
-    f: impl Fn(&Text, usize) -> Option<(usize, usize)>,
+    f: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     match mode {
         MotionMode::Move => apply_text_object(buf, sels, f),

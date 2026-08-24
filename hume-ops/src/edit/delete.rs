@@ -6,7 +6,7 @@ use hume_editing::grapheme::{
     char_pos_at_display_col, display_col_in_line, prev_grapheme_boundary,
 };
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_editing::word::is_word_boundary;
 
 use super::{apply_edit, delete_one_grapheme, delete_sel_region};
@@ -20,7 +20,7 @@ use crate::motion::prev_word_start;
 ///   is on the trailing `\n` (the structural last character of every buffer).
 /// - **Multi-character selection**: delete the entire selected region. Cursor
 ///   lands on `start()`.
-pub fn delete_char_forward(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
+pub fn delete_char_forward(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         if sel.is_collapsed() {
             let p = sel.head();
@@ -48,7 +48,7 @@ pub fn delete_char_forward(buf: Text, sels: SelectionSet) -> (Text, SelectionSet
 /// - **Multi-character selection**: delete the entire selected region. Cursor
 ///   lands on `start()`. (Same as `delete_char_forward` for selections —
 ///   Delete and Backspace both clear a selection.)
-pub fn delete_char_backward(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
+pub fn delete_char_backward(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         if sel.is_collapsed() {
             let p = sel.head();
@@ -89,10 +89,10 @@ pub fn delete_char_backward(buf: Text, sels: SelectionSet) -> (Text, SelectionSe
 /// [`delete_char_backward`] — the caller dispatches based on the
 /// all-or-nothing predicate.
 pub fn dedent_tab_backward(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
     tab_width: u8,
-) -> (Text, SelectionSet, ChangeSet) {
+) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         // Caller (`should_dedent_backspace`) guarantees: collapsed and sitting
         // in leading whitespace with p > line_start. Assert the invariant so
@@ -130,7 +130,7 @@ pub fn dedent_tab_backward(
 ///
 /// Non-yanking by design: Ctrl-W is readline-style word-rubout, not a kill —
 /// the deleted text is not pushed to the kill ring or any register.
-pub fn delete_word_backward(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
+pub fn delete_word_backward(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         if sel.is_collapsed() {
             let p = sel.head();
@@ -174,7 +174,7 @@ pub fn delete_word_backward(buf: Text, sels: SelectionSet) -> (Text, SelectionSe
 /// let (new_buf, new_sels, _cs) = delete_selection(buf, sels);
 /// kill_ring.push(yanked);
 /// ```
-pub fn delete_selection(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
+pub fn delete_selection(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
     // Semantically, pressing `d` on a cursor deletes the char under it, and
     // pressing `d` on a selection deletes the selected region — exactly what
     // delete_char_forward does. There is no functional difference between the
@@ -188,7 +188,7 @@ pub fn delete_selection(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, C
 /// A trailing `\n` at `sel.end()` is excluded — `c` clears line content but
 /// keeps the line. A collapsed selection on a lone `\n` (empty line) returns
 /// `(pos, pos)`, a zero-length no-op.
-pub fn change_span(buf: &Text, sel: &Selection) -> (usize, usize) {
+pub fn change_span(buf: &BufferText, sel: &Selection) -> (usize, usize) {
     let start = sel.start();
     let stop = if sel.ends_on_newline(buf) {
         sel.end() // stop before the '\n': `c` clears line content but keeps the line
@@ -213,7 +213,7 @@ pub fn change_span(buf: &Text, sel: &Selection) -> (usize, usize) {
 ///
 /// The caller is responsible for yanking before calling this; use
 /// [`change_span`] to extract the same content range for the kill ring.
-pub fn delete_selection_content(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
+pub fn delete_selection_content(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let (start, stop) = change_span(buf, sel);
         b.retain(start - b.old_pos());

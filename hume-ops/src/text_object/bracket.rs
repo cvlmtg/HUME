@@ -1,7 +1,7 @@
 //! Inner/around bracket-pair text objects: `()`, `[]`, `{}`, `<>`.
 
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 use super::apply_text_object_by_mode;
 use crate::MotionMode;
@@ -17,7 +17,7 @@ pub(super) fn inner_of_pair(open: usize, close: usize) -> Option<(usize, usize)>
     Some((open + 1, close - 1))
 }
 
-fn inner_bracket(buf: &Text, pos: usize, open: char, close: char) -> Option<(usize, usize)> {
+fn inner_bracket(buf: &BufferText, pos: usize, open: char, close: char) -> Option<(usize, usize)> {
     let (open_pos, close_pos) = find_bracket_pair(buf, pos, open, close)?;
     inner_of_pair(open_pos, close_pos)
 }
@@ -25,7 +25,7 @@ fn inner_bracket(buf: &Text, pos: usize, open: char, close: char) -> Option<(usi
 macro_rules! bracket_cmds {
     ($inner_name:ident, $around_name:ident, $open:literal, $close:literal) => {
         pub fn $inner_name(
-            buf: &Text,
+            buf: &BufferText,
             sels: SelectionSet,
             _count: usize,
             mode: MotionMode,
@@ -35,7 +35,7 @@ macro_rules! bracket_cmds {
             })
         }
         pub fn $around_name(
-            buf: &Text,
+            buf: &BufferText,
             sels: SelectionSet,
             _count: usize,
             mode: MotionMode,

@@ -50,7 +50,7 @@ fn p7_cross_buffer_ctrl_o() {
     std::fs::write(&file2, &content).unwrap();
 
     let mut ed = Editor::for_testing(Buffer::new(
-        Text::from("scratch\n"),
+        BufferText::from("scratch\n"),
         SelectionSet::default(),
     ));
     ed.execute_typed("e", Some(file1.to_str().unwrap()))
@@ -82,7 +82,7 @@ fn p7_close_buffer_prunes_pane_jumps() {
     std::fs::write(&file2, &content).unwrap();
 
     let mut ed = Editor::for_testing(Buffer::new(
-        Text::from("scratch\n"),
+        BufferText::from("scratch\n"),
         SelectionSet::default(),
     ));
     ed.execute_typed("e", Some(file1.to_str().unwrap()))

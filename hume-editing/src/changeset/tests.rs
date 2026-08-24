@@ -157,7 +157,7 @@ fn is_identity_false_for_real_changes() {
 #[test]
 fn apply_identity() {
     // "hello\n" = 6 chars; identity changeset retains all 6.
-    let buf = Text::from("hello");
+    let buf = BufferText::from("hello");
     let mut b = ChangeSetBuilder::new(6);
     b.retain_rest();
     let cs = b.finish();
@@ -168,7 +168,7 @@ fn apply_identity() {
 #[test]
 fn apply_insert_at_start() {
     // "world\n" = 6 chars; insert "hello " before it.
-    let buf = Text::from("world");
+    let buf = BufferText::from("world");
     let mut b = ChangeSetBuilder::new(6);
     b.insert("hello ");
     b.retain_rest();
@@ -180,7 +180,7 @@ fn apply_insert_at_start() {
 #[test]
 fn apply_insert_at_end() {
     // "hello\n" = 6 chars; insert " world" before the trailing \n.
-    let buf = Text::from("hello");
+    let buf = BufferText::from("hello");
     let mut b = ChangeSetBuilder::new(6);
     b.retain(5); // retain "hello"
     b.insert(" world");
@@ -193,7 +193,7 @@ fn apply_insert_at_end() {
 #[test]
 fn apply_insert_in_middle() {
     // "helo\n" = 5 chars; insert "l" at position 3.
-    let buf = Text::from("helo");
+    let buf = BufferText::from("helo");
     let mut b = ChangeSetBuilder::new(5);
     b.retain(3);
     b.insert("l");
@@ -206,7 +206,7 @@ fn apply_insert_in_middle() {
 #[test]
 fn apply_delete_at_start() {
     // "hello world\n" = 12 chars; delete "hello " (6 chars).
-    let buf = Text::from("hello world");
+    let buf = BufferText::from("hello world");
     let mut b = ChangeSetBuilder::new(12);
     b.delete(6); // delete "hello "
     b.retain_rest();
@@ -218,7 +218,7 @@ fn apply_delete_at_start() {
 #[test]
 fn apply_delete_at_end() {
     // "hello world\n" = 12 chars; delete " world" (6 chars at pos 5–10).
-    let buf = Text::from("hello world");
+    let buf = BufferText::from("hello world");
     let mut b = ChangeSetBuilder::new(12);
     b.retain(5);
     b.delete(6); // delete " world"
@@ -231,7 +231,7 @@ fn apply_delete_at_end() {
 #[test]
 fn apply_replace() {
     // "hello world\n" = 12 chars; replace "world" with "rust".
-    let buf = Text::from("hello world");
+    let buf = BufferText::from("hello world");
     let mut b = ChangeSetBuilder::new(12);
     b.retain(6);
     b.delete(5); // delete "world"
@@ -245,7 +245,7 @@ fn apply_replace() {
 #[test]
 fn apply_multi_edit() {
     // "hello world\n" = 12 chars; two cursors insert "!" at positions 0 and 6.
-    let buf = Text::from("hello world");
+    let buf = BufferText::from("hello world");
     let mut b = ChangeSetBuilder::new(12);
     b.insert("!");
     b.retain(6);
@@ -259,7 +259,7 @@ fn apply_multi_edit() {
 #[test]
 fn apply_delete_entire_buffer() {
     // "hello\n" = 6 chars; delete the content "hello" (5 chars), leaving "\n".
-    let buf = Text::from("hello");
+    let buf = BufferText::from("hello");
     let mut b = ChangeSetBuilder::new(6);
     b.delete(5);
     b.retain_rest(); // retain the structural trailing \n
@@ -270,8 +270,8 @@ fn apply_delete_entire_buffer() {
 
 #[test]
 fn apply_empty_buffer_insert() {
-    // Text::empty() = "\n" (1 char); insert "x" before the trailing \n.
-    let buf = Text::empty();
+    // BufferText::empty() = "\n" (1 char); insert "x" before the trailing \n.
+    let buf = BufferText::empty();
     let mut b = ChangeSetBuilder::new(1);
     b.insert("x");
     b.retain_rest(); // retain "\n"
@@ -737,7 +737,7 @@ fn edited_old_ranges_keeps_disjoint_edits_separate() {
 #[test]
 fn invert_identity() {
     // "hello\n" = 6 chars.
-    let buf = Text::from("hello");
+    let buf = BufferText::from("hello");
     let mut b = ChangeSetBuilder::new(6);
     b.retain_rest();
     let cs = b.finish();
@@ -752,7 +752,7 @@ fn invert_identity() {
 fn invert_insert() {
     // Insert "XX" at start of "hello\n" → "XXhello\n" (8 chars).
     // Inverse should delete 2 chars at start.
-    let buf = Text::from("hello");
+    let buf = BufferText::from("hello");
     let mut b = ChangeSetBuilder::new(6);
     b.insert("XX");
     b.retain_rest();
@@ -768,7 +768,7 @@ fn invert_insert() {
 fn invert_delete() {
     // Delete first 3 chars of "hello\n" → "lo\n" (3 chars).
     // Inverse should insert "hel" at start.
-    let buf = Text::from("hello");
+    let buf = BufferText::from("hello");
     let mut b = ChangeSetBuilder::new(6);
     b.delete(3);
     b.retain_rest();
@@ -786,7 +786,7 @@ fn invert_delete() {
 #[test]
 fn invert_roundtrip() {
     // "hello world\n" = 12 chars.
-    let buf = Text::from("hello world");
+    let buf = BufferText::from("hello world");
     let mut b = ChangeSetBuilder::new(12);
     b.retain(6);
     b.delete(5);
@@ -805,7 +805,7 @@ fn invert_roundtrip() {
 #[test]
 fn invert_replace() {
     // "abcde\n" = 6 chars.
-    let buf = Text::from("abcde");
+    let buf = BufferText::from("abcde");
     let mut b = ChangeSetBuilder::new(6);
     b.retain(1);
     b.delete(3); // delete "bcd"
@@ -824,7 +824,7 @@ fn invert_replace() {
 #[test]
 fn invert_multi_edit() {
     // "hello world\n" = 12 chars; two inserts at different positions.
-    let buf = Text::from("hello world");
+    let buf = BufferText::from("hello world");
     let mut b = ChangeSetBuilder::new(12);
     b.insert("!");
     b.retain(6);
@@ -885,7 +885,7 @@ fn compose_two_inserts() {
     // A: insert "X" at 0 → "Xabc\n" (4→5)
     // B: insert "Y" at 2 in "Xabc\n" → "XaYbc\n" (5→6)
     // Composed: "abc\n" → "XaYbc\n"
-    let buf = Text::from("abc");
+    let buf = BufferText::from("abc");
 
     let mut a_b = ChangeSetBuilder::new(4);
     a_b.insert("X");
@@ -913,7 +913,7 @@ fn compose_insert_then_delete() {
     // A: insert "XY" at 0 → "XYabc\n" (4→6)
     // B: delete 2 at 0 in "XYabc\n" → "abc\n" (6→4)
     // Composed: identity on "abc\n"
-    let buf = Text::from("abc");
+    let buf = BufferText::from("abc");
 
     let mut a_b = ChangeSetBuilder::new(4);
     a_b.insert("XY");
@@ -936,7 +936,7 @@ fn compose_delete_then_insert() {
     // A: delete 3 at start → "lo\n" (6→3)
     // B: insert "XY" at 0 in "lo\n" → "XYlo\n" (3→5)
     // Composed: "hello\n" → "XYlo\n"
-    let buf = Text::from("hello");
+    let buf = BufferText::from("hello");
 
     let mut a_b = ChangeSetBuilder::new(6);
     a_b.delete(3);
@@ -963,7 +963,7 @@ fn compose_complex() {
     // B: retain 1, delete 3, retain rest on "abXYde\n"
     //    → delete "bXY" → "ade\n" (7→4)
     // Composed: "abcde\n" → "ade\n"
-    let buf = Text::from("abcde");
+    let buf = BufferText::from("abcde");
 
     let mut a_b = ChangeSetBuilder::new(6);
     a_b.retain(2);
@@ -993,7 +993,7 @@ fn compose_partial_insert_retain() {
     // B: retain 2, delete 2, retain rest on "ABCDxyz\n"
     //    → "AB" + "xyz\n" = "ABxyz\n" (8→6)
     // Composed: "xyz\n" → "ABxyz\n"
-    let buf = Text::from("xyz");
+    let buf = BufferText::from("xyz");
 
     let mut a_b = ChangeSetBuilder::new(4);
     a_b.insert("ABCD");
@@ -1090,7 +1090,7 @@ proptest! {
     /// Applying a changeset then its inverse restores the original buffer.
     #[test]
     fn prop_invert_roundtrip(text in arb_text(20)) {
-        let buf = Text::from(text.as_str());
+        let buf = BufferText::from(text.as_str());
         let doc_len = buf.len_chars(); // includes trailing \n
         let original_content = buf.to_string();
 
@@ -1101,7 +1101,7 @@ proptest! {
         b.retain_rest();
         let cs = b.finish();
 
-        // Invert before apply — buf remains valid on error since apply takes &Text.
+        // Invert before apply — buf remains valid on error since apply takes &BufferText.
         let inv = cs.invert(&buf);
         let result = cs.apply(&buf).unwrap();
         let restored = inv.apply(&result).unwrap();
@@ -1112,7 +1112,7 @@ proptest! {
     /// sequentially.
     #[test]
     fn prop_compose_equivalence(text in arb_text(20)) {
-        let buf = Text::from(text.as_str());
+        let buf = BufferText::from(text.as_str());
         let doc_len = buf.len_chars(); // includes trailing \n
 
         // First changeset: delete first quarter, insert "AB".
@@ -1147,17 +1147,17 @@ proptest! {
     fn prop_random_changeset_invert(
         _text in arb_text(30),
         cs in arb_text(30).prop_flat_map(|t| {
-            // Use Text::from to get the actual length (includes \n).
-            let buf = Text::from(t.as_str());
+            // Use BufferText::from to get the actual length (includes \n).
+            let buf = BufferText::from(t.as_str());
             let len = buf.len_chars();
             arb_changeset(len).prop_map(move |cs| (t.clone(), cs))
         })
     ) {
         let (text, cs) = cs;
-        let buf = Text::from(text.as_str());
+        let buf = BufferText::from(text.as_str());
         let original_content = buf.to_string();
 
-        // Invert before apply — buf remains valid on error since apply takes &Text.
+        // Invert before apply — buf remains valid on error since apply takes &BufferText.
         let inv = cs.invert(&buf);
         let result = cs.apply(&buf).unwrap();
         let restored = inv.apply(&result).unwrap();
@@ -1173,7 +1173,7 @@ proptest! {
     fn prop_compose_associativity(
         text in arb_text(20),
     ) {
-        let buf = Text::from(text.as_str());
+        let buf = BufferText::from(text.as_str());
         let doc_len = buf.len_chars(); // includes trailing \n
 
         // Build three sequential changesets A→B, B→C, C→D.
@@ -1225,7 +1225,7 @@ fn apply_returns_err_if_trailing_newline_deleted() {
     // "hi\n" = 3 chars. Delete all 3 chars including the structural '\n'.
     // This is what a buggy plugin might produce via the raw builder.
     // apply() must return Err and leave the original buffer untouched.
-    let buf = Text::from("hi");
+    let buf = BufferText::from("hi");
     // Construct the changeset directly to bypass the builder's finish()
     // assert (which catches old_pos != doc_len) and reach apply's
     // trailing-newline check.
@@ -1243,7 +1243,7 @@ fn apply_returns_err_if_trailing_newline_deleted() {
 #[test]
 fn apply_returns_err_on_length_mismatch() {
     // Changeset built for 10 chars, buffer has 3.
-    let buf = Text::from("hi");
+    let buf = BufferText::from("hi");
     let mut b = ChangeSetBuilder::new(10);
     b.retain_rest();
     let cs = b.finish();

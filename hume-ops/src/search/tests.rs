@@ -1,12 +1,12 @@
 use super::*;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 fn re(pattern: &str) -> Regex {
     Regex::new(pattern).expect("test regex should be valid")
 }
 
-fn buf(text: &str) -> Text {
-    Text::from(text)
+fn buf(text: &str) -> BufferText {
+    BufferText::from(text)
 }
 
 // ── compile_search_regex (smart case) ──────────────────────────────────────

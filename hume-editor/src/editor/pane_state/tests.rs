@@ -41,7 +41,7 @@ fn fresh_from_buf_seeds_stable_initial_sels_across_promotion() {
     use crate::editor::buffer::Buffer;
     use hume_ops::edit::insert_char;
 
-    let mut buf = Buffer::new(Text::from("hello\n"), SelectionSet::default());
+    let mut buf = Buffer::new(BufferText::from("hello\n"), SelectionSet::default());
     let expected = buf.initial_sels();
     buf.set_undo_levels(1);
 

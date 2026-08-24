@@ -610,7 +610,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
 fn reload_buffer_in_place_keeps_syntax_highlighting() {
     use crate::editor::buffer::Buffer;
     use hume_editing::selection::SelectionSet;
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
 
     if skip_unless_grammars(&["json"]) {
         return;
@@ -670,7 +670,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     // a stale tree (not rebuilt) would report end_byte() == 9, not 10.
     let new_text = "[1, 2, 3]\n";
     let new_byte_len = new_text.len();
-    let mut replacement = Buffer::new(Text::from(new_text), SelectionSet::default());
+    let mut replacement = Buffer::new(BufferText::from(new_text), SelectionSet::default());
     replacement.set_path(Some(std::path::PathBuf::from("data.json")));
     ed.reload_buffer_in_place(bid, replacement);
     // Two ticks: first `reparse_stale_buffers` sees the gen mismatch and posts the
@@ -709,7 +709,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     //
     // Fail oracle: gate `clear_layers` on `mutated` removed (call it
     // unconditionally, as before this fix) → `layers()` is `None` here.
-    let mut identical = Buffer::new(Text::from(new_text), SelectionSet::default());
+    let mut identical = Buffer::new(BufferText::from(new_text), SelectionSet::default());
     identical.set_path(Some(std::path::PathBuf::from("data.json")));
     ed.reload_buffer_in_place(bid, identical);
     ed.reparse_stale_buffers();

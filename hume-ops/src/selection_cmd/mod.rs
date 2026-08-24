@@ -8,7 +8,7 @@ pub use matching::{
 
 use super::MotionMode;
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 // ── Simple selection-set commands ─────────────────────────────────────────────
 
@@ -19,7 +19,7 @@ use hume_editing::text::Text;
 /// two overlapping selections with different heads might collapse to the same
 /// position and need to be merged.
 pub fn cmd_collapse_selection_to_head(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
@@ -37,7 +37,7 @@ pub fn cmd_collapse_selection_to_head(
 /// lands on the right end. Uses `map` (which always merges) for the same
 /// deduplication reason as the head variant.
 pub fn cmd_collapse_selection_to_anchor(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
@@ -53,7 +53,7 @@ pub fn cmd_collapse_selection_to_anchor(
 /// Does not change any range bounds, so overlaps cannot arise — uses plain
 /// `map` (no merge needed).
 pub fn cmd_flip_selections(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
@@ -70,7 +70,7 @@ pub fn cmd_flip_selections(
 /// character to the last (the structural trailing `\n`). Head is placed at
 /// the end so the cursor sits at the bottom — consistent with Helix `%`.
 pub fn cmd_select_all(
-    buf: &Text,
+    buf: &BufferText,
     _sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
@@ -86,7 +86,7 @@ pub fn cmd_select_all(
 /// The result is a single-selection set. This is a destructive reduction —
 /// any non-primary cursors or ranges are lost.
 pub fn cmd_keep_primary_selection(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
@@ -102,7 +102,7 @@ pub fn cmd_keep_primary_selection(
 /// empty). After removal the primary wraps to the start if it was the last
 /// selection in document order.
 pub fn cmd_remove_primary_selection(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     count: usize,
     _mode: MotionMode,
@@ -121,7 +121,7 @@ pub fn cmd_remove_primary_selection(
 
 /// Move the primary selection to the next one in document order, wrapping.
 pub fn cmd_cycle_primary_forward(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
@@ -133,7 +133,7 @@ pub fn cmd_cycle_primary_forward(
 
 /// Move the primary selection to the previous one in document order, wrapping.
 pub fn cmd_cycle_primary_backward(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,

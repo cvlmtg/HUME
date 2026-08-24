@@ -4,7 +4,7 @@
 //! settling after each one (mirroring `Editor::run`'s loop), and asserts that
 //! no sequence ever panics or leaves the editor in an invalid state.
 //!
-//! This complements the `proptest_doc` tests (which target `Text` and pure
+//! This complements the `proptest_doc` tests (which target `BufferText` and pure
 //! ops) by exercising the whole editor: mode transitions, minibuffer, search,
 //! select-within, undo/redo, and multi-cursor, all interacting.
 #[cfg(test)]
@@ -140,7 +140,7 @@ mod tests {
         /// panic and must leave the buffer and selections in a valid state.
         ///
         /// Invariants checked after every key:
-        /// - Text always ends with `\n`.
+        /// - BufferText always ends with `\n`.
         /// - SelectionSet is non-empty and all positions are in-bounds.
         #[test]
         fn prop_random_keys_never_panic(

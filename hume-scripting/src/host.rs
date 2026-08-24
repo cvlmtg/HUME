@@ -783,7 +783,7 @@ pub struct WordDiffHunk {
     pub new_text: String,
 }
 
-/// Text diffing — accessed through [`EditorHost::diff`]. Backs
+/// BufferText diffing — accessed through [`EditorHost::diff`]. Backs
 /// `(diff-lines old-text new-text)` / `(diff-buffer-lines bid ref-text)` /
 /// `(diff-words old-text new-text)`.
 ///
@@ -793,7 +793,7 @@ pub struct WordDiffHunk {
 /// `git diff`'s raw byte comparison — a file missing its final newline
 /// reports no change on that line, since nothing would change about it on
 /// save either. `diff_words` does **no** such normalization: its inputs are
-/// single lines already extracted from `Text`-normalized content (typically
+/// single lines already extracted from `BufferText`-normalized content (typically
 /// one side of a `Replace` hunk), so wrapping them again would be a no-op
 /// at best.
 pub trait DiffHost {

@@ -4,7 +4,7 @@
 //! computation must go through `hume-rope`'s six functions
 //! (`ropey_line_count`, `last_ropey_line`, `ropey_lines_range`,
 //! `content_line_count`, `last_content_line`, `content_lines_range`) — or a
-//! `hume_editing::text::Text` method that delegates to one of them — never a
+//! `hume_editing::text::BufferText` method that delegates to one of them — never a
 //! raw `len_lines()` call or a manual `+ 1` / `- 1` re-derivation of one of
 //! these functions' own result. Writing a whole-buffer range out as
 //! `0..<one of the counts>` is that same re-derivation — the two
@@ -237,7 +237,7 @@ fn no_raw_line_count_derivations() {
         "\nManual line-count derivation detected outside hume-rope.\n\
          Use hume_rope's ropey_line_count/last_ropey_line/ropey_lines_range/\n\
          content_line_count/last_content_line/content_lines_range (or a \n\
-         Text method that delegates to one) instead — including for a whole-\n\
+         BufferText method that delegates to one) instead — including for a whole-\n\
          buffer range, where `0..<a count>` is the *_lines_range function.\n\
          Violations:\n{}\n",
         violations.join("\n")

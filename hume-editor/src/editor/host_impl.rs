@@ -131,7 +131,7 @@ impl<'a> EditorHostImpl<'a> {
     ) -> Option<crate::ui::popup::MarkupSyntax> {
         let lang_id = self.state.config.languages.id_of(lang)?;
         let bundle = std::sync::Arc::clone(self.state.config.languages.grammar(lang_id)?);
-        let text = hume_editing::text::Text::from(text);
+        let text = hume_editing::text::BufferText::from(text);
         let syntax = hume_treesitter::syntax::Syntax::attach_sync(
             bundle,
             &text,
@@ -1143,7 +1143,7 @@ fn buffer_text<'s>(
     state: &'s EditorState,
     bid: BufferId,
     builtin: &str,
-) -> Result<&'s hume_editing::text::Text, String> {
+) -> Result<&'s hume_editing::text::BufferText, String> {
     state
         .buffers
         .try_get(bid)
@@ -1163,7 +1163,7 @@ fn buffer_text<'s>(
 /// `RowMap::last_line()` never lays it out, so admitting it would hand a
 /// caller a position no render pass can resolve to a real line.
 fn line_start_offset(
-    text: &hume_editing::text::Text,
+    text: &hume_editing::text::BufferText,
     line: usize,
     builtin: &str,
 ) -> Result<usize, String> {
@@ -1191,7 +1191,7 @@ fn line_start_offset(
 /// for the line-anchored kinds, but reachable here through a char offset
 /// instead of a line number, so that check alone doesn't catch it.
 fn validate_offset(
-    text: &hume_editing::text::Text,
+    text: &hume_editing::text::BufferText,
     pos: usize,
     before: bool,
     builtin: &str,
@@ -1217,7 +1217,7 @@ fn validate_offset(
 /// `(start, end)` must be a valid, non-empty char range into `text` — `Err`
 /// naming `builtin` otherwise.
 fn validate_range(
-    text: &hume_editing::text::Text,
+    text: &hume_editing::text::BufferText,
     start: usize,
     end: usize,
     builtin: &str,

@@ -25,7 +25,7 @@ use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 // ── EditGroup ────────────────────────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ pub(crate) struct EditGroup {
     /// Buffer text snapshot taken at `begin_edit_group`. Used by
     /// `commit_edit_group` to invert the composed CS and record a single
     /// history revision.
-    pub text_snapshot: Text,
+    pub text_snapshot: BufferText,
     /// Selection state at group open — stored in the history revision so
     /// undo restores the cursor to its pre-insert position.
     pub pre_sels: SelectionSet,

@@ -13,7 +13,7 @@ use crate::editor::buffer::Buffer;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
 use crate::editor::{commands, cursor};
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_engine::format::FormatScratch;
 use hume_engine::pane::WrapMode;
 use hume_engine::pipeline::RenderContext;
@@ -606,7 +606,7 @@ fn stale_anchor_after_a_buffer_reload_skips_render_instead_of_panicking() {
     // `reload_buffer_in_place` (`:e!`) clamps every pane's cursor to the new,
     // much shorter content, but has no notion of an open completion session
     // — so `anchor` is left pointing past the reloaded buffer's end.
-    let replacement = Buffer::new(Text::from("hi\n"), SelectionSet::default());
+    let replacement = Buffer::new(BufferText::from("hi\n"), SelectionSet::default());
     ed.reload_buffer_in_place(bid, replacement);
 
     let mut ctx = RenderContext::new();
@@ -638,7 +638,7 @@ fn stale_anchor_after_switching_focus_to_another_buffer_skips_render() {
     // Switch focus to a different buffer without dismissing the session —
     // `sync_completion_menu_view` builds its `RowMap` over whichever buffer
     // is focused *now*, not the one the session was opened against.
-    let other = ed.open_buffer(Buffer::new(Text::from("other\n"), SelectionSet::default()));
+    let other = ed.open_buffer(Buffer::new(BufferText::from("other\n"), SelectionSet::default()));
     ed.switch_to_buffer_with_jump(other);
 
     let mut ctx = RenderContext::new();

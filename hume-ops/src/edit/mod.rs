@@ -1,7 +1,7 @@
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 mod align;
 mod case;
@@ -49,7 +49,7 @@ pub use sort::{SortOpts, SortRefusal, sort_rows};
 
 /// Apply an edit command `count` times, composing all changesets into one.
 ///
-/// The command must return `(Text, SelectionSet, ChangeSet)`. The N
+/// The command must return `(BufferText, SelectionSet, ChangeSet)`. The N
 /// changesets are folded with [`ChangeSet::compose`] so the whole repetition
 /// becomes a single undo step when passed to the editor buffer's own
 /// `apply_edit`.
@@ -64,10 +64,10 @@ pub use sort::{SortOpts, SortRefusal, sort_rows};
 #[cfg(any(test, feature = "test-util"))]
 pub fn repeat_edit(
     count: usize,
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
-    cmd: impl Fn(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
-) -> (Text, SelectionSet, ChangeSet) {
+    cmd: impl Fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
+) -> (BufferText, SelectionSet, ChangeSet) {
     let mut current_buf = buf;
     let mut current_sels = sels;
     let mut composed: Option<ChangeSet> = None;
@@ -112,9 +112,9 @@ pub fn repeat_edit(
 /// closure only captures `Copy` values (like `char`), requiring `FnMut` keeps
 /// the bound consistent and allows future closures to close over counters or
 /// accumulators without changing the helper's signature.
-pub fn apply_edit<F>(buf: Text, sels: SelectionSet, mut f: F) -> (Text, SelectionSet, ChangeSet)
+pub fn apply_edit<F>(buf: BufferText, sels: SelectionSet, mut f: F) -> (BufferText, SelectionSet, ChangeSet)
 where
-    F: FnMut(&mut ChangeSetBuilder, &Text, usize, &Selection, &mut Vec<Selection>),
+    F: FnMut(&mut ChangeSetBuilder, &BufferText, usize, &Selection, &mut Vec<Selection>),
 {
     let mut b = ChangeSetBuilder::new(buf.len_chars());
     let mut new_sels = Vec::with_capacity(sels.len());
@@ -147,7 +147,7 @@ where
 /// translates them to result-buffer positions internally.
 fn delete_one_grapheme(
     b: &mut ChangeSetBuilder,
-    buf: &Text,
+    buf: &BufferText,
     new_sels: &mut Vec<Selection>,
     p: usize,
 ) {
@@ -184,7 +184,7 @@ fn delete_one_grapheme(
 /// identical selection branches.
 fn delete_sel_region(
     b: &mut ChangeSetBuilder,
-    buf: &Text,
+    buf: &BufferText,
     sel: &Selection,
     new_sels: &mut Vec<Selection>,
 ) {

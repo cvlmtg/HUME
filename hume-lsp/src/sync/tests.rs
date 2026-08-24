@@ -12,7 +12,7 @@ fn check(before: &str, build: impl FnOnce(&mut ChangeSetBuilder), enc: PositionE
     let events = changeset_to_content_changes(&rope, &cs, enc);
 
     let expected = cs
-        .apply(&hume_editing::text::Text::from(before))
+        .apply(&hume_editing::text::BufferText::from(before))
         .expect("changeset applies cleanly")
         .to_string();
     let mirrored = apply_events_to_string_mirror(before.to_owned(), &events, enc);

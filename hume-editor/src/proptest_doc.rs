@@ -1,4 +1,4 @@
-//! Property-based tests for Text-level invariants.
+//! Property-based tests for BufferText-level invariants.
 //!
 //! These tests complement the unit tests in individual modules and the
 //! ChangeSet-level proptests in `hume-editing/src/changeset/`. They verify
@@ -17,7 +17,7 @@ mod tests {
     use crate::editor::buffer::Buffer;
     use hume_editing::changeset::ChangeSet;
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
     use hume_ops::MotionMode;
     use hume_ops::edit::{
         delete_char_backward, delete_char_forward, delete_selection, insert_char,
@@ -45,16 +45,16 @@ mod tests {
     }
 
     impl DocHelper {
-        fn new(text: Text, sels: SelectionSet) -> Self {
+        fn new(text: BufferText, sels: SelectionSet) -> Self {
             let buf = Buffer::new(text, sels.clone());
             Self { buf, sels }
         }
-        fn text(&self) -> &Text {
+        fn text(&self) -> &BufferText {
             self.buf.text()
         }
         fn apply_edit(
             &mut self,
-            cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+            cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
         ) {
             let (new_sels, _cs) = self.buf.apply_edit(self.sels.clone(), cmd);
             self.sels = new_sels;
@@ -77,7 +77,7 @@ mod tests {
     ///
     /// Called after every operation in every proptest. A panic here means the
     /// code under test produced an invalid state.
-    fn assert_invariants(buf: &Text, sels: &SelectionSet) {
+    fn assert_invariants(buf: &BufferText, sels: &SelectionSet) {
         // Text invariant 1: always ends with structural '\n'.
         assert!(
             buf.to_string().ends_with('\n'),
@@ -137,12 +137,12 @@ mod tests {
 
     // ── Strategies ────────────────────────────────────────────────────────────
 
-    /// Generate a random Text with content up to `max_len` chars.
+    /// Generate a random BufferText with content up to `max_len` chars.
     ///
-    /// Uses a small ASCII alphabet plus spaces and newlines. `Text::from`
+    /// Uses a small ASCII alphabet plus spaces and newlines. `BufferText::from`
     /// normalises CRLF and appends the structural trailing `\n` if missing, so
     /// every generated buffer already satisfies the buffer invariant.
-    fn arb_buffer(max_len: usize) -> impl Strategy<Value = Text> {
+    fn arb_buffer(max_len: usize) -> impl Strategy<Value = BufferText> {
         proptest::collection::vec(
             prop_oneof![
                 3 => b'a'..=b'z',  // letters are most common
@@ -152,7 +152,7 @@ mod tests {
             ],
             0..=max_len,
         )
-        .prop_map(|bytes| Text::from(String::from_utf8(bytes).unwrap().as_str()))
+        .prop_map(|bytes| BufferText::from(String::from_utf8(bytes).unwrap().as_str()))
     }
 
     /// Generate a `SelectionSet` with 1..=`max_sels` valid, non-overlapping
@@ -199,8 +199,8 @@ mod tests {
             .boxed()
     }
 
-    /// Generate a random `(Text, SelectionSet)` pair.
-    fn arb_initial_state(max_buf_len: usize) -> impl Strategy<Value = (Text, SelectionSet)> {
+    /// Generate a random `(BufferText, SelectionSet)` pair.
+    fn arb_initial_state(max_buf_len: usize) -> impl Strategy<Value = (BufferText, SelectionSet)> {
         arb_buffer(max_buf_len).prop_flat_map(|buf| {
             let buf_len = buf.len_chars();
             arb_selection_set(buf_len, 3).prop_map(move |sels| (buf.clone(), sels))
@@ -209,7 +209,7 @@ mod tests {
 
     // ── Operation enums ───────────────────────────────────────────────────────
 
-    /// Edit operations that go through `Text::apply_edit` and are recorded
+    /// Edit operations that go through `BufferText::apply_edit` and are recorded
     /// in the undo history.
     #[derive(Debug, Clone)]
     enum EditOp {
@@ -258,7 +258,7 @@ mod tests {
         }
     }
 
-    /// Pure operations that transform `(Text, SelectionSet)` without
+    /// Pure operations that transform `(BufferText, SelectionSet)` without
     /// touching the undo history.
     #[derive(Debug, Clone)]
     enum PureOp {
@@ -320,7 +320,7 @@ mod tests {
     /// Apply a `PureOp` with the given `MotionMode`, returning the new
     /// `SelectionSet` (buffer unchanged).
     fn apply_pure_op(
-        buf: &Text,
+        buf: &BufferText,
         sels: SelectionSet,
         op: &PureOp,
         mode: MotionMode,
@@ -362,7 +362,7 @@ mod tests {
 
     proptest! {
         /// A random sequence of edit operations (including undo and redo)
-        /// applied to a Text must never violate buffer or selection
+        /// applied to a BufferText must never violate buffer or selection
         /// invariants at any point in the sequence.
         #[test]
         fn prop_random_edit_sequence_preserves_invariants(

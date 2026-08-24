@@ -73,7 +73,7 @@ fn multi_line_delete_rebuilds_lines_by_slicing_the_tokenized_input() {
     );
 }
 
-/// Fail oracle: drop `Text::from`'s forced trailing newline (or tokenize on
+/// Fail oracle: drop `BufferText::from`'s forced trailing newline (or tokenize on
 /// a bare `split('\n')`) — a missing final newline on one side (routine for
 /// a `git show` blob) would then report a phantom trailing-line hunk on
 /// every file, on every refresh.
@@ -85,7 +85,7 @@ fn missing_trailing_newline_is_not_a_change() {
 /// Fail oracle: normalize CRLF to LF before comparing (or leave `\r` in a
 /// token) — either would make this either report zero hunks (masking a
 /// real line-ending change some other way) or an unpredictable per-`\r`
-/// diff. Pins the deliberate decision: `Text::from` already strips `\r` on
+/// diff. Pins the deliberate decision: `BufferText::from` already strips `\r` on
 /// both sides, so a checked-in CRLF ref against HUME's own CRLF-normalized
 /// buffer reports no difference — matching what a save would actually
 /// produce, not `git diff`'s raw byte comparison.
@@ -94,9 +94,9 @@ fn crlf_ref_is_normalized_like_the_buffer() {
     assert_eq!(line_hunks("a\r\nb\r\n", "a\nb\n"), Vec::new());
 }
 
-/// Fail oracle: strip only `'\n'` in `strip_newlines` — `Text::line_tokens`
+/// Fail oracle: strip only `'\n'` in `strip_newlines` — `BufferText::line_tokens`
 /// is backed by `Rope::lines()`, which (ropey's default `unicode_lines`
-/// feature) breaks on far more than LF, and `Text::from` only normalizes
+/// feature) breaks on far more than LF, and `BufferText::from` only normalizes
 /// `\r\n` pairs, so a form feed (U+000C) or bare `\r` reaches a `DiffHunk`
 /// line string still carrying its terminator — exactly the control char a
 /// plugin would then render straight into a `set-virtual-lines!` row.
@@ -117,7 +117,7 @@ fn line_hunks_strips_non_lf_unicode_line_breaks() {
 }
 
 /// Mirror of `line_hunks_strips_non_lf_unicode_line_breaks` — a bare `\r`
-/// (old Mac), which `Text::from` explicitly leaves untouched
+/// (old Mac), which `BufferText::from` explicitly leaves untouched
 /// (`hume-editing/src/text.rs`'s `normalize_crlf` doc) unlike a `\r\n` pair.
 #[test]
 fn line_hunks_strips_bare_cr_line_break() {

@@ -5,14 +5,14 @@
 //! the cursor before replacing or deleting it).
 
 use hume_editing::lines::line_end_exclusive;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 // ---------------------------------------------------------------------------
 // Bracket pairs
 // ---------------------------------------------------------------------------
 
 /// Scan left from `pos` (exclusive) to find an unmatched `open` bracket.
-pub(crate) fn scan_left_for_open(buf: &Text, pos: usize, open: char, close: char) -> Option<usize> {
+pub(crate) fn scan_left_for_open(buf: &BufferText, pos: usize, open: char, close: char) -> Option<usize> {
     let mut depth = 0usize;
     let mut cursor = buf.chars_at(pos);
     while let Some((i, ch)) = cursor.prev() {
@@ -30,7 +30,7 @@ pub(crate) fn scan_left_for_open(buf: &Text, pos: usize, open: char, close: char
 
 /// Scan right from `pos` (exclusive) to find an unmatched `close` bracket.
 pub(crate) fn scan_right_for_close(
-    buf: &Text,
+    buf: &BufferText,
     pos: usize,
     open: char,
     close: char,
@@ -55,7 +55,7 @@ pub(crate) fn scan_right_for_close(
 /// If ON a close bracket, that bracket is the end.
 /// Otherwise, scans both directions for the enclosing pair.
 pub fn find_bracket_pair(
-    buf: &Text,
+    buf: &BufferText,
     pos: usize,
     open: char,
     close: char,
@@ -91,7 +91,7 @@ pub fn find_bracket_pair(
 /// closing quotes. Returns the pair that contains `pos`.
 ///
 /// If `pos` is ON a quote char, parity resolves whether it is open or close.
-pub(crate) fn find_quote_pair(buf: &Text, pos: usize, quote: char) -> Option<(usize, usize)> {
+pub(crate) fn find_quote_pair(buf: &BufferText, pos: usize, quote: char) -> Option<(usize, usize)> {
     let line = buf.char_to_line(pos);
     let line_start = buf.line_to_char(line);
     let line_end = line_end_exclusive(buf, line);

@@ -4,7 +4,7 @@
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::lines::{line_break_char, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 use super::apply_edit;
 
@@ -19,7 +19,7 @@ use super::apply_edit;
 /// next lines produce no separator — the newline is simply removed.
 ///
 /// After the join, every inserted space becomes a 1-char selection.
-pub fn join_lines_select_spaces(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
+pub fn join_lines_select_spaces(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
     // Fast path: no selection spans or reaches a joinable line pair.
     // Return unchanged to avoid resetting cursors (all on last line → no-op).
     let has_work = sels.iter_sorted().any(|sel| {

@@ -10,7 +10,7 @@
 //! Memory cost of the *stored* inverse ≈ size of the changed lines only, not
 //! the full buffer — this is what lets `:e!` reload record a normal undo step
 //! without a coarse delete-all + insert-all that doubles buffer memory.
-//! [`Text::line_tokens`] borrows its tokens from the rope (owning only where
+//! [`BufferText::line_tokens`] borrows its tokens from the rope (owning only where
 //! a line straddles a chunk boundary), so building the diff no longer pays a
 //! full-buffer `String` copy on either side; changed lines still get
 //! materialized once, when [`build_changesets`] re-slices them from
@@ -18,7 +18,7 @@
 //! line-index ranges. None of this affects what survives in the history tree
 //! afterwards, which is just the changed lines.
 //!
-//! The helper takes `&Text` on both sides and returns the two `ChangeSet`s; it
+//! The helper takes `&BufferText` on both sides and returns the two `ChangeSet`s; it
 //! does not mutate either buffer. The caller still owns the text swap.
 
 use std::borrow::Cow;
@@ -26,7 +26,7 @@ use std::ops::Range;
 use std::time::Duration;
 
 use crate::diff::{LineHunk, LineHunkKind, diff_lines_with_deadline};
-use crate::text::Text;
+use crate::text::BufferText;
 
 use super::{ChangeSet, ChangeSetBuilder};
 
@@ -38,9 +38,9 @@ use super::{ChangeSet, ChangeSetBuilder};
 /// `old`. Memory cost ≈ size of the changed lines only (unchanged `Equal` hunks
 /// become `Retain(n)` ops with no payload).
 ///
-/// The caller still owns the `Text` mutation — this helper only produces the
+/// The caller still owns the `BufferText` mutation — this helper only produces the
 /// `ChangeSet`s, it does not touch either buffer.
-pub fn changesets_from_line_diff(old: &Text, new: &Text) -> (ChangeSet, ChangeSet) {
+pub fn changesets_from_line_diff(old: &BufferText, new: &BufferText) -> (ChangeSet, ChangeSet) {
     changesets_from_line_diff_with_deadline(old, new, crate::diff::DIFF_LINE_DEADLINE)
 }
 
@@ -48,8 +48,8 @@ pub fn changesets_from_line_diff(old: &Text, new: &Text) -> (ChangeSet, ChangeSe
 /// Exposed primarily for tests that need to force the Myers fallback
 /// (`Duration::ZERO`) to exercise the coarse single-Replace path.
 pub fn changesets_from_line_diff_with_deadline(
-    old: &Text,
-    new: &Text,
+    old: &BufferText,
+    new: &BufferText,
     deadline: Duration,
 ) -> (ChangeSet, ChangeSet) {
     let (old_tokens, old_offsets) = tokens_with_offsets(old);
@@ -81,12 +81,12 @@ pub fn changesets_from_line_diff_with_deadline(
 ///
 /// `old_offsets` / `new_offsets` are the cumulative char-offset tables over
 /// each side's line tokens (length `tokens.len() + 1`, last entry == buffer
-/// `len_chars`). Using token-derived offsets — not `Text::line_to_char` — keeps
+/// `len_chars`). Using token-derived offsets — not `BufferText::line_to_char` — keeps
 /// the hunk end at `ropey_line_count()` (the trailing empty token) panic-free
 /// and keeps the forward/inverse cursors byte-for-byte aligned with the rope.
 fn build_changesets(
-    old: &Text,
-    new: &Text,
+    old: &BufferText,
+    new: &BufferText,
     hunks: &[LineHunk],
     old_offsets: &[usize],
     new_offsets: &[usize],
@@ -95,7 +95,7 @@ fn build_changesets(
     let mut inv = ChangeSetBuilder::new(new.len_chars());
 
     let span = |offsets: &[usize], range: &Range<usize>| offsets[range.end] - offsets[range.start];
-    let slice = |text: &Text, offsets: &[usize], range: &Range<usize>| {
+    let slice = |text: &BufferText, offsets: &[usize], range: &Range<usize>| {
         text.slice(offsets[range.start]..offsets[range.end])
             .to_string()
     };
@@ -132,13 +132,13 @@ fn build_changesets(
     (fwd.finish(), inv.finish())
 }
 
-/// [`Text::line_tokens`] plus the cumulative char offset of each token (with
+/// [`BufferText::line_tokens`] plus the cumulative char offset of each token (with
 /// a trailing sentinel): `offsets[i]` is the char offset where token `i`
 /// starts and `offsets[tokens.len()]` is the total char count, matching
 /// `text.len_chars()`. `build_changesets` needs both — the tokens to diff,
 /// the offsets to translate a hunk's line-index range back to a char range
 /// into the rope.
-fn tokens_with_offsets(text: &Text) -> (Vec<Cow<'_, str>>, Vec<usize>) {
+fn tokens_with_offsets(text: &BufferText) -> (Vec<Cow<'_, str>>, Vec<usize>) {
     let mut tokens = Vec::with_capacity(text.ropey_line_count());
     let mut offsets = Vec::with_capacity(text.ropey_line_count() + 1);
     offsets.push(0);

@@ -17,7 +17,7 @@
 pub(super) const DEFAULT_THEME_LABEL: &str = "default (built-in)";
 
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_engine::format::FormatScratch;
 use hume_engine::pane::{Pane, ViewportState, WhitespaceConfig};
 use hume_engine::pipeline::{BufferId, EngineView};
@@ -90,7 +90,7 @@ pub(super) fn doc<'a>(state: &'a EditorState, view: &EngineView) -> &'a Buffer {
 pub(super) fn apply_focused_motion(
     state: &mut EditorState,
     view: &EngineView,
-    f: impl FnOnce(&Text, SelectionSet) -> SelectionSet,
+    f: impl FnOnce(&BufferText, SelectionSet) -> SelectionSet,
 ) {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
@@ -103,7 +103,7 @@ pub(super) fn apply_focused_motion(
 pub(super) fn apply_focused_edit(
     state: &mut EditorState,
     view: &EngineView,
-    cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, hume_editing::changeset::ChangeSet),
+    cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, hume_editing::changeset::ChangeSet),
 ) {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);
@@ -125,7 +125,7 @@ pub(super) fn apply_focused_edit(
 pub(super) fn apply_focused_edit_grouped(
     state: &mut EditorState,
     view: &EngineView,
-    cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, hume_editing::changeset::ChangeSet),
+    cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, hume_editing::changeset::ChangeSet),
 ) {
     let focused = state.focused_pane_id;
     let buf = focused_buffer_id(state, view);

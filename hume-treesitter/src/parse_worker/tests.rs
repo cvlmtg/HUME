@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap;
 use hume_engine::pipeline::BufferId;
 
 use super::ParseBackend as _;
-use super::{ParseOutcome, ParseRequest, Text, ThreadedParseBackend, coalesce_one};
+use super::{ParseOutcome, ParseRequest, BufferText, ThreadedParseBackend, coalesce_one};
 use crate::registry::GrammarBundle;
 use crate::test_support::{empty_langs, fresh_bid};
 use hume_test_fixtures::skip_unless_grammars;
@@ -33,7 +33,7 @@ fn coalesce_one_keeps_higher_gen() {
             bid,
             text_gen: 2,
             bundle: Arc::clone(&bundle),
-            text: Text::from("bb\n"),
+            text: BufferText::from("bb\n"),
             old_tree: None,
             langs: empty_langs(),
         },
@@ -45,7 +45,7 @@ fn coalesce_one_keeps_higher_gen() {
             bid,
             text_gen: 1,
             bundle: Arc::clone(&bundle),
-            text: Text::from("a\n"),
+            text: BufferText::from("a\n"),
             old_tree: None,
             langs: empty_langs(),
         },
@@ -67,7 +67,7 @@ fn coalesce_one_keeps_higher_gen() {
             bid,
             text_gen: 3,
             bundle: Arc::clone(&bundle),
-            text: Text::from("ccc\n"),
+            text: BufferText::from("ccc\n"),
             old_tree: None,
             langs: empty_langs(),
         },
@@ -82,7 +82,7 @@ fn coalesce_one_keeps_higher_gen() {
             bid,
             text_gen: 3,
             bundle: Arc::clone(&bundle),
-            text: Text::from("REPLACED\n"),
+            text: BufferText::from("REPLACED\n"),
             old_tree: None,
             langs: empty_langs(),
         },
@@ -111,7 +111,7 @@ fn coalesce_one_same_gen_different_lang_replaces() {
             bid,
             text_gen: 5,
             bundle: Arc::clone(&bundle_a),
-            text: Text::from("{}\n"),
+            text: BufferText::from("{}\n"),
             old_tree: None,
             langs: empty_langs(),
         },
@@ -123,7 +123,7 @@ fn coalesce_one_same_gen_different_lang_replaces() {
             bid,
             text_gen: 5,
             bundle: Arc::clone(&bundle_b),
-            text: Text::from("fn f(){}\n"),
+            text: BufferText::from("fn f(){}\n"),
             old_tree: None,
             langs: empty_langs(),
         },
@@ -146,7 +146,7 @@ fn coalesce_one_same_gen_different_lang_replaces() {
             bid,
             text_gen: 5,
             bundle: Arc::clone(&bundle_b),
-            text: Text::from("REPLACED\n"),
+            text: BufferText::from("REPLACED\n"),
             old_tree: None,
             langs: empty_langs(),
         },
@@ -187,7 +187,7 @@ fn worker_language_switch_produces_trees_for_both() {
         bid,
         text_gen: 1,
         bundle: Arc::clone(&json_bundle),
-        text: Text::from("{\"x\": 1}\n"),
+        text: BufferText::from("{\"x\": 1}\n"),
         old_tree: None,
         langs: empty_langs(),
     });
@@ -207,7 +207,7 @@ fn worker_language_switch_produces_trees_for_both() {
         bid,
         text_gen: 2,
         bundle: Arc::clone(&rust_bundle),
-        text: Text::from("fn main() {}\n"),
+        text: BufferText::from("fn main() {}\n"),
         old_tree: None,
         langs: empty_langs(),
     });
@@ -240,7 +240,7 @@ fn parse_completion_fires_waker() {
         bid: fresh_bid(),
         text_gen: 1,
         bundle,
-        text: Text::from("{}\n"),
+        text: BufferText::from("{}\n"),
         old_tree: None,
         langs: empty_langs(),
     });

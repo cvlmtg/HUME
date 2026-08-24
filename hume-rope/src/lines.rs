@@ -6,7 +6,7 @@ use std::ops::Range;
 /// source of truth for that check — [`content_line_count`] asserts it
 /// (a caller violating it is exactly the bug class this crate exists to
 /// surface), while callers that must reject a violation at runtime instead
-/// of trusting it (constructing a `Text`, applying a `ChangeSet`) check it
+/// of trusting it (constructing a `BufferText`, applying a `ChangeSet`) check it
 /// directly.
 pub fn ends_with_newline(rope: &Rope) -> bool {
     let len = rope.len_chars();
@@ -52,7 +52,7 @@ pub fn ropey_lines_range(rope: &Rope) -> Range<usize> {
 /// line indices.
 ///
 /// Assumes the trailing-newline invariant (debug-asserted) — every
-/// `hume_editing::Text` upholds it by construction. Callers that instead
+/// `hume_editing::BufferText` upholds it by construction. Callers that instead
 /// need the last valid *ropey* line, phantom line included, want
 /// [`last_ropey_line`].
 pub fn content_line_count(rope: &Rope) -> usize {
@@ -79,7 +79,7 @@ pub fn content_lines_range(rope: &Rope) -> Range<usize> {
 
 /// The line breaks ropey's `Rope::lines()` (and hence line tokenization)
 /// splits on — its default `unicode_lines` feature: LF, CR, CRLF, VT, FF,
-/// NEL, LS, PS. `hume_editing::text::Text::from` only collapses `\r\n`
+/// NEL, LS, PS. `hume_editing::text::BufferText::from` only collapses `\r\n`
 /// pairs, so every other form survives into the rope and can terminate a
 /// line token.
 pub(crate) const LINE_BREAKS: [char; 7] = [
@@ -112,7 +112,7 @@ pub fn line_end_exclusive(rope: &Rope, line: usize) -> usize {
 /// trailing line this would return the *previous* line's terminator, so
 /// that case is debug-asserted rather than silently mis-answered.
 ///
-/// With a `\r\n` terminator this is the `\n`, not the `\r` — `Text::from`
+/// With a `\r\n` terminator this is the `\n`, not the `\r` — `BufferText::from`
 /// normalizes CRLF, so a HUME buffer never has one.
 pub fn line_break_char(rope: &Rope, line: usize) -> usize {
     debug_assert!(

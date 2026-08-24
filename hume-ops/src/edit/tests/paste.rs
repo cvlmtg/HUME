@@ -4,11 +4,11 @@ use pretty_assertions::assert_eq;
 
 // ── paste_after ───────────────────────────────────────────────────────────
 
-fn pa(buf: Text, sels: SelectionSet, values: &[String]) -> (Text, SelectionSet, ChangeSet) {
+fn pa(buf: BufferText, sels: SelectionSet, values: &[String]) -> (BufferText, SelectionSet, ChangeSet) {
     paste_after(buf, sels, values)
 }
 
-fn pb(buf: Text, sels: SelectionSet, values: &[String]) -> (Text, SelectionSet, ChangeSet) {
+fn pb(buf: BufferText, sels: SelectionSet, values: &[String]) -> (BufferText, SelectionSet, ChangeSet) {
     paste_before(buf, sels, values)
 }
 

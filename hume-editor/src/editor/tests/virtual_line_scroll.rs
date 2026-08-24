@@ -16,7 +16,7 @@
 
 use super::*;
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_engine::pane::WrapMode;
 use hume_engine::providers::{
     Decoration, DecorationKinds, DecorationSource, InlineInsert, VirtualLine, VirtualLineAnchor,
@@ -47,7 +47,7 @@ impl DecorationSource for OneBeforeLine {
 /// Two-line buffer ("x\ny\n"), wrapping on, a `Before(0)` block registered
 /// directly on the pane, cursor at line 0's start.
 fn editor_with_before_line() -> Editor {
-    let buf = Text::from("x\ny\n");
+    let buf = BufferText::from("x\ny\n");
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     let pid = ed.state.focused_pane_id;
@@ -182,7 +182,7 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
     use hume_ops::MotionMode;
 
     let content: String = (0..6).map(|i| format!("{i}\n")).collect();
-    let buf = Text::from(content.as_str());
+    let buf = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 0 }] {
@@ -251,7 +251,7 @@ fn content_pos_counts_an_inline_hints_extra_wrap_row() {
     //   row 0  HHHHHHabcd
     //   row 1  ef
     //   row 2  y            ← line 1, pushed down by the hint's wrap row
-    let buf = Text::from("abcdef\ny\n");
+    let buf = BufferText::from("abcdef\ny\n");
     // Cursor on line 1 (char 7), below the wrap the hint causes.
     let sels = SelectionSet::single(Selection::collapsed(7));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));

@@ -14,7 +14,7 @@ use crate::edit::apply_edit;
 use crate::pair::{find_bracket_pair, find_quote_pair};
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 // ── Pair lookup ──────────────────────────────────────────────────────────────
 
@@ -56,11 +56,11 @@ fn is_symmetric(ch: char) -> bool {
 /// Cursor placement: lands on the `close` character after the wrapped content.
 /// Multi-cursor: each selection is wrapped independently via `apply_edit`.
 pub fn wrap_each_selection(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
     open: char,
     close: char,
-) -> (Text, SelectionSet, ChangeSet) {
+) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let start = sel.start();
         let end_incl = sel
@@ -123,9 +123,9 @@ pub(crate) fn smart_replace_char(replacement: char, current: char, sel_index: us
 /// Shared implementation: map each selection to two cursors on the pair
 /// endpoints, or preserve unchanged on no-match.
 fn select_surround(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
-    find_pair: impl Fn(&Text, usize) -> Option<(usize, usize)>,
+    find_pair: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let primary_idx = sels.primary_index();
     let mut new_sels = Vec::with_capacity(sels.len() * 2);
@@ -153,7 +153,7 @@ fn select_surround(
 macro_rules! surround_cmd {
     ($name:ident, bracket, $open:literal, $close:literal) => {
         pub fn $name(
-            buf: &Text,
+            buf: &BufferText,
             sels: SelectionSet,
             _count: usize,
             _mode: MotionMode,
@@ -163,7 +163,7 @@ macro_rules! surround_cmd {
     };
     ($name:ident, quote, $quote:literal) => {
         pub fn $name(
-            buf: &Text,
+            buf: &BufferText,
             sels: SelectionSet,
             _count: usize,
             _mode: MotionMode,

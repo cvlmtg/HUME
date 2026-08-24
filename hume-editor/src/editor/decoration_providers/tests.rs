@@ -13,7 +13,7 @@ use super::{last_writer_per_line, resolve_decoration_line};
 
 #[test]
 fn resolve_decoration_line_returns_the_line_for_a_content_position() {
-    let text = hume_editing::text::Text::from("aaa\nbbb\nccc\n");
+    let text = hume_editing::text::BufferText::from("aaa\nbbb\nccc\n");
     // Line 2 ("ccc") starts at char offset 8.
     assert_eq!(resolve_decoration_line(&text, 8), Some(2));
 }
@@ -27,7 +27,7 @@ fn resolve_decoration_line_drops_a_position_on_the_trailing_phantom_line() {
     // remap can produce it transiently when an edit deletes everything
     // after an anchor up to end-of-buffer — the entry must disappear, not
     // get relocated onto the preceding line.
-    let text = hume_editing::text::Text::from("aaa\nbbb\nccc\n");
+    let text = hume_editing::text::BufferText::from("aaa\nbbb\nccc\n");
     assert_eq!(resolve_decoration_line(&text, 12), None);
 }
 

@@ -1,20 +1,20 @@
-//! Test helper: parse the DSL marker format into `(Text, SelectionSet)`.
+//! Test helper: parse the DSL marker format into `(BufferText, SelectionSet)`.
 //!
 //! Shared by `editing` and `editor` tests; lives here so that `editing` unit
 //! tests can use it without depending on the editor crate.
 
 use crate::selection::{Selection, SelectionSet};
-use crate::text::Text;
+use crate::text::BufferText;
 
 fn char_count(s: &str) -> usize {
     s.chars().count()
 }
 
-/// Parse a marker-annotated string into `(Text, SelectionSet)`.
+/// Parse a marker-annotated string into `(BufferText, SelectionSet)`.
 ///
 /// Marker syntax: `-[anchor…head]>` (forward), `<[head…anchor]-` (backward).
 /// Every DSL string must end with `\n` and contain at least one selection.
-pub fn parse_state(input: &str) -> (Text, SelectionSet) {
+pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
     let mut text = String::with_capacity(input.len());
     let mut selections: Vec<Selection> = Vec::new();
 
@@ -74,7 +74,7 @@ pub fn parse_state(input: &str) -> (Text, SelectionSet) {
         "parse_state: buffer must end with '\\n'"
     );
     (
-        Text::from(text.as_str()),
+        BufferText::from(text.as_str()),
         SelectionSet::from_vec(selections, 0),
     )
 }

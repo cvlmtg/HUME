@@ -554,7 +554,7 @@ fn goto_location_centers_by_display_row_not_buffer_line_under_wrap() {
     // sharply: line-based would center on line 20 directly; display-row
     // must center on line 20's own first row, three times as far down.
     let content: String = (0..30).map(|_| format!("{}\n", "x".repeat(25))).collect();
-    let text = hume_editing::text::Text::from(content.as_str());
+    let text = hume_editing::text::BufferText::from(content.as_str());
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     let pid = ed.state.focused_pane_id;

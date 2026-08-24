@@ -372,11 +372,11 @@ fn kitty_ctrl_shift_u_is_noop() {
 
 fn scroll_test_editor_kitty() -> Editor {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
     // 30 single-char lines — same shape as page_scroll tests.
     // Viewport height = 24 → half-page = 12.
     let content = "a\n".repeat(30);
-    let buf = Text::from(content.as_str());
+    let buf = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     ed.kitty_enabled = true;

@@ -69,9 +69,9 @@ fn test_editor() -> crate::editor::Editor {
     use crate::editor::buffer::Buffer;
     use hume_editing::{
         selection::{Selection, SelectionSet},
-        text::Text,
+        text::BufferText,
     };
-    let text = Text::from("hello\n");
+    let text = BufferText::from("hello\n");
     let sels = SelectionSet::single(Selection::collapsed(0));
     crate::editor::Editor::for_testing(Buffer::new(text, sels))
 }
@@ -209,9 +209,9 @@ fn test_editor_with_text(s: &str) -> crate::editor::Editor {
     use crate::editor::buffer::Buffer;
     use hume_editing::{
         selection::{Selection, SelectionSet},
-        text::Text,
+        text::BufferText,
     };
-    let text = Text::from(s);
+    let text = BufferText::from(s);
     let sels = SelectionSet::single(Selection::collapsed(0));
     crate::editor::Editor::for_testing(Buffer::new(text, sels))
 }
@@ -238,9 +238,9 @@ fn test_editor_with_text_and_cursor(s: &str, head: usize) -> crate::editor::Edit
     use crate::editor::buffer::Buffer;
     use hume_editing::{
         selection::{Selection, SelectionSet},
-        text::Text,
+        text::BufferText,
     };
-    let text = Text::from(s);
+    let text = BufferText::from(s);
     let sels = SelectionSet::single(Selection::collapsed(head));
     crate::editor::Editor::for_testing(Buffer::new(text, sels))
 }
@@ -389,7 +389,7 @@ fn readonly_element_empty_for_normal_buffer() {
 fn readonly_element_renders_ro_label() {
     use crate::editor::buffer::Buffer;
     let buf = Buffer::read_only_view(
-        hume_editing::text::Text::from("hello\n"),
+        hume_editing::text::BufferText::from("hello\n"),
         "[test]".to_string(),
     );
     let ed = crate::editor::Editor::for_testing(buf);
@@ -688,7 +688,7 @@ fn statusline_display_path_scratch_buffer_shows_scratch_name() {
 fn statusline_display_path_synthetic_buffer_shows_label() {
     use crate::editor::buffer::Buffer;
     let buf = Buffer::read_only_view(
-        hume_editing::text::Text::from("hello\n"),
+        hume_editing::text::BufferText::from("hello\n"),
         "[buffers]".to_string(),
     );
     let ed = crate::editor::Editor::for_testing(buf);

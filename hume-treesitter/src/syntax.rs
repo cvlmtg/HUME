@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use crate::highlight::layer_highlights_for_line;
 use crate::layers::{SyntaxLayer, SyntaxLayers};
 use hume_editing::changeset::ChangeSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_engine::types::ScopeId;
 
@@ -59,7 +59,7 @@ pub struct Syntax {
     /// `text_gen` of the most recently installed (or failed) parse result.
     /// Equal to `Buffer.text_gen` means the installed tree is up to date.
     parsed_gen: u64,
-    /// Text generation whose coordinates the committed `layers` describe.
+    /// BufferText generation whose coordinates the committed `layers` describe.
     /// Advances on every successful bake and on every precise parse install.
     /// Distinct from `parsed_gen`: edits can outpace the worker, so
     /// `tree_gen` advances every frame (via bake) while `parsed_gen` only
@@ -104,7 +104,7 @@ impl Syntax {
         bundle: Arc<GrammarBundle>,
         bid: BufferId,
         text_gen: u64,
-        text: &Text,
+        text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> (Self, Option<ParseRequest>) {
         let mut syn = Self::detached(Arc::clone(&bundle));
@@ -139,7 +139,7 @@ impl Syntax {
     /// resolves any fenced-code injections the content contains.
     pub fn attach_sync(
         bundle: Arc<GrammarBundle>,
-        text: &Text,
+        text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> Self {
         let mut syn = Self::detached(Arc::clone(&bundle));
@@ -181,7 +181,7 @@ impl Syntax {
         &mut self,
         bid: BufferId,
         text_gen: u64,
-        text: &Text,
+        text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> FrameTickOutcome {
         if self.parsed_gen == text_gen {

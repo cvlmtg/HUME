@@ -4,7 +4,7 @@
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::display_col_in_line;
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 use super::apply_edit;
 
@@ -45,10 +45,10 @@ use super::apply_edit;
 /// a tab. Insertion has no such gap: an inserted run is always spaces, each
 /// exactly one display column, so `amount > 0` lands exactly on `target`.
 pub fn align_selections(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
     tab_width: u8,
-) -> (Text, SelectionSet, ChangeSet) {
+) -> (BufferText, SelectionSet, ChangeSet) {
     // ── Pass 1: measure ────────────────────────────────────────────────────────
 
     // Geometry for each selection in sorted order (matches apply_edit iteration).

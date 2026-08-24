@@ -1,7 +1,7 @@
 //! Translates `hume_editing::diff::{LineHunk, WordHunk}` into their
 //! Steel-facing [`DiffHunk`]/[`WordDiffHunk`] shapes.
 //!
-//! **Line diff** normalizes both sides through [`Text::from`] before
+//! **Line diff** normalizes both sides through [`BufferText::from`] before
 //! tokenizing — CRLF-normalized and given a trailing newline if missing, the
 //! same as loading the text as a HUME buffer. This is deliberate: it matches
 //! how a plugin's git-ref text and the live buffer are actually compared (as
@@ -16,27 +16,27 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use hume_editing::diff::{LineHunk, LineHunkKind, WordDiff, WordHunkKind, diff_lines, diff_words};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_rope::lines::strip_line_break;
 
 use hume_scripting::host::{DiffHunk, WordDiffHunk};
 
 /// Line-level hunks between two texts, neither yet loaded as a HUME buffer —
-/// both sides go through [`Text::from`]'s normalization (see the module doc).
+/// both sides go through [`BufferText::from`]'s normalization (see the module doc).
 pub(crate) fn line_hunks(old: &str, new: &str) -> Vec<DiffHunk> {
-    hunks(&Text::from(old), &Text::from(new))
+    hunks(&BufferText::from(old), &BufferText::from(new))
 }
 
 /// As [`line_hunks`], diffing `ref_text` (normalized here) against `buffer`
-/// — already a live, normalized `Text`, so it needs no second pass.
-pub(crate) fn line_hunks_against_buffer(ref_text: &str, buffer: &Text) -> Vec<DiffHunk> {
-    hunks(&Text::from(ref_text), buffer)
+/// — already a live, normalized `BufferText`, so it needs no second pass.
+pub(crate) fn line_hunks_against_buffer(ref_text: &str, buffer: &BufferText) -> Vec<DiffHunk> {
+    hunks(&BufferText::from(ref_text), buffer)
 }
 
 /// `Equal` runs are dropped; each [`DiffHunk`]'s line lists are re-sliced
 /// from the tokenized input — `LineHunkKind` carries no payload to split
 /// (`hume-editing/src/diff.rs`).
-fn hunks(old: &Text, new: &Text) -> Vec<DiffHunk> {
+fn hunks(old: &BufferText, new: &BufferText) -> Vec<DiffHunk> {
     let old_tokens: Vec<Cow<'_, str>> = old.line_tokens().collect();
     let new_tokens: Vec<Cow<'_, str>> = new.line_tokens().collect();
 
@@ -68,7 +68,7 @@ fn strip_newlines(tokens: &[Cow<'_, str>], range: Range<usize>) -> Vec<String> {
 }
 
 /// Word-level hunks between `old` and `new`, `Equal` runs dropped. No
-/// `Text` normalization and no re-slicing: its inputs are always two
+/// `BufferText` normalization and no re-slicing: its inputs are always two
 /// already-extracted line strings (typically one side of a line-diff
 /// `Replace` hunk), and `diff_words`' tokens abut with no separator, so its
 /// hunk payload strings are already the exact substring at that char range.

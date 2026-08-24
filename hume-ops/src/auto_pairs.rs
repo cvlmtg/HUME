@@ -2,7 +2,7 @@ use crate::edit::apply_edit;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, classify_char};
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -64,11 +64,11 @@ pub const DEFAULT_PAIRS: &[Pair] = &[
 ///
 /// Multi-cursor: every selection is processed independently by `apply_edit`.
 pub fn insert_pair_close(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
     open: char,
     close: char,
-) -> (Text, SelectionSet, ChangeSet) {
+) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, _buf, _i, sel, new_sels| {
         let start = sel.start();
         b.retain(start - b.old_pos());
@@ -89,7 +89,7 @@ pub fn insert_pair_close(
 ///
 /// Only meaningful for cursor (single-character) selections; for non-cursor
 /// selections the caller should fall back to `delete_char_backward`.
-pub fn delete_pair(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
+pub fn delete_pair(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         debug_assert!(
             sel.is_collapsed(),
@@ -129,7 +129,7 @@ pub fn delete_pair(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, Change
 ///
 /// Callers are responsible for the all-or-nothing multi-cursor check; this
 /// function evaluates a single cursor position.
-pub fn should_auto_pair_at(buf: &Text, head: usize, pair: &Pair, ap_pairs: &[Pair]) -> bool {
+pub fn should_auto_pair_at(buf: &BufferText, head: usize, pair: &Pair, ap_pairs: &[Pair]) -> bool {
     // Check 1: next char (the char the cursor sits on) must be innocuous.
     let next_ok = match buf.char_at(head) {
         None => true,                                     // EOF

@@ -811,7 +811,7 @@ fn last_writer_per_line<T>(
 /// end-of-buffer. The entry disappears rather than getting relocated onto
 /// whatever line precedes it (four callers: signs, EOL text, virtual lines,
 /// line backgrounds — all four line-anchored decoration kinds).
-fn resolve_decoration_line(text: &hume_editing::text::Text, pos: usize) -> Option<usize> {
+fn resolve_decoration_line(text: &hume_editing::text::BufferText, pos: usize) -> Option<usize> {
     let line = text.char_to_line(pos);
     text.content_lines_range().contains(&line).then_some(line)
 }
@@ -827,7 +827,7 @@ fn resolve_decoration_line(text: &hume_editing::text::Text, pos: usize) -> Optio
 /// from ends here — every caller needs that borrow gone before its next
 /// step (`self.runtime_scope`), which needs `&mut self`.
 fn visible_line_anchored<'a, E: Clone + 'a>(
-    text: &hume_editing::text::Text,
+    text: &hume_editing::text::BufferText,
     visible_lines: &std::ops::Range<usize>,
     entries: impl Iterator<Item = (&'a str, &'a E)>,
     pos_of: impl Fn(&E) -> usize,
@@ -847,7 +847,7 @@ fn visible_line_anchored<'a, E: Clone + 'a>(
 /// matches are the one caller, always one fixed scope per call. See
 /// [`line_segments`].
 fn push_match_highlight_lines(
-    buf: &hume_editing::text::Text,
+    buf: &hume_editing::text::BufferText,
     start: usize,
     end_char_excl: usize,
     scope: hume_engine::types::ScopeId,
@@ -865,7 +865,7 @@ fn push_match_highlight_lines(
 /// for [`flatten_priority_overlaps`] to resolve same-line overlaps from
 /// (lower `priority` wins — see that function).
 fn push_priority_highlight_lines(
-    buf: &hume_editing::text::Text,
+    buf: &hume_editing::text::BufferText,
     start: usize,
     end_char_excl: usize,
     priority: u8,

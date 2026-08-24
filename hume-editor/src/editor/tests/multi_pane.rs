@@ -90,10 +90,10 @@ fn d4a_search_pattern_is_per_buffer() {
 fn d4b_sticky_col_is_per_selection() {
     use hume_editing::changeset::ChangeSetBuilder;
     use hume_editing::selection::{DisplayColOrigin, Selection, SelectionSet, StickyDisplayCol};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
 
     // "abc\ndef\n" — two lines.
-    let text = Text::from("abc\ndef\n");
+    let text = BufferText::from("abc\ndef\n");
 
     // Selection on line 1 (char offset 4 = 'd'), sticky_display_col = 0.
     // Origin is incidental to this test (translate_in_place invalidation
@@ -146,9 +146,9 @@ fn d4b_sticky_col_is_per_selection() {
     let mut sels2 = SelectionSet::single(sel2);
 
     // "Xabc\ndef\n" (after first edit) — "d" is now at char 5 (line 1).
-    // Insert at char 5 (start of "def" in new rope); use the pre-edit Text for
+    // Insert at char 5 (start of "def" in new rope); use the pre-edit BufferText for
     // translate_in_place (buf_pre = before-this-edit text).
-    let text2 = Text::from("Xabc\ndef\n");
+    let text2 = BufferText::from("Xabc\ndef\n");
     let mut b2 = ChangeSetBuilder::new(text2.len_chars());
     b2.retain(5); // skip "Xabc\n"
     b2.insert("Y"); // insert at line 1
@@ -1308,7 +1308,7 @@ fn split_inherits_focused_panes_selection_and_scroll() {
     use hume_editing::selection::Selection;
 
     let content: String = (0..200).map(|i| format!("line {i}\n")).collect();
-    let buf = Text::from(content.as_str());
+    let buf = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     let bid = ed.focused_buffer_id();

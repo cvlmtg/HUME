@@ -10,7 +10,7 @@
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::lines::{char_col_in_line, line_break_char, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 /// Flags accepted by `:sort`.
 #[derive(Debug, Clone, Copy, Default)]
@@ -43,10 +43,10 @@ struct Row {
 /// the selected text on that row. Groups sort independently — text never moves
 /// between groups.
 pub fn sort_rows(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
     opts: SortOpts,
-) -> Result<(Text, SelectionSet, ChangeSet), SortRefusal> {
+) -> Result<(BufferText, SelectionSet, ChangeSet), SortRefusal> {
     let rows = collect_rows(&buf, &sels);
     let groups = group_adjacent(&rows);
 
@@ -112,7 +112,7 @@ pub fn sort_rows(
 /// Rows come out sorted ascending and deduplicated by construction: selections
 /// are visited via `iter_sorted()` (ascending, non-overlapping), and each one
 /// walks its own lines in order.
-fn collect_rows(buf: &Text, sels: &SelectionSet) -> Vec<Row> {
+fn collect_rows(buf: &BufferText, sels: &SelectionSet) -> Vec<Row> {
     let mut rows: Vec<Row> = Vec::new();
     for sel in sels.iter_sorted() {
         let start_line = buf.char_to_line(sel.start());
@@ -258,8 +258,8 @@ fn trimmed_window(order: &[usize]) -> Option<(usize, usize)> {
 /// own `\n` (what `x` selects), which the clamp would silently pull back onto
 /// the last character.
 fn remap_selections(
-    old_buf: &Text,
-    new_buf: &Text,
+    old_buf: &BufferText,
+    new_buf: &BufferText,
     sels: &SelectionSet,
     line_map: &rustc_hash::FxHashMap<usize, usize>,
 ) -> SelectionSet {

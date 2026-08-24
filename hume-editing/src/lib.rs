@@ -6,7 +6,7 @@
 //!
 //! ## Central types
 //!
-//! - [`text::Text`] — the document: a rope of Unicode scalar values with a
+//! - [`text::BufferText`] — the document: a rope of Unicode scalar values with a
 //!   recorded line-ending style. All positions are **char offsets**.
 //! - [`selection::Selection`] / [`selection::SelectionSet`] — the cursor model.
 //!   Every selection is *inclusive* (`anchor == head` is a 1-char selection).

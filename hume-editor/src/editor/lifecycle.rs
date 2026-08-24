@@ -52,7 +52,7 @@ impl Editor {
         use crate::settings::EditorSettings;
         use crate::ui::build_pane;
         use hume_editing::selection::{Selection, SelectionSet};
-        use hume_editing::text::Text;
+        use hume_editing::text::BufferText;
         use hume_engine::pipeline::LayoutTree;
         use hume_ops::register::{KillRing, RegisterSet};
         use slotmap::SecondaryMap;
@@ -65,7 +65,7 @@ impl Editor {
             // `:w`-creates-it semantics as `:e` on a missing file (see
             // `Buffer::from_file_or_new`, `Editor::open_or_dedup`).
             Some(ref path) => Buffer::from_file_or_new(path, &startup_cwd)?,
-            None => Buffer::new(Text::empty(), SelectionSet::single(Selection::collapsed(0))),
+            None => Buffer::new(BufferText::empty(), SelectionSet::single(Selection::collapsed(0))),
         };
         // Record the user-typed path (symlinks unresolved) for user-facing display,
         // overwriting `Buffer::from_file`'s canonical-derived default.

@@ -1,5 +1,5 @@
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
 use hume_ops::motion::{find_char_backward, find_char_forward};
@@ -31,7 +31,7 @@ fn find_char(
     count: usize,
     mode: MotionMode,
     kind: FindKind,
-    find_fn: fn(&Text, SelectionSet, usize, MotionMode, char, FindKind) -> SelectionSet,
+    find_fn: fn(&BufferText, SelectionSet, usize, MotionMode, char, FindKind) -> SelectionSet,
 ) {
     if let Some(ch) = state.pending_char.take() {
         apply_focused_motion(state, view, |b, s| find_fn(b, s, count, mode, ch, kind));
@@ -111,7 +111,7 @@ fn repeat_find(
     view: &mut EngineView,
     count: usize,
     mode: MotionMode,
-    find_fn: fn(&Text, SelectionSet, usize, MotionMode, char, FindKind) -> SelectionSet,
+    find_fn: fn(&BufferText, SelectionSet, usize, MotionMode, char, FindKind) -> SelectionSet,
 ) {
     if let Some(FindChar { ch, kind }) = state.last_find {
         apply_focused_motion(state, view, |b, s| find_fn(b, s, count, mode, ch, kind));

@@ -4,7 +4,7 @@
 use hume_editing::changeset::ChangeSet;
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 use super::apply_edit;
 
@@ -12,7 +12,7 @@ use super::apply_edit;
 /// at the first non-`Word` boundary — the start of the token immediately
 /// preceding `pos`. Grapheme-safe (steps via `prev_grapheme_boundary`, never
 /// a raw `-= 1`).
-pub fn word_start_before(text: &Text, pos: usize) -> usize {
+pub fn word_start_before(text: &BufferText, pos: usize) -> usize {
     let mut cursor = pos;
     while cursor > 0 {
         let prev = prev_grapheme_boundary(text, cursor);
@@ -43,12 +43,12 @@ pub fn word_start_before(text: &Text, pos: usize) -> usize {
 /// text) — clamped to `b.old_pos()` instead of erroring, so a cramped cursor
 /// simply replaces less and every cursor still receives `text`.
 pub fn replace_span_around_cursors(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
-    start_of: impl Fn(&Text, usize) -> usize,
+    start_of: impl Fn(&BufferText, usize) -> usize,
     forward: usize,
     text: &str,
-) -> (Text, SelectionSet, ChangeSet) {
+) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let head = sel.head();
         // `start_of(head)`/`head + forward` bound a char span that can land
@@ -103,12 +103,12 @@ pub fn replace_span_around_cursors(
 /// and applying it uniformly gives every cursor the completion, not just the
 /// one the server saw.
 pub fn replace_around_cursors(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
     back: usize,
     forward: usize,
     text: &str,
-) -> (Text, SelectionSet, ChangeSet) {
+) -> (BufferText, SelectionSet, ChangeSet) {
     replace_span_around_cursors(
         buf,
         sels,
@@ -132,10 +132,10 @@ pub fn replace_around_cursors(
 ///   multiple lines. The structural trailing `\n` is protected by the same
 ///   rule.
 pub fn replace_selections(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
     ch: char,
-) -> (Text, SelectionSet, ChangeSet) {
+) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, i, sel, new_sels| {
         let sel_start = sel.start();
         let sel_end = sel.end(); // inclusive last-grapheme-start; equal to sel_start for cursor

@@ -6,7 +6,7 @@ pub use single::{DisplayColOrigin, Selection, StickyDisplayCol, is_selection_lin
 
 use crate::changeset::{Assoc, ChangeSet, PosMapCursor};
 use crate::error::ValidationError;
-use crate::text::Text;
+use crate::text::BufferText;
 
 /// The complete selection state for one buffer.
 ///
@@ -232,18 +232,18 @@ impl SelectionSet {
     /// are zero-indexed and must not point past the last character (the
     /// structural trailing `\n`).
     ///
-    /// Call this at every chokepoint where a `(Text, SelectionSet)` pair is
+    /// Call this at every chokepoint where a `(BufferText, SelectionSet)` pair is
     /// produced: edit operations, motions, and `Transaction::apply`.
     #[inline]
-    pub fn debug_assert_valid(&self, buf: &Text) {
+    pub fn debug_assert_valid(&self, buf: &BufferText) {
         let buf_len = buf.len_chars();
         debug_assert!(
             buf_len > 0,
-            "Text must have at least 1 char (the structural \\n)"
+            "BufferText must have at least 1 char (the structural \\n)"
         );
         debug_assert!(
             buf.char_at(buf_len - 1) == Some('\n'),
-            "Text must end with structural '\\n', but last char is {:?}",
+            "BufferText must end with structural '\\n', but last char is {:?}",
             buf.char_at(buf_len - 1),
         );
         for (i, sel) in self.selections.iter().enumerate() {
@@ -371,7 +371,7 @@ impl SelectionSet {
     /// position mapping walk their respective changeset data with a single
     /// forward-only cursor shared across all selections, instead of
     /// re-scanning the whole changeset per selection.
-    pub fn translate_in_place(&mut self, cs: &ChangeSet, buf_pre: &Text) {
+    pub fn translate_in_place(&mut self, cs: &ChangeSet, buf_pre: &BufferText) {
         let edits = cs.edited_old_ranges();
         let mut edit_idx = 0usize;
         let mut mapper = PosMapCursor::new(cs.ops());

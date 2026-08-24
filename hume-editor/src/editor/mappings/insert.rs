@@ -1,7 +1,7 @@
 use hume_editing::changeset::ChangeSet;
 use hume_editing::lines::leading_whitespace_end;
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::super::dispatch::ArgSource;
@@ -34,7 +34,7 @@ impl Editor {
     /// ones at the primary cursor.
     fn apply_insert_edit(
         &mut self,
-        cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+        cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
     ) {
         let focused = self.state.focused_pane_id;
         let buf = self.focused_buffer_id();

@@ -399,7 +399,7 @@ pub(crate) fn diagnostic_counts(lsp: &LspState, bid: BufferId) -> (usize, usize)
 /// admit the phantom line and report column 1 of a line that has no
 /// characters — a drawer row pointing one line past the file's end.
 fn wire_pos_to_grapheme_col(
-    text: &hume_editing::text::Text,
+    text: &hume_editing::text::BufferText,
     line: usize,
     character: usize,
     encoding: hume_rope::position_encoding::PositionEncoding,

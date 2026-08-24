@@ -90,7 +90,7 @@ fn buffer_lines_start_only_defaults_end_to_the_line_count() {
 }
 
 /// `buffer-text` always returns `\n` line endings, even for a buffer whose
-/// source used `\r\n` — `Text::from`'s CRLF normalization, not a second
+/// source used `\r\n` — `BufferText::from`'s CRLF normalization, not a second
 /// strip pass in the builtin itself.
 ///
 /// Fail oracle: reading the rope's raw content without normalization would

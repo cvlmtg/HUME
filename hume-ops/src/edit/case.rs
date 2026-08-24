@@ -4,7 +4,7 @@
 use hume_editing::changeset::ChangeSet;
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use unicode_segmentation::UnicodeSegmentation;
 
 use super::apply_edit;
@@ -30,10 +30,10 @@ enum CaseTransform {
 /// `σ` even at a word's end. `insert` (not `insert_char`) is used since case
 /// mapping can also change the char count (e.g. `ß` → `SS`).
 fn transform_case(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
     kind: CaseTransform,
-) -> (Text, SelectionSet, ChangeSet) {
+) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(buf, sels, |b, buf, _i, sel, new_sels| {
         let sel_start = sel.start();
         let sel_end = next_grapheme_boundary(buf, sel.end()); // exclusive
@@ -95,16 +95,16 @@ fn push_capitalized(out: &mut String, word: &str) {
 }
 
 /// Lowercase the text in each selection.
-pub fn make_text_lowercase(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
+pub fn make_text_lowercase(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
     transform_case(buf, sels, CaseTransform::Lower)
 }
 
 /// Uppercase the text in each selection.
-pub fn make_text_uppercase(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
+pub fn make_text_uppercase(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
     transform_case(buf, sels, CaseTransform::Upper)
 }
 
 /// Capitalize each word in each selection (Title Case).
-pub fn make_text_capitalized(buf: Text, sels: SelectionSet) -> (Text, SelectionSet, ChangeSet) {
+pub fn make_text_capitalized(buf: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
     transform_case(buf, sels, CaseTransform::Capitalize)
 }

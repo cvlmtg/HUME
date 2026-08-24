@@ -189,7 +189,7 @@ fn star_whole_word_skips_substring_matches() {
 fn star_punctuation_run_stays_literal() {
     // Buffer: "a -> b\n". Collapsed cursor on '-' (position 2).
     let mut ed = editor_from("-[a]>b\n");
-    let buf = hume_editing::text::Text::from("a -> b\n");
+    let buf = hume_editing::text::BufferText::from("a -> b\n");
     let sels = hume_editing::selection::SelectionSet::single(
         hume_editing::selection::Selection::collapsed(2),
     );

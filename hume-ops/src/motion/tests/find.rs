@@ -4,16 +4,16 @@ use hume_test_fixtures::assert_state;
 // ── find_char_forward / find_char_backward ────────────────────────────────
 
 // Helper wrappers with fixed mode so assert_state! closures stay tidy.
-fn fwd(buf: Text, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
+fn fwd(buf: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
     find_char_forward(&buf, sels, 1, MotionMode::Move, ch, kind)
 }
-fn bwd(buf: Text, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
+fn bwd(buf: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
     find_char_backward(&buf, sels, 1, MotionMode::Move, ch, kind)
 }
-fn fwd_ext(buf: Text, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
+fn fwd_ext(buf: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
     find_char_forward(&buf, sels, 1, MotionMode::Extend, ch, kind)
 }
-fn fwd_count(buf: Text, sels: SelectionSet, ch: char, kind: FindKind, n: usize) -> SelectionSet {
+fn fwd_count(buf: BufferText, sels: SelectionSet, ch: char, kind: FindKind, n: usize) -> SelectionSet {
     find_char_forward(&buf, sels, n, MotionMode::Move, ch, kind)
 }
 

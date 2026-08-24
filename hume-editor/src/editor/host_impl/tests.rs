@@ -11,7 +11,7 @@ use super::{line_start_offset, validate_offset, virtual_line_segments_to_bytes};
 #[test]
 fn close_buffer_errs_when_id_unknown() {
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(
-        hume_editing::text::Text::empty(),
+        hume_editing::text::BufferText::empty(),
         hume_editing::selection::SelectionSet::default(),
     ));
     let mut host = make_init_host(&mut ed.state, &mut ed.view);
@@ -23,7 +23,7 @@ fn close_buffer_errs_when_id_unknown() {
 #[test]
 fn switch_to_buffer_noop_when_same() {
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(
-        hume_editing::text::Text::empty(),
+        hume_editing::text::BufferText::empty(),
         hume_editing::selection::SelectionSet::default(),
     ));
     let bid = ed.focused_buffer_id();
@@ -35,7 +35,7 @@ fn switch_to_buffer_noop_when_same() {
 #[test]
 fn attach_grammar_errs_for_bad_path() {
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(
-        hume_editing::text::Text::empty(),
+        hume_editing::text::BufferText::empty(),
         hume_editing::selection::SelectionSet::default(),
     ));
     let mut host = make_init_host(&mut ed.state, &mut ed.view);
@@ -115,7 +115,7 @@ fn virtual_line_segments_to_bytes_rejects_segment_splitting_a_grapheme_cluster()
 #[test]
 fn line_start_offset_accepts_the_last_content_line() {
     // "aaa\nbbb\nccc\n": line 2 ("ccc") is the last *content* line.
-    let text = hume_editing::text::Text::from("aaa\nbbb\nccc\n");
+    let text = hume_editing::text::BufferText::from("aaa\nbbb\nccc\n");
     let pos = line_start_offset(&text, 2, "test").expect("last content line must be valid");
     assert_eq!(pos, 8, "line 2's line-start char offset");
 }
@@ -125,7 +125,7 @@ fn line_start_offset_rejects_the_trailing_phantom_line() {
     // Same fixture: line 3 is the empty line the trailing '\n' produces —
     // `RowMap::last_line()` (hume-engine/src/rows.rs) agrees line 2 is the
     // last renderable line, so line 3 has no row to decorate.
-    let text = hume_editing::text::Text::from("aaa\nbbb\nccc\n");
+    let text = hume_editing::text::BufferText::from("aaa\nbbb\nccc\n");
     let err = line_start_offset(&text, 3, "test").unwrap_err();
     assert!(err.contains("out of range"), "got: {err}");
 }
@@ -135,7 +135,7 @@ fn validate_offset_accepts_the_last_real_char() {
     // "abc\n" — char offsets 0..=3 are real chars (the last being '\n'
     // itself); char offset 4 is one past the end. 'before' anchoring, so
     // the 'after'-only phantom-line check doesn't apply.
-    let text = hume_editing::text::Text::from("abc\n");
+    let text = hume_editing::text::BufferText::from("abc\n");
     validate_offset(&text, 3, true, "test").expect("last real char must be valid");
 }
 
@@ -146,7 +146,7 @@ fn validate_offset_rejects_one_past_the_end() {
     // position could never pass its `contains` check: the hint would be
     // silently accepted and then silently never rendered. Must now error
     // loudly instead, same as every other out-of-range offset.
-    let text = hume_editing::text::Text::from("abc\n");
+    let text = hume_editing::text::BufferText::from("abc\n");
     let err = validate_offset(&text, 4, true, "test").unwrap_err();
     assert!(err.contains("out of range"), "got: {err}");
 }
@@ -156,7 +156,7 @@ fn validate_offset_accepts_after_on_the_last_real_content_char() {
     // "abc\n" — an 'after hint on 'c' (offset 2) anchors at offset 3 (the
     // trailing '\n'), still on the last content line. Must not be confused
     // with the phantom-line case below.
-    let text = hume_editing::text::Text::from("abc\n");
+    let text = hume_editing::text::BufferText::from("abc\n");
     validate_offset(&text, 2, false, "test").expect("'after on the last content char is valid");
 }
 
@@ -168,7 +168,7 @@ fn validate_offset_rejects_after_on_the_trailing_newline() {
     // the hint would be silently accepted and then silently never render
     // (the same failure class `line_start_offset` already rejects for the
     // line-anchored kinds, reachable here through a char offset instead).
-    let text = hume_editing::text::Text::from("abc\n");
+    let text = hume_editing::text::BufferText::from("abc\n");
     let err = validate_offset(&text, 3, false, "test").unwrap_err();
     assert!(err.contains("trailing"), "got: {err}");
 }

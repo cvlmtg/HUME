@@ -55,9 +55,9 @@ pub(crate) const MAX_POPUP_WIDTH: u16 = 60;
 pub(crate) struct MarkupSyntax {
     pub(crate) syntax: hume_treesitter::syntax::Syntax,
     /// Same content the syntax was parsed from, wrapped as a rope-backed
-    /// `Text` — `Syntax::spans_for_line` needs `&Rope`, and re-deriving one
+    /// `BufferText` — `Syntax::spans_for_line` needs `&Rope`, and re-deriving one
     /// from the source string every frame would re-walk it on every render.
-    pub(crate) text: hume_editing::text::Text,
+    pub(crate) text: hume_editing::text::BufferText,
 }
 
 impl MarkupSyntax {
@@ -101,7 +101,7 @@ impl MarkupSyntax {
     /// splitting sees the exact same boundaries a plain popup would.
     ///
     /// Slices `text`'s own paragraphs (`text.split('\n')`), not `self.text`'s
-    /// rope lines — `self.text` is `Text::from(text)`, which may have padded
+    /// rope lines — `self.text` is `BufferText::from(text)`, which may have padded
     /// on a trailing `'\n'` `text` itself lacked (the buffer invariant), and
     /// iterating the padded rope would emit a spurious trailing empty row
     /// `wrap_text` on plain `text` never would.

@@ -545,7 +545,7 @@ fn nearest_on_whitespace_only_line_is_noop() {
 #[test]
 fn nearest_preserves_sticky_display_col_on_word() {
     // sel.sticky_display_col = Some(5) must survive the snap to a word.
-    let buf = Text::from("hello world\n");
+    let buf = BufferText::from("hello world\n");
     let sels = SelectionSet::single(Selection::with_sticky_display_col(6, 6, sticky(5)));
     let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false);
     let sel = result.primary();
@@ -562,7 +562,7 @@ fn nearest_preserves_sticky_display_col_on_word() {
 fn nearest_preserves_sticky_display_col_on_whitespace() {
     // Head on space, sticky_display_col = Some(3). After snapping to "hi",
     // sticky_display_col still Some(3).
-    let buf = Text::from("hi   world\n");
+    let buf = BufferText::from("hi   world\n");
     //                    0123456789
     // spaces at 2,3,4; head=3 (space), prev word = "hi" ends at 1.
     let sels = SelectionSet::single(Selection::with_sticky_display_col(3, 3, sticky(3)));
@@ -580,7 +580,7 @@ fn nearest_preserves_sticky_display_col_on_whitespace() {
 fn nearest_no_sticky_display_col_is_cleared() {
     // When input sel has sticky_display_col=None, output must also have
     // sticky_display_col=None.
-    let buf = Text::from("hello world\n");
+    let buf = BufferText::from("hello world\n");
     let sels = SelectionSet::single(Selection::new(6, 6));
     let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Move, false);
     let sel = result.primary();
@@ -600,7 +600,7 @@ fn nearest_extend_grows_selection_to_snapped_word() {
     // After move-down in extend mode: anchor stays at 0 (on 'h'), head lands at 10 (space).
     // Snap uses anchor=0 → nearest_word finds "hello" = [0,4] (anchor is already on a word).
     // new_end = max(10, 4) = 10 → selection stays (0, 10); head is already past "hello".
-    let buf = Text::from("hello\n     world\n");
+    let buf = BufferText::from("hello\n     world\n");
     let sels = SelectionSet::single(Selection::new(0, 10)); // anchor=0, head=10 (space)
     let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Extend, false);
     let sel = result.primary();
@@ -614,7 +614,7 @@ fn nearest_extend_grows_selection_to_snapped_word() {
 
 #[test]
 fn nearest_extend_preserves_sticky_display_col() {
-    let buf = Text::from("hello world\n");
+    let buf = BufferText::from("hello world\n");
     let sels = SelectionSet::single(Selection::with_sticky_display_col(0, 5, sticky(7))); // anchor=0, head=5 (space)
     let result = cmd_select_word_nearest_on_line(&buf, sels, 0, MotionMode::Extend, false);
     assert_eq!(

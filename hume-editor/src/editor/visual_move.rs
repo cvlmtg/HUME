@@ -2,11 +2,11 @@
 //!
 //! When soft-wrap is active, `j`/`k` move by one display row rather than one
 //! buffer line. These commands need a `RowMap` — unavailable in the pure
-//! `(&Text, SelectionSet) -> SelectionSet` motion signature — so they live here
+//! `(&BufferText, SelectionSet) -> SelectionSet` motion signature — so they live here
 //! instead of `hume-ops`'s `motion` module.
 
 use hume_editing::selection::{DisplayColOrigin, Selection, StickyDisplayCol};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
 use hume_engine::rows::{BlockSlot, DisplayColTarget, RowMap};
 use hume_ops::MotionMode;
@@ -79,7 +79,7 @@ fn move_vertical(
 /// display-row walk — virtual rows and wrap rows are both irrelevant to it.
 fn move_buffer_line(
     rm: &mut RowMap<'_>,
-    text: &Text,
+    text: &BufferText,
     head: usize,
     down: bool,
     count: usize,

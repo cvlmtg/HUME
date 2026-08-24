@@ -50,7 +50,7 @@ fn normalize_crlf(text: &str) -> (Cow<'_, str>, LineEnding) {
 
 /// The core text storage type.
 ///
-/// `Text` wraps a [`ropey::Rope`], which is a balanced B-tree of Unicode
+/// `BufferText` wraps a [`ropey::Rope`], which is a balanced B-tree of Unicode
 /// scalar values ("chars"). All positions exposed by this API are **char
 /// offsets** — indices into the sequence of Unicode scalar values, not byte
 /// offsets or grapheme-cluster indices.
@@ -60,32 +60,32 @@ fn normalize_crlf(text: &str) -> (Cow<'_, str>, LineEnding) {
 /// Grapheme-cluster awareness (for cursor movement) lives in `grapheme.rs`
 /// and converts char offsets to grapheme boundaries on the fly.
 ///
-/// Why an immutable-style API? `insert` and `remove` return a *new* `Text`
+/// Why an immutable-style API? `insert` and `remove` return a *new* `BufferText`
 /// instead of mutating in place. Ropey clones are O(log n) in time and space
 /// because the rope's B-tree nodes are reference-counted and shared between
 /// the old and new version ("structural sharing"). This makes cloning cheap
 /// when needed, though the primary undo mechanism is changeset inversion
 /// (see `ChangeSet::invert`), not buffer snapshots.
 #[derive(Debug, Clone)]
-pub struct Text {
+pub struct BufferText {
     rope: Rope,
     /// Original line-ending style. The rope is always LF-normalized internally;
     /// this field records what to write back on save.
     line_ending: LineEnding,
 }
 
-/// True if `rope` satisfies the invariant every `Text` upholds by
+/// True if `rope` satisfies the invariant every `BufferText` upholds by
 /// construction: non-empty, and ending with `'\n'`. Stricter than
 /// [`hume_rope::lines::ends_with_newline`] — that one (correctly, for its own
 /// generic-rope callers) treats a truly empty rope as vacuously fine; a HUME
-/// buffer never is, so this crate's own gates ([`Text::from_rope`],
+/// buffer never is, so this crate's own gates ([`BufferText::from_rope`],
 /// `ChangeSet::apply`) require it non-empty too.
 pub(crate) fn is_valid_buffer_rope(rope: &Rope) -> bool {
     rope.len_chars() > 0 && hume_rope::lines::ends_with_newline(rope)
 }
 
-impl Text {
-    /// Wrap a raw `Rope` into a `Text`.
+impl BufferText {
+    /// Wrap a raw `Rope` into a `BufferText`.
     ///
     /// Used by `ChangeSet::apply` to construct the result buffer after
     /// mutating the rope directly. The trailing-`\n` invariant is enforced
@@ -100,7 +100,7 @@ impl Text {
         // because the source buffer was already normalized on load.
         debug_assert!(
             is_valid_buffer_rope(&rope),
-            "Text invariant violated: rope must end with '\\n' (len={})",
+            "BufferText invariant violated: rope must end with '\\n' (len={})",
             rope.len_chars(),
         );
         Self { rope, line_ending }
@@ -110,7 +110,7 @@ impl Text {
     ///
     /// Ropey's `Rope::clone` is O(log n) (reference-counted tree nodes), so
     /// calling `.rope().clone()` is cheap and is the preferred way to get a
-    /// mutable copy for operations that take `&Text` instead of consuming it.
+    /// mutable copy for operations that take `&BufferText` instead of consuming it.
     ///
     /// # Design note
     /// This exposes the `ropey` type directly. Callers (regex search, syntax
@@ -165,7 +165,7 @@ impl Text {
     fn is_empty(&self) -> bool {
         debug_assert!(
             self.rope.len_chars() > 0,
-            "Text invariant violated: len_chars() == 0 (buffer must always contain at least a trailing \\n)"
+            "BufferText invariant violated: len_chars() == 0 (buffer must always contain at least a trailing \\n)"
         );
         self.rope.len_chars() == 1 && self.rope.char(0) == '\n'
     }
@@ -173,7 +173,7 @@ impl Text {
     /// Raw ropey line count, phantom trailing line included. See
     /// [`hume_rope`]'s crate docs for the ropey-domain / content-domain
     /// distinction. Callers wanting the buffer's real line count want
-    /// [`Text::content_line_count`] instead.
+    /// [`BufferText::content_line_count`] instead.
     pub fn ropey_line_count(&self) -> usize {
         hume_rope::lines::ropey_line_count(&self.rope)
     }
@@ -214,7 +214,7 @@ impl Text {
     /// common case); owns only when it straddles a chunk boundary.
     ///
     /// The break set is ropey's default `unicode_lines` feature — LF, CR,
-    /// CRLF, VT, FF, NEL, LS, PS — **not** just `\n`. `Text::from` only
+    /// CRLF, VT, FF, NEL, LS, PS — **not** just `\n`. `BufferText::from` only
     /// normalizes `\r\n` pairs to `\n`; every other form reaches the rope
     /// as-is and terminates a token here. A consumer that needs the bare
     /// line content must strip whichever of these trails the token, not
@@ -226,7 +226,7 @@ impl Text {
         self.line_tokens_at(0)
     }
 
-    /// Same as [`Text::line_tokens`], starting at `line_idx` — an `O(log n)`
+    /// Same as [`BufferText::line_tokens`], starting at `line_idx` — an `O(log n)`
     /// seek to `line_idx` followed by one traversal of the remaining lines,
     /// instead of tokenizing (and discarding) every line before it.
     ///
@@ -351,9 +351,9 @@ impl Text {
 
 // `From<&str>`, not `FromStr`, since construction here always succeeds
 // (worst case we append a '\n') — `FromStr` is reserved for fallible parsing.
-// Note `Text::from(&my_string)` won't compile (`&String != &str`); call sites
-// with a `String` must be explicit: `Text::from(my_string.as_str())`.
-impl From<&str> for Text {
+// Note `BufferText::from(&my_string)` won't compile (`&String != &str`); call sites
+// with a `String` must be explicit: `BufferText::from(my_string.as_str())`.
+impl From<&str> for BufferText {
     fn from(text: &str) -> Self {
         let (normalized, line_ending) = normalize_crlf(text);
         // O(1) byte check on the &str before building the rope, avoiding the
@@ -376,7 +376,7 @@ impl From<&str> for Text {
 //
 // Use `.to_string()` for tests, file I/O, and display — not in hot edit paths
 // (it allocates a full String from the rope).
-impl std::fmt::Display for Text {
+impl std::fmt::Display for BufferText {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.rope.fmt(f)
     }
@@ -385,13 +385,13 @@ impl std::fmt::Display for Text {
 // `PartialEq` for tests: compare text content only.
 // `line_ending` is file-origin metadata — two buffers with identical content
 // but different original line endings are considered equal.
-impl PartialEq for Text {
+impl PartialEq for BufferText {
     fn eq(&self, other: &Self) -> bool {
         self.rope == other.rope
     }
 }
 
-impl Eq for Text {}
+impl Eq for BufferText {}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

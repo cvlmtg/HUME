@@ -3,7 +3,7 @@
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::lines::{is_line_start, line_break_char, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 use super::apply_edit;
 use crate::register;
@@ -31,11 +31,11 @@ use crate::register;
 /// The replaced selection is discarded; it is never pushed to the kill ring or
 /// clipboard (rule: "when pasting over a selection the replaced text is not copied").
 fn paste_impl(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
     values: &[String],
     before: bool,
-) -> (Text, SelectionSet, ChangeSet) {
+) -> (BufferText, SelectionSet, ChangeSet) {
     if values.is_empty() {
         let mut b = ChangeSetBuilder::new(buf.len_chars());
         b.retain_rest();
@@ -149,10 +149,10 @@ fn paste_impl(
 /// gets its own slot); otherwise all values joined and applied at every
 /// selection. An empty `values` slice is a no-op.
 pub fn paste_after(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
     values: &[String],
-) -> (Text, SelectionSet, ChangeSet) {
+) -> (BufferText, SelectionSet, ChangeSet) {
     paste_impl(buf, sels, values, false)
 }
 
@@ -161,9 +161,9 @@ pub fn paste_after(
 /// selections (see `paste_impl`'s matrix). An empty `values` slice is a
 /// no-op.
 pub fn paste_before(
-    buf: Text,
+    buf: BufferText,
     sels: SelectionSet,
     values: &[String],
-) -> (Text, SelectionSet, ChangeSet) {
+) -> (BufferText, SelectionSet, ChangeSet) {
     paste_impl(buf, sels, values, true)
 }

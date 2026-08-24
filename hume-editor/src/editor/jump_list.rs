@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use hume_engine::pipeline::BufferId;
 
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 /// Default capacity — used in tests to construct jump lists without importing `EditorSettings`.
 #[cfg(test)]
@@ -36,7 +36,7 @@ pub(crate) struct JumpEntry {
 impl JumpEntry {
     /// Build a jump entry from the current selection state, deriving
     /// `primary_line` from the buffer so callers don't have to.
-    pub(crate) fn new(selections: SelectionSet, buf: &Text, buffer_id: BufferId) -> Self {
+    pub(crate) fn new(selections: SelectionSet, buf: &BufferText, buffer_id: BufferId) -> Self {
         let primary_line = buf.char_to_line(selections.primary().head());
         Self {
             buffer_id,

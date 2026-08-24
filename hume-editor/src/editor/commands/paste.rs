@@ -12,7 +12,7 @@
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_ops::MotionMode;
 use hume_ops::edit::{paste_after, paste_before};
 use hume_ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER};
@@ -136,7 +136,7 @@ impl EditorState {
 /// rather than replacing, so this rule only has visible effect on a real
 /// (non-collapsed) selection.
 fn collapse_if_repeat(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     values: &[String],
     before: bool,

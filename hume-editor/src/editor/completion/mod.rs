@@ -33,9 +33,9 @@ pub(crate) use simple::{BufferNameCompleter, CommandCompleter, ThemeCompleter};
 /// the display is the basename but the replacement is the full path.
 #[derive(Debug, Clone)]
 pub(crate) struct Completion {
-    /// Text to insert at the span location in the minibuffer input.
+    /// BufferText to insert at the span location in the minibuffer input.
     pub replacement: String,
-    /// Text shown in the completion popup row.
+    /// BufferText shown in the completion popup row.
     pub display: String,
 }
 
@@ -176,7 +176,7 @@ mod testing {
     use super::*;
     use crate::editor::buffer::Buffer;
     use hume_editing::selection::SelectionSet;
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
     use hume_engine::pipeline::{BufferId, EngineView};
     use hume_engine::theme::Theme;
     use std::path::PathBuf;
@@ -228,7 +228,7 @@ mod testing {
     }
 
     pub(crate) fn make_buf() -> Buffer {
-        Buffer::new(Text::from("a\n"), SelectionSet::default())
+        Buffer::new(BufferText::from("a\n"), SelectionSet::default())
     }
 
     pub(crate) fn buf_with_path(path: &str) -> Buffer {

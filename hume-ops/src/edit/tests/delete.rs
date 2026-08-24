@@ -667,7 +667,7 @@ fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
     // retain(0); cursor_new = b.new_pos().saturating_sub(2) = 1 - 2 = 0 ✓
     use crate::edit::delete_selection;
     use hume_editing::selection::SelectionSet;
-    let buf = hume_editing::text::Text::from("ab\nc\n");
+    let buf = hume_editing::text::BufferText::from("ab\nc\n");
     // primary=1 so the last-line selection is the primary; we assert its cursor.
     let sels = SelectionSet::from_vec(
         vec![

@@ -27,7 +27,7 @@
 //! exact signatures:
 //! 1. **Motion** — pure, repeats `count` times over a `SelectionSet`.
 //! 2. **Selection** — pure, same shape without the repeat semantics.
-//! 3. **Edit** — pure, takes/returns `Text` — never extendable.
+//! 3. **Edit** — pure, takes/returns `BufferText` — never extendable.
 //! 4. **EditorCmd** — side-effectful, for composite operations (mode
 //!    changes, registers, undo groups, parameterized motions). Implemented
 //!    in `editor/commands/`; stored and dispatched as a function pointer

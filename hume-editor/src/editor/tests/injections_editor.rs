@@ -56,7 +56,7 @@ fn skip_unless_fixtures() -> bool {
 /// mostly care about byte-offset edits at position 0, not cursor placement.
 fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
     let buf = crate::editor::buffer::Buffer::new(
-        hume_editing::text::Text::from(source),
+        hume_editing::text::BufferText::from(source),
         hume_editing::selection::SelectionSet::default(),
     );
     let mut ed = Editor::for_testing(buf);

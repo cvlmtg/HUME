@@ -5,7 +5,7 @@ use crate::search::find_matches_in_range;
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::lines::line_content_end;
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, classify_char};
 
 // ── Split on newlines ─────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ use hume_editing::word::{CharClass, classify_char};
 /// The direction (forward/backward) of the original selection is preserved on
 /// every piece. The primary becomes the first piece of the original primary.
 pub fn cmd_split_selection_on_newlines(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,
@@ -90,7 +90,7 @@ pub fn cmd_split_selection_on_newlines(
 /// Returns `None` when no matches are found in any selection — the caller
 /// should keep the original selections unchanged.
 pub fn select_matches_within(
-    buf: &Text,
+    buf: &BufferText,
     sels: &SelectionSet,
     regex: &Regex,
 ) -> Option<SelectionSet> {
@@ -132,7 +132,7 @@ pub fn select_matches_within(
 /// the entire selection is whitespace the selection collapses to a cursor at
 /// the original `head`.
 pub fn cmd_trim_selection_whitespace(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     _mode: MotionMode,

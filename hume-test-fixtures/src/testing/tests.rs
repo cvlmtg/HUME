@@ -112,7 +112,7 @@ fn parse_literal_dash_and_angle_in_buffer() {
 
 #[test]
 fn serialize_cursor_at_start() {
-    let buf = Text::from("hello");
+    let buf = BufferText::from("hello");
     let sels = SelectionSet::single(Selection::collapsed(0));
     assert_eq!(serialize_state(&buf, &sels), "-[h]>ello\n");
 }
@@ -120,7 +120,7 @@ fn serialize_cursor_at_start() {
 #[test]
 fn serialize_cursor_at_end() {
     // cursor at 5 = on the structural trailing \n.
-    let buf = Text::from("hello");
+    let buf = BufferText::from("hello");
     let sels = SelectionSet::single(Selection::collapsed(5));
     assert_eq!(serialize_state(&buf, &sels), "hello-[\n]>");
 }
@@ -128,7 +128,7 @@ fn serialize_cursor_at_end() {
 #[test]
 fn serialize_forward_selection() {
     // anchor=0, head=3 — selects "hell" (positions 0..=3).
-    let buf = Text::from("hello world");
+    let buf = BufferText::from("hello world");
     let sels = SelectionSet::single(Selection::new(0, 3));
     assert_eq!(serialize_state(&buf, &sels), "-[hell]>o world\n");
 }
@@ -136,7 +136,7 @@ fn serialize_forward_selection() {
 #[test]
 fn serialize_backward_selection() {
     // anchor=3, head=0 — selects "hell" (positions 0..=3), cursor on 'h'.
-    let buf = Text::from("hello");
+    let buf = BufferText::from("hello");
     let sels = SelectionSet::single(Selection::new(3, 0));
     assert_eq!(serialize_state(&buf, &sels), "<[hell]-o\n");
 }
@@ -144,7 +144,7 @@ fn serialize_backward_selection() {
 #[test]
 fn serialize_forward_selection_head_at_eof() {
     // head=5 is the trailing \n in "hello\n". Selects "hello\n".
-    let buf = Text::from("hello");
+    let buf = BufferText::from("hello");
     let sels = SelectionSet::single(Selection::new(0, 5));
     assert_eq!(serialize_state(&buf, &sels), "-[hello\n]>");
 }

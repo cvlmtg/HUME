@@ -198,7 +198,7 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
 /// exception is tolerable in practice.
 ///
 /// Fail oracle: make the unopened branch call `wire_pos_to_grapheme_col`
-/// against a freshly-read `Text` (this function's behavior before it stopped
+/// against a freshly-read `BufferText` (this function's behavior before it stopped
 /// reading files) — row 1 would read `1:3`, identical to row 0, and the
 /// divergence assertion below would fail to catch a regression back to
 /// reading the file.

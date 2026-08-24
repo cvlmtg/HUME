@@ -13,7 +13,7 @@ use hume_treesitter::grammar::LoadedGrammar;
 
 use crate::editor::buffer::Buffer;
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 /// Create an editor with `source` as buffer text and a JSON grammar attached.
 /// Runs `reparse_stale_buffers()` once to complete the initial (full) parse.
@@ -23,7 +23,7 @@ use hume_editing::text::Text;
 fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
     let parser_path = grammar_parser_path("json");
     let hl_path = grammar_query_path("json");
-    let buf = Buffer::new(Text::from(source), SelectionSet::default());
+    let buf = Buffer::new(BufferText::from(source), SelectionSet::default());
     let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
     ed.state

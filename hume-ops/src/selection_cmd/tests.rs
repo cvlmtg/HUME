@@ -222,7 +222,7 @@ fn collapse_to_anchor_backward_selection() {
 fn collapse_to_anchor_merges_coincident_anchors() {
     // Two selections with different heads but the same anchor collapse to
     // the same cursor and must be merged.
-    let buf = hume_editing::text::Text::from("hello\n");
+    let buf = hume_editing::text::BufferText::from("hello\n");
     let sels = hume_editing::selection::SelectionSet::from_vec(
         vec![
             hume_editing::selection::Selection::new(0, 2), // anchor=0
@@ -250,7 +250,7 @@ fn collapse_empty_buffer() {
 fn collapse_two_selections_same_head_merges() {
     // Two selections with different anchors but the same head collapse to
     // one cursor — map (which always merges) must reduce the count.
-    let buf = hume_editing::text::Text::from("hello\n");
+    let buf = hume_editing::text::BufferText::from("hello\n");
     let sels = hume_editing::selection::SelectionSet::from_vec(
         vec![
             hume_editing::selection::Selection::new(0, 3), // head at 3

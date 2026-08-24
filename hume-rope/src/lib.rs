@@ -2,7 +2,7 @@
 //!
 //! ## The trailing-newline invariant
 //!
-//! Every HUME buffer (`hume_editing::Text`) always ends with a structural
+//! Every HUME buffer (`hume_editing::BufferText`) always ends with a structural
 //! `\n`. Ropey does not know this — it happily reports one extra empty line
 //! past the buffer's real content (the "phantom" line). Two families of
 //! functions in this crate answer "how many lines" / "which line is last":
@@ -32,7 +32,7 @@ pub mod width;
 pub(crate) mod test_support {
     use ropey::Rope;
 
-    /// Mirrors `hume_editing::text::Text::from`'s trailing-newline invariant
+    /// Mirrors `hume_editing::text::BufferText::from`'s trailing-newline invariant
     /// (minus CRLF normalization, unneeded by these tests) so the algorithms
     /// under test are exercised against the same buffer shape production
     /// code always hands them.

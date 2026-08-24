@@ -1,6 +1,6 @@
 use crate::grapheme::next_grapheme_boundary;
 use crate::lines::is_line_start;
-use crate::text::Text;
+use crate::text::BufferText;
 
 /// What a [`StickyDisplayCol`]'s number is measured *from*.
 ///
@@ -190,7 +190,7 @@ impl Selection {
     ///
     /// Use this (not `end()`) when computing char ranges for deletion or
     /// buffer slices — all edit operations should use `end_inclusive`.
-    pub fn end_inclusive(&self, buf: &Text) -> usize {
+    pub fn end_inclusive(&self, buf: &BufferText) -> usize {
         // next_grapheme_boundary returns one past the cluster; subtract 1 to
         // get the last codepoint index (inclusive upper bound for the range).
         next_grapheme_boundary(buf, self.end()).saturating_sub(1)
@@ -200,7 +200,7 @@ impl Selection {
     ///
     /// A selection produced by `select-line` always ends on the line's trailing
     /// `\n`. Charwise and word selections end on content characters.
-    pub fn ends_on_newline(&self, buf: &Text) -> bool {
+    pub fn ends_on_newline(&self, buf: &BufferText) -> bool {
         buf.char_at(self.end()) == Some('\n')
     }
 
@@ -209,7 +209,7 @@ impl Selection {
     ///
     /// Equivalent to `end_inclusive(buf).min(buf.last_content_char())`. Use
     /// instead of inlining that expression to make the protection intent clear.
-    pub fn content_end(&self, buf: &Text) -> usize {
+    pub fn content_end(&self, buf: &BufferText) -> usize {
         self.end_inclusive(buf).min(buf.last_content_char())
     }
 
@@ -269,7 +269,7 @@ impl Selection {
 ///
 /// Counterpart to `is_register_linewise` in `ops::register`, which answers
 /// "is this *register text* linewise?" at paste time.
-pub fn is_selection_linewise(buf: &Text, sel: &Selection) -> bool {
+pub fn is_selection_linewise(buf: &BufferText, sel: &Selection) -> bool {
     sel.ends_on_newline(buf) && is_line_start(buf, sel)
 }
 

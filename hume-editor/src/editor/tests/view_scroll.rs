@@ -11,9 +11,9 @@ use pretty_assertions::assert_eq;
 
 fn view_test_editor() -> Editor {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
     let content = "a\n".repeat(50);
-    let buf = Text::from(content.as_str());
+    let buf = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
@@ -99,14 +99,14 @@ fn zb_puts_cursor_at_bottom() {
 #[test]
 fn zz_in_wrap_mode_walks_display_rows() {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
 
     // Three buffer lines, the middle one wraps to 4 rows under Soft{4}:
     //   line 0: "line0"          → 2 rows ("line", "0")
     //   line 1: "abcdefghijklmnop" → 4 rows ("abcd", "efgh", "ijkl", "mnop")
     //   line 2: "line2"          → 2 rows
     let content = "line0\nabcdefghijklmnop\nline2\n";
-    let buf = Text::from(content);
+    let buf = BufferText::from(content);
 
     // Cursor on "i" (line 1, char 8 within line; chars 8-11 are sub-row 2).
     let head = buf.rope().line_to_char(1) + 8;
@@ -131,10 +131,10 @@ fn zz_in_wrap_mode_walks_display_rows() {
 #[test]
 fn zt_in_wrap_mode_anchors_cursor_row_at_top() {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
 
     let content = "line0\nabcdefghijklmnop\nline2\n";
-    let buf = Text::from(content);
+    let buf = BufferText::from(content);
 
     // Cursor on "j" (line 1, char 9; chars 8-11 → sub-row 2).
     let head = buf.rope().line_to_char(1) + 9;

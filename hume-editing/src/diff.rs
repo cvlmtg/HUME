@@ -1,4 +1,4 @@
-//! Text diffing.
+//! BufferText diffing.
 //!
 //! Two composable entry points:
 //!
@@ -23,7 +23,7 @@
 //! - [`LineHunk`] ranges are **line indices** into the caller-supplied `old`/
 //!   `new` slices.
 //! - [`WordHunk`] ranges are **char offsets** into the caller-supplied
-//!   `&str` inputs (consistent with `text::Text`'s char-offset invariant).
+//!   `&str` inputs (consistent with `text::BufferText`'s char-offset invariant).
 
 use std::hash::Hash;
 use std::ops::Range;
@@ -197,7 +197,7 @@ pub enum WordHunkKind {
 /// the inputs passed to [`diff_words`]. Note: `&str` indexing is byte-based, so
 /// slicing `&old[hunk.old]` panics on non-ASCII inputs — convert char offsets
 /// to byte offsets (e.g. via `char_indices`) before slicing. This matches
-/// [`crate::text::Text`]'s char-offset invariant.
+/// [`crate::text::BufferText`]'s char-offset invariant.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
 pub struct WordHunk {

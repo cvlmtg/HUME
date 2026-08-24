@@ -1,7 +1,7 @@
 use crate::MotionMode;
 use hume_editing::lines::{char_col_in_line, place_char_column};
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 // ── Vertical copy ─────────────────────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ use hume_editing::text::Text;
 /// copy after it to that line's column. If no copy was added (last-line edge
 /// case) the primary stays on the original.
 pub fn cmd_copy_selection_on_next_line(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     count: usize,
     _mode: MotionMode,
@@ -45,7 +45,7 @@ pub fn cmd_copy_selection_on_next_line(
 ///
 /// Mirror of [`cmd_copy_selection_on_next_line`] — shifts up instead of down.
 pub fn cmd_copy_selection_on_prev_line(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     count: usize,
     _mode: MotionMode,
@@ -57,7 +57,7 @@ pub fn cmd_copy_selection_on_prev_line(
 /// down and `-1` for up; `count` is how many lines in that direction to
 /// duplicate onto.
 fn copy_selection_vertically(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     direction: isize,
     count: usize,

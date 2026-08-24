@@ -1,6 +1,6 @@
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
@@ -236,7 +236,7 @@ pub(crate) fn cmd_toggle_extend(
 fn do_collapse_and_exit_extend(
     state: &mut EditorState,
     view: &mut EngineView,
-    collapse: impl FnOnce(&Text, SelectionSet) -> SelectionSet,
+    collapse: impl FnOnce(&BufferText, SelectionSet) -> SelectionSet,
 ) {
     state.set_mode(EditorMode::Normal);
     apply_focused_motion(state, view, collapse);

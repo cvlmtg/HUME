@@ -1,7 +1,7 @@
 use super::MotionMode;
 use hume_editing::lines::{is_line_start, line_break_char, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 // ── Line selection motions ────────────────────────────────────────────────────
 
@@ -9,10 +9,10 @@ use hume_editing::text::Text;
 /// step function here is idempotent once clamped at a buffer edge, so a huge
 /// count prefix (e.g. `999999999x`) does O(lines moved) work, not O(count).
 fn repeat_motion(
-    buf: &Text,
+    buf: &BufferText,
     sel: Selection,
     count: usize,
-    step: impl Fn(&Text, Selection) -> Selection,
+    step: impl Fn(&BufferText, Selection) -> Selection,
 ) -> Selection {
     let mut s = sel;
     for _ in 0..count {
@@ -41,7 +41,7 @@ fn repeat_motion(
 /// or last line are head-relative (checked against the line the head is
 /// about to leave), not selection-end-relative — a backward selection whose
 /// far edge sits on the last line must still be able to shrink via `x`.
-fn extend_line_span(buf: &Text, sel: Selection, delta: isize) -> Selection {
+fn extend_line_span(buf: &BufferText, sel: Selection, delta: isize) -> Selection {
     if !is_selection_linewise(buf, &sel) {
         let top_line = buf.char_to_line(sel.start());
         let bottom_line = buf.char_to_line(sel.end());
@@ -78,7 +78,7 @@ fn extend_line_span(buf: &Text, sel: Selection, delta: isize) -> Selection {
 /// Always produces a forward selection. `count` replays this exactly as if
 /// `x` were pressed `count` times in a row: it moves, landing on a single
 /// line, rather than growing a span (that's `Ctrl+x` / [`extend_line_span`]).
-fn move_select_line(buf: &Text, sel: Selection) -> Selection {
+fn move_select_line(buf: &BufferText, sel: Selection) -> Selection {
     let bottom_line = buf.char_to_line(sel.end());
     let end_excl = line_end_exclusive(buf, bottom_line);
     // If selection already ends on the trailing `\n`, jump to the next line.
@@ -101,7 +101,7 @@ fn move_select_line(buf: &Text, sel: Selection) -> Selection {
 /// `Extend` — grows or shrinks toward covering one more line downward, `count`
 /// times; see `extend_line_span`.
 pub fn cmd_select_line(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     count: usize,
     mode: MotionMode,
@@ -120,7 +120,7 @@ pub fn cmd_select_line(
 /// replays this exactly as if `X` were pressed `count` times in a row: it
 /// moves, landing on a single line, rather than growing a span (that's
 /// `Ctrl+X` / [`extend_line_span`]).
-fn move_select_line_backward(buf: &Text, sel: Selection) -> Selection {
+fn move_select_line_backward(buf: &BufferText, sel: Selection) -> Selection {
     let top_line = buf.char_to_line(sel.start());
     // If selection already starts at line start, jump to previous line.
     let target_line = if is_line_start(buf, &sel) && top_line > 0 {
@@ -142,7 +142,7 @@ fn move_select_line_backward(buf: &Text, sel: Selection) -> Selection {
 /// `Extend` — grows or shrinks toward covering one more line upward, `count`
 /// times; see `extend_line_span`.
 pub fn cmd_select_line_backward(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     count: usize,
     mode: MotionMode,

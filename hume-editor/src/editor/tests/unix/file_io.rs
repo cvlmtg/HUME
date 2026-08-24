@@ -618,7 +618,7 @@ fn wa_skips_pathless_buffers() {
 
     // Only one file buffer — scratch shouldn't add to the count.
     let scratch_bid = {
-        let scratch = Buffer::new(Text::from("scratch\n"), SelectionSet::default());
+        let scratch = Buffer::new(BufferText::from("scratch\n"), SelectionSet::default());
         let bid = ed.open_buffer(scratch);
         ed.switch_to_buffer_without_jump(bid);
         dirty_focused(&mut ed);

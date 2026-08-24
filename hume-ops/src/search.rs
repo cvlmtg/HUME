@@ -1,9 +1,9 @@
 //! Incremental search over a rope buffer using `regex-cursor`.
 //!
-//! All functions here are pure: they read `Text` and a compiled `Regex`,
+//! All functions here are pure: they read `BufferText` and a compiled `Regex`,
 //! return char-offset ranges, and never modify editor state. The regex match
 //! byte offsets from `regex-cursor` are converted to HUME's char offsets via
-//! `Text::byte_to_char`.
+//! `BufferText::byte_to_char`.
 //!
 //! # Coordinate system
 //!
@@ -13,7 +13,7 @@
 
 use regex_cursor::{Input, RopeyCursor, engines::meta::Regex};
 
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 /// Direction for `search-forward` / `search-backward` and `search-next` / `search-prev`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,7 +65,7 @@ pub fn compile_search_regex(pattern: &str) -> Option<Regex> {
 /// Returns `None` when no match exists anywhere in the buffer, or when the
 /// match is zero-width (which would cause the cursor to appear stuck).
 pub fn find_next_match(
-    buf: &Text,
+    buf: &BufferText,
     regex: &Regex,
     from_char: usize,
     direction: SearchDirection,
@@ -108,7 +108,7 @@ pub fn find_next_match(
 ///
 /// Used by `SearchMatchHighlighter` to convert matches to line-relative byte
 /// ranges for the engine's highlight provider system.
-pub fn find_all_matches(buf: &Text, regex: &Regex) -> Vec<(usize, usize)> {
+pub fn find_all_matches(buf: &BufferText, regex: &Regex) -> Vec<(usize, usize)> {
     find_matches_in_range(buf, regex, 0, buf.len_chars() - 1)
 }
 
@@ -120,7 +120,7 @@ pub fn find_all_matches(buf: &Text, regex: &Regex) -> Vec<(usize, usize)> {
 /// are returned. Results are `(start_char, end_char_inclusive)` pairs in
 /// document order. Zero-width matches are skipped.
 pub fn find_matches_in_range(
-    buf: &Text,
+    buf: &BufferText,
     regex: &Regex,
     start_char: usize,
     end_char: usize, // inclusive
@@ -253,7 +253,7 @@ pub fn find_match_from_cache(
 /// acceptable for typical buffer sizes. A reverse-DFA approach could be
 /// added later for very large files.
 fn search_match_in(
-    buf: &Text,
+    buf: &BufferText,
     regex: &Regex,
     byte_range: std::ops::Range<usize>,
     take_last: bool,

@@ -55,8 +55,8 @@ fn visual_test_editor(head: usize) -> Editor {
     let content = format!("{}\nshort\n", line0);
     // Build manually so we can place the cursor at an exact char offset.
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
-    let buf = Text::from(content.as_str());
+    use hume_editing::text::BufferText;
+    let buf = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(head));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     // Pin to 76-column indent-wrap so the char-offset expectations in the tests
@@ -301,9 +301,9 @@ fn visual_move_up_with_explicit_count_moves_buffer_lines() {
 
 fn buffer_line_editor(content: &str, head: usize) -> Editor {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
 
-    let buf = Text::from(content);
+    let buf = BufferText::from(content);
     let sels = SelectionSet::single(Selection::collapsed(head));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
@@ -376,13 +376,13 @@ fn explicit_count_move_down_to_empty_line() {
 #[test]
 fn explicit_count_move_down_multi_cursor_merge() {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
 
     // Two cursors on line 0 at different columns (2 and 4), both past line
     // 1's width (2) — both clamp to its last char and converge there.
     // `SelectionSet::map` must still merge them through the new
     // `move_buffer_line` path, same as it does for every other motion.
-    let buf = Text::from("hello\nab\n");
+    let buf = BufferText::from("hello\nab\n");
     let sels = SelectionSet::from_vec(vec![Selection::collapsed(2), Selection::collapsed(4)], 0);
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
@@ -484,9 +484,9 @@ fn explicit_count_move_up_holds_display_column_through_a_short_line() {
 #[test]
 fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_row_one() {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
 
-    let buf = Text::from("abcdefgh\nABCDEFGH\n");
+    let buf = BufferText::from("abcdefgh\nABCDEFGH\n");
 
     // A `BufferLine`-tagged latch is this call's own domain and seeds the
     // hop directly.
@@ -541,14 +541,14 @@ fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_r
 #[test]
 fn resize_invalidates_a_display_row_latch_measured_at_the_old_wrap_width() {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
 
     // Line 0 ("0123456789ABCDE", 15 chars) wraps under a content-width-driven
     // `Soft { width: 0 }`. Line 1 ("FGHIJ") gives `j` somewhere to land after
     // line 0's own wrap rows are exhausted, so the second press below crosses
     // out of the resized block entirely — the case a stale sticky column
     // would misplace worst.
-    let buf = Text::from("0123456789ABCDE\nFGHIJ\n");
+    let buf = BufferText::from("0123456789ABCDE\nFGHIJ\n");
     let sels = SelectionSet::single(Selection::collapsed(2)); // '2', row 0 col 2
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     let pid = ed.state.focused_pane_id;
@@ -599,12 +599,12 @@ fn explicit_count_move_down_emits_a_buffer_line_tagged_sticky_column() {
 #[test]
 fn explicit_count_move_down_past_last_content_line_leaves_head_exactly_where_it_was() {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
 
     // Already on the buffer's last content line; a further count must leave
     // `head` untouched rather than landing on whatever this line's own width
     // resolves the (absurdly large) latched column to.
-    let buf = Text::from("ab\ncdefgh\n");
+    let buf = BufferText::from("ab\ncdefgh\n");
     let sels = SelectionSet::single(Selection::with_sticky_display_col(
         5,
         5,
@@ -643,12 +643,12 @@ fn explicit_count_move_down_past_last_content_line_leaves_head_exactly_where_it_
 #[test]
 fn no_wrap_j_then_count_2_holds_display_column_across_the_family_switch() {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
 
     // line0 = "\tfoo" (tab_width 4: 'f' at display col 4), line1 = "x" (1
     // char), line2 = "abcdefgh" (8 chars, cols 0..7).
     let content = "\tfoo\nx\nabcdefgh\n";
-    let buf = Text::from(content);
+    let buf = BufferText::from(content);
     let sels = SelectionSet::single(Selection::collapsed(1)); // 'f', display col 4
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
@@ -681,7 +681,7 @@ fn no_wrap_j_then_count_2_holds_display_column_across_the_family_switch() {
 #[test]
 fn wrapped_j_then_count_2_rederives_instead_of_reading_the_row_latch_as_a_line_column() {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
 
     // line0 = 80 'a's (wraps at col 76, same layout as `visual_test_editor`);
     // line1 = 100 'b's, long enough that display col 40 (the row latch) and
@@ -689,7 +689,7 @@ fn wrapped_j_then_count_2_rederives_instead_of_reading_the_row_latch_as_a_line_c
     let line0: String = "a".repeat(80);
     let line1: String = "b".repeat(100);
     let content = format!("{line0}\n{line1}\n");
-    let buf = Text::from(content.as_str());
+    let buf = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(40)); // sub-row 0, display col 40
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
@@ -727,12 +727,12 @@ fn wrapped_j_then_count_2_rederives_instead_of_reading_the_row_latch_as_a_line_c
 fn no_wrap_bare_j_and_screen_row_scroll_agree_on_display_column() {
     use crate::editor::visual_move::{VerticalUnit, apply_visual_vertical};
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
     use hume_ops::MotionMode;
 
     let no_wrap_editor_at_f = || {
         let content = "\tfoo\nabcdefgh\n";
-        let buf = Text::from(content);
+        let buf = BufferText::from(content);
         let sels = SelectionSet::single(Selection::collapsed(1)); // 'f', display col 4
         let mut ed = Editor::for_testing(Buffer::new(buf, sels));
         ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
@@ -803,7 +803,7 @@ fn apply_visual_vertical_ignores_explicit_count_when_caller_forces_visual() {
 
 /// Each cursor uses its own sticky column in multi-cursor j/k.
 ///
-/// Text layout (visual_test_editor):
+/// BufferText layout (visual_test_editor):
 ///   sub-row 0: chars  0..76 (cols 0..75)
 ///   sub-row 1: chars 76..80 (cols 0..3)  ← two cursors placed here
 ///   line 1:    chars 81..86 "short\n"
@@ -817,7 +817,7 @@ fn visual_move_per_selection_sticky_col() {
 
     let line0: String = "a".repeat(80);
     let content = format!("{}\nshort\n", line0);
-    let buf = hume_editing::text::Text::from(content.as_str());
+    let buf = hume_editing::text::BufferText::from(content.as_str());
     // A at col 0, B at col 3 (primary).
     let sels = SelectionSet::from_vec(
         vec![
@@ -890,7 +890,7 @@ impl DecorationSource for FixedInlineHint {
 fn explicit_count_first_press_resolves_column_through_a_preceding_hint() {
     // line 0: hint "HHH" (3 cols) before "abc" — cursor on 'c' (char 2,
     // display col 5: 3 hint cols + 'a','b'). line 1: hint-free "abcdefgh".
-    let buf = hume_editing::text::Text::from("abc\nabcdefgh\n");
+    let buf = hume_editing::text::BufferText::from("abc\nabcdefgh\n");
     let sels = hume_editing::selection::SelectionSet::single(
         hume_editing::selection::Selection::collapsed(2),
     );
@@ -927,7 +927,7 @@ fn explicit_count_first_press_resolves_column_through_a_preceding_hint() {
 fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
     // line 0: "xyz" (plain). line 1: hint "HHH" before "abc" — bare j lands
     // on 'a' (char 4). line 2: hint-free "abcdefgh" — 2j's target.
-    let buf = hume_editing::text::Text::from("xyz\nabc\nabcdefgh\n");
+    let buf = hume_editing::text::BufferText::from("xyz\nabc\nabcdefgh\n");
     let sels = hume_editing::selection::SelectionSet::single(
         hume_editing::selection::Selection::collapsed(0),
     );
@@ -1048,9 +1048,9 @@ fn visual_extend_up_enters_previous_line_last_subrow() {
 
 fn word_wrap_editor() -> Editor {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
     let content = format!("{}+ ratatui\nshort\n", "a".repeat(75));
-    let buf = Text::from(content.as_str());
+    let buf = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
@@ -1174,10 +1174,10 @@ fn select_word_nearest_absorbs_whitespace_bookend_by_default() {
 #[test]
 fn select_word_nearest_does_not_absorb_previous_row_whitespace() {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
     // "hello wordB\n": wrap at column 6 puts "hello " (space included) on
     // sub-row 0, so "wordB" starts sub-row 1 with no leading space in-row.
-    let buf = Text::from("hello wordB\n");
+    let buf = BufferText::from("hello wordB\n");
     let sels = SelectionSet::single(Selection::collapsed(8)); // 'r' inside "wordB"
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
@@ -1216,11 +1216,11 @@ fn select_word_nearest_does_not_absorb_previous_row_whitespace() {
 #[test]
 fn select_word_absorbs_previous_row_whitespace_unlike_nearest_on_line() {
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
     // Same buffer/wrap as `select_word_nearest_does_not_absorb_previous_row_whitespace`:
     // "hello " (space included) wraps onto sub-row 0, so "wordB" starts
     // sub-row 1 with no leading space in-row.
-    let buf = Text::from("hello wordB\n");
+    let buf = BufferText::from("hello wordB\n");
     let sels = SelectionSet::single(Selection::collapsed(8)); // 'r' inside "wordB"
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
@@ -1402,12 +1402,12 @@ fn steel_wrapper_bare_dispatch_moves_visual_row() {
 fn steel_wrapper_explicit_count_moves_buffer_lines() {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::Text;
+    use hume_editing::text::BufferText;
     use hume_scripting::ScriptingHost;
 
     let line0: String = "a".repeat(80);
     let content = format!("{line0}\nb\nc\nd\n");
-    let buf = Text::from(content.as_str());
+    let buf = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(0));
     let mut ed = Editor::for_testing(Buffer::new(buf, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {

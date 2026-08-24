@@ -3,8 +3,8 @@ use pretty_assertions::assert_eq;
 
 /// Independent oracle: forward(old) == new and inverse(new) == old.
 fn assert_round_trip(old: &str, new: &str) {
-    let old_t = Text::from(old);
-    let new_t = Text::from(new);
+    let old_t = BufferText::from(old);
+    let new_t = BufferText::from(new);
     let (fwd, inv) = changesets_from_line_diff(&old_t, &new_t);
 
     let applied_fwd = fwd.apply(&old_t).expect("forward apply");
@@ -115,8 +115,8 @@ fn myers_coarse_replace_still_round_trips() {
     let new: String = (0..40)
         .map(|i| format!("line-{i}-pad-{}", (i + 1) % 5))
         .collect();
-    let old_t = Text::from(old.as_str());
-    let new_t = Text::from(new.as_str());
+    let old_t = BufferText::from(old.as_str());
+    let new_t = BufferText::from(new.as_str());
     let (fwd, inv) = changesets_from_line_diff_with_deadline(&old_t, &new_t, Duration::ZERO);
 
     let applied_fwd = fwd.apply(&old_t).expect("forward apply");
@@ -129,8 +129,8 @@ fn myers_coarse_replace_still_round_trips() {
 fn inverse_is_fine_grained_for_single_line_change() {
     // Pins the "fine-grained, not coarse" property: a single-line edit's
     // inverse must carry only the changed line, not a full-buffer delete.
-    let old = Text::from("alpha\nbeta\ngamma\n");
-    let new = Text::from("alpha\nBETA\ngamma\n");
+    let old = BufferText::from("alpha\nbeta\ngamma\n");
+    let new = BufferText::from("alpha\nBETA\ngamma\n");
     let (_fwd, inv) = changesets_from_line_diff(&old, &new);
 
     let inv_text = inv.apply(&new).expect("inverse apply");
@@ -163,8 +163,8 @@ fn arb_small_text(max_len: usize) -> impl Strategy<Value = String> {
 proptest! {
     #[test]
     fn prop_round_trip(old in arb_small_text(16), new in arb_small_text(16)) {
-        let old_t = Text::from(old.as_str());
-        let new_t = Text::from(new.as_str());
+        let old_t = BufferText::from(old.as_str());
+        let new_t = BufferText::from(new.as_str());
         let (fwd, inv) = changesets_from_line_diff(&old_t, &new_t);
 
         let applied_fwd = fwd.apply(&old_t).expect("forward apply");

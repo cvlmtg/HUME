@@ -45,7 +45,7 @@ impl CommandRegistry {
         .visual_move()
         .reg(self);
 
-        // ── Text-level goto motions ─────────────────────────────────────────
+        // ── BufferText-level goto motions ─────────────────────────────────────────
         super::motion!(
             self,
             "goto-first-line",

@@ -13,7 +13,7 @@ use crate::editor::search::SearchPattern;
 use crate::editor::{EditorState, SearchState};
 use crate::settings::EditorSettings;
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId};
 use hume_ops::register::{KillRing, RegisterSet};
@@ -170,7 +170,7 @@ fn reg(ed: &Editor, name: char) -> Vec<String> {
 /// Build a 20-line buffer with the cursor on a given line for jump list tests.
 fn jump_editor(cursor_line: usize) -> Editor {
     let text: String = (0..20).map(|i| format!("line {i}\n")).collect();
-    let buf = Text::from(text.as_str());
+    let buf = BufferText::from(text.as_str());
     let pos = buf.line_to_char(cursor_line);
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(pos));
     let doc = Buffer::new(buf, sels);
@@ -643,7 +643,7 @@ fn temp_file(content: &str) -> (std::path::PathBuf, tempfile::TempPath) {
 fn file_buffer(content: &str) -> (Buffer, tempfile::TempPath) {
     let (path, tmp_path) = temp_file(content);
     let (_, meta) = hume_platform::io::read_file(&path).unwrap();
-    let mut buf = Buffer::new(Text::from(content), SelectionSet::default());
+    let mut buf = Buffer::new(BufferText::from(content), SelectionSet::default());
     buf.set_path(Some(path));
     buf.file_meta = Some(meta);
     (buf, tmp_path)

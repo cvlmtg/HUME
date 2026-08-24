@@ -234,7 +234,7 @@ fn select_matches_bounded_to_selection() {
     // Only matches within the selection range should be found.
     // "ab" appears at (0,1) and (4,5) in "abcdab\n", but selection
     // covers only chars 2..3 ("cd") — no matches.
-    let buf = Text::from("abcdab\n");
+    let buf = BufferText::from("abcdab\n");
     let sels = SelectionSet::single(Selection::new(2, 3));
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
     assert!(select_matches_within(&buf, &sels, &regex).is_none());
@@ -243,7 +243,7 @@ fn select_matches_bounded_to_selection() {
 #[test]
 fn select_matches_multiple_selections() {
     // Two selections, each containing one "ab".
-    let buf = Text::from("ab cd ab\n");
+    let buf = BufferText::from("ab cd ab\n");
     let sel0 = Selection::new(0, 1); // "ab"
     let sel1 = Selection::new(6, 7); // "ab"
     let sels = SelectionSet::from_vec(vec![sel0, sel1], 0);
@@ -255,7 +255,7 @@ fn select_matches_multiple_selections() {
 #[test]
 fn select_matches_backward_selection() {
     // Backward selection (anchor > head) should work identically.
-    let buf = Text::from("aababab\n");
+    let buf = BufferText::from("aababab\n");
     let sels = SelectionSet::single(Selection::new(6, 0)); // backward
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
     let result = select_matches_within(&buf, &sels, &regex).unwrap();
@@ -281,7 +281,7 @@ fn select_matches_combining_grapheme() {
     // "café\n" where 'é' is e + U+0301 (2 codepoints at chars 3,4).
     // Selection covers the whole word. Matching "é" should produce a
     // selection spanning both codepoints (3,4).
-    let buf = Text::from("caf\u{0065}\u{0301}\n");
+    let buf = BufferText::from("caf\u{0065}\u{0301}\n");
     let sels = SelectionSet::single(Selection::new(0, 4));
     let regex = regex_cursor::engines::meta::Regex::new("\u{0065}\u{0301}").unwrap();
     let result = select_matches_within(&buf, &sels, &regex).unwrap();

@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::editor::error::CommandError;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
 
@@ -109,7 +109,7 @@ pub(crate) type EditorCmdFn = fn(
 /// Named only to keep `Option<fn(...)>` under clippy's type-complexity
 /// threshold — `fun` itself stays inline since the bare (non-`Option`) form
 /// doesn't trip it.
-type SelectionFn = fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet;
+type SelectionFn = fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet;
 
 /// A command that can be bound to a key in a keymap.
 ///
@@ -119,7 +119,7 @@ type SelectionFn = fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet;
 pub(crate) enum MappableCommand {
     /// Motion that repeats `count` times.
     ///
-    /// Signature: `fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet`
+    /// Signature: `fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet`
     ///
     /// Motions are always extendable. The `mode` parameter selects Move or Extend
     /// semantics at dispatch time — no separate extend-variant functions needed.
@@ -128,7 +128,7 @@ pub(crate) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet,
+        fun: fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet,
         /// Alternate body used in place of `fun` when the focused buffer
         /// resolves `word-selects-whitespace` to true (see
         /// `run_native_body`'s dispatch swap). `None` for every motion except
@@ -151,7 +151,7 @@ pub(crate) enum MappableCommand {
     },
     /// Selection or text-object operation (accepts count).
     ///
-    /// Signature: `fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet`
+    /// Signature: `fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet`
     ///
     /// All selection commands receive `MotionMode`. Non-extendable ones accept
     /// `_mode` and ignore it; extendable text objects branch on it. The `usize`
@@ -161,7 +161,7 @@ pub(crate) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: fn(&Text, SelectionSet, usize, MotionMode) -> SelectionSet,
+        fun: fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet,
         /// Alternate body used in place of `fun` when the focused buffer
         /// resolves `word-selects-whitespace` to true. `None` for every
         /// selection command except `select-word`/`select-uppercase-word`
@@ -172,9 +172,9 @@ pub(crate) enum MappableCommand {
         /// regardless of how far the cursor moves. Used for `select-all` (`%`).
         jump: bool,
     },
-    /// Text-modifying edit with no extra arguments.
+    /// BufferText-modifying edit with no extra arguments.
     ///
-    /// Signature: `fn(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet)`
+    /// Signature: `fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet)`
     ///
     /// Edits are never extendable — they don't carry `MotionMode`.
     Edit {
@@ -182,7 +182,7 @@ pub(crate) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: fn(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+        fun: fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
         /// Whether `.` should replay this command. Set to `true` for edits that
         /// are meaningful to repeat (e.g. user-facing deletions). Set to `false`
         /// for internal primitives like `delete-char-backward`.

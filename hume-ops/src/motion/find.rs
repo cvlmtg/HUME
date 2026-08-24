@@ -2,7 +2,7 @@ use super::{FindKind, MotionMode, apply_motion};
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::lines::line_break_char;
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 // ── Find/till character motions ───────────────────────────────────────────────
 
@@ -11,7 +11,7 @@ use hume_editing::text::Text;
 /// Returns the char offset of the first match, or `None` if not found before
 /// the line's terminating `\n`. The newline itself is never matched — it is a
 /// structural boundary, not content.
-pub(super) fn find_char_on_line_forward(buf: &Text, head: usize, ch: char) -> Option<usize> {
+pub(super) fn find_char_on_line_forward(buf: &BufferText, head: usize, ch: char) -> Option<usize> {
     let line = buf.char_to_line(head);
     // Exclude the '\n': stop iteration once pos reaches the newline position.
     let newline = line_break_char(buf, line);
@@ -29,7 +29,7 @@ pub(super) fn find_char_on_line_forward(buf: &Text, head: usize, ch: char) -> Op
 ///
 /// Returns the char offset of the first match, or `None` if not found before
 /// the line start.
-pub(super) fn find_char_on_line_backward(buf: &Text, head: usize, ch: char) -> Option<usize> {
+pub(super) fn find_char_on_line_backward(buf: &BufferText, head: usize, ch: char) -> Option<usize> {
     let line = buf.char_to_line(head);
     let line_start = buf.line_to_char(line);
     if head == line_start {
@@ -59,7 +59,7 @@ pub(super) fn find_char_on_line_backward(buf: &Text, head: usize, ch: char) -> O
 /// `count` is supported via `apply_motion`'s fold: `3fa` skips to the 3rd `a`.
 /// No-op per selection if `ch` is not found.
 pub fn find_char_forward(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     count: usize,
     mode: MotionMode,
@@ -88,7 +88,7 @@ pub fn find_char_forward(
 ///
 /// No-op per selection if `ch` is not found.
 pub fn find_char_backward(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     count: usize,
     mode: MotionMode,

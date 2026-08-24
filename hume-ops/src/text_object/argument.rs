@@ -3,7 +3,7 @@
 
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 use super::apply_text_object_by_mode;
 use crate::MotionMode;
@@ -17,7 +17,7 @@ type Segment = (usize, usize);
 ///
 /// Tries all three bracket types and returns the pair with the smallest span.
 /// Tightest means innermost — for nested structures, we want the closest pair.
-fn find_tightest_bracket_pair(buf: &Text, pos: usize) -> Option<(usize, usize)> {
+fn find_tightest_bracket_pair(buf: &BufferText, pos: usize) -> Option<(usize, usize)> {
     const PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
     PAIRS
         .iter()
@@ -30,7 +30,7 @@ fn find_tightest_bracket_pair(buf: &Text, pos: usize) -> Option<(usize, usize)> 
 /// Returns a vec of `(start, end)` inclusive char-index pairs, one per segment,
 /// including leading/trailing whitespace. Commas inside nested `()`, `[]`, or `{}`
 /// are skipped. Returns an empty vec for adjacent brackets (`()`).
-fn find_comma_segments(buf: &Text, open_pos: usize, close_pos: usize) -> Vec<Segment> {
+fn find_comma_segments(buf: &BufferText, open_pos: usize, close_pos: usize) -> Vec<Segment> {
     // Content zone: open_pos+1 ..= close_pos-1. Empty when brackets are adjacent.
     if close_pos <= open_pos + 1 {
         return Vec::new();
@@ -95,7 +95,7 @@ fn which_segment(segments: &[Segment], pos: usize) -> Option<usize> {
 /// only-argument case re-enters [`inner_argument`] with it, which lets that
 /// case descend into a nested bracket pair instead of trimming the segment
 /// already resolved against the outer one.
-fn locate_argument(buf: &Text, pos: usize) -> Option<(Vec<Segment>, usize, usize)> {
+fn locate_argument(buf: &BufferText, pos: usize) -> Option<(Vec<Segment>, usize, usize)> {
     let (open_pos, close_pos) = find_tightest_bracket_pair(buf, pos)?;
 
     // Nudge: if the cursor is on a bracket itself, step into the content zone.
@@ -122,7 +122,7 @@ fn locate_argument(buf: &Text, pos: usize) -> Option<(Vec<Segment>, usize, usize
 /// `next_grapheme_boundary`/`prev_grapheme_boundary` are required here
 /// because `start`/`end` are text positions — raw `+= 1`/`-= 1` would
 /// mis-step on multi-byte clusters.
-fn trim_segment(buf: &Text, (raw_start, raw_end): Segment) -> Option<(usize, usize)> {
+fn trim_segment(buf: &BufferText, (raw_start, raw_end): Segment) -> Option<(usize, usize)> {
     let mut start = raw_start;
     while start <= raw_end && matches!(buf.char_at(start), Some(' ' | '\t' | '\n' | '\r')) {
         start = next_grapheme_boundary(buf, start);
@@ -144,7 +144,7 @@ fn trim_segment(buf: &Text, (raw_start, raw_end): Segment) -> Option<(usize, usi
 ///
 /// Works for function arguments `foo(a, b)`, array items `[1, 2]`, object
 /// fields `{x: 1, y: 2}`, and any comma-separated list inside brackets.
-fn inner_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
+fn inner_argument(buf: &BufferText, pos: usize) -> Option<(usize, usize)> {
     let (segments, idx, _) = locate_argument(buf, pos)?;
     trim_segment(buf, segments[idx])
 }
@@ -158,7 +158,7 @@ fn inner_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
 ///   yields `foo(bbb)` with no leading space.
 /// - **Non-first arg**: extend start back to include the preceding comma,
 ///   so `delete(around bbb)` in `foo(aaa, bbb)` yields `foo(aaa)`.
-fn around_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
+fn around_argument(buf: &BufferText, pos: usize) -> Option<(usize, usize)> {
     let (segments, idx, nudged_pos) = locate_argument(buf, pos)?;
 
     if segments.len() == 1 {
@@ -191,7 +191,7 @@ fn around_argument(buf: &Text, pos: usize) -> Option<(usize, usize)> {
 }
 
 pub fn cmd_inner_argument(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     mode: MotionMode,
@@ -200,7 +200,7 @@ pub fn cmd_inner_argument(
 }
 
 pub fn cmd_around_argument(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     mode: MotionMode,

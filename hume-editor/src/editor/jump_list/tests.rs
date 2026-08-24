@@ -2,7 +2,7 @@ use super::*;
 use hume_editing::selection::{Selection, SelectionSet};
 
 /// Helper: build a JumpEntry with a cursor at `char_pos` on `line`.
-/// Bypasses `JumpEntry::new` since unit tests don't have a Text.
+/// Bypasses `JumpEntry::new` since unit tests don't have a BufferText.
 fn entry(char_pos: usize, line: usize) -> JumpEntry {
     JumpEntry {
         buffer_id: hume_engine::pipeline::BufferId::default(),

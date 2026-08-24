@@ -4,7 +4,7 @@
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::lines::line_end_exclusive;
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, classify_char, is_uppercase_word_boundary, is_word_boundary};
 
 use super::apply_text_object_by_mode;
@@ -16,7 +16,7 @@ use crate::MotionMode;
 /// "class" (no boundary crossing). Whatever class the char at `pos` belongs
 /// to defines the selected run — including whitespace runs and EOL.
 pub fn inner_word_impl(
-    buf: &Text,
+    buf: &BufferText,
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
 ) -> Option<(usize, usize)> {
@@ -64,7 +64,7 @@ pub fn inner_word_impl(
 }
 
 pub fn cmd_inner_word(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     mode: MotionMode,
@@ -95,7 +95,7 @@ pub fn cmd_inner_word(
 /// mid-line, so a leading run that reaches it is ordinary inter-word spacing
 /// that happens to sit at the row split, not indentation, and stays
 /// absorbable up to that floor.
-pub fn expand_word_unit(buf: &Text, start: usize, end: usize, min_start: usize) -> (usize, usize) {
+pub fn expand_word_unit(buf: &BufferText, start: usize, end: usize, min_start: usize) -> (usize, usize) {
     let min_start_is_bol = min_start == 0
         || classify_char(
             buf.char_at(prev_grapheme_boundary(buf, min_start))
@@ -163,7 +163,7 @@ pub fn expand_word_unit(buf: &Text, start: usize, end: usize, min_start: usize) 
 /// Also used to resolve an extend selection's anchor unit when
 /// `word-selects-whitespace` is on.
 pub fn word_unit_at(
-    buf: &Text,
+    buf: &BufferText,
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
     min_start: usize,
@@ -215,7 +215,7 @@ pub fn word_unit_at(
 /// mirrors the effective `word-selects-whitespace` setting — see
 /// `cmd_select_word_nearest_on_line` and `cmd_visual_select_word_nearest_on_line`.
 pub fn nearest_word_on_line(
-    buf: &Text,
+    buf: &BufferText,
     head: usize,
     line_start: usize,
     line_end_excl: usize,
@@ -334,7 +334,7 @@ pub fn apply_nearest_word_result(
 /// In `Extend` mode the matched word range is unioned with the existing
 /// selection, matching the behaviour of `inner-word` in extend mode.
 pub fn cmd_select_word_nearest_on_line(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     mode: MotionMode,
@@ -355,7 +355,7 @@ pub fn cmd_select_word_nearest_on_line(
 /// under a separate name because it stays available regardless of
 /// `word-selects-whitespace`.
 pub fn cmd_around_word(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     count: usize,
     mode: MotionMode,
@@ -365,7 +365,7 @@ pub fn cmd_around_word(
 
 #[allow(non_snake_case)]
 pub fn cmd_inner_uppercase_word(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     mode: MotionMode,
@@ -378,7 +378,7 @@ pub fn cmd_inner_uppercase_word(
 /// Around WORD (`ma W`); see [`cmd_around_word`].
 #[allow(non_snake_case)]
 pub fn cmd_around_uppercase_word(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     count: usize,
     mode: MotionMode,
@@ -392,7 +392,7 @@ pub fn cmd_around_uppercase_word(
 /// selection via `apply_text_object_extend`. Also the body `maw` delegates
 /// to — [`cmd_around_word`] — the two select the same span.
 pub fn cmd_select_word_around(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     mode: MotionMode,
@@ -405,7 +405,7 @@ pub fn cmd_select_word_around(
 /// Select the WORD under the cursor (`MM`); see [`cmd_select_word_around`].
 #[allow(non_snake_case)]
 pub fn cmd_select_uppercase_word_around(
-    buf: &Text,
+    buf: &BufferText,
     sels: SelectionSet,
     _count: usize,
     mode: MotionMode,

@@ -17,7 +17,7 @@ use crate::editor::decorations::DecorationStores;
 use crate::editor::pane_state::PaneBufferState;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 /// Shared signature of [`apply_doc_undo`] and [`apply_doc_redo`] — lets a
 /// caller (e.g. `commands/edit.rs`'s `history_step`) pick one by function
@@ -92,7 +92,7 @@ fn finish_edit(
     buf_id: BufferId,
     new_sels: SelectionSet,
     cs: &ChangeSet,
-    buf_pre: &Text,
+    buf_pre: &BufferText,
     rope_pre: &ropey::Rope,
 ) {
     pane_state[focused_pane_id][buf_id].selections = new_sels;
@@ -135,7 +135,7 @@ pub(crate) fn apply_doc_edit(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
-    cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+    cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
 ) {
     if buffers.get(buf_id).is_read_only() {
         return;
@@ -186,7 +186,7 @@ pub(crate) fn apply_doc_edit_grouped(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
-    cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+    cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
 ) -> ChangeSet {
     if buffers.get(buf_id).is_read_only() {
         // Identity changeset: a read-only buffer means nothing happened, so a
@@ -229,7 +229,7 @@ pub(crate) fn apply_doc_edit_regrouped(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
-    cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+    cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
 ) {
     if buffers.get(buf_id).is_read_only() {
         return;
@@ -334,7 +334,7 @@ pub(crate) fn apply_doc_motion(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
-    f: impl FnOnce(&Text, SelectionSet) -> SelectionSet,
+    f: impl FnOnce(&BufferText, SelectionSet) -> SelectionSet,
 ) {
     let new_sels = {
         let buf = buffers.get(buf_id).text();
@@ -398,7 +398,7 @@ pub(crate) fn propagate_cs_to_panes(
     focused_pane_id: PaneId,
     buf_id: BufferId,
     cs: &ChangeSet,
-    buf_pre: &hume_editing::text::Text,
+    buf_pre: &hume_editing::text::BufferText,
 ) {
     // Collect IDs first; can't iterate and mutate the same SecondaryMap.
     let affected: Vec<PaneId> = pane_state

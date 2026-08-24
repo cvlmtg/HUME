@@ -10,7 +10,7 @@ use hume_engine::pipeline::BufferId;
 
 use crate::injections::resolve_and_parse_injections;
 use crate::registry::GrammarBundle;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 /// Called by the worker thread after posting results, so the editor's main
 /// loop wakes and drains them instead of rechecking on a poll cadence.
@@ -56,7 +56,7 @@ pub struct ParseRequest {
     pub bundle: Arc<GrammarBundle>,
     /// O(1) rope clone (structural sharing) — serialised to bytes on the worker
     /// thread only when the parse succeeds, avoiding the main-thread allocation.
-    pub text: Text,
+    pub text: BufferText,
     /// Previous parse tree with all pending `InputEdit`s applied, enabling
     /// incremental re-parsing.  `None` for a full reparse (first parse, grammar
     /// swap, or broken edit chain).

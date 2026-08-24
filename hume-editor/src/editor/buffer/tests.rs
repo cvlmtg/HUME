@@ -21,7 +21,7 @@ struct DocHelper {
 impl DocHelper {
     fn apply_edit(
         &mut self,
-        cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+        cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
     ) {
         let sels = std::mem::take(&mut self.sels);
         let (new_sels, _cs) = self.buf.apply_edit(sels, cmd);
@@ -30,7 +30,7 @@ impl DocHelper {
 
     fn apply_edit_grouped(
         &mut self,
-        cmd: impl FnOnce(Text, SelectionSet) -> (Text, SelectionSet, ChangeSet),
+        cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
     ) {
         let sels = std::mem::take(&mut self.sels);
         let (new_sels, _cs) = self.buf.apply_edit_grouped(sels, &mut self.edit_group, cmd);
@@ -67,14 +67,14 @@ impl DocHelper {
     /// selections become the stored `pre_sels` (undo restores them);
     /// `post_sels` becomes both the stored post-reload selection and the
     /// helper's live `self.sels`.
-    fn reload_from(&mut self, new_text: Text, post_sels: SelectionSet) {
+    fn reload_from(&mut self, new_text: BufferText, post_sels: SelectionSet) {
         let pre_sels = self.sels.clone();
         self.buf
             .reload_from_text(new_text, pre_sels, post_sels.clone());
         self.sels = post_sels;
     }
 
-    fn text(&self) -> &Text {
+    fn text(&self) -> &BufferText {
         self.buf.text()
     }
     fn sels(&self) -> &SelectionSet {
@@ -635,14 +635,14 @@ fn yank_paste_undo() {
 
 #[test]
 fn set_path_accepts_paths_with_basename() {
-    let mut b = Buffer::new(Text::empty(), SelectionSet::default());
+    let mut b = Buffer::new(BufferText::empty(), SelectionSet::default());
     b.set_path(Some(PathBuf::from("/tmp/file.txt")));
     assert_eq!(b.display_name(), "file.txt");
 }
 
 #[test]
 fn set_path_none_clears_path() {
-    let mut b = Buffer::new(Text::empty(), SelectionSet::default());
+    let mut b = Buffer::new(BufferText::empty(), SelectionSet::default());
     b.set_path(Some(PathBuf::from("/tmp/file.txt")));
     b.set_path(None);
     assert!(b.path().is_none());
@@ -651,7 +651,7 @@ fn set_path_none_clears_path() {
 
 #[test]
 fn set_path_derives_display_path() {
-    let mut b = Buffer::new(Text::empty(), SelectionSet::default());
+    let mut b = Buffer::new(BufferText::empty(), SelectionSet::default());
     assert!(b.display_path().is_none());
     b.set_path(Some(PathBuf::from("/tmp/file.txt")));
     assert_eq!(
@@ -662,7 +662,7 @@ fn set_path_derives_display_path() {
 
 #[test]
 fn set_path_none_clears_display_path() {
-    let mut b = Buffer::new(Text::empty(), SelectionSet::default());
+    let mut b = Buffer::new(BufferText::empty(), SelectionSet::default());
     b.set_path(Some(PathBuf::from("/tmp/file.txt")));
     b.set_path(None);
     assert!(b.display_path().is_none());
@@ -671,14 +671,14 @@ fn set_path_none_clears_display_path() {
 #[test]
 #[should_panic(expected = "path must have a basename")]
 fn set_path_rejects_root() {
-    let mut b = Buffer::new(Text::empty(), SelectionSet::default());
+    let mut b = Buffer::new(BufferText::empty(), SelectionSet::default());
     b.set_path(Some(PathBuf::from("/")));
 }
 
 #[test]
 #[should_panic(expected = "path must have a basename")]
 fn set_path_rejects_dotdot() {
-    let mut b = Buffer::new(Text::empty(), SelectionSet::default());
+    let mut b = Buffer::new(BufferText::empty(), SelectionSet::default());
     b.set_path(Some(PathBuf::from("..")));
 }
 
@@ -686,7 +686,7 @@ fn set_path_rejects_dotdot() {
 
 #[test]
 fn text_gen_starts_at_zero() {
-    let b = Buffer::new(Text::empty(), SelectionSet::default());
+    let b = Buffer::new(BufferText::empty(), SelectionSet::default());
     assert_eq!(b.text_gen, 0);
 }
 
@@ -740,7 +740,7 @@ fn text_gen_not_bumped_when_undo_at_root() {
 fn reload_from_text_keeps_buffer_not_dirty() {
     let mut d = doc("-[a]>lpha\nbeta\ngamma\n");
     assert!(!d.is_dirty());
-    d.reload_from(Text::from("alpha\nBETA\ngamma\n"), SelectionSet::default());
+    d.reload_from(BufferText::from("alpha\nBETA\ngamma\n"), SelectionSet::default());
     assert!(!d.is_dirty(), "freshly reloaded buffer is clean");
     assert_eq!(d.text().to_string(), "alpha\nBETA\ngamma\n");
 }
@@ -749,7 +749,7 @@ fn reload_from_text_keeps_buffer_not_dirty() {
 fn reload_from_text_is_undoable() {
     let mut d = doc("hel-[l]>o\n");
     let pre_state = state(&d);
-    d.reload_from(Text::from("hello world\n"), SelectionSet::default());
+    d.reload_from(BufferText::from("hello world\n"), SelectionSet::default());
     assert!(d.can_undo(), "reload recorded a revision");
     assert_eq!(d.text().to_string(), "hello world\n");
 
@@ -763,7 +763,7 @@ fn reload_from_text_is_undoable() {
 #[test]
 fn reload_from_text_redo_reapplies_reload() {
     let mut d = doc("hel-[l]>o\n");
-    d.reload_from(Text::from("hello world\n"), SelectionSet::default());
+    d.reload_from(BufferText::from("hello world\n"), SelectionSet::default());
     d.undo();
     assert_eq!(d.text().to_string(), "hello\n");
     d.redo();
@@ -780,7 +780,7 @@ fn reload_from_text_then_edit_branches_off_old_tree() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|b, s| insert_char(b, s, '1'));
     let after_first_edit = d.buf.history.current_id();
-    d.reload_from(Text::from("hello world\n"), SelectionSet::default());
+    d.reload_from(BufferText::from("hello world\n"), SelectionSet::default());
     let reload_rev = d.buf.history.current_id();
     assert_ne!(reload_rev, after_first_edit);
 
@@ -806,7 +806,7 @@ fn reload_from_text_noop_when_unchanged() {
     // clean and at the same revision it started on.
     let mut d = doc("-[s]>ame\ncontent\n");
     let before = d.buf.history.current_id();
-    d.reload_from(Text::from("same\ncontent\n"), SelectionSet::default());
+    d.reload_from(BufferText::from("same\ncontent\n"), SelectionSet::default());
     assert!(!d.can_undo(), "no-op reload records no undo step");
     assert_eq!(d.buf.history.current_id(), before, "revision unchanged");
     assert!(!d.is_dirty());
@@ -820,7 +820,7 @@ fn reload_from_text_inverse_is_fine_grained() {
     // full-buffer delete-all. The inverse is what `undo` returns.
     use hume_editing::changeset::Operation;
     let mut d = doc("-[a]>lpha\nbeta\ngamma\n");
-    d.reload_from(Text::from("alpha\nBETA\ngamma\n"), SelectionSet::default());
+    d.reload_from(BufferText::from("alpha\nBETA\ngamma\n"), SelectionSet::default());
     let (_, inv_cs) = d
         .buf
         .undo()

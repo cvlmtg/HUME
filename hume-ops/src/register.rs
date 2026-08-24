@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 use termina::event::KeyEvent;
 
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::Text;
+use hume_editing::text::BufferText;
 
 // ── Register name constants ────────────────────────────────────────────────────
 //
@@ -352,7 +352,7 @@ fn entry_is_whitespace(entry: &[String]) -> bool {
 ///
 /// Selections are always inclusive, so the text spans `start()..=end()` —
 /// internally `buf.slice(start..end+1)`.
-pub fn yank_selections(buf: &Text, sels: &SelectionSet) -> Vec<String> {
+pub fn yank_selections(buf: &BufferText, sels: &SelectionSet) -> Vec<String> {
     sels.iter_sorted()
         .map(|sel| {
             // end_inclusive() gives the last codepoint of the final grapheme

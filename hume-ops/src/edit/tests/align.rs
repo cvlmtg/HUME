@@ -168,7 +168,7 @@ fn align_remove_tab_before_selection() {
     // the cross-line baseline bug this fix closes.
     use crate::edit::align_selections;
     use hume_editing::selection::SelectionSet;
-    let buf = hume_editing::text::Text::from(" =\n  \t=\n");
+    let buf = hume_editing::text::BufferText::from(" =\n  \t=\n");
     let sels = SelectionSet::from_vec(
         vec![
             hume_editing::selection::Selection::collapsed(1), // primary: '=' col 1
@@ -198,7 +198,7 @@ fn align_accounts_for_a_tab_before_the_alignment_point() {
     // column 6, where both actually line up on screen.
     use crate::edit::align_selections;
     use hume_editing::selection::SelectionSet;
-    let buf = hume_editing::text::Text::from("a\tx = 1\nbb = 2\n");
+    let buf = hume_editing::text::BufferText::from("a\tx = 1\nbb = 2\n");
     let sels = SelectionSet::from_vec(
         vec![
             hume_editing::selection::Selection::collapsed(4), // primary: '=' in "a\tx = 1"
@@ -250,10 +250,10 @@ fn align_two_slots_static_text_between() {
     use crate::edit::align_selections;
     use hume_editing::{
         selection::{Selection, SelectionSet},
-        text::Text,
+        text::BufferText,
     };
     let buf =
-        Text::from("const foo = 444; // foo\nconst foobar = 6757383; // bar\nconst a = 34; // a\n");
+        BufferText::from("const foo = 444; // foo\nconst foobar = 6757383; // bar\nconst a = 34; // a\n");
     let sels = SelectionSet::from_vec(
         vec![
             Selection::collapsed(10), // primary: '=' on line 0

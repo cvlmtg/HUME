@@ -9,7 +9,7 @@ fn p6_edit_opens_new_buffer() {
     std::fs::write(&path, "file content\n").unwrap();
 
     let mut ed = Editor::for_testing(Buffer::new(
-        Text::from("scratch\n"),
+        BufferText::from("scratch\n"),
         SelectionSet::default(),
     ));
     let initial_bid = ed.focused_buffer_id();
@@ -34,7 +34,7 @@ fn p6_edit_deduplicates_open_file() {
     std::fs::write(&path, "dedup\n").unwrap();
 
     let mut ed = Editor::for_testing(Buffer::new(
-        Text::from("scratch\n"),
+        BufferText::from("scratch\n"),
         SelectionSet::default(),
     ));
     // Open the file once.
@@ -68,7 +68,7 @@ fn p6_edit_force_reloads_current_file() {
     std::fs::write(&path, "original\n").unwrap();
 
     let mut ed = Editor::for_testing(Buffer::new(
-        Text::from("scratch\n"),
+        BufferText::from("scratch\n"),
         SelectionSet::default(),
     ));
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
