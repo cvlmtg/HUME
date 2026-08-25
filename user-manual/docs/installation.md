@@ -31,7 +31,7 @@ cp -R hume-*/* /usr/local/
 
 Extract the `.zip`, then run `hume.exe` from inside the extracted folder, or add that folder to your `PATH`.
 
-Keep the folder intact either way: the binary looks for its runtime files (themes, plugins, language definitions) alongside itself, so moving `hume` out on its own leaves it without them.
+Keep the whole extracted folder intact: HUME finds its runtime files (themes, plugins, language definitions) relative to the binary's location — `../share/hume/` next to `bin/hume` on macOS/Linux, `runtime/` next to `hume.exe` on Windows. Moving just the binary out on its own leaves it without them.
 
 ### Check it works
 

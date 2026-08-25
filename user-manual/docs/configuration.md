@@ -17,7 +17,7 @@ If the file does not exist, HUME starts with defaults — except an explicit `--
 
 Buffers stay open and language servers stay attached across a reload — it behaves as if every open file were closed and reopened. Completion triggers, inline diagnostics, and any per-language setup your config applies (e.g. from `on-language-set`) come back too, without restarting the language server or losing your place in the file.
 
-A reference config ships at `runtime/init.scm.example` (see [File locations](#file-locations)); copy it to the path above if you want a starting point, or see [Example init.scm](#example-init-scm) below.
+A reference config ships as `init.scm.example` inside the runtime directory — `share/hume/init.scm.example` in the macOS/Linux release archive, `runtime/init.scm.example` on Windows or in a source checkout (see [File locations](#file-locations) for the general rule); copy it to the path above if you want a starting point, or see [Example init.scm](#example-init-scm) below.
 
 ## Setting options
 
@@ -174,7 +174,7 @@ Popups and menus (LSP hover, completion, the fuzzy picker) read their own scopes
 - `ui.menu` / `ui.menu.selected` — completion and picker rows / the selected row
 - `ui.menu.scroll` — scrollbar thumb on a scrolled menu
 
-HUME ships a theme editor — a single-file HTML tool you can open in a browser to edit themes visually and export them as TOML. You can download it from https://github.com/cvlmtg/HUME/blob/main/tools/theme-editor/index.html
+A theme editor is available online — a single-file HTML tool you download and open in a browser to edit themes visually and export them as TOML: https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html
 
 ## Key bindings
 

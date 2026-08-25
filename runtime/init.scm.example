@@ -6,9 +6,10 @@
 
 ;; ── Plugins ───────────────────────────────────────────────────────────────────
 ;; Everything below is a core plugin, loaded so every bundled feature is on by
-;; default. Read user-manual/docs/core-plugins.md (or each plugin's own
-;; README under runtime/plugins/core/<name>/) before keeping or dropping one —
-;; a few rebind the same keys, so know what you're enabling.
+;; default. Read the user manual's Core Plugins page
+;; (https://cvlmtg.github.io/HUME/core-plugins.html), or each plugin's own
+;; README next to its plugin.scm, before keeping or dropping one — a few
+;; rebind the same keys, so know what you're enabling.
 
 (load-plugin "core:stdlib")           ; helper toolkit other plugins depend on
 (load-plugin "core:pickers")          ; fuzzy file/buffer finders
@@ -21,9 +22,9 @@
 ;; (load-plugin "core:classic-paste")    ; GUI-style paste
 
 ;; ── Your settings & key bindings ─────────────────────────────────────────────
-;; Full reference:
-;; user-manual/docs/configuration.md (options + key bindings)
-;; user-manual/docs/plugins.md (custom commands, hooks).
+;; Full reference, in the user manual:
+;; https://cvlmtg.github.io/HUME/configuration.html (options + key bindings)
+;; https://cvlmtg.github.io/HUME/plugins.html (custom commands, hooks).
 ;;
 ;;   (set-option! "tab-width" 2) ; sets a global option:
 ;;   (bind-key! 'normal "space d" "lsp-hover") ; adds a key binding.

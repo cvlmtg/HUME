@@ -3,9 +3,10 @@
 ;;; Depends on core:stdlib (config validation calls stdlib/config-enum via
 ;;; call!) — declare or load it first, same as core:plum/core:lsp.
 
-;; See user-manual/docs/plugins.md "Depending on another plugin" for why
-;; `(declared-plugins)` is enough here, even read at the top of the plugin
-;; body — and why this does not catch an override that leaves no
+;; See "Depending on another plugin" in the user manual
+;; (https://cvlmtg.github.io/HUME/plugins.html#depending-on-another-plugin)
+;; for why `(declared-plugins)` is enough here, even read at the top of the
+;; plugin body — and why this does not catch an override that leaves no
 ;; `stdlib/config-enum` stub for the config read below.
 (unless (member "core:stdlib" (declared-plugins))
   (error "core:vim-keybind: requires core:stdlib — (declare-plugin \"core:stdlib\") or (load-plugin \"core:stdlib\") before (load-plugin \"core:vim-keybind\")"))

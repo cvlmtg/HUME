@@ -3,7 +3,7 @@
 Fuzzy file, buffer, and git-modified-file pickers — `git`/`fd`-backed file
 finder, a buffer switcher, and a `git status`-backed modified-file finder,
 built on HUME's generic picker widget (see the ["Custom
-pickers"](../../../../user-manual/docs/plugins.md#custom-pickers) section of
+pickers"](https://cvlmtg.github.io/HUME/plugins.html#custom-pickers) section of
 the plugin API docs).
 
 Requires `core:stdlib` declared or loaded first — config validation calls

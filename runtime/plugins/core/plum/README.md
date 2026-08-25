@@ -17,7 +17,7 @@ Requires `core:stdlib` declared (or loaded) first — grammar/plugin install and
 PLUM is not privileged — it's a plugin like any other, so it must be brought in explicitly
 too. Disabling it only removes the management commands below; anything already installed
 keeps working without it, *including* syntax highlighting — registering already-compiled
-grammars at startup is core's job (see [Syntax Highlighting](../../../../user-manual/docs/syntax-highlighting.md)),
+grammars at startup is core's job (see [Syntax Highlighting](https://cvlmtg.github.io/HUME/syntax-highlighting.html)),
 not PLUM's. PLUM is only needed to *install* a plugin or grammar in the first place.
 
 With no explicit `#:commands`/`#:events`/`#:languages`, this reads `core:plum`'s own

@@ -157,7 +157,7 @@ Several features were intentionally adopted from Helix rather than reinvented:
 - **Kitty keyboard protocol support** — HUME uses the `termina` crate so the same detection and encoding work consistently on Unix and Windows terminals alike, falling back to legacy key encoding where the protocol isn't available.
 - **Theme format** — Helix uses TOML with `[palette]` indirection and dot-separated UI scope names. HUME's theme loader reads the same file format, modifier names (`crossed_out`, `underlined`), and extended underline syntax, so themes can be shared between both editors. One difference: palette entries must be `#rrggbb` values — a theme using terminal color names like `red` in its palette won't pick those up.
 
-HUME also ships a theme editor — a single-file HTML tool you can open in a browser to edit themes visually and export them as TOML. You can download it from https://github.com/cvlmtg/HUME/blob/main/tools/theme-editor/index.html
+A theme editor is also available online — a single-file HTML tool you download and open in a browser to edit themes visually and export them as TOML: https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html
 
 ### What HUME has that Helix doesn't
 

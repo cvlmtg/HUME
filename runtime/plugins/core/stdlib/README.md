@@ -19,7 +19,7 @@ plugin's command body calls one of them at runtime.
 
 **Caveat**: `core:git-diff`, `core:pickers`, `core:vim-keybind`, and `core:lsp` all depend on
 `core:stdlib` this way — see ["Depending on another
-plugin"](../../../../user-manual/docs/plugins.md#depending-on-another-plugin) for why a bare
+plugin"](https://cvlmtg.github.io/HUME/plugins.html#depending-on-another-plugin) for why a bare
 `(declared-plugins)` check at their own load time is enough. That mechanism breaks only if
 `core:stdlib` itself is declared with an explicit `#:commands`/`#:events`/`#:languages` that
 omits a helper one of them needs — the override leaves no activation stub, so `call!` logs an

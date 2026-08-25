@@ -1590,7 +1590,7 @@ them; on Windows, reach for ``winget``, ``Scoop``, or WSL.
 When it's done, this tutor is syntax highlighted: it is a reStructuredText
 document, and you just installed the grammar that colours it.
 
-See the user manual to learn more about syntax highlighting and grammars.
+See https://cvlmtg.github.io/HUME/syntax-highlighting.html to learn more about syntax highlighting and grammars.
 
 Closing Note
 ------------

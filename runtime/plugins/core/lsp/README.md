@@ -63,7 +63,7 @@ its own — nothing is registered yet, so nothing attaches, so the event never f
 for, or add the four `lsp-*` install commands to `#:commands` as above, so typing one of
 them triggers activation directly.
 
-See the [user manual](../../../../user-manual/docs/lsp.md) for the full walkthrough, commands,
+See the [user manual](https://cvlmtg.github.io/HUME/lsp.html) for the full walkthrough, commands,
 keys, and settings.
 
 ## Commands
