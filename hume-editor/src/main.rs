@@ -67,17 +67,34 @@ fn resolve(cli: Cli) -> Result<Mode, String> {
             // (see `Editor::init_scripting`), but a path the user named
             // explicitly is an assertion — a typo here should fail loudly
             // before the terminal even enters raw mode, not silently boot
-            // unconfigured.
-            if let Some(path) = &cli.config {
-                match std::fs::metadata(path) {
-                    Ok(meta) if meta.is_file() => {}
-                    Ok(_) => return Err(format!("--config: not a file: {}", path.display())),
-                    Err(e) => return Err(format!("--config: {}: {e}", path.display())),
+            // unconfigured. `File::open` (not `fs::metadata`, a bare `stat`)
+            // proves the path is both present and readable in one syscall.
+            let config = match cli.config {
+                Some(path) => {
+                    let file = std::fs::File::open(&path)
+                        .map_err(|e| format!("--config: {}: {e}", path.display()))?;
+                    let is_file = file
+                        .metadata()
+                        .map_err(|e| format!("--config: {}: {e}", path.display()))?
+                        .is_file();
+                    if !is_file {
+                        return Err(format!("--config: not a file: {}", path.display()));
+                    }
+                    // HUME moves its own process cwd at runtime (`:cd`), so a
+                    // relative path must be pinned to the startup cwd here —
+                    // otherwise `:reload-config` would re-resolve it against
+                    // wherever `:cd` last left the process, miss the file,
+                    // and silently reset to compiled-in defaults instead of
+                    // erroring (see `Editor::config_path`).
+                    let cwd = std::env::current_dir()
+                        .map_err(|e| format!("--config: resolving current directory: {e}"))?;
+                    Some(hume_platform::path::absolute_unresolved(&path, &cwd))
                 }
-            }
+                None => None,
+            };
             Ok(Mode::Normal {
                 files: cli.files,
-                config: cli.config,
+                config,
             })
         }
     }
@@ -166,7 +183,8 @@ mod tests {
         assert!(err.is_err(), "clap must reject --config with --keys");
     }
 
-    // ── resolve layer: mode classification (pure logic, no clap) ─────────────
+    // ── resolve layer: mode classification (no clap; touches the filesystem
+    //    only to validate/pin a `--config` path) ───────────────────────────
 
     fn make_headless(files: Vec<PathBuf>) -> Cli {
         Cli {
@@ -177,21 +195,12 @@ mod tests {
         }
     }
 
-    fn make_normal(files: Vec<PathBuf>) -> Cli {
-        Cli {
-            keys: None,
-            output: None,
-            config: None,
-            files,
-        }
-    }
-
-    fn make_normal_with_config(config: Option<PathBuf>) -> Cli {
+    fn make_normal(files: Vec<PathBuf>, config: Option<PathBuf>) -> Cli {
         Cli {
             keys: None,
             output: None,
             config,
-            files: vec![],
+            files,
         }
     }
 
@@ -230,7 +239,7 @@ mod tests {
     #[test]
     fn resolve_normal_carries_all_files() {
         let files = vec![PathBuf::from("x.rs"), PathBuf::from("y.rs")];
-        let mode = resolve(make_normal(files.clone())).expect("normal mode should succeed");
+        let mode = resolve(make_normal(files.clone(), None)).expect("normal mode should succeed");
         let Mode::Normal { files: got, .. } = mode else {
             panic!("expected Mode::Normal");
         };
@@ -239,7 +248,7 @@ mod tests {
 
     #[test]
     fn resolve_normal_no_files() {
-        let mode = resolve(make_normal(vec![])).expect("no-file launch should succeed");
+        let mode = resolve(make_normal(vec![], None)).expect("no-file launch should succeed");
         let Mode::Normal { files, .. } = mode else {
             panic!("expected Mode::Normal");
         };
@@ -251,35 +260,94 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("alt.scm");
         std::fs::write(&path, "").unwrap();
-        let mode =
-            resolve(make_normal_with_config(Some(path.clone()))).expect("real file should pass");
+        let mode = resolve(make_normal(vec![], Some(path.clone()))).expect("real file should pass");
         let Mode::Normal { config, .. } = mode else {
             panic!("expected Mode::Normal");
         };
+        // Already absolute with no `.`/`..` components, so pinning to the
+        // startup cwd (see `resolve_config_relative_path_is_pinned_to_startup_cwd`)
+        // is a no-op here.
         assert_eq!(config, Some(path));
     }
 
     #[test]
     fn resolve_config_missing_file_errors() {
-        let err = resolve(make_normal_with_config(Some(PathBuf::from(
-            "/no/such/file/alt.scm",
-        ))));
+        let err = resolve(make_normal(
+            vec![],
+            Some(PathBuf::from("/no/such/file/alt.scm")),
+        ));
         assert!(err.is_err(), "a nonexistent --config path must be rejected");
     }
 
     #[test]
     fn resolve_config_pointing_at_directory_errors() {
         let dir = tempfile::tempdir().unwrap();
-        let err = resolve(make_normal_with_config(Some(dir.path().to_path_buf())));
+        let err = resolve(make_normal(vec![], Some(dir.path().to_path_buf())));
         assert!(err.is_err(), "a directory --config path must be rejected");
     }
 
     #[test]
     fn resolve_no_config_flag_succeeds() {
-        let mode = resolve(make_normal_with_config(None)).expect("no --config should pass");
+        let mode = resolve(make_normal(vec![], None)).expect("no --config should pass");
         let Mode::Normal { config, .. } = mode else {
             panic!("expected Mode::Normal");
         };
         assert_eq!(config, None);
+    }
+
+    // A relative `--config` path must be pinned to the startup cwd, not left
+    // relative — HUME moves its own process cwd at runtime (`:cd`), so a
+    // relative path re-resolved against a later cwd at `:reload-config` time
+    // would silently miss the file it originally pointed at (see
+    // `Editor::config_path`'s doc and the `--config` flag's doc comment).
+    #[cfg(unix)]
+    #[test]
+    fn resolve_config_relative_path_is_pinned_to_startup_cwd() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("alt.scm"), "").unwrap();
+        // `getcwd()` resolves symlinks in the path (e.g. macOS's
+        // `/var` → `/private/var`), so the expected value must go through
+        // the same resolution `resolve` will apply via `current_dir()` —
+        // comparing against the raw, un-resolved `dir.path()` would spuriously
+        // fail there.
+        let canonical_dir = dir.path().canonicalize().unwrap();
+        let saved_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+        let result = resolve(make_normal(vec![], Some(PathBuf::from("alt.scm"))));
+        std::env::set_current_dir(&saved_cwd).unwrap();
+
+        let Mode::Normal { config, .. } = result.expect("relative real file should pass") else {
+            panic!("expected Mode::Normal");
+        };
+        assert_eq!(
+            config,
+            Some(canonical_dir.join("alt.scm")),
+            "a relative --config path must be resolved against the cwd at \
+             startup, not left relative for a later re-resolution to miss"
+        );
+    }
+
+    // `File::open` (not a bare `fs::metadata` stat) is what makes an
+    // unreadable path a startup error too, not just a missing one.
+    #[cfg(unix)]
+    #[test]
+    fn resolve_config_unreadable_file_errors() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("alt.scm");
+        std::fs::write(&path, "").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let result = resolve(make_normal(vec![], Some(path.clone())));
+
+        // Restore permissions before any assertion can panic and leak an
+        // unreadable file for the tempdir's own `Drop` cleanup to trip over.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert!(
+            result.is_err(),
+            "an unreadable --config path must be rejected"
+        );
     }
 }

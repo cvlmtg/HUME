@@ -20,7 +20,7 @@ hume [OPTIONS] [FILE...]
 |------|-------------|
 | `--keys <STREAM>` | Headless golf-replay mode. Replay the key `STREAM` (e.g. `dwx`) against a single input file and write the result to `--output`. Requires `--output` and exactly one `FILE`. |
 | `--output <PATH>` | Output path for headless mode. Required by and requires `--keys`. |
-| `--config <FILE>` | Load configuration from `FILE` instead of the default `init.scm`. Themes and the data directory still resolve from the standard directories (see [Configuration](configuration.md#file-locations)). `FILE` must exist — a missing or unreadable path is a startup error. Not valid with `--keys`. |
+| `--config <FILE>` | Load configuration from `FILE` instead of the default `init.scm`. Themes and the data directory still resolve from the standard directories (see [Configuration](configuration.md#file-locations)). `FILE` must exist and be readable — otherwise it's a startup error. A relative `FILE` is resolved against the shell's working directory once, at startup, and that resolved path is what `:reload-config` re-reads — a later `:cd` in the editor has no effect on it. Not valid with `--keys`. |
 | `-h`, `--help` | Print help and exit. |
 | `-V`, `--version` | Print the HUME version (e.g. `hume x.y.z-f460770`) and exit. The same string is available inside the editor via `:version`. |
 

@@ -74,6 +74,11 @@ pub fn run_keys(
 
 /// Start the editor.
 ///
+/// `config_path` is the validated, already-absolutized `--config` override
+/// (see `resolve` in `main.rs`) — `None` means fall back to the default
+/// `<config_dir>/init.scm`. Set on the editor via `set_config_path` before
+/// `init_scripting` runs, below.
+///
 /// Scripting initialisation (Steel VM boot + `init.scm`, ~150-200 ms) runs
 /// *before* the terminal enters raw mode / the alternate screen, so the
 /// user's shell stays visible during that window — the first alt-screen

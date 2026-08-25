@@ -223,6 +223,56 @@ fn config_override_survives_reload_config() {
     );
 }
 
+/// `:reload-config` against an override that existed at startup but is gone
+/// by reload time (moved, deleted) must report an error and leave `settings`
+/// at their post-reset defaults, not silently treat the missing file the way
+/// a missing *default* `init.scm` is treated (a normal, silent no-op) — an
+/// explicit `--config` path is an assertion, and that assertion has to be
+/// re-checked on every reload, not just once at process start.
+#[test]
+fn config_override_missing_at_reload_reports_error_and_does_not_report_success() {
+    let fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 9)"#);
+    let override_path = fixture.write_override("override.scm", r#"(set-option! "scrolloff" 42)"#);
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.set_config_path(override_path.clone());
+    ed.init_scripting(&mut Default::default());
+    assert_eq!(
+        ed.state.settings.scrolloff, 42,
+        "sanity: the override must have applied at startup"
+    );
+
+    std::fs::remove_file(&override_path).unwrap();
+    type_cmd(&mut ed, ":reload-config");
+
+    assert_eq!(
+        ed.state.settings.scrolloff,
+        EditorSettings::default().scrolloff,
+        "reset_config_state must still have reverted settings to defaults; \
+         the missing override must not leave the pre-reload value in place \
+         either"
+    );
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error
+                && e.text.contains(&override_path.display().to_string())),
+        "a reload against a missing --config override must log an error \
+         naming the path; messages: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+    assert_ne!(
+        ed.state.status_msg.as_deref(),
+        Some("Config reloaded"),
+        "a reload that just errored must not also report success"
+    );
+}
+
 /// A `--config` override must work even with no resolvable config directory
 /// at all (`HOME`/`XDG_CONFIG_HOME` both unset) — the whole point of an
 /// explicit override is that it doesn't depend on the standard directories.

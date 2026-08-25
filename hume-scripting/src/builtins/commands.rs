@@ -186,7 +186,7 @@ pub(crate) fn call_command_primitive(
             if ctx.session == crate::context::EvalSession::Init {
                 ctx.log(
                     LogLevel::Warning,
-                    format!("init.scm: skipped runtime command '{name}' — it can't run while loading config; bind it to a key or call it from a hook instead"),
+                    format!("skipped runtime command '{name}' — it can't run while loading config; bind it to a key or call it from a hook instead"),
                 );
                 return Ok(SteelVal::Void);
             }

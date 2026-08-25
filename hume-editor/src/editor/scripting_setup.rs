@@ -523,6 +523,10 @@ impl Editor {
             );
             return;
         };
+        self.report(
+            Severity::Trace,
+            format!("scripting: config file = {}", init_path.display()),
+        );
         let mut host = hume_scripting::ScriptingHost::new();
         // Pre-register every native command name as a callable Steel binding before
         // any user code sees the engine.  This lets `init.scm` call `(move-left)`
@@ -580,7 +584,18 @@ impl Editor {
         self.eval_runtime_scheme(&mut host, "scheme/grammars.scm", builtin_names.clone());
         {
             let init_budget = self.state.settings.steel_init_budget_ms as u64;
-            let result = {
+            // A missing default `init.scm` is normal — `eval_init` treats
+            // `NotFound` as a silent no-op — but a `--config` override is an
+            // assertion (see `resolve` in `main.rs`), and that assertion is
+            // only checked once, at process start. A path valid at startup
+            // can go missing by the time `:reload-config` re-evaluates it
+            // (moved, deleted, or — before the startup-time absolutize in
+            // `main.rs` — a relative path outrun by an intervening `:cd`), so
+            // re-check it here rather than let it fall through `eval_init`'s
+            // silent-skip path and read as a successful, empty reload.
+            let result = if self.config_path_override.is_some() && !init_path.is_file() {
+                Err(format!("--config: not found: {}", init_path.display()).into())
+            } else {
                 let mut ih = make_init_host(&mut self.state, &mut self.view);
                 host.eval_init(&init_path, init_budget, &mut ih, builtin_names)
             };
