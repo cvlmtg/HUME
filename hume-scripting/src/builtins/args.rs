@@ -111,6 +111,15 @@ pub(crate) fn list_to_strings(val: SteelVal, ctx_name: &str) -> Result<Vec<Strin
         .collect()
 }
 
+/// A Steel list of integers, unpacked to `Vec<i32>` — `picker-source-spawn!`'s
+/// `#:ok-exit-codes`, an exit-code allowlist.
+pub(crate) fn list_to_i32s(val: SteelVal, ctx_name: &str) -> Result<Vec<i32>, SteelErr> {
+    list_items(val, ctx_name)?
+        .into_iter()
+        .map(|v| int_arg(v, ctx_name).map(|n| n as i32))
+        .collect()
+}
+
 /// A Steel list of `("KEY" . "VALUE")` dotted pairs, unpacked to
 /// `Vec<(String, String)>` — the wire shape for `register-lsp-server!`'s
 /// `#:env`.

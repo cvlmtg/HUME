@@ -461,7 +461,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
 #[test]
 fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
     use crate::editor::host_impl::EditorHostImpl;
-    use hume_scripting::host::UiHost;
+    use hume_scripting::host::{PickerOpts, UiHost};
 
     let mut ed = editor_from("-[a]>bc\n");
 
@@ -469,9 +469,8 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
     let token = host
         .open_picker(
             vec![("one".to_string(), SteelVal::StringV("p1".into()))],
-            String::new(),
             SteelVal::Void,
-            false,
+            PickerOpts::default(),
         )
         .unwrap();
     assert!(ed.state.config.picker.is_some());
@@ -497,7 +496,7 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
 #[test]
 fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
     use crate::editor::host_impl::EditorHostImpl;
-    use hume_scripting::host::UiHost;
+    use hume_scripting::host::{PickerOpts, UiHost};
 
     let mut ed = editor_from("-[a]>bc\n");
 
@@ -505,9 +504,8 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
     let token = host
         .open_picker(
             vec![("one".to_string(), SteelVal::StringV("p1".into()))],
-            String::new(),
             SteelVal::Void,
-            false,
+            PickerOpts::default(),
         )
         .unwrap();
 
@@ -524,5 +522,135 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
     assert!(
         ed.state.config.picker.is_none(),
         "the matching token must close it"
+    );
+}
+
+// ── #:query prefill and live requery (#:on-query-change / picker-replace!) ─
+
+#[test]
+fn query_prefill_reaches_the_view_without_firing_on_query_change() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (picker! (list) (lambda (x) (void))
+               #:query "seed" #:on-query-change (lambda (q) (log! 'info (string-append "q=" q))))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert!(
+        pending_calls(&ed).is_empty(),
+        "picker! must not fire #:on-query-change for its own #:query prefill"
+    );
+
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(40, 12);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    let guard = ed.state.picker_view.read().unwrap();
+    assert_eq!(guard.as_ref().expect("picker open").query, "seed");
+}
+
+#[test]
+fn on_query_change_fires_once_per_keystroke_queued_not_inline() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (picker! (list) (lambda (x) (void))
+               #:on-query-change (lambda (q) (log! 'info (string-append "q=" q))))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.state.status_msg = None;
+
+    ed.feed_key(key('a'));
+    assert_eq!(
+        pending_calls(&ed).len(),
+        1,
+        "a query-changing keystroke must queue the callback, not invoke it inline"
+    );
+    assert!(
+        ed.state.status_msg.is_none(),
+        "must not have run yet — still queued"
+    );
+    ed.settle();
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "q=a");
+
+    ed.state.status_msg = None;
+    ed.feed_key(key_backspace());
+    assert_eq!(pending_calls(&ed).len(), 1);
+    ed.settle();
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "q=",
+        "backspacing to empty is still a real query change"
+    );
+
+    // Backspace on an already-empty query is a documented no-op — must not
+    // fire a second time for nothing.
+    ed.state.status_msg = None;
+    ed.feed_key(key_backspace());
+    assert!(pending_calls(&ed).is_empty());
+    ed.settle();
+    assert!(ed.state.status_msg.is_none());
+}
+
+#[test]
+fn non_live_picker_never_fires_on_query_change() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (picker! (list (cons "one" "p1")) (lambda (x) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    ed.feed_key(key('z'));
+    assert!(
+        pending_calls(&ed).is_empty(),
+        "a picker opened without #:on-query-change must never queue a query-change callback"
+    );
+}
+
+#[test]
+fn picker_replace_bang_swaps_items_instead_of_appending() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define tok #f)
+        (define-command! "go" "" (lambda ()
+          (set! tok (picker! (list (cons "one" "p1")) (lambda (x) (log! 'info (to-string x)))))))
+        (define-command! "replace-real" "" (lambda ()
+          (log! 'info (to-string (picker-replace! tok (list (cons "two" "p2")))))))
+        (define-command! "replace-stale" "" (lambda ()
+          (log! 'info (to-string (picker-replace! (+ tok 1) (list (cons "three" "p3")))))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(ed.state.config.picker.as_ref().unwrap().total_len(), 1);
+
+    call(&mut ed, "replace-real");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "#true");
+    assert_eq!(
+        ed.state.config.picker.as_ref().unwrap().total_len(),
+        1,
+        "replace must swap the item list, not append to it"
+    );
+
+    call(&mut ed, "replace-stale");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert_eq!(
+        ed.state.config.picker.as_ref().unwrap().total_len(),
+        1,
+        "a stale-token replace must not apply"
     );
 }

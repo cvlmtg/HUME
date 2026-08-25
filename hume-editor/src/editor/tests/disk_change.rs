@@ -733,8 +733,7 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
 
     let session = crate::editor::picker::PickerSession::new(
         steel::rvals::SteelVal::BoolV(false),
-        String::new(),
-        false,
+        hume_scripting::host::PickerOpts::default(),
     );
     crate::editor::picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
 

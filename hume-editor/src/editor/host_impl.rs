@@ -25,7 +25,7 @@ use crate::ui::statusline::StatusLineConfig;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
     DiffHost, DiffHunk, EditHost, EditorHost, EventHost, LanguageHost, LocationDisplay, LspHost,
-    OptionValue, OutputHost, PopupKind, SettingsHost, TimerHost, UiHost, WordDiffHunk,
+    OptionValue, OutputHost, PickerOpts, PopupKind, SettingsHost, TimerHost, UiHost, WordDiffHunk,
 };
 
 use super::{EditorState, Severity};
@@ -1442,11 +1442,10 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     fn open_picker(
         &mut self,
         items: Vec<(String, steel::rvals::SteelVal)>,
-        prompt: String,
         on_select: steel::rvals::SteelVal,
-        pending: bool,
+        opts: PickerOpts,
     ) -> Result<u64, String> {
-        let mut session = crate::editor::picker::PickerSession::new(on_select, prompt, pending);
+        let mut session = crate::editor::picker::PickerSession::new(on_select, opts);
         let token = session.token();
         let picker_items = items
             .into_iter()
@@ -1468,6 +1467,17 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         session.push(token, picker_items)
     }
 
+    fn picker_replace(&mut self, token: u64, items: Vec<(String, steel::rvals::SteelVal)>) -> bool {
+        let Some(session) = self.state.config.picker.as_mut() else {
+            return false;
+        };
+        let picker_items = items
+            .into_iter()
+            .map(|(display, payload)| crate::editor::picker::PickerItem { display, payload })
+            .collect();
+        session.replace(token, picker_items)
+    }
+
     fn picker_source_spawn(
         &mut self,
         token: u64,
@@ -1475,6 +1485,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         args: Vec<String>,
         cwd: Option<PathBuf>,
         nul: bool,
+        ok_exit_codes: Vec<i32>,
     ) -> Result<bool, String> {
         let Some(session) = self.state.config.picker.as_mut() else {
             return Ok(false);
@@ -1496,7 +1507,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             .picker
             .as_mut()
             .expect("checked Some above")
-            .attach_source(source);
+            .attach_source(source, ok_exit_codes);
         Ok(true)
     }
 

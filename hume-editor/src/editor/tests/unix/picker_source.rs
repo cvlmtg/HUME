@@ -7,11 +7,12 @@ use super::*;
 
 use crate::editor::picker::{self, PickerSession};
 use hume_platform::process::line_source::spawn_line_source;
+use hume_scripting::host::PickerOpts;
 use std::sync::Arc;
 use steel::rvals::SteelVal;
 
 fn open_bare_picker(ed: &mut Editor) {
-    let session = PickerSession::new(SteelVal::BoolV(false), String::new(), false);
+    let session = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default());
     picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
 }
 
@@ -45,7 +46,7 @@ fn end_to_end_drain_streams_lines_into_the_store() {
         .picker
         .as_mut()
         .unwrap()
-        .attach_source(source);
+        .attach_source(source, vec![0]);
 
     drain_sources_until(&mut ed, |ed| {
         ed.state
@@ -84,7 +85,7 @@ fn coalesced_push_reranks_against_the_live_query() {
         .picker
         .as_mut()
         .unwrap()
-        .attach_source(source);
+        .attach_source(source, vec![0]);
 
     drain_sources_until(&mut ed, |ed| {
         ed.state
@@ -119,7 +120,7 @@ fn nonzero_exit_reports_a_status_message_with_stderr() {
         .picker
         .as_mut()
         .unwrap()
-        .attach_source(source);
+        .attach_source(source, vec![0]);
 
     drain_sources_until(&mut ed, |ed| ed.state.status_msg.is_some());
 
@@ -132,6 +133,68 @@ fn nonzero_exit_reports_a_status_message_with_stderr() {
         .filter(|e| e.severity == Severity::Error)
         .count();
     assert_eq!(error_entries, 1);
+}
+
+#[test]
+fn exit_code_in_the_allowlist_reports_nothing() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let mut ed = editor_from("-[a]>bc\n");
+    open_bare_picker(&mut ed);
+
+    // Exit 1 with nothing on stderr — the shape `rg` uses for "no matches".
+    let args = vec!["-c".to_string(), "exit 1".to_string()];
+    let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
+    ed.state
+        .config
+        .picker
+        .as_mut()
+        .unwrap()
+        .attach_source(source, vec![0, 1]);
+
+    drain_sources_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .is_some_and(|p| !p.has_source())
+    });
+
+    assert!(
+        ed.state.status_msg.is_none(),
+        "exit 1 is in the allowlist — must not report anything"
+    );
+    let error_entries = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .count();
+    assert_eq!(error_entries, 0);
+}
+
+#[test]
+fn exit_code_outside_the_allowlist_still_reports() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let mut ed = editor_from("-[a]>bc\n");
+    open_bare_picker(&mut ed);
+
+    // Exit 2 — `rg`'s "bad regex" — must still surface even with `1`
+    // allowlisted for "no matches".
+    let args = vec!["-c".to_string(), "echo boom >&2; exit 2".to_string()];
+    let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
+    ed.state
+        .config
+        .picker
+        .as_mut()
+        .unwrap()
+        .attach_source(source, vec![0, 1]);
+
+    drain_sources_until(&mut ed, |ed| ed.state.status_msg.is_some());
+
+    let msg = ed.state.status_msg.as_ref().expect("status set");
+    assert!(msg.contains("boom"), "got: {msg}");
 }
 
 #[test]
@@ -149,7 +212,7 @@ fn close_picker_kills_the_source_child() {
         .picker
         .as_mut()
         .unwrap()
-        .attach_source(source);
+        .attach_source(source, vec![0]);
 
     picker::close_picker(&mut ed.state, SteelVal::BoolV(false));
 
@@ -174,11 +237,11 @@ fn replacing_the_session_kills_the_previous_source_child() {
         .picker
         .as_mut()
         .unwrap()
-        .attach_source(source);
+        .attach_source(source, vec![0]);
 
     // A fresh `open_picker` call replaces (and — via `close_picker` — drops)
     // whatever session was open, same as a second `picker!` from Steel.
-    let replacement = PickerSession::new(SteelVal::BoolV(false), String::new(), false);
+    let replacement = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default());
     picker::open_picker(&mut ed.state, Some(&mut ed.lsp), replacement);
 
     assert!(
@@ -203,7 +266,7 @@ fn a_second_attach_source_kills_the_first_source_child() {
         .picker
         .as_mut()
         .unwrap()
-        .attach_source(first);
+        .attach_source(first, vec![0]);
 
     let second_args = vec!["30".to_string()];
     let second =
@@ -213,7 +276,7 @@ fn a_second_attach_source_kills_the_first_source_child() {
         .picker
         .as_mut()
         .unwrap()
-        .attach_source(second);
+        .attach_source(second, vec![0]);
 
     assert!(
         !process_is_alive(first_pid),

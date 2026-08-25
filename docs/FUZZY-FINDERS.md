@@ -10,7 +10,7 @@ remaining work below ships.
 | Topic | Where |
 |---|---|
 | User-facing behavior, keys, file-source chain | `user-manual/docs/pickers.md`, `core-plugins.md` |
-| Steel API (`picker!`, `picker-push!`, `picker-source-spawn!`) | `user-manual/docs/plugins.md` "Custom pickers" |
+| Steel API (`picker!`, `picker-push!`, `picker-replace!`, `picker-source-spawn!`) | `user-manual/docs/plugins.md` "Custom pickers" |
 | Plugin internals (git/fd probing, config, path resolution) | `runtime/plugins/core/pickers/plugin.scm`, `README.md` |
 | Store, ranking, chokepoints | `hume-editor/src/editor/picker.rs` |
 | Fuzzy matcher + budget | `hume-editor/src/editor/fuzzy.rs` |
@@ -22,11 +22,6 @@ remaining work below ships.
 
 ## Remaining work
 
-- **Live-requery sources (live grep)** — query changes re-run the source, not
-  just the filter. Missing: `#:on-query-change` on `picker!`, debounce wiring,
-  a `replace_items` store op. Re-spawn-replaces-source already works
-  (`PickerSession::attach_source` is one `Option::replace`). Additive, not a
-  design problem.
 - **Preview pane** — render a scratch view of the selected item inside the
   panel; touches buffer lifecycle and the render pipeline. The panel width was
   chosen so a preview split can be added to its right without relayouting the

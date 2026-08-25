@@ -45,18 +45,22 @@ impl Editor {
         }
 
         let exit = disconnected.then(|| {
+            // Read the allowlist before `take_source` — it lives on the
+            // session, not the source, and `take_source` drops the borrow
+            // this closure needs to check the exit status against it.
+            let ok_exit_codes = session.source_ok_exit_codes().to_vec();
             let source = session
                 .take_source()
                 .expect("source_mut returned Some above, and disconnect came from the same source");
             let cmd = source.cmd().to_string();
-            (cmd, source.finish())
+            (cmd, source.finish(), ok_exit_codes)
         });
         // `session` (a borrow of `self.state.config.picker`) is not used past this
         // point, so `self.report` below can take `&mut self` freely.
 
-        if let Some((cmd, exit)) = exit
+        if let Some((cmd, exit, ok_exit_codes)) = exit
             && let Some(status) = exit.status
-            && !status.success()
+            && !status.code().is_some_and(|c| ok_exit_codes.contains(&c))
         {
             self.report(
                 Severity::Error,

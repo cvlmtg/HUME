@@ -117,11 +117,13 @@
 (define (show-popup! text #:anchor [anchor 'cursor] #:kind [kind 'sticky] #:lang [lang #f])
   (%show-popup! text anchor kind lang))
 
-(define (picker! items on-select #:prompt [prompt ""] #:pending [pending #f])
-  (%picker! items on-select prompt pending))
+(define (picker! items on-select #:prompt [prompt ""] #:pending [pending #f]
+                                  #:query [query ""] #:on-query-change [on-query-change #f])
+  (%picker! items on-select prompt pending query on-query-change))
 
-(define (picker-source-spawn! token cmd args #:cwd [cwd #f] #:nul [nul #f])
-  (%picker-source-spawn! token cmd args cwd nul))
+(define (picker-source-spawn! token cmd args #:cwd [cwd #f] #:nul [nul #f]
+                                              #:ok-exit-codes [ok-exit-codes '(0)])
+  (%picker-source-spawn! token cmd args cwd nul ok-exit-codes))
 
 (define (picker-close! #:token [token #f])
   (%picker-close! token))

@@ -10,11 +10,11 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::PopupKind;
+use crate::host::{PickerOpts, PopupKind};
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, list_items, list_to_strings, optional_path_arg, optional_string_arg,
+    bool_arg, list_items, list_to_i32s, list_to_strings, optional_path_arg, optional_string_arg,
     optional_usize_arg, pair_fields, string_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
@@ -141,21 +141,37 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal
         .collect()
 }
 
-/// `(%picker! items on-select prompt pending)` — the `picker!` Scheme
-/// wrapper supplies `#:prompt`'s/`#:pending`'s defaults. Returns the new
-/// session's token.
+/// `(%picker! items on-select prompt pending query on-query-change)` — the
+/// `picker!` Scheme wrapper supplies the keyword defaults. Returns the new
+/// session's token. `on-query-change` is `#f` (not live) or a procedure;
+/// like `on-select`, its callability isn't checked here — an uncallable
+/// value surfaces as a Steel error only if a query change actually tries to
+/// fire it, same as a bad `on-select` only errors at accept/dismiss time.
 pub(crate) fn picker(
     ctx: &mut SteelCtx,
     items: SteelVal,
     on_select: SteelVal,
     prompt: SteelVal,
     pending: SteelVal,
+    query: SteelVal,
+    on_query_change: SteelVal,
 ) -> SteelResult {
     let items = picker_items(items, "picker! items")?;
     let prompt = string_arg(prompt, "picker! #:prompt")?;
     let pending = bool_arg(pending, "picker! #:pending")?;
+    let query = string_arg(query, "picker! #:query")?;
+    let on_query_change = match on_query_change {
+        SteelVal::BoolV(false) => None,
+        other => Some(other),
+    };
+    let opts = PickerOpts {
+        prompt,
+        pending,
+        query,
+        on_query_change,
+    };
     let token = require_cap(ctx.host.ui(), "picker!")?
-        .open_picker(items, prompt, on_select, pending)
+        .open_picker(items, on_select, opts)
         .map_err(generic_err)?;
     Ok(SteelVal::IntV(token as isize))
 }
@@ -170,11 +186,22 @@ pub(crate) fn picker_push(ctx: &mut SteelCtx, token: SteelVal, items: SteelVal) 
     Ok(SteelVal::BoolV(applied))
 }
 
-/// `(%picker-source-spawn! token cmd args cwd nul)` — the
-/// `picker-source-spawn!` Scheme wrapper supplies `#:cwd`/`#:nul`'s
-/// defaults. A stale token or no open picker returns `#f` without spawning
-/// anything, the same expected-normal-race contract as `picker-push!`; a
-/// genuine spawn failure (missing binary, bad `#:cwd`) raises.
+/// `(picker-replace! token items)` — no keyword defaults, so this registers
+/// directly, same shape as `picker-push!` but replacing the item list
+/// instead of appending to it. Returns whether the replace was applied.
+pub(crate) fn picker_replace(ctx: &mut SteelCtx, token: SteelVal, items: SteelVal) -> SteelResult {
+    let token = usize_arg(token, "picker-replace! token")? as u64;
+    let items = picker_items(items, "picker-replace! items")?;
+    let applied = require_cap(ctx.host.ui(), "picker-replace!")?.picker_replace(token, items);
+    Ok(SteelVal::BoolV(applied))
+}
+
+/// `(%picker-source-spawn! token cmd args cwd nul ok-exit-codes)` — the
+/// `picker-source-spawn!` Scheme wrapper supplies
+/// `#:cwd`/`#:nul`/`#:ok-exit-codes`'s defaults. A stale token or no open
+/// picker returns `#f` without spawning anything, the same
+/// expected-normal-race contract as `picker-push!`; a genuine spawn failure
+/// (missing binary, bad `#:cwd`) raises.
 pub(crate) fn picker_source_spawn(
     ctx: &mut SteelCtx,
     token: SteelVal,
@@ -182,6 +209,7 @@ pub(crate) fn picker_source_spawn(
     args: SteelVal,
     cwd: SteelVal,
     nul: SteelVal,
+    ok_exit_codes: SteelVal,
 ) -> SteelResult {
     let token = usize_arg(token, "picker-source-spawn! token")? as u64;
     let cmd = string_arg(cmd, "picker-source-spawn! cmd")?;
@@ -191,9 +219,10 @@ pub(crate) fn picker_source_spawn(
     let args = list_to_strings(args, "picker-source-spawn! args")?;
     let cwd = optional_path_arg(cwd, "picker-source-spawn! #:cwd")?;
     let nul = bool_arg(nul, "picker-source-spawn! #:nul")?;
+    let ok_exit_codes = list_to_i32s(ok_exit_codes, "picker-source-spawn! #:ok-exit-codes")?;
 
     let applied = require_cap(ctx.host.ui(), "picker-source-spawn!")?
-        .picker_source_spawn(token, &cmd, args, cwd, nul)
+        .picker_source_spawn(token, &cmd, args, cwd, nul, ok_exit_codes)
         .map_err(|e| generic_err(format!("picker-source-spawn!: {e}")))?;
     Ok(SteelVal::BoolV(applied))
 }

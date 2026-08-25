@@ -470,7 +470,58 @@ asynchronously (an LSP request, a timer) rather than through a spawned command.
 `picker-source-spawn!` already shows the user something is still loading. A picker
 populated by `picker-push!` from a `spawn-async!` callback has no such signal of its
 own, so pass `#:pending #t` to `picker!` when opening empty this way — it marks the
-panel as "results still arriving" until the first `picker-push!` call lands.
+panel as "results still arriving" until the first `picker-push!`/`picker-replace!`
+call lands.
+
+A nonzero exit from a spawned source is normally reported as an error — but for a
+command where some exit codes are a normal outcome rather than a failure (`rg`
+exits `1` for "no matches"), pass `#:ok-exit-codes`:
+
+```scheme
+(picker-source-spawn! token "rg" (list "--vimgrep" pattern) #:ok-exit-codes '(0 1))
+```
+
+### Live requery (live grep)
+
+A picker whose query should drive the *source* — re-running an external command
+with the new pattern on every keystroke — rather than just filtering an already-fetched
+list, passes `#:query` and `#:on-query-change` to `picker!`:
+
+```scheme
+(define (grep/open! seed)
+  (define (requery query)
+    ;; Replace BEFORE spawning: a spawn on the same token kills the previous
+    ;; child, so nothing from the old pattern can land after this.
+    (picker-replace! token '())
+    (unless (equal? query "")
+      (picker-source-spawn! token "rg" (list "--vimgrep" "--" query) #:ok-exit-codes '(0 1))))
+  (define token
+    (picker! '() (lambda (row) (when row (goto-location! (grep/parse row))))
+             #:prompt "grep: " #:query seed #:on-query-change requery))
+  (unless (equal? seed "") (requery seed)))
+```
+
+`#:query` prefills the query shown in the panel but does not itself fire
+`#:on-query-change` — a caller that wants an initial search calls its own
+query-change handler once after opening, as above. `#:on-query-change` then fires
+with the new query on every keystroke that changes it (including backspacing to
+empty), queued like every other picker callback, never invoked inline.
+
+Live mode also turns off the picker's own local fuzzy filter: once
+`#:on-query-change` is set, rows show in whatever order the source (or
+`picker-push!`/`picker-replace!`) produced them, unfiltered. This matters because the
+query already selects what the source returns — `rg`'s own regex match, say — so a
+second fuzzy pass over already-matched rows would drop legitimate hits a regex like
+`foo.*bar` doesn't happen to fuzzy-match.
+
+`(picker-replace! token items)` is `picker-push!`'s sibling for this case: it
+replaces the picker's entire item list instead of appending to it, since items are
+otherwise append-only and a live search must drop the previous pattern's rows before
+showing the new ones. Same token-guard/return contract as `picker-push!`.
+
+A live source should debounce, the same as any other Steel plugin work triggered by
+every keystroke — wrap the requery function in `(debounce ms proc)` rather than
+calling `picker-source-spawn!` directly from `#:on-query-change`.
 
 ## Bundled core plugins
 

@@ -9,6 +9,7 @@ use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
 use crate::editor::picker::{self, PickerItem, PickerSession};
 use crate::ui::picker_panel::panel_geometry;
 use hume_engine::pipeline::RenderContext;
+use hume_scripting::host::PickerOpts;
 use steel::rvals::SteelVal;
 
 fn marker(name: &str) -> SteelVal {
@@ -16,7 +17,7 @@ fn marker(name: &str) -> SteelVal {
 }
 
 fn open_test_picker_with_callback(ed: &mut Editor, items: &[&str], callback: SteelVal) {
-    let mut session = PickerSession::new(callback, String::new(), false);
+    let mut session = PickerSession::new(callback, PickerOpts::default());
     let token = session.token();
     let picker_items: Vec<PickerItem> = items
         .iter()
@@ -34,7 +35,13 @@ fn open_test_picker(ed: &mut Editor, items: &[&str]) {
 }
 
 fn open_test_picker_with_prompt(ed: &mut Editor, items: &[&str], prompt: &str) {
-    let mut session = PickerSession::new(marker("cb"), prompt.to_string(), false);
+    let mut session = PickerSession::new(
+        marker("cb"),
+        PickerOpts {
+            prompt: prompt.to_string(),
+            ..Default::default()
+        },
+    );
     let token = session.token();
     let picker_items: Vec<PickerItem> = items
         .iter()

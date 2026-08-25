@@ -113,6 +113,48 @@ fn nonzero_exit_reports_a_status_message() {
 }
 
 #[test]
+fn ok_exit_codes_silences_the_allowlisted_code_but_not_others() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define tok #f)
+        (define-command! "go" "" (lambda ()
+          (set! tok (picker! '() (lambda (x) (void))))))
+        (define-command! "spawn-no-matches" "" (lambda ()
+          (picker-source-spawn! tok "sh" (list "-c" "exit 1") #:ok-exit-codes '(0 1))))
+        (define-command! "spawn-bad-regex" "" (lambda ()
+          (picker-source-spawn! tok "sh" (list "-c" "echo boom >&2; exit 2") #:ok-exit-codes '(0 1))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    call(&mut ed, "spawn-no-matches");
+    drain_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .is_some_and(|p| !p.has_source())
+    });
+    assert!(
+        ed.state.status_msg.is_none(),
+        "an allowlisted exit code (rg's 'no matches') must not report"
+    );
+
+    call(&mut ed, "spawn-bad-regex");
+    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    let msg = ed.state.status_msg.clone().unwrap();
+    assert!(
+        msg.contains("boom"),
+        "a non-allowlisted exit code must still report, got: {msg}"
+    );
+}
+
+#[test]
 fn picker_close_kills_the_source_child() {
     // Spawns "sleep" and "kill" by unqualified name — see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);

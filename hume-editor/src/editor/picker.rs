@@ -15,6 +15,7 @@ use std::cmp::Reverse;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use hume_platform::process::line_source::SpawnedLineSource;
+use hume_scripting::host::PickerOpts;
 use steel::rvals::SteelVal;
 
 use super::fuzzy::{FuzzyMatcher, FuzzyPattern};
@@ -61,14 +62,26 @@ pub(crate) struct PickerSession {
     /// child, and this field is dropped whenever the session itself is
     /// (`close_picker`'s `take()`, `open_picker`'s replace).
     source: Option<SpawnedLineSource>,
+    /// Exit codes `source`'s drain (`Editor::drain_picker_source`) must not
+    /// report as a failure — set alongside `source` by `attach_source`, e.g.
+    /// `rg`'s exit `1` ("no matches") for a live grep. Meaningless while
+    /// `source` is `None`; not reset by `take_source` since the drain reads
+    /// it before taking the source (see `drain_picker_source`).
+    source_ok_exit_codes: Vec<i32>,
     /// Set by `picker!`'s `#:pending` for a caller whose results arrive via
     /// `spawn-async!` rather than `picker-source-spawn!` — the latter
     /// already has its own "still populating" signal (`source.is_some()`),
     /// so this flag only exists for the shape that has no `source` to ask.
-    /// Cleared by the first `push` that actually applies (matching token),
-    /// even an empty batch — a clean `git status`, say, still means the job
-    /// is done. See [`is_pending`](Self::is_pending).
+    /// Cleared by the first `push`/`replace` that actually applies (matching
+    /// token), even an empty batch — a clean `git status`, say, still means
+    /// the job is done. See [`is_pending`](Self::is_pending).
     pending: bool,
+    /// `#:on-query-change` — `Some` makes this session live: `insert_char`/
+    /// `pop_grapheme` fire it with the new query (`Editor::fire_query_change`)
+    /// instead of the query driving the local fuzzy filter. Its `Some`-ness
+    /// is read directly wherever "is this session live" matters — no
+    /// separate bool duplicating it.
+    on_query_change: Option<SteelVal>,
 }
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
@@ -76,9 +89,12 @@ static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 impl PickerSession {
     /// Opens empty — the caller's initial item list (from `picker!`) arrives
     /// through the same `push` path as any later batch: open empty, then
-    /// attach a source.
-    pub(crate) fn new(on_select: SteelVal, prompt: String, pending: bool) -> Self {
-        Self {
+    /// attach a source. `opts.query` is applied through `set_query` (a
+    /// no-op rerank against the still-empty `items`) rather than assigned
+    /// directly, so construction and a future prefill-after-open path share
+    /// one place that keeps `query` and `filtered` in sync.
+    pub(crate) fn new(on_select: SteelVal, opts: PickerOpts) -> Self {
+        let mut session = Self {
             items: Vec::new(),
             query: String::new(),
             filtered: Vec::new(),
@@ -87,11 +103,15 @@ impl PickerSession {
             selected: 0,
             scroll: 0,
             on_select,
-            prompt,
+            prompt: opts.prompt,
             token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
             source: None,
-            pending,
-        }
+            source_ok_exit_codes: vec![0],
+            pending: opts.pending,
+            on_query_change: opts.on_query_change,
+        };
+        session.set_query(opts.query);
+        session
     }
 
     pub(crate) fn token(&self) -> u64 {
@@ -134,14 +154,35 @@ impl PickerSession {
         true
     }
 
+    /// Replaces the item list wholesale and reranks — same token guard and
+    /// `pending`-clearing contract as `push`, but assigns instead of
+    /// extending. The requery half of a live source: a caller with
+    /// `#:on-query-change` clears the previous pattern's rows before
+    /// spawning the new search (`items` is otherwise append-only, so there
+    /// is no other way to drop stale rows).
+    pub(crate) fn replace(&mut self, token: u64, items: Vec<PickerItem>) -> bool {
+        if token != self.token {
+            return false;
+        }
+        self.pending = false;
+        self.items = items;
+        self.rerank();
+        true
+    }
+
     /// Attaches a spawned streaming source, replacing (and thereby killing,
     /// via `SpawnedLineSource::drop`) any source already attached — a second
     /// `picker-source-spawn!` on the same session is a re-spawn, not a
-    /// second concurrent source. This is also the semantics a future
-    /// live-requery feature (re-running the source per query change) would
-    /// reuse as-is.
-    pub(crate) fn attach_source(&mut self, source: SpawnedLineSource) {
+    /// second concurrent source. This is exactly how a live source re-runs
+    /// per query change. `ok_exit_codes` is `drain_picker_source`'s
+    /// allowlist for *this* source, e.g. `rg`'s exit `1` ("no matches").
+    pub(crate) fn attach_source(&mut self, source: SpawnedLineSource, ok_exit_codes: Vec<i32>) {
         self.source = Some(source);
+        self.source_ok_exit_codes = ok_exit_codes;
+    }
+
+    pub(crate) fn source_ok_exit_codes(&self) -> &[i32] {
+        &self.source_ok_exit_codes
     }
 
     pub(crate) fn source_mut(&mut self) -> Option<&mut SpawnedLineSource> {
@@ -193,8 +234,11 @@ impl PickerSession {
         true
     }
 
-    /// Replaces the query wholesale and reranks.
-    #[cfg(test)] // production caller is a future live-requery replace path, not yet built
+    /// Replaces the query wholesale and reranks. `new` is the production
+    /// caller, applying `#:query`'s prefill; a live keystroke goes through
+    /// `insert_char`/`pop_grapheme` instead, since those also need to fire
+    /// `#:on-query-change`, which a bare query replacement must not (see
+    /// `PickerOpts::query`'s doc for why `picker!` doesn't fire it either).
     pub(crate) fn set_query(&mut self, query: String) {
         self.query = query;
         self.rerank();
@@ -270,17 +314,29 @@ impl PickerSession {
         &self.on_select
     }
 
+    /// The callback to fire on a query-changing keystroke
+    /// (`Editor::fire_query_change`), if this session is live. `Some`-ness
+    /// is also the live/local-filter switch `rerank` reads.
+    pub(crate) fn on_query_change(&self) -> Option<&SteelVal> {
+        self.on_query_change.as_ref()
+    }
+
     /// The only place ranking happens; every mutator above routes through
     /// this. Resets `selected`/`scroll` to `0` on every rerank — a stale
     /// selection surviving a rerank (now pointing at a different item, or
     /// one no longer in the filtered set) is worse than landing back on the
     /// top row.
     fn rerank(&mut self) {
-        if self.query.is_empty() {
+        if self.query.is_empty() || self.on_query_change.is_some() {
             // Insertion order by construction — avoids relying on nucleo's
             // (undocumented) all-equal-score behavior on an empty pattern,
             // and skips scoring entirely on the dominant streaming-ingest
-            // path (empty query while a spawned source drains batches).
+            // path (empty query while a spawned source drains batches). A
+            // live session (`on_query_change` set) takes this branch at any
+            // query too: the query already selects what the source returns
+            // (e.g. `rg`'s own regex match), so a second fuzzy pass over
+            // already-matched rows would drop legitimate non-fuzzy hits —
+            // `foo.*bar` fuzzy-matching almost nothing it just found.
             self.filtered.clear();
             self.filtered.extend(0..self.items.len() as u32);
         } else {
@@ -371,7 +427,27 @@ mod tests {
     }
 
     fn open() -> PickerSession {
-        PickerSession::new(dummy_on_select(), String::new(), false)
+        PickerSession::new(dummy_on_select(), PickerOpts::default())
+    }
+
+    fn open_pending() -> PickerSession {
+        PickerSession::new(
+            dummy_on_select(),
+            PickerOpts {
+                pending: true,
+                ..Default::default()
+            },
+        )
+    }
+
+    fn open_live() -> PickerSession {
+        PickerSession::new(
+            dummy_on_select(),
+            PickerOpts {
+                on_query_change: Some(dummy_on_select()),
+                ..Default::default()
+            },
+        )
     }
 
     fn payload_str(v: &SteelVal) -> &str {
@@ -396,7 +472,13 @@ mod tests {
 
     #[test]
     fn prompt_is_stored_verbatim() {
-        let s = PickerSession::new(dummy_on_select(), "files: ".to_string(), false);
+        let s = PickerSession::new(
+            dummy_on_select(),
+            PickerOpts {
+                prompt: "files: ".to_string(),
+                ..Default::default()
+            },
+        );
         assert_eq!(s.prompt(), "files: ");
     }
 
@@ -407,7 +489,7 @@ mod tests {
 
     #[test]
     fn pending_flag_set_on_open_and_cleared_by_a_matching_push() {
-        let mut s = PickerSession::new(dummy_on_select(), String::new(), true);
+        let mut s = open_pending();
         assert!(s.is_pending());
         let token = s.token();
         assert!(s.push(token, items(&["a"])));
@@ -418,7 +500,7 @@ mod tests {
     fn pending_flag_cleared_by_a_matching_push_even_with_an_empty_batch() {
         // A clean `git status` still means the job finished — pending must
         // not stay stuck just because there was nothing to add.
-        let mut s = PickerSession::new(dummy_on_select(), String::new(), true);
+        let mut s = open_pending();
         let token = s.token();
         assert!(s.push(token, items(&[])));
         assert!(!s.is_pending());
@@ -426,7 +508,7 @@ mod tests {
 
     #[test]
     fn pending_flag_survives_a_stale_token_push() {
-        let mut s = PickerSession::new(dummy_on_select(), String::new(), true);
+        let mut s = open_pending();
         let stale = s.token().wrapping_add(1);
         assert!(!s.push(stale, items(&["x"])));
         assert!(
@@ -437,7 +519,7 @@ mod tests {
 
     #[test]
     fn seed_with_items_clears_pending() {
-        let mut s = PickerSession::new(dummy_on_select(), String::new(), true);
+        let mut s = open_pending();
         s.seed(items(&["a"]));
         assert!(
             !s.is_pending(),
@@ -448,7 +530,7 @@ mod tests {
 
     #[test]
     fn empty_seed_leaves_pending_intact() {
-        let mut s = PickerSession::new(dummy_on_select(), String::new(), true);
+        let mut s = open_pending();
         s.seed(items(&[]));
         assert!(
             s.is_pending(),
@@ -498,6 +580,82 @@ mod tests {
         s.push(token, items(&["foo", "bar"]));
         s.set_query("f".to_string());
         assert_eq!(window_vec(&s, 10), vec!["foo"]);
+    }
+
+    #[test]
+    fn query_prefill_is_visible_and_applied_at_construction() {
+        let mut s = PickerSession::new(
+            dummy_on_select(),
+            PickerOpts {
+                query: "f".to_string(),
+                ..Default::default()
+            },
+        );
+        assert_eq!(s.query(), "f");
+        // Applied through the same `rerank` a later push would use — a
+        // batch arriving after open is filtered by the prefilled query
+        // immediately, not just once a keystroke re-triggers ranking.
+        let token = s.token();
+        s.push(token, items(&["foo", "bar"]));
+        assert_eq!(window_vec(&s, 10), vec!["foo"]);
+    }
+
+    #[test]
+    fn replace_swaps_the_item_list_instead_of_appending() {
+        let mut s = open();
+        let token = s.token();
+        s.push(token, items(&["a", "b"]));
+        assert!(s.replace(token, items(&["c"])));
+        assert_eq!(window_vec(&s, 10), vec!["c"]);
+        assert_eq!(s.total_len(), 1);
+    }
+
+    #[test]
+    fn stale_token_replace_is_rejected() {
+        let mut s = open();
+        let real_token = s.token();
+        s.push(real_token, items(&["a"]));
+        let wrong_token = real_token.wrapping_add(1);
+        assert!(!s.replace(wrong_token, items(&["z"])));
+        assert_eq!(
+            window_vec(&s, 10),
+            vec!["a"],
+            "a stale-token replace must leave the existing items untouched"
+        );
+    }
+
+    #[test]
+    fn replace_clears_pending_even_with_an_empty_batch() {
+        let mut s = open_pending();
+        let token = s.token();
+        assert!(s.replace(token, items(&[])));
+        assert!(!s.is_pending());
+    }
+
+    #[test]
+    fn live_session_keeps_insertion_order_regardless_of_query() {
+        // A live session's query drives the external source, not a second
+        // local fuzzy pass — a regex like "f.o" would fuzzy-match ~nothing
+        // of what it just matched, so `rerank` must skip scoring entirely
+        // whenever `on_query_change` is set, the same branch an empty query
+        // already takes.
+        let mut s = open_live();
+        s.set_query("zzz-does-not-fuzzy-match-anything".to_string());
+        let token = s.token();
+        s.push(token, items(&["b", "a", "c"]));
+        assert_eq!(window_vec(&s, 10), vec!["b", "a", "c"]);
+    }
+
+    #[test]
+    fn non_live_session_with_the_same_query_still_filters() {
+        // Same query as above, on a non-live session — confirms the
+        // insertion-order result above comes from live mode, not from the
+        // query happening to fail to fuzzy-match anyway.
+        let mut s = open();
+        s.set_query("zzz-does-not-fuzzy-match-anything".to_string());
+        let token = s.token();
+        s.push(token, items(&["b", "a", "c"]));
+        assert!(window_vec(&s, 10).is_empty());
     }
 
     #[test]

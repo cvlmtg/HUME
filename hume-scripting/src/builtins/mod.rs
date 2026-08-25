@@ -409,9 +409,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "close-drawer!" ui::close_drawer();
 
         // Fuzzy-picker widget.
-        cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal, pending: SteelVal);
+        cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal, pending: SteelVal, query: SteelVal, on_query_change: SteelVal);
         cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
-        cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal);
+        cmd "picker-replace!" ui::picker_replace(token: SteelVal, items: SteelVal);
+        cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
         cmd "%picker-close!" ui::picker_close(token: SteelVal);
 
         // Timers — not LSP-specific; any plugin can schedule one.

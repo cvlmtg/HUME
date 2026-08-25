@@ -823,6 +823,33 @@ pub trait DiffHost {
 /// prompt — accessed through [`EditorHost::ui`]. `None` from that accessor
 /// means "no UI surface to drive" (test stubs); every method here is
 /// required once a host does provide `UiHost`.
+/// Grouped `picker!` open-time options — a struct instead of a fifth-plus
+/// positional on [`UiHost::open_picker`], since that signature already grew
+/// once (`#:pending`) and `#:query`/`#:on-query-change` are landing together.
+/// `Default` is every keyword's own default (empty prompt, not pending,
+/// empty query, not live) — the shape a test that doesn't care about any of
+/// them wants.
+#[derive(Default)]
+pub struct PickerOpts {
+    /// `#:prompt` — label painted before the query in the input line.
+    pub prompt: String,
+    /// `#:pending` — see [`UiHost::open_picker`]'s doc.
+    pub pending: bool,
+    /// `#:query` — the query the picker opens with. Applied to the (still
+    /// empty) item list at construction; `picker!` deliberately does not
+    /// fire `#:on-query-change` for this initial value itself — a caller
+    /// that wants the first batch of results kicks its own query-change
+    /// trigger off after opening (see the user-manual's "Custom pickers").
+    pub query: String,
+    /// `#:on-query-change` — `Some` is what makes the session live: every
+    /// keystroke that changes the query fires this callback with the new
+    /// query instead of driving the local fuzzy filter (`PickerSession`'s
+    /// `rerank` treats a live session the same as an empty query — no
+    /// double-filtering a source that already matched on the query itself,
+    /// e.g. a regex `rg` already applied).
+    pub on_query_change: Option<steel::rvals::SteelVal>,
+}
+
 pub trait UiHost {
     /// `(prompt! label #:prefill text on-confirm)` — opens a one-shot
     /// Command-mode minibuffer session. `callback` fires exactly once, with
@@ -899,27 +926,27 @@ pub trait UiHost {
     /// call back with `#f`).
     fn close_drawer(&mut self) -> Result<(), String>;
 
-    /// `(picker! items on-select #:prompt "…" #:pending [#f])` — opens the
-    /// fuzzy-finder panel. `items` are `(display . payload)`
-    /// pairs; `payload` is handed back to `on-select` verbatim, never
-    /// interpreted by Rust. Returns a token that scopes later
-    /// `picker-push!` calls to this session. Unlike the menu/drawer, the
-    /// picker is allowed from any mode but closes any live
-    /// completion session first, since only one modal owner may be active
-    /// at a time. `on-select` fires exactly once, queued (never invoked
-    /// inline): the selected payload on `Enter`, or `#f` on `Esc`,
-    /// `picker-close!`, or being replaced by a second `picker!` call.
-    /// `pending`: set when a caller opens empty and expects more results
-    /// via `spawn-async!` rather than `picker-source-spawn!` (which already
-    /// implies "still populating" on its own) — surfaced to the UI as a
-    /// "results still arriving" indicator, cleared by the first `push!`
-    /// that actually applies.
+    /// `(picker! items on-select #:prompt "…" #:pending [#f] #:query [""]
+    /// #:on-query-change [#f])` — opens the fuzzy-finder panel. `items` are
+    /// `(display . payload)` pairs; `payload` is handed back to `on-select`
+    /// verbatim, never interpreted by Rust. Returns a token that scopes
+    /// later `picker-push!`/`picker-replace!`/`picker-source-spawn!` calls
+    /// to this session. Unlike the menu/drawer, the picker is allowed from
+    /// any mode but closes any live completion session first, since only
+    /// one modal owner may be active at a time. `on-select` fires exactly
+    /// once, queued (never invoked inline): the selected payload on
+    /// `Enter`, or `#f` on `Esc`, `picker-close!`, or being replaced by a
+    /// second `picker!` call. `pending`: set when a caller opens empty and
+    /// expects more results via `spawn-async!` rather than
+    /// `picker-source-spawn!` (which already implies "still populating" on
+    /// its own) — surfaced to the UI as a "results still arriving"
+    /// indicator, cleared by the first `push!`/`replace!` that actually
+    /// applies. `query`/`on_query_change`: see [`PickerOpts`].
     fn open_picker(
         &mut self,
         items: Vec<(String, steel::rvals::SteelVal)>,
-        prompt: String,
         on_select: steel::rvals::SteelVal,
-        pending: bool,
+        opts: PickerOpts,
     ) -> Result<u64, String>;
 
     /// `(picker-push! token items)` — appends `items` to the open picker's
@@ -930,12 +957,24 @@ pub trait UiHost {
     /// returns whether the push was applied.
     fn picker_push(&mut self, token: u64, items: Vec<(String, steel::rvals::SteelVal)>) -> bool;
 
-    /// `(picker-source-spawn! token cmd args #:cwd dir #:nul flag)` —
-    /// attaches a streaming external-command source to the open picker
-    /// (direct argv spawn, no shell). Its stdout lines flow directly into
-    /// the store, never through Steel. Replaces (killing) any source
-    /// already attached to the same session — a second spawn is a
-    /// re-spawn, not a second concurrent source.
+    /// `(picker-replace! token items)` — replaces the open picker's entire
+    /// item list with `items` and reranks, same token-guard/return contract
+    /// as `picker_push`. The requery half of a live source: a caller with
+    /// `#:on-query-change` clears out the previous pattern's rows before
+    /// spawning the new search, since items are otherwise append-only.
+    fn picker_replace(&mut self, token: u64, items: Vec<(String, steel::rvals::SteelVal)>) -> bool;
+
+    /// `(picker-source-spawn! token cmd args #:cwd dir #:nul flag
+    /// #:ok-exit-codes '(0))` — attaches a streaming external-command
+    /// source to the open picker (direct argv spawn, no shell). Its stdout
+    /// lines flow directly into the store, never through Steel. Replaces
+    /// (killing) any source already attached to the same session — a
+    /// second spawn is a re-spawn, not a second concurrent source, which is
+    /// also how a live source re-runs per query change.
+    ///
+    /// `ok_exit_codes`: exit codes that must not be logged as a failure —
+    /// e.g. `rg` exits `1` on "no matches", which is a normal outcome for a
+    /// live search, not an error worth a message-log entry.
     ///
     /// `Ok(false)` — same "expected-normal race, not an error" contract as
     /// `picker_push` — means a stale token or no open picker; nothing was
@@ -948,6 +987,7 @@ pub trait UiHost {
         args: Vec<String>,
         cwd: Option<std::path::PathBuf>,
         nul: bool,
+        ok_exit_codes: Vec<i32>,
     ) -> Result<bool, String>;
 
     /// `(picker-close! #:token [token #f])` — ends the open picker, if any,

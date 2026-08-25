@@ -585,8 +585,7 @@ fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
     let mut ed = editor_from("-[a]>b\n");
     let mut session = crate::editor::picker::PickerSession::new(
         steel::rvals::SteelVal::StringV("cb".into()),
-        String::new(),
-        false,
+        hume_scripting::host::PickerOpts::default(),
     );
     let token = session.token();
     session.push(
