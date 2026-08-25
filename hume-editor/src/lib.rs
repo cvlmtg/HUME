@@ -92,7 +92,10 @@ pub fn run_keys(
 /// at the end covers the clean-return and `?`-propagated-error paths. Both
 /// are safe to run even if `init` was never reached — every escape sequence
 /// `restore` emits is a documented no-op for a mode that was never entered.
-pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    file_paths: Vec<std::path::PathBuf>,
+    config_path: Option<std::path::PathBuf>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let shared = hume_platform::terminal::create()?;
 
     // The cross-thread waker: background threads (LSP transport, parse
@@ -136,6 +139,11 @@ pub fn run(file_paths: Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
     editor.set_kitty_support(kitty_enabled);
     editor.attach_terminal(shared.clone());
+    // Must run before `init_scripting`, same as `set_kitty_support` above —
+    // the override is read once config resolution starts.
+    if let Some(path) = config_path {
+        editor.set_config_path(path);
+    }
     editor.init_scripting(&mut Default::default());
     // Open remaining paths after scripting init so OnBufferOpen hooks fire.
     editor.open_extra_files(rest);

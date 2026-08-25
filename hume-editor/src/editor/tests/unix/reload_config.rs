@@ -55,6 +55,15 @@ impl ReloadFixture {
     fn write_init(&self, init_scm: &str) {
         std::fs::write(self.config_dir.join("init.scm"), init_scm).unwrap();
     }
+
+    /// Write a `--config` override file *outside* `config_dir` (the tmp
+    /// root, not the `hume/` subdir), so a test can prove the override — not
+    /// the default `init.scm` — is what actually ran.
+    fn write_override(&self, name: &str, init_scm: &str) -> std::path::PathBuf {
+        let path = self._config_tmp.path().join(name);
+        std::fs::write(&path, init_scm).unwrap();
+        path
+    }
 }
 
 impl Drop for ReloadFixture {
@@ -149,6 +158,113 @@ fn reload_config_command_resets_state_from_a_real_init_scm() {
          report success — regression test for MessageLog::totals \
          deliberately excluding Trace/Info from the before/after \
          comparison typed_reload_config gates on"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// --config override
+// ---------------------------------------------------------------------------
+
+/// `set_config_path` (the `--config` flag's editor-side setter) must make
+/// `init_scripting` evaluate the override file instead of the default
+/// `<config_dir>/init.scm` — even though a real, different `init.scm` exists
+/// on disk right where `config_dir()` would otherwise find it.
+#[test]
+fn config_override_is_evaluated_instead_of_default_init_scm() {
+    let fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 9)"#);
+    let override_path = fixture.write_override("override.scm", r#"(set-option! "scrolloff" 42)"#);
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.set_config_path(override_path);
+    ed.init_scripting(&mut Default::default());
+
+    assert_eq!(
+        ed.state.settings.scrolloff, 42,
+        "the --config override must be evaluated, not the default init.scm \
+         (which would have set scrolloff to 9)"
+    );
+}
+
+/// `:reload-config` must re-run the *override* file, not fall back to the
+/// default `init.scm` once scripting resets — the override has to survive
+/// as session state across the reload, not just the initial `init_scripting`.
+#[test]
+fn config_override_survives_reload_config() {
+    let fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 9)"#);
+    let override_path = fixture.write_override("override.scm", r#"(set-option! "scrolloff" 42)"#);
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.set_config_path(override_path.clone());
+    ed.init_scripting(&mut Default::default());
+    assert_eq!(
+        ed.state.settings.scrolloff, 42,
+        "sanity: the override must have applied at startup"
+    );
+
+    std::fs::write(&override_path, r#"(set-option! "scrolloff" 7)"#).unwrap();
+    type_cmd(&mut ed, ":reload-config");
+
+    assert_eq!(
+        ed.state.settings.scrolloff, 7,
+        "reload must re-evaluate the override file's new contents"
+    );
+    assert!(
+        !ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error),
+        "a real reload of a valid override must not log any error; \
+         messages: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+}
+
+/// A `--config` override must work even with no resolvable config directory
+/// at all (`HOME`/`XDG_CONFIG_HOME` both unset) — the whole point of an
+/// explicit override is that it doesn't depend on the standard directories.
+/// Both `init_scripting` and the `:reload-config` fail-fast pre-check must
+/// treat the override as a valid config path.
+#[test]
+fn config_override_works_with_no_config_dir() {
+    let _guard = NoConfigDirGuard::new();
+    let scm_tmp = safe_tempdir();
+    let override_path = scm_tmp.path().join("override.scm");
+    std::fs::write(&override_path, r#"(set-option! "scrolloff" 42)"#).unwrap();
+    // Isolate the scenario under test (no *config* dir) from data-dir and
+    // runtime-dir resolution: `NoConfigDirGuard` unsets `HOME` too, which
+    // `data_dir()` also falls back to, and the resulting warnings would
+    // otherwise be indistinguishable from a real reload failure below.
+    let data_tmp = safe_tempdir();
+    let runtime_tmp = safe_tempdir();
+    let _data_dir = EnvVarGuard::set("XDG_DATA_HOME", data_tmp.path());
+    let _runtime_dir = EnvVarGuard::set("HUME_RUNTIME", runtime_tmp.path());
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.set_config_path(override_path);
+    ed.init_scripting(&mut Default::default());
+
+    assert!(
+        ed.scripting.is_some(),
+        "a --config override must initialize scripting even with no \
+         resolvable config directory"
+    );
+    assert_eq!(ed.state.settings.scrolloff, 42);
+
+    type_cmd(&mut ed, ":reload-config");
+
+    assert_eq!(
+        ed.state.settings.scrolloff, 42,
+        "reload must succeed (not fail-fast) when a --config override is set, \
+         even with no config directory"
+    );
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Config reloaded"),
+        "reload must report success, not the no-config-dir failure"
     );
 }
 

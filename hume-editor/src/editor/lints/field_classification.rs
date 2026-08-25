@@ -152,6 +152,12 @@ const EDITOR_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
          reset_config_state) right before init_scripting rebuilds it",
     ),
     (
+        "config_path_override",
+        "preserved: the whole point of --config is that :reload-config \
+         re-evaluates the same override file the session booted from, not \
+         the default init.scm",
+    ),
+    (
         "builtin_cmd_names",
         "config: overwritten wholesale by init_scripting from the fresh \
          registry, every call including a reload's",

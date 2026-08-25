@@ -636,6 +636,12 @@ pub(crate) struct Editor {
     pub(crate) kitty_enabled: bool,
     /// The embedded Steel scripting host.
     pub(super) scripting: Option<hume_scripting::ScriptingHost>,
+    /// `--config FILE` override for the config path `init_scripting` (and
+    /// every later `:reload-config`) evaluates. `None` falls back to
+    /// `<config_dir>/init.scm`. Set once via `set_config_path`, before the
+    /// first `init_scripting` call — outlives startup so a reload re-runs
+    /// the same file the session booted from.
+    pub(super) config_path_override: Option<std::path::PathBuf>,
     /// Snapshot of Rust-builtin command names taken at end of `init_scripting`.
     pub(super) builtin_cmd_names: rustc_hash::FxHashSet<String>,
     /// Parse backend: threaded in production, synchronous-inline in tests.

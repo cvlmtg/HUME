@@ -17,6 +17,13 @@ struct Cli {
     #[arg(long, value_name = "PATH", requires = "keys")]
     output: Option<PathBuf>,
 
+    /// Load configuration from FILE instead of the default `init.scm`.
+    ///
+    /// Themes and the data directory still resolve from the standard
+    /// directories. Not valid in headless --keys mode.
+    #[arg(long, value_name = "FILE", conflicts_with = "keys")]
+    config: Option<PathBuf>,
+
     /// Files to open (normal mode) or the single input file (headless mode).
     #[arg(value_name = "FILE")]
     files: Vec<PathBuf>,
@@ -30,12 +37,15 @@ enum Mode {
     },
     Normal {
         files: Vec<PathBuf>,
+        config: Option<PathBuf>,
     },
 }
 
 // Classify validated args into a run mode. clap guarantees `output` is present
-// whenever `keys` is, and vice-versa, via `requires`. The only constraint clap
-// can't express — exactly one input file in headless mode — is checked here.
+// whenever `keys` is, and vice-versa, via `requires`, and that `config` never
+// appears alongside `keys`, via `conflicts_with`. The constraints clap can't
+// express — exactly one input file in headless mode, `config` naming a real
+// file — are checked here.
 fn resolve(cli: Cli) -> Result<Mode, String> {
     match cli.keys {
         Some(keys) => {
@@ -52,7 +62,24 @@ fn resolve(cli: Cli) -> Result<Mode, String> {
                 _ => Err("--keys mode requires exactly one input file".into()),
             }
         }
-        None => Ok(Mode::Normal { files: cli.files }),
+        None => {
+            // A missing default `init.scm` is normal and silently skipped
+            // (see `Editor::init_scripting`), but a path the user named
+            // explicitly is an assertion — a typo here should fail loudly
+            // before the terminal even enters raw mode, not silently boot
+            // unconfigured.
+            if let Some(path) = &cli.config {
+                match std::fs::metadata(path) {
+                    Ok(meta) if meta.is_file() => {}
+                    Ok(_) => return Err(format!("--config: not a file: {}", path.display())),
+                    Err(e) => return Err(format!("--config: {}: {e}", path.display())),
+                }
+            }
+            Ok(Mode::Normal {
+                files: cli.files,
+                config: cli.config,
+            })
+        }
     }
 }
 
@@ -70,7 +97,7 @@ fn main() {
             keys,
             output,
         } => hume_editor::run_keys(input, &keys, output),
-        Mode::Normal { files } => hume_editor::run(files),
+        Mode::Normal { files, config } => hume_editor::run(files, config),
     };
     if let Err(e) = result {
         eprintln!("hume: {e}");
@@ -124,12 +151,28 @@ mod tests {
         assert!(cli.files.is_empty());
     }
 
+    #[test]
+    fn parse_config_flag() {
+        let cli = Cli::try_parse_from(["hume", "--config", "alt.scm", "in.txt"])
+            .expect("--config should parse");
+        assert_eq!(cli.config.as_deref(), Some(std::path::Path::new("alt.scm")));
+    }
+
+    #[test]
+    fn parse_config_with_keys_is_rejected() {
+        let err = Cli::try_parse_from([
+            "hume", "--keys", "dwx", "--output", "o.txt", "--config", "alt.scm", "in.txt",
+        ]);
+        assert!(err.is_err(), "clap must reject --config with --keys");
+    }
+
     // ── resolve layer: mode classification (pure logic, no clap) ─────────────
 
     fn make_headless(files: Vec<PathBuf>) -> Cli {
         Cli {
             keys: Some("dw".into()),
             output: Some(PathBuf::from("out.txt")),
+            config: None,
             files,
         }
     }
@@ -138,7 +181,17 @@ mod tests {
         Cli {
             keys: None,
             output: None,
+            config: None,
             files,
+        }
+    }
+
+    fn make_normal_with_config(config: Option<PathBuf>) -> Cli {
+        Cli {
+            keys: None,
+            output: None,
+            config,
+            files: vec![],
         }
     }
 
@@ -178,7 +231,7 @@ mod tests {
     fn resolve_normal_carries_all_files() {
         let files = vec![PathBuf::from("x.rs"), PathBuf::from("y.rs")];
         let mode = resolve(make_normal(files.clone())).expect("normal mode should succeed");
-        let Mode::Normal { files: got } = mode else {
+        let Mode::Normal { files: got, .. } = mode else {
             panic!("expected Mode::Normal");
         };
         assert_eq!(got, files);
@@ -187,9 +240,46 @@ mod tests {
     #[test]
     fn resolve_normal_no_files() {
         let mode = resolve(make_normal(vec![])).expect("no-file launch should succeed");
-        let Mode::Normal { files } = mode else {
+        let Mode::Normal { files, .. } = mode else {
             panic!("expected Mode::Normal");
         };
         assert!(files.is_empty());
+    }
+
+    #[test]
+    fn resolve_config_pointing_at_real_file_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("alt.scm");
+        std::fs::write(&path, "").unwrap();
+        let mode =
+            resolve(make_normal_with_config(Some(path.clone()))).expect("real file should pass");
+        let Mode::Normal { config, .. } = mode else {
+            panic!("expected Mode::Normal");
+        };
+        assert_eq!(config, Some(path));
+    }
+
+    #[test]
+    fn resolve_config_missing_file_errors() {
+        let err = resolve(make_normal_with_config(Some(PathBuf::from(
+            "/no/such/file/alt.scm",
+        ))));
+        assert!(err.is_err(), "a nonexistent --config path must be rejected");
+    }
+
+    #[test]
+    fn resolve_config_pointing_at_directory_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = resolve(make_normal_with_config(Some(dir.path().to_path_buf())));
+        assert!(err.is_err(), "a directory --config path must be rejected");
+    }
+
+    #[test]
+    fn resolve_no_config_flag_succeeds() {
+        let mode = resolve(make_normal_with_config(None)).expect("no --config should pass");
+        let Mode::Normal { config, .. } = mode else {
+            panic!("expected Mode::Normal");
+        };
+        assert_eq!(config, None);
     }
 }

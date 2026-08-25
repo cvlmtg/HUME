@@ -9,7 +9,9 @@ HUME reads persistent configuration from:
 - **macOS / Linux:** `$XDG_CONFIG_HOME/hume/init.scm` (defaults to `~/.config/hume/init.scm`)
 - **Windows:** `%APPDATA%\hume\init.scm`
 
-If the file does not exist, HUME starts with defaults. If it fails partway through, the error is reported in `:messages` and everything up to that point stays applied — so a broken line late in the file leaves you half-configured rather than back at defaults. Fix it and run `:reload-config` to re-run the file without restarting.
+Pass `--config <FILE>` (see [Command-line Flags](cli.md)) to load a different file instead — themes and the data directory still resolve from the standard directories above. `:reload-config` re-runs whichever file the session started from.
+
+If the file does not exist, HUME starts with defaults — except an explicit `--config` path, which is a startup error if missing. If it fails partway through, the error is reported in `:messages` and everything up to that point stays applied — so a broken line late in the file leaves you half-configured rather than back at defaults. Fix it and run `:reload-config` to re-run the file without restarting.
 
 `:reload-config` starts from a clean slate: every option, key binding, hook, command, and plugin goes back to its default first, then the file runs again — so removing a line from `init.scm` and reloading does undo what it did. Any `:set global`/`:set buffer`/`:theme` change you made during the session is discarded too, not just what `init.scm` set, with two exceptions: a pane-scoped `:set pane` override, which stays as you left it (panes are editing state, not config), and an explicit `:set buffer language=<name>`, which is restored after the reload rather than discarded — detection can't reconstruct it on its own (that's exactly why you had to set it explicitly), so losing it on every reload would be more surprising than keeping it. If the file fails partway through this time, you're left with defaults plus whatever ran before the error, same as at startup.
 
@@ -297,6 +299,8 @@ HUME resolves its directories per OS:
 | Config dir (`init.scm`, user `themes/`) | `$XDG_CONFIG_HOME/hume/` (default `~/.config/hume/`) | `%APPDATA%\hume\` |
 | Data dir (plugin clones, tree-sitter grammars) | `$XDG_DATA_HOME/hume/` (default `~/.local/share/hume/`) | `%LOCALAPPDATA%\hume\` (fallback `%APPDATA%\hume\`) |
 | Runtime dir (bundled `runtime/`: `tutor.rst`, `themes/`, `scheme/`, `init.scm.example`, core plugins) | see below | see below |
+
+`--config <FILE>` overrides only which file HUME evaluates as `init.scm` — user `themes/` and the data dir still resolve from the config dir above regardless.
 
 HUME looks for its runtime directory in this order, taking the first that exists:
 

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Configuration & options
+- New `--config <FILE>` flag loads an arbitrary Steel config file instead of the default `init.scm`; `:reload-config` re-evaluates the same file. Themes and the data directory still resolve from the standard directories. Not valid with `--keys`.
+
 ## [0.11.0] - 2026-08-25
 
 ### Breaking changes

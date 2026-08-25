@@ -231,6 +231,7 @@ impl Editor {
             view: engine_view,
             kitty_enabled: false,
             scripting: None,
+            config_path_override: None,
             builtin_cmd_names: rustc_hash::FxHashSet::default(),
             parse_worker: Box::new(
                 hume_treesitter::parse_worker::ThreadedParseBackend::with_waker(
@@ -272,6 +273,15 @@ impl Editor {
     /// entering `run`.
     pub(crate) fn attach_terminate_flag(&mut self, code: Arc<std::sync::atomic::AtomicI32>) {
         self.state.terminate_exit_code = code;
+    }
+
+    /// Override the config file `init_scripting` evaluates (`--config`),
+    /// instead of the default `<config_dir>/init.scm`.
+    ///
+    /// Must run before `init_scripting`, same as `set_kitty_support` — the
+    /// override is read once resolution starts.
+    pub(crate) fn set_config_path(&mut self, path: std::path::PathBuf) {
+        self.config_path_override = Some(path);
     }
 
     /// Process one key event — dispatch it, sync the search cache, drain any

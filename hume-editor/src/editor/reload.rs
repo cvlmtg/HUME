@@ -335,11 +335,12 @@ pub(crate) fn typed_reload_config(
     _force: bool,
 ) -> Result<(), CommandError> {
     // Checked before anything is touched: `init_scripting` needs this same
-    // directory to re-evaluate `init.scm`, and failing here — before
+    // path to re-evaluate the config, and failing here — before
     // `reset_config_state` wipes languages/keymap/theme/highlighting — means
-    // a reload with no HOME/XDG_CONFIG_HOME leaves the editor exactly as it
-    // was, rather than reset to compiled-in defaults with no way back.
-    if hume_platform::dirs::config_dir().is_none() {
+    // a reload with no resolvable path leaves the editor exactly as it was,
+    // rather than reset to compiled-in defaults with no way back. A
+    // `--config` override always resolves, regardless of HOME/XDG_CONFIG_HOME.
+    if ed.config_path().is_none() {
         return Err(CommandError::new(
             "reload-config: no config directory — HOME/XDG_CONFIG_HOME (APPDATA on Windows) unset",
         ));

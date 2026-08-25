@@ -340,6 +340,7 @@ impl Editor {
             view: engine_view,
             kitty_enabled: false,
             scripting: None,
+            config_path_override: None,
             builtin_cmd_names: rustc_hash::FxHashSet::default(),
             parse_worker: Box::new(InlineParseBackend::new()),
             parse_worker_disconnect_logged: false,

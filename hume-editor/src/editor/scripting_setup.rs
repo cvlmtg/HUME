@@ -512,17 +512,17 @@ impl Editor {
     /// just produced). Any error from `init.scm` is reported as
     /// `Severity::Error` and shown in the statusline.
     pub(crate) fn init_scripting(&mut self, snapshot: &mut ReloadSnapshot) {
-        // Resolve the config path up front. `None` means neither XDG_CONFIG_HOME
-        // nor HOME (APPDATA on Windows) is set — there is no meaningful place
-        // to look for init.scm, so we skip scripting entirely and log a warning.
-        let Some(config_dir) = hume_platform::dirs::config_dir() else {
+        // Resolve the config path up front. `None` means no `--config`
+        // override and neither XDG_CONFIG_HOME nor HOME (APPDATA on Windows)
+        // is set — there is no meaningful place to look for init.scm, so we
+        // skip scripting entirely and log a warning.
+        let Some(init_path) = self.config_path() else {
             self.report(
                 Severity::Warning,
                 "scripting: no config directory — HOME/APPDATA unset; init.scm skipped".into(),
             );
             return;
         };
-        let init_path = config_dir.join("init.scm");
         let mut host = hume_scripting::ScriptingHost::new();
         // Pre-register every native command name as a callable Steel binding before
         // any user code sees the engine.  This lets `init.scm` call `(move-left)`
@@ -584,7 +584,17 @@ impl Editor {
                 let mut ih = make_init_host(&mut self.state, &mut self.view);
                 host.eval_init(&init_path, init_budget, &mut ih, builtin_names)
             };
-            self.apply_script_result(result, "init.scm: ");
+            // Named by the path actually evaluated — "init.scm: " for the
+            // default location, the override's own file name under
+            // `--config` — so an eval error names the file the user actually
+            // pointed HUME at, not always the default. Falls back to the
+            // full path for the pathological case of a path with no file
+            // name component (e.g. one ending in `..`).
+            let err_prefix = match init_path.file_name() {
+                Some(name) => format!("{}: ", name.to_string_lossy()),
+                None => format!("{}: ", init_path.display()),
+            };
+            self.apply_script_result(result, &err_prefix);
         }
         // Snapshot language activation entries for the post-init lint below —
         // every eval's effects (identities, grammars, LSP server ops) are
@@ -699,6 +709,19 @@ impl Editor {
                 continue;
             }
             self.detect_and_set_language(bid);
+        }
+    }
+
+    /// The Steel config file this session evaluates — at startup and on
+    /// every `:reload-config`, which must re-run the file the session
+    /// booted from rather than falling back to the default one.
+    ///
+    /// `None` means no `--config` override *and* no resolvable config
+    /// directory (`HOME`/`XDG_CONFIG_HOME`, `APPDATA` on Windows all unset).
+    pub(crate) fn config_path(&self) -> Option<PathBuf> {
+        match &self.config_path_override {
+            Some(path) => Some(path.clone()),
+            None => hume_platform::dirs::config_dir().map(|dir| dir.join("init.scm")),
         }
     }
 
