@@ -10,7 +10,7 @@ Zero friction, maximum output. **HUME** is built on a simple premise: the common
 
 This manual covers everything you need to use HUME effectively — from first launch to advanced configuration. No prior experience with modal editors is required.
 
-*NOTE*: **HUME** is still in its early phases, so some features are still missing (see [Roadmap](roadmap.md)) and there might be some rough edges.
+*NOTE*: **HUME** is still in its early phases, so some features are still missing and there might be some rough edges.
 
 ## Why try it
 - **Less typing for what you do most**. Selections come first, so acting on text is short and direct.

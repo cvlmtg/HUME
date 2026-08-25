@@ -129,7 +129,6 @@ export default defineConfig({
           { text: 'Kakoune', link: '/from-kakoune' },
         ],
       },
-      { text: 'Roadmap', link: '/roadmap' },
     ]),
 
     socialLinks: [
