@@ -149,9 +149,26 @@ macro_rules! builtins {
 // <key> cancels the caller's own previous still-pending request filed under
 // the same (server, key) — opt-in, not automatic by method/buffer.
 //
+// get-option — rest-only parameter list, not a mixed fixed-plus-rest one: a
+// 2+-positional call site compiled inside a required module hits the
+// steel-core 0.8.2 limitation in io.rs's module doc, and every plugin body is
+// a required module. Arity dispatch and semantics: settings.rs's %get-option.
+//
 // debounce — trailing-edge: each call reschedules proc `ms` out, cancelling
 // any still-pending call from a prior invocation. Pure Scheme, no Rust
-// debouncer.
+// debouncer. An armed timer clears `pending` only if it's still the entry
+// stored there, checked via the `my-id` box its own closure captures: a timer
+// already popped-and-queued is past cancelling, so without the check it would
+// clear the *next* call's id on the way out — orphaning that timer, no longer
+// cancellable but still ticking, to fire a stray duplicate later. Routine
+// under settle()'s always-draining loop, not a corner case.
+//
+// debounce-by — as debounce, but keyed per first-argument value instead of one
+// shared pending timer, with the same current-entry check per key: a call
+// keyed k1 never cancels a call keyed k2. The key is `(car args)`, not a
+// separate keyfn argument, matching the single-bid handler shape every
+// debounce call site already uses — so swapping one for the other at an
+// existing site needs no further change.
 //
 // run-inline-output! — the Scheme wrapper (see bootstrap.scm) blocks and
 // raises on nonzero exit or a signal-killed child. Same contract as

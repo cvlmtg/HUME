@@ -52,10 +52,6 @@
                                                      #:supersede [supersede #f])
   (%lsp-request server method params callback allow-stale supersede))
 
-;; (get-option key) / (get-option bid key). Rest-only parameter list, not a
-;; mixed fixed-plus-rest one: a 2+-positional call site compiled inside a
-;; required module hits a steel-core 0.8.2 limitation with mixed lists (see
-;; builtins/io.rs's module doc), and plugin bodies are required modules.
 (define (get-option . args)
   (let ([n (length args)])
     (cond
@@ -63,22 +59,6 @@
       [(= n 2) (%get-option (cadr args) (car args))]
       [else (error "get-option: expected (get-option key) or (get-option bid key)")])))
 
-;; Each armed timer only clears/consumes `pending`'s slot if it's still the
-;; entry stored there when it fires — checked via `my-id`, a box the timer's
-;; own closure captures so it can compare "am I still the current one" at
-;; fire time. Without this: two calls close enough together that the first
-;; timer is already popped-and-queued (due, but not yet *run*) when the
-;; second call's `cancel-timer!` targets it — a no-op, the id no longer
-;; exists in the wheel — leave the second call's freshly armed timer's id
-;; written into `pending`. The first timer's queued call then runs anyway
-;; (it was already dequeued, nothing retroactively cancels that) and
-;; unconditionally clears `pending` on the way out, wiping the second
-;; timer's id out from under it — orphaned, no longer cancellable by any
-;; future call, but still ticking: it fires later regardless, on its own
-;; original schedule, sending a stray duplicate. Racing two calls into the
-;; same fixpoint drain is routine under `settle()`'s merged, always-draining
-;; event loop (hume-editor), so this is a real case to guard, not a corner
-;; one.
 (define (debounce ms proc)
   (let ((pending (box #f)))
     (lambda args
@@ -92,14 +72,6 @@
                       (apply proc args))))
         (set-box! pending (unbox my-id))))))
 
-;; debounce-by — like `debounce`, but keyed per first-argument value instead
-;; of one shared pending timer: a call keyed `k1` never cancels a call keyed
-;; `k2`. Same trailing-edge semantics per key, and the same current-entry
-;; check `debounce` uses (see its comment) against races within one key.
-;; Relies on the calling convention already used everywhere `debounce` wraps
-;; a single-bid handler (`(lambda (bid) ...)`) — the key is `(car args)`,
-;; not a separate keyfn argument, so swapping `debounce` for `debounce-by`
-;; at an existing call site needs no other change.
 (define (debounce-by ms proc)
   (let ((pending (box (hash))))
     (lambda args
