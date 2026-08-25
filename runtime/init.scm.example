@@ -20,6 +20,7 @@
 ;; (load-plugin "core:vim-keybind")      ; vim muscle memory
 ;; (load-plugin "core:helix-surround")   ; helix-style surround
 ;; (load-plugin "core:classic-paste")    ; GUI-style paste
+;; (declare-plugin "core:steel-server")  ; scheme LSP for HUME config; needs :steel-server-install
 
 ;; ── Your settings & key bindings ─────────────────────────────────────────────
 ;; Full reference, in the user manual:
