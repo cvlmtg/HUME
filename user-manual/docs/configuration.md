@@ -195,10 +195,14 @@ To set several bindings at once, use the plural forms:
   ("ctrl-h" "select-prev-word")
   ("ctrl-l" "select-next-word"))
 
+(bind-keys-extend! 'normal
+  ("ctrl-n" "select-line")
+  ("ctrl-y" "select-line-backward"))
+
 (unbind-keys! 'normal "ctrl-j" "ctrl-k")
 ```
 
-`bind-keys-extend!` is the bulk form of `bind-key-extend!`.
+`bind-keys!` batches `bind-key!`, `bind-keys-extend!` batches `bind-key-extend!`, and `unbind-keys!` batches `unbind-key!` — each takes one or more `(key cmd)` pairs (or, for `unbind-keys!`, one or more bare keys) instead of a single one.
 
 ### Binding a key that waits for a character
 
