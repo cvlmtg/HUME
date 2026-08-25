@@ -3,6 +3,8 @@
 # to a dated version header, bump hume-editor's Cargo.toml version, commit,
 # and tag. Stops short of pushing — .github/workflows/release.yml builds and
 # publishes the GitHub release once you push both the commit and the tag.
+# Runs on `main` or a maintenance branch (e.g. `0.10.x`) for patch releases —
+# see docs/RELEASING.md's "Patching an older release".
 # Usage: scripts/release.sh <version>   (e.g. 0.11.0 or v0.11.0)
 set -euo pipefail
 
@@ -17,8 +19,8 @@ version="${raw_version#v}"
 }
 
 branch="$(git rev-parse --abbrev-ref HEAD)"
-[[ "$branch" == "main" ]] || {
-  echo "error: not on main (on $branch)" >&2
+[[ "$branch" == "main" || "$branch" =~ ^[0-9]+\.[0-9]+\.x$ ]] || {
+  echo "error: must run on main or a maintenance branch (X.Y.x), on $branch" >&2
   exit 1
 }
 
@@ -75,4 +77,4 @@ git tag -a "v$version" -m "v$version"
 
 echo
 echo "Tagged v$version locally. Push when ready:"
-echo "  git push origin main && git push origin v$version"
+echo "  git push origin $branch --follow-tags"
