@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.11.0] - 2026-08-25
+
 ### Breaking changes
 - **Breaking**: `core:pickers` and `core:vim-keybind` now require `core:stdlib` declared or
   loaded first — their `#:config` validation moved into `core:stdlib`'s new
