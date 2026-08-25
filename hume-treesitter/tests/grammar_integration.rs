@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use hume_engine::theme::ScopeRegistry;
-use hume_test_fixtures::{grammar_parser_path, grammar_query_path, skip_unless_grammars};
+use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
 use hume_treesitter::grammar::LoadedGrammar;
 use hume_treesitter::highlight::{TreeSitterHighlighter, layer_highlights_for_line};
 use hume_treesitter::layers::{SyntaxLayer, SyntaxLayers};
@@ -76,9 +76,7 @@ fn highlights_for_line(
 
 #[test]
 fn loads_rust_grammar() {
-    if skip_unless_grammars(&["rust"]) {
-        return;
-    }
+    require_grammars(&["rust"]);
     let gpath = grammar_parser_path("rust");
     let grammar = LoadedGrammar::open(&gpath, "tree_sitter_rust").expect("open rust grammar");
     let mut parser = tree_sitter::Parser::new();
@@ -89,9 +87,7 @@ fn loads_rust_grammar() {
 
 #[test]
 fn loads_json_grammar() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let gpath = grammar_parser_path("json");
     let grammar = LoadedGrammar::open(&gpath, "tree_sitter_json").expect("open json grammar");
     let mut parser = tree_sitter::Parser::new();
@@ -106,9 +102,7 @@ fn loads_json_grammar() {
 
 #[test]
 fn parses_rust_function_signature() {
-    if skip_unless_grammars(&["rust"]) {
-        return;
-    }
+    require_grammars(&["rust"]);
     let (_grammar, tree, _rope) = open_and_parse(
         "rust",
         "tree_sitter_rust",
@@ -124,9 +118,7 @@ fn parses_rust_function_signature() {
 
 #[test]
 fn parses_json_object() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (_grammar, tree, _rope) = open_and_parse("json", "tree_sitter_json", "{\"a\":1}");
     let root = tree.root_node();
 
@@ -141,9 +133,7 @@ fn parses_json_object() {
 
 #[test]
 fn highlights_emit_keyword_event() {
-    if skip_unless_grammars(&["rust"]) {
-        return;
-    }
+    require_grammars(&["rust"]);
     let (grammar, tree, rope) = open_and_parse("rust", "tree_sitter_rust", "fn foo() {}\n");
 
     let highlights_source =
@@ -170,9 +160,7 @@ fn highlights_emit_keyword_event() {
 // Byte offsets must be line-relative, not file-relative.
 #[test]
 fn highlights_for_line_correct_on_nonzero_line() {
-    if skip_unless_grammars(&["rust"]) {
-        return;
-    }
+    require_grammars(&["rust"]);
     let (grammar, tree, rope) =
         open_and_parse("rust", "tree_sitter_rust", "fn foo() {}\nlet x = 1;\n");
 
@@ -205,9 +193,7 @@ fn highlights_for_line_correct_on_nonzero_line() {
 // instead of trimmed to 2.
 #[test]
 fn highlight_overlap_shorter_wins_at_shared_start() {
-    if skip_unless_grammars(&["rust"]) {
-        return;
-    }
+    require_grammars(&["rust"]);
     let (grammar, tree, rope) = open_and_parse("rust", "tree_sitter_rust", "fn foo() {}\n");
 
     let query_src = "(function_item) @function\n\"fn\" @keyword";
@@ -242,9 +228,7 @@ fn highlight_overlap_shorter_wins_at_shared_start() {
 // overlapping spans instead of one, failing the count.
 #[test]
 fn highlight_overlap_fully_contained_is_dropped() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (grammar, tree, rope) = open_and_parse("json", "tree_sitter_json", "\"hello\"\n");
 
     let query_src = "(string) @string\n(string) @string.duplicate";
@@ -276,9 +260,7 @@ fn highlight_overlap_fully_contained_is_dropped() {
 // so the later pattern (`@function`) must win here.
 #[test]
 fn highlight_later_pattern_wins_on_same_node() {
-    if skip_unless_grammars(&["rust"]) {
-        return;
-    }
+    require_grammars(&["rust"]);
     let (grammar, tree, rope) =
         open_and_parse("rust", "tree_sitter_rust", "fn main() { foo(1); }\n");
 
@@ -310,9 +292,7 @@ fn highlight_later_pattern_wins_on_same_node() {
 // of genuinely respecting query order.
 #[test]
 fn highlight_pattern_order_controls_winner_not_specificity() {
-    if skip_unless_grammars(&["rust"]) {
-        return;
-    }
+    require_grammars(&["rust"]);
     let (grammar, tree, rope) =
         open_and_parse("rust", "tree_sitter_rust", "fn main() { foo(1); }\n");
 
@@ -343,9 +323,7 @@ fn highlight_pattern_order_controls_winner_not_specificity() {
 // clobber a legitimate capture on the same node.
 #[test]
 fn highlight_underscore_captures_are_ignored() {
-    if skip_unless_grammars(&["rust"]) {
-        return;
-    }
+    require_grammars(&["rust"]);
     let (grammar, tree, rope) =
         open_and_parse("rust", "tree_sitter_rust", "fn main() { foo(1); }\n");
 

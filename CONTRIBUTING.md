@@ -54,10 +54,13 @@ cargo fmt
 scripts/test-all.sh
 ```
 
-`scripts/test-all.sh` is the whole gate — it reproduces the CI job exactly, including the
-network-gated live-grammar end-to-end tests and the grammar-fixture tests that a plain
-`cargo test` silently skips. The first run clones and compiles tree-sitter grammars into
-`tests/fixtures/grammars/` and takes a while; later runs reuse them.
+`scripts/test-all.sh` is the whole gate — it reproduces the CI job exactly. It fetches
+the tree-sitter grammar fixtures the suite requires before running the tests, so it
+needs network access; a bare `cargo test` panics naming the fixture until this has
+been run at least once. The first run clones and compiles the grammars into
+`tests/fixtures/grammars/` and takes a while; later runs reuse them. The suite also
+includes a handful of live network e2e tests (real grammar installs against GitHub),
+so a full run always touches the network.
 
 While iterating on one failure, narrow runs are the right tool:
 

@@ -11,7 +11,7 @@ use std::path::Path;
 use super::*;
 use hume_engine::pipeline::RenderContext;
 use hume_scripting::ScriptingHost;
-use hume_test_fixtures::{grammar_parser_path, grammar_query_path, skip_unless_grammars};
+use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
 
 fn run(ed: &mut Editor, tmp: &Path, source: &str) {
     let mut host = ScriptingHost::new();
@@ -66,9 +66,7 @@ fn band_styled_rows(ed: &Editor) -> Option<Vec<crate::ui::popup::StyledRow>> {
 
 #[test]
 fn markdown_popup_highlights_when_the_grammar_is_registered() {
-    if skip_unless_grammars(&["markdown"]) {
-        return;
-    }
+    require_grammars(&["markdown"]);
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     register_markdown(&mut ed);
@@ -123,9 +121,7 @@ fn markdown_popup_paints_per_run_styles() {
     // Appearance lock for the `draw_menu_box` styled-runs branch (the
     // data-level test above only checks `PopupState.styled_rows`, not that
     // painting actually applies per-run styles to the terminal buffer).
-    if skip_unless_grammars(&["markdown"]) {
-        return;
-    }
+    require_grammars(&["markdown"]);
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
@@ -148,9 +144,7 @@ fn docked_popup_highlights_when_the_grammar_is_registered() {
     // Same syntax-build path as the cursor popup (`#:lang` is layout-
     // independent) but resolved into `popup_band_view`, not `popup_view` —
     // the docked layout hover overflow actually uses (`#:anchor 'bottom`).
-    if skip_unless_grammars(&["markdown"]) {
-        return;
-    }
+    require_grammars(&["markdown"]);
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     register_markdown(&mut ed);
@@ -196,9 +190,7 @@ fn docked_popup_survives_a_multiline_capture_node() {
     // this only ever surfaced through markdown. `styled_row` is shared by
     // every caller (cursor popup, docked popup) — exercised here through
     // the docked layout, hover's actual long-content path.
-    if skip_unless_grammars(&["markdown"]) {
-        return;
-    }
+    require_grammars(&["markdown"]);
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
@@ -224,9 +216,7 @@ fn docked_popup_survives_a_multiline_capture_node() {
 
 #[test]
 fn popup_without_markdown_flag_stays_plain_even_with_the_grammar_registered() {
-    if skip_unless_grammars(&["markdown"]) {
-        return;
-    }
+    require_grammars(&["markdown"]);
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     register_markdown(&mut ed);

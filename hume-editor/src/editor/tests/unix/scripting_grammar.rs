@@ -4,10 +4,9 @@
 // `../scripting_grammar.rs`.
 //
 // Tests that use the grammar fixture (grammar_fixture()) require the shared
-// library built by `scripts/fetch-test-grammars.sh`.  Each gates on
-// skip_unless_grammars first: a fixture-less checkout skips with a note;
-// HUME_REQUIRE_GRAMMAR_FIXTURES=1 (CI, scripts/test-all.sh) turns the same
-// gate into a hard failure instead.
+// library built by `scripts/fetch-test-grammars.sh`. Each calls
+// require_grammars first, which panics naming the fix if a fixture is
+// missing.
 
 use super::*;
 
@@ -19,7 +18,7 @@ use super::super::scripting_grammar::{
 };
 use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::ScriptingHost;
-use hume_test_fixtures::skip_unless_grammars;
+use hume_test_fixtures::require_grammars;
 
 /// Blobless-clone `url` at `rev` into `dest`, test-fixture-only — mirrors the
 /// two-step shape `plum/install-grammar` now runs via `run-inline-output!`
@@ -75,9 +74,7 @@ fn curl_fetch_for_test(
 /// no sweep would fire and syntax would stay None.
 #[test]
 fn register_grammar_command_mode_attaches_and_sweeps() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let tmp = safe_tempdir();
     let init_path = tmp.path().join("init.scm");
@@ -141,9 +138,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
 /// it would not show up in `pending_language_regs`.
 #[test]
 fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let ext = hume_test_fixtures::grammar_platform_ext();
 
@@ -220,21 +215,15 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
 // ---------------------------------------------------------------------------
 
 /// End-to-end: clone → curl → tree-sitter build → register-grammar! for JSON.
-///
-/// Gated by `HUME_REQUIRE_LIVE_GRAMMAR_E2E=1`; otherwise skipped when git,
-/// curl, or tree-sitter is absent or GitHub is unreachable.
+/// Requires `git`, `curl`, and `tree-sitter` on `PATH`, and network access.
 #[test]
 fn install_real_json_grammar_e2e() {
-    // git/curl/tree-sitter are all spawned by unqualified name below (and by
-    // the live-e2e probe itself), so this test is a `PATH` reader for its
-    // whole duration — `scripting_lsp_install.rs` narrows process `PATH` to
-    // an empty or shim-only dir in several tests, and a spawn landing inside
-    // that window resolves to nothing (see `Global::Env`'s doc).
+    // git/curl/tree-sitter are all spawned by unqualified name below, so this
+    // test is a `PATH` reader for its whole duration —
+    // `scripting_lsp_install.rs` narrows process `PATH` to an empty or
+    // shim-only dir in several tests, and a spawn landing inside that window
+    // resolves to nothing (see `Global::Env`'s doc).
     let _lock = TEST_GLOBALS.claim(Global::Env);
-
-    if hume_test_fixtures::skip_unless_live_grammar_e2e("install_real_json_grammar_e2e") {
-        return;
-    }
 
     // Read the JSON grammar's url + pinned rev straight from the runtime catalog
     // (single source of truth — no hardcoded pins to drift out of sync).
@@ -504,9 +493,7 @@ fn tsx_bundled_language_id_is_typescriptreact() {
 /// `init_scripting` and the first assertion fails.
 #[test]
 fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let languages_scm = format!(
         "(define-language! \"json\" '(\"json\"))\n\
@@ -584,9 +571,7 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
 /// stay false and the buffer would render unhighlighted.
 #[test]
 fn grammar_registration_survives_plum_absence() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     // No core:plum anywhere in init.scm.
     let fixture = StagedGrammarFixture::new("json", &parser, &hl, "");
@@ -653,9 +638,7 @@ fn grammar_registration_survives_plum_absence() {
 /// render unhighlighted after `init.scm`'s `define-language!` call.
 #[test]
 fn define_language_override_in_init_keeps_startup_grammar() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     // The documented override pattern: redefine an already-grammared
     // language in init.scm to add an extension.

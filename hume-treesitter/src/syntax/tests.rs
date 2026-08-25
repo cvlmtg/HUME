@@ -10,7 +10,7 @@ use super::Syntax;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParsedLayers};
 use crate::registry::GrammarBundle;
 use crate::test_support::{empty_langs, fresh_bid};
-use hume_test_fixtures::{grammar_query_path, skip_unless_grammars};
+use hume_test_fixtures::{grammar_query_path, require_fixture_file, require_grammars};
 
 fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
     crate::test_support::make_bundle(name, symbol, "", None)
@@ -72,9 +72,7 @@ fn parse_done_for(
 
 #[test]
 fn attach_nonempty_text_returns_request_and_sets_in_flight() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
     let (syn, req) = Syntax::attach(bundle, bid, 0, &BufferText::from("{}\n"), &empty_langs());
@@ -101,9 +99,7 @@ fn attach_nonempty_text_returns_request_and_sets_in_flight() {
 
 #[test]
 fn attach_sync_parses_immediately_and_produces_real_highlight_spans() {
-    if skip_unless_grammars(&["markdown"]) {
-        return;
-    }
+    require_grammars(&["markdown"]);
     let bundle = make_bundle_with_real_highlights("markdown", "tree_sitter_markdown");
     let text = BufferText::from("# heading\n");
     let syn = Syntax::attach_sync(Arc::clone(&bundle), &text, &empty_langs());
@@ -125,9 +121,7 @@ fn attach_sync_parses_immediately_and_produces_real_highlight_spans() {
 
 #[test]
 fn frame_tick_up_to_date_returns_no_request() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
     let (mut syn, _req) = Syntax::attach(
@@ -147,9 +141,7 @@ fn frame_tick_up_to_date_returns_no_request() {
 
 #[test]
 fn frame_tick_dedups_while_in_flight_at_same_gen() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
     let (mut syn, req) = Syntax::attach(
@@ -171,9 +163,7 @@ fn frame_tick_dedups_while_in_flight_at_same_gen() {
 
 #[test]
 fn frame_tick_reposts_after_further_edit() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
     let (mut syn, _req) = Syntax::attach(
@@ -194,9 +184,7 @@ fn frame_tick_reposts_after_further_edit() {
 
 #[test]
 fn frame_tick_old_tree_present_iff_chain_baked() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
     let (mut syn, _req) = Syntax::attach(
@@ -253,9 +241,7 @@ fn frame_tick_old_tree_present_iff_chain_baked() {
 
 #[test]
 fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
     let (mut syn, _req) = Syntax::attach(
@@ -301,9 +287,7 @@ fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
 
 #[test]
 fn bake_mid_chain_gap_rejected() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
     let (mut syn, _req) = Syntax::attach(
@@ -351,14 +335,10 @@ fn bake_mid_chain_gap_rejected() {
 /// staying pinned at the pre-edit byte offset.
 #[test]
 fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
-    if skip_unless_grammars(&["markdown", "rust"]) {
-        return;
-    }
+    require_grammars(&["markdown", "rust"]);
     let inj_path =
         hume_test_fixtures::grammar_query_path("markdown").with_file_name("injections.scm");
-    if hume_test_fixtures::skip_unless_file(&inj_path, "markdown injections.scm") {
-        return;
-    }
+    require_fixture_file(&inj_path, "markdown injections.scm");
     let inj_src = std::fs::read_to_string(&inj_path).expect("read injections.scm");
     let markdown = make_bundle_with_injections("markdown", "tree_sitter_markdown", &inj_src);
     let rust = make_bundle("rust", "tree_sitter_rust");
@@ -444,9 +424,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
 
 #[test]
 fn install_stale_text_gen_discarded() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
     let (mut syn, _req) = Syntax::attach(
@@ -471,9 +449,7 @@ fn install_stale_text_gen_discarded() {
 
 #[test]
 fn install_config_gen_mismatch_discarded_without_clearing_newer_in_flight() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let old_bundle = make_bundle("json", "tree_sitter_json");
     let new_bundle = make_bundle("json", "tree_sitter_json"); // distinct config_gen
     let bid = fresh_bid();
@@ -516,9 +492,7 @@ fn install_config_gen_mismatch_discarded_without_clearing_newer_in_flight() {
 /// retains an entry.
 #[test]
 fn install_matching_done_clears_in_flight_and_drains_pending() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
     let (mut syn, _req0) = Syntax::attach(
@@ -571,9 +545,7 @@ fn install_matching_done_clears_in_flight_and_drains_pending() {
 
 #[test]
 fn install_parse_failed_advances_parsed_gen_only() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
     let (mut syn, _req) = Syntax::attach(
@@ -610,9 +582,7 @@ fn install_parse_failed_advances_parsed_gen_only() {
 
 #[test]
 fn clear_layers_keeps_attachment_next_tick_full_reparses() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
     let (mut syn, _req) = Syntax::attach(

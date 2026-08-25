@@ -3,10 +3,9 @@
 // Steel builtin, and the grammar install pipeline.
 //
 // Tests that use the grammar fixture (grammar_fixture()) require the shared
-// library built by `scripts/fetch-test-grammars.sh`.  Each gates on
-// skip_unless_grammars first: a fixture-less checkout skips with a note;
-// HUME_REQUIRE_GRAMMAR_FIXTURES=1 (CI, scripts/test-all.sh) turns the same
-// gate into a hard failure instead.
+// library built by `scripts/fetch-test-grammars.sh`. Each calls
+// require_grammars first, which panics naming the fix if a fixture is
+// missing.
 
 use super::*;
 
@@ -14,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::render_snapshot::render_to_styled_string;
-use hume_test_fixtures::{grammar_parser_path, grammar_query_path, skip_unless_grammars};
+use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,9 +72,7 @@ pub(super) fn grammar_fixture(name: &str) -> (PathBuf, PathBuf) {
 /// returns early — all three handles stay None.
 #[test]
 fn attach_then_set_language_attaches_syntax() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -126,9 +123,7 @@ fn attach_then_set_language_attaches_syntax() {
 /// from the registry the reset is about to replace.
 #[test]
 fn reset_config_state_clears_buffer_syntax_not_just_language() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -170,9 +165,7 @@ fn reset_config_state_clears_buffer_syntax_not_just_language() {
 /// Flip: if clear didn't propagate, parser/syntax/tree would still be Some after set(None).
 #[test]
 fn clear_language_detaches_syntax_keeps_identity() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -212,9 +205,7 @@ fn clear_language_detaches_syntax_keeps_identity() {
 /// Flip: if sweep ignored the name filter it would attach after the rust-sweep midpoint.
 #[test]
 fn sweep_attaches_syntax_on_matching_language() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -254,9 +245,7 @@ fn sweep_attaches_syntax_on_matching_language() {
 /// Flip: if sweep applies to all buffers regardless of name, the first assert would fail.
 #[test]
 fn sweep_no_op_for_nonmatching_language() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -302,9 +291,7 @@ fn sweep_no_op_for_nonmatching_language() {
 /// Flip: without reparse_stale_buffers the parsed_gen would stay at gen0 even after the edit.
 #[test]
 fn reparse_advances_parsed_gen_after_edit() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -395,9 +382,7 @@ fn reparse_advances_parsed_gen_after_edit() {
 /// Flip: without the max_bytes gate, parser would still be Some after reparse.
 #[test]
 fn reparse_detaches_when_buffer_exceeds_max_bytes() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -441,9 +426,7 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
 /// Flip: if has_grammar ignored grammar presence it would return true for identity-only.
 #[test]
 fn language_has_grammar_false_for_identity_only_true_after_attach() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[a]>b\n");
     ed.state
@@ -488,9 +471,7 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
 /// Flip: if `*buffers.get_mut(id) = new_doc` were skipped, the assert fails.
 #[test]
 fn replace_buffer_in_place_clears_engine_syntax_state() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -541,9 +522,7 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
 /// Flip: if the re-attach branch is removed, the final `parser.is_some()` assert fails.
 #[test]
 fn reparse_reattaches_after_shrink_under_cap() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -612,9 +591,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     use hume_editing::selection::SelectionSet;
     use hume_editing::text::BufferText;
 
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -742,9 +719,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
 /// the next `reparse_stale_buffers` call.
 #[test]
 fn parse_worker_result_is_async_then_installed() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -815,9 +790,7 @@ fn parse_worker_result_is_async_then_installed() {
 /// skip posting, leaving parsed_gen permanently stale.
 #[test]
 fn grammar_swap_clears_stale_in_flight() {
-    if skip_unless_grammars(&["json", "rust"]) {
-        return;
-    }
+    require_grammars(&["json", "rust"]);
     let (parser_json, hl_json) = grammar_fixture("json");
     let (parser_rust, hl_rust) = grammar_fixture("rust");
     let mut ed = editor_from("-[f]>n main() {}\n");
@@ -930,9 +903,7 @@ fn catalog_parsing_extracts_json_pins() {
 fn rust_function_highlight_snapshot() {
     use hume_treesitter::highlight::layer_highlights_for_line;
 
-    if skip_unless_grammars(&["rust"]) {
-        return;
-    }
+    require_grammars(&["rust"]);
     let (parser, hl) = grammar_fixture("rust");
     // Cursor on the trailing `\n` so no token cell is reverse-video in the snapshot.
     let mut ed = editor_from("// hi\nfn main() {\n    let x: u32 = 1;\n}-[\n]>");

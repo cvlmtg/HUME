@@ -4,7 +4,7 @@ use globset::Glob;
 
 use super::{LanguageRegistry, detect_language};
 use hume_engine::theme::ScopeRegistry;
-use hume_test_fixtures::{grammar_parser_path, grammar_query_path, skip_unless_grammars};
+use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
 
 /// Write `src` to a temp file and return its path (kept alive via the
 /// returned `TempDir`).
@@ -26,9 +26,7 @@ fn globs(pats: &[&str]) -> Vec<Glob> {
 
 #[test]
 fn attach_grammar_with_valid_injections_populates_bundle() {
-    if skip_unless_grammars(&["rust"]) {
-        return;
-    }
+    require_grammars(&["rust"]);
     let parser_path = grammar_parser_path("rust");
     let hl_path = grammar_query_path("rust");
     let (_dir, inj_path) =
@@ -65,9 +63,7 @@ fn attach_grammar_with_valid_injections_populates_bundle() {
 
 #[test]
 fn attach_grammar_without_injections_path_leaves_injections_none() {
-    if skip_unless_grammars(&["rust"]) {
-        return;
-    }
+    require_grammars(&["rust"]);
     let parser_path = grammar_parser_path("rust");
     let hl_path = grammar_query_path("rust");
 
@@ -96,9 +92,7 @@ fn attach_grammar_without_injections_path_leaves_injections_none() {
 /// path.
 #[test]
 fn attach_grammar_with_broken_injections_fails_whole_attach() {
-    if skip_unless_grammars(&["rust"]) {
-        return;
-    }
+    require_grammars(&["rust"]);
     let parser_path = grammar_parser_path("rust");
     let hl_path = grammar_query_path("rust");
     let (_dir, inj_path) = write_temp_scm("(this is not valid tree-sitter query syntax");
@@ -238,9 +232,7 @@ fn deindex_does_not_clobber_another_languages_shared_extension() {
 /// go empty here.
 #[test]
 fn attached_grammar_survives_identity_re_registration() {
-    if skip_unless_grammars(&["rust"]) {
-        return;
-    }
+    require_grammars(&["rust"]);
     let parser_path = grammar_parser_path("rust");
     let hl_path = grammar_query_path("rust");
 

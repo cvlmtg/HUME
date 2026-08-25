@@ -9,7 +9,7 @@ use super::ParseBackend as _;
 use super::{BufferText, ParseOutcome, ParseRequest, ThreadedParseBackend, coalesce_one};
 use crate::registry::GrammarBundle;
 use crate::test_support::{empty_langs, fresh_bid};
-use hume_test_fixtures::skip_unless_grammars;
+use hume_test_fixtures::require_grammars;
 
 fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
     crate::test_support::make_bundle(name, symbol, "", None)
@@ -19,9 +19,7 @@ fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
 
 #[test]
 fn coalesce_one_keeps_higher_gen() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let bid = fresh_bid();
     let bundle = make_bundle("json", "tree_sitter_json");
     let mut batch: FxHashMap<BufferId, ParseRequest> = FxHashMap::default();
@@ -96,9 +94,7 @@ fn coalesce_one_keeps_higher_gen() {
 
 #[test]
 fn coalesce_one_same_gen_different_lang_replaces() {
-    if skip_unless_grammars(&["json", "rust"]) {
-        return;
-    }
+    require_grammars(&["json", "rust"]);
     let bid = fresh_bid();
     let bundle_a = make_bundle("json", "tree_sitter_json");
     let bundle_b = make_bundle("rust", "tree_sitter_rust");
@@ -175,9 +171,7 @@ fn worker_shutdown_joins_thread() {
 
 #[test]
 fn worker_language_switch_produces_trees_for_both() {
-    if skip_unless_grammars(&["json", "rust"]) {
-        return;
-    }
+    require_grammars(&["json", "rust"]);
     let json_bundle = make_bundle("json", "tree_sitter_json");
     let rust_bundle = make_bundle("rust", "tree_sitter_rust");
     let mut worker = ThreadedParseBackend::with_waker(Arc::new(|| {}));
@@ -226,9 +220,7 @@ fn worker_language_switch_produces_trees_for_both() {
 
 #[test]
 fn parse_completion_fires_waker() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let (tx_wake, rx_wake) = std::sync::mpsc::channel::<()>();
     let wake: super::WakeCallback = Arc::new(move || {
         let _ = tx_wake.send(());

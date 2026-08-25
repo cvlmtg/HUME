@@ -438,8 +438,7 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
 /// leftover directory as a side effect of the first attempt's own failure.
 ///
 /// Hits the network (real git clone + curl fetch + tree-sitter build of the
-/// `json` grammar); gated like `install_real_json_grammar_e2e` in
-/// `scripting_grammar.rs`.
+/// `json` grammar); requires `git`, `curl`, and `tree-sitter` on `PATH`.
 ///
 /// Flip: without the `(delete-dir src-dir)` fix in `plum/install-grammar`,
 /// `git-clone-rev` refuses to clone into this pre-seeded non-empty dir and
@@ -447,12 +446,6 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
 /// appears, and this assertion fails.
 #[test]
 fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
-    if hume_test_fixtures::skip_unless_live_grammar_e2e(
-        "plum_install_grammar_recovers_from_stale_source_dir_on_first_try",
-    ) {
-        return;
-    }
-
     let _lock = TEST_GLOBALS.claim(Global::Env);
 
     let data_tmp = safe_tempdir();
@@ -497,7 +490,8 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
 ///
 /// Hits the network (real git clone + tree-sitter build of the `tsx` grammar,
 /// plus curl fetches of its `highlights.scm` and its `ecma`/`_typescript`/
-/// `_jsx` query dependencies); gated like `install_real_json_grammar_e2e`.
+/// `_jsx` query dependencies); requires `git`, `curl`, and `tree-sitter` on
+/// `PATH`.
 ///
 /// Flip: reverting the `plum/fetch-query!` call sites back to plain
 /// `curl-fetch` leaves `highlights.scm` as the raw `; inherits: …` stub —
@@ -505,12 +499,6 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
 /// fail on that stub (no `@capture` in a comment-only file).
 #[test]
 fn plum_install_grammar_resolves_helix_inherits_chain() {
-    if hume_test_fixtures::skip_unless_live_grammar_e2e(
-        "plum_install_grammar_resolves_helix_inherits_chain",
-    ) {
-        return;
-    }
-
     let _lock = TEST_GLOBALS.claim(Global::Env);
 
     let data_tmp = safe_tempdir();

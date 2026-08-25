@@ -1,7 +1,7 @@
 //! Test-only scaffolding shared across this crate's per-module test suites:
 //! bundle builders, id/gen helpers, and range construction. Every caller
-//! already gates on `hume_test_fixtures::skip_unless_grammars` before using
-//! these, so none of them re-check fixture existence themselves.
+//! already calls `hume_test_fixtures::require_grammars` before using these,
+//! so none of them re-check fixture existence themselves.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};

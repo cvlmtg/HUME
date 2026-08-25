@@ -215,7 +215,7 @@ impl StagedGrammarFixture {
     /// `grammar_name`'s compiled fixture library and `highlights.scm` staged
     /// under a fresh `<data>/grammars/`; `init_scm` written to a fresh
     /// `init.scm`. Caller supplies `grammar_name`'s own fixture files —
-    /// callers gate on `skip_unless_grammars` first.
+    /// callers call `require_grammars` first.
     fn new(grammar_name: &str, parser: &Path, highlights: &Path, init_scm: &str) -> Self {
         let lock = TEST_GLOBALS.claim(Global::Env);
         let repo_runtime_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");

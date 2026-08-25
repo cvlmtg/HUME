@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use hume_engine::theme::ScopeRegistry;
-use hume_test_fixtures::skip_unless_grammars;
+use hume_test_fixtures::require_grammars;
 
 use super::{SyntaxLayer, layer_covers_line};
 use crate::highlight::TreeSitterHighlighter;
@@ -33,9 +33,7 @@ fn injected_layer(ranges: Vec<tree_sitter::Range>) -> SyntaxLayer {
 
 #[test]
 fn root_layer_with_empty_ranges_covers_every_line() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     // depth 0 in practice, but the empty-ranges short-circuit doesn't
     // actually key off `depth` — assert on the field it does check.
     let layer = injected_layer(vec![]);
@@ -45,27 +43,21 @@ fn root_layer_with_empty_ranges_covers_every_line() {
 
 #[test]
 fn injected_layer_covers_a_line_inside_its_single_range() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let layer = injected_layer(vec![range(10, 20)]);
     assert!(layer_covers_line(&layer, 12, 15));
 }
 
 #[test]
 fn injected_layer_does_not_cover_a_line_entirely_before_its_range() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let layer = injected_layer(vec![range(10, 20)]);
     assert!(!layer_covers_line(&layer, 0, 5));
 }
 
 #[test]
 fn injected_layer_does_not_cover_a_line_entirely_after_its_range() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let layer = injected_layer(vec![range(10, 20)]);
     assert!(!layer_covers_line(&layer, 25, 30));
 }
@@ -79,9 +71,7 @@ fn injected_layer_does_not_cover_a_line_entirely_after_its_range() {
 /// falling in the gap between the two — real multi-candidate lookups.
 #[test]
 fn injected_layer_binary_search_finds_a_non_first_range() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let layer = injected_layer(vec![range(0, 10), range(20, 30), range(40, 50)]);
     assert!(
         layer_covers_line(&layer, 22, 25),
@@ -95,9 +85,7 @@ fn injected_layer_binary_search_finds_a_non_first_range() {
 
 #[test]
 fn injected_layer_boundary_is_half_open() {
-    if skip_unless_grammars(&["json"]) {
-        return;
-    }
+    require_grammars(&["json"]);
     let layer = injected_layer(vec![range(10, 20)]);
     // A line starting exactly at the range's end is adjacent, not
     // overlapping — `line_start < end_byte` must be strict.
