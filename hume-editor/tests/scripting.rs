@@ -1794,19 +1794,17 @@ fn unbind_key_invalid_mode_errors() {
 // Zero-effect check: swap a cmd name in a pair; the assertion catches it because
 // it compares against the literal name from the input, not "whatever the keymap says".
 
-/// Macro source matching runtime/scheme/prelude.scm (inlined so tests do not
-/// depend on the runtime dir being on disk relative to the test runner CWD).
-const PRELUDE_MACROS: &str = r#"
-(define-syntax bind-keys!
-  (syntax-rules ()
-    ((_ mode (key cmd) ...) (begin (bind-key! mode key cmd) ...))))
-(define-syntax bind-keys-extend!
-  (syntax-rules ()
-    ((_ mode (key cmd) ...) (begin (bind-key-extend! mode key cmd) ...))))
-(define-syntax unbind-keys!
-  (syntax-rules ()
-    ((_ mode key ...) (begin (unbind-key! mode key) ...))))
-"#;
+/// Real `runtime/scheme/prelude.scm` source, read fresh per call so these tests
+/// exercise the file plugin authors actually get — same `CARGO_MANIFEST_DIR`-
+/// relative approach as `editor::tests::scripting_grammar::runtime_scheme_dir`,
+/// which is independent of the test runner's CWD.
+fn real_prelude_source() -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("runtime/scheme/prelude.scm");
+    std::fs::read_to_string(&path).unwrap()
+}
 
 #[test]
 fn prelude_bind_keys_batch_binds_multiple() {
@@ -1815,7 +1813,7 @@ fn prelude_bind_keys_batch_binds_multiple() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source(PRELUDE_MACROS, &mut mock).unwrap();
+    h.eval_source(&real_prelude_source(), &mut mock).unwrap();
     let effects = h
         .eval_source(
             r#"(bind-keys! 'normal
@@ -1849,7 +1847,7 @@ fn prelude_bind_keys_extend_creates_force_extend_leaves() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source(PRELUDE_MACROS, &mut mock).unwrap();
+    h.eval_source(&real_prelude_source(), &mut mock).unwrap();
     let effects = h
         .eval_source(
             r#"(bind-keys-extend! 'normal
@@ -1882,7 +1880,7 @@ fn prelude_unbind_keys_batch_removes_bindings() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source(PRELUDE_MACROS, &mut mock).unwrap();
+    h.eval_source(&real_prelude_source(), &mut mock).unwrap();
     let effects = h
         .eval_source(r#"(unbind-keys! 'normal "h" "l")"#, &mut mock)
         .unwrap();
@@ -1918,7 +1916,7 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
     let prelude_path = dir.path().join("prelude.scm");
     let init_path = dir.path().join("init.scm");
 
-    std::fs::write(&prelude_path, PRELUDE_MACROS).unwrap();
+    std::fs::write(&prelude_path, real_prelude_source()).unwrap();
     let mut f = std::fs::File::create(&init_path).unwrap();
     writeln!(
         f,
