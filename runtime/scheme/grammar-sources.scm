@@ -1,16 +1,6 @@
 ;;; runtime/scheme/grammar-sources.scm — HUME bundled tree-sitter grammar source catalog.
-;;;
-;;; PURE DATA. One literal sexpr — a list of (name git-url rev symbol subpath)
-;;; 5-tuples. All fields are fully canonicalised; no defaults are applied at
-;;; read time. Read by `grammars.scm` on first use — not at startup — via the
-;;; R7RS idiom:
-;;;
-;;;   (call-with-input-file
-;;;     (path-join (runtime-dir) "scheme" "grammar-sources.scm")
-;;;     read)
-;;;
+;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ f6f3eb1fe4a7
-;;; Full sync: run scripts/sync-grammars.py after updating helix-pin.scm.
 
 (
  ("ada" "https://github.com/briot/tree-sitter-ada" "ba0894efa03beb70780156b91e28c716b7a4764d" "tree_sitter_ada" "")

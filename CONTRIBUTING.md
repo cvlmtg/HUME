@@ -114,7 +114,7 @@ Every piece of writing in this repository targets exactly one audience — do no
 |---|---|
 | End users | `README.md`, `user-manual/docs/`, `runtime/tutor.rst`, `runtime/init.scm.example` |
 | Learners | `docs/LEARNING.md`, `docs/learning/` |
-| Contributors | Inline source comments — and nowhere else |
+| Contributors | Inline source comments, plus a per-directory `README.md` (`scripts/`, `runtime/scheme/`, each `runtime/plugins/core/*/`) |
 
 Source comments target contributors only, and user-facing docs never mention Rust types, module paths, or internal function names.
 

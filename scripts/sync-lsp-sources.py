@@ -50,40 +50,8 @@ LSP_SOURCES_SCM = REPO / "runtime" / "scheme" / "lsp-sources.scm"
 
 LSP_SOURCES_HEADER = """\
 ;;; runtime/scheme/lsp-sources.scm — HUME bundled LSP server install catalog.
-;;;
-;;; PURE DATA. One literal sexpr — a list of per-server tagged alists, joined
-;;; to lsp-servers.scm by server name:
-;;;
-;;;   github: (name (kind . github) (version . tag) (repo . "owner/repo")
-;;;            (targets (hume-target asset-file sha256 bin-path)…))
-;;;   npm:    (name (kind . npm) (version . ver)
-;;;            (packages "name@version" extra…) (bin . script))
-;;;   cargo:  (name (kind . cargo) (version . ver) (crate . crates-io-name)
-;;;            (bin . bin-name))
-;;;   stub:   (name (kind . other-kind) (version . ver))  — not installable;
-;;;           either an unsupported purl kind (golang, pypi, cargo-git, …) or
-;;;           a github package with no prebuilt asset (kind `github-build`,
-;;;           Mason builds it from source). `cargo-git` is a Mason cargo
-;;;           package pinned to a git tag/rev instead of a crates.io version
-;;;           (e.g. nil) — not reachable via `cargo install crate@version`.
-;;;
-;;; hume-target is one of darwin-arm64, darwin-x64, linux-x64, windows-x64.
-;;; A server missing a target simply omits that row (not installable there).
-;;; All fields are fully canonicalised; no defaults are applied at read time.
-;;; Read via the R7RS idiom from any plugin:
-;;;
-;;;   (define *lsp-sources*
-;;;     (call-with-input-file
-;;;       (path-join (runtime-dir) "scheme" "lsp-sources.scm")
-;;;       read))
-;;;
-;;; A Helix server with no Mason equivalent (no HELIX_TO_MASON entry and no
-;;; identically-named Mason LSP-category package) gets no entry at all;
-;;; :lsp-install fails for it with "no install source".
-;;;
+;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
 ;;; Source: mason-org/mason-registry @ {tag}
-;;; Full sync: run scripts/sync-lsp-sources.py after updating mason-pin.scm.
-;;; (Run scripts/sync-grammars.py first if helix-pin.scm also changed.)
 """
 
 # Helix server name -> Mason package name, for the cases where the two

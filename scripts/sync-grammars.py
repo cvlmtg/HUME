@@ -44,87 +44,20 @@ LSP_SERVERS_SCM = REPO / "runtime" / "scheme" / "lsp-servers.scm"
 
 LANGUAGES_HEADER = """\
 ;;; runtime/scheme/languages.scm — HUME bundled default language identities.
-;;;
-;;; Evaluated at startup before init.scm.  Override any entry by redefining
-;;; it in init.scm — `define-language!` replaces the prior identity
-;;; (extensions/globs/shebangs/language-id) for a given name, and keeps any
-;;; grammar already attached to it (see init.scm.example for override examples).
-;;;
-;;; Identity only: extensions, globs, shebangs, and an optional `#:language-id`
-;;; override for the `languageId` sent to language servers (only present when
-;;; it differs from the name, e.g. "tsx" -> "typescriptreact"). No tree-sitter
-;;; grammars are shipped here — to enable highlighting, install a compiled
-;;; grammar and its highlights query, typically via `core:plum`'s
-;;; `:plum-install-grammar`.
-;;;
-;;; Grammar source metadata lives in grammar-sources.scm, and startup
-;;; registration of already-compiled grammars in grammars.scm — both loaded
-;;; unconditionally right after this file (see scripting_setup.rs), so
-;;; highlighting works whether or not a grammar-manager plugin is declared.
-;;;
+;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
-;;; Full sync: run scripts/sync-grammars.py after updating helix-pin.scm.
 """
 
 GRAMMAR_SOURCES_HEADER = """\
 ;;; runtime/scheme/grammar-sources.scm — HUME bundled tree-sitter grammar source catalog.
-;;;
-;;; PURE DATA. One literal sexpr — a list of (name git-url rev symbol subpath)
-;;; 5-tuples. All fields are fully canonicalised; no defaults are applied at
-;;; read time. Read by `grammars.scm` on first use — not at startup — via the
-;;; R7RS idiom:
-;;;
-;;;   (call-with-input-file
-;;;     (path-join (runtime-dir) "scheme" "grammar-sources.scm")
-;;;     read)
-;;;
+;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
-;;; Full sync: run scripts/sync-grammars.py after updating helix-pin.scm.
 """
 
 LSP_SERVERS_HEADER = """\
 ;;; runtime/scheme/lsp-servers.scm — HUME bundled LSP server registration catalog.
-;;;
-;;; PURE DATA. One literal sexpr — a list of per-server tagged alists:
-;;;
-;;;   (name
-;;;    (languages (lang-name root-marker…)…)
-;;;    (command . cmd)
-;;;    (args arg…)
-;;;    (config . json-string))
-;;;
-;;; `args` is the empty tail `(args)` (never #f) when the server takes none.
-;;; `config` is Helix's `[language-server.*.config]` table for this server,
-;;; copied verbatim — the *entire* tail is `(config)` (never a dotted pair)
-;;; when Helix has no config for it; otherwise `(config . "...")`, a single
-;;; canonical (sort_keys) JSON-encoded string. `core:lsp/registration.scm`
-;;; delivers it two ways, exactly as Helix does: as `initializationOptions`
-;;; (the path that actually configures most servers) and as
-;;; `register-lsp-server!`'s `#:settings` (answers `workspace/configuration`
-;;; pulls — a miss is expected and harmless for servers whose config isn't
-;;; nested under their own name). The runtime catalog loader parses the
-;;; JSON string with the `(json-parse)` builtin at load time, once, rather
-;;; than every plugin needing its own nested-alist/vector-array reader for a
-;;; JSON object embedded as Scheme data. All fields are fully canonicalised;
-;;; no defaults are applied at read time. Read via the R7RS idiom from any
-;;; plugin:
-;;;
-;;;   (define *lsp-servers*
-;;;     (call-with-input-file
-;;;       (path-join (runtime-dir) "scheme" "lsp-servers.scm")
-;;;       read))
-;;;
-;;; One server per language — Helix's first-listed ("primary") language-server
-;;; only. Helix lists ordered *multiple* servers for some languages (python
-;;; -> ["ty" "ruff" "jedi" "pylsp"], toml -> ["taplo" "tombi"]); the client
-;;; is single-server-per-buffer by design, so non-primary servers are not
-;;; seeded and not installable — multi-server support needs the client to
-;;; merge diagnostics and route requests per capability first, which is a
-;;; client milestone, not a sync-script one. Install sources (download/build
-;;; info) live in lsp-sources.scm, joined by server name.
-;;;
+;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
-;;; Full sync: run scripts/sync-grammars.py after updating helix-pin.scm.
 """
 
 

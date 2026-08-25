@@ -1,28 +1,8 @@
 ;;; runtime/scheme/grammars.scm — core tree-sitter grammar registration.
-;;;
-;;; Loaded unconditionally at startup, after languages.scm and before
-;;; init.scm (see scripting_setup.rs) — registers every already-compiled
-;;; grammar found on disk. Passive: no subprocess, no network. Installing NEW
-;;; grammars is core:plum's job (runtime/plugins/core/plum/grammars.scm);
-;;; this file only makes already-installed ones take effect, so highlighting
-;;; survives PLUM being absent from init.scm.
-;;;
-;;; Registration is driven by the install directory, not by the source
-;;; catalog: `<data>/grammars/` holds one compiled file per installed grammar
-;;; and does not exist at all until something is installed, so a setup with no
-;;; grammars settles the whole question in one `path-exists?` instead of
-;;; probing 350+ catalog entries that cannot match.
+;;; What this does and why: README.md, this directory.
 
 ;; ── Grammar source catalog ────────────────────────────────────────────────────
 
-;;; Hash: name → (url rev symbol subpath), parsed on first use.
-;;;
-;;; Lazy because nothing needs it until a grammar is actually installed or a
-;;; `:plum-*-grammar` command runs — and reading + parsing the catalog's 350+
-;;; 5-tuples is a measurable slice of startup that a fresh setup would pay for
-;;; nothing. A `box` rather than `set!` on a plain global: core:plum reaches
-;;; these bindings from inside a `require`d module, and `box` is the pattern
-;;; already proven across that boundary (see `debounce` in builtins/bootstrap.scm).
 (define *grammar-sources-cache* (box #f))
 
 (define (read-grammar-sources)
@@ -44,7 +24,6 @@
     (set-box! *grammar-sources-cache* (read-grammar-sources)))
   (unbox *grammar-sources-cache*))
 
-;;; Accessors. Every one forces the catalog.
 (define (grammar-source-names)
   (hash-keys->list (grammar-sources)))
 (define (grammar-source-known? name)
@@ -75,33 +54,20 @@
 (define (grammar-injections-path name)
   (path-join (grammar-source-dir name) "injections.scm"))
 
-;;; Shared-library extension for compiled grammars on this platform.
-;;; `(hume-target)` recognizes 4 platform strings and returns `#f` for
-;;; anything else, so the `else` branch defaults to "so" rather than
-;;; erroring on an unrecognized platform.
 (define (platform-grammar-ext)
   (let ((target (hume-target)))
     (cond ((and (string? target) (starts-with? target "darwin")) "dylib")
           ((and (string? target) (starts-with? target "windows")) "dll")
           (else "so"))))
 
-;;; Path a compiled grammar for `name` lives (or will live) at.
 (define (grammar-output-path name)
   (path-join (grammars-dir) (string-append name "." (platform-grammar-ext))))
 
-;;; #t if the compiled grammar for `name` exists on disk.
 (define (grammar-installed? name)
   (path-exists? (grammar-output-path name)))
 
 ;; ── Installed-grammar discovery ───────────────────────────────────────────────
 
-;;; Names of the compiled grammars in <data>/grammars/ that this platform can
-;;; load. `read-dir` already proves each file exists, so matching the platform
-;;; extension here does the whole job a second `stat` would: a `.so` left behind
-;;; on macOS is dropped before it can reach dlopen, and the `sources/`
-;;; subdirectory and dotfiles fall out of the same test for free.
-;;; `'()` when nothing has ever been installed — the directory is created by
-;;; the first install, so its absence is the common fresh-setup case.
 (define (installed-grammars)
   (let ((gdir (grammars-dir)))
     (if (not (path-exists? gdir))
@@ -115,16 +81,6 @@
 
 ;; ── Startup registration ──────────────────────────────────────────────────────
 
-;;; Passive: registers already-compiled grammars only, no subprocess. See
-;;; core:plum/README.md for the install pipeline that produces these files.
-;;;
-;;; `grammar-source-known?` is what makes walking the directory safe: an
-;;; orphan file (installed, then dropped from the catalog by a HUME update)
-;;; has no tree-sitter symbol to look up — silently skipped, that's expected.
-;;; A known grammar missing its highlights query is a different, repairable
-;;; case (e.g. the user cleared `<data>/grammars/sources/` to reclaim disk)
-;;; and gets a warning instead, or `:plum-list-grammars` would keep reporting
-;;; it "installed" with no highlighting and no way to tell why.
 (define (register-installed-grammars!)
   (for-each
     (lambda (name)
@@ -142,6 +98,5 @@
                                    (if (path-exists? inj) inj #f)))))))
     (installed-grammars)))
 
-;;; `data-dir` is `#f` when HOME/APPDATA is unset — nothing to scan.
 (when (data-dir)
   (register-installed-grammars!))

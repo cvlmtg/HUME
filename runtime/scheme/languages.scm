@@ -1,24 +1,6 @@
 ;;; runtime/scheme/languages.scm — HUME bundled default language identities.
-;;;
-;;; Evaluated at startup before init.scm.  Override any entry by redefining
-;;; it in init.scm — `define-language!` replaces the prior identity
-;;; (extensions/globs/shebangs/language-id) for a given name, and keeps any
-;;; grammar already attached to it (see init.scm.example for override examples).
-;;;
-;;; Identity only: extensions, globs, shebangs, and an optional `#:language-id`
-;;; override for the `languageId` sent to language servers (only present when
-;;; it differs from the name, e.g. "tsx" -> "typescriptreact"). No tree-sitter
-;;; grammars are shipped here — to enable highlighting, install a compiled
-;;; grammar and its highlights query, typically via `core:plum`'s
-;;; `:plum-install-grammar`.
-;;;
-;;; Grammar source metadata lives in grammar-sources.scm, and startup
-;;; registration of already-compiled grammars in grammars.scm — both loaded
-;;; unconditionally right after this file (see scripting_setup.rs), so
-;;; highlighting works whether or not a grammar-manager plugin is declared.
-;;;
+;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ f6f3eb1fe4a7
-;;; Full sync: run scripts/sync-grammars.py after updating helix-pin.scm.
 
 (define-language! "ada" '("adb" "ads"))
 (define-language! "adl" '("adl"))

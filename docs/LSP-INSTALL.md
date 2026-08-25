@@ -130,7 +130,7 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   [v1 scope](#v1-scope-and-limitations) for the full rule and why.
 - Field encoding (empty tail never `#f`, canonical JSON `config` string, delivered both ways
   by `core:lsp/registration.scm`, decoded once via `(json-parse)` at the one consuming site):
-  see `lsp-servers.scm`'s own header comment. A JSON string sidesteps the fact that plain
+  see `runtime/scheme/README.md`'s record-shape reference. A JSON string sidesteps the fact that plain
   sexpr syntax can't tell an empty JSON array from an empty JSON object. See
   [Config delivery & per-server audit](#config-delivery--per-server-audit) for why delivering
   the same blob two ways is correct rather than a mismatch.
