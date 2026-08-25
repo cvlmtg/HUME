@@ -4,8 +4,8 @@ Language server features: hover, go-to-definition (+ declaration / type-definiti
 implementation), references, diagnostics navigation, rename, formatting, code actions,
 signature help, completions, inlay hints. Also owns the LSP server lifecycle end to
 end — install, uninstall, registration, and runtime management (`servers.scm`,
-`registration.scm`) — see `docs/LSP-INSTALL.md`. `core:plum` (the plugin manager) is not
-involved.
+`registration.scm`) — see `docs/LSP-INSTALL.md` in the repository. `core:plum` (the plugin
+manager) is not involved.
 
 Requires `core:stdlib` declared or loaded first — `core:lsp` scans installed servers via
 `stdlib/list-subdirs` at its own load time, and `call!`'s lazy-miss retry inline-activates a

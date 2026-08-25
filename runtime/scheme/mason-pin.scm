@@ -12,9 +12,9 @@
 ;;;
 ;;;   https://github.com/mason-org/mason-registry/releases/download/<mason-pin>/registry.json.zip
 ;;;
-;;; To upgrade: change the tag below, then run scripts/sync-lsp-sources.py to
-;;; regenerate lsp-sources.scm. If the preceding helix-pin.scm bump renamed or
-;;; dropped any LSP servers, run scripts/sync-grammars.py first — see
-;;; scripts/README.md for the run order.
+;;; To upgrade: change the tag below, then run scripts/sync-lsp-sources.py (in
+;;; the repository) to regenerate lsp-sources.scm. If the preceding
+;;; helix-pin.scm bump renamed or dropped any LSP servers, run
+;;; scripts/sync-grammars.py first — see scripts/README.md for the run order.
 
 "2026-07-20-precious-hemp"

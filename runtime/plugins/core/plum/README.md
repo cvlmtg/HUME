@@ -47,8 +47,8 @@ Grammar management:
 | `:plum-cleanup-grammars`   | Delete compiled grammar files no longer declared                    |
 
 LSP language servers are `core:lsp`'s own responsibility (`:lsp-install`, `:lsp-uninstall`,
-`:lsp-servers`) — see that plugin's README and `docs/LSP-INSTALL.md`. PLUM never touches
-`<data>/servers/` or the LSP catalogs.
+`:lsp-servers`) — see that plugin's README and `docs/LSP-INSTALL.md` in the repository. PLUM
+never touches `<data>/servers/` or the LSP catalogs.
 
 ## How it works
 

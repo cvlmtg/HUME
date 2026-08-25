@@ -12,7 +12,7 @@
 ;;;
 ;;;   https://raw.githubusercontent.com/helix-editor/helix/<helix-pin>/runtime/queries/<lang>/highlights.scm
 ;;;
-;;; To upgrade: change the SHA below, then run scripts/sync-grammars.py to
-;;; regenerate languages.scm and grammar-sources.scm.
+;;; To upgrade: change the SHA below, then run scripts/sync-grammars.py (in
+;;; the repository) to regenerate languages.scm and grammar-sources.scm.
 
 "f6f3eb1fe4a7"
