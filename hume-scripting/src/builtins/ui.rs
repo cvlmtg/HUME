@@ -143,10 +143,12 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal
 
 /// `(%picker! items on-select prompt pending query on-query-change)` — the
 /// `picker!` Scheme wrapper supplies the keyword defaults. Returns the new
-/// session's token. `on-query-change` is `#f` (not live) or a procedure;
-/// like `on-select`, its callability isn't checked here — an uncallable
-/// value surfaces as a Steel error only if a query change actually tries to
-/// fire it, same as a bad `on-select` only errors at accept/dismiss time.
+/// session's token. `on-query-change` is `#f` (not live) or a procedure —
+/// checked here, unlike `on-select`: a bad `on-select` only ever errors at
+/// accept/dismiss time, but a bad `on-query-change` would also silently
+/// change `rerank`'s behavior (any non-`#f` value makes the session "live"
+/// and disables the local fuzzy filter) from the moment the picker opens,
+/// not just when a query change tries to fire it.
 pub(crate) fn picker(
     ctx: &mut SteelCtx,
     items: SteelVal,
@@ -162,7 +164,11 @@ pub(crate) fn picker(
     let query = string_arg(query, "picker! #:query")?;
     let on_query_change = match on_query_change {
         SteelVal::BoolV(false) => None,
-        other => Some(other),
+        callable @ (SteelVal::Closure(_) | SteelVal::FuncV(_) | SteelVal::MutFunc(_)) => {
+            Some(callable)
+        }
+        other => steel::stop!(TypeMismatch =>
+            "picker! #:on-query-change must be #f or a callable, got {:?}", other),
     };
     let opts = PickerOpts {
         prompt,

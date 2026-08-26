@@ -120,3 +120,68 @@ fn empty_cmd_raises_naming_the_arg() {
         "error should name the builtin and the empty cmd, got {msg:?}"
     );
 }
+
+// ── #:ok-exit-codes rejects values outside i32's range ──────────────────────
+//
+// The `cmd` argument decodes before `#:ok-exit-codes` (see `ui::picker_source_spawn`),
+// so an out-of-range exit code raises before anything is spawned — the bogus
+// binary name below proves that.
+
+#[test]
+fn ok_exit_codes_rejects_a_value_outside_i32_range() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define tok #f)
+        (define-command! "go" "" (lambda ()
+          (set! tok (picker! '() (lambda (x) (void))))))
+        (define-command! "spawn-it" "" (lambda ()
+          (picker-source-spawn! tok "definitely-not-a-real-binary-xyz" '()
+            #:ok-exit-codes (list 4294967297))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    call(&mut ed, "spawn-it");
+
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.contains("ok-exit-codes") && msg.contains("range"),
+        "error should name the offending argument, got {msg:?}"
+    );
+    assert!(
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .is_some_and(|p| p.total_len() == 0),
+        "a rejected argument must not spawn anything"
+    );
+}
+
+// ── #:on-query-change must be #f or a callable ──────────────────────────────
+
+#[test]
+fn picker_bang_rejects_a_non_callable_on_query_change() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (picker! '() (lambda (x) (void)) #:on-query-change '())))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "a non-callable #:on-query-change must not open a picker"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.contains("on-query-change"),
+        "error should name the offending argument, got {msg:?}"
+    );
+}

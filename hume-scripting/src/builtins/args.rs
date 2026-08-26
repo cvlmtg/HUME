@@ -112,11 +112,20 @@ pub(crate) fn list_to_strings(val: SteelVal, ctx_name: &str) -> Result<Vec<Strin
 }
 
 /// A Steel list of integers, unpacked to `Vec<i32>` — `picker-source-spawn!`'s
-/// `#:ok-exit-codes`, an exit-code allowlist.
+/// `#:ok-exit-codes`, an exit-code allowlist. Rejects (rather than silently
+/// truncating) a value outside `i32`'s range — every other decoder in this
+/// file rejects out-of-domain input the same way, and a wrapped value here
+/// would silently allowlist the wrong exit code.
 pub(crate) fn list_to_i32s(val: SteelVal, ctx_name: &str) -> Result<Vec<i32>, SteelErr> {
     list_items(val, ctx_name)?
         .into_iter()
-        .map(|v| int_arg(v, ctx_name).map(|n| n as i32))
+        .map(|v| {
+            let n = int_arg(v, ctx_name)?;
+            match i32::try_from(n) {
+                Ok(n) => Ok(n),
+                Err(_) => steel::stop!(TypeMismatch => "{}: {} is out of i32 range", ctx_name, n),
+            }
+        })
         .collect()
 }
 
