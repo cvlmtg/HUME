@@ -16,10 +16,11 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 /// - **Query parsing.** The picker is an fzf-style finder over a query the
 ///   user typed as *search syntax* — `^ $ ! '` at word boundaries select
 ///   prefix/postfix/negated/substring matching (`Pattern::parse`). Completion's
-///   query is a raw slice of buffer text (`insert.rs`'s `doc.text().slice(..)`)
-///   where those characters are legitimate identifier content (`$var`,
-///   `println!`) — parsing them as operators would misfire, so completion uses
-///   `Pattern::new(.., AtomKind::Fuzzy)`, which segments on whitespace only.
+///   query is a raw slice of buffer text between the session anchor and the
+///   cursor, where those characters are legitimate identifier content
+///   (`$var`, `println!`) — parsing them as operators would misfire, so
+///   completion uses `Pattern::new(.., AtomKind::Fuzzy)`, which segments on
+///   whitespace only.
 /// - **Prefix bonus.** nucleo's `Config::prefer_prefix` doc says it's "only
 ///   recommended for autocompletion usecases where the expectation is that the
 ///   user is typing the entire match... For a full fzf-like fuzzy
@@ -214,6 +215,18 @@ mod tests {
         assert!(
             earlier_score > later_score,
             "earlier match ({earlier_score}) should outrank later match ({later_score})"
+        );
+
+        // Control: Picker leaves `prefer_prefix` off, so the two haystacks
+        // must score identically there — without this, the assertion above
+        // wouldn't actually prove the bonus is profile-gated (it would still
+        // pass if `prefer_prefix` were on unconditionally).
+        let mut picker = FuzzyMatcher::new(FuzzyProfile::Picker);
+        let picker_pattern = picker.parse("ab");
+        assert_eq!(
+            picker.score(&picker_pattern, earlier),
+            picker.score(&picker_pattern, later),
+            "Picker leaves prefer_prefix off, so match offset must not affect the score"
         );
     }
 

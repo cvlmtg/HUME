@@ -30,4 +30,5 @@ remaining work below ships.
   would feed the same drain→store path as the spawn source. Build only if the
   fd-fallback posture proves inadequate in practice. Also tracked in
   `docs/ROADMAP.md`.
+
 Not planned: multi-select, picker-specific keybinding customization.

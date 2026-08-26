@@ -36,7 +36,7 @@ fn begin_then_top_returns_items_ranked_by_sort_text_with_no_filter() {
 }
 
 #[test]
-fn update_filter_narrows_and_prefix_beats_infix() {
+fn update_filter_narrows_and_fuzzy_score_beats_sort_text() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(

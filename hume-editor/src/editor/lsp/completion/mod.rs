@@ -196,19 +196,11 @@ impl CompletionSession {
         self.filter = text;
         self.generation_at_begin = state.buffers.get(self.bid).text_gen;
         self.menu_cache = None;
-        let Self {
-            items,
-            rank_scratch,
-            matcher,
-            filter,
-            filtered,
-            ..
-        } = self;
-        rank_scratch.clear();
-        let pattern = matcher.parse(filter);
-        for (i, item) in items.iter().enumerate() {
-            if let Some(score) = matcher.score(&pattern, &item.filter_text) {
-                rank_scratch.push((score, i as u32));
+        self.rank_scratch.clear();
+        let pattern = self.matcher.parse(&self.filter);
+        for (i, item) in self.items.iter().enumerate() {
+            if let Some(score) = self.matcher.score(&pattern, &item.filter_text) {
+                self.rank_scratch.push((score, i as u32));
             }
         }
         // Score descending, then sortText ascending — the server's own
@@ -217,7 +209,8 @@ impl CompletionSession {
         // item ties on the first key). Ascending index last, since sortText
         // is very often duplicated across a server's items and the pair
         // alone wouldn't be a unique key.
-        rank_scratch.sort_unstable_by(|a, b| {
+        let items = &self.items;
+        self.rank_scratch.sort_unstable_by(|a, b| {
             b.0.cmp(&a.0)
                 .then_with(|| {
                     items[a.1 as usize]
@@ -226,8 +219,9 @@ impl CompletionSession {
                 })
                 .then(a.1.cmp(&b.1))
         });
-        filtered.clear();
-        filtered.extend(rank_scratch.iter().map(|&(_, i)| i));
+        self.filtered.clear();
+        self.filtered
+            .extend(self.rank_scratch.iter().map(|&(_, i)| i));
     }
 
     pub(crate) fn top(&self, n: usize) -> Vec<serde_json::Value> {
