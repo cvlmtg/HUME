@@ -29,6 +29,21 @@ pub(crate) struct PickerItem {
     pub(crate) payload: SteelVal,
 }
 
+impl From<(String, SteelVal)> for PickerItem {
+    fn from((display, payload): (String, SteelVal)) -> Self {
+        PickerItem { display, payload }
+    }
+}
+
+/// A streaming source bundled with the exit-code allowlist it was attached
+/// with. One field instead of two on `PickerSession` so a respawn (a second
+/// `attach_source` replacing this field) can never separate a source from
+/// the codes that decide whether its own exit is a failure.
+struct AttachedSource {
+    source: SpawnedLineSource,
+    ok_exit_codes: Vec<i32>,
+}
+
 /// Rust-side store for one open picker: items, query, ranked indices,
 /// selection, scroll, and a stale-push guard token. Steel drives it through
 /// `picker!`/`picker-push!`/`picker-close!`; this module has no
@@ -56,18 +71,13 @@ pub(crate) struct PickerSession {
     /// Stale-push guard: `push` is a no-op unless the caller's token matches.
     token: u64,
     /// The streaming external-command source attached via
-    /// `picker-source-spawn!`, if any. Owning it
-    /// here — rather than in some separate registry — is what makes
-    /// kill-on-close/replace automatic: `SpawnedLineSource::drop` kills the
-    /// child, and this field is dropped whenever the session itself is
-    /// (`close_picker`'s `take()`, `open_picker`'s replace).
-    source: Option<SpawnedLineSource>,
-    /// Exit codes `source`'s drain (`Editor::drain_picker_source`) must not
-    /// report as a failure — set alongside `source` by `attach_source`, e.g.
-    /// `rg`'s exit `1` ("no matches") for a live grep. Meaningless while
-    /// `source` is `None`; not reset by `take_source` since the drain reads
-    /// it before taking the source (see `drain_picker_source`).
-    source_ok_exit_codes: Vec<i32>,
+    /// `picker-source-spawn!`, if any, together with its exit-code
+    /// allowlist. Owning it here — rather than in some separate registry —
+    /// is what makes kill-on-close/replace automatic: `SpawnedLineSource`'s
+    /// `Drop` kills the child, and this field is dropped whenever the
+    /// session itself is (`close_picker`'s `take()`, `open_picker`'s
+    /// replace).
+    source: Option<AttachedSource>,
     /// Set by `picker!`'s `#:pending` for a caller whose results arrive via
     /// `spawn-async!` rather than `picker-source-spawn!` — the latter
     /// already has its own "still populating" signal (`source.is_some()`),
@@ -106,7 +116,6 @@ impl PickerSession {
             prompt: opts.prompt,
             token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
             source: None,
-            source_ok_exit_codes: vec![0],
             pending: opts.pending,
             on_query_change: opts.on_query_change,
         };
@@ -154,20 +163,18 @@ impl PickerSession {
         true
     }
 
-    /// Replaces the item list wholesale and reranks — same token guard and
-    /// `pending`-clearing contract as `push`, but assigns instead of
-    /// extending. The requery half of a live source: a caller with
-    /// `#:on-query-change` clears the previous pattern's rows before
-    /// spawning the new search (`items` is otherwise append-only, so there
-    /// is no other way to drop stale rows).
+    /// Replaces the item list wholesale and reranks — same token-guard and
+    /// `pending`-clearing contract as `push`, implemented as a clear
+    /// followed by a delegated `push`: items are otherwise append-only, so
+    /// this is the only way to drop stale rows. The requery half of a live
+    /// source: a caller with `#:on-query-change` clears the previous
+    /// pattern's rows before spawning the new search.
     pub(crate) fn replace(&mut self, token: u64, items: Vec<PickerItem>) -> bool {
         if token != self.token {
             return false;
         }
-        self.pending = false;
-        self.items = items;
-        self.rerank();
-        true
+        self.items.clear();
+        self.push(token, items)
     }
 
     /// Attaches a spawned streaming source, replacing (and thereby killing,
@@ -177,22 +184,21 @@ impl PickerSession {
     /// per query change. `ok_exit_codes` is `drain_picker_source`'s
     /// allowlist for *this* source, e.g. `rg`'s exit `1` ("no matches").
     pub(crate) fn attach_source(&mut self, source: SpawnedLineSource, ok_exit_codes: Vec<i32>) {
-        self.source = Some(source);
-        self.source_ok_exit_codes = ok_exit_codes;
-    }
-
-    pub(crate) fn source_ok_exit_codes(&self) -> &[i32] {
-        &self.source_ok_exit_codes
+        self.source = Some(AttachedSource {
+            source,
+            ok_exit_codes,
+        });
     }
 
     pub(crate) fn source_mut(&mut self) -> Option<&mut SpawnedLineSource> {
-        self.source.as_mut()
+        self.source.as_mut().map(|attached| &mut attached.source)
     }
 
-    /// Takes the source out (e.g. once its reader has disconnected and the
-    /// caller wants to consume it via `SpawnedLineSource::finish`).
-    pub(crate) fn take_source(&mut self) -> Option<SpawnedLineSource> {
-        self.source.take()
+    /// Takes the source out along with its exit-code allowlist (e.g. once
+    /// its reader has disconnected and the caller wants to consume it via
+    /// `SpawnedLineSource::finish`).
+    pub(crate) fn take_source(&mut self) -> Option<(SpawnedLineSource, Vec<i32>)> {
+        self.source.take().map(|a| (a.source, a.ok_exit_codes))
     }
 
     #[cfg(all(test, unix))]
@@ -205,7 +211,7 @@ impl PickerSession {
     /// state.
     #[cfg(all(test, unix))]
     pub(crate) fn source_pid_for_test(&self) -> Option<u32> {
-        self.source.as_ref().map(SpawnedLineSource::pid)
+        self.source.as_ref().map(|a| a.source.pid())
     }
 
     /// Appends one `char` to the query and reranks. Key events deliver

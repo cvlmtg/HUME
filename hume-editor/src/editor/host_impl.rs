@@ -1449,7 +1449,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         let token = session.token();
         let picker_items = items
             .into_iter()
-            .map(|(display, payload)| crate::editor::picker::PickerItem { display, payload })
+            .map(crate::editor::picker::PickerItem::from)
             .collect();
         session.seed(picker_items);
         crate::editor::picker::open_picker(self.state, self.lsp.as_deref_mut(), session);
@@ -1462,7 +1462,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         };
         let picker_items = items
             .into_iter()
-            .map(|(display, payload)| crate::editor::picker::PickerItem { display, payload })
+            .map(crate::editor::picker::PickerItem::from)
             .collect();
         session.push(token, picker_items)
     }
@@ -1473,7 +1473,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         };
         let picker_items = items
             .into_iter()
-            .map(|(display, payload)| crate::editor::picker::PickerItem { display, payload })
+            .map(crate::editor::picker::PickerItem::from)
             .collect();
         session.replace(token, picker_items)
     }

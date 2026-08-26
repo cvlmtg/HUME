@@ -45,11 +45,7 @@ impl Editor {
         }
 
         let exit = disconnected.then(|| {
-            // Read the allowlist before `take_source` — it lives on the
-            // session, not the source, and `take_source` drops the borrow
-            // this closure needs to check the exit status against it.
-            let ok_exit_codes = session.source_ok_exit_codes().to_vec();
-            let source = session
+            let (source, ok_exit_codes) = session
                 .take_source()
                 .expect("source_mut returned Some above, and disconnect came from the same source");
             let cmd = source.cmd().to_string();
