@@ -119,7 +119,9 @@ impl PickerSession {
             pending: opts.pending,
             on_query_change: opts.on_query_change,
         };
-        session.set_query(opts.query);
+        // Discarded deliberately — see `set_query`'s doc for why the
+        // `#:query` prefill must not fire `#:on-query-change`.
+        let _ = session.set_query(opts.query);
         session
     }
 
@@ -243,37 +245,53 @@ impl PickerSession {
     /// Appends one `char` to the query and reranks. Key events deliver
     /// printable input one `char` at a time, including combining marks,
     /// which simply extend the trailing grapheme cluster.
-    pub(crate) fn insert_char(&mut self, ch: char) {
+    ///
+    /// Returns the `#:on-query-change` callback to fire (`None` for a
+    /// non-live session) — the caller, not this method, queues it via
+    /// `queue_steel_call` (see `handle_picker_key`), since firing a Steel
+    /// callback needs `&mut EditorState`, which a pure data store
+    /// deliberately has no access to. Bundling the mutation with the
+    /// callback it produces, rather than a caller calling a separate
+    /// `fire_query_change` afterward on its own, is what makes forgetting
+    /// to fire it (or firing it after a mutator that shouldn't, like
+    /// `set_query`) a type error instead of a silent desync between the
+    /// visible query and a live source.
+    #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
+    pub(crate) fn insert_char(&mut self, ch: char) -> Option<SteelVal> {
         self.query.push(ch);
         self.rerank();
+        self.on_query_change.clone()
     }
 
     /// Removes the trailing grapheme cluster (not merely the last `char`) so
     /// that precomposed accents and ZWJ/modifier emoji sequences are deleted
-    /// as one unit, then reranks. Returns `false` without effect when the
-    /// query is already empty, so callers can give backspace-on-empty its
-    /// own meaning (mirrors the minibuffer's `EmptiedByBackspace` /
-    /// `BackspaceOnEmpty` distinction).
-    pub(crate) fn pop_grapheme(&mut self) -> bool {
+    /// as one unit, then reranks. Returns `None` without effect when the
+    /// query is already empty (in addition to a non-live session, same as
+    /// [`insert_char`](Self::insert_char)) — the query didn't change, so
+    /// there is nothing to notify either way.
+    #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
+    pub(crate) fn pop_grapheme(&mut self) -> Option<SteelVal> {
         if self.query.is_empty() {
-            return false;
+            return None;
         }
         self.query.truncate(hume_rope::grapheme::prev_str_boundary(
             &self.query,
             self.query.len(),
         ));
         self.rerank();
-        true
+        self.on_query_change.clone()
     }
 
-    /// Replaces the query wholesale and reranks. `new` is the production
-    /// caller, applying `#:query`'s prefill; a live keystroke goes through
-    /// `insert_char`/`pop_grapheme` instead, since those also need to fire
-    /// `#:on-query-change`, which a bare query replacement must not (see
-    /// `PickerOpts::query`'s doc for why `picker!` doesn't fire it either).
-    pub(crate) fn set_query(&mut self, query: String) {
+    /// Replaces the query wholesale and reranks — same shape as
+    /// `insert_char`/`pop_grapheme`, including the returned callback, but
+    /// `new` is its only caller and must discard it: `#:query`'s prefill is
+    /// documented to never itself fire `#:on-query-change` (see
+    /// `PickerOpts::query`'s doc), unlike a live keystroke.
+    #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
+    pub(crate) fn set_query(&mut self, query: String) -> Option<SteelVal> {
         self.query = query;
         self.rerank();
+        self.on_query_change.clone()
     }
 
     /// Moves `selected` by `delta`, saturating at both ends of `filtered`
@@ -346,11 +364,17 @@ impl PickerSession {
         &self.on_select
     }
 
-    /// The callback to fire on a query-changing keystroke
-    /// (`Editor::fire_query_change`), if this session is live. `Some`-ness
-    /// is also the live/local-filter switch `rerank` reads.
-    pub(crate) fn on_query_change(&self) -> Option<&SteelVal> {
-        self.on_query_change.as_ref()
+    /// Whether ranking should skip the local fuzzy filter and keep source
+    /// order instead — true for a live session (`on_query_change` set) at
+    /// any query, separately from an empty query, which always takes this
+    /// path regardless of liveness (see [`rebuild_filtered`]'s doc for why).
+    /// Named so "is this session live" and "should ranking skip the local
+    /// filter" read as the two distinct concepts they are, even though they
+    /// currently share one field with no caller needing them to diverge.
+    ///
+    /// [`rebuild_filtered`]: Self::rebuild_filtered
+    fn skips_local_filter(&self) -> bool {
+        self.on_query_change.is_some()
     }
 
     /// Rebuilds `filtered` from `items`/`query` — the ranking-only half
@@ -358,7 +382,7 @@ impl PickerSession {
     /// [`rerank_keeping_selection`](Self::rerank_keeping_selection); neither
     /// touches `selected`/`scroll` itself.
     fn rebuild_filtered(&mut self) {
-        if self.query.is_empty() || self.on_query_change.is_some() {
+        if self.query.is_empty() || self.skips_local_filter() {
             // Insertion order by construction — avoids relying on nucleo's
             // (undocumented) all-equal-score behavior on an empty pattern,
             // and skips scoring entirely on the dominant streaming-ingest
@@ -646,7 +670,7 @@ mod tests {
         let mut s = open();
         let token = s.token();
         s.push(token, items(&["foo", "bar"]));
-        s.set_query("f".to_string());
+        let _ = s.set_query("f".to_string());
         assert_eq!(window_vec(&s, 10), vec!["foo"]);
     }
 
@@ -708,7 +732,7 @@ mod tests {
         // whenever `on_query_change` is set, the same branch an empty query
         // already takes.
         let mut s = open_live();
-        s.set_query("zzz-does-not-fuzzy-match-anything".to_string());
+        let _ = s.set_query("zzz-does-not-fuzzy-match-anything".to_string());
         let token = s.token();
         s.push(token, items(&["b", "a", "c"]));
         assert_eq!(window_vec(&s, 10), vec!["b", "a", "c"]);
@@ -720,7 +744,7 @@ mod tests {
         // insertion-order result above comes from live mode, not from the
         // query happening to fail to fuzzy-match anyway.
         let mut s = open();
-        s.set_query("zzz-does-not-fuzzy-match-anything".to_string());
+        let _ = s.set_query("zzz-does-not-fuzzy-match-anything".to_string());
         let token = s.token();
         s.push(token, items(&["b", "a", "c"]));
         assert!(window_vec(&s, 10).is_empty());
@@ -732,7 +756,7 @@ mod tests {
         let token = s.token();
         // Scattered subsequence pushed before the boundary match.
         s.push(token, items(&["fxxbxx", "foo/bar"]));
-        s.set_query("fb".to_string());
+        let _ = s.set_query("fb".to_string());
         assert_eq!(window_vec(&s, 10), vec!["foo/bar", "fxxbxx"]);
     }
 
@@ -762,7 +786,7 @@ mod tests {
             });
         }
         s.push(token, tagged);
-        s.set_query("fb".to_string());
+        let _ = s.set_query("fb".to_string());
         assert_eq!(s.matched_len(), (2 * TIER) as usize);
         for i in 0..TIER {
             let payload = s.selected_payload().expect("has a match");
@@ -817,7 +841,7 @@ mod tests {
         s.push(token, items(&["apple", "banana", "cherry", "date"]));
         s.move_selection(2, 2);
         assert_ne!(s.selected(), 0);
-        s.set_query("a".to_string());
+        let _ = s.set_query("a".to_string());
         assert_eq!(s.selected(), 0);
         assert_eq!(s.scroll(), 0);
     }
@@ -827,30 +851,32 @@ mod tests {
         let mut s = open();
         let token = s.token();
         s.push(token, items(&["foo", "bar"]));
-        s.insert_char('z');
+        let _ = s.insert_char('z');
         assert_eq!(s.matched_len(), 0);
-        assert!(s.pop_grapheme());
+        let _ = s.pop_grapheme();
+        assert_eq!(s.query(), "", "pop_grapheme must have removed the 'z'");
         assert_eq!(s.matched_len(), 2);
-        assert!(!s.pop_grapheme()); // query now empty; further pop is a no-op
+        let _ = s.pop_grapheme(); // query now empty; further pop is a no-op
+        assert_eq!(s.query(), "");
     }
 
     #[test]
     fn pop_grapheme_removes_full_cluster() {
         let mut s = open();
         // "e" + combining acute accent (U+0301) forms one grapheme cluster.
-        s.insert_char('e');
-        s.insert_char('\u{0301}');
+        let _ = s.insert_char('e');
+        let _ = s.insert_char('\u{0301}');
         assert_eq!(s.query(), "e\u{0301}");
-        assert!(s.pop_grapheme());
+        let _ = s.pop_grapheme();
         assert_eq!(s.query(), "");
         assert!(s.query().is_char_boundary(0));
 
         // ZWJ emoji sequence: family emoji built from 4 code points joined
         // by ZWJ — one pop_grapheme must remove the whole cluster.
         for ch in "👨‍👩‍👧‍👦".chars() {
-            s.insert_char(ch);
+            let _ = s.insert_char(ch);
         }
-        assert!(s.pop_grapheme());
+        let _ = s.pop_grapheme();
         assert_eq!(s.query(), "");
     }
 
@@ -893,7 +919,7 @@ mod tests {
         let mut s = open();
         let token = s.token();
         s.push(token, items(&["foo", "bar"]));
-        s.set_query("zzz".to_string());
+        let _ = s.set_query("zzz".to_string());
         assert_eq!(s.selected(), 0);
         s.move_selection(5, 3); // must not panic
         assert_eq!(s.selected(), 0);
@@ -919,7 +945,7 @@ mod tests {
         let mut s = open();
         let token = s.token();
         s.push(token, items(&["fxxbxx", "foo/bar"]));
-        s.set_query("fb".to_string());
+        let _ = s.set_query("fb".to_string());
         assert_eq!(
             payload_str(s.selected_payload().expect("has a match")),
             "foo/bar"

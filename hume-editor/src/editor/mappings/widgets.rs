@@ -325,10 +325,10 @@ impl Editor {
 
         match key.code {
             KeyCode::Backspace => {
-                if self.picker_mut().pop_grapheme() {
-                    // no-op (and no fire) on an already-empty query
-                    self.fire_query_change();
-                }
+                // `None` (and so no fire) both on an already-empty query and
+                // on a non-live session — see `pop_grapheme`'s doc.
+                let cb = self.picker_mut().pop_grapheme();
+                self.queue_query_change(cb);
             }
             KeyCode::Enter => {
                 // No match (or nothing pushed yet) behaves like Esc — Enter
@@ -353,29 +353,31 @@ impl Editor {
                     .modifiers
                     .intersects(Modifiers::CONTROL | Modifiers::ALT) =>
             {
-                self.picker_mut().insert_char(ch);
-                self.fire_query_change();
+                let cb = self.picker_mut().insert_char(ch);
+                self.queue_query_change(cb);
             }
             _ => {}
         }
         true
     }
 
-    /// Fires the open picker's `#:on-query-change` callback, if any, with
-    /// the query as it stands right now — queued via `queue_steel_call`,
-    /// never invoked inline, same discipline as every other picker callback
-    /// (`close_picker`). No-op for a non-live session. Debouncing (a query
-    /// changes on every keystroke, but a live source shouldn't re-spawn on
-    /// every one) is the plugin's job, via the `debounce` Scheme builtin —
-    /// keystrokes are human-rate, unlike `debounce_viewport_change`'s fire
-    /// site (`timer_bridge.rs`), which is every scroll step of every frame
-    /// and so earns its own Rust-side coalescer.
-    fn fire_query_change(&mut self) {
-        let picker = self.picker_mut();
-        let Some(cb) = picker.on_query_change().cloned() else {
+    /// Queues `cb` — the `#:on-query-change` callback a `PickerSession`
+    /// query mutator (`insert_char`/`pop_grapheme`) just returned, if any —
+    /// with the query as it stands right now, via `queue_steel_call`, never
+    /// invoked inline, same discipline as every other picker callback
+    /// (`close_picker`). A bare `None` is a silent no-op: the mutator itself
+    /// already decided there was nothing to fire (non-live session, or a
+    /// backspace on an already-empty query). Debouncing (a query changes on
+    /// every keystroke, but a live source shouldn't re-spawn on every one)
+    /// is the plugin's job, via the `debounce` Scheme builtin — keystrokes
+    /// are human-rate, unlike `debounce_viewport_change`'s fire site
+    /// (`timer_bridge.rs`), which is every scroll step of every frame and so
+    /// earns its own Rust-side coalescer.
+    fn queue_query_change(&mut self, cb: Option<steel::rvals::SteelVal>) {
+        let Some(cb) = cb else {
             return;
         };
-        let query = picker.query().to_string();
+        let query = self.picker_mut().query().to_string();
         self.state
             .queue_steel_call(cb, vec![steel::rvals::SteelVal::StringV(query.into())]);
     }

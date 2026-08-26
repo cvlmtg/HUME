@@ -76,7 +76,7 @@ fn coalesced_push_reranks_against_the_live_query() {
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
-    ed.state.config.picker.as_mut().unwrap().insert_char('z');
+    let _ = ed.state.config.picker.as_mut().unwrap().insert_char('z');
 
     let args = vec!["-c".to_string(), "printf 'abc\\nxyz\\n'".to_string()];
     let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
