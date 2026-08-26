@@ -486,53 +486,58 @@ nothing:
 (picker-source-spawn! token "rg" (list "--vimgrep" "--" pattern ".") #:ok-exit-codes '(0 1))
 ```
 
+A picker whose query should drive the *source* itself, instead of just filtering an
+already-fetched list, uses a different constructor — see [Live requery](#live-requery-live-grep)
+below.
+
 ### Live requery (live grep)
 
-A picker whose query should drive the *source* — re-running an external command
-with the new pattern on every keystroke — rather than just filtering an already-fetched
-list, passes `#:query`, `#:on-query-change`, and `#:debounce-ms` to `picker!`:
+A picker whose query should re-run an external command with the new pattern on every
+keystroke — a live grep, say — uses `live-picker!` instead of `picker!`:
 
 ```scheme
 (define (grep/open! seed)
-  (define token
-    (picker! '() (lambda (row) (when row (goto-location! (grep/parse row))))
-             #:prompt "grep: " #:query seed #:debounce-ms 150
-             #:on-query-change
-             (lambda (query)
-               (unless (equal? query "")
-                 (picker-source-spawn! token "rg" (list "--vimgrep" "--" query ".")
-                                       #:ok-exit-codes '(0 1)))))))
+  (live-picker! (lambda (row) (when row (goto-location! (grep/parse row))))
+                #:prompt "grep: " #:query seed
+                #:command (lambda (query)
+                            (and (not (equal? query ""))
+                                 (list "rg" "--vimgrep" "--" query ".")))
+                #:ok-exit-codes '(0 1)))
 ```
 
 `grep/parse` above is left to the reader.
 
-`#:debounce-ms` makes `#:on-query-change` the debounced half of a live picker: on every
-keystroke, the picker stops whatever source is still running and clears its rows
-immediately, before the window elapses — so the previous pattern's output never lingers
-on screen — and only your callback (the actual `rg` respawn, above) waits out the window.
-It's called unconditionally on every keystroke, even one that debounces to empty, so a
-still-pending window from an earlier non-empty keystroke is always cancelled rather than
-firing later for a pattern the query box no longer shows. `#:debounce-ms` requires
-`#:on-query-change`.
+`live-picker!` opens empty — there's no `items` argument, and no `#:pending` either: a
+live picker is always populated by its own requery, never by a caller pushing items
+directly. `#:command` is a function from the current query to either a full argv list
+(the same `cmd args...` shape `picker-source-spawn!` takes) or `#f` — HUME calls it on
+every keystroke and, when it returns a real argv, spawns it exactly the way
+`picker-source-spawn!` would (`#:cwd`/`#:nul`/`#:ok-exit-codes` all apply the same way).
+Returning `#f` for an empty query, as above, is how you tell the picker "show nothing"
+rather than search for an empty pattern.
 
-A non-empty `#:query` fires `#:on-query-change` once on open — queued like every other
-picker callback, never invoked inline, so it's safe for the callback to reference `token`
-above even though `picker!` hasn't returned it yet at the point the callback is defined.
-An empty (or omitted) `#:query` fires nothing. `#:on-query-change` then fires again with
-the new query on every keystroke that changes it (including backspacing to empty), queued
-the same way.
+Before spawning the new search, HUME stops whatever source is still running and clears
+its rows — immediately, on every keystroke — so the previous pattern's output never
+lingers on screen. `#:debounce-ms` (default `150`) delays only the respawn itself, not
+that clear: type fast and the rows disappear on the first keystroke, then the new search
+starts once you pause for the window. `rg` needs an explicit path argument (`"."` above):
+with no path and no terminal attached to its input, it searches its (empty) stdin instead
+of the working directory and finds nothing. `#:ok-exit-codes` works exactly as it does for
+`picker-source-spawn!` — a complete allowlist, not additive, so include `0` yourself; `rg`
+needs `'(0 1)` since it exits `1` for "no matches".
 
-Live mode also turns off the picker's own local fuzzy filter: once
-`#:on-query-change` is set, rows show in whatever order the source (or
-`picker-push!`/`picker-replace!`) produced them, unfiltered.
+A non-empty `#:query` (the `seed` argument above, say — resuming a search from wherever
+the last one left off) spawns immediately when the picker opens, before `live-picker!`
+even returns, not on the next keystroke. An empty (or omitted) `#:query` spawns nothing
+until the user types.
 
-`(picker-replace! token items)` is `picker-push!`'s sibling for this case: it replaces the
-picker's entire item list instead of appending to it, since items are otherwise
-append-only — `#:debounce-ms` calls it for you on every keystroke, ahead of the debounce
-window. `(picker-source-stop! token)` is its counterpart for a still-running source: it
-detaches whatever source is attached, if any, without touching the item list, same
-token-guard contract. Reach for either directly only if you're managing a live picker's
-timing yourself instead of `#:debounce-ms`.
+A live picker's rows always show in whatever order the source produced them — its own
+local fuzzy filter is off, since the query already selects what the source returns.
+
+`live-picker!` returns a token exactly like `picker!` does — reach for
+`picker-push!`/`picker-replace!`/`picker-source-spawn!`/`picker-source-stop!`/`picker-close!`
+directly, against that token, only if you need to drive a live picker's population or
+timing yourself instead of `#:command`/`#:debounce-ms`.
 
 ## Bundled core plugins
 

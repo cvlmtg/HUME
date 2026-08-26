@@ -10,7 +10,7 @@ remaining work below ships.
 | Topic | Where |
 |---|---|
 | User-facing behavior, keys, file-source chain | `user-manual/docs/pickers.md`, `core-plugins.md` |
-| Steel API (`picker!`, `picker-push!`, `picker-replace!`, `picker-source-spawn!`, `picker-source-stop!`) | `user-manual/docs/plugins.md` "Custom pickers" |
+| Steel API (`picker!`, `live-picker!`, `picker-push!`, `picker-replace!`, `picker-source-spawn!`, `picker-source-stop!`) | `user-manual/docs/plugins.md` "Custom pickers" / "Live requery" |
 | Plugin internals (git/fd probing, config, path resolution) | `runtime/plugins/core/pickers/plugin.scm`, `README.md` |
 | Store, ranking, chokepoints | `hume-editor/src/editor/picker.rs` |
 | Fuzzy matcher + budget | `hume-editor/src/editor/fuzzy.rs` |
