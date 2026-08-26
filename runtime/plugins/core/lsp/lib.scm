@@ -1,4 +1,5 @@
-;;; core:lsp/lib.scm — shared helpers used by every feature file.
+;;; core:lsp/lib.scm — shared helpers used by every feature file. See
+;;; README.md "How it works" → "Shared helpers (lib.scm)".
 
 (provide lsp/supports? lsp/supports-for-buffer? lsp/guard-capability lsp/report-error
          lsp/visible-lines lsp/show-locations! lsp/text-edit->tuple
@@ -33,8 +34,7 @@
                              (if name name "server"))))))
 
 ;; ── Popup dismissal ─────────────────────────────────────────────────────────
-;; Shared popup widget — one registration for every feature using it
-;; (hover, sighelp, …); harmless no-op when nothing is open.
+;; Shared by every feature using a popup (hover, sighelp, …).
 (register-hook! 'on-mode-change (lambda (old-mode new-mode) (close-popup!)))
 
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────
@@ -42,8 +42,7 @@
 ;;; Wires up on-lsp-attach/on-lsp-detach/on-trigger-char for a trigger-char
 ;;; feature (completion, sighelp). `extra-chars` are always-registered chars
 ;;; beyond the server's own; `on-trigger` fires only for `source-name`'s own
-;;; chars. Keyed `(source, language)` on the Rust side, so a second language
-;;; attaching under the same `source-name` gets its own entry, not a clobber.
+;;; chars. See README for why this is keyed `(source, language)`.
 (define (lsp/setup-trigger-chars! cap-key source-name extra-chars on-trigger)
   (register-hook! 'on-lsp-attach
     (lambda (bid server-name)
@@ -92,30 +91,20 @@
     (if range (- (cdr range) (car range)) #f)))
 
 ;; ── Location display + drawer ───────────────────────────────────────────────
-;; A raw Location/LocationLink hashmap's `{uri, range}`-vs-`{targetUri,
-;; targetRange}` shape dispatch lives in one place now:
-;; `hume_lsp::location::decode_location`, shared by `goto-location!` (the
-;; jump) and `lsp-locations->display-parts` (the drawer row) — nothing here
-;; reads a location's wire fields directly any more.
+;; Location-shape dispatch lives in Rust (hume_lsp::location::decode_location,
+;; shared by goto-location! and lsp-locations->display-parts) — see README.
 
 ;;; "12:5" — 1-based line/column from 0-based `line`/`col`. The single
 ;;; formatter for every "L:C" HUME shows a user (`lsp/location-display`
-;;; below, `:diagnostics`'s drawer rows) — one place both agree what a
-;;; position reads as.
+;;; below, `:diagnostics`'s drawer rows).
 (define (lsp/format-position line col)
   (string-append (number->string (+ 1 line)) ":" (number->string (+ 1 col))))
 
-;;; "path/to/file.rs:12:5" — 1-based line/column. `part` is one
-;;; `(path line grapheme-col-or-wire)` entry from `lsp-locations->display-parts`:
-;;; for a target with an open buffer, it's an exact grapheme column (or `#f`
-;;; past the buffer's last line); for a target with no open buffer it's the
-;;; location's own raw wire `character` instead — the one place HUME renders
-;;; a wire unit directly, since resolving it exactly would mean reading a
-;;; file the user may never open. Either way, `#f` falls back to `path:line`.
-;;;
-;;; `path->display` is the only formatting still done here (`~` collapse,
-;;; UNC strip) — URI decoding and the line/column themselves come from the
-;;; builtin, which read them out of the same location this row is naming.
+;;; "path/to/file.rs:12:5" — 1-based line/column, from one `(path line
+;;; grapheme-col-or-wire)` entry (see CLAUDE.md's "Displayed value"
+;;; sanctioned exception for what `grapheme-col-or-wire` means). `#f` falls
+;;; back to `path:line`. `path->display` is the only formatting still done
+;;; here (`~` collapse, UNC strip).
 (define (lsp/location-display part)
   (let* ((path (path->display (car part)))
          (line (cadr part))

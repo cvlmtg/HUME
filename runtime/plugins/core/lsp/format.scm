@@ -1,7 +1,6 @@
-;;; core:lsp/format.scm — textDocument/formatting / rangeFormatting.
-;;;
-;;; Format-on-save is NOT wired by default — v1 is manual `:lsp-fmt` only. To
-;;; opt in, uncomment:
+;;; core:lsp/format.scm — textDocument/formatting / rangeFormatting. Format-
+;;; on-save is NOT wired by default — v1 is manual `:lsp-fmt` only. To opt
+;;; in, uncomment:
 ;; (register-hook! 'on-buffer-save (lambda (bid) (call! "lsp-fmt")))
 
 (require "lib.scm")

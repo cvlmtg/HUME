@@ -1,6 +1,6 @@
-;;; core:lsp/inlay.scm — textDocument/inlayHint.
-;;;
-;;; Off by default — `:set global lsp.inlay-hints=true` opts in.
+;;; core:lsp/inlay.scm — textDocument/inlayHint. See README.md "How it
+;;; works" → "Inlay hints". Off by default — `:set global
+;;; lsp.inlay-hints=true` opts in.
 
 (require "lib.scm")
 
@@ -16,7 +16,7 @@
 ;;; `(offset text 'before)` shape `set-inlay-hints!` expects, or `#f` if
 ;;; `bid` has no attached server to convert the wire position with (a race
 ;;; between the request firing and the buffer detaching before the response
-;;; arrives). Padding becomes literal leading/trailing spaces.
+;;; arrives).
 (define (lsp/hint->store-entry bid hint)
   (let* ((text (lsp/inlay-hint-text hint))
          (pad-left (and (hash-contains? hint "paddingLeft") (equal? (hash-ref hint "paddingLeft") #t)))
@@ -26,9 +26,9 @@
          (offset (lsp-position->offset bid (hash-ref hint "position"))))
     (and offset (list offset text 'before))))
 
-;;; `(first end)` visible lines, 0-based end-exclusive (`viewport-range`'s own
-;;; convention) -> `InlayHintParams`, or `#f` if `bid` can't be resolved
-;;; (hidden/detached by the time a debounced refresh fires).
+;;; `(first end)` visible lines, 0-based end-exclusive -> `InlayHintParams`,
+;;; or `#f` if `bid` can't be resolved (hidden/detached by the time a
+;;; debounced refresh fires).
 (define (lsp/inlay-hint-params bid first end)
   (let ((pp (lsp-position-params bid)))
     (and pp
@@ -37,10 +37,7 @@
                               "end" (hash "line" end "character" 0))))))
 
 ;;; Debounced (200ms) per buffer, re-run from both on-viewport-change and
-;;; on-diagnostics-changed. `debounce-by`, not `debounce`: keying per `bid`
-;;; keeps a diagnostics batch touching two buffers from having the second
-;;; buffer's call cancel the first's. Re-reads the live viewport rather than
-;;; trusting an argument, so both hooks can share one signature.
+;;; on-diagnostics-changed. `debounce-by`, not `debounce` — see README.
 (define lsp/refresh-hints
   (debounce-by 200
     (lambda (bid)
@@ -73,14 +70,9 @@
 (register-hook! 'on-lsp-detach
   (lambda (bid server-name) (set-inlay-hints! "lsp-inlay-hints" bid '())))
 
-;;; The render bridge (`update_inlay_hint_providers`) is not gated on
-;;; `lsp.inlay-hints` — the store is per-source, so an unrelated plugin's
-;;; hints must not vanish just because this setting toggles. This plugin
-;;; owns clearing *its own* source when the setting turns off, and
-;;; re-requesting hints for every visible buffer when it turns back on.
-;;; `value` (the raw `:set`/`set-option!` string) is ignored in favor of
-;;; `get-option`'s already-coerced bool — `value` could be "on"/"yes"/"1",
-;;; any of `parse-bool`'s accepted spellings, not just the literal "true".
+;;; The render bridge is deliberately ungated on `lsp.inlay-hints` — see
+;;; README. `value` (the raw `:set`/`set-option!` string) is ignored in
+;;; favor of `get-option`'s already-coerced bool.
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "lsp.inlay-hints")

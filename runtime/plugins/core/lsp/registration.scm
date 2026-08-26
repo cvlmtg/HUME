@@ -1,15 +1,17 @@
 ;;; core:lsp/registration.scm — the LSP server catalog, receipt/path
 ;;; primitives, and the scan that turns an installed server into a live
-;;; registration. `servers.scm` requires this file for its read-side helpers.
+;;; registration. `servers.scm` requires this file for its read-side
+;;; helpers. See README.md "How it works" → "Server install and
+;;; registration".
 
 (provide lsp/register-installed-servers! lsp/field lsp/servers-dir lsp/server-dir
          lsp/receipt-path lsp/read-receipt lsp/receipt-bin lsp/receipt-version
          lsp/servers-catalog)
 
 ;; ── Server catalog ────────────────────────────────────────────────────────────
-;; Hash: name → server-entry fields, the tagged-alist tail from
-;; lsp-servers.scm: (languages ...) (command . cmd) (args ...) (config . …).
-;; See README "Server config delivery" for how `config` reaches the server.
+
+;;; Hash: name → server-entry fields, the tagged-alist tail from
+;;; lsp-servers.scm: (languages ...) (command . cmd) (args ...) (config . …).
 (define *lsp-servers* (hash))
 
 ;;; Register one lsp-servers.scm entry: `(name field...)`.
@@ -56,13 +58,9 @@
 
 ;; ── Registration ──────────────────────────────────────────────────────────────
 
-;;; Register `name` for every language it serves that isn't registered yet,
-;;; with `cmd` as the server command. Skipping an already-registered language
-;;; is what lets a mid-session rescan leave a user's own manual
-;;; `register-lsp-server!` alone instead of last-wins-clobbering it — see
-;;; README "Usage". `lsp-registered-for-language?` reads through the
-;;; same-eval pending op queue, so this filter is always correct in queue
-;;; order regardless of load order.
+;;; Registers `name` for every language it serves that isn't registered
+;;; yet — preserves a user's own manual `register-lsp-server!` instead of
+;;; last-wins-clobbering it. See README's "Server install and registration".
 (define (lsp/register-server-languages! name cmd)
   (let* ((fields   (hash-ref *lsp-servers* name))
          (langs    (filter (lambda (lang-entry) (not (lsp-registered-for-language? (car lang-entry))))
@@ -74,8 +72,6 @@
          (config (if (null? config-json) #f (json-parse config-json))))
     (for-each
       (lambda (lang-entry)
-        ;; Delivered both ways, as Helix does — see README "Server config
-        ;; delivery".
         (register-lsp-server! (car lang-entry)
                                #:command cmd
                                #:args args
@@ -85,13 +81,12 @@
       langs)))
 
 ;; ── Startup server registration ───────────────────────────────────────────────
-;; Passive: registers already-installed servers only, no subprocess, no
-;; network. Runs at plugin load, lazy activation, and after servers.scm's
-;; install/uninstall mutate disk; also exposed as `lsp-rescan-servers`.
-;; `apply_pending_lsp_server_reg` (hume-editor/src/editor/lsp/registry.rs)
-;; sweeps already-open buffers on every registration this queues. The *only*
-;; registrar for managed servers — see README Caveat for the self-deadlock
-;; this implies for a manifest keyed only on `on-lsp-attach`.
+
+;;; Passive: registers already-installed servers only, no subprocess, no
+;;; network. Runs at plugin load, lazy activation, and after servers.scm's
+;;; install/uninstall mutate disk; also exposed as `lsp-rescan-servers`. The
+;;; *only* registrar for managed servers — see README's "Server install and
+;;; registration" and "Caveat".
 (define (lsp/register-installed-servers!)
   (let ((sdir (lsp/servers-dir)))
     (when (path-exists? sdir)

@@ -1,6 +1,5 @@
-;;; core:lsp/rename.scm — textDocument/rename. No tree-sitter fallback in
-;;; v1 — an unattached buffer just reports unsupported via the
-;;; capability guard.
+;;; core:lsp/rename.scm — textDocument/rename (see README.md "How it works"
+;;; → "Formatting and rename").
 
 (require "lib.scm")
 

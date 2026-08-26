@@ -1,9 +1,5 @@
-;;; core:lsp/actions.scm — textDocument/codeAction.
-;;;
-;;; context.diagnostics must echo back the *raw* wire Diagnostic objects in
-;;; range — servers (rust-analyzer confirmed) gate diagnostic-derived
-;;; quickfixes on this, withholding them for an empty array.
-;;; `diagnostics-for-buffer`'s `"raw"` field carries these through unmodified.
+;;; core:lsp/actions.scm — textDocument/codeAction. See README.md "How it
+;;; works" → "Code actions".
 
 (require "lib.scm")
 
@@ -16,8 +12,8 @@
     (cons (min a h) (+ (max a h) 1))))
 
 ;;; A CodeAction is disabled if it carries a truthy "disabled" field
-;;; (LSP 3.16: `{"reason": string}`) — v1 doesn't pre-filter by `kind`, but
-;;; a disabled action must never appear in the menu.
+;;; (LSP 3.16: `{"reason": string}`) — a disabled action must never appear
+;;; in the menu.
 (define (lsp/action-disabled? action)
   (and (hash-contains? action "disabled")
        (not (equal? (hash-ref action "disabled") #f))))
@@ -48,8 +44,7 @@
 
 ;;; Applies `edit` first, then runs `command`, per spec order. An action
 ;;; with neither key is lazily-resolved via `codeAction/resolve` first.
-;;; `#:resolved?` bounds this to a single round trip, so a non-conforming
-;;; server that re-resolves to still-empty edit/command doesn't loop.
+;;; `#:resolved?` bounds this to a single round trip.
 (define (lsp/run-action action #:resolved? [resolved? #f])
   (cond
     ((or (hash-contains? action "edit") (hash-contains? action "command"))
@@ -58,8 +53,8 @@
      (when (hash-contains? action "command")
        (let ((cmd (hash-ref action "command")))
          ;; The bare legacy `Command` shape has `command` as a *string* at
-         ;; the top level, with no `edit` key at all — in that case `action`
-         ;; itself *is* the Command object `lsp/exec-command` expects.
+         ;; the top level, with no `edit` key — `action` itself is then the
+         ;; Command object `lsp/exec-command` expects.
          (lsp/exec-command (if (string? cmd) action cmd)))))
     ((and (not resolved?) (lsp/action-resolve-provider?))
      (lsp-request #f "codeAction/resolve" action

@@ -1,13 +1,11 @@
-;;; core:lsp/goto.scm — goto definition family; references (reuses
-;;; the same worker with context.includeDeclaration added).
+;;; core:lsp/goto.scm — goto definition family; references (reuses the same
+;;; worker with context.includeDeclaration added). See README.md "How it
+;;; works" → "Goto and references".
 
 (require "lib.scm")
 
 ;; ── Response handling ────────────────────────────────────────────────────────
-;; Shared by all four goto-family methods and `lsp-references` below:
-;; err -> report it; null/empty -> "no results"; a single Location hashmap ->
-;; jump directly; a Location[]/LocationLink[] array -> jump if it has exactly
-;; one entry (unless `always-drawer?`), else list them in the drawer.
+;; Shared by all four goto-family methods and `lsp-references` below.
 
 (define (lsp/goto-response err res #:always-drawer? [always-drawer? #f]
                                     #:what [what "goto"]
@@ -42,12 +40,6 @@
   (lambda () (lsp/goto-request "textDocument/implementation" "implementationProvider")))
 
 ;; ── References ───────────────────────────────────────────────────────────
-;; Always the drawer, even for one result — "where is this used" expects a
-;; list, unlike goto's "take me there". Delegates to `lsp/goto-response`'s
-;; err/void/null cascade rather than re-implementing it — the bare-Location
-;; `else` branch it also carries is simply unreached here:
-;; `textDocument/references` only ever returns `Location[] | null` per spec,
-;; never a bare `Location`.
 
 (define-command! "lsp-references" "List references to the symbol under the cursor."
   (lambda ()

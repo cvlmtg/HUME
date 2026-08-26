@@ -1,7 +1,6 @@
-;;; core:lsp/completion.scm — textDocument/completion.
-;;;
-;;; Stale responses are auto-cancelled/dropped — never pass
-;;; #:allow-stale here (unlike hover).
+;;; core:lsp/completion.scm — textDocument/completion. See README.md "How it
+;;; works" → "Completion". Stale responses are auto-cancelled/dropped —
+;;; never pass #:allow-stale here (unlike hover).
 
 (require "lib.scm")
 
@@ -10,8 +9,8 @@
 ;; here already have plain `insertText`/`textEdit.newText`.
 
 ;;; `res`: a bare `CompletionItem[]` (incomplete implicitly `#f`) or a
-;;; `CompletionList` hashmap `{isIncomplete, items}`.
-;;; Returns `(list items incomplete)`.
+;;; `CompletionList` hashmap `{isIncomplete, items}`. Returns `(list items
+;;; incomplete)`.
 (define (lsp/completion-response->items res)
   (if (list? res)
       (list res #f)
@@ -58,6 +57,5 @@
     (lsp/request-and-begin-completions bid)))
 
 ;; ── Accept ────────────────────────────────────────────────────────────────────
-;; No `on-completion-accept` handler here, deliberately: Rust applies the main
-;; edit, `additionalTextEdits`, and `completionItem/resolve` atomically, so
-;; there is nothing left for Scheme to do on accept.
+;; No `on-completion-accept` handler here, deliberately — see README.
+

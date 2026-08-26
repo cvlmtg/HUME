@@ -2,6 +2,7 @@
 ;;; unpack, receipt, uninstall, catalog listing. Registration (turning a
 ;;; receipt into a live `register-lsp-server!` call) lives in
 ;;; registration.scm, required below for its catalog/receipt/path helpers.
+;;; See README.md "How it works".
 
 (require "registration.scm")
 
@@ -20,12 +21,11 @@
     (path-join (runtime-dir) "scheme" "lsp-sources.scm")
     read))
 
-;;; Hash: language → server name, derived from the shared servers catalog
-;;; (registration.scm's `lsp/servers-catalog`) — languages are disjoint
-;;; across servers by sync-time guarantee: `scripts/sync-grammars.py` takes
-;;; only Helix's first-listed ("primary") language-server per language, so
-;;; no two catalog entries can claim the same language and this hash-insert
-;;; loop never silently last-wins two servers against each other.
+;;; Hash: language → server name, derived from the shared servers catalog.
+;;; Languages are disjoint across servers by sync-time guarantee —
+;;; `scripts/sync-grammars.py` takes only each language's primary server —
+;;; so this hash-insert loop never silently last-wins two servers against
+;;; each other. See README's "Catalog and sources".
 (define *lsp-lang->server* (hash))
 
 (for-each
@@ -44,11 +44,10 @@
 
 ;; ── Server name validation ───────────────────────────────────────────────────
 
-;;; Reject a server name unsafe to join as a single path segment — must be
-;;; non-empty, not "." or "..", and free of path separators. `:lsp-uninstall`
-;;; takes a user-typed name straight into `lsp/server-dir`; `lsp-install`
-;;; never needs this since its name always comes from the seeded
-;;; `*lsp-lang->server*` hash, never the raw argument.
+;;; Reject a server name unsafe to join as a path segment (non-empty, not
+;;; "."/"..", no path separators) — `:lsp-uninstall` takes a user-typed name
+;;; straight into `lsp/server-dir`; `lsp-install` never needs this since its
+;;; name always comes from the seeded `*lsp-lang->server*` hash.
 (define (lsp/valid-server-name? name)
   (and (string? name)
        (> (string-length name) 0)
@@ -78,10 +77,8 @@
                    " (bin . " (lsp/scheme-quote bin) "))")))
 
 ;;; Verify `path`'s sha256 digest matches `expected` (either the seeded
-;;; data-file literal `"sha256:<hex>"` or bare hex; ASCII-case-insensitive).
-;;; On mismatch, deletes `path` and raises naming both digests. Hashing is
-;;; the sandbox-free `sha256-file` builtin; the compare and delete-on-mismatch
-;;; happen here.
+;;; data-file literal `"sha256:<hex>"` or bare hex). On mismatch, deletes
+;;; `path` and raises naming both digests.
 (define (lsp/verify-sha256! path expected)
   (let* ((expected-hex (string-downcase
                           (if (starts-with? expected "sha256:")
@@ -206,10 +203,9 @@
     bin-rel))
 
 ;;; Run `cargo install` for a cargo-kind crate, rooted in the server dir.
-;;; Returns the bin path relative to `dir` (cargo's own --root layout:
-;;; `bin/<name>`, `.exe` on Windows). `--locked` builds with upstream's
-;;; published Cargo.lock — the closest cargo analog to the sha256 pin
-;;; github assets get. cargo creates `dir` itself.
+;;; Returns the bin path relative to `dir`. `--locked` — the closest cargo
+;;; analog to the sha256 pin github assets get — builds with upstream's
+;;; published Cargo.lock.
 (define (lsp/install-cargo! name fields dir)
   (let* ((crate    (cdr (lsp/field fields 'crate)))
          (version  (cdr (lsp/field fields 'version)))
@@ -224,16 +220,9 @@
                             ": expected binary not found after cargo install: " bin-rel)))
     bin-rel))
 
-;;; Install (or reinstall) a single server from its declared source, always
-;;; from a clean slate — doubles as the repair/upgrade path, and covers
-;;; reinstall over a running client the same way:
-;;;   1. blocker check + tool preflight
-;;;   2. unregister every seeded language (any running client is reaped)
-;;;   3. purge any existing install — the receipt dies with it
-;;;   4. download + verify + unpack (github), npm install, or cargo install
-;;;   5. write receipt — the commit point
-;;;   6. $PATH notice, if the seeded command also resolves there
-;;; Registration is the caller's job — see `lsp/lsp-install-or-report!`.
+;;; Install (or reinstall) `name` from its declared source, always from a
+;;; clean slate — see README's "Server install and registration" for the
+;;; pipeline steps. Registration is the caller's job, `lsp/lsp-install-or-report!`.
 (define (lsp/install-server! name)
   (let ((blocker (lsp/install-blocker name)))
     (when blocker
@@ -261,11 +250,9 @@
 ;;; Runs `thunk` under the cross-process install lock
 ;;; (`<data>/servers/.install-lock`), releasing it exactly once regardless
 ;;; of outcome. Never re-raises `thunk`'s error through an outer
-;;; with-handler — re-raising a native-builtin error through a nested handler
-;;; corrupts the Steel VM's continuation stack — every failure path
-;;; terminates in a plain `log!`. Returns #t on success, #f on any failure;
-;;; a lock the caller couldn't acquire and a `thunk` that raised both
-;;; collapse to the same #f.
+;;; with-handler — re-raising a native-builtin error through a nested
+;;; handler corrupts the Steel VM's continuation stack — every failure path
+;;; terminates in a plain `log!`. Returns #t on success, #f on any failure.
 (define (lsp/with-install-lock! what thunk)
   (let ((acquired?
           (with-handler
@@ -280,13 +267,9 @@
            (begin (thunk) (release-install-lock!) #t)))))
 
 ;;; Install `name` if not already at the seeded version, reporting a
-;;; guided-retry hint on failure when a prior install dir existed. The
-;;; post-install rescan sees `lsp/install-server!`'s queued
-;;; `unregister-lsp-server!` via the same-eval read-through, so its
-;;; no-clobber filter correctly re-admits those languages. Runs *outside*
-;;; `lsp/with-install-lock!`, after that combinator already released the
-;;; lock, so a failure here is a distinct, uncaught error rather than being
-;;; mislabeled "install failed" or double-releasing the lock.
+;;; guided-retry hint on failure when a prior install dir existed. Runs
+;;; *outside* `lsp/with-install-lock!`, after that combinator already
+;;; released the lock — see README's "Install lock".
 (define (lsp/lsp-install-or-report! name)
   (let* ((receipt (lsp/read-receipt name))
          (source  (if (hash-contains? *lsp-sources* name)
@@ -337,8 +320,7 @@
             (for-each (lambda (lang-entry) (unregister-lsp-server! (car lang-entry)))
                       (cdr (lsp/field (hash-ref (lsp/servers-catalog) name) 'languages))))
           ;; The delete itself is cross-process-lock-guarded, same as
-          ;; install — a second HUME process must never race this one's
-          ;; delete-dir. Deferred to `after 0` so the unregister above has
+          ;; install. Deferred to `after 0` so the unregister above has
           ;; already shut down any running client; the lock is acquired
           ;; there, right before the delete, not any earlier.
           (if (path-exists? dir)
@@ -378,12 +360,8 @@
   #:inline-output #t)
 
 ;; ── Discovery hint ────────────────────────────────────────────────────────────
-;; Once per language per session: if a buffer's language has a seeded server
-;; not yet installed, suggest :lsp-install — the dedup marker is set
-;; regardless of outcome, so a disqualified language is never re-evaluated.
-;; `'warn`, not `'info`: `Severity::Info` is display-only and never reaches
-;; `:messages`, so a nudge the user misses at the moment it fires must stay
-;; reviewable afterward.
+
+;;; Once per language per session — see README's "Discovery hint".
 (register-hook! 'on-language-set
   (lambda (bid lang)
     (when (and (string? lang) (not (hash-contains? *lsp-hinted-languages* lang)))

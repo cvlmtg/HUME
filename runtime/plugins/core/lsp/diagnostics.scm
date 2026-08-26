@@ -1,6 +1,6 @@
 ;;; core:lsp/diagnostics.scm — diagnostics navigation. No LSP request —
-;;; reads the diagnostics store via diagnostics-for-buffer. Depends on
-;;; core:stdlib for cursor-char-index (see plugin.scm).
+;;; reads the diagnostics store via diagnostics-for-buffer. See README.md
+;;; "How it works" → "Diagnostics".
 
 (require "lib.scm")
 
@@ -89,7 +89,7 @@
   (string-append "diagnostic." severity))
 
 ;;; The most severe entry in `line-diags` — only its severity is read by the
-;;; caller, so ties (two entries at the same severity) are inconsequential.
+;;; caller, so ties are inconsequential.
 (define (lsp/most-severe line-diags)
   (car (sort line-diags
              (lambda (a b) (< (lsp/severity-rank (hash-ref a "severity"))
@@ -136,12 +136,7 @@
 (register-hook! 'on-lsp-detach
   (lambda (bid server-name) (set-eol-text! "lsp-diagnostics" bid '())))
 
-;;; `diagnostics-for-buffer` (no `#:severity`) reads
-;;; `lsp.diagnostics-severity-floor` as its default floor, same as the
-;;; underline/gutter-sign render bridges — but that only takes effect the
-;;; next time this plugin calls it. Without this hook, changing the floor at
-;;; runtime would leave every buffer's inline summary showing the old cut
-;;; until its next unrelated `on-diagnostics-changed` fire.
+;;; A severity-floor change needs an explicit refresh — see README.
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "lsp.diagnostics-severity-floor")

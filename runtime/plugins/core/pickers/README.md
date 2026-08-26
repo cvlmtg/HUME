@@ -10,7 +10,9 @@ Requires `core:stdlib` declared or loaded first — config validation calls
 `stdlib/config-boolean` via `call!` while this plugin's own body is evaluating, and `call!`'s
 lazy-miss retry inline-activates a merely declared `core:stdlib` before the read runs.
 `picker-files` and `picker-git-modified` also call `stdlib/git-repo?`/`stdlib/git-toplevel` via
-`call!`, at dispatch time.
+`call!`, at dispatch time. See ["Depending on another
+plugin"](https://cvlmtg.github.io/HUME/plugins.html#depending-on-another-plugin) for why the
+`(declared-plugins)` check at the top of `plugin.scm` is enough here.
 
 ## Usage
 
@@ -30,9 +32,11 @@ lazily it would have no trigger to ever wake it up:
 | `g b` | `picker-buffers`        | Fuzzy-pick an open buffer and switch to it    |
 | `g m` | `picker-git-modified`   | Fuzzy-pick a file with staged or unstaged git changes and open it |
 
-Inside an open picker: type to filter, `Up`/`Down`/`Ctrl+p`/`Ctrl+n` move the
-selection, `PageUp`/`PageDown` page it, `Ctrl+u`/`Ctrl+d` move it by half a
-page, `Backspace` edits the query, `Enter` accepts, `Esc` dismisses.
+Bound in `'normal` only — Extend mode falls through to the normal trie, so a
+second binding for `'extend` isn't needed. Inside an open picker: type to
+filter, `Up`/`Down`/`Ctrl+p`/`Ctrl+n` move the selection, `PageUp`/`PageDown`
+page it, `Ctrl+u`/`Ctrl+d` move it by half a page, `Backspace` edits the
+query, `Enter` accepts, `Esc` dismisses.
 
 ## File source
 
@@ -66,7 +70,9 @@ every entry exactly as git prints it: the two-letter status code (`M `,
 `A `, ` M`, `??`, …) followed by the path, relative to the repo root. `-z`
 avoids git's C-quoting of paths with whitespace or non-ASCII; `--no-renames`
 guarantees one field per entry (a rename otherwise prints as two NUL-separated
-fields under `-z`, which would parse as a spurious extra row).
+fields under `-z`, which would parse as a spurious extra row). A clean tree
+(exit 0, empty stdout) parses to an empty item list and pushes as a no-op —
+no special-casing needed.
 
 Because rows are repo-root-relative but `open-buffer!` resolves a relative
 path against the editor's cwd (`:pwd`), the plugin resolves the selected
@@ -76,7 +82,11 @@ repo.
 
 A clean tree still opens the picker, just with no rows. A cwd outside any
 git repository (or a failed `git status`) surfaces as a status message
-instead.
+instead — scoped to `#:token`, since this picker may already be closed or
+replaced by the time a slow `git status` fails; closing unconditionally
+would tear down whatever different picker the user has open by then.
+Dismissing without selecting cancels the outstanding `git status` job — no
+point letting it keep running once nothing can show its result.
 
 The default `#t` walks every untracked directory fully
 (`--untracked-files=all`) — a large un-ignored directory (no `.gitignore`
@@ -95,3 +105,18 @@ finishes. Set `"untracked"` to `#f` to skip it and populate sooner.
 (declare-plugin "core:stdlib")
 (load-plugin "core:pickers" #:config (hash "untracked" #f))
 ```
+
+## How it works
+
+Built entirely from the public plugin API (`picker!`, `picker-push!`,
+`picker-source-spawn!`, `spawn-async!`) — deliberately no native (Rust)
+picker definitions, since a fixed native set would need a Rust PR for every
+new finder. Accepting a row from `picker-files` or `picker-git-modified`
+switches the focused pane, not just opens the buffer (`switch-to-buffer!`
+wrapping `open-buffer!`, never `open-buffer!` alone).
+
+`picker-files` and `picker-git-modified` are each split into a public
+command and an internal `pickers/*-with` command that takes the git/fd probe
+result (or repo root) as an explicit argument, rather than probing inline —
+a test seam that lets a test drive each branch (repo / no-repo, fd present /
+absent) via `call!` instead of manipulating `PATH` or a real git sandbox.

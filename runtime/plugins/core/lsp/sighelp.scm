@@ -1,14 +1,12 @@
-;;; core:lsp/sighelp.scm — textDocument/signatureHelp.
-;;;
-;;; Dismiss on mode change is handled by lib.scm's shared `on-mode-change`
-;;; popup registration — no separate one needed here.
+;;; core:lsp/sighelp.scm — textDocument/signatureHelp. See README.md "How it
+;;; works" → "Signature help". Dismiss on mode change is handled by
+;;; lib.scm's shared `on-mode-change` popup registration.
 
 (require "lib.scm")
 
 ;;; A `SignatureHelp.parameters[].label` is a plain string, or a `[start,
-;;; end)` offset pair into the signature's own label — the form a server
-;;; sends because HUME declares `labelOffsetSupport`. Those offsets count
-;;; code units in the encoding the server negotiated, so the host slices the
+;;; end)` offset pair into the signature's own label — the offsets count
+;;; code units in the server's negotiated encoding, so the host slices the
 ;;; label; `#f` back means no attached server to name that encoding.
 (define (lsp/param-text bid sig-label param)
   (let ((param-label (hash-ref param "label")))
@@ -16,15 +14,14 @@
         param-label
         (lsp-label-offsets->text bid sig-label param-label))))
 
-;;; Clamp a server-sent index (active signature, active parameter) into
-;;; `[0, (length lst) - 1]` rather than trusting it verbatim.
+;;; Clamp a server-sent index into `[0, (length lst) - 1]` rather than
+;;; trusting it verbatim.
 (define (lsp/clamp-index idx lst)
   (max 0 (min idx (- (length lst) 1))))
 
 ;;; The chosen signature's label, plus the active parameter's own text
 ;;; marked with `⟨…⟩` on a second line (no styling API in `show-popup!`
-;;; v1). No active parameter, no parameters at all, or an unsliceable
-;;; label ⇒ bare label.
+;;; v1).
 (define (lsp/sighelp-text bid sig active-idx)
   (let* ((label (hash-ref sig "label"))
          (params (if (hash-contains? sig "parameters") (hash-ref sig "parameters") (list))))
@@ -63,8 +60,7 @@
     (if (equal? ch ")")
         (close-popup!)
         ;; Guarded so a stale trigger char left registered past detach
-        ;; (or a server that never advertised signatureHelpProvider)
-        ;; skips politely instead of hitting lsp-request's
-        ;; server-resolution failure on every matching keystroke.
+        ;; skips politely instead of hitting lsp-request's server-
+        ;; resolution failure on every matching keystroke.
         (lsp/guard-capability "signatureHelpProvider"
           (lambda () (lsp/sighelp-request bid))))))
