@@ -17,15 +17,13 @@ plugin's command body calls one of them at runtime.
 
 `(load-plugin "core:stdlib")` also works, loading it eagerly instead.
 
-**Caveat**: `core:git-diff`, `core:pickers`, `core:vim-keybind`, and `core:lsp` all depend on
-`core:stdlib` this way — see ["Depending on another
-plugin"](https://cvlmtg.github.io/HUME/plugins.html#depending-on-another-plugin) for why a bare
-`(declared-plugins)` check at their own load time is enough. That mechanism breaks only if
-`core:stdlib` itself is declared with an explicit `#:commands`/`#:events`/`#:languages` that
-omits a helper one of them needs — the override leaves no activation stub, so `call!` logs an
-error and returns `#void` instead of raising, and the dependent's config read silently
-resolves to `#void`. Stick to the zero-trigger form above unless you have a specific reason to
-override it.
+See ["Depending on another plugin"](https://cvlmtg.github.io/HUME/plugins.html#depending-on-another-plugin) for why a bare `(declared-plugins)` check at a plugin's own load time is enough.
+
+That mechanism breaks only if `core:stdlib` itself is declared with an explicit
+`#:commands`/`#:events`/`#:languages` that omits a helper one of them needs — the override
+leaves no activation stub, so `call!` logs an error and returns `#void` instead of raising,
+and the dependent's config read silently resolves to `#void`. Stick to the zero-trigger
+form above unless you have a specific reason to override it.
 
 ## Commands
 
@@ -66,9 +64,13 @@ Three ways to run a subprocess, pick by shape: `run-inline-output!` for `#:inlin
 commands (process-group safety for Ctrl+C), `spawn-async!` for enumeration-scale output
 streams, and `stdlib/run` for everything else — a small-output command run synchronously with
 the TUI's raw mode still on. `core:plum` (`plum/run!`) builds its raise-on-failure policy on
-top of `stdlib/run`, and the git probes below build their `#f`-on-failure policy on it — see
-their own doc comments. stdin is piped and closed immediately, never inherited from HUME's own
-terminal.
+top of `stdlib/run`, and the git probes below build their `#f`-on-failure policy on it. stdin
+is piped and closed immediately — never inherited from HUME's own terminal, or the child's
+reads would race the editor's key reads. Ports are grabbed before `wait` (a Steel gotcha
+pinned by a permanent `hume-scripting` test: `child-stderr` returns `#f` afterwards even on a
+piped stream) and drained stdout-then-stderr — stdout before `wait` so a large stdout stream
+doesn't sit in the pipe past `wait`'s own block, stderr after since a small diagnostic tail
+costs nothing extra once the child has already exited.
 
 ### Git
 
@@ -77,10 +79,13 @@ terminal.
 | `(call! "stdlib/git-repo?")`     | `#t` iff the editor's cwd is inside a git work tree            |
 | `(call! "stdlib/git-toplevel")`  | Absolute repo root of the editor's cwd, or `#f` when git is missing or cwd is not in a work tree |
 
-Both build on `stdlib/run`, checking stdout rather than just exit code (`git rev-parse` exits
-0 with `false` printed inside a bare repo). `core:pickers` uses both — `git-repo?` to choose
-`picker-files`'s source, `git-toplevel` to resolve a `picker-git-modified` selection against
-the repo root.
+Both build on an internal `stdlib/run-stdout` (`stdlib/run`'s stdout, trimmed, if the command
+exits 0, else `#f`) that isn't itself exposed as a command — trimming is only safe for a
+single-value probe like these; a `-z`-delimited multi-entry blob (e.g. `git status`) can have a
+leading space as *significant data* in its first entry, which trimming would eat. `git-repo?`
+checks stdout rather than just exit code: inside a bare repo, `rev-parse` exits 0 but prints
+`false`. `core:pickers` uses both — `git-repo?` to choose `picker-files`'s source,
+`git-toplevel` to resolve a `picker-git-modified` selection against the repo root.
 
 ### Command arguments
 
@@ -118,7 +123,10 @@ HUME's scripting surface has two layers, and `core:stdlib` is the outermost:
 
 Cross-plugin access in HUME is `call!`-only — plugins never `require` each other's modules
 (that would break the namespace isolation each plugin gets). That's why the public API here
-is exposed as `define-command!`-registered commands rather than a `provide`d library.
+is exposed as `define-command!`-registered commands rather than a `provide`d library. A
+command name and the Steel binding of the same name live in separate namespaces (command
+registry vs. module scope), so there's no collision between the command `"stdlib/run"` and the
+function it wraps.
 
 The internal accessors (`stdlib/selection-anchor`, `stdlib/selection-head`,
 `stdlib/selection-primary?`, `stdlib/primary-selection`) exist so nothing outside this file

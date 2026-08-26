@@ -38,8 +38,6 @@
   (stdlib/selection-head (stdlib/primary-selection sels)))
 
 ;; ── Filesystem + list-search helpers (internal) ─────────────────────────────
-;;
-;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports`
 
 (define (stdlib/find pred? lst)
   (cond ((null? lst) #f)
@@ -71,19 +69,7 @@
           (sort (map file-name (read-dir dir)) string<?)))
 
 ;; ── Subprocess helper ────────────────────────────────────────────────────────
-;;
-;; Distinct from `run-inline-output!` (process-group Ctrl+C safety) and
-;; `spawn-async!` (two Rust-side capture threads,
-;; hume-platform/src/process/job.rs) — see README for which to use when.
 
-;;; stdin is piped and closed immediately — never inherited from HUME's own
-;;; terminal, or the child's reads would race the editor's key reads. Ports
-;;; are grabbed before `wait` (a Steel gotcha pinned by a permanent
-;;; hume-scripting test: `child-stderr` returns #f afterwards even on a piped
-;;; stream) and drained stdout-then-stderr — stdout before `wait` so a large
-;;; stdout stream doesn't sit in the pipe past `wait`'s own block, stderr
-;;; after since a small diagnostic tail costs nothing extra once the child
-;;; has already exited.
 (define (stdlib/run cmd args cwd)
   (let* ([base (with-stdin-piped (with-stderr-piped (with-stdout-piped (command cmd args))))]
          [builder (if cwd (with-current-dir base cwd) base)]
@@ -101,36 +87,21 @@
         (list "" (to-string (Err->value spawned)) #f))))
 
 ;; ── Git probes ───────────────────────────────────────────────────────────────
-;;
-;; Built on `stdlib/run`
 
-;;; `stdlib/run`'s stdout, trimmed, if `cmd args` spawns and exits 0, else
-;;; `#f`. Trimming is only safe for a single-value probe (the `git rev-parse`
-;;; class) — a `-z`-delimited multi-entry blob (e.g. `git status`) can have a
-;;; leading space as *significant data* in its first entry, which trimming
-;;; would eat.
 (define (stdlib/run-stdout cmd args)
   (let ([result (stdlib/run cmd args #f)])
     (and (equal? (caddr result) 0) (trim (car result)))))
 
-;;; #t iff the editor's cwd is inside a git *work tree*. Checks stdout, not
-;;; just exit code: inside a bare repo `rev-parse` exits 0 but prints "false".
 (define (stdlib/git-repo?)
   (and (which "git")
        (equal? "true" (stdlib/run-stdout "git" '("rev-parse" "--is-inside-work-tree")))))
 
-;;; Absolute repo root of the editor's cwd, or `#f` when git is missing or
-;;; cwd is not in a work tree — `--show-toplevel` fails outside a work tree,
-;;; so this doubles as a repo probe.
 (define (stdlib/git-toplevel)
   (and (which "git")
        (stdlib/run-stdout "git" '("rev-parse" "--show-toplevel"))))
 
 ;; ── Command-argument helper ──────────────────────────────────────────────────
-;;
-;; `arg` is a string only when typed on the `:` command line — see
-;; hume-editor/src/editor/dispatch.rs's `ArgSource` marshalling. See README
-;; for the full typed-vs-injected-count contract.
+
 (define (stdlib/resolve-lang-arg cmd arg)
   (let ([name (if (string? arg) arg (buffer-language (current-buffer)))])
     (if (string? name)
@@ -140,11 +111,6 @@
           #f))))
 
 ;; ── Plugin config helpers ────────────────────────────────────────────────────
-;;
-;; `#:config` is an untyped hash — every plugin reading one needs the same
-;; "key present? else default; then type-check what's there" shape, raising
-;; an error naming both the plugin and the key so a bad value fails at load,
-;; not wherever the untyped value happens to misbehave later.
 
 (define (stdlib/config-value cfg key default)
   (if (hash-contains? cfg key) (hash-ref cfg key) default))
@@ -171,10 +137,6 @@
     v))
 
 ;; ── call!-able commands (public API) ────────────────────────────────────────
-;;
-;; Command name and Steel binding of the same name live in separate
-;; namespaces (command registry vs. module scope) — no collision between the
-;; command "stdlib/all-single-char?" and the function it wraps.
 
 (define-command! "stdlib/all-single-char?"
   "#t if every selection in the given list spans a single grapheme."
