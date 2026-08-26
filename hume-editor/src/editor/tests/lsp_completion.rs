@@ -95,6 +95,62 @@ fn update_filter_with_uppercase_query_is_case_sensitive() {
     );
 }
 
+/// A typed space lies outside any legitimate LSP-completion identifier, so
+/// the fuzzy query must fail to match anything once it contains one —
+/// that's what makes Insert mode's post-edit refilter see zero candidates
+/// and treat the space as crossing the completed token's boundary.
+/// Regression for `Pattern::new`'s word-splitting: it silently drops the
+/// trailing empty atom after "foo ", so the filter scored every item `0`
+/// (matching the empty pattern) instead of matching nothing.
+#[test]
+fn update_filter_with_trailing_space_matches_nothing() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "foobar")))
+             (completion-update-filter! "foo ")
+             (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "",
+        "a filter with a trailing space must match nothing, not fall back to \
+         matching every item as if the space were an ignored word separator"
+    );
+}
+
+/// A bare space as the entire filter is the same bug at its worst: no
+/// non-whitespace atoms survive `Pattern::new`'s word-split, so the buggy
+/// parsing degenerates to an empty pattern that scores every item `0` —
+/// silently resurfacing the full unfiltered list on the one keystroke
+/// Insert mode most needs to close the menu.
+#[test]
+fn update_filter_with_only_a_space_matches_nothing() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "foobar") (hash "label" "foo")))
+             (completion-update-filter! " ")
+             (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "",
+        "a filter that is a single space must match nothing — it must not \
+         fall through to an empty pattern that matches every item"
+    );
+}
+
 #[test]
 fn accept_with_no_text_edit_inserts_insert_text_at_the_anchor_span() {
     let tmp = safe_tempdir();

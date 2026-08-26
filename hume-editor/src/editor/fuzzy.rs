@@ -6,7 +6,7 @@
 //! (`editor/lsp/completion/mod.rs`), one instance per profile — see
 //! [`FuzzyProfile`].
 
-use nucleo_matcher::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
+use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
 /// Which caller is scoring, and therefore which of two nucleo behaviors it
@@ -15,12 +15,20 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 ///
 /// - **Query parsing.** The picker is an fzf-style finder over a query the
 ///   user typed as *search syntax* — `^ $ ! '` at word boundaries select
-///   prefix/postfix/negated/substring matching (`Pattern::parse`). Completion's
-///   query is a raw slice of buffer text between the session anchor and the
-///   cursor, where those characters are legitimate identifier content
-///   (`$var`, `println!`) — parsing them as operators would misfire, so
-///   completion uses `Pattern::new(.., AtomKind::Fuzzy)`, which segments on
-///   whitespace only.
+///   prefix/postfix/negated/substring matching, and whitespace separates
+///   independent search terms (`Pattern::parse`). Completion's query is a
+///   raw slice of buffer text between the session anchor and the cursor:
+///   those characters are legitimate identifier content (`$var`,
+///   `println!`), not syntax, and a space in the query is not a separator
+///   between terms — it's the completed token's own boundary, typed past.
+///   So completion scores the query as one [`Atom`] (`AtomKind::Fuzzy`)
+///   covering the whole string including any whitespace, rather than a
+///   whitespace-segmented [`Pattern`]: a query holding a space can then
+///   only match a haystack that itself contains that space (LSP labels
+///   never do), which is what makes typing a space during completion score
+///   every candidate `None` and close the menu — the same outcome the
+///   deleted hand-rolled subsequence matcher gave "for free" by scanning
+///   raw `char`s with no notion of word boundaries at all.
 /// - **Prefix bonus.** nucleo's `Config::prefer_prefix` doc says it's "only
 ///   recommended for autocompletion usecases where the expectation is that the
 ///   user is typing the entire match... For a full fzf-like fuzzy
@@ -35,8 +43,15 @@ pub(crate) enum FuzzyProfile {
 
 /// A parsed query, reusable across every haystack scored against it in one
 /// re-rank pass. Re-parse on every query edit — parsing is cheap relative to
-/// scoring thousands of haystacks per keystroke.
-pub(crate) struct FuzzyPattern(Pattern);
+/// scoring thousands of haystacks per keystroke. Two variants because the
+/// two profiles parse into different nucleo types (see [`FuzzyProfile`]'s
+/// query-parsing point): `Pattern` is itself a sequence of atoms, while
+/// completion needs exactly one atom spanning the whole query, whitespace
+/// included, which only a bare `Atom` gives.
+pub(crate) enum FuzzyPattern {
+    Words(Pattern),
+    Whole(Atom),
+}
 
 /// Owns the reusable scoring engine. One instance per picker/completion
 /// session (parallels `CompletionSession::rank_scratch` — caller-owned state
@@ -60,20 +75,24 @@ impl FuzzyMatcher {
 
     /// Parse `query` under this matcher's profile — smart case (lowercase
     /// query matches any case; mixed/upper case is case-sensitive) and smart
-    /// Unicode normalization either way, differing only in whether `query`'s
-    /// `^ $ ! '` are search-syntax operators (see [`FuzzyProfile`]).
+    /// Unicode normalization either way, differing in whether `query` is a
+    /// whitespace-segmented multi-term `Pattern` or one whole-string `Atom`
+    /// (see [`FuzzyProfile`]).
     pub(crate) fn parse(&self, query: &str) -> FuzzyPattern {
-        FuzzyPattern(match self.profile {
-            FuzzyProfile::Picker => {
-                Pattern::parse(query, CaseMatching::Smart, Normalization::Smart)
-            }
-            FuzzyProfile::Autocomplete => Pattern::new(
+        match self.profile {
+            FuzzyProfile::Picker => FuzzyPattern::Words(Pattern::parse(
+                query,
+                CaseMatching::Smart,
+                Normalization::Smart,
+            )),
+            FuzzyProfile::Autocomplete => FuzzyPattern::Whole(Atom::new(
                 query,
                 CaseMatching::Smart,
                 Normalization::Smart,
                 AtomKind::Fuzzy,
-            ),
-        })
+                false, // no `\ ` escaping: the query is buffer text, not search syntax
+            )),
+        }
     }
 
     /// Score `haystack` against `pattern`. Higher is a better match; `None`
@@ -85,7 +104,10 @@ impl FuzzyMatcher {
     /// empirically below since `nucleo-matcher`'s docs don't state it.
     pub(crate) fn score(&mut self, pattern: &FuzzyPattern, haystack: &str) -> Option<u32> {
         let haystack = Utf32Str::new(haystack, &mut self.haystack_buf);
-        pattern.0.score(haystack, &mut self.matcher)
+        match pattern {
+            FuzzyPattern::Words(p) => p.score(haystack, &mut self.matcher),
+            FuzzyPattern::Whole(a) => a.score(haystack, &mut self.matcher).map(u32::from),
+        }
     }
 }
 
