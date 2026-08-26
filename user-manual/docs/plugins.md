@@ -483,7 +483,7 @@ input, it searches its (empty) stdin instead of the working directory, and finds
 nothing:
 
 ```scheme
-(picker-source-spawn! token "rg" (list "--vimgrep" pattern ".") #:ok-exit-codes '(0 1))
+(picker-source-spawn! token "rg" (list "--vimgrep" "--" pattern ".") #:ok-exit-codes '(0 1))
 ```
 
 ### Live requery (live grep)

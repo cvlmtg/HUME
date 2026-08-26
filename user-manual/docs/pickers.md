@@ -41,8 +41,8 @@ untracked, and so on) alongside the path, so you can tell at a glance what kind 
 each file has. Selecting a row opens that file, regardless of which subdirectory `:pwd`
 currently points at.
 
-An empty result (nothing changed) or a working directory outside any git repository shows
-a status message instead of an empty picker.
+A working directory outside any git repository shows a status message instead of opening a
+picker. A clean tree (nothing changed) opens the picker with no rows.
 
 By default, untracked files are included, each shown as its own row. Turn them off when
 loading the plugin:

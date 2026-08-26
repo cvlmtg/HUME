@@ -116,11 +116,7 @@ pub(crate) fn define_command(
                 builtin_name, name, claimant);
         }
     }
-    match &proc {
-        SteelVal::Closure(_) | SteelVal::FuncV(_) | SteelVal::MutFunc(_) => {}
-        _ => steel::stop!(TypeMismatch =>
-            "{}: third arg (proc) must be a callable, got {:?}", builtin_name, proc),
-    }
+    let proc = super::args::callable_arg(proc, "define-command! third arg (proc)")?;
     let (arity, is_variadic) = match &proc {
         SteelVal::Closure(gc) => (gc.arity() as u16, gc.is_multi_arity()),
         // FuncV/MutFunc arity is not introspectable; treat as 0-arg non-variadic so

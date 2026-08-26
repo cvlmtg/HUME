@@ -1475,43 +1475,19 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         nul: bool,
         ok_exit_codes: Vec<i32>,
     ) -> Result<bool, String> {
-        let Some(session) = self.state.config.picker.as_mut() else {
-            return Ok(false);
-        };
-        if session.token() != token {
-            return Ok(false);
-        }
-        let delimiter = if nul { b'\0' } else { b'\n' };
-        let source = hume_platform::process::line_source::spawn_line_source(
+        crate::editor::picker_source::spawn_source(
+            self.state,
+            token,
             cmd,
-            &args,
-            cwd.as_deref(),
-            delimiter,
-            std::sync::Arc::clone(&self.state.wake),
+            args,
+            cwd,
+            nul,
+            ok_exit_codes,
         )
-        .map_err(|e| format!("cannot run '{cmd}': {e}"))?;
-        // Report (rather than silently drop, via `attach_source`'s
-        // `Option`-replace) an outgoing source that had already exited —
-        // see `take_and_report_outgoing_source`'s doc.
-        crate::editor::picker_source::take_and_report_outgoing_source(self.state);
-        self.state
-            .config
-            .picker
-            .as_mut()
-            .expect("checked Some above")
-            .attach_source(source, ok_exit_codes);
-        Ok(true)
     }
 
     fn picker_source_stop(&mut self, token: u64) -> bool {
-        let Some(session) = self.state.config.picker.as_ref() else {
-            return false;
-        };
-        if session.token() != token {
-            return false;
-        }
-        crate::editor::picker_source::take_and_report_outgoing_source(self.state);
-        true
+        crate::editor::picker_source::stop_source(self.state, token)
     }
 
     fn picker_close(&mut self, token: Option<u64>) {

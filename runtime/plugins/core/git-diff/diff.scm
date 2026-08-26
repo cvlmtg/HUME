@@ -56,9 +56,8 @@
                 (unless ref-text
                   (git-diff/fetch-ref! bid path ref)))))))))
 
-;;; Forces a fetch even through a sticky `'unavailable` cache — used by both
-;;; toggle commands so turning signs/inline back on always re-tries. See
-;;; README's "Fetch/diff pipeline" for why `hunks` is deliberately untouched.
+;;; Forces a fetch even through a sticky `'unavailable` cache — see README's
+;;; "Fetch/diff pipeline" for why, and why `hunks` is deliberately untouched.
 (define (git-diff/force-refresh! bid ref)
   (let ([entry (git-diff/buffer-entry bid)])
     (when entry

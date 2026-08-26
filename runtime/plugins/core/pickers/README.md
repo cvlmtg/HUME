@@ -58,9 +58,8 @@ selecting one surfaces an error when the picker tries to open it.
 
 ### Buffers
 
-`picker-buffers` lists every open buffer, showing each one's path relative to the editor's
-working directory (or its buffer name, for pathless buffers like `*scratch*`) — bare
-filenames would be ambiguous whenever two open buffers share a basename.
+`picker-buffers` shows `buffer-display-path`, falling back to the buffer's name
+(`*scratch*`, etc.) for a pathless one — see the user manual's "Picking buffers" for why.
 
 ### Git-modified files
 

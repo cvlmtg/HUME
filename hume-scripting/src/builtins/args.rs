@@ -95,6 +95,28 @@ pub(crate) fn bool_arg(val: SteelVal, ctx_name: &str) -> Result<bool, SteelErr> 
     }
 }
 
+/// A Steel callable — `Closure`, `FuncV`, or `MutFunc`, the same three
+/// variants `define-command!`'s own `proc` check accepts. Kept in one place
+/// so a second "is this callable" decode (e.g. `picker!`'s
+/// `#:on-query-change`) never drifts from that list.
+pub(crate) fn callable_arg(val: SteelVal, ctx_name: &str) -> Result<SteelVal, SteelErr> {
+    match val {
+        SteelVal::Closure(_) | SteelVal::FuncV(_) | SteelVal::MutFunc(_) => Ok(val),
+        _ => steel::stop!(TypeMismatch => "{}: expected a callable, got {:?}", ctx_name, val),
+    }
+}
+
+/// A callable argument that may be `#f` (absent).
+pub(crate) fn optional_callable_arg(
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<Option<SteelVal>, SteelErr> {
+    match val {
+        SteelVal::BoolV(false) => Ok(None),
+        other => Ok(Some(callable_arg(other, ctx_name)?)),
+    }
+}
+
 /// A Steel list, unpacked to a `Vec<SteelVal>`.
 pub(crate) fn list_items(val: SteelVal, ctx_name: &str) -> Result<Vec<SteelVal>, SteelErr> {
     match val {

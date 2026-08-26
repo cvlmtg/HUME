@@ -29,19 +29,16 @@ pub(crate) struct PickerItem {
     pub(crate) payload: SteelVal,
 }
 
-impl From<(String, SteelVal)> for PickerItem {
-    fn from((display, payload): (String, SteelVal)) -> Self {
-        PickerItem { display, payload }
-    }
-}
-
 /// `UiHost`'s wire shape for a batch of items, converted — `open_picker`,
 /// `picker_push`, and `picker_replace` in `EditorHostImpl` each need this
 /// same conversion before handing a batch to the store; kept here rather
 /// than duplicated at each call site because `hume-scripting`'s `UiHost`
 /// trait cannot name `PickerItem`, an `hume-editor`-private type.
 pub(crate) fn picker_items(items: Vec<(String, SteelVal)>) -> Vec<PickerItem> {
-    items.into_iter().map(PickerItem::from).collect()
+    items
+        .into_iter()
+        .map(|(display, payload)| PickerItem { display, payload })
+        .collect()
 }
 
 /// A streaming source bundled with the exit-code allowlist it was attached
@@ -113,14 +110,13 @@ static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 impl PickerSession {
     /// Opens empty — the caller's initial item list (from `picker!`) arrives
     /// through the same `push` path as any later batch: open empty, then
-    /// attach a source. `opts.query` is applied through `set_query` (a
-    /// no-op rerank against the still-empty `items`) rather than assigned
-    /// directly, so construction and a future prefill-after-open path share
-    /// one place that keeps `query` and `filtered` in sync.
+    /// attach a source. `opts.query` is assigned directly rather than
+    /// through `set_query`: with `items` still empty, a rerank has nothing
+    /// to do.
     pub(crate) fn new(on_select: SteelVal, opts: PickerOpts) -> Self {
-        let mut session = Self {
+        Self {
             items: Vec::new(),
-            query: String::new(),
+            query: opts.query,
             filtered: Vec::new(),
             rank_scratch: Vec::new(),
             matcher: FuzzyMatcher::new(),
@@ -132,9 +128,7 @@ impl PickerSession {
             source: None,
             pending: opts.pending,
             on_query_change: opts.on_query_change,
-        };
-        session.set_query(opts.query);
-        session
+        }
     }
 
     pub(crate) fn token(&self) -> u64 {
@@ -185,40 +179,32 @@ impl PickerSession {
     }
 
     /// Replaces the item list wholesale and reranks — same token-guard and
-    /// `pending`-clearing contract as `push`, implemented as a clear
-    /// followed by a delegated `push`: items are otherwise append-only, so
-    /// this is the only way to drop stale rows. The requery half of a live
-    /// source: a caller with `#:on-query-change` clears the previous
-    /// pattern's rows before spawning the new search.
-    ///
-    /// Always lands on row `0` afterward, overriding whatever
-    /// `push`'s keep-the-same-item rerank did: the clear just above means
-    /// every index in the pre-replace `filtered` now names a *different*
-    /// item (or nothing) in the post-replace one, so `push`'s "same index,
-    /// same item" assumption does not hold here — a same-index match would
-    /// be a coincidence, not a real preserved selection.
+    /// `pending`-clearing contract as `push`, but always lands on row `0`
+    /// (`rerank`, not `push`'s keep-the-same-item `rerank_keeping_selection`):
+    /// every index the pre-replace `filtered` held names a *different* item
+    /// (or nothing) once `items` is cleared, so there is no selection worth
+    /// trying to preserve. Items are otherwise append-only; this is the only
+    /// way to drop stale rows. The requery half of a live source: a caller
+    /// with `#:on-query-change` clears the previous pattern's rows before
+    /// spawning the new search.
     pub(crate) fn replace(&mut self, token: u64, items: Vec<PickerItem>) -> bool {
         if token != self.token {
             return false;
         }
-        self.items.clear();
-        let applied = self.push(token, items);
-        // `push`'s own token check can't fail here — this fn already
-        // returned on a mismatch above — so `applied` is provably always
-        // `true`, not a second real outcome to propagate.
-        debug_assert!(applied);
-        self.selected = 0;
-        self.scroll = 0;
+        self.pending = false;
+        self.items = items;
+        self.rerank();
         true
     }
 
-    /// Attaches a spawned streaming source, replacing (and thereby killing,
-    /// via `SpawnedLineSource::drop`) any source already attached — a second
-    /// `picker-source-spawn!` on the same session is a re-spawn, not a
-    /// second concurrent source. This is exactly how a live source re-runs
-    /// per query change. `ok_exit_codes` is `drain_picker_source`'s
+    /// Attaches a spawned streaming source. A source already attached is
+    /// replaced (and thereby killed, via `SpawnedLineSource::drop`) rather
+    /// than left running — `picker_source::spawn_source`, this method's one
+    /// caller, always reports and takes the outgoing source first, so in
+    /// practice this replace fires only as a safety net, never on the live
+    /// outgoing source itself. `ok_exit_codes` is `drain_picker_source`'s
     /// allowlist for *this* source, e.g. `rg`'s exit `1` ("no matches").
-    pub(crate) fn attach_source(&mut self, source: SpawnedLineSource, ok_exit_codes: Vec<i32>) {
+    pub(super) fn attach_source(&mut self, source: SpawnedLineSource, ok_exit_codes: Vec<i32>) {
         self.source = Some(AttachedSource {
             source,
             ok_exit_codes,
@@ -298,11 +284,11 @@ impl PickerSession {
         self.on_query_change.clone()
     }
 
-    /// Replaces the query wholesale and reranks. Unlike `insert_char`/
-    /// `pop_grapheme`, returns nothing: `#:query`'s prefill is documented
-    /// never to fire `#:on-query-change` (see `PickerOpts::query`'s doc), so
-    /// there is no callback for a caller to queue.
-    pub(crate) fn set_query(&mut self, query: String) {
+    /// Replaces the query wholesale and reranks — test-only; `new` assigns
+    /// `query` directly (nothing to rerank against yet) and no other
+    /// production path replaces a query outside `insert_char`/`pop_grapheme`.
+    #[cfg(test)]
+    fn set_query(&mut self, query: String) {
         self.query = query;
         self.rerank();
     }
@@ -438,9 +424,9 @@ impl PickerSession {
     /// Only valid when every index the pre-call `filtered` held still names
     /// the same item afterward — i.e. `items` was purely appended to, never
     /// cleared or reordered. `push` is `self`'s only caller and guarantees
-    /// that; do not call this after any mutation that clears `items` (see
-    /// `replace`'s doc for why a same-index match there would be
-    /// coincidental, not a real preserved selection).
+    /// that; a caller that clears `items` first (`replace`) uses `rerank`
+    /// instead, since a same-index match there would be coincidental, not a
+    /// real preserved selection.
     fn rerank_keeping_selection(&mut self) {
         let selected_item = self.filtered.get(self.selected).copied();
         self.rebuild_filtered();

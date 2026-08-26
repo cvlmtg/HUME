@@ -16,18 +16,6 @@ fn spawn_async(ed: &mut Editor, cmd: &str, args: Vec<String>, callback: SteelVal
     EditorHostImpl::new(&mut ed.state, &mut ed.view).spawn_async(cmd, args, None, callback)
 }
 
-/// `kill -0` against the real OS as an independent liveness oracle — never
-/// asks the handle itself whether it thinks the child is alive.
-fn process_is_alive(pid: u32) -> bool {
-    std::process::Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .expect("spawn kill -0")
-        .success()
-}
-
 #[test]
 fn end_to_end_drain_delivers_the_full_result_exactly_once() {
     // Spawns "sh" by unqualified name — see `Global::Env`'s doc.

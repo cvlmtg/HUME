@@ -67,6 +67,35 @@ fn drain_until_picker_total(ed: &mut Editor, n: usize) {
     });
 }
 
+/// Whether the open picker no longer has an attached source — the
+/// respawn/stop/natural-exit convergence point every
+/// `picker-source-spawn!`/`picker-source-stop!` test polls for. A plain
+/// predicate rather than its own `drain_*_until` wrapper since callers pass
+/// it to either `drain_until` (Steel end-to-end) or `drain_sources_until`
+/// (Rust-only, no Steel VM in play) depending on which they're already
+/// using.
+fn source_detached(ed: &Editor) -> bool {
+    ed.state
+        .config
+        .picker
+        .as_ref()
+        .is_some_and(|p| !p.has_source())
+}
+
+// ── Shared process-liveness helper ──────────────────────────────────────────
+
+/// `kill -0` against the real OS as an independent liveness oracle — never
+/// asks the handle itself whether it thinks the child is alive.
+fn process_is_alive(pid: u32) -> bool {
+    std::process::Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .expect("spawn kill -0")
+        .success()
+}
+
 // ── Shared unix-only guards and fixtures ─────────────────────────────────────
 
 /// Claim `Global::Env`, create isolated `runtime` and `tmp` tempdirs, set

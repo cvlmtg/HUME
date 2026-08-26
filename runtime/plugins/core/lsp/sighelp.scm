@@ -4,10 +4,9 @@
 
 (require "lib.scm")
 
-;;; A `SignatureHelp.parameters[].label` is a plain string, or a `[start,
-;;; end)` offset pair into the signature's own label — the offsets count
-;;; code units in the server's negotiated encoding, so the host slices the
-;;; label; `#f` back means no attached server to name that encoding.
+;;; A `SignatureHelp.parameters[].label` is a plain string, or an offset
+;;; pair the host slices — see README's "Signature help" for the encoding
+;;; contract. `#f` back means no attached server to name that encoding.
 (define (lsp/param-text bid sig-label param)
   (let ((param-label (hash-ref param "label")))
     (if (string? param-label)

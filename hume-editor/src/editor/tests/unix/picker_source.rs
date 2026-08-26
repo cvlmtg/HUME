@@ -20,16 +20,18 @@ fn no_op_wake() -> Arc<dyn Fn() + Send + Sync> {
     Arc::new(|| {})
 }
 
-/// `kill -0` against the real OS as an independent liveness oracle — never
-/// asks the handle itself whether it thinks the child is alive.
-fn process_is_alive(pid: u32) -> bool {
-    std::process::Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .expect("spawn kill -0")
-        .success()
+/// Spawns `sh -c script` and attaches it to the already-open picker with
+/// `ok_exit_codes` — the spawn-and-attach block every `sh`-based test below
+/// needs before it can exercise `drain_picker_source`.
+fn attach_sh(ed: &mut Editor, script: &str, ok_exit_codes: Vec<i32>) {
+    let args = vec!["-c".to_string(), script.to_string()];
+    let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
+    ed.state
+        .config
+        .picker
+        .as_mut()
+        .unwrap()
+        .attach_source(source, ok_exit_codes);
 }
 
 #[test]
@@ -39,14 +41,7 @@ fn end_to_end_drain_streams_lines_into_the_store() {
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
-    let args = vec!["-c".to_string(), "printf 'a\\nb\\nc\\n'".to_string()];
-    let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
-    ed.state
-        .config
-        .picker
-        .as_mut()
-        .unwrap()
-        .attach_source(source, vec![0]);
+    attach_sh(&mut ed, "printf 'a\\nb\\nc\\n'", vec![0]);
 
     drain_sources_until(&mut ed, |ed| {
         ed.state
@@ -78,14 +73,7 @@ fn coalesced_push_reranks_against_the_live_query() {
     open_bare_picker(&mut ed);
     let _ = ed.state.config.picker.as_mut().unwrap().insert_char('z');
 
-    let args = vec!["-c".to_string(), "printf 'abc\\nxyz\\n'".to_string()];
-    let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
-    ed.state
-        .config
-        .picker
-        .as_mut()
-        .unwrap()
-        .attach_source(source, vec![0]);
+    attach_sh(&mut ed, "printf 'abc\\nxyz\\n'", vec![0]);
 
     drain_sources_until(&mut ed, |ed| {
         ed.state
@@ -113,14 +101,7 @@ fn nonzero_exit_reports_a_status_message_with_stderr() {
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
-    let args = vec!["-c".to_string(), "echo boom >&2; exit 2".to_string()];
-    let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
-    ed.state
-        .config
-        .picker
-        .as_mut()
-        .unwrap()
-        .attach_source(source, vec![0]);
+    attach_sh(&mut ed, "echo boom >&2; exit 2", vec![0]);
 
     drain_sources_until(&mut ed, |ed| ed.state.status_msg.is_some());
 
@@ -143,22 +124,9 @@ fn exit_code_in_the_allowlist_reports_nothing() {
     open_bare_picker(&mut ed);
 
     // Exit 1 with nothing on stderr — the shape `rg` uses for "no matches".
-    let args = vec!["-c".to_string(), "exit 1".to_string()];
-    let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
-    ed.state
-        .config
-        .picker
-        .as_mut()
-        .unwrap()
-        .attach_source(source, vec![0, 1]);
+    attach_sh(&mut ed, "exit 1", vec![0, 1]);
 
-    drain_sources_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .is_some_and(|p| !p.has_source())
-    });
+    drain_sources_until(&mut ed, source_detached);
 
     assert!(
         ed.state.status_msg.is_none(),
@@ -182,14 +150,7 @@ fn exit_code_outside_the_allowlist_still_reports() {
 
     // Exit 2 — `rg`'s "bad regex" — must still surface even with `1`
     // allowlisted for "no matches".
-    let args = vec!["-c".to_string(), "echo boom >&2; exit 2".to_string()];
-    let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
-    ed.state
-        .config
-        .picker
-        .as_mut()
-        .unwrap()
-        .attach_source(source, vec![0, 1]);
+    attach_sh(&mut ed, "echo boom >&2; exit 2", vec![0, 1]);
 
     drain_sources_until(&mut ed, |ed| ed.state.status_msg.is_some());
 
@@ -209,14 +170,7 @@ fn allowlist_omitting_zero_reports_a_successful_exit() {
     // list that omits `0` must report even a clean exit. Pinned here as a
     // characterization test so this reads as the documented contract, not
     // as a bug to "fix" later.
-    let args = vec!["-c".to_string(), "exit 0".to_string()];
-    let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
-    ed.state
-        .config
-        .picker
-        .as_mut()
-        .unwrap()
-        .attach_source(source, vec![1]);
+    attach_sh(&mut ed, "exit 0", vec![1]);
 
     drain_sources_until(&mut ed, |ed| ed.state.status_msg.is_some());
 

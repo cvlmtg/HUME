@@ -142,13 +142,7 @@ fn ok_exit_codes_silences_the_allowlisted_code_but_not_others() {
         "spawn must have attached a source — otherwise the drain_until below \
          would pass vacuously on the very first poll"
     );
-    drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .is_some_and(|p| !p.has_source())
-    });
+    drain_until(&mut ed, source_detached);
     assert!(
         ed.state.status_msg.is_none(),
         "an allowlisted exit code (rg's 'no matches') must not report"
@@ -221,14 +215,10 @@ fn picker_source_stop_kills_the_child_and_no_further_rows_land() {
         "no further rows may land once the source is stopped"
     );
 
-    let alive = std::process::Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .expect("spawn kill -0")
-        .success();
-    assert!(!alive, "picker-source-stop! must kill its source child");
+    assert!(
+        !process_is_alive(pid),
+        "picker-source-stop! must kill its source child"
+    );
 }
 
 #[test]
@@ -361,14 +351,10 @@ fn picker_close_kills_the_source_child() {
         "on-select must fire with #f exactly once on close"
     );
 
-    let alive = std::process::Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .expect("spawn kill -0")
-        .success();
-    assert!(!alive, "closing the picker must kill its source child");
+    assert!(
+        !process_is_alive(pid),
+        "closing the picker must kill its source child"
+    );
 
     // Keep interacting past the terminal action.
     ed.feed_key(key('i'));

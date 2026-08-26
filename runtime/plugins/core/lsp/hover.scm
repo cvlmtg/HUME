@@ -23,8 +23,7 @@
     (else (lsp/marked-string->text contents))))
 
 ;;; The grammar name to highlight `contents` through, or `#f` for plain
-;;; text. Only an explicit `MarkupContent` with `kind: "plaintext"` opts out
-;;; — a bare `MarkedString` is always markdown per the LSP spec.
+;;; text — see README's "Hover" for the plaintext-opt-out rule.
 (define (lsp/hover-lang contents)
   (if (and (hash? contents)
            (hash-contains? contents "kind")

@@ -184,14 +184,10 @@ fn cancel_async_prevents_the_callback_and_kills_the_child() {
         started.elapsed()
     );
 
-    let alive = std::process::Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .expect("spawn kill -0")
-        .success();
-    assert!(!alive, "cancel-async! must kill its job's child");
+    assert!(
+        !process_is_alive(pid),
+        "cancel-async! must kill its job's child"
+    );
 
     ed.drain_async_sources();
     ed.settle();

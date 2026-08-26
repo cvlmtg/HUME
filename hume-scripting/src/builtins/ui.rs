@@ -14,8 +14,8 @@ use crate::host::{PickerOpts, PopupKind};
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, list_items, list_to_i32s, list_to_strings, optional_path_arg, optional_string_arg,
-    optional_usize_arg, pair_fields, string_arg, usize_arg,
+    bool_arg, list_items, list_to_i32s, list_to_strings, optional_callable_arg, optional_path_arg,
+    optional_string_arg, optional_usize_arg, pair_fields, string_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -162,14 +162,7 @@ pub(crate) fn picker(
     let prompt = string_arg(prompt, "picker! #:prompt")?;
     let pending = bool_arg(pending, "picker! #:pending")?;
     let query = string_arg(query, "picker! #:query")?;
-    let on_query_change = match on_query_change {
-        SteelVal::BoolV(false) => None,
-        callable @ (SteelVal::Closure(_) | SteelVal::FuncV(_) | SteelVal::MutFunc(_)) => {
-            Some(callable)
-        }
-        other => steel::stop!(TypeMismatch =>
-            "picker! #:on-query-change must be #f or a callable, got {:?}", other),
-    };
+    let on_query_change = optional_callable_arg(on_query_change, "picker! #:on-query-change")?;
     let opts = PickerOpts {
         prompt,
         pending,

@@ -22,10 +22,8 @@
     read))
 
 ;;; Hash: language → server name, derived from the shared servers catalog.
-;;; Languages are disjoint across servers by sync-time guarantee —
-;;; `scripts/sync-grammars.py` takes only each language's primary server —
-;;; so this hash-insert loop never silently last-wins two servers against
-;;; each other. See README's "Catalog and sources".
+;;; See README's "Catalog and sources" for the disjointness guarantee that
+;;; makes this hash-insert loop safe.
 (define *lsp-lang->server* (hash))
 
 (for-each
@@ -247,12 +245,9 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
-;;; Runs `thunk` under the cross-process install lock
-;;; (`<data>/servers/.install-lock`), releasing it exactly once regardless
-;;; of outcome. Never re-raises `thunk`'s error through an outer
-;;; with-handler — re-raising a native-builtin error through a nested
-;;; handler corrupts the Steel VM's continuation stack — every failure path
-;;; terminates in a plain `log!`. Returns #t on success, #f on any failure.
+;;; Runs `thunk` under the cross-process install lock. See README's
+;;; "Install lock" for the lock path, the re-raise hazard this avoids, and
+;;; the return-value contract.
 (define (lsp/with-install-lock! what thunk)
   (let ((acquired?
           (with-handler

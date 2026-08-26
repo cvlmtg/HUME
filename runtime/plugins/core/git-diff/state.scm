@@ -24,9 +24,7 @@
 (define (git-diff/remove-buffer! bid)
   (set-box! git-diff/*buffers* (hash-remove (unbox git-diff/*buffers*) bid)))
 
-;;; No-op when `bid` has no tracked entry — a late `spawn-async!` callback
-;;; for a buffer closed while its fetch was in flight must not resurrect
-;;; state for it.
+;;; No-op when `bid` has no tracked entry — see README's "State" for why.
 (define (git-diff/entry-set! bid key value)
   (let ([entry (git-diff/buffer-entry bid)])
     (when entry
