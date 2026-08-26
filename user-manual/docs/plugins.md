@@ -475,10 +475,12 @@ call lands.
 
 A nonzero exit from a spawned source is normally reported as an error — but for a
 command where some exit codes are a normal outcome rather than a failure (`rg`
-exits `1` for "no matches"), pass `#:ok-exit-codes`:
+exits `1` for "no matches"), pass `#:ok-exit-codes`. `rg` also needs an explicit
+path argument here: with no path and no terminal attached to its input, it searches
+its (empty) stdin instead of the working directory, and finds nothing:
 
 ```scheme
-(picker-source-spawn! token "rg" (list "--vimgrep" pattern) #:ok-exit-codes '(0 1))
+(picker-source-spawn! token "rg" (list "--vimgrep" pattern ".") #:ok-exit-codes '(0 1))
 ```
 
 ### Live requery (live grep)
@@ -491,15 +493,22 @@ list, passes `#:query` and `#:on-query-change` to `picker!`:
 (define (grep/open! seed)
   (define spawn (debounce 150
     (lambda (query)
-      (picker-source-spawn! token "rg" (list "--vimgrep" "--" query) #:ok-exit-codes '(0 1)))))
+      (unless (equal? query "")
+        (picker-source-spawn! token "rg" (list "--vimgrep" "--" query ".") #:ok-exit-codes '(0 1))))))
   (define (requery query)
     ;; Stop the previous search and clear its rows on every keystroke, not
     ;; just once the debounced spawn below actually fires — otherwise the
     ;; old pattern's output keeps landing (or, backspacing to empty, keeps
-    ;; showing) under a query nothing was spawned to satisfy.
+    ;; showing) under a query nothing was spawned to satisfy. `spawn` is
+    ;; called unconditionally, even for an empty query, so debounce's own
+    ;; cancel-the-previous-timer bookkeeping always sees the latest
+    ;; keystroke — skipping this call on an empty query would let an
+    ;; already-armed timer from the previous (non-empty) keystroke fire on
+    ;; its own afterward, spawning a search for a pattern the query box no
+    ;; longer shows.
     (picker-source-stop! token)
     (picker-replace! token '())
-    (unless (equal? query "") (spawn query)))
+    (spawn query))
   (define token
     (picker! '() (lambda (row) (when row (goto-location! (grep/parse row))))
              #:prompt "grep: " #:query seed #:on-query-change requery))
@@ -528,7 +537,11 @@ contract again.
 A live source should debounce, the same as any other Steel plugin work triggered by
 every keystroke — but debounce only the spawn, as above, not the whole `requery`:
 debouncing the stop-and-clear too would leave the previous pattern's rows on screen
-for the entire debounce window under a query they no longer match.
+for the entire debounce window under a query they no longer match. Call the debounced
+function on every keystroke, even one whose query turns out to be empty (checking that
+inside it, as above) — skipping the call lets an already-armed timer from the previous
+keystroke fire on its own later, since debounce only cancels a pending timer when it's
+called again.
 
 ## Bundled core plugins
 
