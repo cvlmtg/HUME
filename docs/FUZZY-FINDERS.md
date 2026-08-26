@@ -30,9 +30,4 @@ remaining work below ships.
   would feed the same drain→store path as the spawn source. Build only if the
   fd-fallback posture proves inadequate in practice. Also tracked in
   `docs/ROADMAP.md`.
-- **Q-B6 — unify completion's filter onto the picker's `nucleo-matcher`.**
-  Completion still uses a hand-rolled subsequence match; revisit once the
-  picker's feel is validated, as its own small task with a side-by-side
-  comparison. (`docs/COMPLETION-PICKER.md` cites this ID — keep it stable.)
-
 Not planned: multi-select, picker-specific keybinding customization.

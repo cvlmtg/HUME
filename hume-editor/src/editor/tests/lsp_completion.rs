@@ -44,14 +44,17 @@ fn update_filter_narrows_and_prefix_beats_infix() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "orange")                  ; "rn" matches later (r@1, n@3)
-                     ; "rn" matches "random" as a *subsequence* (r@0, n@2) but not
-                     ; as a literal prefix (haystack[1] is 'a', not 'n'). sortText
-                     ; "a" would win alphabetically if prefix-match didn't matter.
+               (list (hash "label" "orange")                  ; "rn" scattered from offset 1 (r@1, n@3)
+                     ; "rn" is a scattered subsequence of "random" (r@0, n@2) —
+                     ; contiguous at neither char. sortText "a" would win
+                     ; alphabetically if the fuzzy score didn't matter.
                      (hash "label" "random" "sortText" "a")
-                     ; "rn" *is* a literal prefix of "rnorm". sortText "z" would
-                     ; lose alphabetically — the only way it can still rank first
-                     ; is if prefix-match genuinely outranks the tie-break rule.
+                     ; "rn" is a contiguous literal prefix of "rnorm" — nucleo's
+                     ; boundary/contiguity/prefer-prefix bonuses put this well
+                     ; above a scattered match regardless of sortText. sortText
+                     ; "z" would lose alphabetically — the only way this can
+                     ; still rank first is if the fuzzy score genuinely
+                     ; dominates the sortText tie-break.
                      (hash "label" "rnorm" "sortText" "z")
                      (hash "label" "grape")))                  ; no "r" at all — dropped
              (completion-update-filter! "rn")
@@ -61,8 +64,34 @@ fn update_filter_narrows_and_prefix_beats_infix() {
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "rnorm,random,orange",
-        "a literal prefix match must rank above a same-position subsequence match \
-         regardless of sortText, and both must rank above a later-position match"
+        "a contiguous/prefix fuzzy match must rank above a scattered match \
+         regardless of sortText, and an earlier scattered match above a later one"
+    );
+}
+
+/// Smart case: a filter holding an uppercase char is case-sensitive, so
+/// typing "Vec" excludes "vec_deque" entirely rather than just ranking it
+/// lower — matches the picker's existing case behavior (`fuzzy.rs`'s
+/// `smart_case_uppercase_query_is_case_sensitive`).
+#[test]
+fn update_filter_with_uppercase_query_is_case_sensitive() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "Vec") (hash "label" "vec_deque")))
+             (completion-update-filter! "Vec")
+             (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "Vec",
+        "an uppercase-bearing filter must be case-sensitive and drop \
+         lowercase-only items entirely, not merely rank them lower"
     );
 }
 

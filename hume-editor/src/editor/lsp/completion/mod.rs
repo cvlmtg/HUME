@@ -10,40 +10,11 @@ use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use super::LspState;
+use crate::editor::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use crate::editor::{Editor, EditorState};
 use crate::lock_ext::LockExt;
 
 pub(crate) use item::StoredCompletionItem;
-
-/// Case-insensitive (ASCII) subsequence check: every char of `needle` must
-/// appear in `haystack`, in order, not necessarily contiguous. Returns the
-/// char index of the first matched char (closer-to-start ranks higher), or
-/// `None` if `needle` isn't a subsequence of `haystack`.
-fn subsequence_match_pos(needle: &str, haystack: &str) -> Option<usize> {
-    if needle.is_empty() {
-        return Some(0);
-    }
-    let mut needle_chars = needle.chars();
-    let mut want = needle_chars.next();
-    let mut first_pos = None;
-    for (i, hc) in haystack.chars().enumerate() {
-        let Some(nc) = want else { break };
-        if hc.eq_ignore_ascii_case(&nc) {
-            if first_pos.is_none() {
-                first_pos = Some(i);
-            }
-            want = needle_chars.next();
-        }
-    }
-    if want.is_none() { first_pos } else { None }
-}
-
-fn is_prefix_match(needle: &str, haystack: &str) -> bool {
-    let mut h = haystack.chars();
-    needle
-        .chars()
-        .all(|n| h.next().is_some_and(|hc| hc.eq_ignore_ascii_case(&n)))
-}
 
 pub(crate) struct CompletionSession {
     bid: BufferId,
@@ -79,9 +50,12 @@ pub(crate) struct CompletionSession {
     /// Ranked indices into `items`, rebuilt by every `update_filter` call.
     filtered: Vec<u32>,
     /// Retained across `update_filter` calls so per-keystroke filtering
-    /// doesn't allocate a fresh Vec every time.
-    rank_scratch: Vec<(bool, usize, u32)>,
+    /// doesn't allocate a fresh Vec every time. `(score, item index)`.
+    rank_scratch: Vec<(u32, u32)>,
     filter: String,
+    /// Reusable scoring engine — `FuzzyProfile::Autocomplete` (see its doc)
+    /// distinguishes this from the picker's own instance.
+    matcher: FuzzyMatcher,
     /// Server's `isIncomplete` flag — gates `on-completion-refilter`:
     /// the hook only fires per-keystroke while this is set, since a complete
     /// list needs no re-request from Steel.
@@ -203,6 +177,7 @@ impl CompletionSession {
             filtered: Vec::new(),
             rank_scratch: Vec::new(),
             filter: String::new(),
+            matcher: FuzzyMatcher::new(FuzzyProfile::Autocomplete),
             incomplete,
             // Real value stamped by `update_filter`, just below.
             generation_at_begin: 0,
@@ -221,23 +196,38 @@ impl CompletionSession {
         self.filter = text;
         self.generation_at_begin = state.buffers.get(self.bid).text_gen;
         self.menu_cache = None;
-        self.rank_scratch.clear();
-        for (i, item) in self.items.iter().enumerate() {
-            if let Some(pos) = subsequence_match_pos(&self.filter, &item.filter_text) {
-                let prefix = is_prefix_match(&self.filter, &item.filter_text);
-                self.rank_scratch.push((prefix, pos, i as u32));
+        let Self {
+            items,
+            rank_scratch,
+            matcher,
+            filter,
+            filtered,
+            ..
+        } = self;
+        rank_scratch.clear();
+        let pattern = matcher.parse(filter);
+        for (i, item) in items.iter().enumerate() {
+            if let Some(score) = matcher.score(&pattern, &item.filter_text) {
+                rank_scratch.push((score, i as u32));
             }
         }
-        self.rank_scratch.sort_by(|a, b| {
-            b.0.cmp(&a.0).then(a.1.cmp(&b.1)).then_with(|| {
-                self.items[a.2 as usize]
-                    .sort_text
-                    .cmp(&self.items[b.2 as usize].sort_text)
-            })
+        // Score descending, then sortText ascending — the server's own
+        // ordering hint, which is the *only* signal on an empty filter
+        // (nucleo scores every haystack `0` for an empty pattern, so every
+        // item ties on the first key). Ascending index last, since sortText
+        // is very often duplicated across a server's items and the pair
+        // alone wouldn't be a unique key.
+        rank_scratch.sort_unstable_by(|a, b| {
+            b.0.cmp(&a.0)
+                .then_with(|| {
+                    items[a.1 as usize]
+                        .sort_text
+                        .cmp(&items[b.1 as usize].sort_text)
+                })
+                .then(a.1.cmp(&b.1))
         });
-        self.filtered.clear();
-        self.filtered
-            .extend(self.rank_scratch.iter().map(|&(_, _, i)| i));
+        filtered.clear();
+        filtered.extend(rank_scratch.iter().map(|&(_, i)| i));
     }
 
     pub(crate) fn top(&self, n: usize) -> Vec<serde_json::Value> {

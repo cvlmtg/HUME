@@ -20,7 +20,7 @@ use hume_platform::process::line_source::SpawnedLineSource;
 use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use steel::rvals::SteelVal;
 
-use super::fuzzy::{FuzzyMatcher, FuzzyPattern};
+use super::fuzzy::{FuzzyMatcher, FuzzyProfile};
 
 /// One row in a picker: a display string shown to the user and an opaque
 /// payload handed back to `on_select` verbatim. Rust never interprets
@@ -196,7 +196,7 @@ impl PickerSession {
             query,
             filtered: Vec::new(),
             rank_scratch: Vec::new(),
-            matcher: FuzzyMatcher::new(),
+            matcher: FuzzyMatcher::new(FuzzyProfile::Picker),
             selected: 0,
             scroll: 0,
             on_select,
@@ -495,7 +495,7 @@ impl PickerSession {
             self.filtered.clear();
             self.filtered.extend(0..self.items.len() as u32);
         } else {
-            let pattern = FuzzyPattern::parse(&self.query);
+            let pattern = self.matcher.parse(&self.query);
             self.rank_scratch.clear();
             for (idx, item) in self.items.iter().enumerate() {
                 if let Some(score) = self.matcher.score(&pattern, &item.display) {

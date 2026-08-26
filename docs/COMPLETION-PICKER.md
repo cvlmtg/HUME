@@ -2,7 +2,7 @@
 
 Design document for the insert-mode completion menu driven by multiple Steel-registered sources (LSP, buffer words, custom plugins), mixed and prioritized by policy written in Steel.
 
-The sibling fuzzy-finder (picker) shipped as `core:pickers` (roadmap for what's left: `docs/FUZZY-FINDERS.md`). The two share the "Rust store, Steel policy" architectural pattern, and prospectively the fuzzy matcher if `Q-B6` ever unifies them; see `hume-editor/src/editor/picker.rs`'s module doc for why they stay separate session types (item shape, query origin, accept semantics, lifetime, scale, and scroll model all differ).
+The sibling fuzzy-finder (picker) shipped as `core:pickers` (roadmap for what's left: `docs/FUZZY-FINDERS.md`). The two share the "Rust store, Steel policy" architectural pattern and, as of Q-B6, the same `hume-editor/src/editor/fuzzy.rs` matcher (each with its own `FuzzyProfile`); see `hume-editor/src/editor/picker.rs`'s module doc for why they stay separate session types (item shape, query origin, accept semantics, lifetime, scale, and scroll model all differ).
 
 **Status: A1 (the widget/render-layer rename pass) has landed; A2–A4 (multi-source merge, source plugin, buffer-words) are design only — not scheduled.** This document is the single place to resume from; it assumes the reader has *no* memory of the exploration that produced it.
 
@@ -10,7 +10,7 @@ The sibling fuzzy-finder (picker) shipped as `core:pickers` (roadmap for what's 
 
 1. **No foundation work is required now.** This design is additive. The completion architecture is already source-agnostic in the ways that matter. Nothing currently being built needs to change shape to keep it possible.
 2. The one guardrail while other work proceeds: **don't deepen LSP coupling in the completion store**. `CompletionSession` today parses generic completion-item JSON and only touches LSP specifics inside the `text_edit` branch of `accept`. Keep it that way — new LSP-specific fields belong in the Steel plugin (which already receives the raw item), not in new Rust parsing.
-3. Completion shares its "Rust store, Steel policy" split with the shipped picker (`core:pickers`), and prospectively its fuzzy matcher too if `Q-B6` ever unifies them (not yet — completion keeps `subsequence_match_pos`) — but not a data structure: `CompletionSession` and `PickerSession` are siblings, not the same type. See `hume-editor/src/editor/picker.rs`'s module doc for the rationale.
+3. Completion shares its "Rust store, Steel policy" split with the shipped picker (`core:pickers`), and its fuzzy matcher too (`hume-editor/src/editor/fuzzy.rs`, Q-B6) — but not a data structure: `CompletionSession` and `PickerSession` are siblings, not the same type. See `hume-editor/src/editor/picker.rs`'s module doc for the rationale.
 
 ## How to use this document
 
@@ -41,9 +41,9 @@ Everything below was read from source, not recalled. This is the substrate this 
 **Rust store — `hume-editor/src/editor/lsp/completion/` (`mod.rs`, `item/mod.rs`, `accept.rs`):**
 
 - `StoredCompletionItem` — **typed via `lsp_types::CompletionItem`**, with a lenient JSON-field fallback (`from_json_lenient`) for items that fail strict deserialize (a real-world server population: spec drift concentrates in completion items and `$/progress`). Fields: `label: String`, `kind: Option<i64>` (raw LSP kind number read straight from JSON — display-only, no reader maps it to a name), `detail: Option<String>`, `sort_text`/`filter_text`/`insert_text` (each falling back to `label` when absent), `text_edit: Option<lsp_types::TextEdit>`, `additional_text_edits: Vec<lsp_types::TextEdit>` + `has_additional_text_edits: bool` (distinguishes "server sent no key at all" from "server sent an empty array" — only the former means `completionItem/resolve` might have more to offer), and `raw: serde_json::Value` — the **full unparsed item**, handed back to Steel on accept so Rust never grows readers for LSP fields it doesn't need. Snippet syntax (`insertTextFormat: Snippet`) is stripped from `insert_text`/`text_edit` at store ingress (`strip_snippet`); `raw` keeps the pristine text.
-- `CompletionSession` — **singleton, one per editor** (field `LspState.completion: Option<CompletionSession>`, on the LSP-subsystem state so it dies with `:lsp-stop`), replaced wholesale by each `begin`. Tracks `bid`, `pane_id` (accept only proceeds while this pane is still focused), `anchor_at_begin` + `rope_at_begin` (the coordinate system the server's `textEdit` range was computed against) + `cs_since_begin: ChangeSet` (every edit observed since `begin`, composed — the position-mapping transform from that frozen snapshot to the live document), `items`, `filtered: Vec<u32>` (ranked indices), `rank_scratch` (reused per-keystroke, no allocation), `filter: String`, `incomplete: bool` (server's `isIncomplete`).
+- `CompletionSession` — **singleton, one per editor** (field `LspState.completion: Option<CompletionSession>`, on the LSP-subsystem state so it dies with `:lsp-stop`), replaced wholesale by each `begin`. Tracks `bid`, `pane_id` (accept only proceeds while this pane is still focused), `anchor_at_begin` + `rope_at_begin` (the coordinate system the server's `textEdit` range was computed against) + `cs_since_begin: ChangeSet` (every edit observed since `begin`, composed — the position-mapping transform from that frozen snapshot to the live document), `items`, `filtered: Vec<u32>` (ranked indices), `rank_scratch` (reused per-keystroke, no allocation), `filter: String`, `matcher: FuzzyMatcher` (own instance, `FuzzyProfile::Autocomplete`), `incomplete: bool` (server's `isIncomplete`).
 - Methods: `begin(state, bid, items_json, incomplete)`, `update_filter(state, text)`, `top(n)` (returns `{label, kind, detail}` JSON — `to_json` exposes only these three fields), `accept(state, lsp, idx)`.
-- Filtering: `subsequence_match_pos` (case-insensitive ASCII subsequence, returns first-match char index) + `is_prefix_match`; rank key is `(prefix_match desc, match_pos asc, sort_text asc)`. Hand-rolled — **no fuzzy crate anywhere in the workspace** (verified: no nucleo / fuzzy-matcher / skim in any `Cargo.toml`).
+- Filtering: `hume-editor/src/editor/fuzzy.rs`'s `FuzzyMatcher` (`nucleo-matcher` wrapper, shared with the picker — see `FuzzyProfile`); rank key is `(score desc, sort_text asc, index asc)`.
 - **Accept path** (`accept.rs`) — the only LSP-coupled logic: applies the item's `text_edit` at every cursor via `replace_around_cursors` when present (safe everywhere, per the LSP containment guarantee on the server's own range); otherwise computes each cursor's own preceding-token span (`replace_span_around_cursors` / `word_start_before`) and synthesizes an edit from `insert_text` — no such containment guarantee exists for a synthesized range, so it can't reuse one uniform span across cursors. Rust applies the main edit, any `additional_text_edits`, and (when the item lacks `additionalTextEdits` entirely and the server advertises `resolveProvider`) a synchronous `completionItem/resolve` round trip, all atomically as one undo step. After it lands, queues `EditorEvent::OnCompletionAccept` with `(bid, raw-item)` — a plain extension point for anything the completion store doesn't itself parse (e.g. `command`).
 - `CompletionMenuUi { selected }` — UI selection kept as a separate `LspState.completion_ui` field so session logic stays render-free.
 - `clear_completion_menu(state, lsp)` — free function, not a method (called from `EditorHostImpl`, `set_mode` on any Insert exit, and `picker::open_picker`); clears session + UI + the shared `completion_menu_view` Arc.
@@ -105,9 +105,8 @@ Everything below was read from source, not recalled. This is the substrate this 
 
 ### Gaps (what does not exist today)
 
-1. **No fuzzy matcher** — hand-rolled subsequence only. (The picker has one, `hume-editor/src/editor/fuzzy.rs`'s `nucleo-matcher` wrapper; Q-B6 tracks whether completion ever adopts it — see `docs/FUZZY-FINDERS.md`.)
-2. **No multi-source merge** — `completion-begin!` replaces; a slow source's arrival clobbers a fast source's session (or vice versa). No source tags, no priorities, no dedup.
-3. **No way to read buffer text from Steel** (by design — bulk guardrail). A buffer-words completion source therefore needs a bounded Rust builtin (task A4), not a Steel scan.
+1. **No multi-source merge** — `completion-begin!` replaces; a slow source's arrival clobbers a fast source's session (or vice versa). No source tags, no priorities, no dedup.
+2. **No way to read buffer text from Steel** (by design — bulk guardrail). A buffer-words completion source therefore needs a bounded Rust builtin (task A4), not a Steel scan.
 
 ---
 
@@ -200,7 +199,7 @@ Each carries a default per the usage rules.
 
 **Q-A2 — token plumbing shape.** Return token from `completion-begin!` (builtin return value) vs. a separate `(completion-session-token)` getter. *Default: return it from `completion-begin!` — one fewer builtin, and the coordinator is the only caller anyway.*
 
-**Q-A3 — where source priority sits in the rank key.** Before or after `match_pos`? Before means a low-quality prefix match from a high-priority source beats a perfect match from a low-priority one. *Default: `(prefix_match, match_pos, source_priority, sort_text)` — priority as tiebreaker only; match quality stays king. Revisit if LSP items feel buried.*
+**Q-A3 — where source priority sits in the rank key.** Before or after the fuzzy `score`? Before means a low-quality match from a high-priority source beats a perfect match from a low-priority one. *Default: `(score, source_priority, sort_text)` — priority as tiebreaker only; match quality stays king. Revisit if LSP items feel buried.*
 
 **Q-A4 — per-source item caps.** Should the coordinator cap each source's contribution (e.g. buffer-words ≤ 50) in Steel, or should Rust enforce a per-add cap? *Default: Steel-side cap in the coordinator (policy), with `completion-add-items!` accepting whatever it's given; Rust store has no per-source limits.*
 
@@ -210,4 +209,4 @@ Each carries a default per the usage rules.
 
 **Q-A7 — kind display.** `kind: i64` is currently display-unused (`menu_row_label` shows `label  detail` only). Map kind→short label/icon in Rust (`menu_row_label`) with a static table, themable? Non-LSP sources reuse LSP kind numbers? *Default: static Rust map (LSP kind numbers as the universal enum — sources pick the closest; 1=Text fits buffer-words), single-char column, no per-kind theming in v1. Note: per-part styling (dimmed detail, colored kind) needs segment-styled popup rows — a `PopupState` extension that's its own small task; don't smuggle it in.*
 
-**Q-B6** (unifying completion's matcher with the picker's, tracked in `docs/FUZZY-FINDERS.md`) is the one open picker question that loops back to this document — noted in the Gaps section above.
+**Q-B6** (unifying completion's matcher with the picker's) shipped: both route through `hume-editor/src/editor/fuzzy.rs`'s `FuzzyMatcher`, distinguished by `FuzzyProfile`.
