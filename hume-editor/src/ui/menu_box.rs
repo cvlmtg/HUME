@@ -97,6 +97,26 @@ fn window(rows: &[String], desired_start: usize, max_height: usize) -> (usize, &
     (start, &rows[start..start + max_height])
 }
 
+/// Clamps `scroll` so `selected` stays inside a `visible_rows`-tall window,
+/// scrolling by the minimum needed in either direction. Shared by
+/// `PickerSession::move_selection` and `Editor::clamp_drawer_scroll`, whose
+/// scroll models otherwise differ (edge-anchored vs centered) but converge on
+/// this one "keep the selection on screen" formula. A no-op (returns `scroll`
+/// unchanged) when `visible_rows` is `0` — nothing fits, so there's no window
+/// to clamp into.
+pub(crate) fn clamp_scroll_to_window(selected: usize, scroll: usize, visible_rows: usize) -> usize {
+    if visible_rows == 0 {
+        return scroll;
+    }
+    if selected >= scroll + visible_rows {
+        selected + 1 - visible_rows
+    } else if selected < scroll {
+        selected
+    } else {
+        scroll
+    }
+}
+
 /// Whether `outer` fits entirely inside `pane_rect`. Shared by every overlay
 /// that positions itself against a pane rect resolved earlier in the frame
 /// (`PopupOverlay`, `PickerOverlay`) as a defensive backstop: the write side

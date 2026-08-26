@@ -196,32 +196,40 @@ pub(crate) fn live_picker(
     Ok(SteelVal::IntV(token as isize))
 }
 
+/// Shared body of `picker-push!`/`picker-replace!` — identical shape, differing
+/// only in `name` (for error messages) and `mode` (the merge policy
+/// `UiHost::picker_feed` applies; see its doc, `"One method for both"`).
+fn picker_feed_builtin(
+    ctx: &mut SteelCtx,
+    token: SteelVal,
+    items: SteelVal,
+    name: &str,
+    mode: PickerFeedMode,
+) -> SteelResult {
+    let token = usize_arg(token, &format!("{name} token"))? as u64;
+    let items = picker_items(items, &format!("{name} items"))?;
+    let applied = require_cap(ctx.host.ui(), name)?.picker_feed(token, items, mode);
+    Ok(SteelVal::BoolV(applied))
+}
+
 /// `(picker-push! token items)` — no keyword defaults, so this registers
 /// directly. Returns whether the push was applied (`#f` for a stale token
 /// or no open picker — never an error, both are expected-normal races).
 pub(crate) fn picker_push(ctx: &mut SteelCtx, token: SteelVal, items: SteelVal) -> SteelResult {
-    let token = usize_arg(token, "picker-push! token")? as u64;
-    let items = picker_items(items, "picker-push! items")?;
-    let applied = require_cap(ctx.host.ui(), "picker-push!")?.picker_feed(
-        token,
-        items,
-        PickerFeedMode::Append,
-    );
-    Ok(SteelVal::BoolV(applied))
+    picker_feed_builtin(ctx, token, items, "picker-push!", PickerFeedMode::Append)
 }
 
 /// `(picker-replace! token items)` — no keyword defaults, so this registers
 /// directly, same shape as `picker-push!` but replacing the item list
 /// instead of appending to it. Returns whether the replace was applied.
 pub(crate) fn picker_replace(ctx: &mut SteelCtx, token: SteelVal, items: SteelVal) -> SteelResult {
-    let token = usize_arg(token, "picker-replace! token")? as u64;
-    let items = picker_items(items, "picker-replace! items")?;
-    let applied = require_cap(ctx.host.ui(), "picker-replace!")?.picker_feed(
+    picker_feed_builtin(
+        ctx,
         token,
         items,
+        "picker-replace!",
         PickerFeedMode::Replace,
-    );
-    Ok(SteelVal::BoolV(applied))
+    )
 }
 
 /// `(%picker-source-spawn! token cmd args cwd nul ok-exit-codes)` — the

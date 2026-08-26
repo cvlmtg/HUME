@@ -51,10 +51,7 @@ fn state(
         matched: rows.len(),
         total: rows.len(),
         pending: false,
-        x: geo.x,
-        y: geo.y,
-        width: geo.width,
-        height: geo.height,
+        rect: geo.rect,
         border: true,
     }
 }
@@ -64,32 +61,32 @@ fn state(
 #[test]
 fn geometry_caps_at_80_percent_width_and_100_cols() {
     let geo = panel_geometry(rect(0, 0, 200, 100)).expect("viable region");
-    assert_eq!(geo.width, 100, "80% of 200 is 160, capped to 100");
-    assert_eq!(geo.x, 50, "centered: (200 - 100) / 2");
+    assert_eq!(geo.rect.width, 100, "80% of 200 is 160, capped to 100");
+    assert_eq!(geo.rect.x, 50, "centered: (200 - 100) / 2");
 }
 
 #[test]
 fn geometry_caps_at_60_percent_height_and_30_rows() {
     let geo = panel_geometry(rect(0, 0, 200, 100)).expect("viable region");
-    assert_eq!(geo.height, 30, "60% of 100 is 60, capped to 30");
-    assert_eq!(geo.y, 35, "centered: (100 - 30) / 2");
+    assert_eq!(geo.rect.height, 30, "60% of 100 is 60, capped to 30");
+    assert_eq!(geo.rect.y, 35, "centered: (100 - 30) / 2");
     assert_eq!(geo.list_rows, 27, "height - 3 (borders + input row)");
 }
 
 #[test]
 fn geometry_uses_percentage_when_below_caps() {
     let geo = panel_geometry(rect(0, 0, 50, 20)).expect("viable region");
-    assert_eq!(geo.width, 40, "80% of 50, under the 100-col cap");
-    assert_eq!(geo.height, 12, "60% of 20, under the 30-row cap");
-    assert_eq!(geo.x, 5);
-    assert_eq!(geo.y, 4);
+    assert_eq!(geo.rect.width, 40, "80% of 50, under the 100-col cap");
+    assert_eq!(geo.rect.height, 12, "60% of 20, under the 30-row cap");
+    assert_eq!(geo.rect.x, 5);
+    assert_eq!(geo.rect.y, 4);
 }
 
 #[test]
 fn geometry_clamps_to_a_tiny_region_without_panicking() {
     let geo = panel_geometry(rect(0, 0, 4, 10)).expect("just viable: width 3, height 6");
-    assert_eq!(geo.width, 3);
-    assert_eq!(geo.height, 6);
+    assert_eq!(geo.rect.width, 3);
+    assert_eq!(geo.rect.height, 6);
     assert_eq!(geo.list_rows, 3);
 }
 
@@ -114,24 +111,20 @@ fn draw_picker_panel_clips_overlong_row_to_inner_width() {
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
-        x: 0,
-        y: 0,
-        width: 12, // inner_width = 10
-        height: 4,
+        rect: rect(0, 0, 12, 4), // inner_width = 10
         list_rows: 1,
     };
     let s = state("", &["hume-editor/src/ui/picker_panel.rs"], None, &geo);
-    let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
     draw_picker_panel(&mut canvas, &s, styles());
 
     // Right border must still be an unbroken │ column, not overrun text.
-    let right = geo.x + geo.width - 1;
+    let right = geo.rect.x + geo.rect.width - 1;
     assert_eq!(
         buf[(right, 2)].symbol(),
         "│",
         "right border must survive an overlong row"
     );
-    let painted = symbols_in(&buf, outer);
+    let painted = symbols_in(&buf, geo.rect);
     assert!(
         painted.contains("…_panel.rs"),
         "clipped row must lead with … and keep the tail (basename), got:\n{painted}"
@@ -177,17 +170,13 @@ fn draw_picker_panel_border_input_and_rows_snapshot() {
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
-        x: 2,
-        y: 3,
-        width: 10,
-        height: 6,
+        rect: rect(2, 3, 10, 6),
         list_rows: 3,
     };
     let s = state("ab", &["item0", "item1"], Some(0), &geo);
-    let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
     draw_picker_panel(&mut canvas, &s, styles());
 
-    insta::assert_snapshot!(symbols_in(&buf, outer), @r"
+    insta::assert_snapshot!(symbols_in(&buf, geo.rect), @r"
     ┌────────┐
     │ab   2/2│
     │item0   │
@@ -203,18 +192,14 @@ fn draw_picker_panel_no_border_leaves_plain_margin() {
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
-        x: 2,
-        y: 3,
-        width: 10,
-        height: 6,
+        rect: rect(2, 3, 10, 6),
         list_rows: 3,
     };
     let mut s = state("ab", &["item0"], Some(0), &geo);
     s.border = false;
-    let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
     draw_picker_panel(&mut canvas, &s, styles());
 
-    insta::assert_snapshot!(symbols_in(&buf, outer), @r"
+    insta::assert_snapshot!(symbols_in(&buf, geo.rect), @r"
 
     ab   1/1
     item0
@@ -228,10 +213,7 @@ fn draw_picker_panel_highlights_selected_row_full_width() {
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
-        x: 0,
-        y: 0,
-        width: 10,
-        height: 6,
+        rect: rect(0, 0, 10, 6),
         list_rows: 3,
     };
     let selected_style = Style::default().bg(Color::Red);
@@ -269,10 +251,7 @@ fn draw_picker_panel_does_not_rewindow_rows() {
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
-        x: 0,
-        y: 0,
-        width: 12,
-        height: 6, // list_rows = 3
+        rect: rect(0, 0, 12, 6), // list_rows = 3
         list_rows: 3,
     };
     let s = state(
@@ -283,8 +262,7 @@ fn draw_picker_panel_does_not_rewindow_rows() {
     );
     draw_picker_panel(&mut canvas, &s, styles());
 
-    let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
-    let painted = symbols_in(&buf, outer);
+    let painted = symbols_in(&buf, geo.rect);
     assert!(painted.contains("item2"), "last row within capacity");
     assert!(
         !painted.contains("item3"),
@@ -298,18 +276,14 @@ fn draw_picker_panel_pending_marks_the_counter_snapshot() {
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
-        x: 2,
-        y: 3,
-        width: 14,
-        height: 6,
+        rect: rect(2, 3, 14, 6),
         list_rows: 3,
     };
     let mut s = state("ab", &[], None, &geo);
     s.pending = true;
-    let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
     draw_picker_panel(&mut canvas, &s, styles());
 
-    insta::assert_snapshot!(symbols_in(&buf, outer), @r"
+    insta::assert_snapshot!(symbols_in(&buf, geo.rect), @r"
     ┌────────────┐
     │ab     0/0 …│
     │            │
@@ -322,10 +296,7 @@ fn draw_picker_panel_pending_marks_the_counter_snapshot() {
 #[test]
 fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
     let geo_wide = PanelGeometry {
-        x: 0,
-        y: 0,
-        width: 20,
-        height: 4,
+        rect: rect(0, 0, 20, 4),
         list_rows: 1,
     };
     let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
@@ -335,14 +306,10 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
     s.matched = 3;
     s.total = 42;
     draw_picker_panel(&mut canvas, &s, styles());
-    let outer = Rect::new(geo_wide.x, geo_wide.y, geo_wide.width, geo_wide.height);
-    assert!(symbols_in(&buf, outer).contains("3/42"));
+    assert!(symbols_in(&buf, geo_wide.rect).contains("3/42"));
 
     let geo_narrow = PanelGeometry {
-        x: 0,
-        y: 0,
-        width: 6,
-        height: 4,
+        rect: rect(0, 0, 6, 4),
         list_rows: 1,
     };
     let mut buf2 = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
@@ -351,14 +318,8 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
     s2.matched = 3;
     s2.total = 42;
     draw_picker_panel(&mut canvas2, &s2, styles());
-    let outer2 = Rect::new(
-        geo_narrow.x,
-        geo_narrow.y,
-        geo_narrow.width,
-        geo_narrow.height,
-    );
     assert!(
-        !symbols_in(&buf2, outer2).contains("3/42"),
+        !symbols_in(&buf2, geo_narrow.rect).contains("3/42"),
         "counts must be dropped rather than overlap the query/cursor"
     );
 }
@@ -369,16 +330,13 @@ fn draw_picker_panel_truncates_query_tail_keeping_cursor_visible() {
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
-        x: 0,
-        y: 0,
-        width: 10, // inner_width = 8; counts "0/0" leaves a 3-col query budget
-        height: 4,
+        rect: rect(0, 0, 10, 4), // inner_width = 8; counts "0/0" leaves a 3-col query budget
         list_rows: 1,
     };
     let s = state("abcdefghij", &[], None, &geo); // matched = total = 0
     draw_picker_panel(&mut canvas, &s, styles());
 
-    let inner_x = geo.x + 1;
+    let inner_x = geo.rect.x + 1;
     let row: String = (inner_x..inner_x + 8)
         .map(|x| buf[(x, 1)].symbol().to_string())
         .collect();
@@ -396,17 +354,14 @@ fn draw_picker_panel_renders_prompt_before_query() {
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
-        x: 0,
-        y: 0,
-        width: 12, // inner_width = 10; counts "0/0" leaves a 2-col query budget after "f: "
-        height: 4,
+        rect: rect(0, 0, 12, 4), // inner_width = 10; counts "0/0" leaves a 2-col query budget after "f: "
         list_rows: 1,
     };
     let mut s = state("ab", &[], None, &geo); // matched = total = 0
     s.prompt = "f: ".to_string();
     draw_picker_panel(&mut canvas, &s, styles());
 
-    let inner_x = geo.x + 1;
+    let inner_x = geo.rect.x + 1;
     let row: String = (inner_x..inner_x + 10)
         .map(|x| buf[(x, 1)].symbol().to_string())
         .collect();
@@ -422,10 +377,7 @@ fn draw_picker_panel_prompt_wider_than_panel_clips_without_panic() {
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
-        x: 0,
-        y: 0,
-        width: 7, // inner_width = 5, narrower than the prompt alone
-        height: 4,
+        rect: rect(0, 0, 7, 4), // inner_width = 5, narrower than the prompt alone
         list_rows: 1,
     };
     let mut s = state("query text", &["row"], Some(0), &geo);
@@ -435,7 +387,7 @@ fn draw_picker_panel_prompt_wider_than_panel_clips_without_panic() {
     // must leave the query with zero budget rather than overflow the row.
     draw_picker_panel(&mut canvas, &s, styles());
 
-    let inner_x = geo.x + 1;
+    let inner_x = geo.rect.x + 1;
     let row: String = (inner_x..inner_x + 5)
         .map(|x| buf[(x, 1)].symbol().to_string())
         .collect();
@@ -451,16 +403,12 @@ fn draw_picker_panel_empty_state_is_blank_with_zero_counts() {
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
-        x: 0,
-        y: 0,
-        width: 12,
-        height: 6,
+        rect: rect(0, 0, 12, 6),
         list_rows: 3,
     };
     let s = state("", &[], None, &geo);
     draw_picker_panel(&mut canvas, &s, styles());
-    let outer = Rect::new(geo.x, geo.y, geo.width, geo.height);
-    let painted = symbols_in(&buf, outer);
+    let painted = symbols_in(&buf, geo.rect);
     assert!(painted.contains("0/0"));
 }
 
@@ -471,10 +419,7 @@ fn draw_picker_panel_degenerate_rect_does_not_panic_or_paint() {
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
-        x: 0,
-        y: 0,
-        width: 2,
-        height: 2,
+        rect: rect(0, 0, 2, 2),
         list_rows: 0,
     };
     let s = state("q", &["item0"], Some(0), &geo);
@@ -495,10 +440,7 @@ fn overlay_is_inactive_when_data_is_none() {
 #[test]
 fn overlay_clips_state_outside_pane_rect() {
     let geo = PanelGeometry {
-        x: 100,
-        y: 100,
-        width: 10,
-        height: 6,
+        rect: rect(100, 100, 10, 6),
         list_rows: 3,
     };
     let s = state("q", &["item0"], Some(0), &geo);

@@ -34,6 +34,21 @@ use super::width::{ELLIPSIS, ELLIPSIS_WIDTH, text_width, truncate_text, truncate
 const MAX_PANEL_WIDTH: u16 = 100;
 const MAX_PANEL_HEIGHT: u16 = 30;
 
+/// Smallest panel `panel_geometry`/`draw_picker_panel` will paint into — a
+/// single shared bound so the two can't drift on what counts as "too small
+/// to render" (one place returned `None`, the other painted a truncated box
+/// for the same input).
+const MIN_PANEL_WIDTH: u16 = 3;
+const MIN_PANEL_HEIGHT: u16 = 4;
+
+/// Rows the border and input line always claim: the top border, the input
+/// row, and the bottom border. Subtracted from the outer height wherever the
+/// list's own row budget is derived — `panel_geometry`'s `list_rows` (what a
+/// keystroke pages against) and `draw_picker_panel`'s `list_capacity` (what a
+/// frame paints) must agree on this or a page-down could scroll past what
+/// the last frame drew.
+const CHROME_ROWS: u16 = 3;
+
 /// Fully-resolved panel content and position — computed once per frame by
 /// the write side (`Editor::sync_picker_view`); the overlay only paints.
 pub(crate) struct PickerViewState {
@@ -63,10 +78,7 @@ pub(crate) struct PickerViewState {
     pub(crate) pending: bool,
     /// Outer footprint (including the 1-cell frame), centered in the panes
     /// region this same frame.
-    pub(crate) x: u16,
-    pub(crate) y: u16,
-    pub(crate) width: u16,
-    pub(crate) height: u16,
+    pub(crate) rect: Rect,
     /// Fed from the `popup-border` setting, same as popup/menu/drawer.
     pub(crate) border: bool,
 }
@@ -77,20 +89,16 @@ pub(crate) struct PickerViewState {
 /// this against the same `EditorState.view.last_pane_area`, so a keystroke
 /// and the next paint always agree on how many rows are visible.
 pub(crate) struct PanelGeometry {
-    pub(crate) x: u16,
-    pub(crate) y: u16,
-    pub(crate) width: u16,
-    pub(crate) height: u16,
-    /// Inner list capacity: outer height minus the 1-cell top border, the
-    /// input row, and the 1-cell bottom border.
+    pub(crate) rect: Rect,
+    /// Inner list capacity: outer height minus [`CHROME_ROWS`].
     pub(crate) list_rows: usize,
 }
 
 /// Size the panel as a fraction of `pane_area` — width `min(80%, 100 cols)`,
 /// height `min(60%, 30 rows)` — then center it. Returns `None` when the
-/// region can't host a viable panel (narrower than 3 cols or shorter than
-/// 4 rows, i.e. not even one list row) — callers then paint nothing rather
-/// than a degenerate box.
+/// region can't host a viable panel (narrower than [`MIN_PANEL_WIDTH`] or
+/// shorter than [`MIN_PANEL_HEIGHT`], i.e. not even one list row) — callers
+/// then paint nothing rather than a degenerate box.
 pub(crate) fn panel_geometry(pane_area: Rect) -> Option<PanelGeometry> {
     let width = ((pane_area.width as u32 * 80 / 100) as u16)
         .min(MAX_PANEL_WIDTH)
@@ -98,17 +106,14 @@ pub(crate) fn panel_geometry(pane_area: Rect) -> Option<PanelGeometry> {
     let height = ((pane_area.height as u32 * 60 / 100) as u16)
         .min(MAX_PANEL_HEIGHT)
         .min(pane_area.height);
-    if width < 3 || height < 4 {
+    if width < MIN_PANEL_WIDTH || height < MIN_PANEL_HEIGHT {
         return None;
     }
     let x = pane_area.x + (pane_area.width - width) / 2;
     let y = pane_area.y + (pane_area.height - height) / 2;
     Some(PanelGeometry {
-        x,
-        y,
-        width,
-        height,
-        list_rows: (height - 3) as usize,
+        rect: Rect::new(x, y, width, height),
+        list_rows: (height - CHROME_ROWS) as usize,
     })
 }
 
@@ -174,8 +179,8 @@ pub(crate) fn draw_picker_panel(
     state: &PickerViewState,
     styles: PickerStyles,
 ) {
-    let outer = Rect::new(state.x, state.y, state.width, state.height);
-    if outer.width < 3 || outer.height < 4 {
+    let outer = state.rect;
+    if outer.width < MIN_PANEL_WIDTH || outer.height < MIN_PANEL_HEIGHT {
         return;
     }
 
@@ -227,7 +232,7 @@ pub(crate) fn draw_picker_panel(
     let query_x = inner_x + prompt_width as u16;
     canvas.write_text_run(query_x, input_y, query_tail, styles.text, inner_right);
     let cursor_x = query_x + query_width as u16;
-    if cursor_x < inner_x + inner_width as u16 {
+    if cursor_x < inner_right {
         canvas.write_text_run(cursor_x, input_y, " ", styles.cursor, inner_right);
     }
     if show_counts {
@@ -235,7 +240,7 @@ pub(crate) fn draw_picker_panel(
         canvas.write_text_run(counts_x, input_y, &counts, styles.text, inner_right);
     }
 
-    let list_capacity = (outer.height - 3) as usize;
+    let list_capacity = (outer.height - CHROME_ROWS) as usize;
     for (i, row_text) in state.rows.iter().take(list_capacity).enumerate() {
         let y = outer.y + 2 + i as u16;
         let shown = truncate_tail_marked(row_text, inner_width);
@@ -271,10 +276,9 @@ impl OverlayProvider for PickerOverlay {
             return;
         };
 
-        let outer = Rect::new(state.x, state.y, state.width, state.height);
         // Defensive clip: the write side computed this rect against this
         // same pane's region this same frame — see `fits_inside`'s doc.
-        if !super::menu_box::fits_inside(outer, pane_rect) {
+        if !super::menu_box::fits_inside(state.rect, pane_rect) {
             return;
         }
 

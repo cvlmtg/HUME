@@ -195,7 +195,7 @@ impl Editor {
                     .popup_view
                     .read_or_panic()
                     .as_ref()
-                    .map(|s| (s.outer_h.saturating_sub(2) as usize, s.lines.len()))
+                    .map(|s| (s.rect.height.saturating_sub(2) as usize, s.lines.len()))
                 else {
                     return false;
                 };
@@ -264,19 +264,18 @@ impl Editor {
     }
 
     /// Clamps `drawer.scroll` so `drawer.selected` stays within the visible
-    /// window, then syncs the view.
+    /// window (`clamp_scroll_to_window`, shared with `PickerSession::
+    /// move_selection`), then syncs the view.
     fn clamp_drawer_scroll(&mut self) {
         let visible_rows = self.drawer_visible_rows();
         let Some(drawer) = self.state.config.drawer.as_mut() else {
             return;
         };
-        if visible_rows > 0 {
-            if drawer.selected >= drawer.scroll + visible_rows {
-                drawer.scroll = drawer.selected + 1 - visible_rows;
-            } else if drawer.selected < drawer.scroll {
-                drawer.scroll = drawer.selected;
-            }
-        }
+        drawer.scroll = crate::ui::menu_box::clamp_scroll_to_window(
+            drawer.selected,
+            drawer.scroll,
+            visible_rows,
+        );
         self.state.sync_drawer_view();
     }
 

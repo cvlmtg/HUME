@@ -204,18 +204,14 @@ pub(crate) struct PopupState {
     /// [`ResolvedPopupText`]) — a menu's unwrapped labels are freshly
     /// `Arc::new`-wrapped each frame instead, since they're never cached.
     pub(crate) lines: Arc<Vec<String>>,
-    /// Top-left screen cell to paint at (already flipped/clamped) — the
-    /// outer frame corner, not the first content cell.
-    pub(crate) x: u16,
-    pub(crate) y: u16,
-    /// Outer footprint (including the 1-cell frame) the write side sized
-    /// `(x, y)` against. Each caller's row cap differs (hover: `max_height`
-    /// from `popup_anchor_and_bounds`; menus/LSP completion: `MAX_MENU_ROWS`
-    /// with a scroll window) — carrying the resolved size here, rather than
-    /// re-deriving it from `lines.len()` at render time, keeps the painted
-    /// box and the positioned box the same box.
-    pub(crate) outer_w: u16,
-    pub(crate) outer_h: u16,
+    /// Outer footprint (including the 1-cell frame), top-left corner already
+    /// flipped/clamped by the write side. Each caller's row cap differs
+    /// (hover: `max_height` from `popup_anchor_and_bounds`; menus/LSP
+    /// completion: `MAX_MENU_ROWS` with a scroll window) — carrying the
+    /// resolved size here, rather than re-deriving it from `lines.len()` at
+    /// render time, keeps the painted box and the positioned box the same
+    /// box.
+    pub(crate) rect: Rect,
     /// The highlighted row index, for menus. `None` for a plain popup.
     pub(crate) selected: Option<usize>,
     /// First visible row, for a plain popup (`selected.is_none()`) — the
@@ -256,19 +252,17 @@ impl OverlayProvider for PopupOverlay {
             return;
         }
 
-        let outer = Rect::new(state.x, state.y, state.outer_w, state.outer_h);
-
-        // Defensive clip: the write side computed (x, y) against this same
-        // pane's rect this same frame, so this should never trigger — see
-        // `fits_inside`'s doc.
-        if !super::menu_box::fits_inside(outer, pane_rect) {
+        // Defensive clip: the write side computed this rect against this
+        // same pane's rect this same frame, so this should never trigger —
+        // see `fits_inside`'s doc.
+        if !super::menu_box::fits_inside(state.rect, pane_rect) {
             return;
         }
 
         let mut canvas = Canvas::new(buf, theme, None);
         draw_menu_box(
             &mut canvas,
-            outer,
+            state.rect,
             &state.lines,
             state.selected,
             state.scroll,

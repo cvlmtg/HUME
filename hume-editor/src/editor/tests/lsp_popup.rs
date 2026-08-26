@@ -22,7 +22,7 @@ fn popup_view(ed: &Editor) -> Option<(Vec<String>, u16, u16)> {
         .read()
         .unwrap()
         .as_ref()
-        .map(|s| ((*s.lines).clone(), s.x, s.y))
+        .map(|s| ((*s.lines).clone(), s.rect.x, s.rect.y))
 }
 
 /// The `Arc` handle itself, not a deref-cloned copy — for `Arc::ptr_eq`
@@ -608,7 +608,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     let max_scroll_before_key = {
         let guard = ed.state.popup_view.read().unwrap();
         let view = guard.as_ref().expect("popup still open");
-        let inner_h = view.outer_h.saturating_sub(2) as usize;
+        let inner_h = view.rect.height.saturating_sub(2) as usize;
         view.lines.len().saturating_sub(inner_h)
     };
     assert!(

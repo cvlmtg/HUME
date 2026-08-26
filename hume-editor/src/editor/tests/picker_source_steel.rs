@@ -20,13 +20,16 @@ fn call(ed: &mut Editor, name: &str) {
     ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
 }
 
-#[test]
-fn stale_token_returns_false_without_spawning() {
+fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    run(&mut ed, tmp.path(), source);
+    (ed, tmp)
+}
+
+#[test]
+fn stale_token_returns_false_without_spawning() {
+    let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
         (define-command! "go" "" (lambda ()
@@ -52,11 +55,7 @@ fn stale_token_returns_false_without_spawning() {
 
 #[test]
 fn no_open_picker_returns_false_without_spawning() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "spawn-none" "" (lambda ()
              (log! 'info (to-string
                (picker-source-spawn! 1 "definitely-not-a-real-binary-xyz" '())))))"#,
@@ -69,11 +68,7 @@ fn no_open_picker_returns_false_without_spawning() {
 
 #[test]
 fn spawn_failure_raises_and_leaves_the_picker_open() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
         (define-command! "go" "" (lambda ()
@@ -98,11 +93,7 @@ fn spawn_failure_raises_and_leaves_the_picker_open() {
 
 #[test]
 fn empty_cmd_raises_naming_the_arg() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
         (define-command! "go" "" (lambda ()
@@ -129,11 +120,7 @@ fn empty_cmd_raises_naming_the_arg() {
 
 #[test]
 fn ok_exit_codes_rejects_a_value_outside_i32_range() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
         (define-command! "go" "" (lambda ()

@@ -142,10 +142,7 @@ impl Editor {
             let scroll = model_scroll.min(text.lines.len().saturating_sub(inner_h));
             Some(crate::ui::popup::PopupState {
                 lines: text.lines,
-                x,
-                y,
-                outer_w,
-                outer_h,
+                rect: ratatui::layout::Rect::new(x, y, outer_w, outer_h),
                 selected: None,
                 scroll,
                 styled_rows: text.styled_rows,
@@ -275,10 +272,7 @@ impl Editor {
             };
             Some(crate::ui::popup::PopupState {
                 lines: std::sync::Arc::new(lines),
-                x,
-                y,
-                outer_w,
-                outer_h,
+                rect: ratatui::layout::Rect::new(x, y, outer_w, outer_h),
                 selected,
                 scroll: 0, // ignored: a menu windows around `selected`, not `scroll`
                 styled_rows: None, // menus never highlight per-span, only per-row
@@ -344,10 +338,7 @@ impl Editor {
             };
             Some(crate::ui::popup::PopupState {
                 lines,
-                x,
-                y,
-                outer_w,
-                outer_h,
+                rect: ratatui::layout::Rect::new(x, y, outer_w, outer_h),
                 selected,
                 scroll: 0, // ignored: a menu windows around `selected`, not `scroll`
                 styled_rows: None, // menus never highlight per-span, only per-row
@@ -390,10 +381,7 @@ impl Editor {
                     matched: session.matched_len(),
                     total: session.total_len(),
                     pending: session.is_pending(),
-                    x: geo.x,
-                    y: geo.y,
-                    width: geo.width,
-                    height: geo.height,
+                    rect: geo.rect,
                     border: self.state.settings.popup_border,
                 })
             }

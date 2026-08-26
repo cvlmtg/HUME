@@ -35,15 +35,18 @@ fn call(ed: &mut Editor, name: &str) {
     ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
 }
 
+fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(&mut ed, tmp.path(), source);
+    (ed, tmp)
+}
+
 // ── picker! opens a session and returns its token ─────────────────────────
 
 #[test]
 fn picker_bang_opens_session_and_returns_its_token() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (log! 'info (to-string (picker! (list (cons "one" "p1") (cons "two" "p2"))
                (lambda (x) (log! 'info (to-string x)))
@@ -74,11 +77,7 @@ fn picker_bang_opens_session_and_returns_its_token() {
 
 #[test]
 fn end_to_end_accept_fires_payload_then_normal_editing_resumes() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (picker! (list (cons "one" "p1") (cons "two" "p2"))
                (lambda (x) (log! 'info (to-string x))))))"#,
@@ -122,11 +121,7 @@ fn end_to_end_accept_fires_payload_then_normal_editing_resumes() {
 
 #[test]
 fn picker_push_bang_applies_matching_token_and_rejects_stale_or_no_picker() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
         (define-command! "go" "" (lambda ()
@@ -169,11 +164,7 @@ fn picker_push_bang_applies_matching_token_and_rejects_stale_or_no_picker() {
 
 #[test]
 fn opening_a_second_picker_fires_the_first_callback_with_false_exactly_once() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go-a" "" (lambda ()
              (picker! (list (cons "a-item" "pa")) (lambda (x) (log! 'info (to-string "A:" x))))))
            (define-command! "go-b" "" (lambda ()
@@ -201,11 +192,7 @@ fn opening_a_second_picker_fires_the_first_callback_with_false_exactly_once() {
 
 #[test]
 fn picker_close_bang_fires_false_once_and_is_idempotent() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (picker! (list (cons "one" "p1")) (lambda (x) (log! 'info (to-string x))))))
            (define-command! "close-it" "" (lambda () (picker-close!)))"#,
@@ -250,11 +237,7 @@ fn picker_close_bang_fires_false_once_and_is_idempotent() {
 
 #[test]
 fn picker_close_bang_with_a_stale_token_leaves_a_later_picker_open() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"
         (define tok-a #f)
         (define-command! "go-a" "" (lambda ()
@@ -296,11 +279,7 @@ fn picker_close_bang_with_a_stale_token_leaves_a_later_picker_open() {
 
 #[test]
 fn picker_bang_rejects_proper_list_items_naming_the_arg() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (picker! (list (list "a" "b")) (lambda (x) (void)))))"#,
     );
@@ -321,11 +300,7 @@ fn picker_bang_rejects_proper_list_items_naming_the_arg() {
 
 #[test]
 fn picker_bang_rejects_hash_f_payload() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (picker! (list (cons "a" #f)) (lambda (x) (void)))))"#,
     );
@@ -540,11 +515,7 @@ fn picker_bang_silently_ignores_an_on_query_change_keyword() {
     // must hold is that it's dead: `picker!`'s signature has no
     // `#:on-query-change` parameter, and never wires the value to anything —
     // live requery lives on `live-picker!` instead.
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (picker! (list (cons "one" "p1")) (lambda (x) (void))
                #:on-query-change (lambda (q) (log! 'info "must never fire")))))"#,
@@ -568,11 +539,7 @@ fn picker_bang_silently_ignores_an_on_query_change_keyword() {
 
 #[test]
 fn live_picker_seed_spawn_is_synchronous_and_not_debounced() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void))
                #:query "seed" #:debounce-ms 100000
@@ -593,11 +560,7 @@ fn live_picker_seed_spawn_is_synchronous_and_not_debounced() {
 
 #[test]
 fn live_picker_empty_seed_calls_no_builder() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void))
                #:command (lambda (q) (log! 'info (string-append "q=" q)) #f))))"#,
@@ -613,11 +576,7 @@ fn live_picker_empty_seed_calls_no_builder() {
 
 #[test]
 fn live_picker_keystroke_stops_and_clears_immediately_then_debounces_the_respawn() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
         (define-command! "go" "" (lambda ()
@@ -649,11 +608,7 @@ fn live_picker_keystroke_stops_and_clears_immediately_then_debounces_the_respawn
 
 #[test]
 fn live_picker_rapid_keystrokes_collapse_to_one_trailing_builder_call_with_the_latest_query() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void))
                #:debounce-ms 0
@@ -686,11 +641,7 @@ fn live_picker_rapid_keystrokes_collapse_to_one_trailing_builder_call_with_the_l
 
 #[test]
 fn live_picker_backspace_to_empty_cancels_a_pending_nonempty_spawn() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void))
                #:debounce-ms 0
@@ -726,11 +677,7 @@ fn live_picker_backspace_to_empty_cancels_a_pending_nonempty_spawn() {
 
 #[test]
 fn live_picker_rows_keep_source_order_regardless_of_query() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
         (define-command! "go" "" (lambda ()
@@ -758,11 +705,7 @@ fn live_picker_rows_keep_source_order_regardless_of_query() {
 
 #[test]
 fn live_picker_token_scopes_picker_close() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
         (define-command! "go" "" (lambda ()
@@ -790,11 +733,7 @@ fn live_picker_token_scopes_picker_close() {
 
 #[test]
 fn live_picker_rejects_a_non_callable_command() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void)) #:command '())))"#,
     );
@@ -813,11 +752,7 @@ fn live_picker_rejects_a_non_callable_command() {
 
 #[test]
 fn live_picker_rejects_a_negative_debounce_ms() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void))
                #:debounce-ms -1 #:command (lambda (q) #f))))"#,
@@ -832,11 +767,7 @@ fn live_picker_rejects_a_negative_debounce_ms() {
 
 #[test]
 fn live_picker_requires_command() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void)))))"#,
     );
@@ -850,11 +781,7 @@ fn live_picker_requires_command() {
 
 #[test]
 fn live_picker_rejects_a_builder_return_that_is_not_an_argv_list() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void))
                #:query "seed"
@@ -878,11 +805,7 @@ fn live_picker_rejects_a_builder_return_that_is_not_an_argv_list() {
 
 #[test]
 fn picker_replace_bang_swaps_items_instead_of_appending() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
         (define-command! "go" "" (lambda ()
@@ -919,11 +842,7 @@ fn picker_source_stop_bang_matches_the_real_token_and_rejects_a_stale_one() {
     // under test, and `picker-source-stop!` returns whether `token` matched
     // the open session regardless of whether a source was actually
     // attached (see `UiHost::picker_source_stop`'s doc).
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
+    let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
         (define-command! "go" "" (lambda ()

@@ -300,6 +300,19 @@ impl PickerSession {
         }
     }
 
+    /// Shared read-only half of the `Population::Streaming` match — the
+    /// `&mut` accessors (`source_mut`, `take_source`) need their own match
+    /// arms to hand back a mutable borrow or move the source out, but every
+    /// read-only query below (all `#[cfg(all(test, unix))]`, hence this being
+    /// gated the same way) is a one-liner over this.
+    #[cfg(all(test, unix))]
+    fn attached(&self) -> Option<&AttachedSource> {
+        match &self.population {
+            Population::Streaming(attached) => Some(attached),
+            _ => None,
+        }
+    }
+
     /// Takes the source out along with its exit-code allowlist (e.g. once
     /// its reader has disconnected and the caller wants to consume it via
     /// `SpawnedLineSource::finish`), leaving `population` at `Complete` —
@@ -320,7 +333,7 @@ impl PickerSession {
 
     #[cfg(all(test, unix))]
     pub(crate) fn has_source(&self) -> bool {
-        matches!(self.population, Population::Streaming(_))
+        self.attached().is_some()
     }
 
     /// The attached source's OS pid, for tests that verify kill-on-close
@@ -328,10 +341,7 @@ impl PickerSession {
     /// state.
     #[cfg(all(test, unix))]
     pub(crate) fn source_pid_for_test(&self) -> Option<u32> {
-        match &self.population {
-            Population::Streaming(attached) => Some(attached.source.pid()),
-            _ => None,
-        }
+        self.attached().map(|attached| attached.source.pid())
     }
 
     /// Polls the attached source's own OS exit status directly, bypassing
@@ -340,10 +350,8 @@ impl PickerSession {
     /// disconnect-and-report drain path it's racing against.
     #[cfg(all(test, unix))]
     pub(crate) fn source_has_exited_for_test(&self) -> bool {
-        match &self.population {
-            Population::Streaming(attached) => attached.source.has_exited(),
-            _ => false,
-        }
+        self.attached()
+            .is_some_and(|attached| attached.source.has_exited())
     }
 
     /// Appends one `char` to the query and requeries. Key events deliver
@@ -397,7 +405,7 @@ impl PickerSession {
 
     /// Moves `selected` by `delta`, saturating at both ends of `filtered`
     /// with no wraparound, then clamps `scroll` so `selected` stays inside
-    /// the `visible_rows`-tall window (same formula as
+    /// the `visible_rows`-tall window (`clamp_scroll_to_window`, shared with
     /// `clamp_drawer_scroll`). No-op when `filtered` is empty or
     /// `visible_rows` is `0`. Page moves are simply `delta = ±visible_rows`.
     pub(crate) fn move_selection(&mut self, delta: isize, visible_rows: usize) {
@@ -410,11 +418,8 @@ impl PickerSession {
         if visible_rows == 0 {
             return;
         }
-        if self.selected >= self.scroll + visible_rows {
-            self.scroll = self.selected + 1 - visible_rows;
-        } else if self.selected < self.scroll {
-            self.scroll = self.selected;
-        }
+        self.scroll =
+            crate::ui::menu_box::clamp_scroll_to_window(self.selected, self.scroll, visible_rows);
         debug_assert!(self.scroll <= self.selected && self.selected < self.scroll + visible_rows);
     }
 
@@ -598,9 +603,8 @@ pub(crate) fn open_picker(
 
 /// Single close chokepoint for the picker: ends the session (if one is
 /// open) and fires its `on_select` callback exactly once with `payload`.
-/// Returns whether a session was actually closed. Shared by `Esc`, `Enter`
-/// (with the selected payload), `picker-close!`, and `open_picker`'s
-/// replace-on-open path — one chokepoint, not one copy per
+/// Shared by `Esc`, `Enter` (with the selected payload), `picker-close!`, and
+/// `open_picker`'s replace-on-open path — one chokepoint, not one copy per
 /// caller.
 ///
 /// `Editor::reset_config_state` is a second, deliberate exit from this
@@ -609,13 +613,12 @@ pub(crate) fn open_picker(
 /// the `pending_work` queue this function would have pushed the callback
 /// onto — the outgoing engine that owns the callback is seconds from being
 /// dropped, so firing it would be observable to nothing.
-pub(crate) fn close_picker(state: &mut super::EditorState, payload: SteelVal) -> bool {
+pub(crate) fn close_picker(state: &mut super::EditorState, payload: SteelVal) {
     let Some(session) = state.config.picker.take() else {
-        return false;
+        return;
     };
     let callback = session.on_select().clone();
     state.queue_steel_call(callback, vec![payload]);
-    true
 }
 
 #[cfg(test)]

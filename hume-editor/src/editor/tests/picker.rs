@@ -16,8 +16,8 @@ fn marker(name: &str) -> SteelVal {
     SteelVal::StringV(name.into())
 }
 
-fn open_test_picker_with_callback(ed: &mut Editor, items: &[&str], callback: SteelVal) {
-    let mut session = PickerSession::new(callback, PickerOpts::default());
+fn open_test_session(ed: &mut Editor, items: &[&str], callback: SteelVal, opts: PickerOpts) {
+    let mut session = PickerSession::new(callback, opts);
     let picker_items: Vec<PickerItem> = items
         .iter()
         .map(|s| PickerItem {
@@ -30,26 +30,23 @@ fn open_test_picker_with_callback(ed: &mut Editor, items: &[&str], callback: Ste
 }
 
 fn open_test_picker(ed: &mut Editor, items: &[&str]) {
-    open_test_picker_with_callback(ed, items, marker("cb"));
+    open_test_session(ed, items, marker("cb"), PickerOpts::default());
+}
+
+fn open_test_picker_with_callback(ed: &mut Editor, items: &[&str], callback: SteelVal) {
+    open_test_session(ed, items, callback, PickerOpts::default());
 }
 
 fn open_test_picker_with_prompt(ed: &mut Editor, items: &[&str], prompt: &str) {
-    let mut session = PickerSession::new(
+    open_test_session(
+        ed,
+        items,
         marker("cb"),
         PickerOpts {
             prompt: prompt.to_string(),
             ..Default::default()
         },
     );
-    let picker_items: Vec<PickerItem> = items
-        .iter()
-        .map(|s| PickerItem {
-            display: s.to_string(),
-            payload: SteelVal::StringV((*s).into()),
-        })
-        .collect();
-    session.push(picker_items);
-    picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
 }
 
 /// Runs the write-side pipeline (`prepare_frame`) at a given terminal size —
@@ -232,7 +229,7 @@ fn stray_keys_are_consumed_and_ignored() {
 #[test]
 fn enter_fires_on_select_with_payload_and_closes() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_test_picker_with_callback(&mut ed, &["one", "two"], marker("cb"));
+    open_test_picker(&mut ed, &["one", "two"]);
     ed.feed_key(key_enter());
 
     assert!(
@@ -261,7 +258,7 @@ fn enter_fires_on_select_with_payload_and_closes() {
 #[test]
 fn esc_fires_false_and_closes() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_test_picker_with_callback(&mut ed, &["one"], marker("cb"));
+    open_test_picker(&mut ed, &["one"]);
     ed.feed_key(key_esc());
 
     assert!(ed.state.config.picker.is_none());
@@ -280,7 +277,7 @@ fn esc_fires_false_and_closes() {
 #[test]
 fn enter_with_no_match_dismisses_with_false() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_test_picker_with_callback(&mut ed, &["foo", "bar"], marker("cb"));
+    open_test_picker(&mut ed, &["foo", "bar"]);
     for ch in "zzz".chars() {
         ed.feed_key(key(ch));
     }

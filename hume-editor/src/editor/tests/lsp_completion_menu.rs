@@ -77,9 +77,9 @@ fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
         .as_ref()
         .expect("popup must still render, clamped to fit, not vanish");
     assert!(
-        state.outer_h <= pane_rect.height,
+        state.rect.height <= pane_rect.height,
         "outer_h {} must not exceed pane height {}",
-        state.outer_h,
+        state.rect.height,
         pane_rect.height
     );
 }
@@ -108,9 +108,9 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
         .as_ref()
         .expect("popup must still render, clamped to fit, not vanish");
     assert!(
-        state.outer_w <= pane_rect.width,
+        state.rect.width <= pane_rect.width,
         "outer_w {} must not exceed pane width {}",
-        state.outer_w,
+        state.rect.width,
         pane_rect.width
     );
 }
@@ -694,7 +694,7 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
     let (x, y) = {
         let view = ed.state.completion_menu_view.read().unwrap();
         let state = view.as_ref().expect("popup must be showing");
-        (state.x, state.y)
+        (state.rect.x, state.rect.y)
     };
 
     // Independent oracle: re-derive the same cell via a fresh `RowMap` and
