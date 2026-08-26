@@ -4,9 +4,9 @@
 //! Decoding that convention (`#f` -> `None`, anything else -> `Some(...)`) is
 //! `hume-scripting/src/builtins/args.rs`'s `optional_*` family
 //! (`optional_string_arg`, `optional_path_arg`, `optional_usize_arg`,
-//! `optional_callable_arg`, `optional_json_arg`, `optional_bid_arg`,
-//! `optional_symbol_arg`, `optional_pair_fields`) — one vocabulary, so every
-//! builtin's `#f`-means-absent behavior and error wording agree.
+//! `optional_json_arg`, `optional_bid_arg`, `optional_symbol_arg`,
+//! `optional_pair_fields`) — one vocabulary, so every builtin's
+//! `#f`-means-absent behavior and error wording agree.
 //!
 //! `absent_marker_is_decoded_only_in_args_rs` recursively scans every
 //! workspace crate's `src/` — derived from the root `Cargo.toml`'s `members`

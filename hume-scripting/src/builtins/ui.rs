@@ -10,11 +10,11 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::{PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind};
+use crate::host::{LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind};
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, list_items, list_to_i32s, list_to_strings, optional_callable_arg, optional_path_arg,
+    bool_arg, callable_arg, list_items, list_to_i32s, list_to_strings, optional_path_arg,
     optional_string_arg, optional_usize_arg, pair_fields, string_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
@@ -142,14 +142,8 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal
         .collect()
 }
 
-/// `(%picker! items on-select prompt pending query on-query-change)` — the
-/// `picker!` Scheme wrapper supplies the keyword defaults. Returns the new
-/// session's token. `on-query-change` is `#f` (not live) or a procedure —
-/// checked here, unlike `on-select`: a bad `on-select` only ever errors at
-/// accept/dismiss time, but a bad `on-query-change` would also silently
-/// change `rerank`'s behavior (any non-`#f` value makes the session "live"
-/// and disables the local fuzzy filter) from the moment the picker opens,
-/// not just when a query change tries to fire it.
+/// `(%picker! items on-select prompt pending query)` — the `picker!` Scheme
+/// wrapper supplies the keyword defaults. Returns the new session's token.
 pub(crate) fn picker(
     ctx: &mut SteelCtx,
     items: SteelVal,
@@ -157,21 +151,47 @@ pub(crate) fn picker(
     prompt: SteelVal,
     pending: SteelVal,
     query: SteelVal,
-    on_query_change: SteelVal,
 ) -> SteelResult {
     let items = picker_items(items, "picker! items")?;
     let prompt = string_arg(prompt, "picker! #:prompt")?;
     let pending = bool_arg(pending, "picker! #:pending")?;
     let query = string_arg(query, "picker! #:query")?;
-    let on_query_change = optional_callable_arg(on_query_change, "picker! #:on-query-change")?;
     let opts = PickerOpts {
         prompt,
         pending,
         query,
-        on_query_change,
     };
     let token = require_cap(ctx.host.ui(), "picker!")?
         .open_picker(items, on_select, opts)
+        .map_err(generic_err)?;
+    Ok(SteelVal::IntV(token as isize))
+}
+
+/// `(%live-picker! on-select prompt query on-query-change)` — the
+/// `live-picker!` Scheme wrapper supplies the keyword defaults and composes
+/// `on-query-change` itself (stop-and-clear-then-debounce around the
+/// caller's `#:command`); this layer only decodes it as a required
+/// callable — checked here, unlike `on-select`: a bad `on-select` only ever
+/// errors at accept/dismiss time, but a live session has no other use for
+/// this argument, so a bad value is a definition-time mistake, not a
+/// runtime one.
+pub(crate) fn live_picker(
+    ctx: &mut SteelCtx,
+    on_select: SteelVal,
+    prompt: SteelVal,
+    query: SteelVal,
+    on_query_change: SteelVal,
+) -> SteelResult {
+    let prompt = string_arg(prompt, "live-picker! #:prompt")?;
+    let query = string_arg(query, "live-picker! #:query")?;
+    let on_query_change = callable_arg(on_query_change, "live-picker! on-query-change")?;
+    let opts = LivePickerOpts {
+        prompt,
+        query,
+        on_query_change,
+    };
+    let token = require_cap(ctx.host.ui(), "live-picker!")?
+        .open_live_picker(on_select, opts)
         .map_err(generic_err)?;
     Ok(SteelVal::IntV(token as isize))
 }

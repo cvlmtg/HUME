@@ -24,9 +24,9 @@ use crate::lock_ext::LockExt;
 use crate::ui::statusline::StatusLineConfig;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
-    DiffHost, DiffHunk, EditHost, EditorHost, EventHost, LanguageHost, LocationDisplay, LspHost,
-    OptionValue, OutputHost, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, SettingsHost,
-    TimerHost, UiHost, WordDiffHunk,
+    DiffHost, DiffHunk, EditHost, EditorHost, EventHost, LanguageHost, LivePickerOpts,
+    LocationDisplay, LspHost, OptionValue, OutputHost, PickerFeedMode, PickerOpts,
+    PickerSourceOpts, PopupKind, SettingsHost, TimerHost, UiHost, WordDiffHunk,
 };
 
 use super::{EditorState, Severity};
@@ -1449,6 +1449,17 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         let mut session = crate::editor::picker::PickerSession::new(on_select, opts);
         let token = session.token();
         session.seed(crate::editor::picker::picker_items(items));
+        crate::editor::picker::open_picker(self.state, self.lsp.as_deref_mut(), session);
+        Ok(token)
+    }
+
+    fn open_live_picker(
+        &mut self,
+        on_select: steel::rvals::SteelVal,
+        opts: LivePickerOpts,
+    ) -> Result<u64, String> {
+        let session = crate::editor::picker::PickerSession::new_live(on_select, opts);
+        let token = session.token();
         crate::editor::picker::open_picker(self.state, self.lsp.as_deref_mut(), session);
         Ok(token)
     }

@@ -151,6 +151,7 @@
 (#%register-global "keep-primary-selection")
 (#%register-global "language-has-grammar?")
 (#%register-global "line->offset")
+(#%register-global "live-picker!")
 (#%register-global "load-plugin")
 (#%register-global "loaded-plugins")
 (#%register-global "log!")

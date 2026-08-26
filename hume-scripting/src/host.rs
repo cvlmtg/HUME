@@ -823,28 +823,39 @@ pub trait DiffHost {
 /// the Scheme call's positional arguments (`items`, `on_select`) directly;
 /// every `#:`-prefixed one rides here instead — the same split
 /// [`PickerSourceOpts`] uses for `picker_source_spawn`. `Default` is every
-/// keyword's own default (empty prompt, not pending, empty query, not live) —
-/// the shape a test that doesn't care about any of them wants.
+/// keyword's own default (empty prompt, not pending, empty query) — the
+/// shape a test that doesn't care about any of them wants.
 #[derive(Default)]
 pub struct PickerOpts {
     /// `#:prompt` — label painted before the query in the input line.
     pub prompt: String,
     /// `#:pending` — see [`UiHost::open_picker`]'s doc.
     pub pending: bool,
-    /// `#:query` — the query the picker opens with. Applied to the (still
-    /// empty) item list at construction; this layer never fires
-    /// `#:on-query-change` for it — the `picker!` Scheme wrapper does that
-    /// itself, once, for a non-empty query (see the user-manual's "Custom
-    /// pickers"), deferred via `(after 0 …)` rather than called inline
-    /// because the caller's callback closes over `picker!`'s own return
-    /// value, not yet bound while `picker!` is still running.
+    /// `#:query` — the query the picker opens with, applied (as a fuzzy
+    /// filter) to the item list at construction.
     pub query: String,
-    /// `#:on-query-change` — `Some` is what makes the session live: every
-    /// keystroke that changes the query fires this callback with the new
-    /// query instead of driving the local fuzzy filter — see
+}
+
+/// Grouped `live-picker!` open-time keyword options — the live counterpart
+/// of [`PickerOpts`]. No `Default`: `on_query_change` is always
+/// `live-picker!`'s own internal requery lambda (never a caller-supplied
+/// value directly), so a default that silently opened a non-live session
+/// would be a footgun, not a convenience.
+pub struct LivePickerOpts {
+    /// `#:prompt` — as [`PickerOpts::prompt`].
+    pub prompt: String,
+    /// `#:query` — the query the picker opens with. Unlike `PickerOpts`'s
+    /// (which only filters the already-known item list), a non-empty value
+    /// here also fires `on_query_change` once, synchronously, right after
+    /// the session opens — see [`UiHost::open_live_picker`]'s doc.
+    pub query: String,
+    /// Fired with `(token query)` on every query-changing keystroke instead
+    /// of driving a local fuzzy filter — see
     /// `PickerSession::rebuild_filtered`'s doc for why a live session skips
-    /// it.
-    pub on_query_change: Option<steel::rvals::SteelVal>,
+    /// it. Always `live-picker!`'s own stop-and-clear-then-debounce
+    /// wrapper around the caller's `#:command` builder, never the builder
+    /// itself.
+    pub on_query_change: steel::rvals::SteelVal,
 }
 
 /// Grouped `picker-source-spawn!` keyword options — the same split
@@ -956,8 +967,11 @@ pub trait UiHost {
     /// call back with `#f`).
     fn close_drawer(&mut self) -> Result<(), String>;
 
-    /// `(picker! items on-select #:prompt "…" #:pending [#f] #:query [""]
-    /// #:on-query-change [#f])` — opens the fuzzy-finder panel. `items` are
+    /// `(picker! items on-select #:prompt "…" #:pending [#f] #:query [""])`
+    /// — opens the fuzzy-finder panel, always fuzzy-filtered over `items`
+    /// (query-change never leaves the local filter — for a source whose
+    /// query drives an external command instead, see
+    /// [`open_live_picker`](Self::open_live_picker)). `items` are
     /// `(display . payload)` pairs; `payload` is handed back to `on-select`
     /// verbatim, never interpreted by Rust. Returns a token that scopes
     /// later `picker-push!`/`picker-replace!`/`picker-source-spawn!` calls
@@ -966,17 +980,36 @@ pub trait UiHost {
     /// one modal owner may be active at a time. `on-select` fires exactly
     /// once, queued (never invoked inline): the selected payload on
     /// `Enter`, or `#f` on `Esc`, `picker-close!`, or being replaced by a
-    /// second `picker!` call. `pending`: set when a caller opens empty and
-    /// expects more results via `spawn-async!` rather than
+    /// second `picker!`/`live-picker!` call. `pending`: set when a caller
+    /// opens empty and expects more results via `spawn-async!` rather than
     /// `picker-source-spawn!` (which already implies "still populating" on
     /// its own) — surfaced to the UI as a "results still arriving"
     /// indicator, cleared by the first `push!`/`replace!` that actually
-    /// applies. `query`/`on_query_change`: see [`PickerOpts`].
+    /// applies. `query`: see [`PickerOpts`].
     fn open_picker(
         &mut self,
         items: Vec<(String, steel::rvals::SteelVal)>,
         on_select: steel::rvals::SteelVal,
         opts: PickerOpts,
+    ) -> Result<u64, String>;
+
+    /// `(live-picker! on-select #:command command #:prompt "…" #:query [""]
+    /// #:debounce-ms [150] #:cwd [#f] #:nul [#f] #:ok-exit-codes ['(0)])` —
+    /// opens the fuzzy-finder panel with the query driving an external
+    /// source instead of the local fuzzy filter: `filtered` is always the
+    /// identity permutation over whatever `items` currently holds (see
+    /// `PickerSession::rebuild_filtered`'s doc). No `items`/`pending`
+    /// parameter — a live session starts empty and is populated entirely by
+    /// its own `on_query_change` callback (via `picker-push!`/
+    /// `picker-replace!`/`picker-source-spawn!`, exactly as a `picker!`
+    /// session's async sources are). Same return, exactly-once `on-select`,
+    /// and modal-ownership contract as `open_picker`. `opts`: see
+    /// [`LivePickerOpts`] — a non-empty `query` fires `on_query_change`
+    /// once, synchronously, before this returns.
+    fn open_live_picker(
+        &mut self,
+        on_select: steel::rvals::SteelVal,
+        opts: LivePickerOpts,
     ) -> Result<u64, String>;
 
     /// `(picker-push! token items)` / `(picker-replace! token items)` —

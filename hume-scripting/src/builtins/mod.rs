@@ -170,25 +170,41 @@ macro_rules! builtins {
 // debounce call site already uses — so swapping one for the other at an
 // existing site needs no further change.
 //
-// picker! #:debounce-ms — composes debounce with picker-source-stop!/
-// picker-replace! so a live-requery picker author gets the correct ordering
-// by construction instead of hand-wiring it (the manual's old "Live requery"
-// recipe needed ~25 lines to teach this and still shipped two follow-up bug
-// fixes). The wrapper's own lambda — not the caller's #:on-query-change — is
-// what's stop-and-clear-then-debounce; it's called on *every* keystroke,
+// picker!/live-picker! — two constructors over one Rust store
+// (hume-editor::editor::picker::PickerSession), rather than one picker!
+// whose #:on-query-change keyword silently flipped the whole widget into a
+// different mode (live sessions skip local fuzzy filtering entirely — see
+// PickerSession::rebuild_filtered's doc). picker! stays a plain
+// items-plus-fuzzy-filter picker; live-picker! always drives an external
+// #:command builder, so "is this session live" is a name a caller chooses,
+// not a keyword's side effect.
+//
+// live-picker!'s wrapper owns the whole requery lifecycle by construction —
+// stop-and-clear the running source, debounce, respawn via #:command —
+// rather than making every author hand-wire it (the old picker!
+// #:on-query-change recipe needed ~25 lines to teach this composition and
+// still shipped two follow-up bug fixes). The wrapper's own internal
+// lambda — not the caller's #:command — is what's
+// stop-and-clear-then-debounce; it's called on *every* keystroke,
 // unconditionally, so a query that debounces to empty still cancels
 // whatever the previous non-empty keystroke armed, rather than stranding a
 // timer that fires later for a pattern the query box no longer shows. The
 // stop-and-clear half runs immediately, every keystroke, undebounced — only
-// the caller's own callback is delayed — otherwise the previous pattern's
-// rows would sit on screen for the entire debounce window. A non-empty
-// `#:query` also fires the raw (non-debounced) callback once, via `(after 0
-// …)` rather than inline: the caller's own callback closes over the token
-// `picker!` returns, which isn't bound yet while `picker!` is still
-// running — deferring to the next timer drain lets that `define` complete
-// first. `%callable?` (`args::is_callable`) exists solely to keep
-// `%picker!`'s own open-time callable check meaningful once the wrapper
-// starts passing its own closure instead of the caller's value.
+// the respawn is delayed — otherwise the previous pattern's rows would sit
+// on screen for the entire debounce window. #:command returning `#f` means
+// "nothing to spawn for this query" — the empty-query guard lives inside
+// the builder a caller writes, not as a separate flag threaded through the
+// wrapper, so there is nothing to forget.
+//
+// %live-picker! hands its own session token into the internal callback as
+// an argument, rather than the callback closing over live-picker!'s return
+// value (which, unlike the token argument, isn't bound yet while
+// live-picker! is still running) — this is also what lets a non-empty
+// #:query fire synchronously, undebounced, right after %live-picker!
+// returns instead of needing to defer a tick for a not-yet-bound `define`
+// to complete. %callable? (args::is_callable) backs live-picker!'s own
+// #:command check — a stricter predicate than Steel's `procedure?`, see its
+// doc for why.
 //
 // run-inline-output! — the Scheme wrapper (see bootstrap.scm) blocks and
 // raises on nonzero exit or a signal-killed child. Same contract as
@@ -429,13 +445,14 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "close-drawer!" ui::close_drawer();
 
         // Fuzzy-picker widget.
-        cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal, pending: SteelVal, query: SteelVal, on_query_change: SteelVal);
+        cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal, pending: SteelVal, query: SteelVal);
+        cmd "%live-picker!" ui::live_picker(on_select: SteelVal, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal);
         cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
         cmd "picker-replace!" ui::picker_replace(token: SteelVal, items: SteelVal);
         cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
         cmd "picker-source-stop!" ui::picker_source_stop(token: SteelVal);
         cmd "%picker-close!" ui::picker_close(token: SteelVal);
-        // Backs picker!'s #:debounce-ms branch only — see args::is_callable's doc.
+        // Backs live-picker!'s #:command validation only — see args::is_callable's doc.
         plain "%callable?" args::is_callable(val: SteelVal);
 
         // Timers — not LSP-specific; any plugin can schedule one.

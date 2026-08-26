@@ -7,15 +7,17 @@
 //! reset-on-rerank patterns.
 //!
 //! Wired onto `EditorState.picker`; opened through the [`open_picker`] free
-//! fn below (Steel's `picker!` builtin, `hume-scripting`'s `ui::picker`) and
-//! driven per-frame by `Editor::sync_picker_view` and per-key by
-//! `Editor::handle_picker_key` (`editor/mappings/mod.rs`).
+//! fn below, via [`PickerSession::new`] (Steel's `picker!` builtin,
+//! `hume-scripting`'s `ui::picker`) or [`PickerSession::new_live`] (`
+//! live-picker!`, `ui::live_picker`) — and driven per-frame by
+//! `Editor::sync_picker_view` and per-key by `Editor::handle_picker_key`
+//! (`editor/mappings/mod.rs`).
 
 use std::cmp::Reverse;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use hume_platform::process::line_source::SpawnedLineSource;
-use hume_scripting::host::PickerOpts;
+use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use steel::rvals::SteelVal;
 
 use super::fuzzy::{FuzzyMatcher, FuzzyPattern};
@@ -145,25 +147,56 @@ impl PickerSession {
     /// through the same `push` path as any later batch: open empty, then
     /// attach a source.
     pub(crate) fn new(on_select: SteelVal, opts: PickerOpts) -> Self {
-        let mode = match opts.on_query_change {
-            Some(on_query_change) => PickerMode::Live { on_query_change },
-            None => PickerMode::Filter,
-        };
         let population = if opts.pending {
             Population::Awaiting
         } else {
             Population::Complete
         };
+        Self::build(
+            on_select,
+            opts.prompt,
+            opts.query,
+            population,
+            PickerMode::Filter,
+        )
+    }
+
+    /// `live-picker!` — always live from construction, and always opens
+    /// empty: unlike `picker!`, there is no `items`/`#:pending` here for the
+    /// caller to seed with, since a live session is populated entirely
+    /// through its own `on_query_change` (which itself drives
+    /// `picker-push!`/`picker-replace!`/`picker-source-spawn!`) —
+    /// `population` starts `Complete` and only changes once a source
+    /// actually attaches.
+    pub(crate) fn new_live(on_select: SteelVal, opts: LivePickerOpts) -> Self {
+        Self::build(
+            on_select,
+            opts.prompt,
+            opts.query,
+            Population::Complete,
+            PickerMode::Live {
+                on_query_change: opts.on_query_change,
+            },
+        )
+    }
+
+    fn build(
+        on_select: SteelVal,
+        prompt: String,
+        query: String,
+        population: Population,
+        mode: PickerMode,
+    ) -> Self {
         Self {
             items: Vec::new(),
-            query: opts.query,
+            query,
             filtered: Vec::new(),
             rank_scratch: Vec::new(),
             matcher: FuzzyMatcher::new(),
             selected: 0,
             scroll: 0,
             on_select,
-            prompt: opts.prompt,
+            prompt,
             token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
             population,
             mode,
@@ -230,9 +263,9 @@ impl PickerSession {
     /// pre-replace `filtered` held names a *different* item (or nothing)
     /// once `items` is cleared, so there is no selection worth trying to
     /// preserve. Items are otherwise append-only; this is the only way to
-    /// drop stale rows. The requery half of a live source: a caller with
-    /// `#:on-query-change` clears the previous pattern's rows before
-    /// spawning the new search.
+    /// drop stale rows. The requery half of a live source: `live-picker!`'s
+    /// wrapper clears the previous pattern's rows before spawning the new
+    /// search.
     pub(crate) fn replace(&mut self, items: Vec<PickerItem>) {
         self.batch_arrived();
         self.items = items;
@@ -310,7 +343,7 @@ impl PickerSession {
     /// printable input one `char` at a time, including combining marks,
     /// which simply extend the trailing grapheme cluster.
     ///
-    /// Returns the `#:on-query-change` callback to fire (`None` for a
+    /// Returns the mode's `on_query_change` callback to fire (`None` for a
     /// non-live session) — the caller, not this method, queues it via
     /// `queue_steel_call` (see `handle_picker_key`), since firing a Steel
     /// callback needs `&mut EditorState`, which a pure data store
@@ -612,11 +645,12 @@ mod tests {
     }
 
     fn open_live() -> PickerSession {
-        PickerSession::new(
+        PickerSession::new_live(
             dummy_on_select(),
-            PickerOpts {
-                on_query_change: Some(dummy_on_select()),
-                ..Default::default()
+            LivePickerOpts {
+                prompt: String::new(),
+                query: String::new(),
+                on_query_change: dummy_on_select(),
             },
         )
     }
@@ -800,11 +834,11 @@ mod tests {
 
     #[test]
     fn pop_grapheme_on_an_empty_query_is_a_no_op_even_for_a_live_session() {
-        // The `Option<SteelVal>` port replaced the old boolean assertion
-        // (`assert!(!s.pop_grapheme())`) with a query-content check, which
-        // can't tell "returned `None`" apart from "returned the callback" —
-        // this pins the return value directly, on the one session shape
-        // (`on_query_change` set) where mistaking those two would matter.
+        // `pop_grapheme` returns `Option<SteelVal>` — a query-content check
+        // alone can't tell "returned `None`" apart from "returned the
+        // callback", so this pins the return value directly on the one
+        // session shape (`PickerMode::Live`) where mistaking those two
+        // would matter.
         let mut s = open_live();
         assert!(s.pop_grapheme().is_none());
     }

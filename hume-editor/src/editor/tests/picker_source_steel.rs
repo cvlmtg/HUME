@@ -160,28 +160,3 @@ fn ok_exit_codes_rejects_a_value_outside_i32_range() {
         "a rejected argument must not spawn anything"
     );
 }
-
-// ── #:on-query-change must be #f or a callable ──────────────────────────────
-
-#[test]
-fn picker_bang_rejects_a_non_callable_on_query_change() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
-             (picker! '() (lambda (x) (void)) #:on-query-change '())))"#,
-    );
-    type_cmd(&mut ed, ":go");
-
-    assert!(
-        ed.state.config.picker.is_none(),
-        "a non-callable #:on-query-change must not open a picker"
-    );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
-    assert!(
-        msg.contains("on-query-change"),
-        "error should name the offending argument, got {msg:?}"
-    );
-}

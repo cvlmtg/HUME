@@ -368,3 +368,79 @@ fn picker_close_kills_the_source_child() {
         "keys after close must behave as plain input"
     );
 }
+
+#[test]
+fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define tok #f)
+        (define-command! "go" "" (lambda ()
+          (set! tok (live-picker! (lambda (x) (log! 'info (to-string x)))
+            #:query "a"
+            #:debounce-ms 0
+            #:command (lambda (q)
+              (and (not (equal? q ""))
+                   (list "sh" "-c" (string-append "printf 'row-" q "\n'"))))))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    drain_until_picker_total(&mut ed, 1);
+    assert_eq!(
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .unwrap()
+            .window(10)
+            .collect::<Vec<_>>(),
+        vec!["row-a"],
+        "the #:query seed must have spawned synchronously"
+    );
+
+    ed.feed_key(key('b'));
+    // The stop-and-clear half runs immediately, before the debounced
+    // respawn — same ordering the portable
+    // `live_picker_keystroke_stops_and_clears_immediately_then_debounces_the_respawn`
+    // test pins without a real spawn.
+    ed.settle();
+    assert_eq!(ed.state.config.picker.as_ref().unwrap().total_len(), 0);
+
+    drain_until_picker_total(&mut ed, 1);
+    assert_eq!(
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .unwrap()
+            .window(10)
+            .collect::<Vec<_>>(),
+        vec!["row-ab"],
+        "the keystroke must have respawned with the new query embedded"
+    );
+
+    ed.feed_key(key_backspace());
+    ed.feed_key(key_backspace());
+    // Two settles, as the portable debounce-ms-0 tests document: the first
+    // drains the two queued wrapped-callback calls (clearing immediately,
+    // arming then re-arming the 0ms timer for the latest, now-empty,
+    // query); the second lets that surviving timer fire — calling
+    // #:command with "" here, which returns #f and spawns nothing.
+    ed.settle();
+    ed.settle();
+    assert!(
+        !ed.state.config.picker.as_ref().unwrap().has_source(),
+        "backspacing to empty must leave no source attached"
+    );
+    assert_eq!(
+        ed.state.config.picker.as_ref().unwrap().total_len(),
+        0,
+        "backspacing to empty must clear rows and spawn nothing new"
+    );
+}

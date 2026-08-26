@@ -529,163 +529,134 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
     );
 }
 
-// ── #:query prefill and live requery (#:on-query-change / picker-replace!) ─
+// ── picker! no longer wires up live-requery keywords ─────────────────────────
 
 #[test]
-fn query_prefill_fires_on_query_change_once_queued_not_inline() {
+fn picker_bang_silently_ignores_the_removed_on_query_change_keyword() {
+    // Steel's keyword-arg calling convention doesn't reject a keyword the
+    // callee's signature never declared (extra `#:key val` pairs are simply
+    // unused) — so passing #:on-query-change to picker! doesn't raise. What
+    // must hold is that it's dead: never wired to anything, unlike before
+    // the live-picker! split.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (picker! (list) (lambda (x) (void))
-               #:query "seed" #:on-query-change (lambda (q) (log! 'info (string-append "q=" q))))))"#,
+             (picker! (list (cons "one" "p1")) (lambda (x) (void))
+               #:on-query-change (lambda (q) (log! 'info "must never fire")))))"#,
     );
-    ed.state.status_msg = None;
     type_cmd(&mut ed, ":go");
-    // The seed fire is scheduled via `(after 0 …)` — a timer-wheel entry, not
-    // a `pending_work` `Call` — so it can't be observed via `pending_calls`
-    // the way a keystroke's direct `queue_steel_call` can. Its `status_msg`
-    // staying unset until `settle()` is what proves it ran deferred, not
-    // inline inside `picker!` itself.
-    assert!(
-        ed.state.status_msg.is_none(),
-        "must not have run yet — still queued"
-    );
-
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 12);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
-
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
-        "q=seed",
-        "the queued fire must have run with the prefilled query"
-    );
-    let guard = ed.state.picker_view.read().unwrap();
-    assert_eq!(guard.as_ref().expect("picker open").query, "seed");
-}
-
-#[test]
-fn empty_query_prefill_fires_nothing() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
-             (picker! (list) (lambda (x) (void))
-               #:on-query-change (lambda (q) (log! 'info (string-append "q=" q))))))"#,
-    );
-    type_cmd(&mut ed, ":go");
-    assert!(
-        pending_calls(&ed).is_empty(),
-        "an empty (default) #:query must not fire #:on-query-change on open"
-    );
-}
-
-#[test]
-fn on_query_change_fires_once_per_keystroke_queued_not_inline() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
-             (picker! (list) (lambda (x) (void))
-               #:on-query-change (lambda (q) (log! 'info (string-append "q=" q))))))"#,
-    );
-    type_cmd(&mut ed, ":go");
-    ed.state.status_msg = None;
-
-    ed.feed_key(key('a'));
-    assert_eq!(
-        pending_calls(&ed).len(),
+        ed.state.config.picker.as_ref().unwrap().total_len(),
         1,
-        "a query-changing keystroke must queue the callback, not invoke it inline"
+        "picker! must still open normally with an unrecognized extra keyword"
     );
-    assert!(
-        ed.state.status_msg.is_none(),
-        "must not have run yet — still queued"
-    );
-    ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "q=a");
-
-    ed.state.status_msg = None;
-    ed.feed_key(key_backspace());
-    assert_eq!(pending_calls(&ed).len(), 1);
-    ed.settle();
-    assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
-        "q=",
-        "backspacing to empty is still a real query change"
-    );
-
-    // Backspace on an already-empty query is a documented no-op — must not
-    // fire a second time for nothing.
-    ed.state.status_msg = None;
-    ed.feed_key(key_backspace());
-    assert!(pending_calls(&ed).is_empty());
-    ed.settle();
-    assert!(ed.state.status_msg.is_none());
-}
-
-#[test]
-fn non_live_picker_never_fires_on_query_change() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
-             (picker! (list (cons "one" "p1")) (lambda (x) (void)))))"#,
-    );
-    type_cmd(&mut ed, ":go");
 
     ed.feed_key(key('z'));
     assert!(
         pending_calls(&ed).is_empty(),
-        "a picker opened without #:on-query-change must never queue a query-change callback"
+        "an extra #:on-query-change argument on picker! must never be wired to anything \
+         — live requery moved to live-picker!"
     );
 }
 
-// ── #:debounce-ms ───────────────────────────────────────────────────────────
+// ── live-picker!: #:query seed spawns synchronously ─────────────────────────
 
 #[test]
-fn debounced_seed_fire_is_not_delayed_by_the_window() {
+fn live_picker_seed_spawn_is_synchronous_and_not_debounced() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (picker! (list) (lambda (x) (void))
+             (live-picker! (lambda (x) (void))
                #:query "seed" #:debounce-ms 100000
-               #:on-query-change (lambda (q) (log! 'info (string-append "q=" q))))))"#,
+               #:command (lambda (q) (log! 'info (string-append "q=" q)) #f))))"#,
     );
+    ed.state.status_msg = None;
     type_cmd(&mut ed, ":go");
-    ed.settle();
 
+    // No settle() at all — the seed spawn runs synchronously inside
+    // live-picker! itself, before the command that called it even returns,
+    // unlike the old picker! recipe's deferred `(after 0 …)` fire.
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "q=seed",
-        "the #:query seed must fire immediately, not wait out a 100000ms debounce window"
+        "the #:query seed must fire #:command synchronously, not wait out a \
+         100000ms debounce window or a settle() drain"
     );
 }
 
 #[test]
-fn debounced_query_change_fires_once_after_the_window_not_per_keystroke() {
+fn live_picker_empty_seed_calls_no_builder() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (picker! (list) (lambda (x) (void))
+             (live-picker! (lambda (x) (void))
+               #:command (lambda (q) (log! 'info (string-append "q=" q)) #f))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert!(
+        ed.state.status_msg.is_none(),
+        "an empty (default) #:query must not fire #:command on open"
+    );
+}
+
+// ── live-picker!: keystrokes stop-and-clear immediately, respawn debounced ──
+
+#[test]
+fn live_picker_keystroke_stops_and_clears_immediately_then_debounces_the_respawn() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define tok #f)
+        (define-command! "go" "" (lambda ()
+          (set! tok (live-picker! (lambda (x) (void))
+            #:debounce-ms 100000
+            #:command (lambda (q) (log! 'info (string-append "q=" q)) #f)))))
+        (define-command! "seed-row" "" (lambda ()
+          (picker-push! tok (list (cons "one" "p1")))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    call(&mut ed, "seed-row");
+    assert_eq!(ed.state.config.picker.as_ref().unwrap().total_len(), 1);
+
+    ed.feed_key(key('a'));
+    ed.settle();
+
+    assert_eq!(
+        ed.state.config.picker.as_ref().unwrap().total_len(),
+        0,
+        "stop-and-clear must run on every keystroke immediately, not wait for the \
+         100000ms debounce window to elapse"
+    );
+    assert!(
+        ed.state.status_msg.is_none(),
+        "the debounced #:command builder itself must not have fired yet"
+    );
+}
+
+#[test]
+fn live_picker_rapid_keystrokes_collapse_to_one_trailing_builder_call_with_the_latest_query() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (live-picker! (lambda (x) (void))
                #:debounce-ms 0
-               #:on-query-change (lambda (q) (log! 'warn (string-append "fired:" q))))))"#,
+               #:command (lambda (q) (log! 'warn (string-append "fired:" q)) #f))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -713,47 +684,18 @@ fn debounced_query_change_fires_once_after_the_window_not_per_keystroke() {
 }
 
 #[test]
-fn debounce_stops_and_clears_the_previous_source_immediately_every_keystroke() {
+fn live_picker_backspace_to_empty_cancels_a_pending_nonempty_spawn() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (picker! (list (cons "one" "p1")) (lambda (x) (void))
-               #:debounce-ms 100000
-               #:on-query-change (lambda (q) (log! 'info (string-append "q=" q))))))"#,
-    );
-    type_cmd(&mut ed, ":go");
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().total_len(), 1);
-
-    ed.feed_key(key('a'));
-    ed.settle();
-
-    assert_eq!(
-        ed.state.config.picker.as_ref().unwrap().total_len(),
-        0,
-        "stop-and-clear must run on every keystroke immediately, not wait for the \
-         100000ms debounce window to elapse"
-    );
-    assert!(
-        ed.state.status_msg.is_none(),
-        "the debounced callback itself must not have fired yet"
-    );
-}
-
-#[test]
-fn debounced_backspace_to_empty_cancels_a_still_pending_nonempty_query_fire() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
-             (picker! (list) (lambda (x) (void))
+             (live-picker! (lambda (x) (void))
                #:debounce-ms 0
-               #:on-query-change (lambda (q)
-                 (unless (equal? q "") (log! 'warn (string-append "spawned:" q)))))))"#,
+               #:command (lambda (q)
+                 (unless (equal? q "") (log! 'warn (string-append "spawned:" q)))
+                 #f))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -779,59 +721,150 @@ fn debounced_backspace_to_empty_cancels_a_still_pending_nonempty_query_fire() {
     );
 }
 
+// ── live-picker!: never locally fuzzy-filters ────────────────────────────────
+
 #[test]
-fn debounce_ms_without_on_query_change_errors() {
+fn live_picker_rows_keep_source_order_regardless_of_query() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define tok #f)
+        (define-command! "go" "" (lambda ()
+          (set! tok (live-picker! (lambda (x) (void))
+            #:query "zzz-does-not-fuzzy-match-anything"
+            #:debounce-ms 100000
+            #:command (lambda (q) #f)))))
+        (define-command! "seed-rows" "" (lambda ()
+          (picker-push! tok (list (cons "b" "b") (cons "a" "a") (cons "c" "c")))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    call(&mut ed, "seed-rows");
+
+    let picker = ed.state.config.picker.as_ref().unwrap();
+    assert_eq!(
+        picker.window(10).collect::<Vec<_>>(),
+        vec!["b", "a", "c"],
+        "a live session must never locally fuzzy-filter, even against a query that \
+         would fuzzy-match nothing"
+    );
+}
+
+// ── live-picker!: token scopes picker-close! same as picker! ────────────────
+
+#[test]
+fn live_picker_token_scopes_picker_close() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define tok #f)
+        (define-command! "go" "" (lambda ()
+          (set! tok (live-picker! (lambda (x) (log! 'info (to-string x)))
+            #:command (lambda (q) #f)))))
+        (define-command! "close-stale" "" (lambda ()
+          (picker-close! #:token (+ tok 1))))
+        (define-command! "close-real" "" (lambda ()
+          (picker-close! #:token tok)))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    call(&mut ed, "close-stale");
+    assert!(
+        ed.state.config.picker.is_some(),
+        "a stale-token close must leave the live picker open"
+    );
+
+    call(&mut ed, "close-real");
+    assert!(ed.state.config.picker.is_none());
+}
+
+// ── live-picker! validation ───────────────────────────────────────────────
+
+#[test]
+fn live_picker_rejects_a_non_callable_command() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (picker! (list) (lambda (x) (void)) #:debounce-ms 150)))"#,
+             (live-picker! (lambda (x) (void)) #:command '())))"#,
     );
     type_cmd(&mut ed, ":go");
 
     assert!(
         ed.state.config.picker.is_none(),
-        "#:debounce-ms without #:on-query-change must error before opening a picker"
+        "a non-callable #:command must be rejected before opening a picker"
     );
-}
-
-#[test]
-fn debounce_ms_rejects_a_non_callable_on_query_change() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
-             (picker! (list) (lambda (x) (void))
-               #:debounce-ms 150 #:on-query-change '())))"#,
-    );
-    type_cmd(&mut ed, ":go");
-
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
-        ed.state.config.picker.is_none(),
-        "a non-callable #:on-query-change must be rejected at open time even under #:debounce-ms"
+        msg.contains("command"),
+        "error should name the offending argument, got {msg:?}"
     );
 }
 
 #[test]
-fn debounce_ms_rejects_a_negative_value() {
+fn live_picker_rejects_a_negative_debounce_ms() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (picker! (list) (lambda (x) (void))
-               #:debounce-ms -1 #:on-query-change (lambda (q) (void)))))"#,
+             (live-picker! (lambda (x) (void))
+               #:debounce-ms -1 #:command (lambda (q) #f))))"#,
     );
     type_cmd(&mut ed, ":go");
 
     assert!(
         ed.state.config.picker.is_none(),
         "a negative #:debounce-ms must be rejected"
+    );
+}
+
+#[test]
+fn live_picker_requires_command() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (live-picker! (lambda (x) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "live-picker! without #:command must error before opening a picker"
+    );
+}
+
+#[test]
+fn live_picker_rejects_a_builder_return_that_is_not_an_argv_list() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (live-picker! (lambda (x) (void))
+               #:query "seed"
+               #:command (lambda (q) 42))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.contains("#:command"),
+        "a builder return that isn't #f or an argv list must raise naming #:command, got {msg:?}"
     );
 }
 

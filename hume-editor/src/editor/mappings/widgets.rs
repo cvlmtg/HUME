@@ -361,25 +361,37 @@ impl Editor {
         true
     }
 
-    /// Queues `cb` — the `#:on-query-change` callback a `PickerSession`
-    /// query mutator (`insert_char`/`pop_grapheme`) just returned, if any —
-    /// with the query as it stands right now, via `queue_steel_call`, never
-    /// invoked inline, same discipline as every other picker callback
-    /// (`close_picker`). A bare `None` is a silent no-op: the mutator itself
-    /// already decided there was nothing to fire (non-live session, or a
-    /// backspace on an already-empty query). Debouncing (a query changes on
-    /// every keystroke, but a live source shouldn't re-spawn on every one)
-    /// is the plugin's job, via the `debounce` Scheme builtin — keystrokes
-    /// are human-rate, unlike `debounce_viewport_change`'s fire site
-    /// (`timer_bridge.rs`), which is every scroll step of every frame and so
-    /// earns its own Rust-side coalescer.
+    /// Queues `cb` — the `on_query_change` callback a `PickerSession` query
+    /// mutator (`insert_char`/`pop_grapheme`) just returned, if any — with
+    /// `(token query)` as it stands right now, via `queue_steel_call`,
+    /// never invoked inline, same discipline as every other picker callback
+    /// (`close_picker`). The token lets `live-picker!`'s Scheme wrapper
+    /// (`bootstrap.scm`) spawn/stop/replace against the right session
+    /// without closing over a not-yet-bound `define` — see
+    /// `builtins/mod.rs`'s `picker!`/`live-picker!` rationale block. A bare
+    /// `None` is a silent no-op: the mutator itself already decided there
+    /// was nothing to fire (a `picker!` session, or a backspace on an
+    /// already-empty query). Debouncing (a query changes on every
+    /// keystroke, but a live source shouldn't re-spawn on every one) is
+    /// composed once inside `live-picker!`'s own wrapper, not hand-wired by
+    /// every plugin author — keystrokes are human-rate, unlike
+    /// `debounce_viewport_change`'s fire site (`timer_bridge.rs`), which is
+    /// every scroll step of every frame and so earns its own Rust-side
+    /// coalescer.
     fn queue_query_change(&mut self, cb: Option<steel::rvals::SteelVal>) {
         let Some(cb) = cb else {
             return;
         };
-        let query = self.picker_mut().query().to_string();
-        self.state
-            .queue_steel_call(cb, vec![steel::rvals::SteelVal::StringV(query.into())]);
+        let session = self.picker_mut();
+        let token = session.token();
+        let query = session.query().to_string();
+        self.state.queue_steel_call(
+            cb,
+            vec![
+                steel::rvals::SteelVal::IntV(token as isize),
+                steel::rvals::SteelVal::StringV(query.into()),
+            ],
+        );
     }
 
     /// The open picker session — only ever called from `handle_picker_key`,
