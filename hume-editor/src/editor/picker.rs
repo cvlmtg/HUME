@@ -153,13 +153,20 @@ impl PickerSession {
     /// session's token. A mismatch is expected-normal (a late batch from a
     /// picker the user already closed or replaced) — silent no-op, not an
     /// error. Returns whether the push was applied.
+    ///
+    /// Reranks via [`rerank_keeping_selection`](Self::rerank_keeping_selection),
+    /// not a hard reset: a streaming source pushes once per frame, and
+    /// snapping back to row 0 on every batch would make a picker the user
+    /// is actively scrolling through unnavigable. Safe here specifically
+    /// because `push` only ever appends — every index a pre-push
+    /// `filtered` held still names the same item afterward.
     pub(crate) fn push(&mut self, token: u64, items: Vec<PickerItem>) -> bool {
         if token != self.token {
             return false;
         }
         self.pending = false;
         self.items.extend(items);
-        self.rerank();
+        self.rerank_keeping_selection();
         true
     }
 
@@ -169,12 +176,22 @@ impl PickerSession {
     /// this is the only way to drop stale rows. The requery half of a live
     /// source: a caller with `#:on-query-change` clears the previous
     /// pattern's rows before spawning the new search.
+    ///
+    /// Always lands on row `0` afterward, overriding whatever
+    /// `push`'s keep-the-same-item rerank did: the clear just above means
+    /// every index in the pre-replace `filtered` now names a *different*
+    /// item (or nothing) in the post-replace one, so `push`'s "same index,
+    /// same item" assumption does not hold here — a same-index match would
+    /// be a coincidence, not a real preserved selection.
     pub(crate) fn replace(&mut self, token: u64, items: Vec<PickerItem>) -> bool {
         if token != self.token {
             return false;
         }
         self.items.clear();
-        self.push(token, items)
+        let applied = self.push(token, items);
+        self.selected = 0;
+        self.scroll = 0;
+        applied
     }
 
     /// Attaches a spawned streaming source, replacing (and thereby killing,
@@ -336,12 +353,11 @@ impl PickerSession {
         self.on_query_change.as_ref()
     }
 
-    /// The only place ranking happens; every mutator above routes through
-    /// this. Resets `selected`/`scroll` to `0` on every rerank — a stale
-    /// selection surviving a rerank (now pointing at a different item, or
-    /// one no longer in the filtered set) is worse than landing back on the
-    /// top row.
-    fn rerank(&mut self) {
+    /// Rebuilds `filtered` from `items`/`query` — the ranking-only half
+    /// shared by [`rerank`](Self::rerank) and
+    /// [`rerank_keeping_selection`](Self::rerank_keeping_selection); neither
+    /// touches `selected`/`scroll` itself.
+    fn rebuild_filtered(&mut self) {
         if self.query.is_empty() || self.on_query_change.is_some() {
             // Insertion order by construction — avoids relying on nucleo's
             // (undocumented) all-equal-score behavior on an empty pattern,
@@ -373,8 +389,45 @@ impl PickerSession {
                 .extend(self.rank_scratch.iter().map(|&(_, idx)| idx));
         }
         debug_assert!(self.filtered.len() <= self.items.len());
+    }
+
+    /// Rebuilds `filtered` and resets `selected`/`scroll` to `0` — for a
+    /// query change (`set_query`/`insert_char`/`pop_grapheme`), where the
+    /// ranking itself changed meaning and there is no old selection worth
+    /// trying to preserve.
+    fn rerank(&mut self) {
+        self.rebuild_filtered();
         self.selected = 0;
         self.scroll = 0;
+    }
+
+    /// Rebuilds `filtered` like `rerank`, but tries to keep the selection on
+    /// the same *item* instead of resetting it — for an item-list mutation
+    /// under an unchanged query (`push`), where a source streaming in the
+    /// background must not keep yanking the cursor back to the top row every
+    /// frame. Falls back to row `0`, same as `rerank`, when the previously
+    /// selected item is no longer in `filtered` (e.g. a query already
+    /// excluded it and a later batch still doesn't match it).
+    ///
+    /// Only valid when every index the pre-call `filtered` held still names
+    /// the same item afterward — i.e. `items` was purely appended to, never
+    /// cleared or reordered. `push` is `self`'s only caller and guarantees
+    /// that; do not call this after any mutation that clears `items` (see
+    /// `replace`'s doc for why a same-index match there would be
+    /// coincidental, not a real preserved selection).
+    fn rerank_keeping_selection(&mut self) {
+        let selected_item = self.filtered.get(self.selected).copied();
+        self.rebuild_filtered();
+        match selected_item.and_then(|item| self.filtered.iter().position(|&idx| idx == item)) {
+            Some(pos) => {
+                self.selected = pos;
+                self.scroll = self.scroll.min(self.selected);
+            }
+            None => {
+                self.selected = 0;
+                self.scroll = 0;
+            }
+        }
     }
 }
 
@@ -724,13 +777,35 @@ mod tests {
     }
 
     #[test]
-    fn push_rerank_resets_selection_and_scroll() {
+    fn push_keeps_the_selection_on_the_same_item() {
+        // A streaming source pushes once per frame — snapping the selection
+        // back to row 0 on every batch would make an actively-scrolled
+        // picker unnavigable, so a plain append must keep pointing at the
+        // same item instead of resetting.
+        let mut s = open();
+        let token = s.token();
+        s.push(token, items(&["a", "b", "c", "d", "e"]));
+        s.move_selection(3, 2);
+        assert_eq!(payload_str(s.selected_payload().expect("has a match")), "d");
+        s.push(token, items(&["f"]));
+        assert_eq!(
+            payload_str(s.selected_payload().expect("has a match")),
+            "d",
+            "a push must not move the selection off the item the user had selected"
+        );
+    }
+
+    #[test]
+    fn replace_always_resets_selection_and_scroll() {
+        // Unlike `push`, `replace` swaps in an unrelated item list — the old
+        // selection's index cannot mean the same thing afterward, so it must
+        // always land back on row 0, never a same-index coincidence.
         let mut s = open();
         let token = s.token();
         s.push(token, items(&["a", "b", "c", "d", "e"]));
         s.move_selection(3, 2);
         assert_ne!(s.selected(), 0);
-        s.push(token, items(&["f"]));
+        assert!(s.replace(token, items(&["x", "y", "z"])));
         assert_eq!(s.selected(), 0);
         assert_eq!(s.scroll(), 0);
     }
