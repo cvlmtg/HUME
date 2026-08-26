@@ -62,7 +62,9 @@ pub(crate) enum PickerMode {
     /// query instead of the query driving the local fuzzy filter — see
     /// `rebuild_filtered`'s doc for why a live session's ranking is always
     /// the identity permutation over `items`.
-    Live { on_query_change: SteelVal },
+    Live {
+        on_query_change: SteelVal,
+    },
 }
 
 impl PickerMode {
@@ -983,9 +985,7 @@ mod tests {
     #[test]
     fn move_selection_scrolls_to_keep_selected_visible() {
         let mut s = open();
-        s.push(items(&[
-            "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-        ]));
+        s.push(items(&["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]));
         s.move_selection(5, 3);
         assert_eq!(s.selected(), 5);
         assert_eq!(s.scroll(), 3); // 5 + 1 - 3
@@ -1013,9 +1013,7 @@ mod tests {
     #[test]
     fn window_respects_scroll_and_rows() {
         let mut s = open();
-        s.push(items(&[
-            "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-        ]));
+        s.push(items(&["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]));
         s.move_selection(6, 3); // scroll becomes 4
         assert_eq!(s.scroll(), 4);
         assert_eq!(window_vec(&s, 3), vec!["4", "5", "6"]);

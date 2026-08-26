@@ -225,7 +225,13 @@ pub(crate) fn picker_push(ctx: &mut SteelCtx, token: SteelVal, items: SteelVal) 
 pub(crate) fn picker_replace(ctx: &mut SteelCtx, token: SteelVal, items: SteelVal) -> SteelResult {
     let token = usize_arg(token, "picker-replace! token")? as u64;
     let items = picker_items(items, "picker-replace! items")?;
-    picker_feed(ctx, "picker-replace!", token, items, PickerFeedMode::Replace)
+    picker_feed(
+        ctx,
+        "picker-replace!",
+        token,
+        items,
+        PickerFeedMode::Replace,
+    )
 }
 
 /// `(%picker-source-spawn! token cmd args cwd nul ok-exit-codes)` — the
