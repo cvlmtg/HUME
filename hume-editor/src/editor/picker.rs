@@ -110,9 +110,7 @@ static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 impl PickerSession {
     /// Opens empty — the caller's initial item list (from `picker!`) arrives
     /// through the same `push` path as any later batch: open empty, then
-    /// attach a source. `opts.query` is assigned directly rather than
-    /// through `set_query`: with `items` still empty, a rerank has nothing
-    /// to do.
+    /// attach a source.
     pub(crate) fn new(on_select: SteelVal, opts: PickerOpts) -> Self {
         Self {
             items: Vec::new(),
@@ -244,7 +242,7 @@ impl PickerSession {
         self.source.as_ref().is_some_and(|a| a.source.has_exited())
     }
 
-    /// Appends one `char` to the query and reranks. Key events deliver
+    /// Appends one `char` to the query and requeries. Key events deliver
     /// printable input one `char` at a time, including combining marks,
     /// which simply extend the trailing grapheme cluster.
     ///
@@ -261,13 +259,13 @@ impl PickerSession {
     #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
     pub(crate) fn insert_char(&mut self, ch: char) -> Option<SteelVal> {
         self.query.push(ch);
-        self.rerank();
+        self.requery();
         self.on_query_change.clone()
     }
 
     /// Removes the trailing grapheme cluster (not merely the last `char`) so
     /// that precomposed accents and ZWJ/modifier emoji sequences are deleted
-    /// as one unit, then reranks. Returns `None` without effect when the
+    /// as one unit, then requeries. Returns `None` without effect when the
     /// query is already empty (in addition to a non-live session, same as
     /// [`insert_char`](Self::insert_char)) — the query didn't change, so
     /// there is nothing to notify either way.
@@ -280,17 +278,17 @@ impl PickerSession {
             &self.query,
             self.query.len(),
         ));
-        self.rerank();
+        self.requery();
         self.on_query_change.clone()
     }
 
-    /// Replaces the query wholesale and reranks — test-only; `new` assigns
-    /// `query` directly (nothing to rerank against yet) and no other
-    /// production path replaces a query outside `insert_char`/`pop_grapheme`.
+    /// Replaces the query wholesale and requeries — test-only: production code
+    /// only ever changes the query one grapheme at a time, through
+    /// `insert_char`/`pop_grapheme`.
     #[cfg(test)]
     fn set_query(&mut self, query: String) {
         self.query = query;
-        self.rerank();
+        self.requery();
     }
 
     /// Moves `selected` by `delta`, saturating at both ends of `filtered`
@@ -364,9 +362,10 @@ impl PickerSession {
     }
 
     /// Rebuilds `filtered` from `items`/`query` — the ranking-only half
-    /// shared by [`rerank`](Self::rerank) and
-    /// [`rerank_keeping_selection`](Self::rerank_keeping_selection); neither
-    /// touches `selected`/`scroll` itself.
+    /// shared by [`rerank`](Self::rerank),
+    /// [`requery`](Self::requery) (for a non-live session), and
+    /// [`rerank_keeping_selection`](Self::rerank_keeping_selection); none of
+    /// them touch `selected`/`scroll` itself.
     fn rebuild_filtered(&mut self) {
         // `on_query_change.is_some()` (a live session) skips the local
         // fuzzy filter at any query, separately from an empty query, which
@@ -403,14 +402,35 @@ impl PickerSession {
         debug_assert!(self.filtered.len() <= self.items.len());
     }
 
-    /// Rebuilds `filtered` and resets `selected`/`scroll` to `0` — for a
-    /// query change (`set_query`/`insert_char`/`pop_grapheme`), where the
-    /// ranking itself changed meaning and there is no old selection worth
-    /// trying to preserve.
-    fn rerank(&mut self) {
-        self.rebuild_filtered();
+    /// Resets `selected`/`scroll` to `0` — the half of `rerank`/`requery`
+    /// that applies regardless of whether `rebuild_filtered` ran: there is no
+    /// old selection worth trying to preserve once the ranking (or the query
+    /// driving it) has changed meaning.
+    fn reset_cursor(&mut self) {
         self.selected = 0;
         self.scroll = 0;
+    }
+
+    /// Rebuilds `filtered` and resets the cursor — for an item-list mutation
+    /// under a changed set of items (`replace`), where the previous
+    /// `filtered` no longer names anything reliable.
+    fn rerank(&mut self) {
+        self.rebuild_filtered();
+        self.reset_cursor();
+    }
+
+    /// Resets the cursor for a query change (`set_query`/`insert_char`/
+    /// `pop_grapheme`), rebuilding `filtered` only for a non-live session.
+    /// A live session's `filtered` is the identity permutation over `items`
+    /// (see `rebuild_filtered`'s doc) — a function of `items.len()` alone —
+    /// so with `items` unchanged by a query keystroke, rebuilding it would
+    /// recompute the same vec it already holds. `items` only changes once
+    /// the query-change callback's requery lands, via `replace`.
+    fn requery(&mut self) {
+        if self.on_query_change.is_none() {
+            self.rebuild_filtered();
+        }
+        self.reset_cursor();
     }
 
     /// Rebuilds `filtered` like `rerank`, but tries to keep the selection on
@@ -435,10 +455,7 @@ impl PickerSession {
                 self.selected = pos;
                 self.scroll = self.scroll.min(self.selected);
             }
-            None => {
-                self.selected = 0;
-                self.scroll = 0;
-            }
+            None => self.reset_cursor(),
         }
     }
 }
@@ -721,6 +738,24 @@ mod tests {
         let token = s.token();
         s.push(token, items(&["b", "a", "c"]));
         assert_eq!(window_vec(&s, 10), vec!["b", "a", "c"]);
+    }
+
+    #[test]
+    fn live_session_insert_char_skips_the_rebuild_but_still_resets_the_cursor() {
+        // `requery` skips `rebuild_filtered` for a live session (see its
+        // doc) — this proves the skip is invisible: the ranked order
+        // survives untouched, and the cursor reset that would ride along
+        // with a real rebuild still happens.
+        let mut s = open_live();
+        let token = s.token();
+        s.push(token, items(&["b", "a", "c"]));
+        s.move_selection(2, 3);
+        assert_eq!(s.selected(), 2);
+        let before: Vec<String> = window_vec(&s, 10).into_iter().map(str::to_string).collect();
+        let _ = s.insert_char('z');
+        assert_eq!(window_vec(&s, 10), before);
+        assert_eq!(s.selected(), 0);
+        assert_eq!(s.scroll(), 0);
     }
 
     #[test]

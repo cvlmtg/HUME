@@ -2,8 +2,9 @@
 //! `FromSteelVal` newtypes for buffer-id / position / text-edit params, and
 //! the shared list/tuple decoders every multi-field setter builds on.
 //!
-//! No other module hand-rolls one of these decodes — enforced by
-//! `rg 'expect\("len checked"\)' hume-scripting/src` returning empty.
+//! `#f`-means-absent is decoded only by this module's `optional_*` family —
+//! enforced by `cargo test absent_marker_is_decoded_only_in_args_rs`
+//! (`hume-editor/src/editor/lints/absent_decode.rs`).
 
 use std::ops::RangeInclusive;
 use std::path::PathBuf;
@@ -39,6 +40,21 @@ pub(crate) fn optional_string_arg(
     match val {
         SteelVal::BoolV(false) => Ok(None),
         other => Ok(Some(string_arg(other, ctx_name)?)),
+    }
+}
+
+/// A symbol argument that may be `#f` (absent) — unlike `optional_string_arg`,
+/// rejects a plain string: a caller wanting this shape is decoding a Scheme
+/// keyword like `'error`, not free text, and `string_arg`'s string-or-symbol
+/// leniency would silently widen what it accepts.
+pub(crate) fn optional_symbol_arg(
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<Option<String>, SteelErr> {
+    match val {
+        SteelVal::BoolV(false) => Ok(None),
+        SteelVal::SymbolV(s) => Ok(Some(s.to_string())),
+        _ => steel::stop!(TypeMismatch => "{}: expected a symbol or #f", ctx_name),
     }
 }
 
@@ -275,6 +291,20 @@ pub(crate) fn pair_fields(
     match val {
         SteelVal::Pair(p) => Ok((p.car(), p.cdr())),
         _ => steel::stop!(Generic => "{}: each entry must be {}", ctx_name, shape),
+    }
+}
+
+/// A dotted-pair argument that may be `#f` (absent) — `pair_fields`'s
+/// `optional_*`-family sibling; `ctx_name`/`shape` stay caller-supplied so a
+/// `None` decode reads no differently than `pair_fields`'s own error would.
+pub(crate) fn optional_pair_fields(
+    val: SteelVal,
+    ctx_name: &str,
+    shape: &str,
+) -> Result<Option<(SteelVal, SteelVal)>, SteelErr> {
+    match val {
+        SteelVal::BoolV(false) => Ok(None),
+        other => Ok(Some(pair_fields(other, ctx_name, shape)?)),
     }
 }
 

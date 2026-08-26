@@ -8,10 +8,10 @@
 //! source before attaching a new one" ordering rule live beside the
 //! exit-reporting they both feed, not in the host-trait translation layer.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use hume_platform::process::line_source::SpawnedLineSource;
+use hume_scripting::host::PickerSourceOpts;
 use steel::rvals::SteelVal;
 
 use super::message_log::Severity;
@@ -45,18 +45,16 @@ pub(super) fn spawn_source(
     token: u64,
     cmd: &str,
     args: Vec<String>,
-    cwd: Option<PathBuf>,
-    nul: bool,
-    ok_exit_codes: Vec<i32>,
+    opts: PickerSourceOpts,
 ) -> Result<bool, String> {
     if !session_token_matches(state, token) {
         return Ok(false);
     }
-    let delimiter = if nul { b'\0' } else { b'\n' };
+    let delimiter = if opts.nul { b'\0' } else { b'\n' };
     let source = hume_platform::process::line_source::spawn_line_source(
         cmd,
         &args,
-        cwd.as_deref(),
+        opts.cwd.as_deref(),
         delimiter,
         Arc::clone(&state.wake),
     )
@@ -67,7 +65,7 @@ pub(super) fn spawn_source(
         .picker
         .as_mut()
         .expect("checked Some above")
-        .attach_source(source, ok_exit_codes);
+        .attach_source(source, opts.ok_exit_codes);
     Ok(true)
 }
 

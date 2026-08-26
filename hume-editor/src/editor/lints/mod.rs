@@ -5,6 +5,7 @@
 //! offending line is easy to locate and fix. One file per lint (below);
 //! shared string/source-scanning helpers live in this module.
 
+mod absent_decode;
 mod column_naming;
 mod dispatch_funnel;
 mod display_width;

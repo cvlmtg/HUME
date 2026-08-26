@@ -34,6 +34,23 @@ fn optional_string_arg_false_is_none() {
 }
 
 #[test]
+fn optional_symbol_arg_false_is_none_symbol_is_some_string_is_rejected() {
+    assert_eq!(
+        optional_symbol_arg(SteelVal::BoolV(false), "f").unwrap(),
+        None
+    );
+    assert_eq!(
+        optional_symbol_arg(SteelVal::SymbolV("error".into()), "f").unwrap(),
+        Some("error".to_string())
+    );
+    let err = optional_symbol_arg(SteelVal::StringV("error".into()), "f").unwrap_err();
+    assert!(
+        err.to_string().contains("expected a symbol or #f"),
+        "got: {err}"
+    );
+}
+
+#[test]
 fn usize_arg_rejects_negative() {
     assert!(usize_arg(SteelVal::IntV(-1), "f").is_err());
 }
@@ -168,6 +185,19 @@ fn pair_fields_rejects_proper_list() {
 fn pair_fields_rejects_non_pair_scalar() {
     let err = pair_fields(SteelVal::IntV(3), "position", "(line . character)").unwrap_err();
     assert!(err.to_string().contains("(line . character)"), "got: {err}");
+}
+
+#[test]
+fn optional_pair_fields_false_is_none_pair_is_some() {
+    assert_eq!(
+        optional_pair_fields(SteelVal::BoolV(false), "f", "(start . end)").unwrap(),
+        None
+    );
+    let pair = cons_pair(SteelVal::IntV(0), SteelVal::IntV(5)).unwrap();
+    assert_eq!(
+        optional_pair_fields(pair, "f", "(start . end)").unwrap(),
+        Some((SteelVal::IntV(0), SteelVal::IntV(5)))
+    );
 }
 
 // ── BidArg ────────────────────────────────────────────────────────────────

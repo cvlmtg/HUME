@@ -819,12 +819,12 @@ pub trait DiffHost {
     fn diff_words(&self, old: &str, new: &str) -> (Vec<WordDiffHunk>, bool);
 }
 
-/// Grouped `picker!` open-time options — a struct instead of a fifth-plus
-/// positional on [`UiHost::open_picker`], since that signature already grew
-/// once (`#:pending`) and `#:query`/`#:on-query-change` are landing together.
-/// `Default` is every keyword's own default (empty prompt, not pending,
-/// empty query, not live) — the shape a test that doesn't care about any of
-/// them wants.
+/// Grouped `picker!` open-time keyword options. [`UiHost::open_picker`] takes
+/// the Scheme call's positional arguments (`items`, `on_select`) directly;
+/// every `#:`-prefixed one rides here instead — the same split
+/// [`PickerSourceOpts`] uses for `picker_source_spawn`. `Default` is every
+/// keyword's own default (empty prompt, not pending, empty query, not live) —
+/// the shape a test that doesn't care about any of them wants.
 #[derive(Default)]
 pub struct PickerOpts {
     /// `#:prompt` — label painted before the query in the input line.
@@ -845,6 +845,28 @@ pub struct PickerOpts {
     /// `PickerSession::rebuild_filtered`'s doc for why a live session skips
     /// it.
     pub on_query_change: Option<steel::rvals::SteelVal>,
+}
+
+/// Grouped `picker-source-spawn!` keyword options — the same split
+/// [`PickerOpts`] uses for `open_picker`: [`UiHost::picker_source_spawn`]'s
+/// positional arguments (`token`, `cmd`, `args`) stay directly on the trait
+/// method. No `Default`: `#:ok-exit-codes` defaults to `'(0)`, not
+/// `Vec::default()`'s empty list, so a caller must always supply it
+/// explicitly rather than get a silently wrong allowlist.
+pub struct PickerSourceOpts {
+    /// `#:cwd` — working directory for the spawned process; `None` inherits
+    /// the caller's.
+    pub cwd: Option<std::path::PathBuf>,
+    /// `#:nul` — split stdout on NUL bytes instead of newlines.
+    pub nul: bool,
+    /// `#:ok-exit-codes` — the complete set of exit codes that count as a
+    /// normal outcome. It *replaces* the success check rather than
+    /// extending it — nothing is implied, `0` included — so a caller
+    /// overriding the `'(0)` default lists `0` alongside whatever it adds:
+    /// `'(0 1)` for `rg`, which exits `1` on "no matches". `'(1)` alone
+    /// would report every successful run as a failure. Explicit over
+    /// convenient: the list is the whole contract.
+    pub ok_exit_codes: Vec<i32>,
 }
 
 /// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer
@@ -975,15 +997,7 @@ pub trait UiHost {
     /// source had already exited, its exit is reported exactly as it would
     /// have been had it disconnected on its own — a re-spawn must not
     /// silence a genuine failure just because a newer search superseded it
-    /// before the drain got to it.
-    ///
-    /// `ok_exit_codes`: the complete set of exit codes that count as a
-    /// normal outcome. It *replaces* the success check rather than
-    /// extending it — nothing is implied, `0` included — so a caller
-    /// overriding the `'(0)` default lists `0` alongside whatever it adds:
-    /// `'(0 1)` for `rg`, which exits `1` on "no matches". `'(1)` alone
-    /// would report every successful run as a failure. Explicit over
-    /// convenient: the list is the whole contract.
+    /// before the drain got to it. `opts`: see [`PickerSourceOpts`].
     ///
     /// `Ok(false)` — same "expected-normal race, not an error" contract as
     /// `picker_push` — means a stale token or no open picker; nothing was
@@ -994,9 +1008,7 @@ pub trait UiHost {
         token: u64,
         cmd: &str,
         args: Vec<String>,
-        cwd: Option<std::path::PathBuf>,
-        nul: bool,
-        ok_exit_codes: Vec<i32>,
+        opts: PickerSourceOpts,
     ) -> Result<bool, String>;
 
     /// `(picker-source-stop! token)` — stops the open picker's attached

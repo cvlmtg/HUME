@@ -25,7 +25,8 @@ use crate::ui::statusline::StatusLineConfig;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
     DiffHost, DiffHunk, EditHost, EditorHost, EventHost, LanguageHost, LocationDisplay, LspHost,
-    OptionValue, OutputHost, PickerOpts, PopupKind, SettingsHost, TimerHost, UiHost, WordDiffHunk,
+    OptionValue, OutputHost, PickerOpts, PickerSourceOpts, PopupKind, SettingsHost, TimerHost,
+    UiHost, WordDiffHunk,
 };
 
 use super::{EditorState, Severity};
@@ -1471,19 +1472,9 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         token: u64,
         cmd: &str,
         args: Vec<String>,
-        cwd: Option<PathBuf>,
-        nul: bool,
-        ok_exit_codes: Vec<i32>,
+        opts: PickerSourceOpts,
     ) -> Result<bool, String> {
-        crate::editor::picker_source::spawn_source(
-            self.state,
-            token,
-            cmd,
-            args,
-            cwd,
-            nul,
-            ok_exit_codes,
-        )
+        crate::editor::picker_source::spawn_source(self.state, token, cmd, args, opts)
     }
 
     fn picker_source_stop(&mut self, token: u64) -> bool {

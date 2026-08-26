@@ -12,7 +12,8 @@ use crate::types::VirtualLineSpec;
 
 use super::SteelResult;
 use super::args::{
-    BidArg, cons_pair, int_arg, list_items, pair_fields, string_arg, tuple_list, usize_arg,
+    BidArg, cons_pair, int_arg, list_items, optional_pair_fields, optional_symbol_arg, string_arg,
+    tuple_list, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -319,22 +320,14 @@ pub(crate) fn diagnostics_for_buffer(
     range: SteelVal,
 ) -> SteelResult {
     let id = bid.0;
-    let floor = match severity {
-        SteelVal::BoolV(false) => None,
-        SteelVal::SymbolV(s) => Some(s.to_string()),
-        _ => {
-            steel::stop!(TypeMismatch => "diagnostics-for-buffer: #:severity expected a symbol or #f")
-        }
-    };
-    let range = match range {
-        SteelVal::BoolV(false) => None,
-        other => {
-            let (start, end) = pair_fields(other, "diagnostics-for-buffer", "(start . end)")?;
+    let floor = optional_symbol_arg(severity, "diagnostics-for-buffer #:severity")?;
+    let range = optional_pair_fields(range, "diagnostics-for-buffer", "(start . end)")?
+        .map(|(start, end)| {
             let start = usize_arg(start, "diagnostics-for-buffer range start")?;
             let end = usize_arg(end, "diagnostics-for-buffer range end")?;
-            Some((start, end))
-        }
-    };
+            Ok::<_, SteelErr>((start, end))
+        })
+        .transpose()?;
     let entries = match ctx.host.decorations() {
         Some(decorations) => decorations
             .diagnostics_for_buffer(id, floor.as_deref(), range)

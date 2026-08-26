@@ -10,7 +10,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::{PickerOpts, PopupKind};
+use crate::host::{PickerOpts, PickerSourceOpts, PopupKind};
 
 use super::SteelResult;
 use super::args::{
@@ -133,6 +133,7 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal
         .into_iter()
         .map(|entry| {
             let (display, payload) = pair_fields(entry, ctx_name, "(display . payload)")?;
+            // absent-decode-safe: #f here is the reserved dismiss sentinel being rejected, not an absent optional
             if matches!(payload, SteelVal::BoolV(false)) {
                 steel::stop!(Generic => "{}: item payload must not be #f (#f is reserved for the dismiss signal)", ctx_name);
             }
@@ -219,9 +220,14 @@ pub(crate) fn picker_source_spawn(
     let cwd = optional_path_arg(cwd, "picker-source-spawn! #:cwd")?;
     let nul = bool_arg(nul, "picker-source-spawn! #:nul")?;
     let ok_exit_codes = list_to_i32s(ok_exit_codes, "picker-source-spawn! #:ok-exit-codes")?;
+    let opts = PickerSourceOpts {
+        cwd,
+        nul,
+        ok_exit_codes,
+    };
 
     let applied = require_cap(ctx.host.ui(), "picker-source-spawn!")?
-        .picker_source_spawn(token, &cmd, args, cwd, nul, ok_exit_codes)
+        .picker_source_spawn(token, &cmd, args, opts)
         .map_err(|e| generic_err(format!("picker-source-spawn!: {e}")))?;
     Ok(SteelVal::BoolV(applied))
 }
