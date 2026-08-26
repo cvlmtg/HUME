@@ -404,6 +404,34 @@ fn picker_feed_rejects_a_stale_token_and_leaves_items_and_pending_untouched() {
     );
 }
 
+#[test]
+fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::{PickerFeedMode, PickerOpts, UiHost};
+
+    let mut ed = editor_from("-[a]>bc\n");
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let token = host
+        .open_picker(
+            vec![("a".to_string(), SteelVal::StringV("a".into()))],
+            SteelVal::Void,
+            PickerOpts::default(),
+        )
+        .unwrap();
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    assert!(!host.picker_feed(
+        token + 1,
+        vec![("z".to_string(), SteelVal::StringV("z".into()))],
+        PickerFeedMode::Replace,
+    ));
+    assert_eq!(
+        ed.state.config.picker.as_ref().unwrap().total_len(),
+        1,
+        "a stale-token replace must leave the existing items untouched"
+    );
+}
+
 // ── Intercept ordering ───────────────────────────────────────────────────────
 
 #[test]

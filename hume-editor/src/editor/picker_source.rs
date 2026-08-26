@@ -22,7 +22,7 @@ use super::{Editor, EditorState};
 /// `EditorHostImpl::picker_source_spawn`'s body: attaches a streaming
 /// external-command source to the picker named by `token`. `Ok(false)` — a
 /// stale token or no open picker — is the same expected-normal-race
-/// contract `picker_push` uses; a genuine spawn failure raises.
+/// contract `picker_feed` uses; a genuine spawn failure raises.
 ///
 /// Reports the outgoing source's exit (if it had already exited) *before*
 /// attaching the new one — never after, or a source that already failed

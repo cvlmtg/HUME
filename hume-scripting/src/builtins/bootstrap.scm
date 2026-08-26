@@ -121,11 +121,19 @@
                                   #:query [query ""])
   (%picker! items on-select prompt pending query))
 
+;; The `'(0)` default `picker-source-spawn!` and `live-picker!` both need for
+;; `#:ok-exit-codes` — one literal, so the two keyword defaults can't drift.
+(define %picker-source-default-ok-exit-codes '(0))
+
+(define (picker-source-spawn! token cmd args #:cwd [cwd #f] #:nul [nul #f]
+                                              #:ok-exit-codes [ok-exit-codes %picker-source-default-ok-exit-codes])
+  (%picker-source-spawn! token cmd args cwd nul ok-exit-codes))
+
 (define (live-picker! on-select #:command command
                        #:prompt [prompt ""] #:query [query ""]
                        #:debounce-ms [debounce-ms 150]
                        #:cwd [cwd #f] #:nul [nul #f]
-                       #:ok-exit-codes [ok-exit-codes '(0)])
+                       #:ok-exit-codes [ok-exit-codes %picker-source-default-ok-exit-codes])
   (unless (%callable? command)
     (error "live-picker!: #:command must be a procedure of one argument (the query)"))
   (unless (and (integer? debounce-ms) (>= debounce-ms 0))
@@ -135,7 +143,8 @@
                          (when argv
                            (unless (and (list? argv) (not (null? argv)) (string? (car argv)))
                              (error "live-picker!: #:command must return #f or a non-empty list of strings (argv)"))
-                           (%picker-source-spawn! token (car argv) (cdr argv) cwd nul ok-exit-codes))))]
+                           (picker-source-spawn! token (car argv) (cdr argv)
+                                                 #:cwd cwd #:nul nul #:ok-exit-codes ok-exit-codes))))]
          [respawn (debounce debounce-ms spawn-for)]
          [token (%live-picker! on-select prompt query
                   (lambda (token q)
@@ -145,10 +154,6 @@
     (unless (equal? query "")
       (spawn-for token query))
     token))
-
-(define (picker-source-spawn! token cmd args #:cwd [cwd #f] #:nul [nul #f]
-                                              #:ok-exit-codes [ok-exit-codes '(0)])
-  (%picker-source-spawn! token cmd args cwd nul ok-exit-codes))
 
 (define (picker-close! #:token [token #f])
   (%picker-close! token))

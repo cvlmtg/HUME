@@ -846,8 +846,11 @@ pub struct LivePickerOpts {
     pub prompt: String,
     /// `#:query` — the query the picker opens with. Unlike `PickerOpts`'s
     /// (which only filters the already-known item list), a non-empty value
-    /// here also fires `on_query_change` once, synchronously, right after
-    /// the session opens — see [`UiHost::open_live_picker`]'s doc.
+    /// here also has the `live-picker!` Scheme wrapper spawn once,
+    /// undebounced, right after this call returns — see
+    /// [`UiHost::open_live_picker`]'s doc. `open_live_picker` itself never
+    /// fires `on_query_change` for it; that lambda is reserved for
+    /// per-keystroke requeries.
     pub query: String,
     /// Fired with `(token query)` on every query-changing keystroke instead
     /// of driving a local fuzzy filter — see
@@ -1004,8 +1007,14 @@ pub trait UiHost {
     /// `picker-replace!`/`picker-source-spawn!`, exactly as a `picker!`
     /// session's async sources are). Same return, exactly-once `on-select`,
     /// and modal-ownership contract as `open_picker`. `opts`: see
-    /// [`LivePickerOpts`] — a non-empty `query` fires `on_query_change`
-    /// once, synchronously, before this returns.
+    /// [`LivePickerOpts`] — this method itself never fires
+    /// `on_query_change`; the `live-picker!` Scheme wrapper spawns for a
+    /// non-empty seed `query` itself, undebounced, right after this
+    /// returns, so a bad `#:command` raise on that seed leaves the session
+    /// this call already opened in place (Esc still closes it) rather than
+    /// tearing it down — the wrapper deliberately doesn't catch-and-reraise
+    /// around it, since a call sourced from a native builtin re-raised
+    /// through a nested Steel handler corrupts the VM's continuation stack.
     fn open_live_picker(
         &mut self,
         on_select: steel::rvals::SteelVal,
@@ -1044,7 +1053,7 @@ pub trait UiHost {
     /// before the drain got to it. `opts`: see [`PickerSourceOpts`].
     ///
     /// `Ok(false)` — same "expected-normal race, not an error" contract as
-    /// `picker_push` — means a stale token or no open picker; nothing was
+    /// `picker_feed` — means a stale token or no open picker; nothing was
     /// spawned. `Err` means the process itself failed to spawn (missing
     /// binary, bad `#:cwd`).
     fn picker_source_spawn(
@@ -1061,7 +1070,7 @@ pub trait UiHost {
     /// search that produced them; this is that missing half, for a live
     /// requery whose new query has nothing to spawn a replacement source
     /// for (e.g. backspacing to an empty pattern). Same
-    /// expected-normal-race contract as `picker_push`: returns whether
+    /// expected-normal-race contract as `picker_feed`: returns whether
     /// `token` matched the open session, regardless of whether a source was
     /// actually attached. Reports the outgoing source's exit if it had
     /// already exited, same as a re-spawn via `picker_source_spawn`.

@@ -8,8 +8,8 @@
 //!
 //! Wired onto `EditorState.picker`; opened through the [`open_picker`] free
 //! fn below, via [`PickerSession::new`] (Steel's `picker!` builtin,
-//! `hume-scripting`'s `ui::picker`) or [`PickerSession::new_live`] (`
-//! live-picker!`, `ui::live_picker`) — and driven per-frame by
+//! `hume-scripting`'s `ui::picker`) or [`PickerSession::new_live`]
+//! (`live-picker!`, `ui::live_picker`) — and driven per-frame by
 //! `Editor::sync_picker_view` and per-key by `Editor::handle_picker_key`
 //! (`editor/mappings/mod.rs`).
 
@@ -31,11 +31,11 @@ pub(crate) struct PickerItem {
     pub(crate) payload: SteelVal,
 }
 
-/// `UiHost`'s wire shape for a batch of items, converted — `open_picker`,
-/// `picker_push`, and `picker_replace` in `EditorHostImpl` each need this
-/// same conversion before handing a batch to the store; kept here rather
-/// than duplicated at each call site because `hume-scripting`'s `UiHost`
-/// trait cannot name `PickerItem`, an `hume-editor`-private type.
+/// `UiHost`'s wire shape for a batch of items, converted — `open_picker` and
+/// `picker_feed` in `EditorHostImpl` each need this same conversion before
+/// handing a batch to the store; kept here rather than duplicated at each
+/// call site because `hume-scripting`'s `UiHost` trait cannot name
+/// `PickerItem`, an `hume-editor`-private type.
 pub(crate) fn picker_items(items: Vec<(String, SteelVal)>) -> Vec<PickerItem> {
     items
         .into_iter()
@@ -56,7 +56,7 @@ struct AttachedSource {
 /// external source (`live-picker!`). Its `Live`-ness is read directly
 /// wherever "is this session live" matters — no separate bool duplicating
 /// it, and no `Option` whose `None` arm silently means something structural.
-pub(crate) enum PickerMode {
+enum PickerMode {
     Filter,
     /// `insert_char`/`pop_grapheme` fire `on_query_change` with the new
     /// query instead of the query driving the local fuzzy filter — see
@@ -83,9 +83,9 @@ impl PickerMode {
     }
 }
 
-/// The one "are results still arriving" state for a session. Replaces two
-/// independent signals (`#:pending` and "is a source attached") that could
-/// previously disagree — `PickerSession::is_pending` used to read both.
+/// The one "are results still arriving" state for a session — a single
+/// signal, so `#:pending` and "is a source attached" can never disagree the
+/// way two independently-tracked fields could.
 enum Population {
     /// Everything the session will ever get is already in `items`.
     Complete,
@@ -101,7 +101,8 @@ enum Population {
 
 /// Rust-side store for one open picker: items, query, ranked indices,
 /// selection, scroll, and a stale-push-or-replace guard token. Steel drives
-/// it through `picker!`/`picker-push!`/`picker-replace!`/`picker-close!`;
+/// it through `picker!`/`live-picker!`/`picker-push!`/`picker-replace!`/
+/// `picker-close!`;
 /// this module has no Steel-facing surface of its own.
 pub(crate) struct PickerSession {
     /// Append-only via `push`/`seed` — the common case, and what lets
@@ -127,8 +128,9 @@ pub(crate) struct PickerSession {
     /// Empty by default — an empty prompt renders identically to no prompt
     /// at all.
     prompt: String,
-    /// Stale-push/-replace guard: `push` and `replace` are both a no-op
-    /// unless the caller's token matches.
+    /// Identifies this session to Steel and to [`session_for_token`], the
+    /// shared guard every token-scoped picker mutation checks before
+    /// reaching a `&mut PickerSession` at all.
     token: u64,
     /// Whether results are still arriving, and how — see [`Population`].
     /// Owning a `Streaming` source here — rather than in some separate
@@ -241,10 +243,13 @@ impl PickerSession {
         }
     }
 
-    /// Appends `items` and reranks. No token guard here — callers reach a
-    /// `&mut PickerSession` only through [`session_for_token`], the shared
-    /// guard for every token-scoped mutation, so a stale token has already
-    /// been rejected before this runs.
+    /// Appends `items` and reranks. No token guard here — every
+    /// *token-scoped* caller (`picker-push!`, via `EditorHostImpl::picker_feed`)
+    /// has already gone through [`session_for_token`] before reaching this;
+    /// the other two callers, [`seed`](Self::seed) and
+    /// `Editor::drain_picker_source`, hold the session directly (at
+    /// construction, and via the frame's own `&mut EditorState`, respectively)
+    /// and so have no token to check in the first place.
     ///
     /// Reranks via [`rerank_keeping_selection`](Self::rerank_keeping_selection),
     /// not a hard reset: a streaming source pushes once per frame, and
@@ -729,6 +734,20 @@ mod tests {
         assert!(
             s.is_pending(),
             "an empty seed is not a batch arrival — `#:pending`'s caller intent must survive it"
+        );
+    }
+
+    #[test]
+    fn take_source_on_a_sourceless_pending_session_preserves_awaiting() {
+        // `picker-source-stop!` racing a session that never had a source
+        // attached (only `#:pending`) must not fabricate a "done" transition
+        // — `take_source` restores `Awaiting` rather than leaving `Complete`
+        // behind from its own `mem::replace`.
+        let mut s = open_pending();
+        assert!(s.take_source().is_none());
+        assert!(
+            s.is_pending(),
+            "a stop racing a never-attached source must not clear pending"
         );
     }
 

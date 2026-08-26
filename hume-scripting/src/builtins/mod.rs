@@ -171,19 +171,15 @@ macro_rules! builtins {
 // existing site needs no further change.
 //
 // picker!/live-picker! — two constructors over one Rust store
-// (hume-editor::editor::picker::PickerSession), rather than one picker!
-// whose #:on-query-change keyword silently flipped the whole widget into a
-// different mode (live sessions skip local fuzzy filtering entirely — see
-// PickerSession::rebuild_filtered's doc). picker! stays a plain
+// (hume-editor::editor::picker::PickerSession): picker! stays a plain
 // items-plus-fuzzy-filter picker; live-picker! always drives an external
-// #:command builder, so "is this session live" is a name a caller chooses,
-// not a keyword's side effect.
+// #:command builder and disables local fuzzy filtering entirely (see
+// PickerSession::rebuild_filtered's doc) — so "is this session live" is a
+// name a caller chooses, not a keyword's side effect.
 //
 // live-picker!'s wrapper owns the whole requery lifecycle by construction —
 // stop-and-clear the running source, debounce, respawn via #:command —
-// rather than making every author hand-wire it (the old picker!
-// #:on-query-change recipe needed ~25 lines to teach this composition and
-// still shipped two follow-up bug fixes). The wrapper's own internal
+// rather than making every author hand-wire it. The wrapper's own internal
 // lambda — not the caller's #:command — is what's
 // stop-and-clear-then-debounce; it's called on *every* keystroke,
 // unconditionally, so a query that debounces to empty still cancels
@@ -198,13 +194,14 @@ macro_rules! builtins {
 //
 // %live-picker! hands its own session token into the internal callback as
 // an argument, rather than the callback closing over live-picker!'s return
-// value (which, unlike the token argument, isn't bound yet while
-// live-picker! is still running) — this is also what lets a non-empty
-// #:query fire synchronously, undebounced, right after %live-picker!
-// returns instead of needing to defer a tick for a not-yet-bound `define`
-// to complete. %callable? (args::is_callable) backs live-picker!'s own
-// #:command check — a stricter predicate than Steel's `procedure?`, see its
-// doc for why.
+// value, which isn't bound yet while live-picker! is still running — that
+// argument is what lets the per-keystroke lambda reference its own session
+// safely. A non-empty #:query, separately, spawns synchronously through
+// live-picker!'s own let*-bound token, right after %live-picker! returns —
+// no deferred tick needed, since that token is already bound by the time
+// the seed spawn runs. %callable? (args::is_callable) backs live-picker!'s
+// own #:command check — a stricter predicate than Steel's `procedure?`, see
+// its doc for why.
 //
 // run-inline-output! — the Scheme wrapper (see bootstrap.scm) blocks and
 // raises on nonzero exit or a signal-killed child. Same contract as

@@ -1,9 +1,10 @@
 // The Steel surface for the fuzzy picker:
-// (picker! items on-select #:prompt "…") / (picker-push! token items) /
-// (picker-close!). The Rust store/widget/key-handling underneath is
-// covered by `tests/picker.rs`, which builds sessions directly — this
-// file exercises the builtins themselves end to end through real Steel
-// source, mirroring `lsp_drawer.rs`'s `run`/`arm_*` pattern.
+// (picker! items on-select #:prompt "…") / (live-picker! on-select #:command …) /
+// (picker-push! token items) / (picker-replace! token items) / (picker-close!).
+// The Rust store/widget/key-handling underneath is covered by
+// `tests/picker.rs`, which builds sessions directly — this file exercises
+// the builtins themselves end to end through real Steel source, mirroring
+// `lsp_drawer.rs`'s `run`/`arm_*` pattern.
 //
 // The picker is full-modal: once one is
 // open, `handle_picker_key` intercepts every key ahead of mode dispatch, so
@@ -529,15 +530,16 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
     );
 }
 
-// ── picker! no longer wires up live-requery keywords ─────────────────────────
+// ── picker! does not wire up live-requery keywords ─────────────────────────
 
 #[test]
-fn picker_bang_silently_ignores_the_removed_on_query_change_keyword() {
+fn picker_bang_silently_ignores_an_on_query_change_keyword() {
     // Steel's keyword-arg calling convention doesn't reject a keyword the
-    // callee's signature never declared (extra `#:key val` pairs are simply
+    // callee's signature never declares (extra `#:key val` pairs are simply
     // unused) — so passing #:on-query-change to picker! doesn't raise. What
-    // must hold is that it's dead: never wired to anything, unlike before
-    // the live-picker! split.
+    // must hold is that it's dead: `picker!`'s signature has no
+    // `#:on-query-change` parameter, and never wires the value to anything —
+    // live requery lives on `live-picker!` instead.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
     run(
@@ -580,8 +582,7 @@ fn live_picker_seed_spawn_is_synchronous_and_not_debounced() {
     type_cmd(&mut ed, ":go");
 
     // No settle() at all — the seed spawn runs synchronously inside
-    // live-picker! itself, before the command that called it even returns,
-    // unlike the old picker! recipe's deferred `(after 0 …)` fire.
+    // live-picker! itself, before the command that called it even returns.
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "q=seed",
@@ -865,6 +866,13 @@ fn live_picker_rejects_a_builder_return_that_is_not_an_argv_list() {
     assert!(
         msg.contains("#:command"),
         "a builder return that isn't #f or an argv list must raise naming #:command, got {msg:?}"
+    );
+    // The raise happens after `%live-picker!` has already installed the
+    // session — `live-picker!` never returns a token to bind, but the
+    // picker itself is left open (Esc still closes it), not torn down.
+    assert!(
+        ed.state.config.picker.is_some(),
+        "a seed-spawn raise must leave the already-opened picker in place"
     );
 }
 
