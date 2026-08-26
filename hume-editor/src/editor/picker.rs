@@ -50,6 +50,51 @@ struct AttachedSource {
     ok_exit_codes: Vec<i32>,
 }
 
+/// Whether the query drives the local fuzzy filter (`picker!`) or an
+/// external source (`live-picker!`). Its `Live`-ness is read directly
+/// wherever "is this session live" matters — no separate bool duplicating
+/// it, and no `Option` whose `None` arm silently means something structural.
+pub(crate) enum PickerMode {
+    Filter,
+    /// `insert_char`/`pop_grapheme` fire `on_query_change` with the new
+    /// query instead of the query driving the local fuzzy filter — see
+    /// `rebuild_filtered`'s doc for why a live session's ranking is always
+    /// the identity permutation over `items`.
+    Live { on_query_change: SteelVal },
+}
+
+impl PickerMode {
+    fn is_live(&self) -> bool {
+        matches!(self, PickerMode::Live { .. })
+    }
+
+    /// Cheap `Rc` clone of the query-change callback, or `None` for
+    /// `Filter` — the return shape `insert_char`/`pop_grapheme` hand
+    /// straight to their caller.
+    fn on_query_change(&self) -> Option<SteelVal> {
+        match self {
+            PickerMode::Filter => None,
+            PickerMode::Live { on_query_change } => Some(on_query_change.clone()),
+        }
+    }
+}
+
+/// The one "are results still arriving" state for a session. Replaces two
+/// independent signals (`#:pending` and "is a source attached") that could
+/// previously disagree — `PickerSession::is_pending` used to read both.
+enum Population {
+    /// Everything the session will ever get is already in `items`.
+    Complete,
+    /// `#:pending` — results arrive out-of-band (`spawn-async!` +
+    /// `picker-push!`), so there is no source here to ask. Cleared by the
+    /// first applied `push`/`replace`, even an empty batch — a clean
+    /// `git status`, say, still means the job is done.
+    Awaiting,
+    /// A streaming `picker-source-spawn!` source is attached; cleared on
+    /// disconnect (`take_source`), explicit stop, or respawn.
+    Streaming(AttachedSource),
+}
+
 /// Rust-side store for one open picker: items, query, ranked indices,
 /// selection, scroll, and a stale-push-or-replace guard token. Steel drives
 /// it through `picker!`/`picker-push!`/`picker-replace!`/`picker-close!`;
@@ -81,28 +126,16 @@ pub(crate) struct PickerSession {
     /// Stale-push/-replace guard: `push` and `replace` are both a no-op
     /// unless the caller's token matches.
     token: u64,
-    /// The streaming external-command source attached via
-    /// `picker-source-spawn!`, if any, together with its exit-code
-    /// allowlist. Owning it here — rather than in some separate registry —
-    /// is what makes kill-on-close/replace automatic: `SpawnedLineSource`'s
-    /// `Drop` kills the child, and this field is dropped whenever the
-    /// session itself is (`close_picker`'s `take()`, `open_picker`'s
-    /// replace).
-    source: Option<AttachedSource>,
-    /// Set by `picker!`'s `#:pending` for a caller whose results arrive via
-    /// `spawn-async!` rather than `picker-source-spawn!` — the latter
-    /// already has its own "still populating" signal (`source.is_some()`),
-    /// so this flag only exists for the shape that has no `source` to ask.
-    /// Cleared by the first `push`/`replace` that actually applies (matching
-    /// token), even an empty batch — a clean `git status`, say, still means
-    /// the job is done. See [`is_pending`](Self::is_pending).
-    pending: bool,
-    /// `#:on-query-change` — `Some` makes this session live: `insert_char`/
-    /// `pop_grapheme` fire it with the new query (`Editor::queue_query_change`)
-    /// instead of the query driving the local fuzzy filter. Its `Some`-ness
-    /// is read directly wherever "is this session live" matters — no
-    /// separate bool duplicating it.
-    on_query_change: Option<SteelVal>,
+    /// Whether results are still arriving, and how — see [`Population`].
+    /// Owning a `Streaming` source here — rather than in some separate
+    /// registry — is what makes kill-on-close/replace automatic:
+    /// `SpawnedLineSource`'s `Drop` kills the child, and this field is
+    /// dropped whenever the session itself is (`close_picker`'s `take()`,
+    /// `open_picker`'s replace).
+    population: Population,
+    /// Whether the query drives the local fuzzy filter or an external
+    /// source — see [`PickerMode`].
+    mode: PickerMode,
 }
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
@@ -112,6 +145,15 @@ impl PickerSession {
     /// through the same `push` path as any later batch: open empty, then
     /// attach a source.
     pub(crate) fn new(on_select: SteelVal, opts: PickerOpts) -> Self {
+        let mode = match opts.on_query_change {
+            Some(on_query_change) => PickerMode::Live { on_query_change },
+            None => PickerMode::Filter,
+        };
+        let population = if opts.pending {
+            Population::Awaiting
+        } else {
+            Population::Complete
+        };
         Self {
             items: Vec::new(),
             query: opts.query,
@@ -123,9 +165,8 @@ impl PickerSession {
             on_select,
             prompt: opts.prompt,
             token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
-            source: None,
-            pending: opts.pending,
-            on_query_change: opts.on_query_change,
+            population,
+            mode,
         }
     }
 
@@ -137,12 +178,22 @@ impl PickerSession {
         &self.prompt
     }
 
-    /// Whether results are still arriving: either `picker!`'s `#:pending`
-    /// hasn't been cleared by a matching `push` yet, or a streaming
-    /// `picker-source-spawn!` source is still attached (cleared once its
-    /// reader disconnects and the caller consumes it via `take_source`).
+    /// Whether results are still arriving — `population` is anything but
+    /// `Complete`.
     pub(crate) fn is_pending(&self) -> bool {
-        self.pending || self.source.is_some()
+        !matches!(self.population, Population::Complete)
+    }
+
+    /// Clears `#:pending` on an applied batch — the `Awaiting` half of
+    /// "still populating" ends the moment real results (even an empty
+    /// batch) land. Leaves `Streaming` untouched: a source drains lines
+    /// into `push` continuously, and the source itself — not the arrival of
+    /// one particular batch — is what decides when populating ends (its
+    /// disconnect, handled by `take_source`).
+    fn batch_arrived(&mut self) {
+        if matches!(self.population, Population::Awaiting) {
+            self.population = Population::Complete;
+        }
     }
 
     /// Seeds the initial item list `picker!` was given. An empty seed is
@@ -170,7 +221,7 @@ impl PickerSession {
         if token != self.token {
             return false;
         }
-        self.pending = false;
+        self.batch_arrived();
         self.items.extend(items);
         self.rerank_keeping_selection();
         true
@@ -189,7 +240,7 @@ impl PickerSession {
         if token != self.token {
             return false;
         }
-        self.pending = false;
+        self.batch_arrived();
         self.items = items;
         self.rerank();
         true
@@ -203,26 +254,40 @@ impl PickerSession {
     /// outgoing source itself. `ok_exit_codes` is `drain_picker_source`'s
     /// allowlist for *this* source, e.g. `rg`'s exit `1` ("no matches").
     pub(super) fn attach_source(&mut self, source: SpawnedLineSource, ok_exit_codes: Vec<i32>) {
-        self.source = Some(AttachedSource {
+        self.population = Population::Streaming(AttachedSource {
             source,
             ok_exit_codes,
         });
     }
 
     pub(crate) fn source_mut(&mut self) -> Option<&mut SpawnedLineSource> {
-        self.source.as_mut().map(|attached| &mut attached.source)
+        match &mut self.population {
+            Population::Streaming(attached) => Some(&mut attached.source),
+            _ => None,
+        }
     }
 
     /// Takes the source out along with its exit-code allowlist (e.g. once
     /// its reader has disconnected and the caller wants to consume it via
-    /// `SpawnedLineSource::finish`).
+    /// `SpawnedLineSource::finish`), leaving `population` at `Complete` —
+    /// except when it wasn't `Streaming` to begin with (`Awaiting`, with no
+    /// source ever attached, or an already-`Complete` session): a `stop`
+    /// call racing a source that was never there, or that already finished,
+    /// must not fabricate a "done" transition, so the prior state is put
+    /// back untouched and this returns `None`.
     pub(crate) fn take_source(&mut self) -> Option<(SpawnedLineSource, Vec<i32>)> {
-        self.source.take().map(|a| (a.source, a.ok_exit_codes))
+        match std::mem::replace(&mut self.population, Population::Complete) {
+            Population::Streaming(attached) => Some((attached.source, attached.ok_exit_codes)),
+            other => {
+                self.population = other;
+                None
+            }
+        }
     }
 
     #[cfg(all(test, unix))]
     pub(crate) fn has_source(&self) -> bool {
-        self.source.is_some()
+        matches!(self.population, Population::Streaming(_))
     }
 
     /// The attached source's OS pid, for tests that verify kill-on-close
@@ -230,7 +295,10 @@ impl PickerSession {
     /// state.
     #[cfg(all(test, unix))]
     pub(crate) fn source_pid_for_test(&self) -> Option<u32> {
-        self.source.as_ref().map(|a| a.source.pid())
+        match &self.population {
+            Population::Streaming(attached) => Some(attached.source.pid()),
+            _ => None,
+        }
     }
 
     /// Polls the attached source's own OS exit status directly, bypassing
@@ -239,7 +307,10 @@ impl PickerSession {
     /// disconnect-and-report drain path it's racing against.
     #[cfg(all(test, unix))]
     pub(crate) fn source_has_exited_for_test(&self) -> bool {
-        self.source.as_ref().is_some_and(|a| a.source.has_exited())
+        match &self.population {
+            Population::Streaming(attached) => attached.source.has_exited(),
+            _ => false,
+        }
     }
 
     /// Appends one `char` to the query and requeries. Key events deliver
@@ -259,8 +330,8 @@ impl PickerSession {
     #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
     pub(crate) fn insert_char(&mut self, ch: char) -> Option<SteelVal> {
         self.query.push(ch);
-        self.requery();
-        self.on_query_change.clone()
+        self.rerank();
+        self.mode.on_query_change()
     }
 
     /// Removes the trailing grapheme cluster (not merely the last `char`) so
@@ -278,17 +349,17 @@ impl PickerSession {
             &self.query,
             self.query.len(),
         ));
-        self.requery();
-        self.on_query_change.clone()
+        self.rerank();
+        self.mode.on_query_change()
     }
 
-    /// Replaces the query wholesale and requeries — test-only: production code
+    /// Replaces the query wholesale and reranks — test-only: production code
     /// only ever changes the query one grapheme at a time, through
     /// `insert_char`/`pop_grapheme`.
     #[cfg(test)]
     fn set_query(&mut self, query: String) {
         self.query = query;
-        self.requery();
+        self.rerank();
     }
 
     /// Moves `selected` by `delta`, saturating at both ends of `filtered`
@@ -362,23 +433,27 @@ impl PickerSession {
     }
 
     /// Rebuilds `filtered` from `items`/`query` — the ranking-only half
-    /// shared by [`rerank`](Self::rerank),
-    /// [`requery`](Self::requery) (for a non-live session), and
-    /// [`rerank_keeping_selection`](Self::rerank_keeping_selection); none of
-    /// them touch `selected`/`scroll` itself.
+    /// shared by [`rerank`](Self::rerank) (used directly by `replace`,
+    /// `set_query`, `insert_char`, and `pop_grapheme` — a live session
+    /// recomputes the same identity permutation on every keystroke rather
+    /// than skip the call, since the result is a pure function of
+    /// `items.len()` either way and a separate skip-path bought nothing
+    /// observable) and
+    /// [`rerank_keeping_selection`](Self::rerank_keeping_selection); neither
+    /// touches `selected`/`scroll` itself.
     fn rebuild_filtered(&mut self) {
-        // `on_query_change.is_some()` (a live session) skips the local
-        // fuzzy filter at any query, separately from an empty query, which
-        // always takes this branch regardless of liveness — both land here
-        // in insertion order by construction: an empty query avoids relying
-        // on nucleo's (undocumented) all-equal-score behavior and skips
-        // scoring entirely on the dominant streaming-ingest path (empty
-        // query while a spawned source drains batches); a live session
-        // skips it because the query already selects what the source
-        // returns (e.g. `rg`'s own regex match), so a second fuzzy pass
-        // over already-matched rows would drop legitimate non-fuzzy hits —
-        // `foo.*bar` fuzzy-matching almost nothing it just found.
-        if self.query.is_empty() || self.on_query_change.is_some() {
+        // `mode.is_live()` skips the local fuzzy filter at any query,
+        // separately from an empty query, which always takes this branch
+        // regardless of liveness — both land here in insertion order by
+        // construction: an empty query avoids relying on nucleo's
+        // (undocumented) all-equal-score behavior and skips scoring
+        // entirely on the dominant streaming-ingest path (empty query while
+        // a spawned source drains batches); a live session skips it because
+        // the query already selects what the source returns (e.g. `rg`'s
+        // own regex match), so a second fuzzy pass over already-matched
+        // rows would drop legitimate non-fuzzy hits — `foo.*bar`
+        // fuzzy-matching almost nothing it just found.
+        if self.query.is_empty() || self.mode.is_live() {
             self.filtered.clear();
             self.filtered.extend(0..self.items.len() as u32);
         } else {
@@ -416,20 +491,6 @@ impl PickerSession {
     /// `filtered` no longer names anything reliable.
     fn rerank(&mut self) {
         self.rebuild_filtered();
-        self.reset_cursor();
-    }
-
-    /// Resets the cursor for a query change (`set_query`/`insert_char`/
-    /// `pop_grapheme`), rebuilding `filtered` only for a non-live session.
-    /// A live session's `filtered` is the identity permutation over `items`
-    /// (see `rebuild_filtered`'s doc) — a function of `items.len()` alone —
-    /// so with `items` unchanged by a query keystroke, rebuilding it would
-    /// recompute the same vec it already holds. `items` only changes once
-    /// the query-change callback's requery lands, via `replace`.
-    fn requery(&mut self) {
-        if self.on_query_change.is_none() {
-            self.rebuild_filtered();
-        }
         self.reset_cursor();
     }
 
@@ -741,11 +802,12 @@ mod tests {
     }
 
     #[test]
-    fn live_session_insert_char_skips_the_rebuild_but_still_resets_the_cursor() {
-        // `requery` skips `rebuild_filtered` for a live session (see its
-        // doc) — this proves the skip is invisible: the ranked order
-        // survives untouched, and the cursor reset that would ride along
-        // with a real rebuild still happens.
+    fn live_session_insert_char_keeps_insertion_order_and_still_resets_the_cursor() {
+        // A live session's `rebuild_filtered` always recomputes the same
+        // identity permutation over `items` (see its doc) — this proves the
+        // recompute is invisible: the ranked order survives untouched, and
+        // the cursor reset rides along exactly as it would for a real
+        // rebuild.
         let mut s = open_live();
         let token = s.token();
         s.push(token, items(&["b", "a", "c"]));
