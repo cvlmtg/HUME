@@ -18,7 +18,6 @@ fn marker(name: &str) -> SteelVal {
 
 fn open_test_picker_with_callback(ed: &mut Editor, items: &[&str], callback: SteelVal) {
     let mut session = PickerSession::new(callback, PickerOpts::default());
-    let token = session.token();
     let picker_items: Vec<PickerItem> = items
         .iter()
         .map(|s| PickerItem {
@@ -26,7 +25,7 @@ fn open_test_picker_with_callback(ed: &mut Editor, items: &[&str], callback: Ste
             payload: SteelVal::StringV((*s).into()),
         })
         .collect();
-    session.push(token, picker_items);
+    session.push(picker_items);
     picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
 }
 
@@ -42,7 +41,6 @@ fn open_test_picker_with_prompt(ed: &mut Editor, items: &[&str], prompt: &str) {
             ..Default::default()
         },
     );
-    let token = session.token();
     let picker_items: Vec<PickerItem> = items
         .iter()
         .map(|s| PickerItem {
@@ -50,7 +48,7 @@ fn open_test_picker_with_prompt(ed: &mut Editor, items: &[&str], prompt: &str) {
             payload: SteelVal::StringV((*s).into()),
         })
         .collect();
-    session.push(token, picker_items);
+    session.push(picker_items);
     picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
 }
 
@@ -344,6 +342,66 @@ fn open_over_open_picker_fires_old_callback_with_false() {
     let (proc, args) = pending_calls(&ed)[1];
     assert_eq!(callback_name(proc), "second");
     assert_eq!(args, &vec![SteelVal::BoolV(false)]);
+}
+
+// ── Token guard (session_for_token) ─────────────────────────────────────────
+
+#[test]
+fn session_for_token_finds_the_open_session_by_matching_token() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_picker(&mut ed, &["a"]);
+    let token = ed.state.config.picker.as_ref().unwrap().token();
+    assert!(picker::session_for_token(&mut ed.state, token).is_some());
+}
+
+#[test]
+fn session_for_token_rejects_a_stale_token() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_picker(&mut ed, &["a"]);
+    let token = ed.state.config.picker.as_ref().unwrap().token();
+    assert!(picker::session_for_token(&mut ed.state, token + 1).is_none());
+}
+
+#[test]
+fn session_for_token_is_none_with_no_picker_open() {
+    let mut ed = editor_from("-[a]>bc\n");
+    assert!(picker::session_for_token(&mut ed.state, 1).is_none());
+}
+
+#[test]
+fn picker_feed_rejects_a_stale_token_and_leaves_items_and_pending_untouched() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::{PickerFeedMode, PickerOpts, UiHost};
+
+    let mut ed = editor_from("-[a]>bc\n");
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let token = host
+        .open_picker(
+            vec![],
+            SteelVal::Void,
+            PickerOpts {
+                pending: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    assert!(!host.picker_feed(
+        token + 1,
+        vec![("x".to_string(), SteelVal::StringV("p".into()))],
+        PickerFeedMode::Append,
+    ));
+    let session = ed.state.config.picker.as_ref().unwrap();
+    assert_eq!(
+        session.total_len(),
+        0,
+        "a stale-token feed must not touch the item list"
+    );
+    assert!(
+        session.is_pending(),
+        "a rejected feed must not clear pending — the real batch hasn't arrived yet"
+    );
 }
 
 // ── Intercept ordering ───────────────────────────────────────────────────────

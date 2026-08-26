@@ -869,6 +869,13 @@ pub struct PickerSourceOpts {
     pub ok_exit_codes: Vec<i32>,
 }
 
+/// How [`UiHost::picker_feed`] merges a batch into the open picker's item
+/// list — `picker-push!` (`Append`) vs `picker-replace!` (`Replace`).
+pub enum PickerFeedMode {
+    Append,
+    Replace,
+}
+
 /// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer
 /// prompt — accessed through [`EditorHost::ui`]. `None` from that accessor
 /// means "no UI surface to drive" (test stubs); every method here is
@@ -972,20 +979,24 @@ pub trait UiHost {
         opts: PickerOpts,
     ) -> Result<u64, String>;
 
-    /// `(picker-push! token items)` — appends `items` to the open picker's
-    /// store and reranks, but only if `token` matches the session the
-    /// caller opened (returned by `open_picker`). A stale token — the
+    /// `(picker-push! token items)` / `(picker-replace! token items)` —
+    /// appends to, or wholesale replaces, the open picker's item list and
+    /// reranks, but only if `token` matches the session the caller opened
+    /// (returned by `open_picker`). One method for both: the token guard
+    /// and "no open picker"/stale-token no-op contract are identical, only
+    /// the merge policy ([`PickerFeedMode`]) differs. A stale token — the
     /// picker was closed or replaced since — is expected-normal for an
     /// async source racing the user, so it is a silent no-op, not an error:
-    /// returns whether the push was applied.
-    fn picker_push(&mut self, token: u64, items: Vec<(String, steel::rvals::SteelVal)>) -> bool;
-
-    /// `(picker-replace! token items)` — replaces the open picker's entire
-    /// item list with `items` and reranks, same token-guard/return contract
-    /// as `picker_push`. The requery half of a live source: a caller with
-    /// `#:on-query-change` clears out the previous pattern's rows before
-    /// spawning the new search, since items are otherwise append-only.
-    fn picker_replace(&mut self, token: u64, items: Vec<(String, steel::rvals::SteelVal)>) -> bool;
+    /// returns whether the feed was applied. `Replace` is the requery half
+    /// of a live source: a caller clears out the previous pattern's rows
+    /// before spawning the new search, since items are otherwise
+    /// append-only.
+    fn picker_feed(
+        &mut self,
+        token: u64,
+        items: Vec<(String, steel::rvals::SteelVal)>,
+        mode: PickerFeedMode,
+    ) -> bool;
 
     /// `(picker-source-spawn! token cmd args #:cwd dir #:nul flag
     /// #:ok-exit-codes '(0))` — attaches a streaming external-command

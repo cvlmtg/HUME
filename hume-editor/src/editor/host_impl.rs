@@ -25,8 +25,8 @@ use crate::ui::statusline::StatusLineConfig;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
     DiffHost, DiffHunk, EditHost, EditorHost, EventHost, LanguageHost, LocationDisplay, LspHost,
-    OptionValue, OutputHost, PickerOpts, PickerSourceOpts, PopupKind, SettingsHost, TimerHost,
-    UiHost, WordDiffHunk,
+    OptionValue, OutputHost, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, SettingsHost,
+    TimerHost, UiHost, WordDiffHunk,
 };
 
 use super::{EditorState, Severity};
@@ -1453,18 +1453,21 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         Ok(token)
     }
 
-    fn picker_push(&mut self, token: u64, items: Vec<(String, steel::rvals::SteelVal)>) -> bool {
-        let Some(session) = self.state.config.picker.as_mut() else {
+    fn picker_feed(
+        &mut self,
+        token: u64,
+        items: Vec<(String, steel::rvals::SteelVal)>,
+        mode: PickerFeedMode,
+    ) -> bool {
+        let Some(session) = crate::editor::picker::session_for_token(self.state, token) else {
             return false;
         };
-        session.push(token, crate::editor::picker::picker_items(items))
-    }
-
-    fn picker_replace(&mut self, token: u64, items: Vec<(String, steel::rvals::SteelVal)>) -> bool {
-        let Some(session) = self.state.config.picker.as_mut() else {
-            return false;
-        };
-        session.replace(token, crate::editor::picker::picker_items(items))
+        let items = crate::editor::picker::picker_items(items);
+        match mode {
+            PickerFeedMode::Append => session.push(items),
+            PickerFeedMode::Replace => session.replace(items),
+        }
+        true
     }
 
     fn picker_source_spawn(
@@ -1482,13 +1485,10 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     }
 
     fn picker_close(&mut self, token: Option<u64>) {
-        if let Some(token) = token {
-            let Some(session) = self.state.config.picker.as_ref() else {
-                return;
-            };
-            if session.token() != token {
-                return;
-            }
+        if let Some(token) = token
+            && crate::editor::picker::session_for_token(self.state, token).is_none()
+        {
+            return;
         }
         crate::editor::picker::close_picker(self.state, steel::rvals::SteelVal::BoolV(false));
     }

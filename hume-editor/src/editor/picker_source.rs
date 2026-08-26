@@ -4,9 +4,10 @@
 //! streamed lines and the one place a spawned source's exit gets reported.
 //! Also owns spawning/stopping a source (`spawn_source`/`stop_source`,
 //! `EditorHostImpl`'s delegates for `picker-source-spawn!`/
-//! `picker-source-stop!`) — the token guard and the "report the outgoing
-//! source before attaching a new one" ordering rule live beside the
-//! exit-reporting they both feed, not in the host-trait translation layer.
+//! `picker-source-stop!`), guarded by `picker::session_for_token` like every
+//! other token-scoped picker mutation — the "report the outgoing source
+//! before attaching a new one" ordering rule lives here, beside the
+//! exit-reporting it feeds, not in the host-trait translation layer.
 
 use std::sync::Arc;
 
@@ -15,19 +16,8 @@ use hume_scripting::host::PickerSourceOpts;
 use steel::rvals::SteelVal;
 
 use super::message_log::Severity;
-use super::picker::PickerItem;
+use super::picker::{PickerItem, session_for_token};
 use super::{Editor, EditorState};
-
-/// Whether the open picker's token is `token` — the shared guard for every
-/// token-scoped `UiHost` picker method (`picker_source_spawn`,
-/// `picker_source_stop`, `picker_close`).
-fn session_token_matches(state: &EditorState, token: u64) -> bool {
-    state
-        .config
-        .picker
-        .as_ref()
-        .is_some_and(|session| session.token() == token)
-}
 
 /// `EditorHostImpl::picker_source_spawn`'s body: attaches a streaming
 /// external-command source to the picker named by `token`. `Ok(false)` — a
@@ -47,7 +37,7 @@ pub(super) fn spawn_source(
     args: Vec<String>,
     opts: PickerSourceOpts,
 ) -> Result<bool, String> {
-    if !session_token_matches(state, token) {
+    if session_for_token(state, token).is_none() {
         return Ok(false);
     }
     let delimiter = if opts.nul { b'\0' } else { b'\n' };
@@ -60,10 +50,7 @@ pub(super) fn spawn_source(
     )
     .map_err(|e| format!("cannot run '{cmd}': {e}"))?;
     take_and_report_outgoing_source(state);
-    state
-        .config
-        .picker
-        .as_mut()
+    session_for_token(state, token)
         .expect("checked Some above")
         .attach_source(source, opts.ok_exit_codes);
     Ok(true)
@@ -73,7 +60,7 @@ pub(super) fn spawn_source(
 /// already exited) the picker's attached source, if any, without touching
 /// the item list. Same expected-normal-race contract as `spawn_source`.
 pub(super) fn stop_source(state: &mut EditorState, token: u64) -> bool {
-    if !session_token_matches(state, token) {
+    if session_for_token(state, token).is_none() {
         return false;
     }
     take_and_report_outgoing_source(state);
@@ -111,8 +98,7 @@ impl Editor {
             })
             .collect();
         if !items.is_empty() {
-            let token = session.token();
-            session.push(token, items);
+            session.push(items);
         }
 
         let exit = disconnected.then(|| {

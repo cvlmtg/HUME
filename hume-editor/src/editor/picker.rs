@@ -202,14 +202,14 @@ impl PickerSession {
     /// `pending` because a populated list needs no "still arriving" marker.
     pub(crate) fn seed(&mut self, items: Vec<PickerItem>) {
         if !items.is_empty() {
-            self.push(self.token, items);
+            self.push(items);
         }
     }
 
-    /// Appends `items` and reranks, but only if `token` matches this
-    /// session's token. A mismatch is expected-normal (a late batch from a
-    /// picker the user already closed or replaced) — silent no-op, not an
-    /// error. Returns whether the push was applied.
+    /// Appends `items` and reranks. No token guard here — callers reach a
+    /// `&mut PickerSession` only through [`session_for_token`], the shared
+    /// guard for every token-scoped mutation, so a stale token has already
+    /// been rejected before this runs.
     ///
     /// Reranks via [`rerank_keeping_selection`](Self::rerank_keeping_selection),
     /// not a hard reset: a streaming source pushes once per frame, and
@@ -217,33 +217,26 @@ impl PickerSession {
     /// is actively scrolling through unnavigable. Safe here specifically
     /// because `push` only ever appends — every index a pre-push
     /// `filtered` held still names the same item afterward.
-    pub(crate) fn push(&mut self, token: u64, items: Vec<PickerItem>) -> bool {
-        if token != self.token {
-            return false;
-        }
+    pub(crate) fn push(&mut self, items: Vec<PickerItem>) {
         self.batch_arrived();
         self.items.extend(items);
         self.rerank_keeping_selection();
-        true
     }
 
-    /// Replaces the item list wholesale and reranks — same token-guard and
-    /// `pending`-clearing contract as `push`, but always lands on row `0`
-    /// (`rerank`, not `push`'s keep-the-same-item `rerank_keeping_selection`):
-    /// every index the pre-replace `filtered` held names a *different* item
-    /// (or nothing) once `items` is cleared, so there is no selection worth
-    /// trying to preserve. Items are otherwise append-only; this is the only
-    /// way to drop stale rows. The requery half of a live source: a caller
-    /// with `#:on-query-change` clears the previous pattern's rows before
+    /// Replaces the item list wholesale and reranks — same
+    /// [`session_for_token`]-guarded and `pending`-clearing contract as
+    /// `push`, but always lands on row `0` (`rerank`, not `push`'s
+    /// keep-the-same-item `rerank_keeping_selection`): every index the
+    /// pre-replace `filtered` held names a *different* item (or nothing)
+    /// once `items` is cleared, so there is no selection worth trying to
+    /// preserve. Items are otherwise append-only; this is the only way to
+    /// drop stale rows. The requery half of a live source: a caller with
+    /// `#:on-query-change` clears the previous pattern's rows before
     /// spawning the new search.
-    pub(crate) fn replace(&mut self, token: u64, items: Vec<PickerItem>) -> bool {
-        if token != self.token {
-            return false;
-        }
+    pub(crate) fn replace(&mut self, items: Vec<PickerItem>) {
         self.batch_arrived();
         self.items = items;
         self.rerank();
-        true
     }
 
     /// Attaches a spawned streaming source. A source already attached is
@@ -477,10 +470,11 @@ impl PickerSession {
         debug_assert!(self.filtered.len() <= self.items.len());
     }
 
-    /// Resets `selected`/`scroll` to `0` — the half of `rerank`/`requery`
-    /// that applies regardless of whether `rebuild_filtered` ran: there is no
-    /// old selection worth trying to preserve once the ranking (or the query
-    /// driving it) has changed meaning.
+    /// Resets `selected`/`scroll` to `0` — used directly by `rerank`, and by
+    /// `rerank_keeping_selection`'s fallback when the previously selected
+    /// item didn't survive the rebuild: there is no old selection worth
+    /// trying to preserve once the ranking (or the query driving it) has
+    /// changed meaning.
     fn reset_cursor(&mut self) {
         self.selected = 0;
         self.scroll = 0;
@@ -519,6 +513,25 @@ impl PickerSession {
             None => self.reset_cursor(),
         }
     }
+}
+
+/// The open picker's session, but only if its token is `token` — the shared
+/// guard for every token-scoped picker mutation (`picker-push!`,
+/// `picker-replace!`, `picker-source-spawn!`, `picker-source-stop!`, a
+/// scoped `picker-close!`). A mismatch, or no picker open at all, is
+/// expected-normal — a late callback racing a picker the user already
+/// closed or replaced — so callers treat `None` as a silent no-op, never an
+/// error; none of `PickerSession`'s own mutators re-check the token
+/// themselves once a caller has reached one through here.
+pub(crate) fn session_for_token(
+    state: &mut super::EditorState,
+    token: u64,
+) -> Option<&mut PickerSession> {
+    state
+        .config
+        .picker
+        .as_mut()
+        .filter(|session| session.token() == token)
 }
 
 /// Single open chokepoint for the picker — `hume-scripting`'s `picker!`
@@ -649,8 +662,7 @@ mod tests {
     fn pending_flag_set_on_open_and_cleared_by_a_matching_push() {
         let mut s = open_pending();
         assert!(s.is_pending());
-        let token = s.token();
-        assert!(s.push(token, items(&["a"])));
+        s.push(items(&["a"]));
         assert!(!s.is_pending(), "a matching push must clear pending");
     }
 
@@ -659,20 +671,8 @@ mod tests {
         // A clean `git status` still means the job finished — pending must
         // not stay stuck just because there was nothing to add.
         let mut s = open_pending();
-        let token = s.token();
-        assert!(s.push(token, items(&[])));
+        s.push(items(&[]));
         assert!(!s.is_pending());
-    }
-
-    #[test]
-    fn pending_flag_survives_a_stale_token_push() {
-        let mut s = open_pending();
-        let stale = s.token().wrapping_add(1);
-        assert!(!s.push(stale, items(&["x"])));
-        assert!(
-            s.is_pending(),
-            "a rejected push must not clear pending — the real batch hasn't arrived yet"
-        );
     }
 
     #[test]
@@ -706,36 +706,22 @@ mod tests {
     #[test]
     fn push_with_empty_query_keeps_insertion_order() {
         let mut s = open();
-        let token = s.token();
-        assert!(s.push(token, items(&["b", "a", "c"])));
+        s.push(items(&["b", "a", "c"]));
         assert_eq!(window_vec(&s, 10), vec!["b", "a", "c"]);
     }
 
     #[test]
     fn second_push_appends_after_first() {
         let mut s = open();
-        let token = s.token();
-        s.push(token, items(&["a", "b"]));
-        s.push(token, items(&["c", "d"]));
+        s.push(items(&["a", "b"]));
+        s.push(items(&["c", "d"]));
         assert_eq!(window_vec(&s, 10), vec!["a", "b", "c", "d"]);
-    }
-
-    #[test]
-    fn stale_token_push_is_rejected() {
-        let mut s = open();
-        let real_token = s.token();
-        let wrong_token = real_token.wrapping_add(1);
-        assert!(!s.push(wrong_token, items(&["x"])));
-        assert_eq!(s.total_len(), 0);
-        assert!(window_vec(&s, 10).is_empty());
-        assert_eq!(s.selected(), 0);
     }
 
     #[test]
     fn set_query_filters_non_matches() {
         let mut s = open();
-        let token = s.token();
-        s.push(token, items(&["foo", "bar"]));
+        s.push(items(&["foo", "bar"]));
         s.set_query("f".to_string());
         assert_eq!(window_vec(&s, 10), vec!["foo"]);
     }
@@ -753,40 +739,23 @@ mod tests {
         // Applied through the same `rerank` a later push would use — a
         // batch arriving after open is filtered by the prefilled query
         // immediately, not just once a keystroke re-triggers ranking.
-        let token = s.token();
-        s.push(token, items(&["foo", "bar"]));
+        s.push(items(&["foo", "bar"]));
         assert_eq!(window_vec(&s, 10), vec!["foo"]);
     }
 
     #[test]
     fn replace_swaps_the_item_list_instead_of_appending() {
         let mut s = open();
-        let token = s.token();
-        s.push(token, items(&["a", "b"]));
-        assert!(s.replace(token, items(&["c"])));
+        s.push(items(&["a", "b"]));
+        s.replace(items(&["c"]));
         assert_eq!(window_vec(&s, 10), vec!["c"]);
         assert_eq!(s.total_len(), 1);
     }
 
     #[test]
-    fn stale_token_replace_is_rejected() {
-        let mut s = open();
-        let real_token = s.token();
-        s.push(real_token, items(&["a"]));
-        let wrong_token = real_token.wrapping_add(1);
-        assert!(!s.replace(wrong_token, items(&["z"])));
-        assert_eq!(
-            window_vec(&s, 10),
-            vec!["a"],
-            "a stale-token replace must leave the existing items untouched"
-        );
-    }
-
-    #[test]
     fn replace_clears_pending_even_with_an_empty_batch() {
         let mut s = open_pending();
-        let token = s.token();
-        assert!(s.replace(token, items(&[])));
+        s.replace(items(&[]));
         assert!(!s.is_pending());
     }
 
@@ -796,8 +765,7 @@ mod tests {
         // scoring entirely, the same branch an empty query already takes.
         let mut s = open_live();
         s.set_query("zzz-does-not-fuzzy-match-anything".to_string());
-        let token = s.token();
-        s.push(token, items(&["b", "a", "c"]));
+        s.push(items(&["b", "a", "c"]));
         assert_eq!(window_vec(&s, 10), vec!["b", "a", "c"]);
     }
 
@@ -809,8 +777,7 @@ mod tests {
         // the cursor reset rides along exactly as it would for a real
         // rebuild.
         let mut s = open_live();
-        let token = s.token();
-        s.push(token, items(&["b", "a", "c"]));
+        s.push(items(&["b", "a", "c"]));
         s.move_selection(2, 3);
         assert_eq!(s.selected(), 2);
         let before: Vec<String> = window_vec(&s, 10).into_iter().map(str::to_string).collect();
@@ -827,8 +794,7 @@ mod tests {
         // query happening to fail to fuzzy-match anyway.
         let mut s = open();
         s.set_query("zzz-does-not-fuzzy-match-anything".to_string());
-        let token = s.token();
-        s.push(token, items(&["b", "a", "c"]));
+        s.push(items(&["b", "a", "c"]));
         assert!(window_vec(&s, 10).is_empty());
     }
 
@@ -846,9 +812,8 @@ mod tests {
     #[test]
     fn better_match_ranks_first_regardless_of_insertion() {
         let mut s = open();
-        let token = s.token();
         // Scattered subsequence pushed before the boundary match.
-        s.push(token, items(&["fxxbxx", "foo/bar"]));
+        s.push(items(&["fxxbxx", "foo/bar"]));
         s.set_query("fb".to_string());
         assert_eq!(window_vec(&s, 10), vec!["foo/bar", "fxxbxx"]);
     }
@@ -856,7 +821,6 @@ mod tests {
     #[test]
     fn equal_scores_tie_break_by_insertion_order() {
         let mut s = open();
-        let token = s.token();
         // Two score tiers (lower-scoring "fxxbxx" scattered matches, then
         // higher-scoring "foo/bar" boundary matches), pushed low-score tier
         // first — so the pre-sort array is not already in the target
@@ -878,7 +842,7 @@ mod tests {
                 payload: SteelVal::StringV(format!("high{i}").into()),
             });
         }
-        s.push(token, tagged);
+        s.push(tagged);
         s.set_query("fb".to_string());
         assert_eq!(s.matched_len(), (2 * TIER) as usize);
         for i in 0..TIER {
@@ -900,11 +864,10 @@ mod tests {
         // picker unnavigable, so a plain append must keep pointing at the
         // same item instead of resetting.
         let mut s = open();
-        let token = s.token();
-        s.push(token, items(&["a", "b", "c", "d", "e"]));
+        s.push(items(&["a", "b", "c", "d", "e"]));
         s.move_selection(3, 2);
         assert_eq!(payload_str(s.selected_payload().expect("has a match")), "d");
-        s.push(token, items(&["f"]));
+        s.push(items(&["f"]));
         assert_eq!(
             payload_str(s.selected_payload().expect("has a match")),
             "d",
@@ -918,11 +881,10 @@ mod tests {
         // selection's index cannot mean the same thing afterward, so it must
         // always land back on row 0, never a same-index coincidence.
         let mut s = open();
-        let token = s.token();
-        s.push(token, items(&["a", "b", "c", "d", "e"]));
+        s.push(items(&["a", "b", "c", "d", "e"]));
         s.move_selection(3, 2);
         assert_ne!(s.selected(), 0);
-        assert!(s.replace(token, items(&["x", "y", "z"])));
+        s.replace(items(&["x", "y", "z"]));
         assert_eq!(s.selected(), 0);
         assert_eq!(s.scroll(), 0);
     }
@@ -930,8 +892,7 @@ mod tests {
     #[test]
     fn set_query_resets_selection_and_scroll() {
         let mut s = open();
-        let token = s.token();
-        s.push(token, items(&["apple", "banana", "cherry", "date"]));
+        s.push(items(&["apple", "banana", "cherry", "date"]));
         s.move_selection(2, 2);
         assert_ne!(s.selected(), 0);
         s.set_query("a".to_string());
@@ -942,8 +903,7 @@ mod tests {
     #[test]
     fn widening_query_restores_matches() {
         let mut s = open();
-        let token = s.token();
-        s.push(token, items(&["foo", "bar"]));
+        s.push(items(&["foo", "bar"]));
         let _ = s.insert_char('z');
         assert_eq!(s.matched_len(), 0);
         let _ = s.pop_grapheme();
@@ -976,8 +936,7 @@ mod tests {
     #[test]
     fn move_selection_is_bounded_no_wrap() {
         let mut s = open();
-        let token = s.token();
-        s.push(token, items(&["a", "b", "c"]));
+        s.push(items(&["a", "b", "c"]));
         s.move_selection(-5, 10);
         assert_eq!(s.selected(), 0);
         s.move_selection(10, 10);
@@ -990,11 +949,9 @@ mod tests {
     #[test]
     fn move_selection_scrolls_to_keep_selected_visible() {
         let mut s = open();
-        let token = s.token();
-        s.push(
-            token,
-            items(&["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]),
-        );
+        s.push(items(&[
+            "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+        ]));
         s.move_selection(5, 3);
         assert_eq!(s.selected(), 5);
         assert_eq!(s.scroll(), 3); // 5 + 1 - 3
@@ -1010,8 +967,7 @@ mod tests {
     #[test]
     fn empty_filter_result_is_safe() {
         let mut s = open();
-        let token = s.token();
-        s.push(token, items(&["foo", "bar"]));
+        s.push(items(&["foo", "bar"]));
         s.set_query("zzz".to_string());
         assert_eq!(s.selected(), 0);
         s.move_selection(5, 3); // must not panic
@@ -1023,11 +979,9 @@ mod tests {
     #[test]
     fn window_respects_scroll_and_rows() {
         let mut s = open();
-        let token = s.token();
-        s.push(
-            token,
-            items(&["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]),
-        );
+        s.push(items(&[
+            "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+        ]));
         s.move_selection(6, 3); // scroll becomes 4
         assert_eq!(s.scroll(), 4);
         assert_eq!(window_vec(&s, 3), vec!["4", "5", "6"]);
@@ -1036,8 +990,7 @@ mod tests {
     #[test]
     fn selected_payload_returns_top_ranked_item() {
         let mut s = open();
-        let token = s.token();
-        s.push(token, items(&["fxxbxx", "foo/bar"]));
+        s.push(items(&["fxxbxx", "foo/bar"]));
         s.set_query("fb".to_string());
         assert_eq!(
             payload_str(s.selected_payload().expect("has a match")),

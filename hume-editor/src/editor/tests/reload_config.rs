@@ -587,14 +587,10 @@ fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
         steel::rvals::SteelVal::StringV("cb".into()),
         hume_scripting::host::PickerOpts::default(),
     );
-    let token = session.token();
-    session.push(
-        token,
-        vec![crate::editor::picker::PickerItem {
-            display: "one".to_string(),
-            payload: steel::rvals::SteelVal::StringV("one".into()),
-        }],
-    );
+    session.push(vec![crate::editor::picker::PickerItem {
+        display: "one".to_string(),
+        payload: steel::rvals::SteelVal::StringV("one".into()),
+    }]);
     crate::editor::picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
     assert!(
         ed.state.config.picker.is_some(),

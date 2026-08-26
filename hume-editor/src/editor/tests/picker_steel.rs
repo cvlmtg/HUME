@@ -461,7 +461,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
 #[test]
 fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
     use crate::editor::host_impl::EditorHostImpl;
-    use hume_scripting::host::{PickerOpts, UiHost};
+    use hume_scripting::host::{PickerFeedMode, PickerOpts, UiHost};
 
     let mut ed = editor_from("-[a]>bc\n");
 
@@ -476,7 +476,11 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
     assert!(ed.state.config.picker.is_some());
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    assert!(!host.picker_push(token + 1, vec![("x".to_string(), SteelVal::Void)]));
+    assert!(!host.picker_feed(
+        token + 1,
+        vec![("x".to_string(), SteelVal::Void)],
+        PickerFeedMode::Append
+    ));
     assert_eq!(ed.state.config.picker.as_ref().unwrap().total_len(), 1);
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
