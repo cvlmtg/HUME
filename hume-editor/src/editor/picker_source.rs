@@ -3,11 +3,12 @@
 //! stays a pure store; this is the one place `PickerItem`s get built from
 //! streamed lines and the one place a spawned source's exit gets reported.
 
+use hume_platform::process::line_source::SourceExit;
 use steel::rvals::SteelVal;
 
-use super::Editor;
 use super::message_log::Severity;
 use super::picker::PickerItem;
+use super::{Editor, EditorState};
 
 impl Editor {
     /// Arrival-driven, like the parse worker — no `AsyncSource` impl (see
@@ -52,20 +53,55 @@ impl Editor {
             (cmd, source.finish(), ok_exit_codes)
         });
         // `session` (a borrow of `self.state.config.picker`) is not used past this
-        // point, so `self.report` below can take `&mut self` freely.
+        // point, so `report_source_exit` below can take `&mut self.state` freely.
 
-        if let Some((cmd, exit, ok_exit_codes)) = exit
-            && let Some(status) = exit.status
-            && !status.code().is_some_and(|c| ok_exit_codes.contains(&c))
-        {
-            self.report(
-                Severity::Error,
-                format!(
-                    "{cmd} failed ({}): {}",
-                    hume_platform::process::exit_code_str(status),
-                    exit.stderr.trim()
-                ),
-            );
+        if let Some((cmd, exit, ok_exit_codes)) = exit {
+            report_source_exit(&mut self.state, &cmd, exit, &ok_exit_codes);
         }
     }
+}
+
+/// Reports a spawned source's exit as a message-log error unless its status
+/// code is in `ok_exit_codes` — shared by the natural end-of-stream drain
+/// above and a source taken out early by
+/// [`take_and_report_outgoing_source`], so an exit is reported exactly once
+/// no matter which path notices it.
+fn report_source_exit(state: &mut EditorState, cmd: &str, exit: SourceExit, ok_exit_codes: &[i32]) {
+    let Some(status) = exit.status else {
+        return;
+    };
+    if status.code().is_some_and(|c| ok_exit_codes.contains(&c)) {
+        return;
+    }
+    state.report(
+        Severity::Error,
+        format!(
+            "{cmd} failed ({}): {}",
+            hume_platform::process::exit_code_str(status),
+            exit.stderr.trim()
+        ),
+    );
+}
+
+/// Takes the picker's attached source (if any) out and, if it had already
+/// exited before being superseded by a respawn or explicitly stopped,
+/// reports its exit the same way the natural end-of-stream drain would have.
+/// A source still running is dropped silently: `SpawnedLineSource::drop`
+/// kills it, and the exit status of a deliberate kill is noise, not a
+/// failure worth logging — this is the distinction `has_exited` exists to
+/// draw. Shared by `EditorHostImpl::picker_source_spawn` (re-spawn on the
+/// same token) and `picker_source_stop` (`picker-source-stop!`), so neither
+/// has to duplicate the "was it actually done?" check.
+pub(super) fn take_and_report_outgoing_source(state: &mut EditorState) {
+    let Some(session) = state.config.picker.as_mut() else {
+        return;
+    };
+    let Some((source, ok_exit_codes)) = session.take_source() else {
+        return;
+    };
+    if !source.has_exited() {
+        return;
+    }
+    let cmd = source.cmd().to_string();
+    report_source_exit(state, &cmd, source.finish(), &ok_exit_codes);
 }

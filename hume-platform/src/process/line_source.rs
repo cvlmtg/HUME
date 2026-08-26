@@ -180,6 +180,16 @@ impl SpawnedLineSource {
         self.child.id()
     }
 
+    /// Whether the child has already exited, without reaping it — a
+    /// non-blocking peek used to decide whether a source being superseded or
+    /// explicitly stopped (as opposed to draining to a natural EOF) has an
+    /// exit worth reporting. An `Err` from the underlying `try_wait` (rare)
+    /// reads as "not exited" — safer than reporting an exit that may not
+    /// have happened.
+    pub fn has_exited(&self) -> bool {
+        matches!(self.child.try_wait(), Ok(Some(_)))
+    }
+
     /// Drains every batch of lines queued since the last call. The returned
     /// bool is whether the reader thread has disconnected (stdout EOF or a
     /// read error) — once true, call [`finish`](Self::finish) to reap the

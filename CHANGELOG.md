@@ -9,6 +9,7 @@
 - `picker!` gains `#:query` (prefills the input line) and `#:on-query-change` (fires with the new query on every keystroke that changes it) for live-requery pickers — a live grep, say, that re-runs its source per pattern instead of only locally filtering already-fetched rows. A live session (`#:on-query-change` set) also disables the picker's own fuzzy filter, since the query already selects what the source returns.
 - New `picker-replace!`, `picker-push!`'s sibling: replaces the open picker's item list instead of appending to it — the requery half of a live source, which must drop the previous pattern's rows before showing the new ones.
 - `picker-source-spawn!` gains `#:ok-exit-codes` (default `'(0)`): exit codes in the list are not reported as a failure, for a spawned command where a nonzero exit is a normal outcome rather than an error (e.g. `rg` exiting `1` for "no matches").
+- New `picker-source-stop!` stops the open picker's attached streaming source, if any, without touching the item list — the missing half of `picker-replace!` for a live requery whose new query has nothing to spawn a replacement source for.
 
 ## [0.11.0] - 2026-08-25
 

@@ -1502,6 +1502,10 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             std::sync::Arc::clone(&self.state.wake),
         )
         .map_err(|e| format!("cannot run '{cmd}': {e}"))?;
+        // Report (rather than silently drop, via `attach_source`'s
+        // `Option`-replace) an outgoing source that had already exited —
+        // see `take_and_report_outgoing_source`'s doc.
+        crate::editor::picker_source::take_and_report_outgoing_source(self.state);
         self.state
             .config
             .picker
@@ -1509,6 +1513,17 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             .expect("checked Some above")
             .attach_source(source, ok_exit_codes);
         Ok(true)
+    }
+
+    fn picker_source_stop(&mut self, token: u64) -> bool {
+        let Some(session) = self.state.config.picker.as_ref() else {
+            return false;
+        };
+        if session.token() != token {
+            return false;
+        }
+        crate::editor::picker_source::take_and_report_outgoing_source(self.state);
+        true
     }
 
     fn picker_close(&mut self, token: Option<u64>) {

@@ -206,6 +206,7 @@
 (#%register-global "picker-push!")
 (#%register-global "picker-replace!")
 (#%register-global "picker-source-spawn!")
+(#%register-global "picker-source-stop!")
 (#%register-global "platform-grammar-ext")
 (#%register-global "plugin-config")
 (#%register-global "prev-paragraph")

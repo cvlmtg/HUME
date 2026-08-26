@@ -970,7 +970,11 @@ pub trait UiHost {
     /// lines flow directly into the store, never through Steel. Replaces
     /// (killing) any source already attached to the same session — a
     /// second spawn is a re-spawn, not a second concurrent source, which is
-    /// also how a live source re-runs per query change.
+    /// also how a live source re-runs per query change. If the outgoing
+    /// source had already exited, its exit is reported exactly as it would
+    /// have been had it disconnected on its own — a re-spawn must not
+    /// silence a genuine failure just because a newer search superseded it
+    /// before the drain got to it.
     ///
     /// `ok_exit_codes`: exit codes that must not be logged as a failure —
     /// e.g. `rg` exits `1` on "no matches", which is a normal outcome for a
@@ -989,6 +993,18 @@ pub trait UiHost {
         nul: bool,
         ok_exit_codes: Vec<i32>,
     ) -> Result<bool, String>;
+
+    /// `(picker-source-stop! token)` — stops the open picker's attached
+    /// streaming source, if any, without touching the item list.
+    /// `picker-replace!` can clear stale rows but has no way to silence the
+    /// search that produced them; this is that missing half, for a live
+    /// requery whose new query has nothing to spawn a replacement source
+    /// for (e.g. backspacing to an empty pattern). Same
+    /// expected-normal-race contract as `picker_push`: returns whether
+    /// `token` matched the open session, regardless of whether a source was
+    /// actually attached. Reports the outgoing source's exit if it had
+    /// already exited, same as a re-spawn via `picker_source_spawn`.
+    fn picker_source_stop(&mut self, token: u64) -> bool;
 
     /// `(picker-close! #:token [token #f])` — ends the open picker, if any,
     /// firing its `on-select` with `#f` (unlike `close-menu!`/

@@ -214,6 +214,15 @@ impl PickerSession {
         self.source.as_ref().map(|a| a.source.pid())
     }
 
+    /// Polls the attached source's own OS exit status directly, bypassing
+    /// `drain_picker_source` entirely — for a test that must observe a
+    /// child having already exited without also triggering the ordinary
+    /// disconnect-and-report drain path it's racing against.
+    #[cfg(all(test, unix))]
+    pub(crate) fn source_has_exited_for_test(&self) -> bool {
+        self.source.as_ref().is_some_and(|a| a.source.has_exited())
+    }
+
     /// Appends one `char` to the query and reranks. Key events deliver
     /// printable input one `char` at a time, including combining marks,
     /// which simply extend the trailing grapheme cluster.

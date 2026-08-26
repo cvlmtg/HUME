@@ -133,6 +133,15 @@ fn ok_exit_codes_silences_the_allowlisted_code_but_not_others() {
     );
     type_cmd(&mut ed, ":go");
     call(&mut ed, "spawn-no-matches");
+    assert!(
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .is_some_and(|p| p.has_source()),
+        "spawn must have attached a source — otherwise the drain_until below \
+         would pass vacuously on the very first poll"
+    );
     drain_until(&mut ed, |ed| {
         ed.state
             .config
@@ -151,6 +160,154 @@ fn ok_exit_codes_silences_the_allowlisted_code_but_not_others() {
     assert!(
         msg.contains("boom"),
         "a non-allowlisted exit code must still report, got: {msg}"
+    );
+}
+
+#[test]
+fn picker_source_stop_kills_the_child_and_no_further_rows_land() {
+    // Spawns "sh" and "kill" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define tok #f)
+        (define-command! "go" "" (lambda ()
+          (set! tok (picker! '() (lambda (x) (void))))))
+        (define-command! "spawn-it" "" (lambda ()
+          (picker-source-spawn! tok "sh"
+            (list "-c" "for i in 1 2 3 4 5 6 7 8 9 10; do echo $i; sleep 0.2; done"))))
+        (define-command! "stop-it" "" (lambda ()
+          (picker-source-stop! tok)))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    call(&mut ed, "spawn-it");
+
+    drain_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .is_some_and(|p| p.total_len() >= 1)
+    });
+
+    let pid = ed
+        .state
+        .config
+        .picker
+        .as_ref()
+        .unwrap()
+        .source_pid_for_test()
+        .expect("source attached");
+
+    call(&mut ed, "stop-it");
+    let stopped_total = ed.state.config.picker.as_ref().unwrap().total_len();
+
+    // Give the (now-dead) child's would-be remaining output a real window to
+    // land, then confirm nothing did.
+    std::thread::sleep(Duration::from_millis(500));
+    ed.settle();
+
+    assert!(
+        !ed.state.config.picker.as_ref().unwrap().has_source(),
+        "picker-source-stop! must detach the source"
+    );
+    assert_eq!(
+        ed.state.config.picker.as_ref().unwrap().total_len(),
+        stopped_total,
+        "no further rows may land once the source is stopped"
+    );
+
+    let alive = std::process::Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .expect("spawn kill -0")
+        .success();
+    assert!(!alive, "picker-source-stop! must kill its source child");
+}
+
+#[test]
+fn respawn_reports_an_already_exited_outgoing_source() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define tok #f)
+        (define-command! "go" "" (lambda ()
+          (set! tok (picker! '() (lambda (x) (void))))))
+        (define-command! "spawn-first" "" (lambda ()
+          (picker-source-spawn! tok "sh" (list "-c" "echo boom >&2; exit 2"))))
+        (define-command! "spawn-second" "" (lambda ()
+          (picker-source-spawn! tok "sh" (list "-c" "exit 0"))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.state.status_msg = None;
+    call(&mut ed, "spawn-first");
+
+    // Poll the child's own OS exit status directly — never `ed.settle()`
+    // here, which would drain and report it through the ordinary disconnect
+    // path this test is deliberately racing ahead of with a respawn.
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !ed
+        .state
+        .config
+        .picker
+        .as_ref()
+        .unwrap()
+        .source_has_exited_for_test()
+    {
+        assert!(Instant::now() < deadline, "first child never exited");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    call(&mut ed, "spawn-second");
+
+    let msg = ed
+        .state
+        .status_msg
+        .clone()
+        .expect("a re-spawn must report the outgoing source's exit if it had already exited");
+    assert!(msg.contains("boom"), "got: {msg}");
+}
+
+#[test]
+fn respawn_does_not_report_a_still_running_outgoing_source() {
+    // Spawns "sh"/"sleep" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define tok #f)
+        (define-command! "go" "" (lambda ()
+          (set! tok (picker! '() (lambda (x) (void))))))
+        (define-command! "spawn-first" "" (lambda ()
+          (picker-source-spawn! tok "sleep" (list "30"))))
+        (define-command! "spawn-second" "" (lambda ()
+          (picker-source-spawn! tok "sh" (list "-c" "exit 0"))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.state.status_msg = None;
+    call(&mut ed, "spawn-first");
+
+    call(&mut ed, "spawn-second"); // supersedes the still-running `sleep 30`
+
+    assert!(
+        ed.state.status_msg.is_none(),
+        "a still-running source superseded mid-stream must not report a spurious exit"
     );
 }
 

@@ -413,6 +413,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
         cmd "picker-replace!" ui::picker_replace(token: SteelVal, items: SteelVal);
         cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
+        cmd "picker-source-stop!" ui::picker_source_stop(token: SteelVal);
         cmd "%picker-close!" ui::picker_close(token: SteelVal);
 
         // Timers — not LSP-specific; any plugin can schedule one.

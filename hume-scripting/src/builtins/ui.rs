@@ -227,6 +227,17 @@ pub(crate) fn picker_source_spawn(
     Ok(SteelVal::BoolV(applied))
 }
 
+/// `(picker-source-stop! token)` — no keyword defaults, so this registers
+/// directly, same shape as `picker-push!`/`picker-replace!`. Returns
+/// whether `token` matched the open session (the same expected-normal-race
+/// contract as `picker-push!`), regardless of whether a source was actually
+/// attached.
+pub(crate) fn picker_source_stop(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
+    let token = usize_arg(token, "picker-source-stop! token")? as u64;
+    let applied = require_cap(ctx.host.ui(), "picker-source-stop!")?.picker_source_stop(token);
+    Ok(SteelVal::BoolV(applied))
+}
+
 /// `(%picker-close! token)` — the `picker-close!` Scheme wrapper supplies
 /// `#:token`'s `#f` default.
 pub(crate) fn picker_close(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
