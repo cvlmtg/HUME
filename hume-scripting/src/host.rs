@@ -819,10 +819,6 @@ pub trait DiffHost {
     fn diff_words(&self, old: &str, new: &str) -> (Vec<WordDiffHunk>, bool);
 }
 
-/// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer
-/// prompt — accessed through [`EditorHost::ui`]. `None` from that accessor
-/// means "no UI surface to drive" (test stubs); every method here is
-/// required once a host does provide `UiHost`.
 /// Grouped `picker!` open-time options — a struct instead of a fifth-plus
 /// positional on [`UiHost::open_picker`], since that signature already grew
 /// once (`#:pending`) and `#:query`/`#:on-query-change` are landing together.
@@ -843,13 +839,16 @@ pub struct PickerOpts {
     pub query: String,
     /// `#:on-query-change` — `Some` is what makes the session live: every
     /// keystroke that changes the query fires this callback with the new
-    /// query instead of driving the local fuzzy filter (`PickerSession`'s
-    /// `rerank` treats a live session the same as an empty query — no
-    /// double-filtering a source that already matched on the query itself,
-    /// e.g. a regex `rg` already applied).
+    /// query instead of driving the local fuzzy filter — see
+    /// `PickerSession::rebuild_filtered`'s doc for why a live session skips
+    /// it.
     pub on_query_change: Option<steel::rvals::SteelVal>,
 }
 
+/// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer
+/// prompt — accessed through [`EditorHost::ui`]. `None` from that accessor
+/// means "no UI surface to drive" (test stubs); every method here is
+/// required once a host does provide `UiHost`.
 pub trait UiHost {
     /// `(prompt! label #:prefill text on-confirm)` — opens a one-shot
     /// Command-mode minibuffer session. `callback` fires exactly once, with

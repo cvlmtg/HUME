@@ -489,12 +489,17 @@ list, passes `#:query` and `#:on-query-change` to `picker!`:
 
 ```scheme
 (define (grep/open! seed)
+  (define spawn (debounce 150
+    (lambda (query)
+      (picker-source-spawn! token "rg" (list "--vimgrep" "--" query) #:ok-exit-codes '(0 1)))))
   (define (requery query)
-    ;; Replace BEFORE spawning: a spawn on the same token kills the previous
-    ;; child, so nothing from the old pattern can land after this.
+    ;; Stop the previous search and clear its rows on every keystroke, not
+    ;; just once the debounced spawn below actually fires — otherwise the
+    ;; old pattern's output keeps landing (or, backspacing to empty, keeps
+    ;; showing) under a query nothing was spawned to satisfy.
+    (picker-source-stop! token)
     (picker-replace! token '())
-    (unless (equal? query "")
-      (picker-source-spawn! token "rg" (list "--vimgrep" "--" query) #:ok-exit-codes '(0 1))))
+    (unless (equal? query "") (spawn query)))
   (define token
     (picker! '() (lambda (row) (when row (goto-location! (grep/parse row))))
              #:prompt "grep: " #:query seed #:on-query-change requery))
@@ -509,19 +514,21 @@ empty), queued like every other picker callback, never invoked inline.
 
 Live mode also turns off the picker's own local fuzzy filter: once
 `#:on-query-change` is set, rows show in whatever order the source (or
-`picker-push!`/`picker-replace!`) produced them, unfiltered. This matters because the
-query already selects what the source returns — `rg`'s own regex match, say — so a
-second fuzzy pass over already-matched rows would drop legitimate hits a regex like
-`foo.*bar` doesn't happen to fuzzy-match.
+`picker-push!`/`picker-replace!`) produced them, unfiltered.
 
 `(picker-replace! token items)` is `picker-push!`'s sibling for this case: it
 replaces the picker's entire item list instead of appending to it, since items are
 otherwise append-only and a live search must drop the previous pattern's rows before
-showing the new ones. Same token-guard/return contract as `picker-push!`.
+showing the new ones. Same token-guard/return contract as `picker-push!`. It only
+touches the item list, though — it cannot stop a source that's still producing those
+rows. `(picker-source-stop! token)` is that missing half: it detaches whatever
+source is attached, if any, without touching the item list, same token-guard
+contract again.
 
 A live source should debounce, the same as any other Steel plugin work triggered by
-every keystroke — wrap the requery function in `(debounce ms proc)` rather than
-calling `picker-source-spawn!` directly from `#:on-query-change`.
+every keystroke — but debounce only the spawn, as above, not the whole `requery`:
+debouncing the stop-and-clear too would leave the previous pattern's rows on screen
+for the entire debounce window under a query they no longer match.
 
 ## Bundled core plugins
 

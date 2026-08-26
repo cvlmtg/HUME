@@ -45,11 +45,15 @@ struct AttachedSource {
 }
 
 /// Rust-side store for one open picker: items, query, ranked indices,
-/// selection, scroll, and a stale-push guard token. Steel drives it through
-/// `picker!`/`picker-push!`/`picker-close!`; this module has no
-/// Steel-facing surface of its own.
+/// selection, scroll, and a stale-push-or-replace guard token. Steel drives
+/// it through `picker!`/`picker-push!`/`picker-replace!`/`picker-close!`;
+/// this module has no Steel-facing surface of its own.
 pub(crate) struct PickerSession {
-    /// Append-only while the picker is open.
+    /// Append-only via `push`/`seed` — the common case, and what lets
+    /// `push` preserve a selection by index (see `rerank_keeping_selection`).
+    /// `replace` is the one mutator that breaks this: it clears the vec
+    /// wholesale before re-extending it, for a live requery that must drop
+    /// the previous pattern's rows.
     items: Vec<PickerItem>,
     query: String,
     /// Ranked indices into `items`, rebuilt on every rerank.
@@ -68,7 +72,8 @@ pub(crate) struct PickerSession {
     /// Empty by default — an empty prompt renders identically to no prompt
     /// at all.
     prompt: String,
-    /// Stale-push guard: `push` is a no-op unless the caller's token matches.
+    /// Stale-push/-replace guard: `push` and `replace` are both a no-op
+    /// unless the caller's token matches.
     token: u64,
     /// The streaming external-command source attached via
     /// `picker-source-spawn!`, if any, together with its exit-code
@@ -726,11 +731,8 @@ mod tests {
 
     #[test]
     fn live_session_keeps_insertion_order_regardless_of_query() {
-        // A live session's query drives the external source, not a second
-        // local fuzzy pass — a regex like "f.o" would fuzzy-match ~nothing
-        // of what it just matched, so `rerank` must skip scoring entirely
-        // whenever `on_query_change` is set, the same branch an empty query
-        // already takes.
+        // See `rebuild_filtered`'s doc for why a live session must skip
+        // scoring entirely, the same branch an empty query already takes.
         let mut s = open_live();
         let _ = s.set_query("zzz-does-not-fuzzy-match-anything".to_string());
         let token = s.token();
