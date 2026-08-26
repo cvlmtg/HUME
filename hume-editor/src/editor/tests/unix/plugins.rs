@@ -2788,10 +2788,10 @@ fn core_stdlib_git_probes_inside_a_work_tree() {
 }
 
 /// Outside any git work tree, both probes must return `#f` rather than
-/// raising or reporting a stale/wrong root — the branch `core:pickers` had
-/// no hermetic seam for before these commands moved into `core:stdlib`
-/// (`pickers/git-repo?` was a plain, non-`call!`-able function; see
-/// `pickers_plugin.rs`'s module doc comment).
+/// raising or reporting a stale/wrong root. `stdlib/git-repo?` is a
+/// registered command, so its not-a-repo branch is reachable via `call!`
+/// here — unlike `core:pickers`' own `picker-files`, which has no such seam
+/// (see `pickers_plugin.rs`'s module doc comment).
 #[test]
 fn core_stdlib_git_probes_outside_a_work_tree() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();

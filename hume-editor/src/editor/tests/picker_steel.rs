@@ -654,3 +654,41 @@ fn picker_replace_bang_swaps_items_instead_of_appending() {
         "a stale-token replace must not apply"
     );
 }
+
+#[test]
+fn picker_source_stop_bang_matches_the_real_token_and_rejects_a_stale_one() {
+    // No source needs to be attached: the token guard is the whole contract
+    // under test, and `picker-source-stop!` returns whether `token` matched
+    // the open session regardless of whether a source was actually
+    // attached (see `UiHost::picker_source_stop`'s doc).
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define tok #f)
+        (define-command! "go" "" (lambda ()
+          (set! tok (picker! '() (lambda (x) (void))))))
+        (define-command! "stop-stale" "" (lambda ()
+          (log! 'info (to-string (picker-source-stop! (+ tok 1))))))
+        (define-command! "stop-real" "" (lambda ()
+          (log! 'info (to-string (picker-source-stop! tok)))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    call(&mut ed, "stop-stale");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert!(
+        ed.state.config.picker.is_some(),
+        "a stale-token stop must not touch the open picker"
+    );
+
+    call(&mut ed, "stop-real");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "#true");
+    assert!(
+        ed.state.config.picker.is_some(),
+        "picker-source-stop! must not close the picker, only detach its source"
+    );
+}

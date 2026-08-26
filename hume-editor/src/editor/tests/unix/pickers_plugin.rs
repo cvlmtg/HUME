@@ -17,11 +17,11 @@ use hume_scripting::ScriptingHost;
 // `stdlib/git-repo?`'s live result, so there's no seam here to force the `#t`
 // case hermetically. `stdlib/git-repo?`'s own `#f` case (not a repo) *is*
 // covered hermetically, in `core:stdlib`'s own tests (`plugins.rs`) — it's a
-// registered command there, unlike this file's local probes. The two
-// non-git branches (fd found / fd absent) are covered hermetically below via
-// the `pickers/files-picker-with` internal command, which *is* a registered
-// command and so dispatchable by name via `call!` regardless of which Steel
-// environment defined it.
+// registered command there, unlike this file's local `fd`-detection probe
+// (`pickers/fd-binary`). The two non-git branches (fd found / fd absent) are
+// covered hermetically below via the `pickers/files-picker-with` internal
+// command, which *is* a registered command and so dispatchable by name via
+// `call!` regardless of which Steel environment defined it.
 
 const PICKERS_PLUGIN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),

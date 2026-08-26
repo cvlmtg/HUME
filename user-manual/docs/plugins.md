@@ -475,9 +475,12 @@ call lands.
 
 A nonzero exit from a spawned source is normally reported as an error — but for a
 command where some exit codes are a normal outcome rather than a failure (`rg`
-exits `1` for "no matches"), pass `#:ok-exit-codes`. `rg` also needs an explicit
-path argument here: with no path and no terminal attached to its input, it searches
-its (empty) stdin instead of the working directory, and finds nothing:
+exits `1` for "no matches"), pass `#:ok-exit-codes`. The list is complete, not
+additive: it replaces the usual "zero is success" rule outright, so include `0`
+yourself unless you really want a successful run reported as a failure. `rg` also
+needs an explicit path argument here: with no path and no terminal attached to its
+input, it searches its (empty) stdin instead of the working directory, and finds
+nothing:
 
 ```scheme
 (picker-source-spawn! token "rg" (list "--vimgrep" pattern ".") #:ok-exit-codes '(0 1))
@@ -514,6 +517,8 @@ list, passes `#:query` and `#:on-query-change` to `picker!`:
              #:prompt "grep: " #:query seed #:on-query-change requery))
   (unless (equal? seed "") (requery seed)))
 ```
+
+`grep/parse` above is left to the reader.
 
 `#:query` prefills the query shown in the panel but does not itself fire
 `#:on-query-change` — a caller that wants an initial search calls its own

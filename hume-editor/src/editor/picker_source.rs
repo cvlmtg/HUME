@@ -65,7 +65,10 @@ impl Editor {
 /// code is in `ok_exit_codes` — shared by the natural end-of-stream drain
 /// above and a source taken out early by
 /// [`take_and_report_outgoing_source`], so an exit is reported exactly once
-/// no matter which path notices it.
+/// no matter which path notices it. `ok_exit_codes` is the complete
+/// allowlist, not an addition to `ExitStatus::success` — a list omitting `0`
+/// reports a successful exit as a failure, by design (see
+/// `UiHost::picker_source_spawn`).
 fn report_source_exit(state: &mut EditorState, cmd: &str, exit: SourceExit, ok_exit_codes: &[i32]) {
     let Some(status) = exit.status else {
         return;

@@ -975,9 +975,13 @@ pub trait UiHost {
     /// silence a genuine failure just because a newer search superseded it
     /// before the drain got to it.
     ///
-    /// `ok_exit_codes`: exit codes that must not be logged as a failure —
-    /// e.g. `rg` exits `1` on "no matches", which is a normal outcome for a
-    /// live search, not an error worth a message-log entry.
+    /// `ok_exit_codes`: the complete set of exit codes that count as a
+    /// normal outcome. It *replaces* the success check rather than
+    /// extending it — nothing is implied, `0` included — so a caller
+    /// overriding the `'(0)` default lists `0` alongside whatever it adds:
+    /// `'(0 1)` for `rg`, which exits `1` on "no matches". `'(1)` alone
+    /// would report every successful run as a failure. Explicit over
+    /// convenient: the list is the whole contract.
     ///
     /// `Ok(false)` — same "expected-normal race, not an error" contract as
     /// `picker_push` — means a stale token or no open picker; nothing was

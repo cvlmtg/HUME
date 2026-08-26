@@ -35,6 +35,15 @@ impl From<(String, SteelVal)> for PickerItem {
     }
 }
 
+/// `UiHost`'s wire shape for a batch of items, converted — `open_picker`,
+/// `picker_push`, and `picker_replace` in `EditorHostImpl` each need this
+/// same conversion before handing a batch to the store; kept here rather
+/// than duplicated at each call site because `hume-scripting`'s `UiHost`
+/// trait cannot name `PickerItem`, an `hume-editor`-private type.
+pub(crate) fn picker_items(items: Vec<(String, SteelVal)>) -> Vec<PickerItem> {
+    items.into_iter().map(PickerItem::from).collect()
+}
+
 /// A streaming source bundled with the exit-code allowlist it was attached
 /// with. One field instead of two on `PickerSession` so a respawn (a second
 /// `attach_source` replacing this field) can never separate a source from
@@ -92,7 +101,7 @@ pub(crate) struct PickerSession {
     /// the job is done. See [`is_pending`](Self::is_pending).
     pending: bool,
     /// `#:on-query-change` — `Some` makes this session live: `insert_char`/
-    /// `pop_grapheme` fire it with the new query (`Editor::fire_query_change`)
+    /// `pop_grapheme` fire it with the new query (`Editor::queue_query_change`)
     /// instead of the query driving the local fuzzy filter. Its `Some`-ness
     /// is read directly wherever "is this session live" matters — no
     /// separate bool duplicating it.
@@ -124,9 +133,7 @@ impl PickerSession {
             pending: opts.pending,
             on_query_change: opts.on_query_change,
         };
-        // Discarded deliberately — see `set_query`'s doc for why the
-        // `#:query` prefill must not fire `#:on-query-change`.
-        let _ = session.set_query(opts.query);
+        session.set_query(opts.query);
         session
     }
 
@@ -196,9 +203,13 @@ impl PickerSession {
         }
         self.items.clear();
         let applied = self.push(token, items);
+        // `push`'s own token check can't fail here — this fn already
+        // returned on a mismatch above — so `applied` is provably always
+        // `true`, not a second real outcome to propagate.
+        debug_assert!(applied);
         self.selected = 0;
         self.scroll = 0;
-        applied
+        true
     }
 
     /// Attaches a spawned streaming source, replacing (and thereby killing,
@@ -287,16 +298,13 @@ impl PickerSession {
         self.on_query_change.clone()
     }
 
-    /// Replaces the query wholesale and reranks — same shape as
-    /// `insert_char`/`pop_grapheme`, including the returned callback, but
-    /// `new` is its only caller and must discard it: `#:query`'s prefill is
-    /// documented to never itself fire `#:on-query-change` (see
-    /// `PickerOpts::query`'s doc), unlike a live keystroke.
-    #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
-    pub(crate) fn set_query(&mut self, query: String) -> Option<SteelVal> {
+    /// Replaces the query wholesale and reranks. Unlike `insert_char`/
+    /// `pop_grapheme`, returns nothing: `#:query`'s prefill is documented
+    /// never to fire `#:on-query-change` (see `PickerOpts::query`'s doc), so
+    /// there is no callback for a caller to queue.
+    pub(crate) fn set_query(&mut self, query: String) {
         self.query = query;
         self.rerank();
-        self.on_query_change.clone()
     }
 
     /// Moves `selected` by `delta`, saturating at both ends of `filtered`
@@ -369,34 +377,23 @@ impl PickerSession {
         &self.on_select
     }
 
-    /// Whether ranking should skip the local fuzzy filter and keep source
-    /// order instead — true for a live session (`on_query_change` set) at
-    /// any query, separately from an empty query, which always takes this
-    /// path regardless of liveness (see [`rebuild_filtered`]'s doc for why).
-    /// Named so "is this session live" and "should ranking skip the local
-    /// filter" read as the two distinct concepts they are, even though they
-    /// currently share one field with no caller needing them to diverge.
-    ///
-    /// [`rebuild_filtered`]: Self::rebuild_filtered
-    fn skips_local_filter(&self) -> bool {
-        self.on_query_change.is_some()
-    }
-
     /// Rebuilds `filtered` from `items`/`query` — the ranking-only half
     /// shared by [`rerank`](Self::rerank) and
     /// [`rerank_keeping_selection`](Self::rerank_keeping_selection); neither
     /// touches `selected`/`scroll` itself.
     fn rebuild_filtered(&mut self) {
-        if self.query.is_empty() || self.skips_local_filter() {
-            // Insertion order by construction — avoids relying on nucleo's
-            // (undocumented) all-equal-score behavior on an empty pattern,
-            // and skips scoring entirely on the dominant streaming-ingest
-            // path (empty query while a spawned source drains batches). A
-            // live session (`on_query_change` set) takes this branch at any
-            // query too: the query already selects what the source returns
-            // (e.g. `rg`'s own regex match), so a second fuzzy pass over
-            // already-matched rows would drop legitimate non-fuzzy hits —
-            // `foo.*bar` fuzzy-matching almost nothing it just found.
+        // `on_query_change.is_some()` (a live session) skips the local
+        // fuzzy filter at any query, separately from an empty query, which
+        // always takes this branch regardless of liveness — both land here
+        // in insertion order by construction: an empty query avoids relying
+        // on nucleo's (undocumented) all-equal-score behavior and skips
+        // scoring entirely on the dominant streaming-ingest path (empty
+        // query while a spawned source drains batches); a live session
+        // skips it because the query already selects what the source
+        // returns (e.g. `rg`'s own regex match), so a second fuzzy pass
+        // over already-matched rows would drop legitimate non-fuzzy hits —
+        // `foo.*bar` fuzzy-matching almost nothing it just found.
+        if self.query.is_empty() || self.on_query_change.is_some() {
             self.filtered.clear();
             self.filtered.extend(0..self.items.len() as u32);
         } else {
@@ -675,7 +672,7 @@ mod tests {
         let mut s = open();
         let token = s.token();
         s.push(token, items(&["foo", "bar"]));
-        let _ = s.set_query("f".to_string());
+        s.set_query("f".to_string());
         assert_eq!(window_vec(&s, 10), vec!["foo"]);
     }
 
@@ -734,7 +731,7 @@ mod tests {
         // See `rebuild_filtered`'s doc for why a live session must skip
         // scoring entirely, the same branch an empty query already takes.
         let mut s = open_live();
-        let _ = s.set_query("zzz-does-not-fuzzy-match-anything".to_string());
+        s.set_query("zzz-does-not-fuzzy-match-anything".to_string());
         let token = s.token();
         s.push(token, items(&["b", "a", "c"]));
         assert_eq!(window_vec(&s, 10), vec!["b", "a", "c"]);
@@ -746,10 +743,21 @@ mod tests {
         // insertion-order result above comes from live mode, not from the
         // query happening to fail to fuzzy-match anyway.
         let mut s = open();
-        let _ = s.set_query("zzz-does-not-fuzzy-match-anything".to_string());
+        s.set_query("zzz-does-not-fuzzy-match-anything".to_string());
         let token = s.token();
         s.push(token, items(&["b", "a", "c"]));
         assert!(window_vec(&s, 10).is_empty());
+    }
+
+    #[test]
+    fn pop_grapheme_on_an_empty_query_is_a_no_op_even_for_a_live_session() {
+        // The `Option<SteelVal>` port replaced the old boolean assertion
+        // (`assert!(!s.pop_grapheme())`) with a query-content check, which
+        // can't tell "returned `None`" apart from "returned the callback" —
+        // this pins the return value directly, on the one session shape
+        // (`on_query_change` set) where mistaking those two would matter.
+        let mut s = open_live();
+        assert!(s.pop_grapheme().is_none());
     }
 
     #[test]
@@ -758,7 +766,7 @@ mod tests {
         let token = s.token();
         // Scattered subsequence pushed before the boundary match.
         s.push(token, items(&["fxxbxx", "foo/bar"]));
-        let _ = s.set_query("fb".to_string());
+        s.set_query("fb".to_string());
         assert_eq!(window_vec(&s, 10), vec!["foo/bar", "fxxbxx"]);
     }
 
@@ -788,7 +796,7 @@ mod tests {
             });
         }
         s.push(token, tagged);
-        let _ = s.set_query("fb".to_string());
+        s.set_query("fb".to_string());
         assert_eq!(s.matched_len(), (2 * TIER) as usize);
         for i in 0..TIER {
             let payload = s.selected_payload().expect("has a match");
@@ -843,7 +851,7 @@ mod tests {
         s.push(token, items(&["apple", "banana", "cherry", "date"]));
         s.move_selection(2, 2);
         assert_ne!(s.selected(), 0);
-        let _ = s.set_query("a".to_string());
+        s.set_query("a".to_string());
         assert_eq!(s.selected(), 0);
         assert_eq!(s.scroll(), 0);
     }
@@ -921,7 +929,7 @@ mod tests {
         let mut s = open();
         let token = s.token();
         s.push(token, items(&["foo", "bar"]));
-        let _ = s.set_query("zzz".to_string());
+        s.set_query("zzz".to_string());
         assert_eq!(s.selected(), 0);
         s.move_selection(5, 3); // must not panic
         assert_eq!(s.selected(), 0);
@@ -947,7 +955,7 @@ mod tests {
         let mut s = open();
         let token = s.token();
         s.push(token, items(&["fxxbxx", "foo/bar"]));
-        let _ = s.set_query("fb".to_string());
+        s.set_query("fb".to_string());
         assert_eq!(
             payload_str(s.selected_payload().expect("has a match")),
             "foo/bar"

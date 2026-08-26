@@ -198,6 +198,36 @@ fn exit_code_outside_the_allowlist_still_reports() {
 }
 
 #[test]
+fn allowlist_omitting_zero_reports_a_successful_exit() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let mut ed = editor_from("-[a]>bc\n");
+    open_bare_picker(&mut ed);
+
+    // `#:ok-exit-codes` is the complete allowlist, not an addition to
+    // `ExitStatus::success` (see `UiHost::picker_source_spawn`'s doc) — a
+    // list that omits `0` must report even a clean exit. Pinned here as a
+    // characterization test so this reads as the documented contract, not
+    // as a bug to "fix" later.
+    let args = vec!["-c".to_string(), "exit 0".to_string()];
+    let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
+    ed.state
+        .config
+        .picker
+        .as_mut()
+        .unwrap()
+        .attach_source(source, vec![1]);
+
+    drain_sources_until(&mut ed, |ed| ed.state.status_msg.is_some());
+
+    let msg = ed.state.status_msg.as_ref().expect("status set");
+    assert!(
+        msg.contains("failed"),
+        "an allowlist omitting 0 must report a successful exit, got: {msg}"
+    );
+}
+
+#[test]
 fn close_picker_kills_the_source_child() {
     // Spawns "sleep" and "kill" by unqualified name — see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);

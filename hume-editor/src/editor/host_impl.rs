@@ -1447,11 +1447,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     ) -> Result<u64, String> {
         let mut session = crate::editor::picker::PickerSession::new(on_select, opts);
         let token = session.token();
-        let picker_items = items
-            .into_iter()
-            .map(crate::editor::picker::PickerItem::from)
-            .collect();
-        session.seed(picker_items);
+        session.seed(crate::editor::picker::picker_items(items));
         crate::editor::picker::open_picker(self.state, self.lsp.as_deref_mut(), session);
         Ok(token)
     }
@@ -1460,22 +1456,14 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         let Some(session) = self.state.config.picker.as_mut() else {
             return false;
         };
-        let picker_items = items
-            .into_iter()
-            .map(crate::editor::picker::PickerItem::from)
-            .collect();
-        session.push(token, picker_items)
+        session.push(token, crate::editor::picker::picker_items(items))
     }
 
     fn picker_replace(&mut self, token: u64, items: Vec<(String, steel::rvals::SteelVal)>) -> bool {
         let Some(session) = self.state.config.picker.as_mut() else {
             return false;
         };
-        let picker_items = items
-            .into_iter()
-            .map(crate::editor::picker::PickerItem::from)
-            .collect();
-        session.replace(token, picker_items)
+        session.replace(token, crate::editor::picker::picker_items(items))
     }
 
     fn picker_source_spawn(

@@ -123,9 +123,9 @@ fn empty_cmd_raises_naming_the_arg() {
 
 // ── #:ok-exit-codes rejects values outside i32's range ──────────────────────
 //
-// The `cmd` argument decodes before `#:ok-exit-codes` (see `ui::picker_source_spawn`),
-// so an out-of-range exit code raises before anything is spawned — the bogus
-// binary name below proves that.
+// `#:ok-exit-codes` decodes before the spawn call (see
+// `ui::picker_source_spawn`), so an out-of-range code raises before anything
+// is spawned — the bogus binary name below proves that.
 
 #[test]
 fn ok_exit_codes_rejects_a_value_outside_i32_range() {
