@@ -832,10 +832,12 @@ pub struct PickerOpts {
     /// `#:pending` — see [`UiHost::open_picker`]'s doc.
     pub pending: bool,
     /// `#:query` — the query the picker opens with. Applied to the (still
-    /// empty) item list at construction; `picker!` deliberately does not
-    /// fire `#:on-query-change` for this initial value itself — a caller
-    /// that wants the first batch of results kicks its own query-change
-    /// trigger off after opening (see the user-manual's "Custom pickers").
+    /// empty) item list at construction; this layer never fires
+    /// `#:on-query-change` for it — the `picker!` Scheme wrapper does that
+    /// itself, once, for a non-empty query (see the user-manual's "Custom
+    /// pickers"), deferred via `(after 0 …)` rather than called inline
+    /// because the caller's callback closes over `picker!`'s own return
+    /// value, not yet bound while `picker!` is still running.
     pub query: String,
     /// `#:on-query-change` — `Some` is what makes the session live: every
     /// keystroke that changes the query fires this callback with the new

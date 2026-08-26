@@ -118,8 +118,29 @@
   (%show-popup! text anchor kind lang))
 
 (define (picker! items on-select #:prompt [prompt ""] #:pending [pending #f]
-                                  #:query [query ""] #:on-query-change [on-query-change #f])
-  (%picker! items on-select prompt pending query on-query-change))
+                                  #:query [query ""] #:on-query-change [on-query-change #f]
+                                  #:debounce-ms [debounce-ms #f])
+  (when debounce-ms
+    (unless on-query-change
+      (error "picker!: #:debounce-ms needs #:on-query-change"))
+    (unless (%callable? on-query-change)
+      (error "picker!: #:on-query-change must be a callable"))
+    (unless (and (integer? debounce-ms) (>= debounce-ms 0))
+      (error "picker!: #:debounce-ms must be a non-negative integer")))
+  (let* ([tok (box #f)]
+         [id  (%picker! items on-select prompt pending query
+                (and on-query-change
+                     (if debounce-ms
+                         (let ([fire (debounce debounce-ms on-query-change)])
+                           (lambda (q)
+                             (picker-source-stop! (unbox tok))
+                             (picker-replace! (unbox tok) '())
+                             (fire q)))
+                         on-query-change)))])
+    (set-box! tok id)
+    (when (and on-query-change (not (equal? query "")))
+      (after 0 (lambda () (on-query-change query))))
+    id))
 
 (define (picker-source-spawn! token cmd args #:cwd [cwd #f] #:nul [nul #f]
                                               #:ok-exit-codes [ok-exit-codes '(0)])

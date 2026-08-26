@@ -490,63 +490,49 @@ nothing:
 
 A picker whose query should drive the *source* — re-running an external command
 with the new pattern on every keystroke — rather than just filtering an already-fetched
-list, passes `#:query` and `#:on-query-change` to `picker!`:
+list, passes `#:query`, `#:on-query-change`, and `#:debounce-ms` to `picker!`:
 
 ```scheme
 (define (grep/open! seed)
-  (define spawn (debounce 150
-    (lambda (query)
-      (unless (equal? query "")
-        (picker-source-spawn! token "rg" (list "--vimgrep" "--" query ".") #:ok-exit-codes '(0 1))))))
-  (define (requery query)
-    ;; Stop the previous search and clear its rows on every keystroke, not
-    ;; just once the debounced spawn below actually fires — otherwise the
-    ;; old pattern's output keeps landing (or, backspacing to empty, keeps
-    ;; showing) under a query nothing was spawned to satisfy. `spawn` is
-    ;; called unconditionally, even for an empty query, so debounce's own
-    ;; cancel-the-previous-timer bookkeeping always sees the latest
-    ;; keystroke — skipping this call on an empty query would let an
-    ;; already-armed timer from the previous (non-empty) keystroke fire on
-    ;; its own afterward, spawning a search for a pattern the query box no
-    ;; longer shows.
-    (picker-source-stop! token)
-    (picker-replace! token '())
-    (spawn query))
   (define token
     (picker! '() (lambda (row) (when row (goto-location! (grep/parse row))))
-             #:prompt "grep: " #:query seed #:on-query-change requery))
-  (unless (equal? seed "") (requery seed)))
+             #:prompt "grep: " #:query seed #:debounce-ms 150
+             #:on-query-change
+             (lambda (query)
+               (unless (equal? query "")
+                 (picker-source-spawn! token "rg" (list "--vimgrep" "--" query ".")
+                                       #:ok-exit-codes '(0 1)))))))
 ```
 
 `grep/parse` above is left to the reader.
 
-`#:query` prefills the query shown in the panel but does not itself fire
-`#:on-query-change` — a caller that wants an initial search calls its own
-query-change handler once after opening, as above. `#:on-query-change` then fires
-with the new query on every keystroke that changes it (including backspacing to
-empty), queued like every other picker callback, never invoked inline.
+`#:debounce-ms` makes `#:on-query-change` the debounced half of a live picker: on every
+keystroke, the picker stops whatever source is still running and clears its rows
+immediately, before the window elapses — so the previous pattern's output never lingers
+on screen — and only your callback (the actual `rg` respawn, above) waits out the window.
+It's called unconditionally on every keystroke, even one that debounces to empty, so a
+still-pending window from an earlier non-empty keystroke is always cancelled rather than
+firing later for a pattern the query box no longer shows. `#:debounce-ms` requires
+`#:on-query-change`.
+
+A non-empty `#:query` fires `#:on-query-change` once on open — queued like every other
+picker callback, never invoked inline, so it's safe for the callback to reference `token`
+above even though `picker!` hasn't returned it yet at the point the callback is defined.
+An empty (or omitted) `#:query` fires nothing. `#:on-query-change` then fires again with
+the new query on every keystroke that changes it (including backspacing to empty), queued
+the same way.
 
 Live mode also turns off the picker's own local fuzzy filter: once
 `#:on-query-change` is set, rows show in whatever order the source (or
 `picker-push!`/`picker-replace!`) produced them, unfiltered.
 
-`(picker-replace! token items)` is `picker-push!`'s sibling for this case: it
-replaces the picker's entire item list instead of appending to it, since items are
-otherwise append-only and a live search must drop the previous pattern's rows before
-showing the new ones. Same token-guard/return contract as `picker-push!`. It only
-touches the item list, though — it cannot stop a source that's still producing those
-rows. `(picker-source-stop! token)` is that missing half: it detaches whatever
-source is attached, if any, without touching the item list, same token-guard
-contract again.
-
-A live source should debounce, the same as any other Steel plugin work triggered by
-every keystroke — but debounce only the spawn, as above, not the whole `requery`:
-debouncing the stop-and-clear too would leave the previous pattern's rows on screen
-for the entire debounce window under a query they no longer match. Call the debounced
-function on every keystroke, even one whose query turns out to be empty (checking that
-inside it, as above) — skipping the call lets an already-armed timer from the previous
-keystroke fire on its own later, since debounce only cancels a pending timer when it's
-called again.
+`(picker-replace! token items)` is `picker-push!`'s sibling for this case: it replaces the
+picker's entire item list instead of appending to it, since items are otherwise
+append-only — `#:debounce-ms` calls it for you on every keystroke, ahead of the debounce
+window. `(picker-source-stop! token)` is its counterpart for a still-running source: it
+detaches whatever source is attached, if any, without touching the item list, same
+token-guard contract. Reach for either directly only if you're managing a live picker's
+timing yourself instead of `#:debounce-ms`.
 
 ## Bundled core plugins
 

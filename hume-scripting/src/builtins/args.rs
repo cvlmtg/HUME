@@ -117,6 +117,19 @@ pub(crate) fn optional_callable_arg(
     }
 }
 
+/// `(%callable? v)` — backs `picker!`'s `#:debounce-ms` branch (see
+/// `bootstrap.scm`), which must validate `#:on-query-change` in Scheme before
+/// wrapping it: once wrapped, `%picker!`'s own `optional_callable_arg` check
+/// sees only the wrapper closure, not the caller's value. Deliberately
+/// `callable_arg`'s `is_ok()`, not Steel's own `function?`/`procedure?` —
+/// those accept `BoxedFunction`/`ContinuationFunction`/`BuiltIn` too, wider
+/// than the three variants `callable_arg` (and `define-command!`'s `proc`
+/// check) accept; a second, looser "is this callable" decode here would be
+/// exactly the drift `callable_arg`'s own doc comment says to avoid.
+pub(crate) fn is_callable(val: SteelVal) -> bool {
+    callable_arg(val, "").is_ok()
+}
+
 /// A Steel list, unpacked to a `Vec<SteelVal>`.
 pub(crate) fn list_items(val: SteelVal, ctx_name: &str) -> Result<Vec<SteelVal>, SteelErr> {
     match val {
