@@ -2750,6 +2750,71 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
     );
 }
 
+/// `stdlib/git-repo?` and `stdlib/git-toplevel` must both report true/the real
+/// root from inside a work tree, even when the editor's cwd is a
+/// subdirectory of it — the case that actually exercises `--show-toplevel`
+/// rather than just echoing cwd back.
+///
+/// Independent oracle: the expected root is `sandbox.path()`, the tempdir's
+/// own canonicalized path, asserted literally — never re-derived through
+/// either command under test.
+#[test]
+fn core_stdlib_git_probes_inside_a_work_tree() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+    let sandbox = CwdSandbox::new();
+    git_init(sandbox.raw());
+    std::fs::create_dir_all(sandbox.raw().join("sub")).unwrap();
+    ed.set_cwd(&sandbox.path().join("sub")).unwrap();
+
+    let root = sandbox.path().to_string_lossy().replace('\\', "\\\\");
+    let assertions = format!(
+        r#"
+(unless (equal? (call! "stdlib/git-repo?") #t)
+  (error "git-repo? must be #t inside a work tree"))
+(unless (equal? (call! "stdlib/git-toplevel") "{root}")
+  (error (string-append "git-toplevel must be the repo root, got "
+                         (to-string (call! "stdlib/git-toplevel")))))
+"#
+    );
+
+    let result = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_source(&assertions, &mut ih)
+    };
+    assert!(
+        result.is_ok(),
+        "stdlib git probe assertions must pass inside a work tree: {result:?}"
+    );
+}
+
+/// Outside any git work tree, both probes must return `#f` rather than
+/// raising or reporting a stale/wrong root — the branch `core:pickers` had
+/// no hermetic seam for before these commands moved into `core:stdlib`
+/// (`pickers/git-repo?` was a plain, non-`call!`-able function; see
+/// `pickers_plugin.rs`'s module doc comment).
+#[test]
+fn core_stdlib_git_probes_outside_a_work_tree() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+    let sandbox = CwdSandbox::new();
+    ed.set_cwd(&sandbox.path()).unwrap();
+
+    let assertions = r#"
+(unless (equal? (call! "stdlib/git-repo?") #f)
+  (error "git-repo? must be #f outside a work tree"))
+(unless (equal? (call! "stdlib/git-toplevel") #f)
+  (error "git-toplevel must be #f outside a work tree"))
+"#;
+
+    let result = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_source(assertions, &mut ih)
+    };
+    assert!(
+        result.is_ok(),
+        "stdlib git probe assertions must pass outside a work tree: {result:?}"
+    );
+}
+
 // ── One registry, one dispatcher: lazy-activation dispatch parity ───────────
 
 /// A lazy command's first dispatch leaves identical bookkeeping whether

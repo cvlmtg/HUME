@@ -65,10 +65,22 @@ error. `list-subdirs` skips stray non-directory entries that sit alongside a dir
 Three ways to run a subprocess, pick by shape: `run-inline-output!` for `#:inline-output`
 commands (process-group safety for Ctrl+C), `spawn-async!` for enumeration-scale output
 streams, and `stdlib/run` for everything else — a small-output command run synchronously with
-the TUI's raw mode still on. `core:plum` (`plum/run!`) and `core:pickers`
-(`pickers/run-stdout-raw`) both build their raise-vs-`#f` failure policy on top of `stdlib/run`
-— see their own doc comments. stdin is piped and closed immediately, never inherited from
-HUME's own terminal.
+the TUI's raw mode still on. `core:plum` (`plum/run!`) builds its raise-on-failure policy on
+top of `stdlib/run`, and the git probes below build their `#f`-on-failure policy on it — see
+their own doc comments. stdin is piped and closed immediately, never inherited from HUME's own
+terminal.
+
+### Git
+
+| Call                          | Effect                                                        |
+|-------------------------------|------------------------------------------------------------------|
+| `(call! "stdlib/git-repo?")`     | `#t` iff the editor's cwd is inside a git work tree            |
+| `(call! "stdlib/git-toplevel")`  | Absolute repo root of the editor's cwd, or `#f` when git is missing or cwd is not in a work tree |
+
+Both build on `stdlib/run`, checking stdout rather than just exit code (`git rev-parse` exits
+0 with `false` printed inside a bare repo). `core:pickers` uses both — `git-repo?` to choose
+`picker-files`'s source, `git-toplevel` to resolve a `picker-git-modified` selection against
+the repo root.
 
 ### Command arguments
 

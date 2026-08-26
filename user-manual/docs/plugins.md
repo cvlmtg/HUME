@@ -330,7 +330,7 @@ The two verbs treat `#:config` differently: with `declare-plugin` the first decl
 
 Plugins are trusted code: they can read and write any file, and spawn any process, just like any other Scheme program. There's no separate sandboxed subset of the filesystem — use Scheme's own functions directly (`open-input-file`, `create-directory!`, `delete-file!`, `read-dir`, `path-exists?`, and so on) for file access, and `command`/`spawn-process`/`wait` for running external tools.
 
-Before hand-rolling one of these, check `core:stdlib` — its `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file`, `stdlib/list-subdirs`, and `stdlib/run` commands cover the shapes plugins need most often (idempotent delete, sorted subdirectory listing, a blocking subprocess run with a uniform success/failure return shape). See its own README — `share/hume/plugins/core/stdlib/README.md` in the release archive (`runtime/plugins/core/stdlib/README.md` on Windows or from source) — for the full list and call signatures.
+Before hand-rolling one of these, check `core:stdlib` — its `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file`, `stdlib/list-subdirs`, `stdlib/run`, `stdlib/git-repo?`, and `stdlib/git-toplevel` commands cover the shapes plugins need most often (idempotent delete, sorted subdirectory listing, a blocking subprocess run with a uniform success/failure return shape, git work-tree detection and repo-root resolution). See its own README — `share/hume/plugins/core/stdlib/README.md` in the release archive (`runtime/plugins/core/stdlib/README.md` on Windows or from source) — for the full list and call signatures.
 
 A few extra functions cover things Scheme has no way to know on its own:
 

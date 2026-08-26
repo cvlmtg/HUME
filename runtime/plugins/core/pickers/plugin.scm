@@ -5,8 +5,8 @@
 ;;; would need a Rust PR for every new finder.
 ;;;
 ;;; Depends on core:stdlib (config validation calls stdlib/config-boolean,
-;;; the sync probe calls stdlib/run, via call!) — load it first, same as
-;;; core:plum/core:lsp.
+;;; the git probes call stdlib/git-repo?/stdlib/git-toplevel, via call!) —
+;;; load it first, same as core:plum/core:lsp.
 
 ;; See "Depending on another plugin" in the user manual
 ;; (https://cvlmtg.github.io/HUME/plugins.html#depending-on-another-plugin)
@@ -21,42 +21,13 @@
 (define pickers/untracked
   (call! "stdlib/config-boolean" "core:pickers" (plugin-config) "untracked" #t))
 
-;; ── Sync probe ──────────────────────────────────────────────────────────────
-;; Unlike plum/run!, returns `#f` on nonzero exit rather than raising — a
-;; failed probe (not a repo, no fd) is a normal branch here.
-
-;;; Raw (untrimmed) stdout of `cmd args` if it spawns and exits 0, else `#f`.
-;;; Untrimmed because `-z`-delimited multi-entry output (e.g. `git status`)
-;;; can have a leading space as *significant data* in its first entry —
-;;; trimming the whole blob would eat it.
-(define (pickers/run-stdout-raw cmd args)
-  (let ([result (call! "stdlib/run" cmd args #f)])
-    (and (equal? (caddr result) 0) (car result))))
-
-;;; `pickers/run-stdout-raw`, trimmed — for single-value probes (git
-;;; rev-parse class) where leading/trailing whitespace is never data.
-(define (pickers/run-stdout cmd args)
-  (let ([output (pickers/run-stdout-raw cmd args)])
-    (and output (trim output))))
-
-;;; #t iff the editor's cwd is inside a git *work tree*. Checks stdout, not
-;;; just exit code: inside a bare repo `rev-parse` exits 0 but prints "false".
-(define (pickers/git-repo?)
-  (and (which "git")
-       (equal? "true" (pickers/run-stdout "git" '("rev-parse" "--is-inside-work-tree")))))
+;; ── fd binary ─────────────────────────────────────────────────────────────────
 
 ;;; The fd binary to use, or `#f` — Debian packages it as `fdfind`.
 (define (pickers/fd-binary)
   (cond [(which "fd") "fd"]
         [(which "fdfind") "fdfind"]
         [else #f]))
-
-;;; Absolute repo root, or `#f` when git is missing or cwd is not in a work
-;;; tree — `--show-toplevel` fails outside a work tree, so this doubles as
-;;; the repo probe for picker-git-modified.
-(define (pickers/git-toplevel)
-  (and (which "git")
-       (pickers/run-stdout "git" '("rev-parse" "--show-toplevel"))))
 
 ;; ── Files picker ──────────────────────────────────────────────────────────────
 
@@ -89,7 +60,7 @@
 (define-command! "picker-files"
   "Fuzzy-pick a file in the current directory tree and open it."
   (lambda ()
-    (call! "pickers/files-picker-with" (pickers/git-repo?) (pickers/fd-binary))))
+    (call! "pickers/files-picker-with" (call! "stdlib/git-repo?") (pickers/fd-binary))))
 
 ;; ── Git-modified-files picker ────────────────────────────────────────────────
 
@@ -153,7 +124,7 @@
 (define-command! "picker-git-modified"
   "Fuzzy-pick a file with staged or unstaged git changes and open it."
   (lambda ()
-    (call! "pickers/git-picker-with" (pickers/git-toplevel))))
+    (call! "pickers/git-picker-with" (call! "stdlib/git-toplevel"))))
 
 ;; ── Buffers picker ────────────────────────────────────────────────────────────
 

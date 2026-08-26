@@ -11,15 +11,17 @@ use hume_scripting::ScriptingHost;
 // `include_str!`) into an isolated HUME_RUNTIME dir, then evaluates an
 // init.scm that eagerly loads it — exercising the actual shipped file.
 //
-// Coverage note: the git-repo detection branch (`pickers/git-repo?`) is
-// proven only via full integration in a real git repo (`files_picker_...`
-// below) — its predicate is a plain (non-command) Steel function, not
-// reachable from a test's own init.scm via `call!`, so there is no clean,
-// hermetic seam to unit-test its `#f` case directly. The two non-git
-// branches (fd found / fd absent) are covered hermetically below via the
-// `pickers/files-picker-with` internal command, which *is* a registered
-// command and so dispatchable by name via `call!` regardless of which
-// Steel environment defined it.
+// Coverage note: the git-repo detection branch is proven only via full
+// integration in a real git repo (`files_picker_...` below) — `picker-files`
+// itself dispatches straight to `pickers/files-picker-with` with
+// `stdlib/git-repo?`'s live result, so there's no seam here to force the `#t`
+// case hermetically. `stdlib/git-repo?`'s own `#f` case (not a repo) *is*
+// covered hermetically, in `core:stdlib`'s own tests (`plugins.rs`) — it's a
+// registered command there, unlike this file's local probes. The two
+// non-git branches (fd found / fd absent) are covered hermetically below via
+// the `pickers/files-picker-with` internal command, which *is* a registered
+// command and so dispatchable by name via `call!` regardless of which Steel
+// environment defined it.
 
 const PICKERS_PLUGIN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),

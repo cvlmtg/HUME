@@ -39,9 +39,7 @@
 
 ;; ── Filesystem + list-search helpers (internal) ─────────────────────────────
 ;;
-;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports` — the single
-;; copy `core:plum` and `core:lsp` both call into via `call!` rather than
-;; each carrying its own.
+;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports`
 
 (define (stdlib/find pred? lst)
   (cond ((null? lst) #f)
@@ -101,6 +99,32 @@
                   (list stdout (read-port-to-string stderr-port) (Ok->value wait-result))
                   (list stdout (to-string (Err->value wait-result)) #f)))))
         (list "" (to-string (Err->value spawned)) #f))))
+
+;; ── Git probes ───────────────────────────────────────────────────────────────
+;;
+;; Built on `stdlib/run`
+
+;;; `stdlib/run`'s stdout, trimmed, if `cmd args` spawns and exits 0, else
+;;; `#f`. Trimming is only safe for a single-value probe (the `git rev-parse`
+;;; class) — a `-z`-delimited multi-entry blob (e.g. `git status`) can have a
+;;; leading space as *significant data* in its first entry, which trimming
+;;; would eat.
+(define (stdlib/run-stdout cmd args)
+  (let ([result (stdlib/run cmd args #f)])
+    (and (equal? (caddr result) 0) (trim (car result)))))
+
+;;; #t iff the editor's cwd is inside a git *work tree*. Checks stdout, not
+;;; just exit code: inside a bare repo `rev-parse` exits 0 but prints "false".
+(define (stdlib/git-repo?)
+  (and (which "git")
+       (equal? "true" (stdlib/run-stdout "git" '("rev-parse" "--is-inside-work-tree")))))
+
+;;; Absolute repo root of the editor's cwd, or `#f` when git is missing or
+;;; cwd is not in a work tree — `--show-toplevel` fails outside a work tree,
+;;; so this doubles as a repo probe.
+(define (stdlib/git-toplevel)
+  (and (which "git")
+       (stdlib/run-stdout "git" '("rev-parse" "--show-toplevel"))))
 
 ;; ── Command-argument helper ──────────────────────────────────────────────────
 ;;
@@ -187,6 +211,14 @@
 (define-command! "stdlib/run"
   "Spawn a command; blocks until exit. Returns (stdout stderr exit-code), exit-code #f on spawn/wait failure."
   stdlib/run)
+
+(define-command! "stdlib/git-repo?"
+  "#t iff the editor's cwd is inside a git work tree."
+  stdlib/git-repo?)
+
+(define-command! "stdlib/git-toplevel"
+  "Absolute repo root of the editor's cwd, or #f when git is missing or cwd is not in a work tree."
+  stdlib/git-toplevel)
 
 (define-command! "stdlib/resolve-lang-arg"
   "A typed language-name argument, else the current buffer's language, else #f after a warning."

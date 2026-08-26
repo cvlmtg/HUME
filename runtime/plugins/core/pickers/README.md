@@ -9,6 +9,8 @@ the plugin API docs).
 Requires `core:stdlib` declared or loaded first — config validation calls
 `stdlib/config-boolean` via `call!` while this plugin's own body is evaluating, and `call!`'s
 lazy-miss retry inline-activates a merely declared `core:stdlib` before the read runs.
+`picker-files` and `picker-git-modified` also call `stdlib/git-repo?`/`stdlib/git-toplevel` via
+`call!`, at dispatch time.
 
 ## Usage
 
