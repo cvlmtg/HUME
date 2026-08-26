@@ -21,30 +21,24 @@ grammars at startup is core's job (see [Syntax Highlighting](https://cvlmtg.gith
 not PLUM's. PLUM is only needed to *install* a plugin or grammar in the first place.
 
 With no explicit `#:commands`/`#:events`/`#:languages`, this reads `core:plum`'s own
-`manifest.scm`, which declares every `:plum-*` command — so it activates the first time you
-type one.
-
-`(load-plugin "core:plum")` also works, loading it eagerly instead.
+`manifest.scm`, which declares every `:plum-*` command — so it activates the first time one
+is typed. `(load-plugin "core:plum")` also works, loading it eagerly instead. See
+[Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-plum) and
+[Syntax Highlighting](https://cvlmtg.github.io/HUME/syntax-highlighting.html) for the
+grammar workflow.
 
 ## Commands
 
-Plugin management:
-
-| Command                 | Effect                                                     |
-|-------------------------|------------------------------------------------------------|
+| Command | Effect |
+|---|---|
 | `:plum-install-plugins` | Install all plugins declared in `init.scm` not yet on disk |
-| `:plum-cleanup-plugins` | Remove on-disk plugins no longer declared                  |
-| `:plum-update-plugins`  | Run `git pull` in every installed third-party plugin       |
-| `:plum-list-plugins`    | Log declared / installed / orphan / missing plugin lists   |
-
-Grammar management:
-
-| Command                   | Effect                                                          |
-|-----------------------------|--------------------------------------------------------------------|
-| `:plum-install-grammar`    | Install (or repair) a named grammar: purges old source, re-clones, recompiles (default: current buffer's language) |
-| `:plum-ensure-grammars`    | Install any of the given (list of) grammar names not yet compiled  |
-| `:plum-list-grammars`      | Log declared / installed / orphan / missing grammar lists           |
-| `:plum-cleanup-grammars`   | Delete compiled grammar files no longer declared                    |
+| `:plum-cleanup-plugins` | Remove on-disk plugins no longer declared |
+| `:plum-update-plugins` | Run `git pull` in every installed third-party plugin |
+| `:plum-list-plugins` | Log declared / installed / orphan / missing plugin lists |
+| `:plum-install-grammar` | Install (or repair) a named grammar: purges old source, re-clones, recompiles (default: current buffer's language) |
+| `:plum-ensure-grammars` | Install any of the given (list of) grammar names not yet compiled |
+| `:plum-list-grammars` | Log declared / installed / orphan / missing grammar lists |
+| `:plum-cleanup-grammars` | Delete compiled grammar files no longer declared |
 
 LSP language servers are `core:lsp`'s own responsibility (`:lsp-install`, `:lsp-uninstall`,
 `:lsp-servers`) — see that plugin's README and `docs/LSP-INSTALL.md` in the repository. PLUM

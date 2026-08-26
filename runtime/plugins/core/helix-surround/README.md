@@ -5,36 +5,33 @@ the Helix layout.
 
 ## Usage
 
-Loads eagerly — it takes over `m s`, which by default *selects* a surrounding pair, and
-removes `m w` outright. Declared lazily, `m s` would keep selecting instead of wrapping
-until something else happened to trigger the plugin:
-
 ```scheme
 (load-plugin "core:helix-surround")
 ```
 
-## Keys
+Loads eagerly: `m s`/`m d`/`m r` are the only way to reach this plugin's commands, so a lazy
+`declare-plugin` would have no trigger to ever activate it. See
+[Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-helix-surround) for what
+it rebinds.
 
-| Key                     | Command                | Effect                                              |
-|-------------------------|-------------------------|------------------------------------------------------|
-| `m s` + char             | surround-add            | Wrap each selection with `char` (and its pair-close)  |
-| `m d` + char             | helix-delete-surround   | Delete the surrounding delimiter pair                 |
-| `m r` + char + new_char  | helix-replace-surround  | Replace the surrounding pair with `new_char`          |
+## Commands
 
-This overwrites HUME's default `ms` keybind (`select-surround`) and unbinds `mw`
-(`surround-add`'s native binding) while the plugin is loaded. The underlying
-`select-surround` / `surround-*` commands (`surround-paren`, `surround-bracket`, etc.) stay
-registered and reachable via the typed-command interface (`:surround-paren`, ...) — only the
-keybindings move.
+| Command | Effect |
+|---|---|
+| `helix-delete-surround` | Delete the surrounding delimiter pair (`m d` + char) |
+| `helix-replace-surround` | Replace the surrounding pair with a new char (`m r` + char + char) |
 
 ## How it works
+
+Native `select-surround`/`surround-*` commands stay registered — only their keybindings
+move — so they're still reachable via the typed-command interface (`:surround-paren`, …)
+while this plugin is loaded.
 
 `surround-cmd-for` maps a delimiter char to its `surround-*` command name, returning `#f` for
 anything unrecognised so callers can skip gracefully instead of erroring on a stray keypress.
 
 `helix-replace-surround` doesn't implement replacement itself: it selects the existing pair
 via the matching `surround-*` command, then calls `request-wait-char! "replace"` so the *next*
-key becomes the pending-char argument to HUME's built-in `replace`. `replace` already does
-smart open/close substitution — e.g. pressing `(` on a `(`-delimited selection yields `[`,
-`)` yields `]` — so `helix-replace-surround` gets that behavior for free rather than
-re-implementing delimiter-pair logic.
+key becomes the pending-char argument to HUME's built-in `replace` — which already does smart
+open/close substitution (`(` on a `(`-delimited selection yields `[`), so this plugin gets
+that behavior for free rather than re-implementing delimiter-pair logic.

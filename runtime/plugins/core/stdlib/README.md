@@ -17,13 +17,14 @@ plugin's command body calls one of them at runtime.
 
 `(load-plugin "core:stdlib")` also works, loading it eagerly instead.
 
-See ["Depending on another plugin"](https://cvlmtg.github.io/HUME/plugins.html#depending-on-another-plugin) for why a bare `(declared-plugins)` check at a plugin's own load time is enough.
+See ["Depending on another plugin"](https://cvlmtg.github.io/HUME/plugins.html#depending-on-another-plugin) for why a bare `(declared-plugins)` check at a plugin's own load time is enough,
+and [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-stdlib) for the
+dependency-ordering rule every other core plugin follows.
 
-That mechanism breaks only if `core:stdlib` itself is declared with an explicit
-`#:commands`/`#:events`/`#:languages` that omits a helper one of them needs — the override
+That mechanism breaks only if `core:stdlib` is declared with an explicit
+`#:commands`/`#:events`/`#:languages` that omits a helper a dependent needs — the override
 leaves no activation stub, so `call!` logs an error and returns `#void` instead of raising,
-and the dependent's config read silently resolves to `#void`. Stick to the zero-trigger
-form above unless you have a specific reason to override it.
+silently resolving the dependent's config read to `#void`.
 
 ## Commands
 

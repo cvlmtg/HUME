@@ -49,7 +49,7 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
-;;; Shared body for both toggles below — see README's Commands section for
+;;; Shared body for both toggles below — see README's "Ref handling" for
 ;;; the ref-argument contract.
 (define (git-diff/run-toggle! bid key label arg)
   (let ([enabled?

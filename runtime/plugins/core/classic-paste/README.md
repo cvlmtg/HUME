@@ -5,36 +5,29 @@ as an alternative to HUME's default smart-p heuristic.
 
 ## Usage
 
-Loads eagerly — it replaces `p`/`P`/`Ctrl+V`/`Ctrl+Shift+V`'s default behavior. Declared
-lazily, those keys would keep pasting the default way until something else happened to
-trigger the plugin:
-
 ```scheme
 (load-plugin "core:classic-paste")
 ```
 
-## Keys
+Loads eagerly: it replaces `p`/`P`/`Ctrl+V`/`Ctrl+Shift+V`'s default behavior, and only those
+key bindings ever trigger it, so a lazy `declare-plugin` would have no other trigger to
+activate it. See
+[Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-classic-paste) for the
+binding scheme.
 
-| Key            | Command                  | Effect                                      |
-|----------------|---------------------------|----------------------------------------------|
-| `p`            | classic-ring-after       | Paste the kill-ring head after the selection  |
-| `P`            | classic-ring-before      | Paste the kill-ring head before the selection |
-| `Ctrl+V`       | classic-clipboard-after  | Paste the OS clipboard after the selection    |
-| `Ctrl+Shift+V` | classic-clipboard-before | Paste the OS clipboard before the selection   |
+## Commands
 
-Default HUME behavior (smart-p: kill ring while nothing's been edited since the last
-change/delete/yank, clipboard once something has) is unchanged unless this plugin is
-loaded — loading it replaces the default `p`/`P` bindings outright, not conditionally.
-
-Because each key here always targets one explicit source, pasting the same text twice
-in a row always replaces it rather than stacking a second copy — collapse the selection
-first (`;`) to paste alongside instead. The default (unloaded) `p`/`P` behave differently:
-pasting text that matches the current selection appends next to it automatically.
+| Command | Effect |
+|---|---|
+| `classic-ring-after` | Paste the kill-ring head after the selection |
+| `classic-ring-before` | Paste the kill-ring head before the selection |
+| `classic-clipboard-after` | Paste the OS clipboard after the selection |
+| `classic-clipboard-before` | Paste the OS clipboard before the selection |
 
 ## How it works
 
 Each wrapper command calls `set-register-prefix!` (`"k"` for kill-ring head, `"c"` for OS
-clipboard) immediately before dispatching to the built-in `paste-after` / `paste-before`.
+clipboard) immediately before dispatching to the built-in `paste-after`/`paste-before`.
 `set-register-prefix!` arms a *sticky* register for exactly the next `call!` — the built-in
 paste commands read it, then it's consumed, so there's no persistent state to reset between
 invocations. This is the same mechanism the raw register-prefixed commands (`"kp`, `"cP`,
@@ -44,6 +37,4 @@ otherwise take two.
 `Ctrl+Shift+V` is only delivered as a distinct event under the kitty keyboard protocol. On
 legacy terminals it's typically encoded identically to `Ctrl+V`, or intercepted by the
 terminal emulator as its own paste shortcut, so it may never reach HUME. `Ctrl+V` itself is
-delivered reliably under both kitty and legacy encodings — don't rely on `Ctrl+Shift+V` as
-the only way to reach clipboard-before paste in a config meant to be portable across
-terminals.
+delivered reliably under both kitty and legacy encodings.
