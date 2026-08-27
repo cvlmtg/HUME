@@ -7,14 +7,13 @@
 
 ### Plugins
 - `picker!` gains `#:query`, which prefills the input line and filters the (still empty, until seeded) item list against it.
-- New `live-picker!` opens a picker whose query drives an external source instead of the local fuzzy filter — a live grep, say, that re-runs its search per pattern instead of only locally filtering already-fetched rows. `#:command` is a `(lambda (query) argv-or-#f)` builder, run after `#:debounce-ms` (default `150`) of no further typing; returning `#f` means nothing to spawn for that query. The picker keeps showing the previous results, marked as refreshing, until the new search's own results are in. A non-empty `#:query` spawns synchronously, before `live-picker!` itself returns.
-- New `picker-replace!`, `picker-push!`'s sibling: replaces the open picker's item list instead of appending to it — used by a live source's `#:command` to clear the list when a query has nothing to search for.
-- `picker-source-spawn!` gains `#:ok-exit-codes` (default `'(0)`): the complete set of exit codes treated as a normal outcome — it replaces the success check rather than extending it, so pass `'(0 1)`, not `'(1)`, to add `rg`'s "no matches" exit to the default.
+- New `live-picker!` opens a picker whose query drives an external source instead of the local fuzzy filter — a live grep, say, that re-runs its search per pattern instead of only locally filtering already-fetched rows.
+- New `picker-replace!`, `picker-push!`'s sibling: replaces the open picker's item list instead of appending to it.
+- `picker-source-spawn!` gains `#:ok-exit-codes` (default `'(0)`): the complete set of exit codes treated as a normal outcome, e.g. to add `rg`'s "no matches" exit to the default.
 - New `picker-source-stop!` stops the open picker's attached streaming source, if any, without touching the item list — the missing half of `picker-replace!` for a live requery whose new query has nothing to spawn a replacement source for.
-- New `core:stdlib` commands `stdlib/git-repo?` and `stdlib/git-toplevel` (git work-tree detection / repo-root resolution), moved out of `core:pickers`' private helpers.
-- New `core:stdlib` commands `stdlib/selection-anchor`, `stdlib/selection-head`, `stdlib/selection-primary?`, and `stdlib/primary-selection` — accessors for a single selection triple, so a plugin never has to pick one apart with raw `car`/`cadr`/`caddr`.
+- New `core:stdlib` commands `stdlib/git-repo?` and `stdlib/git-toplevel` (git work-tree detection / repo-root resolution).
+- New `core:stdlib` commands `stdlib/selection-anchor`, `stdlib/selection-head`, `stdlib/selection-primary?`, and `stdlib/primary-selection` — accessors for a single selection triple.
 - New `core:stdlib` commands `stdlib/config-integer` (takes a minimum, `#f` for no minimum) and `stdlib/config-list` (a list of strings), rounding out `stdlib/config-boolean`/`-string`/`-enum` with the two remaining common `#:config` value shapes.
-- Fixed: a streaming picker source's row no longer shows a stray `<0>` for a NUL byte embedded in the line (e.g. `rg --vimgrep --null`) — it now displays as `:`, the same separator the tool prints without that flag.
 
 ## [0.11.0] - 2026-08-25
 
@@ -30,9 +29,7 @@
   `core:plum`/`core:lsp`) round out this round of plugin-internal deduplication.
 - **Breaking**: `core:plum`'s plugin commands are renamed `:plum-install-plugins`,
   `:plum-cleanup-plugins`, `:plum-update-plugins`, `:plum-list-plugins` (were
-  `:plum-install`, `:plum-cleanup`, `:plum-update`, `:plum-list`) — the `-plugins` suffix
-  matches the `-grammar(s)` suffix the grammar commands already carry, ahead of an
-  upcoming `:plum-install-theme`.
+  `:plum-install`, `:plum-cleanup`, `:plum-update`, `:plum-list`).
 - **Breaking**: `set-inline-diagnostics!` is renamed `set-eol-text!` and now takes a `source` argument first: `(set-eol-text! source bid entries)`, matching every other decoration setter's `(set-X! source bid entries)` shape.
 - **Breaking**: `set-inlay-hints!` now takes a `source` argument first — `(set-inlay-hints! source bid hints)` — and each hint's position is a plain buffer char offset instead of an LSP wire `{"line" ... "character" ...}` hashmap. Convert a wire position first with the new `lsp-position->offset`/`lsp-range->offsets` builtins.
 - **Breaking**: `set-virtual-lines!`'s entries are now hashmaps (`(hash 'line ... 'text ... 'scope ... 'anchor ... 'segments ...)`) instead of positional `(line text scope)` lists, and `'segments` are char offsets, not byte offsets.
@@ -49,7 +46,7 @@
 - New `:sort` command sorts each run of adjacent selected rows by their selected text, with `-r` (reverse) and `-i` (case-insensitive) flags; numeric keys are auto-detected.
 
 ### Files & buffers
-- HUME now notices when an open file changes on disk — another program, a formatter, `git checkout` — and prompts to reload the next time that buffer gets focus again (switching buffers/panes, a pane close, a picker accept, LSP goto-definition, etc.); Insert mode and the command line just warn instead, and prompt on the next such focus change. Controlled by the `autoread` option (default on; `#f` warns only). Answering `[k]eep` silences the prompt until the file changes again — `:checktime` still flags it regardless. `:w`/`:wa` refuse to overwrite a changed file unless forced with `!`.
+- HUME now notices when an open file changes on disk and prompts to reload the next time that buffer gets focus again; Insert mode and the command line just warn instead, and prompt on the next such focus change. Controlled by the `autoread` option (default on; `#f` warns only). Answering `[k]eep` silences the prompt until the file changes again — `:checktime` still flags it regardless. `:w`/`:wa` refuse to overwrite a changed file unless forced with `!`.
 
 ### Panes & interface
 - The buffer picker (`g b`) now shows each buffer's full display path instead of a `:pwd`-relative one.
@@ -62,13 +59,10 @@
 ### Configuration & options
 - `:reload-config` is now a full reset: keymaps, options, hooks, commands, and plugins all go back to their defaults before `init.scm` re-runs. Buffers, undo history, and running language servers are untouched.
 - `mouse-enabled`/`mouse-select` and `jump-list-capacity` now apply immediately when changed with `:set`, instead of only at startup.
-- `wrap-mode` is now a buffer option: set it per file type from an `on-language-set` hook, or globally. `:set global wrap-mode=…` now applies to buffers that are already open, not just ones opened afterward; `:set pane wrap-mode=…` and `:wrap` still pin a single pane above both, but now remember that pin separately for each buffer the pane shows — switching to another buffer resolves that buffer's own setting instead of carrying the pin along, and switching back restores it. `:wrap` turning wrapping back on, with nothing to restore, now falls back to the configured global style instead of always hardcoding `indent`.
+- `wrap-mode` is now a buffer option: set it per file type from an `on-language-set` hook, or globally. `:set global wrap-mode=…` now applies to buffers that are already open, not just ones opened afterward; `:set pane wrap-mode=…` and `:wrap` still pin a single pane above both, but now remember that pin separately for each buffer the pane shows. `:wrap` turning wrapping back on, with nothing to restore, now falls back to the configured global style instead of always hardcoding `indent`.
 
 ### Plugins & scripting
-- New `core:git-diff` plugin: live, VSCode-style inline git diff. `:toggle-git-signs` renders
-  gutter `+`/`-`/`~` signs; `:toggle-inline-diff` renders virtual deleted lines, word-level
-  highlights, and a background tint on changed lines — both against a configurable git ref,
-  `#:config` keys `signs`/`inline`/`ref`. Requires `core:stdlib` declared or loaded first.
+- New `core:git-diff` plugin: live, VSCode-style inline git diff. `:toggle-git-signs` renders gutter `+`/`-`/`~` signs; `:toggle-inline-diff` renders virtual deleted lines, word-level highlights, and a background tint on changed lines — both against a configurable git ref, Requires `core:stdlib` declared or loaded first.
 - New `buffer-text`/`buffer-lines` scripting builtins return a buffer's live, unsaved content — the full text, or its content lines (optionally a `#:start`/`#:end` range), excluding the phantom trailing line past the buffer's structural newline.
 - New `diff-words` scripting builtin computes a word-level diff between two texts, returning 0-based char-offset hunk tuples plus a flag for when the comparison was too large to refine precisely.
 - New `diff-lines`/`diff-buffer-lines` scripting builtins compute a line-level diff between two texts, or between a text and a buffer's live content, returning 0-based hunk tuples ready to feed into `set-signs!`/`set-virtual-lines!`.
@@ -88,8 +82,7 @@
 - Tagged release builds now show a clean `--version` string, with no commit-hash suffix.
 
 ### Fixes
-- Fixed `:plum-list-plugins`/`:plum-install-plugins`/`:plum-update-plugins` raising instead of skipping a stray file
-  (e.g. `.DS_Store`) found alongside a directory it expected to walk, in
+- Fixed `:plum-list-plugins`/`:plum-install-plugins`/`:plum-update-plugins` raising instead of skipping a stray file (e.g. `.DS_Store`) found alongside a directory it expected to walk, in
   `<data>/plugins/<user>/<repo>/`.
 - Fixed `C`/`copy-selection-on-{next,prev}-line` landing a copy one column off when a tab or wide (e.g. CJK) grapheme precedes the cursor — it now targets the same display column `9j`/`9k` land on, instead of a raw char offset.
 - Fixed `C`/`copy-selection-on-{next,prev}-line` on a selection spanning more than one buffer line: it used to shift the copy just one line away, which overlapped the original and merged into it instead of duplicating it. Each copy is now offset by the selection's own line span, landing cleanly above or below it.

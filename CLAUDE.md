@@ -56,7 +56,7 @@ This project is both a product and a learning journey. Write the best Rust possi
 ## Documentation audiences
 Every piece of writing in this repo targets one of three audiences. Know which one before you write, and don't mix them.
 
-1. **End users** — people running HUME who want to use it. Lives in `README.md`, `user-manual/docs/*.md`, `runtime/tutor.rst`, `runtime/init.scm.example`, and any `:help`-style content surfaced inside the editor.
+1. **End users** — people running HUME who want to use it. Lives in `CHANGELOG.md`, `README.md`, `user-manual/docs/*.md`, `runtime/tutor.rst`, `runtime/init.scm.example`, and any `:help`-style content surfaced inside the editor.
    - No internal names. Don't reference Rust types, Steel builtins used only by the implementation, or module paths. ❌ "the next key pressed is passed as `(pending-char)`" — `pending-char` is a code internal; describe the *behaviour* instead.
    - No babysitting. Assume the reader can follow a short instruction. ❌ "These are absent on a fresh setup" — say what to do, not what the reader will or won't see.
    - Describe what the editor does and how to drive it. Nothing about why it's built that way.
