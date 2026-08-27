@@ -178,19 +178,33 @@ macro_rules! builtins {
 // name a caller chooses, not a keyword's side effect.
 //
 // live-picker!'s wrapper owns the whole requery lifecycle by construction —
-// stop-and-clear the running source, debounce, respawn via #:command —
-// rather than making every author hand-wire it. The wrapper's own internal
-// lambda — not the caller's #:command — is what's
-// stop-and-clear-then-debounce; it's called on *every* keystroke,
-// unconditionally, so a query that debounces to empty still cancels
-// whatever the previous non-empty keystroke armed, rather than stranding a
-// timer that fires later for a pattern the query box no longer shows. The
-// stop-and-clear half runs immediately, every keystroke, undebounced — only
-// the respawn is delayed — otherwise the previous pattern's rows would sit
-// on screen for the entire debounce window. #:command returning `#f` means
-// "nothing to spawn for this query" — the empty-query guard lives inside
-// the builder a caller writes, not as a separate flag threaded through the
-// wrapper, so there is nothing to forget.
+// stop the running source, debounce, respawn via #:command — rather than
+// making every author hand-wire it. The wrapper's own internal lambda — not
+// the caller's #:command — is what's stop-then-debounce; it's called on
+// *every* keystroke, unconditionally, so a query that debounces to empty
+// still cancels whatever the previous non-empty keystroke armed, rather
+// than stranding a timer that fires later for a pattern the query box no
+// longer shows.
+//
+// The previous pattern's rows stay on screen through the whole stop/
+// debounce/respawn gap — clearing immediately, the first design, produced
+// a visible blank-then-repaint flash on every keystroke. `picker-source-stop!`
+// still runs immediately (a still-running source for the old pattern must
+// not keep appending rows while the query changes again); only the *clear*
+// moved, into `spawn-for`'s #f branch, so it fires solely when a query
+// settles on nothing to search rather than on every intermediate keystroke.
+// The swap itself lives in `PickerSession::attach_source`/`push`
+// (hume-editor::editor::picker): a live session's attached source is
+// marked to replace `items` wholesale on its own first batch, instead of
+// this wrapper clearing ahead of time — see `AttachedSource::supersedes_rows`'s
+// doc for why that has to be scoped to the source, not the session, to stay
+// race-free against a stale batch from the source just killed. Meanwhile
+// `PickerSession::is_pending` (hence the panel's "…" marker) stays true
+// across the same gap via `requery_armed`, so the on-screen rows read as
+// "refreshing" rather than settled while they're stale. #:command
+// returning `#f` means "nothing to spawn for this query" — the empty-query
+// guard lives inside the builder a caller writes, not as a separate flag
+// threaded through the wrapper, so there is nothing to forget.
 //
 // %live-picker! hands its own session token into the internal callback as
 // an argument, rather than the callback closing over live-picker!'s return

@@ -528,11 +528,13 @@ every keystroke and, when it returns a real argv, spawns it exactly the way
 Returning `#f` for an empty query, as above, is how you tell the picker "show nothing"
 rather than search for an empty pattern.
 
-Before spawning the new search, HUME stops whatever source is still running and clears
-its rows — immediately, on every keystroke — so the previous pattern's output never
-lingers on screen. `#:debounce-ms` (default `150`) delays only the respawn itself, not
-that clear: type fast and the rows disappear on the first keystroke, then the new search
-starts once you pause for the window. `rg` needs an explicit path argument (`"."` above):
+Every keystroke stops whatever search is still running, immediately — but its rows stay
+on screen, marked as refreshing, until the new search's own results arrive; there's no
+blank flash in between. `#:debounce-ms` (default `150`) delays only the new search
+itself, not the stop: type fast and the respawn waits until you pause for the window,
+still showing the previous pattern's rows the whole time. A query that turns out to
+match nothing clears the list once the search finishes, rather than leaving stale rows
+up. `rg` needs an explicit path argument (`"."` above):
 with no path and no terminal attached to its input, it searches its (empty) stdin instead
 of the working directory and finds nothing. `#:ok-exit-codes` works exactly as it does for
 `picker-source-spawn!` — a complete allowlist, not additive, so include `0` yourself; `rg`

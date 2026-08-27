@@ -105,8 +105,17 @@ impl Editor {
                 payload: SteelVal::StringV(line.into()),
             })
             .collect();
-        if !items.is_empty() {
+        let delivered_a_batch = !items.is_empty();
+        if delivered_a_batch {
             session.push(items);
+        }
+
+        // A live requery's source that disconnects having delivered
+        // nothing (rg exit 1, "no matches") must still drop the previous
+        // pattern's rows — `push`'s wholesale-replace-on-first-batch never
+        // ran, so `supersedes_rows` is still armed here to say so.
+        if disconnected && !delivered_a_batch && session.source_supersedes_rows() {
+            session.replace(Vec::new());
         }
 
         let exit = disconnected.then(|| {

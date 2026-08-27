@@ -50,6 +50,14 @@ pub(crate) fn picker_items(items: Vec<(String, SteelVal)>) -> Vec<PickerItem> {
 struct AttachedSource {
     source: SpawnedLineSource,
     ok_exit_codes: Vec<i32>,
+    /// Set at attach time for a live requery's source: its first `push`
+    /// replaces `items` wholesale instead of appending, so the previous
+    /// pattern's rows stay on screen until this source actually has
+    /// something to show. Scoped to the source, not the session, so a
+    /// batch still queued from the *outgoing* source — killed by a
+    /// respawn but not yet drained — can never carry this flag; only the
+    /// source actually attached when a batch arrives can.
+    supersedes_rows: bool,
 }
 
 /// Whether the query drives the local fuzzy filter (`picker!`) or an
@@ -142,6 +150,13 @@ pub(crate) struct PickerSession {
     /// Whether the query drives the local fuzzy filter or an external
     /// source — see [`PickerMode`].
     mode: PickerMode,
+    /// A live session's query changed and its requery (stop old source,
+    /// debounce, spawn new one) hasn't delivered a first batch yet. Can't
+    /// ride `population`: `picker-source-stop!` takes the source and
+    /// resets `population` to `Complete` well before the respawn's first
+    /// batch lands, and `is_pending` must keep reading "still arriving"
+    /// across that whole gap — see `notify_query_change`.
+    requery_armed: bool,
 }
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
@@ -204,6 +219,7 @@ impl PickerSession {
             token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
             population,
             mode,
+            requery_armed: false,
         }
     }
 
@@ -216,9 +232,10 @@ impl PickerSession {
     }
 
     /// Whether results are still arriving — `population` is anything but
-    /// `Complete`.
+    /// `Complete`, or a live requery is armed and hasn't delivered its
+    /// first batch yet (see `requery_armed`'s doc).
     pub(crate) fn is_pending(&self) -> bool {
-        !matches!(self.population, Population::Complete)
+        self.requery_armed || !matches!(self.population, Population::Complete)
     }
 
     /// Clears `#:pending` on an applied batch — the `Awaiting` half of
@@ -226,11 +243,14 @@ impl PickerSession {
     /// batch) land. Leaves `Streaming` untouched: a source drains lines
     /// into `push` continuously, and the source itself — not the arrival of
     /// one particular batch — is what decides when populating ends (its
-    /// disconnect, handled by `take_source`).
+    /// disconnect, handled by `take_source`). Also clears `requery_armed` —
+    /// `push`/`replace` are exactly the two ways a batch "arrives", and a
+    /// live requery's swap always goes through one of them.
     fn batch_arrived(&mut self) {
         if matches!(self.population, Population::Awaiting) {
             self.population = Population::Complete;
         }
+        self.requery_armed = false;
     }
 
     /// Seeds the initial item list `picker!` was given. An empty seed is
@@ -257,7 +277,17 @@ impl PickerSession {
     /// is actively scrolling through unnavigable. Safe here specifically
     /// because `push` only ever appends — every index a pre-push
     /// `filtered` held still names the same item afterward.
+    ///
+    /// Exception: the attached source's first batch after a live requery
+    /// (`take_supersede`) replaces `items` wholesale instead — see
+    /// `AttachedSource::supersedes_rows`'s doc. That's `replace`'s job, not
+    /// a hand-rolled clear-then-extend here, so it also gets `replace`'s
+    /// row-0 reset.
     pub(crate) fn push(&mut self, items: Vec<PickerItem>) {
+        if self.take_supersede() {
+            self.replace(items);
+            return;
+        }
         self.batch_arrived();
         self.items.extend(items);
         self.rerank_keeping_selection();
@@ -270,10 +300,14 @@ impl PickerSession {
     /// pre-replace `filtered` held names a *different* item (or nothing)
     /// once `items` is cleared, so there is no selection worth trying to
     /// preserve. Items are otherwise append-only; this is the only way to
-    /// drop stale rows. The requery half of a live source: `live-picker!`'s
-    /// wrapper clears the previous pattern's rows before spawning the new
-    /// search.
+    /// drop stale rows — a plugin driving `picker-replace!` directly, or
+    /// `drain_picker_source` clearing a live requery's stale rows on a
+    /// no-results exit. Also consumes `take_supersede`: an explicit
+    /// replace already *is* the swap a live requery's first batch would
+    /// otherwise perform, so that later batch must append, not replace
+    /// again.
     pub(crate) fn replace(&mut self, items: Vec<PickerItem>) {
+        self.take_supersede();
         self.batch_arrived();
         self.items = items;
         self.rerank();
@@ -286,11 +320,32 @@ impl PickerSession {
     /// practice this replace fires only as a safety net, never on the live
     /// outgoing source itself. `ok_exit_codes` is `drain_picker_source`'s
     /// allowlist for *this* source, e.g. `rg`'s exit `1` ("no matches").
+    ///
+    /// `supersedes_rows` is set only for a live session (`self.mode.is_live()`):
+    /// its rows always belong to exactly one query, so the next source's
+    /// first batch should replace them. A `picker!` session driving
+    /// `picker-source-spawn!` itself may legitimately spawn a second source
+    /// to *add* rows to an already-seeded list, so it keeps `push`'s
+    /// ordinary append behavior.
     pub(super) fn attach_source(&mut self, source: SpawnedLineSource, ok_exit_codes: Vec<i32>) {
+        let supersedes_rows = self.mode.is_live();
         self.population = Population::Streaming(AttachedSource {
             source,
             ok_exit_codes,
+            supersedes_rows,
         });
+    }
+
+    /// Consumes the attached source's `supersedes_rows` flag, if any —
+    /// `false` (and a no-op) when nothing is attached or the flag was
+    /// already spent. `push`'s and `replace`'s only caller.
+    fn take_supersede(&mut self) -> bool {
+        match &mut self.population {
+            Population::Streaming(attached) => {
+                std::mem::replace(&mut attached.supersedes_rows, false)
+            }
+            _ => false,
+        }
     }
 
     pub(crate) fn source_mut(&mut self) -> Option<&mut SpawnedLineSource> {
@@ -300,12 +355,19 @@ impl PickerSession {
         }
     }
 
+    /// Whether the attached source (if any) would still replace `items`
+    /// wholesale on its next batch — `drain_picker_source`'s check for a
+    /// live requery's source that disconnected before ever delivering one,
+    /// so it can clear the previous pattern's now-stale rows itself.
+    pub(crate) fn source_supersedes_rows(&self) -> bool {
+        self.attached()
+            .is_some_and(|attached| attached.supersedes_rows)
+    }
+
     /// Shared read-only half of the `Population::Streaming` match — the
     /// `&mut` accessors (`source_mut`, `take_source`) need their own match
     /// arms to hand back a mutable borrow or move the source out, but every
-    /// read-only query below (all `#[cfg(all(test, unix))]`, hence this being
-    /// gated the same way) is a one-liner over this.
-    #[cfg(all(test, unix))]
+    /// read-only query below is a one-liner over this.
     fn attached(&self) -> Option<&AttachedSource> {
         match &self.population {
             Population::Streaming(attached) => Some(attached),
@@ -372,7 +434,7 @@ impl PickerSession {
     pub(crate) fn insert_char(&mut self, ch: char) -> Option<SteelVal> {
         self.query.push(ch);
         self.rerank();
-        self.mode.on_query_change()
+        self.notify_query_change()
     }
 
     /// Removes the trailing grapheme cluster (not merely the last `char`) so
@@ -391,7 +453,18 @@ impl PickerSession {
             self.query.len(),
         ));
         self.rerank();
-        self.mode.on_query_change()
+        self.notify_query_change()
+    }
+
+    /// Shared tail of `insert_char`/`pop_grapheme`: the mode's
+    /// `on_query_change` callback, if any, and — only when there is one,
+    /// i.e. only for a live session — arms `requery_armed` so `is_pending`
+    /// reads "still arriving" for the whole stop/debounce/respawn gap a
+    /// requery opens, not just while a source happens to be attached.
+    fn notify_query_change(&mut self) -> Option<SteelVal> {
+        let cb = self.mode.on_query_change()?;
+        self.requery_armed = true;
+        Some(cb)
     }
 
     /// Replaces the query wholesale and reranks — test-only: production code
@@ -843,6 +916,43 @@ mod tests {
         assert_eq!(window_vec(&s, 10), before);
         assert_eq!(s.selected(), 0);
         assert_eq!(s.scroll(), 0);
+    }
+
+    #[test]
+    fn live_session_query_change_is_pending_until_the_next_batch() {
+        // A live requery's stop/debounce/respawn gap has no attached source
+        // for most of its span (`picker-source-stop!` takes it immediately),
+        // so `is_pending` can't ride `population` alone here the way it does
+        // for a streaming/#:pending session — it must stay true from the
+        // query edit itself through to the next push/replace.
+        let mut s = open_live();
+        assert!(!s.is_pending());
+        assert!(
+            s.insert_char('a').is_some(),
+            "a live session's query change must still fire its callback"
+        );
+        assert!(
+            s.is_pending(),
+            "a live query change must mark the session pending even with no source attached"
+        );
+        s.push(items(&["x"]));
+        assert!(
+            !s.is_pending(),
+            "a batch landing (push or replace) is what ends a live requery's pending window"
+        );
+    }
+
+    #[test]
+    fn non_live_session_query_change_never_sets_pending() {
+        let mut s = open();
+        assert!(
+            s.insert_char('a').is_none(),
+            "a non-live session's query change has no callback to fire"
+        );
+        assert!(
+            !s.is_pending(),
+            "a non-live session's local filter never marks the session pending"
+        );
     }
 
     #[test]

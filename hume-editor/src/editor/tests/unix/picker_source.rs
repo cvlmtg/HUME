@@ -5,15 +5,34 @@
 
 use super::*;
 
-use crate::editor::picker::{self, PickerSession};
+use crate::editor::picker::{self, PickerItem, PickerSession};
 use hume_platform::process::line_source::spawn_line_source;
-use hume_scripting::host::PickerOpts;
+use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use std::sync::Arc;
 use steel::rvals::SteelVal;
 
 fn open_bare_picker(ed: &mut Editor) {
     let session = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default());
     picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+}
+
+fn open_live_picker(ed: &mut Editor) {
+    let session = PickerSession::new_live(
+        SteelVal::BoolV(false),
+        LivePickerOpts {
+            prompt: String::new(),
+            query: String::new(),
+            on_query_change: SteelVal::BoolV(false),
+        },
+    );
+    picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+}
+
+fn item(display: &str) -> PickerItem {
+    PickerItem {
+        display: display.to_string(),
+        payload: SteelVal::StringV(display.into()),
+    }
 }
 
 fn no_op_wake() -> Arc<dyn Fn() + Send + Sync> {
@@ -297,5 +316,185 @@ fn a_second_attach_source_kills_the_first_source_child() {
     assert!(
         !process_is_alive(first_pid),
         "attaching a second source must kill the first (re-spawn-replaces-source semantics)"
+    );
+}
+
+// ── `attach_source`'s `supersedes_rows`: a live session's own requery
+// ── swaps its first batch in instead of appending — see `PickerSession::push`
+// ── and `AttachedSource::supersedes_rows`'s docs in `picker.rs`.
+
+#[test]
+fn live_session_first_batch_after_attach_replaces_the_previous_rows() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let mut ed = editor_from("-[a]>bc\n");
+    open_live_picker(&mut ed);
+    {
+        let session = ed.state.config.picker.as_mut().unwrap();
+        session.push(vec![item("stale-a"), item("stale-b")]);
+        session.move_selection(1, 10);
+    }
+    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 1);
+
+    attach_sh(&mut ed, "printf 'fresh\\n'", vec![0]);
+
+    drain_sources_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 1
+    });
+
+    let picker = ed.state.config.picker.as_ref().unwrap();
+    assert_eq!(
+        picker.window(10).collect::<Vec<_>>(),
+        vec!["fresh"],
+        "a live session's newly attached source must replace the previous \
+         query's rows wholesale on its first batch, not append to them"
+    );
+    assert_eq!(
+        picker.selected(),
+        0,
+        "the wholesale swap must reset the cursor"
+    );
+}
+
+#[test]
+fn live_session_second_batch_from_the_same_source_appends() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let mut ed = editor_from("-[a]>bc\n");
+    open_live_picker(&mut ed);
+
+    attach_sh(
+        &mut ed,
+        "printf 'first\\n'; sleep 0.3; printf 'second\\n'",
+        vec![0],
+    );
+
+    drain_sources_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            >= 1
+    });
+    assert_eq!(
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .unwrap()
+            .window(10)
+            .collect::<Vec<_>>(),
+        vec!["first"],
+        "the first batch after attach must replace (wholesale, not append)"
+    );
+
+    drain_sources_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 2
+    });
+    assert_eq!(
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .unwrap()
+            .window(10)
+            .collect::<Vec<_>>(),
+        vec!["first", "second"],
+        "a later batch from the SAME source must append, not replace again"
+    );
+}
+
+#[test]
+fn filter_session_attach_source_still_appends_not_replaces() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let mut ed = editor_from("-[a]>bc\n");
+    open_bare_picker(&mut ed);
+    ed.state
+        .config
+        .picker
+        .as_mut()
+        .unwrap()
+        .push(vec![item("seeded")]);
+
+    attach_sh(&mut ed, "printf 'fresh\\n'", vec![0]);
+
+    drain_sources_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 2
+    });
+    assert_eq!(
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .unwrap()
+            .window(10)
+            .collect::<Vec<_>>(),
+        vec!["seeded", "fresh"],
+        "a non-live (`picker!`) session's attached source must still append \
+         to whatever was already seeded, not replace it — `supersedes_rows` \
+         is only set for a live session"
+    );
+}
+
+#[test]
+fn explicit_replace_while_a_source_is_attached_consumes_supersede_so_the_next_batch_appends() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let mut ed = editor_from("-[a]>bc\n");
+    open_live_picker(&mut ed);
+
+    attach_sh(&mut ed, "sleep 0.3; printf 'streamed\\n'", vec![0]);
+    // Nothing has arrived yet (the child is still sleeping) — an explicit
+    // replace must consume the still-armed `supersedes_rows` flag itself,
+    // so the source's own later batch doesn't wholesale-replace this list
+    // right back out.
+    ed.state
+        .config
+        .picker
+        .as_mut()
+        .unwrap()
+        .replace(vec![item("explicit")]);
+
+    drain_sources_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 2
+    });
+    assert_eq!(
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .unwrap()
+            .window(10)
+            .collect::<Vec<_>>(),
+        vec!["explicit", "streamed"],
+        "the source's own batch must append to what `replace` just set, not \
+         wholesale-replace it again"
     );
 }

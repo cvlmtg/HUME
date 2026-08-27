@@ -575,7 +575,7 @@ fn live_picker_empty_seed_calls_no_builder() {
 // ── live-picker!: keystrokes stop-and-clear immediately, respawn debounced ──
 
 #[test]
-fn live_picker_keystroke_stops_and_clears_immediately_then_debounces_the_respawn() {
+fn live_picker_keystroke_keeps_previous_rows_until_the_new_search_delivers() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
@@ -596,9 +596,14 @@ fn live_picker_keystroke_stops_and_clears_immediately_then_debounces_the_respawn
 
     assert_eq!(
         ed.state.config.picker.as_ref().unwrap().total_len(),
-        0,
-        "stop-and-clear must run on every keystroke immediately, not wait for the \
-         100000ms debounce window to elapse"
+        1,
+        "the previous pattern's rows must stay on screen through the whole \
+         100000ms debounce window, not clear immediately on the keystroke"
+    );
+    assert!(
+        ed.state.config.picker.as_ref().unwrap().is_pending(),
+        "a live query change must mark the session pending even while the \
+         stale rows are still the only ones on screen"
     );
     assert!(
         ed.state.status_msg.is_none(),

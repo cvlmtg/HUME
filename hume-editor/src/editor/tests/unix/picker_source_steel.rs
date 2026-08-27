@@ -376,14 +376,13 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
     );
 
     ed.feed_key(key('b'));
-    // The stop-and-clear half runs immediately, before the debounced
-    // respawn — same ordering the portable
-    // `live_picker_keystroke_stops_and_clears_immediately_then_debounces_the_respawn`
-    // test pins without a real spawn.
+    // The stop half runs immediately, before the debounced respawn — same
+    // ordering the portable
+    // `live_picker_keystroke_keeps_previous_rows_until_the_new_search_delivers`
+    // test pins without a real spawn. The previous pattern's row stays on
+    // screen, not cleared, until the new search's own first batch swaps it
+    // in below.
     ed.settle();
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().total_len(), 0);
-
-    drain_until_picker_total(&mut ed, 1);
     assert_eq!(
         ed.state
             .config
@@ -392,17 +391,31 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
             .unwrap()
             .window(10)
             .collect::<Vec<_>>(),
-        vec!["row-ab"],
-        "the keystroke must have respawned with the new query embedded"
+        vec!["row-a"],
+        "the previous pattern's row must survive the keystroke, not clear immediately"
     );
+    assert!(
+        ed.state.config.picker.as_ref().unwrap().is_pending(),
+        "a live query change must mark the session pending even before the \
+         debounced respawn fires"
+    );
+
+    drain_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .is_some_and(|p| p.window(10).collect::<Vec<_>>() == vec!["row-ab"])
+    });
 
     ed.feed_key(key_backspace());
     ed.feed_key(key_backspace());
     // Two settles, as the portable debounce-ms-0 tests document: the first
-    // drains the two queued wrapped-callback calls (clearing immediately,
+    // drains the two queued wrapped-callback calls (stopping the source,
     // arming then re-arming the 0ms timer for the latest, now-empty,
     // query); the second lets that surviving timer fire — calling
-    // #:command with "" here, which returns #f and spawns nothing.
+    // #:command with "" here, which returns #f, which is what actually
+    // clears the rows (see `spawn-for`'s #f branch in bootstrap.scm).
     ed.settle();
     ed.settle();
     assert!(
@@ -413,5 +426,60 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
         ed.state.config.picker.as_ref().unwrap().total_len(),
         0,
         "backspacing to empty must clear rows and spawn nothing new"
+    );
+}
+
+#[test]
+fn live_picker_requery_with_no_output_clears_the_previous_rows() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let (mut ed, _tmp) = editor_with(
+        r#"
+        (define-command! "go" "" (lambda ()
+          (live-picker! (lambda (x) (log! 'info (to-string x)))
+            #:query "a"
+            #:debounce-ms 0
+            #:ok-exit-codes '(0 1)
+            #:command (lambda (q)
+              (and (not (equal? q ""))
+                   (if (equal? q "a")
+                       (list "sh" "-c" "printf 'row-a\n'")
+                       (list "sh" "-c" "exit 1")))))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    drain_until_picker_total(&mut ed, 1);
+    assert_eq!(
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .unwrap()
+            .window(10)
+            .collect::<Vec<_>>(),
+        vec!["row-a"],
+        "the #:query seed must have spawned synchronously"
+    );
+
+    // "az" spawns `sh -c "exit 1"` — an allowlisted (`#:ok-exit-codes '(0 1)`)
+    // but silent exit. It never delivers a batch to swap the old row out
+    // (`PickerSession::push`'s `take_supersede` branch), so
+    // `drain_picker_source`'s disconnect-with-nothing-delivered check is
+    // what has to clear it instead — see `picker_source.rs`'s doc.
+    ed.feed_key(key('z'));
+    ed.settle();
+    ed.settle();
+
+    drain_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .is_some_and(|p| p.total_len() == 0)
+    });
+    assert!(
+        !ed.state.config.picker.as_ref().unwrap().has_source(),
+        "a requery source that delivers nothing must leave no source attached once it exits"
     );
 }

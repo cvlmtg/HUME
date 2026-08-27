@@ -140,16 +140,17 @@
     (error "live-picker!: #:debounce-ms must be a non-negative integer"))
   (let* ([spawn-for (lambda (token q)
                        (let ([argv (command q)])
-                         (when argv
-                           (unless (and (list? argv) (not (null? argv)) (string? (car argv)))
-                             (error "live-picker!: #:command must return #f or a non-empty list of strings (argv)"))
-                           (picker-source-spawn! token (car argv) (cdr argv)
-                                                 #:cwd cwd #:nul nul #:ok-exit-codes ok-exit-codes))))]
+                         (if argv
+                             (begin
+                               (unless (and (list? argv) (not (null? argv)) (string? (car argv)))
+                                 (error "live-picker!: #:command must return #f or a non-empty list of strings (argv)"))
+                               (picker-source-spawn! token (car argv) (cdr argv)
+                                                     #:cwd cwd #:nul nul #:ok-exit-codes ok-exit-codes))
+                             (picker-replace! token '()))))]
          [respawn (debounce debounce-ms spawn-for)]
          [token (%live-picker! on-select prompt query
                   (lambda (token q)
                     (picker-source-stop! token)
-                    (picker-replace! token '())
                     (respawn token q)))])
     (unless (equal? query "")
       (spawn-for token query))
