@@ -3,7 +3,7 @@
 
 (provide git-diff/init-buffer! git-diff/remove-buffer!
          git-diff/buffer-entry git-diff/entry-set! git-diff/ensure-entry!
-         git-diff/toggle-flag!)
+         git-diff/toggle-flag! git-diff/cancel-job!)
 
 (define git-diff/*buffers* (box (hash)))
 
@@ -44,3 +44,14 @@
   (let ([new? (not (hash-ref (git-diff/buffer-entry bid) key))])
     (git-diff/entry-set! bid key new?)
     new?))
+
+;;; Cancels any in-flight `spawn-async!` job stored under `key` (one of
+;;; "job"/"branch-job") for `bid`, without firing its callback. Shared by
+;;; `diff.scm`'s and `branch.scm`'s otherwise-identical cancel functions —
+;;; only the slot key differs between them.
+(define (git-diff/cancel-job! bid key)
+  (let ([entry (git-diff/buffer-entry bid)])
+    (when entry
+      (let ([job (hash-ref entry key)])
+        (when job (cancel-async! job)))
+      (git-diff/entry-set! bid key #f))))

@@ -142,6 +142,26 @@ const ELEMENT_NAMES: &[(&str, StatusElement)] = &[
 /// makes a name round-trip through both.
 const CUSTOM_PREFIX: &str = "steel:";
 
+impl StatusElement {
+    /// Validates and builds a [`Custom`](StatusElement::Custom) element from
+    /// a bare name (no `steel:` prefix). Shared by `FromStr`'s parse path
+    /// and `set_statusline_text`'s push path (`host_impl.rs`) — a name that
+    /// fails here can never round-trip through `"left|center|right"`
+    /// (`settings::parse_statusline` splits on `,`/`|` with no escaping), so
+    /// both the place that names an element and the place that pushes to
+    /// one must reject it, or a pushed-but-unplaceable name silently never
+    /// renders.
+    pub(crate) fn custom(name: &str) -> Result<Self, String> {
+        if name.is_empty() || name.contains([',', '|']) {
+            Err(format!(
+                "a {CUSTOM_PREFIX} element name must be non-empty and must not contain ',' or '|', got '{name}'"
+            ))
+        } else {
+            Ok(StatusElement::Custom(name.into()))
+        }
+    }
+}
+
 impl fmt::Display for StatusElement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let StatusElement::Custom(name) = self {
@@ -159,22 +179,11 @@ impl FromStr for StatusElement {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // A custom name round-trips through the same `"left|center|right"`
-        // wire format every other element does (`settings::parse_statusline`
-        // splits on `,`/`|` with no escaping), so it can't itself contain
-        // either separator — checked here, the one place both
-        // `configure-statusline!` and `:set global statusline=…` parse
-        // through, rather than at `set-statusline-text!` (which never
-        // touches `StatusElement` and has no wire format to protect).
+        // `StatusElement::custom` also gates `set-statusline-text!`'s push
+        // path (`host_impl.rs`) — a name rejected there can never be placed
+        // here, and vice versa.
         if let Some(name) = s.strip_prefix(CUSTOM_PREFIX) {
-            return if name.is_empty() || name.contains([',', '|']) {
-                Err(format!(
-                    "unknown element '{s}'; a {CUSTOM_PREFIX} element name must be non-empty \
-                     and must not contain ',' or '|'"
-                ))
-            } else {
-                Ok(StatusElement::Custom(name.into()))
-            };
+            return StatusElement::custom(name).map_err(|e| format!("unknown element '{s}': {e}"));
         }
         ELEMENT_NAMES
             .iter()

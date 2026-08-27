@@ -15,7 +15,7 @@
 
 use super::*;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::super::render_snapshot::render_to_styled_string;
@@ -31,6 +31,21 @@ fn commit_file(dir: &Path, name: &str, content: &str, msg: &str) {
     std::fs::write(dir.join(name), content).unwrap();
     git(dir, &["add", name]);
     git(dir, &["commit", "-q", "-m", msg]);
+}
+
+/// Fresh repo, `<dir>/<name>` holding `content`, committed then checked out
+/// onto `branch` — collapses the repeated "init, commit, checkout -b" fixture
+/// setup across the branch-tracking tests below. The returned `TempDir` must
+/// stay alive (its `Drop` removes the repo) for as long as `path` is used.
+fn commit_and_checkout(name: &str, content: &str, branch: &str) -> (tempfile::TempDir, PathBuf) {
+    let repo = safe_tempdir();
+    git_init(repo.path());
+    commit_file(repo.path(), name, content, "v1");
+    // Explicit branch name — never rely on the ambient git version's
+    // configured default branch name (`main` vs `master`).
+    git(repo.path(), &["checkout", "-q", "-b", branch]);
+    let path = repo.path().join(name);
+    (repo, path)
 }
 
 /// Loads the real `core:git-diff` plugin eagerly against the repo's actual
@@ -49,6 +64,24 @@ fn setup(tmp: &Path, config_expr: Option<&str>) -> (Editor, RealRuntimeGuard) {
     // plugin.scm's header) — load it first, same as the shipped init.scm.example.
     let load = format!("(load-plugin \"core:stdlib\")\n{load_git_diff}");
     eval_with_real_host(&mut ed, &mut host, &load, tmp);
+    ed.scripting = Some(host);
+    (ed, guard)
+}
+
+/// Same as `setup`, but also places `"steel:git-branch"` in the statusline
+/// config — `branch.scm`'s fetch is gated on the element being placed (see
+/// README's "Branch tracking"), so every branch-tracking test below needs
+/// this; the ~20 other call sites in this file want the fetch to stay off
+/// and call `setup` directly.
+fn setup_with_git_branch(tmp: &Path) -> (Editor, RealRuntimeGuard) {
+    let (mut ed, guard) = setup(tmp, None);
+    let mut host = ed.scripting.take().expect("setup() installs a host");
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(configure-statusline! '("steel:git-branch") '() '())"#,
+        tmp,
+    );
     ed.scripting = Some(host);
     (ed, guard)
 }
@@ -765,27 +798,21 @@ fn buffer_close_after_open_leaves_no_stray_error() {
 
 #[test]
 fn git_branch_element_shows_current_branch_for_the_focused_buffer() {
-    // `setup()`'s claim must be held before any `git` spawn below.
+    // `setup_with_git_branch()`'s claim must be held before any `git` spawn below.
     let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), None);
+    let (mut ed, _guard) = setup_with_git_branch(tmp.path());
 
-    let repo = safe_tempdir();
-    git_init(repo.path());
-    commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
-    // Explicit branch name — never rely on the ambient git version's
-    // configured default branch name (`main` vs `master`).
-    git(repo.path(), &["checkout", "-q", "-b", "feature-x"]);
-    open(&mut ed, &repo.path().join("f.txt"));
+    let (_repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
+    open(&mut ed, &path);
 
     drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(feature-x)");
-    assert_eq!(custom_text(&ed, "git-branch"), "(feature-x)");
 }
 
 #[test]
 fn git_branch_element_is_empty_outside_a_repo() {
-    // `setup()`'s claim must be held before any `git` spawn below.
+    // `setup_with_git_branch()`'s claim must be held before any `git` spawn below.
     let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), None);
+    let (mut ed, _guard) = setup_with_git_branch(tmp.path());
 
     let dir = safe_tempdir();
     std::fs::write(dir.path().join("f.txt"), "one\ntwo\nthree\n").unwrap();
@@ -797,21 +824,12 @@ fn git_branch_element_is_empty_outside_a_repo() {
 
 #[test]
 fn git_branch_element_switches_with_the_focused_buffer() {
-    // `setup()`'s claim must be held before any `git` spawn below.
+    // `setup_with_git_branch()`'s claim must be held before any `git` spawn below.
     let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), None);
+    let (mut ed, _guard) = setup_with_git_branch(tmp.path());
 
-    let repo_a = safe_tempdir();
-    git_init(repo_a.path());
-    commit_file(repo_a.path(), "a.txt", "one\n", "v1");
-    git(repo_a.path(), &["checkout", "-q", "-b", "alpha"]);
-    let path_a = repo_a.path().join("a.txt");
-
-    let repo_b = safe_tempdir();
-    git_init(repo_b.path());
-    commit_file(repo_b.path(), "b.txt", "one\n", "v1");
-    git(repo_b.path(), &["checkout", "-q", "-b", "beta"]);
-    let path_b = repo_b.path().join("b.txt");
+    let (_repo_a, path_a) = commit_and_checkout("a.txt", "one\n", "alpha");
+    let (_repo_b, path_b) = commit_and_checkout("b.txt", "one\n", "beta");
 
     open(&mut ed, &path_a);
     drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(alpha)");
@@ -824,20 +842,16 @@ fn git_branch_element_switches_with_the_focused_buffer() {
     // the first.
     open(&mut ed, &path_a);
     drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(alpha)");
-    assert_eq!(custom_text(&ed, "git-branch"), "(alpha)");
 }
 
 #[test]
 fn git_branch_element_refreshes_on_save() {
-    // `setup()`'s claim must be held before any `git` spawn below.
+    // `setup_with_git_branch()`'s claim must be held before any `git` spawn below.
     let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), None);
+    let (mut ed, _guard) = setup_with_git_branch(tmp.path());
 
-    let repo = safe_tempdir();
-    git_init(repo.path());
-    commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
-    git(repo.path(), &["checkout", "-q", "-b", "orig"]);
-    open(&mut ed, &repo.path().join("f.txt"));
+    let (repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "orig");
+    open(&mut ed, &path);
     drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(orig)");
 
     // HEAD moves without any focus change — the plugin has no way to know
@@ -847,25 +861,20 @@ fn git_branch_element_refreshes_on_save() {
     git(repo.path(), &["checkout", "-q", "-b", "moved"]);
     ed.execute_typed("w", None).unwrap();
 
+    // The `drain_until` alone proves `on-buffer-save` re-checks the branch,
+    // not just `on-buffer-enter` — it cannot have gone stale-"orig" and then
+    // happened to match "moved" by coincidence.
     drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(moved)");
-    assert_eq!(
-        custom_text(&ed, "git-branch"),
-        "(moved)",
-        "on-buffer-save must re-check the branch, not just on-buffer-enter"
-    );
 }
 
 #[test]
 fn closing_the_buffer_during_a_branch_fetch_leaves_no_stray_error() {
-    // `setup()`'s claim must be held before any `git` spawn below.
+    // `setup_with_git_branch()`'s claim must be held before any `git` spawn below.
     let tmp = safe_tempdir();
-    let (mut ed, _guard) = setup(tmp.path(), None);
+    let (mut ed, _guard) = setup_with_git_branch(tmp.path());
 
-    let repo = safe_tempdir();
-    git_init(repo.path());
-    commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
-    git(repo.path(), &["checkout", "-q", "-b", "feature-x"]);
-    open(&mut ed, &repo.path().join("f.txt"));
+    let (_repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
+    open(&mut ed, &path);
 
     // Let on-buffer-enter run (starting its debounce timer), then close
     // just past the 150ms debounce — the debounced refresh-branch! and the
@@ -890,6 +899,57 @@ fn closing_the_buffer_during_a_branch_fetch_leaves_no_stray_error() {
         errors.is_empty(),
         "a stray post-close branch callback must not error; got {errors:?}"
     );
+}
+
+#[test]
+fn git_branch_element_never_fetches_while_unplaced() {
+    // Plain `setup()` — `"steel:git-branch"` is never placed here.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
+    let (_repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
+    let bid = open(&mut ed, &path);
+    // `wait_for_refresh` alone (400ms) isn't enough headroom for a negative
+    // assertion — a real fetch's debounce-plus-round-trip can still be
+    // in flight at that point. Match `drain_until`'s own 2s deadline so this
+    // reliably fails if the gate below is ever lost, rather than passing
+    // vacuously because the assertion ran before a real fetch would finish.
+    wait_for_refresh(&mut ed);
+    std::thread::sleep(Duration::from_millis(1600));
+    ed.settle();
+
+    // No entry at all for `bid` — not merely an empty string, which would
+    // also be produced by a fetch that ran and failed. Distinguishes "no
+    // fetch ran" from "a fetch ran and found nothing".
+    assert!(
+        ed.state.config.statusline_text.get(&bid).is_none(),
+        "an unplaced element must not spawn `git rev-parse` at all: {:?}",
+        ed.state.config.statusline_text
+    );
+}
+
+#[test]
+fn git_branch_element_activates_when_placed_after_open() {
+    // Plain `setup()` — the buffer opens and settles before the element is
+    // ever placed, so the initial `on-buffer-enter` fetch must have been
+    // skipped (see the sibling `_never_fetches_while_unplaced` test).
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
+    let (_repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
+    open(&mut ed, &path);
+    wait_for_refresh(&mut ed);
+
+    let mut host = ed.scripting.take().expect("setup() installs a host");
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(configure-statusline! '("steel:git-branch") '() '())"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(feature-x)");
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────

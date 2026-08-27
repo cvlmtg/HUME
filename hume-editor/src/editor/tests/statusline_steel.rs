@@ -138,3 +138,36 @@ fn set_statusline_text_on_a_stale_bid_raises_unknown_buffer() {
         "a stale bid must surface as a Steel error naming the builtin, got: {entries:?}"
     );
 }
+
+/// A name `StatusElement::from_str` would reject (here: containing `,`) must
+/// also be rejected on the push side — otherwise it stores an entry no
+/// `"steel:<name>"` placement can ever render, with no error anywhere. See
+/// `StatusElement::custom`'s doc.
+#[test]
+fn set_statusline_text_on_an_unplaceable_name_raises_an_error() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\n");
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm" "" (lambda ()
+             (set-statusline-text! "a,b" (current-buffer) "hello")))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    let entries: Vec<_> = ed.state.message_log.entries().cloned().collect();
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.severity == Severity::Error && e.text.contains("set-statusline-text!")),
+        "a name containing ',' must be rejected, naming the builtin, got: {entries:?}"
+    );
+    assert!(
+        ed.state.config.statusline_text.is_empty(),
+        "a rejected push must not store anything: {:?}",
+        ed.state.config.statusline_text
+    );
+}

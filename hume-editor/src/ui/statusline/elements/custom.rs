@@ -21,9 +21,7 @@ pub(in crate::ui::statusline) fn render(
         .config
         .statusline_text
         .get(&editor.focused_buffer_id())
-        .and_then(|by_name| by_name.get(name));
-    (
-        text.map_or(Cow::Borrowed(""), |s| Cow::Owned(String::from(&**s))),
-        colors.statusline,
-    )
+        .and_then(|by_name| by_name.get(name))
+        .map_or(Cow::Borrowed(""), |s| Cow::Owned(s.to_string()));
+    (text, colors.statusline)
 }

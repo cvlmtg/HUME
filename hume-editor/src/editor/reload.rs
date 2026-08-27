@@ -239,9 +239,9 @@ impl Editor {
     /// the outgoing engine, before the reset, tearing down state the reset
     /// discards anyway — reload is a restart, not a close.
     ///
-    /// `OnBufferEnter` also gets replayed, for the focused buffer — but not
-    /// via a queued event like the four above it, since it has no raise site
-    /// of its own to queue: see the comment at its call site below.
+    /// `OnBufferEnter` also gets replayed, for the focused buffer — see the
+    /// comment at its call site below for why that isn't a queued event like
+    /// the four above it.
     ///
     /// Batched, not interleaved per buffer the way a real reopen would fire
     /// these: every `OnLspAttach` runs, then every `OnBufferOpen`, then every

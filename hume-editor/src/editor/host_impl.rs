@@ -21,7 +21,7 @@ use crate::editor::lsp::LspState;
 use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
 use crate::lock_ext::LockExt;
-use crate::ui::statusline::StatusLineConfig;
+use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
     DiffHost, DiffHunk, EditHost, EditorHost, EventHost, LanguageHost, LivePickerOpts,
@@ -1041,6 +1041,10 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         // Return value discarded — called purely to reuse the SSOT "unknown
         // buffer" wording every sibling setter raises for a stale `bid`.
         buffer_text(self.state, bid, "set-statusline-text!")?;
+        // A name `StatusElement::from_str` would reject can never be placed
+        // — reject it here too, or the push silently stores an entry no
+        // `steel:<name>` element can ever render.
+        StatusElement::custom(&source).map_err(|e| format!("set-statusline-text!: {e}"))?;
         // Wholesale replace, same as every sibling decoration setter
         // (`SourceStore::set`) — an empty `text` is stored as-is rather than
         // pruned; `render_element`'s `Custom` arm and `render_section` both

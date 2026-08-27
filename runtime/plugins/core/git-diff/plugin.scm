@@ -37,6 +37,16 @@
 (register-hook! 'on-buffer-enter
   (lambda (bid) (git-diff/schedule-branch-refresh! bid)))
 
+;;; The branch fetch is gated on `"steel:git-branch"` being placed
+;;; (`branch.scm`'s `branch-element-placed?`) — this is what drives it in
+;;; the moment a user places it, rather than waiting for the next focus
+;;; change or save. Both `configure-statusline!` and `:set global
+;;; statusline=…` funnel through this one `on-option-change` raise site.
+(register-hook! 'on-option-change
+  (lambda (key value)
+    (when (equal? key "statusline")
+      (git-diff/schedule-branch-refresh! (current-buffer)))))
+
 (register-hook! 'on-text-changed
   (lambda (bid) (git-diff/schedule-refresh! bid (git-diff/buffer-ref bid))))
 

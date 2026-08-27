@@ -27,9 +27,9 @@ buffer's visual flow). See
 [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-git-diff) for value
 semantics and key-binding examples — no default key bindings ship with this plugin.
 
-Branch tracking has no config flag — only visibility. It runs the moment the plugin loads;
-whether you ever see it is entirely up to whether `"steel:git-branch"` appears in your own
-`configure-statusline!` call (see [Statusline → Custom
+Branch tracking has no config flag — placement is the switch. It doesn't fetch until
+`"steel:git-branch"` appears in your own `configure-statusline!` call, and starts the moment
+it does (see [Statusline → Custom
 elements](https://cvlmtg.github.io/HUME/configuration.html#custom-elements)).
 
 ## Commands
@@ -189,6 +189,14 @@ branch name is only ever shown for the *focused* buffer (`StatusElement::Custom`
 also re-fires on `on-buffer-save`, since a save-triggered hook or a checkout run alongside the
 editor in another terminal can move HEAD without a focus change.
 
+`refresh-branch!` also gates on `branch-element-placed?` — a `get-option "statusline"`
+substring check against `"steel:git-branch"` — before spawning anything: nothing places the
+element by default, so an unconditional fetch would spawn `git` (and its two stdout/stderr
+capture threads) on every focus change and save for work nobody can see. `on-option-change`
+re-runs `schedule-branch-refresh!` on the focused buffer whenever `"statusline"` changes, so
+placing the element drives the first fetch in immediately rather than waiting for the next
+focus change or save.
+
 There's no cache to invalidate: `refresh-branch!` re-spawns on every debounced fire (unlike
 `ref-text`, a branch name has no local-diff fallback that would make caching worth it), so
 `branch.scm` has no `force-refresh!`/`'unavailable` equivalent.
@@ -204,14 +212,10 @@ returning `#f` is a reliable "this bid is dead" signal — the same reasoning `a
 Severity is simpler than the diff pipeline's three-tier split, too: exit `-1` (git couldn't
 run at all) still logs `'error`, but every other nonzero exit — overwhelmingly "not a git
 repository", the common case for any buffer outside one — clears the element silently rather
-than logging at `'trace`. Unlike a diff fetch, branch tracking runs unconditionally for every
-buffer, not only ones a user opted into with `:toggle-git-signs`; logging its expected-failure
-case at any visible level would fill `:messages` for buffers that never asked for this.
-
-`cancel-branch-fetch!` and `"branch-job"` mirror `cancel-fetch!`/`"job"` exactly — a newer
-fetch, or `on-buffer-close`, cancels whatever's in flight before starting or tearing down.
-`schedule-branch-refresh!` uses the same `debounce-by`-per-`bid` shape as `schedule-refresh!`,
-also at 150ms.
+than logging at `'trace`. Even with the element placed, branch tracking runs for every buffer
+that hooks fire on, not only ones a user opted into with `:toggle-git-signs`; logging its
+expected-failure case at any visible level would fill `:messages` for buffers that never asked
+for this.
 
 ### Rendering
 

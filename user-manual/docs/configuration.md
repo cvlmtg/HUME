@@ -277,27 +277,20 @@ The default is equivalent to:
 
 ### Custom elements
 
-Place `"steel:<name>"` for any `<name>` of your choosing to add your own element — no HUME source changes needed. Push its text with `set-statusline-text!`, driven by whatever should trigger an update (a hook, a timer, a command):
+Place `"steel:<name>"` for any `<name>` of your choosing to add your own element — no HUME source changes needed. `<name>` must be non-empty and must not contain `,` or `|`. Push its text with `set-statusline-text!`, driven by whatever should trigger an update (a hook, a timer, a command):
 
 ```scheme
-(configure-statusline! '("steel:git-branch" "FilePath") '() '("Position" "Mode"))
+(configure-statusline! '("steel:line-count" "FilePath") '() '("Position" "Mode"))
 
-(define (refresh-git-branch! bid)
-  (let* ([path (buffer-path bid)]
-         [dir (and path (parent-name path))])
-    (when dir
-      (spawn-async! "git" '("rev-parse" "--abbrev-ref" "HEAD") dir
-        (lambda (out err code)
-          ;; The buffer may have closed while git was running.
-          (when (member bid (buffers))
-            (set-statusline-text! "git-branch" bid
-              (if (= code 0) (string-append "[" (trim out) "]") ""))))))))
+(define (refresh-line-count! bid)
+  (set-statusline-text! "line-count" bid
+    (string-append (number->string (length (buffer-lines bid))) "L")))
 
-(register-hook! 'on-buffer-enter refresh-git-branch!)
-(register-hook! 'on-buffer-save refresh-git-branch!)
+(register-hook! 'on-text-changed refresh-line-count!)
+(register-hook! 'on-buffer-enter refresh-line-count!)
 ```
 
-[core:git-diff](core-plugins.md#core-git-diff) already ships exactly this — if you're loading it, there's no need to copy the above; just add `"steel:git-branch"` to your own `configure-statusline!` call. The example is here to show how the mechanism works, not as something to paste into `init.scm`.
+`core:git-diff` ships a `"steel:git-branch"` element using this same mechanism — see [Core Plugins → core:git-diff](core-plugins.md#core-git-diff) — just add it to your own `configure-statusline!` call.
 
 `set-statusline-text!` takes the element name, a buffer id, and the text to show; an empty string clears it. Each buffer keeps its own value per name, and a placed element shows only the focused buffer's — switching to a buffer with nothing pushed yet shows nothing, same as any other element with no content. Placing the element and pushing its text are independent — either can happen first, and neither errors if the other hasn't happened yet.
 

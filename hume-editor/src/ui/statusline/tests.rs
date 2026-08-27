@@ -728,11 +728,7 @@ fn steel_prefix_with_empty_name_is_rejected() {
 
 #[test]
 fn steel_name_containing_the_wire_format_separators_is_rejected() {
-    // Every statusline config round-trips through "left|center|right" with
-    // comma-separated names and no escaping (`settings::parse_statusline`) —
-    // a name holding either separator would silently corrupt that format on
-    // the next parse, so it must be rejected at the one place both
-    // `configure-statusline!` and `:set global statusline=…` parse through.
+    // See `StatusElement::custom`'s doc for why `,`/`|` are rejected.
     assert!("steel:a,b".parse::<StatusElement>().is_err());
     assert!("steel:a|b".parse::<StatusElement>().is_err());
 }

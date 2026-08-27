@@ -172,11 +172,9 @@ fn reload_config_command_resets_state_from_a_real_init_scm() {
 /// hook `core:git-diff`'s `steel:git-branch` element (and this test's own
 /// stand-in) refreshes from — was never in the resync replay.
 ///
-/// `ed.settle()` runs once before the reload so `EditorState::
-/// last_entered_buffer` is actually seeded to the focused buffer first —
-/// skipping that would leave it at its unset `None` starting value, where
-/// `detect_buffer_enter`'s diff fires regardless of whether the resync
-/// replay does anything, proving nothing about the fix under test.
+/// `ed.settle()` runs once before the reload for the same reason
+/// `resync_refires_buffer_enter_for_the_focused_buffer` needs it — see that
+/// test's doc for why skipping it would prove nothing.
 #[test]
 fn reload_config_repopulates_statusline_text_pushed_from_on_buffer_enter() {
     // Held for its `Drop` (env var cleanup) only — this test reloads the

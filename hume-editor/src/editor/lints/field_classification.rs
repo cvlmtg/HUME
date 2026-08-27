@@ -27,8 +27,9 @@ use super::{assert_fields_classified, struct_field_names, struct_fields_excludin
 /// than `config` (exempt — `ConfigState`'s wholesale rebuild classifies
 /// itself; see its own doc). Three buckets, by how `:reload-config`'s
 /// reset treats the field:
-/// - `"config: …"` — reset outside `ConfigState`'s own rebuild, by a
-///   named mechanism in `reset_config_state`.
+/// - `"config: …"` — reset or cleared outside `ConfigState`'s own rebuild,
+///   by a named mechanism in `reset_config_state` or `resync_config_state`
+///   (the reset and replay halves of the same `:reload-config` sequence).
 /// - `"accounting: …"` — deliberately read, not reset, to judge the
 ///   reload itself.
 /// - `"preserved"` (optionally with a one-clause reason where it isn't

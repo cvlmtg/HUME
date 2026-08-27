@@ -67,11 +67,7 @@
 
 ;;; Cancels any in-flight fetch for `bid` without firing its callback.
 (define (git-diff/cancel-fetch! bid)
-  (let ([entry (git-diff/buffer-entry bid)])
-    (when entry
-      (let ([job (hash-ref entry "job")])
-        (when job (cancel-async! job)))
-      (git-diff/entry-set! bid "job" #f))))
+  (git-diff/cancel-job! bid "job"))
 
 ;;; `debounce-by`, keyed per `bid`, at 150ms — see README's "Fetch/diff
 ;;; pipeline".
