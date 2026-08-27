@@ -111,10 +111,8 @@ pub(crate) fn panel_geometry(pane_area: Rect) -> Option<PanelGeometry> {
     if width < MIN_PANEL_WIDTH || height < MIN_PANEL_HEIGHT {
         return None;
     }
-    let x = pane_area.x + (pane_area.width - width) / 2;
-    let y = pane_area.y + (pane_area.height - height) / 2;
     Some(PanelGeometry {
-        rect: Rect::new(x, y, width, height),
+        rect: pane_area.centered(width, height),
         list_rows: (height - CHROME_ROWS) as usize,
     })
 }
@@ -206,13 +204,14 @@ pub(crate) fn draw_picker_panel(
         super::menu_box::draw_box_border(canvas, outer, styles.text);
     }
 
-    let inner_x = outer.x + 1;
-    let inner_width = (outer.width - 2) as usize;
+    let inner = outer.inset(1, 1);
+    let inner_x = inner.x;
+    let inner_width = inner.width as usize;
     // One bound for every text write below: the panel's inner right edge.
     // Each string is already truncated to fit, so this is a backstop that
     // keeps a mis-sized one inside the border instead of over it.
-    let inner_right = inner_x + inner_width as u16;
-    let input_y = outer.y + 1;
+    let inner_right = inner.right();
+    let input_y = inner.y;
 
     let counts = if state.pending {
         format!("{}/{} …", state.matched, state.total)
@@ -252,7 +251,7 @@ pub(crate) fn draw_picker_panel(
         canvas.write_text_run(cursor_x, input_y, " ", styles.cursor, inner_right);
     }
     if show_counts {
-        let counts_x = outer.x + outer.width - 1 - counts_width as u16;
+        let counts_x = inner.right() - counts_width as u16;
         canvas.write_text_run(counts_x, input_y, &counts, styles.text, inner_right);
     }
 
@@ -264,7 +263,7 @@ pub(crate) fn draw_picker_panel(
             canvas,
             inner_x,
             y,
-            outer.width - 2,
+            inner.width,
             inner_right,
             &shown,
             state.selected_row == Some(i),

@@ -127,10 +127,10 @@ pub(crate) fn clamp_scroll_to_window(selected: usize, scroll: usize, visible_row
 /// should never return `false` — but painting outside the pane is worse than
 /// a dropped frame of content.
 pub(crate) fn fits_inside(outer: Rect, pane_rect: Rect) -> bool {
-    outer.x >= pane_rect.x
-        && outer.y >= pane_rect.y
-        && outer.x + outer.width <= pane_rect.x + pane_rect.width
-        && outer.y + outer.height <= pane_rect.y + pane_rect.height
+    outer.left() >= pane_rect.left()
+        && outer.top() >= pane_rect.top()
+        && outer.right() <= pane_rect.right()
+        && outer.bottom() <= pane_rect.bottom()
 }
 
 /// Overdraws `outer`'s 1-cell frame with box-drawing glyphs (`┌─┐└┘│`).
@@ -138,21 +138,21 @@ pub(crate) fn fits_inside(outer: Rect, pane_rect: Rect) -> bool {
 /// `super::picker_panel::draw_picker_panel` — so the frame glyphs stay
 /// identical without a copy per caller.
 pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: ResolvedStyle) {
-    let right = outer.x + outer.width - 1;
-    let bottom = outer.y + outer.height - 1;
-    let fill_w = (outer.width - 2) as usize;
-    let horiz: String = "─".repeat(fill_w);
+    let inner = outer.inset(1, 1);
+    let right = outer.right() - 1;
+    let bottom = outer.bottom() - 1;
+    let horiz: String = "─".repeat(inner.width as usize);
 
     // Border glyphs are constants a cell wide, so they need none of
     // `write_text_run`'s substitution — but they go through it anyway rather
     // than carry an exemption from the one-writer rule for no benefit, and
     // the bound keeps a mis-sized box from drawing past its own footprint.
-    let edge = outer.x + outer.width;
+    let edge = outer.right();
     canvas.write_text_run(outer.x, outer.y, "┌", style, edge);
-    canvas.write_text_run(outer.x + 1, outer.y, &horiz, style, edge);
+    canvas.write_text_run(inner.x, outer.y, &horiz, style, edge);
     canvas.write_text_run(right, outer.y, "┐", style, edge);
     canvas.write_text_run(outer.x, bottom, "└", style, edge);
-    canvas.write_text_run(outer.x + 1, bottom, &horiz, style, edge);
+    canvas.write_text_run(inner.x, bottom, &horiz, style, edge);
     canvas.write_text_run(right, bottom, "┘", style, edge);
 
     for row in 1..outer.height - 1 {
@@ -224,7 +224,8 @@ pub(crate) fn draw_menu_box(
         return;
     }
 
-    let inner_h = (outer.height - 2) as usize;
+    let inner = outer.inset(1, 1);
+    let inner_h = inner.height as usize;
     let (scroll_offset, visible_rows) = match selected {
         Some(sel) => window(rows, sel.saturating_sub(inner_h / 2), inner_h),
         None => window(rows, scroll, inner_h),
@@ -247,11 +248,11 @@ pub(crate) fn draw_menu_box(
     if border
         && let Some((thumb_start, thumb_len)) = scrollbar_thumb(inner_h, rows.len(), scroll_offset)
     {
-        let right = outer.x + outer.width - 1;
+        let right = outer.right() - 1;
         for row in thumb_start..thumb_start + thumb_len {
             canvas.write_text_run(
                 right,
-                outer.y + 1 + row as u16,
+                inner.y + row as u16,
                 THICK_VERTICAL,
                 styles.scroll,
                 right + 1,
@@ -260,14 +261,14 @@ pub(crate) fn draw_menu_box(
     }
 
     // 3. Draw content rows inside the frame (offset +1 for top/left border/padding).
-    let text_x = outer.x + 1;
+    let text_x = inner.x;
     // Rows arrive untruncated — `outer` was sized to the widest of them but
     // then clamped to the pane, so a row wider than the pane would otherwise
     // be written straight over the right border and past it. Bounding every
     // row write at the inner edge is what keeps the box a box.
-    let text_right = outer.x + outer.width.saturating_sub(1);
+    let text_right = outer.right().saturating_sub(1);
     for (i, row_text) in visible_rows.iter().enumerate() {
-        let y = outer.y + 1 + i as u16;
+        let y = inner.y + i as u16;
         let row_idx = scroll_offset + i;
         let is_selected = selected == Some(row_idx);
 
