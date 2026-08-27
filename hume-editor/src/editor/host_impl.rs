@@ -1038,22 +1038,19 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         text: String,
     ) -> Result<(), String> {
+        // Return value discarded — called purely to reuse the SSOT "unknown
+        // buffer" wording every sibling setter raises for a stale `bid`.
         buffer_text(self.state, bid, "set-statusline-text!")?;
-        if text.is_empty() {
-            if let Some(by_name) = self.state.config.statusline_text.get_mut(&bid) {
-                by_name.remove(source.as_str());
-                if by_name.is_empty() {
-                    self.state.config.statusline_text.remove(&bid);
-                }
-            }
-        } else {
-            self.state
-                .config
-                .statusline_text
-                .entry(bid)
-                .or_default()
-                .insert(source.into_boxed_str(), text.into_boxed_str());
-        }
+        // Wholesale replace, same as every sibling decoration setter
+        // (`SourceStore::set`) — an empty `text` is stored as-is rather than
+        // pruned; `render_element`'s `Custom` arm and `render_section` both
+        // already treat empty and absent identically.
+        self.state
+            .config
+            .statusline_text
+            .entry(bid)
+            .or_default()
+            .insert(source.into_boxed_str(), text.into_boxed_str());
         Ok(())
     }
 

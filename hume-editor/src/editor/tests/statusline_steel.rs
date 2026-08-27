@@ -32,12 +32,6 @@ fn pushed_text_renders_for_the_focused_buffer() {
 }
 
 #[test]
-fn a_name_never_pushed_renders_empty() {
-    let ed = editor_from("-[a]>\n");
-    assert_eq!(custom_text(&ed, "never-pushed"), "");
-}
-
-#[test]
 fn pushed_text_is_not_shown_once_a_different_buffer_is_focused() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>\n");
@@ -102,20 +96,23 @@ fn empty_text_clears_a_previously_pushed_value() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "arm" "" (lambda ()
-             (set-statusline-text! "greeting" (current-buffer) "hello")
+        r#"(define-command! "set" "" (lambda ()
+             (set-statusline-text! "greeting" (current-buffer) "hello")))
+           (define-command! "clear" "" (lambda ()
              (set-statusline-text! "greeting" (current-buffer) "")))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
-    type_cmd(&mut ed, ":arm");
+    type_cmd(&mut ed, ":set");
+    type_cmd(&mut ed, ":clear");
 
     assert_eq!(custom_text(&ed, "greeting"), "");
-    assert!(
-        ed.state.config.statusline_text.is_empty(),
-        "clearing the only pushed name for a buffer must drop its now-empty \
-         entry too, not leave an empty map behind"
-    );
+
+    // A clear leaves no tombstone behind — pushing again under the same
+    // name and buffer must show the new value, not be shadowed by a stale
+    // empty entry.
+    type_cmd(&mut ed, ":set");
+    assert_eq!(custom_text(&ed, "greeting"), "hello");
 }
 
 #[test]

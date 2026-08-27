@@ -288,8 +288,10 @@ Place `"steel:<name>"` for any `<name>` of your choosing to add your own element
     (when dir
       (spawn-async! "git" '("rev-parse" "--abbrev-ref" "HEAD") dir
         (lambda (out err code)
-          (set-statusline-text! "git-branch" bid
-            (if (= code 0) (string-append "[" (trim out) "]") "")))))))
+          ;; The buffer may have closed while git was running.
+          (when (member bid (buffers))
+            (set-statusline-text! "git-branch" bid
+              (if (= code 0) (string-append "[" (trim out) "]") ""))))))))
 
 (register-hook! 'on-buffer-enter refresh-git-branch!)
 (register-hook! 'on-buffer-save refresh-git-branch!)

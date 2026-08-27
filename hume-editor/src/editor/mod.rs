@@ -156,15 +156,18 @@ pub(crate) struct ConfigState {
     /// lines, EOL text, extra highlights, line backgrounds) — the render
     /// providers read these.
     pub(crate) decorations: decorations::DecorationStores,
-    /// Text pushed by `(set-statusline-text! source bid text)`, keyed by
-    /// buffer then by `source` name — read by `render_element`'s
-    /// `StatusElement::Custom` arm for the focused buffer only, same as
-    /// every other per-buffer element (`Language`, `Diagnostics`). An empty
-    /// `text` removes the entry, mirroring `trigger_chars` above; a buffer
-    /// left with no entries is dropped too, so the outer map only ever
-    /// holds buffers with something currently pushed. Also cleared
-    /// per-buffer at `close_buffer_and_notify`, alongside
-    /// `decorations.remove_buffer`.
+    /// Text pushed by `(set-statusline-text! source bid text)`, wholesale
+    /// per `(bid, source)`, same replace semantics as `decorations`. Nested
+    /// rather than flat like `trigger_chars` above: the render side needs a
+    /// borrowed `(bid, &str)` lookup every frame, and a `HashMap` keyed on
+    /// `(BufferId, Box<str>)` has no borrowed-key form — flat would force an
+    /// allocation per element per frame just to look one up.
+    ///
+    /// Cleared per-buffer at `close_buffer_and_notify`, alongside
+    /// `decorations.remove_buffer` — but deliberately *not* at the other
+    /// `decorations.remove_buffer` call site, `:e!`'s reload path: that one
+    /// clears decorations because their char offsets are invalidated by the
+    /// reload, and pushed statusline text carries no offsets to invalidate.
     pub(crate) statusline_text:
         rustc_hash::FxHashMap<BufferId, rustc_hash::FxHashMap<Box<str>, Box<str>>>,
     /// Deferred Steel work — events enqueued during command dispatch

@@ -1,7 +1,7 @@
 //! Decoration stores (inlay hints, signs, virtual lines, EOL text, extra
-//! highlights, line backgrounds) and the diagnostics pull API. Not
-//! LSP-specific — any Steel plugin can populate these — but LSP is the first
-//! and heaviest client.
+//! highlights, line backgrounds, statusline text) and the diagnostics pull
+//! API. Not LSP-specific — any Steel plugin can populate these — but LSP is
+//! the first and heaviest client.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;

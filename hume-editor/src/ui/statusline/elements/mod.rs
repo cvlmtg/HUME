@@ -9,9 +9,11 @@ use crate::ui::theme::EditorColors;
 /// lets `format` be unit-tested against a synthetic `Data` value with no
 /// `Editor` fixture. `render` is the single call dispatch sites use.
 ///
-/// `FilePath` does not implement this trait — its content isn't read from
-/// `Editor` at all, but injected by `render_statusline`'s two-pass sizing
-/// pass (see `file_path.rs`).
+/// `FilePath` and `Custom` don't implement this trait — `FilePath`'s content
+/// isn't read from `Editor` at all, but injected by `render_statusline`'s
+/// two-pass sizing pass (see `file_path.rs`); `Custom` needs its own `name`
+/// alongside `Editor`, which `read`'s single-argument signature has no room
+/// for (see `custom.rs`).
 pub(super) trait StatuslineElement {
     type Data;
 
@@ -24,6 +26,7 @@ pub(super) trait StatuslineElement {
     }
 }
 
+pub(super) mod custom;
 mod cwd;
 mod diagnostics;
 mod dirty_indicator;

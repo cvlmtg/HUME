@@ -101,8 +101,7 @@ pub enum StatusElement {
     /// A plugin-defined element, named by `(set-statusline-text! source bid
     /// text)`'s `source` argument. Wire name is `steel:<source>` — carries
     /// the name rather than an interned id, which is what costs this enum
-    /// its `Copy` derive; see `render_section`'s `for seg in elements` (not
-    /// `for &seg`) and `render_element`'s `&StatusElement` parameter.
+    /// its `Copy` derive.
     ///
     /// Renders the focused buffer's last-pushed text for `name`, or empty
     /// if nothing has been pushed yet — same "absent = empty" convention as
@@ -112,11 +111,14 @@ pub enum StatusElement {
     Custom(Box<str>),
 }
 
-/// Wire-format name for every [`StatusElement`] variant — the single source
-/// both directions of the name↔variant mapping read from, so adding a
-/// variant is one entry here instead of three hand-kept-in-sync lists
-/// (`Display`, `FromStr`, and the error message's own name list, which had
-/// already drifted out of alphabetical order from the other two).
+/// Wire-format name for every non-[`Custom`](StatusElement::Custom)
+/// `StatusElement` variant — the single source both directions of the
+/// name↔variant mapping read from, so adding a variant here (`Custom` is
+/// exempt: a data-carrying variant can't live in a fixed table, so `Display`
+/// and `FromStr` special-case it directly instead) is one entry instead of
+/// three hand-kept-in-sync lists (`Display`, `FromStr`, and the error
+/// message's own name list, which had already drifted out of alphabetical
+/// order from the other two).
 const ELEMENT_NAMES: &[(&str, StatusElement)] = &[
     ("Mode", StatusElement::Mode),
     ("Separator", StatusElement::Separator),
@@ -135,10 +137,15 @@ const ELEMENT_NAMES: &[(&str, StatusElement)] = &[
     ("Diagnostics", StatusElement::Diagnostics),
 ];
 
+/// Wire-format prefix for [`StatusElement::Custom`] — one constant so
+/// `Display` and `FromStr` can't drift out of agreement on the string that
+/// makes a name round-trip through both.
+const CUSTOM_PREFIX: &str = "steel:";
+
 impl fmt::Display for StatusElement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let StatusElement::Custom(name) = self {
-            return write!(f, "steel:{name}");
+            return write!(f, "{CUSTOM_PREFIX}{name}");
         }
         let (name, _) = ELEMENT_NAMES
             .iter()
@@ -159,11 +166,11 @@ impl FromStr for StatusElement {
         // `configure-statusline!` and `:set global statusline=…` parse
         // through, rather than at `set-statusline-text!` (which never
         // touches `StatusElement` and has no wire format to protect).
-        if let Some(name) = s.strip_prefix("steel:") {
+        if let Some(name) = s.strip_prefix(CUSTOM_PREFIX) {
             return if name.is_empty() || name.contains([',', '|']) {
                 Err(format!(
-                    "unknown element '{s}'; a steel: element name must be non-empty and must \
-                     not contain ',' or '|'"
+                    "unknown element '{s}'; a {CUSTOM_PREFIX} element name must be non-empty \
+                     and must not contain ',' or '|'"
                 ))
             } else {
                 Ok(StatusElement::Custom(name.into()))
@@ -176,7 +183,11 @@ impl FromStr for StatusElement {
             .ok_or_else(|| {
                 let mut names: Vec<&str> = ELEMENT_NAMES.iter().map(|(name, _)| *name).collect();
                 names.sort_unstable();
-                format!("unknown element '{s}'; valid names: {}", names.join(" "))
+                format!(
+                    "unknown element '{s}'; valid names: {} (or '{CUSTOM_PREFIX}<name>' for a \
+                     plugin-defined element)",
+                    names.join(" ")
+                )
             })
     }
 }
@@ -499,16 +510,7 @@ pub(crate) fn render_element(
         StatusElement::Language => LanguageElement::render(editor, colors),
         StatusElement::ReadOnly => ReadOnlyElement::render(editor, colors),
         StatusElement::Diagnostics => DiagnosticsElement::render(editor, colors),
-        StatusElement::Custom(name) => {
-            let text = editor
-                .state
-                .config
-                .statusline_text
-                .get(&editor.focused_buffer_id())
-                .and_then(|by_name| by_name.get(name.as_ref()))
-                .map_or_else(String::new, |s| s.to_string());
-            (Cow::Owned(text), colors.statusline)
-        }
+        StatusElement::Custom(name) => elements::custom::render(editor, name, colors),
     }
 }
 
