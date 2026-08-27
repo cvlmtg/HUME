@@ -12,6 +12,7 @@ use hume_grid::Rect;
 
 /// Box-drawing glyphs for a menu box: a light border, and a thicker
 /// vertical for the scrollbar thumb that overdraws it.
+const HORIZONTAL: &str = "\u{2500}";
 const VERTICAL: &str = "\u{2502}";
 const THICK_VERTICAL: &str = "\u{2503}";
 
@@ -50,11 +51,11 @@ impl MenuBoxStyles {
             "ui.popup" => (None, "ui.popup.scroll"),
             _ => (None, scope),
         };
-        let base: ResolvedStyle = theme.resolve_by_name(Scope(scope)).into();
+        let base = theme.resolve_by_name(Scope(scope));
         let selected = selected_scope
-            .map(|s| theme.resolve_by_name(Scope(s)).into())
+            .map(|s| theme.resolve_by_name(Scope(s)))
             .unwrap_or(base);
-        let scroll: ResolvedStyle = theme.resolve_by_name(Scope(scroll_scope)).into();
+        let scroll = theme.resolve_by_name(Scope(scroll_scope));
         Self {
             base,
             selected,
@@ -141,18 +142,21 @@ pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: ResolvedS
     let inner = outer.inset(1, 1);
     let right = outer.right() - 1;
     let bottom = outer.bottom() - 1;
-    let horiz: String = "─".repeat(inner.width as usize);
 
     // Border glyphs are constants a cell wide, so they need none of
-    // `write_text_run`'s substitution — but they go through it anyway rather
-    // than carry an exemption from the one-writer rule for no benefit, and
-    // the bound keeps a mis-sized box from drawing past its own footprint.
+    // `write_text_run`'s substitution — but the corners go through it
+    // anyway rather than carry an exemption from the one-writer rule for no
+    // benefit, and the bound keeps a mis-sized box from drawing past its
+    // own footprint. The two edges are a run of the same glyph repeated,
+    // so they go through `fill_glyph_run` instead — same writer, no `String`
+    // built just to hand a grapheme walker a cluster it already knows is
+    // one repeated character.
     let edge = outer.right();
     canvas.write_text_run(outer.x, outer.y, "┌", style, edge);
-    canvas.write_text_run(inner.x, outer.y, &horiz, style, edge);
+    canvas.fill_glyph_run(inner.x, outer.y, HORIZONTAL, inner.width, style, edge);
     canvas.write_text_run(right, outer.y, "┐", style, edge);
     canvas.write_text_run(outer.x, bottom, "└", style, edge);
-    canvas.write_text_run(inner.x, bottom, &horiz, style, edge);
+    canvas.fill_glyph_run(inner.x, bottom, HORIZONTAL, inner.width, style, edge);
     canvas.write_text_run(right, bottom, "┘", style, edge);
 
     for row in 1..outer.height - 1 {

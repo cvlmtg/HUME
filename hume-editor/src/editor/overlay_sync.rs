@@ -383,6 +383,7 @@ impl Editor {
                     total: session.total_len(),
                     pending: session.is_pending(),
                     rect: geo.rect,
+                    list_rows: geo.list_rows,
                     border: self.state.settings.popup_border,
                     truncate: session.truncate(),
                 })

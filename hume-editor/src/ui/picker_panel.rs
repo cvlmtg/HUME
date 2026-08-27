@@ -41,11 +41,11 @@ const MIN_PANEL_WIDTH: u16 = 3;
 const MIN_PANEL_HEIGHT: u16 = 4;
 
 /// Rows the border and input line always claim: the top border, the input
-/// row, and the bottom border. Subtracted from the outer height wherever the
-/// list's own row budget is derived — `panel_geometry`'s `list_rows` (what a
-/// keystroke pages against) and `draw_picker_panel`'s `list_capacity` (what a
-/// frame paints) must agree on this or a page-down could scroll past what
-/// the last frame drew.
+/// row, and the bottom border. Subtracted from the outer height exactly
+/// once, in `panel_geometry`, to produce `PanelGeometry::list_rows` — the
+/// row budget a keystroke pages against and the one a frame paints
+/// (`PickerViewState::list_rows`, carried from the same call) are the same
+/// number by construction rather than two derivations that have to agree.
 const CHROME_ROWS: u16 = 3;
 
 /// Fully-resolved panel content and position — computed once per frame by
@@ -78,6 +78,11 @@ pub(crate) struct PickerViewState {
     /// Outer footprint (including the 1-cell frame), centered in the panes
     /// region this same frame.
     pub(crate) rect: Rect,
+    /// `PanelGeometry::list_rows` from the same `panel_geometry` call that
+    /// produced `rect` — carried alongside it rather than re-subtracted
+    /// from `rect.height` at paint time, so the row budget a keystroke
+    /// paged against and the one a frame paints can never drift apart.
+    pub(crate) list_rows: usize,
     /// Fed from the `popup-border` setting, same as popup/menu/drawer.
     pub(crate) border: bool,
     /// Which end of an over-long row this session clips — `#:truncate`,
@@ -133,7 +138,7 @@ pub(crate) struct PickerStyles {
 }
 
 pub(crate) fn picker_styles(theme: &Theme) -> PickerStyles {
-    let by = |name| theme.resolve_by_name(Scope(name)).into();
+    let by = |name| theme.resolve_by_name(Scope(name));
     PickerStyles {
         background: by("ui.background"),
         text: by("ui.text"),
@@ -255,8 +260,7 @@ pub(crate) fn draw_picker_panel(
         canvas.write_text_run(counts_x, input_y, &counts, styles.text, inner_right);
     }
 
-    let list_capacity = (outer.height - CHROME_ROWS) as usize;
-    for (i, row_text) in state.rows.iter().take(list_capacity).enumerate() {
+    for (i, row_text) in state.rows.iter().take(state.list_rows).enumerate() {
         let y = outer.y + 2 + i as u16;
         let shown = truncate_marked(row_text, inner_width, state.truncate);
         super::menu_box::draw_list_row(

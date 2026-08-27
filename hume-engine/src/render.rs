@@ -240,6 +240,37 @@ impl<'a> Canvas<'a> {
         cx
     }
 
+    /// Write `glyph` — a single grapheme cluster, one column wide — into
+    /// each of `count` cells starting at `(x, y)`, clipped at `right_edge`,
+    /// and return the column just past the last cell written.
+    ///
+    /// The span counterpart of [`Canvas::write_text_run`] for repeating one
+    /// glyph many times, most commonly a horizontal box-drawing border line
+    /// — without building a `String` of it first just to hand it to a
+    /// grapheme walker one call site already knows walks a single repeated
+    /// cluster. `glyph` must already be exactly one column and free of
+    /// anything `write_text_run` would substitute for (a control character,
+    /// a zero-width cluster): callers pass a compile-time constant, never
+    /// buffer-derived text, so that is a property of the call site rather
+    /// than something this method has to verify.
+    pub fn fill_glyph_run(
+        &mut self,
+        x: u16,
+        y: u16,
+        glyph: &str,
+        count: u16,
+        style: ResolvedStyle,
+        right_edge: u16,
+    ) -> u16 {
+        let end = x.saturating_add(count).min(right_edge);
+        let mut cx = x;
+        while cx < end {
+            self.set_cell(cx, y, glyph, 1, style);
+            cx += 1;
+        }
+        cx
+    }
+
     /// Paint every cell of `rect` with a space glyph and `style`, clipping to
     /// grid bounds, through this canvas's dim blend.
     ///

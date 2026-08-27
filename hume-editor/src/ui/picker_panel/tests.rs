@@ -37,6 +37,7 @@ fn state(
         total: rows.len(),
         pending: false,
         rect: geo.rect,
+        list_rows: geo.list_rows,
         border: true,
         truncate: TruncateEnd::Head,
     }

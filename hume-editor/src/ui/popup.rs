@@ -85,7 +85,7 @@ impl MarkupSyntax {
             if start > cursor {
                 push_run(&mut row, &line[cursor..start], base_style);
             }
-            push_run(&mut row, &line[start..end], theme.resolve(scope).into());
+            push_run(&mut row, &line[start..end], theme.resolve(scope));
             cursor = end;
         }
         if cursor < line.len() {

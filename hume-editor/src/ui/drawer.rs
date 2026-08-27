@@ -90,8 +90,8 @@ impl BottomBandProvider for DrawerWidget {
         let guard = self.data.read_or_panic();
         let Some(state) = guard.as_ref() else { return };
 
-        let style = theme.resolve_by_name(Scope("ui.drawer")).into();
-        let selected_style = theme.resolve_by_name(Scope("ui.menu.selected")).into();
+        let style = theme.resolve_by_name(Scope("ui.drawer"));
+        let selected_style = theme.resolve_by_name(Scope("ui.menu.selected"));
         canvas.fill_rect_bg(area, style);
 
         // Row 0 is a blank padding row (visual gap from the pane above);
