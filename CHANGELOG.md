@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Appearance
+- Curly, dotted and dashed underlines now render on terminals that support them. Themes could already ask for them and HUME already parsed the request; it was being flattened to a plain underline on the way to the terminal.
+
 ### Configuration & options
 - New `--config <FILE>` flag loads an arbitrary Steel config file instead of the default `init.scm`; `:reload-config` re-evaluates the same file. Themes and the data directory still resolve from the standard directories. Not valid with `--keys`.
 
