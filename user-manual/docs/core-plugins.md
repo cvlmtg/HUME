@@ -23,7 +23,7 @@ A toolkit of small helpers that other plugins build on, rather than something yo
 Don't pass `#:commands`/`#:events`/`#:languages` to `core:stdlib`'s own `declare-plugin` call — leave it exactly as above. Every plugin that depends on `core:stdlib` relies on its default activation list; a custom one can leave out a helper a dependent plugin needs, and that dependent plugin will then misbehave instead of failing with a clear error.
 :::
 
-If you're writing a plugin yourself, see [Plugins](plugins.md) for what it offers.
+If you're writing a plugin yourself, see [Standard Library](stdlib.md) for every command it offers.
 
 ## core:plum
 

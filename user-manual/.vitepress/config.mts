@@ -111,6 +111,7 @@ export default defineConfig({
           { text: 'Configuration', link: '/configuration' },
           { text: 'Core Plugins', link: '/core-plugins' },
           { text: 'Plugins', link: '/plugins' },
+          { text: 'Standard Library', link: '/stdlib' },
         ],
       },
       {

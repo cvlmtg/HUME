@@ -28,30 +28,15 @@ silently resolving the dependent's config read to `#void`.
 
 ## Commands
 
+Full call signatures live in the manual's [Standard Library](https://cvlmtg.github.io/HUME/stdlib.html) page. The notes below cover only what that page doesn't — internals a plugin author calling `call!` never needs, but a contributor touching this file does.
+
 ### Selections
 
-| Call                                          | Effect                                                        |
-|-------------------------------------------------|------------------------------------------------------------------|
-| `(call! "stdlib/single-selection?" sels)`      | `#t` if `sels` holds exactly one selection                   |
-| `(call! "stdlib/all-single-char?" sels)`       | `#t` if every selection in `sels` spans exactly one grapheme |
-| `(call! "stdlib/cursor-char-index" sels)`      | 0-indexed head char offset of the primary selection in `sels`, or `#f` |
-| `(call! "stdlib/primary-selection" sels)`      | The primary selection triple in `sels`, or `#f`               |
-| `(call! "stdlib/selection-anchor" sel)`        | Anchor char offset of the selection triple `sel`, or `#f`     |
-| `(call! "stdlib/selection-head" sel)`          | Head char offset of the selection triple `sel`, or `#f`       |
-| `(call! "stdlib/selection-primary?" sel)`      | `#t` if the selection triple `sel` is the primary selection, or `#f` |
-
-All seven accept `#f` and return `#f` — callers only need to check `(current-selections)` for
-`#f` once, at the call site, rather than re-checking inside every helper.
+All seven accept `#f` and return `#f` — callers only need to check `(current-selections)`
+for `#f` once, at the call site, rather than re-checking inside every helper. See "How it
+works" below for why the triple itself stays opaque.
 
 ### Filesystem + list search
-
-| Call                                        | Effect                                                        |
-|------------------------------------------------|------------------------------------------------------------------|
-| `(call! "stdlib/find" pred? lst)`             | First element of `lst` satisfying `pred?`, or `#f`            |
-| `(call! "stdlib/write-file" path content)`    | Write `content` to `path`, creating or truncating it          |
-| `(call! "stdlib/delete-dir" dir)`             | Recursively delete `dir`; idempotent                          |
-| `(call! "stdlib/delete-file" path)`           | Delete `path`; idempotent                                     |
-| `(call! "stdlib/list-subdirs" dir)`           | Sorted basenames of `dir`'s subdirectories                    |
 
 Thin wrappers over Steel's `steel/filesystem`/`steel/ports` — `core:plum` and `core:lsp`
 both call into these rather than each carrying its own copy. `delete-dir`/`delete-file` are
@@ -60,10 +45,6 @@ error. `list-subdirs` skips stray non-directory entries that sit alongside a dir
 (`.install-lock`, `.DS_Store`).
 
 ### Subprocess
-
-| Call                                  | Effect                                                                       |
-|------------------------------------------|-------------------------------------------------------------------------------|
-| `(call! "stdlib/run" cmd args cwd)`     | Spawn `cmd`/`args` (in `cwd`, or the inherited directory if `#f`); blocks until exit. Returns `(stdout stderr exit-code)`, with `exit-code` `#f` and the failure reason in `stderr`'s place on spawn/wait failure |
 
 Three ways to run a subprocess, pick by shape: `run-inline-output!` for `#:inline-output`
 commands (process-group safety for Ctrl+C), `spawn-async!` for enumeration-scale output
@@ -79,11 +60,6 @@ costs nothing extra once the child has already exited.
 
 ### Git
 
-| Call                          | Effect                                                        |
-|-------------------------------|------------------------------------------------------------------|
-| `(call! "stdlib/git-repo?")`     | `#t` iff the editor's cwd is inside a git work tree            |
-| `(call! "stdlib/git-toplevel")`  | Absolute repo root of the editor's cwd, or `#f` when git is missing or cwd is not in a work tree |
-
 Both build on an internal `stdlib/run-stdout` (`stdlib/run`'s stdout, trimmed, if the command
 exits 0, else `#f`) that isn't itself exposed as a command — trimming is only safe for a
 single-value probe like these; a `-z`-delimited multi-entry blob (e.g. `git status`) can have a
@@ -94,24 +70,12 @@ checks stdout rather than just exit code: inside a bare repo, `rev-parse` exits 
 
 ### Command arguments
 
-| Call                                       | Effect                                                        |
-|-----------------------------------------------|------------------------------------------------------------------|
-| `(call! "stdlib/resolve-lang-arg" cmd arg)`  | A typed language-name argument, else the current buffer's language, else `#f` after a warning naming `cmd` |
-
 `arg` is a string only when the user typed one on the `:` command line — HUME's minibuffer
 dispatch hands a bare invocation or a keymap press an integer instead (see
 `hume-editor/src/editor/dispatch.rs`'s `ArgSource` marshalling); with nothing typed, the
 minibuffer injects the default count `1`.
 
 ### Plugin config
-
-| Call                                                        | Effect                                                        |
-|------------------------------------------------------------|------------------------------------------------------------------|
-| `(call! "stdlib/config-boolean" plugin cfg key default)`    | `cfg`'s value for `key`, or `default` if absent; errors (naming `plugin`) if the resolved value isn't `#t`/`#f` |
-| `(call! "stdlib/config-string" plugin cfg key default)`     | Same, erroring if the resolved value isn't a string           |
-| `(call! "stdlib/config-enum" plugin cfg key default allowed)` | Same, erroring if the resolved value isn't in `allowed` (a list of symbols) |
-| `(call! "stdlib/config-integer" plugin cfg key default minimum)` | Same, erroring if the resolved value isn't an integer, or is below `minimum` (`#f` for no minimum) |
-| `(call! "stdlib/config-list" plugin cfg key default)` | Same, erroring if the resolved value isn't a list of strings |
 
 Every error names the calling plugin (its first argument) and the offending key, so a bad
 `#:config` value fails at load time with a message pointing at exactly what to fix — the same
