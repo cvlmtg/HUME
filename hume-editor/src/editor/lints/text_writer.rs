@@ -1,12 +1,13 @@
 //! # One text writer for the frame
 //!
 //! Text reaches the frame through `hume_engine::render::Canvas`'s
-//! `write_text_run`/`fill_rect_bg`, never through `hume_grid::Grid`'s own
-//! `set_glyph`/`fill_span` — see [`Canvas::write_text_run`]'s own doc for
-//! why: the `right_edge` bound a bare cell write has no equivalent of, the
-//! placeholder substitution for a cluster the terminal must not be shown as
-//! itself, and the per-pane dim, which the canvas applies at its single
-//! write point and a direct grid write would skip.
+//! `write_text_run`/`fill_glyph_run`/`fill_rect_bg`, never through
+//! `hume_grid::Grid`'s own `set_glyph`/`fill_span` — see
+//! [`Canvas::write_text_run`]'s own doc for why: the `right_edge` bound a
+//! bare cell write has no equivalent of, the placeholder substitution for a
+//! cluster the terminal must not be shown as itself, and the per-pane dim,
+//! which the canvas applies at its single write point and a direct grid
+//! write would skip.
 //!
 //! [`Canvas::write_text_run`]: hume_engine::render::Canvas::write_text_run
 //!

@@ -16,6 +16,7 @@ use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 
 use super::menu_box::{MAX_MENU_ROWS, MenuBoxStyles, draw_menu_box, outer_dims};
+use super::popup::{clamp_size_to_pane, clamp_x_to_pane};
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -58,16 +59,12 @@ impl OverlayProvider for MinibufCompletionOverlay {
 
         let selected = view.selected.min(view.rows.len().saturating_sub(1));
         let (outer_w, outer_h) = outer_dims(&view.rows, MAX_MENU_ROWS);
-        let outer_w = outer_w.min(pane_area.width);
-        let outer_h = outer_h.min(pane_area.height);
+        let (outer_w, outer_h) = clamp_size_to_pane(outer_w, outer_h, pane_area);
 
         // Position: just above the statusline.
         // Shift left by 1 so the text column aligns under the token in the input.
         let popup_y = pane_area.bottom() - outer_h;
-        let popup_x = view
-            .anchor_x
-            .saturating_sub(1)
-            .min(pane_area.right() - outer_w);
+        let popup_x = clamp_x_to_pane(view.anchor_x.saturating_sub(1), outer_w, pane_area);
         draw_menu_box(
             canvas,
             Rect::new(popup_x, popup_y, outer_w, outer_h),

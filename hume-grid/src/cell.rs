@@ -34,7 +34,11 @@ impl Cell {
     /// has already been substituted for a visible placeholder by the caller's
     /// width model before it reaches a grid, so a zero here is a clamp
     /// against a caller bug, not a policy about zero-width text.
-    pub fn glyph(text: &str, advance: u8, style: ResolvedStyle) -> Cell {
+    ///
+    /// `pub(crate)`: only [`Grid`](crate::Grid)'s write primitives construct
+    /// a head cell directly — everything outside this crate goes through
+    /// [`Grid::set_glyph`](crate::Grid::set_glyph) instead.
+    pub(crate) fn glyph(text: &str, advance: u8, style: ResolvedStyle) -> Cell {
         Cell {
             text: CompactString::new(text),
             style: style.normalized(),
@@ -53,7 +57,10 @@ impl Cell {
 
     /// The second column of a double-width glyph. Carries `style` — the
     /// head's — for the reason in this type's doc.
-    pub fn continuation(style: ResolvedStyle) -> Cell {
+    ///
+    /// `pub(crate)`: see [`Cell::glyph`] — [`Grid`](crate::Grid) is the only
+    /// constructor of a continuation cell.
+    pub(crate) fn continuation(style: ResolvedStyle) -> Cell {
         Cell {
             text: CompactString::const_new(""),
             style: style.normalized(),

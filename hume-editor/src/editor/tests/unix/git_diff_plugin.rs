@@ -1,4 +1,3 @@
-use hume_grid::Rect;
 // core:git-diff — end-to-end plugin tests.
 //
 // Loads the real, multi-file `runtime/plugins/core/git-diff/plugin.scm`
@@ -20,6 +19,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::super::render_snapshot::render_to_styled_string;
+use hume_grid::Rect;
 use hume_scripting::ScriptingHost;
 
 const SOURCE: &str = "git-diff";

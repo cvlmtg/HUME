@@ -94,8 +94,8 @@ impl Rect {
         let width = width.min(self.width);
         let height = height.min(self.height);
         Rect {
-            x: self.x + (self.width - width) / 2,
-            y: self.y + (self.height - height) / 2,
+            x: self.x.saturating_add((self.width - width) / 2),
+            y: self.y.saturating_add((self.height - height) / 2),
             width,
             height,
         }

@@ -354,8 +354,7 @@ pub(crate) fn resolve_popup_geometry(
     anchor: (u16, u16),
     pane_rect: Rect,
 ) -> (u16, u16, u16, u16) {
-    let width = width.min(pane_rect.width);
-    let height = height.min(pane_rect.height);
+    let (width, height) = clamp_size_to_pane(width, height, pane_rect);
     let (anchor_x, anchor_y) = anchor;
     let space_below = pane_rect.bottom().saturating_sub(anchor_y + 1);
     let space_above = anchor_y.saturating_sub(pane_rect.y);
@@ -369,11 +368,27 @@ pub(crate) fn resolve_popup_geometry(
         .max(pane_rect.y)
         .min(pane_rect.bottom().saturating_sub(height));
 
-    let x = anchor_x
-        .max(pane_rect.x)
-        .min(pane_rect.right().saturating_sub(width));
+    let x = clamp_x_to_pane(anchor_x, width, pane_rect);
 
     (x, y, width, height)
+}
+
+/// Clamp `width`×`height` to fit inside `pane_rect` — the size half of a
+/// box-in-pane placement, shared by every caller that positions a box
+/// against a pane rect ([`resolve_popup_geometry`] and, for a box already
+/// anchored on its own axis, `MinibufCompletionOverlay::render`).
+pub(crate) fn clamp_size_to_pane(width: u16, height: u16, pane_rect: Rect) -> (u16, u16) {
+    (width.min(pane_rect.width), height.min(pane_rect.height))
+}
+
+/// Clamp `x` so a `width`-wide box starting there never crosses `pane_rect`'s
+/// left or right edge — the horizontal-position half of a box-in-pane
+/// placement, split out from [`resolve_popup_geometry`] so a caller that
+/// only needs this axis (`MinibufCompletionOverlay::render`, which resolves
+/// its own bottom-anchored `y`) doesn't re-derive it by hand.
+pub(crate) fn clamp_x_to_pane(x: u16, width: u16, pane_rect: Rect) -> u16 {
+    x.max(pane_rect.x)
+        .min(pane_rect.right().saturating_sub(width))
 }
 
 /// One wrapped display row's content, as contiguous same-style runs — the

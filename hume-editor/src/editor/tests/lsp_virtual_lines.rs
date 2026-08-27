@@ -1,4 +1,3 @@
-use hume_grid::{Rect, Rgb};
 // Inline diagnostics virtual lines: the
 // `update_virtual_line_providers` write side that feeds the new
 // `PaneVirtualLines` (VIRTUAL_LINE-kind `DecorationSource`) from the
@@ -13,6 +12,7 @@ use std::path::Path;
 
 use super::*;
 use hume_engine::pipeline::RenderContext;
+use hume_grid::{Rect, Rgb};
 use hume_scripting::ScriptingHost;
 
 fn run(ed: &mut Editor, tmp: &Path, source: &str) {

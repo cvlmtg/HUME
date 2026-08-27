@@ -181,6 +181,10 @@ impl Grid {
     }
 }
 
+/// Test/debug convenience — panics out of bounds, unlike [`Grid::cell`]'s
+/// `Option`. Production code reads cells through [`Grid::cell`]/[`Grid::row`]
+/// instead, where an out-of-bounds coordinate is an expected, handled case
+/// rather than a bug to panic on.
 impl std::ops::Index<(u16, u16)> for Grid {
     type Output = Cell;
 

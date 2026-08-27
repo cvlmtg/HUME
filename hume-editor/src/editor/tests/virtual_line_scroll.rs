@@ -1,4 +1,3 @@
-use hume_grid::{Grid, Rect};
 // Editor-level integration tests for the two ways a provider can add display
 // rows the buffer text alone does not account for, and the requirement that
 // the renderer and `cursor::content_pos` agree about both:
@@ -23,6 +22,7 @@ use hume_engine::providers::{
     Decoration, DecorationKinds, DecorationSource, InlineInsert, VirtualLine, VirtualLineAnchor,
 };
 use hume_engine::types::ScopeId;
+use hume_grid::{Grid, Rect};
 
 /// Emits one `Before(0)` virtual row, texted "V".
 struct OneBeforeLine;

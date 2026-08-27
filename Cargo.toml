@@ -43,6 +43,7 @@ codegen-units = 1
 ropey = "1.6.1"
 unicode-segmentation = "1.13.2"
 unicode-width = "0.2"
+bitflags = "2"
 rustc-hash = "2"
 similar = "3"
 serde = { version = "1", features = ["derive"] }

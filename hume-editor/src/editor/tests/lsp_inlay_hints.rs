@@ -1,4 +1,3 @@
-use hume_grid::Rect;
 // Inlay-hint rendering: the `update_inlay_hint_providers`
 // write side that feeds the new `InlineDecorationProvider` (INLINE-kind
 // `DecorationSource`) from the `decorations.inlay_hints` store.
@@ -13,6 +12,7 @@ use hume_grid::Rect;
 use super::*;
 use crate::editor::decorations::InlayHintEntry;
 use hume_engine::pipeline::RenderContext;
+use hume_grid::Rect;
 
 fn type_text(ed: &mut Editor, text: &str) {
     ed.feed_key(key('i'));

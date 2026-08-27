@@ -9,12 +9,9 @@ use hume_engine::theme::Theme;
 use hume_engine::types::ResolvedStyle;
 use hume_engine::types::Scope;
 use hume_grid::Rect;
-
-/// Box-drawing glyphs for a menu box: a light border, and a thicker
-/// vertical for the scrollbar thumb that overdraws it.
-const HORIZONTAL: &str = "\u{2500}";
-const VERTICAL: &str = "\u{2502}";
-const THICK_VERTICAL: &str = "\u{2503}";
+use hume_grid::box_glyphs::{
+    BOTTOM_LEFT, BOTTOM_RIGHT, HORIZONTAL, THICK_VERTICAL, TOP_LEFT, TOP_RIGHT, VERTICAL,
+};
 
 use super::popup::StyledRow;
 use super::width::text_width;
@@ -80,8 +77,19 @@ pub(crate) fn menu_inner_width(rows: &[String]) -> u16 {
 /// `MinibufCompletionOverlay`, which computes it inline against its own bottom-
 /// anchored placement.
 pub(crate) fn outer_dims(rows: &[String], row_cap: u16) -> (u16, u16) {
-    let outer_w = menu_inner_width(rows) + 2;
-    let outer_h = (rows.len() as u16).min(row_cap) + 2;
+    outer_dims_from_width(menu_inner_width(rows), rows.len(), row_cap)
+}
+
+/// [`outer_dims`]'s formula for a caller that already has the inner width in
+/// hand (e.g. from a cached measurement) and would otherwise re-measure
+/// `rows` just to call `outer_dims` itself.
+pub(crate) fn outer_dims_from_width(
+    inner_width: u16,
+    row_count: usize,
+    row_cap: u16,
+) -> (u16, u16) {
+    let outer_w = inner_width + 2;
+    let outer_h = (row_count as u16).min(row_cap) + 2;
     (outer_w, outer_h)
 }
 
@@ -140,8 +148,11 @@ pub(crate) fn fits_inside(outer: Rect, pane_rect: Rect) -> bool {
 /// identical without a copy per caller.
 pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: ResolvedStyle) {
     let inner = outer.inset(1, 1);
-    let right = outer.right() - 1;
-    let bottom = outer.bottom() - 1;
+    // The right/bottom border's own column/row — `outer.right()`/`.bottom()`
+    // is the exclusive bound one past it; `inner.right()`/`.bottom()` is
+    // this same column/row, already computed by `inset` above.
+    let right = inner.right();
+    let bottom = inner.bottom();
 
     // Border glyphs are constants a cell wide, so they need none of
     // `write_text_run`'s substitution — but the corners go through it
@@ -152,12 +163,12 @@ pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: ResolvedS
     // built just to hand a grapheme walker a cluster it already knows is
     // one repeated character.
     let edge = outer.right();
-    canvas.write_text_run(outer.x, outer.y, "┌", style, edge);
+    canvas.write_text_run(outer.x, outer.y, TOP_LEFT, style, edge);
     canvas.fill_glyph_run(inner.x, outer.y, HORIZONTAL, inner.width, style, edge);
-    canvas.write_text_run(right, outer.y, "┐", style, edge);
-    canvas.write_text_run(outer.x, bottom, "└", style, edge);
+    canvas.write_text_run(right, outer.y, TOP_RIGHT, style, edge);
+    canvas.write_text_run(outer.x, bottom, BOTTOM_LEFT, style, edge);
     canvas.fill_glyph_run(inner.x, bottom, HORIZONTAL, inner.width, style, edge);
-    canvas.write_text_run(right, bottom, "┘", style, edge);
+    canvas.write_text_run(right, bottom, BOTTOM_RIGHT, style, edge);
 
     for row in 1..outer.height - 1 {
         canvas.write_text_run(outer.x, outer.y + row, VERTICAL, style, edge);
@@ -252,7 +263,7 @@ pub(crate) fn draw_menu_box(
     if border
         && let Some((thumb_start, thumb_len)) = scrollbar_thumb(inner_h, rows.len(), scroll_offset)
     {
-        let right = outer.right() - 1;
+        let right = inner.right();
         for row in thumb_start..thumb_start + thumb_len {
             canvas.write_text_run(
                 right,
@@ -270,7 +281,7 @@ pub(crate) fn draw_menu_box(
     // then clamped to the pane, so a row wider than the pane would otherwise
     // be written straight over the right border and past it. Bounding every
     // row write at the inner edge is what keeps the box a box.
-    let text_right = outer.right().saturating_sub(1);
+    let text_right = inner.right();
     for (i, row_text) in visible_rows.iter().enumerate() {
         let y = inner.y + i as u16;
         let row_idx = scroll_offset + i;
@@ -288,7 +299,7 @@ pub(crate) fn draw_menu_box(
                 canvas,
                 text_x,
                 y,
-                outer.width.saturating_sub(2),
+                inner.width,
                 text_right,
                 row_text,
                 is_selected,

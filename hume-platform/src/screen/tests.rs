@@ -301,3 +301,32 @@ fn a_full_redraw_emits_every_cell() {
         "\x1b[?25l\x1b[1;1H\x1b[38;2;255;0;0ma\x1b[39m  \x1b[2;1H   \x1b[m"
     );
 }
+
+// ── Screen resize ────────────────────────────────────────────────────────
+//
+// `Screen` itself needs a live `SharedTerm` to construct, so its resize
+// decision is tested here as the pure function it delegates to instead.
+
+#[test]
+fn a_size_change_resizes_both_grids_and_forces_a_full_repaint() {
+    let mut back = Grid::new(4, 2);
+    let mut front = Grid::new(4, 2);
+    let mut force_full = false;
+    resize_if_needed(&mut back, &mut front, &mut force_full, 10, 3);
+    assert_eq!(back.size(), (10, 3));
+    assert_eq!(front.size(), (10, 3));
+    assert!(force_full);
+}
+
+#[test]
+fn an_unchanged_size_touches_neither_grid_nor_the_flag() {
+    let mut back = Grid::new(4, 2);
+    back.set_glyph(0, 0, "a", 1, red());
+    let mut front = back.clone();
+    let mut force_full = false;
+    resize_if_needed(&mut back, &mut front, &mut force_full, 4, 2);
+    // Content survives — only a size *change* discards it (see
+    // `Grid::resize`'s own doc on why content is never preserved across one).
+    assert_eq!(back.cell(0, 0).unwrap().text(), "a");
+    assert!(!force_full);
+}

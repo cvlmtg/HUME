@@ -262,6 +262,11 @@ impl<'a> Canvas<'a> {
         style: ResolvedStyle,
         right_edge: u16,
     ) -> u16 {
+        debug_assert_eq!(
+            hume_rope::width::grapheme_width(glyph, 0, hume_rope::width::CHROME_TAB_WIDTH),
+            1,
+            "fill_glyph_run repeats `glyph` at width 1 per cell — a wider cluster needs write_text_run"
+        );
         let end = x.saturating_add(count).min(right_edge);
         let mut cx = x;
         while cx < end {
@@ -290,7 +295,7 @@ impl<'a> Canvas<'a> {
     /// `content_x_origin`, so nothing in the same frame has painted this
     /// rect before a fill reaches it.
     pub fn fill_rect_bg(&mut self, rect: Rect, style: ResolvedStyle) {
-        let (x0, y0, x1, y1) = clamp_rect_to_grid(self.grid, rect);
+        let (x0, y0, x1, y1) = clamp_rect_to_grid(self.grid.size(), rect);
         if x0 >= x1 {
             return;
         }
@@ -301,30 +306,23 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /// Fill a horizontal span with spaces using an explicit background
-    /// colour — used for cursorline highlighting so the tint extends past
-    /// the last grapheme. A bg-only [`Canvas::fill_rect_bg`] style blends
-    /// identically to blending the colour alone, so this needs no separate
-    /// blend step of its own.
-    fn fill_row_bg(&mut self, x_start: u16, x_end: u16, y: u16, bg: Rgb) {
+    /// Fill a horizontal span with spaces, `bg` as the background colour —
+    /// used for cursorline highlighting so the tint extends past the last
+    /// grapheme. `None` blanks the span to the terminal's own colours
+    /// instead (taken only when `theme.ui.background.bg` is `None`, which is
+    /// exactly when `dim` is `None` too — the pipeline gates both on that
+    /// same value — so a `None` bg never needs a blend). A bg-only
+    /// [`Canvas::fill_rect_bg`] style blends identically to blending the
+    /// colour alone, so both cases route through it without a separate
+    /// blend step of their own.
+    fn fill_row_bg(&mut self, x_start: u16, x_end: u16, y: u16, bg: Option<Rgb>) {
         self.fill_rect_bg(
             Rect::new(x_start, y, x_end.saturating_sub(x_start), 1),
             ResolvedStyle {
-                bg: Some(bg),
+                bg,
                 ..Default::default()
             },
         );
-    }
-
-    /// Fill a horizontal span of cells on row `y` with blank cells in the
-    /// terminal's own colours.
-    ///
-    /// Taken only when `theme.ui.background.bg` is `None` — which is exactly
-    /// when `dim` is `None` too (the pipeline gates both on that same value),
-    /// so no blend is needed.
-    fn clear_row_span(&mut self, x_start: u16, x_end: u16, y: u16) {
-        // static-glyph-safe: blanks a span, writes no text.
-        self.grid.fill_span(y, x_start, x_end, Cell::default());
     }
 }
 
@@ -523,10 +521,12 @@ pub(crate) fn compose_row(
 
     // Fill trailing cells with row bg (cursorline) or pane bg, so the theme
     // background shows past the last grapheme rather than the terminal default.
-    match row_bg.or(compose_ctx.theme.ui.background.bg) {
-        Some(bg) => canvas.fill_row_bg(content_x_origin, right_edge, y, bg),
-        None => canvas.clear_row_span(content_x_origin, right_edge, y),
-    }
+    canvas.fill_row_bg(
+        content_x_origin,
+        right_edge,
+        y,
+        row_bg.or(compose_ctx.theme.ui.background.bg),
+    );
 
     let row_graphemes = &graphemes[row.graphemes.start..row.graphemes.end];
     let row_styles = &styles[row.graphemes.start..row.graphemes.end];
@@ -712,21 +712,29 @@ pub(crate) fn render_tilde_fillers(
         // shifted into the content area.
         compose_gutter(RowKind::Filler, lane_widths, compose_ctx, None, y, canvas);
         let content_x_origin = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
-        match compose_ctx.theme.ui.background.bg {
-            Some(bg) => canvas.fill_row_bg(content_x_origin, right_edge, y, bg),
-            None => canvas.clear_row_span(content_x_origin, right_edge, y),
-        }
+        canvas.fill_row_bg(
+            content_x_origin,
+            right_edge,
+            y,
+            compose_ctx.theme.ui.background.bg,
+        );
         canvas.set_cell(compose_ctx.pane_rect.x, y, "~", 1, compose_ctx.tilde_style);
         screen_row += 1;
     }
 }
 
-/// Clamp `rect` to `grid`'s bounds, returning exclusive `(x0, y0, x1, y1)`
-/// ready for a `for y in y0..y1 { … x0..x1 }` loop. Shared by every
-/// rect-filling primitive so the clip math lives once.
+/// Clamp `rect` to a `(width, height)` grid's bounds, returning exclusive
+/// `(x0, y0, x1, y1)` ready for a `for y in y0..y1 { … x0..x1 }` loop.
+///
+/// Takes the size rather than `&Grid` so a caller already holding an
+/// exclusive `&mut Grid` (or its wrapping `Canvas`) can still call this —
+/// `Grid::size()` is `Copy`, unlike the grid itself. `Grid::fill_span`
+/// independently clamps `x`/`y` against its own bounds on every call, so
+/// this bound is what keeps a caller from iterating rows the fill would
+/// have no-opped on anyway, not the only thing standing between a rect and
+/// an out-of-bounds write.
 #[inline]
-pub(crate) fn clamp_rect_to_grid(grid: &Grid, rect: Rect) -> (u16, u16, u16, u16) {
-    let (width, height) = grid.size();
+pub(crate) fn clamp_rect_to_grid((width, height): (u16, u16), rect: Rect) -> (u16, u16, u16, u16) {
     (
         rect.x,
         rect.y,

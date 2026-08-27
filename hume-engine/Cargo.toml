@@ -9,7 +9,7 @@ hume-platform = { path = "../hume-platform" }
 hume-rope = { path = "../hume-rope" }
 ropey.workspace = true
 unicode-segmentation.workspace = true
-bitflags = "2"
+bitflags.workspace = true
 slotmap = "1"
 rustc-hash.workspace = true
 toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }

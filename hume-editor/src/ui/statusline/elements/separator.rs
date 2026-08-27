@@ -1,4 +1,5 @@
 use hume_engine::types::ResolvedStyle;
+use hume_grid::box_glyphs::VERTICAL;
 use std::borrow::Cow;
 
 use super::StatuslineElement;
@@ -13,6 +14,6 @@ impl StatuslineElement for SeparatorElement {
     fn read(_editor: &Editor) -> Self::Data {}
 
     fn format(_data: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
-        (Cow::Borrowed("│"), colors.statusline_separator)
+        (Cow::Borrowed(VERTICAL), colors.statusline_separator)
     }
 }

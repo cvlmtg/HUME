@@ -1251,7 +1251,7 @@ fn set_cell_out_of_bounds_no_panic() {
 }
 
 #[test]
-fn clear_row_span_fills_with_blank() {
+fn fill_row_bg_none_fills_with_blank() {
     let mut buf = make_test_buf(10, 3);
     // Write something so we can confirm clearing works.
     for x in 0..10 {
@@ -1259,7 +1259,7 @@ fn clear_row_span_fills_with_blank() {
     }
     let theme = Theme::default();
     // Clear the middle 4 columns of row 1.
-    Canvas::new(&mut buf, &theme, None).clear_row_span(3, 7, 1);
+    Canvas::new(&mut buf, &theme, None).fill_row_bg(3, 7, 1, None);
     for x in 0..10 {
         let sym = buf.cell(x, 1).unwrap().text();
         if (3..7).contains(&x) {
@@ -1271,14 +1271,14 @@ fn clear_row_span_fills_with_blank() {
 }
 
 #[test]
-fn clear_row_span_clips_right_edge() {
+fn fill_row_bg_none_clips_right_edge() {
     let mut buf = make_test_buf(10, 3);
     for x in 0..10 {
         buf.set_glyph(x, 0, "X", 1, ResolvedStyle::default());
     }
     let theme = Theme::default();
     // x_end extends past the buffer's right edge — should clip, not panic.
-    Canvas::new(&mut buf, &theme, None).clear_row_span(8, 20, 0);
+    Canvas::new(&mut buf, &theme, None).fill_row_bg(8, 20, 0, None);
     for x in 0..10 {
         let sym = buf.cell(x, 0).unwrap().text();
         if x >= 8 {
@@ -1290,13 +1290,13 @@ fn clear_row_span_clips_right_edge() {
 }
 
 #[test]
-fn clear_row_span_empty_range_no_panic() {
+fn fill_row_bg_none_empty_range_no_panic() {
     let mut buf = make_test_buf(10, 3);
     let theme = Theme::default();
     // x_start == x_end and x_start > x_end should both be no-ops.
     let mut canvas = Canvas::new(&mut buf, &theme, None);
-    canvas.clear_row_span(5, 5, 0);
-    canvas.clear_row_span(7, 3, 0);
+    canvas.fill_row_bg(5, 5, 0, None);
+    canvas.fill_row_bg(7, 3, 0, None);
 }
 
 // ── fused dim (compose path) ───────────────────────────────────────

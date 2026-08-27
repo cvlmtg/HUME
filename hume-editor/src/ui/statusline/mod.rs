@@ -426,7 +426,9 @@ fn render_statusline(
     let right_fits = right_x >= left_end;
     let right_fence = if right_fits { right_x } else { area.right() };
     let gap = right_fence.saturating_sub(left_end);
-    let center_x = (left_end + gap / 2).saturating_sub(center_w / 2);
+    // `Rect::centered`'s own rounding convention (bias up/left on an odd
+    // remainder) rather than a second, independently-rounded formula.
+    let center_x = Rect::new(left_end, y, gap, 1).centered(center_w, 1).x;
     let center_fits = !center_spans.is_empty()
         && center_w <= gap
         && center_x >= left_end

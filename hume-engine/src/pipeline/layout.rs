@@ -1,3 +1,7 @@
+use hume_grid::box_glyphs::{
+    BOTTOM_LEFT, BOTTOM_RIGHT, CROSS, HORIZONTAL, HORIZONTAL_DOWN, HORIZONTAL_UP, TOP_LEFT,
+    TOP_RIGHT, VERTICAL, VERTICAL_LEFT, VERTICAL_RIGHT,
+};
 use hume_grid::{Position, Rect};
 use rustc_hash::FxHashMap;
 
@@ -250,22 +254,6 @@ impl LayoutTree {
 // mask with any arms recorded for that cell. This stays per-seam, not a
 // full-frame scan, and the arms map is sparse (at most two entries per seam)
 // so the lookups hit a tiny map — the per-cell buffer writes dominate.
-
-/// Light box-drawing glyphs for the pane dividers. Written as escapes
-/// rather than literals so a grep for one finds every use, and so an editor
-/// or terminal that renders them ambiguously can't quietly swap one for
-/// another during an edit.
-pub(super) const HORIZONTAL: &str = "\u{2500}";
-pub(super) const VERTICAL: &str = "\u{2502}";
-pub(super) const CROSS: &str = "\u{253c}";
-pub(super) const HORIZONTAL_DOWN: &str = "\u{252c}";
-pub(super) const HORIZONTAL_UP: &str = "\u{2534}";
-pub(super) const VERTICAL_RIGHT: &str = "\u{251c}";
-pub(super) const VERTICAL_LEFT: &str = "\u{2524}";
-pub(super) const BOTTOM_LEFT: &str = "\u{2514}";
-pub(super) const BOTTOM_RIGHT: &str = "\u{2518}";
-pub(super) const TOP_LEFT: &str = "\u{250c}";
-pub(super) const TOP_RIGHT: &str = "\u{2510}";
 
 pub(super) const ARM_N: u8 = 0b0001;
 pub(super) const ARM_E: u8 = 0b0010;

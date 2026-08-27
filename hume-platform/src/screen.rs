@@ -85,15 +85,13 @@ impl Screen {
     /// and the queued resize event wakes the loop straight into another
     /// frame at the new size.
     pub fn frame(&mut self, width: u16, height: u16) -> &mut Grid {
-        if self.back.size() != (width, height) {
-            self.back.resize(width, height);
-            // The front grid tracks the terminal, whose content after a
-            // resize is its own business — reflowed, truncated, or cleared.
-            // Resize it too so the two stay diffable, and repaint in full
-            // rather than trusting a guess about what survived.
-            self.front.resize(width, height);
-            self.force_full = true;
-        }
+        resize_if_needed(
+            &mut self.back,
+            &mut self.front,
+            &mut self.force_full,
+            width,
+            height,
+        );
         self.back.reset();
         &mut self.back
     }
@@ -130,6 +128,28 @@ fn dimensions(term: &SharedTerm) -> io::Result<(u16, u16)> {
     let size = term.get_dimensions()?;
     // column-name-safe: termina's own field name for a terminal width.
     Ok((size.cols, size.rows))
+}
+
+/// [`Screen::frame`]'s resize decision, pulled out as a pure function over
+/// its two grids and the invalidation flag — no `SharedTerm` involved, so
+/// this (unlike the rest of `Screen`, which needs a live terminal to
+/// construct) is directly unit-testable.
+fn resize_if_needed(
+    back: &mut Grid,
+    front: &mut Grid,
+    force_full: &mut bool,
+    width: u16,
+    height: u16,
+) {
+    if back.size() != (width, height) {
+        back.resize(width, height);
+        // The front grid tracks the terminal, whose content after a resize
+        // is its own business — reflowed, truncated, or cleared. Resize it
+        // too so the two stay diffable, and repaint in full rather than
+        // trusting a guess about what survived.
+        front.resize(width, height);
+        *force_full = true;
+    }
 }
 
 // ── Emitter ──────────────────────────────────────────────────────────────

@@ -402,19 +402,14 @@ impl EngineView {
 
             // The grid's size, read once ahead of `canvas` below — `Grid` is
             // origin-free, so this `(u16, u16)` is all a per-seam clamp
-            // needs, and it's `Copy` rather than a borrow: unlike the old
-            // ratatui buffer (non-zero origin, needing a live `&Buffer` per
-            // clamp), nothing here has to be precomputed before the canvas
-            // takes its exclusive `&mut Grid` for the whole seam pass.
+            // needs, and it's `Copy` rather than a borrow, so it can be read
+            // before the canvas takes its exclusive `&mut Grid` for the whole
+            // seam pass.
             let (grid_w, grid_h) = grid.size();
             let mut canvas = crate::render::Canvas::new(grid, &self.theme, None);
             for seam in &ctx.seams {
-                let (x0, y0, x1, y1) = (
-                    seam.rect.x,
-                    seam.rect.y,
-                    seam.rect.right().min(grid_w),
-                    seam.rect.bottom().min(grid_h),
-                );
+                let (x0, y0, x1, y1) =
+                    crate::render::clamp_rect_to_grid((grid_w, grid_h), seam.rect);
                 let base = match seam.direction {
                     Direction::Horizontal => ARM_N | ARM_S,
                     Direction::Vertical => ARM_E | ARM_W,

@@ -75,7 +75,8 @@ fn embedded_default_matches_sand_toml_on_disk() {
     // `ui.text` must fold into `theme.default` — the base style every
     // plain-text cell starts from (see `style::apply_styles`) — so
     // unhighlighted text carries an explicit color the focus-dimming
-    // blend can act on instead of escaping it as `Rgb::Reset`.
+    // blend can act on instead of escaping it as `None` (the terminal's
+    // own default, which the blend has no numeric value to act on).
     assert_eq!(
         embedded.default, from_disk.default,
         "embedded sand.toml's default style (ui.text fold) disagrees with the on-disk file"

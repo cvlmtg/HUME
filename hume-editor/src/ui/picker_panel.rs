@@ -261,7 +261,9 @@ pub(crate) fn draw_picker_panel(
     }
 
     for (i, row_text) in state.rows.iter().take(state.list_rows).enumerate() {
-        let y = outer.y + 2 + i as u16;
+        // Row 0 of `inner` is the input line (`input_y`); the list starts on
+        // the row below it.
+        let y = inner.y + 1 + i as u16;
         let shown = truncate_marked(row_text, inner_width, state.truncate);
         super::menu_box::draw_list_row(
             canvas,

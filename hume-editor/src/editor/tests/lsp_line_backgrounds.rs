@@ -1,4 +1,3 @@
-use hume_grid::{Rect, Rgb};
 // Provider-driven full-row background tint (`set-line-backgrounds!`): the
 // `update_line_bg_providers` write side that feeds the new
 // `PaneLineBackgrounds` (LINE_BG-kind `DecorationSource`) from the
@@ -11,6 +10,7 @@ use hume_grid::{Rect, Rgb};
 
 use super::*;
 use hume_engine::pipeline::RenderContext;
+use hume_grid::{Rect, Rgb};
 use hume_scripting::ScriptingHost;
 
 fn run(ed: &mut Editor, tmp: &std::path::Path, source: &str) {

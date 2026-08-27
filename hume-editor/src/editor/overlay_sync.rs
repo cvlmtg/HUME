@@ -328,8 +328,11 @@ impl Editor {
             let selected_idx = self.lsp.completion_ui.as_ref().map_or(0, |ui| ui.selected);
             let session = self.lsp.completion.as_mut()?;
             let (lines, inner_w) = session.menu_labels_and_width();
-            let outer_w = inner_w + 2;
-            let outer_h = (lines.len() as u16).min(crate::ui::menu_box::MAX_MENU_ROWS) + 2;
+            let (outer_w, outer_h) = crate::ui::menu_box::outer_dims_from_width(
+                inner_w,
+                lines.len(),
+                crate::ui::menu_box::MAX_MENU_ROWS,
+            );
             let (x, y, outer_w, outer_h) =
                 crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
             let selected = if lines.is_empty() {

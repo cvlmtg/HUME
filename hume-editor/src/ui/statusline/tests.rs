@@ -496,15 +496,18 @@ fn diagnostics_element_idle_with_no_diagnostics_is_empty() {
 // ── center_x arithmetic ───────────────────────────────────────────────────
 
 #[test]
-fn center_x_saturates_on_overflow() {
-    // When center_w > gap, saturating_sub prevents u16 wrapping.
-    // gap/2=1, center_w/2=5 → without saturating_sub this would wrap.
+fn center_x_does_not_overflow_when_wider_than_the_gap() {
+    // `render_statusline` computes `center_x` via `Rect::centered` on a
+    // `gap`-wide span; when `center_w` exceeds it, `centered` clamps its own
+    // width to `gap` rather than the caller's, so this must not panic and
+    // must never place `center_x` before `left_end` — the same safety
+    // `center_fits`'s separate `center_w <= gap` check relies on rather than
+    // trusting this arithmetic to reject an oversized `center_w` itself.
     let left_end: u16 = 5;
     let gap: u16 = 2;
     let center_w: u16 = 10;
-    let center_x = (left_end + gap / 2).saturating_sub(center_w / 2);
-    // Should not panic and should produce a value ≤ left_end (saturated to 0 at best).
-    assert!(center_x <= left_end);
+    let center_x = Rect::new(left_end, 0, gap, 1).centered(center_w, 1).x;
+    assert!(center_x >= left_end);
 }
 
 // ── shorten_path_to_width ─────────────────────────────────────────────────
