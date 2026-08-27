@@ -35,8 +35,12 @@ silently resolving the dependent's config read to `#void`.
 | `(call! "stdlib/single-selection?" sels)`      | `#t` if `sels` holds exactly one selection                   |
 | `(call! "stdlib/all-single-char?" sels)`       | `#t` if every selection in `sels` spans exactly one grapheme |
 | `(call! "stdlib/cursor-char-index" sels)`      | 0-indexed head char offset of the primary selection in `sels`, or `#f` |
+| `(call! "stdlib/primary-selection" sels)`      | The primary selection triple in `sels`, or `#f`               |
+| `(call! "stdlib/selection-anchor" sel)`        | Anchor char offset of the selection triple `sel`, or `#f`     |
+| `(call! "stdlib/selection-head" sel)`          | Head char offset of the selection triple `sel`, or `#f`       |
+| `(call! "stdlib/selection-primary?" sel)`      | `#t` if the selection triple `sel` is the primary selection, or `#f` |
 
-All three accept `#f` and return `#f` — callers only need to check `(current-selections)` for
+All seven accept `#f` and return `#f` — callers only need to check `(current-selections)` for
 `#f` once, at the call site, rather than re-checking inside every helper.
 
 ### Filesystem + list search
@@ -106,13 +110,15 @@ minibuffer injects the default count `1`.
 | `(call! "stdlib/config-boolean" plugin cfg key default)`    | `cfg`'s value for `key`, or `default` if absent; errors (naming `plugin`) if the resolved value isn't `#t`/`#f` |
 | `(call! "stdlib/config-string" plugin cfg key default)`     | Same, erroring if the resolved value isn't a string           |
 | `(call! "stdlib/config-enum" plugin cfg key default allowed)` | Same, erroring if the resolved value isn't in `allowed` (a list of symbols) |
+| `(call! "stdlib/config-integer" plugin cfg key default minimum)` | Same, erroring if the resolved value isn't an integer, or is below `minimum` (`#f` for no minimum) |
+| `(call! "stdlib/config-list" plugin cfg key default)` | Same, erroring if the resolved value isn't a list of strings |
 
 Every error names the calling plugin (its first argument) and the offending key, so a bad
 `#:config` value fails at load time with a message pointing at exactly what to fix — the same
 shape `core:git-diff`, `core:pickers`, and `core:vim-keybind` all use for their own config. All
-three build on an internal `stdlib/config-value` (`cfg`'s value for `key`, or `default` if
+five build on an internal `stdlib/config-value` (`cfg`'s value for `key`, or `default` if
 absent) that isn't itself exposed as a command — a raw lookup with no type check has no
-cross-plugin use case these three don't already cover.
+cross-plugin use case these five don't already cover.
 
 ## How it works
 
@@ -129,7 +135,7 @@ command name and the Steel binding of the same name live in separate namespaces 
 registry vs. module scope), so there's no collision between the command `"stdlib/run"` and the
 function it wraps.
 
-The internal accessors (`stdlib/selection-anchor`, `stdlib/selection-head`,
-`stdlib/selection-primary?`, `stdlib/primary-selection`) exist so nothing outside this file
-picks apart a selection's `(anchor head primary?)` triple with raw `car`/`cadr`/`caddr` — the
+`stdlib/selection-anchor`, `stdlib/selection-head`, `stdlib/selection-primary?`, and
+`stdlib/primary-selection` are the sanctioned way to pick apart a selection's
+`(anchor head primary?)` triple — go through them instead of raw `car`/`cadr`/`caddr`, since the
 triple's shape is this plugin's implementation detail, not a public contract.

@@ -4,12 +4,15 @@
 (require "lib.scm")
 
 ;;; The primary selection's char range, normalized to (start . end) with
-;;; end exclusive, for `diagnostics-for-buffer`'s `#:range` filter.
+;;; end exclusive, for `diagnostics-for-buffer`'s `#:range` filter — or #f
+;;; when there's no primary selection, which `diagnostics-for-buffer` reads
+;;; as "no range filter".
 (define (lsp/primary-selection-range)
-  (let* ((primary (car (filter caddr (current-selections))))
-         (a (car primary))
-         (h (cadr primary)))
-    (cons (min a h) (+ (max a h) 1))))
+  (let ((primary (call! "stdlib/primary-selection" (current-selections))))
+    (and primary
+         (let ((a (call! "stdlib/selection-anchor" primary))
+               (h (call! "stdlib/selection-head" primary)))
+           (cons (min a h) (+ (max a h) 1))))))
 
 ;;; A CodeAction is disabled if it carries a truthy "disabled" field
 ;;; (LSP 3.16: `{"reason": string}`) — a disabled action must never appear

@@ -12,6 +12,8 @@
 - `picker-source-spawn!` gains `#:ok-exit-codes` (default `'(0)`): the complete set of exit codes treated as a normal outcome — it replaces the success check rather than extending it, so pass `'(0 1)`, not `'(1)`, to add `rg`'s "no matches" exit to the default.
 - New `picker-source-stop!` stops the open picker's attached streaming source, if any, without touching the item list — the missing half of `picker-replace!` for a live requery whose new query has nothing to spawn a replacement source for.
 - New `core:stdlib` commands `stdlib/git-repo?` and `stdlib/git-toplevel` (git work-tree detection / repo-root resolution), moved out of `core:pickers`' private helpers.
+- New `core:stdlib` commands `stdlib/selection-anchor`, `stdlib/selection-head`, `stdlib/selection-primary?`, and `stdlib/primary-selection` — accessors for a single selection triple, so a plugin never has to pick one apart with raw `car`/`cadr`/`caddr`.
+- New `core:stdlib` commands `stdlib/config-integer` (takes a minimum, `#f` for no minimum) and `stdlib/config-list` (a list of strings), rounding out `stdlib/config-boolean`/`-string`/`-enum` with the two remaining common `#:config` value shapes.
 - Fixed: a streaming picker source's row no longer shows a stray `<0>` for a NUL byte embedded in the line (e.g. `rg --vimgrep --null`) — it now displays as `:`, the same separator the tool prints without that flag.
 
 ## [0.11.0] - 2026-08-25

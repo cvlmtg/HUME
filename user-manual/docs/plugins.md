@@ -155,6 +155,15 @@ When forwarding a `count` argument to another command, a count of `0` means "as 
 (call! "stdlib/cursor-char-index" (current-selections))
 ```
 
+Those three read the whole list. To work with a single triple — the primary selection, say — use these accessors instead of `car`/`cadr`/`caddr`:
+
+```scheme
+(call! "stdlib/primary-selection" (current-selections))
+(call! "stdlib/selection-anchor" primary)
+(call! "stdlib/selection-head" primary)
+(call! "stdlib/selection-primary?" primary)
+```
+
 `(char-index->line idx)` converts a char offset to a line number when you need one — it's a separate call rather than a field on every selection, since deriving it needs rope access a plain tuple doesn't have.
 
 ### Depending on another plugin
@@ -320,7 +329,7 @@ A plugin can read the `#:config` value its user passed to `load-plugin` or `decl
   (bind-key! 'normal "C" "my-command"))
 ```
 
-`stdlib/config-string` and `stdlib/config-enum` (the latter takes a list of allowed symbols) cover the other common config shapes. Since this call happens in your plugin's own body, at load time, check `(declared-plugins)` for `"core:stdlib"` first — see "Depending on another plugin" above.
+`stdlib/config-string`, `stdlib/config-enum` (the latter takes a list of allowed symbols), `stdlib/config-integer` (takes a minimum, `#f` for no minimum), and `stdlib/config-list` (a list of strings) cover the other common config shapes. Since this call happens in your plugin's own body, at load time, check `(declared-plugins)` for `"core:stdlib"` first — see "Depending on another plugin" above.
 
 Document the keys your plugin understands so users know what to pass.
 

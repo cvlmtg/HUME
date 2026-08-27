@@ -136,7 +136,36 @@
               ", got " (to-string v))))
     v))
 
+(define (stdlib/config-integer plugin cfg key default minimum)
+  (let ([v (stdlib/config-value cfg key default)])
+    (unless (and (integer? v) (or (not minimum) (>= v minimum)))
+      (error (string-append plugin ": \"" key "\" must be an integer"
+                             (if minimum (string-append " >= " (to-string minimum)) ""))))
+    v))
+
+(define (stdlib/config-list plugin cfg key default)
+  (let ([v (stdlib/config-value cfg key default)])
+    (unless (and (list? v) (null? (filter (lambda (x) (not (string? x))) v)))
+      (error (string-append plugin ": \"" key "\" must be a list of strings")))
+    v))
+
 ;; ── call!-able commands (public API) ────────────────────────────────────────
+
+(define-command! "stdlib/selection-anchor"
+  "Anchor char offset of the given selection triple, or #f."
+  stdlib/selection-anchor)
+
+(define-command! "stdlib/selection-head"
+  "Head char offset of the given selection triple, or #f."
+  stdlib/selection-head)
+
+(define-command! "stdlib/selection-primary?"
+  "#t if the given selection triple is the primary selection, or #f."
+  stdlib/selection-primary?)
+
+(define-command! "stdlib/primary-selection"
+  "The primary selection triple in the given list, or #f."
+  stdlib/primary-selection)
 
 (define-command! "stdlib/all-single-char?"
   "#t if every selection in the given list spans a single grapheme."
@@ -197,3 +226,11 @@
 (define-command! "stdlib/config-enum"
   "A #:config hash's value for the given key, or the given default if absent; errors if it isn't one of the given allowed symbols."
   stdlib/config-enum)
+
+(define-command! "stdlib/config-integer"
+  "A #:config hash's value for the given key, or the given default if absent; errors if it isn't an integer, or is below the given minimum (#f for no minimum)."
+  stdlib/config-integer)
+
+(define-command! "stdlib/config-list"
+  "A #:config hash's value for the given key, or the given default if absent; errors if it isn't a list of strings."
+  stdlib/config-list)

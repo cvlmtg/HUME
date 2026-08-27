@@ -2512,10 +2512,10 @@ fn core_stdlib_plugin_loads_eagerly() {
 /// below, failing the test with the offending assertion name.
 ///
 /// `stdlib`'s per-triple accessors (`selection-anchor`/`-head`/`-primary?`,
-/// `primary-selection`) are module-private composition helpers with no
-/// `(provide)` — they are intentionally not directly testable from outside
-/// the plugin's module. The three commands below exercise every accessor
-/// transitively (primary-flag selection on both ends, `#f` passthrough).
+/// `primary-selection`) are `call!`-reachable public commands, same as the
+/// three list-level predicates — a plugin holding a single selection triple
+/// (not a list) needs them directly rather than picking it apart with raw
+/// `car`/`cadr`/`caddr`.
 #[test]
 fn core_stdlib_selection_commands() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
@@ -2524,6 +2524,10 @@ fn core_stdlib_selection_commands() {
 (unless (equal? (call! "stdlib/all-single-char?" #f) #f) (error "all-single-char? #f passthrough"))
 (unless (equal? (call! "stdlib/single-selection?" #f) #f) (error "single-selection? #f passthrough"))
 (unless (equal? (call! "stdlib/cursor-char-index" #f) #f) (error "cursor-char-index #f passthrough"))
+(unless (equal? (call! "stdlib/selection-anchor" #f) #f) (error "selection-anchor #f passthrough"))
+(unless (equal? (call! "stdlib/selection-head" #f) #f) (error "selection-head #f passthrough"))
+(unless (equal? (call! "stdlib/selection-primary?" #f) #f) (error "selection-primary? #f passthrough"))
+(unless (equal? (call! "stdlib/primary-selection" #f) #f) (error "primary-selection #f passthrough"))
 
 (unless (equal? (call! "stdlib/single-selection?" (list (list 0 1 #t))) #t)
   (error "single-selection? true"))
@@ -2539,6 +2543,19 @@ fn core_stdlib_selection_commands() {
 
 (unless (equal? (call! "stdlib/cursor-char-index" (list (list 0 0 #f) (list 7 4 #t))) 4)
   (error "cursor-char-index picks the primary's head"))
+
+(unless (equal? (call! "stdlib/selection-anchor" (list 3 9 #t)) 3)
+  (error "selection-anchor reads the triple's first field"))
+(unless (equal? (call! "stdlib/selection-head" (list 3 9 #t)) 9)
+  (error "selection-head reads the triple's second field"))
+(unless (equal? (call! "stdlib/selection-primary?" (list 3 9 #t)) #t)
+  (error "selection-primary? true"))
+(unless (equal? (call! "stdlib/selection-primary?" (list 3 9 #f)) #f)
+  (error "selection-primary? false"))
+(unless (equal? (call! "stdlib/primary-selection" (list (list 0 0 #f) (list 7 4 #t) (list 1 1 #f))) (list 7 4 #t))
+  (error "primary-selection picks the flagged triple out of a list"))
+(unless (equal? (call! "stdlib/primary-selection" (list (list 0 0 #f) (list 1 1 #f))) #f)
+  (error "primary-selection #f when no triple is flagged"))
 "#;
 
     let result = {
@@ -2552,10 +2569,11 @@ fn core_stdlib_selection_commands() {
 }
 
 /// The `core:stdlib` config-validation commands — `stdlib/config-boolean`,
-/// `stdlib/config-string`, `stdlib/config-enum` — must resolve a present key,
-/// fall back to the given default when the key is absent, and raise an error
-/// naming both the given plugin and the offending key when the resolved
-/// value fails its type/membership check.
+/// `stdlib/config-string`, `stdlib/config-enum`, `stdlib/config-integer`,
+/// `stdlib/config-list` — must resolve a present key, fall back to the given
+/// default when the key is absent, and raise an error naming both the given
+/// plugin and the offending key when the resolved value fails its
+/// type/membership/range check.
 ///
 /// Each wrong-type/wrong-value case is wrapped in `with-handler`, which
 /// checks the caught error's message via `string-contains?`/`to-string` and,
@@ -2603,6 +2621,48 @@ fn core_stdlib_config_commands() {
   (begin
     (call! "stdlib/config-enum" "p" (hash "k" 'bogus) "k" 'smart '(on smart off))
     (error "config-enum: expected a raise on a disallowed value")))
+
+(unless (equal? (call! "stdlib/config-integer" "p" (hash "k" 5) "k" 1 0) 5)
+  (error "config-integer: present key wins over default"))
+(unless (equal? (call! "stdlib/config-integer" "p" (hash) "k" 1 0) 1)
+  (error "config-integer: absent key falls back to default"))
+(unless (equal? (call! "stdlib/config-integer" "p" (hash "k" -5) "k" 1 #f) -5)
+  (error "config-integer: negative value allowed when minimum is #f"))
+(with-handler
+  (lambda (err)
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+      (error (string-append "config-integer: error must name plugin and key: " (to-string err)))))
+  (begin
+    (call! "stdlib/config-integer" "p" (hash "k" "not-an-int") "k" 1 0)
+    (error "config-integer: expected a raise on a non-integer value")))
+(with-handler
+  (lambda (err)
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+      (error (string-append "config-integer: error must name plugin and key: " (to-string err)))))
+  (begin
+    (call! "stdlib/config-integer" "p" (hash "k" -1) "k" 1 0)
+    (error "config-integer: expected a raise on a value below the minimum")))
+
+(unless (equal? (call! "stdlib/config-list" "p" (hash "k" (list "a" "b")) "k" '() ) (list "a" "b"))
+  (error "config-list: present key wins over default"))
+(unless (equal? (call! "stdlib/config-list" "p" (hash) "k" (list "d")) (list "d"))
+  (error "config-list: absent key falls back to default"))
+(unless (equal? (call! "stdlib/config-list" "p" (hash "k" '()) "k" (list "d")) '())
+  (error "config-list: empty list accepted"))
+(with-handler
+  (lambda (err)
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+      (error (string-append "config-list: error must name plugin and key: " (to-string err)))))
+  (begin
+    (call! "stdlib/config-list" "p" (hash "k" "not-a-list") "k" '())
+    (error "config-list: expected a raise on a non-list value")))
+(with-handler
+  (lambda (err)
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+      (error (string-append "config-list: error must name plugin and key: " (to-string err)))))
+  (begin
+    (call! "stdlib/config-list" "p" (hash "k" (list "a" 'not-a-string)) "k" '())
+    (error "config-list: expected a raise on a non-string element")))
 "#;
 
     let result = {
