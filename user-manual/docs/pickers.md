@@ -57,20 +57,6 @@ loading the plugin:
 | `#t` (default) | Untracked files are included. |
 | `#f`           | Untracked files are left out entirely. |
 
-::: info Live grep is a plugin
-HUME has no cross-file search of its own. [grep.hume](https://github.com/cvlmtg/grep.hume),
-the first official third-party plugin, adds one: `g /` opens the same picker with a live
-`rg` (or `grep`) search behind it, re-running the search as you type instead of filtering a
-fixed list. Install it with [PLUM](core-plugins.md#core-plum):
-
-```scheme
-(declare-plugin "core:stdlib")
-(load-plugin "cvlmtg/grep.hume")
-```
-
-Needs `rg` or `grep` on `PATH`. See [Installing a plugin](plugins.md#installing-a-plugin).
-:::
-
 ## Keys
 
 | Key   | Effect |

@@ -8,9 +8,7 @@ Plugins are installed and updated by **PLUM**, a bundled plugin — see [Core Pl
 
 ## Installing a plugin
 
-Add a `declare-plugin` or `load-plugin` call to your `init.scm` — here's
-[grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official
-third-party plugin, loaded eagerly since its key binding needs to be in place at startup:
+Add a `declare-plugin` or `load-plugin` call to your `init.scm`.
 
 ```scheme
 (declare-plugin "core:stdlib")
@@ -30,6 +28,10 @@ If a plugin supports configuration, pass it with `#:config`:
 ```
 
 See [Configuring a plugin](#configuring-a-plugin) for what a plugin does with this value, and the plugin's own docs for which keys it understands.
+
+::: info
+[cvlmtg/grep.hume](https://github.com/cvlmtg/grep.hume) is the first official third-party plugin. It adds one `g /` keybind to open a picker with a live `rg` (or `grep`) search behind it, re-running the search as you type.
+:::
 
 ## Plugin status
 
