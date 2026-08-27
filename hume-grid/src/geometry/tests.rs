@@ -22,13 +22,6 @@ fn area_widens_past_u16() {
 }
 
 #[test]
-fn empty_when_either_axis_is_zero() {
-    assert!(Rect::new(0, 0, 0, 5).is_empty());
-    assert!(Rect::new(0, 0, 5, 0).is_empty());
-    assert!(!Rect::new(0, 0, 1, 1).is_empty());
-}
-
-#[test]
 fn contains_includes_the_top_left_and_excludes_the_bottom_right() {
     let r = Rect::new(2, 3, 4, 4); // x 2..6, y 3..7
     assert!(r.contains(Position::new(2, 3)));
@@ -59,7 +52,6 @@ fn inset_asymmetric_axes() {
 fn inset_past_the_rect_yields_empty_not_wrapped() {
     // The case a hand-written `width - 2` gets wrong: it wraps to 65535.
     let r = Rect::new(5, 5, 1, 1).inset(1, 1);
-    assert!(r.is_empty());
     assert_eq!((r.width, r.height), (0, 0));
 }
 

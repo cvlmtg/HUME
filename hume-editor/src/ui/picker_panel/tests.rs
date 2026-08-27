@@ -2,6 +2,7 @@ use hume_engine::types::ResolvedStyle;
 use hume_grid::{Grid, Rect, Rgb};
 use std::collections::HashMap;
 
+use super::super::symbols_in;
 use super::*;
 
 fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
@@ -19,20 +20,6 @@ fn styles() -> PickerStyles {
         selected: style(),
         cursor: style(),
     }
-}
-
-/// Rows of `area` as plain symbols, trailing spaces trimmed per row —
-/// mirrors `menu_box/tests.rs`'s helper of the same name.
-fn symbols_in(buf: &Grid, area: Rect) -> String {
-    (area.y..area.y + area.height)
-        .map(|y| {
-            let row: String = (area.x..area.x + area.width)
-                .map(|x| buf[(x, y)].text())
-                .collect();
-            row.trim_end().to_string()
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 fn state(

@@ -26,12 +26,12 @@
 //! continuations — which is what lets [`diff`] compare cells one at a time
 //! with `==` and still never emit half a glyph. See [`Grid::set_glyph`].
 
-pub mod cell;
-pub mod color;
+mod cell;
+mod color;
 pub mod diff;
-pub mod geometry;
-pub mod grid;
-pub mod style;
+mod geometry;
+mod grid;
+mod style;
 
 pub use cell::Cell;
 pub use color::Rgb;

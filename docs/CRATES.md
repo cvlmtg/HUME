@@ -27,7 +27,7 @@ The frame's cell grid: the `Cell`/`Grid` storage HUME draws into, the `Rect`/`Po
 - hume-scripting
 - hume-editor
 ## Description
-Platform abstraction layer — terminal control (raw-mode lifecycle, kitty keyboard protocol, synchronized output, via `termina`), frame presentation (the double-buffered `Screen`: cell diff plus the escape-sequence emitter that carries a composed frame to the terminal), process spawning with process-group/reap discipline, atomic file writes, and OS-specific config/data/runtime directory conventions. All `#[cfg(unix)]`/`#[cfg(windows)]` code is walled off inside this crate so every caller gets a uniform, platform-independent signature.
+Platform abstraction layer — terminal control (raw-mode lifecycle, kitty keyboard protocol, synchronized output, via `termina`), frame presentation (the double-buffered `Screen`: front/back `hume-grid` grids, the gap policy the diff runs under, and the escape-sequence emitter that carries a composed frame to the terminal), process spawning with process-group/reap discipline, atomic file writes, and OS-specific config/data/runtime directory conventions. All `#[cfg(unix)]`/`#[cfg(windows)]` code is walled off inside this crate so every caller gets a uniform, platform-independent signature.
 
 # hume-editing
 ### Depends on

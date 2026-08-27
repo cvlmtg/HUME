@@ -1,4 +1,4 @@
-use hume_grid::{Grid, Rect, Rgb};
+use hume_grid::{Grid, Position, Rect, Rgb};
 use rustc_hash::FxHashMap;
 
 use slotmap::{SlotMap, new_key_type};
@@ -92,10 +92,6 @@ pub struct RenderContext {
     /// render so junction glyphs (`┬ ┴ ├ ┤ ┼`) can be drawn where seams
     /// cross. Reused scratch storage, same rationale as `seams`.
     pub(crate) seam_arms: FxHashMap<(u16, u16), u8>,
-    /// Each seam's rect clamped to the terminal buffer, computed ahead of the
-    /// seam pass because that pass holds an exclusive `&mut` on the buffer.
-    /// Reused scratch storage, same rationale as `seams`.
-    pub(crate) seam_bounds: Vec<(u16, u16, u16, u16)>,
     /// Scratch for cursor-position computation (`cursor::content_pos` and scroll).
     /// Distinct from `frame.format` — used outside the render pipeline, where
     /// borrowing `frame` simultaneously would conflict.
@@ -118,7 +114,6 @@ impl RenderContext {
             pane_rects: Vec::new(),
             seams: Vec::new(),
             seam_arms: FxHashMap::default(),
-            seam_bounds: Vec::new(),
             cursor_format: FormatScratch::new(),
             cursor_content_pos: None,
         }
@@ -318,7 +313,7 @@ impl EngineView {
             // claims its band even when the terminal is too small to also
             // fit pane content (`pane_area`'s degenerate branch already
             // collapses `height` to 0 there).
-            let mut bottom_edge = (area.y + area.height).saturating_sub(1);
+            let mut bottom_edge = area.bottom().saturating_sub(1);
             for band in &self.bottom_bands {
                 let band_height = band.height(area.height / 2);
                 if band_height == 0 {
@@ -336,7 +331,7 @@ impl EngineView {
             }
 
             // ── Render statusline ───────────────────────────────────────────────
-            let sl_y = area.y + area.height.saturating_sub(1);
+            let sl_y = area.bottom().saturating_sub(1);
             let sl_area = Rect {
                 y: sl_y,
                 height: 1,
@@ -405,17 +400,21 @@ impl EngineView {
             // them once so the per-cell loop only does a membership check.
             let corners = focused_rect.map(focused_pane_corners);
 
-            // Clamped once per seam, ahead of `canvas` below — it needs an
-            // immutable `&Grid` and the canvas holds an exclusive `&mut`
-            // for the whole seam pass.
-            ctx.seam_bounds.clear();
-            ctx.seam_bounds.extend(
-                ctx.seams
-                    .iter()
-                    .map(|seam| crate::render::clamp_rect_to_grid(grid, seam.rect)),
-            );
+            // The grid's size, read once ahead of `canvas` below — `Grid` is
+            // origin-free, so this `(u16, u16)` is all a per-seam clamp
+            // needs, and it's `Copy` rather than a borrow: unlike the old
+            // ratatui buffer (non-zero origin, needing a live `&Buffer` per
+            // clamp), nothing here has to be precomputed before the canvas
+            // takes its exclusive `&mut Grid` for the whole seam pass.
+            let (grid_w, grid_h) = grid.size();
             let mut canvas = crate::render::Canvas::new(grid, &self.theme, None);
-            for (seam, &(x0, y0, x1, y1)) in ctx.seams.iter().zip(ctx.seam_bounds.iter()) {
+            for seam in &ctx.seams {
+                let (x0, y0, x1, y1) = (
+                    seam.rect.x,
+                    seam.rect.y,
+                    seam.rect.right().min(grid_w),
+                    seam.rect.bottom().min(grid_h),
+                );
                 let base = match seam.direction {
                     Direction::Horizontal => ARM_N | ARM_S,
                     Direction::Vertical => ARM_E | ARM_W,
@@ -429,9 +428,9 @@ impl EngineView {
                     for x in x0..x1 {
                         let arms = ctx.seam_arms.get(&(x, y)).copied().unwrap_or(0);
                         let glyph = junction_glyph(base | arms);
-                        let in_accent = accent_rect.is_some_and(|r| {
-                            x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
-                        }) || corners.is_some_and(|cs| cs.contains(&Some((x, y))));
+                        let in_accent = accent_rect
+                            .is_some_and(|r| r.contains(Position::new(x, y)))
+                            || corners.is_some_and(|cs| cs.contains(&Some((x, y))));
                         let style = if in_accent { accent } else { muted };
                         // One junction glyph per seam cell. Through the same
                         // writer as everything else rather than a raw cell

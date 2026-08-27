@@ -86,15 +86,15 @@ impl Editor {
         )
     }
 
-    /// Render one frame into `buf`. Single home for the rope / syntax /
+    /// Render one frame into `grid`. Single home for the rope / syntax /
     /// pane-settings closures shared by the event loop and `render_to_buf`.
-    pub(super) fn render_into(&self, area: Rect, buf: &mut Grid, ctx: &mut RenderContext) {
+    pub(super) fn render_into(&self, area: Rect, grid: &mut Grid, ctx: &mut RenderContext) {
         // The statusline provider borrows `self` immutably; it's built here so
         // its lifetime is tied to this call, not stored across the draw closure.
         let statusline = crate::ui::statusline::HumeStatusline { editor: self };
         self.view.render(
             area,
-            buf,
+            grid,
             |bid| self.state.buffers.try_get(bid).map(|b| b.text().rope()),
             |bid| {
                 self.state

@@ -257,6 +257,15 @@ impl LayoutTree {
 /// another during an edit.
 pub(super) const HORIZONTAL: &str = "\u{2500}";
 pub(super) const VERTICAL: &str = "\u{2502}";
+pub(super) const CROSS: &str = "\u{253c}";
+pub(super) const HORIZONTAL_DOWN: &str = "\u{252c}";
+pub(super) const HORIZONTAL_UP: &str = "\u{2534}";
+pub(super) const VERTICAL_RIGHT: &str = "\u{251c}";
+pub(super) const VERTICAL_LEFT: &str = "\u{2524}";
+pub(super) const BOTTOM_LEFT: &str = "\u{2514}";
+pub(super) const BOTTOM_RIGHT: &str = "\u{2518}";
+pub(super) const TOP_LEFT: &str = "\u{250c}";
+pub(super) const TOP_RIGHT: &str = "\u{2510}";
 
 pub(super) const ARM_N: u8 = 0b0001;
 pub(super) const ARM_E: u8 = 0b0010;
@@ -270,15 +279,15 @@ pub(super) const ARM_W: u8 = 0b1000;
 /// `│ ─ ├ ┤ ┬ ┴ ┼`.
 pub(super) fn junction_glyph(mask: u8) -> &'static str {
     match mask {
-        m if m == ARM_N | ARM_E | ARM_S | ARM_W => "\u{253c}",
-        m if m == ARM_E | ARM_S | ARM_W => "\u{252c}",
-        m if m == ARM_N | ARM_E | ARM_W => "\u{2534}",
-        m if m == ARM_N | ARM_E | ARM_S => "\u{251c}",
-        m if m == ARM_N | ARM_S | ARM_W => "\u{2524}",
-        m if m == ARM_N | ARM_E => "\u{2514}",
-        m if m == ARM_N | ARM_W => "\u{2518}",
-        m if m == ARM_E | ARM_S => "\u{250c}",
-        m if m == ARM_S | ARM_W => "\u{2510}",
+        m if m == ARM_N | ARM_E | ARM_S | ARM_W => CROSS,
+        m if m == ARM_E | ARM_S | ARM_W => HORIZONTAL_DOWN,
+        m if m == ARM_N | ARM_E | ARM_W => HORIZONTAL_UP,
+        m if m == ARM_N | ARM_E | ARM_S => VERTICAL_RIGHT,
+        m if m == ARM_N | ARM_S | ARM_W => VERTICAL_LEFT,
+        m if m == ARM_N | ARM_E => BOTTOM_LEFT,
+        m if m == ARM_N | ARM_W => BOTTOM_RIGHT,
+        m if m == ARM_E | ARM_S => TOP_LEFT,
+        m if m == ARM_S | ARM_W => TOP_RIGHT,
         m if m & (ARM_E | ARM_W) != 0 && m & (ARM_N | ARM_S) == 0 => HORIZONTAL,
         _ => VERTICAL,
     }
@@ -379,9 +388,9 @@ pub(super) fn split_rect(
 /// a height-split seam has `height == 1` (checked by the horizontal-adjacency
 /// arm).
 pub(super) fn focused_seam_segment(seam: Rect, pane: Rect) -> Option<Rect> {
-    if seam.x == pane.x + pane.width || seam.x + seam.width == pane.x {
+    if seam.x == pane.right() || seam.right() == pane.x {
         let y0 = seam.y.max(pane.y);
-        let y1 = (seam.y + seam.height).min(pane.y + pane.height);
+        let y1 = seam.bottom().min(pane.bottom());
         if y0 < y1 {
             return Some(Rect {
                 y: y0,
@@ -390,9 +399,9 @@ pub(super) fn focused_seam_segment(seam: Rect, pane: Rect) -> Option<Rect> {
             });
         }
     }
-    if seam.y == pane.y + pane.height || seam.y + seam.height == pane.y {
+    if seam.y == pane.bottom() || seam.bottom() == pane.y {
         let x0 = seam.x.max(pane.x);
-        let x1 = (seam.x + seam.width).min(pane.x + pane.width);
+        let x1 = seam.right().min(pane.right());
         if x0 < x1 {
             return Some(Rect {
                 x: x0,

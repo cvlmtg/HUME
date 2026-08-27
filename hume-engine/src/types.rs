@@ -35,7 +35,7 @@ pub struct ScopeId(pub u16);
 /// at the end of the pipeline, which is what keeps the underline *shape* and
 /// the distinction between "no colour" and "some default colour" intact all
 /// the way to the terminal.
-pub use hume_grid::{Modifiers, ResolvedStyle, Rgb, UnderlineStyle};
+pub use hume_grid::{Modifiers, ResolvedStyle, UnderlineStyle};
 
 // ---------------------------------------------------------------------------
 // Grapheme — the atom of the formatter

@@ -308,7 +308,7 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
                 y,
                 &confirm.render_line(),
                 colors.statusline,
-                area.x + area.width,
+                area.right(),
             );
             return;
         }
@@ -330,7 +330,7 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
 
             if let Some(msg) = display_msg {
                 fill_row_colors(canvas, &colors, area, y);
-                canvas.write_text_run(area.x + 1, y, msg, colors.statusline, area.x + area.width);
+                canvas.write_text_run(area.x + 1, y, msg, colors.statusline, area.right());
                 return;
             }
         }

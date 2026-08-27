@@ -195,3 +195,21 @@ pub(crate) fn build_pane(
         },
     )
 }
+
+/// Rows of `area` as plain symbols, trailing spaces trimmed per row.
+///
+/// Shared by `menu_box`'s and `picker_panel`'s own test modules — both dump
+/// a rendered `Grid` region to a string for `insta`/plain assertions, and
+/// the dump itself is identical between the two overlay kinds.
+#[cfg(test)]
+pub(crate) fn symbols_in(buf: &hume_grid::Grid, area: hume_grid::Rect) -> String {
+    (area.y..area.y + area.height)
+        .map(|y| {
+            let row: String = (area.x..area.x + area.width)
+                .map(|x| buf[(x, y)].text())
+                .collect();
+            row.trim_end().to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}

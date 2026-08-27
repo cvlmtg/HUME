@@ -64,10 +64,6 @@ impl Rect {
         self.width as u32 * self.height as u32
     }
 
-    pub const fn is_empty(self) -> bool {
-        self.width == 0 || self.height == 0
-    }
-
     /// Whether `pos` falls inside the rect. Half-open on both axes, matching
     /// [`Rect::right`]/[`Rect::bottom`].
     pub const fn contains(self, pos: Position) -> bool {

@@ -36,11 +36,6 @@ fn new_grid_is_all_blanks() {
 }
 
 #[test]
-fn area_is_the_whole_grid_at_the_origin() {
-    assert_eq!(Grid::new(7, 4).area(), Rect::new(0, 0, 7, 4));
-}
-
-#[test]
 fn narrow_write_lands_in_one_cell() {
     let mut g = Grid::new(4, 1);
     g.set_glyph(1, 0, "a", 1, red());

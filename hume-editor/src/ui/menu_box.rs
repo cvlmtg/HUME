@@ -21,7 +21,7 @@ use super::width::text_width;
 /// Theme styles a bordered box paints with — grouped into one struct rather
 /// than three positional `ResolvedStyle` arguments on `draw_menu_box`, which needs
 /// `#[allow(clippy::too_many_arguments)]` regardless given its other params
-/// (buffer, rect, rows, selection, scroll, border).
+/// (canvas, rect, rows, selection, scroll, border).
 #[derive(Clone, Copy)]
 pub(crate) struct MenuBoxStyles {
     /// Fill, border, and unstyled rows.

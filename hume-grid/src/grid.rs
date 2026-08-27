@@ -1,14 +1,13 @@
 use crate::cell::Cell;
 use crate::diff::DiffRuns;
-use crate::geometry::Rect;
 use crate::style::ResolvedStyle;
 
 /// A rectangular grid of [`Cell`]s — one frame's worth of terminal content.
 ///
 /// Origin-free: a grid is `width` × `height` addressed from `(0, 0)`. Screen
-/// regions are described by [`Rect`], which carries an origin, but every grid
-/// in HUME covers the whole terminal, so giving the storage an offset of its
-/// own would add an addressing mode nothing uses.
+/// regions are described by [`Rect`](crate::Rect), which carries an origin,
+/// but every grid in HUME covers the whole terminal, so giving the storage
+/// an offset of its own would add an addressing mode nothing uses.
 ///
 /// ## The write invariant
 ///
@@ -42,11 +41,6 @@ impl Grid {
             height,
             cells: vec![Cell::default(); width as usize * height as usize],
         }
-    }
-
-    /// The whole grid as a rect at the origin.
-    pub fn area(&self) -> Rect {
-        Rect::new(0, 0, self.width, self.height)
     }
 
     pub fn size(&self) -> (u16, u16) {
@@ -112,11 +106,10 @@ impl Grid {
         // Clipped: the glyph is dropped whole and its columns blanked, never
         // split across the edge — the rule `hume_rope::width` truncation
         // follows, so a field measured to fit and a field drawn to fit agree.
+        // Exactly `fill_span`'s own clip-and-blank shape, reused rather than
+        // re-derived.
         if x.saturating_add(span) > self.width {
-            let len = self.width - x;
-            self.repair_edges(x, y, len);
-            let row = self.index(0, y);
-            self.cells[row + x as usize..row + self.width as usize].fill(Cell::blank(style));
+            self.fill_span(y, x, self.width, Cell::blank(style));
             return;
         }
 

@@ -113,17 +113,13 @@ impl<'a> Canvas<'a> {
     /// Modifiers and the underline replace outright, and that asymmetry is
     /// deliberate: an opaque overlay — a completion popup over highlighted
     /// code — must not inherit the bold of whatever it covered. Colours
-    /// compose; emphasis does not.
+    /// compose; emphasis does not — see [`ResolvedStyle::over`], which does
+    /// the composing.
     fn over_painted(&self, x: u16, y: u16, style: ResolvedStyle) -> ResolvedStyle {
         let Some(under) = self.grid.cell(x, y).map(Cell::style) else {
             return style;
         };
-        ResolvedStyle {
-            fg: style.fg.or(under.fg),
-            bg: style.bg.or(under.bg),
-            underline_color: style.underline_color.or(under.underline_color),
-            ..style
-        }
+        style.over(under)
     }
 
     /// Write `text` cell by cell from `(x, y)`, stopping before `right_edge`,
@@ -138,18 +134,21 @@ impl<'a> Canvas<'a> {
     /// resolved string is always a pre-built glyph (`→`, `<200b>`) that
     /// itself never contains a literal `\t` needing the pane's own tab-stop
     /// math to re-measure — a real buffer tab's cell is written directly by
-    /// `compose_row`'s own tab-arm, never routed through here. There is no
-    /// `set_string` equivalent here, for two reasons.
+    /// `compose_row`'s own tab-arm, never routed through here.
+    /// `Grid::set_glyph`/`fill_span` are not called directly here, for two
+    /// reasons — they are the primitives this method is built on, not
+    /// wrong, just one layer too low for anything measured beforehand.
     ///
     /// **It agrees with [`hume_rope::width`], the width model everything
-    /// else in the frame is measured with.** `set_string` uses its own: it
-    /// discards any grapheme holding a control character or measuring zero,
-    /// and adds a cell for a halfwidth dakuten. So a caller that sized a
-    /// field with `str_width` and then drew it with `set_string` could
-    /// reserve columns nothing was drawn in, or draw wider than it reserved.
-    /// Here the advance returned is exactly `str_width(text, 0, 1)`, because
-    /// that is the same per-cluster width this walks by — measurement and
-    /// drawing cannot drift, since they are one model. Chrome has no tab
+    /// else in the frame is measured with.** A [`Cell`] stores the display
+    /// width its writer measured rather than letting anything downstream
+    /// re-derive it (see the [`hume_grid`] crate doc), so a caller that
+    /// sized a field with `str_width` and then drew it by walking clusters a
+    /// second, different way could reserve columns nothing was drawn in, or
+    /// draw wider than it reserved. Here the advance returned is exactly
+    /// `str_width(text, 0, 1)`, because that is the same per-cluster width
+    /// this walks by — measurement and drawing cannot drift, since they are
+    /// one model. Chrome has no tab
     /// stops of its own, so a tab measures and draws as exactly one cell — a
     /// plain space — rather than advancing to the next multiple of some tab
     /// width. Any other cluster the terminal must not be shown as itself (a
@@ -163,13 +162,13 @@ impl<'a> Canvas<'a> {
     /// Tier 2d½; chrome has no per-cell style tiers, so this is its
     /// equivalent.
     ///
-    /// **`right_edge` is required, not implied.** `set_string` clips at the
-    /// terminal buffer's edge and nothing narrower, so a caller drawing into
-    /// a pane, a gutter lane, or a bordered box had to remember to
-    /// pre-truncate or bleed past it. Taking the bound as an argument moves
-    /// that from something each call site remembers to something the
-    /// signature asks for. A cluster that would straddle `right_edge` is
-    /// dropped whole, never split — the same rule
+    /// **`right_edge` is required, not implied.** `Grid::set_glyph`/
+    /// `fill_span` clip only at the grid's own edge and nothing narrower, so
+    /// a caller drawing into a pane, a gutter lane, or a bordered box had to
+    /// remember to pre-truncate or bleed past it. Taking the bound as an
+    /// argument moves that from something each call site remembers to
+    /// something the signature asks for. A cluster that would straddle
+    /// `right_edge` is dropped whole, never split — the same rule
     /// [`hume_rope::width::truncate_to_width`] follows.
     pub fn write_text_run(
         &mut self,
@@ -218,15 +217,9 @@ impl<'a> Canvas<'a> {
                     // (`invisible_style`'s modifiers and underline) replaces
                     // rather than unions with the run's: a placeholder inside
                     // a bold field reads as a placeholder, not as bold text.
-                    // That is why this is written field by field instead of
-                    // through `ResolvedStyle::layer`, which unions modifiers.
-                    let placeholder_style = ResolvedStyle {
-                        fg: invisible_style.fg.or(style.fg),
-                        bg: invisible_style.bg.or(style.bg),
-                        underline: invisible_style.underline,
-                        underline_color: invisible_style.underline_color.or(style.underline_color),
-                        modifiers: invisible_style.modifiers,
-                    };
+                    // That is why this composes with `ResolvedStyle::over`
+                    // instead of `layer`, which unions modifiers.
+                    let placeholder_style = invisible_style.over(style);
                     for (i, ch) in p.as_str().chars().enumerate() {
                         let mut glyph = [0u8; 4];
                         self.set_cell(
@@ -248,28 +241,32 @@ impl<'a> Canvas<'a> {
     }
 
     /// Paint every cell of `rect` with a space glyph and `style`, clipping to
-    /// buffer bounds, through this canvas's dim blend.
+    /// grid bounds, through this canvas's dim blend.
     ///
-    /// `Buffer::set_style` only rewrites `Style`, leaving previous glyphs
-    /// visible. Opaque overlays (popups, statusline fills) need to overwrite
-    /// the symbol too. The chrome-facing counterpart of the pane-only
+    /// `Grid::fill_span` only overwrites glyph and style together — there is
+    /// no way to touch style alone and leave a previous glyph showing, so an
+    /// opaque overlay (popup, statusline fill) never needs a second pass to
+    /// blank what it covers. The chrome-facing counterpart of the pane-only
     /// `Canvas::fill_row_bg`; blending is currently always a no-op there
     /// (chrome passes `dim: None`), but routing both through this one method
     /// keeps every write, pane or chrome, going through one blend point
     /// rather than two conventions.
+    ///
+    /// One `fill_span` per row rather than `set_cell` per cell — sound only
+    /// because a background fill never needs to read what it's painting
+    /// over: `Grid::reset` blanks the frame before any pane draws, panes
+    /// tile without overlap, and `compose_gutter` only ever writes left of
+    /// `content_x_origin`, so nothing in the same frame has painted this
+    /// rect before a fill reaches it.
     pub fn fill_rect_bg(&mut self, rect: Rect, style: ResolvedStyle) {
         let (x0, y0, x1, y1) = clamp_rect_to_grid(self.grid, rect);
         if x0 >= x1 {
             return;
         }
-        // Cell by cell rather than one span write: each cell resolves any
-        // colour `style` leaves unset against what is already painted there
-        // (see `over_painted`), so the cells of a run need not agree.
+        let style = blend_style(style, self.dim);
         for y in y0..y1 {
-            for x in x0..x1 {
-                // static-glyph-safe: blanks a cell, writes no text.
-                self.set_cell(x, y, " ", 1, style);
-            }
+            // static-glyph-safe: `Canvas`'s own cell primitive; blanks a span, writes no text.
+            self.grid.fill_span(y, x0, x1, Cell::blank(style));
         }
     }
 
@@ -354,7 +351,7 @@ fn compose_gutter(
     // would write straight through the pane's right edge into whatever is
     // drawn next to it in the shared terminal buffer (a neighbouring pane,
     // most commonly).
-    let pane_right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
+    let pane_right_edge = compose_ctx.pane_rect.right();
     let gutter_ctx = GutterRowCtx {
         mode: compose_ctx.mode,
         primary_head_line: compose_ctx.primary_head_line,
@@ -480,7 +477,7 @@ pub(crate) fn compose_row(
     row_bg: Option<Rgb>,
 ) {
     let y = compose_ctx.pane_rect.y + screen_row;
-    let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
+    let right_edge = compose_ctx.pane_rect.right();
 
     // Filler rows are rendered exclusively by `render_tilde_fillers`, never
     // routed through here — it has its own gutter + tilde + background
@@ -674,7 +671,7 @@ pub(crate) fn render_tilde_fillers(
             .min(compose_ctx.pane_rect.height)
     {
         let y = compose_ctx.pane_rect.y + screen_row;
-        let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
+        let right_edge = compose_ctx.pane_rect.right();
         // Gutter first — it already paints a real background (row_bg, or
         // theme.ui.background.bg, patched with the column's scope, see
         // `compose_gutter`) across the

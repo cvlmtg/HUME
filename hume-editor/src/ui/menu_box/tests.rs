@@ -1,3 +1,4 @@
+use super::super::symbols_in;
 use super::*;
 use hume_engine::theme::Theme;
 use hume_engine::types::ResolvedStyle;
@@ -17,19 +18,6 @@ fn styles() -> MenuBoxStyles {
         selected: style(),
         scroll: style(),
     }
-}
-
-/// Rows of `area` as plain symbols, trailing spaces trimmed per row.
-fn symbols_in(buf: &Grid, area: Rect) -> String {
-    (area.y..area.y + area.height)
-        .map(|y| {
-            let row: String = (area.x..area.x + area.width)
-                .map(|x| buf[(x, y)].text())
-                .collect();
-            row.trim_end().to_string()
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 #[test]

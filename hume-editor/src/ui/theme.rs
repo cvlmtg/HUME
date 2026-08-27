@@ -6,7 +6,7 @@ use hume_engine::types::ResolvedStyle;
 /// resolution at render time.
 pub(crate) struct EditorColors {
     // ── Statusline ────────────────────────────────────────────────────────────
-    /// ResolvedStyle for the entire statusline row, resolved from the current mode's
+    /// Style for the entire statusline row, resolved from the current mode's
     /// scope (`ui.statusline.<mode>`) — see [`mode_scope`]. Every element
     /// except the separator paints with this style, so the whole row tints
     /// with the mode. `None` for the mode (`statusline.mode-colors` off) holds

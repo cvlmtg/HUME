@@ -357,7 +357,7 @@ pub(crate) fn resolve_popup_geometry(
     let width = width.min(pane_rect.width);
     let height = height.min(pane_rect.height);
     let (anchor_x, anchor_y) = anchor;
-    let space_below = (pane_rect.y + pane_rect.height).saturating_sub(anchor_y + 1);
+    let space_below = pane_rect.bottom().saturating_sub(anchor_y + 1);
     let space_above = anchor_y.saturating_sub(pane_rect.y);
 
     let y = if space_below >= height || space_below >= space_above {
@@ -367,11 +367,11 @@ pub(crate) fn resolve_popup_geometry(
     };
     let y = y
         .max(pane_rect.y)
-        .min((pane_rect.y + pane_rect.height).saturating_sub(height));
+        .min(pane_rect.bottom().saturating_sub(height));
 
     let x = anchor_x
         .max(pane_rect.x)
-        .min((pane_rect.x + pane_rect.width).saturating_sub(width));
+        .min(pane_rect.right().saturating_sub(width));
 
     (x, y, width, height)
 }

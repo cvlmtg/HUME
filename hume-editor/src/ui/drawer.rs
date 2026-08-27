@@ -111,7 +111,7 @@ impl BottomBandProvider for DrawerWidget {
                 area.x,
                 y,
                 area.width,
-                area.x + area.width,
+                area.right(),
                 item,
                 row_idx == state.selected,
                 selected_style,

@@ -63,11 +63,11 @@ impl OverlayProvider for MinibufCompletionOverlay {
 
         // Position: just above the statusline.
         // Shift left by 1 so the text column aligns under the token in the input.
-        let popup_y = pane_area.y + pane_area.height - outer_h;
+        let popup_y = pane_area.bottom() - outer_h;
         let popup_x = view
             .anchor_x
             .saturating_sub(1)
-            .min(pane_area.x + pane_area.width.saturating_sub(outer_w));
+            .min(pane_area.right() - outer_w);
         draw_menu_box(
             canvas,
             Rect::new(popup_x, popup_y, outer_w, outer_h),

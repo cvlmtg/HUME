@@ -34,7 +34,7 @@ use crate::terminal::{SharedTerm, dec_reset, dec_set};
 /// Four keeps the worst-case re-print at roughly the cost of the CUP it
 /// replaces, and keeps a styled run contiguous so the emitter's running SGR
 /// state survives across the gap.
-pub const MAX_REPRINT_GAP: u16 = 4;
+const MAX_REPRINT_GAP: u16 = 4;
 
 /// A double-buffered terminal screen.
 pub struct Screen {
@@ -54,16 +54,19 @@ pub struct Screen {
 }
 
 impl Screen {
-    pub fn new(term: SharedTerm) -> io::Result<Screen> {
-        let (width, height) = dimensions(&term)?;
-        Ok(Screen {
+    /// Both grids start at 0×0 — [`Screen::frame`]'s first call always sees
+    /// a size mismatch against the real terminal and resizes both before
+    /// anything is drawn, so there is nothing for this constructor to read
+    /// the terminal for.
+    pub fn new(term: SharedTerm) -> Screen {
+        Screen {
             term,
-            front: Grid::new(width, height),
-            back: Grid::new(width, height),
+            front: Grid::new(0, 0),
+            back: Grid::new(0, 0),
             // Nothing is known about what the terminal shows at startup.
             force_full: true,
             out: String::new(),
-        })
+        }
     }
 
     /// The terminal's current size, read fresh.
@@ -114,9 +117,8 @@ impl Screen {
         let prev = (!self.force_full).then_some(&self.front);
         frame(&mut self.out, &self.back, prev, cursor);
 
-        let mut term = self.term.clone();
-        term.write_all(self.out.as_bytes())?;
-        term.flush()?;
+        self.term.write_all(self.out.as_bytes())?;
+        self.term.flush()?;
 
         std::mem::swap(&mut self.front, &mut self.back);
         self.force_full = false;

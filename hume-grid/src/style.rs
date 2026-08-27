@@ -48,6 +48,24 @@ impl ResolvedStyle {
         }
     }
 
+    /// Compose `self` over `under`: unset colours fall back to `under`'s;
+    /// underline shape and modifiers are `self`'s outright.
+    ///
+    /// The style-cascade counterpart of [`layer`](Self::layer) for
+    /// resolving a partial per-write style against whatever a cell already
+    /// holds, rather than against another cascade layer — the caller has an
+    /// opinion (`self`) that may leave some fields unset, and `under` is
+    /// what's already painted there. See
+    /// `hume_engine::render::Canvas::over_painted`.
+    pub fn over(self, under: ResolvedStyle) -> ResolvedStyle {
+        ResolvedStyle {
+            fg: self.fg.or(under.fg),
+            bg: self.bg.or(under.bg),
+            underline_color: self.underline_color.or(under.underline_color),
+            ..self
+        }
+    }
+
     /// Drop state that cannot be seen, so two styles that render identically
     /// also compare equal.
     ///
@@ -58,7 +76,7 @@ impl ResolvedStyle {
     /// never changed, and emit an SGR 58 the terminal has nothing to apply
     /// it to. Applied by every [`Cell`](crate::Cell) constructor, so cell
     /// equality is appearance equality.
-    pub fn normalized(mut self) -> ResolvedStyle {
+    pub(crate) fn normalized(mut self) -> ResolvedStyle {
         if self.underline == UnderlineStyle::None {
             self.underline_color = None;
         }

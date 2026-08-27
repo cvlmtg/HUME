@@ -387,7 +387,7 @@ pub fn init(
         return Err(e);
     }
 
-    crate::screen::Screen::new(term)
+    Ok(crate::screen::Screen::new(term))
 }
 
 /// Undo everything [`init`] did: run `write_unwind_escapes` then leave raw
