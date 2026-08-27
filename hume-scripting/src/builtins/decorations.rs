@@ -310,6 +310,24 @@ pub(crate) fn set_line_backgrounds(
     Ok(SteelVal::Void)
 }
 
+/// `(set-statusline-text! source bid text)` — replaces `source`'s
+/// statusline text for `bid` wholesale. Rendered by the `steel:<source>`
+/// statusline element (see `configure-statusline!`) — placing it is a
+/// separate step, this only pushes the value a placed element will show.
+pub(crate) fn set_statusline_text(
+    ctx: &mut SteelCtx,
+    source: SteelVal,
+    bid: BidArg,
+    text: SteelVal,
+) -> SteelResult {
+    let source = string_arg(source, "set-statusline-text! source")?;
+    let text = string_arg(text, "set-statusline-text! text")?;
+    require_cap(ctx.host.decorations(), "set-statusline-text!")?
+        .set_statusline_text(source, bid.0, text)
+        .map_err(generic_err)?;
+    Ok(SteelVal::Void)
+}
+
 /// `(%diagnostics-for-buffer bid severity range)` — the `diagnostics-for-buffer`
 /// Scheme wrapper supplies `#:severity`/`#:range` defaults. `severity`: a
 /// symbol or `#f`. `range`: a `(start . end)` dotted pair or `#f`.

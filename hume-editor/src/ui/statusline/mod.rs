@@ -31,7 +31,7 @@ const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::MiniBuf];
 ///
 /// The Steel scripting layer constructs [`StatusLineConfig`] values at
 /// runtime; this enum is the wire format for those configurations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatusElement {
     /// The mode indicator: `"NOR"`, `"INS"`, `"EXT"`, `"CMD"`, `"SRC"`, or `"SEL"`.
     ///
@@ -98,6 +98,18 @@ pub enum StatusElement {
     /// through Steel's `(diagnostic-counts …)` builtin (that one is for
     /// plugins, not the render path).
     Diagnostics,
+    /// A plugin-defined element, named by `(set-statusline-text! source bid
+    /// text)`'s `source` argument. Wire name is `steel:<source>` — carries
+    /// the name rather than an interned id, which is what costs this enum
+    /// its `Copy` derive; see `render_section`'s `for seg in elements` (not
+    /// `for &seg`) and `render_element`'s `&StatusElement` parameter.
+    ///
+    /// Renders the focused buffer's last-pushed text for `name`, or empty
+    /// if nothing has been pushed yet — same "absent = empty" convention as
+    /// every other element. Steel is never called on the render path (see
+    /// `Diagnostics`'s doc above); this element only ever reads the cache
+    /// `set-statusline-text!` already wrote.
+    Custom(Box<str>),
 }
 
 /// Wire-format name for every [`StatusElement`] variant — the single source
@@ -125,10 +137,13 @@ const ELEMENT_NAMES: &[(&str, StatusElement)] = &[
 
 impl fmt::Display for StatusElement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let StatusElement::Custom(name) = self {
+            return write!(f, "steel:{name}");
+        }
         let (name, _) = ELEMENT_NAMES
             .iter()
             .find(|(_, elem)| elem == self)
-            .expect("every StatusElement variant has an ELEMENT_NAMES entry");
+            .expect("every non-Custom StatusElement variant has an ELEMENT_NAMES entry");
         f.write_str(name)
     }
 }
@@ -137,10 +152,27 @@ impl FromStr for StatusElement {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // A custom name round-trips through the same `"left|center|right"`
+        // wire format every other element does (`settings::parse_statusline`
+        // splits on `,`/`|` with no escaping), so it can't itself contain
+        // either separator — checked here, the one place both
+        // `configure-statusline!` and `:set global statusline=…` parse
+        // through, rather than at `set-statusline-text!` (which never
+        // touches `StatusElement` and has no wire format to protect).
+        if let Some(name) = s.strip_prefix("steel:") {
+            return if name.is_empty() || name.contains([',', '|']) {
+                Err(format!(
+                    "unknown element '{s}'; a steel: element name must be non-empty and must \
+                     not contain ',' or '|'"
+                ))
+            } else {
+                Ok(StatusElement::Custom(name.into()))
+            };
+        }
         ELEMENT_NAMES
             .iter()
             .find(|(name, _)| *name == s)
-            .map(|(_, elem)| *elem)
+            .map(|(_, elem)| elem.clone())
             .ok_or_else(|| {
                 let mut names: Vec<&str> = ELEMENT_NAMES.iter().map(|(name, _)| *name).collect();
                 names.sort_unstable();
@@ -444,7 +476,7 @@ fn render_statusline(
 }
 
 pub(crate) fn render_element(
-    seg: StatusElement,
+    seg: &StatusElement,
     editor: &Editor,
     colors: &EditorColors,
     // Pre-computed text for the FilePath element. "" = render as empty (measure
@@ -467,6 +499,16 @@ pub(crate) fn render_element(
         StatusElement::Language => LanguageElement::render(editor, colors),
         StatusElement::ReadOnly => ReadOnlyElement::render(editor, colors),
         StatusElement::Diagnostics => DiagnosticsElement::render(editor, colors),
+        StatusElement::Custom(name) => {
+            let text = editor
+                .state
+                .config
+                .statusline_text
+                .get(&editor.focused_buffer_id())
+                .and_then(|by_name| by_name.get(name.as_ref()))
+                .map_or_else(String::new, |s| s.to_string());
+            (Cow::Owned(text), colors.statusline)
+        }
     }
 }
 
@@ -478,7 +520,7 @@ fn render_section(
 ) -> Vec<(Cow<'static, str>, ResolvedStyle)> {
     let mut spans: Vec<(Cow<'static, str>, ResolvedStyle)> = Vec::with_capacity(elements.len() * 2);
 
-    for &seg in elements {
+    for seg in elements {
         let (text, style) = render_element(seg, editor, colors, filepath_text);
         if text.is_empty() {
             continue;

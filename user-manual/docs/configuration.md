@@ -275,6 +275,28 @@ The default is equivalent to:
   '("MacroRecording" "SearchMatches" "Diagnostics" "KittyProtocol" "Separator" "Mode"))
 ```
 
+### Custom elements
+
+Place `"steel:<name>"` for any `<name>` of your choosing to add your own element — no HUME source changes needed. Push its text with `set-statusline-text!`, driven by whatever should trigger an update (a hook, a timer, a command):
+
+```scheme
+(configure-statusline! '("steel:git-branch" "FilePath") '() '("Position" "Mode"))
+
+(define (refresh-git-branch! bid)
+  (let* ([path (buffer-path bid)]
+         [dir (and path (parent-name path))])
+    (when dir
+      (spawn-async! "git" '("rev-parse" "--abbrev-ref" "HEAD") dir
+        (lambda (out err code)
+          (set-statusline-text! "git-branch" bid
+            (if (= code 0) (string-append "[" (trim out) "]") "")))))))
+
+(register-hook! 'on-buffer-enter refresh-git-branch!)
+(register-hook! 'on-buffer-save refresh-git-branch!)
+```
+
+`set-statusline-text!` takes the element name, a buffer id, and the text to show; an empty string clears it. Each buffer keeps its own value per name, and a placed element shows only the focused buffer's — switching to a buffer with nothing pushed yet shows nothing, same as any other element with no content. Placing the element and pushing its text are independent — either can happen first, and neither errors if the other hasn't happened yet.
+
 ## Language detection
 
 HUME detects file languages from extension, glob pattern, or shebang line. See [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language) for defining custom languages with `define-language!` and, for grammars outside the catalog, `register-grammar!`.

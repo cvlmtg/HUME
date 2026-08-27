@@ -18,6 +18,7 @@
 - New `core:stdlib` commands `stdlib/git-repo?` and `stdlib/git-toplevel` (git work-tree detection / repo-root resolution).
 - New `core:stdlib` commands `stdlib/selection-anchor`, `stdlib/selection-head`, `stdlib/selection-primary?`, and `stdlib/primary-selection` — accessors for a single selection triple.
 - New `core:stdlib` commands `stdlib/config-integer` (takes a minimum, `#f` for no minimum) and `stdlib/config-list` (a list of strings), rounding out `stdlib/config-boolean`/`-string`/`-enum` with the two remaining common `#:config` value shapes.
+- New `set-statusline-text!` writes per-buffer text for a `"steel:<name>"` statusline element — place it with `configure-statusline!` like any built-in element, then push its content from a hook, timer, or command.
 
 ## [0.11.0] - 2026-08-25
 

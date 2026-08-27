@@ -1032,6 +1032,31 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         Ok(())
     }
 
+    fn set_statusline_text(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        text: String,
+    ) -> Result<(), String> {
+        buffer_text(self.state, bid, "set-statusline-text!")?;
+        if text.is_empty() {
+            if let Some(by_name) = self.state.config.statusline_text.get_mut(&bid) {
+                by_name.remove(source.as_str());
+                if by_name.is_empty() {
+                    self.state.config.statusline_text.remove(&bid);
+                }
+            }
+        } else {
+            self.state
+                .config
+                .statusline_text
+                .entry(bid)
+                .or_default()
+                .insert(source.into_boxed_str(), text.into_boxed_str());
+        }
+        Ok(())
+    }
+
     fn diagnostics_for_buffer(
         &self,
         bid: BufferId,

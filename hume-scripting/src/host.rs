@@ -551,6 +551,18 @@ pub trait DecorationHost {
         entries: Vec<(usize, String)>,
     ) -> Result<(), String>;
 
+    /// `(set-statusline-text! source bid text)` — replaces `source`'s
+    /// statusline text for `bid` wholesale; an empty `text` removes the
+    /// entry. Rendered by the `steel:<source>` statusline element, reading
+    /// only the focused buffer's entry — a `bid` that isn't focused simply
+    /// isn't shown, not an error. `Err` for an unknown `bid`.
+    fn set_statusline_text(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        text: String,
+    ) -> Result<(), String>;
+
     /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
     /// decoded `{"start" "end" "line" "char-col" "grapheme-col" "severity"
     /// "message" "code" "source"}` hashmaps, filtered then capped at 1000.

@@ -89,7 +89,7 @@ fn diagnostics_element_empty_with_no_diagnostics() {
     let c = setup("abcdefgh\n", &[]);
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) =
-        crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
+        crate::ui::statusline::render_element(&StatusElement::Diagnostics, &c.ed, &colors, "");
     assert!(
         text.is_empty(),
         "expected empty with no diagnostics, got {text:?}"
@@ -115,7 +115,7 @@ fn diagnostics_element_displays_published_error_and_warning_counts() {
 
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) =
-        crate::ui::statusline::render_element(StatusElement::Diagnostics, &c.ed, &colors, "");
+        crate::ui::statusline::render_element(&StatusElement::Diagnostics, &c.ed, &colors, "");
     assert!(
         !text.is_empty(),
         "known diagnostic counts must be displayed"
@@ -199,7 +199,7 @@ fn starting_server_displays_a_loading_indicator() {
 
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) =
-        crate::ui::statusline::render_element(StatusElement::Diagnostics, &ed, &colors, "");
+        crate::ui::statusline::render_element(&StatusElement::Diagnostics, &ed, &colors, "");
     assert!(
         !text.is_empty(),
         "a starting server must display a loading indicator"

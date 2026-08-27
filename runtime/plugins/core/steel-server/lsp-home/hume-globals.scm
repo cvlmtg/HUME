@@ -258,6 +258,7 @@
 (#%register-global "set-option!")
 (#%register-global "set-register-prefix!")
 (#%register-global "set-signs!")
+(#%register-global "set-statusline-text!")
 (#%register-global "set-virtual-lines!")
 (#%register-global "sha256-file")
 (#%register-global "show-drawer-list!")

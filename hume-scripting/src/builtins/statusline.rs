@@ -15,9 +15,12 @@
 //!   '("MacroRecording" "SearchMatches" "Separator" "Mode"))  ; right section
 //! ```
 //!
-//! Valid element names: `Cwd`, `DirtyIndicator`, `FilePath`, `FileName`,
-//! `KittyProtocol`, `Language`, `LineEnding`, `MacroRecording`, `MiniBuf`,
-//! `Mode`, `Position`, `ReadOnly`, `SearchMatches`, `Separator`.
+//! Valid element names: `Cwd`, `Diagnostics`, `DirtyIndicator`, `FilePath`,
+//! `FileName`, `KittyProtocol`, `Language`, `LineEnding`, `MacroRecording`,
+//! `MiniBuf`, `Mode`, `Position`, `ReadOnly`, `SearchMatches`, `Separator`.
+//! A `steel:<name>` element is also valid for any `<name>` previously or
+//! later pushed via `(set-statusline-text! <name> bid text)` — placing it
+//! and pushing to it are independent steps, in either order.
 //!
 //! `FilePath` shows the full path to the focused file with the home prefix
 //! collapsed to `~`.  When the terminal row is too narrow the path is

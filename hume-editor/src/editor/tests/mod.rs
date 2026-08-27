@@ -875,6 +875,7 @@ mod search;
 mod select_all;
 mod settings_effects;
 mod shift_punctuation;
+mod statusline_steel;
 mod surround;
 mod sync_dispatch;
 mod tabs;

@@ -166,6 +166,19 @@ fn set_extra_highlights_without_decoration_host_errors() {
     assert_names_builtin(result, "set-extra-highlights!");
 }
 
+#[test]
+fn set_statusline_text_without_decoration_host_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = set_statusline_text(
+        &mut ctx,
+        SteelVal::StringV("test".into()),
+        BidArg(BufferId::default()),
+        SteelVal::StringV("main".into()),
+    );
+    assert_names_builtin(result, "set-statusline-text!");
+}
+
 // ── `virtual_line_specs` decoder ─────────────────────────────────────────────
 //
 // These call the private decoder directly (`NullHost` has no `DecorationHost`,

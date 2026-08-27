@@ -236,6 +236,7 @@ pub(crate) fn close_buffer_and_notify(
         lsp.remove_buffer_diagnostics(id);
     }
     state.config.decorations.remove_buffer(id);
+    state.config.statusline_text.remove(&id);
     // A reload confirm naming `id` would otherwise outlive its subject: the
     // slot is freed below, or — in the last-buffer branch — reused in place
     // for a fresh scratch, so `reload_buffer_from_disk` would bail on

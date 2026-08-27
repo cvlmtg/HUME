@@ -156,6 +156,17 @@ pub(crate) struct ConfigState {
     /// lines, EOL text, extra highlights, line backgrounds) — the render
     /// providers read these.
     pub(crate) decorations: decorations::DecorationStores,
+    /// Text pushed by `(set-statusline-text! source bid text)`, keyed by
+    /// buffer then by `source` name — read by `render_element`'s
+    /// `StatusElement::Custom` arm for the focused buffer only, same as
+    /// every other per-buffer element (`Language`, `Diagnostics`). An empty
+    /// `text` removes the entry, mirroring `trigger_chars` above; a buffer
+    /// left with no entries is dropped too, so the outer map only ever
+    /// holds buffers with something currently pushed. Also cleared
+    /// per-buffer at `close_buffer_and_notify`, alongside
+    /// `decorations.remove_buffer`.
+    pub(crate) statusline_text:
+        rustc_hash::FxHashMap<BufferId, rustc_hash::FxHashMap<Box<str>, Box<str>>>,
     /// Deferred Steel work — events enqueued during command dispatch
     /// (`EditorState::queue_event`) and specific-closure completions
     /// (`EditorState::queue_steel_call`: an `lsp-request` callback, a timer
@@ -231,6 +242,7 @@ impl ConfigState {
             languages: LanguageRegistry::new(),
             trigger_chars: rustc_hash::FxHashMap::default(),
             decorations: decorations::DecorationStores::reset(prior_clock),
+            statusline_text: rustc_hash::FxHashMap::default(),
             pending_work: VecDeque::new(),
             pending_language_detection: Vec::new(),
             async_jobs: rustc_hash::FxHashMap::default(),
