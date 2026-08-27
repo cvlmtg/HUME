@@ -3,6 +3,8 @@
 Live, VSCode-style inline git diff — compares the buffer against a git ref (default `HEAD`)
 as it's edited, rendering gutter `+`/`-`/`~` signs, deleted lines as virtual rows,
 added/changed lines with a background tint, and word-level highlights inside changed lines.
+Also keeps a `"steel:git-branch"` statusline element fresh for the focused buffer — place it
+yourself, no config needed.
 
 ## Usage
 
@@ -25,6 +27,11 @@ buffer's visual flow). See
 [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-git-diff) for value
 semantics and key-binding examples — no default key bindings ship with this plugin.
 
+Branch tracking has no config flag — only visibility. It runs the moment the plugin loads;
+whether you ever see it is entirely up to whether `"steel:git-branch"` appears in your own
+`configure-statusline!` call (see [Statusline → Custom
+elements](https://cvlmtg.github.io/HUME/configuration.html#custom-elements)).
+
 ## Commands
 
 | Command | Effect |
@@ -44,6 +51,9 @@ semantics and key-binding examples — no default key bindings ship with this pl
   (`diff-buffer-lines`), debounced per buffer. See "Fetch/diff pipeline" below. `diff-words`
   (word-level diff) is not called here — it's called from `render.scm`, where the records it
   feeds are built.
+- `branch.scm` — current-branch fetch (`git rev-parse --abbrev-ref HEAD` via `spawn-async!`),
+  debounced per buffer, pushed to the `"git-branch"` statusline element via
+  `set-statusline-text!`. See "Branch tracking" below.
 - `render.scm` — pure `hunks → decoration records` functions, one per rendering (gutter signs,
   virtual deleted lines + word highlights, row background tint), each ending in a setter call.
   See "Rendering" below.
@@ -91,6 +101,8 @@ holds:
 - `"ref"` — `#f` (use the config default) or a string (a runtime override set via
   `:toggle-git-signs <ref>`/`:toggle-inline-diff <ref>`, shared by both renderers — see
   `plugin.scm`'s `git-diff/buffer-ref`).
+- `"branch-job"` — the in-flight branch-fetch `spawn-async!` id, or `#f` — `branch.scm`'s own
+  cancel slot, independent of `"job"` (the diff fetch's).
 
 `entry-set!` is a no-op when `bid` has no tracked entry — a late `spawn-async!` callback for a
 buffer closed while its fetch was in flight must not resurrect state for it. `ensure-entry!` is
@@ -165,6 +177,41 @@ has no async awareness of its own).
 edits never cancel another's pending refresh (`inlay.scm`'s same rationale). It debounces at
 150ms rather than `inlay.scm`'s 200ms LSP round-trip budget — once the ref is cached, a
 refresh is a local diff, not a network request.
+
+### Branch tracking
+
+`branch.scm` is a second, simpler fetch pipeline alongside `diff.scm`'s — `git rev-parse
+--abbrev-ref HEAD` instead of `git show`, pushed straight to a statusline element via
+`set-statusline-text!` instead of into `hunks`/a decoration setter. Unlike diff content, a
+branch name is only ever shown for the *focused* buffer (`StatusElement::Custom` reads
+`editor.focused_buffer_id()`), so the fetch is driven by `on-buffer-enter` — not
+`on-buffer-open`, which fires for every buffer regardless of whether it's ever displayed. It
+also re-fires on `on-buffer-save`, since a save-triggered hook or a checkout run alongside the
+editor in another terminal can move HEAD without a focus change.
+
+There's no cache to invalidate: `refresh-branch!` re-spawns on every debounced fire (unlike
+`ref-text`, a branch name has no local-diff fallback that would make caching worth it), so
+`branch.scm` has no `force-refresh!`/`'unavailable` equivalent.
+
+Both `refresh-branch!` and `handle-branch-result!` gate on `git-diff/buffer-entry` before
+touching anything that can outlive the buffer — `buffer-path` and `set-statusline-text!`, unlike
+this plugin's own state writes, hard-error on a closed bid rather than no-opping. That's safe
+even for a debounce timer or a `spawn-async!` callback that fires *after* the buffer closes:
+`on-buffer-close` removes the entry synchronously, before either can run, so `buffer-entry`
+returning `#f` is a reliable "this bid is dead" signal — the same reasoning `apply-hunks!` and
+`handle-fetch-result!` already rely on for the diff pipeline.
+
+Severity is simpler than the diff pipeline's three-tier split, too: exit `-1` (git couldn't
+run at all) still logs `'error`, but every other nonzero exit — overwhelmingly "not a git
+repository", the common case for any buffer outside one — clears the element silently rather
+than logging at `'trace`. Unlike a diff fetch, branch tracking runs unconditionally for every
+buffer, not only ones a user opted into with `:toggle-git-signs`; logging its expected-failure
+case at any visible level would fill `:messages` for buffers that never asked for this.
+
+`cancel-branch-fetch!` and `"branch-job"` mirror `cancel-fetch!`/`"job"` exactly — a newer
+fetch, or `on-buffer-close`, cancels whatever's in flight before starting or tearing down.
+`schedule-branch-refresh!` uses the same `debounce-by`-per-`bid` shape as `schedule-refresh!`,
+also at 150ms.
 
 ### Rendering
 

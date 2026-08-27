@@ -138,6 +138,11 @@ that rendering on and points it at that ref; it's sticky across a later bare tog
 The ref is shared between the two commands. A file git doesn't know about yet (untracked,
 brand-new, or outside a repo) shows no diff.
 
+Also keeps a `"steel:git-branch"` statusline element fresh for the focused buffer, e.g.
+`(main)` — no config needed, just add it to your own `configure-statusline!` call (see
+[Statusline → Custom elements](configuration.md#custom-elements)). Updates when you switch to
+a buffer and when you save it; empty for a buffer outside any repo.
+
 No default key bindings — bind them yourself, e.g. `(bind-key! 'normal "g Shift-d"
 "toggle-inline-diff")`.
 

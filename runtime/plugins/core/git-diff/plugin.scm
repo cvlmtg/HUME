@@ -3,6 +3,7 @@
 
 (require "state.scm")
 (require "diff.scm")
+(require "branch.scm")
 (require "render.scm")
 
 (unless (member "core:stdlib" (declared-plugins))
@@ -33,6 +34,9 @@
     (git-diff/init-buffer! bid git-diff/signs-default git-diff/inline-default)
     (git-diff/schedule-refresh! bid (git-diff/buffer-ref bid))))
 
+(register-hook! 'on-buffer-enter
+  (lambda (bid) (git-diff/schedule-branch-refresh! bid)))
+
 (register-hook! 'on-text-changed
   (lambda (bid) (git-diff/schedule-refresh! bid (git-diff/buffer-ref bid))))
 
@@ -40,11 +44,13 @@
   (lambda (bid)
     (git-diff/cancel-fetch! bid)
     (git-diff/entry-set! bid "ref-text" #f)
-    (git-diff/schedule-refresh! bid (git-diff/buffer-ref bid))))
+    (git-diff/schedule-refresh! bid (git-diff/buffer-ref bid))
+    (git-diff/schedule-branch-refresh! bid)))
 
 (register-hook! 'on-buffer-close
   (lambda (bid)
     (git-diff/cancel-fetch! bid)
+    (git-diff/cancel-branch-fetch! bid)
     (git-diff/remove-buffer! bid)))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────

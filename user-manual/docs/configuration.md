@@ -297,6 +297,8 @@ Place `"steel:<name>"` for any `<name>` of your choosing to add your own element
 (register-hook! 'on-buffer-save refresh-git-branch!)
 ```
 
+[core:git-diff](core-plugins.md#core-git-diff) already ships exactly this — if you're loading it, there's no need to copy the above; just add `"steel:git-branch"` to your own `configure-statusline!` call. The example is here to show how the mechanism works, not as something to paste into `init.scm`.
+
 `set-statusline-text!` takes the element name, a buffer id, and the text to show; an empty string clears it. Each buffer keeps its own value per name, and a placed element shows only the focused buffer's — switching to a buffer with nothing pushed yet shows nothing, same as any other element with no content. Placing the element and pushing its text are independent — either can happen first, and neither errors if the other hasn't happened yet.
 
 ## Language detection

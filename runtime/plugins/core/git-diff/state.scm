@@ -10,7 +10,7 @@
 ;;; SSOT for a buffer's starting shape.
 (define (git-diff/fresh-entry signs? inline?)
   (hash "signs?" signs? "inline?" inline?
-        "ref-text" #f "hunks" '() "job" #f "ref" #f))
+        "ref-text" #f "hunks" '() "job" #f "ref" #f "branch-job" #f))
 
 (define (git-diff/buffer-entry bid)
   (let ([table (unbox git-diff/*buffers*)])

@@ -19,6 +19,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::super::render_snapshot::render_to_styled_string;
+use crate::ui::statusline::{StatusElement, render_element};
+use crate::ui::theme::EditorColors;
 use hume_grid::Rect;
 use hume_scripting::ScriptingHost;
 
@@ -169,6 +171,14 @@ fn highlights(ed: &Editor, bid: BufferId) -> Vec<(usize, usize, String, String)>
             )
         })
         .collect()
+}
+
+/// `StatusElement::Custom(name)`'s rendered text for the focused buffer —
+/// same helper shape as `statusline_steel.rs`'s `custom_text`.
+fn custom_text(ed: &Editor, name: &str) -> String {
+    let colors = EditorColors::default();
+    let (text, _) = render_element(&StatusElement::Custom(name.into()), ed, &colors, "");
+    text.into_owned()
 }
 
 // ── Gutter signs ─────────────────────────────────────────────────────────────
@@ -758,6 +768,137 @@ fn buffer_close_after_open_leaves_no_stray_error() {
     assert!(
         errors.is_empty(),
         "a stray post-close callback must not error; got {errors:?}"
+    );
+}
+
+// ── Branch tracking ──────────────────────────────────────────────────────────
+
+#[test]
+fn git_branch_element_shows_current_branch_for_the_focused_buffer() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
+    let repo = safe_tempdir();
+    git_init(repo.path());
+    commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
+    // Explicit branch name — never rely on the ambient git version's
+    // configured default branch name (`main` vs `master`).
+    git(repo.path(), &["checkout", "-q", "-b", "feature-x"]);
+    open(&mut ed, &repo.path().join("f.txt"));
+
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "[feature-x]");
+    assert_eq!(custom_text(&ed, "git-branch"), "[feature-x]");
+}
+
+#[test]
+fn git_branch_element_is_empty_outside_a_repo() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
+    let dir = safe_tempdir();
+    std::fs::write(dir.path().join("f.txt"), "one\ntwo\nthree\n").unwrap();
+    open(&mut ed, &dir.path().join("f.txt"));
+
+    wait_for_refresh(&mut ed);
+    assert_eq!(custom_text(&ed, "git-branch"), "");
+}
+
+#[test]
+fn git_branch_element_switches_with_the_focused_buffer() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
+    let repo_a = safe_tempdir();
+    git_init(repo_a.path());
+    commit_file(repo_a.path(), "a.txt", "one\n", "v1");
+    git(repo_a.path(), &["checkout", "-q", "-b", "alpha"]);
+    let path_a = repo_a.path().join("a.txt");
+
+    let repo_b = safe_tempdir();
+    git_init(repo_b.path());
+    commit_file(repo_b.path(), "b.txt", "one\n", "v1");
+    git(repo_b.path(), &["checkout", "-q", "-b", "beta"]);
+    let path_b = repo_b.path().join("b.txt");
+
+    open(&mut ed, &path_a);
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "[alpha]");
+
+    open(&mut ed, &path_b);
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "[beta]");
+
+    // `:e` on an already-open path re-focuses it rather than duplicating —
+    // proves on-buffer-enter re-fetches on every focus change, not just
+    // the first.
+    open(&mut ed, &path_a);
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "[alpha]");
+    assert_eq!(custom_text(&ed, "git-branch"), "[alpha]");
+}
+
+#[test]
+fn git_branch_element_refreshes_on_save() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
+    let repo = safe_tempdir();
+    git_init(repo.path());
+    commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
+    git(repo.path(), &["checkout", "-q", "-b", "orig"]);
+    open(&mut ed, &repo.path().join("f.txt"));
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "[orig]");
+
+    // HEAD moves without any focus change — the plugin has no way to know
+    // until the next hook fire. Same commit, so the working tree (and the
+    // file's on-disk mtime) is untouched — a plain `:w` isn't blocked by
+    // the "file changed on disk" guard.
+    git(repo.path(), &["checkout", "-q", "-b", "moved"]);
+    ed.execute_typed("w", None).unwrap();
+
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "[moved]");
+    assert_eq!(
+        custom_text(&ed, "git-branch"),
+        "[moved]",
+        "on-buffer-save must re-check the branch, not just on-buffer-enter"
+    );
+}
+
+#[test]
+fn closing_the_buffer_during_a_branch_fetch_leaves_no_stray_error() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
+    let repo = safe_tempdir();
+    git_init(repo.path());
+    commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
+    git(repo.path(), &["checkout", "-q", "-b", "feature-x"]);
+    open(&mut ed, &repo.path().join("f.txt"));
+
+    // Let on-buffer-enter run (starting its debounce timer), then close
+    // just past the 150ms debounce — the debounced refresh-branch! and the
+    // background `git rev-parse` callback are both plausibly still pending.
+    // `buffer-path`/`set-statusline-text!` both hard-error on a stale bid,
+    // so neither may fire against this now-closed one without first
+    // checking `git-diff/buffer-entry`, which `remove-buffer!` clears
+    // synchronously below, before either callback can run.
+    ed.settle();
+    std::thread::sleep(Duration::from_millis(160));
+    ed.execute_typed("bd", None).unwrap();
+    wait_for_refresh(&mut ed);
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "a stray post-close branch callback must not error; got {errors:?}"
     );
 }
 
