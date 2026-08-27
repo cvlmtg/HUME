@@ -174,10 +174,11 @@ One thing that does not carry over: Kakoune's user mode (the `Space` leader) and
 
 Kakoune has neither a package manager nor LSP support in the core; both come from outside, via plug.kak and kakoune-lsp.
 
-Both ship with HUME. [PLUM](core-plugins.md#core-plum) is the built-in plugin manager — declare a plugin in `init.scm`, run `:plum-install-plugins`, and it is fetched from GitHub:
+Both ship with HUME. [PLUM](core-plugins.md#core-plum) is the built-in plugin manager — declare a plugin in `init.scm`, run `:plum-install-plugins`, and it is fetched from GitHub — here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
 
 ```scheme
-(load-plugin "username/my-plugin")
+(declare-plugin "core:stdlib")
+(load-plugin "cvlmtg/grep.hume")
 ```
 
 Language server support is a bundled plugin rather than a separate process you configure by hand — see [Language Servers](lsp.md). Syntax highlighting is tree-sitter based and built in.

@@ -8,14 +8,17 @@ Plugins are installed and updated by **PLUM**, a bundled plugin — see [Core Pl
 
 ## Installing a plugin
 
-Add a `declare-plugin` or `load-plugin` call to your `init.scm`:
+Add a `declare-plugin` or `load-plugin` call to your `init.scm` — here's
+[grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official
+third-party plugin, loaded eagerly since its key binding needs to be in place at startup:
 
 ```scheme
-(declare-plugin "username/repo-name" #:commands '("my-cmd"))
-(load-plugin "username/my-theme")
+(declare-plugin "core:stdlib")
+(load-plugin "cvlmtg/grep.hume")
 ```
 
-Then run `:plum-install-plugins` to clone it from GitHub. PLUM never installs anything on its own, so nothing is fetched behind your back at startup; once the plugin is on disk, its commands and key bindings are available from the next launch.
+`core:stdlib` is grep.hume's own dependency, not something every plugin needs — check each
+plugin's docs for what it requires. Then run `:plum-install-plugins` to clone it from GitHub. PLUM never installs anything on its own, so nothing is fetched behind your back at startup; once the plugin is on disk, its commands and key bindings are available from the next launch.
 
 See [How plugins are loaded](#how-plugins-are-loaded) for the difference between the two verbs.
 
@@ -62,9 +65,9 @@ A lazy plugin needs at least one activation entry, or it could never activate. D
 - **`#:commands`** — command names the plugin provides. HUME creates placeholder stubs so the names appear in `:` Tab completion immediately; the first dispatch triggers real definition. A key you bind to one of these names in your own `init.scm` works the same way — pressing it activates the plugin, then runs the command, so a lazy plugin's commands are key-bindable from the start even though the plugin's *own* bindings aren't in place yet:
 
   ```scheme
-  (declare-plugin "alice/rust-tools" #:commands '("rust-check"))
-  (bind-key! 'normal "space r" "rust-check")
-  ; pressing <space>r the first time loads alice/rust-tools, then runs rust-check
+  (declare-plugin "cvlmtg/grep.hume" #:commands '("picker-grep"))
+  (bind-key! 'normal "space g" "picker-grep")
+  ; pressing <space>g the first time loads cvlmtg/grep.hume, then runs picker-grep
   ```
 - **`#:events`** — lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
 - **`#:languages`** — buffer language names that trigger loading.
@@ -72,7 +75,7 @@ A lazy plugin needs at least one activation entry, or it could never activate. D
 ...or, if the plugin ships its own defaults, leave all three off:
 
 ```scheme
-(declare-plugin "username/repo-name")
+(declare-plugin "cvlmtg/grep.hume")
 ```
 
 A bare `declare-plugin` with no activation entries asks the plugin for its own defaults instead of erroring — see [Default activation](#default-activation) if you're writing a plugin and want to support this.
@@ -531,6 +534,9 @@ keystroke — a live grep, say — uses `live-picker!` instead of `picker!`:
 [Custom pickers](#custom-pickers) above, which `live-picker!` accepts the same way) keeps
 the path and clips the line preview instead — `rg --vimgrep`'s rows are
 `path:line:col:preview`, so the default head-cut would clip the path itself.
+
+[grep.hume](https://github.com/cvlmtg/grep.hume) is this same idea, finished — `grep/parse`
+included.
 
 `live-picker!` opens empty — there's no `items` argument, and no `#:pending` either: a
 live picker is always populated by its own requery, never by a caller pushing items

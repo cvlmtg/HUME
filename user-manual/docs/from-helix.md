@@ -116,10 +116,11 @@ This makes HUME's config a real programming language — conditionals, loops, an
 
 ### Plugin system
 
-Helix has no built-in plugin system. HUME has [PLUM](core-plugins.md#core-plum), a plugin manager where plugins are Steel (Scheme) scripts installed from GitHub. Declare the plugin, then run `:plum-install-plugins` to fetch it:
+Helix has no built-in plugin system. HUME has [PLUM](core-plugins.md#core-plum), a plugin manager where plugins are Steel (Scheme) scripts installed from GitHub. Declare the plugin, then run `:plum-install-plugins` to fetch it — here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
 
 ```scheme
-(load-plugin "username/my-plugin")
+(declare-plugin "core:stdlib")
+(load-plugin "cvlmtg/grep.hume")
 ```
 
 ### Statusline
