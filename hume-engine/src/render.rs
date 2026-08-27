@@ -433,9 +433,14 @@ fn compose_gutter(
             );
             let text_width = text_width as u16;
             let pad = usable_per_cell.saturating_sub(text_width);
-            for px in 0..pad {
-                canvas.set_cell(gutter_x + px, y, " ", 1, style);
-            }
+            // `fill_glyph_run`, not a raw `set_cell` loop: the space glyph is
+            // a compile-time constant repeated `pad` times, exactly its
+            // intended use, and it bounds the write at `right_edge` the way
+            // `set_cell` alone cannot — `text_writer.rs`'s lint only catches
+            // a bare `Grid::set_glyph`/`fill_span`, one layer below `Canvas`,
+            // so a raw `set_cell` call from application code is invisible to
+            // it even though it carries the same unbounded-write risk.
+            canvas.fill_glyph_run(gutter_x, y, " ", pad, style, gutter_x + usable_per_cell);
             // `after` is where the write actually stopped — used below
             // instead of a second `gutter_x + pad + text_width` measurement,
             // so the separator's position can't drift from the draw.
@@ -444,7 +449,7 @@ fn compose_gutter(
             // Only write a separator after the last cell — it's the column's
             // right padding, not a separator between sub-cells.
             if is_last {
-                canvas.set_cell(after, y, " ", 1, style);
+                canvas.fill_glyph_run(after, y, " ", 1, style, lane_x + lane_width);
                 gutter_x += usable_per_cell + 1;
             } else {
                 gutter_x += usable_per_cell;
@@ -635,6 +640,7 @@ pub(crate) fn compose_row(
             CellContent::Empty => {
                 canvas.set_cell(screen_x, y, " ", 1, cell_style);
             }
+            // Filtered by the `continue` above (line 536) before reaching this match.
             CellContent::WidthContinuation => unreachable!(),
         }
     }
