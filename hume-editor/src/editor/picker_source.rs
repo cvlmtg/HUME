@@ -93,8 +93,16 @@ impl Editor {
             .into_iter()
             .filter(|line| !line.is_empty())
             .map(|line| PickerItem {
-                payload: SteelVal::StringV(line.clone().into()),
-                display: line,
+                // A NUL is a field separator a source without `--nul` (e.g.
+                // `rg --vimgrep --null`) puts *inside* a line, not between
+                // lines — left alone the panel paints it as its `<0>`
+                // control-char placeholder. `:` is what the same tool
+                // prints there without that flag, so this reads like any
+                // other row. `payload` keeps the raw byte: a plugin's own
+                // parser still needs the unambiguous separator to split a
+                // path containing a literal colon.
+                display: line.replace('\0', ":"),
+                payload: SteelVal::StringV(line.into()),
             })
             .collect();
         if !items.is_empty() {

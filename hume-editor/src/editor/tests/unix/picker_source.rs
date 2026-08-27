@@ -66,6 +66,38 @@ fn end_to_end_drain_streams_lines_into_the_store() {
 }
 
 #[test]
+fn a_nul_inside_a_line_shows_as_a_colon_but_the_payload_keeps_it() {
+    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let mut ed = editor_from("-[a]>bc\n");
+    open_bare_picker(&mut ed);
+
+    attach_sh(&mut ed, "printf 'a\\000b\\nc\\n'", vec![0]);
+
+    drain_sources_until(&mut ed, |ed| {
+        ed.state
+            .config
+            .picker
+            .as_ref()
+            .map(|p| p.total_len())
+            .unwrap_or(0)
+            == 2
+    });
+
+    let picker = ed.state.config.picker.as_ref().expect("picker still open");
+    assert_eq!(
+        picker.window(10).collect::<Vec<_>>(),
+        vec!["a:b", "c"],
+        "a NUL in the display must read as ':', the same field separator the tool prints without --null"
+    );
+    assert_eq!(
+        picker.selected_payload(),
+        Some(&SteelVal::StringV("a\0b".into())),
+        "the payload must keep the raw NUL so a plugin's own split stays unambiguous"
+    );
+}
+
+#[test]
 fn coalesced_push_reranks_against_the_live_query() {
     // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);

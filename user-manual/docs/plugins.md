@@ -459,10 +459,13 @@ and stream an external command's output straight into it instead:
 
 `picker-source-spawn!` runs `cmd` with `args` directly (no shell), splitting its stdout
 into lines (or NUL-delimited fields with `#:nul #t`) and appending each one to the picker
-as its own `(line . line)` item — display and payload are the same raw line. Nothing
-about the command's output passes through Scheme itself, so this stays fast even for
-tens of thousands of results; do any parsing of the selected line inside `on-select`,
-not up front. The child process is killed automatically if the picker is closed or
+as its own `(line . line)` item — display and payload are the same raw line, except that
+a NUL *inside* a line (a command using NUL as an in-line field separator rather than a
+record delimiter — `rg --vimgrep --null`, say) shows as `:` in the display; the payload
+keeps it, so parsing inside `on-select` still sees the real separator. Nothing about the
+command's output passes through Scheme itself, so this stays fast even for tens of
+thousands of results; do any parsing of the selected line inside `on-select`, not up
+front. The child process is killed automatically if the picker is closed or
 replaced before the command finishes. `(picker-push! token items)` appends a batch of
 ordinary `(display . payload)` items instead, for a source that produces its own results
 asynchronously (an LSP request, a timer) rather than through a spawned command.
