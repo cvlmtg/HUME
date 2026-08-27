@@ -138,11 +138,11 @@ pub fn create() -> io::Result<SharedTerm> {
 
 // ── Shared escape-sequence helpers ───────────────────────────────────────────
 
-fn dec_set(code: DecPrivateModeCode) -> Csi {
+pub(crate) fn dec_set(code: DecPrivateModeCode) -> Csi {
     Csi::Mode(Mode::SetDecPrivateMode(DecPrivateMode::Code(code)))
 }
 
-fn dec_reset(code: DecPrivateModeCode) -> Csi {
+pub(crate) fn dec_reset(code: DecPrivateModeCode) -> Csi {
     Csi::Mode(Mode::ResetDecPrivateMode(DecPrivateMode::Code(code)))
 }
 

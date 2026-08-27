@@ -1146,6 +1146,7 @@ name = "hume-platform"
 version = "0.1.0"
 dependencies = [
  "ctrlc",
+ "hume-grid",
  "nix 0.31.3",
  "ratatui",
  "ratatui-termina",

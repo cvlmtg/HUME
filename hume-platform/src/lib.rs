@@ -8,6 +8,8 @@
 //! - [`terminal`] — raw-mode lifecycle, ratatui `Terminal` type alias,
 //!   cursor shape/colour, kitty keyboard protocol, synchronized updates,
 //!   and the inline-subprocess output flow.
+//! - [`screen`] — double-buffered frame presentation: the cell diff and the
+//!   escape-sequence emitter that carries a composed frame to the terminal.
 //! - [`io`] — atomic file writes that preserve permissions and ownership.
 //! - [`process`] — process-group-isolated spawning, plus the LSP-server
 //!   install pipeline's platform-specific pieces (compiler selection,
@@ -26,6 +28,7 @@ pub mod dirs;
 pub mod io;
 pub mod path;
 pub mod process;
+pub mod screen;
 pub mod target;
 pub mod terminal;
 

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+hume-grid = { path = "../hume-grid" }
 termina = "0.3.3"
 ratatui-termina = "0.1"
 ratatui.workspace = true
