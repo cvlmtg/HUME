@@ -1,3 +1,5 @@
+use hume_grid::Grid;
+
 use crate::render::{self, ComposeCtx};
 use crate::rows::{BlockSlot, RowMap, RowPos};
 use crate::types::ResolvedStyle;
@@ -31,11 +33,7 @@ const H_WINDOW_SLACK: u16 = 4;
 ///
 /// Peak scratch memory is O(max_graphemes_per_line) rather than
 /// O(total_visible_graphemes), a ~16× reduction on a 200×50 terminal.
-pub(crate) fn render_pane(
-    pane_ctx: &PaneRenderCtx,
-    scratch: &mut FrameScratch,
-    buf: &mut ratatui::buffer::Buffer,
-) {
+pub(crate) fn render_pane(pane_ctx: &PaneRenderCtx, scratch: &mut FrameScratch, grid: &mut Grid) {
     use crate::layout;
 
     // ── Stage 1: Geometry ─────────────────────────────────────────────────
@@ -75,7 +73,7 @@ pub(crate) fn render_pane(
         rope: pane_ctx.rope,
         default_gutter_scope: pane_ctx.default_gutter_scope,
     };
-    let mut canvas = render::Canvas::new(buf, pane_ctx.theme, pane_ctx.dim);
+    let mut canvas = render::Canvas::new(grid, pane_ctx.theme, pane_ctx.dim);
 
     // Clip `WrapMode::None` formatting to the visible horizontal window — a
     // single unwrapped line can be arbitrarily long (a minified JS file is a

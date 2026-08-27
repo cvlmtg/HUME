@@ -9,6 +9,7 @@
 // runs (see `editor/mod.rs`'s `for_testing` doc comment on why its own
 // pane has no `PaneHighlights` entry at all).
 
+use hume_grid::Rect;
 use std::path::Path;
 
 use super::*;
@@ -367,7 +368,7 @@ fn extra_highlight_style_resolves_correctly_on_the_frame_it_is_first_interned() 
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm");
 
-    let rect = ratatui::layout::Rect::new(0, 0, 20, 3);
+    let rect = Rect::new(0, 0, 20, 3);
     let buf = ed.render_to_buf(rect);
 
     let scope_id = ed
@@ -419,8 +420,6 @@ fn search_match_beats_extra_highlight_in_overlapping_region() {
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm");
     ed = ed.with_search_regex("cde");
-
-    use ratatui::layout::Rect;
     let rect = Rect::new(0, 0, 20, 3);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);

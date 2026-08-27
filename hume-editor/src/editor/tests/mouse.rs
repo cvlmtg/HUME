@@ -1,5 +1,6 @@
 use super::*;
 use hume_editing::selection::Selection;
+use hume_grid::Rect;
 use pretty_assertions::assert_eq;
 use termina::event::{Event as TerminalEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
@@ -24,7 +25,7 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
     // `prepare_frame` normally populates — set it directly, matching
     // `Pane::new`'s default 80×24 viewport, since this test exercises the
     // click/mode-transition path, not a full frame.
-    ed.view.last_pane_area = ratatui::layout::Rect::new(0, 0, 80, 24);
+    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     // Enter copies "  " onto a new line and lands the cursor on *that* line's
@@ -53,7 +54,7 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
 #[test]
 fn drag_extends_selection_from_click_anchor() {
     let mut ed = editor_from("-[0]>123456789\n");
-    ed.view.last_pane_area = ratatui::layout::Rect::new(0, 0, 80, 24);
+    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
 
     ed.handle_input(mouse_left_down(0, 0)); // anchor at char 0
     ed.handle_input(mouse_drag(4, 0)); // head at char 4 ('4')

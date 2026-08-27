@@ -1,3 +1,4 @@
+use hume_grid::{Rect, Rgb};
 // Provider-driven full-row background tint (`set-line-backgrounds!`): the
 // `update_line_bg_providers` write side that feeds the new
 // `PaneLineBackgrounds` (LINE_BG-kind `DecorationSource`) from the
@@ -11,7 +12,6 @@
 use super::*;
 use hume_engine::pipeline::RenderContext;
 use hume_scripting::ScriptingHost;
-use ratatui::layout::Rect;
 
 fn run(ed: &mut Editor, tmp: &std::path::Path, source: &str) {
     let mut host = ScriptingHost::new();
@@ -205,7 +205,7 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
         std::collections::HashMap::from([(
             TINT_SCOPE,
             hume_engine::types::ResolvedStyle {
-                bg: Some(ratatui::style::Color::Rgb(80, 40, 0)),
+                bg: Some(Rgb(80, 40, 0)),
                 ..Default::default()
             },
         )]);

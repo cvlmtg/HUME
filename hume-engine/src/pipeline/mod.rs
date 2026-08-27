@@ -1,3 +1,4 @@
+use hume_grid::{Grid, Rect, Rgb};
 use rustc_hash::FxHashMap;
 
 use slotmap::{SlotMap, new_key_type};
@@ -83,7 +84,7 @@ pub struct RenderContext {
     /// Engine pipeline scratch (format, style, gutter lane widths).
     pub(crate) frame: FrameScratch,
     /// Pane rects computed by the layout stage.
-    pub(crate) pane_rects: Vec<(PaneId, ratatui::layout::Rect)>,
+    pub(crate) pane_rects: Vec<(PaneId, Rect)>,
     /// Seam dividers computed alongside `pane_rects` each render — reused
     /// scratch storage, same rationale as `pane_rects`.
     pub(crate) seams: Vec<Seam>,
@@ -168,14 +169,14 @@ pub struct EngineView {
     /// list — a handful of panes makes the DFS cheap enough that there is no
     /// cache to go stale when a command mutates `layout` mid-frame. Zero
     /// area until the first `prepare_frame`.
-    pub last_pane_area: ratatui::layout::Rect,
+    pub last_pane_area: Rect,
     /// Raw terminal area (before chrome subtraction) as of the last
     /// `prepare_frame` — the same `area` passed to `pane_area`/`render`.
     /// Distinct from `last_pane_area`: chrome that reserves rows off a
     /// fraction of this raw height (the drawer's `max` ceiling) needs the
     /// *un-subtracted* figure, since `last_pane_area` already has the
     /// drawer's own reserved rows folded out of it.
-    pub last_terminal_area: ratatui::layout::Rect,
+    pub last_terminal_area: Rect,
     /// Whether pane splits reserve a 1-cell seam column/row — mirrors the
     /// `pane-dividers` setting. Set alongside `last_pane_area`; consulted by
     /// the same recompute helpers.
@@ -202,8 +203,8 @@ impl EngineView {
             default_gutter_scope,
             tabbar: None,
             bottom_bands: Vec::new(),
-            last_pane_area: ratatui::layout::Rect::default(),
-            last_terminal_area: ratatui::layout::Rect::default(),
+            last_pane_area: Rect::default(),
+            last_terminal_area: Rect::default(),
             reserve_seam: true,
         }
     }
@@ -211,7 +212,7 @@ impl EngineView {
     /// Recompute the current pane partition from `layout` and
     /// `last_pane_area`. Cheap even with several splits open — recomputing
     /// beats keeping a cross-frame cache in sync with every layout mutation.
-    pub fn pane_rects(&self) -> Vec<(PaneId, ratatui::layout::Rect)> {
+    pub fn pane_rects(&self) -> Vec<(PaneId, Rect)> {
         let mut out = Vec::new();
         self.layout
             .collect_rects_into(self.last_pane_area, self.reserve_seam, &mut out);
@@ -220,7 +221,7 @@ impl EngineView {
 
     /// The current on-screen rect of `pid`, or `None` if `last_pane_area` has
     /// no area yet (before the first `prepare_frame`).
-    pub fn pane_rect(&self, pid: PaneId) -> Option<ratatui::layout::Rect> {
+    pub fn pane_rect(&self, pid: PaneId) -> Option<Rect> {
         self.layout
             .find_rect(pid, self.last_pane_area, self.reserve_seam)
     }
@@ -231,7 +232,7 @@ impl EngineView {
     /// the bottom (always). Single source of truth for chrome layout —
     /// `render` and the editor's `prepare_frame` both partition through this
     /// method so pane geometry is computed identically wherever it's needed.
-    pub fn pane_area(&self, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
+    pub fn pane_area(&self, area: Rect) -> Rect {
         let tabbar_height: u16 = if self.tabbar.is_some() { 1 } else { 0 };
         let bands_height: u16 = self
             .bottom_bands
@@ -241,14 +242,14 @@ impl EngineView {
         let chrome_height = tabbar_height + 1 + bands_height;
 
         if chrome_height < area.height {
-            ratatui::layout::Rect {
+            Rect {
                 y: area.y + tabbar_height,
                 height: area.height - chrome_height,
                 ..area
             }
         } else {
             // Degenerate: terminal too small to fit chrome + content.
-            ratatui::layout::Rect { height: 0, ..area }
+            Rect { height: 0, ..area }
         }
     }
 
@@ -273,8 +274,8 @@ impl EngineView {
     #[allow(clippy::too_many_arguments)]
     pub fn render<'rope>(
         &self,
-        area: ratatui::layout::Rect,
-        buf: &mut ratatui::buffer::Buffer,
+        area: Rect,
+        grid: &mut Grid,
         get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
         get_syntax: impl Fn(BufferId) -> Option<&'rope dyn SyntaxSpans>,
         get_pane_settings: impl Fn(PaneId) -> PaneRenderSettings,
@@ -289,20 +290,25 @@ impl EngineView {
 
         // A degenerate area (e.g. a terminal reporting height 0 during early
         // startup, or a genuinely tiny window) has no row to draw a chrome
-        // line into — providers write text via `write_text_run`, whose
-        // `set_cell` bounds-checks against the buffer rect rather than
-        // panicking, but a chrome row drawn at an out-of-bounds `y` is still
+        // line into — providers write text via `write_text_run`, which
+        // bounds-checks against the grid rather than panicking, but a chrome
+        // row drawn at an out-of-bounds `y` is still
         // silently lost, so skip both chrome rows entirely rather than
         // handing them a `Rect` claiming a row that doesn't exist.
         if area.height > 0 {
+            // One canvas for every chrome row. Chrome is never dimmed, so
+            // they all share the same `dim: None` — a canvas per provider
+            // would only re-derive that.
+            let mut canvas = crate::render::Canvas::new(grid, &self.theme, None);
+
             // ── Render tab bar ────────────────────────────────────────────────
             if let Some(ref tabbar) = self.tabbar {
-                let tabbar_area = ratatui::layout::Rect {
+                let tabbar_area = Rect {
                     y: area.y,
                     height: 1,
                     ..area
                 };
-                tabbar.render(tabbar_area, &self.theme, buf);
+                tabbar.render(tabbar_area, &self.theme, &mut canvas);
             }
 
             // ── Render bottom bands ──────────────────────────────────────────────
@@ -320,23 +326,23 @@ impl EngineView {
                 }
                 let band_y = bottom_edge.saturating_sub(band_height);
                 let available = bottom_edge.saturating_sub(area.y);
-                let band_area = ratatui::layout::Rect {
+                let band_area = Rect {
                     y: band_y.max(area.y),
                     height: band_height.min(available),
                     ..area
                 };
-                band.render(band_area, &self.theme, buf);
+                band.render(band_area, &self.theme, &mut canvas);
                 bottom_edge = band_y.max(area.y);
             }
 
             // ── Render statusline ───────────────────────────────────────────────
             let sl_y = area.y + area.height.saturating_sub(1);
-            let sl_area = ratatui::layout::Rect {
+            let sl_area = Rect {
                 y: sl_y,
                 height: 1,
                 ..area
             };
-            statusline.render(sl_area, &self.theme, buf);
+            statusline.render(sl_area, &self.theme, &mut canvas);
         }
 
         // ── Compute pane rects once; reuse for panes and overlays ─────────────
@@ -370,14 +376,14 @@ impl EngineView {
                 // glance — independent of `draw_dividers`, which only controls
                 // the seam glyph. Skipped when `ui.background` has no explicit
                 // bg — there is no defined blend target for custom themes that
-                // leave it unset. Non-RGB targets no-op inside the compose path.
+                // leave it unset.
                 dim: (pane_id != focused_pane_id)
                     .then_some(self.theme.ui.background.bg)
                     .flatten()
                     .map(|bg| (bg, PANE_DIM_FACTOR)),
                 default_gutter_scope: self.default_gutter_scope,
             };
-            render_pane(&pane_ctx, scratch, buf);
+            render_pane(&pane_ctx, scratch, grid);
         }
 
         // ── Render seam dividers between panes ────────────────────────────────
@@ -391,14 +397,8 @@ impl EngineView {
             ctx.seam_arms.clear();
             collect_seam_arms(&ctx.seams, &mut ctx.seam_arms);
 
-            let muted: ratatui::style::Style =
-                self.theme.ui.background.layer(self.theme.ui.window).into();
-            let accent: ratatui::style::Style = self
-                .theme
-                .ui
-                .background
-                .layer(self.theme.ui.window_focused)
-                .into();
+            let muted = self.theme.ui.background.layer(self.theme.ui.window);
+            let accent = self.theme.ui.background.layer(self.theme.ui.window_focused);
 
             // Junction cells at the focused pane's corners are missed by the
             // per-seam accent test (see `focused_pane_corners`); precompute
@@ -406,15 +406,15 @@ impl EngineView {
             let corners = focused_rect.map(focused_pane_corners);
 
             // Clamped once per seam, ahead of `canvas` below — it needs an
-            // immutable `&Buffer` and the canvas holds an exclusive `&mut`
+            // immutable `&Grid` and the canvas holds an exclusive `&mut`
             // for the whole seam pass.
             ctx.seam_bounds.clear();
             ctx.seam_bounds.extend(
                 ctx.seams
                     .iter()
-                    .map(|seam| crate::render::clamp_rect_to_buf(buf, seam.rect)),
+                    .map(|seam| crate::render::clamp_rect_to_grid(grid, seam.rect)),
             );
-            let mut canvas = crate::render::Canvas::new(buf, &self.theme, None);
+            let mut canvas = crate::render::Canvas::new(grid, &self.theme, None);
             for (seam, &(x0, y0, x1, y1)) in ctx.seams.iter().zip(ctx.seam_bounds.iter()) {
                 let base = match seam.direction {
                     Direction::Horizontal => ARM_N | ARM_S,
@@ -445,13 +445,16 @@ impl EngineView {
         }
 
         // ── Render overlays on top (may span panes) ───────────────────────────
+        // One canvas for all of them, for the same reason chrome shares one:
+        // an overlay is never dimmed either.
+        let mut canvas = crate::render::Canvas::new(grid, &self.theme, None);
         for (pane_id, _rect) in pane_rects.iter().copied() {
             let Some(pane) = self.panes.get(pane_id) else {
                 continue;
             };
             for (_, overlay) in &pane.providers.overlays {
                 if overlay.is_active() {
-                    overlay.render(pane_area, &self.theme, buf);
+                    overlay.render(pane_area, &self.theme, &mut canvas);
                 }
             }
         }
@@ -493,11 +496,11 @@ pub(crate) struct PaneRenderCtx<'a> {
     /// `get_syntax`, if a language with a grammar is configured.
     pub syntax: Option<&'a dyn SyntaxSpans>,
     pub theme: &'a Theme,
-    pub rect: ratatui::layout::Rect,
+    pub rect: Rect,
     pub settings: PaneRenderSettings,
     /// `Some` for non-focused panes — blend every written cell's fg/bg toward
     /// this target by `factor`. `None` for the focused pane.
-    pub dim: Option<(ratatui::style::Color, f32)>,
+    pub dim: Option<(Rgb, f32)>,
     /// See `EngineView::default_gutter_scope`.
     pub default_gutter_scope: ScopeId,
 }

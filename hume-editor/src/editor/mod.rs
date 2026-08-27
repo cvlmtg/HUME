@@ -342,7 +342,7 @@ pub(crate) struct EditorState {
     pub(super) panes: PaneView,
     /// Bounded, in-memory history for `:`, `/`, and `?` prompts.
     pub(super) history: self::minibuf::history::HistoryStore,
-    /// Set by the inline-output dispatch arm to trigger a full ratatui repaint.
+    /// Set by the inline-output dispatch arm to trigger a full repaint.
     pub(crate) force_full_redraw: bool,
     /// State of the `#:inline-output` bracket for the Steel command currently
     /// being dispatched. Set just before `call_steel_cmd`; read and driven by

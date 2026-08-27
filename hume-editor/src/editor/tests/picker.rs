@@ -9,6 +9,7 @@ use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
 use crate::editor::picker::{self, PickerItem, PickerSession};
 use crate::ui::picker_panel::panel_geometry;
 use hume_engine::pipeline::RenderContext;
+use hume_grid::Rect;
 use hume_scripting::host::PickerOpts;
 use steel::rvals::SteelVal;
 
@@ -545,7 +546,7 @@ fn snapshot_picker_over_populated_buffer_empty_query() {
     ed.sync_viewport_dims(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
+    let rect = Rect::new(0, 0, 40, 12);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);
 }
@@ -562,7 +563,7 @@ fn snapshot_picker_after_filtering_query() {
     ed.sync_viewport_dims(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
+    let rect = Rect::new(0, 0, 40, 12);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);
 }
@@ -586,7 +587,7 @@ fn snapshot_picker_scrolled_with_selection_highlight() {
     ed.sync_viewport_dims(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
+    let rect = Rect::new(0, 0, 40, 12);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);
 }
@@ -604,7 +605,7 @@ fn snapshot_picker_no_match_state() {
     ed.sync_viewport_dims(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
+    let rect = Rect::new(0, 0, 40, 12);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);
 }
@@ -620,7 +621,7 @@ fn snapshot_picker_with_prompt() {
     ed.sync_viewport_dims(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
+    let rect = Rect::new(0, 0, 40, 12);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);
 }

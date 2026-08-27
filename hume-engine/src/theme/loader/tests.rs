@@ -1,3 +1,4 @@
+use hume_grid::Rgb;
 use std::path::Path;
 
 use super::*;
@@ -32,16 +33,16 @@ fn flat_scope_happy_path() {
     let theme = load_theme("test", &paths(dir.path())).unwrap();
 
     let kw = theme.resolve_by_name(crate::types::Scope("keyword"));
-    assert_eq!(kw.fg, Some(Color::Rgb(0xff, 0, 0)));
+    assert_eq!(kw.fg, Some(Rgb(0xff, 0, 0)));
     assert_eq!(kw.bg, None);
 
     let kw_fn = theme.resolve_by_name(crate::types::Scope("keyword.function"));
-    assert_eq!(kw_fn.fg, Some(Color::Rgb(0, 0xff, 0)));
+    assert_eq!(kw_fn.fg, Some(Rgb(0, 0xff, 0)));
     assert!(kw_fn.modifiers.contains(Modifiers::BOLD));
 
     // Fallback: "keyword.operator" → "keyword"
     let kw_op = theme.resolve_by_name(crate::types::Scope("keyword.operator"));
-    assert_eq!(kw_op.fg, Some(Color::Rgb(0xff, 0, 0)));
+    assert_eq!(kw_op.fg, Some(Rgb(0xff, 0, 0)));
 }
 
 // ── Palette indirection ───────────────────────────────────────────────────
@@ -66,15 +67,15 @@ green  = "#98971a"
     let theme = load_theme("pal", &paths(dir.path())).unwrap();
 
     let kw = theme.resolve_by_name(crate::types::Scope("keyword"));
-    assert_eq!(kw.fg, Some(Color::Rgb(0xcc, 0x24, 0x1d)));
+    assert_eq!(kw.fg, Some(Rgb(0xcc, 0x24, 0x1d)));
 
     let cm = theme.resolve_by_name(crate::types::Scope("comment"));
-    assert_eq!(cm.fg, Some(Color::Rgb(0x98, 0x97, 0x1a)));
+    assert_eq!(cm.fg, Some(Rgb(0x98, 0x97, 0x1a)));
     assert!(cm.modifiers.contains(Modifiers::ITALIC));
 
     // Literal hex still works (not in palette).
     let cn = theme.resolve_by_name(crate::types::Scope("constant"));
-    assert_eq!(cn.fg, Some(Color::Rgb(0xab, 0xcd, 0xef)));
+    assert_eq!(cn.fg, Some(Rgb(0xab, 0xcd, 0xef)));
 }
 
 // ── Inheritance ───────────────────────────────────────────────────────────
@@ -104,13 +105,13 @@ inherits = "base"
 
     // Child overrides "keyword".
     let kw = theme.resolve_by_name(crate::types::Scope("keyword"));
-    assert_eq!(kw.fg, Some(Color::Rgb(0, 0xff, 0)));
+    assert_eq!(kw.fg, Some(Rgb(0, 0xff, 0)));
 
     // Parent's "comment" and "constant" still present.
     let cm = theme.resolve_by_name(crate::types::Scope("comment"));
-    assert_eq!(cm.fg, Some(Color::Rgb(0x88, 0x88, 0x88)));
+    assert_eq!(cm.fg, Some(Rgb(0x88, 0x88, 0x88)));
     let cn = theme.resolve_by_name(crate::types::Scope("constant"));
-    assert_eq!(cn.fg, Some(Color::Rgb(0xab, 0xcd, 0xef)));
+    assert_eq!(cn.fg, Some(Rgb(0xab, 0xcd, 0xef)));
 }
 
 #[test]
@@ -143,11 +144,11 @@ blue = "#0000ff"
 
     // Parent keyword resolved to red via parent palette.
     let kw = theme.resolve_by_name(crate::types::Scope("keyword"));
-    assert_eq!(kw.fg, Some(Color::Rgb(0xff, 0, 0)));
+    assert_eq!(kw.fg, Some(Rgb(0xff, 0, 0)));
 
     // Child comment resolved to blue via child palette.
     let cm = theme.resolve_by_name(crate::types::Scope("comment"));
-    assert_eq!(cm.fg, Some(Color::Rgb(0, 0, 0xff)));
+    assert_eq!(cm.fg, Some(Rgb(0, 0, 0xff)));
 }
 
 // ── `ui.text` → `default` fold ────────────────────────────────────────────
@@ -155,7 +156,7 @@ blue = "#0000ff"
 #[test]
 fn ui_text_folds_into_default() {
     let theme = parse_theme(r##""ui.text" = { fg = "#d0d0d0" }"##).unwrap();
-    assert_eq!(theme.default.fg, Some(Color::Rgb(0xd0, 0xd0, 0xd0)));
+    assert_eq!(theme.default.fg, Some(Rgb(0xd0, 0xd0, 0xd0)));
 }
 
 #[test]
@@ -175,7 +176,7 @@ inherits = "base3"
 
     // Child's own `ui.text` re-folds on top of the parent's — last-wins,
     // not a stale copy of the parent's default.
-    assert_eq!(theme.default.fg, Some(Color::Rgb(0x22, 0x22, 0x22)));
+    assert_eq!(theme.default.fg, Some(Rgb(0x22, 0x22, 0x22)));
 }
 
 #[test]
@@ -189,7 +190,7 @@ fn inherits_child_without_ui_text_keeps_parent_default() {
     // Child defines no `ui.text` of its own — the parent's already-folded
     // `default` passes through unchanged (re-folding is a no-op here since
     // the child's `scopes` map has no "ui.text" entry to layer again).
-    assert_eq!(theme.default.fg, Some(Color::Rgb(0x11, 0x11, 0x11)));
+    assert_eq!(theme.default.fg, Some(Rgb(0x11, 0x11, 0x11)));
 }
 
 // ── Cycle detection ───────────────────────────────────────────────────────
@@ -347,7 +348,7 @@ fn shorthand_hex_expands_correctly() {
     let theme = load_theme("short", &paths(dir.path())).unwrap();
     let kw = theme.resolve_by_name(crate::types::Scope("keyword"));
     // #f0a → #ff00aa
-    assert_eq!(kw.fg, Some(Color::Rgb(0xff, 0x00, 0xaa)));
+    assert_eq!(kw.fg, Some(Rgb(0xff, 0x00, 0xaa)));
 }
 
 // ── Path traversal rejection ──────────────────────────────────────────────
@@ -378,11 +379,11 @@ dark_gray = "#808080"
 
     let cursor = theme.resolve_by_name(crate::types::Scope("ui.cursor"));
     // Independent oracle: expected colors derived directly from palette hex values.
-    assert_eq!(cursor.fg, Some(Color::Rgb(0x00, 0x00, 0x00)));
-    assert_eq!(cursor.bg, Some(Color::Rgb(0xff, 0xff, 0xff)));
+    assert_eq!(cursor.fg, Some(Rgb(0x00, 0x00, 0x00)));
+    assert_eq!(cursor.bg, Some(Rgb(0xff, 0xff, 0xff)));
 
     let virt = theme.resolve_by_name(crate::types::Scope("ui.virtual"));
-    assert_eq!(virt.fg, Some(Color::Rgb(0x80, 0x80, 0x80)));
+    assert_eq!(virt.fg, Some(Rgb(0x80, 0x80, 0x80)));
 }
 
 #[test]

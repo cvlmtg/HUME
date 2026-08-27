@@ -1,6 +1,5 @@
+use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
-
-use ratatui::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
 
 use hume_platform::path::is_path_sep;
@@ -17,7 +16,7 @@ use crate::ui::width::{ELLIPSIS, ELLIPSIS_WIDTH, text_width, truncate_text};
 pub(in crate::ui::statusline) fn render(
     filepath_text: &str,
     colors: &EditorColors,
-) -> (Cow<'static, str>, Style) {
+) -> (Cow<'static, str>, ResolvedStyle) {
     (Cow::Owned(filepath_text.to_owned()), colors.statusline)
 }
 

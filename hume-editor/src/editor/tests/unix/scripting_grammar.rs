@@ -9,6 +9,7 @@
 // missing.
 
 use super::*;
+use hume_grid::Rect;
 
 use std::path::PathBuf;
 
@@ -320,7 +321,7 @@ fn install_real_json_grammar_e2e() {
     ed.view.theme.bake(&ed.view.registry);
 
     // Styled-frame snapshot: locks down token colours after the full e2e pipeline.
-    let rect = ratatui::layout::Rect::new(0, 0, 40, 5);
+    let rect = Rect::new(0, 0, 40, 5);
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 

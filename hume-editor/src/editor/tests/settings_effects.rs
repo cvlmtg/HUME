@@ -1,4 +1,5 @@
 use super::*;
+use hume_grid::{Rect, Rgb};
 
 use crate::editor::buffer::Buffer;
 use crate::editor::message_log::Severity;
@@ -187,28 +188,28 @@ fn set_option_statusline_mode_colors_gates_whole_row_tint() {
     use hume_engine::types::{ResolvedStyle, Scope};
 
     let mut ed = editor_from("-[h]>ello\n");
-    let rect = ratatui::layout::Rect::new(0, 0, 40, 8);
+    let rect = Rect::new(0, 0, 40, 8);
     let row = rect.bottom() - 1;
 
     let mut styles = std::collections::HashMap::new();
     styles.insert(
         "ui.statusline",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::DarkGray),
+            bg: Some(Rgb(64, 64, 64)),
             ..Default::default()
         },
     );
     styles.insert(
         "ui.statusline.normal",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::Red),
+            bg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
     styles.insert(
         "ui.statusline.insert",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::Cyan),
+            bg: Some(Rgb(0, 255, 255)),
             ..Default::default()
         },
     );

@@ -1,6 +1,5 @@
+use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
-
-use ratatui::style::Style;
 
 use super::StatuslineElement;
 use crate::editor::Editor;
@@ -16,7 +15,7 @@ impl StatuslineElement for MacroRecordingElement {
         editor.state.macro_recording.as_ref().map(|(reg, _)| *reg)
     }
 
-    fn format(reg: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
+    fn format(reg: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
         match reg {
             Some(reg) => (Cow::Owned(format!("[recording @{reg}]")), colors.statusline),
             None => (Cow::Borrowed(""), colors.statusline),

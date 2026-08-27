@@ -24,13 +24,11 @@
 //! and the render rect are the same frame's geometry, so this should never
 //! trigger — see the "never draws outside pane_rect" test).
 
+use hume_engine::types::ResolvedStyle;
+use hume_grid::Rect;
 use std::sync::{Arc, RwLock};
 
 use crate::lock_ext::LockExt;
-
-use ratatui::buffer::Buffer as ScreenBuf;
-use ratatui::layout::Rect;
-use ratatui::style::Style;
 
 use hume_engine::providers::{BottomBandProvider, OverlayProvider, SyntaxSpans};
 use hume_engine::render::Canvas;
@@ -75,7 +73,7 @@ impl MarkupSyntax {
         line_idx: usize,
         line: &str,
         theme: &Theme,
-        base_style: Style,
+        base_style: ResolvedStyle,
     ) -> StyledRow {
         let mut spans = Vec::new();
         self.syntax
@@ -109,10 +107,10 @@ impl MarkupSyntax {
         &self,
         text: &str,
         theme: &Theme,
-        base_style: Style,
-    ) -> Vec<(String, Style)> {
+        base_style: ResolvedStyle,
+    ) -> Vec<(String, ResolvedStyle)> {
         let lines: Vec<&str> = text.split('\n').collect();
-        let mut runs: Vec<(String, Style)> = Vec::new();
+        let mut runs: Vec<(String, ResolvedStyle)> = Vec::new();
         for (line_idx, line) in lines.iter().enumerate() {
             runs.extend(self.styled_row(line_idx, line, theme, base_style));
             if line_idx + 1 < lines.len() {
@@ -245,7 +243,7 @@ impl OverlayProvider for PopupOverlay {
         self.data.read_or_panic().is_some()
     }
 
-    fn render(&self, pane_rect: Rect, theme: &Theme, buf: &mut ScreenBuf) {
+    fn render(&self, pane_rect: Rect, theme: &Theme, canvas: &mut Canvas) {
         let guard = self.data.read_or_panic();
         let Some(state) = guard.as_ref() else { return };
         if state.lines.is_empty() {
@@ -258,10 +256,8 @@ impl OverlayProvider for PopupOverlay {
         if !super::menu_box::fits_inside(state.rect, pane_rect) {
             return;
         }
-
-        let mut canvas = Canvas::new(buf, theme, None);
         draw_menu_box(
-            &mut canvas,
+            canvas,
             state.rect,
             &state.lines,
             state.selected,
@@ -321,15 +317,14 @@ impl BottomBandProvider for PopupBandWidget {
             .map_or(0, |s| band_capacity(s.lines.len(), max))
     }
 
-    fn render(&self, area: Rect, theme: &Theme, buf: &mut ScreenBuf) {
+    fn render(&self, area: Rect, theme: &Theme, canvas: &mut Canvas) {
         if area.height == 0 {
             return;
         }
         let guard = self.data.read_or_panic();
         let Some(state) = guard.as_ref() else { return };
-        let mut canvas = Canvas::new(buf, theme, None);
         draw_menu_box(
-            &mut canvas,
+            canvas,
             area,
             &state.lines,
             None,
@@ -384,15 +379,15 @@ pub(crate) fn resolve_popup_geometry(
 /// One wrapped display row's content, as contiguous same-style runs — the
 /// styled counterpart of a `wrap_text` row (a `Vec<StyledRun>` instead of a
 /// bare `String`).
-pub(crate) type StyledRun = (String, Style);
+pub(crate) type StyledRun = (String, ResolvedStyle);
 pub(crate) type StyledRow = Vec<StyledRun>;
 
-/// Merge adjacent `(text, style)` pairs sharing the same `Style` — shared by
+/// Merge adjacent `(text, style)` pairs sharing the same `ResolvedStyle` — shared by
 /// [`MarkupSyntax::styled_row`] (building the *input* runs `wrap_styled`
 /// wraps) and [`coalesce_atoms`] (merging wrapped *output* graphemes back
 /// down); same "adjacent equal style" rule, different element granularity
 /// (whole strings here, single graphemes there).
-fn push_run(runs: &mut Vec<(String, Style)>, text: &str, style: Style) {
+fn push_run(runs: &mut Vec<(String, ResolvedStyle)>, text: &str, style: ResolvedStyle) {
     if text.is_empty() {
         return;
     }
@@ -411,15 +406,15 @@ fn push_run(runs: &mut Vec<(String, Style)>, text: &str, style: Style) {
 /// styled popup (markdown-highlighted hover) reuses the exact same
 /// word/hard-break decisions a plain popup would have made.
 pub(crate) fn wrap_text(text: &str, max_width: u16) -> Vec<String> {
-    let runs = [(text.to_string(), Style::default())];
+    let runs = [(text.to_string(), ResolvedStyle::default())];
     wrap_styled(&runs, max_width)
         .into_iter()
         .map(|row| row.into_iter().map(|(s, _)| s).collect())
         .collect()
 }
 
-/// Merge adjacent atoms sharing the same `Style` into `StyledRun`s.
-fn coalesce_atoms(atoms: Vec<(&str, Style)>) -> StyledRow {
+/// Merge adjacent atoms sharing the same `ResolvedStyle` into `StyledRun`s.
+fn coalesce_atoms(atoms: Vec<(&str, ResolvedStyle)>) -> StyledRow {
     let mut out: StyledRow = Vec::new();
     for (g, style) in atoms {
         push_run(&mut out, g, style);
@@ -439,10 +434,10 @@ fn coalesce_atoms(atoms: Vec<(&str, Style)>) -> StyledRow {
 /// including mid-word, so wrapping must not coarsen past grapheme
 /// granularity. Word/paragraph splitting and the width math are otherwise
 /// identical to the original single-style algorithm.
-pub(crate) fn wrap_styled(runs: &[(String, Style)], max_width: u16) -> Vec<StyledRow> {
+pub(crate) fn wrap_styled(runs: &[(String, ResolvedStyle)], max_width: u16) -> Vec<StyledRow> {
     use unicode_segmentation::UnicodeSegmentation;
 
-    let atoms: Vec<(&str, Style)> = runs
+    let atoms: Vec<(&str, ResolvedStyle)> = runs
         .iter()
         .flat_map(|(text, style)| text.graphemes(true).map(move |g| (g, *style)))
         .collect();
@@ -465,7 +460,7 @@ pub(crate) fn wrap_styled(runs: &[(String, Style)], max_width: u16) -> Vec<Style
         if paragraph.is_empty() {
             out.push(Vec::new());
         } else {
-            let mut current: Vec<(&str, Style)> = Vec::new();
+            let mut current: Vec<(&str, ResolvedStyle)> = Vec::new();
             let mut current_w = 0usize;
             let mut word_start = 0;
             loop {
@@ -496,7 +491,7 @@ pub(crate) fn wrap_styled(runs: &[(String, Style)], max_width: u16) -> Vec<Style
                     if !current.is_empty() {
                         out.push(coalesce_atoms(std::mem::take(&mut current)));
                     }
-                    let mut piece: Vec<(&str, Style)> = Vec::new();
+                    let mut piece: Vec<(&str, ResolvedStyle)> = Vec::new();
                     let mut piece_w = 0usize;
                     for &(g, style) in word {
                         let gw = cell_width(g);
@@ -515,7 +510,9 @@ pub(crate) fn wrap_styled(runs: &[(String, Style)], max_width: u16) -> Vec<Style
                         // style — it's a single blank cell either way, this
                         // just keeps it from spuriously splitting an
                         // otherwise-uniform run in two.
-                        let sep_style = word.first().map_or_else(Style::default, |&(_, s)| s);
+                        let sep_style = word
+                            .first()
+                            .map_or_else(ResolvedStyle::default, |&(_, s)| s);
                         current.push((" ", sep_style));
                         current_w += 1;
                     }

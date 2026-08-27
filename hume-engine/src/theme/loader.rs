@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use ratatui::style::Color;
+use hume_grid::Rgb;
 
 use crate::theme::Theme;
 use crate::theme::error::ThemeError;
@@ -94,7 +94,7 @@ fn parse_recursive(
     let table: toml::Table = source.parse().map_err(ThemeError::Parse)?;
 
     // ── Base from parent (if any) ────────────────────────────────────────────
-    let mut palette: FxHashMap<String, Color> = FxHashMap::default();
+    let mut palette: FxHashMap<String, Rgb> = FxHashMap::default();
     let mut scopes: FxHashMap<String, ResolvedStyle> = FxHashMap::default();
     let mut default = ResolvedStyle::default();
 
@@ -132,8 +132,9 @@ fn parse_recursive(
 
     // `ui.text` (Helix's base-foreground convention) folds into `default`, the
     // style every cell starts from (see `style::apply_styles`). Without this,
-    // plain/unhighlighted text has `fg: None` → renders as the terminal-default
-    // color, which `render::blend_toward` can't dim (it only blends `Color::Rgb`).
+    // plain/unhighlighted text has `fg: None` → renders as the terminal's own
+    // default colour, which the pane dim has no numeric value to blend and so
+    // leaves at full strength in an unfocused pane.
     if let Some(ui_text) = scopes.get("ui.text") {
         default = default.layer(*ui_text);
     }
@@ -153,7 +154,7 @@ fn parse_recursive(
 fn parse_scope_value(
     key: &str,
     value: &toml::Value,
-    palette: &FxHashMap<String, Color>,
+    palette: &FxHashMap<String, Rgb>,
 ) -> Result<ResolvedStyle, ThemeError> {
     match value {
         // Shorthand: `"keyword" = "red"` sets fg only.
@@ -175,7 +176,7 @@ fn parse_scope_value(
 fn parse_style_table(
     key: &str,
     t: &toml::map::Map<String, toml::Value>,
-    palette: &FxHashMap<String, Color>,
+    palette: &FxHashMap<String, Rgb>,
 ) -> Result<ResolvedStyle, ThemeError> {
     let mut style = ResolvedStyle::default();
 
@@ -226,14 +227,10 @@ fn parse_style_table(
 }
 
 // ---------------------------------------------------------------------------
-// Color resolution
+// Colour resolution
 // ---------------------------------------------------------------------------
 
-fn resolve_color(
-    key: &str,
-    s: &str,
-    palette: &FxHashMap<String, Color>,
-) -> Result<Color, ThemeError> {
+fn resolve_color(key: &str, s: &str, palette: &FxHashMap<String, Rgb>) -> Result<Rgb, ThemeError> {
     // Palette reference takes priority.
     if let Some(&color) = palette.get(s) {
         return Ok(color);
@@ -245,21 +242,21 @@ fn resolve_color(
     })
 }
 
-fn parse_hex_color(s: &str) -> Result<Color, ()> {
+fn parse_hex_color(s: &str) -> Result<Rgb, ()> {
     let hex = s.strip_prefix('#').ok_or(())?;
     match hex.len() {
         6 => {
             let r = u8::from_str_radix(&hex[0..2], 16).map_err(|_| ())?;
             let g = u8::from_str_radix(&hex[2..4], 16).map_err(|_| ())?;
             let b = u8::from_str_radix(&hex[4..6], 16).map_err(|_| ())?;
-            Ok(Color::Rgb(r, g, b))
+            Ok(Rgb(r, g, b))
         }
         3 => {
             // Expand shorthand #rgb → #rrggbb.
             let r = u8::from_str_radix(&hex[0..1], 16).map_err(|_| ())?;
             let g = u8::from_str_radix(&hex[1..2], 16).map_err(|_| ())?;
             let b = u8::from_str_radix(&hex[2..3], 16).map_err(|_| ())?;
-            Ok(Color::Rgb(r * 17, g * 17, b * 17))
+            Ok(Rgb(r * 17, g * 17, b * 17))
         }
         _ => Err(()),
     }

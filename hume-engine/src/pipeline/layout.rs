@@ -1,6 +1,5 @@
+use hume_grid::{Position, Rect};
 use rustc_hash::FxHashMap;
-
-use ratatui::symbols::line;
 
 use super::PaneId;
 
@@ -22,7 +21,7 @@ pub enum Direction {
 /// and leaf geometry can never drift apart.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Seam {
-    pub rect: ratatui::layout::Rect,
+    pub rect: Rect,
     /// The split that produced this seam. `Horizontal` (a width split)
     /// carves a 1-column-wide, full-height seam — drawn as a vertical line
     /// (`│`). `Vertical` (a height split) carves a 1-row-tall, full-width
@@ -52,9 +51,9 @@ impl LayoutTree {
     /// children edge-to-edge with no reserved gap.
     pub fn collect_rects_into(
         &self,
-        area: ratatui::layout::Rect,
+        area: Rect,
         reserve_seam: bool,
-        out: &mut Vec<(PaneId, ratatui::layout::Rect)>,
+        out: &mut Vec<(PaneId, Rect)>,
     ) {
         match self {
             LayoutTree::Leaf(id) => out.push((*id, area)),
@@ -79,12 +78,7 @@ impl LayoutTree {
     /// target sibling of [`Self::collect_rects_into`], for callers (a single
     /// pane lookup, a mouse-motion hit test) that don't need the whole
     /// partition and would otherwise allocate one just to search it.
-    pub fn find_rect(
-        &self,
-        pid: PaneId,
-        area: ratatui::layout::Rect,
-        reserve_seam: bool,
-    ) -> Option<ratatui::layout::Rect> {
+    pub fn find_rect(&self, pid: PaneId, area: Rect, reserve_seam: bool) -> Option<Rect> {
         match self {
             LayoutTree::Leaf(id) => (*id == pid).then_some(area),
             LayoutTree::Split {
@@ -115,10 +109,10 @@ impl LayoutTree {
     /// where the eventual `None` is still correct, just found less directly.
     pub fn find_containing(
         &self,
-        pos: ratatui::layout::Position,
-        area: ratatui::layout::Rect,
+        pos: Position,
+        area: Rect,
         reserve_seam: bool,
-    ) -> Option<(PaneId, ratatui::layout::Rect)> {
+    ) -> Option<(PaneId, Rect)> {
         match self {
             LayoutTree::Leaf(id) => area.contains(pos).then_some((*id, area)),
             LayoutTree::Split {
@@ -150,7 +144,7 @@ impl LayoutTree {
     /// Always reserves the seam: callers only invoke this when dividers are
     /// being drawn, which is also when `collect_rects_into` is called with
     /// `reserve_seam: true` — the two stay aligned by construction.
-    pub fn collect_seams_into(&self, area: ratatui::layout::Rect, out: &mut Vec<Seam>) {
+    pub fn collect_seams_into(&self, area: Rect, out: &mut Vec<Seam>) {
         if let LayoutTree::Split {
             direction,
             ratio,
@@ -257,6 +251,13 @@ impl LayoutTree {
 // full-frame scan, and the arms map is sparse (at most two entries per seam)
 // so the lookups hit a tiny map — the per-cell buffer writes dominate.
 
+/// Light box-drawing glyphs for the pane dividers. Written as escapes
+/// rather than literals so a grep for one finds every use, and so an editor
+/// or terminal that renders them ambiguously can't quietly swap one for
+/// another during an edit.
+pub(super) const HORIZONTAL: &str = "\u{2500}";
+pub(super) const VERTICAL: &str = "\u{2502}";
+
 pub(super) const ARM_N: u8 = 0b0001;
 pub(super) const ARM_E: u8 = 0b0010;
 pub(super) const ARM_S: u8 = 0b0100;
@@ -269,17 +270,17 @@ pub(super) const ARM_W: u8 = 0b1000;
 /// `│ ─ ├ ┤ ┬ ┴ ┼`.
 pub(super) fn junction_glyph(mask: u8) -> &'static str {
     match mask {
-        m if m == ARM_N | ARM_E | ARM_S | ARM_W => line::CROSS,
-        m if m == ARM_E | ARM_S | ARM_W => line::HORIZONTAL_DOWN,
-        m if m == ARM_N | ARM_E | ARM_W => line::HORIZONTAL_UP,
-        m if m == ARM_N | ARM_E | ARM_S => line::VERTICAL_RIGHT,
-        m if m == ARM_N | ARM_S | ARM_W => line::VERTICAL_LEFT,
-        m if m == ARM_N | ARM_E => line::BOTTOM_LEFT,
-        m if m == ARM_N | ARM_W => line::BOTTOM_RIGHT,
-        m if m == ARM_E | ARM_S => line::TOP_LEFT,
-        m if m == ARM_S | ARM_W => line::TOP_RIGHT,
-        m if m & (ARM_E | ARM_W) != 0 && m & (ARM_N | ARM_S) == 0 => line::HORIZONTAL,
-        _ => line::VERTICAL,
+        m if m == ARM_N | ARM_E | ARM_S | ARM_W => "\u{253c}",
+        m if m == ARM_E | ARM_S | ARM_W => "\u{252c}",
+        m if m == ARM_N | ARM_E | ARM_W => "\u{2534}",
+        m if m == ARM_N | ARM_E | ARM_S => "\u{251c}",
+        m if m == ARM_N | ARM_S | ARM_W => "\u{2524}",
+        m if m == ARM_N | ARM_E => "\u{2514}",
+        m if m == ARM_N | ARM_W => "\u{2518}",
+        m if m == ARM_E | ARM_S => "\u{250c}",
+        m if m == ARM_S | ARM_W => "\u{2510}",
+        m if m & (ARM_E | ARM_W) != 0 && m & (ARM_N | ARM_S) == 0 => HORIZONTAL,
+        _ => VERTICAL,
     }
 }
 
@@ -326,27 +327,23 @@ pub(super) fn collect_seam_arms(seams: &[Seam], out: &mut FxHashMap<(u16, u16), 
 /// seam plus two minimal panes — `:split`/`:vsplit` guard that before
 /// mutating the layout tree (see `split_focused_pane` in the editor crate).
 pub(super) fn split_rect(
-    area: ratatui::layout::Rect,
+    area: Rect,
     vertical: bool,
     ratio: f32,
     reserve_seam: bool,
-) -> (
-    ratatui::layout::Rect,
-    ratatui::layout::Rect,
-    ratatui::layout::Rect,
-) {
+) -> (Rect, Rect, Rect) {
     let seam_reserve: u16 = if reserve_seam { 1 } else { 0 };
     if vertical {
         let usable = area.height.saturating_sub(seam_reserve);
         let h1 = ((usable as f32 * ratio) as u16).min(usable);
         let seam_h = area.height.saturating_sub(h1).min(seam_reserve);
-        let r1 = ratatui::layout::Rect { height: h1, ..area };
-        let seam = ratatui::layout::Rect {
+        let r1 = Rect { height: h1, ..area };
+        let seam = Rect {
             y: area.y + h1,
             height: seam_h,
             ..area
         };
-        let r2 = ratatui::layout::Rect {
+        let r2 = Rect {
             y: area.y + h1 + seam_h,
             height: area.height.saturating_sub(h1 + seam_h),
             ..area
@@ -356,13 +353,13 @@ pub(super) fn split_rect(
         let usable = area.width.saturating_sub(seam_reserve);
         let w1 = ((usable as f32 * ratio) as u16).min(usable);
         let seam_w = area.width.saturating_sub(w1).min(seam_reserve);
-        let r1 = ratatui::layout::Rect { width: w1, ..area };
-        let seam = ratatui::layout::Rect {
+        let r1 = Rect { width: w1, ..area };
+        let seam = Rect {
             x: area.x + w1,
             width: seam_w,
             ..area
         };
-        let r2 = ratatui::layout::Rect {
+        let r2 = Rect {
             x: area.x + w1 + seam_w,
             width: area.width.saturating_sub(w1 + seam_w),
             ..area
@@ -381,15 +378,12 @@ pub(super) fn split_rect(
 /// width-split seam has `width == 1` (checked by the vertical-adjacency arm),
 /// a height-split seam has `height == 1` (checked by the horizontal-adjacency
 /// arm).
-pub(super) fn focused_seam_segment(
-    seam: ratatui::layout::Rect,
-    pane: ratatui::layout::Rect,
-) -> Option<ratatui::layout::Rect> {
+pub(super) fn focused_seam_segment(seam: Rect, pane: Rect) -> Option<Rect> {
     if seam.x == pane.x + pane.width || seam.x + seam.width == pane.x {
         let y0 = seam.y.max(pane.y);
         let y1 = (seam.y + seam.height).min(pane.y + pane.height);
         if y0 < y1 {
-            return Some(ratatui::layout::Rect {
+            return Some(Rect {
                 y: y0,
                 height: y1 - y0,
                 ..seam
@@ -400,7 +394,7 @@ pub(super) fn focused_seam_segment(
         let x0 = seam.x.max(pane.x);
         let x1 = (seam.x + seam.width).min(pane.x + pane.width);
         if x0 < x1 {
-            return Some(ratatui::layout::Rect {
+            return Some(Rect {
                 x: x0,
                 width: x1 - x0,
                 ..seam
@@ -419,7 +413,7 @@ pub(super) fn focused_seam_segment(
 /// screen origin: the screen edge carries no seam, so there is no junction
 /// there to color. Coordinates past the far screen edge are harmless — the
 /// draw loop's buffer clamp never visits them.
-pub(super) fn focused_pane_corners(pane: ratatui::layout::Rect) -> [Option<(u16, u16)>; 4] {
+pub(super) fn focused_pane_corners(pane: Rect) -> [Option<(u16, u16)>; 4] {
     let x0 = pane.x.checked_sub(1);
     let x1 = pane.x.checked_add(pane.width);
     let y0 = pane.y.checked_sub(1);

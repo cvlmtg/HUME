@@ -1,5 +1,6 @@
 use super::*;
 use crate::editor::commands::open_pane;
+use hume_grid::Rect;
 use pretty_assertions::assert_eq;
 
 // ── Multi-pane contract tests ──────────────────────────────────────────────────
@@ -744,7 +745,7 @@ fn zero_height_render_does_not_panic() {
     use super::render_snapshot::render_to_styled_string;
 
     let mut ed = editor_from("-[a]>bc\n");
-    let rect = ratatui::layout::Rect::new(0, 0, 20, 0);
+    let rect = Rect::new(0, 0, 20, 0);
     assert_eq!(render_to_styled_string(&mut ed, rect), "");
 }
 
@@ -759,7 +760,7 @@ fn vsplit_renders_content_in_both_halves() {
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
     ed.execute_typed("vsplit", None).unwrap();
 
-    let rect = ratatui::layout::Rect::new(0, 0, 20, 4);
+    let rect = Rect::new(0, 0, 20, 4);
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 
@@ -776,7 +777,7 @@ fn split_then_vsplit_renders_t_junction_glyph() {
     ed.execute_typed("split", None).unwrap();
     ed.execute_typed("vsplit", None).unwrap();
 
-    let rect = ratatui::layout::Rect::new(0, 0, 20, 8);
+    let rect = Rect::new(0, 0, 20, 8);
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 
@@ -801,7 +802,7 @@ fn grid_of_four_panes_renders_cross_junction_glyph() {
     ed.switch_focused_pane(pid_b);
     ed.execute_typed("vsplit", None).unwrap(); // B/C side by side — bottom row.
 
-    let rect = ratatui::layout::Rect::new(0, 0, 20, 8);
+    let rect = Rect::new(0, 0, 20, 8);
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 
@@ -824,7 +825,7 @@ fn insert_mode_hides_cursor_only_in_focused_pane() {
     ed.feed_key(key('i'));
     assert_eq!(ed.state.mode(), Mode::Insert, "sanity: entered Insert mode");
 
-    let rect = ratatui::layout::Rect::new(0, 0, 20, 4);
+    let rect = Rect::new(0, 0, 20, 4);
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 
@@ -1471,7 +1472,7 @@ fn vsplit_dividers_off_tiles_edge_to_edge_and_still_dims() {
     ed.state.settings.pane_dividers = false;
     ed.execute_typed("vsplit", None).unwrap();
 
-    let rect = ratatui::layout::Rect::new(0, 0, 20, 4);
+    let rect = Rect::new(0, 0, 20, 4);
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 

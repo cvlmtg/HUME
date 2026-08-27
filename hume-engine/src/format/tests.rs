@@ -1138,7 +1138,7 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
     // summary, an inlay hint's `'after` anchor on the last char, etc.)
     // must go through the same per-grapheme cell emission as a mid-line
     // insert — one Virtual cell per grapheme cluster, not a single wide
-    // cell whose `symbol` a ratatui `Cell` can only paint at one column.
+    // cell whose text a `Cell` can only paint at one column.
     let rope = Rope::from_str("abc");
     let inserts = vec![InlineInsert {
         byte_offset: 3, // == line_str.len(): never matched by the in-loop

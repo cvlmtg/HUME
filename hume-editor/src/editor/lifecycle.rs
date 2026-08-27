@@ -1,3 +1,4 @@
+use hume_grid::{Position, Rect};
 use std::io;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -7,7 +8,8 @@ use termina::event::{Event as TerminalEvent, KeyEvent, KeyEventKind};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, RenderContext};
 use hume_engine::types::EditorMode;
 
-use hume_platform::terminal::{SharedTerm, Term};
+use hume_platform::screen::Screen;
+use hume_platform::terminal::SharedTerm;
 
 use super::event::EditorEvent;
 use super::{Editor, Mode};
@@ -359,7 +361,7 @@ impl Editor {
     /// plus `tests/events.rs`' `:wq`-fires-`OnBufferSave` regression test,
     /// which covers the drain but not the loop ordering — recorded here
     /// rather than faked with a shape-assertion test.
-    pub(crate) fn run(&mut self, term: &mut Term) -> io::Result<()> {
+    pub(crate) fn run(&mut self, screen: &mut Screen) -> io::Result<()> {
         // Marks that this Editor now owns the terminal — dispatch's
         // inline-output bracket (mod.rs) checks this to skip alt-screen
         // toggling and the "press any key" block outside the event loop.
@@ -394,10 +396,11 @@ impl Editor {
                 break;
             }
 
-            // An inline-output command toggled the alt-screen, invalidating ratatui's
-            // diff cache; force a full repaint so the editor chrome is restored cleanly.
+            // An inline-output command toggled the alt-screen, so what the
+            // terminal shows no longer matches the front buffer; repaint in
+            // full rather than diffing against a stale picture of the screen.
             if std::mem::take(&mut self.state.force_full_redraw) {
-                let _ = term.clear();
+                screen.invalidate();
             }
 
             // ── 1. Sync geometry, then settle (single sync point) ────────────
@@ -407,8 +410,8 @@ impl Editor {
             // `prepare_frame`'s step 0 re-partitions from this same terminal
             // size again, after `settle`, so a bottom-band height change made
             // during the drain lands in this frame's render too.
-            let size = term.size()?;
-            self.sync_viewport_dims(size.width, size.height);
+            let (term_width, term_height) = screen.size()?;
+            self.sync_viewport_dims(term_width, term_height);
             self.settle();
             // Observed here, downstream of `settle()` — not right after
             // dispatch. `should_quit` is also checked after dispatch below
@@ -430,8 +433,8 @@ impl Editor {
             let cursor_screen = if let Some(mb) = &self.state.minibuf {
                 // Minibuf active (Command / Search): place the terminal cursor
                 // in the statusline at the minibuf edit position.
-                let statusline_row = size.height.saturating_sub(1);
-                Some((mb.statusline_cursor_x(), statusline_row))
+                let statusline_row = term_height.saturating_sub(1);
+                Some(Position::new(mb.statusline_cursor_x(), statusline_row))
             } else if self.state.mode().cursor_is_bar() {
                 // Insert / Select: place the terminal cursor at the document
                 // head, where `prepare_frame`'s scroll step already resolved it
@@ -449,7 +452,9 @@ impl Editor {
                     .pane_rect(self.state.focused_pane_id)
                     .expect("focused pane must have a rect after prepare_frame");
                 ctx.cursor_content_pos.map(|(content_x, row)| {
-                    super::mouse::content_pos_to_screen(content_x, row, gutter_w, pane_rect)
+                    let (x, y) =
+                        super::mouse::content_pos_to_screen(content_x, row, gutter_w, pane_rect);
+                    Position::new(x, y)
                 })
             } else {
                 None
@@ -460,17 +465,14 @@ impl Editor {
             // Terminals that don't support DEC 2026 silently ignore the
             // sequence — hence `let _ =` rather than `?`.
             let _ = hume_platform::terminal::begin_synchronized_update(&shared);
-            term.draw(|frame| {
-                self.render_into(frame.area(), frame.buffer_mut(), &mut ctx);
-                if let Some((x, y)) = cursor_screen {
-                    frame.set_cursor_position((x, y));
-                }
-            })?;
+            let grid = screen.frame(term_width, term_height);
+            self.render_into(Rect::new(0, 0, term_width, term_height), grid, &mut ctx);
+            screen.present(cursor_screen)?;
 
             // ── 2b. Cursor shape ──────────────────────────────────────────────
-            // Emitted *after* draw so it's the last escape sequence the terminal
-            // sees before we block — ratatui's ShowCursor flush can otherwise
-            // reset the shape on some terminals.
+            // Emitted *after* the frame so it's the last escape sequence the
+            // terminal sees before we block — the show-cursor sequence closing
+            // a frame can otherwise reset the shape on some terminals.
             let _ = hume_platform::terminal::set_cursor_shape(
                 &shared,
                 self.state.mode().cursor_is_bar(),

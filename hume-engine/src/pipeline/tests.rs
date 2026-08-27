@@ -1,7 +1,7 @@
+use hume_grid::{Grid, Position, Rect, Rgb};
 use std::collections::HashMap;
 
 use super::*;
-use ratatui::layout::Rect;
 
 use super::layout::split_rect;
 use crate::providers::{
@@ -55,14 +55,14 @@ fn virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
     styles_map.insert(
         "hint",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Red),
+            fg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
     styles_map.insert(
         "ui.virtual",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Blue),
+            fg: Some(Rgb(0, 0, 255)),
             ..Default::default()
         },
     );
@@ -95,19 +95,19 @@ fn virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
         default_gutter_scope: crate::types::ScopeId(0),
     };
     let mut scratch = FrameScratch::new();
-    let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
     render_pane(&pane_ctx, &mut scratch, &mut buf);
 
-    let scoped_cell = buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap();
+    let scoped_cell = buf.cell(0, 0).unwrap();
     assert_eq!(
-        scoped_cell.fg,
-        ratatui::style::Color::Red,
+        scoped_cell.style().fg,
+        Some(Rgb(255, 0, 0)),
         "grapheme with Some(scope) resolves that scope's style"
     );
-    let fallback_cell = buf.cell(ratatui::layout::Position { x: 1, y: 0 }).unwrap();
+    let fallback_cell = buf.cell(1, 0).unwrap();
     assert_eq!(
-        fallback_cell.fg,
-        ratatui::style::Color::Blue,
+        fallback_cell.style().fg,
+        Some(Rgb(0, 0, 255)),
         "grapheme with no scope falls back to ui.virtual_text"
     );
 }
@@ -151,10 +151,10 @@ fn virtual_row_resolves_scopes_from_unsorted_segments() {
     let scopes: [crate::types::ScopeId; 4] =
         std::array::from_fn(|i| registry.intern(scope_names[i]));
     let colors = [
-        ratatui::style::Color::Red,
-        ratatui::style::Color::Green,
-        ratatui::style::Color::Yellow,
-        ratatui::style::Color::Magenta,
+        Rgb(255, 0, 0),
+        Rgb(0, 255, 0),
+        Rgb(255, 255, 0),
+        Rgb(255, 0, 255),
     ];
     let mut styles_map = HashMap::new();
     for (name, color) in scope_names.iter().zip(colors) {
@@ -195,15 +195,14 @@ fn virtual_row_resolves_scopes_from_unsorted_segments() {
         default_gutter_scope: crate::types::ScopeId(0),
     };
     let mut scratch = FrameScratch::new();
-    let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
     render_pane(&pane_ctx, &mut scratch, &mut buf);
 
     for (x, color) in colors.into_iter().enumerate() {
-        let cell = buf
-            .cell(ratatui::layout::Position { x: x as u16, y: 0 })
-            .unwrap();
+        let cell = buf.cell(x as u16, 0).unwrap();
         assert_eq!(
-            cell.fg, color,
+            cell.style().fg,
+            Some(color),
             "grapheme {x} resolves its scope regardless of segment emission order"
         );
     }
@@ -243,10 +242,7 @@ impl DecorationSource for FixedVirtualLineSource {
 /// "bbbb", "cccc" (each grapheme is 1 column, so Soft splits at the exact
 /// column with no backtracking). `top_row_offset` controls how many of
 /// those wrap rows are already scrolled past.
-fn render_wrapped_pane_with_virtual_line(
-    top_row_offset: u16,
-    anchor: VirtualLineAnchor,
-) -> ratatui::buffer::Buffer {
+fn render_wrapped_pane_with_virtual_line(top_row_offset: u16, anchor: VirtualLineAnchor) -> Grid {
     let rope = ropey::Rope::from_str("aaaabbbbcccc\nz\n");
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
@@ -276,16 +272,13 @@ fn render_wrapped_pane_with_virtual_line(
         default_gutter_scope: crate::types::ScopeId(0),
     };
     let mut scratch = FrameScratch::new();
-    let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
     render_pane(&pane_ctx, &mut scratch, &mut buf);
     buf
 }
 
-fn cell_symbol(buf: &ratatui::buffer::Buffer, x: u16, y: u16) -> String {
-    buf.cell(ratatui::layout::Position { x, y })
-        .unwrap()
-        .symbol()
-        .to_string()
+fn cell_symbol(buf: &Grid, x: u16, y: u16) -> String {
+    buf.cell(x, y).unwrap().text().to_string()
 }
 
 #[test]
@@ -403,11 +396,7 @@ impl DecorationSource for MultiBeforeLine {
 
 /// Line 0 is "x" (one unwrapped row) with `n` `Before(0)` virtual rows
 /// stacked above it, viewed through a viewport `height` rows tall.
-fn render_pane_with_n_before_lines(
-    top_row_offset: u16,
-    n: usize,
-    height: u16,
-) -> ratatui::buffer::Buffer {
+fn render_pane_with_n_before_lines(top_row_offset: u16, n: usize, height: u16) -> Grid {
     let rope = ropey::Rope::from_str("x\ny\n");
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
@@ -437,7 +426,7 @@ fn render_pane_with_n_before_lines(
         default_gutter_scope: crate::types::ScopeId(0),
     };
     let mut scratch = FrameScratch::new();
-    let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
     render_pane(&pane_ctx, &mut scratch, &mut buf);
     buf
 }
@@ -554,7 +543,7 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
         default_gutter_scope,
     };
     let mut scratch = FrameScratch::new();
-    let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
     render_pane(&pane_ctx, &mut scratch, &mut buf);
 
     // Gutter width 5 -> usable 4 columns; a small real_id fits comfortably.
@@ -605,7 +594,7 @@ fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
         default_gutter_scope: crate::types::ScopeId(0),
     };
     let mut scratch = FrameScratch::new();
-    let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
     render_pane(&pane_ctx, &mut scratch, &mut buf);
 
     let expected = ["中", "中", " ", "中"];
@@ -651,7 +640,7 @@ fn scrolled_pane_renders_from_top_line_onward() {
         default_gutter_scope: crate::types::ScopeId(0),
     };
     let mut scratch = FrameScratch::new();
-    let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
     render_pane(&pane_ctx, &mut scratch, &mut buf);
 
     assert_eq!(cell_symbol(&buf, 0, 0), "c");
@@ -722,7 +711,7 @@ fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
         default_gutter_scope,
     };
     let mut scratch = FrameScratch::new();
-    let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
     render_pane(&pane_ctx, &mut scratch, &mut buf);
 
     // Row 1 is a Filler row (past the single real line) — its gutter
@@ -934,7 +923,7 @@ fn find_containing_matches_collect_rects_into_by_position() {
 
     // One interior point per leaf — same pane and rect either way.
     for &(pid, r) in &collected {
-        let pos = ratatui::layout::Position::new(r.x, r.y);
+        let pos = Position::new(r.x, r.y);
         assert_eq!(
             tree.find_containing(pos, area, true),
             Some((pid, r)),
@@ -943,7 +932,7 @@ fn find_containing_matches_collect_rects_into_by_position() {
     }
     // A point in the horizontal seam column (x=49, reserved by the a|bc
     // split) falls inside no leaf's rect.
-    let seam_pos = ratatui::layout::Position::new(49, 0);
+    let seam_pos = Position::new(49, 0);
     assert!(collected.iter().all(|&(_, r)| !r.contains(seam_pos)));
     assert_eq!(tree.find_containing(seam_pos, area, true), None);
 }
@@ -1349,14 +1338,14 @@ impl crate::providers::BottomBandProvider for FixedHeightDrawer {
         self.0.min(max)
     }
 
-    fn render(&self, _area: Rect, _theme: &Theme, _buf: &mut ratatui::buffer::Buffer) {}
+    fn render(&self, _area: Rect, _theme: &Theme, _canvas: &mut crate::render::Canvas) {}
 }
 
 /// A no-op tab bar — only its `is_some()` presence matters to `pane_area`.
 struct NoopTabBar;
 
 impl crate::providers::TabBarProvider for NoopTabBar {
-    fn render(&self, _area: Rect, _theme: &Theme, _buf: &mut ratatui::buffer::Buffer) {}
+    fn render(&self, _area: Rect, _theme: &Theme, _canvas: &mut crate::render::Canvas) {}
 }
 
 #[test]

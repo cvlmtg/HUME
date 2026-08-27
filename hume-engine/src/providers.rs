@@ -2,6 +2,9 @@ use std::any::Any;
 use std::borrow::Cow;
 
 use bitflags::bitflags;
+use hume_grid::Rect;
+
+use crate::render::Canvas;
 
 use crate::builtins::line_number::{LineNumberColumn, LineNumberStyle};
 use crate::builtins::sign_column::SignColumn;
@@ -290,16 +293,11 @@ pub trait DecorationSource {
 // ---------------------------------------------------------------------------
 
 /// An overlay rendered on top of the content area after the main pipeline.
-/// Writes directly into the ratatui buffer — last registration wins z-order.
+/// Last registration wins z-order.
 pub trait OverlayProvider {
     fn is_active(&self) -> bool;
 
-    fn render(
-        &self,
-        pane_rect: ratatui::layout::Rect,
-        theme: &crate::theme::Theme,
-        buf: &mut ratatui::buffer::Buffer,
-    );
+    fn render(&self, pane_rect: Rect, theme: &crate::theme::Theme, canvas: &mut Canvas);
 }
 
 // ---------------------------------------------------------------------------
@@ -309,23 +307,13 @@ pub trait OverlayProvider {
 /// Renders the statusline (bottom row of the terminal area).
 /// The engine reserves one row at the bottom for the statusline when present.
 pub trait StatuslineProvider {
-    fn render(
-        &self,
-        area: ratatui::layout::Rect,
-        theme: &crate::theme::Theme,
-        buf: &mut ratatui::buffer::Buffer,
-    );
+    fn render(&self, area: Rect, theme: &crate::theme::Theme, canvas: &mut Canvas);
 }
 
 /// Renders the tab bar (top row of the terminal area).
 /// The engine reserves one row at the top for the tab bar when present.
 pub trait TabBarProvider {
-    fn render(
-        &self,
-        area: ratatui::layout::Rect,
-        theme: &crate::theme::Theme,
-        buf: &mut ratatui::buffer::Buffer,
-    );
+    fn render(&self, area: Rect, theme: &crate::theme::Theme, canvas: &mut Canvas);
 }
 
 /// Renders a bottom chrome band, directly above the statusline row (or
@@ -346,12 +334,7 @@ pub trait BottomBandProvider {
     /// a fixed constant, so a short list doesn't reserve a half-screen band.
     fn height(&self, max: u16) -> u16;
 
-    fn render(
-        &self,
-        area: ratatui::layout::Rect,
-        theme: &crate::theme::Theme,
-        buf: &mut ratatui::buffer::Buffer,
-    );
+    fn render(&self, area: Rect, theme: &crate::theme::Theme, canvas: &mut Canvas);
 }
 
 // ---------------------------------------------------------------------------

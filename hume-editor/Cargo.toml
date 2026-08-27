@@ -24,12 +24,7 @@ rustc-hash.workspace = true
 steel-core = { version = "0.8.2", features = ["custom-hash"] }
 ropey.workspace = true
 unicode-segmentation.workspace = true
-ratatui.workspace = true
-# Unused directly: ratatui's layout-cache feature needs critical-section's std
-# backend registered (no_std by default, otherwise a link error on Windows).
-# Registered here, in the binary crate, since the backend choice is forced on
-# the whole dependency graph and is a final-binary decision.
-critical-section.workspace = true
+hume-grid = { path = "../hume-grid" }
 clap = { version = "4.6.1", features = ["derive"] }
 termina = "0.3.3"
 regex-cursor = "0.1.5"

@@ -1,15 +1,15 @@
+use hume_grid::Rgb;
 use std::collections::HashMap;
 
 use hume_engine::theme::ScopeRegistry;
 use hume_engine::types::{EditorMode, ResolvedStyle, Scope};
-use ratatui::style::{Color, Modifier, Style};
 
 use super::*;
 
 fn make_theme_with_statusline(
-    base_fg: Color,
-    base_bg: Color,
-    insert_fg: Color,
+    base_fg: Rgb,
+    base_bg: Rgb,
+    insert_fg: Rgb,
 ) -> hume_engine::theme::Theme {
     let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
     styles.insert(
@@ -75,7 +75,7 @@ fn embedded_default_matches_sand_toml_on_disk() {
     // `ui.text` must fold into `theme.default` — the base style every
     // plain-text cell starts from (see `style::apply_styles`) — so
     // unhighlighted text carries an explicit color the focus-dimming
-    // blend can act on instead of escaping it as `Color::Reset`.
+    // blend can act on instead of escaping it as `Rgb::Reset`.
     assert_eq!(
         embedded.default, from_disk.default,
         "embedded sand.toml's default style (ui.text fold) disagrees with the on-disk file"
@@ -84,20 +84,20 @@ fn embedded_default_matches_sand_toml_on_disk() {
 
 #[test]
 fn from_theme_reads_statusline_scope() {
-    let theme = make_theme_with_statusline(Color::Red, Color::Green, Color::Cyan);
+    let theme = make_theme_with_statusline(Rgb(255, 0, 0), Rgb(0, 255, 0), Rgb(0, 255, 255));
 
-    // Independent oracle: expected values come from the input scopes, not from
-    // from_theme. ResolvedStyle -> ratatui::Style is fully-specifying (every
-    // modifier not explicitly enabled is explicitly turned off), so a plain
-    // fg/bg style also clears every modifier bit.
-    let want_base = Style::default()
-        .fg(Color::Red)
-        .bg(Color::Green)
-        .remove_modifier(Modifier::all());
-    let want_insert = Style::default()
-        .fg(Color::Cyan)
-        .bg(Color::Green)
-        .remove_modifier(Modifier::all());
+    // Independent oracle: expected values come from the input scopes, not
+    // from `from_theme`. A scope that sets only fg/bg carries no modifiers.
+    let want_base = ResolvedStyle {
+        fg: Some(Rgb(255, 0, 0)),
+        bg: Some(Rgb(0, 255, 0)),
+        ..Default::default()
+    };
+    let want_insert = ResolvedStyle {
+        fg: Some(Rgb(0, 255, 255)),
+        bg: Some(Rgb(0, 255, 0)),
+        ..Default::default()
+    };
 
     // This fixture defines no "ui.statusline.normal" entry, so Normal falls
     // back to the base "ui.statusline" style via the dot-fallback chain.
@@ -120,19 +120,20 @@ fn from_theme_fallback_to_statusline_when_mode_missing() {
     styles.insert(
         "ui.statusline",
         ResolvedStyle {
-            fg: Some(Color::White),
-            bg: Some(Color::DarkGray),
+            fg: Some(Rgb(255, 255, 255)),
+            bg: Some(Rgb(64, 64, 64)),
             ..Default::default()
         },
     );
     let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
 
     // Fully-specifying: a plain fg/bg style also clears every modifier bit
-    // (see the `From<ResolvedStyle> for ratatui::style::Style` contract).
-    let want = Style::default()
-        .fg(Color::White)
-        .bg(Color::DarkGray)
-        .remove_modifier(Modifier::all());
+    // (see the `From<ResolvedStyle> for ResolvedStyle` contract).
+    let want = ResolvedStyle {
+        fg: Some(Rgb(255, 255, 255)),
+        bg: Some(Rgb(64, 64, 64)),
+        ..Default::default()
+    };
     for mode in [
         EditorMode::Normal,
         EditorMode::Insert,
@@ -158,28 +159,30 @@ fn separator_scope_honored_when_defined() {
     styles.insert(
         "ui.statusline",
         ResolvedStyle {
-            fg: Some(Color::White),
-            bg: Some(Color::DarkGray),
+            fg: Some(Rgb(255, 255, 255)),
+            bg: Some(Rgb(64, 64, 64)),
             ..Default::default()
         },
     );
     styles.insert(
         "ui.statusline.separator",
         ResolvedStyle {
-            fg: Some(Color::Yellow),
+            fg: Some(Rgb(255, 255, 0)),
             ..Default::default()
         },
     );
     let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
     let colors = EditorColors::from_theme(&theme, Some(EditorMode::Normal));
 
-    let want_base = Style::default()
-        .fg(Color::White)
-        .bg(Color::DarkGray)
-        .remove_modifier(Modifier::all());
-    let want_separator = Style::default()
-        .fg(Color::Yellow)
-        .remove_modifier(Modifier::all());
+    let want_base = ResolvedStyle {
+        fg: Some(Rgb(255, 255, 255)),
+        bg: Some(Rgb(64, 64, 64)),
+        ..Default::default()
+    };
+    let want_separator = ResolvedStyle {
+        fg: Some(Rgb(255, 255, 0)),
+        ..Default::default()
+    };
 
     assert_eq!(colors.statusline_separator, want_separator);
     assert_eq!(colors.statusline, want_base);
@@ -197,16 +200,16 @@ fn separator_falls_back_to_the_active_row_style_not_the_base_scope_when_undefine
     styles.insert(
         "ui.statusline",
         ResolvedStyle {
-            fg: Some(Color::White),
-            bg: Some(Color::DarkGray),
+            fg: Some(Rgb(255, 255, 255)),
+            bg: Some(Rgb(64, 64, 64)),
             ..Default::default()
         },
     );
     styles.insert(
         "ui.statusline.insert",
         ResolvedStyle {
-            fg: Some(Color::Black),
-            bg: Some(Color::Cyan),
+            fg: Some(Rgb(0, 0, 0)),
+            bg: Some(Rgb(0, 255, 255)),
             ..Default::default()
         },
     );
@@ -214,10 +217,11 @@ fn separator_falls_back_to_the_active_row_style_not_the_base_scope_when_undefine
     let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
     let colors = EditorColors::from_theme(&theme, Some(EditorMode::Insert));
 
-    let want_insert = Style::default()
-        .fg(Color::Black)
-        .bg(Color::Cyan)
-        .remove_modifier(Modifier::all());
+    let want_insert = ResolvedStyle {
+        fg: Some(Rgb(0, 0, 0)),
+        bg: Some(Rgb(0, 255, 255)),
+        ..Default::default()
+    };
 
     assert_eq!(
         colors.statusline, want_insert,
@@ -243,29 +247,31 @@ fn from_theme_without_a_mode_reads_the_base_scope() {
     styles.insert(
         "ui.statusline",
         ResolvedStyle {
-            fg: Some(Color::White),
-            bg: Some(Color::DarkGray),
+            fg: Some(Rgb(255, 255, 255)),
+            bg: Some(Rgb(64, 64, 64)),
             ..Default::default()
         },
     );
     styles.insert(
         "ui.statusline.normal",
         ResolvedStyle {
-            fg: Some(Color::Black),
-            bg: Some(Color::Blue),
+            fg: Some(Rgb(0, 0, 0)),
+            bg: Some(Rgb(0, 0, 255)),
             ..Default::default()
         },
     );
     let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
 
-    let want_base = Style::default()
-        .fg(Color::White)
-        .bg(Color::DarkGray)
-        .remove_modifier(Modifier::all());
-    let want_normal = Style::default()
-        .fg(Color::Black)
-        .bg(Color::Blue)
-        .remove_modifier(Modifier::all());
+    let want_base = ResolvedStyle {
+        fg: Some(Rgb(255, 255, 255)),
+        bg: Some(Rgb(64, 64, 64)),
+        ..Default::default()
+    };
+    let want_normal = ResolvedStyle {
+        fg: Some(Rgb(0, 0, 0)),
+        bg: Some(Rgb(0, 0, 255)),
+        ..Default::default()
+    };
 
     assert_eq!(EditorColors::from_theme(&theme, None).statusline, want_base);
     assert_eq!(

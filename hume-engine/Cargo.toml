@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+hume-grid = { path = "../hume-grid" }
 hume-platform = { path = "../hume-platform" }
 hume-rope = { path = "../hume-rope" }
 ropey.workspace = true
 unicode-segmentation.workspace = true
-ratatui.workspace = true
 bitflags = "2"
 slotmap = "1"
 rustc-hash.workspace = true

@@ -6,6 +6,7 @@
 // Requires scripts/fetch-test-grammars.sh (markdown) for the two tests that
 // need a real grammar; the fallback test needs no fixture.
 
+use hume_grid::Rect;
 use std::path::Path;
 
 use super::*;
@@ -93,9 +94,9 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
     // The ATX heading marker ("#") and the heading text carry different
     // scopes in the real markdown grammar's highlights.scm, so a correctly
     // highlighted line must coalesce into at least two distinct-style runs.
-    // Asserting against the popup's own *base* style (not `Style::default`,
+    // Asserting against the popup's own *base* style (not `ResolvedStyle::default`,
     // which the base style already isn't) is the real oracle here — every
-    // run trivially differs from `Style::default` regardless of whether any
+    // run trivially differs from `ResolvedStyle::default` regardless of whether any
     // tree-sitter span was ever applied, which would make this assertion
     // pass even if highlighting were completely broken.
     assert!(
@@ -132,8 +133,6 @@ fn markdown_popup_paints_per_run_styles() {
         r##"(define-command! "go" "" (lambda () (show-popup! "# heading\n\nplain text" #:lang "markdown")))"##,
     );
     type_cmd(&mut ed, ":go");
-
-    use ratatui::layout::Rect;
     let rect = Rect::new(0, 0, 30, 10);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);
@@ -207,8 +206,6 @@ fn docked_popup_survives_a_multiline_capture_node() {
     ed.sync_viewport_dims(40, 10);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-
-    use ratatui::layout::Rect;
     let rect = Rect::new(0, 0, 40, 10);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);

@@ -6,12 +6,10 @@
 //! is called.  The snapshot pattern (same as `ScopedHighlighter`) avoids any
 //! borrow-checker conflicts between the editor and the render pipeline.
 
+use hume_grid::Rect;
 use std::sync::{Arc, RwLock};
 
 use crate::lock_ext::LockExt;
-
-use ratatui::buffer::Buffer as ScreenBuf;
-use ratatui::layout::Rect;
 
 use hume_engine::providers::OverlayProvider;
 use hume_engine::render::Canvas;
@@ -50,7 +48,7 @@ impl OverlayProvider for MinibufCompletionOverlay {
         self.data.read_or_panic().is_some()
     }
 
-    fn render(&self, pane_area: Rect, theme: &Theme, buf: &mut ScreenBuf) {
+    fn render(&self, pane_area: Rect, theme: &Theme, canvas: &mut Canvas) {
         let guard = self.data.read_or_panic();
         let Some(view) = guard.as_ref() else { return };
 
@@ -70,10 +68,8 @@ impl OverlayProvider for MinibufCompletionOverlay {
             .anchor_x
             .saturating_sub(1)
             .min(pane_area.x + pane_area.width.saturating_sub(outer_w));
-
-        let mut canvas = Canvas::new(buf, theme, None);
         draw_menu_box(
-            &mut canvas,
+            canvas,
             Rect::new(popup_x, popup_y, outer_w, outer_h),
             &view.rows,
             Some(selected),

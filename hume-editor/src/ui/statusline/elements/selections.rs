@@ -1,6 +1,5 @@
+use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
-
-use ratatui::style::Style;
 
 use super::StatuslineElement;
 use crate::editor::Editor;
@@ -13,7 +12,7 @@ impl StatuslineElement for SelectionsElement {
 
     fn read(_editor: &Editor) -> Self::Data {}
 
-    fn format(_data: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
+    fn format(_data: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
         (Cow::Borrowed(""), colors.statusline)
     }
 }

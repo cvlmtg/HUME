@@ -5,9 +5,8 @@
 //! directory/path conventions. Each sub-module is a narrow surface for one
 //! concern:
 //!
-//! - [`terminal`] — raw-mode lifecycle, ratatui `Terminal` type alias,
-//!   cursor shape/colour, kitty keyboard protocol, synchronized updates,
-//!   and the inline-subprocess output flow.
+//! - [`terminal`] — raw-mode lifecycle, cursor shape/colour, kitty keyboard
+//!   protocol, synchronized updates, and the inline-subprocess output flow.
 //! - [`screen`] — double-buffered frame presentation: the cell diff and the
 //!   escape-sequence emitter that carries a composed frame to the terminal.
 //! - [`io`] — atomic file writes that preserve permissions and ownership.

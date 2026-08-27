@@ -17,6 +17,7 @@
 // for those scenarios: a Steel-level call (async callback, a bound
 // command), not a keystroke a full-modal picker would eat.
 
+use hume_grid::Rect;
 use std::path::Path;
 
 use super::*;
@@ -417,7 +418,7 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
     type_cmd(&mut ed, ":go");
     assert!(ed.state.config.picker.is_some(), "sanity: picker open");
 
-    let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
+    let rect = Rect::new(0, 0, 40, 12);
     let _ = ed.render_to_buf(rect);
 
     // Accept: close_picker queues on_select as a PendingWork::Call.
@@ -470,7 +471,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
     type_cmd(&mut ed, ":go");
     assert!(ed.state.config.picker.is_some(), "sanity: picker open");
 
-    let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
+    let rect = Rect::new(0, 0, 40, 12);
     let _ = ed.render_to_buf(rect);
 
     // Accept: close_picker queues on_select as a PendingWork::Call.

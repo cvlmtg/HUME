@@ -821,7 +821,7 @@ pub(crate) struct VirtualRun<'a> {
 }
 
 /// Push one `Grapheme`/cell per grapheme cluster of `run.text`, not one wide
-/// cell for the whole string: a ratatui `Cell` renders its `symbol` at
+/// cell for the whole string: a `Cell` renders its text at
 /// exactly one column, so packing a multi-character run into a single cell
 /// leaves the columns after the first unwritten by this run — whatever the
 /// compose stage puts there instead (real buffer content) then wins when the

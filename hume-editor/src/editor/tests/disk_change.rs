@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
+use hume_grid::Rect;
 use pretty_assertions::assert_eq;
 
 /// Overwrite `path`'s content with something a different length than
@@ -1612,7 +1613,7 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
     type_cmd(&mut ed, ":go");
     assert!(ed.state.config.picker.is_some(), "sanity: picker open");
 
-    let rect = ratatui::layout::Rect::new(0, 0, 40, 12);
+    let rect = Rect::new(0, 0, 40, 12);
     let _ = ed.render_to_buf(rect);
 
     // Accept: close_picker queues on_select as a PendingWork::Call.

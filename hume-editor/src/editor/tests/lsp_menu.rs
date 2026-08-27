@@ -2,6 +2,7 @@
 // on-select) / (close-menu!), and the Normal/Extend-only key intercept in
 // `Editor::handle_key` (`handle_menu_key`).
 
+use hume_grid::Rect;
 use std::path::Path;
 
 use super::*;
@@ -221,8 +222,6 @@ fn selected_row_renders_with_the_menu_selected_scope() {
     ed.sync_viewport_dims(40, 10);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-
-    use ratatui::layout::Rect;
     let rect = Rect::new(0, 0, 40, 10);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);

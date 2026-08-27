@@ -2,9 +2,10 @@ use super::*;
 use crate::providers::ProviderSet;
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, Selection};
+use hume_grid::Rgb;
 use std::collections::HashMap;
 
-/// Test driver mirroring the live pipeline's Style-stage orchestration
+/// Test driver mirroring the live pipeline's ResolvedStyle-stage orchestration
 /// (`pipeline::pane_render::render_pane`'s row walk): primary-based
 /// `is_head_line`, `rebuild_line_decorations` once per buffer line,
 /// `style_row` per display row.
@@ -123,8 +124,8 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
     styles_map.insert(
         "diff.plus",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Red),
-            bg: Some(ratatui::style::Color::Green),
+            fg: Some(Rgb(255, 0, 0)),
+            bg: Some(Rgb(0, 255, 0)),
             modifiers: crate::types::Modifiers::BOLD,
             ..Default::default()
         },
@@ -150,7 +151,7 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
 
     assert_eq!(
         scratch.styles[0].bg,
-        Some(ratatui::style::Color::Green),
+        Some(Rgb(0, 255, 0)),
         "the tint's background must still apply"
     );
     assert_eq!(
@@ -177,7 +178,7 @@ fn selection_head_overrides_default() {
     styles_map.insert(
         "ui.cursor",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Red),
+            fg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
@@ -195,7 +196,7 @@ fn selection_head_overrides_default() {
     );
 
     // Grapheme at display_col 2 (index 2) should have the cursor style.
-    assert_eq!(scratch.styles[2].fg, Some(ratatui::style::Color::Red));
+    assert_eq!(scratch.styles[2].fg, Some(Rgb(255, 0, 0)));
     // Other graphemes should not.
     assert_eq!(scratch.styles[0].fg, None);
 }
@@ -238,7 +239,7 @@ fn selection_head_on_newline_is_visible() {
     styles_map.insert(
         "ui.cursor",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Red),
+            fg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
@@ -260,13 +261,13 @@ fn selection_head_on_newline_is_visible() {
     // The eol sentinel at index 5 must have the cursor style.
     assert_eq!(
         scratch.styles[5].fg,
-        Some(ratatui::style::Color::Red),
+        Some(Rgb(255, 0, 0)),
         "eol sentinel (head on \\n) must receive cursor styling"
     );
     // The 'o' grapheme (index 4) must NOT have cursor styling (it's in selection, not head).
     assert_ne!(
         scratch.styles[4].fg,
-        Some(ratatui::style::Color::Red),
+        Some(Rgb(255, 0, 0)),
         "grapheme before \\n must not have cursor styling"
     );
 }
@@ -283,7 +284,7 @@ fn selection_range_highlighted() {
     styles_map.insert(
         "ui.selection",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::Red),
+            bg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
@@ -306,12 +307,12 @@ fn selection_range_highlighted() {
     );
     assert_eq!(
         scratch.styles[1].bg,
-        Some(ratatui::style::Color::Red),
+        Some(Rgb(255, 0, 0)),
         "display_col 1 inside selection"
     );
     assert_eq!(
         scratch.styles[2].bg,
-        Some(ratatui::style::Color::Red),
+        Some(Rgb(255, 0, 0)),
         "display_col 2 inside selection"
     );
 }
@@ -332,14 +333,14 @@ fn backward_selection_anchor_cell_highlighted() {
     styles_map.insert(
         "ui.selection",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::Blue),
+            bg: Some(Rgb(0, 0, 255)),
             ..Default::default()
         },
     );
     styles_map.insert(
         "ui.cursor",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::White),
+            fg: Some(Rgb(255, 255, 255)),
             ..Default::default()
         },
     );
@@ -358,18 +359,18 @@ fn backward_selection_anchor_cell_highlighted() {
 
     assert_eq!(
         scratch.styles[0].fg,
-        Some(ratatui::style::Color::White),
+        Some(Rgb(255, 255, 255)),
         "display_col 0 is the head — must have cursor fg"
     );
     assert_eq!(
         scratch.styles[1].bg,
-        Some(ratatui::style::Color::Blue),
+        Some(Rgb(0, 0, 255)),
         "display_col 1 is inside selection — must have selection bg"
     );
     // Regression: display_col 2 is the anchor (highest char), was rendered plain before fix.
     assert_eq!(
         scratch.styles[2].bg,
-        Some(ratatui::style::Color::Blue),
+        Some(Rgb(0, 0, 255)),
         "display_col 2 is the anchor — must have selection bg (regression)"
     );
 }
@@ -389,7 +390,7 @@ fn insert_mode_collapsed_selection_not_highlighted() {
     styles_map.insert(
         "ui.selection",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::Blue),
+            bg: Some(Rgb(0, 0, 255)),
             ..Default::default()
         },
     );
@@ -409,18 +410,18 @@ fn insert_mode_collapsed_selection_not_highlighted() {
     // The cursor cell itself carries Tier-0 cursor styling, not selection bg.
     assert_ne!(
         scratch.styles[1].bg,
-        Some(ratatui::style::Color::Blue),
+        Some(Rgb(0, 0, 255)),
         "display_col 1 is the collapsed cursor — must NOT have selection bg"
     );
     // Neighboring cells are also not highlighted.
     assert_ne!(
         scratch.styles[0].bg,
-        Some(ratatui::style::Color::Blue),
+        Some(Rgb(0, 0, 255)),
         "display_col 0 not highlighted"
     );
     assert_ne!(
         scratch.styles[2].bg,
-        Some(ratatui::style::Color::Blue),
+        Some(Rgb(0, 0, 255)),
         "display_col 2 not highlighted"
     );
 }
@@ -483,7 +484,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
     styles_map.insert(
         "ui.cursorline",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::Green),
+            bg: Some(Rgb(0, 255, 0)),
             ..Default::default()
         },
     );
@@ -502,12 +503,12 @@ fn cursorline_background_applied_to_cursor_line_only() {
 
     assert_eq!(
         scratch.styles[0].bg,
-        Some(ratatui::style::Color::Green),
+        Some(Rgb(0, 255, 0)),
         "line 0 has cursorline bg"
     );
     assert_eq!(
         scratch.styles[1].bg,
-        Some(ratatui::style::Color::Green),
+        Some(Rgb(0, 255, 0)),
         "line 0 has cursorline bg"
     );
     assert_eq!(scratch.styles[2].bg, None, "line 1 has no cursorline bg");
@@ -525,14 +526,14 @@ fn insert_mode_uses_insert_cursor_scope() {
     styles_map.insert(
         "ui.cursor.insert",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Green),
+            fg: Some(Rgb(0, 255, 0)),
             ..Default::default()
         },
     );
     styles_map.insert(
         "ui.cursor",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Red),
+            fg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
@@ -551,7 +552,7 @@ fn insert_mode_uses_insert_cursor_scope() {
 
     assert_eq!(
         scratch.styles[0].fg,
-        Some(ratatui::style::Color::Green),
+        Some(Rgb(0, 255, 0)),
         "Insert uses ui.cursor.insert scope"
     );
 }
@@ -574,7 +575,7 @@ fn insert_head_is_transparent_without_insert_scope() {
     styles_map.insert(
         "ui.cursor",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::Red),
+            bg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
@@ -658,7 +659,7 @@ fn cursorline_applies_only_to_primary_head_line() {
     styles_map.insert(
         "ui.cursorline",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::Blue),
+            bg: Some(Rgb(0, 0, 255)),
             ..Default::default()
         },
     );
@@ -677,7 +678,7 @@ fn cursorline_applies_only_to_primary_head_line() {
 
     assert_eq!(
         scratch.styles[0].bg,
-        Some(ratatui::style::Color::Blue),
+        Some(Rgb(0, 0, 255)),
         "line 0 head line"
     );
     assert_eq!(scratch.styles[1].bg, None, "line 1 no head line");
@@ -731,7 +732,7 @@ fn virtual_rows_keep_default_style() {
     styles_map.insert(
         "ui.cursorline",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::Blue),
+            bg: Some(Rgb(0, 0, 255)),
             ..Default::default()
         },
     );
@@ -770,14 +771,14 @@ fn primary_head_gets_primary_style() {
     styles_map.insert(
         "ui.cursor.primary",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Yellow),
+            fg: Some(Rgb(255, 255, 0)),
             ..Default::default()
         },
     );
     styles_map.insert(
         "ui.cursor",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Red),
+            fg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
@@ -796,12 +797,12 @@ fn primary_head_gets_primary_style() {
 
     assert_eq!(
         scratch.styles[0].fg,
-        Some(ratatui::style::Color::Yellow),
+        Some(Rgb(255, 255, 0)),
         "primary head gets ui.cursor.primary"
     );
     assert_eq!(
         scratch.styles[2].fg,
-        Some(ratatui::style::Color::Red),
+        Some(Rgb(255, 0, 0)),
         "secondary head gets ui.cursor"
     );
     assert_eq!(scratch.styles[1].fg, None, "non-head grapheme unchanged");
@@ -822,14 +823,14 @@ fn primary_selection_gets_primary_style() {
     styles_map.insert(
         "ui.selection.primary",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::Cyan),
+            bg: Some(Rgb(0, 255, 255)),
             ..Default::default()
         },
     );
     styles_map.insert(
         "ui.selection",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::Blue),
+            bg: Some(Rgb(0, 0, 255)),
             ..Default::default()
         },
     );
@@ -849,29 +850,29 @@ fn primary_selection_gets_primary_style() {
     // Primary selection: cols 0 and 1 (bytes 0..2)
     assert_eq!(
         scratch.styles[0].bg,
-        Some(ratatui::style::Color::Cyan),
+        Some(Rgb(0, 255, 255)),
         "display_col 0 in primary selection"
     );
     assert_eq!(
         scratch.styles[1].bg,
-        Some(ratatui::style::Color::Cyan),
+        Some(Rgb(0, 255, 255)),
         "display_col 1 in primary selection"
     );
     // Secondary selection: cols 3 and 4 (bytes 3..5)
     assert_eq!(
         scratch.styles[3].bg,
-        Some(ratatui::style::Color::Blue),
+        Some(Rgb(0, 0, 255)),
         "display_col 3 in secondary selection"
     );
     assert_eq!(
         scratch.styles[4].bg,
-        Some(ratatui::style::Color::Blue),
+        Some(Rgb(0, 0, 255)),
         "display_col 4 in secondary selection"
     );
     // Col 2 is the head of the primary selection — included in the span, so it gets primary bg.
     assert_eq!(
         scratch.styles[2].bg,
-        Some(ratatui::style::Color::Cyan),
+        Some(Rgb(0, 255, 255)),
         "display_col 2 is primary head — must have primary selection bg"
     );
 }
@@ -891,7 +892,7 @@ fn primary_head_falls_back_when_no_primary_scope() {
     styles_map.insert(
         "ui.cursor",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Red),
+            fg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
@@ -911,12 +912,12 @@ fn primary_head_falls_back_when_no_primary_scope() {
     // Both heads get ui.cursor via dot-notation fallback.
     assert_eq!(
         scratch.styles[0].fg,
-        Some(ratatui::style::Color::Red),
+        Some(Rgb(255, 0, 0)),
         "primary falls back to ui.cursor"
     );
     assert_eq!(
         scratch.styles[2].fg,
-        Some(ratatui::style::Color::Red),
+        Some(Rgb(255, 0, 0)),
         "secondary uses ui.cursor"
     );
 }
@@ -995,7 +996,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
     styles_map.insert(
         "ui.cursor",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Red),
+            fg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
@@ -1015,7 +1016,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
     // Selection head at byte 1 → display_col 1 in the first segment.
     assert_eq!(
         scratch.styles[1].fg,
-        Some(ratatui::style::Color::Red),
+        Some(Rgb(255, 0, 0)),
         "selection head at display_col 1 in first segment"
     );
     // Second segment graphemes must NOT have the head style.
@@ -1101,7 +1102,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
     styles_map.insert(
         "ui.selection",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::Blue),
+            bg: Some(Rgb(0, 0, 255)),
             ..Default::default()
         },
     );
@@ -1121,18 +1122,18 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
     // Segment 0: cols 0 and 1 should be highlighted (selection spans bytes 0..2).
     assert_eq!(
         scratch.styles[0].bg,
-        Some(ratatui::style::Color::Blue),
+        Some(Rgb(0, 0, 255)),
         "display_col 0 in selection"
     );
     assert_eq!(
         scratch.styles[1].bg,
-        Some(ratatui::style::Color::Blue),
+        Some(Rgb(0, 0, 255)),
         "display_col 1 in selection"
     );
     // Col 2 is the head of the selection (char 2 is included in [0,2]); it gets selection bg.
     assert_eq!(
         scratch.styles[2].bg,
-        Some(ratatui::style::Color::Blue),
+        Some(Rgb(0, 0, 255)),
         "display_col 2 is selection head — included in inclusive span"
     );
     // Segment 1: no selection highlight at all.
@@ -1178,7 +1179,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
     styles_map.insert(
         "hint",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Red),
+            fg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
@@ -1209,7 +1210,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
 
     assert_eq!(
         scratch.styles[insert_idx].fg,
-        Some(ratatui::style::Color::Red),
+        Some(Rgb(255, 0, 0)),
         "insert cell must carry its own scope's style"
     );
     assert_eq!(
@@ -1244,7 +1245,7 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
     styles_map.insert(
         "ui.virtual.invisible",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Red),
+            fg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
@@ -1269,7 +1270,7 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
         .expect("the bidi override must produce a placeholder cell");
     assert_eq!(
         scratch.styles[placeholder_idx].fg,
-        Some(ratatui::style::Color::Red),
+        Some(Rgb(255, 0, 0)),
         "the placeholder must carry ui.virtual.invisible"
     );
     let a_idx = fmt
@@ -1321,7 +1322,7 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
     styles_map.insert(
         "ui.cursor",
         ResolvedStyle {
-            fg: Some(ratatui::style::Color::Red),
+            fg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
@@ -1350,7 +1351,7 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
     );
     assert_eq!(
         scratch.styles[c_idx].fg,
-        Some(ratatui::style::Color::Red),
+        Some(Rgb(255, 0, 0)),
         "cursor head must land on 'c', not the insert sharing its char_offset"
     );
 
@@ -1361,7 +1362,7 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
         .expect("insert grapheme present");
     assert_ne!(
         scratch.styles[insert_idx].fg,
-        Some(ratatui::style::Color::Red),
+        Some(Rgb(255, 0, 0)),
         "the insert cell itself must not receive cursor styling"
     );
 }
@@ -1397,7 +1398,7 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
     styles_map.insert(
         "ui.selection",
         ResolvedStyle {
-            bg: Some(ratatui::style::Color::Blue),
+            bg: Some(Rgb(0, 0, 255)),
             ..Default::default()
         },
     );
@@ -1439,8 +1440,8 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
     assert_eq!(fmt.graphemes[a_idx].display_col, 1);
     assert_eq!(
         scratch.styles[a_idx].bg,
-        Some(ratatui::style::Color::Blue),
+        Some(Rgb(0, 0, 255)),
         "'a' is the first real grapheme — selection span must start here"
     );
-    assert_eq!(scratch.styles[b_idx].bg, Some(ratatui::style::Color::Blue));
+    assert_eq!(scratch.styles[b_idx].bg, Some(Rgb(0, 0, 255)));
 }

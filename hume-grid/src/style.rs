@@ -16,12 +16,13 @@ use bitflags::bitflags;
 /// cascade that resolves to `None` and a cell that was never given a colour
 /// are the same state, and one type can carry both without ambiguity.
 ///
-/// Writing a cell *replaces* its style rather than merging into it: an
-/// opaque overlay (a completion popup over highlighted code) must not
-/// inherit the bold of whatever it covered. That falls out of storing the
-/// style by value, so unlike a backend whose cell writes are additive, this
-/// needs no "turn off everything not explicitly on" step.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+/// A cell holds one of these outright — storing it replaces whatever the
+/// cell held before, with nothing implicitly inherited. Composition, where a
+/// partial style is resolved against what is already painted, belongs to the
+/// drawing layer above (`hume_engine::render::Canvas`), which is the only
+/// place that knows the difference between "the caller had no opinion" and
+/// "the caller wants the terminal's default".
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ResolvedStyle {
     pub fg: Option<Rgb>,
     pub bg: Option<Rgb>,
@@ -66,7 +67,7 @@ impl ResolvedStyle {
 }
 
 /// Underline variants supported by modern terminals.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub enum UnderlineStyle {
     #[default]
     None,
@@ -79,7 +80,7 @@ pub enum UnderlineStyle {
 bitflags! {
     /// Text modifiers that compose independently. Mirrors Helix's modifier set
     /// (minus `underlined`, which is tracked via `UnderlineStyle`).
-    #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+    #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
     pub struct Modifiers: u8 {
         const BOLD          = 0b0000_0001;
         const ITALIC        = 0b0000_0010;

@@ -7,6 +7,7 @@
 //! instead, so they sync later, from step 7.
 
 use hume_engine::pipeline::RenderContext;
+use hume_grid::Rect;
 
 use super::Editor;
 use crate::lock_ext::LockExt;
@@ -63,7 +64,7 @@ impl Editor {
         &self,
         ctx: &mut RenderContext,
         anchor_char: usize,
-    ) -> Option<((u16, u16), ratatui::layout::Rect, u16, u16)> {
+    ) -> Option<((u16, u16), Rect, u16, u16)> {
         let focused = self.state.focused_pane_id;
         let pane_rect = self.view.pane_rect(focused)?;
         let (_, gutter_w) = self.resolve_pane_settings(focused);
@@ -142,7 +143,7 @@ impl Editor {
             let scroll = model_scroll.min(text.lines.len().saturating_sub(inner_h));
             Some(crate::ui::popup::PopupState {
                 lines: text.lines,
-                rect: ratatui::layout::Rect::new(x, y, outer_w, outer_h),
+                rect: Rect::new(x, y, outer_w, outer_h),
                 selected: None,
                 scroll,
                 styled_rows: text.styled_rows,
@@ -272,7 +273,7 @@ impl Editor {
             };
             Some(crate::ui::popup::PopupState {
                 lines: std::sync::Arc::new(lines),
-                rect: ratatui::layout::Rect::new(x, y, outer_w, outer_h),
+                rect: Rect::new(x, y, outer_w, outer_h),
                 selected,
                 scroll: 0, // ignored: a menu windows around `selected`, not `scroll`
                 styled_rows: None, // menus never highlight per-span, only per-row
@@ -338,7 +339,7 @@ impl Editor {
             };
             Some(crate::ui::popup::PopupState {
                 lines,
-                rect: ratatui::layout::Rect::new(x, y, outer_w, outer_h),
+                rect: Rect::new(x, y, outer_w, outer_h),
                 selected,
                 scroll: 0, // ignored: a menu windows around `selected`, not `scroll`
                 styled_rows: None, // menus never highlight per-span, only per-row

@@ -13,7 +13,7 @@ use hume_engine::pipeline::RenderContext;
 /// this `InlineInsert` into one cell per grapheme so a terminal flush
 /// doesn't clobber it past the first column — covered directly by
 /// `format::tests::trailing_insert_emits_one_cell_per_grapheme` in
-/// `hume-engine`, since a ratatui `Buffer` snapshot here can't observe that
+/// `hume-engine`, since a rendered-grid snapshot here can't observe that
 /// terminal-flush-time truncation.)
 #[test]
 fn full_message_reaches_the_render_provider_untruncated() {

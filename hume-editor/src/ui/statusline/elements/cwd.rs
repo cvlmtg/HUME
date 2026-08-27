@@ -1,7 +1,6 @@
+use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
 use std::path::PathBuf;
-
-use ratatui::style::Style;
 
 use hume_platform::path::display_form;
 
@@ -18,7 +17,7 @@ impl StatuslineElement for CwdElement {
         editor.state.cwd.clone()
     }
 
-    fn format(cwd: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
+    fn format(cwd: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
         (Cow::Owned(display_form(&cwd)), colors.statusline)
     }
 }

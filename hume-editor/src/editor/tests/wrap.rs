@@ -1,4 +1,5 @@
 use super::*;
+use hume_grid::Rect;
 
 use crate::editor::error::CommandError;
 use hume_engine::pane::WrapMode;
@@ -452,7 +453,7 @@ fn wrap_toggle_off_leaves_top_row_offset_for_the_next_frame_to_clamp() {
     // No-wrap: line 0's whole block is 1 row (content only, no providers
     // registered) — the only valid address is row 0, so the next frame's
     // self-heal must pull the stale offset down to it.
-    ed.render_to_buf(ratatui::layout::Rect::new(0, 0, 40, 8));
+    ed.render_to_buf(Rect::new(0, 0, 40, 8));
     assert_eq!(
         focused_pane(&ed).viewport.top_row_offset,
         0,
@@ -481,7 +482,7 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_row_offset_for_the_next_f
         "the raw offset survives the width change untouched"
     );
 
-    ed.render_to_buf(ratatui::layout::Rect::new(0, 0, 40, 8));
+    ed.render_to_buf(Rect::new(0, 0, 40, 8));
     assert_eq!(
         focused_pane(&ed).viewport.top_row_offset,
         0,

@@ -1,6 +1,5 @@
+use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
-
-use ratatui::style::Style;
 
 use super::StatuslineElement;
 use crate::editor::Editor;
@@ -20,7 +19,7 @@ impl StatuslineElement for SearchMatchesElement {
     fn format(
         (match_count, wrapped): Self::Data,
         colors: &EditorColors,
-    ) -> (Cow<'static, str>, Style) {
+    ) -> (Cow<'static, str>, ResolvedStyle) {
         match match_count {
             Some((current, total)) if total > 0 => {
                 let w = if wrapped { "W " } else { "" };

@@ -3,6 +3,7 @@
 // geometry (wrap + flip/clamp) fresh every frame from the focused pane's
 // current rect.
 
+use hume_grid::Rect;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -280,7 +281,6 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
 
 #[test]
 fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame() {
-    use ratatui::layout::Rect;
     let tmp = safe_tempdir();
     // `editor_from` (`Editor::for_testing`) never registers `bottom_bands` —
     // only `Editor::open`'s real startup path does — so a docked popup there
@@ -325,7 +325,7 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
     for y in band_top..rect.height - 1 {
         // rect.height - 1 excludes the statusline row.
         assert!(
-            (0..rect.width).any(|x| buf[(x, y)].symbol() != " "),
+            (0..rect.width).any(|x| buf[(x, y)].text() != " "),
             "row {y} (vacated by the closed band) must be repainted this frame, not left blank"
         );
     }
@@ -333,7 +333,6 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
 
 #[test]
 fn settle_driven_close_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame() {
-    use ratatui::layout::Rect;
     let tmp = safe_tempdir();
     // See the sibling test above: needs `Editor::open`'s real `bottom_bands`
     // registration for the pane-shrinking geometry this test asserts on.
@@ -397,7 +396,7 @@ fn settle_driven_close_repaints_the_rows_a_docked_popup_vacated_on_the_very_next
     );
     for y in band_top..rect.height - 1 {
         assert!(
-            (0..rect.width).any(|x| buf[(x, y)].symbol() != " "),
+            (0..rect.width).any(|x| buf[(x, y)].text() != " "),
             "row {y} (vacated by the closed band) must be repainted this frame, not left blank"
         );
     }
@@ -417,8 +416,6 @@ fn docked_popup_renders_as_a_band_above_the_statusline_and_shrinks_the_pane() {
         r#"(define-command! "go" "" (lambda () (show-popup! "docked hover text" #:anchor 'bottom)))"#,
     );
     type_cmd(&mut ed, ":go");
-
-    use ratatui::layout::Rect;
     let rect = Rect::new(0, 0, 40, 10);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);
@@ -828,8 +825,6 @@ fn scrollable_popup_paints_its_scrolled_window() {
         ),
     );
     type_cmd(&mut ed, ":go");
-
-    use ratatui::layout::Rect;
     let rect = Rect::new(0, 0, 30, 15);
     // Render once to resolve `popup_view` geometry before scrolling —
     // `scroll_popup` reads the previous frame's resolved height, same as
@@ -859,8 +854,6 @@ fn popup_never_paints_outside_the_pane_rect() {
         r#"(define-command! "go" "" (lambda () (show-popup! "hover text")))"#,
     );
     type_cmd(&mut ed, ":go");
-
-    use ratatui::layout::Rect;
     let rect = Rect::new(0, 0, 30, 8);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);

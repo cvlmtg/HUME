@@ -1,3 +1,4 @@
+use hume_grid::Rect;
 // In-buffer completion menu + Insert-mode dispatch: the
 // `handle_completion_key`/`refilter_lsp_completion_after_edit` guard in
 // `mappings/insert.rs`, and `sync_completion_menu_view`'s write side (reusing
@@ -17,7 +18,6 @@ use hume_editing::text::BufferText;
 use hume_engine::format::FormatScratch;
 use hume_engine::pane::WrapMode;
 use hume_engine::pipeline::RenderContext;
-use ratatui::layout::Rect;
 
 fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
     let items_json: Vec<serde_json::Value> = items

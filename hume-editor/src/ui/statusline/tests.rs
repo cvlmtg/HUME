@@ -2,10 +2,11 @@ use super::elements::file_path::{
     shorten_path_to_width, shorten_path_to_width_with, statusline_display_path,
 };
 use super::*;
-use ratatui::style::Style;
+use hume_engine::types::ResolvedStyle;
+use hume_grid::Rgb;
 
-fn s(text: &'static str) -> (Cow<'static, str>, Style) {
-    (Cow::Borrowed(text), Style::default())
+fn s(text: &'static str) -> (Cow<'static, str>, ResolvedStyle) {
+    (Cow::Borrowed(text), ResolvedStyle::default())
 }
 
 // ── section_width ─────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ fn section_width_ascii() {
 #[test]
 fn section_width_cjk() {
     // CJK character is display-width 2.
-    let spans = vec![s("A"), (Cow::Borrowed("中"), Style::default())];
+    let spans = vec![s("A"), (Cow::Borrowed("中"), ResolvedStyle::default())];
     assert_eq!(section_width(&spans), 3);
 }
 
@@ -117,31 +118,30 @@ fn macro_recording_element_named_register() {
 
 fn make_mode_theme() -> hume_engine::theme::Theme {
     use hume_engine::types::ResolvedStyle;
-    use ratatui::style::Color;
     use std::collections::HashMap;
 
     let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
     styles.insert(
         "ui.statusline",
         ResolvedStyle {
-            fg: Some(Color::White),
-            bg: Some(Color::Black),
+            fg: Some(Rgb(255, 255, 255)),
+            bg: Some(Rgb(0, 0, 0)),
             ..Default::default()
         },
     );
     for (scope, color) in [
-        ("ui.statusline.normal", Color::Red),
-        ("ui.statusline.insert", Color::Cyan),
-        ("ui.statusline.extend", Color::Yellow),
-        ("ui.statusline.search", Color::Magenta),
-        ("ui.statusline.command", Color::Green),
-        ("ui.statusline.select", Color::Blue),
+        ("ui.statusline.normal", Rgb(255, 0, 0)),
+        ("ui.statusline.insert", Rgb(0, 255, 255)),
+        ("ui.statusline.extend", Rgb(255, 255, 0)),
+        ("ui.statusline.search", Rgb(255, 0, 255)),
+        ("ui.statusline.command", Rgb(0, 255, 0)),
+        ("ui.statusline.select", Rgb(0, 0, 255)),
     ] {
         styles.insert(
             scope,
             ResolvedStyle {
                 fg: Some(color),
-                bg: Some(Color::Black),
+                bg: Some(Rgb(0, 0, 0)),
                 ..Default::default()
             },
         );
@@ -161,21 +161,20 @@ fn mode_element_uses_row_style_not_a_per_mode_pill() {
     // colors.statusline itself would pass even if from_theme resolved the wrong
     // scope entirely.
     use hume_engine::types::EditorMode;
-    use ratatui::style::Color;
 
     let theme = make_mode_theme();
     for (mode, expected_fg) in [
-        (EditorMode::Normal, Color::Red),
-        (EditorMode::Insert, Color::Cyan),
-        (EditorMode::Extend, Color::Yellow),
-        (EditorMode::Search, Color::Magenta),
-        (EditorMode::Command, Color::Green),
-        (EditorMode::Select, Color::Blue),
+        (EditorMode::Normal, Rgb(255, 0, 0)),
+        (EditorMode::Insert, Rgb(0, 255, 255)),
+        (EditorMode::Extend, Rgb(255, 255, 0)),
+        (EditorMode::Search, Rgb(255, 0, 255)),
+        (EditorMode::Command, Rgb(0, 255, 0)),
+        (EditorMode::Select, Rgb(0, 0, 255)),
     ] {
         let colors = crate::ui::theme::EditorColors::from_theme(&theme, Some(mode));
         let (text, style) = ModeElement::format(mode, &colors);
         assert_eq!(style.fg, Some(expected_fg));
-        assert_eq!(style.bg, Some(Color::Black));
+        assert_eq!(style.bg, Some(Rgb(0, 0, 0)));
         match mode {
             EditorMode::Normal => insta::assert_snapshot!(text, @"NOR"),
             EditorMode::Insert => insta::assert_snapshot!(text, @"INS"),
@@ -193,13 +192,12 @@ fn macro_recording_uses_row_style() {
     // not a fixed accent of its own. Independent oracle, same rationale as
     // mode_element_uses_row_style_not_a_per_mode_pill above.
     use hume_engine::types::EditorMode;
-    use ratatui::style::Color;
 
     let theme = make_mode_theme();
     let colors = crate::ui::theme::EditorColors::from_theme(&theme, Some(EditorMode::Search));
     let (text, style) = MacroRecordingElement::format(Some('q'), &colors);
-    assert_eq!(style.fg, Some(Color::Magenta));
-    assert_eq!(style.bg, Some(Color::Black));
+    assert_eq!(style.fg, Some(Rgb(255, 0, 255)));
+    assert_eq!(style.bg, Some(Rgb(0, 0, 0)));
     insta::assert_snapshot!(text, @"[recording @q]");
 }
 

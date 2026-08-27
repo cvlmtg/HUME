@@ -1,9 +1,8 @@
-use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier};
-
 use super::Editor;
+use hume_engine::types::{Modifiers, ResolvedStyle, UnderlineStyle};
+use hume_grid::{Rect, Rgb};
 
-/// Render `ed` into a `rect`-sized buffer and return a human-readable string.
+/// Render `ed` into a `rect`-sized grid and return a human-readable string.
 ///
 /// Styled runs are wrapped as `<fg=#rrggbb,bg=#rrggbb,bold>text</>`. Unstyled
 /// text is emitted bare. Trailing spaces are stripped per row. Used by snapshot
@@ -12,13 +11,21 @@ pub(crate) fn render_to_styled_string(ed: &mut Editor, rect: Rect) -> String {
     let buf = ed.render_to_buf(rect);
 
     let mut out = String::new();
-    let default_style = ratatui::style::Style::default();
+    let default_style = ResolvedStyle::default();
 
     for y in rect.top()..rect.bottom() {
-        let cells: Vec<(ratatui::style::Style, &str)> = (rect.left()..rect.right())
+        let cells: Vec<(ResolvedStyle, &str)> = (rect.left()..rect.right())
             .map(|x| {
                 let cell = &buf[(x, y)];
-                (cell.style(), cell.symbol())
+                // A wide glyph's second cell holds no text of its own. It
+                // reads as the blank it visually is, so a row's dump is one
+                // entry per column either way.
+                let text = if cell.is_continuation() {
+                    " "
+                } else {
+                    cell.text()
+                };
+                (cell.style(), text)
             })
             .collect();
 
@@ -52,49 +59,33 @@ pub(crate) fn render_to_styled_string(ed: &mut Editor, rect: Rect) -> String {
     out
 }
 
-fn style_tag(style: ratatui::style::Style) -> String {
+fn style_tag(style: ResolvedStyle) -> String {
     let mut parts: Vec<String> = Vec::new();
-    if let Some(s) = style.fg.and_then(color_str) {
-        parts.push(format!("fg={s}"));
+    if let Some(c) = style.fg {
+        parts.push(format!("fg={}", color_str(c)));
     }
-    if let Some(s) = style.bg.and_then(color_str) {
-        parts.push(format!("bg={s}"));
+    if let Some(c) = style.bg {
+        parts.push(format!("bg={}", color_str(c)));
     }
-    if style.add_modifier.contains(Modifier::BOLD) {
+    if style.modifiers.contains(Modifiers::BOLD) {
         parts.push("bold".into());
     }
-    if style.add_modifier.contains(Modifier::ITALIC) {
+    if style.modifiers.contains(Modifiers::ITALIC) {
         parts.push("italic".into());
     }
-    if style.add_modifier.contains(Modifier::UNDERLINED) {
+    // Every shape reads as one `underline` here. The dump is for spotting
+    // regressions in *which cells* are styled, and distinguishing the shapes
+    // would churn every existing snapshot without telling a reader anything
+    // the theme file doesn't already say.
+    if style.underline != UnderlineStyle::None {
         parts.push("underline".into());
     }
-    if style.add_modifier.contains(Modifier::REVERSED) {
+    if style.modifiers.contains(Modifiers::REVERSED) {
         parts.push("reverse".into());
     }
     parts.join(",")
 }
 
-fn color_str(c: Color) -> Option<String> {
-    match c {
-        Color::Reset => None,
-        Color::Black => Some("black".into()),
-        Color::Red => Some("red".into()),
-        Color::Green => Some("green".into()),
-        Color::Yellow => Some("yellow".into()),
-        Color::Blue => Some("blue".into()),
-        Color::Magenta => Some("magenta".into()),
-        Color::Cyan => Some("cyan".into()),
-        Color::Gray => Some("gray".into()),
-        Color::DarkGray => Some("dark_gray".into()),
-        Color::LightRed => Some("light_red".into()),
-        Color::LightGreen => Some("light_green".into()),
-        Color::LightYellow => Some("light_yellow".into()),
-        Color::LightBlue => Some("light_blue".into()),
-        Color::LightMagenta => Some("light_magenta".into()),
-        Color::LightCyan => Some("light_cyan".into()),
-        Color::White => Some("white".into()),
-        Color::Rgb(r, g, b) => Some(format!("#{r:02x}{g:02x}{b:02x}")),
-        Color::Indexed(n) => Some(format!("idx{n}")),
-    }
+fn color_str(Rgb(r, g, b): Rgb) -> String {
+    format!("#{r:02x}{g:02x}{b:02x}")
 }

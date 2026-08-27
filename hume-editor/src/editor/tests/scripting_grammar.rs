@@ -8,6 +8,7 @@
 // missing.
 
 use super::*;
+use hume_grid::Rect;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -975,6 +976,6 @@ fn rust_function_highlight_snapshot() {
         );
     }
 
-    let rect = ratatui::layout::Rect::new(0, 0, 30, 8);
+    let rect = Rect::new(0, 0, 30, 8);
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }

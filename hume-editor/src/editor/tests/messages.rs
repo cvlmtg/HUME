@@ -8,6 +8,7 @@
 use super::*;
 use hume_engine::pipeline::{PaneId, RenderContext};
 use hume_engine::types::ScopeId;
+use hume_grid::Rect;
 
 fn scope(ed: &Editor, name: &str) -> ScopeId {
     ed.view
@@ -40,7 +41,7 @@ fn messages_renders_its_badge_color_on_the_first_frame() {
         .push(Severity::Warning, "bad key".to_string());
     ed.execute_typed("messages", None).unwrap();
 
-    let area = ratatui::layout::Rect::new(0, 0, 40, 3);
+    let area = Rect::new(0, 0, 40, 3);
     let buf = ed.render_to_buf(area);
 
     let badge_scope = ed

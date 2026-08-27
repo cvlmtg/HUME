@@ -1,6 +1,5 @@
+use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
-
-use ratatui::style::Style;
 
 use hume_editing::grapheme::grapheme_col_in_line;
 
@@ -29,7 +28,7 @@ impl StatuslineElement for PositionElement {
     fn format(
         (line, grapheme_col, max_row): Self::Data,
         colors: &EditorColors,
-    ) -> (Cow<'static, str>, Style) {
+    ) -> (Cow<'static, str>, ResolvedStyle) {
         // Right-align into a field sized for the largest row this buffer can
         // show (min 3 digits) and a fixed 3-digit column budget, so the
         // element's right edge stays put as the cursor moves and elements

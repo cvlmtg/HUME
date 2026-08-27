@@ -14,13 +14,11 @@
 //! snapshot; [`PickerOverlay`] only paints it — same split as
 //! [`super::popup::PopupOverlay`].
 //!
+use hume_engine::types::ResolvedStyle;
+use hume_grid::Rect;
 use std::sync::{Arc, RwLock};
 
 use crate::lock_ext::LockExt;
-
-use ratatui::buffer::Buffer as ScreenBuf;
-use ratatui::layout::Rect;
-use ratatui::style::Style;
 
 use hume_engine::providers::OverlayProvider;
 use hume_engine::render::Canvas;
@@ -130,10 +128,10 @@ pub(crate) fn panel_geometry(pane_area: Rect) -> Option<PanelGeometry> {
 /// needed here.
 #[derive(Clone, Copy)]
 pub(crate) struct PickerStyles {
-    pub(crate) background: Style,
-    pub(crate) text: Style,
-    pub(crate) selected: Style,
-    pub(crate) cursor: Style,
+    pub(crate) background: ResolvedStyle,
+    pub(crate) text: ResolvedStyle,
+    pub(crate) selected: ResolvedStyle,
+    pub(crate) cursor: ResolvedStyle,
 }
 
 pub(crate) fn picker_styles(theme: &Theme) -> PickerStyles {
@@ -288,7 +286,7 @@ impl OverlayProvider for PickerOverlay {
         self.data.read_or_panic().is_some()
     }
 
-    fn render(&self, pane_rect: Rect, theme: &Theme, buf: &mut ScreenBuf) {
+    fn render(&self, pane_rect: Rect, theme: &Theme, canvas: &mut Canvas) {
         let guard = self.data.read_or_panic();
         let Some(state) = guard.as_ref() else {
             return;
@@ -301,8 +299,7 @@ impl OverlayProvider for PickerOverlay {
         }
 
         let styles = picker_styles(theme);
-        let mut canvas = Canvas::new(buf, theme, None);
-        draw_picker_panel(&mut canvas, state, styles);
+        draw_picker_panel(canvas, state, styles);
     }
 }
 

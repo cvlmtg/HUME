@@ -1,3 +1,4 @@
+use hume_grid::{Rect, Rgb};
 // Inline diagnostics virtual lines: the
 // `update_virtual_line_providers` write side that feeds the new
 // `PaneVirtualLines` (VIRTUAL_LINE-kind `DecorationSource`) from the
@@ -13,7 +14,6 @@ use std::path::Path;
 use super::*;
 use hume_engine::pipeline::RenderContext;
 use hume_scripting::ScriptingHost;
-use ratatui::layout::Rect;
 
 fn run(ed: &mut Editor, tmp: &Path, source: &str) {
     let mut host = ScriptingHost::new();
@@ -296,7 +296,7 @@ fn generic_virtual_line_with_no_scope_tints_the_full_row_when_ui_virtual_has_a_b
 
     let buf = ed.render_to_buf(Rect::new(0, 0, 40, 8));
 
-    let virtual_bg = Some(ratatui::style::Color::Rgb(0xff, 0x00, 0xff));
+    let virtual_bg = Some(Rgb(0xff, 0x00, 0xff));
     // Row 0 is the virtual line (anchored `'before` line 0). Column 20 sits
     // well past the 1-char text but short of the right edge.
     assert_eq!(buf[(0, 0)].style().bg, virtual_bg, "gutter cell");

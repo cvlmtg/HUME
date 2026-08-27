@@ -23,12 +23,10 @@
 //! separate bottom band that keeps popup scroll/dismiss semantics instead of
 //! pick-list selection.
 
+use hume_grid::Rect;
 use std::sync::{Arc, RwLock};
 
 use crate::lock_ext::LockExt;
-
-use ratatui::buffer::Buffer as ScreenBuf;
-use ratatui::layout::Rect;
 
 use hume_engine::providers::BottomBandProvider;
 use hume_engine::render::Canvas;
@@ -85,7 +83,7 @@ impl BottomBandProvider for DrawerWidget {
             .map_or(0, |s| band_capacity(s.rows.len(), max))
     }
 
-    fn render(&self, area: Rect, theme: &Theme, buf: &mut ScreenBuf) {
+    fn render(&self, area: Rect, theme: &Theme, canvas: &mut Canvas) {
         if area.height == 0 {
             return;
         }
@@ -94,7 +92,6 @@ impl BottomBandProvider for DrawerWidget {
 
         let style = theme.resolve_by_name(Scope("ui.drawer")).into();
         let selected_style = theme.resolve_by_name(Scope("ui.menu.selected")).into();
-        let mut canvas = Canvas::new(buf, theme, None);
         canvas.fill_rect_bg(area, style);
 
         // Row 0 is a blank padding row (visual gap from the pane above);
@@ -110,7 +107,7 @@ impl BottomBandProvider for DrawerWidget {
             let row_idx = state.scroll + i;
             let y = area.y + 1 + i as u16;
             super::menu_box::draw_list_row(
-                &mut canvas,
+                canvas,
                 area.x,
                 y,
                 area.width,

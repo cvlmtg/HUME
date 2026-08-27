@@ -1,6 +1,5 @@
+use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
-
-use ratatui::style::Style;
 
 use super::StatuslineElement;
 use crate::editor::Editor;
@@ -42,7 +41,7 @@ impl StatuslineElement for DiagnosticsElement {
     fn format(
         (activity, errors, warnings, frame): Self::Data,
         colors: &EditorColors,
-    ) -> (Cow<'static, str>, Style) {
+    ) -> (Cow<'static, str>, ResolvedStyle) {
         let spinner = SPINNER[frame % SPINNER.len()];
         // `Starting` and a percentage-less `Progress` render identically —
         // neither has anything more specific to show than "a server task is

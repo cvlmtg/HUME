@@ -1,6 +1,5 @@
+use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
-
-use ratatui::style::Style;
 
 use hume_engine::types::EditorMode;
 
@@ -17,7 +16,7 @@ impl StatuslineElement for ModeElement {
         editor.state.mode()
     }
 
-    fn format(mode: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
+    fn format(mode: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
         let label = match mode {
             EditorMode::Normal => "NOR",
             EditorMode::Extend => "EXT",

@@ -1,6 +1,5 @@
+use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
-
-use ratatui::style::Style;
 
 use super::StatuslineElement;
 use crate::editor::Editor;
@@ -15,7 +14,7 @@ impl StatuslineElement for ReadOnlyElement {
         editor.doc().is_read_only()
     }
 
-    fn format(read_only: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
+    fn format(read_only: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
         let label = if read_only { "[RO]" } else { "" };
         (Cow::Borrowed(label), colors.statusline)
     }

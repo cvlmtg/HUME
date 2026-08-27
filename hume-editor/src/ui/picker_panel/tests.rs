@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
-use ratatui::style::Color;
-
 use hume_engine::types::ResolvedStyle;
+use hume_grid::{Grid, Rect, Rgb};
+use std::collections::HashMap;
 
 use super::*;
 
@@ -10,8 +8,8 @@ fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
     Rect::new(x, y, w, h)
 }
 
-fn style() -> Style {
-    Style::default()
+fn style() -> ResolvedStyle {
+    ResolvedStyle::default()
 }
 
 fn styles() -> PickerStyles {
@@ -25,11 +23,11 @@ fn styles() -> PickerStyles {
 
 /// Rows of `area` as plain symbols, trailing spaces trimmed per row —
 /// mirrors `menu_box/tests.rs`'s helper of the same name.
-fn symbols_in(buf: &ScreenBuf, area: Rect) -> String {
+fn symbols_in(buf: &Grid, area: Rect) -> String {
     (area.y..area.y + area.height)
         .map(|y| {
             let row: String = (area.x..area.x + area.width)
-                .map(|x| buf[(x, y)].symbol())
+                .map(|x| buf[(x, y)].text())
                 .collect();
             row.trim_end().to_string()
         })
@@ -108,7 +106,7 @@ fn draw_picker_panel_clips_overlong_row_to_inner_width() {
     // A row wider than the panel (e.g. a deep file path from `gf`) must be
     // clipped to inner_width, keeping its tail behind a … marker, instead of
     // bleeding past the right border.
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 40, 20));
+    let mut buf = Grid::new(40, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
@@ -121,7 +119,7 @@ fn draw_picker_panel_clips_overlong_row_to_inner_width() {
     // Right border must still be an unbroken │ column, not overrun text.
     let right = geo.rect.x + geo.rect.width - 1;
     assert_eq!(
-        buf[(right, 2)].symbol(),
+        buf[(right, 2)].text(),
         "│",
         "right border must survive an overlong row"
     );
@@ -137,7 +135,7 @@ fn draw_picker_panel_truncate_tail_clips_overlong_row_keeping_head() {
     // A grep-style row (path in front, line preview trailing) with
     // `#:truncate 'tail` must clip the *end*, not the path — the mirror of
     // the head-cut test above.
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 40, 20));
+    let mut buf = Grid::new(40, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
@@ -155,7 +153,7 @@ fn draw_picker_panel_truncate_tail_clips_overlong_row_keeping_head() {
 
     let right = geo.rect.x + geo.rect.width - 1;
     assert_eq!(
-        buf[(right, 2)].symbol(),
+        buf[(right, 2)].text(),
         "│",
         "right border must survive an overlong row"
     );
@@ -238,7 +236,7 @@ fn truncate_marked_zero_budget_is_empty() {
 
 #[test]
 fn draw_picker_panel_border_input_and_rows_snapshot() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
@@ -260,7 +258,7 @@ fn draw_picker_panel_border_input_and_rows_snapshot() {
 
 #[test]
 fn draw_picker_panel_no_border_leaves_plain_margin() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
@@ -281,14 +279,17 @@ fn draw_picker_panel_no_border_leaves_plain_margin() {
 
 #[test]
 fn draw_picker_panel_highlights_selected_row_full_width() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
         rect: rect(0, 0, 10, 6),
         list_rows: 3,
     };
-    let selected_style = Style::default().bg(Color::Red);
+    let selected_style = ResolvedStyle {
+        bg: Some(Rgb(255, 0, 0)),
+        ..Default::default()
+    };
     let s = state("", &["item0", "item1"], Some(1), &geo);
     draw_picker_panel(
         &mut canvas,
@@ -304,13 +305,13 @@ fn draw_picker_panel_highlights_selected_row_full_width() {
     for x in 1..=8u16 {
         assert_eq!(
             buf[(x, 3)].style().bg,
-            Some(Color::Red),
+            Some(Rgb(255, 0, 0)),
             "selected row must be highlighted across the full inner width at x={x}"
         );
     }
     // The non-selected row above it must not be.
     for x in 1..=8u16 {
-        assert_ne!(buf[(x, 2)].style().bg, Some(Color::Red));
+        assert_ne!(buf[(x, 2)].style().bg, Some(Rgb(255, 0, 0)));
     }
 }
 
@@ -319,7 +320,7 @@ fn draw_picker_panel_does_not_rewindow_rows() {
     // The store already scrolled `rows` to fit `list_rows`; the widget must
     // only ever paint up to its own row capacity, ignoring any overflow
     // rather than trying to re-window it.
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
@@ -344,7 +345,7 @@ fn draw_picker_panel_does_not_rewindow_rows() {
 
 #[test]
 fn draw_picker_panel_pending_marks_the_counter_snapshot() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
@@ -371,7 +372,7 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
         rect: rect(0, 0, 20, 4),
         list_rows: 1,
     };
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let mut s = state("q", &[], None, &geo_wide);
@@ -384,7 +385,7 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
         rect: rect(0, 0, 6, 4),
         list_rows: 1,
     };
-    let mut buf2 = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf2 = Grid::new(20, 20);
     let mut canvas2 = Canvas::new(&mut buf2, &theme, None);
     let mut s2 = state("q", &[], None, &geo_narrow);
     s2.matched = 3;
@@ -398,7 +399,7 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
 
 #[test]
 fn draw_picker_panel_truncates_query_tail_keeping_cursor_visible() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
@@ -410,7 +411,7 @@ fn draw_picker_panel_truncates_query_tail_keeping_cursor_visible() {
 
     let inner_x = geo.rect.x + 1;
     let row: String = (inner_x..inner_x + 8)
-        .map(|x| buf[(x, 1)].symbol().to_string())
+        .map(|x| buf[(x, 1)].text().to_string())
         .collect();
     // Query truncated to its tail ("hij") so the cursor cell right after it
     // stays inside the input row, instead of the head of the query.
@@ -422,7 +423,7 @@ fn draw_picker_panel_truncates_query_tail_keeping_cursor_visible() {
 
 #[test]
 fn draw_picker_panel_renders_prompt_before_query() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
@@ -435,7 +436,7 @@ fn draw_picker_panel_renders_prompt_before_query() {
 
     let inner_x = geo.rect.x + 1;
     let row: String = (inner_x..inner_x + 10)
-        .map(|x| buf[(x, 1)].symbol().to_string())
+        .map(|x| buf[(x, 1)].text().to_string())
         .collect();
     assert!(
         row.starts_with("f: ab"),
@@ -445,7 +446,7 @@ fn draw_picker_panel_renders_prompt_before_query() {
 
 #[test]
 fn draw_picker_panel_prompt_wider_than_panel_clips_without_panic() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
@@ -461,7 +462,7 @@ fn draw_picker_panel_prompt_wider_than_panel_clips_without_panic() {
 
     let inner_x = geo.rect.x + 1;
     let row: String = (inner_x..inner_x + 5)
-        .map(|x| buf[(x, 1)].symbol().to_string())
+        .map(|x| buf[(x, 1)].text().to_string())
         .collect();
     assert_eq!(
         row, "much ",
@@ -471,7 +472,7 @@ fn draw_picker_panel_prompt_wider_than_panel_clips_without_panic() {
 
 #[test]
 fn draw_picker_panel_empty_state_is_blank_with_zero_counts() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let geo = PanelGeometry {
@@ -486,7 +487,7 @@ fn draw_picker_panel_empty_state_is_blank_with_zero_counts() {
 
 #[test]
 fn draw_picker_panel_degenerate_rect_does_not_panic_or_paint() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let before = buf.clone();
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
@@ -521,10 +522,14 @@ fn overlay_clips_state_outside_pane_rect() {
     };
     assert!(overlay.is_active());
 
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let before = buf.clone();
     let theme = Theme::new(HashMap::new(), ResolvedStyle::default());
-    overlay.render(Rect::new(0, 0, 20, 20), &theme, &mut buf);
+    overlay.render(
+        Rect::new(0, 0, 20, 20),
+        &theme,
+        &mut Canvas::new(&mut buf, &theme, None),
+    );
     assert_eq!(
         buf, before,
         "state positioned outside pane_rect must not paint"
@@ -533,7 +538,7 @@ fn overlay_clips_state_outside_pane_rect() {
 
 // ── picker_styles: direct Helix-scope resolution ────────────────────────────
 
-fn resolved(fg: Color) -> ResolvedStyle {
+fn resolved(fg: Rgb) -> ResolvedStyle {
     ResolvedStyle {
         fg: Some(fg),
         ..Default::default()
@@ -543,28 +548,32 @@ fn resolved(fg: Color) -> ResolvedStyle {
 #[test]
 fn picker_styles_resolve_from_helix_scopes() {
     let mut m = HashMap::new();
-    m.insert("ui.background", resolved(Color::Black));
-    m.insert("ui.text", resolved(Color::Blue));
-    m.insert("ui.text.focus", resolved(Color::Green));
-    m.insert("ui.cursor.primary", resolved(Color::Yellow));
+    m.insert("ui.background", resolved(Rgb(0, 0, 0)));
+    m.insert("ui.text", resolved(Rgb(0, 0, 255)));
+    m.insert("ui.text.focus", resolved(Rgb(0, 255, 0)));
+    m.insert("ui.cursor.primary", resolved(Rgb(255, 255, 0)));
     let theme = Theme::new(m, ResolvedStyle::default());
 
     let styles = picker_styles(&theme);
-    assert_eq!(styles.background.fg, Some(Color::Black), "ui.background");
-    assert_eq!(styles.text.fg, Some(Color::Blue), "ui.text");
-    assert_eq!(styles.selected.fg, Some(Color::Green), "ui.text.focus");
-    assert_eq!(styles.cursor.fg, Some(Color::Yellow), "ui.cursor.primary");
+    assert_eq!(styles.background.fg, Some(Rgb(0, 0, 0)), "ui.background");
+    assert_eq!(styles.text.fg, Some(Rgb(0, 0, 255)), "ui.text");
+    assert_eq!(styles.selected.fg, Some(Rgb(0, 255, 0)), "ui.text.focus");
+    assert_eq!(
+        styles.cursor.fg,
+        Some(Rgb(255, 255, 0)),
+        "ui.cursor.primary"
+    );
 }
 
 #[test]
 fn picker_styles_default_when_scopes_absent() {
     // No custom aliasing: an empty theme resolves every picker scope to the
     // theme's plain `default`, exactly like any other unset scope.
-    let theme = Theme::new(HashMap::new(), resolved(Color::Red));
+    let theme = Theme::new(HashMap::new(), resolved(Rgb(255, 0, 0)));
 
     let styles = picker_styles(&theme);
-    assert_eq!(styles.background.fg, Some(Color::Red));
-    assert_eq!(styles.text.fg, Some(Color::Red));
-    assert_eq!(styles.selected.fg, Some(Color::Red));
-    assert_eq!(styles.cursor.fg, Some(Color::Red));
+    assert_eq!(styles.background.fg, Some(Rgb(255, 0, 0)));
+    assert_eq!(styles.text.fg, Some(Rgb(255, 0, 0)));
+    assert_eq!(styles.selected.fg, Some(Rgb(255, 0, 0)));
+    assert_eq!(styles.cursor.fg, Some(Rgb(255, 0, 0)));
 }

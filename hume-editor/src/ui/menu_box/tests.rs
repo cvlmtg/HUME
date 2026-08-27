@@ -1,13 +1,14 @@
 use super::*;
 use hume_engine::theme::Theme;
-use ratatui::buffer::Buffer as ScreenBuf;
+use hume_engine::types::ResolvedStyle;
+use hume_grid::{Grid, Rect};
 
 fn rows(n: usize) -> Vec<String> {
     (0..n).map(|i| format!("item{i}")).collect()
 }
 
-fn style() -> Style {
-    Style::default()
+fn style() -> ResolvedStyle {
+    ResolvedStyle::default()
 }
 
 fn styles() -> MenuBoxStyles {
@@ -19,11 +20,11 @@ fn styles() -> MenuBoxStyles {
 }
 
 /// Rows of `area` as plain symbols, trailing spaces trimmed per row.
-fn symbols_in(buf: &ScreenBuf, area: Rect) -> String {
+fn symbols_in(buf: &Grid, area: Rect) -> String {
     (area.y..area.y + area.height)
         .map(|y| {
             let row: String = (area.x..area.x + area.width)
-                .map(|x| buf[(x, y)].symbol())
+                .map(|x| buf[(x, y)].text())
                 .collect();
             row.trim_end().to_string()
         })
@@ -38,7 +39,7 @@ fn styled_runs_stay_adjacent_when_a_run_holds_an_undrawable_grapheme() {
     // slide the rest of the row one column left. It renders as its codepoint
     // instead — the same substitution buffer text gets — and the next run
     // begins after the whole placeholder.
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 3));
+    let mut buf = Grid::new(20, 3);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let runs: StyledRow = vec![
@@ -61,7 +62,7 @@ fn styled_runs_stop_at_the_right_edge() {
     // row wider than its box must be clipped at the border rather than
     // written over it. A cluster that would straddle the edge is dropped
     // whole, never half-drawn.
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 3));
+    let mut buf = Grid::new(20, 3);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let runs: StyledRow = vec![
@@ -82,7 +83,7 @@ fn a_row_wider_than_the_box_is_clipped_at_the_border() {
     // `completion_overlay`), so a long LSP label on a narrow terminal is
     // wider than the box it lands in. It must stop at the inner edge: the
     // right border has to survive, and nothing may be written past it.
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 5));
+    let mut buf = Grid::new(20, 5);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let outer = Rect::new(2, 0, 8, 3); // inner text spans x 3..9
@@ -99,7 +100,7 @@ fn a_row_wider_than_the_box_is_clipped_at_the_border() {
 
 #[test]
 fn draw_menu_box_border_frame_snapshot() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let outer = Rect::new(2, 3, 8, 4);
@@ -124,7 +125,7 @@ fn draw_menu_box_border_frame_snapshot() {
 
 #[test]
 fn draw_menu_box_no_border_leaves_plain_margin() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     let outer = Rect::new(2, 3, 8, 4);
@@ -149,7 +150,7 @@ fn draw_menu_box_no_border_leaves_plain_margin() {
 
 #[test]
 fn draw_menu_box_scrolls_to_keep_selected_visible() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     // Inner height 3 (outer height 5), 10 rows total, selected near the end.
@@ -159,9 +160,9 @@ fn draw_menu_box_scrolls_to_keep_selected_visible() {
 
     // Window of size 3 anchored so index 9 is visible: start = 9 - 1 = 8,
     // clamped to total-max = 7 → window [7, 10) = item7,item8,item9.
-    let row0: String = (1..=5).map(|x| buf[(x, 1)].symbol().to_string()).collect();
+    let row0: String = (1..=5).map(|x| buf[(x, 1)].text().to_string()).collect();
     assert_eq!(row0, "item7");
-    let row2: String = (1..=5).map(|x| buf[(x, 3)].symbol().to_string()).collect();
+    let row2: String = (1..=5).map(|x| buf[(x, 3)].text().to_string()).collect();
     assert_eq!(row2, "item9");
 }
 
@@ -171,7 +172,7 @@ fn draw_menu_box_scrolls_to_keep_selected_visible() {
 /// always anchoring back to row 0.
 #[test]
 fn draw_menu_box_scroll_windows_from_offset_when_no_selection() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     // Inner height 3 (outer height 5), 10 rows total, scrolled to row 4.
@@ -179,15 +180,15 @@ fn draw_menu_box_scroll_windows_from_offset_when_no_selection() {
     let data = rows(10);
     draw_menu_box(&mut canvas, outer, &data, None, 4, true, styles(), None);
 
-    let row0: String = (1..=5).map(|x| buf[(x, 1)].symbol().to_string()).collect();
+    let row0: String = (1..=5).map(|x| buf[(x, 1)].text().to_string()).collect();
     assert_eq!(row0, "item4");
-    let row2: String = (1..=5).map(|x| buf[(x, 3)].symbol().to_string()).collect();
+    let row2: String = (1..=5).map(|x| buf[(x, 3)].text().to_string()).collect();
     assert_eq!(row2, "item6");
 }
 
 #[test]
 fn draw_menu_box_shows_scrollbar_thumb_at_top_when_scrolled_to_top() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     // Inner height 3, 10 rows total, scroll = 0: thumb flush at the top.
@@ -205,7 +206,7 @@ fn draw_menu_box_shows_scrollbar_thumb_at_top_when_scrolled_to_top() {
 
 #[test]
 fn draw_menu_box_shows_scrollbar_thumb_in_the_middle_when_scrolled_to_the_middle() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     // Inner height 3, 10 rows total, scroll = 4: thumb centered.
@@ -223,7 +224,7 @@ fn draw_menu_box_shows_scrollbar_thumb_in_the_middle_when_scrolled_to_the_middle
 
 #[test]
 fn draw_menu_box_shows_scrollbar_thumb_at_bottom_when_scrolled_to_bottom() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     // Inner height 3, 10 rows total, scroll = 7 (max_scroll): thumb flush at the bottom.
@@ -244,7 +245,7 @@ fn draw_menu_box_shows_scrollbar_thumb_at_bottom_when_scrolled_to_bottom() {
 /// `scroll`, still distinguishing "more to scroll" from "nothing to scroll".
 #[test]
 fn draw_menu_box_single_row_window_shows_a_solid_thumb() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     // Inner height 1, 10 rows total, scroll = 4 (mid-range).
@@ -260,7 +261,7 @@ fn draw_menu_box_single_row_window_shows_a_solid_thumb() {
 
 #[test]
 fn draw_menu_box_no_overflow_shows_no_scrollbar() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     // 2 rows fit entirely inside inner height 3 — nothing to scroll.
@@ -278,7 +279,7 @@ fn draw_menu_box_no_overflow_shows_no_scrollbar() {
 
 #[test]
 fn draw_menu_box_scrolled_menu_shows_scrollbar_thumb() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);
     // Same overflowing case as the middle-scroll test above, but with a
@@ -309,7 +310,7 @@ fn menu_inner_width_is_widest_row() {
 
 #[test]
 fn draw_menu_box_too_small_outer_does_nothing() {
-    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 20, 20));
+    let mut buf = Grid::new(20, 20);
     let before = buf.clone();
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, &theme, None);

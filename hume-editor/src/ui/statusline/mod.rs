@@ -1,9 +1,8 @@
+use hume_engine::types::ResolvedStyle;
+use hume_grid::Rect;
 use std::borrow::Cow;
 use std::fmt;
 use std::str::FromStr;
-
-use ratatui::layout::Rect;
-use ratatui::style::Style;
 
 use hume_engine::render::Canvas;
 
@@ -226,9 +225,9 @@ impl Default for StatusLineConfig {
 /// This gives every left section a consistent left margin without requiring
 /// individual elements to be edge-aware.
 fn pad_left(
-    mut spans: Vec<(Cow<'static, str>, Style)>,
+    mut spans: Vec<(Cow<'static, str>, ResolvedStyle)>,
     colors: &EditorColors,
-) -> Vec<(Cow<'static, str>, Style)> {
+) -> Vec<(Cow<'static, str>, ResolvedStyle)> {
     if !spans.is_empty() {
         spans.insert(0, (Cow::Borrowed(" "), colors.statusline));
     }
@@ -240,9 +239,9 @@ fn pad_left(
 /// Mirrors [`pad_left`] for the trailing edge; supplies the right-margin
 /// offset used by the placement arithmetic.
 fn pad_right(
-    mut spans: Vec<(Cow<'static, str>, Style)>,
+    mut spans: Vec<(Cow<'static, str>, ResolvedStyle)>,
     colors: &EditorColors,
-) -> Vec<(Cow<'static, str>, Style)> {
+) -> Vec<(Cow<'static, str>, ResolvedStyle)> {
     if !spans.is_empty() {
         spans.push((Cow::Borrowed(" "), colors.statusline));
     }
@@ -252,7 +251,7 @@ fn pad_right(
 // ── Drawing helpers ───────────────────────────────────────────────────────────
 
 /// Total display-column width of a rendered section.
-fn section_width(spans: &[(Cow<'static, str>, Style)]) -> u16 {
+fn section_width(spans: &[(Cow<'static, str>, ResolvedStyle)]) -> u16 {
     spans
         .iter()
         .map(|(t, _)| text_width(t.as_ref()) as u16)
@@ -262,7 +261,7 @@ fn section_width(spans: &[(Cow<'static, str>, Style)]) -> u16 {
 /// Draw a section's spans left-to-right starting at `x`.
 fn draw_section(
     canvas: &mut Canvas,
-    spans: &[(Cow<'static, str>, Style)],
+    spans: &[(Cow<'static, str>, ResolvedStyle)],
     mut x: u16,
     y: u16,
     right_edge: u16,
@@ -288,12 +287,7 @@ pub(crate) struct HumeStatusline<'a> {
 }
 
 impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
-    fn render(
-        &self,
-        area: ratatui::layout::Rect,
-        theme: &hume_engine::theme::Theme,
-        buf: &mut ratatui::buffer::Buffer,
-    ) {
+    fn render(&self, area: Rect, theme: &hume_engine::theme::Theme, canvas: &mut Canvas) {
         let editor = self.editor;
         let mode = editor
             .state
@@ -302,14 +296,13 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
             .then(|| editor.state.mode());
         let colors = EditorColors::from_theme(theme, mode);
         let y = area.y;
-        let mut canvas = Canvas::new(buf, theme, None);
 
         // An open confirm overlay (disk-change reload, …) owns the whole
         // row unconditionally — it's the intercept chain's top entry (see
         // `handle_key`), so it must also be the top-priority render, ahead
         // of even the minibuffer.
         if let Some(confirm) = editor.state.config.confirm.as_ref() {
-            fill_row_colors(&mut canvas, &colors, area, y);
+            fill_row_colors(canvas, &colors, area, y);
             canvas.write_text_run(
                 area.x + 1,
                 y,
@@ -336,13 +329,13 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
             };
 
             if let Some(msg) = display_msg {
-                fill_row_colors(&mut canvas, &colors, area, y);
+                fill_row_colors(canvas, &colors, area, y);
                 canvas.write_text_run(area.x + 1, y, msg, colors.statusline, area.x + area.width);
                 return;
             }
         }
 
-        render_statusline(&mut canvas, editor, &colors, area, y);
+        render_statusline(canvas, editor, &colors, area, y);
     }
 }
 
@@ -460,7 +453,7 @@ pub(crate) fn render_element(
     // Pre-computed text for the FilePath element. "" = render as empty (measure
     // pass); any other string = use verbatim (already shortened by caller).
     filepath_text: &str,
-) -> (Cow<'static, str>, Style) {
+) -> (Cow<'static, str>, ResolvedStyle) {
     match seg {
         StatusElement::Mode => ModeElement::render(editor, colors),
         StatusElement::Separator => SeparatorElement::render(editor, colors),
@@ -486,8 +479,8 @@ fn render_section(
     editor: &Editor,
     colors: &EditorColors,
     filepath_text: &str,
-) -> Vec<(Cow<'static, str>, Style)> {
-    let mut spans: Vec<(Cow<'static, str>, Style)> = Vec::with_capacity(elements.len() * 2);
+) -> Vec<(Cow<'static, str>, ResolvedStyle)> {
+    let mut spans: Vec<(Cow<'static, str>, ResolvedStyle)> = Vec::with_capacity(elements.len() * 2);
 
     for &seg in elements {
         let (text, style) = render_element(seg, editor, colors, filepath_text);

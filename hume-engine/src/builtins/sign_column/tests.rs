@@ -1,6 +1,8 @@
 use super::*;
 use crate::theme::{ScopeRegistry, Theme};
 use crate::types::EditorMode;
+use crate::types::ResolvedStyle;
+use hume_grid::{Grid, Rect, Rgb};
 
 fn ctx(rope: &ropey::Rope) -> GutterRowCtx<'_> {
     GutterRowCtx {
@@ -211,13 +213,13 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         last_line_idx: 0,
     };
     let viewport = crate::pane::ViewportState::new(8, 1);
-    let pane_rect = ratatui::layout::Rect {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: 8,
         height: 1,
     };
-    let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
     let mut theme = Theme::default();
     theme.bake(&registry);
     let rope = ropey::Rope::from_str("x\n");
@@ -229,8 +231,8 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width: 4,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
@@ -251,12 +253,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         None,
     );
 
-    let sym = |x: u16| {
-        buf.cell(ratatui::layout::Position { x, y: 0 })
-            .unwrap()
-            .symbol()
-            .to_string()
-    };
+    let sym = |x: u16| buf.cell(x, 0).unwrap().text().to_string();
     assert_eq!(sym(0), "▶", "only the first glyph of the sign fits");
     assert_eq!(sym(1), " ", "separator cell, not a straggler glyph");
     // Content area starts at x=2 (gutter_width) — must show the real
@@ -307,13 +304,13 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         last_line_idx: 0,
     };
     let viewport = crate::pane::ViewportState::new(8, 1);
-    let pane_rect = ratatui::layout::Rect {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: 8,
         height: 1,
     };
-    let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
     let mut theme = Theme::default();
     theme.bake(&registry);
     let rope = ropey::Rope::from_str("x\n");
@@ -325,8 +322,8 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width: 4,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
@@ -347,12 +344,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         None,
     );
 
-    let sym = |x: u16| {
-        buf.cell(ratatui::layout::Position { x, y: 0 })
-            .unwrap()
-            .symbol()
-            .to_string()
-    };
+    let sym = |x: u16| buf.cell(x, 0).unwrap().text().to_string();
     assert_eq!(
         sym(0),
         "!",
@@ -371,7 +363,7 @@ fn sign_scope_resolves_via_baked_theme() {
     styles_map.insert(
         "diagnostic.error",
         crate::types::ResolvedStyle {
-            fg: Some(ratatui::style::Color::Red),
+            fg: Some(Rgb(255, 0, 0)),
             ..Default::default()
         },
     );
@@ -393,10 +385,7 @@ fn sign_scope_resolves_via_baked_theme() {
         .into_iter()
         .next()
         .unwrap();
-    assert_eq!(
-        theme.resolve(cell.scope).fg,
-        Some(ratatui::style::Color::Red)
-    );
+    assert_eq!(theme.resolve(cell.scope).fg, Some(Rgb(255, 0, 0)));
 }
 
 #[test]
@@ -566,13 +555,13 @@ fn multi_slot_column_renders_through_compose_gutter() {
         last_line_idx: 0,
     };
     let viewport = crate::pane::ViewportState::new(8, 1);
-    let pane_rect = ratatui::layout::Rect {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: 8,
         height: 1,
     };
-    let mut buf = ratatui::buffer::Buffer::empty(pane_rect);
+    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
     let mut theme = Theme::default();
     theme.bake(&registry);
     let rope = ropey::Rope::from_str("x\n");
@@ -584,8 +573,8 @@ fn multi_slot_column_renders_through_compose_gutter() {
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width: 4,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
@@ -606,12 +595,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
         None,
     );
 
-    let sym = |x: u16| {
-        buf.cell(ratatui::layout::Position { x, y: 0 })
-            .unwrap()
-            .symbol()
-            .to_string()
-    };
+    let sym = |x: u16| buf.cell(x, 0).unwrap().text().to_string();
     assert_eq!(sym(0), "!", "first sign slot renders");
     assert_eq!(sym(1), "+", "second sign slot renders");
     assert_eq!(sym(2), " ", "column right padding");

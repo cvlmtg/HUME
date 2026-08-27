@@ -1,5 +1,6 @@
 use super::*;
 use crate::editor::commands::open_pane;
+use hume_grid::Rect;
 
 // ── OnModeChange: Insert → Normal ─────────────────────────────────────────────
 
@@ -72,7 +73,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
     // `prepare_frame` normally populates — set it directly, matching the
     // viewport size above, since this test exercises hook dispatch, not a
     // full frame.
-    ed.view.last_pane_area = ratatui::layout::Rect::new(0, 0, 80, 24);
+    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
 
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();

@@ -18,7 +18,7 @@ use crate::codec::{self, Message};
 
 /// Called by the reader/stderr threads after posting an event, so the
 /// editor's main loop wakes and drains it instead of rechecking on a poll
-/// cadence. Type-erased to keep `termina`/`ratatui` types out of this
+/// cadence. Type-erased to keep `termina` types out of this
 /// crate's API even though it depends on `hume-platform` for
 /// [`TrackedChild`] —
 /// production wraps `termina::PlatformWaker::wake`.

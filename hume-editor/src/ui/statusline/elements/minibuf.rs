@@ -1,6 +1,5 @@
+use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
-
-use ratatui::style::Style;
 
 use super::StatuslineElement;
 use crate::editor::Editor;
@@ -20,7 +19,7 @@ impl StatuslineElement for MiniBufElement {
             .map(|mb| (mb.prompt.clone(), mb.input.clone()))
     }
 
-    fn format(data: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
+    fn format(data: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
         match data {
             Some((prompt, input)) => {
                 let mut text = String::with_capacity(prompt.len() + input.len());

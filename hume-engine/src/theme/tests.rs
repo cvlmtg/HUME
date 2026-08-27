@@ -1,19 +1,19 @@
 use super::*;
-use ratatui::style::Color;
+use hume_grid::Rgb;
 
 fn make_theme() -> Theme {
     let mut styles = HashMap::new();
     styles.insert(
         "keyword",
         ResolvedStyle {
-            fg: Some(Color::Blue),
+            fg: Some(Rgb(0, 0, 255)),
             ..Default::default()
         },
     );
     styles.insert(
         "keyword.operator",
         ResolvedStyle {
-            fg: Some(Color::Cyan),
+            fg: Some(Rgb(0, 255, 255)),
             ..Default::default()
         },
     );
@@ -28,7 +28,7 @@ fn direct_lookup() {
     let id = reg.intern("keyword.operator");
     let mut theme = make_theme();
     theme.bake(&reg);
-    assert_eq!(theme.resolve(id).fg, Some(Color::Cyan));
+    assert_eq!(theme.resolve(id).fg, Some(Rgb(0, 255, 255)));
 }
 
 #[test]
@@ -38,7 +38,7 @@ fn fallback_to_parent() {
     let id = reg.intern("keyword.function");
     let mut theme = make_theme();
     theme.bake(&reg);
-    assert_eq!(theme.resolve(id).fg, Some(Color::Blue));
+    assert_eq!(theme.resolve(id).fg, Some(Rgb(0, 0, 255)));
 }
 
 #[test]
@@ -59,9 +59,9 @@ fn bake_resolves_all_interned_scopes() {
     let kw_fn = reg.intern("keyword.function"); // not in map → falls back
     let mut theme = make_theme();
     theme.bake(&reg);
-    assert_eq!(theme.resolve(kw).fg, Some(Color::Blue));
-    assert_eq!(theme.resolve(kw_op).fg, Some(Color::Cyan));
-    assert_eq!(theme.resolve(kw_fn).fg, Some(Color::Blue)); // fallback baked in
+    assert_eq!(theme.resolve(kw).fg, Some(Rgb(0, 0, 255)));
+    assert_eq!(theme.resolve(kw_op).fg, Some(Rgb(0, 255, 255)));
+    assert_eq!(theme.resolve(kw_fn).fg, Some(Rgb(0, 0, 255))); // fallback baked in
 }
 
 #[test]
@@ -82,8 +82,8 @@ fn bake_if_stale_rebakes_scopes_interned_after_bake() {
     theme.bake_if_stale(&reg);
     assert_eq!(theme.baked.len(), reg.len());
     // Independent oracle: the themed color, not the pre-rebake default.
-    assert_eq!(theme.resolve(kw_op).fg, Some(Color::Cyan));
-    assert_eq!(theme.resolve(kw).fg, Some(Color::Blue));
+    assert_eq!(theme.resolve(kw_op).fg, Some(Rgb(0, 255, 255)));
+    assert_eq!(theme.resolve(kw).fg, Some(Rgb(0, 0, 255)));
 
     // No new scopes interned — bake_if_stale is a no-op.
     let baked_before = theme.baked.clone();
@@ -97,7 +97,7 @@ fn multi_level_fallback() {
     styles.insert(
         "a.b",
         ResolvedStyle {
-            fg: Some(Color::Green),
+            fg: Some(Rgb(0, 255, 0)),
             ..Default::default()
         },
     );
@@ -108,8 +108,8 @@ fn multi_level_fallback() {
     let abcd = reg.intern("a.b.c.d");
     theme.bake(&reg);
 
-    assert_eq!(theme.resolve(abc).fg, Some(Color::Green));
-    assert_eq!(theme.resolve(abcd).fg, Some(Color::Green));
+    assert_eq!(theme.resolve(abc).fg, Some(Rgb(0, 255, 0)));
+    assert_eq!(theme.resolve(abcd).fg, Some(Rgb(0, 255, 0)));
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn resolve_by_name_direct() {
     let theme = make_theme();
     assert_eq!(
         theme.resolve_by_name(Scope("keyword.operator")).fg,
-        Some(Color::Cyan)
+        Some(Rgb(0, 255, 255))
     );
 }
 
@@ -139,7 +139,7 @@ fn resolve_by_name_fallback() {
     let theme = make_theme();
     assert_eq!(
         theme.resolve_by_name(Scope("keyword.function")).fg,
-        Some(Color::Blue)
+        Some(Rgb(0, 0, 255))
     );
 }
 
@@ -157,13 +157,13 @@ fn ui_scopes_available_before_bake() {
     styles.insert(
         "ui.cursorline",
         ResolvedStyle {
-            bg: Some(Color::Blue),
+            bg: Some(Rgb(0, 0, 255)),
             ..Default::default()
         },
     );
     let theme = Theme::new(styles, ResolvedStyle::default());
     // theme.bake() NOT called — ui.cursorline must still be correct.
-    assert_eq!(theme.ui.cursorline.bg, Some(Color::Blue));
+    assert_eq!(theme.ui.cursorline.bg, Some(Rgb(0, 0, 255)));
 }
 
 #[test]
@@ -172,16 +172,13 @@ fn window_focused_falls_back_to_window_when_unset() {
     styles.insert(
         "ui.window",
         ResolvedStyle {
-            fg: Some(Color::Rgb(0x80, 0x80, 0x80)),
+            fg: Some(Rgb(0x80, 0x80, 0x80)),
             ..Default::default()
         },
     );
     // No "ui.window.focused" entry — dot-notation must fall back to "ui.window".
     let theme = Theme::new(styles, ResolvedStyle::default());
-    assert_eq!(
-        theme.ui.window_focused.fg,
-        Some(Color::Rgb(0x80, 0x80, 0x80))
-    );
+    assert_eq!(theme.ui.window_focused.fg, Some(Rgb(0x80, 0x80, 0x80)));
     assert_eq!(theme.ui.window_focused, theme.ui.window);
 }
 
@@ -191,22 +188,19 @@ fn window_focused_uses_its_own_entry_when_set() {
     styles.insert(
         "ui.window",
         ResolvedStyle {
-            fg: Some(Color::Rgb(0x80, 0x80, 0x80)),
+            fg: Some(Rgb(0x80, 0x80, 0x80)),
             ..Default::default()
         },
     );
     styles.insert(
         "ui.window.focused",
         ResolvedStyle {
-            fg: Some(Color::Rgb(0xff, 0x80, 0x00)),
+            fg: Some(Rgb(0xff, 0x80, 0x00)),
             ..Default::default()
         },
     );
     let theme = Theme::new(styles, ResolvedStyle::default());
-    assert_eq!(
-        theme.ui.window_focused.fg,
-        Some(Color::Rgb(0xff, 0x80, 0x00))
-    );
+    assert_eq!(theme.ui.window_focused.fg, Some(Rgb(0xff, 0x80, 0x00)));
     assert_ne!(theme.ui.window_focused, theme.ui.window);
 }
 
@@ -250,7 +244,7 @@ fn from_owned_resolves_same_as_new() {
         m.insert(
             "keyword",
             ResolvedStyle {
-                fg: Some(Color::Blue),
+                fg: Some(Rgb(0, 0, 255)),
                 ..Default::default()
             },
         );
@@ -261,7 +255,7 @@ fn from_owned_resolves_same_as_new() {
         m.insert(
             "keyword".to_string(),
             ResolvedStyle {
-                fg: Some(Color::Blue),
+                fg: Some(Rgb(0, 0, 255)),
                 ..Default::default()
             },
         );

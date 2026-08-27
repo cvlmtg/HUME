@@ -40,6 +40,52 @@ fn layer_unions_modifiers() {
 }
 
 #[test]
+fn layer_empty_modifiers_preserve_the_base() {
+    let base = ResolvedStyle {
+        modifiers: Modifiers::BOLD,
+        ..Default::default()
+    };
+    assert_eq!(
+        base.layer(ResolvedStyle::default()).modifiers,
+        Modifiers::BOLD
+    );
+}
+
+#[test]
+fn layer_resolves_bg_both_ways() {
+    let base = ResolvedStyle {
+        bg: Some(Rgb(255, 0, 0)),
+        ..Default::default()
+    };
+    let over = ResolvedStyle {
+        bg: Some(Rgb(0, 0, 255)),
+        ..Default::default()
+    };
+    assert_eq!(base.layer(over).bg, Some(Rgb(0, 0, 255)));
+    assert_eq!(
+        base.layer(ResolvedStyle::default()).bg,
+        Some(Rgb(255, 0, 0))
+    );
+}
+
+#[test]
+fn layer_resolves_underline_color_both_ways() {
+    let base = ResolvedStyle {
+        underline_color: Some(Rgb(0, 255, 0)),
+        ..Default::default()
+    };
+    let over = ResolvedStyle {
+        underline_color: Some(Rgb(255, 0, 0)),
+        ..Default::default()
+    };
+    assert_eq!(base.layer(over).underline_color, Some(Rgb(255, 0, 0)));
+    assert_eq!(
+        base.layer(ResolvedStyle::default()).underline_color,
+        Some(Rgb(0, 255, 0))
+    );
+}
+
+#[test]
 fn layer_keeps_underline_shape_from_below_when_over_has_none() {
     let base = ResolvedStyle {
         underline: UnderlineStyle::Wavy,

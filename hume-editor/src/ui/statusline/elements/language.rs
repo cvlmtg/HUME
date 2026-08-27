@@ -1,6 +1,5 @@
+use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
-
-use ratatui::style::Style;
 
 use super::StatuslineElement;
 use crate::editor::Editor;
@@ -18,7 +17,7 @@ impl StatuslineElement for LanguageElement {
             .map(|id| editor.state.config.languages.name_of(id).to_owned())
     }
 
-    fn format(lang: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
+    fn format(lang: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
         match lang {
             Some(lang) => (Cow::Owned(format!("[{lang}]")), colors.statusline),
             None => (Cow::Borrowed(""), colors.statusline),

@@ -1,7 +1,5 @@
 use std::ops::Range;
 
-use bitflags::bitflags;
-
 // ---------------------------------------------------------------------------
 // Theme & Style
 // ---------------------------------------------------------------------------
@@ -29,125 +27,15 @@ pub struct Scope(pub &'static str);
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ScopeId(pub u16);
 
-/// The engine's internal style representation. Richer than ratatui's — the
-/// Render stage maps this to `ratatui::Style` as the final step.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct ResolvedStyle {
-    pub fg: Option<ratatui::style::Color>,
-    pub bg: Option<ratatui::style::Color>,
-    pub underline: UnderlineStyle,
-    pub underline_color: Option<ratatui::style::Color>,
-    pub modifiers: Modifiers,
-}
-
-impl ResolvedStyle {
-    /// Layer `over` on top of `self`. Non-None / non-default fields in `over` win.
-    /// This is the primitive compositing operation for the style cascade.
-    pub fn layer(self, over: ResolvedStyle) -> ResolvedStyle {
-        ResolvedStyle {
-            fg: over.fg.or(self.fg),
-            bg: over.bg.or(self.bg),
-            underline: if over.underline != UnderlineStyle::None {
-                over.underline
-            } else {
-                self.underline
-            },
-            underline_color: over.underline_color.or(self.underline_color),
-            modifiers: self.modifiers | over.modifiers,
-        }
-    }
-}
-
-/// Underline variants supported by modern terminals.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub enum UnderlineStyle {
-    #[default]
-    None,
-    Solid,
-    Wavy,
-    Dotted,
-    Dashed,
-}
-
-bitflags! {
-    /// Text modifiers that compose independently. Mirrors Helix's modifier set
-    /// (minus `underlined`, which is tracked via `UnderlineStyle`).
-    #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-    pub struct Modifiers: u8 {
-        const BOLD          = 0b0000_0001;
-        const ITALIC        = 0b0000_0010;
-        const STRIKETHROUGH = 0b0000_0100;
-        const DIM           = 0b0000_1000;
-        const REVERSED      = 0b0001_0000;
-        const HIDDEN        = 0b0010_0000;
-        const SLOW_BLINK    = 0b0100_0000;
-        const RAPID_BLINK   = 0b1000_0000;
-    }
-}
-
-impl From<ResolvedStyle> for ratatui::style::Style {
-    fn from(s: ResolvedStyle) -> Self {
-        let mut style = ratatui::style::Style::default();
-        if let Some(fg) = s.fg {
-            style = style.fg(fg);
-        }
-        if let Some(bg) = s.bg {
-            style = style.bg(bg);
-        }
-        if s.modifiers.contains(Modifiers::BOLD) {
-            style = style.add_modifier(ratatui::style::Modifier::BOLD);
-        }
-        if s.modifiers.contains(Modifiers::ITALIC) {
-            style = style.add_modifier(ratatui::style::Modifier::ITALIC);
-        }
-        if s.modifiers.contains(Modifiers::STRIKETHROUGH) {
-            style = style.add_modifier(ratatui::style::Modifier::CROSSED_OUT);
-        }
-        if s.modifiers.contains(Modifiers::DIM) {
-            style = style.add_modifier(ratatui::style::Modifier::DIM);
-        }
-        if s.modifiers.contains(Modifiers::REVERSED) {
-            style = style.add_modifier(ratatui::style::Modifier::REVERSED);
-        }
-        if s.modifiers.contains(Modifiers::HIDDEN) {
-            style = style.add_modifier(ratatui::style::Modifier::HIDDEN);
-        }
-        if s.modifiers.contains(Modifiers::SLOW_BLINK) {
-            style = style.add_modifier(ratatui::style::Modifier::SLOW_BLINK);
-        }
-        if s.modifiers.contains(Modifiers::RAPID_BLINK) {
-            style = style.add_modifier(ratatui::style::Modifier::RAPID_BLINK);
-        }
-        // Known boundary limitation: Solid/Wavy/Dotted/Dashed all collapse
-        // to the same plain UNDERLINED modifier. ratatui's `Modifier` bitflags
-        // carry no underline-*shape* bits regardless of backend, so there is
-        // no injection point between this `From` impl and the terminal to
-        // express the shape, even though the backend protocol itself
-        // (termina's `style::Underline`) can represent it.
-        // `UnderlineStyle` is kept as its own field on `ResolvedStyle` (and
-        // the theme loader keeps parsing Helix's `underline.style`) so
-        // themes and providers are already correct the day ratatui gains
-        // underline-shape support.
-        match s.underline {
-            UnderlineStyle::None => {}
-            _ => {
-                style = style.add_modifier(ratatui::style::Modifier::UNDERLINED);
-                if let Some(uc) = s.underline_color {
-                    style = style.underline_color(uc);
-                }
-            }
-        }
-        // A ResolvedStyle fully specifies the cell: everything not explicitly
-        // enabled must be explicitly turned OFF. ratatui's `Cell::set_style` is
-        // additive (it only inserts `add_modifier` and removes `sub_modifier`,
-        // never clearing what the cell already had), so without this an opaque
-        // surface painted over styled text — e.g. a completion popup over
-        // syntax-highlighted code — would inherit stale BOLD/ITALIC from the
-        // cell underneath.
-        style.sub_modifier = ratatui::style::Modifier::all() - style.add_modifier;
-        style
-    }
-}
+/// The style vocabulary the frame is composed in, re-exported from
+/// `hume-grid` so engine and editor code keeps naming it here.
+///
+/// It lives in `hume-grid` because a `Cell` stores a [`ResolvedStyle`]
+/// directly. There is no separate backend style for it to be narrowed into
+/// at the end of the pipeline, which is what keeps the underline *shape* and
+/// the distinction between "no colour" and "some default colour" intact all
+/// the way to the terminal.
+pub use hume_grid::{Modifiers, ResolvedStyle, Rgb, UnderlineStyle};
 
 // ---------------------------------------------------------------------------
 // Grapheme — the atom of the formatter

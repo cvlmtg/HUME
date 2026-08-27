@@ -3,6 +3,7 @@
 // in `Editor::handle_key` (`handle_drawer_key`), and the engine chrome band
 // (see `hume-engine`'s `pane_area_*` tests for the partition math itself).
 
+use hume_grid::Rect;
 use std::path::Path;
 
 use super::*;
@@ -413,8 +414,6 @@ fn drawer_renders_under_the_pane_with_selected_row_highlighted() {
     ed.sync_viewport_dims(40, 10);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-
-    use ratatui::layout::Rect;
     let rect = Rect::new(0, 0, 40, 10);
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);

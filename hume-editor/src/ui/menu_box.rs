@@ -4,29 +4,32 @@
 //! position and outer size are resolved, painting the frame, scroll
 //! window, and rows is identical — that shared part lives here.
 
-use ratatui::layout::Rect;
-use ratatui::style::Style;
-use ratatui::symbols::line;
-
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
+use hume_engine::types::ResolvedStyle;
 use hume_engine::types::Scope;
+use hume_grid::Rect;
+
+/// Box-drawing glyphs for a menu box: a light border, and a thicker
+/// vertical for the scrollbar thumb that overdraws it.
+const VERTICAL: &str = "\u{2502}";
+const THICK_VERTICAL: &str = "\u{2503}";
 
 use super::popup::StyledRow;
 use super::width::text_width;
 
 /// Theme styles a bordered box paints with — grouped into one struct rather
-/// than three positional `Style` arguments on `draw_menu_box`, which needs
+/// than three positional `ResolvedStyle` arguments on `draw_menu_box`, which needs
 /// `#[allow(clippy::too_many_arguments)]` regardless given its other params
 /// (buffer, rect, rows, selection, scroll, border).
 #[derive(Clone, Copy)]
 pub(crate) struct MenuBoxStyles {
     /// Fill, border, and unstyled rows.
-    pub(crate) base: Style,
+    pub(crate) base: ResolvedStyle,
     /// The highlighted row (menus only — plain popups never set `selected`).
-    pub(crate) selected: Style,
+    pub(crate) selected: ResolvedStyle,
     /// The scrollbar thumb.
-    pub(crate) scroll: Style,
+    pub(crate) scroll: ResolvedStyle,
 }
 
 impl MenuBoxStyles {
@@ -47,11 +50,11 @@ impl MenuBoxStyles {
             "ui.popup" => (None, "ui.popup.scroll"),
             _ => (None, scope),
         };
-        let base: Style = theme.resolve_by_name(Scope(scope)).into();
+        let base: ResolvedStyle = theme.resolve_by_name(Scope(scope)).into();
         let selected = selected_scope
             .map(|s| theme.resolve_by_name(Scope(s)).into())
             .unwrap_or(base);
-        let scroll: Style = theme.resolve_by_name(Scope(scroll_scope)).into();
+        let scroll: ResolvedStyle = theme.resolve_by_name(Scope(scroll_scope)).into();
         Self {
             base,
             selected,
@@ -134,7 +137,7 @@ pub(crate) fn fits_inside(outer: Rect, pane_rect: Rect) -> bool {
 /// Shared by every bordered box overlay — [`draw_menu_box`] and
 /// `super::picker_panel::draw_picker_panel` — so the frame glyphs stay
 /// identical without a copy per caller.
-pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: Style) {
+pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: ResolvedStyle) {
     let right = outer.x + outer.width - 1;
     let bottom = outer.y + outer.height - 1;
     let fill_w = (outer.width - 2) as usize;
@@ -153,8 +156,8 @@ pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: Style) {
     canvas.write_text_run(right, bottom, "┘", style, edge);
 
     for row in 1..outer.height - 1 {
-        canvas.write_text_run(outer.x, outer.y + row, line::VERTICAL, style, edge);
-        canvas.write_text_run(right, outer.y + row, line::VERTICAL, style, edge);
+        canvas.write_text_run(outer.x, outer.y + row, VERTICAL, style, edge);
+        canvas.write_text_run(right, outer.y + row, VERTICAL, style, edge);
     }
 }
 
@@ -249,7 +252,7 @@ pub(crate) fn draw_menu_box(
             canvas.write_text_run(
                 right,
                 outer.y + 1 + row as u16,
-                line::THICK_VERTICAL,
+                THICK_VERTICAL,
                 styles.scroll,
                 right + 1,
             );
@@ -307,8 +310,8 @@ pub(crate) fn draw_list_row(
     right_edge: u16,
     text: &str,
     is_selected: bool,
-    selected_style: Style,
-    base_style: Style,
+    selected_style: ResolvedStyle,
+    base_style: ResolvedStyle,
 ) {
     if is_selected {
         canvas.fill_rect_bg(Rect::new(x, y, highlight_width, 1), selected_style);

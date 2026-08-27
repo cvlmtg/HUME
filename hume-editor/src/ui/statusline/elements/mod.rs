@@ -1,6 +1,5 @@
+use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
-
-use ratatui::style::Style;
 
 use crate::editor::Editor;
 use crate::ui::theme::EditorColors;
@@ -18,9 +17,9 @@ pub(super) trait StatuslineElement {
 
     fn read(editor: &Editor) -> Self::Data;
 
-    fn format(data: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style);
+    fn format(data: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle);
 
-    fn render(editor: &Editor, colors: &EditorColors) -> (Cow<'static, str>, Style) {
+    fn render(editor: &Editor, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
         Self::format(Self::read(editor), colors)
     }
 }

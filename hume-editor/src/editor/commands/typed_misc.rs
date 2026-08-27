@@ -1,4 +1,5 @@
 use hume_engine::pipeline::{BufferId, Direction};
+use hume_grid::Rgb;
 
 use super::super::Editor;
 use super::super::Severity;
@@ -215,12 +216,9 @@ pub(crate) fn typed_theme_debug(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    use ratatui::style::Color;
-
-    fn color_str(c: Option<Color>) -> String {
+    fn color_str(c: Option<Rgb>) -> String {
         match c {
-            Some(Color::Rgb(r, g, b)) => format!("#{r:02x}{g:02x}{b:02x}"),
-            Some(other) => format!("{other:?}"),
+            Some(Rgb(r, g, b)) => format!("#{r:02x}{g:02x}{b:02x}"),
             None => "-".to_owned(),
         }
     }

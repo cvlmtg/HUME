@@ -5,6 +5,7 @@
 //! `Editor::run`'s loop, `render_to_buf` — calls in that order; everything
 //! else here is a step `prepare_frame` drives or a helper those steps share.
 
+use hume_grid::{Grid, Rect};
 use std::ops::Range;
 
 use hume_engine::pane::Pane;
@@ -87,12 +88,7 @@ impl Editor {
 
     /// Render one frame into `buf`. Single home for the rope / syntax /
     /// pane-settings closures shared by the event loop and `render_to_buf`.
-    pub(super) fn render_into(
-        &self,
-        area: ratatui::layout::Rect,
-        buf: &mut ratatui::buffer::Buffer,
-        ctx: &mut RenderContext,
-    ) {
+    pub(super) fn render_into(&self, area: Rect, buf: &mut Grid, ctx: &mut RenderContext) {
         // The statusline provider borrows `self` immutably; it's built here so
         // its lifetime is tied to this call, not stored across the draw closure.
         let statusline = crate::ui::statusline::HumeStatusline { editor: self };
@@ -115,15 +111,15 @@ impl Editor {
         );
     }
 
-    /// Render the current frame into a ratatui `Buffer` without a live terminal.
+    /// Render the current frame into a [`Grid`] without a live terminal.
     ///
     /// Calls `sync_viewport_dims` + `settle` + `prepare_frame` — the same
     /// three-step sequence `Editor::run`'s loop uses — so pane mirrors are
     /// synced and parse trees are up to date before rendering. Used by
     /// snapshot tests to lock down styled output without a live terminal.
     #[cfg(test)]
-    pub(crate) fn render_to_buf(&mut self, rect: ratatui::layout::Rect) -> ratatui::buffer::Buffer {
-        let mut buf = ratatui::buffer::Buffer::empty(rect);
+    pub(crate) fn render_to_buf(&mut self, rect: Rect) -> Grid {
+        let mut buf = Grid::new(rect.width, rect.height);
         let mut ctx = RenderContext::new();
         self.sync_viewport_dims(rect.width, rect.height);
         self.settle();
@@ -198,7 +194,7 @@ impl Editor {
         // through the same `EngineView::pane_area` that `render` uses, so
         // viewport dims and drawn rects never disagree even when a tab bar is
         // present.
-        let terminal_area = ratatui::layout::Rect {
+        let terminal_area = Rect {
             x: 0,
             y: 0,
             width: terminal_width,

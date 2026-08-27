@@ -1,8 +1,8 @@
 //! Terminal lifecycle management.
 //!
 //! Entry point is [`init`]: enables raw mode, enters the alternate screen, and
-//! returns a ratatui [`Term`] ready to render. [`restore`] reverses all of
-//! that and must be called before the process exits.
+//! returns a [`Screen`](crate::screen::Screen) ready to render. [`restore`]
+//! reverses all of that and must be called before the process exits.
 //!
 //! [`probe_kitty`] is a separate step, called *before* [`init`]. It runs on
 //! the normal screen (raw mode only, no alt-screen) so the caller can finish
@@ -23,7 +23,6 @@ use std::io::{self, Write};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use ratatui_termina::TerminaBackend;
 use termina::Terminal as _;
 use termina::escape::csi::{
     Csi, Cursor, DecPrivateMode, DecPrivateModeCode, Keyboard, KittyKeyboardFlags, Mode,
@@ -32,12 +31,6 @@ use termina::escape::osc::{ColorOrQuery, DynamicColorNumber, Osc};
 use termina::event::KeyEventKind;
 use termina::style::{CursorStyle, RgbColor};
 use termina::{Event, EventReader, PlatformHandle, PlatformTerminal, WindowSize};
-
-/// A ratatui `Terminal` backed by a [`SharedTerm`].
-///
-/// Aliased here so every other module can name the type without repeating the
-/// backend parameter.
-pub type Term = ratatui::Terminal<TerminaBackend<SharedTerm>>;
 
 // ── SharedTerm ────────────────────────────────────────────────────────────────
 
@@ -322,8 +315,8 @@ pub fn probe_kitty(term: &SharedTerm) -> io::Result<bool> {
     Ok(kitty_enabled)
 }
 
-/// Switch the terminal into raw mode + alternate screen and return a ratatui
-/// `Term` ready to render.
+/// Switch the terminal into raw mode + alternate screen and return a
+/// [`Screen`](crate::screen::Screen) ready to render.
 ///
 /// `kitty_enabled` is the result of a prior [`probe_kitty`] call. When `true`,
 /// the caller should filter `KeyEventKind::Release` events from the event
@@ -355,7 +348,7 @@ pub fn init(
     mouse_enabled: bool,
     mouse_select: bool,
     kitty_enabled: bool,
-) -> io::Result<Term> {
+) -> io::Result<crate::screen::Screen> {
     let mut term = term.clone();
 
     // Arm before entering any mode: a panic during the enable sequence below
@@ -394,7 +387,7 @@ pub fn init(
         return Err(e);
     }
 
-    ratatui::Terminal::new(TerminaBackend::new(term))
+    crate::screen::Screen::new(term)
 }
 
 /// Undo everything [`init`] did: run `write_unwind_escapes` then leave raw

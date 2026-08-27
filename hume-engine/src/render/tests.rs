@@ -1,15 +1,11 @@
 use super::*;
 use crate::pane::ViewportState;
 use crate::theme::Theme;
-use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, ScopeId};
+use crate::types::{CellContent, DisplayRow, Grapheme, Modifiers, ResolvedStyle, RowKind, ScopeId};
+use hume_grid::{Grid, Rect, Rgb};
 
-fn make_test_buf(w: u16, h: u16) -> ratatui::buffer::Buffer {
-    ratatui::buffer::Buffer::empty(ratatui::layout::Rect {
-        x: 0,
-        y: 0,
-        width: w,
-        height: h,
-    })
+fn make_test_buf(w: u16, h: u16) -> Grid {
+    Grid::new(w, h)
 }
 
 fn simple_row(graphemes: std::ops::Range<usize>) -> DisplayRow {
@@ -44,7 +40,7 @@ fn renders_simple_text() {
         last_line_idx: 0,
     };
     let viewport = ViewportState::new(20, 5);
-    let pane_rect = ratatui::layout::Rect {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: 20,
@@ -61,8 +57,8 @@ fn renders_simple_text() {
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width: 4,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
@@ -83,18 +79,8 @@ fn renders_simple_text() {
         None,
     );
 
-    assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 0, y: 0 })
-            .unwrap()
-            .symbol(),
-        "h"
-    );
-    assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 1, y: 0 })
-            .unwrap()
-            .symbol(),
-        "i"
-    );
+    assert_eq!(buf.cell(0, 0).unwrap().text(), "h");
+    assert_eq!(buf.cell(1, 0).unwrap().text(), "i");
 }
 
 #[test]
@@ -108,7 +94,7 @@ fn filler_rows_have_tilde() {
         last_line_idx: 0,
     };
     let viewport = ViewportState::new(20, 5);
-    let pane_rect = ratatui::layout::Rect {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: 20,
@@ -124,8 +110,8 @@ fn filler_rows_have_tilde() {
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width: 4,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
@@ -138,9 +124,7 @@ fn filler_rows_have_tilde() {
     // Rows 1–4 should have '~'
     for r in 1..5u16 {
         assert_eq!(
-            buf.cell(ratatui::layout::Position { x: 0, y: r })
-                .unwrap()
-                .symbol(),
+            buf.cell(0, r).unwrap().text(),
             "~",
             "row {} should be tilde",
             r
@@ -162,8 +146,8 @@ fn do_compose_row(
     tab_width: u8,
     w: u16,
     h: u16,
-) -> ratatui::buffer::Buffer {
-    let pane_rect = ratatui::layout::Rect {
+) -> Grid {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: w,
@@ -180,8 +164,8 @@ fn do_compose_row(
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
@@ -231,18 +215,8 @@ fn horizontal_scroll_clips_left_columns() {
         "abcde", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
     // With h_offset=2, screen_x 0 shows 'c' (buf display_col 2).
-    assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 0, y: 0 })
-            .unwrap()
-            .symbol(),
-        "c"
-    );
-    assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 1, y: 0 })
-            .unwrap()
-            .symbol(),
-        "d"
-    );
+    assert_eq!(buf.cell(0, 0).unwrap().text(), "c");
+    assert_eq!(buf.cell(1, 0).unwrap().text(), "d");
 }
 
 // ── Double-width straddle at the h-scroll edge ───────────────────────
@@ -299,16 +273,12 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
         "中X", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
     assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 0, y: 0 })
-            .unwrap()
-            .symbol(),
+        buf.cell(0, 0).unwrap().text(),
         " ",
         "straddling half of '中' renders as a space, not the glyph"
     );
     assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 1, y: 0 })
-            .unwrap()
-            .symbol(),
+        buf.cell(1, 0).unwrap().text(),
         "X",
         "'X' lands at its correct scrolled column"
     );
@@ -343,9 +313,7 @@ fn wide_grapheme_at_the_right_edge_does_not_bleed_past_the_pane() {
         "中", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 5, 5,
     );
     assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 4, y: 0 })
-            .unwrap()
-            .symbol(),
+        buf.cell(4, 0).unwrap().text(),
         " ",
         "a wide glyph that would straddle the right edge must not be drawn"
     );
@@ -362,7 +330,7 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
     // left for the row fill underneath.
     let arena = "中";
     let hint_style = ResolvedStyle {
-        bg: Some(ratatui::style::Color::Rgb(200, 0, 0)),
+        bg: Some(Rgb(200, 0, 0)),
         ..Default::default()
     };
     let graphemes = vec![
@@ -398,10 +366,8 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
         "", arena, &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
     assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 1, y: 0 })
-            .unwrap()
-            .bg,
-        ratatui::style::Color::Rgb(200, 0, 0),
+        buf.cell(1, 0).unwrap().style().bg,
+        Some(Rgb(200, 0, 0)),
         "the wide glyph's continuation cell must carry the decoration's own background"
     );
 }
@@ -446,26 +412,11 @@ fn indent_guide_drawn_at_inner_tab_stops() {
         5,
     );
     // A guide should appear at screen_x 4 (k=1, tw=4).
-    assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 4, y: 0 })
-            .unwrap()
-            .symbol(),
-        INDENT_GUIDE_GLYPH
-    );
+    assert_eq!(buf.cell(4, 0).unwrap().text(), INDENT_GUIDE_GLYPH);
     // screen_x 0 has the space content (no guide at depth boundary).
-    assert_ne!(
-        buf.cell(ratatui::layout::Position { x: 0, y: 0 })
-            .unwrap()
-            .symbol(),
-        INDENT_GUIDE_GLYPH
-    );
+    assert_ne!(buf.cell(0, 0).unwrap().text(), INDENT_GUIDE_GLYPH);
     // Col 8 is where content starts — no guide there.
-    assert_ne!(
-        buf.cell(ratatui::layout::Position { x: 8, y: 0 })
-            .unwrap()
-            .symbol(),
-        INDENT_GUIDE_GLYPH
-    );
+    assert_ne!(buf.cell(8, 0).unwrap().text(), INDENT_GUIDE_GLYPH);
 }
 
 #[test]
@@ -497,7 +448,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         last_line_idx: 0,
     };
     let viewport = ViewportState::new(20, 5);
-    let pane_rect = ratatui::layout::Rect {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: 20,
@@ -514,8 +465,8 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width: 4,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: false,
         pane_rect,
         theme: &theme,
@@ -539,9 +490,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
     // indent_guide_drawn_at_inner_tab_stops proves is drawn when enabled.
     for x in 0..11 {
         assert_ne!(
-            buf.cell(ratatui::layout::Position { x, y: 0 })
-                .unwrap()
-                .symbol(),
+            buf.cell(x, 0).unwrap().text(),
             INDENT_GUIDE_GLYPH,
             "no indent guide should render at display_col {x} when show_indent_guides is false"
         );
@@ -583,12 +532,7 @@ fn indent_guide_not_drawn_on_wrap_rows() {
     let buf = do_compose_row(
         "    text", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
-    assert_ne!(
-        buf.cell(ratatui::layout::Position { x: 0, y: 0 })
-            .unwrap()
-            .symbol(),
-        INDENT_GUIDE_GLYPH
-    );
+    assert_ne!(buf.cell(0, 0).unwrap().text(), INDENT_GUIDE_GLYPH);
 }
 
 #[test]
@@ -616,30 +560,10 @@ fn indicator_content_fills_tab_width() {
     let buf = do_compose_row(
         "\t", "→", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
-    assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 0, y: 0 })
-            .unwrap()
-            .symbol(),
-        "→"
-    );
-    assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 1, y: 0 })
-            .unwrap()
-            .symbol(),
-        " "
-    );
-    assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 2, y: 0 })
-            .unwrap()
-            .symbol(),
-        " "
-    );
-    assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 3, y: 0 })
-            .unwrap()
-            .symbol(),
-        " "
-    );
+    assert_eq!(buf.cell(0, 0).unwrap().text(), "→");
+    assert_eq!(buf.cell(1, 0).unwrap().text(), " ");
+    assert_eq!(buf.cell(2, 0).unwrap().text(), " ");
+    assert_eq!(buf.cell(3, 0).unwrap().text(), " ");
 }
 
 // ── Virtual/Indicator content arena ───────────────────────────────────
@@ -676,16 +600,12 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
         "c", arena, &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
     assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 0, y: 0 })
-            .unwrap()
-            .symbol(),
+        buf.cell(0, 0).unwrap().text(),
         "AB",
         "insert text resolved from the arena, not truncated to its first byte"
     );
     assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 2, y: 0 })
-            .unwrap()
-            .symbol(),
+        buf.cell(2, 0).unwrap().text(),
         "c",
         "real grapheme shifted right by the insert's width"
     );
@@ -732,7 +652,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         last_line_idx: 0,
     };
     let viewport = ViewportState::new(10, 1);
-    let pane_rect = ratatui::layout::Rect {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: 10,
@@ -752,8 +672,8 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width: 4,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
@@ -774,12 +694,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         None,
     );
 
-    let sym = |x: u16| {
-        buf.cell(ratatui::layout::Position { x, y: 0 })
-            .unwrap()
-            .symbol()
-            .to_string()
-    };
+    let sym = |x: u16| buf.cell(x, 0).unwrap().text().to_string();
     assert_eq!(sym(0), "T");
     assert_eq!(sym(1), "O");
     assert_eq!(sym(2), "O");
@@ -811,7 +726,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         last_line_idx: 0,
     };
     let viewport = ViewportState::new(5, 1);
-    let pane_rect = ratatui::layout::Rect {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: 5,
@@ -819,7 +734,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
     };
     let mut buf = make_test_buf(11, 1);
     for x in 0..11u16 {
-        set_cell(&mut buf, x, 0, "Z", ratatui::style::Style::default());
+        buf.set_glyph(x, 0, "Z", 1, ResolvedStyle::default());
     }
     let mut registry = crate::theme::ScopeRegistry::new();
     let default_gutter_scope = registry.intern("ui.linenr");
@@ -834,8 +749,8 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width: 4,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
@@ -859,9 +774,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
     // x=5..10 belongs to the "next pane" — must remain untouched ('Z').
     for x in 5..11u16 {
         assert_eq!(
-            buf.cell(ratatui::layout::Position { x, y: 0 })
-                .unwrap()
-                .symbol(),
+            buf.cell(x, 0).unwrap().text(),
             "Z",
             "neighbouring pane's column {x} must be untouched"
         );
@@ -946,7 +859,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         last_line_idx: 0,
     };
     let viewport = ViewportState::new(10, 1);
-    let pane_rect = ratatui::layout::Rect {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: 10,
@@ -954,7 +867,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     };
     let mut buf = make_test_buf(10, 1);
     for x in 0..10u16 {
-        set_cell(&mut buf, x, 0, "Z", ratatui::style::Style::default());
+        buf.set_glyph(x, 0, "Z", 1, ResolvedStyle::default());
     }
     let mut registry = crate::theme::ScopeRegistry::new();
     let default_gutter_scope = registry.intern("ui.linenr");
@@ -969,8 +882,8 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width: 4,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
@@ -991,12 +904,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         None,
     );
 
-    let sym = |x: u16| {
-        buf.cell(ratatui::layout::Position { x, y: 0 })
-            .unwrap()
-            .symbol()
-            .to_string()
-    };
+    let sym = |x: u16| buf.cell(x, 0).unwrap().text().to_string();
     assert_eq!(sym(0), "N", "column 0's only cell");
     assert_eq!(sym(1), " ", "column 0's separator");
     assert_eq!(sym(2), "1");
@@ -1059,7 +967,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         last_line_idx: 0,
     };
     let viewport = ViewportState::new(6, 1);
-    let pane_rect = ratatui::layout::Rect {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: 6,
@@ -1067,7 +975,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
     };
     let mut buf = make_test_buf(12, 1);
     for x in 0..12u16 {
-        set_cell(&mut buf, x, 0, "Z", ratatui::style::Style::default());
+        buf.set_glyph(x, 0, "Z", 1, ResolvedStyle::default());
     }
     let mut registry = crate::theme::ScopeRegistry::new();
     let default_gutter_scope = registry.intern("ui.linenr");
@@ -1082,8 +990,8 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width: 4,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
@@ -1104,12 +1012,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         None,
     );
 
-    let sym = |x: u16| {
-        buf.cell(ratatui::layout::Position { x, y: 0 })
-            .unwrap()
-            .symbol()
-            .to_string()
-    };
+    let sym = |x: u16| buf.cell(x, 0).unwrap().text().to_string();
     for x in 6..12u16 {
         assert_eq!(
             sym(x),
@@ -1170,7 +1073,7 @@ impl GutterColumn for StaticIconGutter {
 
 #[test]
 fn owned_gutter_icon_renders_identically_to_static_one() {
-    fn render_with(lane: Box<dyn GutterColumn>) -> ratatui::buffer::Buffer {
+    fn render_with(lane: Box<dyn GutterColumn>) -> Grid {
         let graphemes = vec![simple_grapheme(0, 0, 1)];
         let rows = [simple_row(0..1)];
         let styles = vec![ResolvedStyle::default()];
@@ -1182,7 +1085,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             last_line_idx: 0,
         };
         let viewport = ViewportState::new(7, 1);
-        let pane_rect = ratatui::layout::Rect {
+        let pane_rect = Rect {
             x: 0,
             y: 0,
             width: 7,
@@ -1202,8 +1105,8 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             mode: EditorMode::Normal,
             primary_head_line: 0,
             tab_width: 4,
-            tilde_style: ratatui::style::Style::default(),
-            indent_guide_style: ratatui::style::Style::default(),
+            tilde_style: ResolvedStyle::default(),
+            indent_guide_style: ResolvedStyle::default(),
             show_indent_guides: true,
             pane_rect,
             theme: &theme,
@@ -1230,14 +1133,8 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
     let static_buf = render_with(Box::new(StaticIconGutter));
     for x in 0..7u16 {
         assert_eq!(
-            owned_buf
-                .cell(ratatui::layout::Position { x, y: 0 })
-                .unwrap()
-                .symbol(),
-            static_buf
-                .cell(ratatui::layout::Position { x, y: 0 })
-                .unwrap()
-                .symbol(),
+            owned_buf.cell(x, 0).unwrap().text(),
+            static_buf.cell(x, 0).unwrap().text(),
             "column {x}: Cow::Owned must render identically to Cow::Borrowed"
         );
     }
@@ -1298,7 +1195,7 @@ fn gutter_column_reads_rope_via_ctx() {
         last_line_idx: 1,
     };
     let viewport = ViewportState::new(12, 2);
-    let pane_rect = ratatui::layout::Rect {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: 12,
@@ -1317,8 +1214,8 @@ fn gutter_column_reads_rope_via_ctx() {
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width: 4,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
@@ -1339,9 +1236,7 @@ fn gutter_column_reads_rope_via_ctx() {
         None,
     );
     assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 0, y: 0 })
-            .unwrap()
-            .symbol(),
+        buf.cell(0, 0).unwrap().text(),
         "b",
         "gutter column resolved 'banana' (line 1) via ctx.rope"
     );
@@ -1351,8 +1246,8 @@ fn gutter_column_reads_rope_via_ctx() {
 fn set_cell_out_of_bounds_no_panic() {
     let mut buf = make_test_buf(10, 5);
     // Call with coordinates well beyond the buffer area — must not panic.
-    set_cell(&mut buf, 100, 100, "x", ratatui::style::Style::default());
-    set_cell(&mut buf, 10, 0, "x", ratatui::style::Style::default()); // exactly at boundary
+    buf.set_glyph(100, 100, "x", 1, ResolvedStyle::default());
+    buf.set_glyph(10, 0, "x", 1, ResolvedStyle::default()); // exactly at boundary
 }
 
 #[test]
@@ -1360,16 +1255,13 @@ fn clear_row_span_fills_with_blank() {
     let mut buf = make_test_buf(10, 3);
     // Write something so we can confirm clearing works.
     for x in 0..10 {
-        set_cell(&mut buf, x, 1, "X", ratatui::style::Style::default());
+        buf.set_glyph(x, 1, "X", 1, ResolvedStyle::default());
     }
     let theme = Theme::default();
     // Clear the middle 4 columns of row 1.
     Canvas::new(&mut buf, &theme, None).clear_row_span(3, 7, 1);
     for x in 0..10 {
-        let sym = buf
-            .cell(ratatui::layout::Position { x, y: 1 })
-            .unwrap()
-            .symbol();
+        let sym = buf.cell(x, 1).unwrap().text();
         if (3..7).contains(&x) {
             assert_eq!(sym, " ", "display_col {x} should be blank");
         } else {
@@ -1382,16 +1274,13 @@ fn clear_row_span_fills_with_blank() {
 fn clear_row_span_clips_right_edge() {
     let mut buf = make_test_buf(10, 3);
     for x in 0..10 {
-        set_cell(&mut buf, x, 0, "X", ratatui::style::Style::default());
+        buf.set_glyph(x, 0, "X", 1, ResolvedStyle::default());
     }
     let theme = Theme::default();
     // x_end extends past the buffer's right edge — should clip, not panic.
     Canvas::new(&mut buf, &theme, None).clear_row_span(8, 20, 0);
     for x in 0..10 {
-        let sym = buf
-            .cell(ratatui::layout::Position { x, y: 0 })
-            .unwrap()
-            .symbol();
+        let sym = buf.cell(x, 0).unwrap().text();
         if x >= 8 {
             assert_eq!(sym, " ");
         } else {
@@ -1417,12 +1306,12 @@ fn clear_row_span_empty_range_no_panic() {
 /// through `compose_row`.
 #[test]
 fn compose_row_dims_cells_inline() {
-    use ratatui::style::Color;
+    use Rgb;
     let graphemes = vec![simple_grapheme(0, 0, 1)];
     let rows = [simple_row(0..1)];
     let styles = vec![ResolvedStyle {
-        fg: Some(Color::Rgb(255, 255, 255)),
-        bg: Some(Color::Rgb(0, 0, 0)),
+        fg: Some(Rgb(255, 255, 255)),
+        bg: Some(Rgb(0, 0, 0)),
         ..Default::default()
     }];
     let visible = PaneGeometry {
@@ -1432,7 +1321,7 @@ fn compose_row_dims_cells_inline() {
         last_line_idx: 0,
     };
     let viewport = ViewportState::new(2, 1);
-    let pane_rect = ratatui::layout::Rect {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: 2,
@@ -1449,15 +1338,15 @@ fn compose_row_dims_cells_inline() {
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width: 4,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = Canvas::new(&mut buf, &theme, Some((Color::Rgb(0, 0, 0), 0.5)));
+    let mut canvas = Canvas::new(&mut buf, &theme, Some((Rgb(0, 0, 0), 0.5)));
     compose_row(
         &rows[0],
         &graphemes,
@@ -1470,24 +1359,20 @@ fn compose_row_dims_cells_inline() {
         &mut canvas,
         None,
     );
-    let cell = buf.cell(ratatui::layout::Position { x: 0, y: 0 }).unwrap();
+    let cell = buf.cell(0, 0).unwrap();
     // Independent oracle: 255 lerp 0 at 0.5 ⇒ 127.5, rounds to 128.
-    assert_eq!(cell.fg, Color::Rgb(128, 128, 128));
+    assert_eq!(cell.style().fg, Some(Rgb(128, 128, 128)));
     // bg already at target ⇒ blend is a no-op.
-    assert_eq!(cell.bg, Color::Rgb(0, 0, 0));
+    assert_eq!(cell.style().bg, Some(Rgb(0, 0, 0)));
 }
 
-/// A non-RGB dim target must be a no-op (cell keeps its original colours),
-/// matching the prior `dim_rect` semantics.
+/// A cell with no colour of its own has nothing to blend: the dim leaves it
+/// at the terminal's default rather than inventing a value to darken.
 #[test]
-fn compose_row_non_rgb_dim_target_is_noop() {
-    use ratatui::style::Color;
+fn compose_row_dim_leaves_an_uncoloured_cell_alone() {
     let graphemes = vec![simple_grapheme(0, 0, 1)];
     let rows = [simple_row(0..1)];
-    let styles = vec![ResolvedStyle {
-        fg: Some(Color::Rgb(255, 255, 255)),
-        ..Default::default()
-    }];
+    let styles = vec![ResolvedStyle::default()];
     let visible = PaneGeometry {
         content_height: 1,
         content_width: 2,
@@ -1495,7 +1380,7 @@ fn compose_row_non_rgb_dim_target_is_noop() {
         last_line_idx: 0,
     };
     let viewport = ViewportState::new(2, 1);
-    let pane_rect = ratatui::layout::Rect {
+    let pane_rect = Rect {
         x: 0,
         y: 0,
         width: 2,
@@ -1512,15 +1397,15 @@ fn compose_row_non_rgb_dim_target_is_noop() {
         mode: EditorMode::Normal,
         primary_head_line: 0,
         tab_width: 4,
-        tilde_style: ratatui::style::Style::default(),
-        indent_guide_style: ratatui::style::Style::default(),
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
         show_indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = Canvas::new(&mut buf, &theme, Some((Color::Reset, 0.5)));
+    let mut canvas = Canvas::new(&mut buf, &theme, Some((Rgb(0, 0, 0), 0.5)));
     compose_row(
         &rows[0],
         &graphemes,
@@ -1533,55 +1418,35 @@ fn compose_row_non_rgb_dim_target_is_noop() {
         &mut canvas,
         None,
     );
-    assert_eq!(
-        buf.cell(ratatui::layout::Position { x: 0, y: 0 })
-            .unwrap()
-            .fg,
-        Color::Rgb(255, 255, 255)
-    );
+    assert_eq!(buf.cell(0, 0).unwrap().style().fg, None);
 }
 
 #[test]
 fn fill_rect_bg_clears_stale_modifiers() {
     // Reproduces the completion-popup bleed: an opaque overlay painted over a
     // cell the pane already wrote in italic/bold must not leave those
-    // modifiers on the cell. A plain (no-modifier) ResolvedStyle converts to
-    // a ratatui Style whose sub_modifier clears everything not explicitly
-    // enabled — see the `From<ResolvedStyle> for ratatui::style::Style`
-    // impl in types.rs.
+    // modifiers on the cell. A cell stores its style by value, so writing one
+    // replaces what was there rather than merging into it.
     let mut buf = make_test_buf(4, 1);
-    buf[(0, 0)].set_style(
-        ratatui::style::Style::default()
-            .add_modifier(ratatui::style::Modifier::ITALIC | ratatui::style::Modifier::BOLD),
-    );
-    assert!(
-        buf[(0, 0)]
-            .modifier
-            .contains(ratatui::style::Modifier::ITALIC)
-    );
-
-    let menu_style: ratatui::style::Style = ResolvedStyle::default().into();
     let theme = Theme::default();
+    let emphasised = ResolvedStyle {
+        modifiers: Modifiers::ITALIC | Modifiers::BOLD,
+        ..Default::default()
+    };
+    Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "x", emphasised, 4);
+    assert_eq!(buf[(0, 0)].style().modifiers, emphasised.modifiers);
+
     Canvas::new(&mut buf, &theme, None).fill_rect_bg(
-        ratatui::layout::Rect {
+        Rect {
             x: 0,
             y: 0,
             width: 4,
             height: 1,
         },
-        menu_style,
+        ResolvedStyle::default(),
     );
 
-    assert!(
-        !buf[(0, 0)]
-            .modifier
-            .contains(ratatui::style::Modifier::ITALIC)
-    );
-    assert!(
-        !buf[(0, 0)]
-            .modifier
-            .contains(ratatui::style::Modifier::BOLD)
-    );
+    assert_eq!(buf[(0, 0)].style().modifiers, Modifiers::empty());
 }
 
 // ── write_text_run ───────────────────────────────────────────────────────
@@ -1594,13 +1459,13 @@ fn write_text_run_draws_a_tab_as_one_space_not_a_placeholder() {
     // `\t` — and draw the 3-cell `<9>` placeholder into that one cell,
     // corrupting whatever followed it.
     let mut buf = make_test_buf(10, 1);
-    let style = ratatui::style::Style::default();
+    let style = ResolvedStyle::default();
     let theme = Theme::default();
     let after = Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "a\tb", style, 10);
 
-    assert_eq!(buf[(0, 0)].symbol(), "a");
-    assert_eq!(buf[(1, 0)].symbol(), " ", "a tab draws as a single space");
-    assert_eq!(buf[(2, 0)].symbol(), "b");
+    assert_eq!(buf[(0, 0)].text(), "a");
+    assert_eq!(buf[(1, 0)].text(), " ", "a tab draws as a single space");
+    assert_eq!(buf[(2, 0)].text(), "b");
     assert_eq!(
         after, 3,
         "advance must match one cell per cluster, not the placeholder's length"
@@ -1618,26 +1483,29 @@ fn write_text_run_still_shows_a_genuine_placeholder_cluster_as_its_codepoint() {
     // chrome equivalent of buffer text's Tier 2d½ layering — so a reader can
     // tell it apart from ordinary text.
     let mut buf = make_test_buf(10, 1);
-    let style = ratatui::style::Style::default().fg(ratatui::style::Color::White);
+    let style = ResolvedStyle {
+        fg: Some(Rgb(255, 255, 255)),
+        ..Default::default()
+    };
     let mut theme = Theme::default();
     theme.ui.invisible = ResolvedStyle {
-        fg: Some(ratatui::style::Color::Red),
+        fg: Some(Rgb(255, 0, 0)),
         ..Default::default()
     };
     let after = Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "a\u{200b}b", style, 10);
 
-    assert_eq!(buf[(0, 0)].symbol(), "a");
-    assert_eq!(buf[(0, 0)].fg, ratatui::style::Color::White);
-    let placeholder: String = (1..=6).map(|x| buf[(x, 0)].symbol().to_string()).collect();
+    assert_eq!(buf[(0, 0)].text(), "a");
+    assert_eq!(buf[(0, 0)].style().fg, Some(Rgb(255, 255, 255)));
+    let placeholder: String = (1..=6).map(|x| buf[(x, 0)].text().to_string()).collect();
     assert_eq!(placeholder, "<200b>");
     for x in 1..=6u16 {
         assert_eq!(
-            buf[(x, 0)].fg,
-            ratatui::style::Color::Red,
+            buf[(x, 0)].style().fg,
+            Some(Rgb(255, 0, 0)),
             "placeholder cell {x} must carry invisible_style, not the surrounding text's style"
         );
     }
-    assert_eq!(buf[(7, 0)].symbol(), "b");
+    assert_eq!(buf[(7, 0)].text(), "b");
     assert_eq!(after, 8);
 }
 
@@ -1647,12 +1515,12 @@ fn write_text_run_drops_a_wide_grapheme_whole_at_the_right_edge() {
     // dropped whole, same rule `truncate_to_width` follows, not clipped to
     // its first column.
     let mut buf = make_test_buf(10, 1);
-    let style = ratatui::style::Style::default();
+    let style = ResolvedStyle::default();
     let theme = Theme::default();
     let after = Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "中", style, 1);
 
     assert_eq!(
-        buf[(0, 0)].symbol(),
+        buf[(0, 0)].text(),
         " ",
         "a cluster that can't fit at all must write nothing"
     );
@@ -1660,25 +1528,31 @@ fn write_text_run_drops_a_wide_grapheme_whole_at_the_right_edge() {
 }
 
 #[test]
-fn write_text_run_blanks_the_continuation_cell_of_a_wide_grapheme() {
-    // A width-2 grapheme writes its glyph into the first cell and blanks
-    // the second — nothing left over from whatever the buffer held before.
+fn write_text_run_claims_the_continuation_cell_of_a_wide_grapheme() {
+    // A width-2 grapheme owns both its columns: the glyph goes in the first
+    // and the second becomes its continuation, with nothing left over from
+    // whatever the grid held before.
     let mut buf = make_test_buf(10, 1);
-    buf[(1, 0)].set_symbol("X"); // stale content the blank must overwrite
-    let style = ratatui::style::Style::default().fg(ratatui::style::Color::White);
+    // Stale content the write must displace.
+    buf.set_glyph(1, 0, "X", 1, ResolvedStyle::default());
+    let style = ResolvedStyle {
+        fg: Some(Rgb(255, 255, 255)),
+        ..Default::default()
+    };
     let theme = Theme::default();
     Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "中", style, 10);
 
-    assert_eq!(buf[(0, 0)].symbol(), "中");
-    assert_eq!(
-        buf[(1, 0)].symbol(),
-        " ",
-        "the continuation cell must be blanked, not left as stale content"
+    assert_eq!(buf[(0, 0)].text(), "中");
+    assert_eq!(buf[(0, 0)].advance(), 2);
+    assert!(
+        buf[(1, 0)].is_continuation(),
+        "the second column must belong to the glyph, not hold stale content"
     );
     assert_eq!(
-        buf[(1, 0)].fg,
-        ratatui::style::Color::White,
-        "the blanked continuation cell must still carry the run's style"
+        buf[(1, 0)].style().fg,
+        Some(Rgb(255, 255, 255)),
+        "the continuation must carry the run's style, so it changes exactly \
+         when its head does"
     );
 }
 
@@ -1689,14 +1563,14 @@ fn write_text_run_drops_a_placeholder_whole_when_it_would_straddle_the_right_edg
     // `<20` — and, since drop-whole breaks the walk, 'a' is the only thing
     // written at all.
     let mut buf = make_test_buf(10, 1);
-    let style = ratatui::style::Style::default();
+    let style = ResolvedStyle::default();
     let theme = Theme::default();
     let after = Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "a\u{200b}b", style, 4);
 
-    assert_eq!(buf[(0, 0)].symbol(), "a");
+    assert_eq!(buf[(0, 0)].text(), "a");
     for x in 1..4u16 {
         assert_eq!(
-            buf[(x, 0)].symbol(),
+            buf[(x, 0)].text(),
             " ",
             "cell {x} must stay untouched — the placeholder that would reach it was dropped whole"
         );

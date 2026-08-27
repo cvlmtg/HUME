@@ -1,3 +1,5 @@
+use hume_grid::{Cell, Grid, Rect, Rgb};
+
 use crate::layout::PaneGeometry;
 use crate::pane::ViewportState;
 use crate::providers::{GutterColumn, GutterRowCtx, ProviderId};
@@ -25,12 +27,12 @@ pub(crate) struct ComposeCtx<'a> {
     pub primary_head_line: usize,
     pub tab_width: u8,
     /// Pre-resolved from `theme.ui.virtual_text` — avoids repeated field access in the hot loop.
-    pub tilde_style: ratatui::style::Style,
+    pub tilde_style: ResolvedStyle,
     /// Pre-resolved from `theme.ui.indent_guide`.
-    pub indent_guide_style: ratatui::style::Style,
+    pub indent_guide_style: ResolvedStyle,
     /// From the `indent-guides` setting — gates the draw loop below.
     pub show_indent_guides: bool,
-    pub pane_rect: ratatui::layout::Rect,
+    pub pane_rect: Rect,
     /// `theme.ui.background.bg` is read directly wherever a row/gutter cell
     /// falls back to the pane's own background (trailing cells past the
     /// last grapheme, blank gutter cells) rather than through a cached copy
@@ -52,10 +54,10 @@ pub(crate) struct ComposeCtx<'a> {
 /// The frame's drawing surface — every cell write, pane or chrome, goes
 /// through here.
 ///
-/// Wraps the ratatui `Buffer` and, when set, a dim target: fg/bg is blended
+/// Wraps the frame's [`Grid`] and, when set, a dim target: fg/bg is blended
 /// toward it on every write. This is the single chokepoint for the non-focused
-/// pane dim effect — `compose_row` / `render_tilde_fillers` never touch `buf`
-/// directly, so a future write site cannot forget to dim: the blend happens
+/// pane dim effect — `compose_row` / `render_tilde_fillers` never touch the
+/// grid directly, so a future write site cannot forget to dim: the blend happens
 /// exactly once per cell, inline in the single write, never a separate sweep
 /// over an already-drawn rect. Chrome (menus,
 /// pickers, the drawer, the statusline) is never dimmed, so it always passes
@@ -66,52 +68,62 @@ pub(crate) struct ComposeCtx<'a> {
 /// [`Canvas::write_text_run`] never needs that style hand-threaded down from
 /// the caller's own `&Theme`.
 pub struct Canvas<'a> {
-    buf: &'a mut ratatui::buffer::Buffer,
-    dim: Option<DimTarget>,
+    grid: &'a mut Grid,
+    /// Colour every write is blended toward, and by how much. `None` for
+    /// chrome, which is never dimmed.
+    dim: Option<(Rgb, f32)>,
     /// Resolved from `theme.ui.invisible` once per frame — layered onto a
     /// [`Canvas::write_text_run`] placeholder cell so it reads distinctly from
     /// ordinary text (buffer text gets this same layering via `style_row`'s
     /// Tier 2d½; chrome has no per-cell style tiers of its own, so the canvas
     /// carries the one style every write needs for it).
-    invisible_style: ratatui::style::Style,
-}
-
-/// Flattened, per-cell-ready form of a `(Color, f32)` dim target.
-///
-/// Resolving `Color::Rgb(..)` out of the enum happens once here, in
-/// `Canvas::new`, rather than on every `blend_style` call — `dim` is
-/// loop-invariant for the whole pane, so re-matching it per cell
-/// (once per gutter cell, per grapheme, per indent-guide cell) was pure
-/// per-frame overhead.
-#[derive(Clone, Copy)]
-struct DimTarget {
-    r: u8,
-    g: u8,
-    b: u8,
-    factor: f32,
+    invisible_style: ResolvedStyle,
 }
 
 impl<'a> Canvas<'a> {
-    pub fn new(
-        buf: &'a mut ratatui::buffer::Buffer,
-        theme: &Theme,
-        dim: Option<(ratatui::style::Color, f32)>,
-    ) -> Self {
-        // Non-RGB colors (indexed/named) have no numeric target to blend
-        // toward, so they pass through undimmed — see `blend_toward`.
-        let dim = dim.and_then(|(color, factor)| match color {
-            ratatui::style::Color::Rgb(r, g, b) => Some(DimTarget { r, g, b, factor }),
-            _ => None,
-        });
+    pub fn new(grid: &'a mut Grid, theme: &Theme, dim: Option<(Rgb, f32)>) -> Self {
         Self {
-            buf,
+            grid,
             dim,
-            invisible_style: theme.ui.invisible.into(),
+            invisible_style: theme.ui.invisible,
         }
     }
 
-    fn set_cell(&mut self, x: u16, y: u16, text: &str, style: ratatui::style::Style) {
-        set_cell(self.buf, x, y, text, blend_style(style, self.dim));
+    /// Write one cell, `advance` columns wide.
+    ///
+    /// The trailing columns of a wide glyph are the grid's business, not a
+    /// caller's: [`Grid::set_glyph`] claims them itself, so no write site
+    /// has to remember to blank them.
+    fn set_cell(&mut self, x: u16, y: u16, text: &str, advance: u8, style: ResolvedStyle) {
+        let style = self.over_painted(x, y, blend_style(style, self.dim));
+        // static-glyph-safe: `Canvas`'s own cell primitive.
+        self.grid.set_glyph(x, y, text, advance, style);
+    }
+
+    /// Resolve `style` against whatever is already painted at `(x, y)`.
+    ///
+    /// A colour the caller left unset means "whatever is already there", not
+    /// "the terminal's default". Glyph styles are routinely partial on
+    /// purpose — `ui.virtual_text` (the `~` fillers) and the statusline
+    /// separator set a foreground only, and are drawn over a background some
+    /// earlier fill put down. Making the omission inherit is what lets a
+    /// writer draw a glyph without first having to find out what it is
+    /// standing on.
+    ///
+    /// Modifiers and the underline replace outright, and that asymmetry is
+    /// deliberate: an opaque overlay — a completion popup over highlighted
+    /// code — must not inherit the bold of whatever it covered. Colours
+    /// compose; emphasis does not.
+    fn over_painted(&self, x: u16, y: u16, style: ResolvedStyle) -> ResolvedStyle {
+        let Some(under) = self.grid.cell(x, y).map(Cell::style) else {
+            return style;
+        };
+        ResolvedStyle {
+            fg: style.fg.or(under.fg),
+            bg: style.bg.or(under.bg),
+            underline_color: style.underline_color.or(under.underline_color),
+            ..style
+        }
     }
 
     /// Write `text` cell by cell from `(x, y)`, stopping before `right_edge`,
@@ -164,11 +176,12 @@ impl<'a> Canvas<'a> {
         x: u16,
         y: u16,
         text: &str,
-        style: ratatui::style::Style,
+        style: ResolvedStyle,
         right_edge: u16,
     ) -> u16 {
-        let style = blend_style(style, self.dim);
-        let invisible_style = blend_style(self.invisible_style, self.dim);
+        // Neither style is blended here: every cell below is written through
+        // `set_cell`, which applies the dim once, at the single write point.
+        let invisible_style = self.invisible_style;
         let mut cx = x;
         for cluster in unicode_segmentation::UnicodeSegmentation::graphemes(text, true) {
             // Classified once — tab vs. placeholder vs. plain is decided
@@ -191,7 +204,7 @@ impl<'a> Canvas<'a> {
                 hume_rope::width::Cluster::Tab { .. } => {
                     // Chrome's tab is exactly one cell (see this method's
                     // doc), so it draws as one plain space.
-                    set_cell(self.buf, cx, y, " ", style);
+                    self.set_cell(cx, y, " ", 1, style);
                 }
                 hume_rope::width::Cluster::Placeholder(p) => {
                     // A cluster the terminal must not be shown as itself is
@@ -199,32 +212,34 @@ impl<'a> Canvas<'a> {
                     // text gets (`format::grapheme_display`). `classify`
                     // above already sized the run for that placeholder, so
                     // it spans exactly the columns reserved for it — one
-                    // cell per character of `<200b>`. `patch`, not a bare
-                    // replace, so a row's own background (a selected menu
-                    // row, a cursorline) still shows through — only the
-                    // fields `invisible_style` actually sets (fg, modifiers)
-                    // override.
-                    let placeholder_style = style.patch(invisible_style);
+                    // cell per character of `<200b>`. Colours fall back to
+                    // the row's own, so a selected menu row or a cursorline
+                    // still shows through, but the *emphasis*
+                    // (`invisible_style`'s modifiers and underline) replaces
+                    // rather than unions with the run's: a placeholder inside
+                    // a bold field reads as a placeholder, not as bold text.
+                    // That is why this is written field by field instead of
+                    // through `ResolvedStyle::layer`, which unions modifiers.
+                    let placeholder_style = ResolvedStyle {
+                        fg: invisible_style.fg.or(style.fg),
+                        bg: invisible_style.bg.or(style.bg),
+                        underline: invisible_style.underline,
+                        underline_color: invisible_style.underline_color.or(style.underline_color),
+                        modifiers: invisible_style.modifiers,
+                    };
                     for (i, ch) in p.as_str().chars().enumerate() {
                         let mut glyph = [0u8; 4];
-                        set_cell(
-                            self.buf,
+                        self.set_cell(
                             cx + i as u16,
                             y,
                             ch.encode_utf8(&mut glyph),
+                            1,
                             placeholder_style,
                         );
                     }
                 }
                 hume_rope::width::Cluster::Plain { .. } => {
-                    set_cell(self.buf, cx, y, cluster, style);
-                    // Blank the cells a double-width glyph covers, so
-                    // nothing already in the buffer shows through beside it
-                    // — the same thing `compose_row` does for a wide buffer
-                    // grapheme.
-                    for extra in 1..width {
-                        set_cell(self.buf, cx + extra, y, " ", style);
-                    }
+                    self.set_cell(cx, y, cluster, width as u8, style);
                 }
             }
             cx += width;
@@ -242,22 +257,18 @@ impl<'a> Canvas<'a> {
     /// (chrome passes `dim: None`), but routing both through this one method
     /// keeps every write, pane or chrome, going through one blend point
     /// rather than two conventions.
-    pub fn fill_rect_bg(&mut self, rect: ratatui::layout::Rect, style: ratatui::style::Style) {
-        let style = blend_style(style, self.dim);
-        let (x0, y0, x1, y1) = clamp_rect_to_buf(self.buf, rect);
+    pub fn fill_rect_bg(&mut self, rect: Rect, style: ResolvedStyle) {
+        let (x0, y0, x1, y1) = clamp_rect_to_grid(self.grid, rect);
         if x0 >= x1 {
             return;
         }
-        // One `index_of` per row rather than per cell — cells within a row are
-        // contiguous in ratatui's row-major backing Vec, and indexing a
-        // `Buffer` by position re-runs the whole bounds check every cell.
-        // Same reason `clear_row_span` below fills through a slice.
+        // Cell by cell rather than one span write: each cell resolves any
+        // colour `style` leaves unset against what is already painted there
+        // (see `over_painted`), so the cells of a run need not agree.
         for y in y0..y1 {
-            let start = self.buf.index_of(x0, y);
-            let end = start + (x1 - x0) as usize;
-            for cell in &mut self.buf.content[start..end] {
-                // static-glyph-safe: blanks a cell, writes no text
-                cell.set_char(' ').set_style(style);
+            for x in x0..x1 {
+                // static-glyph-safe: blanks a cell, writes no text.
+                self.set_cell(x, y, " ", 1, style);
             }
         }
     }
@@ -267,36 +278,25 @@ impl<'a> Canvas<'a> {
     /// the last grapheme. A bg-only [`Canvas::fill_rect_bg`] style blends
     /// identically to blending the colour alone, so this needs no separate
     /// blend step of its own.
-    fn fill_row_bg(&mut self, x_start: u16, x_end: u16, y: u16, bg: ratatui::style::Color) {
+    fn fill_row_bg(&mut self, x_start: u16, x_end: u16, y: u16, bg: Rgb) {
         self.fill_rect_bg(
-            ratatui::layout::Rect::new(x_start, y, x_end.saturating_sub(x_start), 1),
-            ratatui::style::Style::default().bg(bg),
+            Rect::new(x_start, y, x_end.saturating_sub(x_start), 1),
+            ResolvedStyle {
+                bg: Some(bg),
+                ..Default::default()
+            },
         );
     }
 
-    /// Fill a horizontal span of cells on row `y` with blank `Cell::default()`.
+    /// Fill a horizontal span of cells on row `y` with blank cells in the
+    /// terminal's own colours.
     ///
-    /// Uses a single slice fill instead of per-cell `set_cell` calls. Cells
-    /// within a row are contiguous in ratatui's row-major backing Vec, so one
-    /// `index_of` + `fill` replaces N bounds-checked function calls. Clips
-    /// silently if `x_end` extends past the buffer boundary.
-    ///
-    /// Writes `Cell::default()` (terminal-default colours), taken only when
-    /// `theme.ui.background.bg` is `None` — which is exactly when `dim` is
-    /// `None` too (the pipeline gates both on that same value). No blend needed.
+    /// Taken only when `theme.ui.background.bg` is `None` — which is exactly
+    /// when `dim` is `None` too (the pipeline gates both on that same value),
+    /// so no blend is needed.
     fn clear_row_span(&mut self, x_start: u16, x_end: u16, y: u16) {
-        if x_start >= x_end {
-            return;
-        }
-        let area = self.buf.area();
-        let x_start = x_start.max(area.x);
-        let x_end = x_end.min(area.x + area.width);
-        if x_start >= x_end || y >= area.y + area.height {
-            return;
-        }
-        let start = self.buf.index_of(x_start, y);
-        let end = self.buf.index_of(x_end - 1, y) + 1;
-        self.buf.content[start..end].fill(ratatui::buffer::Cell::default());
+        // static-glyph-safe: blanks a span, writes no text.
+        self.grid.fill_span(y, x_start, x_end, Cell::default());
     }
 }
 
@@ -315,11 +315,15 @@ impl<'a> Canvas<'a> {
 fn gutter_cell_style(
     scope: ScopeId,
     theme: &crate::theme::Theme,
-    row_bg: Option<ratatui::style::Color>,
-) -> ratatui::style::Style {
-    let scope_style: ratatui::style::Style = theme.resolve(scope).into();
+    row_bg: Option<Rgb>,
+) -> ResolvedStyle {
+    let scope_style = theme.resolve(scope);
     match row_bg {
-        Some(bg) => ratatui::style::Style::default().bg(bg).patch(scope_style),
+        Some(bg) => ResolvedStyle {
+            bg: Some(bg),
+            ..Default::default()
+        }
+        .layer(scope_style),
         None => scope_style,
     }
 }
@@ -338,7 +342,7 @@ fn compose_gutter(
     row_kind: RowKind,
     lane_widths: &[u16],
     compose_ctx: &ComposeCtx,
-    row_bg: Option<ratatui::style::Color>,
+    row_bg: Option<Rgb>,
     y: u16,
     canvas: &mut Canvas,
 ) {
@@ -404,7 +408,7 @@ fn compose_gutter(
             let text_width = text_width as u16;
             let pad = usable_per_cell.saturating_sub(text_width);
             for px in 0..pad {
-                canvas.set_cell(gutter_x + px, y, " ", style);
+                canvas.set_cell(gutter_x + px, y, " ", 1, style);
             }
             // `after` is where the write actually stopped — used below
             // instead of a second `gutter_x + pad + text_width` measurement,
@@ -414,7 +418,7 @@ fn compose_gutter(
             // Only write a separator after the last cell — it's the column's
             // right padding, not a separator between sub-cells.
             if is_last {
-                canvas.set_cell(after, y, " ", style);
+                canvas.set_cell(after, y, " ", 1, style);
                 gutter_x += usable_per_cell + 1;
             } else {
                 gutter_x += usable_per_cell;
@@ -432,7 +436,7 @@ fn compose_gutter(
         if gutter_x < lane_x + lane_width {
             let style = gutter_cell_style(last_scope, compose_ctx.theme, cell_bg);
             while gutter_x < lane_x + lane_width {
-                canvas.set_cell(gutter_x, y, " ", style);
+                canvas.set_cell(gutter_x, y, " ", 1, style);
                 gutter_x += 1;
             }
         }
@@ -443,7 +447,7 @@ fn compose_gutter(
     }
 }
 
-/// Render a single display row at `screen_row` into the ratatui buffer.
+/// Render a single display row at `screen_row` into the frame grid.
 ///
 /// `line_str` is the pre-materialised text of the buffer line that owns this
 /// row (used to resolve `CellContent::Grapheme` byte ranges). Pass `""` for
@@ -473,7 +477,7 @@ pub(crate) fn compose_row(
     // writing graphemes. Used for cursorline highlighting so the tint
     // extends to the right edge even past the last character.
     // `None` → clear to terminal default (normal rows).
-    row_bg: Option<ratatui::style::Color>,
+    row_bg: Option<Rgb>,
 ) {
     let y = compose_ctx.pane_rect.y + screen_row;
     let right_edge = compose_ctx.pane_rect.x + compose_ctx.pane_rect.width;
@@ -526,7 +530,7 @@ pub(crate) fn compose_row(
             break; // past right edge — done with this row
         }
 
-        let ratatui_style: ratatui::style::Style = (*style).into();
+        let cell_style = *style;
 
         // A multi-column cell (double-width CJK grapheme, tab
         // Indicator) whose left edge sits before `h_offset` still
@@ -544,7 +548,7 @@ pub(crate) fn compose_row(
             for i in 0..visible_cells as u16 {
                 let sx = screen_x + i;
                 if sx < right_edge {
-                    canvas.set_cell(sx, y, " ", ratatui_style);
+                    canvas.set_cell(sx, y, " ", 1, cell_style);
                 }
             }
             continue;
@@ -562,15 +566,11 @@ pub(crate) fn compose_row(
                         // for the columns that are ours, mirroring the
                         // h-scroll straddle policy below.
                         for sx in screen_x..right_edge {
-                            canvas.set_cell(sx, y, " ", ratatui_style);
+                            canvas.set_cell(sx, y, " ", 1, cell_style);
                         }
                     } else {
                         let text = &line_str[g.byte_range.clone()];
-                        canvas.set_cell(screen_x, y, text, ratatui_style);
-                        // For double-width chars, blank the continuation cell.
-                        if g.width >= 2 {
-                            canvas.set_cell(screen_x + 1, y, " ", ratatui_style);
-                        }
+                        canvas.set_cell(screen_x, y, text, g.width, cell_style);
                     }
                 }
             }
@@ -584,11 +584,11 @@ pub(crate) fn compose_row(
                 // cell and leaves the rest to the fill below, exactly as
                 // before.
                 let cell_end = (screen_x + g.width as u16).min(right_edge);
-                let after = canvas.write_text_run(screen_x, y, s, ratatui_style, cell_end);
+                let after = canvas.write_text_run(screen_x, y, s, cell_style, cell_end);
                 // Fill the reserved cells the text didn't cover: a tab's
                 // expanse beyond its marker, or a wide cell's second column.
                 for ex in after..cell_end {
-                    canvas.set_cell(ex, y, " ", ratatui_style);
+                    canvas.set_cell(ex, y, " ", 1, cell_style);
                 }
             }
             CellContent::Virtual { start, len } => {
@@ -598,21 +598,14 @@ pub(crate) fn compose_row(
                     // decoration glyph (an inlay hint containing CJK text)
                     // cannot be drawn half-on-screen.
                     for sx in screen_x..right_edge {
-                        canvas.set_cell(sx, y, " ", ratatui_style);
+                        canvas.set_cell(sx, y, " ", 1, cell_style);
                     }
                 } else {
-                    canvas.set_cell(screen_x, y, s, ratatui_style);
-                    // For a double-width decoration glyph, blank the
-                    // continuation cell so it picks up this cell's style
-                    // instead of whatever the row fill left there — the same
-                    // thing the `Grapheme` arm does for buffer text.
-                    if g.width >= 2 {
-                        canvas.set_cell(screen_x + 1, y, " ", ratatui_style);
-                    }
+                    canvas.set_cell(screen_x, y, s, g.width, cell_style);
                 }
             }
             CellContent::Empty => {
-                canvas.set_cell(screen_x, y, " ", ratatui_style);
+                canvas.set_cell(screen_x, y, " ", 1, cell_style);
             }
             CellContent::WidthContinuation => unreachable!(),
         }
@@ -642,6 +635,7 @@ pub(crate) fn compose_row(
                         screen_x,
                         y,
                         INDENT_GUIDE_GLYPH,
+                        1,
                         compose_ctx.indent_guide_style,
                     );
                 }
@@ -694,76 +688,34 @@ pub(crate) fn render_tilde_fillers(
             Some(bg) => canvas.fill_row_bg(content_x_origin, right_edge, y, bg),
             None => canvas.clear_row_span(content_x_origin, right_edge, y),
         }
-        canvas.set_cell(compose_ctx.pane_rect.x, y, "~", compose_ctx.tilde_style);
+        canvas.set_cell(compose_ctx.pane_rect.x, y, "~", 1, compose_ctx.tilde_style);
         screen_row += 1;
     }
 }
 
-// ---------------------------------------------------------------------------
-// Cell write helper
-// ---------------------------------------------------------------------------
-
-fn set_cell(
-    buf: &mut ratatui::buffer::Buffer,
-    x: u16,
-    y: u16,
-    text: &str,
-    style: ratatui::style::Style,
-) {
-    // `cell_mut` bounds-checks against the buffer's whole area, so it already
-    // rejects everything a manual check here could.
-    if let Some(cell) = buf.cell_mut(ratatui::layout::Position { x, y }) {
-        cell.set_symbol(text); // static-glyph-safe: `write_text_run`'s own cell primitive
-        cell.set_style(style);
-    }
+/// Clamp `rect` to `grid`'s bounds, returning exclusive `(x0, y0, x1, y1)`
+/// ready for a `for y in y0..y1 { … x0..x1 }` loop. Shared by every
+/// rect-filling primitive so the clip math lives once.
+#[inline]
+pub(crate) fn clamp_rect_to_grid(grid: &Grid, rect: Rect) -> (u16, u16, u16, u16) {
+    let (width, height) = grid.size();
+    (
+        rect.x,
+        rect.y,
+        rect.right().min(width),
+        rect.bottom().min(height),
+    )
 }
 
-/// Clamp `rect` to `buf`'s area, returning exclusive `(x0, y0, x1, y1)`
-/// bounds ready for a `for y in y0..y1 { for x in x0..x1 }` cell loop.
-/// Shared by every rect-filling primitive below so the clip math lives once.
+/// Blend both fg and bg of `style` toward `dim`'s target, if any.
+///
+/// A `None` colour is the terminal's own default — there is no numeric value
+/// to blend, so it stays as it is.
 #[inline]
-pub(crate) fn clamp_rect_to_buf(
-    buf: &ratatui::buffer::Buffer,
-    rect: ratatui::layout::Rect,
-) -> (u16, u16, u16, u16) {
-    let area = buf.area();
-    let x0 = rect.x.max(area.x);
-    let y0 = rect.y.max(area.y);
-    let x1 = (rect.x + rect.width).min(area.x + area.width);
-    let y1 = (rect.y + rect.height).min(area.y + area.height);
-    (x0, y0, x1, y1)
-}
-
-/// Blend `color` toward `target` by `factor` (0.0 = unchanged, 1.0 = fully
-/// `target`). Non-RGB colors (indexed/named) are returned unchanged — HUME
-/// requires true-color themes (see project CLAUDE.md), so callers only ever
-/// need to blend `Color::Rgb`.
-#[inline]
-fn blend_toward(
-    color: ratatui::style::Color,
-    target: (u8, u8, u8),
-    factor: f32,
-) -> ratatui::style::Color {
-    use ratatui::style::Color;
-    let Color::Rgb(r, g, b) = color else {
-        return color;
-    };
-    let lerp = |c: u8, t: u8| (c as f32 + (t as f32 - c as f32) * factor).round() as u8;
-    Color::Rgb(lerp(r, target.0), lerp(g, target.1), lerp(b, target.2))
-}
-
-/// Blend both fg and bg of `style` toward `dim`'s target, if any. `None`
-/// fg/bg are left as-is (no colour to blend).
-#[inline]
-fn blend_style(mut style: ratatui::style::Style, dim: Option<DimTarget>) -> ratatui::style::Style {
-    if let Some(target) = dim {
-        let rgb = (target.r, target.g, target.b);
-        if let Some(fg) = style.fg {
-            style = style.fg(blend_toward(fg, rgb, target.factor));
-        }
-        if let Some(bg) = style.bg {
-            style = style.bg(blend_toward(bg, rgb, target.factor));
-        }
+fn blend_style(mut style: ResolvedStyle, dim: Option<(Rgb, f32)>) -> ResolvedStyle {
+    if let Some((target, factor)) = dim {
+        style.fg = style.fg.map(|c| c.lerp(target, factor));
+        style.bg = style.bg.map(|c| c.lerp(target, factor));
     }
     style
 }

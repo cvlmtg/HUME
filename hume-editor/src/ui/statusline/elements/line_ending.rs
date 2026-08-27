@@ -1,6 +1,5 @@
+use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
-
-use ratatui::style::Style;
 
 use hume_editing::text::LineEnding as TextLineEnding;
 
@@ -17,7 +16,7 @@ impl StatuslineElement for LineEndingElement {
         editor.doc().text().line_ending()
     }
 
-    fn format(ending: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, Style) {
+    fn format(ending: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
         let label = match ending {
             TextLineEnding::Lf => "LF",
             TextLineEnding::CrLf => "CRLF",

@@ -23,7 +23,7 @@
 use hume_engine::pane::ViewportState;
 use hume_engine::pipeline::PaneId;
 use hume_engine::rows::RowMap;
-use ratatui::layout::{Position, Rect};
+use hume_grid::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use super::commands::pane_row_map_mut;
