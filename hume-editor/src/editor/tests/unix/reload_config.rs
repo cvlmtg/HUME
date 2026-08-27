@@ -161,6 +161,62 @@ fn reload_config_command_resets_state_from_a_real_init_scm() {
     );
 }
 
+/// `:reload-config` must not leave an `on-buffer-enter`-driven `steel:<name>`
+/// statusline element blank until the next buffer switch or save —
+/// regression test for the real bug `resync_refires_buffer_enter_for_the_
+/// focused_buffer` (`tests/reload_config.rs`) pins at the `resync_config_
+/// state` level: `set-statusline-text!`'s target, `ConfigState::
+/// statusline_text`, is correctly wiped by the reset (it's config-owned
+/// state — the plugin that pushed it may not even be loaded by the new
+/// config), but nothing repopulated it because `on-buffer-enter` — the only
+/// hook `core:git-diff`'s `steel:git-branch` element (and this test's own
+/// stand-in) refreshes from — was never in the resync replay.
+///
+/// `ed.settle()` runs once before the reload so `EditorState::
+/// last_entered_buffer` is actually seeded to the focused buffer first —
+/// skipping that would leave it at its unset `None` starting value, where
+/// `detect_buffer_enter`'s diff fires regardless of whether the resync
+/// replay does anything, proving nothing about the fix under test.
+#[test]
+fn reload_config_repopulates_statusline_text_pushed_from_on_buffer_enter() {
+    // Held for its `Drop` (env var cleanup) only — this test reloads the
+    // same `init.scm` unchanged, unlike every other fixture user, which
+    // rewrites it via `write_init` before reloading.
+    let _fixture = ReloadFixture::new(
+        r#"(register-hook! 'on-buffer-enter (lambda (bid)
+             (set-statusline-text! "greeting" bid "hello")))"#,
+    );
+    let mut ed = editor_from("-[a]>b\n");
+    ed.init_scripting(&mut Default::default());
+    ed.settle();
+    assert_eq!(
+        custom_text(&ed, "greeting"),
+        "hello",
+        "sanity: the initial init.scm's hook must have fired at startup"
+    );
+
+    type_cmd(&mut ed, ":reload-config");
+
+    assert_eq!(
+        custom_text(&ed, "greeting"),
+        "hello",
+        "on-buffer-enter must re-fire for the focused buffer on reload, not \
+         leave the element blank until the next switch or save"
+    );
+    assert!(
+        !ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error),
+        "a real reload must not log any error; messages: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+}
+
 // ---------------------------------------------------------------------------
 // --config override
 // ---------------------------------------------------------------------------

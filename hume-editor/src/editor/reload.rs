@@ -239,6 +239,10 @@ impl Editor {
     /// the outgoing engine, before the reset, tearing down state the reset
     /// discards anyway — reload is a restart, not a close.
     ///
+    /// `OnBufferEnter` also gets replayed, for the focused buffer — but not
+    /// via a queued event like the four above it, since it has no raise site
+    /// of its own to queue: see the comment at its call site below.
+    ///
     /// Batched, not interleaved per buffer the way a real reopen would fire
     /// these: every `OnLspAttach` runs, then every `OnBufferOpen`, then every
     /// `OnDiagnosticsChanged`/`OnViewportChange`. `pending_work` is FIFO, so
@@ -300,6 +304,31 @@ impl Editor {
         for pane_id in panes_on_surviving_buffers {
             self.queue_viewport_change(pane_id);
         }
+
+        // `OnBufferEnter` has no raise site of its own to call here, unlike
+        // the four events above — `Editor::detect_buffer_enter` raises it as
+        // a diff against `EditorState::last_entered_buffer`, and the focused
+        // buffer hasn't changed across a reload, so that diff is otherwise a
+        // no-op. Clearing the baseline (not filtered by `snapshot.survives`,
+        // unlike every loop above: there is exactly one focused buffer, and
+        // it's always "surviving" by definition) makes the very next
+        // `detect_buffer_enter` pass — inside `typed_reload_config`'s own
+        // `drain_pending_work()` call, after the `OnBufferOpen` batch above
+        // has already activated and re-hooked every plugin — observe the
+        // diff and raise exactly one `OnBufferEnter`, the same one the next
+        // real focus change would raise anyway. This is what brings back
+        // state a plugin repopulates from that hook (e.g. `core:git-diff`'s
+        // `steel:git-branch` statusline element, wiped along with the rest
+        // of `ConfigState::statusline_text` by the reset above).
+        //
+        // Accepted side effect: `OnBufferEnter` also has a Rust reaction,
+        // `enter_buffer_disk_check` (`buffer/disk.rs`), so a reload now
+        // `stat`s the focused buffer and can open the "changed on disk"
+        // confirm. That's consistent with this whole function's contract —
+        // "behaves like closing and reopening every already-open buffer",
+        // where a real reopen would re-read from disk outright — and it's
+        // the same prompt the next real focus change would raise anyway.
+        self.state.last_entered_buffer = None;
     }
 }
 
@@ -324,11 +353,13 @@ impl Editor {
 /// engine and re-detected every buffer's language: it replays the
 /// buffer-open lifecycle (`OnLspAttach` for already-attached servers,
 /// `OnBufferOpen`, `OnDiagnosticsChanged` from the surviving diagnostics
-/// cache) so state a hook would normally repopulate — trigger characters,
-/// inline diagnostics/inlay hints, buffer-open-driven decorations — doesn't
-/// stay empty simply because reload never causes the transition that hook
-/// is gated on. See `Editor::resync_config_state`'s doc for why this is
-/// scoped to a replay rather than a literal LSP close+reopen.
+/// cache, `OnBufferEnter` for the focused buffer) so state a hook would
+/// normally repopulate — trigger characters, inline diagnostics/inlay hints,
+/// buffer-open-driven decorations, a `steel:<name>` statusline element
+/// pushed from `on-buffer-enter` — doesn't stay empty simply because reload
+/// never causes the transition that hook is gated on. See
+/// `Editor::resync_config_state`'s doc for why this is scoped to a replay
+/// rather than a literal LSP close+reopen.
 pub(crate) fn typed_reload_config(
     ed: &mut Editor,
     _arg: Option<&str>,

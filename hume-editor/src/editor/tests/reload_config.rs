@@ -1183,3 +1183,47 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
          on-viewport-change re-fired"
     );
 }
+
+/// `OnBufferEnter` re-fires for the focused buffer on resync — the replay
+/// that brings back state a plugin repopulates from that hook (e.g.
+/// `core:git-diff`'s `steel:git-branch` statusline element), which
+/// `reset_config_state`'s fresh `ConfigState` wipes (`statusline_text`) and
+/// nothing else would restore, since `OnBufferEnter` is a diff against
+/// `EditorState::last_entered_buffer` (`Editor::detect_buffer_enter`) and
+/// the focused buffer hasn't changed.
+///
+/// `ed.settle()` runs first so that diff's baseline is actually set to the
+/// focused buffer — `editor_from` starts it `None`, which would make this
+/// test pass trivially (baseline still `None`, diff still fires) even
+/// without `resync_config_state` clearing it itself.
+///
+/// Counts fires via a per-buffer `tab-width` override, same technique as
+/// `resync_refires_buffer_open_for_every_open_buffer` — proves the hook
+/// actually re-fired, not just that some other diff coincidentally matched.
+#[test]
+fn resync_refires_buffer_enter_for_the_focused_buffer() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\n");
+    ed.settle();
+    let bid = ed.focused_buffer_id();
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-buffer-enter (lambda (bid)
+             (set-buffer-option! bid "tab-width" (+ 1 (get-option bid "tab-width")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    let snapshot = ReloadSnapshot::for_test([bid], &ed.state.buffers);
+    ed.resync_config_state(&snapshot);
+    ed.settle();
+
+    assert_eq!(
+        ed.state.buffers.get(bid).overrides.tab_width,
+        Some(EditorSettings::default().tab_width + 1),
+        "on-buffer-enter must re-fire exactly once for the focused buffer on resync"
+    );
+}

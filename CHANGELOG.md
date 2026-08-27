@@ -21,6 +21,9 @@
 - New `set-statusline-text!` writes per-buffer text for a `"steel:<name>"` statusline element — place it with `configure-statusline!` like any built-in element, then push its content from a hook, timer, or command.
 - `core:git-diff` now also drives a `"steel:git-branch"` statusline element for the focused buffer — place it with `configure-statusline!` and it shows the current branch, e.g. `(main)`, with no extra Steel required.
 
+### Fixes
+- `:reload-config` no longer leaves an `on-buffer-enter`-driven `"steel:<name>"` statusline element (e.g. `core:git-diff`'s `steel:git-branch`) blank until the next buffer switch or save — it now re-fires `on-buffer-enter` for the focused buffer as part of its usual buffer-lifecycle replay.
+
 ## [0.11.0] - 2026-08-25
 
 ### Breaking changes

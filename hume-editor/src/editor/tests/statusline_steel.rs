@@ -3,15 +3,7 @@
 
 use super::*;
 use crate::editor::message_log::Severity;
-use crate::ui::statusline::{StatusElement, render_element};
-use crate::ui::theme::EditorColors;
 use hume_scripting::ScriptingHost;
-
-fn custom_text(ed: &Editor, name: &str) -> String {
-    let colors = EditorColors::default();
-    let (text, _) = render_element(&StatusElement::Custom(name.into()), ed, &colors, "");
-    text.into_owned()
-}
 
 #[test]
 fn pushed_text_renders_for_the_focused_buffer() {

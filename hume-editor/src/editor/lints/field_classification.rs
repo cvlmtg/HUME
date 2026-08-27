@@ -91,7 +91,11 @@ const EDITOR_STATE_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
     ("dispatching_typed_command", "preserved"),
     ("is_replaying", "preserved"),
     ("message_logged_this_input", "preserved"),
-    ("last_entered_buffer", "preserved"),
+    (
+        "last_entered_buffer",
+        "config: resync_config_state clears this so detect_buffer_enter's \
+         diff re-raises OnBufferEnter for the focused buffer",
+    ),
     ("mouse_drag_anchor", "preserved"),
     ("cwd", "preserved"),
     ("lsp_completion_dismiss_pending", "preserved"),

@@ -19,8 +19,6 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::super::render_snapshot::render_to_styled_string;
-use crate::ui::statusline::{StatusElement, render_element};
-use crate::ui::theme::EditorColors;
 use hume_grid::Rect;
 use hume_scripting::ScriptingHost;
 
@@ -171,14 +169,6 @@ fn highlights(ed: &Editor, bid: BufferId) -> Vec<(usize, usize, String, String)>
             )
         })
         .collect()
-}
-
-/// `StatusElement::Custom(name)`'s rendered text for the focused buffer —
-/// same helper shape as `statusline_steel.rs`'s `custom_text`.
-fn custom_text(ed: &Editor, name: &str) -> String {
-    let colors = EditorColors::default();
-    let (text, _) = render_element(&StatusElement::Custom(name.into()), ed, &colors, "");
-    text.into_owned()
 }
 
 // ── Gutter signs ─────────────────────────────────────────────────────────────
@@ -787,8 +777,8 @@ fn git_branch_element_shows_current_branch_for_the_focused_buffer() {
     git(repo.path(), &["checkout", "-q", "-b", "feature-x"]);
     open(&mut ed, &repo.path().join("f.txt"));
 
-    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "[feature-x]");
-    assert_eq!(custom_text(&ed, "git-branch"), "[feature-x]");
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(feature-x)");
+    assert_eq!(custom_text(&ed, "git-branch"), "(feature-x)");
 }
 
 #[test]
@@ -824,17 +814,17 @@ fn git_branch_element_switches_with_the_focused_buffer() {
     let path_b = repo_b.path().join("b.txt");
 
     open(&mut ed, &path_a);
-    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "[alpha]");
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(alpha)");
 
     open(&mut ed, &path_b);
-    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "[beta]");
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(beta)");
 
     // `:e` on an already-open path re-focuses it rather than duplicating —
     // proves on-buffer-enter re-fetches on every focus change, not just
     // the first.
     open(&mut ed, &path_a);
-    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "[alpha]");
-    assert_eq!(custom_text(&ed, "git-branch"), "[alpha]");
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(alpha)");
+    assert_eq!(custom_text(&ed, "git-branch"), "(alpha)");
 }
 
 #[test]
@@ -848,7 +838,7 @@ fn git_branch_element_refreshes_on_save() {
     commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
     git(repo.path(), &["checkout", "-q", "-b", "orig"]);
     open(&mut ed, &repo.path().join("f.txt"));
-    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "[orig]");
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(orig)");
 
     // HEAD moves without any focus change — the plugin has no way to know
     // until the next hook fire. Same commit, so the working tree (and the
@@ -857,10 +847,10 @@ fn git_branch_element_refreshes_on_save() {
     git(repo.path(), &["checkout", "-q", "-b", "moved"]);
     ed.execute_typed("w", None).unwrap();
 
-    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "[moved]");
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(moved)");
     assert_eq!(
         custom_text(&ed, "git-branch"),
-        "[moved]",
+        "(moved)",
         "on-buffer-save must re-check the branch, not just on-buffer-enter"
     );
 }

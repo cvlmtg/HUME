@@ -65,6 +65,20 @@ fn pending_calls(ed: &Editor) -> Vec<(&steel::rvals::SteelVal, &Vec<steel::rvals
         .collect()
 }
 
+/// `StatusElement::Custom(name)`'s rendered text for the focused buffer —
+/// the render side of `(set-statusline-text! name bid text)`. Shared by
+/// `statusline_steel.rs`, `unix/git_diff_plugin.rs`, and `unix/reload_config.rs`.
+fn custom_text(ed: &Editor, name: &str) -> String {
+    let colors = crate::ui::theme::EditorColors::default();
+    let (text, _) = crate::ui::statusline::render_element(
+        &crate::ui::statusline::StatusElement::Custom(name.into()),
+        ed,
+        &colors,
+        "",
+    );
+    text.into_owned()
+}
+
 /// A normal (no modifier) character key event.
 fn key(ch: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE)
