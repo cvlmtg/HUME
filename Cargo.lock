@@ -843,7 +843,6 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.13.1",
  "hume-grid",
- "hume-platform",
  "hume-rope",
  "ropey",
  "rustc-hash",

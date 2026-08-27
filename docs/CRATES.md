@@ -22,7 +22,6 @@ The frame's cell grid: the `Cell`/`Grid` storage HUME draws into, the `Rect`/`Po
 ### Depends on
 - hume-grid
 ### Used by
-- hume-engine
 - hume-lsp
 - hume-scripting
 - hume-editor
@@ -44,7 +43,6 @@ Core text-editing model: the document (`BufferText`, a rope of Unicode scalar va
 # hume-engine
 ### Depends on
 - hume-grid
-- hume-platform
 - hume-rope
 ### Used by
 - hume-scripting
