@@ -612,6 +612,49 @@ fn live_picker_keystroke_keeps_previous_rows_until_the_new_search_delivers() {
 }
 
 #[test]
+fn live_picker_debounced_respawn_raise_clears_stale_rows_and_unsticks_pending() {
+    // `#:command` raising after the debounce (a bad user builder, or
+    // `picker-source-spawn!` itself failing to spawn) must not stick the
+    // session in the "requery in flight" state forever — the previous
+    // pattern's now-orphaned rows must clear and `is_pending` must settle
+    // back to false, the same outcome a successful requery with nothing to
+    // show reaches.
+    let (mut ed, _tmp) = editor_with(
+        r#"
+        (define tok #f)
+        (define-command! "go" "" (lambda ()
+          (set! tok (live-picker! (lambda (x) (void))
+            #:debounce-ms 0
+            #:command (lambda (q) (error "boom"))))))
+        (define-command! "seed-row" "" (lambda ()
+          (picker-push! tok (list (cons "stale" "p")))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    call(&mut ed, "seed-row");
+    assert_eq!(ed.state.config.picker.as_ref().unwrap().total_len(), 1);
+
+    ed.feed_key(key('a'));
+    // Two settles, same as every other debounce-ms-0 test here: the first
+    // drains the query-change callback (stop, arm the 0ms timer), the
+    // second lets that timer fire and run `#:command`, which raises.
+    ed.settle();
+    ed.settle();
+
+    assert_eq!(
+        ed.state.config.picker.as_ref().unwrap().total_len(),
+        0,
+        "a raise on the debounced respawn must still drop the previous \
+         pattern's stale rows"
+    );
+    assert!(
+        !ed.state.config.picker.as_ref().unwrap().is_pending(),
+        "a raise on the debounced respawn must not leave the session \
+         permanently marked as a requery in flight"
+    );
+}
+
+#[test]
 fn live_picker_rapid_keystrokes_collapse_to_one_trailing_builder_call_with_the_latest_query() {
     let (mut ed, _tmp) = editor_with(
         r#"(define-command! "go" "" (lambda ()

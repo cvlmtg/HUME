@@ -147,7 +147,23 @@
                                (picker-source-spawn! token (car argv) (cdr argv)
                                                      #:cwd cwd #:nul nul #:ok-exit-codes ok-exit-codes))
                              (picker-replace! token '()))))]
-         [respawn (debounce debounce-ms spawn-for)]
+         ;; Cleanup-then-reraise around the debounced respawn only — never
+         ;; around `spawn-for`'s direct call below for a non-empty seed
+         ;; `#:query`, which runs synchronously inside whatever call stack
+         ;; invoked `live-picker!` and may already be inside a caller's own
+         ;; `with-handler` (see `open_live_picker`'s doc for why nesting
+         ;; that pattern corrupts Steel's VM). The debounced call has no
+         ;; such caller: it's dispatched fresh by the timer wheel, so a
+         ;; `#:command` raise here — a bad builder, or `picker-source-spawn!`
+         ;; itself failing to spawn — can't otherwise reach `picker-replace!`,
+         ;; leaving the previous pattern's rows stranded under a permanently
+         ;; "in flight" marker (`PickerSession::requery_armed` in
+         ;; `hume-editor::editor::picker`, only ever cleared by a `replace`).
+         [respawn (debounce debounce-ms
+                    (lambda (token q)
+                      (with-handler
+                        (lambda (e) (picker-replace! token '()) (raise-error e))
+                        (spawn-for token q))))]
          [token (%live-picker! on-select prompt query
                   (lambda (token q)
                     (picker-source-stop! token)

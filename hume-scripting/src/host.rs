@@ -1030,9 +1030,10 @@ pub trait UiHost {
     /// picker was closed or replaced since — is expected-normal for an
     /// async source racing the user, so it is a silent no-op, not an error:
     /// returns whether the feed was applied. `Replace` is the requery half
-    /// of a live source: a caller clears out the previous pattern's rows
-    /// before spawning the new search, since items are otherwise
-    /// append-only.
+    /// of a live source: the previous pattern's rows stay on screen through
+    /// the requery's stop/debounce/respawn gap and are only dropped once the
+    /// new search has something to show in their place (or settles on
+    /// nothing) — items are otherwise append-only.
     fn picker_feed(
         &mut self,
         token: u64,

@@ -5,7 +5,7 @@
 
 use super::*;
 
-use crate::editor::picker::{self, PickerItem, PickerSession};
+use crate::editor::picker::{self, PickerSession, item};
 use hume_platform::process::line_source::spawn_line_source;
 use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use std::sync::Arc;
@@ -26,13 +26,6 @@ fn open_live_picker(ed: &mut Editor) {
         },
     );
     picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
-}
-
-fn item(display: &str) -> PickerItem {
-    PickerItem {
-        display: display.to_string(),
-        payload: SteelVal::StringV(display.into()),
-    }
 }
 
 fn no_op_wake() -> Arc<dyn Fn() + Send + Sync> {

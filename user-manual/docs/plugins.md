@@ -528,7 +528,8 @@ directly. `#:command` is a function from the current query to either a full argv
 every keystroke and, when it returns a real argv, spawns it exactly the way
 `picker-source-spawn!` would (`#:cwd`/`#:nul`/`#:ok-exit-codes` all apply the same way).
 Returning `#f` for an empty query, as above, is how you tell the picker "show nothing"
-rather than search for an empty pattern.
+rather than search for an empty pattern — that clear itself waits out the debounce
+window too, same as a real search, since `#:command` only runs once the respawn fires.
 
 Every keystroke stops whatever search is still running, immediately — but its rows stay
 on screen, marked as refreshing, until the new search's own results arrive; there's no

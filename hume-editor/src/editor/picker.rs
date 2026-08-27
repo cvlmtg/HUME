@@ -117,7 +117,8 @@ pub(crate) struct PickerSession {
     /// `push` preserve a selection by index (see `rerank_keeping_selection`).
     /// `replace` is the one mutator that breaks this: it clears the vec
     /// wholesale before re-extending it, for a live requery that must drop
-    /// the previous pattern's rows.
+    /// the previous pattern's rows. `push` itself can also take this path —
+    /// see its `take_supersede` exception, doc'd there rather than here.
     items: Vec<PickerItem>,
     query: String,
     /// Ranked indices into `items`, rebuilt on every rerank.
@@ -155,7 +156,10 @@ pub(crate) struct PickerSession {
     /// ride `population`: `picker-source-stop!` takes the source and
     /// resets `population` to `Complete` well before the respawn's first
     /// batch lands, and `is_pending` must keep reading "still arriving"
-    /// across that whole gap — see `notify_query_change`.
+    /// across that whole gap. Armed by `notify_query_change`; cleared only
+    /// by `replace` — not by `push`'s ordinary append path, which a batch
+    /// still in flight from the *outgoing* source can also reach (see
+    /// `replace`'s doc).
     requery_armed: bool,
 }
 
@@ -243,14 +247,11 @@ impl PickerSession {
     /// batch) land. Leaves `Streaming` untouched: a source drains lines
     /// into `push` continuously, and the source itself — not the arrival of
     /// one particular batch — is what decides when populating ends (its
-    /// disconnect, handled by `take_source`). Also clears `requery_armed` —
-    /// `push`/`replace` are exactly the two ways a batch "arrives", and a
-    /// live requery's swap always goes through one of them.
+    /// disconnect, handled by `take_source`).
     fn batch_arrived(&mut self) {
         if matches!(self.population, Population::Awaiting) {
             self.population = Population::Complete;
         }
-        self.requery_armed = false;
     }
 
     /// Seeds the initial item list `picker!` was given. An empty seed is
@@ -306,9 +307,18 @@ impl PickerSession {
     /// replace already *is* the swap a live requery's first batch would
     /// otherwise perform, so that later batch must append, not replace
     /// again.
+    ///
+    /// The one place `requery_armed` clears — see its doc. `push`'s ordinary
+    /// append path deliberately does not: a batch queued from the *outgoing*
+    /// source can still land there after a keystroke has armed the next
+    /// requery but before the queued `picker-source-stop!` callback runs
+    /// (`drain_async_sources` precedes `drain_pending_work` in
+    /// `Editor::settle`), and that stale batch must not read as "the
+    /// requery landed."
     pub(crate) fn replace(&mut self, items: Vec<PickerItem>) {
         self.take_supersede();
         self.batch_arrived();
+        self.requery_armed = false;
         self.items = items;
         self.rerank();
     }
@@ -338,7 +348,7 @@ impl PickerSession {
 
     /// Consumes the attached source's `supersedes_rows` flag, if any —
     /// `false` (and a no-op) when nothing is attached or the flag was
-    /// already spent. `push`'s and `replace`'s only caller.
+    /// already spent. Called only by `push` and `replace`.
     fn take_supersede(&mut self) -> bool {
         match &mut self.population {
             Population::Streaming(attached) => {
@@ -694,16 +704,20 @@ pub(crate) fn close_picker(state: &mut super::EditorState, payload: SteelVal) {
     state.queue_steel_call(callback, vec![payload]);
 }
 
+/// One `PickerItem` from a display string, its own payload — shared by this
+/// module's own tests and `tests/unix/picker_source.rs`, which spawns real
+/// child processes and so can't live in this (non-unix-gated) module.
+#[cfg(test)]
+pub(crate) fn item(display: &str) -> PickerItem {
+    PickerItem {
+        display: display.to_string(),
+        payload: SteelVal::StringV(display.into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn item(display: &str) -> PickerItem {
-        PickerItem {
-            display: display.to_string(),
-            payload: SteelVal::StringV(display.into()),
-        }
-    }
 
     fn items(displays: &[&str]) -> Vec<PickerItem> {
         displays.iter().map(|d| item(d)).collect()
@@ -924,7 +938,7 @@ mod tests {
         // for most of its span (`picker-source-stop!` takes it immediately),
         // so `is_pending` can't ride `population` alone here the way it does
         // for a streaming/#:pending session — it must stay true from the
-        // query edit itself through to the next push/replace.
+        // query edit itself through to the requery's own swap.
         let mut s = open_live();
         assert!(!s.is_pending());
         assert!(
@@ -935,10 +949,30 @@ mod tests {
             s.is_pending(),
             "a live query change must mark the session pending even with no source attached"
         );
-        s.push(items(&["x"]));
+        s.replace(items(&["x"]));
         assert!(
             !s.is_pending(),
-            "a batch landing (push or replace) is what ends a live requery's pending window"
+            "the requery's own swap is what ends a live requery's pending window"
+        );
+    }
+
+    #[test]
+    fn live_session_batch_from_a_stale_source_does_not_end_the_pending_window() {
+        // A batch queued from the *outgoing* source can still land (via
+        // `push`) after a keystroke has armed the next requery but before
+        // `settle()` gets to the queued `picker-source-stop!` callback —
+        // `drain_async_sources` runs ahead of `drain_pending_work` (see
+        // `Editor::settle`'s doc). Only the requery's own swap (`replace`)
+        // may end the window; an ordinary append must leave it armed.
+        let mut s = open_live();
+        assert!(s.insert_char('a').is_some());
+        assert!(s.is_pending());
+
+        s.push(items(&["x"]));
+        assert!(
+            s.is_pending(),
+            "a plain append must not end a live requery's pending window — only \
+             the swap `replace` performs does"
         );
     }
 

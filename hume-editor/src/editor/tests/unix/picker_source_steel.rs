@@ -482,4 +482,8 @@ fn live_picker_requery_with_no_output_clears_the_previous_rows() {
         !ed.state.config.picker.as_ref().unwrap().has_source(),
         "a requery source that delivers nothing must leave no source attached once it exits"
     );
+    assert!(
+        !ed.state.config.picker.as_ref().unwrap().is_pending(),
+        "the disconnect-clear must also end the pending window, not just empty the rows"
+    );
 }
