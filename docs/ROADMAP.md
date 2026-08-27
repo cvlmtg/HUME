@@ -23,6 +23,7 @@
 - [ ] Styled spans in the drawer — `lsp-locations->display-parts` shows an unopened target's column as the location's own wire unit rather than a measured grapheme column (see `docs/LSP.md`'s "User-facing column unit" decision row); once a drawer row can style part of itself, render that unmeasured column visually distinctly (e.g. italic) instead of identically to a measured one. Wants the same per-row span support as the `show-popup!` item above.
 - [ ] Auto-generated command reference + in-editor `:help` expansion.
 - [ ] `:earlier` / `:later` undo-tree time travel — the substrate already exists (`History::goto_revision`, `Revision::timestamp`); wants only the typed commands and, longer-term, a history-browsing UI.
+- [ ] Steel-side picker row display formatter — `#:truncate 'head|'tail` only picks which end of an over-long row is clipped; see `docs/FUZZY-FINDERS.md`'s "Remaining work" for the general per-row formatter this doesn't cover.
 
 ### Editor — fixes & optimizations
 

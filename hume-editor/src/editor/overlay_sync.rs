@@ -383,6 +383,7 @@ impl Editor {
                     pending: session.is_pending(),
                     rect: geo.rect,
                     border: self.state.settings.popup_border,
+                    truncate: session.truncate(),
                 })
             }
             _ => None,

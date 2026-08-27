@@ -118,8 +118,8 @@
   (%show-popup! text anchor kind lang))
 
 (define (picker! items on-select #:prompt [prompt ""] #:pending [pending #f]
-                                  #:query [query ""])
-  (%picker! items on-select prompt pending query))
+                                  #:query [query ""] #:truncate [truncate 'head])
+  (%picker! items on-select prompt pending query truncate))
 
 ;; The `'(0)` default `picker-source-spawn!` and `live-picker!` both need for
 ;; `#:ok-exit-codes` — one literal, so the two keyword defaults can't drift.
@@ -133,7 +133,8 @@
                        #:prompt [prompt ""] #:query [query ""]
                        #:debounce-ms [debounce-ms 150]
                        #:cwd [cwd #f] #:nul [nul #f]
-                       #:ok-exit-codes [ok-exit-codes %picker-source-default-ok-exit-codes])
+                       #:ok-exit-codes [ok-exit-codes %picker-source-default-ok-exit-codes]
+                       #:truncate [truncate 'head])
   (unless (%callable? command)
     (error "live-picker!: #:command must be a procedure of one argument (the query)"))
   (unless (and (integer? debounce-ms) (>= debounce-ms 0))
@@ -167,7 +168,8 @@
          [token (%live-picker! on-select prompt query
                   (lambda (token q)
                     (picker-source-stop! token)
-                    (respawn token q)))])
+                    (respawn token q))
+                  truncate)])
     (unless (equal? query "")
       (spawn-for token query))
     token))

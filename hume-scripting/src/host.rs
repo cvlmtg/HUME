@@ -819,6 +819,21 @@ pub trait DiffHost {
     fn diff_words(&self, old: &str, new: &str) -> (Vec<WordDiffHunk>, bool);
 }
 
+/// Which end of an over-long picker row is dropped — `picker!`'s and
+/// `live-picker!`'s `#:truncate` symbol, decoded once at the builtin
+/// boundary (`builtins::ui`) and carried as-is into the panel's paint-time
+/// clip (`hume-editor`'s `PickerViewState::truncate`). A path's
+/// distinguishing part (the basename) sits at the end, so cutting the head
+/// is the default; a row whose distinguishing part sits at the front (a
+/// grep match's file path, say, before the line preview) wants `'tail`
+/// instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TruncateEnd {
+    #[default]
+    Head,
+    Tail,
+}
+
 /// Grouped `picker!` open-time keyword options. [`UiHost::open_picker`] takes
 /// the Scheme call's positional arguments (`items`, `on_select`) directly;
 /// every `#:`-prefixed one rides here instead — the same split
@@ -834,6 +849,8 @@ pub struct PickerOpts {
     /// `#:query` — the query the picker opens with, applied (as a fuzzy
     /// filter) to the item list at construction.
     pub query: String,
+    /// `#:truncate` — see [`TruncateEnd`].
+    pub truncate: TruncateEnd,
 }
 
 /// Grouped `live-picker!` open-time keyword options — the live counterpart
@@ -859,6 +876,8 @@ pub struct LivePickerOpts {
     /// wrapper around the caller's `#:command` builder, never the builder
     /// itself.
     pub on_query_change: steel::rvals::SteelVal,
+    /// `#:truncate` — see [`TruncateEnd`].
+    pub truncate: TruncateEnd,
 }
 
 /// Grouped `picker-source-spawn!` keyword options — the same split

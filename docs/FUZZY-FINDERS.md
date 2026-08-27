@@ -30,5 +30,20 @@ remaining work below ships.
   would feed the same drain→store path as the spawn source. Build only if the
   fd-fallback posture proves inadequate in practice. Also tracked in
   `docs/ROADMAP.md`.
+- **Steel-side display row formatter** — `#:truncate 'head|'tail` (see
+  `user-manual/docs/plugins.md`'s "Custom pickers") only chooses which end of
+  an over-long row is clipped; a plugin that wants to elide differently (e.g.
+  `core:pickers`' git-modified rows, `M  src/foo.rs`, whose `M `/`??` status
+  code falls off under the default head-cut on a long path) needs a
+  caller-supplied function instead: `(row budget) -> string`, run once per
+  visible row. Stacks above `#:truncate` rather than superseding it — it must
+  run on the write side (`Editor::sync_picker_view`, `hume-editor/src/editor/
+  overlay_sync.rs`, the only picker layer that can reach Steel; the paint
+  side holds a read guard and has `&self`), and the paint-side clip stays as
+  the backstop for a formatter that returns something wider than the budget
+  it was handed, so it still needs a direction. Main cost: `sync_picker_view`
+  rebuilds the row window every frame a picker is open, so an ungated
+  formatter is up to 27 Steel dispatches per frame — wants a generation/dirty
+  gate keyed on the row set and budget. Also tracked in `docs/ROADMAP.md`.
 
 Not planned: multi-select, picker-specific keybinding customization.

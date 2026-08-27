@@ -23,6 +23,7 @@ use super::*;
 use crate::editor::dispatch::ArgSource;
 use hume_engine::pipeline::RenderContext;
 use hume_scripting::ScriptingHost;
+use hume_scripting::host::TruncateEnd;
 use steel::rvals::SteelVal;
 
 fn run(ed: &mut Editor, tmp: &Path, source: &str) {
@@ -71,6 +72,79 @@ fn picker_bang_opens_session_and_returns_its_token() {
         .parse()
         .expect("picker! must return the token as an integer");
     assert_eq!(logged_token, session.token());
+}
+
+// ── #:truncate ──────────────────────────────────────────────────────────
+
+#[test]
+fn picker_bang_truncate_defaults_to_head() {
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-command! "go" "" (lambda ()
+             (picker! (list (cons "one" "p1")) (lambda (x) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    let session = ed
+        .state
+        .config
+        .picker
+        .as_ref()
+        .expect("picker! must open a session");
+    assert_eq!(session.truncate(), TruncateEnd::Head);
+}
+
+#[test]
+fn picker_bang_truncate_tail_reaches_the_session() {
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-command! "go" "" (lambda ()
+             (picker! (list (cons "one" "p1")) (lambda (x) (void)) #:truncate 'tail)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    let session = ed
+        .state
+        .config
+        .picker
+        .as_ref()
+        .expect("picker! must open a session");
+    assert_eq!(session.truncate(), TruncateEnd::Tail);
+}
+
+#[test]
+fn picker_bang_truncate_rejects_an_unknown_symbol() {
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-command! "go" "" (lambda ()
+             (picker! (list (cons "one" "p1")) (lambda (x) (void)) #:truncate 'middle)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "an unrecognized #:truncate value must not open a picker"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.contains("'head") && msg.contains("'tail"),
+        "error should name both accepted values, got {msg:?}"
+    );
+}
+
+#[test]
+fn live_picker_bang_truncate_tail_reaches_the_session() {
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-command! "go" "" (lambda ()
+             (live-picker! (lambda (x) (void))
+               #:command (lambda (q) #f) #:truncate 'tail)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    let session = ed
+        .state
+        .config
+        .picker
+        .as_ref()
+        .expect("live-picker! must open a session");
+    assert_eq!(session.truncate(), TruncateEnd::Tail);
 }
 
 // ── End-to-end: open, type a query, accept, keep interacting (LESSONS L4) ──

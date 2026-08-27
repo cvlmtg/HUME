@@ -456,8 +456,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "close-drawer!" ui::close_drawer();
 
         // Fuzzy-picker widget.
-        cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal, pending: SteelVal, query: SteelVal);
-        cmd "%live-picker!" ui::live_picker(on_select: SteelVal, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal);
+        cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal);
+        cmd "%live-picker!" ui::live_picker(on_select: SteelVal, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal);
         cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
         cmd "picker-replace!" ui::picker_replace(token: SteelVal, items: SteelVal);
         cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);

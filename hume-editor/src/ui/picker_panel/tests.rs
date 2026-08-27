@@ -53,6 +53,7 @@ fn state(
         pending: false,
         rect: geo.rect,
         border: true,
+        truncate: TruncateEnd::Head,
     }
 }
 
@@ -131,22 +132,56 @@ fn draw_picker_panel_clips_overlong_row_to_inner_width() {
     );
 }
 
-// ── truncate_tail_marked ────────────────────────────────────────────────
+#[test]
+fn draw_picker_panel_truncate_tail_clips_overlong_row_keeping_head() {
+    // A grep-style row (path in front, line preview trailing) with
+    // `#:truncate 'tail` must clip the *end*, not the path — the mirror of
+    // the head-cut test above.
+    let mut buf = ScreenBuf::empty(Rect::new(0, 0, 40, 20));
+    let theme = Theme::default();
+    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let geo = PanelGeometry {
+        rect: rect(0, 0, 23, 4), // inner_width = 21: exactly "src/editor/picker.rs" (20) + …
+        list_rows: 1,
+    };
+    let mut s = state(
+        "",
+        &["src/editor/picker.rs:412:9:  fn push(&mut self)"],
+        None,
+        &geo,
+    );
+    s.truncate = TruncateEnd::Tail;
+    draw_picker_panel(&mut canvas, &s, styles());
+
+    let right = geo.rect.x + geo.rect.width - 1;
+    assert_eq!(
+        buf[(right, 2)].symbol(),
+        "│",
+        "right border must survive an overlong row"
+    );
+    let painted = symbols_in(&buf, geo.rect);
+    assert!(
+        painted.contains("src/editor/picker.rs…"),
+        "clipped row must trail with … and keep the head (path), got:\n{painted}"
+    );
+}
+
+// ── truncate_marked ─────────────────────────────────────────────────────
 
 #[test]
-fn truncate_tail_marked_leaves_short_strings_unchanged() {
-    assert_eq!(truncate_tail_marked("hello", 8), "hello");
+fn truncate_marked_leaves_short_strings_unchanged() {
+    assert_eq!(truncate_marked("hello", 8, TruncateEnd::Head), "hello");
     assert_eq!(
-        truncate_tail_marked("hello", 5),
+        truncate_marked("hello", 5, TruncateEnd::Head),
         "hello",
         "exact fit needs no marker"
     );
 }
 
 #[test]
-fn truncate_tail_marked_prefixes_ellipsis_and_keeps_tail() {
+fn truncate_marked_cut_head_prefixes_ellipsis_and_keeps_tail() {
     let source = "hume-editor/src/ui/picker_panel.rs";
-    let out = truncate_tail_marked(source, 12);
+    let out = truncate_marked(source, 12, TruncateEnd::Head);
     assert_eq!(unicode_width::UnicodeWidthStr::width(out.as_ref()), 12);
     let kept = out
         .strip_prefix('…')
@@ -158,8 +193,45 @@ fn truncate_tail_marked_prefixes_ellipsis_and_keeps_tail() {
 }
 
 #[test]
-fn truncate_tail_marked_zero_budget_is_empty() {
-    assert_eq!(truncate_tail_marked("anything", 0), "");
+fn truncate_marked_cut_tail_appends_ellipsis_and_keeps_head() {
+    let source = "src/editor/picker.rs:412:9:  fn push(&mut self)";
+    let out = truncate_marked(source, 12, TruncateEnd::Tail);
+    assert_eq!(unicode_width::UnicodeWidthStr::width(out.as_ref()), 12);
+    let kept = out
+        .strip_suffix('…')
+        .unwrap_or_else(|| panic!("clipped string must trail with …, got {out:?}"));
+    assert!(
+        source.starts_with(kept),
+        "the kept part must be a genuine head of the source string, got {out:?}"
+    );
+}
+
+#[test]
+fn truncate_marked_never_splits_a_grapheme_cluster() {
+    use unicode_segmentation::UnicodeSegmentation;
+
+    // "é" here is e + combining acute (U+0065 U+0301) — a cut landing inside
+    // this cluster would emit a bare combining mark with no base character
+    // ahead of it, which re-segmenting the output would catch: a bare mark
+    // opens its own (invalid) cluster instead of extending the previous one.
+    let source = "cafe\u{0301} bar";
+    for cut in [TruncateEnd::Head, TruncateEnd::Tail] {
+        // Every clip width up to the source's own — including one that lands
+        // mid-cluster if the code were byte-counting instead of grapheme-aware.
+        for budget in 0..=8 {
+            let out = truncate_marked(source, budget, cut);
+            assert!(
+                out.graphemes(true).all(|g| g != "\u{0301}"),
+                "cut={cut:?} budget={budget}: combining accent split from its base, got {out:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn truncate_marked_zero_budget_is_empty() {
+    assert_eq!(truncate_marked("anything", 0, TruncateEnd::Head), "");
+    assert_eq!(truncate_marked("anything", 0, TruncateEnd::Tail), "");
 }
 
 // ── draw_picker_panel ───────────────────────────────────────────────────

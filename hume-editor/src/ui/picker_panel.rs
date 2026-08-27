@@ -26,6 +26,7 @@ use hume_engine::providers::OverlayProvider;
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
+use hume_scripting::host::TruncateEnd;
 
 use super::width::{ELLIPSIS, ELLIPSIS_WIDTH, text_width, truncate_text, truncate_text_tail};
 
@@ -81,6 +82,9 @@ pub(crate) struct PickerViewState {
     pub(crate) rect: Rect,
     /// Fed from the `popup-border` setting, same as popup/menu/drawer.
     pub(crate) border: bool,
+    /// Which end of an over-long row this session clips — `#:truncate`,
+    /// `PickerSession::truncate()`.
+    pub(crate) truncate: TruncateEnd,
 }
 
 /// Resolved panel geometry — the single source of truth shared by the write
@@ -142,25 +146,39 @@ pub(crate) fn picker_styles(theme: &Theme) -> PickerStyles {
     }
 }
 
-/// Clip `s` to `budget` display cells, keeping the *tail* and prefixing a
-/// `…` marker when anything was dropped — for list rows (e.g. file paths)
-/// the distinguishing part (the basename) sits at the end. Grapheme-cluster
-/// aware via [`truncate_text_tail`]. Kept distinct from the query row's own
-/// tail-truncation (`draw_picker_panel`'s direct `truncate_text_tail` call)
-/// because the query row must never gain a marker — the query is the user's
-/// editable text, and its bare tail (no `…`) is intentional there.
+/// Clip `s` to `budget` display cells per `cut`, marking the dropped end
+/// with `…` — list rows (file paths, grep matches, …) whose distinguishing
+/// part can sit at either end depending on what a picker's source shows.
+/// Grapheme-cluster aware via [`truncate_text`]/[`truncate_text_tail`].
+/// Kept distinct from the query row's own tail-truncation
+/// (`draw_picker_panel`'s direct `truncate_text_tail` call) because the
+/// query row must never gain a marker — the query is the user's editable
+/// text, and its bare tail (no `…`) is intentional there.
 ///
 /// Borrows `s` unchanged on the (common) no-truncation path instead of
 /// allocating a copy of every visible row every frame.
-fn truncate_tail_marked(s: &str, budget: usize) -> std::borrow::Cow<'_, str> {
+///
+/// `width.rs`'s helpers are *keep*-oriented (`truncate_text_tail` keeps the
+/// tail) while [`TruncateEnd`] is *cut*-oriented, so the arms below read
+/// inverted: cutting the head keeps — and thus calls — `truncate_text_tail`.
+fn truncate_marked(s: &str, budget: usize, cut: TruncateEnd) -> std::borrow::Cow<'_, str> {
     if text_width(s) <= budget {
         return std::borrow::Cow::Borrowed(s);
     }
     if budget == 0 {
         return std::borrow::Cow::Borrowed("");
     }
-    let (tail, _) = truncate_text_tail(s, budget.saturating_sub(ELLIPSIS_WIDTH));
-    std::borrow::Cow::Owned(format!("{ELLIPSIS}{tail}"))
+    let kept = budget.saturating_sub(ELLIPSIS_WIDTH);
+    match cut {
+        TruncateEnd::Head => {
+            let (tail, _) = truncate_text_tail(s, kept);
+            std::borrow::Cow::Owned(format!("{ELLIPSIS}{tail}"))
+        }
+        TruncateEnd::Tail => {
+            let (head, _) = truncate_text(s, kept);
+            std::borrow::Cow::Owned(format!("{head}{ELLIPSIS}"))
+        }
+    }
 }
 
 /// Paint the panel into `state`'s resolved outer rect. Pure function of its
@@ -243,7 +261,7 @@ pub(crate) fn draw_picker_panel(
     let list_capacity = (outer.height - CHROME_ROWS) as usize;
     for (i, row_text) in state.rows.iter().take(list_capacity).enumerate() {
         let y = outer.y + 2 + i as u16;
-        let shown = truncate_tail_marked(row_text, inner_width);
+        let shown = truncate_marked(row_text, inner_width, state.truncate);
         super::menu_box::draw_list_row(
             canvas,
             inner_x,

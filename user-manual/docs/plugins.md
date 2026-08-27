@@ -487,6 +487,13 @@ own, so pass `#:pending #t` to `picker!` when opening empty this way — it mark
 panel as "results still arriving" until the first `picker-push!`/`picker-replace!`
 call lands.
 
+A row too wide for the panel is clipped to fit, marked with `…` at the dropped end.
+`#:truncate` picks which end: `'head` (default) drops the front and keeps the tail —
+right for a file path, whose distinguishing part (the basename) sits at the end. `'tail`
+drops the back and keeps the head instead — right for a row whose distinguishing part
+sits at the *front*, like a grep match's `path:line:col:` prefix ahead of the line
+preview, where a head-cut would swallow the path and show only preview text.
+
 A nonzero exit from a spawned source is normally reported as an error — but for a
 command where some exit codes are a normal outcome rather than a failure (`rg`
 exits `1` for "no matches"), pass `#:ok-exit-codes`. The list is complete, not
@@ -516,10 +523,14 @@ keystroke — a live grep, say — uses `live-picker!` instead of `picker!`:
                 #:command (lambda (query)
                             (and (not (equal? query ""))
                                  (list "rg" "--vimgrep" "--" query ".")))
-                #:ok-exit-codes '(0 1)))
+                #:ok-exit-codes '(0 1)
+                #:truncate 'tail))
 ```
 
-`grep/parse` above is left to the reader.
+`grep/parse` above is left to the reader. `#:truncate 'tail` here (see `#:truncate` under
+[Custom pickers](#custom-pickers) above, which `live-picker!` accepts the same way) keeps
+the path and clips the line preview instead — `rg --vimgrep`'s rows are
+`path:line:col:preview`, so the default head-cut would clip the path itself.
 
 `live-picker!` opens empty — there's no `items` argument, and no `#:pending` either: a
 live picker is always populated by its own requery, never by a caller pushing items

@@ -10,7 +10,9 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::{LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind};
+use crate::host::{
+    LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, TruncateEnd,
+};
 
 use super::SteelResult;
 use super::args::{
@@ -142,8 +144,22 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal
         .collect()
 }
 
-/// `(%picker! items on-select prompt pending query)` — the `picker!` Scheme
-/// wrapper supplies the keyword defaults. Returns the new session's token.
+/// Decodes `picker!`'s/`live-picker!`'s `#:truncate` symbol — `'head`
+/// (default, drop the front) or `'tail` (drop the back). Shared so the two
+/// builtins can't drift on the accepted spelling or the error message.
+fn truncate_end_arg(val: SteelVal, ctx_name: &str) -> Result<TruncateEnd, SteelErr> {
+    match string_arg(val, ctx_name)?.as_str() {
+        "head" => Ok(TruncateEnd::Head),
+        "tail" => Ok(TruncateEnd::Tail),
+        other => {
+            steel::stop!(Generic => "{}: must be 'head or 'tail, got '{}'", ctx_name, other)
+        }
+    }
+}
+
+/// `(%picker! items on-select prompt pending query truncate)` — the
+/// `picker!` Scheme wrapper supplies the keyword defaults. Returns the new
+/// session's token.
 pub(crate) fn picker(
     ctx: &mut SteelCtx,
     items: SteelVal,
@@ -151,15 +167,18 @@ pub(crate) fn picker(
     prompt: SteelVal,
     pending: SteelVal,
     query: SteelVal,
+    truncate: SteelVal,
 ) -> SteelResult {
     let items = picker_items(items, "picker! items")?;
     let prompt = string_arg(prompt, "picker! #:prompt")?;
     let pending = bool_arg(pending, "picker! #:pending")?;
     let query = string_arg(query, "picker! #:query")?;
+    let truncate = truncate_end_arg(truncate, "picker! #:truncate")?;
     let opts = PickerOpts {
         prompt,
         pending,
         query,
+        truncate,
     };
     let token = require_cap(ctx.host.ui(), "picker!")?
         .open_picker(items, on_select, opts)
@@ -167,7 +186,7 @@ pub(crate) fn picker(
     Ok(SteelVal::IntV(token as isize))
 }
 
-/// `(%live-picker! on-select prompt query on-query-change)` — the
+/// `(%live-picker! on-select prompt query on-query-change truncate)` — the
 /// `live-picker!` Scheme wrapper supplies the keyword defaults and composes
 /// `on-query-change` itself (stop-and-clear-then-debounce around the
 /// caller's `#:command`); this layer only decodes it as a required
@@ -181,14 +200,17 @@ pub(crate) fn live_picker(
     prompt: SteelVal,
     query: SteelVal,
     on_query_change: SteelVal,
+    truncate: SteelVal,
 ) -> SteelResult {
     let prompt = string_arg(prompt, "live-picker! #:prompt")?;
     let query = string_arg(query, "live-picker! #:query")?;
     let on_query_change = callable_arg(on_query_change, "live-picker! on-query-change")?;
+    let truncate = truncate_end_arg(truncate, "live-picker! #:truncate")?;
     let opts = LivePickerOpts {
         prompt,
         query,
         on_query_change,
+        truncate,
     };
     let token = require_cap(ctx.host.ui(), "live-picker!")?
         .open_live_picker(on_select, opts)

@@ -17,7 +17,7 @@ use std::cmp::Reverse;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use hume_platform::process::line_source::SpawnedLineSource;
-use hume_scripting::host::{LivePickerOpts, PickerOpts};
+use hume_scripting::host::{LivePickerOpts, PickerOpts, TruncateEnd};
 use steel::rvals::SteelVal;
 
 use super::fuzzy::{FuzzyMatcher, FuzzyProfile};
@@ -137,6 +137,9 @@ pub(crate) struct PickerSession {
     /// Empty by default — an empty prompt renders identically to no prompt
     /// at all.
     prompt: String,
+    /// Which end of an over-long row the panel clips — `#:truncate`, see
+    /// `hume_scripting::host::TruncateEnd`.
+    truncate: TruncateEnd,
     /// Identifies this session to Steel and to [`session_for_token`], the
     /// shared guard every token-scoped picker mutation checks before
     /// reaching a `&mut PickerSession` at all.
@@ -179,6 +182,7 @@ impl PickerSession {
             on_select,
             opts.prompt,
             opts.query,
+            opts.truncate,
             population,
             PickerMode::Filter,
         )
@@ -196,6 +200,7 @@ impl PickerSession {
             on_select,
             opts.prompt,
             opts.query,
+            opts.truncate,
             Population::Complete,
             PickerMode::Live {
                 on_query_change: opts.on_query_change,
@@ -207,6 +212,7 @@ impl PickerSession {
         on_select: SteelVal,
         prompt: String,
         query: String,
+        truncate: TruncateEnd,
         population: Population,
         mode: PickerMode,
     ) -> Self {
@@ -220,6 +226,7 @@ impl PickerSession {
             scroll: 0,
             on_select,
             prompt,
+            truncate,
             token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
             population,
             mode,
@@ -229,6 +236,10 @@ impl PickerSession {
 
     pub(crate) fn token(&self) -> u64 {
         self.token
+    }
+
+    pub(crate) fn truncate(&self) -> TruncateEnd {
+        self.truncate
     }
 
     pub(crate) fn prompt(&self) -> &str {
@@ -748,6 +759,7 @@ mod tests {
                 prompt: String::new(),
                 query: String::new(),
                 on_query_change: dummy_on_select(),
+                truncate: TruncateEnd::Head,
             },
         )
     }

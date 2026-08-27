@@ -7,6 +7,7 @@
 
 ### Plugins
 - `picker!` gains `#:query`, which prefills the input line and filters the (still empty, until seeded) item list against it.
+- `picker!` and `live-picker!` gain `#:truncate`, which end of an over-long row the panel clips: `'head` (default, unchanged) or `'tail`, for rows whose distinguishing part sits at the front (a grep match's path, say, ahead of the line preview).
 - New `live-picker!` opens a picker whose query drives an external source instead of the local fuzzy filter — a live grep, say, that re-runs its search per pattern instead of only locally filtering already-fetched rows.
 - New `picker-replace!`, `picker-push!`'s sibling: replaces the open picker's item list instead of appending to it.
 - `picker-source-spawn!` gains `#:ok-exit-codes` (default `'(0)`): the complete set of exit codes treated as a normal outcome, e.g. to add `rg`'s "no matches" exit to the default.

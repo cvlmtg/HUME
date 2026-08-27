@@ -7,7 +7,7 @@ use super::*;
 
 use crate::editor::picker::{self, PickerSession, item};
 use hume_platform::process::line_source::spawn_line_source;
-use hume_scripting::host::{LivePickerOpts, PickerOpts};
+use hume_scripting::host::{LivePickerOpts, PickerOpts, TruncateEnd};
 use std::sync::Arc;
 use steel::rvals::SteelVal;
 
@@ -23,6 +23,7 @@ fn open_live_picker(ed: &mut Editor) {
             prompt: String::new(),
             query: String::new(),
             on_query_change: SteelVal::BoolV(false),
+            truncate: TruncateEnd::Head,
         },
     );
     picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
