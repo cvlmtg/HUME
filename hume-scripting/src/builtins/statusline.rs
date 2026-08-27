@@ -17,7 +17,7 @@
 //!
 //! Valid element names: `Cwd`, `DirtyIndicator`, `FilePath`, `FileName`,
 //! `KittyProtocol`, `Language`, `LineEnding`, `MacroRecording`, `MiniBuf`,
-//! `Mode`, `Position`, `ReadOnly`, `SearchMatches`, `Selections`, `Separator`.
+//! `Mode`, `Position`, `ReadOnly`, `SearchMatches`, `Separator`.
 //!
 //! `FilePath` shows the full path to the focused file with the home prefix
 //! collapsed to `~`.  When the terminal row is too narrow the path is

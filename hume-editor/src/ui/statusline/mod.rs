@@ -14,8 +14,7 @@ mod elements;
 use elements::{
     CwdElement, DiagnosticsElement, DirtyIndicatorElement, FileNameElement, KittyProtocolElement,
     LanguageElement, LineEndingElement, MacroRecordingElement, MiniBufElement, ModeElement,
-    PositionElement, ReadOnlyElement, SearchMatchesElement, SelectionsElement, SeparatorElement,
-    StatuslineElement,
+    PositionElement, ReadOnlyElement, SearchMatchesElement, SeparatorElement, StatuslineElement,
 };
 
 /// Hardcoded left section for Command/Search modes.
@@ -66,9 +65,6 @@ pub enum StatusElement {
     Cwd,
     /// Cursor position as `"line:col"` (both 1-based, col = grapheme index).
     Position,
-    /// Selection count as `"N sels"`, or the empty string when only one
-    /// selection is active (so it occupies no space in single-cursor mode).
-    Selections,
     /// Kitty keyboard protocol indicator: `"ᓚᘏᗢ"` when active, empty otherwise.
     ///
     /// Useful for diagnosing whether the protocol was successfully negotiated.
@@ -116,7 +112,6 @@ const ELEMENT_NAMES: &[(&str, StatusElement)] = &[
     ("FilePath", StatusElement::FilePath),
     ("Cwd", StatusElement::Cwd),
     ("Position", StatusElement::Position),
-    ("Selections", StatusElement::Selections),
     ("KittyProtocol", StatusElement::KittyProtocol),
     ("DirtyIndicator", StatusElement::DirtyIndicator),
     ("LineEnding", StatusElement::LineEnding),
@@ -463,7 +458,6 @@ pub(crate) fn render_element(
         StatusElement::FilePath => elements::file_path::render(filepath_text, colors),
         StatusElement::Position => PositionElement::render(editor, colors),
         StatusElement::KittyProtocol => KittyProtocolElement::render(editor, colors),
-        StatusElement::Selections => SelectionsElement::render(editor, colors),
         StatusElement::DirtyIndicator => DirtyIndicatorElement::render(editor, colors),
         StatusElement::LineEnding => LineEndingElement::render(editor, colors),
         StatusElement::Cwd => CwdElement::render(editor, colors),

@@ -38,7 +38,6 @@ mod mode;
 mod position;
 mod read_only;
 mod search_matches;
-mod selections;
 mod separator;
 
 pub(super) use cwd::CwdElement;
@@ -54,5 +53,4 @@ pub(super) use mode::ModeElement;
 pub(super) use position::PositionElement;
 pub(super) use read_only::ReadOnlyElement;
 pub(super) use search_matches::SearchMatchesElement;
-pub(super) use selections::SelectionsElement;
 pub(super) use separator::SeparatorElement;
