@@ -228,3 +228,66 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
         "with no cursorline bg, the cursor's tinted line must fall through to the tint"
     );
 }
+
+/// Regression guard for the decoration-bridge snapshot unification:
+/// `update_line_bg_providers` runs in `prepare_frame` step 5, *after* the
+/// scroll step, and must read that step's viewport — not the snapshot step 3
+/// takes before scrolling (which the sign/inlay-hint/virtual-line/EOL-text
+/// bridges deliberately do read; see `decoration_providers.rs`'s
+/// `decorated_panes` doc). A ten-line buffer with the cursor on the last
+/// line, `scrolloff` 0, and a viewport four content rows tall forces a real
+/// scroll during this frame — cursor line 9 minus the scroll target's 3 rows
+/// of look-ahead (`scroll.rs::ensure_cursor_visible`) lands `top_line` at 6.
+/// Line 8 sits inside that post-scroll viewport (lines 6..11) but well
+/// outside the pre-scroll one (0..5) — reachable only if this bridge reads
+/// the post-scroll snapshot.
+#[test]
+fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
+    let tmp = safe_tempdir();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.state.settings.scrolloff = 0; // isolate from margin-triggered auto-scroll
+    type_text(
+        &mut ed,
+        "line0\nline1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9",
+    );
+    let bid = ed.focused_buffer_id();
+    assert_eq!(
+        ed.state
+            .buffers
+            .get(bid)
+            .text()
+            .char_to_line(ed.current_selections().primary().head()),
+        9,
+        "sanity: cursor lands on the last line, off-screen at the default top_line=0"
+    );
+
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "go" "" (lambda ()
+                 (set-line-backgrounds! "git-diff" (current-buffer)
+                   (list (list 8 "{TINT_SCOPE}")))))"#
+        ),
+    );
+    type_cmd(&mut ed, ":go");
+
+    let pid = ed.state.focused_pane_id;
+    frame(&mut ed, 20, 5); // rect height 5 → 4 content rows, forces the scroll
+
+    assert_eq!(
+        ed.view.panes[pid].viewport.top_line, 6,
+        "sanity: the cursor forced this frame's own scroll, landing top_line \
+         where line 8 is visible but line 0's default viewport never was"
+    );
+
+    let by_line = ed.state.panes.render[pid]
+        .line_backgrounds
+        .read()
+        .unwrap()
+        .clone();
+    assert!(
+        by_line.contains_key(&8),
+        "line 8's tint must survive into the post-scroll viewport this bridge reads"
+    );
+}

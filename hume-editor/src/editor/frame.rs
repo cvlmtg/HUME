@@ -6,10 +6,9 @@
 //! else here is a step `prepare_frame` drives or a helper those steps share.
 
 use hume_grid::{Grid, Rect};
-use std::ops::Range;
 
 use hume_engine::pane::Pane;
-use hume_engine::pipeline::{BufferId, PaneId, PaneRenderSettings, RenderContext};
+use hume_engine::pipeline::{PaneId, PaneRenderSettings, RenderContext};
 use hume_engine::types::EditorMode;
 
 use super::Editor;
@@ -341,20 +340,19 @@ impl Editor {
         //          (`inline_decorations` or `virtual_lines`) that
         //          `RowMap::format_line`/`block` reads, so they change wrap
         //          row counts and columns the moment they appear.
-        //    Tradeoff: 3a/3b/3d scope their own work to
-        //    `visible_char_range`/`visible_line_range`, which read
-        //    `viewport.top_line` — so a same-frame scroll (step 4) can leave
-        //    a newly-exposed line's hints/signs unsynced until next frame.
-        //    That's a one-frame cosmetic lag that self-corrects; syncing
-        //    after scroll instead would let step 4's `RowMap` see row
-        //    counts/columns the providers haven't caught up to yet — the
-        //    scroll/render/caret disagreement this ordering avoids.
-        //    `update_virtual_line_providers` has no viewport dependency, so
-        //    its position here is unconditional either way.
-        self.update_sign_providers();
-        self.update_inlay_hint_providers();
-        self.update_virtual_line_providers();
-        self.update_eol_text_providers();
+        //    All four read this one `decorated_panes()` snapshot (see its
+        //    doc), taken here rather than after step 4 — so a same-frame
+        //    scroll can leave a newly-exposed line's hints/signs unsynced
+        //    until next frame. That's a one-frame cosmetic lag that
+        //    self-corrects; syncing after scroll instead would let step 4's
+        //    `RowMap` see row counts/columns the providers haven't caught up
+        //    to yet — the scroll/render/caret disagreement this ordering
+        //    avoids.
+        let panes = self.decorated_panes();
+        self.update_sign_providers(&panes);
+        self.update_inlay_hint_providers(&panes);
+        self.update_virtual_line_providers(&panes);
+        self.update_eol_text_providers(&panes);
 
         // 4. Scroll every pane so its primary cursor stays visible. Must run
         //    after `settle()`: a settled drain can switch a pane's `buffer_id`
@@ -406,9 +404,12 @@ impl Editor {
         //    underlines, extra highlights) and line-background tints to
         //    shared Arc buffers read by the highlight/line-bg providers
         //    during rendering. Render-only — no `RowMap` consumer reads
-        //    either one, only the paint stage.
-        self.update_highlight_providers();
-        self.update_line_bg_providers();
+        //    either one, only the paint stage. A fresh `decorated_panes()`
+        //    snapshot here (distinct from step 3's) is what gives these two
+        //    the *current* viewport, post-scroll.
+        let panes = self.decorated_panes();
+        self.update_highlight_providers(&panes);
+        self.update_line_bg_providers(&panes);
 
         // 6. Sync completion-popup view to the shared Arc for `MinibufCompletionOverlay`.
         self.sync_minibuf_completion_view();
@@ -476,43 +477,6 @@ impl Editor {
 
     pub(crate) fn viewport_mut(&mut self) -> &mut hume_engine::pane::ViewportState {
         &mut self.view.panes[self.state.focused_pane_id].viewport
-    }
-
-    /// Pane `pid`'s visible viewport as a line range, before any clamping to
-    /// the buffer's actual line count — the shared basis for
-    /// [`Self::visible_char_range`] and [`Self::visible_line_range`]. These
-    /// render-side helpers deliberately return a one-row *superset* of it
-    /// (its end plus one more row) — cheap over-fetch beats a wrap-aware
-    /// exact bound for a bulk store slice. Both this range and
-    /// `lsp::introspect::pane_visible_range` are end-exclusive, so the two
-    /// conventions differ only in that one-row slack, not in
-    /// inclusive-vs-exclusive — they still don't share an implementation,
-    /// since one clamps to `content_lines` and the other to the ropey-domain
-    /// line count.
-    fn visible_line_bounds(&self, pid: PaneId) -> Range<usize> {
-        let vp = &self.view.panes[pid].viewport;
-        let top_line = vp.top_line;
-        top_line..(top_line + vp.height as usize)
-    }
-
-    /// The char range of `bid`'s content currently visible in pane `pid` —
-    /// shared by every per-frame write side that pulls a bounded slice from a
-    /// Rust-side store (diagnostics, decorations) instead of the whole buffer.
-    pub(super) fn visible_char_range(&self, pid: PaneId, bid: BufferId) -> Range<usize> {
-        let bounds = self.visible_line_bounds(pid);
-        let text = self.state.buffers.get(bid).text();
-        let top_char = text.line_to_char(bounds.start.min(text.last_ropey_line()));
-        let end_char = hume_editing::lines::line_end_exclusive(text, bounds.end);
-        top_char..end_char
-    }
-
-    /// The line range of `bid`'s content currently visible in pane `pid`
-    /// (end-exclusive) — used by line-indexed stores (gutter signs) instead
-    /// of the char-offset stores' [`Self::visible_char_range`].
-    pub(super) fn visible_line_range(&self, pid: PaneId, bid: BufferId) -> Range<usize> {
-        let bounds = self.visible_line_bounds(pid);
-        let text = self.state.buffers.get(bid).text();
-        bounds.start.min(text.last_ropey_line())..(bounds.end + 1).min(text.ropey_line_count())
     }
 }
 

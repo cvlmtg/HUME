@@ -3,6 +3,7 @@
 //! shared `Arc` buffers the engine's providers read during rendering. Driven
 //! by `prepare_frame`'s step 3/5.
 
+use std::ops::Range;
 use std::sync::Arc;
 
 use hume_engine::pipeline::{BufferId, PaneId};
@@ -13,17 +14,67 @@ use crate::lock_ext::LockExt;
 use hume_editing::lines::{char_to_line_byte, line_break_char, line_segments};
 use hume_ops::pair::find_bracket_pair;
 
+/// One pane's identity plus its on-screen slice, as of the moment
+/// [`Editor::decorated_panes`] was called — every render bridge below reads
+/// `lines`/`chars` instead of asking the viewport directly, so a bridge can
+/// only ever see the viewport its group was handed (see `decorated_panes`'s
+/// doc for why that matters across the scroll step).
+pub(super) struct DecoratedPane {
+    pub(super) pid: PaneId,
+    pub(super) bid: BufferId,
+    /// Line range, end-exclusive — used by line-indexed stores (gutter
+    /// signs, EOL text, line backgrounds) instead of `chars`.
+    pub(super) lines: Range<usize>,
+    /// Char range of `bid`'s content currently visible in `pid` — shared by
+    /// every per-frame write side that pulls a bounded slice from a
+    /// Rust-side store (diagnostics, decorations) instead of the whole
+    /// buffer.
+    pub(super) chars: Range<usize>,
+}
+
 impl Editor {
-    /// Snapshot of every pane's `(PaneId, BufferId)` — the entry point every
-    /// render bridge below starts with, so its loop body can freely mutate
-    /// `self.state` (e.g. `update_highlight_providers` refreshing a
+    /// Snapshot of every pane's identity and visible slice — the entry point
+    /// every render bridge below starts with, so its loop body can freely
+    /// mutate `self.state` (e.g. `update_highlight_providers` refreshing a
     /// buffer's search-match cache) without conflicting with a live borrow
-    /// of `self.view.panes`.
-    fn decorated_panes(&self) -> Vec<(PaneId, BufferId)> {
+    /// of `self.view.panes`, and so a bridge's `lines`/`chars` can never
+    /// drift from what every other bridge in the same call sees.
+    ///
+    /// `prepare_frame` calls this **twice** — once before the scroll step,
+    /// once after — rather than sharing one snapshot across both groups: the
+    /// sign/inlay-hint/virtual-line/EOL-text bridges deliberately read the
+    /// *previous* frame's viewport (their output decides row counts/columns
+    /// the scroll step's `RowMap` resolves against, so it must already be
+    /// visible before that math runs), while the highlight/line-background
+    /// bridges are paint-only and want the *current* one. Two snapshots make
+    /// that straddle a property of *where* each is taken, not something each
+    /// of the six bridges has to individually get right.
+    ///
+    /// `lines`/`chars` are a one-row *superset* of the viewport (its end plus
+    /// one more row) — cheap over-fetch beats a wrap-aware exact bound for a
+    /// bulk store slice. Both are end-exclusive; `lsp::introspect::pane_visible_range`
+    /// is also end-exclusive, so the two conventions differ only in that
+    /// one-row slack, not in inclusive-vs-exclusive — they still don't share
+    /// an implementation, since one clamps to `content_lines` and the other
+    /// to the ropey-domain line count.
+    pub(super) fn decorated_panes(&self) -> Vec<DecoratedPane> {
         self.view
             .panes
             .iter()
-            .map(|(pid, pane)| (pid, pane.buffer_id))
+            .map(|(pid, pane)| {
+                let bid = pane.buffer_id;
+                let vp = &pane.viewport;
+                let bottom = vp.top_line + vp.height as usize;
+                let text = self.state.buffers.get(bid).text();
+                let top_line = vp.top_line.min(text.last_ropey_line());
+                DecoratedPane {
+                    pid,
+                    bid,
+                    lines: top_line..(bottom + 1).min(text.ropey_line_count()),
+                    chars: text.line_to_char(top_line)
+                        ..hume_editing::lines::line_end_exclusive(text, bottom),
+                }
+            })
             .collect()
     }
 
@@ -36,15 +87,15 @@ impl Editor {
     /// panes never share highlight data (see [`crate::ui::highlight_providers::PaneHighlights`]),
     /// so a pane viewing a different buffer, or the same buffer scrolled
     /// elsewhere, never inherits another pane's matches.
-    pub(super) fn update_highlight_providers(&mut self) {
+    pub(super) fn update_highlight_providers(&mut self, panes: &[DecoratedPane]) {
         let in_insert = self.state.mode() == EditorMode::Insert;
 
-        let panes = self.decorated_panes();
         let search_scope = self.view.registry.intern("ui.selection.search");
         let bracket_scope = self.view.registry.intern("ui.cursor.match");
 
         // ── Search match highlights — one pane at a time ─────────────────────
-        for &(pid, bid) in &panes {
+        for p in panes {
+            let (pid, bid) = (p.pid, p.bid);
             // Clone the Arc (not the data) so the write lock and the buffer
             // refresh below don't hold a borrow of `self.state.panes`.
             let Some(search_arc) = self
@@ -70,7 +121,7 @@ impl Editor {
             // refreshes. No-op when the cache already matches this revision.
             super::search::ops::update_buffer_matches(&mut self.state.buffers, bid);
 
-            let visible = self.visible_line_range(pid, bid);
+            let visible = p.lines.clone();
             let buf = self.state.buffers.get(bid);
             let text = buf.text();
 
@@ -93,8 +144,8 @@ impl Editor {
         // ── Bracket match highlight — cursor concept, focused pane only ──────
         // Clear every pane first: a bracket match lingers only on whichever
         // pane last had focus, so moving focus away must blank the old one.
-        for &(pid, _) in &panes {
-            if let Some(r) = self.state.panes.render.get(pid) {
+        for p in panes {
+            if let Some(r) = self.state.panes.render.get(p.pid) {
                 r.highlights.bracket.write_or_panic().clear();
             }
         }
@@ -158,7 +209,8 @@ impl Editor {
                 "diagnostic.hint",
             ]
             .map(|name| self.view.registry.intern(name));
-            for &(pid, bid) in &panes {
+            for p in panes {
+                let (pid, bid) = (p.pid, p.bid);
                 let Some((diag_arc, extra_arc)) = self.state.panes.render.get(pid).map(|r| {
                     (
                         Arc::clone(&r.highlights.diagnostics),
@@ -168,7 +220,7 @@ impl Editor {
                     continue;
                 };
 
-                let visible = self.visible_char_range(pid, bid);
+                let visible = p.chars.clone();
 
                 let buf = self.state.buffers.get(bid);
                 let text = buf.text();
@@ -230,15 +282,15 @@ impl Editor {
     /// `Arc<RwLock<FxHashMap<line, Vec<Sign>>>>` buffer, read by that pane's
     /// `SharedSignSource`. Stays visible in Insert mode — same reasoning as
     /// [`Self::update_highlight_providers`]'s diagnostics section. Called
-    /// from `prepare_frame`'s step 3, *before* scrolling: the sign column's
-    /// width feeds `Pane::content_width`, which decides the wrap column the
-    /// scroll step's `RowMap` resolves against.
-    pub(super) fn update_sign_providers(&mut self) {
+    /// from `prepare_frame`'s step 3, against the pre-scroll snapshot (see
+    /// [`Self::decorated_panes`]) because the sign column's width feeds
+    /// `Pane::content_width`, which decides the wrap column the scroll
+    /// step's `RowMap` resolves against.
+    pub(super) fn update_sign_providers(&mut self, panes: &[DecoratedPane]) {
         use hume_engine::builtins::sign_column::{Sign, SignColumn};
 
-        let panes = self.decorated_panes();
-
-        for &(pid, bid) in &panes {
+        for p in panes {
+            let (pid, bid) = (p.pid, p.bid);
             let Some(sign_map) = self
                 .state
                 .panes
@@ -249,8 +301,8 @@ impl Editor {
                 continue;
             };
 
-            let visible = self.visible_char_range(pid, bid);
-            let visible_lines = self.visible_line_range(pid, bid);
+            let visible = p.chars.clone();
+            let visible_lines = p.lines.clone();
 
             let signcolumn = self
                 .state
@@ -337,15 +389,14 @@ impl Editor {
     /// plugin's own setting — it owns clearing *its* source on toggle-off,
     /// via the `on-option-change` hook (`inlay.scm`), rather than this
     /// bridge wiping every source wholesale on a setting it doesn't own.
-    pub(super) fn update_inlay_hint_providers(&mut self) {
+    pub(super) fn update_inlay_hint_providers(&mut self, panes: &[DecoratedPane]) {
         use hume_engine::providers::InlineInsert;
-
-        let panes = self.decorated_panes();
 
         // Every inlay hint shares this one scope (locked decision: no
         // per-hint styling in v1).
         let scope = self.view.registry.intern("ui.virtual.inlay-hint");
-        for &(pid, bid) in &panes {
+        for p in panes {
+            let (pid, bid) = (p.pid, p.bid);
             let Some(map) = self
                 .state
                 .panes
@@ -355,7 +406,7 @@ impl Editor {
             else {
                 continue;
             };
-            let visible = self.visible_char_range(pid, bid);
+            let visible = p.chars.clone();
             let text = self.state.buffers.get(bid).text();
 
             let mut by_line: rustc_hash::FxHashMap<usize, Vec<InlineInsert>> =
@@ -400,15 +451,13 @@ impl Editor {
     /// per EOL line in the whole buffer. Both write into a pane's
     /// `inline_decorations` providers, which `RowMap::format_line` reads, so
     /// this feeds wrap row counts and columns exactly like inlay hints do —
-    /// called from `prepare_frame`'s step 3, *before* scrolling, so (like
-    /// `update_sign_providers`) the viewport it filters against is still the
-    /// previous frame's.
-    pub(super) fn update_eol_text_providers(&mut self) {
+    /// called from `prepare_frame`'s step 3, against the pre-scroll snapshot
+    /// (see [`Self::decorated_panes`]).
+    pub(super) fn update_eol_text_providers(&mut self, panes: &[DecoratedPane]) {
         use hume_engine::providers::InlineInsert;
 
-        let panes = self.decorated_panes();
-
-        for &(pid, bid) in &panes {
+        for p in panes {
+            let (pid, bid) = (p.pid, p.bid);
             let Some(map) = self
                 .state
                 .panes
@@ -421,7 +470,7 @@ impl Editor {
 
             // Each entry's `pos` is its line's line-start char offset
             // (`EolTextEntry::pos`); resolved to its *current* line here.
-            let visible_lines = self.visible_line_range(pid, bid);
+            let visible_lines = p.lines.clone();
             let text = self.state.buffers.get(bid).text();
             let per_line: Vec<(&str, usize, InlineInsert)> = visible_line_anchored(
                 text,
@@ -470,8 +519,10 @@ impl Editor {
     /// other bridges' viewport-filtered passes. The stamp is per-buffer (not
     /// a single store-wide counter): an edit only bumps the buffer it
     /// edited, so typing in one buffer no longer forces every pane on every
-    /// *other* buffer to resync too. Called from `prepare_frame`'s step 3,
-    /// *before* scrolling, no viewport dependency to make stale. Two sources
+    /// *other* buffer to resync too. Called from `prepare_frame`'s step 3 —
+    /// unlike the rest of that step, has no viewport dependency (so which
+    /// [`Self::decorated_panes`] snapshot it reads is immaterial) and takes
+    /// only `pid`/`bid` from it. Two sources
     /// anchored to the same line stack rather than collapse (unlike the
     /// four line-anchored kinds `last_writer_per_line` folds) —
     /// `virtual_lines_for_buffer` (`SourceStore::for_buffer`) yields sources
@@ -488,12 +539,11 @@ impl Editor {
     /// Always `Some`, never left as the engine's own `None` fallback, so a
     /// theme that puts a `bg` on `ui.virtual` reaches the row fill exactly
     /// the same way an explicit `scope` would.
-    pub(super) fn update_virtual_line_providers(&mut self) {
+    pub(super) fn update_virtual_line_providers(&mut self, panes: &[DecoratedPane]) {
         use hume_engine::providers::{VirtualLine, VirtualLineAnchor};
 
-        let panes = self.decorated_panes();
-
-        for &(pid, bid) in &panes {
+        for p in panes {
+            let (pid, bid) = (p.pid, p.bid);
             let current_gen = self.state.config.decorations.generation(bid);
             if self.virtual_lines_synced.get(&pid) == Some(&(bid, current_gen)) {
                 continue;
@@ -551,10 +601,9 @@ impl Editor {
     /// `update_sign_providers`), so the per-frame cost is one `ScopeId` per
     /// *visible* tinted line, not per tinted line in the whole buffer —
     /// cheap enough that a dedicated generation-gated sync buys nothing.
-    pub(super) fn update_line_bg_providers(&mut self) {
-        let panes = self.decorated_panes();
-
-        for &(pid, bid) in &panes {
+    pub(super) fn update_line_bg_providers(&mut self, panes: &[DecoratedPane]) {
+        for p in panes {
+            let (pid, bid) = (p.pid, p.bid);
             let Some(map) = self
                 .state
                 .panes
@@ -567,7 +616,7 @@ impl Editor {
 
             // Like the sign path above (`update_sign_providers`): a tinted
             // line scrolled out of view costs nothing but the filter check.
-            let visible_lines = self.visible_line_range(pid, bid);
+            let visible_lines = p.lines.clone();
             let text = self.state.buffers.get(bid).text();
             let per_line: Vec<(&str, usize, hume_engine::types::ScopeId)> = visible_line_anchored(
                 text,
