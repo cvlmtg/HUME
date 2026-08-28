@@ -88,20 +88,20 @@ fn messages_populates_the_extra_highlights_store() {
         .extra_highlights_for("messages", bid);
     assert_eq!(spans.len(), 4);
     assert_eq!(
-        (spans[0].start, spans[0].end, &spans[0].scope[..]),
-        (0, 9, "diagnostic.warning.message")
+        (spans[0].start, spans[0].end, spans[0].scope),
+        (0, 9, scope(&ed, "diagnostic.warning.message"))
     );
     assert_eq!(
-        (spans[1].start, spans[1].end, &spans[1].scope[..]),
-        (10, 17, "diagnostic.warning.message-text")
+        (spans[1].start, spans[1].end, spans[1].scope),
+        (10, 17, scope(&ed, "diagnostic.warning.message-text"))
     );
     assert_eq!(
-        (spans[2].start, spans[2].end, &spans[2].scope[..]),
-        (18, 25, "diagnostic.error.message")
+        (spans[2].start, spans[2].end, spans[2].scope),
+        (18, 25, scope(&ed, "diagnostic.error.message"))
     );
     assert_eq!(
-        (spans[3].start, spans[3].end, &spans[3].scope[..]),
-        (26, 31, "diagnostic.error.message-text")
+        (spans[3].start, spans[3].end, spans[3].scope),
+        (26, 31, scope(&ed, "diagnostic.error.message-text"))
     );
 }
 

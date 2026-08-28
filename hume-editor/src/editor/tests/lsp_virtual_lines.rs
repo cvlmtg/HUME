@@ -413,6 +413,7 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
+    let scope = ed.view.registry.intern("ui.virtual");
     ed.state.config.decorations.set_virtual_lines(
         "linter".to_string(),
         bid,
@@ -420,7 +421,7 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
             pos: 0,
             text: "hint".to_string(),
             before: false,
-            scope: None,
+            scope,
             segments: Vec::new(),
         }],
     );
@@ -483,11 +484,12 @@ fn same_line_virtual_lines_from_two_sources_order_alphabetically_by_source() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
+    let scope = ed.view.registry.intern("ui.virtual");
     let entry = |text: &str| crate::editor::decorations::VirtualLineEntry {
         pos: 0,
         text: text.to_string(),
         before: false,
-        scope: None,
+        scope,
         segments: Vec::new(),
     };
     ed.state

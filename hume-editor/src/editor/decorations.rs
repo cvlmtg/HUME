@@ -8,10 +8,13 @@
 //! `SourceStore`, generic over the source-key type so `lsp/diagnostics.rs`'s
 //! `DiagnosticsStore` (keyed by `ServerId` instead of a plugin-chosen
 //! `String`) shares this exact write/remap machinery rather than
-//! reimplementing it. Most render providers read these fresh every frame;
-//! `virtual_lines` is the exception — resolving each entry's scope is costly
-//! enough that its per-pane sync gates on `generation` instead (see that
-//! field's doc).
+//! reimplementing it. Every `scope` field here is an already-interned
+//! `ScopeId`, not a name — `host_impl.rs`'s `set-*!` handlers intern the
+//! Steel-facing scope string once, at the boundary, so render bridges never
+//! resolve a name themselves. Every render provider reads these fresh every
+//! frame; `virtual_lines` is the exception — the whole-buffer rebuild (not
+//! viewport-filtered, since it also runs in scroll/cursor math) gates on
+//! `generation` instead (see that field's doc).
 
 use std::ops::Range;
 
@@ -19,6 +22,7 @@ use rustc_hash::FxHashMap;
 
 use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_engine::pipeline::BufferId;
+use hume_engine::types::ScopeId;
 
 /// One `(set-inlay-hints! …)` entry: `text` rendered `before` or after the
 /// char at `pos`.
@@ -36,15 +40,12 @@ pub(crate) struct InlayHintEntry {
 /// rebuild. No `priority` field — a sign's slot is its *source*'s rank
 /// among [`DecorationStores::sign_sources`], not a per-entry value; the
 /// `source` key `SourceStore` already carries is the entry's whole channel
-/// identity. `Clone`: `decoration_providers.rs`'s
-/// `visible_line_anchored` clones a viewport-filtered subset out from under
-/// an immutable store borrow before resolving each entry's scope (which
-/// needs `&mut self`) — same reason `EolTextEntry`/`LineBgEntry` carry it.
-#[derive(Clone)]
+/// identity. `scope` is interned by `host_impl.rs`'s `set_signs` at the
+/// `set-signs!` boundary, not resolved later by a render bridge.
 pub(crate) struct SignEntry {
     pub(crate) pos: usize,
     pub(crate) text: String,
-    pub(crate) scope: String,
+    pub(crate) scope: ScopeId,
 }
 
 /// One `(set-virtual-lines! …)` entry: a synthetic line of text anchored to
@@ -53,22 +54,24 @@ pub(crate) struct SignEntry {
 /// line number — the host boundary (`host_impl.rs`'s `line_start_offset`)
 /// converts at set time, so this remaps through edits like every other kind;
 /// the render side derives the current line back via `char_to_line` at
-/// rebuild. `scope` styles bytes `segments` doesn't cover
-/// (`ui.virtual` fallback when both are absent); `segments` are
-/// `(byte_start, byte_end, scope_name)` ranges into `text`, already
+/// rebuild. `scope` styles bytes `segments` doesn't cover — `host_impl.rs`'s
+/// `set_virtual_lines` resolves the `ui.virtual` fallback itself when the
+/// Steel call passes no scope, so this field is never optional; `segments`
+/// are `(byte_start, byte_end, ScopeId)` ranges into `text`, already
 /// sorted/non-overlapping/in-bounds — guaranteed by the host boundary
 /// (`virtual_line_segments_to_bytes` in `host_impl.rs`), which also converts
-/// the Steel-facing char offsets to these byte offsets. Kept as a separate
+/// the Steel-facing char offsets to these byte offsets (the per-segment
+/// scope name is interned separately, after that call). Kept as a separate
 /// type rather than reusing `hume_scripting::VirtualLineSpec` directly: that
-/// type's `segments` are unvalidated char offsets, this one's are validated
-/// byte offsets — deliberately different shapes, not merely a field rename.
-#[derive(Clone)]
+/// type's `segments` are unvalidated char offsets naming scopes, this one's
+/// are validated byte offsets naming already-interned `ScopeId`s —
+/// deliberately different shapes, not merely a field rename.
 pub(crate) struct VirtualLineEntry {
     pub(crate) pos: usize,
     pub(crate) text: String,
     pub(crate) before: bool,
-    pub(crate) scope: Option<String>,
-    pub(crate) segments: Vec<(usize, usize, String)>,
+    pub(crate) scope: ScopeId,
+    pub(crate) segments: Vec<(usize, usize, ScopeId)>,
 }
 
 /// One `(set-eol-text! …)` entry: `text` appended at the end of the line
@@ -79,21 +82,21 @@ pub(crate) struct VirtualLineEntry {
 /// `char_to_line` at rebuild. The diagnostics plugin's
 /// per-line summary (`"[n] <message>"` or a bare message) is this kind's
 /// first client, not its owner, same as every other kind here is to LSP.
-/// `Clone`: `decoration_providers.rs`'s `visible_line_anchored` clones a
-/// viewport-filtered subset out from under an immutable store borrow before
-/// resolving each entry's scope (which needs `&mut self`).
-#[derive(Clone)]
+/// `scope` is interned by `host_impl.rs`'s `set_eol_text` at the
+/// `set-eol-text!` boundary.
 pub(crate) struct EolTextEntry {
     pub(crate) pos: usize,
     pub(crate) text: String,
-    pub(crate) scope: String,
+    pub(crate) scope: ScopeId,
 }
 
-/// One `(set-extra-highlights! …)` entry: a char range styled with `scope`.
+/// One `(set-extra-highlights! …)` entry: a char range styled with `scope`,
+/// interned by `host_impl.rs`'s `set_extra_highlights` at the
+/// `set-extra-highlights!` boundary.
 pub(crate) struct ExtraHighlightEntry {
     pub(crate) start: usize,
     pub(crate) end: usize,
-    pub(crate) scope: String,
+    pub(crate) scope: ScopeId,
 }
 
 /// One `(set-line-backgrounds! …)` entry: a full-row background tint on the
@@ -105,12 +108,11 @@ pub(crate) struct ExtraHighlightEntry {
 /// `SignEntry` now — row tints have no per-line slot contention at all, so
 /// same-line entries from different sources simply break ties by source
 /// name, never claim a reserved column the way a registered sign source does.
-/// `Clone`: see `EolTextEntry`'s doc — same
-/// `visible_line_anchored` consumer.
-#[derive(Clone)]
+/// `scope` is interned by `host_impl.rs`'s `set_line_backgrounds` at the
+/// `set-line-backgrounds!` boundary.
 pub(crate) struct LineBgEntry {
     pub(crate) pos: usize,
-    pub(crate) scope: String,
+    pub(crate) scope: ScopeId,
 }
 
 /// Sort key every entry kind provides — [`SourceStore::set`] sorts by this

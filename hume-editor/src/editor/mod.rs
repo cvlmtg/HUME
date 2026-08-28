@@ -476,16 +476,12 @@ pub(crate) struct EditorState {
     /// highlights), resolved lazily on first use — scope interning needs
     /// `&mut ScopeRegistry`, which lives on `Editor::view`, not
     /// `EditorState`. The gutter counterpart has no equivalent field —
-    /// `core:lsp` interns its own bare severity scope names through
-    /// `runtime_scope_cache` when it places diagnostic signs.
+    /// `core:lsp` interns its own bare severity scope names at the Steel
+    /// boundary (`host_impl.rs`) when it places diagnostic signs.
     pub(super) diagnostic_text_scopes: Option<[hume_engine::types::ScopeId; 4]>,
     /// Interned scope id for `ui.virtual.inlay-hint`, resolved lazily
     /// on first use for the same reason as `diagnostic_text_scopes`.
     pub(super) inlay_hint_scope: Option<hume_engine::types::ScopeId>,
-    /// Interned scope id for `ui.virtual` — the fallback for a
-    /// virtual-line entry with no explicit scope — resolved lazily on first
-    /// use for the same reason as `diagnostic_text_scopes`.
-    pub(super) virtual_text_fallback_scope: Option<hume_engine::types::ScopeId>,
     /// Interned scope ids for `ui.cursor.match` (bracket match) and
     /// `ui.selection.search` (search match), resolved lazily on first use
     /// for the same reason as `diagnostic_text_scopes` — every pane's bracket-
@@ -494,10 +490,6 @@ pub(crate) struct EditorState {
     /// these two are the editor-wide constants every pane's spans carry.
     pub(super) bracket_match_scope: Option<hume_engine::types::ScopeId>,
     pub(super) search_match_scope: Option<hume_engine::types::ScopeId>,
-    /// Cache of interned `ScopeId`s for plugin-supplied scope name strings
-    /// (extra highlights, signs, virtual lines) — avoids re-interning the
-    /// same runtime name every frame.
-    pub(super) runtime_scope_cache: rustc_hash::FxHashMap<String, hume_engine::types::ScopeId>,
     /// Shared popup-overlay view for `PopupLayout::Cursor`: written by
     /// `prepare_frame`, read by `PopupOverlay`. Empty whenever `config.popup`
     /// is `None` or docked (see `popup_band_view`).
@@ -597,10 +589,8 @@ impl Default for EditorState {
             minibuf_completion_view: Arc::new(RwLock::new(None)),
             diagnostic_text_scopes: None,
             inlay_hint_scope: None,
-            virtual_text_fallback_scope: None,
             bracket_match_scope: None,
             search_match_scope: None,
-            runtime_scope_cache: rustc_hash::FxHashMap::default(),
             popup_view: Arc::new(RwLock::new(None)),
             popup_band_view: Arc::new(RwLock::new(None)),
             menu_view: Arc::new(RwLock::new(None)),

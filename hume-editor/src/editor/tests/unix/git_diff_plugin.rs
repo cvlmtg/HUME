@@ -122,7 +122,13 @@ fn signs(ed: &Editor, bid: BufferId) -> Vec<(usize, String, String)> {
         .decorations
         .signs_for(SOURCE, bid)
         .iter()
-        .map(|e| (text.char_to_line(e.pos), e.text.clone(), e.scope.clone()))
+        .map(|e| {
+            (
+                text.char_to_line(e.pos),
+                e.text.clone(),
+                ed.view.registry.name_of(e.scope).to_string(),
+            )
+        })
         .collect();
     v.sort_by_key(|(line, ..)| *line);
     v
@@ -137,7 +143,12 @@ fn line_bgs(ed: &Editor, bid: BufferId) -> Vec<(usize, String)> {
         .decorations
         .line_backgrounds_for(SOURCE, bid)
         .iter()
-        .map(|e| (text.char_to_line(e.pos), e.scope.clone()))
+        .map(|e| {
+            (
+                text.char_to_line(e.pos),
+                ed.view.registry.name_of(e.scope).to_string(),
+            )
+        })
         .collect();
     v.sort_by_key(|(line, _)| *line);
     v
@@ -153,7 +164,11 @@ type VLine = (
 );
 
 /// `virtual_lines_for(SOURCE, bid)`, remapped to `(line, before, text,
-/// scope, segments)` and sorted.
+/// scope, segments)` and sorted. `scope`/segment scopes resolve back to
+/// names via the registry — `SOURCE`'s entries always carry an explicit
+/// scope, so this never actually reads the `ui.virtual` fallback, but the
+/// `Option` return shape is kept so a fixture asserting `None` would still
+/// be meaningful if one is ever added.
 fn vlines(ed: &Editor, bid: BufferId) -> Vec<VLine> {
     let text = ed.state.buffers.get(bid).text();
     let mut v: Vec<_> = ed
@@ -167,8 +182,13 @@ fn vlines(ed: &Editor, bid: BufferId) -> Vec<VLine> {
                 text.char_to_line(e.pos),
                 e.before,
                 e.text.clone(),
-                e.scope.clone(),
-                e.segments.clone(),
+                Some(ed.view.registry.name_of(e.scope).to_string()),
+                e.segments
+                    .iter()
+                    .map(|(start, end, scope)| {
+                        (*start, *end, ed.view.registry.name_of(*scope).to_string())
+                    })
+                    .collect(),
             )
         })
         .collect();
@@ -190,7 +210,7 @@ fn highlights(ed: &Editor, bid: BufferId) -> Vec<(usize, usize, String, String)>
             (
                 e.start,
                 e.end,
-                e.scope.clone(),
+                ed.view.registry.name_of(e.scope).to_string(),
                 text.slice(e.start..e.end).to_string(),
             )
         })

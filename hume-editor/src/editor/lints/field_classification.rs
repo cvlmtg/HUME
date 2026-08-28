@@ -115,14 +115,6 @@ const EDITOR_STATE_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
     ),
     ("inlay_hint_scope", "preserved: registry-relative ScopeId"),
     (
-        "virtual_text_fallback_scope",
-        "preserved: registry-relative ScopeId",
-    ),
-    (
-        "runtime_scope_cache",
-        "preserved: registry-relative ScopeIds",
-    ),
-    (
         "bracket_match_scope",
         "preserved: registry-relative ScopeId",
     ),

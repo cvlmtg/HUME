@@ -25,13 +25,14 @@ fn full_message_reaches_the_render_provider_untruncated() {
     ed.feed_key(key_esc());
     let bid = ed.focused_buffer_id();
     let message = " mismatched types here";
+    let scope = ed.view.registry.intern("diagnostic.error");
     ed.state.config.decorations.set_eol_text(
         "lsp".to_string(),
         bid,
         vec![EolTextEntry {
             pos: 0,
             text: message.to_string(),
-            scope: "diagnostic.error".to_string(),
+            scope,
         }],
     );
 
@@ -72,6 +73,8 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
     }
     ed.feed_key(key_esc());
     let bid = ed.focused_buffer_id();
+    let error_scope = ed.view.registry.intern("diagnostic.error");
+    let warning_scope = ed.view.registry.intern("diagnostic.warning");
     ed.state.config.decorations.set_eol_text(
         "diagnostics".to_string(),
         bid,
@@ -79,12 +82,12 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
             EolTextEntry {
                 pos: 0,
                 text: "first".to_string(),
-                scope: "diagnostic.error".to_string(),
+                scope: error_scope,
             },
             EolTextEntry {
                 pos: 0,
                 text: "second".to_string(),
-                scope: "diagnostic.warning".to_string(),
+                scope: warning_scope,
             },
         ],
     );
@@ -128,13 +131,14 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
     }
     ed.feed_key(key_esc());
     let bid = ed.focused_buffer_id();
+    let scope = ed.view.registry.intern("diagnostic.error");
     ed.state.config.decorations.set_eol_text(
         "z-plugin".to_string(),
         bid,
         vec![EolTextEntry {
             pos: 0,
             text: "from-z".to_string(),
-            scope: "diagnostic.error".to_string(),
+            scope,
         }],
     );
     ed.state.config.decorations.set_eol_text(
@@ -143,7 +147,7 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
         vec![EolTextEntry {
             pos: 0,
             text: "from-a".to_string(),
-            scope: "diagnostic.error".to_string(),
+            scope,
         }],
     );
 

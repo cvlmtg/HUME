@@ -9,7 +9,6 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use hume_engine::types::EditorMode;
 
 use super::Editor;
-use crate::editor::lsp::diagnostics::DiagSeverity;
 use crate::lock_ext::LockExt;
 use hume_editing::lines::{char_to_line_byte, line_break_char, line_segments};
 use hume_ops::pair::find_bracket_pair;
@@ -18,8 +17,8 @@ use hume_ops::pair::find_bracket_pair;
 /// order (`[error, warning, info, hint]`) — see [`Editor::diagnostic_text_scopes`],
 /// the sole interner of this table. The gutter counterpart (bare
 /// `error`/`warning`/`info`/`hint`, Helix's own naming for that surface) is
-/// interned by `core:lsp`'s `set-signs!` call via `Editor::runtime_scope`
-/// instead, the same as any other plugin sign source's scope.
+/// interned by `core:lsp`'s `set-signs!` call, at the Steel boundary in
+/// `host_impl.rs`, the same as any other plugin sign source's scope.
 const DIAGNOSTIC_TEXT_SCOPE_NAMES: [&str; 4] = [
     "diagnostic.error",
     "diagnostic.warning",
@@ -46,8 +45,9 @@ impl Editor {
     /// cached, since interning needs `&mut self.view.registry` but
     /// `DiagSeverity` itself lives in `self.state`. The gutter counterpart
     /// has no equivalent here — `core:lsp` interns its own bare severity
-    /// scope names via `Self::runtime_scope` when it places diagnostic signs
-    /// (`set-signs!`), same as any other plugin sign source.
+    /// scope names when it places diagnostic signs (`set-signs!`), at the
+    /// Steel boundary in `host_impl.rs`, same as any other plugin sign
+    /// source.
     fn diagnostic_text_scopes(&mut self) -> [hume_engine::types::ScopeId; 4] {
         *self.state.diagnostic_text_scopes.get_or_insert_with(|| {
             DIAGNOSTIC_TEXT_SCOPE_NAMES.map(|text| self.view.registry.intern(text))
@@ -72,18 +72,6 @@ impl Editor {
             .state
             .search_match_scope
             .get_or_insert_with(|| self.view.registry.intern("ui.selection.search"))
-    }
-
-    /// Interned `ScopeId` for a plugin-supplied runtime scope name (extra
-    /// highlights, signs, virtual lines), cached across frames so the same
-    /// name string is never re-interned.
-    fn runtime_scope(&mut self, name: &str) -> hume_engine::types::ScopeId {
-        if let Some(&id) = self.state.runtime_scope_cache.get(name) {
-            return id;
-        }
-        let id = self.view.registry.intern_runtime(name);
-        self.state.runtime_scope_cache.insert(name.to_string(), id);
-        id
     }
 
     /// Write per-frame highlight data to every pane's own `Arc<RwLock<...>>`
@@ -216,56 +204,22 @@ impl Editor {
 
                 let visible = self.visible_char_range(pid, bid);
 
-                // Collect raw diagnostic ranges first — this ends the
-                // immutable borrow of `self.lsp` before `runtime_scope`
-                // (called below for extra highlights) needs `&mut self`.
-                let diags: Vec<(usize, usize, DiagSeverity)> = self
-                    .lsp
-                    .diagnostics_for_range(bid, visible.clone(), floor)
-                    .map(|d| {
-                        (
-                            d.start.max(visible.start),
-                            d.end.min(visible.end),
-                            d.severity,
-                        )
-                    })
-                    .collect();
-
-                // Same for extra highlights: collect owned data before
-                // resolving each source's scope name to a `ScopeId`.
-                let extra_raw: Vec<(usize, usize, String)> = self
-                    .state
-                    .config
-                    .decorations
-                    .extra_highlights_for_buffer(bid)
-                    .filter(|e| e.start < visible.end && e.end > visible.start)
-                    .map(|e| {
-                        (
-                            e.start.max(visible.start),
-                            e.end.min(visible.end),
-                            e.scope.clone(),
-                        )
-                    })
-                    .collect();
-                let extra: Vec<(usize, usize, hume_engine::types::ScopeId)> = extra_raw
-                    .into_iter()
-                    .map(|(start, end, name)| (start, end, self.runtime_scope(&name)))
-                    .collect();
-
                 let buf = self.state.buffers.get(bid);
                 let text = buf.text();
 
                 {
                     let mut raw = Vec::new();
-                    for (start, end, severity) in diags {
+                    for d in self.lsp.diagnostics_for_range(bid, visible.clone(), floor) {
+                        let start = d.start.max(visible.start);
+                        let end = d.end.min(visible.end);
                         // Priority = severity discriminant: Error(0) beats
                         // Warning(1) beats Info(2) beats Hint(3) in overlaps.
                         push_priority_highlight_lines(
                             text,
                             start,
                             end,
-                            severity as u8,
-                            diag_scopes[severity as usize],
+                            d.severity as u8,
+                            diag_scopes[d.severity as usize],
                             &mut raw,
                         );
                     }
@@ -276,7 +230,17 @@ impl Editor {
 
                 {
                     let mut raw = Vec::new();
-                    for (start, end, scope) in extra {
+                    for e in self
+                        .state
+                        .config
+                        .decorations
+                        .extra_highlights_for_buffer(bid)
+                    {
+                        if e.start >= visible.end || e.end <= visible.start {
+                            continue;
+                        }
+                        let start = e.start.max(visible.start);
+                        let end = e.end.min(visible.end);
                         // No severity concept for plugin-supplied spans —
                         // uniform priority; overlap ties resolve by push
                         // order, which `extra_highlights_for_buffer`
@@ -284,7 +248,7 @@ impl Editor {
                         // source name — the alphabetically-first source wins,
                         // deterministic across sessions rather than whichever
                         // source happened to call `set-extra-highlights!` first.
-                        push_priority_highlight_lines(text, start, end, 0, scope, &mut raw);
+                        push_priority_highlight_lines(text, start, end, 0, e.scope, &mut raw);
                     }
                     let mut data = extra_arc.write_or_panic();
                     data.clear();
@@ -346,7 +310,7 @@ impl Editor {
             // straddle a line the viewport itself excludes).
             let plugin_raw = visible_line_anchored(
                 text,
-                &visible_lines,
+                visible_lines,
                 self.state.config.decorations.signs_in_range(bid, visible),
                 |e| e.pos,
             );
@@ -363,13 +327,12 @@ impl Editor {
                     .state
                     .config
                     .decorations
-                    .sign_slot(&source)
+                    .sign_slot(source)
                     .expect("set-signs! only accepts an already-registered source");
                 if slot >= slots as usize {
                     continue;
                 }
                 let slot = slot as u8;
-                let scope = self.runtime_scope(&e.scope);
                 let entries = plugin_all.entry(line).or_default();
                 // Two *different* sources can never contend for one slot
                 // now — a slot is a source's fixed registry rank. This
@@ -382,8 +345,8 @@ impl Editor {
                     entries.insert(
                         i,
                         Sign {
-                            text: std::borrow::Cow::Owned(e.text),
-                            scope,
+                            text: std::borrow::Cow::Owned(e.text.clone()),
+                            scope: e.scope,
                             slot,
                         },
                     );
@@ -504,48 +467,35 @@ impl Editor {
                 continue;
             };
 
-            // `visible_line_anchored` ends the immutable `eol_text_for_buffer`
-            // borrow (on `self.state.config.decorations`) before
-            // `self.runtime_scope` below, which needs `&mut self`. Each
-            // entry's `pos` is its line's line-start char offset
-            // (`EolTextEntry::pos`); resolved to its *current* line here
-            // (once), reused below rather than re-resolved.
+            // Each entry's `pos` is its line's line-start char offset
+            // (`EolTextEntry::pos`); resolved to its *current* line here.
             let visible_lines = self.visible_line_range(pid, bid);
             let text = self.state.buffers.get(bid).text();
-            let filtered: Vec<(String, usize, crate::editor::decorations::EolTextEntry)> =
-                visible_line_anchored(
-                    text,
-                    &visible_lines,
-                    self.state.config.decorations.eol_text_for_buffer(bid),
-                    |e| e.pos,
-                );
-            let resolved: Vec<(String, usize, String, hume_engine::types::ScopeId)> = filtered
-                .into_iter()
-                .map(|(source, line, e)| (source, line, e.text, self.runtime_scope(&e.scope)))
-                .collect();
-
-            let text = self.state.buffers.get(bid).text();
-            let per_line: Vec<(String, usize, InlineInsert)> = resolved
-                .into_iter()
-                .map(|(source, line, entry_text, scope)| {
-                    // End-of-line placement: the line's own trailing '\n'
-                    // char resolves to a byte offset within `line` (never
-                    // the next line — see `char_to_line_byte`'s doc comment
-                    // on the same pattern used for inlay hints' `'after`
-                    // anchor).
-                    let line_newline = line_break_char(text, line);
-                    let (_, byte_offset) = char_to_line_byte(text, line_newline);
-                    (
-                        source,
-                        line,
-                        InlineInsert {
-                            byte_offset,
-                            text: entry_text,
-                            scope,
-                        },
-                    )
-                })
-                .collect();
+            let per_line: Vec<(&str, usize, InlineInsert)> = visible_line_anchored(
+                text,
+                visible_lines,
+                self.state.config.decorations.eol_text_for_buffer(bid),
+                |e| e.pos,
+            )
+            .map(|(source, line, e)| {
+                // End-of-line placement: the line's own trailing '\n'
+                // char resolves to a byte offset within `line` (never
+                // the next line — see `char_to_line_byte`'s doc comment
+                // on the same pattern used for inlay hints' `'after`
+                // anchor).
+                let line_newline = line_break_char(text, line);
+                let (_, byte_offset) = char_to_line_byte(text, line_newline);
+                (
+                    source,
+                    line,
+                    InlineInsert {
+                        byte_offset,
+                        text: e.text.clone(),
+                        scope: e.scope,
+                    },
+                )
+            })
+            .collect();
             let by_line: rustc_hash::FxHashMap<usize, Vec<InlineInsert>> =
                 last_writer_per_line(per_line)
                     .into_iter()
@@ -556,51 +506,40 @@ impl Editor {
         }
     }
 
-    /// Interned `ScopeId` for `ui.virtual` — the fallback `base_scope` for a
-    /// virtual-line entry with no explicit `scope`, so a theme that gives
-    /// `ui.virtual` a `bg` tints a scope-less virtual line's gutter and
-    /// trailing cells the same as its text, not just the text (the row-fill
-    /// site and the per-grapheme site must resolve the same scope for a
-    /// line — see `update_virtual_line_providers`). Cached the same way as
-    /// [`Self::inlay_hint_scope`].
-    fn virtual_text_fallback_scope(&mut self) -> hume_engine::types::ScopeId {
-        *self
-            .state
-            .virtual_text_fallback_scope
-            .get_or_insert_with(|| self.view.registry.intern("ui.virtual"))
-    }
-
     /// Sync per-pane virtual-line decorations from the
     /// `decorations.virtual_lines` store to each pane's `PaneVirtualLines`
     /// Arc — a `RowMap::block` provider, so this feeds row *counts* the same
     /// way inlay hints/EOL text feed wrap columns. Unlike those two, this
     /// only rebuilds when `decorations.generation(bid)` changed since the
-    /// pane's last sync, or the pane's buffer changed, since resolving each
-    /// entry's scope (`runtime_scope`) is costlier to redo unconditionally
-    /// every frame. The stamp is per-buffer (not a single store-wide
-    /// counter): an edit only bumps the buffer it edited, so typing in one
-    /// buffer no longer forces every pane on every *other* buffer to
-    /// resync too. Called from `prepare_frame`'s step 3, *before* scrolling,
-    /// no viewport dependency to make stale. Two sources anchored to the same
-    /// line stack rather than collapse (unlike the four line-anchored kinds
-    /// `last_writer_per_line` folds) — `virtual_lines_for_buffer`
-    /// (`SourceStore::for_buffer`) yields sources ascending by name, and
-    /// `RowMap::block`'s anchor sort is stable, so they render in
-    /// alphabetical-by-source order, not registration order.
+    /// pane's last sync, or the pane's buffer changed — a whole-buffer
+    /// rebuild (not viewport-filtered, since `RowMap::block` needs every
+    /// anchor regardless of scroll position) with a `text`/`segments` clone
+    /// per entry is costlier to redo unconditionally every frame than the
+    /// other bridges' viewport-filtered passes. The stamp is per-buffer (not
+    /// a single store-wide counter): an edit only bumps the buffer it
+    /// edited, so typing in one buffer no longer forces every pane on every
+    /// *other* buffer to resync too. Called from `prepare_frame`'s step 3,
+    /// *before* scrolling, no viewport dependency to make stale. Two sources
+    /// anchored to the same line stack rather than collapse (unlike the
+    /// four line-anchored kinds `last_writer_per_line` folds) —
+    /// `virtual_lines_for_buffer` (`SourceStore::for_buffer`) yields sources
+    /// ascending by name, and `RowMap::block`'s anchor sort is stable, so
+    /// they render in alphabetical-by-source order, not registration order.
     ///
     /// Each entry becomes `Before(line)` or `After(line)` per its `before`
-    /// flag. `entry.scope` (or `ui.virtual` when absent) resolves to
-    /// `VirtualLine::base_scope` — the engine falls back to it for bytes
-    /// `segments` doesn't cover, and reads its `bg` to fill the row past the
-    /// last grapheme (see `segment_virtual_row`/`pane_render.rs`'s
-    /// virtual-row `row_bg`). Always `Some`, never left as the engine's own
-    /// `None` fallback, so a theme that puts a `bg` on `ui.virtual` reaches
-    /// the row fill exactly the same way an explicit `scope` would.
+    /// flag. `entry.scope` — already resolved to the `ui.virtual` fallback
+    /// at the `set-virtual-lines!` boundary when the Steel call passed none
+    /// (`host_impl.rs`) — becomes `VirtualLine::base_scope`: the engine
+    /// falls back to it for bytes `segments` doesn't cover, and reads its
+    /// `bg` to fill the row past the last grapheme (see
+    /// `segment_virtual_row`/`pane_render.rs`'s virtual-row `row_bg`).
+    /// Always `Some`, never left as the engine's own `None` fallback, so a
+    /// theme that puts a `bg` on `ui.virtual` reaches the row fill exactly
+    /// the same way an explicit `scope` would.
     pub(super) fn update_virtual_line_providers(&mut self) {
         use hume_engine::providers::{VirtualLine, VirtualLineAnchor};
 
         let panes = self.decorated_panes();
-        let fallback_scope = self.virtual_text_fallback_scope();
 
         for &(pid, bid) in &panes {
             let current_gen = self.state.config.decorations.generation(bid);
@@ -617,34 +556,12 @@ impl Editor {
                 continue;
             };
 
-            // Collected into an owned Vec first: `self.runtime_scope` needs
-            // `&mut self`, which can't overlap with the immutable borrow
-            // `virtual_lines_for_buffer` holds on `self.state.config.decorations`.
-            let entries: Vec<crate::editor::decorations::VirtualLineEntry> = self
-                .state
-                .config
-                .decorations
-                .virtual_lines_for_buffer(bid)
-                .cloned()
-                .collect();
-
+            let text = self.state.buffers.get(bid).text();
             let mut by_line: rustc_hash::FxHashMap<usize, Vec<VirtualLine>> =
                 rustc_hash::FxHashMap::default();
-            for entry in entries {
-                let base_scope = Some(match &entry.scope {
-                    Some(name) => self.runtime_scope(name),
-                    None => fallback_scope,
-                });
-                let segments = entry
-                    .segments
-                    .iter()
-                    .map(|(start, end, name)| (*start, *end, self.runtime_scope(name)))
-                    .collect();
+            for entry in self.state.config.decorations.virtual_lines_for_buffer(bid) {
                 // `entry.pos` is the anchor line's line-start char offset
-                // (`VirtualLineEntry::pos`) — fetched fresh per entry since
-                // `runtime_scope` above needs `&mut self`, which can't
-                // overlap with a borrow of `self.state.buffers`.
-                let text = self.state.buffers.get(bid).text();
+                // (`VirtualLineEntry::pos`).
                 let Some(line) = resolve_decoration_line(text, entry.pos) else {
                     continue;
                 };
@@ -653,14 +570,19 @@ impl Editor {
                 } else {
                     VirtualLineAnchor::After(line)
                 };
+                let segments = entry
+                    .segments
+                    .iter()
+                    .map(|(start, end, scope)| (*start, *end, *scope))
+                    .collect();
                 by_line.entry(line).or_default().push(VirtualLine {
                     anchor,
                     // Overwritten by the engine at collection time with the
                     // registration-assigned id (see `ProviderSet::add_decoration_source`).
                     provider_id: 0,
-                    text: entry.text,
+                    text: entry.text.clone(),
                     segments,
-                    base_scope,
+                    base_scope: Some(entry.scope),
                 });
             }
 
@@ -691,27 +613,21 @@ impl Editor {
                 continue;
             };
 
-            // `visible_line_anchored` ends the immutable
-            // `line_backgrounds_for_buffer` borrow before `self.runtime_scope`
-            // below, which needs `&mut self` — like the sign path above
-            // (`update_sign_providers`): a tinted line scrolled out of view
-            // costs nothing but the filter check.
+            // Like the sign path above (`update_sign_providers`): a tinted
+            // line scrolled out of view costs nothing but the filter check.
             let visible_lines = self.visible_line_range(pid, bid);
             let text = self.state.buffers.get(bid).text();
-            let filtered: Vec<(String, usize, crate::editor::decorations::LineBgEntry)> =
-                visible_line_anchored(
-                    text,
-                    &visible_lines,
-                    self.state
-                        .config
-                        .decorations
-                        .line_backgrounds_for_buffer(bid),
-                    |e| e.pos,
-                );
-            let per_line: Vec<(String, usize, hume_engine::types::ScopeId)> = filtered
-                .into_iter()
-                .map(|(source, line, e)| (source, line, self.runtime_scope(&e.scope)))
-                .collect();
+            let per_line: Vec<(&str, usize, hume_engine::types::ScopeId)> = visible_line_anchored(
+                text,
+                visible_lines,
+                self.state
+                    .config
+                    .decorations
+                    .line_backgrounds_for_buffer(bid),
+                |e| e.pos,
+            )
+            .map(|(source, line, e)| (source, line, e.scope))
+            .collect();
             let by_line = last_writer_per_line(per_line);
 
             *map.write_or_panic() = by_line;
@@ -736,10 +652,8 @@ impl Editor {
 /// earlier one when folded left-to-right; and the alphabetically-first
 /// source sorts last, so its entries are folded last and win the
 /// cross-source overwrite.
-fn last_writer_per_line<T>(
-    mut entries: Vec<(String, usize, T)>,
-) -> rustc_hash::FxHashMap<usize, T> {
-    entries.sort_by(|a, b| b.0.cmp(&a.0));
+fn last_writer_per_line<T>(mut entries: Vec<(&str, usize, T)>) -> rustc_hash::FxHashMap<usize, T> {
+    entries.sort_by(|a, b| b.0.cmp(a.0));
     entries.into_iter().map(|(_, line, v)| (line, v)).collect()
 }
 
@@ -758,30 +672,29 @@ fn resolve_decoration_line(text: &hume_editing::text::BufferText, pos: usize) ->
     text.content_lines_range().contains(&line).then_some(line)
 }
 
-/// Filters `entries`' `(source, entry)` pairs to `visible_lines`, resolving
-/// each entry's anchor position (via `pos_of`) to its current line and
-/// cloning past the borrow — shared by `update_eol_text_providers` and
-/// `update_line_bg_providers`, whose bodies are otherwise identical up to
-/// this filter step: resolve line → drop if scrolled out of view or drifted
-/// onto the phantom trailing line (`resolve_decoration_line`) → own the
-/// result. Returns fully-owned `(source, line, entry)` triples, not
-/// `&entry`, so the immutable borrow on the decoration store `entries` came
-/// from ends here — every caller needs that borrow gone before its next
-/// step (`self.runtime_scope`), which needs `&mut self`.
-fn visible_line_anchored<'a, E: Clone + 'a>(
-    text: &hume_editing::text::BufferText,
-    visible_lines: &std::ops::Range<usize>,
-    entries: impl Iterator<Item = (&'a str, &'a E)>,
+/// Filters `entries`' `(tag, entry)` pairs to `visible_lines`, resolving
+/// each entry's anchor position (via `pos_of`) to its current line — shared
+/// by every per-line-anchored render bridge (signs, EOL text, line
+/// backgrounds), whose bodies are otherwise identical up to this filter
+/// step: resolve line → drop if scrolled out of view or drifted onto the
+/// phantom trailing line (`resolve_decoration_line`) → keep. `tag` is
+/// whatever a caller needs alongside the resolved line — a source name, for
+/// signs' slot lookup (`DecorationStores::sign_slot`) and EOL text/line
+/// backgrounds' cross-source tie-break (`last_writer_per_line`) alike — this
+/// function only threads it through, borrowed the whole way: every field on
+/// every decoration entry is already either `Copy` or an already-interned
+/// `ScopeId`, so no caller needs an owned clone to escape this iterator's
+/// borrow.
+fn visible_line_anchored<'a, K, E: 'a>(
+    text: &'a hume_editing::text::BufferText,
+    visible_lines: std::ops::Range<usize>,
+    entries: impl Iterator<Item = (K, &'a E)>,
     pos_of: impl Fn(&E) -> usize,
-) -> Vec<(String, usize, E)> {
-    entries
-        .filter_map(|(source, e)| {
-            let line = resolve_decoration_line(text, pos_of(e))?;
-            visible_lines
-                .contains(&line)
-                .then(|| (source.to_string(), line, e.clone()))
-        })
-        .collect()
+) -> impl Iterator<Item = (K, usize, &'a E)> {
+    entries.filter_map(move |(tag, e)| {
+        let line = resolve_decoration_line(text, pos_of(e))?;
+        visible_lines.contains(&line).then_some((tag, line, e))
+    })
 }
 
 /// Push one `(line, byte_start, byte_end, scope)` quadruple per line the

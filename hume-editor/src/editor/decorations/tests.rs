@@ -11,11 +11,14 @@ fn make_two_bids() -> (BufferId, BufferId) {
     (a, b)
 }
 
+/// None of these tests assert on a sign's resolved scope — only on its
+/// text/position/source — so a bare `ScopeId` (no registry needed) stands
+/// in for whatever `host_impl.rs` would have interned.
 fn sign(pos: usize, text: &str) -> SignEntry {
     SignEntry {
         pos,
         text: text.to_string(),
-        scope: "error".to_string(),
+        scope: ScopeId(0),
     }
 }
 
@@ -137,7 +140,7 @@ fn virtual_line(pos: usize) -> VirtualLineEntry {
         pos,
         text: "x".to_string(),
         before: false,
-        scope: None,
+        scope: ScopeId(0),
         segments: Vec::new(),
     }
 }

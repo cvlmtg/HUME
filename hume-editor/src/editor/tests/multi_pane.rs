@@ -1026,6 +1026,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
     let pid = open_pane(&mut ed.state, &mut ed.view, bid_a);
     ed.switch_focused_pane(pid);
 
+    let scope = ed.view.registry.intern("ui.virtual");
     ed.state.config.decorations.set_virtual_lines(
         "test".to_string(),
         bid_a,
@@ -1033,7 +1034,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
             pos: 0,
             text: "deleted".to_string(),
             before: false,
-            scope: None,
+            scope,
             segments: Vec::new(),
         }],
     );

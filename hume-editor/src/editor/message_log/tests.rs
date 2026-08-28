@@ -152,14 +152,14 @@ fn format_with_spans_offsets_and_scopes() {
     // "\n" at 17. "[error]" is 7 chars (18..25), " " at 25, "crash" is 5
     // chars (26..31), "\n" at 31.
     assert_eq!(spans.len(), 4);
-    assert_eq!((spans[0].start, spans[0].end), (0, 9));
-    assert_eq!(spans[0].scope, "diagnostic.warning.message");
-    assert_eq!((spans[1].start, spans[1].end), (10, 17));
-    assert_eq!(spans[1].scope, "diagnostic.warning.message-text");
-    assert_eq!((spans[2].start, spans[2].end), (18, 25));
-    assert_eq!(spans[2].scope, "diagnostic.error.message");
-    assert_eq!((spans[3].start, spans[3].end), (26, 31));
-    assert_eq!(spans[3].scope, "diagnostic.error.message-text");
+    assert_eq!((spans[0].0, spans[0].1), (0, 9));
+    assert_eq!(spans[0].2, "diagnostic.warning.message");
+    assert_eq!((spans[1].0, spans[1].1), (10, 17));
+    assert_eq!(spans[1].2, "diagnostic.warning.message-text");
+    assert_eq!((spans[2].0, spans[2].1), (18, 25));
+    assert_eq!(spans[2].2, "diagnostic.error.message");
+    assert_eq!((spans[3].0, spans[3].1), (26, 31));
+    assert_eq!(spans[3].2, "diagnostic.error.message-text");
 }
 
 #[test]
@@ -173,11 +173,11 @@ fn format_with_spans_counts_chars_not_bytes() {
 
     assert_eq!(spans.len(), 4);
     // "[info]" = 6 chars (0..6), " " at 6, "café ☕" = 6 chars (7..13).
-    assert_eq!((spans[0].start, spans[0].end), (0, 6));
-    assert_eq!((spans[1].start, spans[1].end), (7, 13));
+    assert_eq!((spans[0].0, spans[0].1), (0, 6));
+    assert_eq!((spans[1].0, spans[1].1), (7, 13));
     // "\n" at 13, "[warning]" = 9 chars (14..23), " " at 23, "ok" (24..26).
-    assert_eq!((spans[2].start, spans[2].end), (14, 23));
-    assert_eq!((spans[3].start, spans[3].end), (24, 26));
+    assert_eq!((spans[2].0, spans[2].1), (14, 23));
+    assert_eq!((spans[3].0, spans[3].1), (24, 26));
 }
 
 #[test]
@@ -187,15 +187,15 @@ fn format_with_spans_skips_empty_text() {
     assert_eq!(text, "[warning] \n");
     // Only the badge span — no zero-width span for the empty message text.
     assert_eq!(spans.len(), 1);
-    assert_eq!((spans[0].start, spans[0].end), (0, 9));
+    assert_eq!((spans[0].0, spans[0].1), (0, 9));
 }
 
 #[test]
 fn severity_trace_uses_hint_scopes() {
     let log = make_log(&[(Severity::Trace, "t")]);
     let (_, spans) = log.format_with_spans();
-    assert_eq!(spans[0].scope, "diagnostic.hint.message");
-    assert_eq!(spans[1].scope, "diagnostic.hint.message-text");
+    assert_eq!(spans[0].2, "diagnostic.hint.message");
+    assert_eq!(spans[1].2, "diagnostic.hint.message-text");
 }
 
 #[test]

@@ -40,7 +40,10 @@ fn single_diagnostic_on_a_line_shows_a_bare_message() {
         "a single diagnostic must not get a '[1]' count prefix, but keeps \
          the leading space that separates it from the line's code"
     );
-    assert_eq!(entries[0].1.scope, "diagnostic.error");
+    assert_eq!(
+        ed.view.registry.name_of(entries[0].1.scope),
+        "diagnostic.error"
+    );
 }
 
 #[test]
@@ -100,7 +103,8 @@ fn inline_color_follows_the_highest_severity_on_the_line_not_the_leftmost() {
         .collect();
     assert_eq!(entries.len(), 1);
     assert_eq!(
-        entries[0].1.scope, "diagnostic.error",
+        ed.view.registry.name_of(entries[0].1.scope),
+        "diagnostic.error",
         "an error anywhere on the line must win the color, even when the \
          leftmost (message-supplying) diagnostic is only a warning"
     );
@@ -159,7 +163,13 @@ fn diagnostics_on_different_lines_get_independent_entries() {
         .config
         .decorations
         .eol_text_for_buffer(bid)
-        .map(|(_, e)| (e.pos, e.text.clone(), e.scope.clone()))
+        .map(|(_, e)| {
+            (
+                e.pos,
+                e.text.clone(),
+                ed.view.registry.name_of(e.scope).to_string(),
+            )
+        })
         .collect();
     entries.sort_by_key(|(pos, _, _)| *pos);
     // Line-start char offsets on this fixture: line 1 -> 3, line 3 -> 9.

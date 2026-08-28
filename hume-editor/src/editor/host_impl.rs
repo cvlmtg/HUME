@@ -938,7 +938,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                 Ok(crate::editor::decorations::SignEntry {
                     pos: line_start_offset(text, line, "set-signs!")?,
                     text: sign_text,
-                    scope,
+                    scope: self.view.registry.intern_runtime(&scope),
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
@@ -960,12 +960,21 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|spec| {
                 let pos = line_start_offset(text, spec.line, "set-virtual-lines!")?;
-                let segments = virtual_line_segments_to_bytes(&spec.text, spec.segments)?;
+                let scope = match spec.scope.as_deref() {
+                    Some(name) => self.view.registry.intern_runtime(name),
+                    None => self.view.registry.intern("ui.virtual"),
+                };
+                let segments = virtual_line_segments_to_bytes(&spec.text, spec.segments)?
+                    .into_iter()
+                    .map(|(start, end, name)| {
+                        (start, end, self.view.registry.intern_runtime(&name))
+                    })
+                    .collect();
                 Ok(crate::editor::decorations::VirtualLineEntry {
                     pos,
                     text: spec.text,
                     before: spec.before,
-                    scope: spec.scope,
+                    scope,
                     segments,
                 })
             })
@@ -988,7 +997,11 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|(start, end, scope)| {
                 validate_range(text, start, end, "set-extra-highlights!")?;
-                Ok(crate::editor::decorations::ExtraHighlightEntry { start, end, scope })
+                Ok(crate::editor::decorations::ExtraHighlightEntry {
+                    start,
+                    end,
+                    scope: self.view.registry.intern_runtime(&scope),
+                })
             })
             .collect::<Result<Vec<_>, String>>()?;
         self.state
@@ -1011,7 +1024,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                 Ok(crate::editor::decorations::EolTextEntry {
                     pos: line_start_offset(text, line, "set-eol-text!")?,
                     text: eol_text,
-                    scope,
+                    scope: self.view.registry.intern_runtime(&scope),
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
@@ -1034,7 +1047,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .map(|(line, scope)| {
                 Ok(crate::editor::decorations::LineBgEntry {
                     pos: line_start_offset(text, line, "set-line-backgrounds!")?,
-                    scope,
+                    scope: self.view.registry.intern_runtime(&scope),
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;

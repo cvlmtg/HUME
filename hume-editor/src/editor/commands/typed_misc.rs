@@ -29,6 +29,16 @@ pub(crate) fn typed_messages(
     // open_read_only_view clamps cursor_line to the last content line — pass
     // usize::MAX so it always positions at the bottom (most recent entry).
     let bid = ed.open_read_only_view("[messages]", &content, usize::MAX);
+    let spans = spans
+        .into_iter()
+        .map(
+            |(start, end, scope)| crate::editor::decorations::ExtraHighlightEntry {
+                start,
+                end,
+                scope: ed.view.registry.intern(scope),
+            },
+        )
+        .collect();
     // Wholesale replace under a fixed source name — repeat `:messages` calls
     // route through set_view_content (no ChangeSet), so stale spans from a
     // prior call can't be remapped and must be overwritten here instead.

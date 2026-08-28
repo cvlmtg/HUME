@@ -538,13 +538,14 @@ fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
 
     // "cc"'s line-start char offset in "aa\nbb\ncc\n" is 6.
+    let scope = ed.view.registry.intern_runtime("x");
     ed.state.config.decorations.set_signs(
         "test".to_string(),
         bid,
         vec![crate::editor::decorations::SignEntry {
             pos: 6,
             text: "!".to_string(),
-            scope: "x".to_string(),
+            scope,
         }],
     );
 

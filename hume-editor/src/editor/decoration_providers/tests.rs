@@ -37,10 +37,7 @@ fn resolve_decoration_line_drops_a_position_on_the_trailing_phantom_line() {
 fn last_writer_per_line_keeps_the_later_entry_within_one_source() {
     // Two entries from the same source collapsed onto line 4 by a remap —
     // within one source, the last entry wins.
-    let entries = vec![
-        ("diagnostics".to_string(), 4, "first"),
-        ("diagnostics".to_string(), 4, "second"),
-    ];
+    let entries = vec![("diagnostics", 4, "first"), ("diagnostics", 4, "second")];
     let result = last_writer_per_line(entries);
     assert_eq!(result.get(&4), Some(&"second"));
 }
@@ -51,10 +48,7 @@ fn last_writer_per_line_breaks_cross_source_ties_alphabetically_first() {
     // *first* source wins. Input order deliberately does not match sort
     // order, so a fix that just returned "whichever came last in the
     // input" would pass by accident.
-    let entries = vec![
-        ("z-marks".to_string(), 7, "from-z"),
-        ("a-marks".to_string(), 7, "from-a"),
-    ];
+    let entries = vec![("z-marks", 7, "from-z"), ("a-marks", 7, "from-a")];
     let result = last_writer_per_line(entries);
     assert_eq!(
         result.get(&7),
@@ -66,7 +60,7 @@ fn last_writer_per_line_breaks_cross_source_ties_alphabetically_first() {
 
 #[test]
 fn last_writer_per_line_keeps_entries_on_distinct_lines_independent() {
-    let entries = vec![("a".to_string(), 1, "one"), ("b".to_string(), 2, "two")];
+    let entries = vec![("a", 1, "one"), ("b", 2, "two")];
     let result = last_writer_per_line(entries);
     assert_eq!(result.get(&1), Some(&"one"));
     assert_eq!(result.get(&2), Some(&"two"));

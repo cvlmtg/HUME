@@ -7,7 +7,6 @@
 use std::collections::VecDeque;
 
 use super::EditorState;
-use super::decorations::ExtraHighlightEntry;
 
 // ── Severity ─────────────────────────────────────────────────────────────────
 
@@ -217,15 +216,18 @@ impl MessageLog {
     /// along with the severity-highlight spans for each line.
     ///
     /// Each line is `[severity] text\n`. Returns an empty string and no
-    /// spans if there are no entries. Spans are char offsets (not bytes) —
-    /// message text may be non-ASCII — matching the char-indexed contract of
-    /// [`ExtraHighlightEntry`].
+    /// spans if there are no entries. Spans are `(start, end, scope name)`
+    /// char offsets (not bytes) — message text may be non-ASCII. Scope names,
+    /// not `ScopeId`s: this type has no registry access (it's not an
+    /// `Editor` method), so interning is the caller's job — see
+    /// `commands/typed_misc.rs`'s `typed_messages`, the sole production
+    /// caller, which turns each name into an `ExtraHighlightEntry`.
     ///
     /// Highlighting goes through the `Extra` tier rather than tree-sitter:
     /// `[messages]` is a synthetic, path-less buffer, so `detect_language`
     /// never attaches a grammar to it (and a grammar for `[severity] text`
     /// lines would be absurd anyway).
-    pub(crate) fn format_with_spans(&self) -> (String, Vec<ExtraHighlightEntry>) {
+    pub(crate) fn format_with_spans(&self) -> (String, Vec<(usize, usize, &'static str)>) {
         if self.entries.is_empty() {
             return (String::new(), Vec::new());
         }
@@ -239,11 +241,7 @@ impl MessageLog {
             out.push_str(label);
             out.push(']');
             let badge_len = label.len() + 2; // '[' + label + ']'
-            spans.push(ExtraHighlightEntry {
-                start: pos,
-                end: pos + badge_len,
-                scope: entry.severity.badge_scope().to_string(),
-            });
+            spans.push((pos, pos + badge_len, entry.severity.badge_scope()));
             pos += badge_len;
 
             out.push(' ');
@@ -252,11 +250,7 @@ impl MessageLog {
             let text_len = entry.text.chars().count();
             if text_len > 0 {
                 out.push_str(&entry.text);
-                spans.push(ExtraHighlightEntry {
-                    start: pos,
-                    end: pos + text_len,
-                    scope: entry.severity.text_scope().to_string(),
-                });
+                spans.push((pos, pos + text_len, entry.severity.text_scope()));
                 pos += text_len;
             }
 
