@@ -475,16 +475,10 @@ pub(crate) struct EditorState {
     /// *editing-area* surface (`diagnostic.error` etc. — buffer-text
     /// highlights), resolved lazily on first use — scope interning needs
     /// `&mut ScopeRegistry`, which lives on `Editor::view`, not
-    /// `EditorState`. Distinct from `diagnostic_gutter_scopes`: a
-    /// gutter glyph and its underlying text span are different render
-    /// surfaces and, per Helix's own theme convention, different scopes.
+    /// `EditorState`. The gutter counterpart has no equivalent field —
+    /// `core:lsp` interns its own bare severity scope names through
+    /// `runtime_scope_cache` when it places diagnostic signs.
     pub(super) diagnostic_text_scopes: Option<[hume_engine::types::ScopeId; 4]>,
-    /// Interned scope ids for the four diagnostic severities on the
-    /// *gutter* surface (bare `error`/`warning`/`info`/`hint` — Helix's own
-    /// naming for this surface). Kept apart from `diagnostic_text_scopes`
-    /// because the editing-area scopes carry an `underline` modifier meant
-    /// for a text span, which a themed gutter glyph must not inherit.
-    pub(super) diagnostic_gutter_scopes: Option<[hume_engine::types::ScopeId; 4]>,
     /// Interned scope id for `ui.virtual.inlay-hint`, resolved lazily
     /// on first use for the same reason as `diagnostic_text_scopes`.
     pub(super) inlay_hint_scope: Option<hume_engine::types::ScopeId>,
@@ -602,7 +596,6 @@ impl Default for EditorState {
             completion_menu_view: Arc::new(RwLock::new(None)),
             minibuf_completion_view: Arc::new(RwLock::new(None)),
             diagnostic_text_scopes: None,
-            diagnostic_gutter_scopes: None,
             inlay_hint_scope: None,
             virtual_text_fallback_scope: None,
             bracket_match_scope: None,

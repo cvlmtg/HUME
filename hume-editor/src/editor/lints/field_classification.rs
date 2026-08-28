@@ -113,10 +113,6 @@ const EDITOR_STATE_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
         "preserved: ScopeIds are registry-relative, not theme-relative — \
          survive a theme reset",
     ),
-    (
-        "diagnostic_gutter_scopes",
-        "preserved: registry-relative ScopeId",
-    ),
     ("inlay_hint_scope", "preserved: registry-relative ScopeId"),
     (
         "virtual_text_fallback_scope",

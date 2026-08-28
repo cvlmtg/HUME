@@ -24,7 +24,7 @@ pub(in crate::editor) fn open_pane(
     // completion overlay + popup overlay + menu overlay + LSP
     // completion-menu overlay) as the initial pane — see `build_pane`. Each
     // pane's Arcs are freshly allocated here, never shared with any other
-    // pane (see `PaneHighlights`/`PaneSigns`), so per-pane decoration data
+    // pane (see `PaneHighlights`/`SignMap`), so per-pane decoration data
     // can never bleed across panes.
     let (pane, render_handles) = crate::ui::build_pane(
         &mut view.registry,

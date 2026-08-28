@@ -320,15 +320,21 @@ pub(crate) fn label_slice_for_buffer(
 /// lossless. `grapheme-col` is the same position as a grapheme column
 /// instead, for *display* — the one unit every HUME surface (statusline,
 /// diagnostics, LSP location lists) shows the user; never render `char-col`
-/// directly. Errors loudly on an unknown `#:severity` name (e.g. `'warn`
-/// typoed for `'warning`) rather than silently returning nothing that
-/// qualifies.
+/// directly. `end-line` is the range's *end* clamped and converted the same
+/// way `line` is — the diagnostics plugin's gutter-sign pass expands
+/// `[line, end-line]` inclusive to mark every line a multi-line diagnostic
+/// touches. `severity-rank` is `DiagSeverity`'s own `Ord` discriminant (`0`
+/// for error, counting up to `3` for hint) alongside the `severity` string,
+/// so a caller compares severities by this rather than re-deriving the same
+/// order from the string. Errors loudly on an unknown `#:severity` name
+/// (e.g. `'warn` typoed for `'warning`) rather than silently returning
+/// nothing that qualifies.
 ///
 /// With no `#:severity`, defaults to `lsp.diagnostics-severity-floor` — the
-/// same floor `update_highlight_providers`/`update_sign_providers` apply to
-/// underlines/gutter signs, so a caller (e.g. the diagnostics plugin's EOL
-/// summary) agrees with what's on screen unless it explicitly asks for a
-/// different cut.
+/// same floor `update_highlight_providers` applies to underlines, so a
+/// caller (e.g. the diagnostics plugin's EOL summary and gutter signs)
+/// agrees with what's on screen unless it explicitly asks for a different
+/// cut.
 pub(crate) fn diagnostics_for_buffer(
     state: &EditorState,
     lsp: &LspState,
@@ -367,13 +373,25 @@ pub(crate) fn diagnostics_for_buffer(
             let char_col = hume_editing::lines::char_col_in_line(text, line, clamped_start);
             let grapheme_col =
                 hume_editing::grapheme::grapheme_col_in_line(text, line, clamped_start);
+            // `end-line` mirrors `line`'s clamp so a range that reaches (or
+            // overshoots) end-of-file still names the buffer's last content
+            // line rather than the phantom trailing one — the gutter-sign
+            // plugin expands `[line, end-line]` inclusive, the same span
+            // `update_sign_providers` used to walk in Rust.
+            let end_line = text.char_to_line(d.end.saturating_sub(1).min(last_content_char));
             serde_json::json!({
                 "start": d.start,
                 "end": d.end,
                 "line": line,
+                "end-line": end_line,
                 "char-col": char_col,
                 "grapheme-col": grapheme_col,
                 "severity": d.severity.to_string(),
+                // `DiagSeverity`'s own `Ord` discriminant (0 = error … 3 =
+                // hint, lower is more severe) — the single encoding of
+                // severity order, so Scheme compares by this instead of
+                // re-deriving the same ranking from the `severity` string.
+                "severity-rank": d.severity as u8,
                 "message": d.message,
                 "code": d.code,
                 "source": d.source,

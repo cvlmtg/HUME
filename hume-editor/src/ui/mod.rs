@@ -29,7 +29,7 @@ use inline_decorations::{InlineDecorationMap, InlineDecorationProvider};
 use line_backgrounds::{LineBgMap, PaneLineBackgrounds};
 use picker_panel::PickerOverlay;
 use popup::PopupOverlay;
-use signs::{PaneSigns, SharedSignSource};
+use signs::{SharedSignSource, SignMap};
 use virtual_lines::{PaneVirtualLines, VirtualLineMap};
 
 /// A pane's six render-decoration handles, allocated together by
@@ -40,7 +40,7 @@ use virtual_lines::{PaneVirtualLines, VirtualLineMap};
 /// per-pane provider, forgot to drop it in `drop_pane_state`" bug class.
 pub(crate) struct PaneRenderHandles {
     pub(crate) highlights: PaneHighlights,
-    pub(crate) signs: PaneSigns,
+    pub(crate) signs: SignMap,
     pub(crate) inlay_hints: InlineDecorationMap,
     pub(crate) virtual_lines: VirtualLineMap,
     /// EOL text (the diagnostics plugin's per-line summary is its first
@@ -99,7 +99,7 @@ pub(crate) fn build_pane(
     let linenr_selected_scope = registry.intern("ui.linenr.selected");
 
     let highlights = PaneHighlights::default();
-    let signs = PaneSigns::default();
+    let signs: SignMap = Arc::new(RwLock::new(FxHashMap::default()));
     let inlay_hint_map: InlineDecorationMap = Arc::new(RwLock::new(FxHashMap::default()));
     let eol_text_map: InlineDecorationMap = Arc::new(RwLock::new(FxHashMap::default()));
     let virtual_line_map: VirtualLineMap = Arc::new(RwLock::new(FxHashMap::default()));
@@ -107,14 +107,7 @@ pub(crate) fn build_pane(
 
     let mut providers = ProviderSet::new();
     let mut sign_column = SignColumn::new(linenr_scope);
-    // Plugin signs registered after diagnostics so a plugin can override at
-    // an equal slot (`SignColumn`'s tie-break: later-registered wins) — a
-    // slot collision means two sources resolved to the same priority on
-    // `Editor::update_sign_providers`'s buffer-wide ladder.
-    sign_column.add_source(Box::new(SharedSignSource::new(Arc::clone(
-        &signs.diagnostics,
-    ))));
-    sign_column.add_source(Box::new(SharedSignSource::new(Arc::clone(&signs.plugin))));
+    sign_column.add_source(Box::new(SharedSignSource::new(Arc::clone(&signs))));
     providers.add_gutter_column(Box::new(sign_column));
     providers.add_gutter_column(Box::new(LineNumberColumn::new(
         linenr_scope,

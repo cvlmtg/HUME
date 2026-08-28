@@ -220,6 +220,88 @@ impl Drop for RealRuntimeGuard {
     }
 }
 
+// ── Shared diagnostics fixture ───────────────────────────────────────────────
+//
+// Shared by `lsp_diagnostics_inline.rs` (EOL summary) and
+// `lsp_diagnostic_signs.rs` (gutter signs) — both need `core:lsp` loaded
+// *before* `drain_lsp()`, since both decorations are driven by the queued
+// `on-diagnostics-changed` hook (see `setup`'s own doc below).
+// `lsp_diagnostics_nav.rs` keeps its own near-identical copy: its tests pull
+// `diagnostics-for-buffer` fresh at call time, independent of the hook, so
+// its `setup` loads the plugin *after* `drain_lsp()` instead — a genuine
+// ordering difference, not incidental duplication.
+
+use crate::editor::lsp::LspState;
+use hume_lsp::backend::LspBackend;
+use hume_lsp::client::LspClient;
+use hume_lsp::inline::InlineLspBackend;
+use hume_scripting::ScriptingHost;
+
+/// `((start_line, start_char), (end_line, end_char), severity, message)`.
+type DiagFixture<'a> = ((u32, u32), (u32, u32), i64, &'a str);
+
+fn publish_diagnostics_notification(uri: &str, diags: &[DiagFixture]) -> hume_lsp::codec::Message {
+    let diagnostics: Vec<serde_json::Value> = diags
+        .iter()
+        .map(|((sl, sc), (el, ec), sev, msg)| {
+            serde_json::json!({
+                "range": {"start": {"line": sl, "character": sc}, "end": {"line": el, "character": ec}},
+                "severity": sev,
+                "message": msg,
+            })
+        })
+        .collect();
+    hume_lsp::codec::Message::Notification {
+        method: "textDocument/publishDiagnostics".to_string(),
+        params: serde_json::json!({"uri": uri, "diagnostics": diagnostics}),
+    }
+}
+
+/// Plugin load happens *before* `drain_lsp()` (unlike `lsp_diagnostics_nav.rs`'s
+/// otherwise-identical `setup`) — both the EOL summary and the gutter signs
+/// are driven by `on-diagnostics-changed`, which is a queued hook
+/// (`queue_event` → `pending_work`, actually invoked by `settle()`): the
+/// handler must be registered by `(load-plugin "core:lsp")` before that
+/// queued hook is drained, or the first batch's decorations never render.
+fn setup_diagnostics(
+    content: &str,
+    file: &Path,
+    tmp: &Path,
+    diags: &[DiagFixture],
+) -> (Editor, RealRuntimeGuard) {
+    let guard = RealRuntimeGuard::new();
+    std::fs::write(file, content).unwrap();
+
+    let mut backend = InlineLspBackend::new();
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
+    let uri = hume_lsp::uri::path_to_uri(file).unwrap();
+    if !diags.is_empty() {
+        backend.push_from_server(sid, publish_diagnostics_notification(uri.as_str(), diags));
+    }
+
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    ed.lsp
+        .insert_client_for_test(LspClient::new(sid, file.parent().unwrap().to_path_buf()));
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(load-plugin "core:stdlib") (load-plugin "core:lsp")"#,
+        tmp,
+    );
+    ed.scripting = Some(host);
+
+    ed.drain_lsp();
+    ed.settle();
+
+    (ed, guard)
+}
+
 /// Points `XDG_CONFIG_HOME`/`HUME_RUNTIME`/`XDG_DATA_HOME` at a config
 /// tempdir (holding a caller-chosen `init.scm`), the real repo `runtime/`
 /// dir, and a data tempdir staged with a real compiled grammar at the exact
@@ -384,6 +466,7 @@ mod list_buffers;
 mod lsp_actions;
 mod lsp_bridge;
 mod lsp_completion_feature;
+mod lsp_diagnostic_signs;
 mod lsp_diagnostics_inline;
 mod lsp_diagnostics_nav;
 mod lsp_format;

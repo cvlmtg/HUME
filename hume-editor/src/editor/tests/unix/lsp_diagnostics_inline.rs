@@ -1,82 +1,10 @@
 // Diagnostics end-of-line summary (`set-eol-text!`, wired from
 // `on-diagnostics-changed` in `diagnostics.scm`) and the gn/gp
-// dismiss-on-any-key overlay (`show-popup! #:kind 'scrollable`). Same harness
-// shape as `lsp_diagnostics_nav.rs`.
-
-use std::path::Path;
+// dismiss-on-any-key overlay (`show-popup! #:kind 'scrollable`). Gutter signs
+// from the same hook are covered by `lsp_diagnostic_signs.rs`, sharing this
+// file's `setup_diagnostics` fixture (hoisted to `tests/unix/mod.rs`).
 
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::LspBackend;
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
-use hume_scripting::ScriptingHost;
-
-/// `((start_line, start_char), (end_line, end_char), severity, message)`.
-type DiagFixture<'a> = ((u32, u32), (u32, u32), i64, &'a str);
-
-fn publish_diagnostics_notification(uri: &str, diags: &[DiagFixture]) -> hume_lsp::codec::Message {
-    let diagnostics: Vec<serde_json::Value> = diags
-        .iter()
-        .map(|((sl, sc), (el, ec), sev, msg)| {
-            serde_json::json!({
-                "range": {"start": {"line": sl, "character": sc}, "end": {"line": el, "character": ec}},
-                "severity": sev,
-                "message": msg,
-            })
-        })
-        .collect();
-    hume_lsp::codec::Message::Notification {
-        method: "textDocument/publishDiagnostics".to_string(),
-        params: serde_json::json!({"uri": uri, "diagnostics": diagnostics}),
-    }
-}
-
-/// Fixture buffer: "aa\nbb\ncc\ndd\n" — char offsets: line0 'aa' = 0..2,
-/// line1 'bb' = 3..5, line2 'cc' = 6..8, line3 'dd' = 9..11.
-///
-/// Plugin load happens *before* `drain_lsp()` (unlike
-/// `lsp_diagnostics_nav.rs`'s otherwise-identical `setup`) — the inline
-/// summary is driven by `on-diagnostics-changed`, which is a queued hook
-/// (`queue_event` → `pending_work`, actually invoked by `settle()`): the
-/// handler must be registered by `(load-plugin "core:lsp")` before that
-/// queued hook is drained, or the first batch's summary never renders.
-/// Nav-only tests don't need this ordering since
-/// `goto-next-diagnostic`/`:diagnostics` pull `diagnostics-for-buffer`
-/// fresh at call time, independent of the hook.
-fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> (Editor, RealRuntimeGuard) {
-    let guard = RealRuntimeGuard::new();
-    std::fs::write(file, "aa\nbb\ncc\ndd\n").unwrap();
-
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    let uri = hume_lsp::uri::path_to_uri(file).unwrap();
-    if !diags.is_empty() {
-        backend.push_from_server(sid, publish_diagnostics_notification(uri.as_str(), diags));
-    }
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, file.parent().unwrap().to_path_buf()));
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin "core:stdlib") (load-plugin "core:lsp")"#,
-        tmp,
-    );
-    ed.scripting = Some(host);
-
-    ed.drain_lsp();
-    ed.settle();
-
-    (ed, guard)
-}
 
 fn run(ed: &mut Editor, cmd: &str) {
     type_cmd(ed, cmd);
@@ -91,7 +19,12 @@ fn single_diagnostic_on_a_line_shows_a_bare_message() {
     let file_dir = safe_tempdir();
     // Severity 1 = error, per the LSP DiagnosticSeverity enum.
     let diag: DiagFixture = ((1, 0), (1, 2), 1, "problem A");
-    let (ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[diag]);
+    let (ed, _guard) = setup_diagnostics(
+        "aa\nbb\ncc\ndd\n",
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        &[diag],
+    );
     let bid = ed.focused_buffer_id();
 
     let entries: Vec<_> = ed
@@ -119,7 +52,12 @@ fn two_diagnostics_on_the_same_line_show_count_and_leftmost_message() {
     // supplies the message.
     let d1: DiagFixture = ((1, 0), (1, 1), 2, "warn near start");
     let d2: DiagFixture = ((1, 1), (1, 2), 1, "error further right");
-    let (ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[d1, d2]);
+    let (ed, _guard) = setup_diagnostics(
+        "aa\nbb\ncc\ndd\n",
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        &[d1, d2],
+    );
     let bid = ed.focused_buffer_id();
 
     let entries: Vec<_> = ed
@@ -146,7 +84,12 @@ fn inline_color_follows_the_highest_severity_on_the_line_not_the_leftmost() {
     // severity.
     let d1: DiagFixture = ((1, 0), (1, 1), 2, "warn near start");
     let d2: DiagFixture = ((1, 1), (1, 2), 1, "error further right");
-    let (ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[d1, d2]);
+    let (ed, _guard) = setup_diagnostics(
+        "aa\nbb\ncc\ndd\n",
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        &[d1, d2],
+    );
     let bid = ed.focused_buffer_id();
 
     let entries: Vec<_> = ed
@@ -173,7 +116,12 @@ fn eol_summary_respects_the_severity_floor_and_updates_when_it_changes() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let diag: DiagFixture = ((1, 0), (1, 2), 2, "just a warning"); // severity 2 = warning
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[diag]);
+    let (mut ed, _guard) = setup_diagnostics(
+        "aa\nbb\ncc\ndd\n",
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        &[diag],
+    );
     let bid = ed.focused_buffer_id();
 
     assert_eq!(
@@ -198,7 +146,8 @@ fn diagnostics_on_different_lines_get_independent_entries() {
     let file_dir = safe_tempdir();
     let diag_a: DiagFixture = ((1, 0), (1, 2), 1, "problem A");
     let diag_b: DiagFixture = ((3, 0), (3, 2), 2, "problem B");
-    let (ed, _guard) = setup(
+    let (ed, _guard) = setup_diagnostics(
+        "aa\nbb\ncc\ndd\n",
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[diag_a, diag_b],
@@ -234,7 +183,12 @@ fn goto_next_diagnostic_opens_a_dismiss_on_key_popup_with_the_full_message() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let diag: DiagFixture = ((1, 0), (1, 2), 1, "problem A\nsecond line of detail");
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[diag]);
+    let (mut ed, _guard) = setup_diagnostics(
+        "aa\nbb\ncc\ndd\n",
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        &[diag],
+    );
 
     // The real `g n` keybinding, not `:goto-next-diagnostic` — invoking via
     // the command line round-trips Command -> Normal mode, firing
@@ -262,7 +216,8 @@ fn the_next_key_after_gn_dismisses_the_popup_but_still_executes() {
     let file_dir = safe_tempdir();
     let diag_a: DiagFixture = ((1, 0), (1, 2), 1, "problem A");
     let diag_b: DiagFixture = ((3, 0), (3, 2), 1, "problem B");
-    let (mut ed, _guard) = setup(
+    let (mut ed, _guard) = setup_diagnostics(
+        "aa\nbb\ncc\ndd\n",
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[diag_a, diag_b],
@@ -296,7 +251,8 @@ fn diagnostics_drawer_selection_does_not_open_a_popup() {
     let file_dir = safe_tempdir();
     let diag_a: DiagFixture = ((1, 0), (1, 2), 1, "problem A");
     let diag_b: DiagFixture = ((3, 0), (3, 2), 2, "problem B");
-    let (mut ed, _guard) = setup(
+    let (mut ed, _guard) = setup_diagnostics(
+        "aa\nbb\ncc\ndd\n",
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[diag_a, diag_b],

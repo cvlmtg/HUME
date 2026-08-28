@@ -14,24 +14,18 @@ use crate::lock_ext::LockExt;
 use hume_editing::lines::{char_to_line_byte, line_break_char, line_segments};
 use hume_ops::pair::find_bracket_pair;
 
-/// Fixed priority every diagnostic sign carries, regardless of severity
-/// (severity only picks the scope/glyph-adjacent styling; per-line
-/// severity collapse happens before a diagnostic ever becomes a `Sign`).
-const DIAGNOSTIC_SIGN_PRIORITY: i64 = 10;
-
-/// `(editing-area scope, gutter scope)` per diagnostic severity, in
-/// `DiagSeverity` discriminant order (`[error, warning, info, hint]`) — the
-/// gutter half is Helix's own bare naming for this surface (see
-/// `docs.helix-editor.com/themes.html`). Paired in one table, rather than two
-/// independently-ordered arrays, so the two render surfaces' scope names
-/// can't drift out of severity order relative to each other; see
-/// [`Editor::diagnostic_text_scopes`]/[`Editor::diagnostic_gutter_scopes`],
-/// which each intern one column of it.
-const DIAGNOSTIC_SCOPE_NAMES: [(&str, &str); 4] = [
-    ("diagnostic.error", "error"),
-    ("diagnostic.warning", "warning"),
-    ("diagnostic.info", "info"),
-    ("diagnostic.hint", "hint"),
+/// Editing-area scope per diagnostic severity, in `DiagSeverity` discriminant
+/// order (`[error, warning, info, hint]`) — see [`Editor::diagnostic_text_scopes`],
+/// the sole interner of this table. The gutter counterpart (bare
+/// `error`/`warning`/`info`/`hint`, Helix's own naming for that surface) is
+/// interned by `core:lsp`'s `set-signs!` call via `Editor::runtime_scope`
+/// instead — diagnostic signs are an ordinary plugin sign source now, not a
+/// Rust-side render path with its own scope cache.
+const DIAGNOSTIC_TEXT_SCOPE_NAMES: [&str; 4] = [
+    "diagnostic.error",
+    "diagnostic.warning",
+    "diagnostic.info",
+    "diagnostic.hint",
 ];
 
 /// Inserts `priority` into `ladder` if not already present, keeping it
@@ -66,22 +60,13 @@ impl Editor {
     /// Interned scope ids for the four diagnostic severities on the
     /// editing-area surface (buffer-text highlights) — resolved once and
     /// cached, since interning needs `&mut self.view.registry` but
-    /// `DiagSeverity` itself lives in `self.state`. See
-    /// [`Self::diagnostic_gutter_scopes`] for the sign-column counterpart.
+    /// `DiagSeverity` itself lives in `self.state`. The gutter counterpart
+    /// has no equivalent here — `core:lsp` interns its own bare severity
+    /// scope names via `Self::runtime_scope` when it places diagnostic signs
+    /// (`set-signs!`), same as any other plugin sign source.
     fn diagnostic_text_scopes(&mut self) -> [hume_engine::types::ScopeId; 4] {
         *self.state.diagnostic_text_scopes.get_or_insert_with(|| {
-            DIAGNOSTIC_SCOPE_NAMES.map(|(text, _)| self.view.registry.intern(text))
-        })
-    }
-
-    /// Interned scope ids for the four diagnostic severities on the gutter
-    /// surface. Kept separate from [`Self::diagnostic_text_scopes`]: the
-    /// editing-area scopes carry an `underline` modifier meant for a text
-    /// span, which a gutter glyph must not inherit — so the sign column
-    /// reads a scope a themed gutter can style on its own terms instead.
-    fn diagnostic_gutter_scopes(&mut self) -> [hume_engine::types::ScopeId; 4] {
-        *self.state.diagnostic_gutter_scopes.get_or_insert_with(|| {
-            DIAGNOSTIC_SCOPE_NAMES.map(|(_, gutter)| self.view.registry.intern(gutter))
+            DIAGNOSTIC_TEXT_SCOPE_NAMES.map(|text| self.view.registry.intern(text))
         })
     }
 
@@ -325,36 +310,36 @@ impl Editor {
         }
     }
 
-    /// Write per-frame gutter sign data (diagnostics + plugin signs) to every
-    /// pane's own `Arc<RwLock<FxHashMap<line, Vec<Sign>>>>` buffers, read by
-    /// that pane's `SharedSignSource`s. Stays visible in Insert mode — same
-    /// reasoning as [`Self::update_highlight_providers`]'s diagnostics
-    /// section. Called from `prepare_frame`'s step 3, *before* scrolling: the
-    /// sign column's width feeds `Pane::content_width`, which decides the
-    /// wrap column the scroll step's `RowMap` resolves against.
+    /// Write per-frame gutter sign data (`set-signs!`, all sources
+    /// pre-merged at write time — diagnostics included, via `core:lsp`'s own
+    /// `"lsp-diagnostics"` source) to every pane's own
+    /// `Arc<RwLock<FxHashMap<line, Vec<Sign>>>>` buffer, read by that pane's
+    /// `SharedSignSource`. Stays visible in Insert mode — same reasoning as
+    /// [`Self::update_highlight_providers`]'s diagnostics section. Called
+    /// from `prepare_frame`'s step 3, *before* scrolling: the sign column's
+    /// width feeds `Pane::content_width`, which decides the wrap column the
+    /// scroll step's `RowMap` resolves against.
     pub(super) fn update_sign_providers(&mut self) {
         use hume_engine::builtins::sign_column::{Sign, SignColumn};
 
         let panes = self.decorated_panes();
 
-        let floor = self.state.settings.lsp_diagnostics_severity_floor;
-        let diag_scopes = self.diagnostic_gutter_scopes();
         // Ladders are buffer-wide, not pane-wide — memoized here so a split
         // view on one buffer builds each buffer's ladder once per frame,
         // not once per pane showing it.
         let mut ladders: rustc_hash::FxHashMap<BufferId, (Vec<i64>, u8)> =
             rustc_hash::FxHashMap::default();
         for &(pid, bid) in &panes {
-            let Some((diag_map, plugin_map)) = self.state.panes.render.get(pid).map(|r| {
-                (
-                    Arc::clone(&r.signs.diagnostics),
-                    Arc::clone(&r.signs.plugin),
-                )
-            }) else {
+            let Some(sign_map) = self
+                .state
+                .panes
+                .render
+                .get(pid)
+                .map(|r| Arc::clone(&r.signs))
+            else {
                 continue;
             };
 
-            let visible = self.visible_char_range(pid, bid);
             let visible_lines = self.visible_line_range(pid, bid);
 
             let signcolumn = self
@@ -364,84 +349,20 @@ impl Editor {
                 .overrides
                 .signcolumn(&self.state.settings);
 
-            // Both the diagnostics and plugin-sign passes below need to turn
-            // a char offset back into a line — diagnostics store char ranges
-            // directly (live server output, never validated against
-            // `line_start_offset`, so can legitimately be EOF-anchored), and
-            // plugin signs store their line's line-start char offset
+            // Plugin signs store their line's line-start char offset
             // (`SignEntry::pos`, remapped through edits like every other
-            // decoration kind).
+            // decoration kind) — this is what turns it back into a line.
             let text = self.state.buffers.get(bid).text();
-            // Diagnostics only: clamped to the last content char so an
-            // EOF-anchored diagnostic (server points one past the buffer's
-            // last char) still marks the buffer's last real line rather than
-            // resolving to the trailing phantom line and vanishing.
-            let last_content_char = text.len_chars().saturating_sub(1);
 
             let (ladder, slots) = ladders
                 .entry(bid)
-                .or_insert_with(|| self.buffer_sign_ladder(bid, floor, signcolumn))
+                .or_insert_with(|| self.buffer_sign_ladder(bid, signcolumn))
                 .clone();
 
-            // Diagnostics: every line a diagnostic touches gets a marker;
-            // the most severe diagnostic wins when several touch one line.
-            let diag_raw: Vec<(usize, usize, DiagSeverity)> = self
-                .lsp
-                .diagnostics_for_range(bid, visible.clone(), floor)
-                .map(|d| {
-                    (
-                        text.char_to_line(d.start.min(last_content_char)),
-                        text.char_to_line(d.end.saturating_sub(1).min(last_content_char)),
-                        d.severity,
-                    )
-                })
-                .collect();
-            let mut diag_best: rustc_hash::FxHashMap<usize, DiagSeverity> =
-                rustc_hash::FxHashMap::default();
-            for (start_line, end_line, severity) in diag_raw {
-                for line in start_line..=end_line {
-                    if !visible_lines.contains(&line) {
-                        continue;
-                    }
-                    diag_best
-                        .entry(line)
-                        .and_modify(|best| {
-                            if severity < *best {
-                                *best = severity;
-                            }
-                        })
-                        .or_insert(severity);
-                }
-            }
-            {
-                let mut guard = diag_map.write_or_panic();
-                guard.clear();
-                // Absent when the diagnostic priority ranks below the
-                // buffer's resolved slot count — the ladder is already
-                // truncated to `slots` by `buffer_sign_ladder`. `ladder` is
-                // kept sorted descending (`insert_priority`'s invariant), so
-                // a binary search finds it in `O(log slots)` against the
-                // same comparator that put it there.
-                if let Ok(diag_slot) =
-                    ladder.binary_search_by(|probe| DIAGNOSTIC_SIGN_PRIORITY.cmp(probe))
-                {
-                    for (line, severity) in diag_best {
-                        guard.insert(
-                            line,
-                            vec![Sign {
-                                text: std::borrow::Cow::Borrowed("●"),
-                                scope: diag_scopes[severity as usize],
-                                slot: diag_slot as u8,
-                            }],
-                        );
-                    }
-                }
-            }
-
-            // Plugin signs (`set-signs!`): each entry's priority resolves to
-            // its slot via the ladder above; an entry whose priority isn't
-            // on the (already slot-count-truncated) ladder is dropped here
-            // rather than passed through — bounds the per-line `Vec`
+            // Each entry's priority resolves to its slot via the ladder
+            // above; an entry whose priority isn't on the (already
+            // slot-count-truncated) ladder is dropped here rather than
+            // passed through — bounds the per-line `Vec`
             // `SharedSignSource::signs_for_line` clones every frame. On a
             // tie (two sources whose priorities resolve to the same slot)
             // the first entry wins: `signs_for_buffer`
@@ -458,7 +379,6 @@ impl Editor {
             let mut plugin_all: rustc_hash::FxHashMap<usize, Vec<Sign>> =
                 rustc_hash::FxHashMap::default();
             for (_, line, e) in plugin_raw {
-                // Same binary search as the diagnostic slot lookup above —
                 // `ladder` is sorted descending by `insert_priority`.
                 let Ok(slot) = ladder.binary_search_by(|probe| e.priority.cmp(probe)) else {
                     continue;
@@ -481,19 +401,15 @@ impl Editor {
                     );
                 }
             }
-            *plugin_map.write_or_panic() = plugin_all;
+            *sign_map.write_or_panic() = plugin_all;
 
             // Compute sign column width from the buffer's `signcolumn` setting:
             // `always` keeps it visible at the resolved width (`slots + 1`);
             // `auto` collapses to zero when no signs are visible in the current
-            // viewport (diag_map/plugin_map above only hold visible-line
-            // entries — a sign elsewhere in the buffer, scrolled out of view,
-            // does not keep the column open).
-            let has_signs = {
-                let diag_empty = diag_map.read_or_panic().is_empty();
-                let plugin_empty = plugin_map.read_or_panic().is_empty();
-                !(diag_empty && plugin_empty)
-            };
+            // viewport (`sign_map` above only holds visible-line entries — a
+            // sign elsewhere in the buffer, scrolled out of view, does not
+            // keep the column open).
+            let has_signs = !sign_map.read_or_panic().is_empty();
             let width = match signcolumn.mode {
                 crate::settings::SignColumnMode::Auto if !has_signs => 0,
                 _ => SignColumn::width_for_slots(slots),
@@ -503,8 +419,7 @@ impl Editor {
     }
 
     /// Buffer-wide sign-priority ladder and its resolved slot count: the
-    /// buffer's distinct sign priorities (across every source, plus
-    /// `DIAGNOSTIC_SIGN_PRIORITY` if the buffer has a diagnostic), highest
+    /// buffer's distinct sign priorities (across every source), highest
     /// first, truncated to `slots`. A sign's slot is its priority's position
     /// in this list — stable for the whole buffer, so scrolling never
     /// renumbers a channel's column, and a channel with no signs anywhere in
@@ -515,7 +430,6 @@ impl Editor {
     fn buffer_sign_ladder(
         &self,
         bid: BufferId,
-        floor: DiagSeverity,
         signcolumn: crate::settings::SignColumnConfig,
     ) -> (Vec<i64>, u8) {
         // Caps the ladder during the build, not just at the end, to bound
@@ -533,19 +447,6 @@ impl Editor {
         let mut ladder: Vec<i64> = Vec::new();
         for (_, e) in self.state.config.decorations.signs_for_buffer(bid) {
             insert_priority(&mut ladder, e.priority);
-            ladder.truncate(cap);
-        }
-        let has_diagnostic = self
-            .lsp
-            .diagnostics_for_range(
-                bid,
-                0..self.state.buffers.get(bid).text().len_chars(),
-                floor,
-            )
-            .next()
-            .is_some();
-        if has_diagnostic {
-            insert_priority(&mut ladder, DIAGNOSTIC_SIGN_PRIORITY);
             ladder.truncate(cap);
         }
         let slots = signcolumn.slots_for(ladder.len());
