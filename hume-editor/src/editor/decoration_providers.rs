@@ -44,12 +44,14 @@ impl Editor {
             .collect()
     }
 
-    /// Interned scope ids for the four diagnostic severities, in
-    /// `DiagSeverity` discriminant order (`[error, warning, info, hint]`) —
-    /// resolved once and cached, since interning needs `&mut
-    /// self.view.registry` but `DiagSeverity` itself lives in `self.state`.
-    fn diagnostic_scopes(&mut self) -> [hume_engine::types::ScopeId; 4] {
-        if let Some(scopes) = self.state.diagnostic_scopes {
+    /// Interned scope ids for the four diagnostic severities on the
+    /// editing-area surface (buffer-text highlights), in `DiagSeverity`
+    /// discriminant order (`[error, warning, info, hint]`) — resolved once
+    /// and cached, since interning needs `&mut self.view.registry` but
+    /// `DiagSeverity` itself lives in `self.state`. See
+    /// [`Self::diagnostic_gutter_scopes`] for the sign-column counterpart.
+    fn diagnostic_text_scopes(&mut self) -> [hume_engine::types::ScopeId; 4] {
+        if let Some(scopes) = self.state.diagnostic_text_scopes {
             return scopes;
         }
         let scopes = [
@@ -58,12 +60,34 @@ impl Editor {
             self.view.registry.intern("diagnostic.info"),
             self.view.registry.intern("diagnostic.hint"),
         ];
-        self.state.diagnostic_scopes = Some(scopes);
+        self.state.diagnostic_text_scopes = Some(scopes);
+        scopes
+    }
+
+    /// Interned scope ids for the four diagnostic severities on the gutter
+    /// surface (`error`/`warning`/`info`/`hint` — Helix's own scope names
+    /// for this surface, see `docs.helix-editor.com/themes.html`), in
+    /// `DiagSeverity` discriminant order. Kept separate from
+    /// [`Self::diagnostic_text_scopes`]: the editing-area scopes carry an
+    /// `underline` modifier meant for a text span, which a gutter glyph
+    /// must not inherit — so the sign column reads a scope a themed
+    /// gutter can style on its own terms instead.
+    fn diagnostic_gutter_scopes(&mut self) -> [hume_engine::types::ScopeId; 4] {
+        if let Some(scopes) = self.state.diagnostic_gutter_scopes {
+            return scopes;
+        }
+        let scopes = [
+            self.view.registry.intern("error"),
+            self.view.registry.intern("warning"),
+            self.view.registry.intern("info"),
+            self.view.registry.intern("hint"),
+        ];
+        self.state.diagnostic_gutter_scopes = Some(scopes);
         scopes
     }
 
     /// Interned `ScopeId` for `ui.cursor.match` (bracket match highlight),
-    /// cached the same way as [`Self::diagnostic_scopes`] — every pane's
+    /// cached the same way as [`Self::diagnostic_text_scopes`] — every pane's
     /// bracket-match `ScopedHighlighter` writes this into each span it
     /// pushes rather than carrying it fixed on the provider.
     fn bracket_match_scope(&mut self) -> hume_engine::types::ScopeId {
@@ -215,7 +239,7 @@ impl Editor {
         // editing the line it's on (most editors keep them showing).
         {
             let floor = self.state.settings.lsp_diagnostics_severity_floor;
-            let diag_scopes = self.diagnostic_scopes();
+            let diag_scopes = self.diagnostic_text_scopes();
             for &(pid, bid) in &panes {
                 let Some((diag_arc, extra_arc)) = self.state.panes.render.get(pid).map(|r| {
                     (
@@ -319,7 +343,7 @@ impl Editor {
         let panes = self.decorated_panes();
 
         let floor = self.state.settings.lsp_diagnostics_severity_floor;
-        let diag_scopes = self.diagnostic_scopes();
+        let diag_scopes = self.diagnostic_gutter_scopes();
         for &(pid, bid) in &panes {
             let Some((diag_map, plugin_map)) = self.state.panes.render.get(pid).map(|r| {
                 (

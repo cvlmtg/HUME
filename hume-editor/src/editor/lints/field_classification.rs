@@ -109,9 +109,13 @@ const EDITOR_STATE_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
         "preserved: Arc view, self-healing per-frame",
     ),
     (
-        "diagnostic_scopes",
+        "diagnostic_text_scopes",
         "preserved: ScopeIds are registry-relative, not theme-relative — \
          survive a theme reset",
+    ),
+    (
+        "diagnostic_gutter_scopes",
+        "preserved: registry-relative ScopeId",
     ),
     ("inlay_hint_scope", "preserved: registry-relative ScopeId"),
     (

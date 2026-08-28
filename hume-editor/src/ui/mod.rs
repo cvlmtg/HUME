@@ -71,7 +71,7 @@ pub(crate) struct PaneRenderHandles {
 /// reaches a frame. Bracket-match/search-match scopes are not interned
 /// here — unlike `linenr_scope` (shared with the gutter columns built right
 /// below), they have no other constructor needing them this frame, so they
-/// resolve lazily on first render the same way `Editor::diagnostic_scopes`/
+/// resolve lazily on first render the same way `Editor::diagnostic_text_scopes`/
 /// `inlay_hint_scope` already do (`decoration_providers.rs`).
 ///
 /// Single source of truth for pane construction — every creation site

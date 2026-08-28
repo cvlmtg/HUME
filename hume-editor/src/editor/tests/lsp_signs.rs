@@ -119,7 +119,7 @@ fn error_line_gets_a_sign_with_the_error_scope() {
     let error_scope =
         c.ed.view
             .registry
-            .get("diagnostic.error")
+            .get("error")
             .expect("interned by the write side");
 
     let signs = diag_signs(&c.ed, c.pid);
@@ -134,12 +134,52 @@ fn error_line_gets_a_sign_with_the_error_scope() {
 }
 
 #[test]
+fn sign_and_buffer_text_use_different_scopes_for_the_same_severity() {
+    // The gutter glyph and the text span it marks are different render
+    // surfaces: the editing-area scope (`diagnostic.error`) carries an
+    // `underline` modifier meant for the text span, which the sign column
+    // must not inherit. Regression guard for the two surfaces ever being
+    // pointed at each other's scope.
+    let c = setup_with_diagnostics("abcdefgh\n", &[((0, 2), (0, 5), 1)]);
+    let gutter_scope =
+        c.ed.view
+            .registry
+            .get("error")
+            .expect("interned by the sign write side");
+    let text_scope =
+        c.ed.view
+            .registry
+            .get("diagnostic.error")
+            .expect("interned by the highlight write side");
+    assert_ne!(
+        gutter_scope, text_scope,
+        "gutter and buffer-text diagnostics must resolve to distinct scopes"
+    );
+
+    let signs = diag_signs(&c.ed, c.pid);
+    let sign = signs[&0].first().expect("one sign on the error line");
+    assert_eq!(sign.scope, gutter_scope);
+
+    let highlights = c.ed.state.panes.render[c.pid]
+        .highlights
+        .diagnostics
+        .clone();
+    let highlights = highlights.read().unwrap();
+    assert!(
+        highlights
+            .iter()
+            .any(|&(_, _, _, scope)| scope == text_scope),
+        "buffer-text diagnostic highlight must carry the editing-area scope"
+    );
+}
+
+#[test]
 fn error_beats_warning_on_the_same_line() {
     let c = setup_with_diagnostics(
         "abcdefgh\n",
         &[((0, 0), (0, 1), 2), ((0, 4), (0, 5), 1)], // warning then error, same line
     );
-    let error_scope = c.ed.view.registry.get("diagnostic.error").unwrap();
+    let error_scope = c.ed.view.registry.get("error").unwrap();
 
     let signs = diag_signs(&c.ed, c.pid);
     assert_eq!(signs.len(), 1, "one line, one merged sign");

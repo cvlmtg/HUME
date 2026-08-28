@@ -471,20 +471,30 @@ pub(crate) struct EditorState {
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
     pub(crate) minibuf_completion_view:
         Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>>,
-    /// Interned scope ids for the four diagnostic severities (`diagnostic.error`
-    /// etc.), resolved lazily on first use — scope interning needs `&mut
-    /// ScopeRegistry`, which lives on `Editor::view`, not `EditorState`.
-    pub(super) diagnostic_scopes: Option<[hume_engine::types::ScopeId; 4]>,
+    /// Interned scope ids for the four diagnostic severities on the
+    /// *editing-area* surface (`diagnostic.error` etc. — buffer-text
+    /// highlights), resolved lazily on first use — scope interning needs
+    /// `&mut ScopeRegistry`, which lives on `Editor::view`, not
+    /// `EditorState`. Distinct from `diagnostic_gutter_scopes`: a
+    /// gutter glyph and its underlying text span are different render
+    /// surfaces and, per Helix's own theme convention, different scopes.
+    pub(super) diagnostic_text_scopes: Option<[hume_engine::types::ScopeId; 4]>,
+    /// Interned scope ids for the four diagnostic severities on the
+    /// *gutter* surface (bare `error`/`warning`/`info`/`hint` — Helix's own
+    /// naming for this surface). Kept apart from `diagnostic_text_scopes`
+    /// because the editing-area scopes carry an `underline` modifier meant
+    /// for a text span, which a themed gutter glyph must not inherit.
+    pub(super) diagnostic_gutter_scopes: Option<[hume_engine::types::ScopeId; 4]>,
     /// Interned scope id for `ui.virtual.inlay-hint`, resolved lazily
-    /// on first use for the same reason as `diagnostic_scopes`.
+    /// on first use for the same reason as `diagnostic_text_scopes`.
     pub(super) inlay_hint_scope: Option<hume_engine::types::ScopeId>,
     /// Interned scope id for `ui.virtual` — the fallback for a
     /// virtual-line entry with no explicit scope — resolved lazily on first
-    /// use for the same reason as `diagnostic_scopes`.
+    /// use for the same reason as `diagnostic_text_scopes`.
     pub(super) virtual_text_fallback_scope: Option<hume_engine::types::ScopeId>,
     /// Interned scope ids for `ui.cursor.match` (bracket match) and
     /// `ui.selection.search` (search match), resolved lazily on first use
-    /// for the same reason as `diagnostic_scopes` — every pane's bracket-
+    /// for the same reason as `diagnostic_text_scopes` — every pane's bracket-
     /// and search-match highlighter is a `ScopedHighlighter`, so the scope
     /// travels with each written span instead of living on the provider;
     /// these two are the editor-wide constants every pane's spans carry.

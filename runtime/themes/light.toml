@@ -42,6 +42,11 @@ inherits = "dark"
 "diagnostic.info.message-text"    = { fg = "cyan" }
 "diagnostic.hint.message-text"    = { fg = "green" }
 
+"error"   = { fg = "red" }
+"warning" = { fg = "yellow" }
+"info"    = { fg = "cyan" }
+"hint"    = { fg = "green" }
+
 # ── Diff ──────────────────────────────────────────────────────────────────────
 # Redeclared for the same reason as diagnostics above — re-resolve against
 # this file's palette instead of inheriting dark's colors.

@@ -36,6 +36,35 @@ fn bundled_themes_load_and_resolve() {
     }
 }
 
+/// Every bundled theme must give the four diagnostic *gutter* scopes
+/// (Helix's own `error`/`warning`/`info`/`hint` naming for this surface) a
+/// colour and, crucially, no underline — that decoration belongs to the
+/// editing-area counterpart (`diagnostic.error` etc.), not to a sign-column
+/// glyph. Drift-tolerant: asserts presence and absence-of-decoration, never
+/// a hex value.
+#[test]
+fn bundled_theme_gutter_diagnostic_scopes_have_no_underline() {
+    for (name, theme) in load_bundled_themes() {
+        for scope in ["error", "warning", "info", "hint"] {
+            assert!(
+                theme.raw_contains(scope),
+                "bundled theme '{name}': missing gutter diagnostic scope '{scope}'"
+            );
+            let style = theme.resolve_by_name(hume_engine::types::Scope(scope));
+            assert!(
+                style.fg.is_some(),
+                "bundled theme '{name}': gutter scope '{scope}' has no fg"
+            );
+            assert_eq!(
+                style.underline,
+                hume_engine::types::UnderlineStyle::None,
+                "bundled theme '{name}': gutter scope '{scope}' must not underline — \
+                 that decoration belongs to the editing-area 'diagnostic.{scope}' scope"
+            );
+        }
+    }
+}
+
 /// A mode scope that differs from the base row style must differ in its
 /// `bg` — the whole-row tint (`EditorColors::from_theme`, `ui/theme.rs`) reads
 /// a single style per mode and paints it across the entire statusline, so a

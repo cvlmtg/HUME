@@ -41,6 +41,11 @@
 "diagnostic.info.message-text"    = { fg = "cyan" }
 "diagnostic.hint.message-text"    = { fg = "green" }
 
+"error"   = { fg = "red" }
+"warning" = { fg = "yellow" }
+"info"    = { fg = "cyan" }
+"hint"    = { fg = "green" }
+
 # ── Diff ──────────────────────────────────────────────────────────────────────
 "diff.plus"         = { fg = "fg", bg = "diff_plus_bg" }
 "diff.minus"        = { fg = "fg", bg = "diff_minus_bg" }
