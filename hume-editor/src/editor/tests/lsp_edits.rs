@@ -17,7 +17,7 @@ fn attach_running_utf8_server(ed: &mut Editor) -> ServerId {
     let mut backend = InlineLspBackend::new();
     backend.respond_to(
         "initialize",
-        serde_json::json!({"capabilities": {}, "positionEncoding": "utf-8"}),
+        serde_json::json!({"capabilities": {"positionEncoding": "utf-8"}}),
     );
     let sid = backend
         .start("rust-analyzer", &[], Path::new("."), &[])
