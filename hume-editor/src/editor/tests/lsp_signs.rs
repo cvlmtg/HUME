@@ -11,31 +11,6 @@
 // reasoning as `lsp_render.rs`.
 
 use super::*;
-use hume_engine::builtins::sign_column::Sign;
-use hume_engine::pipeline::{PaneId, RenderContext};
-
-fn pane_signs(ed: &Editor, pid: PaneId) -> rustc_hash::FxHashMap<usize, Vec<Sign>> {
-    ed.state.panes.render[pid].signs.read().unwrap().clone()
-}
-
-fn sign_column_width(ed: &Editor, pid: PaneId) -> u8 {
-    ed.view.panes[pid]
-        .providers
-        .gutter_columns()
-        .next()
-        .expect("sign column registered first")
-        .width(0)
-}
-
-/// `RenderContext::new` + `sync_viewport_dims(80, 25)` + `settle` +
-/// `prepare_frame` — every sign test's own frame-drive step, differing only
-/// in what's armed beforehand.
-fn render(ed: &mut Editor) {
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
-}
 
 /// Builds an untitled editor containing `"abcdefgh\n"`, arms `arm_body` as a
 /// Steel `"arm"` command, runs it, pins `signcolumn` if given, and renders

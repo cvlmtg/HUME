@@ -184,6 +184,38 @@ fn type_text(ed: &mut Editor, text: &str) {
     ed.feed_key(key_esc());
 }
 
+/// The gutter sign map synced onto pane `pid` — the read side every
+/// `set-signs!`/`register-sign-source!` test (portable `lsp_signs.rs` and
+/// unix-only `lsp_diagnostic_signs.rs` alike) asserts against.
+fn pane_signs(
+    ed: &Editor,
+    pid: PaneId,
+) -> rustc_hash::FxHashMap<usize, Vec<hume_engine::builtins::sign_column::Sign>> {
+    ed.state.panes.render[pid].signs.read().unwrap().clone()
+}
+
+/// The sign column's currently synced gutter width for pane `pid`.
+fn sign_column_width(ed: &Editor, pid: PaneId) -> u8 {
+    ed.view.panes[pid]
+        .providers
+        .gutter_columns()
+        .next()
+        .expect("sign column registered first")
+        .width(0)
+}
+
+/// `RenderContext::new` + `sync_viewport_dims(80, 25)` + `settle` +
+/// `prepare_frame` — every sign test's own frame-drive step: `settle` runs
+/// any queued hook (e.g. `on-diagnostics-changed`) that writes the
+/// decoration store, `prepare_frame` is what syncs it into the pane's own
+/// sign map `pane_signs` reads.
+fn render(ed: &mut Editor) {
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+}
+
 fn reg(ed: &Editor, name: char) -> Vec<String> {
     ed.state
         .registers

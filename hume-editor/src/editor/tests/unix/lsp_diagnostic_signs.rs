@@ -9,32 +9,6 @@
 // source itself and its interaction with an ordinary plugin sign.
 
 use super::*;
-use hume_engine::builtins::sign_column::Sign;
-use hume_engine::pipeline::{PaneId, RenderContext};
-
-fn pane_signs(ed: &Editor, pid: PaneId) -> rustc_hash::FxHashMap<usize, Vec<Sign>> {
-    ed.state.panes.render[pid].signs.read().unwrap().clone()
-}
-
-fn sign_column_width(ed: &Editor, pid: PaneId) -> u8 {
-    ed.view.panes[pid]
-        .providers
-        .gutter_columns()
-        .next()
-        .expect("sign column registered first")
-        .width(0)
-}
-
-/// `RenderContext::new` + `sync_viewport_dims(80, 25)` + `settle` +
-/// `prepare_frame` — `setup_diagnostics` only settles the queued hook that
-/// writes the decoration store; this drives the frame that syncs it into
-/// the pane's own sign map.
-fn render(ed: &mut Editor) {
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
-}
 
 #[test]
 fn error_line_gets_a_sign_with_the_error_scope() {
