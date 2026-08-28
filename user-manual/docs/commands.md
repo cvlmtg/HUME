@@ -55,7 +55,7 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | `:sp`, `:split` | Split the focused pane, stacking the new pane below |
 | `:vsp`, `:vsplit` | Split the focused pane side by side |
 
-Splitting is refused with a message when the pane is already too small. Focus and closing use the `Ctrl+p` prefix (`Ctrl+p` then `h`/`j`/`k`/`l`/`p`/`s`/`v`/`c`) — see the [Key Reference](key-reference.md).
+Splitting is refused with a message when the pane is already too small. Focus and closing use the `Ctrl+p` prefix (`Ctrl+p` then `h`/`j`/`k`/`l`/`p`/`s`/`v`/`c`) — see the [Default Keys](default-keys.md).
 
 ## Editing
 

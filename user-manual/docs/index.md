@@ -32,4 +32,4 @@ And the question every modal editor has to answer up front: **to quit, press `Es
 - Coming from Vim or Neovim? See [Coming From Vim](from-vim.md).
 - Coming from Helix? See [Coming From Helix](from-helix.md).
 - Coming from Kakoune? See [Coming From Kakoune](from-kakoune.md).
-- Looking for a specific key? Jump to the [Key Reference](key-reference.md).
+- Looking for a specific key? Jump to the [Default Keys](default-keys.md).

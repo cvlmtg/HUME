@@ -69,4 +69,4 @@ See [Selections](selections.md) for how to create and manage multiple selections
 - [Copy & Paste](copy-and-paste.md) — yank, paste, and the kill ring
 - [Selections](selections.md) — selecting the text
 - [Files & Buffers](files-and-buffers.md) — opening, saving, and quitting
-- [Key Reference](key-reference.md) — every key by mode
+- [Default Keys](default-keys.md) — every key by mode

@@ -1,4 +1,4 @@
-# Key Reference
+# Default Keys
 
 Every default key, by mode. Use your browser's search — or the search box above — to find one fast.
 

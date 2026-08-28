@@ -118,7 +118,7 @@ export default defineConfig({
         items: [
           { text: 'Command-line Flags', link: '/cli' },
           { text: 'Commands', link: '/commands' },
-          { text: 'Key Reference', link: '/key-reference' },
+          { text: 'Default Keys', link: '/default-keys' },
           { text: 'Plugin API', link: '/plugin-api' },
         ],
       },
