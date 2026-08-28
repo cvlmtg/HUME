@@ -116,6 +116,15 @@ See [Hooks](plugins.md#hooks) for the full table of hook names and their lambda 
 
 `#:expect-generation` guards against applying a stale edit: pass a `buffer-generation` snapshot and the call fails if the buffer has mutated since. `apply-text-edits!`/`apply-workspace-edit!` exist to apply LSP responses, but take already-decoded shapes — nothing here is LSP-transport-specific.
 
+## Registers
+
+| Call | Effect |
+|------|--------|
+| `(write-register! name values)` | Store `values` — a list of strings, one per selection — in register `name` |
+| `(read-register name)` | Contents of register `name` as a list of strings, or `#f` if it's empty |
+
+Both ends speak the same list shape, so `(write-register! "3" (read-register "3"))` round-trips. Valid names are `0`–`9`, `k` (kill-ring head), `c` (system clipboard), and `b` (black hole) — the same set the [`"` register prefix](copy-and-paste.md#register-prefix) accepts. Writing `k` behaves like a yank to the kill ring; writing `b` discards silently; reading an unwritten register, `b`, or a register holding a recorded macro all answer `#f`.
+
 ## Language & syntax
 
 | Call | Effect |

@@ -26,6 +26,7 @@ pub(crate) mod keymap_bind;
 pub(crate) mod lsp;
 pub(crate) mod plugins;
 pub(crate) mod process;
+pub(crate) mod registers;
 pub(crate) mod settings;
 pub(crate) mod statusline;
 pub(crate) mod syntax;
@@ -291,6 +292,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
         config "unbind-key!" keymap_bind::unbind_key(mode: SteelVal, key_str: String);
         config "bind-wait-char!" keymap_bind::bind_wait_char(mode: SteelVal, key_str: String, cmd_name: String);
         cmd    "set-register-prefix!" commands::set_register_prefix(name: String);
+
+        // Registers — direct read/write, independent of set-register-prefix!'s
+        // per-command targeting.
+        open "read-register" registers::read_register(name: String);
+        open "write-register!" registers::write_register(name: String, values: SteelVal);
 
         // Plugin lifecycle
         open "%declare-plugin!" plugins::declare_plugin(name: String, commands: SteelVal, events: SteelVal, languages: SteelVal, config: SteelVal);

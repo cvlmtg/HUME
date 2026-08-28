@@ -62,7 +62,11 @@ impl EditorState {
     /// breaks smart-paste routing, so no call site gets to do them
     /// separately. Never used for an explicit named register, which bare
     /// paste never reads. See [`PasteStamp`]'s doc for the full mechanism.
-    pub(super) fn capture_to_ring(&mut self, yanked: Vec<String>) {
+    ///
+    /// `pub(in crate::editor)`, not `pub(super)`: `host_impl.rs`'s
+    /// `RegisterHost::write_register` also reaches this, so `(write-register!
+    /// "k" …)` gets the same stamped ring push as `"ky`.
+    pub(in crate::editor) fn capture_to_ring(&mut self, yanked: Vec<String>) {
         self.kill_ring.push(yanked);
         self.paste_stamp = Some(PasteStamp {
             seq: self.buffers.edit_seq(),

@@ -315,16 +315,7 @@ pub(crate) fn pending_char(ctx: &mut SteelCtx) -> SteelResult {
 ///
 /// Only valid inside a `SteelBacked` command or hook invocation.
 pub(crate) fn set_register_prefix(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    let mut chars = name.chars();
-    let reg = match (chars.next(), chars.next()) {
-        (Some(c), None) => c,
-        _ => steel::stop!(Generic =>
-            "set-register-prefix!: expected a single-character register name, got {:?}", name),
-    };
-    if !ctx.host.commands().is_valid_register_name(reg) {
-        steel::stop!(Generic =>
-            "set-register-prefix!: invalid register '{}'; valid: 0-9, k, c, b", reg);
-    }
+    let reg = super::registers::register_arg(ctx, &name, "set-register-prefix!")?;
     ctx.current_register_prefix = Some(reg);
     Ok(SteelVal::Void)
 }

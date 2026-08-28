@@ -912,6 +912,7 @@ mod picker_source_steel;
 mod picker_steel;
 mod plugins;
 mod registers;
+mod registers_steel;
 mod reload_config;
 mod render_snapshot;
 mod scripting_effects;

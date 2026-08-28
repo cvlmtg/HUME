@@ -18,6 +18,7 @@ use hume_rope::lines::strip_line_break;
 
 use crate::editor::diff_bridge;
 use crate::editor::lsp::LspState;
+use crate::editor::register_ops;
 use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
 use crate::lock_ext::LockExt;
@@ -26,7 +27,7 @@ use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
     DiffHost, DiffHunk, EditHost, EditorHost, EventHost, LanguageHost, LivePickerOpts,
     LocationDisplay, LspHost, OptionValue, OutputHost, PickerFeedMode, PickerOpts,
-    PickerSourceOpts, PopupKind, SettingsHost, TimerHost, UiHost, WordDiffHunk,
+    PickerSourceOpts, PopupKind, RegisterHost, SettingsHost, TimerHost, UiHost, WordDiffHunk,
 };
 
 use super::{EditorState, Severity};
@@ -176,6 +177,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Some(self)
     }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
+        Some(self)
+    }
+    fn registers(&mut self) -> Option<&mut dyn RegisterHost> {
         Some(self)
     }
     fn cursor(&mut self) -> &mut dyn CursorHost {
@@ -519,6 +523,39 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             self.state.register_prefix = None;
         }
         Ok(())
+    }
+}
+
+impl<'a> RegisterHost for EditorHostImpl<'a> {
+    fn read_register(&mut self, name: char) -> Option<Vec<String>> {
+        match name {
+            hume_ops::register::KILL_RING_REGISTER => {
+                self.state.kill_ring.head().map(<[String]>::to_vec)
+            }
+            hume_ops::register::BLACK_HOLE_REGISTER => None,
+            // Macro registers fall out for free: `Register::as_text` already
+            // returns `None` for `RegisterContent::Macro`, so a register
+            // holding a recorded macro reads as `#f` — same as empty.
+            c => {
+                let (values, warn) = register_ops::read_register_text(
+                    &self.state.registers,
+                    &mut self.state.clipboard,
+                    c,
+                );
+                let values = values.map(|v| v.to_vec()); // end the &state.registers borrow
+                if let Some(w) = warn {
+                    self.state.report(Severity::Warning, w);
+                }
+                values
+            }
+        }
+    }
+
+    fn write_register(&mut self, name: char, values: Vec<String>) {
+        match name {
+            hume_ops::register::KILL_RING_REGISTER => self.state.capture_to_ring(values),
+            _ => self.state.write_register(name, values),
+        }
     }
 }
 

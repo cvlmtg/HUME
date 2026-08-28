@@ -213,6 +213,7 @@
 (#%register-global "prev-paragraph")
 (#%register-global "prompt!")
 (#%register-global "read-grammar-sources")
+(#%register-global "read-register")
 (#%register-global "redo")
 (#%register-global "register-grammar!")
 (#%register-global "register-hook!")
@@ -291,4 +292,5 @@
 (#%register-global "unpack-zip")
 (#%register-global "unregister-lsp-server!")
 (#%register-global "viewport-range")
+(#%register-global "write-register!")
 (#%register-global "yank")
