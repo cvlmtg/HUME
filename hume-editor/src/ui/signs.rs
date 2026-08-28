@@ -1,10 +1,11 @@
 //! Engine-compatible sign source feeding the gutter's `SignColumn`.
 //!
 //! The one sign source wraps an `Arc<RwLock<FxHashMap<line_idx, Vec<Sign>>>>`
-//! that the editor writes once per frame (after scroll is resolved, before
-//! `term.draw` — same cluster as the highlight providers). `signs_for_line`
-//! is then a cheap map lookup, matching `SignSource`'s per-row-per-frame
-//! contract.
+//! that the editor writes once per frame, from `prepare_frame`'s step 3,
+//! *before* scrolling (`Editor::update_sign_providers`'s doc — the resolved
+//! width feeds `Pane::content_width`, which the scroll step's `RowMap`
+//! wraps against). `signs_for_line` is then a cheap map lookup, matching
+//! `SignSource`'s per-row-per-frame contract.
 
 use rustc_hash::FxHashMap;
 use std::sync::{Arc, RwLock};

@@ -599,7 +599,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
     assert_eq!(
         (
             linter_signs[0].pos,
-            linter_signs[0].text.as_str(),
+            &*linter_signs[0].text,
             ed.view.registry.name_of(linter_signs[0].scope),
         ),
         (0, "!", "error"),
@@ -612,7 +612,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
         1,
         "different sources' signs for the same buffer must coexist"
     );
-    assert_eq!(vcs_signs[0].text, "+");
+    assert_eq!(&*vcs_signs[0].text, "+");
 
     let vlines = ed.state.config.decorations.virtual_lines_for("linter", bid);
     assert_eq!(vlines.len(), 1);

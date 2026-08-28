@@ -17,7 +17,7 @@ fn make_two_bids() -> (BufferId, BufferId) {
 fn sign(pos: usize, text: &str) -> SignEntry {
     SignEntry {
         pos,
-        text: text.to_string(),
+        text: text.into(),
         scope: ScopeId(0),
     }
 }
@@ -37,20 +37,14 @@ fn signs_for_buffer_does_not_leak_another_buffers_entries() {
         vec![sign(0, "b-sign-1"), sign(1, "b-sign-2")],
     );
 
-    let a_signs: Vec<&str> = store
-        .signs_for_buffer(a)
-        .map(|(_, e)| e.text.as_str())
-        .collect();
+    let a_signs: Vec<&str> = store.signs_for_buffer(a).map(|(_, e)| &*e.text).collect();
     assert_eq!(
         a_signs,
         vec!["a-sign"],
         "only buffer a's signs must be returned for a"
     );
 
-    let b_signs: Vec<&str> = store
-        .signs_for_buffer(b)
-        .map(|(_, e)| e.text.as_str())
-        .collect();
+    let b_signs: Vec<&str> = store.signs_for_buffer(b).map(|(_, e)| &*e.text).collect();
     assert_eq!(
         b_signs,
         vec!["b-sign-1", "b-sign-2"],
@@ -133,6 +127,31 @@ fn unregistered_sign_source_has_no_slot() {
     let store = DecorationStores::default();
     assert_eq!(store.sign_slot("nope"), None);
     assert_eq!(store.sign_source_count(), 0);
+}
+
+/// `signs_in_range` resolves each entry's source to its registered slot
+/// itself, once per source group — the bridge no longer looks the source up
+/// — and still prunes to the given char range the same way `in_range` does.
+#[test]
+fn signs_in_range_yields_each_entrys_resolved_slot_filtered_to_the_range() {
+    let mut store = DecorationStores::default();
+    let (a, _b) = make_two_bids();
+    store.register_sign_source("vcs".to_string(), 9);
+    store.register_sign_source("linter".to_string(), 3);
+    store.set_signs("vcs".to_string(), a, vec![sign(0, "+"), sign(20, "+2")]);
+    store.set_signs("linter".to_string(), a, vec![sign(0, "!")]);
+
+    let mut got: Vec<(usize, &str)> = store
+        .signs_in_range(a, 0..10)
+        .map(|(slot, e)| (slot, &*e.text))
+        .collect();
+    got.sort();
+    assert_eq!(
+        got,
+        vec![(0, "+"), (1, "!")],
+        "vcs (priority 9) resolves to slot 0, linter (priority 3) to slot 1 — \
+         and vcs's out-of-range entry at pos 20 must not appear"
+    );
 }
 
 fn virtual_line(pos: usize) -> VirtualLineEntry {

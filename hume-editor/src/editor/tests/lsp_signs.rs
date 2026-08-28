@@ -179,12 +179,12 @@ fn re_registering_a_sign_source_updates_its_priority_and_slot() {
     let signs = pane_signs(&ed, pid);
     let line_signs = &signs[&0];
     assert_eq!(
-        line_signs[0].text, "A",
+        &*line_signs[0].text, "A",
         "re-registering \"a\" at priority 10 must move it ahead of \"b\" — \
          slot 0 now, even though \"a\" registered first and \"b\" had the \
          higher priority when it placed its sign"
     );
-    assert_eq!(line_signs[1].text, "B");
+    assert_eq!(&*line_signs[1].text, "B");
 }
 
 // ── Plugin signs ──────────────────────────────────────────────────────────────
@@ -200,7 +200,7 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
     let signs = pane_signs(&ed, pid);
     assert_eq!(signs.len(), 1);
     let sign = signs[&0].first().expect("one sign on the line");
-    assert_eq!(sign.text, "!");
+    assert_eq!(&*sign.text, "!");
     assert_eq!(
         sign.slot, 0,
         "this plugin sign is the buffer's only registered channel — slot 0"
@@ -239,8 +239,8 @@ fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
         2,
         "two registered sources — both get their own slot, unpinned"
     );
-    assert_eq!(line_signs[0].text, "+", "priority 9 (vcs) — slot 0");
-    assert_eq!(line_signs[1].text, "!", "priority 3 (linter) — slot 1");
+    assert_eq!(&*line_signs[0].text, "+", "priority 9 (vcs) — slot 0");
+    assert_eq!(&*line_signs[1].text, "!", "priority 3 (linter) — slot 1");
     assert_eq!(
         sign_column_width(&ed, pid),
         3,
@@ -331,7 +331,7 @@ fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
         "always:1 pins exactly one slot — the other source's slot doesn't fit"
     );
     assert_eq!(
-        line_signs[0].text, "+",
+        &*line_signs[0].text, "+",
         "priority 9 (vcs) beats priority 3 (linter) for the one slot"
     );
 }
@@ -358,11 +358,11 @@ fn equal_priority_sign_sources_get_distinct_slots_ordered_by_name() {
         "equal priority — both sources still get their own slot"
     );
     assert_eq!(
-        line_signs[0].text, "!",
+        &*line_signs[0].text, "!",
         "equal priority ties break by name at registration — \"linter\" \
          (alphabetically first) ranks slot 0, even though \"vcs\" registered first"
     );
-    assert_eq!(line_signs[1].text, "+");
+    assert_eq!(&*line_signs[1].text, "+");
 }
 
 /// With `signcolumn=always:2` pinned, both distinct-priority sources fit
@@ -386,8 +386,8 @@ fn wider_signcolumn_keeps_multiple_signs_per_line() {
         2,
         "signcolumn=always:2 keeps both signs on the line"
     );
-    assert_eq!(line_signs[0].text, "+", "priority 9 first");
-    assert_eq!(line_signs[1].text, "!", "priority 3 second");
+    assert_eq!(&*line_signs[0].text, "+", "priority 9 first");
+    assert_eq!(&*line_signs[1].text, "!", "priority 3 second");
     assert_eq!(
         sign_column_width(&ed, pid),
         3,
@@ -420,10 +420,10 @@ fn a_source_ranked_past_the_resolved_slot_count_is_hidden_not_miscast_into_slot_
         2,
         "always:2 pins exactly two slots — the third registered source (rank 2) doesn't fit"
     );
-    assert_eq!(line_signs[0].text, "3", "rank 0 (highest priority)");
-    assert_eq!(line_signs[1].text, "2", "rank 1");
+    assert_eq!(&*line_signs[0].text, "3", "rank 0 (highest priority)");
+    assert_eq!(&*line_signs[1].text, "2", "rank 1");
     assert!(
-        line_signs.iter().all(|s| s.text != "1"),
+        line_signs.iter().all(|s| &*s.text != "1"),
         "\"c\" (rank 2, past the always:2 cutoff) must not appear anywhere — \
          not wrapped into slot 0"
     );

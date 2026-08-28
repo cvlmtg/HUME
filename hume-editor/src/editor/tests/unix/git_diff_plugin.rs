@@ -125,7 +125,7 @@ fn signs(ed: &Editor, bid: BufferId) -> Vec<(usize, String, String)> {
         .map(|e| {
             (
                 text.char_to_line(e.pos),
-                e.text.clone(),
+                e.text.to_string(),
                 ed.view.registry.name_of(e.scope).to_string(),
             )
         })

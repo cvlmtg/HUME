@@ -41,10 +41,14 @@ pub(crate) struct InlayHintEntry {
 /// among [`DecorationStores::sign_sources`], not a per-entry value; the
 /// `source` key `SourceStore` already carries is the entry's whole channel
 /// identity. `scope` is interned by `host_impl.rs`'s `set_signs` at the
-/// `set-signs!` boundary, not resolved later by a render bridge.
+/// `set-signs!` boundary, not resolved later by a render bridge. `text` is
+/// `Arc<str>`, not `String`: `Editor::update_sign_providers` clones it
+/// straight into `hume_engine::builtins::sign_column::Sign::text` (also
+/// `Arc<str>`) for every visible line, every frame — a refcount bump
+/// instead of a fresh allocation per sign per frame.
 pub(crate) struct SignEntry {
     pub(crate) pos: usize,
-    pub(crate) text: String,
+    pub(crate) text: std::sync::Arc<str>,
     pub(crate) scope: ScopeId,
 }
 
@@ -342,25 +346,41 @@ impl<K, T> SourceStore<K, T> {
 }
 
 impl<K, T: Positioned> SourceStore<K, T> {
-    /// Every source's entries for `bid` whose `pos` falls in `range`, paired
-    /// with their source — the sign bridge needs the source to look up its
-    /// registered slot; every other caller discards it, same as
-    /// [`Self::for_buffer`].
+    /// Every source's entries for `bid` whose `pos` falls in `range`,
+    /// grouped (not flattened) — the point-anchored counterpart to
+    /// [`Self::groups_for_buffer`], and [`Self::in_range`]'s primitive.
+    /// [`DecorationStores::signs_in_range`] builds directly on this instead
+    /// of `in_range`: it needs each source's *name* once per group (to
+    /// resolve that source's registered slot), not once per entry.
     ///
     /// Each source's slice is `pos`-sorted (`set`), so both bounds come from
     /// a binary search — a caller filtering a viewport out of a buffer-wide
     /// store pays for the entries it keeps, not for every entry the servers
-    /// published.
+    /// published. Point semantics only — bounds both ends by `pos()`, so a
+    /// range-anchored kind whose span can start before `range` (extra
+    /// highlights; `DiagnosticsStore::for_range_unsorted`, which prunes only
+    /// the upper bound for exactly this reason) must not build on this.
+    pub(crate) fn groups_in_range(
+        &self,
+        bid: BufferId,
+        range: Range<usize>,
+    ) -> impl Iterator<Item = (&K, &[T])> {
+        self.groups_for_buffer(bid).map(move |(source, es)| {
+            let lo = es.partition_point(|e| e.pos() < range.start);
+            let hi = es.partition_point(|e| e.pos() < range.end);
+            (source, &es[lo..hi])
+        })
+    }
+
+    /// Every source's entries for `bid` whose `pos` falls in `range`,
+    /// flattened and paired with their source.
     pub(crate) fn in_range(
         &self,
         bid: BufferId,
         range: Range<usize>,
     ) -> impl Iterator<Item = (&K, &T)> {
-        self.groups_for_buffer(bid).flat_map(move |(source, es)| {
-            let lo = es.partition_point(|e| e.pos() < range.start);
-            let hi = es.partition_point(|e| e.pos() < range.end);
-            es[lo..hi].iter().map(move |e| (source, e))
-        })
+        self.groups_in_range(bid, range)
+            .flat_map(|(source, es)| es.iter().map(move |e| (source, e)))
     }
 }
 
@@ -589,18 +609,32 @@ impl DecorationStores {
         self.signs.for_buffer(bid).map(|(s, e)| (s.as_str(), e))
     }
 
-    /// Signs for `bid` anchored inside `range`, paired with their source
-    /// name — the sign bridge's view, which only ever wants the viewport's
-    /// worth. The source name resolves each entry's slot via
-    /// [`Self::sign_slot`].
+    /// Signs for `bid` anchored inside `range`, paired with their source's
+    /// resolved gutter slot — the sign bridge's view, which only ever wants
+    /// the viewport's worth and never needs the source name itself (unlike
+    /// EOL text/line backgrounds, signs never contend for one line's cell
+    /// across sources — see [`Self::sign_slot`]'s doc). Resolves
+    /// [`Self::sign_slot`] once per source group via
+    /// [`SourceStore::groups_in_range`], not once per entry. `set-signs!`
+    /// already rejects an unregistered source at write time, and no source
+    /// ever loses its registration without every buffer's signs resetting
+    /// alongside it (`Self::reset`) — so every group this sees has a real
+    /// slot; the `expect` documents that invariant at the one place it's
+    /// owned, rather than at every caller.
     pub(crate) fn signs_in_range(
         &self,
         bid: BufferId,
         range: Range<usize>,
-    ) -> impl Iterator<Item = (&str, &SignEntry)> {
+    ) -> impl Iterator<Item = (usize, &SignEntry)> {
         self.signs
-            .in_range(bid, range)
-            .map(|(s, e)| (s.as_str(), e))
+            .groups_in_range(bid, range)
+            .filter(|(_, es)| !es.is_empty())
+            .flat_map(|(source, es)| {
+                let slot = self
+                    .sign_slot(source)
+                    .expect("set-signs! only accepts an already-registered source");
+                es.iter().map(move |e| (slot, e))
+            })
     }
 
     /// Registers `name` as a sign source at `priority`, replacing any prior

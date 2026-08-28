@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterRowCtx, ProviderId};
 use crate::types::{RowKind, ScopeId};
@@ -10,9 +11,16 @@ use crate::types::{RowKind, ScopeId};
 pub struct Sign {
     /// 1–2 cells wide; wider is truncated to the column width by
     /// `render::compose_gutter`, same as any other gutter cell text.
-    pub text: Cow<'static, str>,
+    /// `Arc<str>`, not `Cow<'static, str>`: the editor's per-frame sign
+    /// bridge builds a `Sign` straight from its decoration-store entry's own
+    /// `Arc<str>` text (`Editor::update_sign_providers` in
+    /// `hume-editor`) — cloning this field is a refcount bump, not a
+    /// String allocation, on the per-row-per-frame path
+    /// `SharedSignSource::signs_for_line` clones every `Sign` on.
+    pub text: Arc<str>,
     /// Already-interned — same contract as every `DecorationSource`: intern
-    /// at provider-construction time, before the first render.
+    /// at the Steel `set-signs!` boundary (`host_impl.rs` in
+    /// `hume-editor`), before the first render.
     pub scope: ScopeId,
     /// Which slot of the column this sign occupies — stable for the whole
     /// buffer, resolved upstream from the registered sign sources (see
@@ -154,7 +162,7 @@ impl GutterColumn for SignColumn {
             for sign in src.signs_for_line(line_idx, ctx) {
                 if let Some(cell) = cells.get_mut(sign.slot as usize) {
                     *cell = GutterCell {
-                        content: GutterCellContent::Text(sign.text),
+                        content: GutterCellContent::Text(Cow::Owned(sign.text.to_string())),
                         scope: sign.scope,
                     };
                 }

@@ -937,7 +937,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .map(|(line, sign_text, scope)| {
                 Ok(crate::editor::decorations::SignEntry {
                     pos: line_start_offset(text, line, "set-signs!")?,
-                    text: sign_text,
+                    text: sign_text.into(),
                     scope: self.view.registry.intern_runtime(&scope),
                 })
             })

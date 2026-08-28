@@ -544,7 +544,7 @@ fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
         bid,
         vec![crate::editor::decorations::SignEntry {
             pos: 6,
-            text: "!".to_string(),
+            text: "!".into(),
             scope,
         }],
     );

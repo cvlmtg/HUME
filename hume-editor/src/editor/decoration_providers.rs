@@ -305,9 +305,12 @@ impl Editor {
             let text = self.state.buffers.get(bid).text();
 
             // `signs_in_range` pre-filters by char range so this pass never
-            // touches a sign the viewport can't show; `visible_line_anchored`
-            // still does the precise per-line check (a char range can
-            // straddle a line the viewport itself excludes).
+            // touches a sign the viewport can't show, and already resolves
+            // each entry's source to its registered slot
+            // (`DecorationStores::signs_in_range`) — this loop places, it
+            // never looks a source up. `visible_line_anchored` still does
+            // the precise per-line check (a char range can straddle a line
+            // the viewport itself excludes).
             let plugin_raw = visible_line_anchored(
                 text,
                 visible_lines,
@@ -317,18 +320,7 @@ impl Editor {
 
             let mut plugin_all: rustc_hash::FxHashMap<usize, Vec<Sign>> =
                 rustc_hash::FxHashMap::default();
-            for (source, line, e) in plugin_raw {
-                // `set-signs!` already rejects an unregistered source at
-                // write time, and no source ever loses its registration
-                // without every buffer's signs resetting alongside it
-                // (`DecorationStores::reset`) — so every entry this loop
-                // sees has a real slot.
-                let slot = self
-                    .state
-                    .config
-                    .decorations
-                    .sign_slot(source)
-                    .expect("set-signs! only accepts an already-registered source");
+            for (slot, line, e) in plugin_raw {
                 if slot >= slots as usize {
                     continue;
                 }
@@ -345,7 +337,7 @@ impl Editor {
                     entries.insert(
                         i,
                         Sign {
-                            text: std::borrow::Cow::Owned(e.text.clone()),
+                            text: Arc::clone(&e.text),
                             scope: e.scope,
                             slot,
                         },
@@ -678,13 +670,15 @@ fn resolve_decoration_line(text: &hume_editing::text::BufferText, pos: usize) ->
 /// backgrounds), whose bodies are otherwise identical up to this filter
 /// step: resolve line → drop if scrolled out of view or drifted onto the
 /// phantom trailing line (`resolve_decoration_line`) → keep. `tag` is
-/// whatever a caller needs alongside the resolved line — a source name, for
-/// signs' slot lookup (`DecorationStores::sign_slot`) and EOL text/line
-/// backgrounds' cross-source tie-break (`last_writer_per_line`) alike — this
-/// function only threads it through, borrowed the whole way: every field on
-/// every decoration entry is already either `Copy` or an already-interned
-/// `ScopeId`, so no caller needs an owned clone to escape this iterator's
-/// borrow.
+/// whatever a caller needs alongside the resolved line, generic because
+/// each caller's `entries` iterator already decided its shape upstream: a
+/// resolved gutter slot for signs (`DecorationStores::signs_in_range`
+/// resolves it once per source, before this function ever sees an entry), a
+/// source name for EOL text/line backgrounds' cross-source tie-break
+/// (`last_writer_per_line`). This function only threads it through,
+/// borrowed the whole way: every field on every decoration entry is already
+/// either `Copy` or an already-interned `ScopeId`, so no caller needs an
+/// owned clone to escape this iterator's borrow.
 fn visible_line_anchored<'a, K, E: 'a>(
     text: &'a hume_editing::text::BufferText,
     visible_lines: std::ops::Range<usize>,

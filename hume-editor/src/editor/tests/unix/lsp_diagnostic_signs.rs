@@ -59,7 +59,7 @@ fn error_line_gets_a_sign_with_the_error_scope() {
     let signs = pane_signs(&ed, pid);
     assert_eq!(signs.len(), 1);
     let sign = signs[&0].first().expect("one sign on the error line");
-    assert_eq!(sign.text, "●");
+    assert_eq!(&*sign.text, "●");
     assert_eq!(sign.scope, error_scope);
     assert_eq!(
         sign.slot, 0,
