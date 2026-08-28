@@ -15,7 +15,8 @@ use lsp_types::{
     ParameterInformationSettings, PositionEncodingKind, PublishDiagnosticsClientCapabilities,
     RenameClientCapabilities, ResourceOperationKind, ServerCapabilities,
     SignatureHelpClientCapabilities, SignatureInformationSettings, TextDocumentClientCapabilities,
-    TextDocumentSyncClientCapabilities, WindowClientCapabilities, WorkspaceClientCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncClientCapabilities, TextDocumentSyncKind,
+    TextDocumentSyncOptions, WindowClientCapabilities, WorkspaceClientCapabilities,
     WorkspaceEditClientCapabilities, WorkspaceFolder,
 };
 
@@ -280,6 +281,28 @@ impl LspClient {
 
     pub fn encoding(&self) -> PositionEncoding {
         self.encoding
+    }
+
+    /// The `didChange` form the server asked for, or `None` when it wants no
+    /// change notifications at all (declared `NONE`, or declared nothing —
+    /// the spec's default for an absent `textDocumentSync`). Before the
+    /// handshake there is no declaration to read, so this answers `FULL`: a
+    /// whole-document event is the one form every server accepts, and
+    /// dropping edits queued while `Starting` would desync the mirror
+    /// permanently. Derived from `caps` rather than cached — read once per
+    /// flush, not once per position conversion, so `encoding`'s decode-once
+    /// rationale doesn't apply here.
+    pub fn change_sync(&self) -> Option<TextDocumentSyncKind> {
+        let Some(caps) = self.caps.as_ref() else {
+            return Some(TextDocumentSyncKind::FULL); // pre-handshake: nothing declared yet
+        };
+        let kind = match caps.text_document_sync.as_ref()? {
+            TextDocumentSyncCapability::Kind(k) => *k,
+            TextDocumentSyncCapability::Options(TextDocumentSyncOptions { change, .. }) => {
+                (*change)?
+            }
+        };
+        (kind != TextDocumentSyncKind::NONE).then_some(kind)
     }
 
     pub fn root(&self) -> &std::path::Path {

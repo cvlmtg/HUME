@@ -610,6 +610,89 @@ fn utf16_is_the_default_when_server_omits_the_field() {
     assert_eq!(client.encoding, PositionEncoding::Utf16);
 }
 
+fn sync_result(sync: Option<TextDocumentSyncCapability>) -> serde_json::Value {
+    let caps = ServerCapabilities {
+        text_document_sync: sync,
+        ..Default::default()
+    };
+    serde_json::to_value(InitializeResult {
+        capabilities: caps,
+        ..Default::default()
+    })
+    .unwrap()
+}
+
+/// Runs a full scripted handshake against `result` and returns the client
+/// post-`initialize`, so each `change_sync` case below only states the
+/// capability shape under test.
+fn handshaken_client(result: serde_json::Value) -> LspClient {
+    let mut backend = InlineLspBackend::new();
+    backend.respond_to("initialize", result);
+    let sid = backend
+        .start("x", &[], std::path::Path::new("."), &[])
+        .unwrap();
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+    client.start_handshake(&mut backend);
+    let (_id, ev) = backend.drain().into_iter().next().unwrap();
+    client.on_event(ev);
+    client
+}
+
+#[test]
+fn change_sync_before_handshake_answers_full() {
+    // No `caps` to read yet — a whole-document event is the one form every
+    // server accepts, so edits queued while `Starting` never desync the
+    // mirror waiting on a declaration that hasn't arrived.
+    let client = LspClient::new(ServerId(0), PathBuf::from("."));
+    assert_eq!(client.change_sync(), Some(TextDocumentSyncKind::FULL));
+}
+
+#[test]
+fn change_sync_reads_bare_kind() {
+    let client = handshaken_client(sync_result(Some(TextDocumentSyncCapability::Kind(
+        TextDocumentSyncKind::FULL,
+    ))));
+    assert_eq!(client.change_sync(), Some(TextDocumentSyncKind::FULL));
+}
+
+#[test]
+fn change_sync_reads_incremental_kind() {
+    let client = handshaken_client(sync_result(Some(TextDocumentSyncCapability::Kind(
+        TextDocumentSyncKind::INCREMENTAL,
+    ))));
+    assert_eq!(
+        client.change_sync(),
+        Some(TextDocumentSyncKind::INCREMENTAL)
+    );
+}
+
+#[test]
+fn change_sync_none_kind_means_no_change_notifications() {
+    let client = handshaken_client(sync_result(Some(TextDocumentSyncCapability::Kind(
+        TextDocumentSyncKind::NONE,
+    ))));
+    assert_eq!(client.change_sync(), None);
+}
+
+#[test]
+fn change_sync_reads_options_shape() {
+    let client = handshaken_client(sync_result(Some(TextDocumentSyncCapability::Options(
+        TextDocumentSyncOptions {
+            change: Some(TextDocumentSyncKind::FULL),
+            ..Default::default()
+        },
+    ))));
+    assert_eq!(client.change_sync(), Some(TextDocumentSyncKind::FULL));
+}
+
+#[test]
+fn change_sync_absent_capability_means_no_change_notifications() {
+    // Spec default for an unadvertised `textDocumentSync` is `None` — the
+    // server never declared it wants change notifications at all.
+    let client = handshaken_client(sync_result(None));
+    assert_eq!(client.change_sync(), None);
+}
+
 #[test]
 fn eof_transitions_to_crashed_and_further_sends_do_not_panic() {
     let mut backend = InlineLspBackend::new();

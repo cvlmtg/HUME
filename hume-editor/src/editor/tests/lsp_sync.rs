@@ -10,6 +10,8 @@ use super::*;
 use crate::editor::lsp::LspState;
 use crate::editor::scripting_setup::make_init_host;
 use hume_engine::pipeline::BufferId;
+use hume_lsp::backend::LspBackend;
+use hume_lsp::client::LspClient;
 use hume_lsp::sync::apply_events_to_string_mirror;
 use hume_lsp::test_util::{NotificationLog, RecordingLspBackend};
 use hume_scripting::ScriptingHost;
@@ -40,6 +42,44 @@ fn attached_editor(tmp: &tempfile::TempDir) -> (Editor, BufferId, NotificationLo
 
     let mut ed = editor_from("-[w]>ord\n");
     let (backend, log, _requests) = RecordingLspBackend::with_default_handshake();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    ed.state
+        .config
+        .languages
+        .register_identity("rust", &["rs"], &[], &[], None)
+        .unwrap();
+
+    let mut host = ScriptingHost::new();
+    eval_register(
+        &mut ed,
+        &mut host,
+        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
+        tmp.path(),
+    );
+
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    ed.drain_lsp();
+    let bid = ed.focused_buffer_id();
+    (ed, bid, log)
+}
+
+/// Same attach as `attached_editor`, but against a server that answers
+/// `initialize` with `initialize_result` instead of the default scripted
+/// (INCREMENTAL) handshake — for tests that need to control
+/// `textDocumentSync` specifically.
+fn attached_editor_with_handshake(
+    tmp: &tempfile::TempDir,
+    initialize_result: serde_json::Value,
+) -> (Editor, BufferId, NotificationLog) {
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let file = root.join("src/main.rs");
+    std::fs::write(&file, "hello world\n").unwrap();
+
+    let mut ed = editor_from("-[w]>ord\n");
+    let (mut backend, log, _requests) = RecordingLspBackend::new();
+    backend.respond_to("initialize", initialize_result);
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.state
         .config
@@ -390,6 +430,140 @@ fn save_flushes_pending_change_before_did_save() {
         methods,
         vec!["textDocument/didChange", "textDocument/didSave"],
         "the queued edit's didChange must reach the wire before didSave, got: {methods:?}"
+    );
+}
+
+/// Regression test for the scheme-LSP wrong-line-diagnostics bug: a server
+/// declaring `textDocumentSync: FULL` (as `steel-language-server` does) must
+/// never receive a ranged `didChange` — per spec it ignores `range` and
+/// treats each event's `text` as the whole new document, so a ranged insert
+/// becomes the entire file, and every diagnostic position it computes next
+/// is against that garbage. Every queued entry in one flush must collapse
+/// into exactly one whole-document event, not one whole-document event per
+/// entry (which would each carry the *final* text under a *stale* version).
+#[test]
+fn full_sync_server_gets_one_whole_document_didchange_per_flush() {
+    let tmp = safe_tempdir();
+    let (mut ed, bid, log) = attached_editor_with_handshake(
+        &tmp,
+        serde_json::json!({"capabilities": {"textDocumentSync": 1}}),
+    );
+
+    ed.feed_key(key('d')); // delete a char
+    ed.feed_key(key('i'));
+    ed.feed_key(key('Z'));
+    ed.feed_key(key_esc()); // insert a char — two queued entries, one flush
+    ed.drain_lsp();
+
+    let did_changes: Vec<_> = log
+        .borrow()
+        .iter()
+        .filter(|(m, _)| m == "textDocument/didChange")
+        .cloned()
+        .collect();
+    assert_eq!(
+        did_changes.len(),
+        1,
+        "two queued edits on a FULL-sync server must collapse into one didChange, \
+         got: {did_changes:?}"
+    );
+    let (_, params) = &did_changes[0];
+    let changes = params["contentChanges"].as_array().unwrap();
+    assert_eq!(changes.len(), 1);
+    let event = &changes[0];
+    assert!(
+        event.get("range").is_none(),
+        "a FULL-sync server must get a whole-document event, never a range: {event:?}"
+    );
+    let buf = ed.state.buffers.get(bid);
+    assert_eq!(changes[0]["text"], buf.text().to_string());
+    assert_eq!(
+        params["textDocument"]["version"].as_i64(),
+        Some(buf.text_gen as i64)
+    );
+}
+
+/// A server declaring `textDocumentSync: NONE` must receive no `didChange`
+/// at all — but the diagnostics store must still remap through the edit, so
+/// positions from an earlier publish don't silently go stale just because
+/// there was nowhere to announce the edit.
+#[test]
+fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
+    let tmp = safe_tempdir();
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    let file = root.join("main.rs");
+    std::fs::write(&file, "hello world\n").unwrap();
+
+    let (mut backend, log, _requests) = RecordingLspBackend::new();
+    backend.respond_to(
+        "initialize",
+        serde_json::json!({"capabilities": {"textDocumentSync": 0}}),
+    );
+    let sid = backend.start("x", &[], &root, &[]).unwrap();
+    let mut client = LspClient::new(sid, root.clone());
+    client.start_handshake(&mut backend);
+    let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+    let actions = client.on_event(ev);
+
+    // "world" is chars 6..11 of "hello world\n".
+    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
+    backend.push_from_server(
+        sid,
+        hume_lsp::codec::Message::Notification {
+            method: "textDocument/publishDiagnostics".to_string(),
+            params: serde_json::json!({
+                "uri": uri.as_str(),
+                "diagnostics": [{
+                    "range": {"start": {"line": 0, "character": 6}, "end": {"line": 0, "character": 11}},
+                    "severity": 1,
+                    "message": "boom",
+                }],
+            }),
+        },
+    );
+
+    let mut ed = editor_from("-[w]>ord\n");
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    ed.lsp.insert_client_for_test(client);
+    for action in actions {
+        ed.dispatch_lsp_action(sid, action);
+    }
+
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+    ed.drain_lsp();
+
+    let before: Vec<(usize, usize)> = ed.lsp.diagnostics_for_test(bid).collect();
+    assert_eq!(
+        before,
+        vec![(6, 11)],
+        "diagnostic must ingest at its wire position"
+    );
+
+    // Insert one char before the diagnostic — it must shift by one.
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (apply-text-edits! (current-buffer)
+               (list (list (cons 0 0) (cons 0 0) "X")))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.drain_lsp();
+
+    assert!(
+        log.borrow()
+            .iter()
+            .all(|(m, _)| m != "textDocument/didChange"),
+        "a NONE-sync server must get no didChange, got: {:?}",
+        log.borrow()
+    );
+    let after: Vec<(usize, usize)> = ed.lsp.diagnostics_for_test(bid).collect();
+    assert_eq!(
+        after,
+        vec![(7, 12)],
+        "the diagnostic must still remap through the edit despite no wire send"
     );
 }
 

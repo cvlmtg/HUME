@@ -7,6 +7,7 @@ use hume_editing::changeset::ChangeSet;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::codec::Message;
 use hume_lsp::sync::{changeset_to_content_changes, wire_version};
+use lsp_types::TextDocumentSyncKind;
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
     Notification as _,
@@ -85,12 +86,19 @@ impl Editor {
         );
     }
 
-    /// Whole-document `didChange` (no `range`, legal per spec) for reload
-    /// paths that replace the text outright (`:e!`) rather than applying a
-    /// `ChangeSet` — `Buffer::reload_from_text` computes a line-diff CS for
-    /// *undo*, but the wire message here is simplest as a full-text sync.
-    /// Queued while `Starting`, same as every other send site here.
+    /// Whole-document `didChange` (no `range`, legal per spec regardless of
+    /// the server's declared sync kind) for reload paths that replace the
+    /// text outright (`:e!`) rather than applying a `ChangeSet` —
+    /// `Buffer::reload_from_text` computes a line-diff CS for *undo*, but the
+    /// wire message here is simplest as a full-text sync. Skipped entirely
+    /// when `change_sync` reads `None` — a server that declared `NONE` (or
+    /// nothing) asked for no change notifications, full-document or
+    /// otherwise. Queued while `Starting`, same as every other send site
+    /// here.
     pub(in crate::editor) fn lsp_did_change_whole_document(&mut self, bid: BufferId) {
+        if change_sync(&self.state, &self.lsp, bid).is_none() {
+            return;
+        }
         self.send_doc_notification(bid, DidChangeTextDocument::METHOD, |buf, uri| {
             serde_json::json!({
                 "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text_gen) },
@@ -141,6 +149,12 @@ pub(crate) fn flush_lsp_pending_changes(state: &mut EditorState, lsp: &mut LspSt
         let send_target = buf
             .lsp_server
             .and_then(|sid| Some((sid, hume_lsp::uri::path_to_uri(buf.path()?).ok()?)));
+        // The form this flush's didChange(s) must take, resolved once per
+        // buffer rather than per queued entry — a server's declared sync
+        // kind can't change mid-flush. `None` (declared `NONE`, or no
+        // server at all) means nothing gets sent below, same as an absent
+        // `send_target`.
+        let sync_kind = change_sync(state, lsp, bid);
 
         let buf = state.buffers.get_mut(bid);
         let pending = std::mem::take(&mut buf.lsp_pending);
@@ -155,6 +169,14 @@ pub(crate) fn flush_lsp_pending_changes(state: &mut EditorState, lsp: &mut LspSt
             diagnostics,
             ..
         } = lsp;
+
+        // A FULL-sync server ignores `range` entirely and treats each
+        // event's `text` as the whole new document — sending one such event
+        // per queued entry would each carry the *final* text under a
+        // *stale* version. So instead of sending inside the loop, this only
+        // notes whether anything actually changed; the one collapsed event
+        // (current text, current version) goes out once, after the loop.
+        let mut full_doc_pending = false;
 
         for change in pending {
             // Same source as the didChange conversion below — remap
@@ -171,17 +193,48 @@ pub(crate) fn flush_lsp_pending_changes(state: &mut EditorState, lsp: &mut LspSt
             let Some((server_id, uri)) = &send_target else {
                 continue; // no attached server (or no path/URI yet) — nothing to send
             };
-            let Some(client) = servers.get_mut(server_id).map(|e| &mut e.client) else {
-                continue; // can't happen once attached, but never send into the void
-            };
-            let events =
-                changeset_to_content_changes(&change.before, &change.cs, client.encoding());
-            if events.is_empty() {
-                continue;
+            match sync_kind {
+                None => continue, // server wants no change notifications at all
+                Some(TextDocumentSyncKind::FULL) => {
+                    full_doc_pending |= !change.cs.is_identity();
+                }
+                Some(_) => {
+                    // INCREMENTAL (the only other kind `change_sync` can
+                    // return — `NONE` is already folded into `None` above).
+                    let Some(client) = servers.get_mut(server_id).map(|e| &mut e.client) else {
+                        continue; // can't happen once attached, but never send into the void
+                    };
+                    let events =
+                        changeset_to_content_changes(&change.before, &change.cs, client.encoding());
+                    if events.is_empty() {
+                        continue;
+                    }
+                    let params = serde_json::json!({
+                        "textDocument": { "uri": uri.as_str(), "version": wire_version(change.version) },
+                        "contentChanges": events,
+                    });
+                    client.send_or_queue(
+                        backend.as_mut(),
+                        Message::Notification {
+                            method: DidChangeTextDocument::METHOD.to_string(),
+                            params,
+                        },
+                    );
+                }
             }
+        }
+
+        // `full_doc_pending` is only ever set inside the branch above that
+        // already matched `send_target` — reachable here only together
+        // with it, never on its own.
+        if full_doc_pending
+            && let Some((server_id, uri)) = &send_target
+            && let Some(client) = servers.get_mut(server_id).map(|e| &mut e.client)
+        {
+            let buf = state.buffers.get(bid);
             let params = serde_json::json!({
-                "textDocument": { "uri": uri.as_str(), "version": wire_version(change.version) },
-                "contentChanges": events,
+                "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text_gen) },
+                "contentChanges": [{ "text": buf.text().to_string() }],
             });
             client.send_or_queue(
                 backend.as_mut(),
@@ -192,6 +245,16 @@ pub(crate) fn flush_lsp_pending_changes(state: &mut EditorState, lsp: &mut LspSt
             );
         }
     }
+}
+
+/// The `didChange` form `bid`'s attached server wants, or `None` when there
+/// is no server attached, or its declared `textDocumentSync` is `NONE` (or
+/// absent) — both cases mean "send nothing", so callers don't need to tell
+/// them apart. See [`hume_lsp::client::LspClient::change_sync`] for the
+/// pre-handshake default.
+fn change_sync(state: &EditorState, lsp: &LspState, bid: BufferId) -> Option<TextDocumentSyncKind> {
+    let server_id = state.buffers.get(bid).lsp_server?;
+    lsp.servers.get(&server_id)?.client.change_sync()
 }
 
 /// Free-function body of [`Editor::send_doc_notification`] — same disjoint
