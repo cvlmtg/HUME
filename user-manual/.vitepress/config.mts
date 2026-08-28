@@ -111,7 +111,6 @@ export default defineConfig({
           { text: 'Configuration', link: '/configuration' },
           { text: 'Core Plugins', link: '/core-plugins' },
           { text: 'Plugins', link: '/plugins' },
-          { text: 'Standard Library', link: '/stdlib' },
         ],
       },
       {
@@ -120,6 +119,7 @@ export default defineConfig({
           { text: 'Command-line Flags', link: '/cli' },
           { text: 'Commands', link: '/commands' },
           { text: 'Key Reference', link: '/key-reference' },
+          { text: 'Plugin API', link: '/plugin-api' },
         ],
       },
       {

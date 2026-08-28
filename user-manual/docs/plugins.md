@@ -171,7 +171,7 @@ Those three read the whole list. To work with a single triple — the primary se
 
 `(char-index->line idx)` converts a char offset to a line number when you need one — it's a separate call rather than a field on every selection, since deriving it needs rope access a plain tuple doesn't have.
 
-See [Standard Library](stdlib.md#selections) for the full list of selection helpers.
+See [Plugin API → Standard Library](plugin-api.md#selections) for the full list of selection helpers.
 
 ### Depending on another plugin
 
@@ -336,7 +336,7 @@ A plugin can read the `#:config` value its user passed to `load-plugin` or `decl
   (bind-key! 'normal "C" "my-command"))
 ```
 
-`stdlib/config-string`, `stdlib/config-enum`, `stdlib/config-integer`, and `stdlib/config-list` cover the other common config shapes — see [Standard Library](stdlib.md#plugin-configuration) for their signatures. Since this call happens in your plugin's own body, at load time, check `(declared-plugins)` for `"core:stdlib"` first — see "Depending on another plugin" above.
+`stdlib/config-string`, `stdlib/config-enum`, `stdlib/config-integer`, and `stdlib/config-list` cover the other common config shapes — see [Plugin API → Standard Library](plugin-api.md#plugin-configuration) for their signatures. Since this call happens in your plugin's own body, at load time, check `(declared-plugins)` for `"core:stdlib"` first — see "Depending on another plugin" above.
 
 Document the keys your plugin understands so users know what to pass.
 
@@ -346,7 +346,7 @@ The two verbs treat `#:config` differently: with `declare-plugin` the first decl
 
 Plugins are trusted code: they can read and write any file, and spawn any process, just like any other Scheme program. There's no separate sandboxed subset of the filesystem — use Scheme's own functions directly (`open-input-file`, `create-directory!`, `delete-file!`, `read-dir`, `path-exists?`, and so on) for file access, and `command`/`spawn-process`/`wait` for running external tools.
 
-Before hand-rolling one of these, check [Standard Library](stdlib.md) — its filesystem, subprocess, and git commands cover the shapes plugins need most often (idempotent delete, sorted subdirectory listing, a blocking subprocess run with a uniform success/failure return shape, git work-tree detection and repo-root resolution).
+Before hand-rolling one of these, check [Plugin API → Standard Library](plugin-api.md#standard-library) — its filesystem, subprocess, and git commands cover the shapes plugins need most often (idempotent delete, sorted subdirectory listing, a blocking subprocess run with a uniform success/failure return shape, git work-tree detection and repo-root resolution).
 
 A few extra functions cover things Scheme has no way to know on its own:
 
