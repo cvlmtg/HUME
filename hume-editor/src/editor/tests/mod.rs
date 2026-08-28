@@ -172,6 +172,20 @@ fn type_cmd_event(ed: &mut Editor, cmd: &str) {
     ed.feed_event(key_enter());
 }
 
+/// Enters Insert mode, types `text` (translating `\n` to Enter, same as a
+/// user pressing it), and returns to Normal mode.
+fn type_text(ed: &mut Editor, text: &str) {
+    ed.feed_key(key('i'));
+    for ch in text.chars() {
+        if ch == '\n' {
+            ed.feed_key(key_enter());
+        } else {
+            ed.feed_key(key(ch));
+        }
+    }
+    ed.feed_key(key_esc());
+}
+
 fn reg(ed: &Editor, name: char) -> Vec<String> {
     ed.state
         .registers
@@ -621,19 +635,39 @@ fn eval_with_real_host(
     ed.apply_script_effects(effects);
 }
 
+/// `eval_with_real_host` + installing the host on `ed` — the eval-and-install
+/// core `run` and `run_probe` both need, factored out so a probe body
+/// (layered onto a caller-supplied host) and a plain command definition
+/// (always a fresh host) don't duplicate it.
+fn install_source(
+    ed: &mut Editor,
+    mut host: hume_scripting::ScriptingHost,
+    source: &str,
+    tmp: &std::path::Path,
+) {
+    eval_with_real_host(ed, &mut host, source, tmp);
+    ed.scripting = Some(host);
+}
+
+/// Evaluates `source` against a fresh `ScriptingHost` and installs it on
+/// `ed` — for a test that only needs a command/plugin defined, not a probe
+/// wrapped around one.
+fn run(ed: &mut Editor, tmp: &std::path::Path, source: &str) {
+    install_source(ed, hume_scripting::ScriptingHost::new(), source, tmp);
+}
+
 /// Runs `body` as a Steel command; the command moves the cursor iff `body`'s
 /// own assertion (embedded in the Scheme source) held.
 fn run_probe(
     ed: &mut Editor,
-    mut host: hume_scripting::ScriptingHost,
+    host: hume_scripting::ScriptingHost,
     tmp: &std::path::Path,
     body: &str,
 ) -> bool {
     let source = format!(
         r#"(define-command! "probe" "" (lambda () (when (begin {body}) (call! "move-right"))))"#
     );
-    eval_with_real_host(ed, &mut host, &source, tmp);
-    ed.scripting = Some(host);
+    install_source(ed, host, &source, tmp);
     let before = state(ed);
     type_cmd(ed, ":probe");
     state(ed) != before

@@ -88,27 +88,35 @@ impl FromStr for SignColumnMode {
     }
 }
 
+/// Upper bound on how many slots `signcolumn=always`/`auto` (no explicit
+/// `:N`) auto-sizes to. The ladder is plugin-controlled — a plugin whose
+/// `set-signs!` priority varies per line could otherwise grow the column
+/// without bound and eat the pane. A user who wants more pins
+/// `signcolumn=always:N` explicitly, which ignores this cap entirely (the
+/// `Some` branch of `SignColumnConfig::slots_for` never consults it).
+pub const MAX_AUTO_SIGN_SLOTS: u8 = 4;
+
 /// Sign column configuration: visibility mode and, optionally, a pinned
 /// number of sign slots.
 ///
 /// Wire format: `"always"`, `"always:N"`, `"auto"`, `"auto:N"` where N is the
-/// number of sign slots (1–127). Bare `"always"`/`"auto"` (`slots: None`)
-/// auto-sizes the column to the buffer's live sign-priority ladder (see
-/// `Editor::update_sign_providers`, the sole place that resolves `None` into
-/// an actual count); `":N"` pins the count regardless of the ladder. Default
-/// is bare `"always"`.
+/// number of sign slots (1–127). Bare `"always"`/`"auto"` (`pinned_slots:
+/// None`) auto-sizes the column to the buffer's live sign-priority ladder,
+/// capped at `MAX_AUTO_SIGN_SLOTS` (see `Editor::buffer_sign_ladder`, the
+/// sole place that resolves `None` into an actual count); `":N"` pins the
+/// count regardless of the ladder or the cap. Default is bare `"always"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SignColumnConfig {
     pub mode: SignColumnMode,
     /// Explicit slot count from a `:N` suffix, or `None` to auto-size.
-    pub slots: Option<u8>,
+    pub pinned_slots: Option<u8>,
 }
 
 impl Default for SignColumnConfig {
     fn default() -> Self {
         Self {
             mode: SignColumnMode::Always,
-            slots: None,
+            pinned_slots: None,
         }
     }
 }
@@ -116,14 +124,15 @@ impl Default for SignColumnConfig {
 impl SignColumnConfig {
     /// Resolves the configured slot count against `ladder_len` — the number
     /// of distinct sign priorities currently live in the buffer. An explicit
-    /// `:N` pins the count regardless of `ladder_len`; auto-size never goes
-    /// below 1, so the column stays visible under `always` even with zero
-    /// signs. Gutter width (the `+1` padding column) is derived at the call
-    /// site, not here — `Editor::update_sign_providers` is the only caller
-    /// and it needs the bare slot count to stamp each `Sign`'s slot too.
+    /// `:N` pins the count regardless of `ladder_len` or `MAX_AUTO_SIGN_SLOTS`;
+    /// auto-size clamps to `[1, MAX_AUTO_SIGN_SLOTS]` — never below 1, so the
+    /// column stays visible under `always` even with zero signs. Gutter width
+    /// (the `+1` padding column) is derived at the call site, not here —
+    /// `Editor::buffer_sign_ladder` is the only caller and it needs the bare
+    /// slot count to truncate the ladder to it.
     pub fn slots_for(self, ladder_len: usize) -> u8 {
-        self.slots
-            .unwrap_or_else(|| ladder_len.clamp(1, u8::MAX as usize) as u8)
+        self.pinned_slots
+            .unwrap_or_else(|| ladder_len.clamp(1, MAX_AUTO_SIGN_SLOTS as usize) as u8)
     }
 
     pub const VALUES: &'static [&'static str] =
@@ -132,7 +141,7 @@ impl SignColumnConfig {
 
 impl fmt::Display for SignColumnConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.slots {
+        match self.pinned_slots {
             Some(n) => write!(f, "{}:{}", self.mode, n),
             None => write!(f, "{}", self.mode),
         }
@@ -148,7 +157,7 @@ impl FromStr for SignColumnConfig {
             None => (s, None),
         };
         let mode: SignColumnMode = mode_str.parse()?;
-        let slots = match slots_str {
+        let pinned_slots = match slots_str {
             Some(c) => {
                 let n: u8 = c
                     .parse()
@@ -162,7 +171,7 @@ impl FromStr for SignColumnConfig {
             }
             None => None,
         };
-        Ok(Self { mode, slots })
+        Ok(Self { mode, pinned_slots })
     }
 }
 

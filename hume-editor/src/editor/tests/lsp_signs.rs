@@ -16,7 +16,6 @@ use hume_engine::pipeline::{PaneId, RenderContext};
 use hume_lsp::backend::LspBackend;
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
-use hume_scripting::ScriptingHost;
 
 /// `((start_line, start_char), (end_line, end_char), severity)`.
 type DiagFixture = ((u32, u32), (u32, u32), i64);
@@ -72,10 +71,7 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
     ed.drain_lsp();
 
     let pid = ed.state.focused_pane_id;
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
+    render(&mut ed);
 
     DiagCtx {
         _file_dir: file_dir,
@@ -109,6 +105,38 @@ fn sign_column_width(ed: &Editor, pid: PaneId) -> u8 {
         .next()
         .expect("sign column registered first")
         .width(0)
+}
+
+/// `RenderContext::new` + `sync_viewport_dims(80, 25)` + `settle` +
+/// `prepare_frame` — every sign test's own frame-drive step, differing only
+/// in what's armed beforehand.
+fn render(ed: &mut Editor) {
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+}
+
+/// Builds an untitled editor containing `"abcdefgh\n"`, arms `arm_body` as a
+/// Steel `"arm"` command, runs it, pins `signcolumn` if given, and renders
+/// one frame — the harness every plugin-sign test below needs, differing
+/// only in what `set-signs!` calls `arm_body` makes and whether the column
+/// is pinned.
+fn plugin_sign_editor(signcolumn: Option<&str>, arm_body: &str) -> (Editor, PaneId) {
+    let tmp = safe_tempdir();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    type_text(&mut ed, "abcdefgh");
+    if let Some(signcolumn) = signcolumn {
+        let bid = ed.focused_buffer_id();
+        ed.state.buffers.get_mut(bid).overrides.signcolumn = Some(signcolumn.parse().unwrap());
+    }
+    let source = format!(r#"(define-command! "arm" "" (lambda () {arm_body}))"#);
+    run(&mut ed, tmp.path(), &source);
+    type_cmd(&mut ed, ":arm");
+
+    let pid = ed.state.focused_pane_id;
+    render(&mut ed);
+    (ed, pid)
 }
 
 // ── Diagnostic signs ──────────────────────────────────────────────────────────
@@ -228,10 +256,7 @@ fn gutter_width_collapses_under_auto_mode_with_no_signs() {
     let mut c = setup_with_diagnostics("abcdefgh\n", &[]);
     let bid = c.ed.focused_buffer_id();
     c.ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("auto".parse().unwrap());
-    let mut ctx = RenderContext::new();
-    c.ed.sync_viewport_dims(80, 25);
-    c.ed.settle();
-    c.ed.prepare_frame(&mut ctx);
+    render(&mut c.ed);
     assert_eq!(
         sign_column_width(&c.ed, c.pid),
         0,
@@ -254,10 +279,7 @@ fn gutter_width_always_2_is_3_cells_wide() {
     let mut c = setup_with_diagnostics("abcdefgh\n", &[]);
     let bid = c.ed.focused_buffer_id();
     c.ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:2".parse().unwrap());
-    let mut ctx = RenderContext::new();
-    c.ed.sync_viewport_dims(80, 25);
-    c.ed.settle();
-    c.ed.prepare_frame(&mut ctx);
+    render(&mut c.ed);
     assert_eq!(
         sign_column_width(&c.ed, c.pid),
         3,
@@ -270,10 +292,7 @@ fn gutter_width_auto_2_expands_when_signs_exist() {
     let mut c = setup_with_diagnostics("abcdefgh\n", &[((0, 0), (0, 1), 1)]);
     let bid = c.ed.focused_buffer_id();
     c.ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("auto:2".parse().unwrap());
-    let mut ctx = RenderContext::new();
-    c.ed.sync_viewport_dims(80, 25);
-    c.ed.settle();
-    c.ed.prepare_frame(&mut ctx);
+    render(&mut c.ed);
     assert_eq!(
         sign_column_width(&c.ed, c.pid),
         3,
@@ -281,49 +300,14 @@ fn gutter_width_auto_2_expands_when_signs_exist() {
     );
 }
 
-#[test]
-fn always_2_pins_width_even_with_only_one_channel_present() {
-    let mut c = setup_with_diagnostics("abcdefgh\n", &[((0, 0), (0, 1), 1)]);
-    let bid = c.ed.focused_buffer_id();
-    c.ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:2".parse().unwrap());
-    let mut ctx = RenderContext::new();
-    c.ed.sync_viewport_dims(80, 25);
-    c.ed.settle();
-    c.ed.prepare_frame(&mut ctx);
-    assert_eq!(
-        sign_column_width(&c.ed, c.pid),
-        3,
-        "pinned width stays fixed even though only one channel (diagnostics) is live"
-    );
-}
-
 // ── Plugin signs ──────────────────────────────────────────────────────────────
 
 #[test]
 fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.feed_key(key('i'));
-    for ch in "abcdefgh".chars() {
-        ed.feed_key(key(ch));
-    }
-    ed.feed_key(key_esc());
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(define-command! "arm" "" (lambda ()
-             (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope" 7)))))"#,
-        tmp.path(),
+    let (ed, pid) = plugin_sign_editor(
+        None,
+        r#"(set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope" 7)))"#,
     );
-    ed.scripting = Some(host);
-    type_cmd(&mut ed, ":arm");
-
-    let pid = ed.state.focused_pane_id;
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
 
     let signs = plugin_signs(&ed, pid);
     assert_eq!(signs.len(), 1);
@@ -346,36 +330,16 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
 /// With no `signcolumn` override, `always` auto-sizes to the buffer's
 /// live sign-priority ladder — two plugin sources at distinct priorities
 /// on the same line both claim their own slot, ordered highest-priority
-/// first, without the user having to pin `always:2` for it. This is the
-/// behavior the wandering-`+`-column bug report asked for: a channel's
+/// first, without the user having to pin `always:2` for it. A channel's
 /// column position is a property of its priority, stable buffer-wide, not
 /// a function of what else happens to share the line.
 #[test]
 fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.feed_key(key('i'));
-    for ch in "abcdefgh".chars() {
-        ed.feed_key(key(ch));
-    }
-    ed.feed_key(key_esc());
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(define-command! "arm" "" (lambda ()
-             (set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 3)))
-             (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 9)))))"#,
-        tmp.path(),
+    let (ed, pid) = plugin_sign_editor(
+        None,
+        r#"(set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 3)))
+           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 9)))"#,
     );
-    ed.scripting = Some(host);
-    type_cmd(&mut ed, ":arm");
-
-    let pid = ed.state.focused_pane_id;
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
 
     let signs = plugin_signs(&ed, pid);
     assert_eq!(signs.len(), 1, "one line, one merged entry across sources");
@@ -399,32 +363,11 @@ fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
 /// hidden buffer-wide, not just squeezed off this one line.
 #[test]
 fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.feed_key(key('i'));
-    for ch in "abcdefgh".chars() {
-        ed.feed_key(key(ch));
-    }
-    ed.feed_key(key_esc());
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:1".parse().unwrap());
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(define-command! "arm" "" (lambda ()
-             (set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 3)))
-             (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 9)))))"#,
-        tmp.path(),
+    let (ed, pid) = plugin_sign_editor(
+        Some("always:1"),
+        r#"(set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 3)))
+           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 9)))"#,
     );
-    ed.scripting = Some(host);
-    type_cmd(&mut ed, ":arm");
-
-    let pid = ed.state.focused_pane_id;
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
 
     let signs = plugin_signs(&ed, pid);
     let line_signs = &signs[&0];
@@ -450,32 +393,11 @@ fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
 /// first here.
 #[test]
 fn two_plugin_sources_at_equal_priority_contend_for_one_slot() {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.feed_key(key('i'));
-    for ch in "abcdefgh".chars() {
-        ed.feed_key(key(ch));
-    }
-    ed.feed_key(key_esc());
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:2".parse().unwrap());
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(define-command! "arm" "" (lambda ()
-             (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 5)))
-             (set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 5)))))"#,
-        tmp.path(),
+    let (ed, pid) = plugin_sign_editor(
+        Some("always:2"),
+        r#"(set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 5)))
+           (set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 5)))"#,
     );
-    ed.scripting = Some(host);
-    type_cmd(&mut ed, ":arm");
-
-    let pid = ed.state.focused_pane_id;
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
 
     let signs = plugin_signs(&ed, pid);
     let line_signs = &signs[&0];
@@ -501,32 +423,11 @@ fn two_plugin_sources_at_equal_priority_contend_for_one_slot() {
 /// of `SignColumnConfig::slots_for`'s ladder-length fallback.
 #[test]
 fn wider_signcolumn_keeps_multiple_signs_per_line() {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.feed_key(key('i'));
-    for ch in "abcdefgh".chars() {
-        ed.feed_key(key(ch));
-    }
-    ed.feed_key(key_esc());
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:2".parse().unwrap());
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(define-command! "arm" "" (lambda ()
-             (set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 3)))
-             (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 9)))))"#,
-        tmp.path(),
+    let (ed, pid) = plugin_sign_editor(
+        Some("always:2"),
+        r#"(set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 3)))
+           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 9)))"#,
     );
-    ed.scripting = Some(host);
-    type_cmd(&mut ed, ":arm");
-
-    let pid = ed.state.focused_pane_id;
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
 
     let signs = plugin_signs(&ed, pid);
     let line_signs = &signs[&0];
@@ -558,21 +459,15 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
     let bid = c.ed.focused_buffer_id();
     c.ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:2".parse().unwrap());
 
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
+    run(
         &mut c.ed,
-        &mut host,
+        tmp.path(),
         r#"(define-command! "arm" "" (lambda ()
              (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope" 20)))))"#,
-        tmp.path(),
     );
-    c.ed.scripting = Some(host);
     type_cmd(&mut c.ed, ":arm");
 
-    let mut ctx = RenderContext::new();
-    c.ed.sync_viewport_dims(80, 25);
-    c.ed.settle();
-    c.ed.prepare_frame(&mut ctx);
+    render(&mut c.ed);
 
     let rope = c.ed.state.buffers.get(bid).text().rope().clone();
     let gutter_ctx = hume_engine::providers::GutterRowCtx {
@@ -617,21 +512,15 @@ fn ladder_is_buffer_wide_not_viewport_restricted() {
     let mut c = setup_with_diagnostics(&content, &[((50, 0), (50, 1), 1)]);
 
     let tmp = safe_tempdir();
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
+    run(
         &mut c.ed,
-        &mut host,
+        tmp.path(),
         r#"(define-command! "arm" "" (lambda ()
              (set-signs! "git-diff" (current-buffer) (list (list 0 "+" "diff.plus.gutter" 0)))))"#,
-        tmp.path(),
     );
-    c.ed.scripting = Some(host);
     type_cmd(&mut c.ed, ":arm");
 
-    let mut ctx = RenderContext::new();
-    c.ed.sync_viewport_dims(80, 25);
-    c.ed.settle();
-    c.ed.prepare_frame(&mut ctx);
+    render(&mut c.ed);
 
     assert!(
         diag_signs(&c.ed, c.pid).is_empty(),
@@ -702,14 +591,45 @@ fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
     );
 
     let pid = ed.state.focused_pane_id;
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
-    ed.settle();
-    ed.prepare_frame(&mut ctx); // must not panic
+    render(&mut ed); // must not panic
 
     let signs = diag_signs(&ed, pid);
     assert!(
         signs.is_empty(),
         "no stale sign should remain after reload clears diagnostics"
+    );
+}
+
+/// Regression for the ladder's slot index truncating to `u8` before it was
+/// bounded to the resolved slot count: a priority ranked at index 256 (or
+/// any multiple of 256) on the *un*-truncated ladder wrapped to slot 0 via
+/// `256 as u8`, silently contending with the buffer's actual
+/// highest-priority sign. 260 distinct priorities push a pinned
+/// `always:127` ladder well past that boundary.
+#[test]
+fn priority_ranked_past_255_never_lands_in_slot_zero() {
+    let entries: String = (0..260)
+        .map(|i| format!(r#"(list 0 "p{i}" "sc" {i})"#))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let arm_body = format!(r#"(set-signs! "flood" (current-buffer) (list {entries}))"#);
+    let (ed, pid) = plugin_sign_editor(Some("always:127"), &arm_body);
+
+    let signs = plugin_signs(&ed, pid);
+    let line_signs = &signs[&0];
+    assert_eq!(
+        line_signs.len(),
+        127,
+        "pinned always:127 keeps exactly 127 of the 260 distinct priorities"
+    );
+    assert_eq!(
+        line_signs[0].text, "p259",
+        "the highest priority (259) must resolve to slot 0"
+    );
+    assert!(
+        line_signs.iter().all(|s| s.text != "p3"),
+        "priority 3 (ranked 257th, past the 127-slot cutoff) must not appear \
+         anywhere — its un-truncated rank of 256 would wrap to slot 0 via \
+         `as u8` and silently displace the true top priority"
     );
 }

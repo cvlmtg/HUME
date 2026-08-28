@@ -49,11 +49,11 @@ fn last_writer_per_line_keeps_the_later_entry_within_one_source() {
 fn last_writer_per_line_breaks_cross_source_ties_alphabetically_first() {
     // Across sources, ties break by source name —
     // mirroring the sign pipeline's tie-break, which resolves to the
-    // alphabetically *first* source (`update_sign_providers`'s ascending
-    // pre-sort + a stable priority sort keep same-priority ties in that
-    // order). Input order deliberately does not match sort order, so a
-    // fix that just returned "whichever came last in the input" would
-    // pass by accident.
+    // alphabetically *first* source (`update_sign_providers`'s per-slot
+    // merge sees sources in ascending-name order and keeps the first entry
+    // for a contended slot). Input order deliberately does not match sort
+    // order, so a fix that just returned "whichever came last in the
+    // input" would pass by accident.
     let entries = vec![
         ("z-marks".to_string(), 7, "from-z"),
         ("a-marks".to_string(), 7, "from-a"),

@@ -21,18 +21,6 @@ use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
-fn type_text(ed: &mut Editor, text: &str) {
-    ed.feed_key(key('i'));
-    for ch in text.chars() {
-        if ch == '\n' {
-            ed.feed_key(key_enter());
-        } else {
-            ed.feed_key(key(ch));
-        }
-    }
-    ed.feed_key(key_esc());
-}
-
 /// `((start_line, start_char), (end_line, end_char), severity)` — same shape
 /// as `lsp_diagnostics.rs`'s fixture (kept independent per this codebase's
 /// one-file-owns-its-fixtures convention).

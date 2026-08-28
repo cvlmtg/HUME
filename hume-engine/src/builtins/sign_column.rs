@@ -140,17 +140,11 @@ impl GutterColumn for SignColumn {
         }
 
         let mut cells = vec![GutterCell::blank(self.blank_scope); max_signs];
-        // Each sign carries its own resolved `slot` — this loop places, it
-        // never ranks. Sources are visited in registration order, so if two
-        // sources ever did claim the same slot on the same line (a source
-        // bug per `SignSource::signs_for_line`'s contract — slot collisions
-        // are supposed to be resolved upstream, before a sign is ever
-        // constructed) the later-registered source wins, matching every
-        // other equal-priority tie-break in the sign pipeline
-        // (`SourceStore`'s ascending-source-name order,
-        // `Editor::update_sign_providers`'s per-slot merge). A slot `>=
-        // max_signs` (ladder entry ranked below the configured width) is
-        // silently dropped, same as before.
+        // This loop places, it never ranks — each sign already carries its
+        // own resolved `slot`. Sources are visited in registration order, so
+        // if two ever did claim the same slot on the same line (a source
+        // bug per `SignSource::signs_for_line`'s contract), the
+        // later-registered source wins. A slot `>= max_signs` is dropped.
         for (_, src) in &self.sources {
             for sign in src.signs_for_line(line_idx, ctx) {
                 if let Some(cell) = cells.get_mut(sign.slot as usize) {

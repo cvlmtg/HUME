@@ -488,8 +488,8 @@ fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
 fn multi_slot_column_contended_slot_hides_the_earlier_sources_sign() {
     // Two sources both resolved to slot 0 (e.g. two producers picked the same
     // priority) — the later-registered one wins slot 0, and slot 1 stays
-    // blank since nothing claims it. Unlike the old priority-packing scheme,
-    // the loser is not spilled into a neighboring slot.
+    // blank since nothing claims it: a slot loser is never spilled into a
+    // neighboring slot.
     let mut registry = ScopeRegistry::new();
     let a = registry.intern("a");
     let b = registry.intern("b");

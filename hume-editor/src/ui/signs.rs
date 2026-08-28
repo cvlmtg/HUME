@@ -31,7 +31,7 @@ pub(crate) struct PaneSigns {
 
 /// One `SignSource` reading a shared per-frame line->signs map. Used for both
 /// the diagnostics map and the merged plugin-signs map — the two differ only
-/// in which `Arc` they wrap and which priority the write side assigns, not in
+/// in which `Arc` they wrap and which slot the write side assigns, not in
 /// how they're read.
 pub(crate) struct SharedSignSource {
     data: SignMap,

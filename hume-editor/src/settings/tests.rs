@@ -914,22 +914,32 @@ fn every_pane_scoped_key_is_also_buffer_and_global_scoped() {
 fn signcolumn_default_is_always_auto_sized() {
     let cfg = SignColumnConfig::default();
     assert_eq!(cfg.mode, SignColumnMode::Always);
-    assert_eq!(cfg.slots, None);
+    assert_eq!(cfg.pinned_slots, None);
     assert_eq!(cfg.slots_for(0), 1, "at least 1 slot even with zero signs");
+}
+
+#[test]
+fn signcolumn_auto_size_caps_at_max_auto_sign_slots() {
+    let cfg = SignColumnConfig::default();
+    assert_eq!(
+        cfg.slots_for(10),
+        crate::settings::MAX_AUTO_SIGN_SLOTS,
+        "auto-size never exceeds the cap, however long the ladder"
+    );
 }
 
 #[test]
 fn signcolumn_parses_always() {
     let cfg: SignColumnConfig = "always".parse().unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Always);
-    assert_eq!(cfg.slots, None, "bare always auto-sizes");
+    assert_eq!(cfg.pinned_slots, None, "bare always auto-sizes");
 }
 
 #[test]
 fn signcolumn_parses_auto() {
     let cfg: SignColumnConfig = "auto".parse().unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Auto);
-    assert_eq!(cfg.slots, None, "bare auto auto-sizes");
+    assert_eq!(cfg.pinned_slots, None, "bare auto auto-sizes");
 }
 
 #[test]
@@ -946,7 +956,7 @@ fn signcolumn_bare_and_explicit_one_are_distinct() {
 fn signcolumn_parses_always_with_columns() {
     let cfg: SignColumnConfig = "always:3".parse().unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Always);
-    assert_eq!(cfg.slots, Some(3));
+    assert_eq!(cfg.pinned_slots, Some(3));
     assert_eq!(cfg.slots_for(0), 3, "pinned count ignores the ladder");
 }
 
@@ -954,7 +964,7 @@ fn signcolumn_parses_always_with_columns() {
 fn signcolumn_parses_auto_with_columns() {
     let cfg: SignColumnConfig = "auto:2".parse().unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Auto);
-    assert_eq!(cfg.slots, Some(2));
+    assert_eq!(cfg.pinned_slots, Some(2));
     assert_eq!(cfg.slots_for(0), 2, "pinned count ignores the ladder");
 }
 
@@ -1006,7 +1016,7 @@ fn signcolumn_display_round_trips() {
 fn set_global_signcolumn() {
     let s = global("signcolumn", "auto:2").unwrap();
     assert_eq!(s.signcolumn.mode, SignColumnMode::Auto);
-    assert_eq!(s.signcolumn.slots, Some(2));
+    assert_eq!(s.signcolumn.pinned_slots, Some(2));
 }
 
 #[test]
@@ -1015,5 +1025,5 @@ fn set_buffer_signcolumn() {
     let ov = buffer("signcolumn", "always:3").unwrap();
     let cfg = ov.signcolumn(&global);
     assert_eq!(cfg.mode, SignColumnMode::Always);
-    assert_eq!(cfg.slots, Some(3));
+    assert_eq!(cfg.pinned_slots, Some(3));
 }

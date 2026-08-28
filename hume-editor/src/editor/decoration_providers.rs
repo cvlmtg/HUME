@@ -17,18 +17,22 @@ use hume_ops::pair::find_bracket_pair;
 /// Fixed priority every diagnostic sign carries, regardless of severity
 /// (severity only picks the scope/glyph-adjacent styling; per-line
 /// severity collapse happens before a diagnostic ever becomes a `Sign`).
-/// Used both to place `10` on the buffer's sign-priority ladder (when a
-/// diagnostic exists anywhere in the buffer) and to look its resolved
-/// slot back up.
-const DIAGNOSTIC_SIGN_PRIORITY: i16 = 10;
+const DIAGNOSTIC_SIGN_PRIORITY: i64 = 10;
 
-/// Upper bound on how many slots `signcolumn=always`/`auto` (no explicit
-/// `:N`) auto-sizes to. The ladder is plugin-controlled — a plugin whose
-/// `set-signs!` priority varies per line could otherwise grow the column
-/// without bound and eat the pane. A user who wants more pins
-/// `signcolumn=always:N` explicitly, which ignores this cap entirely
-/// (`SignColumnConfig::slots_for` never applies it to a pinned count).
-const MAX_AUTO_SIGN_SLOTS: u8 = 4;
+/// Inserts `priority` into `ladder` if not already present, keeping it
+/// sorted descending — the order `Editor::buffer_sign_ladder`'s slot
+/// assignment needs. Dedup-on-insert instead of collect+sort+dedup: ladders
+/// stay small (distinct priorities, capped by `MAX_AUTO_SIGN_SLOTS` once
+/// resolved) even when `signs_for_buffer` yields hundreds of same-priority
+/// entries (one per changed line, from a plugin like `core:git-diff`), so
+/// this costs `O(log k)` per call against a `k`-sized `Vec` rather than an
+/// `S`-sized allocation and an `O(S log S)` sort over every sign in the
+/// buffer.
+fn insert_priority(ladder: &mut Vec<i64>, priority: i64) {
+    if let Err(i) = ladder.binary_search_by(|probe| priority.cmp(probe)) {
+        ladder.insert(i, priority);
+    }
+}
 
 impl Editor {
     /// Snapshot of every pane's `(PaneId, BufferId)` — the entry point every
@@ -51,17 +55,14 @@ impl Editor {
     /// `DiagSeverity` itself lives in `self.state`. See
     /// [`Self::diagnostic_gutter_scopes`] for the sign-column counterpart.
     fn diagnostic_text_scopes(&mut self) -> [hume_engine::types::ScopeId; 4] {
-        if let Some(scopes) = self.state.diagnostic_text_scopes {
-            return scopes;
-        }
-        let scopes = [
-            self.view.registry.intern("diagnostic.error"),
-            self.view.registry.intern("diagnostic.warning"),
-            self.view.registry.intern("diagnostic.info"),
-            self.view.registry.intern("diagnostic.hint"),
-        ];
-        self.state.diagnostic_text_scopes = Some(scopes);
-        scopes
+        *self.state.diagnostic_text_scopes.get_or_insert_with(|| {
+            [
+                self.view.registry.intern("diagnostic.error"),
+                self.view.registry.intern("diagnostic.warning"),
+                self.view.registry.intern("diagnostic.info"),
+                self.view.registry.intern("diagnostic.hint"),
+            ]
+        })
     }
 
     /// Interned scope ids for the four diagnostic severities on the gutter
@@ -73,17 +74,14 @@ impl Editor {
     /// must not inherit — so the sign column reads a scope a themed
     /// gutter can style on its own terms instead.
     fn diagnostic_gutter_scopes(&mut self) -> [hume_engine::types::ScopeId; 4] {
-        if let Some(scopes) = self.state.diagnostic_gutter_scopes {
-            return scopes;
-        }
-        let scopes = [
-            self.view.registry.intern("error"),
-            self.view.registry.intern("warning"),
-            self.view.registry.intern("info"),
-            self.view.registry.intern("hint"),
-        ];
-        self.state.diagnostic_gutter_scopes = Some(scopes);
-        scopes
+        *self.state.diagnostic_gutter_scopes.get_or_insert_with(|| {
+            [
+                self.view.registry.intern("error"),
+                self.view.registry.intern("warning"),
+                self.view.registry.intern("info"),
+                self.view.registry.intern("hint"),
+            ]
+        })
     }
 
     /// Interned `ScopeId` for `ui.cursor.match` (bracket match highlight),
@@ -91,23 +89,19 @@ impl Editor {
     /// bracket-match `ScopedHighlighter` writes this into each span it
     /// pushes rather than carrying it fixed on the provider.
     fn bracket_match_scope(&mut self) -> hume_engine::types::ScopeId {
-        if let Some(id) = self.state.bracket_match_scope {
-            return id;
-        }
-        let id = self.view.registry.intern("ui.cursor.match");
-        self.state.bracket_match_scope = Some(id);
-        id
+        *self
+            .state
+            .bracket_match_scope
+            .get_or_insert_with(|| self.view.registry.intern("ui.cursor.match"))
     }
 
     /// Interned `ScopeId` for `ui.selection.search` (search match
     /// highlight) — see [`Self::bracket_match_scope`].
     fn search_match_scope(&mut self) -> hume_engine::types::ScopeId {
-        if let Some(id) = self.state.search_match_scope {
-            return id;
-        }
-        let id = self.view.registry.intern("ui.selection.search");
-        self.state.search_match_scope = Some(id);
-        id
+        *self
+            .state
+            .search_match_scope
+            .get_or_insert_with(|| self.view.registry.intern("ui.selection.search"))
     }
 
     /// Interned `ScopeId` for a plugin-supplied runtime scope name (extra
@@ -344,6 +338,11 @@ impl Editor {
 
         let floor = self.state.settings.lsp_diagnostics_severity_floor;
         let diag_scopes = self.diagnostic_gutter_scopes();
+        // Ladders are buffer-wide, not pane-wide — memoized here so a split
+        // view on one buffer builds each buffer's ladder once per frame,
+        // not once per pane showing it.
+        let mut ladders: rustc_hash::FxHashMap<BufferId, (Vec<i64>, u8)> =
+            rustc_hash::FxHashMap::default();
         for &(pid, bid) in &panes {
             let Some((diag_map, plugin_map)) = self.state.panes.render.get(pid).map(|r| {
                 (
@@ -378,38 +377,10 @@ impl Editor {
             // resolving to the trailing phantom line and vanishing.
             let last_content_char = text.len_chars().saturating_sub(1);
 
-            // Buffer-wide sign-priority ladder: the distinct priorities live
-            // anywhere in the buffer right now (not just the viewport),
-            // highest first. A sign's slot is its priority's position in
-            // this list — stable for the whole buffer, so scrolling never
-            // renumbers a channel's column, and a channel with no signs
-            // anywhere in the buffer claims no slot at all (see
-            // `docs/LSP.md`'s `set-signs!` contract).
-            let mut ladder: Vec<i16> = self
-                .state
-                .config
-                .decorations
-                .signs_for_buffer(bid)
-                .map(|(_, e)| e.priority.clamp(i16::MIN as i64, i16::MAX as i64) as i16)
-                .collect();
-            let has_diagnostic = self
-                .lsp
-                .diagnostics_for_range(bid, 0..text.len_chars(), floor)
-                .next()
-                .is_some();
-            if has_diagnostic {
-                ladder.push(DIAGNOSTIC_SIGN_PRIORITY);
-            }
-            ladder.sort_unstable_by(|a, b| b.cmp(a));
-            ladder.dedup();
-            let slot_of: rustc_hash::FxHashMap<i16, u8> = ladder
-                .iter()
-                .enumerate()
-                .map(|(slot, &priority)| (priority, slot as u8))
-                .collect();
-            // Auto-size (`slots: None`) is capped at `MAX_AUTO_SIGN_SLOTS`;
-            // an explicit `:N` ignores the cap and the ladder length both.
-            let slots = signcolumn.slots_for(ladder.len().min(MAX_AUTO_SIGN_SLOTS as usize));
+            let (ladder, slots) = ladders
+                .entry(bid)
+                .or_insert_with(|| self.buffer_sign_ladder(bid, floor, signcolumn))
+                .clone();
 
             // Diagnostics: every line a diagnostic touches gets a marker;
             // the most severe diagnostic wins when several touch one line.
@@ -444,22 +415,18 @@ impl Editor {
             {
                 let mut guard = diag_map.write_or_panic();
                 guard.clear();
-                if !diag_best.is_empty() {
-                    // Guaranteed present: a non-empty `diag_best` means at
-                    // least one diagnostic exists in the buffer's visible
-                    // range, which is a subset of the whole-buffer range
-                    // that set `has_diagnostic` and pushed this priority
-                    // onto `ladder` above.
-                    let diag_slot = *slot_of.get(&DIAGNOSTIC_SIGN_PRIORITY).expect(
-                        "diag_best non-empty implies has_diagnostic pushed this onto the ladder",
-                    );
+                // Absent when the diagnostic priority ranks below the
+                // buffer's resolved slot count — the ladder is already
+                // truncated to `slots` by `buffer_sign_ladder`.
+                if let Some(diag_slot) = ladder.iter().position(|&p| p == DIAGNOSTIC_SIGN_PRIORITY)
+                {
                     for (line, severity) in diag_best {
                         guard.insert(
                             line,
                             vec![Sign {
                                 text: std::borrow::Cow::Borrowed("●"),
                                 scope: diag_scopes[severity as usize],
-                                slot: diag_slot,
+                                slot: diag_slot as u8,
                             }],
                         );
                     }
@@ -467,17 +434,15 @@ impl Editor {
             }
 
             // Plugin signs (`set-signs!`): each entry's priority resolves to
-            // its slot via the ladder above; an entry whose slot doesn't fit
-            // the buffer's resolved `slots` is dropped here rather than
-            // passed through — bounds the per-line `Vec`
-            // `SharedSignSource::signs_for_line` clones every frame, same as
-            // the truncate this replaced. On a tie (two sources whose
-            // priorities resolve to the same slot) the first entry wins:
-            // `signs_for_buffer` (`SourceStore::for_buffer`) already yields
-            // entries ascending by source name, and `visible_line_anchored`
-            // preserves that order, so this is the same deterministic
-            // source-name tie-break the pipeline has always used — just
-            // applied per slot now instead of via a stable priority sort.
+            // its slot via the ladder above; an entry whose priority isn't
+            // on the (already slot-count-truncated) ladder is dropped here
+            // rather than passed through — bounds the per-line `Vec`
+            // `SharedSignSource::signs_for_line` clones every frame. On a
+            // tie (two sources whose priorities resolve to the same slot)
+            // the first entry wins: `signs_for_buffer`
+            // (`SourceStore::for_buffer`) already yields entries ascending
+            // by source name, and `visible_line_anchored` preserves that
+            // order.
             let plugin_raw = visible_line_anchored(
                 text,
                 &visible_lines,
@@ -485,44 +450,35 @@ impl Editor {
                 |e| e.pos,
             );
 
-            let mut plugin_all: rustc_hash::FxHashMap<usize, Vec<(u8, String, String)>> =
+            let mut plugin_all: rustc_hash::FxHashMap<usize, Vec<Sign>> =
                 rustc_hash::FxHashMap::default();
             for (_, line, e) in plugin_raw {
-                let priority = e.priority.clamp(i16::MIN as i64, i16::MAX as i64) as i16;
-                let slot = *slot_of
-                    .get(&priority)
-                    .expect("ladder was built from every priority signs_for_buffer(bid) yields");
-                if slot as usize >= slots as usize {
+                let Some(slot) = ladder.iter().position(|&p| p == e.priority) else {
                     continue;
+                };
+                let slot = slot as u8;
+                let scope = self.runtime_scope(&e.scope);
+                let entries = plugin_all.entry(line).or_default();
+                // Slot-ascending insert keeps a line's `Vec<Sign>` unique
+                // per slot and ordered left-to-right in one step; `Err` is
+                // the insertion point, `Ok` means an earlier
+                // (ascending-name) source already claimed this slot.
+                if let Err(i) = entries.binary_search_by_key(&slot, |s| s.slot) {
+                    entries.insert(
+                        i,
+                        Sign {
+                            text: std::borrow::Cow::Owned(e.text),
+                            scope,
+                            slot,
+                        },
+                    );
                 }
-                let line_entries = plugin_all.entry(line).or_default();
-                if line_entries.iter().any(|(s, _, _)| *s == slot) {
-                    continue; // slot already claimed by an earlier (ascending-name) source
-                }
-                line_entries.push((slot, e.text, e.scope));
             }
             {
                 let mut guard = plugin_map.write_or_panic();
                 guard.clear();
-                for (line, mut entries) in plugin_all {
-                    // Slot-ascending, so a line's stored `Vec<Sign>` reads
-                    // left-to-right the same way the gutter renders it —
-                    // `SignColumn::render_row_cells` itself doesn't need
-                    // this (it places by `sign.slot`, not by position), but
-                    // nothing downstream should have to guess the order.
-                    entries.sort_unstable_by_key(|(slot, _, _)| *slot);
-                    let signs: Vec<Sign> = entries
-                        .into_iter()
-                        .map(|(slot, text, scope_name)| {
-                            let scope = self.runtime_scope(&scope_name);
-                            Sign {
-                                text: std::borrow::Cow::Owned(text),
-                                scope,
-                                slot,
-                            }
-                        })
-                        .collect();
-                    guard.insert(line, signs);
+                for (line, entries) in plugin_all {
+                    guard.insert(line, entries);
                 }
             }
 
@@ -537,29 +493,58 @@ impl Editor {
                 !(diag_empty && plugin_empty)
             };
             let width = match signcolumn.mode {
-                crate::settings::SignColumnMode::Always => slots.saturating_add(1),
-                crate::settings::SignColumnMode::Auto => {
-                    if has_signs {
-                        slots.saturating_add(1)
-                    } else {
-                        0
-                    }
-                }
+                crate::settings::SignColumnMode::Auto if !has_signs => 0,
+                _ => slots + 1,
             };
             self.view.panes[pid].providers.sync_sign_column_width(width);
         }
+    }
+
+    /// Buffer-wide sign-priority ladder and its resolved slot count: the
+    /// buffer's distinct sign priorities (across every source, plus
+    /// `DIAGNOSTIC_SIGN_PRIORITY` if the buffer has a diagnostic), highest
+    /// first, truncated to `slots`. A sign's slot is its priority's position
+    /// in this list — stable for the whole buffer, so scrolling never
+    /// renumbers a channel's column, and a channel with no signs anywhere in
+    /// the buffer claims no slot at all (see `docs/LSP.md`'s `set-signs!`
+    /// contract). Called once per buffer per frame by `update_sign_providers`
+    /// (memoized there across panes), never per line — `signs_for_buffer`
+    /// walks every sign in the buffer, not just the visible ones.
+    fn buffer_sign_ladder(
+        &self,
+        bid: BufferId,
+        floor: DiagSeverity,
+        signcolumn: crate::settings::SignColumnConfig,
+    ) -> (Vec<i64>, u8) {
+        let mut ladder: Vec<i64> = Vec::new();
+        for (_, e) in self.state.config.decorations.signs_for_buffer(bid) {
+            insert_priority(&mut ladder, e.priority);
+        }
+        let has_diagnostic = self
+            .lsp
+            .diagnostics_for_range(
+                bid,
+                0..self.state.buffers.get(bid).text().len_chars(),
+                floor,
+            )
+            .next()
+            .is_some();
+        if has_diagnostic {
+            insert_priority(&mut ladder, DIAGNOSTIC_SIGN_PRIORITY);
+        }
+        let slots = signcolumn.slots_for(ladder.len());
+        ladder.truncate(slots as usize);
+        (ladder, slots)
     }
 
     /// Interned `ScopeId` for `ui.virtual.inlay-hint`, cached across frames —
     /// every inlay hint shares this one scope (locked decision: no per-hint
     /// styling in v1), unlike `runtime_scope`'s plugin-name-keyed cache.
     fn inlay_hint_scope(&mut self) -> hume_engine::types::ScopeId {
-        if let Some(id) = self.state.inlay_hint_scope {
-            return id;
-        }
-        let id = self.view.registry.intern("ui.virtual.inlay-hint");
-        self.state.inlay_hint_scope = Some(id);
-        id
+        *self
+            .state
+            .inlay_hint_scope
+            .get_or_insert_with(|| self.view.registry.intern("ui.virtual.inlay-hint"))
     }
 
     /// Sync per-pane inlay-hint decorations from the
@@ -710,12 +695,10 @@ impl Editor {
     /// line — see `update_virtual_line_providers`). Cached the same way as
     /// [`Self::inlay_hint_scope`].
     fn virtual_text_fallback_scope(&mut self) -> hume_engine::types::ScopeId {
-        if let Some(id) = self.state.virtual_text_fallback_scope {
-            return id;
-        }
-        let id = self.view.registry.intern("ui.virtual");
-        self.state.virtual_text_fallback_scope = Some(id);
-        id
+        *self
+            .state
+            .virtual_text_fallback_scope
+            .get_or_insert_with(|| self.view.registry.intern("ui.virtual"))
     }
 
     /// Sync per-pane virtual-line decorations from the
@@ -873,9 +856,8 @@ impl Editor {
 /// order — `SourceStore::set` sorts by position, so "later" means originally
 /// further along the buffer); across sources, tie-break by source name,
 /// mirroring the sign pipeline (`SourceStore::set` keeps sources ascending by
-/// name; `update_sign_providers`'s *stable* priority sort over that input
-/// leaves same-priority ties in source order — i.e. the alphabetically first
-/// source wins).
+/// name; `update_sign_providers`'s per-slot merge keeps the first entry it
+/// sees for a contended slot — i.e. the alphabetically first source wins).
 ///
 /// A single stable sort **descending** by source name gets both properties
 /// from one `FxHashMap::insert`-per-entry fold: one source's own entries

@@ -8,30 +8,9 @@
 // bare `Pane::new`) — `PaneVirtualLines` is only registered by `build_pane`,
 // same reasoning as `lsp_render.rs`.
 
-use std::path::Path;
-
 use super::*;
 use hume_engine::pipeline::RenderContext;
 use hume_grid::{Rect, Rgb};
-use hume_scripting::ScriptingHost;
-
-fn run(ed: &mut Editor, tmp: &Path, source: &str) {
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(ed, &mut host, source, tmp);
-    ed.scripting = Some(host);
-}
-
-fn type_text(ed: &mut Editor, text: &str) {
-    ed.feed_key(key('i'));
-    for ch in text.chars() {
-        if ch == '\n' {
-            ed.feed_key(key_enter());
-        } else {
-            ed.feed_key(key(ch));
-        }
-    }
-    ed.feed_key(key_esc());
-}
 
 /// The synced `VirtualLine`s filed under `line` on the focused pane, after a
 /// `prepare_frame` — the same read `clearing_the_store_removes_the_virtual_line_next_frame`
