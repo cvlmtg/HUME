@@ -1,16 +1,7 @@
 // Steel minibuffer prompt: (prompt! label
 // on-confirm #:prefill text), (symbol-under-cursor bid).
 
-use std::path::Path;
-
 use super::*;
-use hume_scripting::ScriptingHost;
-
-fn run(ed: &mut Editor, tmp: &Path, source: &str) {
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(ed, &mut host, source, tmp);
-    ed.scripting = Some(host);
-}
 
 #[test]
 fn prompt_confirm_calls_callback_with_typed_text() {

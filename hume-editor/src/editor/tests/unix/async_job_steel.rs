@@ -4,20 +4,12 @@
 // coverage that never actually spawns anything, and `unix/async_job.rs` for
 // the Rust-only registry/drain coverage that skips Steel entirely.
 
-use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use super::*;
 use crate::editor::dispatch::ArgSource;
-use hume_scripting::ScriptingHost;
-
-fn run(ed: &mut Editor, tmp: &Path, source: &str) {
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(ed, &mut host, source, tmp);
-    ed.scripting = Some(host);
-}
 
 fn call(ed: &mut Editor, name: &str) {
     ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);

@@ -10,8 +10,14 @@
 
 ;; ── Signs ────────────────────────────────────────────────────────────────────
 
-;;; Only one sign producer per buffer here, so relative priority among our
-;;; own signs never matters.
+;;; Only one sign producer per buffer here, so relative priority *within*
+;;; our own signs never matters — but the value 0 is externally significant:
+;;; `set-signs!`'s priority now picks this plugin's slot on the buffer-wide
+;;; sign-priority ladder against every other source, diagnostics' fixed
+;;; priority 10 included (see docs/LSP.md's `set-signs!` entry). 0 puts
+;;; git-diff last in that ladder, so its column is the first to fall off
+;;; signcolumn's auto-size cap when several higher-priority channels share
+;;; the buffer.
 (define git-diff/*sign-priority* 0)
 
 ;;; One sign per line in `[new-start, new-start + new-count)`.

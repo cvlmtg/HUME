@@ -14,18 +14,6 @@ use crate::editor::decorations::InlayHintEntry;
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
 
-fn type_text(ed: &mut Editor, text: &str) {
-    ed.feed_key(key('i'));
-    for ch in text.chars() {
-        if ch == '\n' {
-            ed.feed_key(key_enter());
-        } else {
-            ed.feed_key(key(ch));
-        }
-    }
-    ed.feed_key(key_esc());
-}
-
 #[test]
 fn after_hint_renders_dimmed_immediately_after_its_char() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();

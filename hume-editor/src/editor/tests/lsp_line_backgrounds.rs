@@ -11,25 +11,6 @@
 use super::*;
 use hume_engine::pipeline::RenderContext;
 use hume_grid::{Rect, Rgb};
-use hume_scripting::ScriptingHost;
-
-fn run(ed: &mut Editor, tmp: &std::path::Path, source: &str) {
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(ed, &mut host, source, tmp);
-    ed.scripting = Some(host);
-}
-
-fn type_text(ed: &mut Editor, text: &str) {
-    ed.feed_key(key('i'));
-    for ch in text.chars() {
-        if ch == '\n' {
-            ed.feed_key(key_enter());
-        } else {
-            ed.feed_key(key(ch));
-        }
-    }
-    ed.feed_key(key_esc());
-}
 
 /// Reuses `ui.selection.search` purely as a scope guaranteed to carry a
 /// distinct, known `bg` in the embedded snapshot theme — the tint mechanism

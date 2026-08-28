@@ -29,6 +29,10 @@ export const SCOPES = [
     "diagnostic.info.message", "diagnostic.hint.message",
     "diagnostic.error.message-text", "diagnostic.warning.message-text",
     "diagnostic.info.message-text", "diagnostic.hint.message-text",
+    // Gutter counterparts of the four "diagnostic.*" scopes above — the
+    // sign column reads these bare names so a gutter glyph never inherits
+    // the text-span squiggle's underline.
+    "error", "warning", "info", "hint",
   ]],
 ];
 

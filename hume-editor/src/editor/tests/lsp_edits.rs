@@ -9,7 +9,6 @@ use crate::editor::lsp::LspState;
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
-use hume_scripting::ScriptingHost;
 
 /// Attaches the focused buffer to a `Running` scripted server (UTF-8 —
 /// picking the non-default encoding here doubles as a check that
@@ -35,12 +34,6 @@ fn attach_running_utf8_server(ed: &mut Editor) -> ServerId {
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
     sid
-}
-
-fn run(ed: &mut Editor, tmp: &Path, source: &str) {
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(ed, &mut host, source, tmp);
-    ed.scripting = Some(host);
 }
 
 // ── apply-text-edits! ───────────────────────────────────────────────────────

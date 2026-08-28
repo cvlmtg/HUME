@@ -358,6 +358,66 @@ fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
     );
 }
 
+/// Bare `auto` (no `:N`) auto-sizes to the live ladder exactly like bare
+/// `always` — `auto`'s only distinct behavior is collapsing to zero width
+/// when no signs are visible at all (see
+/// `gutter_width_collapses_under_auto_mode_with_no_signs`), which this test
+/// doesn't exercise since both channels here have live signs.
+#[test]
+fn bare_auto_auto_sizes_to_multiple_channels_like_bare_always() {
+    let (ed, pid) = plugin_sign_editor(
+        Some("auto"),
+        r#"(set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 3)))
+           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 9)))"#,
+    );
+
+    let signs = plugin_signs(&ed, pid);
+    let line_signs = &signs[&0];
+    assert_eq!(
+        line_signs.len(),
+        2,
+        "two distinct priorities — auto grows past its 1-slot floor, same as bare always"
+    );
+    assert_eq!(
+        sign_column_width(&ed, pid),
+        3,
+        "auto-sized to 2 slots + 1 padding, same width bare always resolves to"
+    );
+}
+
+/// Auto-sizing (bare `always`/`auto`) never grows past
+/// `MAX_AUTO_SIGN_SLOTS` — a channel ranked below that cap gets no slot at
+/// all, buffer-wide, not just on lines where the higher-priority channels
+/// are also present.
+#[test]
+fn auto_size_cap_hides_the_lowest_priority_channel_buffer_wide() {
+    let (ed, pid) = plugin_sign_editor(
+        None,
+        r#"(set-signs! "a" (current-buffer) (list (list 0 "5" "sc" 5)))
+           (set-signs! "b" (current-buffer) (list (list 0 "4" "sc" 4)))
+           (set-signs! "c" (current-buffer) (list (list 0 "3" "sc" 3)))
+           (set-signs! "d" (current-buffer) (list (list 0 "2" "sc" 2)))
+           (set-signs! "e" (current-buffer) (list (list 0 "1" "sc" 1)))"#,
+    );
+
+    let signs = plugin_signs(&ed, pid);
+    let line_signs = &signs[&0];
+    assert_eq!(
+        line_signs.len(),
+        4,
+        "5 distinct priorities registered, but the auto-size cap admits only the top 4"
+    );
+    assert!(
+        line_signs.iter().all(|s| s.text != "1"),
+        "priority 1 (ranked 5th) has no slot at all — it isn't merely dropped from this line"
+    );
+    assert_eq!(
+        sign_column_width(&ed, pid),
+        5,
+        "4 slots + 1 padding, capped regardless of how many distinct priorities exist"
+    );
+}
+
 /// Pinning `always:1` caps the column at one slot regardless of how many
 /// distinct priorities the ladder holds — the lower-priority channel is
 /// hidden buffer-wide, not just squeezed off this one line.

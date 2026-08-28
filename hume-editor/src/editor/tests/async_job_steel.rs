@@ -4,17 +4,8 @@
 // the real-spawn end-to-end coverage (happy path, nonzero exit, missing
 // binary and empty-cmd spawn failures, kill-on-cancel).
 
-use std::path::Path;
-
 use super::*;
 use crate::editor::dispatch::ArgSource;
-use hume_scripting::ScriptingHost;
-
-fn run(ed: &mut Editor, tmp: &Path, source: &str) {
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(ed, &mut host, source, tmp);
-    ed.scripting = Some(host);
-}
 
 fn call(ed: &mut Editor, name: &str) {
     ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);

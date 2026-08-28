@@ -2,16 +2,7 @@
 // completion-update-filter!, completion-top, completion-accept!,
 // completion-dismiss!.
 
-use std::path::Path;
-
 use super::*;
-use hume_scripting::ScriptingHost;
-
-fn run(ed: &mut Editor, tmp: &Path, source: &str) {
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(ed, &mut host, source, tmp);
-    ed.scripting = Some(host);
-}
 
 #[test]
 fn begin_then_top_returns_items_ranked_by_sort_text_with_no_filter() {

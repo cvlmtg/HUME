@@ -7,18 +7,10 @@
 // need a real grammar; the fallback test needs no fixture.
 
 use hume_grid::Rect;
-use std::path::Path;
 
 use super::*;
 use hume_engine::pipeline::RenderContext;
-use hume_scripting::ScriptingHost;
 use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
-
-fn run(ed: &mut Editor, tmp: &Path, source: &str) {
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(ed, &mut host, source, tmp);
-    ed.scripting = Some(host);
-}
 
 /// Attach the real `markdown` grammar fixture, no injections — these tests
 /// only check that top-level spans reach the popup, not fenced-code

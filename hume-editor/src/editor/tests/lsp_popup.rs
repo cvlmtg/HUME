@@ -4,18 +4,10 @@
 // current rect.
 
 use hume_grid::Rect;
-use std::path::Path;
 use std::sync::Arc;
 
 use super::*;
 use hume_engine::pipeline::RenderContext;
-use hume_scripting::ScriptingHost;
-
-fn run(ed: &mut Editor, tmp: &Path, source: &str) {
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(ed, &mut host, source, tmp);
-    ed.scripting = Some(host);
-}
 
 fn popup_view(ed: &Editor) -> Option<(Vec<String>, u16, u16)> {
     ed.state

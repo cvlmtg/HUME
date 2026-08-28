@@ -1,13 +1,14 @@
 //! Direct unit tests for the pure per-line helpers `decoration_providers.rs`
 //! shares across its render bridges — `last_writer_per_line` (the
-//! per-line collapse policy) and `resolve_decoration_line` (the position
-//! contract fix). Full-`Editor` integration coverage for the bridges that
-//! call these lives in `tests/lsp_decorations.rs` and
-//! `tests/lsp_inlay_hints.rs`; these tests isolate the shared logic itself
-//! so a future kind reusing it inherits the same guarantees without redoing
-//! the bridge-level plumbing.
+//! per-line collapse policy), `resolve_decoration_line` (the position
+//! contract fix), and `insert_priority` (the sign-ladder builder). Full-
+//! `Editor` integration coverage for the bridges that call these lives in
+//! `tests/lsp_decorations.rs`, `tests/lsp_inlay_hints.rs`, and
+//! `tests/lsp_signs.rs`; these tests isolate the shared logic itself so a
+//! future kind reusing it inherits the same guarantees without redoing the
+//! bridge-level plumbing.
 
-use super::{last_writer_per_line, resolve_decoration_line};
+use super::{insert_priority, last_writer_per_line, resolve_decoration_line};
 
 // ── `resolve_decoration_line` ───────────────────────────────────────────────
 
@@ -73,4 +74,23 @@ fn last_writer_per_line_keeps_entries_on_distinct_lines_independent() {
     let result = last_writer_per_line(entries);
     assert_eq!(result.get(&1), Some(&"one"));
     assert_eq!(result.get(&2), Some(&"two"));
+}
+
+// ── `insert_priority` ───────────────────────────────────────────────────────
+
+#[test]
+fn insert_priority_keeps_the_ladder_sorted_descending_and_deduped() {
+    // The comparator (`priority.cmp(probe)`, not the usual `probe.cmp(&target)`)
+    // is inverted on purpose to search a descending-sorted `Vec` — easy to
+    // write backwards, so this pins the resulting order directly rather
+    // than trusting the binary search alone.
+    let mut ladder = Vec::new();
+    for p in [5, 20, 5, 1, 20, 10] {
+        insert_priority(&mut ladder, p);
+    }
+    assert_eq!(
+        ladder,
+        vec![20, 10, 5, 1],
+        "distinct priorities only, highest first; duplicates are no-ops"
+    );
 }

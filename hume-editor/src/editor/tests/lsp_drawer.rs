@@ -8,13 +8,6 @@ use std::path::Path;
 
 use super::*;
 use hume_engine::pipeline::RenderContext;
-use hume_scripting::ScriptingHost;
-
-fn run(ed: &mut Editor, tmp: &Path, source: &str) {
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(ed, &mut host, source, tmp);
-    ed.scripting = Some(host);
-}
 
 fn arm_three_items(ed: &mut Editor, tmp: &Path) {
     run(

@@ -126,15 +126,22 @@ impl SignColumnConfig {
     /// of distinct sign priorities currently live in the buffer. An explicit
     /// `:N` pins the count regardless of `ladder_len` or `MAX_AUTO_SIGN_SLOTS`;
     /// auto-size clamps to `[1, MAX_AUTO_SIGN_SLOTS]` — never below 1, so the
-    /// column stays visible under `always` even with zero signs. Gutter width
-    /// (the `+1` padding column) is derived at the call site, not here —
-    /// `Editor::buffer_sign_ladder` is the only caller and it needs the bare
-    /// slot count to truncate the ladder to it.
+    /// column stays visible under `always` even with zero signs. Returns a
+    /// bare slot count, not a gutter width — `Editor::buffer_sign_ladder`
+    /// (its only caller) needs the bare count to truncate the ladder to it,
+    /// and leaves the `+1` padding-column conversion to
+    /// `SignColumn::width_for_slots`, applied later at the point the
+    /// resolved width is actually synced to the gutter.
     pub fn slots_for(self, ladder_len: usize) -> u8 {
         self.pinned_slots
             .unwrap_or_else(|| ladder_len.clamp(1, MAX_AUTO_SIGN_SLOTS as usize) as u8)
     }
 
+    /// Completion hints only, not an exhaustive enum like `TabStyle::VALUES`
+    /// — `:N` accepts 1–127, which can't be listed in full. `:1`/`:2` are
+    /// illustrative of the pinned-vs-auto-size distinction, not a reflection
+    /// of `MAX_AUTO_SIGN_SLOTS`; raising that cap doesn't require extending
+    /// this list.
     pub const VALUES: &'static [&'static str] =
         &["always", "auto", "always:1", "auto:1", "always:2", "auto:2"];
 }

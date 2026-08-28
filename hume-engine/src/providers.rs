@@ -82,8 +82,8 @@ pub trait GutterColumn {
 
     /// Produce content for one display row as a sequence of cells.
     /// Single-cell columns (like `LineNumberColumn`) return a `Vec` with one element.
-    /// Multi-cell columns (like `SignColumn` with `signcolumn=always:N`) return
-    /// multiple cells, one per sign slot.
+    /// Multi-cell columns (like `SignColumn` sized past one slot, `signcolumn=
+    /// always`/`auto` included) return multiple cells, one per sign slot.
     fn render_row_cells(&self, kind: RowKind, ctx: &GutterRowCtx) -> Vec<GutterCell>;
 
     /// Downcast support for per-frame config sync (e.g. updating `LineNumberStyle`).

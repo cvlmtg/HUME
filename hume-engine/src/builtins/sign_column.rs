@@ -4,11 +4,6 @@ use std::borrow::Cow;
 use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterRowCtx, ProviderId};
 use crate::types::{RowKind, ScopeId};
 
-/// Default configured width of a `SignColumn`: one sign cell plus one column
-/// of right-padding, matching every other gutter column's separator
-/// convention (see `render::compose_gutter`).
-const DEFAULT_WIDTH: u8 = 2;
-
 /// One sign a `SignSource` renders for a buffer line (diagnostic marker, git
 /// change indicator, breakpoint, bookmark, ...).
 #[derive(Clone, Debug)]
@@ -63,17 +58,27 @@ pub struct SignColumn {
 }
 
 impl SignColumn {
+    /// Gutter width for `slots` sign slots: one cell per slot plus one
+    /// column of right-padding, matching every other gutter column's
+    /// separator convention (see `render::compose_gutter`). The single place
+    /// this arithmetic direction is written — `render_row_cells`'s
+    /// `width.saturating_sub(1)` is its inverse, computing slots from a
+    /// stored width instead.
+    pub const fn width_for_slots(slots: u8) -> u8 {
+        slots.saturating_add(1)
+    }
+
     pub fn new(blank_scope: ScopeId) -> Self {
         Self {
             sources: Vec::new(),
-            width: DEFAULT_WIDTH,
+            width: Self::width_for_slots(1),
             next_id: 0,
             blank_scope,
         }
     }
 
-    /// No production caller — production always starts at `DEFAULT_WIDTH`
-    /// via `new` and resizes through `set_width`; kept as a test helper for
+    /// No production caller — production always starts at one slot via `new`
+    /// and resizes through `set_width`; kept as a test helper for
     /// constructing a lane already at a specific width.
     #[cfg(test)]
     pub fn with_width(width: u8, blank_scope: ScopeId) -> Self {

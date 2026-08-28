@@ -19,15 +19,30 @@ use hume_ops::pair::find_bracket_pair;
 /// severity collapse happens before a diagnostic ever becomes a `Sign`).
 const DIAGNOSTIC_SIGN_PRIORITY: i64 = 10;
 
+/// `(editing-area scope, gutter scope)` per diagnostic severity, in
+/// `DiagSeverity` discriminant order (`[error, warning, info, hint]`) — the
+/// gutter half is Helix's own bare naming for this surface (see
+/// `docs.helix-editor.com/themes.html`). Paired in one table, rather than two
+/// independently-ordered arrays, so the two render surfaces' scope names
+/// can't drift out of severity order relative to each other; see
+/// [`Editor::diagnostic_text_scopes`]/[`Editor::diagnostic_gutter_scopes`],
+/// which each intern one column of it.
+const DIAGNOSTIC_SCOPE_NAMES: [(&str, &str); 4] = [
+    ("diagnostic.error", "error"),
+    ("diagnostic.warning", "warning"),
+    ("diagnostic.info", "info"),
+    ("diagnostic.hint", "hint"),
+];
+
 /// Inserts `priority` into `ladder` if not already present, keeping it
 /// sorted descending — the order `Editor::buffer_sign_ladder`'s slot
-/// assignment needs. Dedup-on-insert instead of collect+sort+dedup: ladders
-/// stay small (distinct priorities, capped by `MAX_AUTO_SIGN_SLOTS` once
-/// resolved) even when `signs_for_buffer` yields hundreds of same-priority
-/// entries (one per changed line, from a plugin like `core:git-diff`), so
-/// this costs `O(log k)` per call against a `k`-sized `Vec` rather than an
-/// `S`-sized allocation and an `O(S log S)` sort over every sign in the
-/// buffer.
+/// assignment needs. Dedup-on-insert instead of collect+sort+dedup: the
+/// binary search is `O(log k)` against a `k`-sized `Vec`; a genuine
+/// insertion (not a dedup hit) still costs `O(k)` for the shift, but the
+/// caller truncates `ladder` back to its slot cap after every call, so `k`
+/// never grows past that cap — even when `signs_for_buffer` yields hundreds
+/// of same-priority entries (one per changed line, from a plugin like
+/// `core:git-diff`) or hundreds of *distinct* ones.
 fn insert_priority(ladder: &mut Vec<i64>, priority: i64) {
     if let Err(i) = ladder.binary_search_by(|probe| priority.cmp(probe)) {
         ladder.insert(i, priority);
@@ -49,38 +64,24 @@ impl Editor {
     }
 
     /// Interned scope ids for the four diagnostic severities on the
-    /// editing-area surface (buffer-text highlights), in `DiagSeverity`
-    /// discriminant order (`[error, warning, info, hint]`) — resolved once
-    /// and cached, since interning needs `&mut self.view.registry` but
+    /// editing-area surface (buffer-text highlights) — resolved once and
+    /// cached, since interning needs `&mut self.view.registry` but
     /// `DiagSeverity` itself lives in `self.state`. See
     /// [`Self::diagnostic_gutter_scopes`] for the sign-column counterpart.
     fn diagnostic_text_scopes(&mut self) -> [hume_engine::types::ScopeId; 4] {
         *self.state.diagnostic_text_scopes.get_or_insert_with(|| {
-            [
-                self.view.registry.intern("diagnostic.error"),
-                self.view.registry.intern("diagnostic.warning"),
-                self.view.registry.intern("diagnostic.info"),
-                self.view.registry.intern("diagnostic.hint"),
-            ]
+            DIAGNOSTIC_SCOPE_NAMES.map(|(text, _)| self.view.registry.intern(text))
         })
     }
 
     /// Interned scope ids for the four diagnostic severities on the gutter
-    /// surface (`error`/`warning`/`info`/`hint` — Helix's own scope names
-    /// for this surface, see `docs.helix-editor.com/themes.html`), in
-    /// `DiagSeverity` discriminant order. Kept separate from
-    /// [`Self::diagnostic_text_scopes`]: the editing-area scopes carry an
-    /// `underline` modifier meant for a text span, which a gutter glyph
-    /// must not inherit — so the sign column reads a scope a themed
-    /// gutter can style on its own terms instead.
+    /// surface. Kept separate from [`Self::diagnostic_text_scopes`]: the
+    /// editing-area scopes carry an `underline` modifier meant for a text
+    /// span, which a gutter glyph must not inherit — so the sign column
+    /// reads a scope a themed gutter can style on its own terms instead.
     fn diagnostic_gutter_scopes(&mut self) -> [hume_engine::types::ScopeId; 4] {
         *self.state.diagnostic_gutter_scopes.get_or_insert_with(|| {
-            [
-                self.view.registry.intern("error"),
-                self.view.registry.intern("warning"),
-                self.view.registry.intern("info"),
-                self.view.registry.intern("hint"),
-            ]
+            DIAGNOSTIC_SCOPE_NAMES.map(|(_, gutter)| self.view.registry.intern(gutter))
         })
     }
 
@@ -332,7 +333,7 @@ impl Editor {
     /// sign column's width feeds `Pane::content_width`, which decides the
     /// wrap column the scroll step's `RowMap` resolves against.
     pub(super) fn update_sign_providers(&mut self) {
-        use hume_engine::builtins::sign_column::Sign;
+        use hume_engine::builtins::sign_column::{Sign, SignColumn};
 
         let panes = self.decorated_panes();
 
@@ -417,8 +418,12 @@ impl Editor {
                 guard.clear();
                 // Absent when the diagnostic priority ranks below the
                 // buffer's resolved slot count — the ladder is already
-                // truncated to `slots` by `buffer_sign_ladder`.
-                if let Some(diag_slot) = ladder.iter().position(|&p| p == DIAGNOSTIC_SIGN_PRIORITY)
+                // truncated to `slots` by `buffer_sign_ladder`. `ladder` is
+                // kept sorted descending (`insert_priority`'s invariant), so
+                // a binary search finds it in `O(log slots)` against the
+                // same comparator that put it there.
+                if let Ok(diag_slot) =
+                    ladder.binary_search_by(|probe| DIAGNOSTIC_SIGN_PRIORITY.cmp(probe))
                 {
                     for (line, severity) in diag_best {
                         guard.insert(
@@ -453,7 +458,9 @@ impl Editor {
             let mut plugin_all: rustc_hash::FxHashMap<usize, Vec<Sign>> =
                 rustc_hash::FxHashMap::default();
             for (_, line, e) in plugin_raw {
-                let Some(slot) = ladder.iter().position(|&p| p == e.priority) else {
+                // Same binary search as the diagnostic slot lookup above —
+                // `ladder` is sorted descending by `insert_priority`.
+                let Ok(slot) = ladder.binary_search_by(|probe| e.priority.cmp(probe)) else {
                     continue;
                 };
                 let slot = slot as u8;
@@ -474,19 +481,14 @@ impl Editor {
                     );
                 }
             }
-            {
-                let mut guard = plugin_map.write_or_panic();
-                guard.clear();
-                for (line, entries) in plugin_all {
-                    guard.insert(line, entries);
-                }
-            }
+            *plugin_map.write_or_panic() = plugin_all;
 
             // Compute sign column width from the buffer's `signcolumn` setting:
-            // `always` keeps it visible at the configured width; `auto` collapses
-            // to zero when no signs are visible in the current viewport (diag_map/
-            // plugin_map above only hold visible-line entries — a sign elsewhere
-            // in the buffer, scrolled out of view, does not keep the column open).
+            // `always` keeps it visible at the resolved width (`slots + 1`);
+            // `auto` collapses to zero when no signs are visible in the current
+            // viewport (diag_map/plugin_map above only hold visible-line
+            // entries — a sign elsewhere in the buffer, scrolled out of view,
+            // does not keep the column open).
             let has_signs = {
                 let diag_empty = diag_map.read_or_panic().is_empty();
                 let plugin_empty = plugin_map.read_or_panic().is_empty();
@@ -494,7 +496,7 @@ impl Editor {
             };
             let width = match signcolumn.mode {
                 crate::settings::SignColumnMode::Auto if !has_signs => 0,
-                _ => slots + 1,
+                _ => SignColumn::width_for_slots(slots),
             };
             self.view.panes[pid].providers.sync_sign_column_width(width);
         }
@@ -516,9 +518,22 @@ impl Editor {
         floor: DiagSeverity,
         signcolumn: crate::settings::SignColumnConfig,
     ) -> (Vec<i64>, u8) {
+        // Caps the ladder during the build, not just at the end, to bound
+        // `insert_priority`'s per-call `Vec::insert` shift to `cap` instead
+        // of letting it grow with every distinct priority ever registered —
+        // `signs_for_buffer` walks the whole buffer, so an unbounded ladder
+        // here would cost `O(S²)` per frame for `S` distinct priorities.
+        // Provably identical final result either way: pinned mode's
+        // `slots_for` ignores the ladder length entirely, and auto mode's
+        // `clamp(len, 1, MAX_AUTO_SIGN_SLOTS)` agrees with
+        // `clamp(min(len, cap), 1, cap)` for `cap == MAX_AUTO_SIGN_SLOTS`.
+        let cap = signcolumn
+            .pinned_slots
+            .unwrap_or(crate::settings::MAX_AUTO_SIGN_SLOTS) as usize;
         let mut ladder: Vec<i64> = Vec::new();
         for (_, e) in self.state.config.decorations.signs_for_buffer(bid) {
             insert_priority(&mut ladder, e.priority);
+            ladder.truncate(cap);
         }
         let has_diagnostic = self
             .lsp
@@ -531,6 +546,7 @@ impl Editor {
             .is_some();
         if has_diagnostic {
             insert_priority(&mut ladder, DIAGNOSTIC_SIGN_PRIORITY);
+            ladder.truncate(cap);
         }
         let slots = signcolumn.slots_for(ladder.len());
         ladder.truncate(slots as usize);

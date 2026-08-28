@@ -4,19 +4,11 @@
 // anything, and `unix/picker_source.rs` for the Rust-only drain coverage
 // that skips Steel entirely.
 
-use std::path::Path;
 use std::time::{Duration, Instant};
 
 use super::*;
 use crate::editor::dispatch::ArgSource;
 use hume_engine::pipeline::RenderContext;
-use hume_scripting::ScriptingHost;
-
-fn run(ed: &mut Editor, tmp: &Path, source: &str) {
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(ed, &mut host, source, tmp);
-    ed.scripting = Some(host);
-}
 
 fn call(ed: &mut Editor, name: &str) {
     ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
