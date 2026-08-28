@@ -10,9 +10,14 @@ use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 
-/// Attaches the focused buffer to a `Running` scripted server (UTF-8 —
-/// picking the non-default encoding here doubles as a check that
-/// `apply-text-edits!` actually consults it rather than assuming UTF-16).
+/// Attaches the focused buffer to a `Running` scripted server negotiated on
+/// UTF-8. Negotiating the non-default encoding here does not by itself
+/// prove `apply-text-edits!` consults it rather than assuming UTF-16 — a
+/// wire offset only diverges between the two encodings on a line with a
+/// multi-byte character, so most fixtures below (all ASCII) would pass
+/// identically either way. The actual proof is
+/// `apply_text_edits_utf8_server_uses_byte_offsets_not_utf16_units`, whose
+/// fixture is chosen specifically to make that divergence observable.
 fn attach_running_utf8_server(ed: &mut Editor) -> ServerId {
     let mut backend = InlineLspBackend::new();
     backend.respond_to(
@@ -54,6 +59,28 @@ fn apply_text_edits_single_edit() {
     type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "aXYdef\n");
     let _ = bid;
+}
+
+/// The encoding oracle: on line "aébcdef", `é` is 1 char but 2 UTF-8 bytes
+/// and only 1 UTF-16 code unit, so byte offset 3 and code-unit offset 3 name
+/// different characters (`b` vs `c`). A wire edit of `(0,3)-(0,4)` must
+/// replace `b`, not `c` — if `apply-text-edits!` ever stopped consulting the
+/// negotiated encoding and assumed UTF-16, this would silently corrupt the
+/// wrong character instead of failing loudly.
+#[test]
+fn apply_text_edits_utf8_server_uses_byte_offsets_not_utf16_units() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>ébcdef\n");
+    attach_running_utf8_server(&mut ed);
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (apply-text-edits! (current-buffer)
+               (list (list (cons 0 3) (cons 0 4) "X")))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(ed.doc().text().to_string(), "aéXcdef\n");
 }
 
 #[test]
