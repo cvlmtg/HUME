@@ -10,36 +10,36 @@ Keys marked **kitty only** require the kitty keyboard protocol, auto-detected at
 
 ### Movement
 
-| Key | Action |
-|-----|--------|
-| `h` / `←` | Move left one grapheme |
-| `l` / `→` | Move right one grapheme |
-| `j` / `↓` | Move down one visual line |
-| `k` / `↑` | Move up one visual line |
-| `w` | Select next word (plus one adjacent whitespace run by default — see `word-selects-whitespace`) |
-| `b` | Select previous word (plus one adjacent whitespace run by default) |
-| `W` / `B` | WORD variants of `w` / `b` |
-| `Home` | Start of line (idiomatic form is `g h`) |
-| `End` | End of line (idiomatic form is `g l`) |
-| `{` | Up to the blank line above this paragraph |
-| `}` | Down to the start of the next paragraph |
-| `PageDown` / `PageUp` | Scroll one viewport down / up |
-| `Ctrl+d` / `Ctrl+u` | Scroll half a viewport down / up |
-| `Ctrl+o` | Jump list back |
-| `Ctrl+i` | Jump list forward |
-| `Tab` | Jump list forward (under kitty, `Tab` focuses the next pane instead) |
-| `Ctrl+h/j/k/l/w/b` | One-shot extend of the corresponding motion (kitty only) |
+| Key | Command | Action |
+|-----|---------|--------|
+| `h` / `←` | `move-left` | Move left one grapheme |
+| `l` / `→` | `move-right` | Move right one grapheme |
+| `j` / `↓` | `move-down` | Move down one visual line |
+| `k` / `↑` | `move-up` | Move up one visual line |
+| `w` | `select-next-word` | Select next word (plus one adjacent whitespace run by default — see `word-selects-whitespace`) |
+| `b` | `select-prev-word` | Select previous word (plus one adjacent whitespace run by default) |
+| `W` / `B` | `select-next-uppercase-word` / `select-prev-uppercase-word` | WORD variants of `w` / `b` |
+| `Home` | `goto-line-start` | Start of line (idiomatic form is `g h`) |
+| `End` | `goto-line-end` | End of line (idiomatic form is `g l`) |
+| `{` | `prev-paragraph` | Up to the blank line above this paragraph |
+| `}` | `next-paragraph` | Down to the start of the next paragraph |
+| `PageDown` / `PageUp` | `page-down` / `page-up` | Scroll one viewport down / up |
+| `Ctrl+d` / `Ctrl+u` | `half-page-down` / `half-page-up` | Scroll half a viewport down / up |
+| `Ctrl+o` | `jump-backward` | Jump list back |
+| `Ctrl+i` | `jump-forward` | Jump list forward |
+| `Tab` | `jump-forward` (legacy) / `pane-focus-next` (kitty) | Jump list forward (under kitty, `Tab` focuses the next pane instead) |
+| `Ctrl+h/j/k/l/w/b` | `move-left` / `move-right` / `move-down` / `move-up` / `select-next-word` / `select-prev-word` (extend) | One-shot extend of the corresponding motion (kitty only) |
 
 ### Character find
 
-| Key | Action |
-|-----|--------|
-| `f` + char | Find char forward (inclusive) |
-| `F` + char | Find char backward (inclusive) |
-| `t` + char | Find char forward (exclusive — stops before) |
-| `T` + char | Find char backward (exclusive — stops after) |
-| `=` | Repeat last find forward |
-| `-` | Repeat last find backward |
+| Key | Command | Action |
+|-----|---------|--------|
+| `f` + char | `find-forward` | Find char forward (inclusive) |
+| `F` + char | `find-backward` | Find char backward (inclusive) |
+| `t` + char | `till-forward` | Find char forward (exclusive — stops before) |
+| `T` + char | `till-backward` | Find char backward (exclusive — stops after) |
+| `=` | `repeat-find-forward` | Repeat last find forward |
+| `-` | `repeat-find-backward` | Repeat last find backward |
 
 After `f`/`F`/`t`/`T`, HUME waits for the target character. `Tab` counts as a
 target character; a line ending never does, since these motions never leave
@@ -47,94 +47,94 @@ the current line.
 
 ### Selection
 
-| Key | Action |
-|-----|--------|
-| `e` | Toggle Extend mode |
-| `;` | Collapse to head, exit Extend |
-| `Ctrl+;` | Collapse to anchor, exit Extend (kitty only) |
-| `Ctrl+e` | Swap anchor and head |
-| `%` | Select entire buffer |
-| `x` | Select current line (forward) |
-| `X` | Select current line (backward) |
-| `Ctrl+x` | Same as `x` but always extends |
-| `Ctrl+X` | Same as `X` but always extends (kitty only) |
-| `S` | Split multi-line selections on newlines |
-| `C` | Copy each selection to the line below (a count prefix copies onto that many lines, e.g. `3C`) |
-| `_` | Trim leading/trailing whitespace from each selection |
-| `,` | Keep only the primary selection |
-| `Ctrl+,` | Remove primary, promote next (kitty only) |
-| `(` / `)` | Cycle primary backward / forward |
-| `*` | Search the whole word under the cursor |
+| Key | Command | Action |
+|-----|---------|--------|
+| `e` | `toggle-extend` | Toggle Extend mode |
+| `;` | `collapse-and-exit-extend` | Collapse to head, exit Extend |
+| `Ctrl+;` | `collapse-to-anchor-and-exit-extend` | Collapse to anchor, exit Extend (kitty only) |
+| `Ctrl+e` | `flip-selections` | Swap anchor and head |
+| `%` | `select-all` | Select entire buffer |
+| `x` | `select-line` | Select current line (forward) |
+| `X` | `select-line-backward` | Select current line (backward) |
+| `Ctrl+x` | `select-line` (extend) | Same as `x` but always extends |
+| `Ctrl+X` | `select-line-backward` (extend) | Same as `X` but always extends (kitty only) |
+| `S` | `split-selection-on-newlines` | Split multi-line selections on newlines |
+| `C` | `copy-selection-on-next-line` | Copy each selection to the line below (a count prefix copies onto that many lines, e.g. `3C`) |
+| `_` | `trim-selection-whitespace` | Trim leading/trailing whitespace from each selection |
+| `,` | `keep-primary-selection` | Keep only the primary selection |
+| `Ctrl+,` | `remove-primary-selection` | Remove primary, promote next (kitty only) |
+| `(` / `)` | `cycle-primary-backward` / `cycle-primary-forward` | Cycle primary backward / forward |
+| `*` | `search-word-under-cursor` | Search the whole word under the cursor |
 
 Text objects (use the `m` prefix):
 
-| Sequence | Action |
-|----------|--------|
-| `m i w` / `m a w` | Inner / around word |
-| `m i W` / `m a W` | Inner / around WORD |
-| `m i (` / `m a (` | Inner / around `()` (also `)`, `[`/`]`, `{`/`}`, `<`/`>`) |
-| `m i "` / `m a "` | Inner / around `"…"` |
-| `m i '` / `m a '` | Inner / around `'…'` |
-| `` m i ` `` / `` m a ` `` | Inner / around `` `…` `` |
-| `m i a` / `m a a` | Inner / around argument |
-| `m i l` / `m a l` | Inner / around line |
-| `m i i` | Select the text typed during the last insert |
-| `m m` | Select the word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b` — see `word-selects-whitespace`) |
-| `M M` | WORD variant of `m m` |
-| `m s` + char | Select surrounding delimiter pair |
-| `m w` + char | Wrap each selection with a delimiter pair |
-| `m /` | Turn all search matches in the buffer into selections |
+| Sequence | Command | Action |
+|----------|---------|--------|
+| `m i w` / `m a w` | `inner-word` / `around-word` | Inner / around word |
+| `m i W` / `m a W` | `inner-uppercase-word` / `around-uppercase-word` | Inner / around WORD |
+| `m i (` / `m a (` | `inner-paren` / `around-paren` | Inner / around `()` (also `)`, `[`/`]`, `{`/`}`, `<`/`>`) |
+| `m i "` / `m a "` | `inner-double-quote` / `around-double-quote` | Inner / around `"…"` |
+| `m i '` / `m a '` | `inner-single-quote` / `around-single-quote` | Inner / around `'…'` |
+| `` m i ` `` / `` m a ` `` | `inner-backtick` / `around-backtick` | Inner / around `` `…` `` |
+| `m i a` / `m a a` | `inner-argument` / `around-argument` | Inner / around argument |
+| `m i l` / `m a l` | `inner-line` / `around-line` | Inner / around line |
+| `m i i` | `select-last-insertion` | Select the text typed during the last insert |
+| `m m` | `select-word` | Select the word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b` — see `word-selects-whitespace`) |
+| `M M` | `select-uppercase-word` | WORD variant of `m m` |
+| `m s` + char | `surround-paren` (and other `surround-*` delimiters) | Select surrounding delimiter pair |
+| `m w` + char | `surround-add` | Wrap each selection with a delimiter pair |
+| `m /` | `select-all-matches` | Turn all search matches in the buffer into selections |
 
 ### Editing
 
-| Key | Action |
-|-----|--------|
-| `d` | Delete selection (to kill ring) |
-| `c` | Change (delete + Insert mode) |
-| `y` | Yank (clipboard + kill ring) |
-| `p` | Smart-paste after — see [Copy & Paste](copy-and-paste.md) |
-| `P` | Smart-paste before |
-| `[` / `]` | Cycle kill ring older / newer and re-paste (only after a `p`/`P`) |
-| `r` + char | Replace every selected character (line endings are left alone). `Enter`/`Tab` count as the character, replacing with a newline/tab |
-| `J` | Join the selected lines into one |
-| `&` | Align selections into a column |
-| `u` | Undo |
-| `U` / `Ctrl+r` | Redo |
-| `.` | Repeat last editing action |
+| Key | Command | Action |
+|-----|---------|--------|
+| `d` | `delete` | Delete selection (to kill ring) |
+| `c` | `change` | Change (delete + Insert mode) |
+| `y` | `yank` | Yank (clipboard + kill ring) |
+| `p` | `smart-paste-after` | Smart-paste after — see [Copy & Paste](copy-and-paste.md) |
+| `P` | `smart-paste-before` | Smart-paste before |
+| `[` / `]` | `paste-ring-older` / `paste-ring-newer` | Cycle kill ring older / newer and re-paste (only after a `p`/`P`) |
+| `r` + char | `replace` | Replace every selected character (line endings are left alone). `Enter`/`Tab` count as the character, replacing with a newline/tab |
+| `J` | `join-lines-select-spaces` | Join the selected lines into one |
+| `&` | `align-selections` | Align selections into a column |
+| `u` | `undo` | Undo |
+| `U` / `Ctrl+r` | `redo` | Redo |
+| `.` | `repeat-last-action` | Repeat last editing action |
 
 ### Entering other modes
 
-| Key | Action |
-|-----|--------|
-| `i` | Insert before selection |
-| `a` | Insert after selection |
-| `I` | Insert at first non-blank on line |
-| `A` | Insert at end of line |
-| `o` | Open new line below, insert |
-| `O` | Open new line above, insert |
-| `:` | Open command line |
-| `/` | Search forward |
-| `?` | Search backward |
+| Key | Command | Action |
+|-----|---------|--------|
+| `i` | `insert-at-selection-start` | Insert before selection |
+| `a` | `insert-at-selection-end` | Insert after selection |
+| `I` | `insert-at-line-start` | Insert at first non-blank on line |
+| `A` | `insert-at-line-end` | Insert at end of line |
+| `o` | `open-line-below` | Open new line below, insert |
+| `O` | `open-line-above` | Open new line above, insert |
+| `:` | `command-mode` | Open command line |
+| `/` | `search-forward` | Search forward |
+| `?` | `search-backward` | Search backward |
 
 ### Search
 
-| Key | Action |
-|-----|--------|
-| `n` | Next match |
-| `N` | Previous match |
-| `s` | Select within (regex filter on each selection) |
-| `Ctrl+/` | Use the selected text literally as the search pattern (kitty only) |
+| Key | Command | Action |
+|-----|---------|--------|
+| `n` | `search-next` | Next match |
+| `N` | `search-prev` | Previous match |
+| `s` | `select-within` | Select within (regex filter on each selection) |
+| `Ctrl+/` | `search-selection` | Use the selected text literally as the search pattern (kitty only) |
 
 ### Macros
 
-| Key | Action |
-|-----|--------|
-| `Q Q` or `Q q` | Start recording into default register `q` |
-| `Q <0-9>` | Start recording into a numbered register |
-| `Q` (while recording) | Stop recording |
-| `q q` | Replay register `q` |
-| `q <0-9>` | Replay a numbered register |
-| `<count> q q` | Replay `q` `<count>` times |
+| Key | Command | Action |
+|-----|---------|--------|
+| `Q Q` or `Q q` | — | Start recording into default register `q` |
+| `Q <0-9>` | — | Start recording into a numbered register |
+| `Q` (while recording) | — | Stop recording |
+| `q q` | — | Replay register `q` |
+| `q <0-9>` | — | Replay a numbered register |
+| `<count> q q` | — | Replay `q` `<count>` times |
 
 Numbered registers are shared between macros and yanked text — last write wins. Recording is ignored in read-only buffers and during replay.
 
@@ -151,63 +151,63 @@ See [Register prefix](copy-and-paste.md#register-prefix) for the full register l
 
 Press `g` then a second key:
 
-| Key | Action |
-|-----|--------|
-| `g g` | Go to first line of buffer |
-| `g e` | Go to last line of buffer |
-| `g h` | Go to line start |
-| `g l` | Go to line end |
-| `g s` | Go to first non-blank on line |
+| Key | Command | Action |
+|-----|---------|--------|
+| `g g` | `goto-first-line` | Go to first line of buffer |
+| `g e` | `goto-last-line` | Go to last line of buffer |
+| `g h` | `goto-line-start` | Go to line start |
+| `g l` | `goto-line-end` | Go to line end |
+| `g s` | `goto-first-nonblank` | Go to first non-blank on line |
 
 ## Case prefix (`G`)
 
 Press `G` then a second key:
 
-| Key | Action |
-|-----|--------|
-| `G L` | Lowercase the selection |
-| `G U` | Uppercase the selection |
-| `G C` | Capitalize each word in the selection |
+| Key | Command | Action |
+|-----|---------|--------|
+| `G L` | `make-text-lowercase` | Lowercase the selection |
+| `G U` | `make-text-uppercase` | Uppercase the selection |
+| `G C` | `make-text-capitalized` | Capitalize each word in the selection |
 
 ## View prefix (`z`)
 
 Press `z` then a second key:
 
-| Key | Action |
-|-----|--------|
-| `z z` | Center view on cursor |
-| `z t` | Scroll cursor to top of screen |
-| `z b` | Scroll cursor to bottom of screen |
+| Key | Command | Action |
+|-----|---------|--------|
+| `z z` | `center-view-on-cursor` | Center view on cursor |
+| `z t` | `top-view-on-cursor` | Scroll cursor to top of screen |
+| `z b` | `bottom-view-on-cursor` | Scroll cursor to bottom of screen |
 
 ## Pane prefix (`Ctrl+p`)
 
 Press `Ctrl+p` then a second key:
 
-| Key | Action |
-|-----|--------|
-| `Ctrl+p p` | Focus next pane |
-| `Ctrl+p h` | Focus pane to the left |
-| `Ctrl+p j` | Focus pane below |
-| `Ctrl+p k` | Focus pane above |
-| `Ctrl+p l` | Focus pane to the right |
-| `Ctrl+p s` | Split the focused pane, stacking the new pane below it |
-| `Ctrl+p v` | Split the focused pane side by side |
-| `Ctrl+p c` | Close the focused pane (does nothing if it's the only pane) |
-| `Tab` | Focus next pane (kitty only) |
+| Key | Command | Action |
+|-----|---------|--------|
+| `Ctrl+p p` | `pane-focus-next` | Focus next pane |
+| `Ctrl+p h` | `pane-focus-left` | Focus pane to the left |
+| `Ctrl+p j` | `pane-focus-down` | Focus pane below |
+| `Ctrl+p k` | `pane-focus-up` | Focus pane above |
+| `Ctrl+p l` | `pane-focus-right` | Focus pane to the right |
+| `Ctrl+p s` | `pane-split` | Split the focused pane, stacking the new pane below it |
+| `Ctrl+p v` | `pane-vsplit` | Split the focused pane side by side |
+| `Ctrl+p c` | `pane-close` | Close the focused pane (does nothing if it's the only pane) |
+| `Tab` | `pane-focus-next` | Focus next pane (kitty only) |
 
 ## Insert mode
 
-| Key | Action |
-|-----|--------|
-| `Esc` / `Ctrl+c` | Return to Normal mode |
-| `←` / `→` / `↑` / `↓` | Move cursor |
-| `Home` / `End` | Go to line start / end |
-| `Tab` | Insert tab (literal `\t`, or spaces to the next tab stop when `tab-style = soft`) |
-| `Backspace` | Delete character before cursor; snaps to previous tab stop when in leading whitespace (auto-pairs aware) |
-| `Delete` | Delete character under cursor |
-| `Enter` | Insert newline, copying leading whitespace from current line (auto-pairs aware) |
-| `Ctrl+w` | Delete word before cursor |
-| Any other character | Insert character (auto-pairs aware) |
+| Key | Command | Action |
+|-----|---------|--------|
+| `Esc` / `Ctrl+c` | `exit-insert` | Return to Normal mode |
+| `←` / `→` / `↑` / `↓` | `move-left` / `move-right` / `move-up` / `move-down` | Move cursor |
+| `Home` / `End` | `goto-line-start` / `goto-line-end` | Go to line start / end |
+| `Tab` | — | Insert tab (literal `\t`, or spaces to the next tab stop when `tab-style = soft`) |
+| `Backspace` | — | Delete character before cursor; snaps to previous tab stop when in leading whitespace (auto-pairs aware) |
+| `Delete` | — | Delete character under cursor |
+| `Enter` | — | Insert newline, copying leading whitespace from current line (auto-pairs aware) |
+| `Ctrl+w` | `delete-word-backward` | Delete word before cursor |
+| Any other character | — | Insert character (auto-pairs aware) |
 
 Insert mode handles auto-pair insertion: typing `(`, `[`, `{`, `"`, `'`, or `` ` `` inserts the matching close character. Backspace inside an empty pair deletes both characters.
 
