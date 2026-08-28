@@ -22,7 +22,8 @@ export const SCOPES = [
     "markup.heading", "markup.bold", "markup.italic",
     "markup.link", "markup.raw", "markup.list",
   ]],
-  ["Diff", ["diff.plus", "diff.minus", "diff.delta"]],
+  ["Diff", ["diff.plus", "diff.minus", "diff.delta",
+            "diff.plus.gutter", "diff.minus.gutter", "diff.delta.gutter"]],
   ["Diagnostic", [
     "diagnostic.error", "diagnostic.warning", "diagnostic.info", "diagnostic.hint",
     "diagnostic.error.message", "diagnostic.warning.message",
@@ -81,6 +82,7 @@ export const DEFAULT_SC = {
   "markup.link": { fg: "cyan", modifiers: ["underlined"] },
   "markup.raw": "green", "markup.list": "red",
   "diff.plus": "green", "diff.minus": "red", "diff.delta": "yellow",
+  "diff.plus.gutter": "green", "diff.minus.gutter": "red", "diff.delta.gutter": "cyan",
   "diagnostic.error": "red", "diagnostic.warning": "yellow",
   "diagnostic.info": "blue", "diagnostic.hint": "cyan",
   "diagnostic.error.message": { fg: "black", bg: "red" },
