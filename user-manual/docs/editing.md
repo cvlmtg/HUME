@@ -44,9 +44,9 @@ Line endings inside the selection are left alone, so replacing across several li
 
 | Key | Effect |
 |-----|--------|
-| `g u` | Lowercase the selection |
-| `g U` | Uppercase the selection |
-| `g C` | Capitalize the selection |
+| `G L` | Lowercase the selection |
+| `G U` | Uppercase the selection |
+| `G C` | Capitalize the selection |
 
 ## Lines and alignment
 

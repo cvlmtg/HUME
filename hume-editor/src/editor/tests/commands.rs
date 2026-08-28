@@ -1840,21 +1840,21 @@ fn extend_trie_wait_char_sequence_clears_pending_keys() {
 #[test]
 fn gu_lowercases_selection() {
     let mut ed = editor_from("-[HELLO]> world\n");
-    ed.feed_keys([key('g'), key('u')]);
+    ed.feed_keys([key('G'), key('L')]);
     assert_eq!(state(&ed), "-[hello]> world\n");
 }
 
 #[test]
 fn g_uppercase_u_uppercases_selection() {
     let mut ed = editor_from("-[hello]> world\n");
-    ed.feed_keys([key('g'), key('U')]);
+    ed.feed_keys([key('G'), key('U')]);
     assert_eq!(state(&ed), "-[HELLO]> world\n");
 }
 
 #[test]
 fn gc_capitalizes_words_in_selection() {
     let mut ed = editor_from("-[hELLO wORLD]>\n");
-    ed.feed_keys([key('g'), key('C')]);
+    ed.feed_keys([key('G'), key('C')]);
     assert_eq!(state(&ed), "-[Hello World]>\n");
 }
 
@@ -1863,7 +1863,7 @@ fn gu_dot_repeats() {
     // Confirms the full keymap-dispatch path (not just the pure op) stamps
     // make-text-lowercase as repeatable.
     let mut ed = editor_from("-[HELLO]>\nWORLD\n");
-    ed.feed_keys([key('g'), key('u')]); // "hello"
+    ed.feed_keys([key('G'), key('L')]); // "hello"
     ed.feed_key(key('j')); // move to line 2
     ed.feed_key(key('x')); // select the whole line ("WORLD\n")
     ed.feed_key(key('.')); // replay make-text-lowercase

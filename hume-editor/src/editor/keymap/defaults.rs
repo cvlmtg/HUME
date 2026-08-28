@@ -179,10 +179,7 @@ fn build_uppercase_match_trie() -> KeyTrie {
 ///    ├─ e  → goto-last-line
 ///    ├─ h  → goto-line-start
 ///    ├─ l  → goto-line-end
-///    ├─ s  → goto-first-nonblank
-///    ├─ u  → make-text-lowercase
-///    ├─ U  → make-text-uppercase
-///    └─ C  → make-text-capitalized
+///    └─ s  → goto-first-nonblank
 /// ```
 fn build_goto_trie() -> KeyTrie {
     let mut t = KeyTrie::new();
@@ -191,7 +188,13 @@ fn build_goto_trie() -> KeyTrie {
     t.bind_leaf(key!('h'), cmd!("goto-line-start"));
     t.bind_leaf(key!('l'), cmd!("goto-line-end"));
     t.bind_leaf(key!('s'), cmd!("goto-first-nonblank"));
-    t.bind_leaf(key!('u'), cmd!("make-text-lowercase"));
+    t
+}
+
+/// Build the `G` sub-trie for case transforms.
+fn build_case_trie() -> KeyTrie {
+    let mut t = KeyTrie::new();
+    t.bind_leaf(key!('L'), cmd!("make-text-lowercase"));
     t.bind_leaf(key!('U'), cmd!("make-text-uppercase"));
     t.bind_leaf(key!('C'), cmd!("make-text-capitalized"));
     t
@@ -374,8 +377,12 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind(key!(Ctrl + 'p'), KeyTrieNode::Node(build_pane_trie()));
 
     // ── Goto prefix ───────────────────────────────────────────────────────────
-    // `g` → second key (goto commands, 2-key sequence).
+    // `g` → second key (goto + structural-navigation commands, 2-key sequence).
     t.bind(key!('g'), KeyTrieNode::Node(build_goto_trie()));
+
+    // ── Case prefix ────────────────────────────────────────────────────────────
+    // `G` → second key (case transforms).
+    t.bind(key!('G'), KeyTrieNode::Node(build_case_trie()));
 
     // ── View prefix ───────────────────────────────────────────────────────────
     // `z` → second key (zz/zt/zb viewport repositioning).
