@@ -277,7 +277,7 @@ The default is equivalent to:
 
 ### Custom elements
 
-Place `"steel:<name>"` for any `<name>` of your choosing to add your own element — no HUME source changes needed. `<name>` must be non-empty and must not contain `,` or `|`. Push its text with `set-statusline-text!`, driven by whatever should trigger an update (a hook, a timer, a command):
+Place `"steel:<name>"` for any `<name>` of your choosing to add your own element. `<name>` must be non-empty and must *not* contain `,` or `|`. Push its text with `set-statusline-text!`, driven by whatever should trigger an update (a hook, a timer, a command):
 
 ```scheme
 (configure-statusline! '("steel:line-count" "FilePath") '() '("Position" "Mode"))

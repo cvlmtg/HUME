@@ -131,6 +131,8 @@ Helix's statusline is configurable via TOML (`[editor.statusline]`); HUME's is c
 (configure-statusline! '("Mode" "FileName") '("SearchMatches") '("Position"))
 ```
 
+You can also add your own custom elements from Steel — see [Statusline](configuration.md#custom-elements).
+
 ### Surround
 
 Helix uses `ms`, `md`, `mr` for surround. HUME supports both defaults and a Helix-compatible mode:
