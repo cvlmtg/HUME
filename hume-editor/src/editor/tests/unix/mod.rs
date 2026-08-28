@@ -474,7 +474,10 @@ impl CwdSandbox {
 impl Drop for CwdSandbox {
     fn drop(&mut self) {
         // Restore first; `dir` is only deleted afterwards, when the field drops.
-        let _ = std::env::set_current_dir(&self.saved);
+        // Must not swallow a failure here: `dir` deletes unconditionally right
+        // after this returns, and a silently-ignored restore would leave cwd
+        // dangling in the very directory that's about to disappear.
+        std::env::set_current_dir(&self.saved).expect("CwdSandbox restore must not fail");
     }
 }
 

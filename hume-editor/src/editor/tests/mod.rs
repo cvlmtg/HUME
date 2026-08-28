@@ -715,7 +715,7 @@ impl CwdGuard {
 #[cfg(unix)]
 impl Drop for CwdGuard {
     fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.saved);
+        std::env::set_current_dir(&self.saved).expect("CwdGuard restore must not fail");
     }
 }
 
