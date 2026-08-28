@@ -92,18 +92,20 @@ to every selection in the set simultaneously. The *primary* is just the
    The kill ring (bounded history of recent captures) is accessible via `"k`
    (head paste) and `[`/`]` cycling. See [Kill Ring and Smart-p](kill-ring-and-smart-p.md).
 
-   **Macro model:** macros are stored in registers (Vim model, not
-   Helix's single-slot model). `QQ` records into register `q` (the default
-   macro register). `Q3` records into register `3`. `qq` replays from `q`,
-   `q3` replays from `3`.
+    **Macro model:** macros are stored in registers. `QQ` records into
+    register `q` (the default macro register). `Q3` records into register
+    `3`. `qq` replays from `q`, `q3` replays from `3`. This is the same
+    register-based model as Vim and Helix: Helix records with `Q` to a
+    *selected* register (default `@`) and replays with `q`, and any named
+    register can be targeted with `"<reg>Q` / `"<reg>q`, so it is not a
+    single fixed slot.
 
-   **Why Vim-style macros over Helix-style?** Helix has a single macro slot
-   (`Q` records, `Q` replays). Users complained — one slot is enough for a
-   single task, but when you need two independent macros (e.g. one that
-   transforms a line, another that moves between sections) you must
-   re-record the first each time. HUME's register-based macros solve this
-   without the full `a`–`z` namespace overhead. Ten slots (`0`–`9`) covers
-   real workflows; the `q` default keeps the common case a one-key operation.
+    **Why register-based macros?** Storing macros in named, durable slots
+    means two independent macros (e.g. one that transforms a line, another
+    that moves between sections) coexist without re-recording. HUME reuses
+    the same `0`–`9` namespace that already holds yanked text, avoiding the
+    full `a`–`z` overhead of Vim's named registers; the `q` default keeps
+    the common case a one-key operation.
 
 5. **Paste-as-replace**: In a select-then-act model, `p`/`P`
    has to handle two distinct cases:
