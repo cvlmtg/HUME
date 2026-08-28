@@ -980,7 +980,7 @@ fn git_branch_element_never_fetches_while_unplaced() {
     // also be produced by a fetch that ran and failed. Distinguishes "no
     // fetch ran" from "a fetch ran and found nothing".
     assert!(
-        ed.state.config.statusline_text.get(&bid).is_none(),
+        !ed.state.config.statusline_text.contains_key(&bid),
         "an unplaced element must not spawn `git rev-parse` at all: {:?}",
         ed.state.config.statusline_text
     );

@@ -174,9 +174,7 @@ impl Editor {
         let stale = model.resolved.as_ref().is_none_or(|r| r.width != max_width);
         if stale {
             let (lines, styled_rows) = if let Some(popup_syntax) = model.syntax.as_ref() {
-                let base_style = theme
-                    .resolve_by_name(hume_engine::types::Scope("ui.popup"))
-                    .into();
+                let base_style = theme.resolve_by_name(hume_engine::types::Scope("ui.popup"));
                 let runs = popup_syntax.styled_runs(&model.text, theme, base_style);
                 let rows = crate::ui::popup::wrap_styled(&runs, max_width);
                 let lines: Vec<String> = rows
