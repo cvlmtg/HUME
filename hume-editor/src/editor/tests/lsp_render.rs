@@ -15,7 +15,6 @@ use std::path::Path;
 use super::*;
 use crate::editor::lsp::LspState;
 use hume_engine::pipeline::{PaneId, RenderContext};
-use hume_engine::types::ScopeId;
 use hume_lsp::backend::LspBackend;
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
@@ -112,13 +111,6 @@ fn extra_arc(ed: &Editor, pid: PaneId) -> Vec<(usize, usize, usize, ScopeId)> {
         .read()
         .unwrap()
         .clone()
-}
-
-fn scope(ed: &Editor, name: &str) -> ScopeId {
-    ed.view
-        .registry
-        .get(name)
-        .unwrap_or_else(|| panic!("scope '{name}' must already be interned"))
 }
 
 // ── Diagnostic underlines ────────────────────────────────────────────────────

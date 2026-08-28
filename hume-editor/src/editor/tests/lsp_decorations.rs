@@ -247,8 +247,8 @@ fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudl
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-sign-source! "linter" 10)
-           (define-command! "arm-signs" "" (lambda ()
+        r#"(define-command! "arm-signs" "" (lambda ()
+             (register-sign-source! "linter" (current-buffer) 10)
              (set-signs! "linter" (current-buffer) (list (list 99 "!" "error")))))
            (define-command! "arm-vlines" "" (lambda ()
              (set-virtual-lines! "git-diff" (current-buffer) (list (hash 'line 99 'text "note")))))
@@ -428,8 +428,8 @@ fn sign_remaps_through_a_line_inserted_above_it() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-sign-source! "linter" 10)
-           (define-command! "arm" "" (lambda ()
+        r#"(define-command! "arm" "" (lambda ()
+             (register-sign-source! "linter" (current-buffer) 10)
              (set-signs! "linter" (current-buffer) (list (list 1 "!" "error")))))"#,
         tmp.path(),
     );
@@ -532,8 +532,8 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-sign-source! "linter" 10)
-           (define-command! "arm" "" (lambda ()
+        r#"(define-command! "arm" "" (lambda ()
+             (register-sign-source! "linter" (current-buffer) 10)
              (set-signs! "linter" (current-buffer) (list (list 1 "!" "error")))))"#,
         tmp.path(),
     );
@@ -580,9 +580,9 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-sign-source! "linter" 10)
-           (register-sign-source! "vcs" 5)
-           (define-command! "arm-hints-a" "" (lambda ()
+        r#"(define-command! "arm-hints-a" "" (lambda ()
+             (register-sign-source! "linter" (current-buffer) 10)
+             (register-sign-source! "vcs" (current-buffer) 5)
              (set-signs! "linter" (current-buffer) (list (list 0 "!" "error")))
              (set-signs! "vcs" (current-buffer) (list (list 0 "+" "added")))
              (set-virtual-lines! "linter" (current-buffer) (list (hash 'line 0 'text "note: …")))
@@ -600,7 +600,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
         (
             linter_signs[0].pos,
             &*linter_signs[0].text,
-            ed.view.registry.name_of(linter_signs[0].scope),
+            scope_name(&ed, linter_signs[0].scope),
         ),
         (0, "!", "error"),
         "line 0's line-start char offset is 0 on this fixture"
@@ -628,7 +628,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
         (
             highlights[0].start,
             highlights[0].end,
-            ed.view.registry.name_of(highlights[0].scope)
+            scope_name(&ed, highlights[0].scope)
         ),
         (0, 3, "unused")
     );
@@ -663,8 +663,8 @@ fn every_setter_interns_its_scope_at_the_set_call_not_at_first_render() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-sign-source! "src" 10)
-           (define-command! "arm" "" (lambda ()
+        r#"(define-command! "arm" "" (lambda ()
+             (register-sign-source! "src" (current-buffer) 10)
              (set-signs! "src" (current-buffer) (list (list 0 "!" "scope-sign")))
              (set-virtual-lines! "src" (current-buffer)
                (list (hash 'line 0 'text "x" 'scope "scope-vline")))
@@ -724,10 +724,10 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
     );
     assert_eq!(vlines[0].text, "- let x = 5");
     assert!(vlines[0].before, "'anchor 'before must set before: true");
-    assert_eq!(ed.view.registry.name_of(vlines[0].scope), "diff.minus");
+    assert_eq!(scope_name(&ed, vlines[0].scope), "diff.minus");
     assert_eq!(
         vlines[0].segments,
-        vec![(2, 5, ed.view.registry.get("keyword").unwrap())],
+        vec![(2, 5, scope(&ed, "keyword"))],
         "'segments' are char offsets at the Steel surface; on this ASCII fixture the host \
          boundary's char\u{2192}byte conversion (validated there, not at the Steel boundary) \
          is a no-op, so they reach the store unchanged"
@@ -765,10 +765,7 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].1.pos, 0, "line 0's line-start char offset is 0");
     assert_eq!(entries[0].1.text, "[2] first problem");
-    assert_eq!(
-        ed.view.registry.name_of(entries[0].1.scope),
-        "diagnostic.error"
-    );
+    assert_eq!(scope_name(&ed, entries[0].1.scope), "diagnostic.error");
 
     // A second call for the same source must replace wholesale, not append.
     type_cmd(&mut ed, ":arm-b");
@@ -788,10 +785,7 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
         "line 1's line-start char offset on this fixture (\"xabcdef\\n\" is 8 chars)"
     );
     assert_eq!(entries[0].1.text, "second problem");
-    assert_eq!(
-        ed.view.registry.name_of(entries[0].1.scope),
-        "diagnostic.warning"
-    );
+    assert_eq!(scope_name(&ed, entries[0].1.scope), "diagnostic.warning");
 }
 
 #[test]
@@ -820,7 +814,7 @@ fn set_line_backgrounds_round_trips_and_replaces_per_source() {
         .line_backgrounds_for("git-diff", bid);
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].pos, 0, "line 0's line-start char offset is 0");
-    assert_eq!(ed.view.registry.name_of(entries[0].scope), "diff.plus");
+    assert_eq!(scope_name(&ed, entries[0].scope), "diff.plus");
 
     // A second call for the same source must replace wholesale, not append.
     type_cmd(&mut ed, ":arm-b");
@@ -838,7 +832,7 @@ fn set_line_backgrounds_round_trips_and_replaces_per_source() {
         entries[0].pos, 8,
         "line 1's line-start char offset on this fixture (\"xabcdef\\n\" is 8 chars)"
     );
-    assert_eq!(ed.view.registry.name_of(entries[0].scope), "diff.minus");
+    assert_eq!(scope_name(&ed, entries[0].scope), "diff.minus");
 }
 
 /// Same drift regression as `sign_remaps_through_a_line_inserted_above_it`,

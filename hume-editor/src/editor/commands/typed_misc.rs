@@ -1,10 +1,12 @@
 use hume_engine::pipeline::{BufferId, Direction};
 use hume_grid::Rgb;
+use hume_scripting::host::DecorationHost;
 
 use super::super::Editor;
 use super::super::Severity;
 use super::current_jump_entry;
 use crate::editor::error::CommandError;
+use crate::editor::host_impl::EditorHostImpl;
 use crate::settings::THEME_KEY;
 use hume_ops::edit::{SortOpts, SortRefusal, sort_rows};
 
@@ -31,21 +33,18 @@ pub(crate) fn typed_messages(
     let bid = ed.open_read_only_view("[messages]", &content, usize::MAX);
     let spans = spans
         .into_iter()
-        .map(
-            |(start, end, scope)| crate::editor::decorations::ExtraHighlightEntry {
-                start,
-                end,
-                scope: ed.view.registry.intern(scope),
-            },
-        )
+        .map(|(start, end, scope)| (start, end, scope.to_string()))
         .collect();
     // Wholesale replace under a fixed source name — repeat `:messages` calls
     // route through set_view_content (no ChangeSet), so stale spans from a
     // prior call can't be remapped and must be overwritten here instead.
-    ed.state
-        .config
-        .decorations
-        .set_extra_highlights("messages".to_string(), bid, spans);
+    // Goes through the same `DecorationHost::set_extra_highlights` boundary
+    // `set-extra-highlights!` calls, not a hand-built `ExtraHighlightEntry`
+    // list — so `:messages`' spans get the same range validation as any
+    // other caller instead of a second, unvalidated construction path.
+    EditorHostImpl::new(&mut ed.state, &mut ed.view)
+        .set_extra_highlights("messages".to_string(), bid, spans)
+        .map_err(CommandError::new)?;
     Ok(())
 }
 

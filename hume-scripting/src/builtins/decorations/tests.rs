@@ -64,6 +64,7 @@ fn register_sign_source_without_decoration_host_errors() {
     let result = register_sign_source(
         &mut ctx,
         SteelVal::StringV("test".into()),
+        BidArg(BufferId::default()),
         SteelVal::IntV(10),
     );
     assert_names_builtin(result, "register-sign-source!");
@@ -73,7 +74,12 @@ fn register_sign_source_without_decoration_host_errors() {
 fn register_sign_source_rejects_an_empty_name() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = register_sign_source(&mut ctx, SteelVal::StringV("  ".into()), SteelVal::IntV(10));
+    let result = register_sign_source(
+        &mut ctx,
+        SteelVal::StringV("  ".into()),
+        BidArg(BufferId::default()),
+        SteelVal::IntV(10),
+    );
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("name must not be empty"), "got: {msg}");
 }

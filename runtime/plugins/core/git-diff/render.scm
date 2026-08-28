@@ -3,7 +3,7 @@
 ;;; setter call each unless noted otherwise.
 
 (provide git-diff/render-signs! git-diff/render-inline! git-diff/render-line-bgs!
-         git-diff/render-for! git-diff/register-sign-source!)
+         git-diff/render-for!)
 
 ;;; Feature-scoped source name for every setter this plugin calls.
 (define git-diff/*source* "git-diff")
@@ -11,19 +11,13 @@
 ;; ── Signs ────────────────────────────────────────────────────────────────────
 
 ;;; This plugin's declared priority for `register-sign-source!` — its rank
-;;; against every other registered source, `core:lsp`'s `"lsp-diagnostics"`
-;;; source (priority 10) included, decides this plugin's gutter slot. See
-;;; docs/LSP.md's `register-sign-source!` entry. 0 puts git-diff last in the
-;;; registry, so its column is the first to fall off signcolumn's auto-size
-;;; cap when several higher-priority channels share the buffer.
+;;; against every other source registered for the same buffer, `core:lsp`'s
+;;; `"lsp-diagnostics"` source (priority 10) included, decides this plugin's
+;;; gutter slot there. See docs/LSP.md's `register-sign-source!` entry. 0
+;;; puts git-diff last in a buffer's registry, so its column is the first to
+;;; fall off signcolumn's auto-size cap when several higher-priority
+;;; channels share the buffer.
 (define git-diff/*sign-priority* 0)
-
-;;; Registers this plugin's gutter channel — exported so `plugin.scm` can
-;;; call it (at load, when signs default on, and again, idempotently, on the
-;;; "signs?" toggle-on path) without reaching into this file's otherwise-
-;;; private `*source*`/`*sign-priority*` constants.
-(define (git-diff/register-sign-source!)
-  (register-sign-source! git-diff/*source* git-diff/*sign-priority*))
 
 ;;; One sign per line in `[new-start, new-start + new-count)`.
 (define (git-diff/line-signs new-start new-count text scope)
@@ -51,8 +45,12 @@
 ;;; `(apply append …)`, not `flatten` — a sign entry is itself a list, and
 ;;; `flatten` would tear each one apart. An empty `hunks` clears the gutter
 ;;; (`set-signs!` replaces `source`'s signs wholesale), so this doubles as
-;;; the clear function.
+;;; the clear function — registers first regardless, since a config-off
+;;; buffer's first `:toggle-git-signs` reaches this with an empty `hunks`
+;;; and still needs its slot claimed before `set-signs!` will accept the
+;;; (empty) call.
 (define (git-diff/render-signs! bid hunks)
+  (register-sign-source! git-diff/*source* bid git-diff/*sign-priority*)
   (set-signs! git-diff/*source* bid (apply append (map git-diff/hunk->signs hunks))))
 
 ;; ── Inline: deleted lines + word highlights ─────────────────────────────────

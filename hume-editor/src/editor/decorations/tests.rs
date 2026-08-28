@@ -11,7 +11,7 @@ fn make_two_bids() -> (BufferId, BufferId) {
     (a, b)
 }
 
-/// None of these tests assert on a sign's resolved scope — only on its
+/// None of these tests assert on an entry's resolved scope — only on its
 /// text/position/source — so a bare `ScopeId` (no registry needed) stands
 /// in for whatever `host_impl.rs` would have interned.
 fn sign(pos: usize, text: &str) -> SignEntry {
@@ -22,52 +22,71 @@ fn sign(pos: usize, text: &str) -> SignEntry {
     }
 }
 
+/// Same as `sign`, for `EolTextEntry` — used by the two ordering/isolation
+/// tests below. `DecorationStores` has no `signs_for_buffer` accessor
+/// (`SourceStore::for_buffer`'s ordering guarantee only needs one production
+/// `*_for_buffer` reader to exercise it), so those two tests go through
+/// `eol_text_for_buffer` instead.
+fn eol(pos: usize, text: &str) -> EolTextEntry {
+    EolTextEntry {
+        pos,
+        text: text.into(),
+        scope: ScopeId(0),
+    }
+}
+
 #[test]
-fn signs_for_buffer_does_not_leak_another_buffers_entries() {
+fn eol_text_for_buffer_does_not_leak_another_buffers_entries() {
     // Regression test for the by-BufferId restructure: a reader keyed by
     // (source, BufferId) that regressed to scanning every buffer would
     // still pass a single-buffer test, so this exercises two buffers
     // under the *same* source name and asserts isolation.
     let mut store = DecorationStores::default();
     let (a, b) = make_two_bids();
-    store.set_signs("linter".to_string(), a, vec![sign(0, "a-sign")]);
-    store.set_signs(
+    store.set_eol_text("linter".to_string(), a, vec![eol(0, "a-text")]);
+    store.set_eol_text(
         "linter".to_string(),
         b,
-        vec![sign(0, "b-sign-1"), sign(1, "b-sign-2")],
+        vec![eol(0, "b-text-1"), eol(1, "b-text-2")],
     );
 
-    let a_signs: Vec<&str> = store.signs_for_buffer(a).map(|(_, e)| &*e.text).collect();
+    let a_entries: Vec<&str> = store
+        .eol_text_for_buffer(a)
+        .map(|(_, e)| e.text.as_str())
+        .collect();
     assert_eq!(
-        a_signs,
-        vec!["a-sign"],
-        "only buffer a's signs must be returned for a"
+        a_entries,
+        vec!["a-text"],
+        "only buffer a's entries must be returned for a"
     );
 
-    let b_signs: Vec<&str> = store.signs_for_buffer(b).map(|(_, e)| &*e.text).collect();
+    let b_entries: Vec<&str> = store
+        .eol_text_for_buffer(b)
+        .map(|(_, e)| e.text.as_str())
+        .collect();
     assert_eq!(
-        b_signs,
-        vec!["b-sign-1", "b-sign-2"],
-        "only buffer b's signs must be returned for b"
+        b_entries,
+        vec!["b-text-1", "b-text-2"],
+        "only buffer b's entries must be returned for b"
     );
 }
 
 /// `SourceStore::set` keeps `by_buffer`'s per-buffer source list sorted
-/// ascending by name, so `for_buffer` (here via `signs_for_buffer`, the one
-/// reader that keeps the source name) yields a deterministic cross-source
-/// order — independent of which source called `set-*!` first. Without the
-/// sort in `set` (e.g. reverting to plain find-or-push), setting `"zzz"`
-/// before `"aaa"` would leave `"zzz"` first in iteration order and this
-/// assertion would fail.
+/// ascending by name, so `for_buffer` (here via `eol_text_for_buffer`, one of
+/// the readers that keeps the source name) yields a deterministic
+/// cross-source order — independent of which source called `set-*!` first.
+/// Without the sort in `set` (e.g. reverting to plain find-or-push), setting
+/// `"zzz"` before `"aaa"` would leave `"zzz"` first in iteration order and
+/// this assertion would fail.
 #[test]
 fn sources_iterate_in_ascending_name_order_regardless_of_set_order() {
     let mut store = DecorationStores::default();
     let (a, _b) = make_two_bids();
-    store.set_signs("zzz".to_string(), a, vec![sign(0, "z")]);
-    store.set_signs("mmm".to_string(), a, vec![sign(0, "m")]);
-    store.set_signs("aaa".to_string(), a, vec![sign(0, "a")]);
+    store.set_eol_text("zzz".to_string(), a, vec![eol(0, "z")]);
+    store.set_eol_text("mmm".to_string(), a, vec![eol(0, "m")]);
+    store.set_eol_text("aaa".to_string(), a, vec![eol(0, "a")]);
 
-    let sources: Vec<&str> = store.signs_for_buffer(a).map(|(s, _)| s).collect();
+    let sources: Vec<&str> = store.eol_text_for_buffer(a).map(|(s, _)| s).collect();
     assert_eq!(
         sources,
         vec!["aaa", "mmm", "zzz"],
@@ -76,47 +95,53 @@ fn sources_iterate_in_ascending_name_order_regardless_of_set_order() {
 
     // Re-setting an existing source (wholesale replace) must not move it out
     // of sorted position.
-    store.set_signs("mmm".to_string(), a, vec![sign(1, "m2")]);
-    let sources: Vec<&str> = store.signs_for_buffer(a).map(|(s, _)| s).collect();
+    store.set_eol_text("mmm".to_string(), a, vec![eol(1, "m2")]);
+    let sources: Vec<&str> = store.eol_text_for_buffer(a).map(|(s, _)| s).collect();
     assert_eq!(sources, vec!["aaa", "mmm", "zzz"]);
 }
 
 #[test]
 fn sign_sources_register_by_priority_desc_then_name_asc() {
     let mut store = DecorationStores::default();
-    store.register_sign_source("b".to_string(), 5);
-    store.register_sign_source("a".to_string(), 5);
-    store.register_sign_source("c".to_string(), 9);
+    let (a, _b) = make_two_bids();
+    store.register_sign_source("b".to_string(), a, 5);
+    store.register_sign_source("a".to_string(), a, 5);
+    store.register_sign_source("c".to_string(), a, 9);
 
     assert_eq!(
-        store.sign_slot("c"),
+        store.sign_slot(a, "c"),
         Some(0),
         "highest priority ranks first"
     );
     assert_eq!(
-        store.sign_slot("a"),
+        store.sign_slot(a, "a"),
         Some(1),
         "equal priority — alphabetically first name ranks first"
     );
-    assert_eq!(store.sign_slot("b"), Some(2));
-    assert_eq!(store.sign_source_count(), 3);
+    assert_eq!(store.sign_slot(a, "b"), Some(2));
+    assert_eq!(store.sign_source_count(a), 3);
 }
 
 #[test]
 fn re_registering_a_sign_source_replaces_its_priority_and_reorders_it() {
     let mut store = DecorationStores::default();
-    store.register_sign_source("a".to_string(), 1);
-    store.register_sign_source("b".to_string(), 2);
-    assert_eq!(store.sign_slot("a"), Some(1), "lower priority ranks second");
-
-    store.register_sign_source("a".to_string(), 10);
+    let (a, _b) = make_two_bids();
+    store.register_sign_source("a".to_string(), a, 1);
+    store.register_sign_source("b".to_string(), a, 2);
     assert_eq!(
-        store.sign_slot("a"),
+        store.sign_slot(a, "a"),
+        Some(1),
+        "lower priority ranks second"
+    );
+
+    store.register_sign_source("a".to_string(), a, 10);
+    assert_eq!(
+        store.sign_slot(a, "a"),
         Some(0),
         "re-registering replaces the priority — \"a\" now outranks \"b\""
     );
     assert_eq!(
-        store.sign_source_count(),
+        store.sign_source_count(a),
         2,
         "re-registering must not create a second entry for the same name"
     );
@@ -125,8 +150,73 @@ fn re_registering_a_sign_source_replaces_its_priority_and_reorders_it() {
 #[test]
 fn unregistered_sign_source_has_no_slot() {
     let store = DecorationStores::default();
-    assert_eq!(store.sign_slot("nope"), None);
-    assert_eq!(store.sign_source_count(), 0);
+    let (a, _b) = make_two_bids();
+    assert_eq!(store.sign_slot(a, "nope"), None);
+    assert_eq!(store.sign_source_count(a), 0);
+}
+
+/// A source registered for one buffer never resolves a slot in another —
+/// the whole point of scoping registration per buffer rather than session-
+/// wide: two buffers registering the same name at different priorities must
+/// not interfere with each other's ranking.
+#[test]
+fn sign_source_registration_does_not_cross_buffers() {
+    let mut store = DecorationStores::default();
+    let (a, b) = make_two_bids();
+    store.register_sign_source("linter".to_string(), a, 5);
+    store.register_sign_source("vcs".to_string(), a, 9);
+    store.register_sign_source("linter".to_string(), b, 1);
+
+    assert_eq!(
+        store.sign_slot(a, "linter"),
+        Some(1),
+        "in a, vcs (priority 9) outranks linter (priority 5)"
+    );
+    assert_eq!(
+        store.sign_slot(b, "linter"),
+        Some(0),
+        "b's own registration of linter is unaffected by a's"
+    );
+    assert_eq!(
+        store.sign_slot(b, "vcs"),
+        None,
+        "vcs was never registered for b"
+    );
+    assert_eq!(store.sign_source_count(a), 2);
+    assert_eq!(store.sign_source_count(b), 1);
+}
+
+/// `remove_buffer` clears a buffer's sign-source registry along with its
+/// decoration entries — a source re-registering for that `bid` afterward
+/// starts a fresh ranking, unaffected by whatever the buffer held before
+/// (e.g. a buffer reload keeping the same `BufferId`).
+#[test]
+fn remove_buffer_clears_its_sign_source_registrations() {
+    let mut store = DecorationStores::default();
+    let (a, b) = make_two_bids();
+    store.register_sign_source("linter".to_string(), a, 5);
+    store.register_sign_source("vcs".to_string(), b, 1);
+
+    store.remove_buffer(a);
+
+    assert_eq!(
+        store.sign_slot(a, "linter"),
+        None,
+        "a's registration is gone after remove_buffer"
+    );
+    assert_eq!(store.sign_source_count(a), 0);
+    assert_eq!(
+        store.sign_slot(b, "vcs"),
+        Some(0),
+        "an unrelated buffer's registration must survive"
+    );
+
+    store.register_sign_source("vcs".to_string(), a, 9);
+    assert_eq!(
+        store.sign_slot(a, "vcs"),
+        Some(0),
+        "re-registering after remove_buffer starts a fresh ranking"
+    );
 }
 
 /// `signs_in_range` resolves each entry's source to its registered slot
@@ -136,8 +226,8 @@ fn unregistered_sign_source_has_no_slot() {
 fn signs_in_range_yields_each_entrys_resolved_slot_filtered_to_the_range() {
     let mut store = DecorationStores::default();
     let (a, _b) = make_two_bids();
-    store.register_sign_source("vcs".to_string(), 9);
-    store.register_sign_source("linter".to_string(), 3);
+    store.register_sign_source("vcs".to_string(), a, 9);
+    store.register_sign_source("linter".to_string(), a, 3);
     store.set_signs("vcs".to_string(), a, vec![sign(0, "+"), sign(20, "+2")]);
     store.set_signs("linter".to_string(), a, vec![sign(0, "!")]);
 

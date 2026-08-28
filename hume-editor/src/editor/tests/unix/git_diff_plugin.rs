@@ -126,7 +126,7 @@ fn signs(ed: &Editor, bid: BufferId) -> Vec<(usize, String, String)> {
             (
                 text.char_to_line(e.pos),
                 e.text.to_string(),
-                ed.view.registry.name_of(e.scope).to_string(),
+                scope_name(ed, e.scope).to_string(),
             )
         })
         .collect();
@@ -146,7 +146,7 @@ fn line_bgs(ed: &Editor, bid: BufferId) -> Vec<(usize, String)> {
         .map(|e| {
             (
                 text.char_to_line(e.pos),
-                ed.view.registry.name_of(e.scope).to_string(),
+                scope_name(ed, e.scope).to_string(),
             )
         })
         .collect();
@@ -182,12 +182,10 @@ fn vlines(ed: &Editor, bid: BufferId) -> Vec<VLine> {
                 text.char_to_line(e.pos),
                 e.before,
                 e.text.clone(),
-                Some(ed.view.registry.name_of(e.scope).to_string()),
+                Some(scope_name(ed, e.scope).to_string()),
                 e.segments
                     .iter()
-                    .map(|(start, end, scope)| {
-                        (*start, *end, ed.view.registry.name_of(*scope).to_string())
-                    })
+                    .map(|(start, end, scope)| (*start, *end, scope_name(ed, *scope).to_string()))
                     .collect(),
             )
         })
@@ -210,7 +208,7 @@ fn highlights(ed: &Editor, bid: BufferId) -> Vec<(usize, usize, String, String)>
             (
                 e.start,
                 e.end,
-                ed.view.registry.name_of(e.scope).to_string(),
+                scope_name(ed, e.scope).to_string(),
                 text.slice(e.start..e.end).to_string(),
             )
         })
@@ -676,6 +674,53 @@ fn untracked_file_shows_no_diff_and_logs_nothing() {
         ed.state.status_msg, status_after_open,
         "an untracked file's failed fetch is the silent 'trace branch — it \
          must not overwrite the status line with a warning/error of its own"
+    );
+    assert_eq!(
+        ed.state.config.decorations.sign_source_count(bid),
+        0,
+        "a buffer git-diff never renders a sign for must never reserve a \
+         gutter slot for it — the whole point of per-buffer registration"
+    );
+}
+
+/// Two buffers in the same session: one tracked-and-dirty (registers its
+/// sign source the moment it has a hunk to show), one entirely outside a
+/// repo (never registers at all). Registration must be scoped to the buffer
+/// that actually needed it — the untracked buffer's gutter must stay
+/// slot-free regardless of what the tracked buffer did.
+#[test]
+fn sign_source_registration_is_scoped_to_the_buffer_that_needs_it() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
+    let tracked_repo = safe_tempdir();
+    git_init(tracked_repo.path());
+    commit_file(tracked_repo.path(), "f.txt", "one\ntwo\n", "v1");
+    std::fs::write(tracked_repo.path().join("f.txt"), "one\nALPHA\ntwo\n").unwrap();
+    let tracked_bid = open(&mut ed, &tracked_repo.path().join("f.txt"));
+
+    let untracked_dir = safe_tempdir();
+    std::fs::write(untracked_dir.path().join("plain.txt"), "hello\n").unwrap();
+    let untracked_bid = open(&mut ed, &untracked_dir.path().join("plain.txt"));
+
+    drain_until(&mut ed, |ed| {
+        !ed.state
+            .config
+            .decorations
+            .signs_for(SOURCE, tracked_bid)
+            .is_empty()
+    });
+
+    assert_eq!(
+        ed.state.config.decorations.sign_source_count(tracked_bid),
+        1,
+        "the tracked, dirty buffer reserves its one sign slot"
+    );
+    assert_eq!(
+        ed.state.config.decorations.sign_source_count(untracked_bid),
+        0,
+        "an unrelated buffer outside any repo must never reserve a slot, \
+         even though git-diff has registered for another buffer this session"
     );
 }
 

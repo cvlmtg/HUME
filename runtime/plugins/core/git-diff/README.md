@@ -227,9 +227,10 @@ feature-scoped source name, `"git-diff"`, not the `core:git-diff` plugin id — 
 
 Signs render at VSCode/gitsigns density (one per changed line, not one per hunk — a 20-line
 paste shows 20 `+` marks). Its gutter slot comes from registering `"git-diff"` as a sign
-source (`plugin.scm`, at load when signs default on and again, idempotently, on the
-`"signs?"` toggle-on path) rather than from anything in a `set-signs!` call itself — see
-`render.scm`'s `git-diff/*sign-priority*`. `render-inline!` makes two setter calls
+source *per buffer* (`render.scm`'s `git-diff/render-signs!`, idempotently, right before every
+`set-signs!` call it makes) rather than from anything in the call itself — see
+`render.scm`'s `git-diff/*sign-priority*`. A buffer whose signs never render (untracked, or
+`signs?` never turned on) never reserves this slot. `render-inline!` makes two setter calls
 (`set-virtual-lines!`/`set-extra-highlights!`) instead of this file's usual one: a single
 `diff-words` pass inherently produces two decoration kinds — old-side virtual rows and
 new-side highlight spans — and splitting it into two renderers to keep one setter each would

@@ -16,26 +16,6 @@ use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
-/// `((start_line, start_char), (end_line, end_char), severity, message)`.
-type DiagFixture<'a> = ((u32, u32), (u32, u32), i64, &'a str);
-
-fn publish_diagnostics_notification(uri: &str, diags: &[DiagFixture]) -> hume_lsp::codec::Message {
-    let diagnostics: Vec<serde_json::Value> = diags
-        .iter()
-        .map(|((sl, sc), (el, ec), sev, msg)| {
-            serde_json::json!({
-                "range": {"start": {"line": sl, "character": sc}, "end": {"line": el, "character": ec}},
-                "severity": sev,
-                "message": msg,
-            })
-        })
-        .collect();
-    hume_lsp::codec::Message::Notification {
-        method: "textDocument/publishDiagnostics".to_string(),
-        params: serde_json::json!({"uri": uri, "diagnostics": diagnostics}),
-    }
-}
-
 /// Fixture buffer: "aa\nbb\ncc\ndd\n" — char offsets: line0 'aa' = 0..2,
 /// line1 'bb' = 3..5, line2 'cc' = 6..8, line3 'dd' = 9..11. Diagnostic A
 /// covers 'bb' (char start 3); diagnostic B covers 'dd' (char start 9) —

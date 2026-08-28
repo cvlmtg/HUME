@@ -415,8 +415,8 @@ fn reset_clears_plugin_decorations() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-sign-source! "linter" 7)
-           (define-command! "mark" "" (lambda ()
+        r#"(define-command! "mark" "" (lambda ()
+             (register-sign-source! "linter" (current-buffer) 7)
              (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope")))))"#,
         tmp.path(),
     );
@@ -440,7 +440,7 @@ fn reset_clears_plugin_decorations() {
             .is_empty()
     );
     assert_eq!(
-        ed.state.config.decorations.sign_slot("linter"),
+        ed.state.config.decorations.sign_slot(bid, "linter"),
         None,
         "the sign SOURCE registration must not linger past a reset either — \
          the new config re-registers whatever it needs"
@@ -953,8 +953,8 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-sign-source! "diag" 1)
-           (register-hook! 'on-diagnostics-changed (lambda (bid)
+        r#"(register-hook! 'on-diagnostics-changed (lambda (bid)
+             (register-sign-source! "diag" bid 1)
              (set-signs! "diag" bid (list (list 0 "!" "diag")))))"#,
         tmp.path(),
     );
@@ -1053,8 +1053,8 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-sign-source! "diag" 1)
-           (register-hook! 'on-diagnostics-changed (lambda (bid)
+        r#"(register-hook! 'on-diagnostics-changed (lambda (bid)
+             (register-sign-source! "diag" bid 1)
              (set-signs! "diag" bid (list (list 0 "!" "diag")))))"#,
         tmp.path(),
     );

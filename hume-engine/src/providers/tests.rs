@@ -123,7 +123,7 @@ fn sync_line_number_style_no_op_when_empty() {
 #[test]
 fn sync_sign_column_width_updates_registered_sign_columns() {
     let mut set = ProviderSet::new();
-    set.add_gutter_column(Box::new(SignColumn::new(ScopeId(0))));
+    set.add_gutter_column(Box::new(SignColumn::new(Box::new(()), ScopeId(0))));
     set.sync_sign_column_width(0);
     let lane = set.gutter_columns[0]
         .1

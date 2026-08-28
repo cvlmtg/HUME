@@ -89,17 +89,15 @@ fn set_signs_for_an_unregistered_source_errors_naming_the_builtin() {
     );
 }
 
-/// The whole reason a source's slot comes from registration, not from
-/// per-entry priority: a registered source reserves its slot the moment it
-/// registers, so the gutter width never moves as that source's (or another
-/// registered source's) signs come and go — the width oscillation the
-/// priority-per-entry ladder used to produce.
+/// A registered source reserves its slot the moment it registers, so the
+/// gutter width never moves as that source's (or another registered
+/// source's) signs come and go.
 #[test]
 fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
     let (mut ed, pid) = plugin_sign_editor(
         None,
-        r#"(register-sign-source! "a" 2)
-           (register-sign-source! "b" 1)
+        r#"(register-sign-source! "a" (current-buffer) 2)
+           (register-sign-source! "b" (current-buffer) 1)
            (set-signs! "a" (current-buffer) (list (list 0 "+" "sc")))"#,
     );
     assert_eq!(
@@ -144,11 +142,11 @@ fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
 fn re_registering_a_sign_source_updates_its_priority_and_slot() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(register-sign-source! "a" 1)
-           (register-sign-source! "b" 2)
+        r#"(register-sign-source! "a" (current-buffer) 1)
+           (register-sign-source! "b" (current-buffer) 2)
            (set-signs! "a" (current-buffer) (list (list 0 "A" "sc")))
            (set-signs! "b" (current-buffer) (list (list 0 "B" "sc")))
-           (register-sign-source! "a" 10)"#,
+           (register-sign-source! "a" (current-buffer) 10)"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -168,7 +166,7 @@ fn re_registering_a_sign_source_updates_its_priority_and_slot() {
 fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
     let (ed, pid) = plugin_sign_editor(
         None,
-        r#"(register-sign-source! "linter" 7)
+        r#"(register-sign-source! "linter" (current-buffer) 7)
            (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope")))"#,
     );
 
@@ -180,7 +178,7 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
         sign.slot, 0,
         "this plugin sign is the buffer's only registered channel — slot 0"
     );
-    let warn_scope = ed.view.registry.get("warn-scope").unwrap();
+    let warn_scope = scope(&ed, "warn-scope");
     assert_eq!(sign.scope, warn_scope);
 
     assert_eq!(
@@ -200,8 +198,8 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
 fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
     let (ed, pid) = plugin_sign_editor(
         None,
-        r#"(register-sign-source! "linter" 3)
-           (register-sign-source! "vcs" 9)
+        r#"(register-sign-source! "linter" (current-buffer) 3)
+           (register-sign-source! "vcs" (current-buffer) 9)
            (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))
            (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))"#,
     );
@@ -232,8 +230,8 @@ fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
 fn bare_auto_auto_sizes_to_multiple_channels_like_bare_always() {
     let (ed, pid) = plugin_sign_editor(
         Some("auto"),
-        r#"(register-sign-source! "linter" 3)
-           (register-sign-source! "vcs" 9)
+        r#"(register-sign-source! "linter" (current-buffer) 3)
+           (register-sign-source! "vcs" (current-buffer) 9)
            (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))
            (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))"#,
     );
@@ -252,18 +250,18 @@ fn bare_auto_auto_sizes_to_multiple_channels_like_bare_always() {
     );
 }
 
-/// Auto-sizing follows the registered-source count with no fixed cap
-/// anymore (unlike the old priority-ladder model's 4-slot
-/// `MAX_AUTO_SIGN_SLOTS`) — five registered sources auto-size to five slots.
+/// Auto-sizing follows the registered-source count, uncapped below
+/// `SignColumnConfig::MAX_SLOTS` (127) — five registered sources auto-size
+/// to five slots.
 #[test]
-fn auto_size_grows_to_five_registered_sources_no_longer_capped_at_four() {
+fn auto_size_grows_to_five_registered_sources() {
     let (ed, pid) = plugin_sign_editor(
         None,
-        r#"(register-sign-source! "a" 5)
-           (register-sign-source! "b" 4)
-           (register-sign-source! "c" 3)
-           (register-sign-source! "d" 2)
-           (register-sign-source! "e" 1)
+        r#"(register-sign-source! "a" (current-buffer) 5)
+           (register-sign-source! "b" (current-buffer) 4)
+           (register-sign-source! "c" (current-buffer) 3)
+           (register-sign-source! "d" (current-buffer) 2)
+           (register-sign-source! "e" (current-buffer) 1)
            (set-signs! "a" (current-buffer) (list (list 0 "5" "sc")))
            (set-signs! "b" (current-buffer) (list (list 0 "4" "sc")))
            (set-signs! "c" (current-buffer) (list (list 0 "3" "sc")))
@@ -276,7 +274,7 @@ fn auto_size_grows_to_five_registered_sources_no_longer_capped_at_four() {
     assert_eq!(
         line_signs.len(),
         5,
-        "five registered sources — all five get a slot, no 4-slot cap"
+        "five registered sources — all five get their own slot"
     );
     assert_eq!(
         sign_column_width(&ed, pid),
@@ -292,8 +290,8 @@ fn auto_size_grows_to_five_registered_sources_no_longer_capped_at_four() {
 fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:1"),
-        r#"(register-sign-source! "linter" 3)
-           (register-sign-source! "vcs" 9)
+        r#"(register-sign-source! "linter" (current-buffer) 3)
+           (register-sign-source! "vcs" (current-buffer) 9)
            (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))
            (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))"#,
     );
@@ -312,15 +310,15 @@ fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
 }
 
 /// A registered source's slot is a property of *registration*, so two
-/// sources at the *same* declared priority don't contend for one slot the
-/// way per-entry priority used to — both register their own distinct slot,
-/// ties broken by name (ascending) at registration time.
+/// sources at the *same* declared priority don't contend for one slot —
+/// both register their own distinct slot, ties broken by name (ascending)
+/// at registration time.
 #[test]
 fn equal_priority_sign_sources_get_distinct_slots_ordered_by_name() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(register-sign-source! "vcs" 5)
-           (register-sign-source! "linter" 5)
+        r#"(register-sign-source! "vcs" (current-buffer) 5)
+           (register-sign-source! "linter" (current-buffer) 5)
            (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))
            (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))"#,
     );
@@ -348,8 +346,8 @@ fn equal_priority_sign_sources_get_distinct_slots_ordered_by_name() {
 fn wider_signcolumn_keeps_multiple_signs_per_line() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(register-sign-source! "linter" 3)
-           (register-sign-source! "vcs" 9)
+        r#"(register-sign-source! "linter" (current-buffer) 3)
+           (register-sign-source! "vcs" (current-buffer) 9)
            (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))
            (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))"#,
     );
@@ -380,9 +378,9 @@ fn wider_signcolumn_keeps_multiple_signs_per_line() {
 fn a_source_ranked_past_the_resolved_slot_count_is_hidden_not_miscast_into_slot_zero() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(register-sign-source! "a" 3)
-           (register-sign-source! "b" 2)
-           (register-sign-source! "c" 1)
+        r#"(register-sign-source! "a" (current-buffer) 3)
+           (register-sign-source! "b" (current-buffer) 2)
+           (register-sign-source! "c" (current-buffer) 1)
            (set-signs! "a" (current-buffer) (list (list 0 "3" "sc")))
            (set-signs! "b" (current-buffer) (list (list 0 "2" "sc")))
            (set-signs! "c" (current-buffer) (list (list 0 "1" "sc")))"#,

@@ -55,18 +55,22 @@ pub(crate) fn set_inlay_hints(
     Ok(SteelVal::Void)
 }
 
-/// `(register-sign-source! name priority)` — declares a sign channel: its
-/// buffer-wide gutter slot is this call's rank among every registered
-/// source, by `(priority desc, name asc)` — a property of the *source*, not
-/// of any one `set-signs!` call. A slot is reserved wherever the source is
-/// registered, even in a buffer where it has placed no signs at all — this
-/// is what keeps the gutter width stable as signs come and go, instead of
-/// tracking whichever priorities happen to be live right now. Re-registering
-/// `name` replaces its priority and re-sorts it, same as
-/// `register-lsp-server!`'s last-wins semantics.
+/// `(register-sign-source! name bid priority)` — declares a sign channel
+/// *for `bid`*: its gutter slot is this call's rank among every source
+/// registered for that same buffer, by `(priority desc, name asc)` — a
+/// property of the *source*, not of any one `set-signs!` call, and scoped to
+/// that buffer, not shared with any other. A slot is reserved the first time
+/// a source registers for a buffer, even before it's placed any signs there
+/// — this is what keeps the gutter width stable as signs come and go,
+/// instead of tracking whichever priorities happen to be live right now.
+/// There is no `unregister-sign-source!`: a source holds its slot in a
+/// buffer for that buffer's life. Re-registering `name` for the same `bid`
+/// replaces its priority and re-sorts it, same as `register-lsp-server!`'s
+/// last-wins semantics.
 pub(crate) fn register_sign_source(
     ctx: &mut SteelCtx,
     name: SteelVal,
+    bid: BidArg,
     priority: SteelVal,
 ) -> SteelResult {
     let name = string_arg(name, "register-sign-source! name")?;
@@ -75,7 +79,7 @@ pub(crate) fn register_sign_source(
     }
     let priority = int_arg(priority, "register-sign-source! priority")?;
     require_cap(ctx.host.decorations(), "register-sign-source!")?
-        .register_sign_source(name, priority)
+        .register_sign_source(name, bid.0, priority)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }

@@ -222,14 +222,16 @@ impl Drop for RealRuntimeGuard {
 
 // ── Shared diagnostics fixture ───────────────────────────────────────────────
 //
-// Shared by `lsp_diagnostics_inline.rs` (EOL summary) and
+// `DiagFixture`/`publish_diagnostics_notification` are shared with
+// `lsp_diagnostics_nav.rs` too (via `use super::*`). `setup_diagnostics`
+// itself is only for `lsp_diagnostics_inline.rs` (EOL summary) and
 // `lsp_diagnostic_signs.rs` (gutter signs) — both need `core:lsp` loaded
 // *before* `drain_lsp()`, since both decorations are driven by the queued
-// `on-diagnostics-changed` hook (see `setup`'s own doc below).
-// `lsp_diagnostics_nav.rs` keeps its own near-identical copy: its tests pull
-// `diagnostics-for-buffer` fresh at call time, independent of the hook, so
-// its `setup` loads the plugin *after* `drain_lsp()` instead — a genuine
-// ordering difference, not incidental duplication.
+// `on-diagnostics-changed` hook (see its own doc below).
+// `lsp_diagnostics_nav.rs` keeps its own near-identical `setup`: its tests
+// pull `diagnostics-for-buffer` fresh at call time, independent of the hook,
+// so it loads the plugin *after* `drain_lsp()` instead — a genuine ordering
+// difference, not incidental duplication.
 
 use crate::editor::lsp::LspState;
 use hume_lsp::backend::LspBackend;
@@ -257,26 +259,48 @@ fn publish_diagnostics_notification(uri: &str, diags: &[DiagFixture]) -> hume_ls
     }
 }
 
+/// Everything [`setup_diagnostics`] builds and keeps alive for the test's
+/// duration. `_dirs` bundles the two owned `TempDir`s (init-eval dir, the
+/// on-disk file's dir) into one field so every call site names exactly one
+/// keep-alive field, not two — a struct pattern's `..` drops any field it
+/// doesn't bind *immediately*, at the `let`, not at the end of the caller's
+/// scope, so `_dirs` must always be bound explicitly (`let DiagSetup { mut
+/// ed, _guard, _dirs, .. } = setup_diagnostics(...)`), never swallowed by
+/// `..`, or the directories `ed`'s buffer and a later `run`/
+/// `eval_with_real_host` call still reference vanish out from under them.
+/// `file`/`tmp` are plain owned paths (not borrows into `_dirs`) so a caller
+/// that needs one doesn't also have to hold a borrow of the whole struct.
+struct DiagSetup {
+    ed: Editor,
+    /// The on-disk path `ed` opened — only
+    /// `lsp_diagnostic_signs.rs`'s reload test writes new content to this
+    /// and `:e!`s it; every other caller lets it go unread after setup.
+    file: std::path::PathBuf,
+    /// The Steel init-eval directory — some tests `run` a second plugin
+    /// sign source after setup and need this again.
+    tmp: std::path::PathBuf,
+    _guard: RealRuntimeGuard,
+    _dirs: (tempfile::TempDir, tempfile::TempDir),
+}
+
 /// Plugin load happens *before* `drain_lsp()` (unlike `lsp_diagnostics_nav.rs`'s
 /// otherwise-identical `setup`) — both the EOL summary and the gutter signs
 /// are driven by `on-diagnostics-changed`, which is a queued hook
 /// (`queue_event` → `pending_work`, actually invoked by `settle()`): the
 /// handler must be registered by `(load-plugin "core:lsp")` before that
 /// queued hook is drained, or the first batch's decorations never render.
-fn setup_diagnostics(
-    content: &str,
-    file: &Path,
-    tmp: &Path,
-    diags: &[DiagFixture],
-) -> (Editor, RealRuntimeGuard) {
+fn setup_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagSetup {
     let guard = RealRuntimeGuard::new();
-    std::fs::write(file, content).unwrap();
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    std::fs::write(&file, content).unwrap();
 
     let mut backend = InlineLspBackend::new();
     let sid = backend
         .start("rust-analyzer", &[], Path::new("."), &[])
         .unwrap();
-    let uri = hume_lsp::uri::path_to_uri(file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
     if !diags.is_empty() {
         backend.push_from_server(sid, publish_diagnostics_notification(uri.as_str(), diags));
     }
@@ -292,14 +316,20 @@ fn setup_diagnostics(
         &mut ed,
         &mut host,
         r#"(load-plugin "core:stdlib") (load-plugin "core:lsp")"#,
-        tmp,
+        tmp.path(),
     );
     ed.scripting = Some(host);
 
     ed.drain_lsp();
     ed.settle();
 
-    (ed, guard)
+    DiagSetup {
+        ed,
+        file,
+        tmp: tmp.path().to_path_buf(),
+        _guard: guard,
+        _dirs: (tmp, file_dir),
+    }
 }
 
 /// Points `XDG_CONFIG_HOME`/`HUME_RUNTIME`/`XDG_DATA_HOME` at a config

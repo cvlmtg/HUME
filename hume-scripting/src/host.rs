@@ -490,17 +490,26 @@ pub trait DecorationHost {
         hints: Vec<(usize, String, bool)>,
     ) -> Result<(), String>;
 
-    /// `(register-sign-source! name priority)` — declares `name` a sign
-    /// channel at `priority`, replacing any prior registration under that
-    /// name (last wins, matching `register-lsp-server!`). Its buffer-wide
-    /// gutter slot is its rank among every registered source, not a
-    /// property of any one `set_signs` call.
-    fn register_sign_source(&mut self, name: String, priority: i64) -> Result<(), String>;
+    /// `(register-sign-source! name bid priority)` — declares `name` a sign
+    /// channel at `priority` *for `bid`*, replacing any prior registration
+    /// under that name in that buffer (last wins, matching
+    /// `register-lsp-server!`). Its gutter slot is its rank among every
+    /// source registered for that same buffer, not a property of any one
+    /// `set_signs` call, and not shared with any other buffer — a source
+    /// claims its slot the first time it becomes relevant to a given
+    /// buffer and holds it for that buffer's life; there is no withdrawal.
+    fn register_sign_source(
+        &mut self,
+        name: String,
+        bid: BufferId,
+        priority: i64,
+    ) -> Result<(), String>;
 
     /// `(set-signs! source bid signs)` — replaces `source`'s signs for `bid`
     /// wholesale. Each entry is `(line, text, scope)`; `line` converts to
     /// that line's line-start char offset at this boundary — `Err`, naming
-    /// the builtin, if `line` is out of range or `source` isn't registered.
+    /// the builtin, if `line` is out of range or `source` isn't registered
+    /// for `bid`.
     fn set_signs(
         &mut self,
         source: String,

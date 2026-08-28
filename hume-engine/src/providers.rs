@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use bitflags::bitflags;
 use hume_grid::Rect;
@@ -118,10 +119,15 @@ pub const DEFAULT_GUTTER_SCOPE: Scope = Scope("ui.linenr");
 /// (Steel-configured icons, git-sign glyphs) is computed at runtime and must
 /// own its string. Gutter rendering is ~100 calls/frame, not per-grapheme, so
 /// the occasional owned allocation is negligible (unlike the per-cell hot
-/// path, which stays index-based via `CellContent`).
+/// path, which stays index-based via `CellContent`). `Shared` is the one
+/// exception worth avoiding the allocation for: `SignColumn` already holds
+/// its glyph as `Arc<str>` (`Sign::text`), so cloning it into a cell is a
+/// refcount bump rather than a fresh `to_string()` for every visible sign,
+/// every frame.
 #[derive(Clone, Debug)]
 pub enum GutterCellContent {
     Text(Cow<'static, str>),
+    Shared(Arc<str>),
     Blank,
 }
 
@@ -142,6 +148,7 @@ impl GutterCell {
     pub fn as_str(&self) -> &str {
         match &self.content {
             GutterCellContent::Text(s) => s,
+            GutterCellContent::Shared(s) => s,
             GutterCellContent::Blank => " ",
         }
     }

@@ -108,17 +108,6 @@ const EDITOR_STATE_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
         "minibuf_completion_view",
         "preserved: Arc view, self-healing per-frame",
     ),
-    (
-        "diagnostic_text_scopes",
-        "preserved: ScopeIds are registry-relative, not theme-relative — \
-         survive a theme reset",
-    ),
-    ("inlay_hint_scope", "preserved: registry-relative ScopeId"),
-    (
-        "bracket_match_scope",
-        "preserved: registry-relative ScopeId",
-    ),
-    ("search_match_scope", "preserved: registry-relative ScopeId"),
     ("popup_view", "preserved: Arc view, self-healing per-frame"),
     (
         "popup_band_view",

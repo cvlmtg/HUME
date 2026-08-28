@@ -12,15 +12,13 @@ use super::*;
 
 #[test]
 fn error_line_gets_a_sign_with_the_error_scope() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let diag: DiagFixture = ((0, 2), (0, 5), 1, "boom");
-    let (mut ed, _guard) = setup_diagnostics(
-        "abcdefgh\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[diag],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics("abcdefgh\n", &[diag]);
     let pid = ed.state.focused_pane_id;
     render(&mut ed);
 
@@ -48,15 +46,13 @@ fn sign_and_buffer_text_use_different_scopes_for_the_same_severity() {
     // `underline` modifier meant for the text span, which the sign column
     // must not inherit. Regression guard for the two surfaces ever being
     // pointed at each other's scope.
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let diag: DiagFixture = ((0, 2), (0, 5), 1, "boom");
-    let (mut ed, _guard) = setup_diagnostics(
-        "abcdefgh\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[diag],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics("abcdefgh\n", &[diag]);
     let pid = ed.state.focused_pane_id;
     render(&mut ed);
 
@@ -91,19 +87,17 @@ fn sign_and_buffer_text_use_different_scopes_for_the_same_severity() {
 
 #[test]
 fn error_beats_warning_on_the_same_line() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let warning: DiagFixture = ((0, 0), (0, 1), 2, "warn");
     let error: DiagFixture = ((0, 4), (0, 5), 1, "err");
-    let (mut ed, _guard) = setup_diagnostics(
-        "abcdefgh\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[warning, error],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics("abcdefgh\n", &[warning, error]);
     let pid = ed.state.focused_pane_id;
     render(&mut ed);
-    let error_scope = ed.view.registry.get("error").unwrap();
+    let error_scope = scope(&ed, "error");
 
     let signs = pane_signs(&ed, pid);
     assert_eq!(signs.len(), 1, "one line, one merged sign");
@@ -118,15 +112,13 @@ fn error_beats_warning_on_the_same_line() {
 fn multiline_diagnostic_marks_every_line_it_touches() {
     // "abc\ndef\n" — a diagnostic covering char 2 ('c') through char 6 ('f'),
     // crossing the line-0/line-1 boundary.
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let diag: DiagFixture = ((0, 2), (1, 3), 1, "boom");
-    let (mut ed, _guard) = setup_diagnostics(
-        "abc\ndef\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[diag],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics("abc\ndef\n", &[diag]);
     let pid = ed.state.focused_pane_id;
     render(&mut ed);
     let signs = pane_signs(&ed, pid);
@@ -145,16 +137,11 @@ fn multiline_diagnostic_marks_every_line_it_touches() {
 /// the span `lsp/diagnostic-signs` expands over.
 #[test]
 fn end_line_equals_line_for_single_line_and_diverges_for_multiline() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let single: DiagFixture = ((0, 2), (0, 5), 1, "single-line");
     let multi: DiagFixture = ((0, 2), (1, 3), 1, "multi-line");
-    let (ed, _guard) = setup_diagnostics(
-        "abc\ndef\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[single, multi],
-    );
+    let DiagSetup {
+        ed, _guard, _dirs, ..
+    } = setup_diagnostics("abc\ndef\n", &[single, multi]);
     let bid = ed.focused_buffer_id();
 
     let entries =
@@ -183,30 +170,34 @@ fn end_line_equals_line_for_single_line_and_diverges_for_multiline() {
 
 #[test]
 fn zero_diagnostics_produce_no_signs() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup_diagnostics(
-        "abcdefgh\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics("abcdefgh\n", &[]);
+    let bid = ed.focused_buffer_id();
     let pid = ed.state.focused_pane_id;
     render(&mut ed);
     assert!(pane_signs(&ed, pid).is_empty());
+    assert_eq!(
+        ed.state.config.decorations.sign_source_count(bid),
+        0,
+        "a buffer with no diagnostics ever published must never reserve a \
+         gutter slot — core:lsp only registers from inside the function \
+         that places or clears a diagnostic sign, and that never ran here"
+    );
 }
 
 #[test]
 fn gutter_width_is_the_default_when_a_diagnostic_exists() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let diag: DiagFixture = ((0, 0), (0, 1), 1, "boom");
-    let (mut ed, _guard) = setup_diagnostics(
-        "abcdefgh\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[diag],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics("abcdefgh\n", &[diag]);
     let pid = ed.state.focused_pane_id;
     render(&mut ed);
     assert_eq!(
@@ -218,15 +209,13 @@ fn gutter_width_is_the_default_when_a_diagnostic_exists() {
 
 #[test]
 fn gutter_width_auto_2_expands_when_signs_exist() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let diag: DiagFixture = ((0, 0), (0, 1), 1, "boom");
-    let (mut ed, _guard) = setup_diagnostics(
-        "abcdefgh\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[diag],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics("abcdefgh\n", &[diag]);
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("auto:2".parse().unwrap());
     let pid = ed.state.focused_pane_id;
@@ -239,30 +228,29 @@ fn gutter_width_auto_2_expands_when_signs_exist() {
 }
 
 /// Diagnostic signs are placed through the same `set-signs!` path as any
-/// other plugin sign now (source `"lsp-diagnostics"`) — this proves a
+/// other plugin sign (source `"lsp-diagnostics"`) — this proves a
 /// diagnostic sign and an unrelated plugin sign on the *same* line both
 /// survive into one render, in priority order, sharing the one per-pane
 /// sign map rather than two.
 #[test]
 fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let diag: DiagFixture = ((0, 0), (0, 1), 1, "boom");
-    let (mut ed, _guard) = setup_diagnostics(
-        "abcdefgh\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[diag],
-    );
+    let DiagSetup {
+        mut ed,
+        tmp,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics("abcdefgh\n", &[diag]);
 
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:2".parse().unwrap());
 
     run(
         &mut ed,
-        tmp.path(),
-        r#"(register-sign-source! "linter" 20)
-           (define-command! "arm" "" (lambda ()
+        &tmp,
+        r#"(define-command! "arm" "" (lambda ()
+             (register-sign-source! "linter" (current-buffer) 20)
              (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope")))))"#,
     );
     type_cmd(&mut ed, ":arm");
@@ -309,22 +297,21 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
 /// sharing this particular frame with it.
 #[test]
 fn ladder_is_buffer_wide_not_viewport_restricted() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let content: String = "line\n".repeat(60);
     let diag: DiagFixture = ((50, 0), (50, 1), 1, "boom");
-    let (mut ed, _guard) = setup_diagnostics(
-        &content,
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[diag],
-    );
+    let DiagSetup {
+        mut ed,
+        tmp,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics(&content, &[diag]);
 
     run(
         &mut ed,
-        tmp.path(),
-        r#"(register-sign-source! "git-diff" 0)
-           (define-command! "arm" "" (lambda ()
+        &tmp,
+        r#"(define-command! "arm" "" (lambda ()
+             (register-sign-source! "git-diff" (current-buffer) 0)
              (set-signs! "git-diff" (current-buffer) (list (list 0 "+" "diff.plus.gutter")))))"#,
     );
     type_cmd(&mut ed, ":arm");
@@ -354,14 +341,16 @@ fn ladder_is_buffer_wide_not_viewport_restricted() {
 /// via its own end-of-file clamp.
 #[test]
 fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
     // Wire end character 27 — the original (longer) content's length, far
     // past the much shorter reloaded content's 4 chars below.
     let diag: DiagFixture = ((0, 0), (0, 27), 1, "boom");
-    let (mut ed, _guard) =
-        setup_diagnostics("one two three four five six\n", &file, tmp.path(), &[diag]);
+    let DiagSetup {
+        mut ed,
+        file,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics("one two three four five six\n", &[diag]);
     let bid = ed.focused_buffer_id();
     assert_eq!(
         ed.lsp.diagnostic_counts_for_test(bid),

@@ -5,9 +5,12 @@
 ### Breaking changes
 - **Breaking**: `(set-signs! source bid signs)` entries are now `(line text scope)` — the
   trailing `priority` is gone. A sign source's gutter column now comes from a new
-  `(register-sign-source! name priority)` call instead, made once (typically at plugin
-  load) rather than repeated on every `set-signs!` call; `set-signs!` for an unregistered
-  source now errors instead of silently rendering nothing.
+  `(register-sign-source! name bid priority)` call instead, scoped to that one buffer and
+  made every time the source is about to place or clear signs there (idempotent, so
+  repeating it is cheap) rather than once globally; `set-signs!` for a source unregistered
+  for that buffer now errors instead of silently rendering nothing. A source's gutter slot
+  is per-buffer — a buffer neither `core:lsp` nor `core:git-diff` (nor any other plugin)
+  ever registers a sign source for never reserves a gutter column for one.
 
 ### Appearance
 - Curly, dotted and dashed underlines now render on terminals that support them. Themes could already ask for them and HUME already parsed the request; it was being flattened to a plain underline on the way to the terminal.

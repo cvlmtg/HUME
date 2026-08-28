@@ -50,16 +50,6 @@ fn open_test_picker_with_prompt(ed: &mut Editor, items: &[&str], prompt: &str) {
     );
 }
 
-/// Runs the write-side pipeline (`prepare_frame`) at a given terminal size —
-/// needed before any test that depends on `panel_geometry`/`last_pane_area`
-/// (paging, scroll clamping, the synced view).
-fn frame(ed: &mut Editor, width: u16, height: u16) {
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(width, height);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
-}
-
 fn payload_str(v: &SteelVal) -> &str {
     match v {
         SteelVal::StringV(s) => s.as_str(),

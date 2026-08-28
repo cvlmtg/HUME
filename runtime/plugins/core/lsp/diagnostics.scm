@@ -77,40 +77,59 @@
 ;; leftmost diagnostic, color from the most severe one on that line. One
 ;; gutter sign per line any diagnostic touches, most severe wins.
 
-;;; Registers the diagnostics gutter channel — its declared priority, not
-;;; any one entry's, decides its slot against every other registered sign
-;;; source (see `register-sign-source!`'s doc).
-(register-sign-source! "lsp-diagnostics" 10)
+;;; This plugin's declared priority for `register-sign-source!` — its rank
+;;; against every other source registered for the same buffer decides this
+;;; channel's gutter slot there. Registration is per-buffer and happens at
+;;; every call site below that's about to place or clear a diagnostic sign
+;;; (idempotent — a no-op once already registered at this priority), not
+;;; once at load: a buffer no server ever attaches to should never reserve
+;;; this slot.
+(define lsp/*sign-priority* 10)
 
 (define (lsp/severity-scope severity)
   (string-append "diagnostic." severity))
 
-;;; The most severe entry in `line-diags`, by `"severity-rank"` — the
-;;; discriminant `DiagSeverity`'s `Ord` assigns in Rust (0 = error … 3 =
-;;; hint, lower is more severe), carried on every `diagnostics-for-buffer`
+;;; The most severe entry in `line-diags` (non-empty), by `"severity-rank"`
+;;; — the discriminant `DiagSeverity`'s `Ord` assigns in Rust (0 = error …
+;;; 3 = hint, lower is more severe), carried on every `diagnostics-for-buffer`
 ;;; entry so this is the only place severity order is compared, not
-;;; re-encoded here.
+;;; re-encoded here. A running-best fold, not a sort-then-take-`car`: this
+;;; runs once per line group on every `on-diagnostics-changed` fire, and a
+;;; sort is wasted work when only the minimum is ever read back out.
 (define (lsp/most-severe line-diags)
-  (car (sort line-diags
-             (lambda (a b) (< (hash-ref a "severity-rank") (hash-ref b "severity-rank"))))))
+  (foldl (lambda (d best)
+           (if (< (hash-ref d "severity-rank") (hash-ref best "severity-rank")) d best))
+         (car line-diags)
+         (cdr line-diags)))
+
+;;; `lst` (assumed sorted ascending by `key-fn`) grouped into a list of
+;;; `(key . members)` pairs, one per run of equal keys — each `members` list
+;;; in original order, unwrapped by the caller however its elements are
+;;; shaped. The one run-length grouping algorithm both diagnostic
+;;; decorations share: the EOL summary's `lsp/group-by-line` below, and the
+;;; sign path's line-touch grouping (`lsp/diagnostic-signs`), which needs its
+;;; own explicit sort first since one diagnostic can land in more than one
+;;; line's group there.
+(define (lsp/group-by key-fn lst)
+  (if (null? lst)
+      '()
+      (let loop ((rest (cdr lst))
+                 (current-key (key-fn (car lst)))
+                 (current-group (list (car lst)))
+                 (groups '()))
+        (cond
+          ((null? rest)
+           (reverse (cons (cons current-key (reverse current-group)) groups)))
+          ((equal? (key-fn (car rest)) current-key)
+           (loop (cdr rest) current-key (cons (car rest) current-group) groups))
+          (else
+           (loop (cdr rest) (key-fn (car rest)) (list (car rest))
+                 (cons (cons current-key (reverse current-group)) groups)))))))
 
 ;;; `diags` (start-ascending, so same-line entries are already contiguous) ->
 ;;; a list of same-"line" groups, each group itself start-ascending.
 (define (lsp/group-by-line diags)
-  (if (null? diags)
-      '()
-      (let loop ((rest (cdr diags))
-                 (current-line (hash-ref (car diags) "line"))
-                 (current-group (list (car diags)))
-                 (groups '()))
-        (cond
-          ((null? rest)
-           (reverse (cons (reverse current-group) groups)))
-          ((equal? (hash-ref (car rest) "line") current-line)
-           (loop (cdr rest) current-line (cons (car rest) current-group) groups))
-          (else
-           (loop (cdr rest) (hash-ref (car rest) "line") (list (car rest))
-                 (cons (reverse current-group) groups)))))))
+  (map cdr (lsp/group-by (lambda (d) (hash-ref d "line")) diags)))
 
 ;;; One group -> a `(line text scope)` entry for `set-eol-text!`.
 (define (lsp/line-group->entry group)
@@ -129,39 +148,33 @@
   (map (lambda (line) (cons line diag))
        (range (hash-ref diag "line") (+ (hash-ref diag "end-line") 1))))
 
-;;; `pairs` grouped by ascending `car` (line) into `(line . diags)` groups —
-;;; the sign-side counterpart to `lsp/group-by-line`, needed separately
-;;; because one diagnostic can land in more than one line's group here.
-(define (lsp/pairs->line-groups pairs)
-  (let ((sorted (sort pairs (lambda (a b) (< (car a) (car b))))))
-    (if (null? sorted)
-        '()
-        (let loop ((rest (cdr sorted))
-                   (current-line (car (car sorted)))
-                   (current-group (list (cdr (car sorted))))
-                   (groups '()))
-          (cond
-            ((null? rest)
-             (reverse (cons (cons current-line (reverse current-group)) groups)))
-            ((equal? (car (car rest)) current-line)
-             (loop (cdr rest) current-line (cons (cdr (car rest)) current-group) groups))
-            (else
-             (loop (cdr rest) (car (car rest)) (list (cdr (car rest)))
-                   (cons (cons current-line (reverse current-group)) groups))))))))
-
 ;;; `diags` -> `(line "●" severity)` sign entries, one per line any
 ;;; diagnostic touches — the most severe diagnostic on a line wins, same
 ;;; reduction `lsp/most-severe` already does for the EOL summary. `severity`
 ;;; is passed straight through as the sign's scope — the bare
-;;; `error`/`warning`/`info`/`hint` name, Helix's own gutter-scope
-;;; convention (distinct from `lsp/severity-scope`'s `diagnostic.*` prefix,
-;;; which is for the editing-area text span, not the gutter).
+;;; `error`/`warning`/`info`/`hint` name (distinct from
+;;; `lsp/severity-scope`'s `diagnostic.*` prefix, which is for the
+;;; editing-area text span, not the gutter). Every
+;;; diagnostic's line-touch pairs are folded straight onto one accumulator —
+;;; no per-diagnostic sublist spread through `apply` — before the single
+;;; sort + `lsp/group-by` that turns them into per-line groups (the sign-side
+;;; counterpart to `lsp/group-by-line`, needed separately because one
+;;; diagnostic can land in more than one line's group here).
 (define (lsp/diagnostic-signs diags)
-  (map (lambda (group)
-         (list (car group) "●" (hash-ref (lsp/most-severe (cdr group)) "severity")))
-       (lsp/pairs->line-groups (apply append (map lsp/diag-line-pairs diags)))))
+  (let* ((pairs (foldl (lambda (diag acc)
+                          (foldl cons acc (lsp/diag-line-pairs diag)))
+                        '()
+                        diags))
+         (sorted (sort pairs (lambda (a b) (< (car a) (car b)))))
+         (groups (lsp/group-by car sorted)))
+    (map (lambda (kv)
+           (let ((line (car kv))
+                 (line-diags (map cdr (cdr kv))))
+             (list line "●" (hash-ref (lsp/most-severe line-diags) "severity"))))
+         groups)))
 
 (define (lsp/refresh-diagnostic-decorations bid)
+  (register-sign-source! "lsp-diagnostics" bid lsp/*sign-priority*)
   (let ((diags (diagnostics-for-buffer bid)))
     (set-eol-text! "lsp-diagnostics" bid
       (map lsp/line-group->entry (lsp/group-by-line diags)))
@@ -172,9 +185,14 @@
 
 ;;; A detached server means nothing new from diagnostics-for-buffer — clear
 ;;; both decorations explicitly rather than let the last summary/signs sit
-;;; rendered forever.
+;;; rendered forever. Registers first, same as `lsp/refresh-diagnostic-decorations`
+;;; — a server that attaches and detaches without ever publishing (a crash
+;;; before its first batch) reaches this `set-signs!` call having never gone
+;;; through that function, so the source might not be registered for `bid`
+;;; yet.
 (register-hook! 'on-lsp-detach
   (lambda (bid server-name)
+    (register-sign-source! "lsp-diagnostics" bid lsp/*sign-priority*)
     (set-eol-text! "lsp-diagnostics" bid '())
     (set-signs! "lsp-diagnostics" bid '())))
 

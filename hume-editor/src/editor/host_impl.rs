@@ -911,11 +911,16 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    fn register_sign_source(&mut self, name: String, priority: i64) -> Result<(), String> {
+    fn register_sign_source(
+        &mut self,
+        name: String,
+        bid: BufferId,
+        priority: i64,
+    ) -> Result<(), String> {
         self.state
             .config
             .decorations
-            .register_sign_source(name, priority);
+            .register_sign_source(name, bid, priority);
         Ok(())
     }
 
@@ -925,7 +930,13 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         signs: Vec<(usize, String, String)>,
     ) -> Result<(), String> {
-        if self.state.config.decorations.sign_slot(&source).is_none() {
+        if self
+            .state
+            .config
+            .decorations
+            .sign_slot(bid, &source)
+            .is_none()
+        {
             return Err(format!(
                 "set-signs!: unregistered sign source {source:?} — call \
                  (register-sign-source! …) first"

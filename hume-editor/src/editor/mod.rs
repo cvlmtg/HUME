@@ -471,25 +471,6 @@ pub(crate) struct EditorState {
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
     pub(crate) minibuf_completion_view:
         Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>>,
-    /// Interned scope ids for the four diagnostic severities on the
-    /// *editing-area* surface (`diagnostic.error` etc. — buffer-text
-    /// highlights), resolved lazily on first use — scope interning needs
-    /// `&mut ScopeRegistry`, which lives on `Editor::view`, not
-    /// `EditorState`. The gutter counterpart has no equivalent field —
-    /// `core:lsp` interns its own bare severity scope names at the Steel
-    /// boundary (`host_impl.rs`) when it places diagnostic signs.
-    pub(super) diagnostic_text_scopes: Option<[hume_engine::types::ScopeId; 4]>,
-    /// Interned scope id for `ui.virtual.inlay-hint`, resolved lazily
-    /// on first use for the same reason as `diagnostic_text_scopes`.
-    pub(super) inlay_hint_scope: Option<hume_engine::types::ScopeId>,
-    /// Interned scope ids for `ui.cursor.match` (bracket match) and
-    /// `ui.selection.search` (search match), resolved lazily on first use
-    /// for the same reason as `diagnostic_text_scopes` — every pane's bracket-
-    /// and search-match highlighter is a `ScopedHighlighter`, so the scope
-    /// travels with each written span instead of living on the provider;
-    /// these two are the editor-wide constants every pane's spans carry.
-    pub(super) bracket_match_scope: Option<hume_engine::types::ScopeId>,
-    pub(super) search_match_scope: Option<hume_engine::types::ScopeId>,
     /// Shared popup-overlay view for `PopupLayout::Cursor`: written by
     /// `prepare_frame`, read by `PopupOverlay`. Empty whenever `config.popup`
     /// is `None` or docked (see `popup_band_view`).
@@ -587,10 +568,6 @@ impl Default for EditorState {
             lsp_completion_dismiss_pending: false,
             completion_menu_view: Arc::new(RwLock::new(None)),
             minibuf_completion_view: Arc::new(RwLock::new(None)),
-            diagnostic_text_scopes: None,
-            inlay_hint_scope: None,
-            bracket_match_scope: None,
-            search_match_scope: None,
             popup_view: Arc::new(RwLock::new(None)),
             popup_band_view: Arc::new(RwLock::new(None)),
             menu_view: Arc::new(RwLock::new(None)),

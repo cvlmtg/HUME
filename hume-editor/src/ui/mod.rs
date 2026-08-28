@@ -70,9 +70,9 @@ pub(crate) struct PaneRenderHandles {
 /// each render (see `sync_line_number_style`), so the seeded style never
 /// reaches a frame. Bracket-match/search-match scopes are not interned
 /// here — unlike `linenr_scope` (shared with the gutter columns built right
-/// below), they have no other constructor needing them this frame, so they
-/// resolve lazily on first render the same way `Editor::diagnostic_text_scopes`/
-/// `inlay_hint_scope` already do (`decoration_providers.rs`).
+/// below), they have no other constructor needing them this frame, so they're
+/// interned fresh each frame instead, in `Editor::update_highlight_providers`
+/// (`decoration_providers.rs`).
 ///
 /// Single source of truth for pane construction — every creation site
 /// (`Editor::open`'s bootstrap pane, `commands::open_pane`) goes through
@@ -106,8 +106,10 @@ pub(crate) fn build_pane(
     let line_bg_map: LineBgMap = Arc::new(RwLock::new(FxHashMap::default()));
 
     let mut providers = ProviderSet::new();
-    let mut sign_column = SignColumn::new(linenr_scope);
-    sign_column.add_source(Box::new(SharedSignSource::new(Arc::clone(&signs))));
+    let sign_column = SignColumn::new(
+        Box::new(SharedSignSource::new(Arc::clone(&signs))),
+        linenr_scope,
+    );
     providers.add_gutter_column(Box::new(sign_column));
     providers.add_gutter_column(Box::new(LineNumberColumn::new(
         linenr_scope,

@@ -6,6 +6,12 @@
 
 use super::*;
 
+/// Every test's buffer content. Char offsets: line0 `'aa'` = 0..2, line1
+/// `'bb'` = 3..5, line2 `'cc'` = 6..8, line3 `'dd'` = 9..11 — several
+/// assertions below reference a line's line-start char offset directly
+/// (3, 9, ...) against this fixture.
+const FIXTURE: &str = "aa\nbb\ncc\ndd\n";
+
 fn run(ed: &mut Editor, cmd: &str) {
     type_cmd(ed, cmd);
     ed.settle();
@@ -15,16 +21,11 @@ fn run(ed: &mut Editor, cmd: &str) {
 
 #[test]
 fn single_diagnostic_on_a_line_shows_a_bare_message() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     // Severity 1 = error, per the LSP DiagnosticSeverity enum.
     let diag: DiagFixture = ((1, 0), (1, 2), 1, "problem A");
-    let (ed, _guard) = setup_diagnostics(
-        "aa\nbb\ncc\ndd\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[diag],
-    );
+    let DiagSetup {
+        ed, _guard, _dirs, ..
+    } = setup_diagnostics(FIXTURE, &[diag]);
     let bid = ed.focused_buffer_id();
 
     let entries: Vec<_> = ed
@@ -40,27 +41,19 @@ fn single_diagnostic_on_a_line_shows_a_bare_message() {
         "a single diagnostic must not get a '[1]' count prefix, but keeps \
          the leading space that separates it from the line's code"
     );
-    assert_eq!(
-        ed.view.registry.name_of(entries[0].1.scope),
-        "diagnostic.error"
-    );
+    assert_eq!(scope_name(&ed, entries[0].1.scope), "diagnostic.error");
 }
 
 #[test]
 fn two_diagnostics_on_the_same_line_show_count_and_leftmost_message() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     // Both on line1 ("bb", chars 3..5): D1 at col0 (char3), D2 at col1
     // (char4) — diagnostics-for-buffer is start-ascending, so D1 (leftmost)
     // supplies the message.
     let d1: DiagFixture = ((1, 0), (1, 1), 2, "warn near start");
     let d2: DiagFixture = ((1, 1), (1, 2), 1, "error further right");
-    let (ed, _guard) = setup_diagnostics(
-        "aa\nbb\ncc\ndd\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[d1, d2],
-    );
+    let DiagSetup {
+        ed, _guard, _dirs, ..
+    } = setup_diagnostics(FIXTURE, &[d1, d2]);
     let bid = ed.focused_buffer_id();
 
     let entries: Vec<_> = ed
@@ -80,19 +73,14 @@ fn two_diagnostics_on_the_same_line_show_count_and_leftmost_message() {
 
 #[test]
 fn inline_color_follows_the_highest_severity_on_the_line_not_the_leftmost() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     // D1 (leftmost, col0) is a warning; D2 (col1) is an error. The message
     // must still come from D1, but the color must reflect D2's higher
     // severity.
     let d1: DiagFixture = ((1, 0), (1, 1), 2, "warn near start");
     let d2: DiagFixture = ((1, 1), (1, 2), 1, "error further right");
-    let (ed, _guard) = setup_diagnostics(
-        "aa\nbb\ncc\ndd\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[d1, d2],
-    );
+    let DiagSetup {
+        ed, _guard, _dirs, ..
+    } = setup_diagnostics(FIXTURE, &[d1, d2]);
     let bid = ed.focused_buffer_id();
 
     let entries: Vec<_> = ed
@@ -103,7 +91,7 @@ fn inline_color_follows_the_highest_severity_on_the_line_not_the_leftmost() {
         .collect();
     assert_eq!(entries.len(), 1);
     assert_eq!(
-        ed.view.registry.name_of(entries[0].1.scope),
+        scope_name(&ed, entries[0].1.scope),
         "diagnostic.error",
         "an error anywhere on the line must win the color, even when the \
          leftmost (message-supplying) diagnostic is only a warning"
@@ -117,15 +105,13 @@ fn inline_color_follows_the_highest_severity_on_the_line_not_the_leftmost() {
 /// summaries via the `on-option-change` hook, not just future ones.
 #[test]
 fn eol_summary_respects_the_severity_floor_and_updates_when_it_changes() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let diag: DiagFixture = ((1, 0), (1, 2), 2, "just a warning"); // severity 2 = warning
-    let (mut ed, _guard) = setup_diagnostics(
-        "aa\nbb\ncc\ndd\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[diag],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics(FIXTURE, &[diag]);
     let bid = ed.focused_buffer_id();
 
     assert_eq!(
@@ -146,16 +132,11 @@ fn eol_summary_respects_the_severity_floor_and_updates_when_it_changes() {
 
 #[test]
 fn diagnostics_on_different_lines_get_independent_entries() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let diag_a: DiagFixture = ((1, 0), (1, 2), 1, "problem A");
     let diag_b: DiagFixture = ((3, 0), (3, 2), 2, "problem B");
-    let (ed, _guard) = setup_diagnostics(
-        "aa\nbb\ncc\ndd\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[diag_a, diag_b],
-    );
+    let DiagSetup {
+        ed, _guard, _dirs, ..
+    } = setup_diagnostics(FIXTURE, &[diag_a, diag_b]);
     let bid = ed.focused_buffer_id();
 
     let mut entries: Vec<(usize, String, String)> = ed
@@ -163,13 +144,7 @@ fn diagnostics_on_different_lines_get_independent_entries() {
         .config
         .decorations
         .eol_text_for_buffer(bid)
-        .map(|(_, e)| {
-            (
-                e.pos,
-                e.text.clone(),
-                ed.view.registry.name_of(e.scope).to_string(),
-            )
-        })
+        .map(|(_, e)| (e.pos, e.text.clone(), scope_name(&ed, e.scope).to_string()))
         .collect();
     entries.sort_by_key(|(pos, _, _)| *pos);
     // Line-start char offsets on this fixture: line 1 -> 3, line 3 -> 9.
@@ -190,15 +165,13 @@ fn diagnostics_on_different_lines_get_independent_entries() {
 
 #[test]
 fn goto_next_diagnostic_opens_a_dismiss_on_key_popup_with_the_full_message() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let diag: DiagFixture = ((1, 0), (1, 2), 1, "problem A\nsecond line of detail");
-    let (mut ed, _guard) = setup_diagnostics(
-        "aa\nbb\ncc\ndd\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[diag],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics(FIXTURE, &[diag]);
 
     // The real `g n` keybinding, not `:goto-next-diagnostic` — invoking via
     // the command line round-trips Command -> Normal mode, firing
@@ -222,16 +195,14 @@ fn goto_next_diagnostic_opens_a_dismiss_on_key_popup_with_the_full_message() {
 
 #[test]
 fn the_next_key_after_gn_dismisses_the_popup_but_still_executes() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let diag_a: DiagFixture = ((1, 0), (1, 2), 1, "problem A");
     let diag_b: DiagFixture = ((3, 0), (3, 2), 1, "problem B");
-    let (mut ed, _guard) = setup_diagnostics(
-        "aa\nbb\ncc\ndd\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[diag_a, diag_b],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics(FIXTURE, &[diag_a, diag_b]);
 
     ed.feed_key(key('g'));
     ed.feed_key(key('n'));
@@ -257,16 +228,14 @@ fn the_next_key_after_gn_dismisses_the_popup_but_still_executes() {
 
 #[test]
 fn diagnostics_drawer_selection_does_not_open_a_popup() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let diag_a: DiagFixture = ((1, 0), (1, 2), 1, "problem A");
     let diag_b: DiagFixture = ((3, 0), (3, 2), 2, "problem B");
-    let (mut ed, _guard) = setup_diagnostics(
-        "aa\nbb\ncc\ndd\n",
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[diag_a, diag_b],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics(FIXTURE, &[diag_a, diag_b]);
 
     run(&mut ed, ":diagnostics");
     assert!(

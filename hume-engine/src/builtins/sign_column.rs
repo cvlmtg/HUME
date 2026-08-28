@@ -1,8 +1,7 @@
 use std::any::Any;
-use std::borrow::Cow;
 use std::sync::Arc;
 
-use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterRowCtx, ProviderId};
+use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterRowCtx};
 use crate::types::{RowKind, ScopeId};
 
 /// One sign a `SignSource` renders for a buffer line (diagnostic marker, git
@@ -13,10 +12,10 @@ pub struct Sign {
     /// `render::compose_gutter`, same as any other gutter cell text.
     /// `Arc<str>`, not `Cow<'static, str>`: the editor's per-frame sign
     /// bridge builds a `Sign` straight from its decoration-store entry's own
-    /// `Arc<str>` text (`Editor::update_sign_providers` in
-    /// `hume-editor`) — cloning this field is a refcount bump, not a
-    /// String allocation, on the per-row-per-frame path
-    /// `SharedSignSource::signs_for_line` clones every `Sign` on.
+    /// `Arc<str>` text (`Editor::update_sign_providers` in `hume-editor`),
+    /// and `render_row_cells` below moves it into a
+    /// `GutterCellContent::Shared` unchanged — every hop from the store to
+    /// the rendered cell is a refcount bump, never a `String` allocation.
     pub text: Arc<str>,
     /// Already-interned — same contract as every `DecorationSource`: intern
     /// at the Steel `set-signs!` boundary (`host_impl.rs` in
@@ -31,34 +30,42 @@ pub struct Sign {
 }
 
 /// A source of signs for buffer lines (diagnostics, git status, breakpoints,
-/// bookmarks, ...). Multiple sources can share one `SignColumn`, each sign
-/// landing in its own resolved `slot` — this is what lets several features
-/// merge into one gutter column without their signs colliding or reordering
-/// each other from line to line.
+/// bookmarks, ...). Production wraps exactly one `SignSource`
+/// (`SharedSignSource`, `hume-editor`) — every plugin channel's signs are
+/// already merged into its one `line -> Vec<Sign>` map before `SignColumn`
+/// ever sees them (`Editor::update_sign_providers`), so a line with several
+/// signs is one `signs_for_line` call returning several entries, not several
+/// sources each returning one.
 pub trait SignSource {
     /// Signs for one buffer line. Order doesn't matter — each sign carries
-    /// its own `slot` — but two signs from the same source claiming the same
-    /// slot on one line is a source bug (undefined which wins). Called per
-    /// `LineStart` row per frame — implementations should be cheap lookups
-    /// into their own state (same contract as `DecorationSource`).
+    /// its own `slot`. Called per `LineStart` row per frame — implementations
+    /// should be cheap lookups into their own state (same contract as
+    /// `DecorationSource`).
     fn signs_for_line(&self, line_idx: usize, ctx: &GutterRowCtx) -> Vec<Sign>;
 }
 
-/// Built-in gutter column that merges signs from multiple `SignSource`s,
-/// placing each sign into its own resolved `slot` (where slot count =
-/// configured sign slots = `width - 1`). A sign whose slot doesn't fit the
-/// configured width is hidden.
+/// A source with no signs at all — used wherever a test needs an inert
+/// `SignColumn` and doesn't care what fires.
+#[cfg(test)]
+impl SignSource for () {
+    fn signs_for_line(&self, _line_idx: usize, _ctx: &GutterRowCtx) -> Vec<Sign> {
+        Vec::new()
+    }
+}
+
+/// Built-in gutter column that places its `SignSource`'s signs into their own
+/// resolved `slot`s (where slot count = configured sign slots = `width - 1`).
+/// A sign whose slot doesn't fit the configured width is hidden.
 ///
 /// Registered like any other `GutterColumn` via
 /// `ProviderSet::add_gutter_column`, which returns the column's own
-/// `ProviderId`. Sign sources are added separately, after registration, by
+/// `ProviderId`. Width is adjusted separately, after registration, by
 /// finding the column and downcasting to `SignColumn` — the same pattern
 /// `ProviderSet::sync_line_number_style` already uses to reach a
 /// `LineNumberColumn` post-registration (`as_any_mut().downcast_mut::<SignColumn>()`).
 pub struct SignColumn {
-    sources: Vec<(ProviderId, Box<dyn SignSource>)>,
+    source: Box<dyn SignSource>,
     width: u8,
-    next_id: ProviderId,
     /// Interned `"ui.linenr"` — unfilled sign slots render blank under this
     /// scope, same fallback `LineNumberColumn` uses for its own non-content
     /// rows. Interned by the caller at pane construction.
@@ -76,11 +83,10 @@ impl SignColumn {
         slots.saturating_add(1)
     }
 
-    pub fn new(blank_scope: ScopeId) -> Self {
+    pub fn new(source: Box<dyn SignSource>, blank_scope: ScopeId) -> Self {
         Self {
-            sources: Vec::new(),
+            source,
             width: Self::width_for_slots(1),
-            next_id: 0,
             blank_scope,
         }
     }
@@ -89,41 +95,20 @@ impl SignColumn {
     /// and resizes through `set_width`; kept as a test helper for
     /// constructing a lane already at a specific width.
     #[cfg(test)]
-    pub fn with_width(width: u8, blank_scope: ScopeId) -> Self {
+    pub fn with_width(width: u8, source: Box<dyn SignSource>, blank_scope: ScopeId) -> Self {
         Self {
             width,
-            ..Self::new(blank_scope)
+            ..Self::new(source, blank_scope)
         }
     }
 
-    /// Register a sign source. Mints its own `ProviderId` — `SignColumn` is
-    /// self-contained rather than reusing the pane's `ProviderSet` allocator,
-    /// since a sign source isn't one of `ProviderSet`'s five provider kinds.
-    pub fn add_source(&mut self, source: Box<dyn SignSource>) -> ProviderId {
-        let id = self.next_id;
-        debug_assert!(self.next_id < ProviderId::MAX, "SignColumn id overflow");
-        self.next_id += 1;
-        self.sources.push((id, source));
-        id
-    }
-
-    /// Remove the sign source registered under `id`. Returns `true` if one
-    /// was removed. No production caller — sign sources are registered for
-    /// a buffer's lifetime and never individually retracted; kept as a test
-    /// helper for exercising multi-source lane resolution.
-    #[cfg(test)]
-    pub fn remove_source(&mut self, id: ProviderId) -> bool {
-        let before = self.sources.len();
-        self.sources.retain(|(pid, _)| *pid != id);
-        before != self.sources.len()
-    }
-
-    /// Set the configured column width. Unlike the sources themselves, width
-    /// is not derived from them automatically — a caller wanting the column
-    /// to collapse to `0` when no source would fire for the current buffer
-    /// (or grow back to the default when one would) sets it explicitly, per
-    /// frame, via the same post-registration downcast `sync_line_number_style`
-    /// uses. Two calls with the same width are a cheap no-op either way.
+    /// Set the configured column width. Unlike the source itself, width
+    /// is not derived from it automatically — a caller wanting the column
+    /// to collapse to `0` when the source would fire nothing for the current
+    /// buffer (or grow back to the default when it would) sets it
+    /// explicitly, per frame, via the same post-registration downcast
+    /// `sync_line_number_style` uses. Two calls with the same width are a
+    /// cheap no-op either way.
     pub fn set_width(&mut self, width: u8) {
         self.width = width;
     }
@@ -154,18 +139,16 @@ impl GutterColumn for SignColumn {
 
         let mut cells = vec![GutterCell::blank(self.blank_scope); max_signs];
         // This loop places, it never ranks — each sign already carries its
-        // own resolved `slot`. Sources are visited in registration order, so
-        // if two ever did claim the same slot on the same line (a source
-        // bug per `SignSource::signs_for_line`'s contract), the
-        // later-registered source wins. A slot `>= max_signs` is dropped.
-        for (_, src) in &self.sources {
-            for sign in src.signs_for_line(line_idx, ctx) {
-                if let Some(cell) = cells.get_mut(sign.slot as usize) {
-                    *cell = GutterCell {
-                        content: GutterCellContent::Text(Cow::Owned(sign.text.to_string())),
-                        scope: sign.scope,
-                    };
-                }
+        // own resolved `slot` (`DecorationStores::signs_in_range`). Two
+        // signs from the source claiming the same slot on one line is a
+        // source bug (undefined which wins — see `SignSource::signs_for_line`'s
+        // contract). A slot `>= max_signs` is dropped.
+        for sign in self.source.signs_for_line(line_idx, ctx) {
+            if let Some(cell) = cells.get_mut(sign.slot as usize) {
+                *cell = GutterCell {
+                    content: GutterCellContent::Shared(Arc::clone(&sign.text)),
+                    scope: sign.scope,
+                };
             }
         }
         cells

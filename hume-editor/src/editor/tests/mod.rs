@@ -15,6 +15,7 @@ use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId};
+use hume_engine::types::ScopeId;
 use hume_ops::search::SearchDirection;
 use hume_test_fixtures::testing::{parse_state, serialize_state};
 use hume_treesitter::parse_worker::InlineParseBackend;
@@ -204,16 +205,39 @@ fn sign_column_width(ed: &Editor, pid: PaneId) -> u8 {
         .width(0)
 }
 
-/// `RenderContext::new` + `sync_viewport_dims(80, 25)` + `settle` +
-/// `prepare_frame` — every sign test's own frame-drive step: `settle` runs
-/// any queued hook (e.g. `on-diagnostics-changed`) that writes the
-/// decoration store, `prepare_frame` is what syncs it into the pane's own
-/// sign map `pane_signs` reads.
-fn render(ed: &mut Editor) {
+/// Runs the write-side pipeline (`prepare_frame`) at a given terminal size —
+/// needed before any test that depends on `panel_geometry`/`last_pane_area`
+/// (paging, scroll clamping, the synced view), or on a decoration store
+/// write reaching its pane-side `Arc` (signs, highlights, virtual lines):
+/// `settle` runs any queued hook (e.g. `on-diagnostics-changed`) that writes
+/// the store, `prepare_frame` is what syncs it into the pane's own view.
+fn frame(ed: &mut Editor, width: u16, height: u16) {
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.sync_viewport_dims(width, height);
     ed.settle();
     ed.prepare_frame(&mut ctx);
+}
+
+/// `frame` at a fixed 80x25 default — every sign test's own frame-drive
+/// step.
+fn render(ed: &mut Editor) {
+    frame(ed, 80, 25);
+}
+
+/// `name`'s already-interned `ScopeId` — panics if a setter hasn't interned
+/// it yet, so a test asserting against the wrong scope name fails loudly
+/// here rather than passing on a coincidental default.
+fn scope(ed: &Editor, name: &str) -> ScopeId {
+    ed.view
+        .registry
+        .get(name)
+        .unwrap_or_else(|| panic!("scope '{name}' must already be interned"))
+}
+
+/// Inverse of `scope` — the name a `ScopeId` a decoration entry carries was
+/// interned under.
+fn scope_name(ed: &Editor, id: ScopeId) -> &str {
+    ed.view.registry.name_of(id)
 }
 
 fn reg(ed: &Editor, name: char) -> Vec<String> {

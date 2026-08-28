@@ -373,14 +373,13 @@ impl<K, T: Positioned> SourceStore<K, T> {
     }
 
     /// Every source's entries for `bid` whose `pos` falls in `range`,
-    /// flattened and paired with their source.
-    pub(crate) fn in_range(
-        &self,
-        bid: BufferId,
-        range: Range<usize>,
-    ) -> impl Iterator<Item = (&K, &T)> {
+    /// flattened, source discarded — [`Self::groups_in_range`] is the one to
+    /// build on instead when a caller needs the source name (e.g.
+    /// [`DecorationStores::signs_in_range`], to resolve a group's registered
+    /// slot once rather than once per entry).
+    pub(crate) fn in_range(&self, bid: BufferId, range: Range<usize>) -> impl Iterator<Item = &T> {
         self.groups_in_range(bid, range)
-            .flat_map(|(source, es)| es.iter().map(move |e| (source, e)))
+            .flat_map(|(_, es)| es.iter())
     }
 }
 
@@ -468,15 +467,22 @@ pub(crate) struct DecorationStores {
     extra_highlights: SourceStore<String, ExtraHighlightEntry>,
     eol_text: SourceStore<String, EolTextEntry>,
     line_backgrounds: SourceStore<String, LineBgEntry>,
-    /// Every registered sign source, kept sorted `(priority desc, name asc)`
-    /// — this order *is* the buffer-wide sign-priority ladder
-    /// (`register_sign_source`/`sign_slot`/`sign_source_count`). Not
-    /// per-buffer, unlike every other field here: a source registers once,
-    /// globally, and reserves its slot in every buffer regardless of
-    /// whether it has placed any signs there. Not touch-stamped either — it
-    /// isn't buffer state, so no per-buffer `generation` entry is the right
-    /// one to bump when it changes.
-    sign_sources: Vec<(String, i64)>,
+    /// Every buffer's registered sign sources, each buffer's list kept
+    /// sorted `(priority desc, name asc)` — that order *is* the buffer's
+    /// sign-priority ladder (`register_sign_source`/`sign_slot`/
+    /// `sign_source_count`). A source claims its slot in one buffer at a
+    /// time, the first time it becomes relevant there (a plugin calls
+    /// `register-sign-source!` from inside the same function that renders
+    /// its signs, e.g. `core:lsp` on first diagnostic placement,
+    /// `core:git-diff` on first tracked render), and holds it for that
+    /// buffer's life — there is no withdrawal; a source that stops having
+    /// anything to show still keeps its (now blank) slot via
+    /// `set-signs! source bid '()`, same as any other empty `set-signs!`
+    /// call. This is what keeps a buffer neither source ever touches (a
+    /// plain buffer with no LSP server and no git repo) from ever reserving
+    /// either slot. Not touch-stamped — it isn't decoration content, so no
+    /// `generation` bump is the right one when it changes.
+    sign_sources: FxHashMap<BufferId, Vec<(String, i64)>>,
     /// Per-buffer dirty-tracking stamp, touched by every `set_*` and
     /// `remove_buffer` for that buffer, and by `remap_through` when a remap
     /// actually moved one of that buffer's entries — the virtual-lines
@@ -580,7 +586,7 @@ impl DecorationStores {
         bid: BufferId,
         range: Range<usize>,
     ) -> impl Iterator<Item = &InlayHintEntry> {
-        self.inlay_hints.in_range(bid, range).map(|(_, e)| e)
+        self.inlay_hints.in_range(bid, range)
     }
 
     /// Replaces `source`'s signs for `bid` wholesale.
@@ -594,21 +600,6 @@ impl DecorationStores {
         self.signs.entries_for(source, bid)
     }
 
-    /// All signs for `bid`, across every source, paired with their source
-    /// name, in ascending source-name order (see `SourceStore::for_buffer`).
-    /// No production caller — the render write side reads
-    /// [`Self::signs_in_range`] instead, since a registered source's slot no
-    /// longer depends on encountering entries in any particular order (see
-    /// `register-sign-source!`'s doc). Kept as a test accessor for
-    /// `SourceStore`'s own ordering guarantee.
-    #[cfg(test)]
-    pub(crate) fn signs_for_buffer(
-        &self,
-        bid: BufferId,
-    ) -> impl Iterator<Item = (&str, &SignEntry)> {
-        self.signs.for_buffer(bid).map(|(s, e)| (s.as_str(), e))
-    }
-
     /// Signs for `bid` anchored inside `range`, paired with their source's
     /// resolved gutter slot — the sign bridge's view, which only ever wants
     /// the viewport's worth and never needs the source name itself (unlike
@@ -616,11 +607,11 @@ impl DecorationStores {
     /// across sources — see [`Self::sign_slot`]'s doc). Resolves
     /// [`Self::sign_slot`] once per source group via
     /// [`SourceStore::groups_in_range`], not once per entry. `set-signs!`
-    /// already rejects an unregistered source at write time, and no source
-    /// ever loses its registration without every buffer's signs resetting
-    /// alongside it (`Self::reset`) — so every group this sees has a real
-    /// slot; the `expect` documents that invariant at the one place it's
-    /// owned, rather than at every caller.
+    /// already rejects a source unregistered for `bid` at write time, and a
+    /// source never loses its registration for a buffer without that
+    /// buffer's signs being cleared alongside it (`Self::remove_buffer`) —
+    /// so every group this sees has a real slot; the `expect` documents that
+    /// invariant at the one place it's owned, rather than at every caller.
     pub(crate) fn signs_in_range(
         &self,
         bid: BufferId,
@@ -629,46 +620,58 @@ impl DecorationStores {
         self.signs
             .groups_in_range(bid, range)
             .filter(|(_, es)| !es.is_empty())
-            .flat_map(|(source, es)| {
+            .flat_map(move |(source, es)| {
                 let slot = self
-                    .sign_slot(source)
-                    .expect("set-signs! only accepts an already-registered source");
+                    .sign_slot(bid, source)
+                    .expect("set-signs! only accepts a source registered for this buffer");
                 es.iter().map(move |e| (slot, e))
             })
     }
 
-    /// Registers `name` as a sign source at `priority`, replacing any prior
-    /// registration under that name (last wins, matching
-    /// `register-lsp-server!`) rather than leaving a stale entry at the old
-    /// priority's sort position alongside the new one. See [`Self::sign_slot`]
-    /// for what a registration buys a caller.
-    pub(crate) fn register_sign_source(&mut self, name: String, priority: i64) {
-        if let Some(idx) = self.sign_sources.iter().position(|(n, _)| *n == name) {
-            self.sign_sources.remove(idx);
+    /// Registers `name` as a sign source at `priority` for `bid`, replacing
+    /// any prior registration under that name in *that buffer* (last wins,
+    /// matching `register-lsp-server!`) rather than leaving a stale entry at
+    /// the old priority's sort position alongside the new one. A no-op when
+    /// `name` is already registered for `bid` at this exact `priority` —
+    /// callers re-register on every render (see `sign_sources`' doc), so
+    /// this is the common case and skips the remove-then-resort dance
+    /// entirely rather than repeating it every frame for nothing. See
+    /// [`Self::sign_slot`] for what a registration buys a caller.
+    pub(crate) fn register_sign_source(&mut self, name: String, bid: BufferId, priority: i64) {
+        let sources = self.sign_sources.entry(bid).or_default();
+        if let Some(idx) = sources.iter().position(|(n, _)| *n == name) {
+            if sources[idx].1 == priority {
+                return;
+            }
+            sources.remove(idx);
         }
         // Sorted `(priority desc, name asc)` — a source's slot (`sign_slot`)
         // is its index in this order, so registration order itself must
         // never matter, only the declared priority and name.
-        let idx = self.sign_sources.partition_point(|(n, p)| {
+        let idx = sources.partition_point(|(n, p)| {
             (std::cmp::Reverse(*p), n.as_str()) < (std::cmp::Reverse(priority), name.as_str())
         });
-        self.sign_sources.insert(idx, (name, priority));
+        sources.insert(idx, (name, priority));
     }
 
-    /// `name`'s gutter slot — its index in the `(priority desc, name asc)`
-    /// registry — or `None` if `name` was never registered via
-    /// `register_sign_source`. Stable buffer-wide and frame-to-frame: it
-    /// depends only on the registry, never on which lines currently carry a
-    /// sign, so a channel's column never shifts as signs come and go.
-    pub(crate) fn sign_slot(&self, name: &str) -> Option<usize> {
-        self.sign_sources.iter().position(|(n, _)| n == name)
+    /// `name`'s gutter slot in `bid` — its index in that buffer's
+    /// `(priority desc, name asc)` registry — or `None` if `name` was never
+    /// registered for `bid` via `register_sign_source`. Stable for the
+    /// buffer's life and frame-to-frame: it depends only on the registry,
+    /// never on which lines currently carry a sign, so a channel's column
+    /// never shifts as signs come and go.
+    pub(crate) fn sign_slot(&self, bid: BufferId, name: &str) -> Option<usize> {
+        self.sign_sources
+            .get(&bid)?
+            .iter()
+            .position(|(n, _)| n == name)
     }
 
-    /// Number of registered sign sources — the bare slot count
+    /// Number of sign sources registered for `bid` — the bare slot count
     /// `SignColumnConfig::slots_for` auto-sizes to (before the `+1` padding
     /// column `SignColumn::width_for_slots` adds).
-    pub(crate) fn sign_source_count(&self) -> usize {
-        self.sign_sources.len()
+    pub(crate) fn sign_source_count(&self, bid: BufferId) -> usize {
+        self.sign_sources.get(&bid).map_or(0, Vec::len)
     }
 
     /// Replaces `source`'s virtual lines for `bid` wholesale.
@@ -710,7 +713,7 @@ impl DecorationStores {
     /// All EOL text entries for `bid`, across every source, paired with
     /// their source name — the render write side needs the name for a
     /// deterministic tie-break when a remap collapses two sources' entries
-    /// onto the same line (mirrors `signs_for_buffer`/`line_backgrounds_for_buffer`).
+    /// onto the same line (mirrors `line_backgrounds_for_buffer`).
     pub(crate) fn eol_text_for_buffer(
         &self,
         bid: BufferId,
@@ -804,16 +807,19 @@ impl DecorationStores {
             || !extra_highlights.is_empty_for(bid)
     }
 
-    /// Drops every entry for `bid`, across every source and every kind —
-    /// called when the buffer is closed, or reloaded from disk while keeping
-    /// the same `BufferId`. `BufferId` is a versioned slotmap key, so a
-    /// future slot reuse can never alias with the closed buffer's stale
-    /// entries — but a *reload* keeps the same key, so clearing
-    /// `virtual_lines` without touching `bid`'s stamp would leave a pane's
-    /// `virtual_lines_synced` entry looking still-current: it would keep
-    /// mirroring the pre-reload virtual lines at now-meaningless line
-    /// anchors. Touching unconditionally (not just when a kind had entries)
-    /// forces every pane on `bid` to resync.
+    /// Drops every entry for `bid`, across every source and every kind, and
+    /// `bid`'s registered sign sources — called when the buffer is closed,
+    /// or reloaded from disk while keeping the same `BufferId`. `BufferId`
+    /// is a versioned slotmap key, so a future slot reuse can never alias
+    /// with the closed buffer's stale entries — but a *reload* keeps the
+    /// same key, so clearing `virtual_lines` without touching `bid`'s stamp
+    /// would leave a pane's `virtual_lines_synced` entry looking
+    /// still-current: it would keep mirroring the pre-reload virtual lines
+    /// at now-meaningless line anchors. Touching unconditionally (not just
+    /// when a kind had entries) forces every pane on `bid` to resync. A
+    /// source that re-registers for `bid` after a reload starts a fresh
+    /// ranking, unaffected by whatever the buffer's registry held before —
+    /// same reasoning as clearing the six decoration stores themselves.
     ///
     /// Exhaustive destructuring, no `..`: a new decoration kind fails to
     /// compile here until it is listed, so closing or reloading a buffer can
@@ -826,7 +832,7 @@ impl DecorationStores {
             eol_text,
             line_backgrounds,
             extra_highlights,
-            sign_sources: _,
+            sign_sources,
             generation: _,
             clock: _,
         } = self;
@@ -836,6 +842,7 @@ impl DecorationStores {
         eol_text.remove_buffer(bid);
         line_backgrounds.remove_buffer(bid);
         extra_highlights.remove_buffer(bid);
+        sign_sources.remove(&bid);
         self.touch(bid);
     }
 

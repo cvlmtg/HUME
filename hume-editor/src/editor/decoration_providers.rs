@@ -13,19 +13,6 @@ use crate::lock_ext::LockExt;
 use hume_editing::lines::{char_to_line_byte, line_break_char, line_segments};
 use hume_ops::pair::find_bracket_pair;
 
-/// Editing-area scope per diagnostic severity, in `DiagSeverity` discriminant
-/// order (`[error, warning, info, hint]`) — see [`Editor::diagnostic_text_scopes`],
-/// the sole interner of this table. The gutter counterpart (bare
-/// `error`/`warning`/`info`/`hint`, Helix's own naming for that surface) is
-/// interned by `core:lsp`'s `set-signs!` call, at the Steel boundary in
-/// `host_impl.rs`, the same as any other plugin sign source's scope.
-const DIAGNOSTIC_TEXT_SCOPE_NAMES: [&str; 4] = [
-    "diagnostic.error",
-    "diagnostic.warning",
-    "diagnostic.info",
-    "diagnostic.hint",
-];
-
 impl Editor {
     /// Snapshot of every pane's `(PaneId, BufferId)` — the entry point every
     /// render bridge below starts with, so its loop body can freely mutate
@@ -38,40 +25,6 @@ impl Editor {
             .iter()
             .map(|(pid, pane)| (pid, pane.buffer_id))
             .collect()
-    }
-
-    /// Interned scope ids for the four diagnostic severities on the
-    /// editing-area surface (buffer-text highlights) — resolved once and
-    /// cached, since interning needs `&mut self.view.registry` but
-    /// `DiagSeverity` itself lives in `self.state`. The gutter counterpart
-    /// has no equivalent here — `core:lsp` interns its own bare severity
-    /// scope names when it places diagnostic signs (`set-signs!`), at the
-    /// Steel boundary in `host_impl.rs`, same as any other plugin sign
-    /// source.
-    fn diagnostic_text_scopes(&mut self) -> [hume_engine::types::ScopeId; 4] {
-        *self.state.diagnostic_text_scopes.get_or_insert_with(|| {
-            DIAGNOSTIC_TEXT_SCOPE_NAMES.map(|text| self.view.registry.intern(text))
-        })
-    }
-
-    /// Interned `ScopeId` for `ui.cursor.match` (bracket match highlight),
-    /// cached the same way as [`Self::diagnostic_text_scopes`] — every pane's
-    /// bracket-match `ScopedHighlighter` writes this into each span it
-    /// pushes rather than carrying it fixed on the provider.
-    fn bracket_match_scope(&mut self) -> hume_engine::types::ScopeId {
-        *self
-            .state
-            .bracket_match_scope
-            .get_or_insert_with(|| self.view.registry.intern("ui.cursor.match"))
-    }
-
-    /// Interned `ScopeId` for `ui.selection.search` (search match
-    /// highlight) — see [`Self::bracket_match_scope`].
-    fn search_match_scope(&mut self) -> hume_engine::types::ScopeId {
-        *self
-            .state
-            .search_match_scope
-            .get_or_insert_with(|| self.view.registry.intern("ui.selection.search"))
     }
 
     /// Write per-frame highlight data to every pane's own `Arc<RwLock<...>>`
@@ -87,8 +40,8 @@ impl Editor {
         let in_insert = self.state.mode() == EditorMode::Insert;
 
         let panes = self.decorated_panes();
-        let search_scope = self.search_match_scope();
-        let bracket_scope = self.bracket_match_scope();
+        let search_scope = self.view.registry.intern("ui.selection.search");
+        let bracket_scope = self.view.registry.intern("ui.cursor.match");
 
         // ── Search match highlights — one pane at a time ─────────────────────
         for &(pid, bid) in &panes {
@@ -191,7 +144,20 @@ impl Editor {
         // editing the line it's on (most editors keep them showing).
         {
             let floor = self.state.settings.lsp_diagnostics_severity_floor;
-            let diag_scopes = self.diagnostic_text_scopes();
+            // Editing-area scope per diagnostic severity, in `DiagSeverity`
+            // discriminant order (`[error, warning, info, hint]`) — indexed
+            // below by `d.severity as usize`. The gutter counterpart (the
+            // bare `error`/`warning`/`info`/`hint` name) is interned by
+            // `core:lsp`'s `set-signs!` call, at the Steel boundary in
+            // `host_impl.rs`, the same as any other plugin sign source's
+            // scope.
+            let diag_scopes = [
+                "diagnostic.error",
+                "diagnostic.warning",
+                "diagnostic.info",
+                "diagnostic.hint",
+            ]
+            .map(|name| self.view.registry.intern(name));
             for &(pid, bid) in &panes {
                 let Some((diag_arc, extra_arc)) = self.state.panes.render.get(pid).map(|r| {
                     (
@@ -293,11 +259,11 @@ impl Editor {
                 .overrides
                 .signcolumn(&self.state.settings);
 
-            // A registered source's slot is its rank in the registry
-            // (`DecorationStores::sign_sources`) — fixed the moment it's
-            // registered, independent of what's actually placed in any
-            // buffer this frame. `slots_for` never walks a single sign.
-            let slots = signcolumn.slots_for(self.state.config.decorations.sign_source_count());
+            // A registered source's slot is its rank in this buffer's
+            // registry (`DecorationStores::sign_sources`) — fixed the moment
+            // it registers for `bid`, independent of what's actually placed
+            // this frame. `slots_for` never walks a single sign.
+            let slots = signcolumn.slots_for(self.state.config.decorations.sign_source_count(bid));
 
             // Plugin signs store their line's line-start char offset
             // (`SignEntry::pos`, remapped through edits like every other
@@ -311,21 +277,21 @@ impl Editor {
             // never looks a source up. `visible_line_anchored` still does
             // the precise per-line check (a char range can straddle a line
             // the viewport itself excludes).
-            let plugin_raw = visible_line_anchored(
+            let anchored = visible_line_anchored(
                 text,
                 visible_lines,
                 self.state.config.decorations.signs_in_range(bid, visible),
                 |e| e.pos,
             );
 
-            let mut plugin_all: rustc_hash::FxHashMap<usize, Vec<Sign>> =
+            let mut by_line: rustc_hash::FxHashMap<usize, Vec<Sign>> =
                 rustc_hash::FxHashMap::default();
-            for (slot, line, e) in plugin_raw {
+            for (slot, line, e) in anchored {
                 if slot >= slots as usize {
                     continue;
                 }
                 let slot = slot as u8;
-                let entries = plugin_all.entry(line).or_default();
+                let entries = by_line.entry(line).or_default();
                 // Two *different* sources can never contend for one slot
                 // now — a slot is a source's fixed registry rank. This
                 // guards only a same-source duplicate on one line (a source
@@ -344,31 +310,23 @@ impl Editor {
                     );
                 }
             }
-            *sign_map.write_or_panic() = plugin_all;
 
             // Compute sign column width from the buffer's `signcolumn` setting:
             // `always` keeps it visible at the resolved width (`slots + 1`);
             // `auto` collapses to zero when no signs are visible in the current
-            // viewport (`sign_map` above only holds visible-line entries — a
+            // viewport (`by_line` above only holds visible-line entries — a
             // sign elsewhere in the buffer, scrolled out of view, does not
-            // keep the column open).
-            let has_signs = !sign_map.read_or_panic().is_empty();
+            // keep the column open). Checked before the move below — `by_line`
+            // already has the answer, no need to re-lock `sign_map` to ask it.
+            let has_signs = !by_line.is_empty();
+            *sign_map.write_or_panic() = by_line;
+
             let width = match signcolumn.mode {
                 crate::settings::SignColumnMode::Auto if !has_signs => 0,
                 _ => SignColumn::width_for_slots(slots),
             };
             self.view.panes[pid].providers.sync_sign_column_width(width);
         }
-    }
-
-    /// Interned `ScopeId` for `ui.virtual.inlay-hint`, cached across frames —
-    /// every inlay hint shares this one scope (locked decision: no per-hint
-    /// styling in v1), unlike `runtime_scope`'s plugin-name-keyed cache.
-    fn inlay_hint_scope(&mut self) -> hume_engine::types::ScopeId {
-        *self
-            .state
-            .inlay_hint_scope
-            .get_or_insert_with(|| self.view.registry.intern("ui.virtual.inlay-hint"))
     }
 
     /// Sync per-pane inlay-hint decorations from the
@@ -384,7 +342,9 @@ impl Editor {
 
         let panes = self.decorated_panes();
 
-        let scope = self.inlay_hint_scope();
+        // Every inlay hint shares this one scope (locked decision: no
+        // per-hint styling in v1).
+        let scope = self.view.registry.intern("ui.virtual.inlay-hint");
         for &(pid, bid) in &panes {
             let Some(map) = self
                 .state

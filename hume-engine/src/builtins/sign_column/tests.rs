@@ -1,4 +1,5 @@
 use super::*;
+use crate::providers::ProviderId;
 use crate::theme::{ScopeRegistry, Theme};
 use crate::types::EditorMode;
 use crate::types::ResolvedStyle;
@@ -12,15 +13,20 @@ fn ctx(rope: &ropey::Rope) -> GutterRowCtx<'_> {
     }
 }
 
+/// One line's worth of signs from a single source — production has exactly
+/// one `SignSource` per pane (`SharedSignSource`), whose one map entry can
+/// already hold several resolved-slot `Sign`s for a line
+/// (`Editor::update_sign_providers`), so a multi-sign line is one
+/// `signs_for_line` call returning several entries, not several sources.
 struct FixedSign {
     line: usize,
-    sign: Sign,
+    signs: Vec<Sign>,
 }
 
 impl SignSource for FixedSign {
     fn signs_for_line(&self, line_idx: usize, _ctx: &GutterRowCtx) -> Vec<Sign> {
         if line_idx == self.line {
-            vec![self.sign.clone()]
+            self.signs.clone()
         } else {
             Vec::new()
         }
@@ -33,15 +39,15 @@ fn sign_renders_in_its_own_resolved_slot() {
     let diag_scope = registry.intern("diagnostic");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut lane = SignColumn::with_width(3, blank_scope); // 2 sign slots
-    lane.add_source(Box::new(FixedSign {
+    let source = FixedSign {
         line: 3,
-        sign: Sign {
+        signs: vec![Sign {
             text: "!".into(),
             scope: diag_scope,
             slot: 1,
-        },
-    }));
+        }],
+    };
+    let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
 
     let rope = ropey::Rope::new();
     let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 3 }, &ctx(&rope));
@@ -55,89 +61,10 @@ fn sign_renders_in_its_own_resolved_slot() {
 }
 
 #[test]
-fn later_registered_source_wins_a_contended_slot() {
-    let mut registry = ScopeRegistry::new();
-    let diag_scope = registry.intern("diagnostic");
-    let git_scope = registry.intern("git");
-    let blank_scope = registry.intern("ui.linenr");
-
-    let mut lane = SignColumn::new(blank_scope); // 1 sign slot
-    lane.add_source(Box::new(FixedSign {
-        line: 3,
-        sign: Sign {
-            text: "!".into(),
-            scope: diag_scope,
-            slot: 0,
-        },
-    }));
-    lane.add_source(Box::new(FixedSign {
-        line: 3,
-        sign: Sign {
-            text: "+".into(),
-            scope: git_scope,
-            slot: 0,
-        },
-    }));
-
-    let rope = ropey::Rope::new();
-    let cell = lane
-        .render_row_cells(RowKind::LineStart { line_idx: 3 }, &ctx(&rope))
-        .into_iter()
-        .next()
-        .unwrap();
-    assert_eq!(
-        cell.as_str(),
-        "+",
-        "both sources claim slot 0 — later-registered wins"
-    );
-    assert_eq!(cell.scope, git_scope);
-}
-
-#[test]
-fn removing_the_later_source_reveals_the_earlier_ones_sign() {
-    let mut registry = ScopeRegistry::new();
-    let diag_scope = registry.intern("diagnostic");
-    let git_scope = registry.intern("git");
-    let blank_scope = registry.intern("ui.linenr");
-
-    let mut lane = SignColumn::new(blank_scope); // 1 sign slot
-    lane.add_source(Box::new(FixedSign {
-        line: 0,
-        sign: Sign {
-            text: "!".into(),
-            scope: diag_scope,
-            slot: 0,
-        },
-    }));
-    let later_id = lane.add_source(Box::new(FixedSign {
-        line: 0,
-        sign: Sign {
-            text: "+".into(),
-            scope: git_scope,
-            slot: 0,
-        },
-    }));
-
-    assert!(lane.remove_source(later_id));
-
-    let rope = ropey::Rope::new();
-    let cell = lane
-        .render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope))
-        .into_iter()
-        .next()
-        .unwrap();
-    assert_eq!(
-        cell.as_str(),
-        "!",
-        "with the later (contending) source gone, the earlier one's sign shows"
-    );
-}
-
-#[test]
-fn no_source_fires_renders_blank() {
+fn no_sign_fires_renders_blank() {
     let mut registry = ScopeRegistry::new();
     let blank_scope = registry.intern("ui.linenr");
-    let lane = SignColumn::new(blank_scope);
+    let lane = SignColumn::new(Box::new(()), blank_scope);
     let rope = ropey::Rope::new();
     let cell = lane
         .render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope))
@@ -152,15 +79,15 @@ fn sign_absent_on_wrap_virtual_and_filler_rows() {
     let mut registry = ScopeRegistry::new();
     let scope = registry.intern("diagnostic");
     let blank_scope = registry.intern("ui.linenr");
-    let mut lane = SignColumn::new(blank_scope);
-    lane.add_source(Box::new(FixedSign {
+    let source = FixedSign {
         line: 0,
-        sign: Sign {
+        signs: vec![Sign {
             text: "!".into(),
             scope,
             slot: 0,
-        },
-    }));
+        }],
+    };
+    let lane = SignColumn::new(Box::new(source), blank_scope);
     let rope = ropey::Rope::new();
 
     for kind in [
@@ -187,7 +114,7 @@ fn sign_absent_on_wrap_virtual_and_filler_rows() {
 fn width_is_configured_not_recomputed_per_frame() {
     let mut registry = ScopeRegistry::new();
     let blank_scope = registry.intern("ui.linenr");
-    let lane = SignColumn::with_width(3, blank_scope);
+    let lane = SignColumn::with_width(3, Box::new(()), blank_scope);
     assert_eq!(lane.width(0), 3);
     assert_eq!(lane.width(999_999), 3, "stable regardless of file size");
 }
@@ -196,7 +123,7 @@ fn width_is_configured_not_recomputed_per_frame() {
 fn set_width_overrides_the_configured_width() {
     let mut registry = ScopeRegistry::new();
     let blank_scope = registry.intern("ui.linenr");
-    let mut lane = SignColumn::with_width(2, blank_scope);
+    let mut lane = SignColumn::with_width(2, Box::new(()), blank_scope);
     lane.set_width(0);
     assert_eq!(lane.width(0), 0, "collapsed to zero when no signs exist");
     lane.set_width(2);
@@ -212,15 +139,15 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     let mut registry = ScopeRegistry::new();
     let scope = registry.intern("diagnostic");
     let blank_scope = registry.intern("ui.linenr");
-    let mut lane = SignColumn::with_width(2, blank_scope); // usable = 1 cell
-    lane.add_source(Box::new(FixedSign {
+    let source = FixedSign {
         line: 0,
-        sign: Sign {
+        signs: vec![Sign {
             text: "▶▶▶".into(),
             scope,
             slot: 0,
-        },
-    }));
+        }],
+    };
+    let lane = SignColumn::with_width(2, Box::new(source), blank_scope); // usable = 1 cell
 
     let graphemes = vec![crate::types::Grapheme {
         byte_range: 0..1,
@@ -301,16 +228,16 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
     let mut registry = ScopeRegistry::new();
     let blank_scope = registry.intern("ui.linenr");
     let scope = registry.intern("diagnostic");
-    let empty_lane = SignColumn::with_width(0, blank_scope); // no sources — width collapsed
-    let mut content_lane = SignColumn::with_width(2, blank_scope);
-    content_lane.add_source(Box::new(FixedSign {
+    let empty_lane = SignColumn::with_width(0, Box::new(()), blank_scope); // no signs — width collapsed
+    let content_source = FixedSign {
         line: 0,
-        sign: Sign {
+        signs: vec![Sign {
             text: "!".into(),
             scope,
             slot: 0,
-        },
-    }));
+        }],
+    };
+    let content_lane = SignColumn::with_width(2, Box::new(content_source), blank_scope);
 
     let graphemes = vec![crate::types::Grapheme {
         byte_range: 0..1,
@@ -401,15 +328,15 @@ fn sign_scope_resolves_via_baked_theme() {
     let mut theme = Theme::new(styles_map, crate::types::ResolvedStyle::default());
     theme.bake(&registry);
 
-    let mut lane = SignColumn::new(blank_scope);
-    lane.add_source(Box::new(FixedSign {
+    let source = FixedSign {
         line: 0,
-        sign: Sign {
+        signs: vec![Sign {
             text: "!".into(),
             scope: scope_id,
             slot: 0,
-        },
-    }));
+        }],
+    };
+    let lane = SignColumn::new(Box::new(source), blank_scope);
     let rope = ropey::Rope::new();
     let cell = lane
         .render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope))
@@ -427,32 +354,28 @@ fn multi_slot_column_places_each_sign_in_its_own_slot() {
     let c = registry.intern("c");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut lane = SignColumn::with_width(3, blank_scope); // 2 sign slots
-    lane.add_source(Box::new(FixedSign {
+    let source = FixedSign {
         line: 0,
-        sign: Sign {
-            text: "!".into(),
-            scope: a,
-            slot: 0,
-        },
-    }));
-    lane.add_source(Box::new(FixedSign {
-        line: 0,
-        sign: Sign {
-            text: "+".into(),
-            scope: b,
-            slot: 1,
-        },
-    }));
-    // Ranked below the column's 2 configured slots — silently dropped.
-    lane.add_source(Box::new(FixedSign {
-        line: 0,
-        sign: Sign {
-            text: "~".into(),
-            scope: c,
-            slot: 2,
-        },
-    }));
+        signs: vec![
+            Sign {
+                text: "!".into(),
+                scope: a,
+                slot: 0,
+            },
+            Sign {
+                text: "+".into(),
+                scope: b,
+                slot: 1,
+            },
+            // Ranked below the column's 2 configured slots — silently dropped.
+            Sign {
+                text: "~".into(),
+                scope: c,
+                slot: 2,
+            },
+        ],
+    };
+    let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
 
     let rope = ropey::Rope::new();
     let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
@@ -467,15 +390,15 @@ fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
     let a = registry.intern("a");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut lane = SignColumn::with_width(3, blank_scope); // 2 sign slots
-    lane.add_source(Box::new(FixedSign {
+    let source = FixedSign {
         line: 0,
-        sign: Sign {
+        signs: vec![Sign {
             text: "!".into(),
             scope: a,
             slot: 0,
-        },
-    }));
+        }],
+    };
+    let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
 
     let rope = ropey::Rope::new();
     let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
@@ -485,59 +408,20 @@ fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
 }
 
 #[test]
-fn multi_slot_column_contended_slot_hides_the_earlier_sources_sign() {
-    // Two sources both resolved to slot 0 (e.g. two producers picked the same
-    // priority) — the later-registered one wins slot 0, and slot 1 stays
-    // blank since nothing claims it: a slot loser is never spilled into a
-    // neighboring slot.
-    let mut registry = ScopeRegistry::new();
-    let a = registry.intern("a");
-    let b = registry.intern("b");
-    let blank_scope = registry.intern("ui.linenr");
-
-    let mut lane = SignColumn::with_width(3, blank_scope); // 2 sign slots
-    lane.add_source(Box::new(FixedSign {
-        line: 0,
-        sign: Sign {
-            text: "A".into(),
-            scope: a,
-            slot: 0,
-        },
-    }));
-    lane.add_source(Box::new(FixedSign {
-        line: 0,
-        sign: Sign {
-            text: "B".into(),
-            scope: b,
-            slot: 0,
-        },
-    }));
-
-    let rope = ropey::Rope::new();
-    let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
-    assert_eq!(
-        cells[0].as_str(),
-        "B",
-        "slot 0 contended — later source wins"
-    );
-    assert_eq!(cells[1].as_str(), " ", "slot 1 unclaimed by either source");
-}
-
-#[test]
 fn width_one_column_keeps_no_signs() {
     let mut registry = ScopeRegistry::new();
     let a = registry.intern("a");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut lane = SignColumn::with_width(1, blank_scope); // 0 sign slots
-    lane.add_source(Box::new(FixedSign {
+    let source = FixedSign {
         line: 0,
-        sign: Sign {
+        signs: vec![Sign {
             text: "!".into(),
             scope: a,
             slot: 0,
-        },
-    }));
+        }],
+    };
+    let lane = SignColumn::with_width(1, Box::new(source), blank_scope); // 0 sign slots
 
     let rope = ropey::Rope::new();
     let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
@@ -555,23 +439,22 @@ fn multi_slot_column_renders_through_compose_gutter() {
     let b = registry.intern("b");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut lane = SignColumn::with_width(3, blank_scope); // 2 sign slots
-    lane.add_source(Box::new(FixedSign {
+    let source = FixedSign {
         line: 0,
-        sign: Sign {
-            text: "!".into(),
-            scope: a,
-            slot: 0,
-        },
-    }));
-    lane.add_source(Box::new(FixedSign {
-        line: 0,
-        sign: Sign {
-            text: "+".into(),
-            scope: b,
-            slot: 1,
-        },
-    }));
+        signs: vec![
+            Sign {
+                text: "!".into(),
+                scope: a,
+                slot: 0,
+            },
+            Sign {
+                text: "+".into(),
+                scope: b,
+                slot: 1,
+            },
+        ],
+    };
+    let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
 
     let graphemes = vec![crate::types::Grapheme {
         byte_range: 0..1,

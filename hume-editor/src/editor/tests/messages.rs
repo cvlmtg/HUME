@@ -7,15 +7,7 @@
 
 use super::*;
 use hume_engine::pipeline::{PaneId, RenderContext};
-use hume_engine::types::ScopeId;
 use hume_grid::Rect;
-
-fn scope(ed: &Editor, name: &str) -> ScopeId {
-    ed.view
-        .registry
-        .get(name)
-        .unwrap_or_else(|| panic!("scope '{name}' must already be interned"))
-}
 
 fn extra_arc(ed: &Editor, pid: PaneId) -> Vec<(usize, usize, usize, ScopeId)> {
     ed.state.panes.render[pid]
