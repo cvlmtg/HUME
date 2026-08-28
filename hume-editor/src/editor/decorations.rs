@@ -33,7 +33,10 @@ pub(crate) struct InlayHintEntry {
 /// number — the host boundary (`host_impl.rs`'s `line_start_offset`)
 /// converts at set time, so this remaps through edits with everything else;
 /// the render side derives the current line back via `char_to_line` at
-/// rebuild. `Clone`: `decoration_providers.rs`'s
+/// rebuild. No `priority` field — a sign's slot is its *source*'s rank
+/// among [`DecorationStores::sign_sources`], not a per-entry value; the
+/// `source` key `SourceStore` already carries is the entry's whole channel
+/// identity. `Clone`: `decoration_providers.rs`'s
 /// `visible_line_anchored` clones a viewport-filtered subset out from under
 /// an immutable store borrow before resolving each entry's scope (which
 /// needs `&mut self`) — same reason `EolTextEntry`/`LineBgEntry` carry it.
@@ -42,7 +45,6 @@ pub(crate) struct SignEntry {
     pub(crate) pos: usize,
     pub(crate) text: String,
     pub(crate) scope: String,
-    pub(crate) priority: i64,
 }
 
 /// One `(set-virtual-lines! …)` entry: a synthetic line of text anchored to
@@ -99,9 +101,10 @@ pub(crate) struct ExtraHighlightEntry {
 /// Steel-facing line number — the host boundary (`host_impl.rs`'s
 /// `line_start_offset`) converts at set time, so this remaps through edits
 /// like every other line-anchored kind; the render side derives the current
-/// line back via `char_to_line` at rebuild. No `priority` field
-/// — unlike signs, row tints have no single-slot contention, so same-line
-/// entries from different sources break ties by source name.
+/// line back via `char_to_line` at rebuild. No `priority` field, same as
+/// `SignEntry` now — row tints have no per-line slot contention at all, so
+/// same-line entries from different sources simply break ties by source
+/// name, never claim a reserved column the way a registered sign source does.
 /// `Clone`: see `EolTextEntry`'s doc — same
 /// `visible_line_anchored` consumer.
 #[derive(Clone)]
@@ -260,13 +263,14 @@ impl<K, T> SourceStore<K, T> {
     }
 
     /// All entries for `bid`, across every source in ascending source-name
-    /// order (see `set`), paired with their source. Signs need the source
-    /// for a deterministic priority tie-break; virtual lines and extra
-    /// highlights (the two kinds with no per-line collapse) rely on this
-    /// ascending order directly, so two sources anchored to the same line
-    /// render in a name-deterministic order rather than whichever call
-    /// `set-*!` happened to land first this session; every other kind's
-    /// caller discards it.
+    /// order (see `set`), paired with their source. Signs need the source to
+    /// look up its registered slot (`DecorationStores::sign_slot`), not for a
+    /// tie-break — two signs from different sources never contend for the
+    /// same slot by construction. Virtual lines and extra highlights (the
+    /// two kinds with no per-line collapse) rely on this ascending order
+    /// directly, so two sources anchored to the same line render in a
+    /// name-deterministic order rather than whichever call `set-*!` happened
+    /// to land first this session; every other kind's caller discards it.
     pub(crate) fn for_buffer(&self, bid: BufferId) -> impl Iterator<Item = (&K, &T)> {
         self.groups_for_buffer(bid)
             .flat_map(|(k, entries)| entries.iter().map(move |e| (k, e)))
@@ -336,17 +340,24 @@ impl<K, T> SourceStore<K, T> {
 }
 
 impl<K, T: Positioned> SourceStore<K, T> {
-    /// Every source's entries for `bid` whose `pos` falls in `range`.
+    /// Every source's entries for `bid` whose `pos` falls in `range`, paired
+    /// with their source — the sign bridge needs the source to look up its
+    /// registered slot; every other caller discards it, same as
+    /// [`Self::for_buffer`].
     ///
     /// Each source's slice is `pos`-sorted (`set`), so both bounds come from
     /// a binary search — a caller filtering a viewport out of a buffer-wide
     /// store pays for the entries it keeps, not for every entry the servers
     /// published.
-    pub(crate) fn in_range(&self, bid: BufferId, range: Range<usize>) -> impl Iterator<Item = &T> {
-        self.groups_for_buffer(bid).flat_map(move |(_source, es)| {
+    pub(crate) fn in_range(
+        &self,
+        bid: BufferId,
+        range: Range<usize>,
+    ) -> impl Iterator<Item = (&K, &T)> {
+        self.groups_for_buffer(bid).flat_map(move |(source, es)| {
             let lo = es.partition_point(|e| e.pos() < range.start);
             let hi = es.partition_point(|e| e.pos() < range.end);
-            es[lo..hi].iter()
+            es[lo..hi].iter().map(move |e| (source, e))
         })
     }
 }
@@ -435,6 +446,15 @@ pub(crate) struct DecorationStores {
     extra_highlights: SourceStore<String, ExtraHighlightEntry>,
     eol_text: SourceStore<String, EolTextEntry>,
     line_backgrounds: SourceStore<String, LineBgEntry>,
+    /// Every registered sign source, kept sorted `(priority desc, name asc)`
+    /// — this order *is* the buffer-wide sign-priority ladder
+    /// (`register_sign_source`/`sign_slot`/`sign_source_count`). Not
+    /// per-buffer, unlike every other field here: a source registers once,
+    /// globally, and reserves its slot in every buffer regardless of
+    /// whether it has placed any signs there. Not touch-stamped either — it
+    /// isn't buffer state, so no per-buffer `generation` entry is the right
+    /// one to bump when it changes.
+    sign_sources: Vec<(String, i64)>,
     /// Per-buffer dirty-tracking stamp, touched by every `set_*` and
     /// `remove_buffer` for that buffer, and by `remap_through` when a remap
     /// actually moved one of that buffer's entries — the virtual-lines
@@ -538,7 +558,7 @@ impl DecorationStores {
         bid: BufferId,
         range: Range<usize>,
     ) -> impl Iterator<Item = &InlayHintEntry> {
-        self.inlay_hints.in_range(bid, range)
+        self.inlay_hints.in_range(bid, range).map(|(_, e)| e)
     }
 
     /// Replaces `source`'s signs for `bid` wholesale.
@@ -553,15 +573,66 @@ impl DecorationStores {
     }
 
     /// All signs for `bid`, across every source, paired with their source
-    /// name — the render write side merges them into one per-line winner.
-    /// The source name is exposed so ties (two sources, same line, same
-    /// priority) can be broken deterministically rather than by `FxHashMap`
-    /// iteration order.
+    /// name, in ascending source-name order (see `SourceStore::for_buffer`).
+    /// No production caller — the render write side reads
+    /// [`Self::signs_in_range`] instead, since a registered source's slot no
+    /// longer depends on encountering entries in any particular order (see
+    /// `register-sign-source!`'s doc). Kept as a test accessor for
+    /// `SourceStore`'s own ordering guarantee.
+    #[cfg(test)]
     pub(crate) fn signs_for_buffer(
         &self,
         bid: BufferId,
     ) -> impl Iterator<Item = (&str, &SignEntry)> {
         self.signs.for_buffer(bid).map(|(s, e)| (s.as_str(), e))
+    }
+
+    /// Signs for `bid` anchored inside `range`, paired with their source
+    /// name — the sign bridge's view, which only ever wants the viewport's
+    /// worth. The source name resolves each entry's slot via
+    /// [`Self::sign_slot`].
+    pub(crate) fn signs_in_range(
+        &self,
+        bid: BufferId,
+        range: Range<usize>,
+    ) -> impl Iterator<Item = (&str, &SignEntry)> {
+        self.signs
+            .in_range(bid, range)
+            .map(|(s, e)| (s.as_str(), e))
+    }
+
+    /// Registers `name` as a sign source at `priority`, replacing any prior
+    /// registration under that name (last wins, matching
+    /// `register-lsp-server!`) rather than leaving a stale entry at the old
+    /// priority's sort position alongside the new one. See [`Self::sign_slot`]
+    /// for what a registration buys a caller.
+    pub(crate) fn register_sign_source(&mut self, name: String, priority: i64) {
+        if let Some(idx) = self.sign_sources.iter().position(|(n, _)| *n == name) {
+            self.sign_sources.remove(idx);
+        }
+        // Sorted `(priority desc, name asc)` — a source's slot (`sign_slot`)
+        // is its index in this order, so registration order itself must
+        // never matter, only the declared priority and name.
+        let idx = self.sign_sources.partition_point(|(n, p)| {
+            (std::cmp::Reverse(*p), n.as_str()) < (std::cmp::Reverse(priority), name.as_str())
+        });
+        self.sign_sources.insert(idx, (name, priority));
+    }
+
+    /// `name`'s gutter slot — its index in the `(priority desc, name asc)`
+    /// registry — or `None` if `name` was never registered via
+    /// `register_sign_source`. Stable buffer-wide and frame-to-frame: it
+    /// depends only on the registry, never on which lines currently carry a
+    /// sign, so a channel's column never shifts as signs come and go.
+    pub(crate) fn sign_slot(&self, name: &str) -> Option<usize> {
+        self.sign_sources.iter().position(|(n, _)| n == name)
+    }
+
+    /// Number of registered sign sources — the bare slot count
+    /// `SignColumnConfig::slots_for` auto-sizes to (before the `+1` padding
+    /// column `SignColumn::width_for_slots` adds).
+    pub(crate) fn sign_source_count(&self) -> usize {
+        self.sign_sources.len()
     }
 
     /// Replaces `source`'s virtual lines for `bid` wholesale.
@@ -685,6 +756,7 @@ impl DecorationStores {
             eol_text,
             line_backgrounds,
             extra_highlights,
+            sign_sources: _,
             generation: _,
             clock: _,
         } = self;
@@ -718,6 +790,7 @@ impl DecorationStores {
             eol_text,
             line_backgrounds,
             extra_highlights,
+            sign_sources: _,
             generation: _,
             clock: _,
         } = self;
@@ -754,6 +827,7 @@ impl DecorationStores {
             eol_text,
             line_backgrounds,
             extra_highlights,
+            sign_sources: _,
             generation: _,
             clock: _,
         } = self;

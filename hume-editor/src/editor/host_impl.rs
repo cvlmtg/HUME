@@ -911,21 +911,34 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         Ok(())
     }
 
+    fn register_sign_source(&mut self, name: String, priority: i64) -> Result<(), String> {
+        self.state
+            .config
+            .decorations
+            .register_sign_source(name, priority);
+        Ok(())
+    }
+
     fn set_signs(
         &mut self,
         source: String,
         bid: BufferId,
-        signs: Vec<(usize, String, String, i64)>,
+        signs: Vec<(usize, String, String)>,
     ) -> Result<(), String> {
+        if self.state.config.decorations.sign_slot(&source).is_none() {
+            return Err(format!(
+                "set-signs!: unregistered sign source {source:?} — call \
+                 (register-sign-source! …) first"
+            ));
+        }
         let text = buffer_text(self.state, bid, "set-signs!")?;
         let entries = signs
             .into_iter()
-            .map(|(line, sign_text, scope, priority)| {
+            .map(|(line, sign_text, scope)| {
                 Ok(crate::editor::decorations::SignEntry {
                     pos: line_start_offset(text, line, "set-signs!")?,
                     text: sign_text,
                     scope,
-                    priority,
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;

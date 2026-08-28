@@ -19,29 +19,13 @@ use hume_ops::pair::find_bracket_pair;
 /// the sole interner of this table. The gutter counterpart (bare
 /// `error`/`warning`/`info`/`hint`, Helix's own naming for that surface) is
 /// interned by `core:lsp`'s `set-signs!` call via `Editor::runtime_scope`
-/// instead — diagnostic signs are an ordinary plugin sign source now, not a
-/// Rust-side render path with its own scope cache.
+/// instead, the same as any other plugin sign source's scope.
 const DIAGNOSTIC_TEXT_SCOPE_NAMES: [&str; 4] = [
     "diagnostic.error",
     "diagnostic.warning",
     "diagnostic.info",
     "diagnostic.hint",
 ];
-
-/// Inserts `priority` into `ladder` if not already present, keeping it
-/// sorted descending — the order `Editor::buffer_sign_ladder`'s slot
-/// assignment needs. Dedup-on-insert instead of collect+sort+dedup: the
-/// binary search is `O(log k)` against a `k`-sized `Vec`; a genuine
-/// insertion (not a dedup hit) still costs `O(k)` for the shift, but the
-/// caller truncates `ladder` back to its slot cap after every call, so `k`
-/// never grows past that cap — even when `signs_for_buffer` yields hundreds
-/// of same-priority entries (one per changed line, from a plugin like
-/// `core:git-diff`) or hundreds of *distinct* ones.
-fn insert_priority(ladder: &mut Vec<i64>, priority: i64) {
-    if let Err(i) = ladder.binary_search_by(|probe| priority.cmp(probe)) {
-        ladder.insert(i, priority);
-    }
-}
 
 impl Editor {
     /// Snapshot of every pane's `(PaneId, BufferId)` — the entry point every
@@ -324,11 +308,6 @@ impl Editor {
 
         let panes = self.decorated_panes();
 
-        // Ladders are buffer-wide, not pane-wide — memoized here so a split
-        // view on one buffer builds each buffer's ladder once per frame,
-        // not once per pane showing it.
-        let mut ladders: rustc_hash::FxHashMap<BufferId, (Vec<i64>, u8)> =
-            rustc_hash::FxHashMap::default();
         for &(pid, bid) in &panes {
             let Some(sign_map) = self
                 .state
@@ -340,6 +319,7 @@ impl Editor {
                 continue;
             };
 
+            let visible = self.visible_char_range(pid, bid);
             let visible_lines = self.visible_line_range(pid, bid);
 
             let signcolumn = self
@@ -349,47 +329,55 @@ impl Editor {
                 .overrides
                 .signcolumn(&self.state.settings);
 
+            // A registered source's slot is its rank in the registry
+            // (`DecorationStores::sign_sources`) — fixed the moment it's
+            // registered, independent of what's actually placed in any
+            // buffer this frame. `slots_for` never walks a single sign.
+            let slots = signcolumn.slots_for(self.state.config.decorations.sign_source_count());
+
             // Plugin signs store their line's line-start char offset
             // (`SignEntry::pos`, remapped through edits like every other
             // decoration kind) — this is what turns it back into a line.
             let text = self.state.buffers.get(bid).text();
 
-            let (ladder, slots) = ladders
-                .entry(bid)
-                .or_insert_with(|| self.buffer_sign_ladder(bid, signcolumn))
-                .clone();
-
-            // Each entry's priority resolves to its slot via the ladder
-            // above; an entry whose priority isn't on the (already
-            // slot-count-truncated) ladder is dropped here rather than
-            // passed through — bounds the per-line `Vec`
-            // `SharedSignSource::signs_for_line` clones every frame. On a
-            // tie (two sources whose priorities resolve to the same slot)
-            // the first entry wins: `signs_for_buffer`
-            // (`SourceStore::for_buffer`) already yields entries ascending
-            // by source name, and `visible_line_anchored` preserves that
-            // order.
+            // `signs_in_range` pre-filters by char range so this pass never
+            // touches a sign the viewport can't show; `visible_line_anchored`
+            // still does the precise per-line check (a char range can
+            // straddle a line the viewport itself excludes).
             let plugin_raw = visible_line_anchored(
                 text,
                 &visible_lines,
-                self.state.config.decorations.signs_for_buffer(bid),
+                self.state.config.decorations.signs_in_range(bid, visible),
                 |e| e.pos,
             );
 
             let mut plugin_all: rustc_hash::FxHashMap<usize, Vec<Sign>> =
                 rustc_hash::FxHashMap::default();
-            for (_, line, e) in plugin_raw {
-                // `ladder` is sorted descending by `insert_priority`.
-                let Ok(slot) = ladder.binary_search_by(|probe| e.priority.cmp(probe)) else {
+            for (source, line, e) in plugin_raw {
+                // `set-signs!` already rejects an unregistered source at
+                // write time, and no source ever loses its registration
+                // without every buffer's signs resetting alongside it
+                // (`DecorationStores::reset`) — so every entry this loop
+                // sees has a real slot.
+                let slot = self
+                    .state
+                    .config
+                    .decorations
+                    .sign_slot(&source)
+                    .expect("set-signs! only accepts an already-registered source");
+                if slot >= slots as usize {
                     continue;
-                };
+                }
                 let slot = slot as u8;
                 let scope = self.runtime_scope(&e.scope);
                 let entries = plugin_all.entry(line).or_default();
-                // Slot-ascending insert keeps a line's `Vec<Sign>` unique
-                // per slot and ordered left-to-right in one step; `Err` is
-                // the insertion point, `Ok` means an earlier
-                // (ascending-name) source already claimed this slot.
+                // Two *different* sources can never contend for one slot
+                // now — a slot is a source's fixed registry rank. This
+                // guards only a same-source duplicate on one line (a source
+                // bug: nothing stops one `set-signs!` call from listing two
+                // entries for the same line): `Err` is the insertion point,
+                // `Ok` means this source's own earlier (pos-sorted) entry
+                // for the line already claimed the slot.
                 if let Err(i) = entries.binary_search_by_key(&slot, |s| s.slot) {
                     entries.insert(
                         i,
@@ -416,42 +404,6 @@ impl Editor {
             };
             self.view.panes[pid].providers.sync_sign_column_width(width);
         }
-    }
-
-    /// Buffer-wide sign-priority ladder and its resolved slot count: the
-    /// buffer's distinct sign priorities (across every source), highest
-    /// first, truncated to `slots`. A sign's slot is its priority's position
-    /// in this list — stable for the whole buffer, so scrolling never
-    /// renumbers a channel's column, and a channel with no signs anywhere in
-    /// the buffer claims no slot at all (see `docs/LSP.md`'s `set-signs!`
-    /// contract). Called once per buffer per frame by `update_sign_providers`
-    /// (memoized there across panes), never per line — `signs_for_buffer`
-    /// walks every sign in the buffer, not just the visible ones.
-    fn buffer_sign_ladder(
-        &self,
-        bid: BufferId,
-        signcolumn: crate::settings::SignColumnConfig,
-    ) -> (Vec<i64>, u8) {
-        // Caps the ladder during the build, not just at the end, to bound
-        // `insert_priority`'s per-call `Vec::insert` shift to `cap` instead
-        // of letting it grow with every distinct priority ever registered —
-        // `signs_for_buffer` walks the whole buffer, so an unbounded ladder
-        // here would cost `O(S²)` per frame for `S` distinct priorities.
-        // Provably identical final result either way: pinned mode's
-        // `slots_for` ignores the ladder length entirely, and auto mode's
-        // `clamp(len, 1, MAX_AUTO_SIGN_SLOTS)` agrees with
-        // `clamp(min(len, cap), 1, cap)` for `cap == MAX_AUTO_SIGN_SLOTS`.
-        let cap = signcolumn
-            .pinned_slots
-            .unwrap_or(crate::settings::MAX_AUTO_SIGN_SLOTS) as usize;
-        let mut ladder: Vec<i64> = Vec::new();
-        for (_, e) in self.state.config.decorations.signs_for_buffer(bid) {
-            insert_priority(&mut ladder, e.priority);
-            ladder.truncate(cap);
-        }
-        let slots = signcolumn.slots_for(ladder.len());
-        ladder.truncate(slots as usize);
-        (ladder, slots)
     }
 
     /// Interned `ScopeId` for `ui.virtual.inlay-hint`, cached across frames —
@@ -771,10 +723,12 @@ impl Editor {
 /// line: within one source, a later entry beats an earlier
 /// one that a remap collapsed onto the same line (ties resolve by store
 /// order — `SourceStore::set` sorts by position, so "later" means originally
-/// further along the buffer); across sources, tie-break by source name,
-/// mirroring the sign pipeline (`SourceStore::set` keeps sources ascending by
-/// name; `update_sign_providers`'s per-slot merge keeps the first entry it
-/// sees for a contended slot — i.e. the alphabetically first source wins).
+/// further along the buffer); across sources, tie-break by source name —
+/// the alphabetically first source wins, same convention `SourceStore::set`
+/// itself keeps sources ascending by name. Signs use a different mechanism:
+/// each registered source has its own fixed gutter slot, so two sign
+/// sources never contend for one line's cell the way EOL text/line
+/// backgrounds do here.
 ///
 /// A single stable sort **descending** by source name gets both properties
 /// from one `FxHashMap::insert`-per-entry fold: one source's own entries

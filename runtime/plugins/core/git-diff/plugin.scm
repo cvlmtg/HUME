@@ -16,6 +16,12 @@
 (define git-diff/inline-default (call! "stdlib/config-boolean" "core:git-diff" git-diff/cfg "inline" #f))
 (define git-diff/ref (call! "stdlib/config-string" "core:git-diff" git-diff/cfg "ref" "HEAD"))
 
+;;; Only claims a gutter slot when signs are on by default — a config-off
+;;; user pays no slot until `:toggle-git-signs` claims one itself (see that
+;;; command's own registration call in this file).
+(when git-diff/signs-default
+  (git-diff/register-sign-source!))
+
 ;;; A runtime override (`state.scm`'s "ref" field) wins over the config
 ;;; default; an untracked buffer falls through to it.
 (define (git-diff/buffer-ref bid)
@@ -78,6 +84,11 @@
              (git-diff/toggle-flag! bid key))])
     (if enabled?
         (begin
+          ;; Idempotent: a source already registered at the plugin's own
+          ;; default priority just re-asserts it. Only needed when a
+          ;; config-off default is toggled on for the first time.
+          (when (equal? key "signs?")
+            (git-diff/register-sign-source!))
           (git-diff/render-for! key bid (git-diff/buffer-hunks bid))
           (git-diff/force-refresh! bid (git-diff/buffer-ref bid)))
         (git-diff/render-for! key bid '()))

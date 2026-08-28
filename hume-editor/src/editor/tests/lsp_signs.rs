@@ -1,9 +1,10 @@
-// Plugin gutter signs (`set-signs!`): the `update_sign_providers` write side
-// that feeds `SharedSignSource` from the signs store, plus the sign
-// column's priority ladder and auto-collapsing width. Diagnostic signs
-// (`core:lsp`'s own `set-signs!` calls) are covered by
-// `tests/unix/lsp_diagnostic_signs.rs` — diagnostics are an ordinary plugin
-// sign source now, not a separate Rust-side render path.
+// Plugin gutter signs (`set-signs!`/`register-sign-source!`): the
+// `update_sign_providers` write side that feeds `SharedSignSource` from the
+// signs store, plus the sign-source registry (a source's gutter slot is its
+// rank in `DecorationStores::sign_sources`, not anything carried on a
+// `set-signs!` entry) and the auto-collapsing width. Diagnostic signs
+// (`core:lsp`'s own `set-signs!` calls) are an ordinary plugin sign source,
+// covered by `tests/unix/lsp_diagnostic_signs.rs`.
 //
 // Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s bare
 // `Pane::new`) — sign providers are only registered by `build_pane`, same
@@ -39,8 +40,9 @@ fn render(ed: &mut Editor) {
 /// Builds an untitled editor containing `"abcdefgh\n"`, arms `arm_body` as a
 /// Steel `"arm"` command, runs it, pins `signcolumn` if given, and renders
 /// one frame — the harness every plugin-sign test below needs, differing
-/// only in what `set-signs!` calls `arm_body` makes and whether the column
-/// is pinned.
+/// only in what `arm_body` does (typically a `register-sign-source!` call
+/// per source, then a `set-signs!` per source) and whether the column is
+/// pinned.
 fn plugin_sign_editor(signcolumn: Option<&str>, arm_body: &str) -> (Editor, PaneId) {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
@@ -90,13 +92,109 @@ fn gutter_width_always_2_is_3_cells_wide() {
     );
 }
 
+// ── Sign source registration ────────────────────────────────────────────────
+
+#[test]
+fn set_signs_for_an_unregistered_source_errors_naming_the_builtin() {
+    let tmp = safe_tempdir();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    type_text(&mut ed, "abcdefgh");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "arm" "" (lambda ()
+             (set-signs! "nope" (current-buffer) (list (list 0 "!" "sc")))))"#,
+    );
+    type_cmd(&mut ed, ":arm");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("set-signs!") && log.contains("nope"),
+        "must name the builtin and the unregistered source: {log:?}"
+    );
+}
+
+/// The whole reason a source's slot comes from registration, not from
+/// per-entry priority: a registered source reserves its slot the moment it
+/// registers, so the gutter width never moves as that source's (or another
+/// registered source's) signs come and go — the width oscillation the
+/// priority-per-entry ladder used to produce.
+#[test]
+fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
+    let (mut ed, pid) = plugin_sign_editor(
+        None,
+        r#"(register-sign-source! "a" 2)
+           (register-sign-source! "b" 1)
+           (set-signs! "a" (current-buffer) (list (list 0 "+" "sc")))"#,
+    );
+    assert_eq!(
+        sign_column_width(&ed, pid),
+        3,
+        "two registered sources — 2 slots + 1 padding, whether or not \"b\" \
+         has actually placed a sign yet"
+    );
+
+    let tmp = safe_tempdir();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "arm-b" "" (lambda ()
+             (set-signs! "b" (current-buffer) (list (list 0 "-" "sc")))))"#,
+    );
+    type_cmd(&mut ed, ":arm-b");
+    render(&mut ed);
+    assert_eq!(
+        sign_column_width(&ed, pid),
+        3,
+        "\"b\" placing a sign must not change the width — its slot was \
+         already reserved by registration"
+    );
+
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "clear-b" "" (lambda ()
+             (set-signs! "b" (current-buffer) '())))"#,
+    );
+    type_cmd(&mut ed, ":clear-b");
+    render(&mut ed);
+    assert_eq!(
+        sign_column_width(&ed, pid),
+        3,
+        "\"b\" clearing its sign must not shrink the width either"
+    );
+}
+
+#[test]
+fn re_registering_a_sign_source_updates_its_priority_and_slot() {
+    let (ed, pid) = plugin_sign_editor(
+        Some("always:2"),
+        r#"(register-sign-source! "a" 1)
+           (register-sign-source! "b" 2)
+           (set-signs! "a" (current-buffer) (list (list 0 "A" "sc")))
+           (set-signs! "b" (current-buffer) (list (list 0 "B" "sc")))
+           (register-sign-source! "a" 10)"#,
+    );
+
+    let signs = pane_signs(&ed, pid);
+    let line_signs = &signs[&0];
+    assert_eq!(
+        line_signs[0].text, "A",
+        "re-registering \"a\" at priority 10 must move it ahead of \"b\" — \
+         slot 0 now, even though \"a\" registered first and \"b\" had the \
+         higher priority when it placed its sign"
+    );
+    assert_eq!(line_signs[1].text, "B");
+}
+
 // ── Plugin signs ──────────────────────────────────────────────────────────────
 
 #[test]
 fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
     let (ed, pid) = plugin_sign_editor(
         None,
-        r#"(set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope" 7)))"#,
+        r#"(register-sign-source! "linter" 7)
+           (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -105,7 +203,7 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
     assert_eq!(sign.text, "!");
     assert_eq!(
         sign.slot, 0,
-        "this plugin sign is the buffer's only sign channel — slot 0"
+        "this plugin sign is the buffer's only registered channel — slot 0"
     );
     let warn_scope = ed.view.registry.get("warn-scope").unwrap();
     assert_eq!(sign.scope, warn_scope);
@@ -117,18 +215,20 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
     );
 }
 
-/// With no `signcolumn` override, `always` auto-sizes to the buffer's
-/// live sign-priority ladder — two plugin sources at distinct priorities
-/// on the same line both claim their own slot, ordered highest-priority
-/// first, without the user having to pin `always:2` for it. A channel's
-/// column position is a property of its priority, stable buffer-wide, not
-/// a function of what else happens to share the line.
+/// With no `signcolumn` override, `always` auto-sizes to however many sign
+/// sources are registered — two sources at distinct priorities on the same
+/// line both claim their own slot, ordered highest-priority first, without
+/// the user having to pin `always:2` for it. A channel's column position is
+/// a property of its registration, stable buffer-wide, not a function of
+/// what else happens to share the line.
 #[test]
 fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
     let (ed, pid) = plugin_sign_editor(
         None,
-        r#"(set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 3)))
-           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 9)))"#,
+        r#"(register-sign-source! "linter" 3)
+           (register-sign-source! "vcs" 9)
+           (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))
+           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -137,7 +237,7 @@ fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
     assert_eq!(
         line_signs.len(),
         2,
-        "two distinct priorities on the ladder — both get their own slot, unpinned"
+        "two registered sources — both get their own slot, unpinned"
     );
     assert_eq!(line_signs[0].text, "+", "priority 9 (vcs) — slot 0");
     assert_eq!(line_signs[1].text, "!", "priority 3 (linter) — slot 1");
@@ -148,17 +248,19 @@ fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
     );
 }
 
-/// Bare `auto` (no `:N`) auto-sizes to the live ladder exactly like bare
-/// `always` — `auto`'s only distinct behavior is collapsing to zero width
-/// when no signs are visible at all (see
+/// Bare `auto` (no `:N`) auto-sizes to the registered sources exactly like
+/// bare `always` — `auto`'s only distinct behavior is collapsing to zero
+/// width when no signs are visible at all (see
 /// `gutter_width_collapses_under_auto_mode_with_no_signs`), which this test
 /// doesn't exercise since both channels here have live signs.
 #[test]
 fn bare_auto_auto_sizes_to_multiple_channels_like_bare_always() {
     let (ed, pid) = plugin_sign_editor(
         Some("auto"),
-        r#"(set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 3)))
-           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 9)))"#,
+        r#"(register-sign-source! "linter" 3)
+           (register-sign-source! "vcs" 9)
+           (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))
+           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -166,7 +268,7 @@ fn bare_auto_auto_sizes_to_multiple_channels_like_bare_always() {
     assert_eq!(
         line_signs.len(),
         2,
-        "two distinct priorities — auto grows past its 1-slot floor, same as bare always"
+        "two registered sources — auto grows past its 1-slot floor, same as bare always"
     );
     assert_eq!(
         sign_column_width(&ed, pid),
@@ -175,48 +277,50 @@ fn bare_auto_auto_sizes_to_multiple_channels_like_bare_always() {
     );
 }
 
-/// Auto-sizing (bare `always`/`auto`) never grows past
-/// `MAX_AUTO_SIGN_SLOTS` — a channel ranked below that cap gets no slot at
-/// all, buffer-wide, not just on lines where the higher-priority channels
-/// are also present.
+/// Auto-sizing follows the registered-source count with no fixed cap
+/// anymore (unlike the old priority-ladder model's 4-slot
+/// `MAX_AUTO_SIGN_SLOTS`) — five registered sources auto-size to five slots.
 #[test]
-fn auto_size_cap_hides_the_lowest_priority_channel_buffer_wide() {
+fn auto_size_grows_to_five_registered_sources_no_longer_capped_at_four() {
     let (ed, pid) = plugin_sign_editor(
         None,
-        r#"(set-signs! "a" (current-buffer) (list (list 0 "5" "sc" 5)))
-           (set-signs! "b" (current-buffer) (list (list 0 "4" "sc" 4)))
-           (set-signs! "c" (current-buffer) (list (list 0 "3" "sc" 3)))
-           (set-signs! "d" (current-buffer) (list (list 0 "2" "sc" 2)))
-           (set-signs! "e" (current-buffer) (list (list 0 "1" "sc" 1)))"#,
+        r#"(register-sign-source! "a" 5)
+           (register-sign-source! "b" 4)
+           (register-sign-source! "c" 3)
+           (register-sign-source! "d" 2)
+           (register-sign-source! "e" 1)
+           (set-signs! "a" (current-buffer) (list (list 0 "5" "sc")))
+           (set-signs! "b" (current-buffer) (list (list 0 "4" "sc")))
+           (set-signs! "c" (current-buffer) (list (list 0 "3" "sc")))
+           (set-signs! "d" (current-buffer) (list (list 0 "2" "sc")))
+           (set-signs! "e" (current-buffer) (list (list 0 "1" "sc")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
     let line_signs = &signs[&0];
     assert_eq!(
         line_signs.len(),
-        4,
-        "5 distinct priorities registered, but the auto-size cap admits only the top 4"
-    );
-    assert!(
-        line_signs.iter().all(|s| s.text != "1"),
-        "priority 1 (ranked 5th) has no slot at all — it isn't merely dropped from this line"
+        5,
+        "five registered sources — all five get a slot, no 4-slot cap"
     );
     assert_eq!(
         sign_column_width(&ed, pid),
-        5,
-        "4 slots + 1 padding, capped regardless of how many distinct priorities exist"
+        6,
+        "5 slots + 1 padding, unbounded by anything but MAX_SLOTS (127)"
     );
 }
 
 /// Pinning `always:1` caps the column at one slot regardless of how many
-/// distinct priorities the ladder holds — the lower-priority channel is
-/// hidden buffer-wide, not just squeezed off this one line.
+/// sources are registered — the lower-priority channel is hidden
+/// buffer-wide, not just squeezed off this one line.
 #[test]
 fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:1"),
-        r#"(set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 3)))
-           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 9)))"#,
+        r#"(register-sign-source! "linter" 3)
+           (register-sign-source! "vcs" 9)
+           (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))
+           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -224,7 +328,7 @@ fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
     assert_eq!(
         line_signs.len(),
         1,
-        "always:1 pins exactly one slot — the other priority's slot doesn't fit"
+        "always:1 pins exactly one slot — the other source's slot doesn't fit"
     );
     assert_eq!(
         line_signs[0].text, "+",
@@ -232,51 +336,47 @@ fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
     );
 }
 
-/// Priority *is* the slot: two plugin sources at the *same* priority resolve
-/// to the *same* slot and contend for it, even with `always:2` pinned — the
-/// second slot goes unclaimed rather than absorbing the loser, because
-/// nothing else on this line asked for it. The tie itself still resolves
-/// deterministically by source name (ascending), not by call order:
-/// `signs_for_buffer` (`SourceStore::for_buffer`) yields entries ascending
-/// by source name, and the plugin merge (`update_sign_providers`) keeps the
-/// first entry per slot — so `"linter"` wins even though `"vcs"` is armed
-/// first here.
+/// A registered source's slot is a property of *registration*, so two
+/// sources at the *same* declared priority don't contend for one slot the
+/// way per-entry priority used to — both register their own distinct slot,
+/// ties broken by name (ascending) at registration time.
 #[test]
-fn two_plugin_sources_at_equal_priority_contend_for_one_slot() {
+fn equal_priority_sign_sources_get_distinct_slots_ordered_by_name() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 5)))
-           (set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 5)))"#,
+        r#"(register-sign-source! "vcs" 5)
+           (register-sign-source! "linter" 5)
+           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))
+           (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
     let line_signs = &signs[&0];
     assert_eq!(
         line_signs.len(),
-        1,
-        "both signs share one priority — one slot, one winner, even at width 2"
+        2,
+        "equal priority — both sources still get their own slot"
     );
     assert_eq!(
         line_signs[0].text, "!",
-        "equal priority — \"linter\" wins the tie by source name (alphabetically \
-         first), even though \"vcs\" was armed first"
+        "equal priority ties break by name at registration — \"linter\" \
+         (alphabetically first) ranks slot 0, even though \"vcs\" registered first"
     );
-    assert_eq!(
-        line_signs[0].slot, 0,
-        "priority 5 is the buffer's only channel — slot 0"
-    );
+    assert_eq!(line_signs[1].text, "+");
 }
 
 /// With `signcolumn=always:2` pinned, both distinct-priority sources fit
-/// their own slot regardless of the ladder's actual length — same outcome
-/// as auto-size here (2 live priorities), but via the pinned path instead
-/// of `SignColumnConfig::slots_for`'s ladder-length fallback.
+/// their own slot regardless of how many sources are registered — same
+/// outcome as auto-size here (2 registered sources), but via the pinned
+/// path instead of `SignColumnConfig::slots_for`'s source-count fallback.
 #[test]
 fn wider_signcolumn_keeps_multiple_signs_per_line() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 3)))
-           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 9)))"#,
+        r#"(register-sign-source! "linter" 3)
+           (register-sign-source! "vcs" 9)
+           (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))
+           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -295,36 +395,36 @@ fn wider_signcolumn_keeps_multiple_signs_per_line() {
     );
 }
 
-/// Regression for the ladder's slot index truncating to `u8` before it was
-/// bounded to the resolved slot count: a priority ranked at index 256 (or
-/// any multiple of 256) on the *un*-truncated ladder wrapped to slot 0 via
-/// `256 as u8`, silently contending with the buffer's actual
-/// highest-priority sign. 260 distinct priorities push a pinned
-/// `always:127` ladder well past that boundary.
+/// A source ranked past the resolved slot count is hidden entirely, not
+/// miscast into slot 0 — the slot index is bounds-checked against the
+/// resolved slot count (`slot >= slots`) while it's still a plain `usize`
+/// registry rank, strictly before the `as u8` narrowing
+/// `update_sign_providers` needs for `Sign::slot`, so a rank that doesn't
+/// fit can never silently wrap into a slot that does.
 #[test]
-fn priority_ranked_past_255_never_lands_in_slot_zero() {
-    let entries: String = (0..260)
-        .map(|i| format!(r#"(list 0 "p{i}" "sc" {i})"#))
-        .collect::<Vec<_>>()
-        .join(" ");
-    let arm_body = format!(r#"(set-signs! "flood" (current-buffer) (list {entries}))"#);
-    let (ed, pid) = plugin_sign_editor(Some("always:127"), &arm_body);
+fn a_source_ranked_past_the_resolved_slot_count_is_hidden_not_miscast_into_slot_zero() {
+    let (ed, pid) = plugin_sign_editor(
+        Some("always:2"),
+        r#"(register-sign-source! "a" 3)
+           (register-sign-source! "b" 2)
+           (register-sign-source! "c" 1)
+           (set-signs! "a" (current-buffer) (list (list 0 "3" "sc")))
+           (set-signs! "b" (current-buffer) (list (list 0 "2" "sc")))
+           (set-signs! "c" (current-buffer) (list (list 0 "1" "sc")))"#,
+    );
 
     let signs = pane_signs(&ed, pid);
     let line_signs = &signs[&0];
     assert_eq!(
         line_signs.len(),
-        127,
-        "pinned always:127 keeps exactly 127 of the 260 distinct priorities"
+        2,
+        "always:2 pins exactly two slots — the third registered source (rank 2) doesn't fit"
     );
-    assert_eq!(
-        line_signs[0].text, "p259",
-        "the highest priority (259) must resolve to slot 0"
-    );
+    assert_eq!(line_signs[0].text, "3", "rank 0 (highest priority)");
+    assert_eq!(line_signs[1].text, "2", "rank 1");
     assert!(
-        line_signs.iter().all(|s| s.text != "p3"),
-        "priority 3 (ranked 257th, past the 127-slot cutoff) must not appear \
-         anywhere — its un-truncated rank of 256 would wrap to slot 0 via \
-         `as u8` and silently displace the true top priority"
+        line_signs.iter().all(|s| s.text != "1"),
+        "\"c\" (rank 2, past the always:2 cutoff) must not appear anywhere — \
+         not wrapped into slot 0"
     );
 }

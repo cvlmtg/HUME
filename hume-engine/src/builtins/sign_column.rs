@@ -15,8 +15,8 @@ pub struct Sign {
     /// at provider-construction time, before the first render.
     pub scope: ScopeId,
     /// Which slot of the column this sign occupies — stable for the whole
-    /// buffer, resolved upstream from the buffer's live sign-priority ladder
-    /// (see `Editor::update_sign_providers`), not recomputed here from this
+    /// buffer, resolved upstream from the registered sign sources (see
+    /// `Editor::update_sign_providers`), not recomputed here from this
     /// line's signs alone. A slot `>=` the column's configured slot count is
     /// silently dropped by `SignColumn::render_row_cells`.
     pub slot: u8,

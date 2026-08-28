@@ -77,9 +77,10 @@
 ;; leftmost diagnostic, color from the most severe one on that line. One
 ;; gutter sign per line any diagnostic touches, most severe wins.
 
-;;; Fixed priority every diagnostic sign carries, regardless of severity —
-;;; matches the Rust sign pass this replaced (`DIAGNOSTIC_SIGN_PRIORITY`).
-(define lsp/*diagnostic-sign-priority* 10)
+;;; Registers the diagnostics gutter channel — its declared priority, not
+;;; any one entry's, decides its slot against every other registered sign
+;;; source (see `register-sign-source!`'s doc).
+(register-sign-source! "lsp-diagnostics" 10)
 
 (define (lsp/severity-scope severity)
   (string-append "diagnostic." severity))
@@ -123,8 +124,7 @@
 
 ;;; `(line . diag)` pairs, one per line `diag`'s range touches (`"line"`
 ;;; through `"end-line"`, inclusive) — a diagnostic crossing several lines
-;;; contributes a sign candidate to each one, the same span the Rust sign
-;;; pass this replaced expanded before every render.
+;;; contributes a sign candidate to each one it touches.
 (define (lsp/diag-line-pairs diag)
   (map (lambda (line) (cons line diag))
        (range (hash-ref diag "line") (+ (hash-ref diag "end-line") 1))))
@@ -149,7 +149,7 @@
              (loop (cdr rest) (car (car rest)) (list (cdr (car rest)))
                    (cons (cons current-line (reverse current-group)) groups))))))))
 
-;;; `diags` -> `(line "●" severity priority)` sign entries, one per line any
+;;; `diags` -> `(line "●" severity)` sign entries, one per line any
 ;;; diagnostic touches — the most severe diagnostic on a line wins, same
 ;;; reduction `lsp/most-severe` already does for the EOL summary. `severity`
 ;;; is passed straight through as the sign's scope — the bare
@@ -158,8 +158,7 @@
 ;;; which is for the editing-area text span, not the gutter).
 (define (lsp/diagnostic-signs diags)
   (map (lambda (group)
-         (list (car group) "●" (hash-ref (lsp/most-severe (cdr group)) "severity")
-               lsp/*diagnostic-sign-priority*))
+         (list (car group) "●" (hash-ref (lsp/most-severe (cdr group)) "severity")))
        (lsp/pairs->line-groups (apply append (map lsp/diag-line-pairs diags)))))
 
 (define (lsp/refresh-diagnostic-decorations bid)

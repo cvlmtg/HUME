@@ -58,6 +58,27 @@ fn set_inlay_hints_without_decoration_host_errors() {
 }
 
 #[test]
+fn register_sign_source_without_decoration_host_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = register_sign_source(
+        &mut ctx,
+        SteelVal::StringV("test".into()),
+        SteelVal::IntV(10),
+    );
+    assert_names_builtin(result, "register-sign-source!");
+}
+
+#[test]
+fn register_sign_source_rejects_an_empty_name() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = register_sign_source(&mut ctx, SteelVal::StringV("  ".into()), SteelVal::IntV(10));
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("name must not be empty"), "got: {msg}");
+}
+
+#[test]
 fn set_signs_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
@@ -85,7 +106,6 @@ fn set_signs_rejects_a_control_character_in_the_glyph() {
         SteelVal::IntV(0),
         SteelVal::StringV("\tS".into()),
         SteelVal::StringV("ui.sign".into()),
-        SteelVal::IntV(0),
     ]);
     let result = set_signs(
         &mut ctx,
@@ -111,7 +131,6 @@ fn set_signs_accepts_a_multi_codepoint_glyph() {
         SteelVal::IntV(0),
         SteelVal::StringV("e\u{0301}".into()),
         SteelVal::StringV("ui.sign".into()),
-        SteelVal::IntV(0),
     ]);
     let result = set_signs(
         &mut ctx,

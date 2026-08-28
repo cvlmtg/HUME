@@ -247,8 +247,9 @@ fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudl
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "arm-signs" "" (lambda ()
-             (set-signs! "linter" (current-buffer) (list (list 99 "!" "error" 10)))))
+        r#"(register-sign-source! "linter" 10)
+           (define-command! "arm-signs" "" (lambda ()
+             (set-signs! "linter" (current-buffer) (list (list 99 "!" "error")))))
            (define-command! "arm-vlines" "" (lambda ()
              (set-virtual-lines! "git-diff" (current-buffer) (list (hash 'line 99 'text "note")))))
            (define-command! "arm-eol" "" (lambda ()
@@ -427,8 +428,9 @@ fn sign_remaps_through_a_line_inserted_above_it() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "arm" "" (lambda ()
-             (set-signs! "linter" (current-buffer) (list (list 1 "!" "error" 10)))))"#,
+        r#"(register-sign-source! "linter" 10)
+           (define-command! "arm" "" (lambda ()
+             (set-signs! "linter" (current-buffer) (list (list 1 "!" "error")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -530,8 +532,9 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "arm" "" (lambda ()
-             (set-signs! "linter" (current-buffer) (list (list 1 "!" "error" 10)))))"#,
+        r#"(register-sign-source! "linter" 10)
+           (define-command! "arm" "" (lambda ()
+             (set-signs! "linter" (current-buffer) (list (list 1 "!" "error")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -577,9 +580,11 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "arm-hints-a" "" (lambda ()
-             (set-signs! "linter" (current-buffer) (list (list 0 "!" "error" 10)))
-             (set-signs! "vcs" (current-buffer) (list (list 0 "+" "added" 5)))
+        r#"(register-sign-source! "linter" 10)
+           (register-sign-source! "vcs" 5)
+           (define-command! "arm-hints-a" "" (lambda ()
+             (set-signs! "linter" (current-buffer) (list (list 0 "!" "error")))
+             (set-signs! "vcs" (current-buffer) (list (list 0 "+" "added")))
              (set-virtual-lines! "linter" (current-buffer) (list (hash 'line 0 'text "note: …")))
              (set-extra-highlights! "linter" (current-buffer) (list (list 0 3 "unused")))))
            (define-command! "clear-linter-signs" "" (lambda ()
@@ -596,9 +601,8 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
             linter_signs[0].pos,
             linter_signs[0].text.as_str(),
             linter_signs[0].scope.as_str(),
-            linter_signs[0].priority
         ),
-        (0, "!", "error", 10),
+        (0, "!", "error"),
         "line 0's line-start char offset is 0 on this fixture"
     );
 

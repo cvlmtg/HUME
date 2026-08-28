@@ -218,6 +218,7 @@
 (#%register-global "register-hook!")
 (#%register-global "register-installed-grammars!")
 (#%register-global "register-lsp-server!")
+(#%register-global "register-sign-source!")
 (#%register-global "register-trigger-chars!")
 (#%register-global "release-install-lock!")
 (#%register-global "remove-primary-selection")

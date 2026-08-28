@@ -88,23 +88,16 @@ impl FromStr for SignColumnMode {
     }
 }
 
-/// Upper bound on how many slots `signcolumn=always`/`auto` (no explicit
-/// `:N`) auto-sizes to. The ladder is plugin-controlled — a plugin whose
-/// `set-signs!` priority varies per line could otherwise grow the column
-/// without bound and eat the pane. A user who wants more pins
-/// `signcolumn=always:N` explicitly, which ignores this cap entirely (the
-/// `Some` branch of `SignColumnConfig::slots_for` never consults it).
-pub const MAX_AUTO_SIGN_SLOTS: u8 = 4;
-
 /// Sign column configuration: visibility mode and, optionally, a pinned
 /// number of sign slots.
 ///
 /// Wire format: `"always"`, `"always:N"`, `"auto"`, `"auto:N"` where N is the
 /// number of sign slots (1–127). Bare `"always"`/`"auto"` (`pinned_slots:
-/// None`) auto-sizes the column to the buffer's live sign-priority ladder,
-/// capped at `MAX_AUTO_SIGN_SLOTS` (see `Editor::buffer_sign_ladder`, the
-/// sole place that resolves `None` into an actual count); `":N"` pins the
-/// count regardless of the ladder or the cap. Default is bare `"always"`.
+/// None`) auto-sizes the column to the buffer's registered sign sources —
+/// one slot per source, regardless of whether it has placed a sign anywhere
+/// in the buffer (see `DecorationStores::sign_source_count`, the sole place
+/// `slots_for`'s `None` branch reads); `":N"` pins the count instead,
+/// hiding any source ranked at or past `N`. Default is bare `"always"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SignColumnConfig {
     pub mode: SignColumnMode,
@@ -122,26 +115,34 @@ impl Default for SignColumnConfig {
 }
 
 impl SignColumnConfig {
-    /// Resolves the configured slot count against `ladder_len` — the number
-    /// of distinct sign priorities currently live in the buffer. An explicit
-    /// `:N` pins the count regardless of `ladder_len` or `MAX_AUTO_SIGN_SLOTS`;
-    /// auto-size clamps to `[1, MAX_AUTO_SIGN_SLOTS]` — never below 1, so the
-    /// column stays visible under `always` even with zero signs. Returns a
-    /// bare slot count, not a gutter width — `Editor::buffer_sign_ladder`
-    /// (its only caller) needs the bare count to truncate the ladder to it,
-    /// and leaves the `+1` padding-column conversion to
-    /// `SignColumn::width_for_slots`, applied later at the point the
-    /// resolved width is actually synced to the gutter.
-    pub fn slots_for(self, ladder_len: usize) -> u8 {
+    /// Upper bound on a pinned `:N` slot count, and on how many slots bare
+    /// `signcolumn=always`/`auto` auto-sizes to. The `:N` bound is the type
+    /// domain `FromStr` parses into (`u8`, and `127` keeps a pinned column
+    /// from outrunning what a terminal row can usefully show); auto-size
+    /// reuses the same constant rather than defining its own smaller cap,
+    /// since a buffer can't register more distinct sources than a user could
+    /// otherwise pin explicitly.
+    pub const MAX_SLOTS: u8 = 127;
+
+    /// Resolves the configured slot count against `source_count` — the
+    /// number of registered sign sources. An explicit `:N` pins the count
+    /// regardless of `source_count`; auto-size clamps to `[1, MAX_SLOTS]` —
+    /// never below 1, so the column stays visible under `always` even with
+    /// zero registered sources. Returns a bare slot count, not a gutter
+    /// width — `Editor::update_sign_providers` (its only caller) needs the
+    /// bare count to bound the per-line `Vec<Sign>` it builds, and leaves the
+    /// `+1` padding-column conversion to `SignColumn::width_for_slots`,
+    /// applied later at the point the resolved width is actually synced to
+    /// the gutter.
+    pub fn slots_for(self, source_count: usize) -> u8 {
         self.pinned_slots
-            .unwrap_or_else(|| ladder_len.clamp(1, MAX_AUTO_SIGN_SLOTS as usize) as u8)
+            .unwrap_or_else(|| source_count.clamp(1, Self::MAX_SLOTS as usize) as u8)
     }
 
     /// Completion hints only, not an exhaustive enum like `TabStyle::VALUES`
     /// — `:N` accepts 1–127, which can't be listed in full. `:1`/`:2` are
     /// illustrative of the pinned-vs-auto-size distinction, not a reflection
-    /// of `MAX_AUTO_SIGN_SLOTS`; raising that cap doesn't require extending
-    /// this list.
+    /// of `MAX_SLOTS`; raising that cap doesn't require extending this list.
     pub const VALUES: &'static [&'static str] =
         &["always", "auto", "always:1", "auto:1", "always:2", "auto:2"];
 }
@@ -169,7 +170,7 @@ impl FromStr for SignColumnConfig {
                 let n: u8 = c
                     .parse()
                     .map_err(|_| format!("invalid signcolumn slots: expected 1–127, got '{c}'"))?;
-                if n == 0 || n > 127 {
+                if n == 0 || n > Self::MAX_SLOTS {
                     return Err(format!(
                         "invalid signcolumn slots: expected 1–127, got '{n}'"
                     ));

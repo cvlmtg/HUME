@@ -415,8 +415,9 @@ fn reset_clears_plugin_decorations() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "mark" "" (lambda ()
-             (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope" 7)))))"#,
+        r#"(register-sign-source! "linter" 7)
+           (define-command! "mark" "" (lambda ()
+             (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -437,6 +438,12 @@ fn reset_clears_plugin_decorations() {
             .decorations
             .signs_for("linter", bid)
             .is_empty()
+    );
+    assert_eq!(
+        ed.state.config.decorations.sign_slot("linter"),
+        None,
+        "the sign SOURCE registration must not linger past a reset either — \
+         the new config re-registers whatever it needs"
     );
 }
 
@@ -946,8 +953,9 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-diagnostics-changed (lambda (bid)
-             (set-signs! "diag" bid (list (list 0 "!" "diag" (length (diagnostics-for-buffer bid)))))))"#,
+        r#"(register-sign-source! "diag" 1)
+           (register-hook! 'on-diagnostics-changed (lambda (bid)
+             (set-signs! "diag" bid (list (list 0 "!" "diag")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1045,8 +1053,9 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-diagnostics-changed (lambda (bid)
-             (set-signs! "diag" bid (list (list 0 "!" "diag" (length (diagnostics-for-buffer bid)))))))"#,
+        r#"(register-sign-source! "diag" 1)
+           (register-hook! 'on-diagnostics-changed (lambda (bid)
+             (set-signs! "diag" bid (list (list 0 "!" "diag")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

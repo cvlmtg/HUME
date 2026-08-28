@@ -114,7 +114,7 @@ fn wait_for_refresh(ed: &mut Editor) {
 /// `signs_for(SOURCE, bid)`, remapped from char-offset `pos` back to a line
 /// number and sorted by line — the shape a fixture's hand-derived
 /// expectation can be written against directly.
-fn signs(ed: &Editor, bid: BufferId) -> Vec<(usize, String, String, i64)> {
+fn signs(ed: &Editor, bid: BufferId) -> Vec<(usize, String, String)> {
     let text = ed.state.buffers.get(bid).text();
     let mut v: Vec<_> = ed
         .state
@@ -122,14 +122,7 @@ fn signs(ed: &Editor, bid: BufferId) -> Vec<(usize, String, String, i64)> {
         .decorations
         .signs_for(SOURCE, bid)
         .iter()
-        .map(|e| {
-            (
-                text.char_to_line(e.pos),
-                e.text.clone(),
-                e.scope.clone(),
-                e.priority,
-            )
-        })
+        .map(|e| (text.char_to_line(e.pos), e.text.clone(), e.scope.clone()))
         .collect();
     v.sort_by_key(|(line, ..)| *line);
     v
@@ -232,8 +225,8 @@ fn signs_pure_addition_marks_one_plus_per_line() {
     assert_eq!(
         signs(&ed, bid),
         vec![
-            (1, "+".to_string(), "diff.plus.gutter".to_string(), 0),
-            (2, "+".to_string(), "diff.plus.gutter".to_string(), 0),
+            (1, "+".to_string(), "diff.plus.gutter".to_string()),
+            (2, "+".to_string(), "diff.plus.gutter".to_string()),
         ],
         "a 20-line paste should show one + per line, not one per hunk"
     );
@@ -261,7 +254,7 @@ fn signs_change_marks_tilde_per_line() {
 
     assert_eq!(
         signs(&ed, bid),
-        vec![(1, "~".to_string(), "diff.delta.gutter".to_string(), 0)]
+        vec![(1, "~".to_string(), "diff.delta.gutter".to_string())]
     );
 }
 
@@ -287,7 +280,7 @@ fn signs_pure_deletion_marks_line_above_gap() {
 
     assert_eq!(
         signs(&ed, bid),
-        vec![(1, "-".to_string(), "diff.minus.gutter".to_string(), 0)],
+        vec![(1, "-".to_string(), "diff.minus.gutter".to_string())],
         "deleting 'c' must mark line 1 ('b'), the line above the gap"
     );
 }
@@ -314,7 +307,7 @@ fn signs_deletion_at_start_clamps_to_line_zero() {
 
     assert_eq!(
         signs(&ed, bid),
-        vec![(0, "-".to_string(), "diff.minus.gutter".to_string(), 0)],
+        vec![(0, "-".to_string(), "diff.minus.gutter".to_string())],
         "deleting the first line must clamp to line 0, never go negative"
     );
 }
@@ -341,7 +334,7 @@ fn signs_deletion_at_end_of_file_marks_last_content_line() {
 
     assert_eq!(
         signs(&ed, bid),
-        vec![(1, "-".to_string(), "diff.minus.gutter".to_string(), 0)],
+        vec![(1, "-".to_string(), "diff.minus.gutter".to_string())],
         "deleting the last line ('c') must mark line 1 ('b') without an \
          out-of-range set-signs! call — new-start (2) equals the buffer's \
          content line count"
@@ -399,7 +392,7 @@ fn inline_change_renders_virtual_line_word_spans_and_tint() {
     assert_eq!(line_bgs(&ed, bid), vec![(1, "diff.delta".to_string())]);
     assert_eq!(
         signs(&ed, bid),
-        vec![(1, "~".to_string(), "diff.delta.gutter".to_string(), 0)]
+        vec![(1, "~".to_string(), "diff.delta.gutter".to_string())]
     );
 }
 
@@ -602,7 +595,7 @@ fn explicit_ref_toggle_sets_ref_and_re_renders_the_other_enabled_rendering() {
     assert_eq!(line_bgs(&ed, bid), vec![(1, "diff.delta".to_string())]);
     assert_eq!(
         signs(&ed, bid),
-        vec![(1, "~".to_string(), "diff.delta.gutter".to_string(), 0)],
+        vec![(1, "~".to_string(), "diff.delta.gutter".to_string())],
         "signs stayed enabled the whole time — setting the ref from the \
          inline command must re-render it too, not just inline"
     );

@@ -376,8 +376,8 @@ pub(crate) fn diagnostics_for_buffer(
             // `end-line` mirrors `line`'s clamp so a range that reaches (or
             // overshoots) end-of-file still names the buffer's last content
             // line rather than the phantom trailing one — the gutter-sign
-            // plugin expands `[line, end-line]` inclusive, the same span
-            // `update_sign_providers` used to walk in Rust.
+            // plugin expands `[line, end-line]` inclusive to mark every line
+            // a multi-line diagnostic touches.
             let end_line = text.char_to_line(d.end.saturating_sub(1).min(last_content_char));
             serde_json::json!({
                 "start": d.start,

@@ -418,6 +418,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Decoration stores + diagnostics pull.
         cmd "set-inlay-hints!" decorations::set_inlay_hints(source: SteelVal, bid: args::BidArg, hints: SteelVal);
+        open "register-sign-source!" decorations::register_sign_source(name: SteelVal, priority: SteelVal);
         cmd "set-signs!" decorations::set_signs(source: SteelVal, bid: args::BidArg, signs: SteelVal);
         cmd "set-virtual-lines!" decorations::set_virtual_lines(source: SteelVal, bid: args::BidArg, lines: SteelVal);
         cmd "set-eol-text!" decorations::set_eol_text(source: SteelVal, bid: args::BidArg, lines: SteelVal);

@@ -919,12 +919,22 @@ fn signcolumn_default_is_always_auto_sized() {
 }
 
 #[test]
-fn signcolumn_auto_size_caps_at_max_auto_sign_slots() {
+fn signcolumn_auto_size_follows_registered_source_count() {
     let cfg = SignColumnConfig::default();
     assert_eq!(
         cfg.slots_for(10),
-        crate::settings::MAX_AUTO_SIGN_SLOTS,
-        "auto-size never exceeds the cap, however long the ladder"
+        10,
+        "auto-size grows to however many sign sources are registered"
+    );
+}
+
+#[test]
+fn signcolumn_auto_size_caps_at_max_slots() {
+    let cfg = SignColumnConfig::default();
+    assert_eq!(
+        cfg.slots_for(1000),
+        SignColumnConfig::MAX_SLOTS,
+        "auto-size never exceeds the type-domain cap, however many sources are registered"
     );
 }
 

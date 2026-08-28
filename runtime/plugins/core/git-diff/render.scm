@@ -3,32 +3,36 @@
 ;;; setter call each unless noted otherwise.
 
 (provide git-diff/render-signs! git-diff/render-inline! git-diff/render-line-bgs!
-         git-diff/render-for!)
+         git-diff/render-for! git-diff/register-sign-source!)
 
 ;;; Feature-scoped source name for every setter this plugin calls.
 (define git-diff/*source* "git-diff")
 
 ;; ── Signs ────────────────────────────────────────────────────────────────────
 
-;;; Only one sign producer per buffer here, so relative priority *within*
-;;; our own signs never matters — but the value 0 is externally significant:
-;;; `set-signs!`'s priority now picks this plugin's slot on the buffer-wide
-;;; sign-priority ladder against every other source, `core:lsp`'s
-;;; `"lsp-diagnostics"` source (fixed priority 10) included — see
-;;; docs/LSP.md's `set-signs!` entry. 0 puts git-diff last in that ladder,
-;;; so its column is the first to fall off signcolumn's auto-size cap when
-;;; several higher-priority channels share the buffer.
+;;; This plugin's declared priority for `register-sign-source!` — its rank
+;;; against every other registered source, `core:lsp`'s `"lsp-diagnostics"`
+;;; source (priority 10) included, decides this plugin's gutter slot. See
+;;; docs/LSP.md's `register-sign-source!` entry. 0 puts git-diff last in the
+;;; registry, so its column is the first to fall off signcolumn's auto-size
+;;; cap when several higher-priority channels share the buffer.
 (define git-diff/*sign-priority* 0)
+
+;;; Registers this plugin's gutter channel — exported so `plugin.scm` can
+;;; call it (at load, when signs default on, and again, idempotently, on the
+;;; "signs?" toggle-on path) without reaching into this file's otherwise-
+;;; private `*source*`/`*sign-priority*` constants.
+(define (git-diff/register-sign-source!)
+  (register-sign-source! git-diff/*source* git-diff/*sign-priority*))
 
 ;;; One sign per line in `[new-start, new-start + new-count)`.
 (define (git-diff/line-signs new-start new-count text scope)
-  (map (lambda (line) (list line text scope git-diff/*sign-priority*))
+  (map (lambda (line) (list line text scope))
        (range new-start (+ new-start new-count))))
 
 ;;; One `diff-buffer-lines` hunk `(old-start old-count new-start new-count
-;;; old-lines new-lines)` -> a list of `(line text scope priority)` sign
-;;; entries, one per changed line (VSCode/gitsigns density, not one per
-;;; hunk).
+;;; old-lines new-lines)` -> a list of `(line text scope)` sign entries, one
+;;; per changed line (VSCode/gitsigns density, not one per hunk).
 (define (git-diff/hunk->signs hunk)
   (let* ([old-count (list-ref hunk 1)]
          [new-start (list-ref hunk 2)]
@@ -40,7 +44,7 @@
       ;; call for a deletion at end of file; `(max 0 …)` covers a deletion
       ;; at line 0.
       [(= new-count 0)
-       (list (list (max 0 (- new-start 1)) "-" "diff.minus.gutter" git-diff/*sign-priority*))]
+       (list (list (max 0 (- new-start 1)) "-" "diff.minus.gutter"))]
       [(= old-count 0) (git-diff/line-signs new-start new-count "+" "diff.plus.gutter")]
       [else (git-diff/line-signs new-start new-count "~" "diff.delta.gutter")])))
 

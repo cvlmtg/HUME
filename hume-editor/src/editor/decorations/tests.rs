@@ -16,7 +16,6 @@ fn sign(pos: usize, text: &str) -> SignEntry {
         pos,
         text: text.to_string(),
         scope: "error".to_string(),
-        priority: 10,
     }
 }
 
@@ -83,6 +82,54 @@ fn sources_iterate_in_ascending_name_order_regardless_of_set_order() {
     store.set_signs("mmm".to_string(), a, vec![sign(1, "m2")]);
     let sources: Vec<&str> = store.signs_for_buffer(a).map(|(s, _)| s).collect();
     assert_eq!(sources, vec!["aaa", "mmm", "zzz"]);
+}
+
+#[test]
+fn sign_sources_register_by_priority_desc_then_name_asc() {
+    let mut store = DecorationStores::default();
+    store.register_sign_source("b".to_string(), 5);
+    store.register_sign_source("a".to_string(), 5);
+    store.register_sign_source("c".to_string(), 9);
+
+    assert_eq!(
+        store.sign_slot("c"),
+        Some(0),
+        "highest priority ranks first"
+    );
+    assert_eq!(
+        store.sign_slot("a"),
+        Some(1),
+        "equal priority — alphabetically first name ranks first"
+    );
+    assert_eq!(store.sign_slot("b"), Some(2));
+    assert_eq!(store.sign_source_count(), 3);
+}
+
+#[test]
+fn re_registering_a_sign_source_replaces_its_priority_and_reorders_it() {
+    let mut store = DecorationStores::default();
+    store.register_sign_source("a".to_string(), 1);
+    store.register_sign_source("b".to_string(), 2);
+    assert_eq!(store.sign_slot("a"), Some(1), "lower priority ranks second");
+
+    store.register_sign_source("a".to_string(), 10);
+    assert_eq!(
+        store.sign_slot("a"),
+        Some(0),
+        "re-registering replaces the priority — \"a\" now outranks \"b\""
+    );
+    assert_eq!(
+        store.sign_source_count(),
+        2,
+        "re-registering must not create a second entry for the same name"
+    );
+}
+
+#[test]
+fn unregistered_sign_source_has_no_slot() {
+    let store = DecorationStores::default();
+    assert_eq!(store.sign_slot("nope"), None);
+    assert_eq!(store.sign_source_count(), 0);
 }
 
 fn virtual_line(pos: usize) -> VirtualLineEntry {

@@ -1,6 +1,5 @@
 // Diagnostic gutter signs, placed by `core:lsp` itself through `set-signs!`
-// (source `"lsp-diagnostics"`) rather than a separate Rust-side render
-// path — see `runtime/plugins/core/lsp/diagnostics.scm`'s
+// (source `"lsp-diagnostics"`) — see `runtime/plugins/core/lsp/diagnostics.scm`'s
 // `lsp/refresh-diagnostic-decorations`. Shares `setup_diagnostics` with
 // `lsp_diagnostics_inline.rs` (hoisted to `tests/unix/mod.rs`), since both
 // decorations are driven by the same `on-diagnostics-changed` hook.
@@ -288,8 +287,9 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "arm" "" (lambda ()
-             (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope" 20)))))"#,
+        r#"(register-sign-source! "linter" 20)
+           (define-command! "arm" "" (lambda ()
+             (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope")))))"#,
     );
     type_cmd(&mut ed, ":arm");
 
@@ -328,11 +328,11 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
     );
 }
 
-/// The sign-priority ladder is built from the whole buffer, not the current
-/// viewport — a diagnostic scrolled out of view still reserves its
-/// priority's slot, so a lower-priority plugin sign on a visible line
-/// doesn't slide into slot 0 just because the diagnostic isn't sharing this
-/// particular frame with it.
+/// A source's slot comes from the registry, not from which signs are
+/// actually visible this frame — a diagnostic scrolled out of view still
+/// reserves its registered slot, so a lower-priority plugin sign on a
+/// visible line doesn't slide into slot 0 just because the diagnostic isn't
+/// sharing this particular frame with it.
 #[test]
 fn ladder_is_buffer_wide_not_viewport_restricted() {
     let tmp = safe_tempdir();
@@ -349,8 +349,9 @@ fn ladder_is_buffer_wide_not_viewport_restricted() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "arm" "" (lambda ()
-             (set-signs! "git-diff" (current-buffer) (list (list 0 "+" "diff.plus.gutter" 0)))))"#,
+        r#"(register-sign-source! "git-diff" 0)
+           (define-command! "arm" "" (lambda ()
+             (set-signs! "git-diff" (current-buffer) (list (list 0 "+" "diff.plus.gutter")))))"#,
     );
     type_cmd(&mut ed, ":arm");
 
@@ -365,8 +366,8 @@ fn ladder_is_buffer_wide_not_viewport_restricted() {
     let sign = signs[&0].first().expect("plugin sign on line 0");
     assert_eq!(
         sign.slot, 1,
-        "the off-screen diagnostic (priority 10) still reserves slot 0 on the \
-         buffer-wide ladder — the visible priority-0 git sign is pushed to slot 1"
+        "the off-screen diagnostic (registered at priority 10) still reserves \
+         slot 0 — the visible priority-0 git sign is pushed to slot 1"
     );
 }
 

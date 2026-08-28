@@ -182,9 +182,9 @@ hook every buffer would keep showing the old cut until its next unrelated
 `on-diagnostics-changed` fire.
 
 Gutter signs are the same pull, one call further: `lsp/refresh-diagnostic-decorations` places
-them through `set-signs!` under source `"lsp-diagnostics"`, glyph `"●"`, priority `10`,
-alongside the EOL summary it already built — no Rust-side diagnostics sign path exists
-anymore, this plugin is the only place a diagnostic becomes a gutter mark. A diagnostic
+them through `set-signs!` under source `"lsp-diagnostics"` (registered at load, priority `10`
+— see `register-sign-source!`), glyph `"●"`, alongside the EOL summary it already built; this
+plugin is the only place a diagnostic becomes a gutter mark. A diagnostic
 spanning several lines gets one sign per line it touches (`"line"` through `"end-line"`,
 both inclusive — `diagnostics-for-buffer` clamps `"end-line"` into the buffer's addressable
 range the same way it does `"line"`); the most severe diagnostic on a line wins, via the same

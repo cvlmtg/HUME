@@ -55,7 +55,35 @@ pub(crate) fn set_inlay_hints(
     Ok(SteelVal::Void)
 }
 
-/// `(set-signs! source bid signs)` — `signs`: list of `(line text scope priority)`.
+/// `(register-sign-source! name priority)` — declares a sign channel: its
+/// buffer-wide gutter slot is this call's rank among every registered
+/// source, by `(priority desc, name asc)` — a property of the *source*, not
+/// of any one `set-signs!` call. A slot is reserved wherever the source is
+/// registered, even in a buffer where it has placed no signs at all — this
+/// is what keeps the gutter width stable as signs come and go, instead of
+/// tracking whichever priorities happen to be live right now. Re-registering
+/// `name` replaces its priority and re-sorts it, same as
+/// `register-lsp-server!`'s last-wins semantics.
+pub(crate) fn register_sign_source(
+    ctx: &mut SteelCtx,
+    name: SteelVal,
+    priority: SteelVal,
+) -> SteelResult {
+    let name = string_arg(name, "register-sign-source! name")?;
+    if name.trim().is_empty() {
+        steel::stop!(Generic => "register-sign-source!: name must not be empty");
+    }
+    let priority = int_arg(priority, "register-sign-source! priority")?;
+    require_cap(ctx.host.decorations(), "register-sign-source!")?
+        .register_sign_source(name, priority)
+        .map_err(generic_err)?;
+    Ok(SteelVal::Void)
+}
+
+/// `(set-signs! source bid signs)` — `signs`: list of `(line text scope)`.
+/// `source` selects the already-registered channel (see
+/// `register-sign-source!`) whose slot every entry here renders in; an
+/// unregistered `source` errors rather than being silently dropped.
 pub(crate) fn set_signs(
     ctx: &mut SteelCtx,
     source: SteelVal,
@@ -67,8 +95,8 @@ pub(crate) fn set_signs(
     let parsed = tuple_list(
         signs,
         "set-signs! signs",
-        4..=4,
-        "(line text scope priority)",
+        3..=3,
+        "(line text scope)",
         |fields| {
             let text = string_arg(fields[1].clone(), "set-signs! text")?;
             // A sign is a glyph in a fixed-width gutter lane: no control
@@ -88,7 +116,6 @@ pub(crate) fn set_signs(
                 usize_arg(fields[0].clone(), "set-signs! line")?,
                 text,
                 string_arg(fields[2].clone(), "set-signs! scope")?,
-                int_arg(fields[3].clone(), "set-signs! priority")?,
             ))
         },
     )?;

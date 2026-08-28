@@ -545,7 +545,6 @@ fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
             pos: 6,
             text: "!".to_string(),
             scope: "x".to_string(),
-            priority: 0,
         }],
     );
 
