@@ -120,6 +120,8 @@ export default defineConfig({
           { text: 'Commands', link: '/commands' },
           { text: 'Default Keys', link: '/default-keys' },
           { text: 'Plugin API', link: '/plugin-api' },
+          { text: 'Builtin Commands', link: '/builtin-commands' },
+          { text: 'Standard Library', link: '/standard-library' },
         ],
       },
       {
