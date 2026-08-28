@@ -61,7 +61,8 @@ impl Editor {
 
     /// Reparse any visible buffer whose text has changed since the last parse.
     ///
-    /// Called from `prepare_frame` before `update_highlight_providers`. Detaches
+    /// Called from `Editor::settle` (via `drain_async_sources`), which runs
+    /// before `prepare_frame` and thus before `update_highlight_providers`. Detaches
     /// syntax from a buffer that has grown past `syntax-highlight-max-bytes`.
     ///
     /// Non-blocking: drains any completed backend results, then for each
