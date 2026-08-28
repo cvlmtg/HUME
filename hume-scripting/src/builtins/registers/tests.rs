@@ -219,31 +219,33 @@ impl crate::host::CommandHost for ValidNameHost {
 
 /// Like [`ValidNameHost`] but backed by a real in-memory register store —
 /// enough to prove `write-register!`/`read-register` round-trip correctly
-/// without pulling in a real `Editor`.
+/// without pulling in a real `Editor`. Wraps `ValidNameHost` rather than
+/// `NullHost` directly so the `CommandHost` delegation (identical to
+/// `ValidNameHost`'s own) isn't duplicated a second time.
 #[derive(Default)]
 struct RegisterCapableHost {
-    inner: crate::null_host::NullHost,
+    inner: ValidNameHost,
     store: std::collections::HashMap<char, Vec<String>>,
 }
 
 impl crate::host::EditorHost for RegisterCapableHost {
     fn cursor(&mut self) -> &mut dyn crate::host::CursorHost {
-        &mut self.inner
+        self.inner.cursor()
     }
     fn commands(&mut self) -> &mut dyn crate::host::CommandHost {
         self
     }
     fn language(&mut self) -> &mut dyn crate::host::LanguageHost {
-        &mut self.inner
+        self.inner.language()
     }
     fn settings(&mut self) -> &mut dyn crate::host::SettingsHost {
-        &mut self.inner
+        self.inner.settings()
     }
     fn buffers(&mut self) -> &mut dyn crate::host::BufferHost {
-        &mut self.inner
+        self.inner.buffers()
     }
     fn events(&mut self) -> &mut dyn crate::host::EventHost {
-        &mut self.inner
+        self.inner.events()
     }
     fn registers(&mut self) -> Option<&mut dyn crate::host::RegisterHost> {
         Some(self)
@@ -252,7 +254,7 @@ impl crate::host::EditorHost for RegisterCapableHost {
 
 impl crate::host::CommandHost for RegisterCapableHost {
     fn is_valid_register_name(&self, ch: char) -> bool {
-        valid_test_register_name(ch)
+        self.inner.is_valid_register_name(ch)
     }
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
         self.inner.command_is_native(name)

@@ -532,10 +532,10 @@ impl<'a> RegisterHost for EditorHostImpl<'a> {
             hume_ops::register::KILL_RING_REGISTER => {
                 self.state.kill_ring.head().map(<[String]>::to_vec)
             }
-            hume_ops::register::BLACK_HOLE_REGISTER => None,
-            // Macro registers fall out for free: `Register::as_text` already
-            // returns `None` for `RegisterContent::Macro`, so a register
-            // holding a recorded macro reads as `#f` — same as empty.
+            // Black hole and macro registers fall out for free:
+            // `RegisterSet::read` already returns `None` for the black hole,
+            // and `Register::as_text` already returns `None` for
+            // `RegisterContent::Macro`, so both read as `#f` — same as empty.
             c => {
                 let (values, warn) = register_ops::read_register_text(
                     &self.state.registers,
