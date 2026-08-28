@@ -533,6 +533,91 @@ pub(crate) struct EditorState {
     pub(super) wake: Arc<dyn Fn() + Send + Sync>,
 }
 
+/// The trivial-field baseline both `EditorState` constructors build on.
+///
+/// Not a usable editor on its own — no buffers, no panes, a null
+/// `focused_pane_id`, a clipboard with no handle, and a no-op waker. It exists
+/// so the fields that are identical at both construction sites (`Editor::open`
+/// and `Editor::for_testing`) are written once. Every field whose real value
+/// differs between those two sites is set here to its inert (test) form and
+/// named explicitly by `Editor::open`, so no production value is inherited by
+/// accident. A field added later whose production value must differ from its
+/// baseline needs the same treatment — the compiler will not ask for it.
+impl Default for EditorState {
+    fn default() -> Self {
+        let settings = EditorSettings::default();
+        let history_capacity = settings.history_capacity;
+        Self {
+            buffers: BufferStore::new(),
+            // `kitty_enabled: false` matches: the real probe result isn't known
+            // until `set_kitty_support` runs, after `Editor::open`.
+            config: ConfigState::new(false, 0),
+            mode: Mode::Normal,
+            pending_keys: Vec::new(),
+            count: None,
+            wait_char: None,
+            pending_char: None,
+            registers: RegisterSet::new(),
+            kill_ring: KillRing::new(),
+            clipboard: clipboard::SystemClipboard::new_unavailable(),
+            register_prefix: None,
+            paste_stamp: None,
+            should_quit: false,
+            terminate_exit_code: Arc::new(AtomicI32::new(0)),
+            minibuf: None,
+            minibuf_completion: None,
+            status_msg: None,
+            summary_ttl: 0,
+            message_log: MessageLog::new(),
+            settings,
+            last_find: None,
+            search: SearchState::default(),
+            focused_pane_id: PaneId::default(),
+            panes: PaneView::default(),
+            history: minibuf::history::HistoryStore::new(history_capacity),
+            force_full_redraw: false,
+            inline_output: InlineOutputDispatch::Inactive,
+            #[cfg(test)]
+            inline_output_entered: false,
+            motion_format_scratch: hume_engine::format::FormatScratch::new(),
+            visual_move_target_display_cols: Vec::new(),
+            last_repeatable_action: None,
+            selection_recipe: Vec::new(),
+            pending_repeat: None,
+            insert_session: None,
+            autoindent_pending: false,
+            explicit_count: false,
+            pending_ctrl_extend: false,
+            macro_recording: None,
+            macro_pending: None,
+            replay_queue: VecDeque::new(),
+            skip_macro_record: false,
+            dispatching_typed_command: false,
+            is_replaying: false,
+            message_logged_this_input: false,
+            last_entered_buffer: None,
+            mouse_drag_anchor: None,
+            cwd: PathBuf::new(),
+            lsp_completion_dismiss_pending: false,
+            completion_menu_view: Arc::new(RwLock::new(None)),
+            minibuf_completion_view: Arc::new(RwLock::new(None)),
+            diagnostic_text_scopes: None,
+            diagnostic_gutter_scopes: None,
+            inlay_hint_scope: None,
+            virtual_text_fallback_scope: None,
+            bracket_match_scope: None,
+            search_match_scope: None,
+            runtime_scope_cache: rustc_hash::FxHashMap::default(),
+            popup_view: Arc::new(RwLock::new(None)),
+            popup_band_view: Arc::new(RwLock::new(None)),
+            menu_view: Arc::new(RwLock::new(None)),
+            drawer_view: Arc::new(RwLock::new(None)),
+            picker_view: Arc::new(RwLock::new(None)),
+            wake: Arc::new(|| {}),
+        }
+    }
+}
+
 impl EditorState {
     // ── Mode ──────────────────────────────────────────────────────────────────
 

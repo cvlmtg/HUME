@@ -167,6 +167,7 @@ pub(crate) struct PaneTransient {
 /// types and keying are unchanged; NLL still allows simultaneous mutable borrows
 /// of different fields (e.g. `panes.state` and `panes.jumps` in
 /// `buffer::lifecycle::switch_to_buffer_with_jump`).
+#[derive(Default)]
 pub(crate) struct PaneView {
     pub(crate) state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pub(crate) transient: SecondaryMap<PaneId, PaneTransient>,

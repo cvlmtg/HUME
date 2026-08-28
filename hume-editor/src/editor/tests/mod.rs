@@ -2,21 +2,19 @@
 // Each submodule does `use super::*;` to access these.
 
 use std::cell::Cell;
-use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
+use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
 use crate::editor::search::SearchPattern;
-use crate::editor::{EditorState, SearchState};
 use crate::settings::EditorSettings;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId};
-use hume_ops::register::{KillRing, RegisterSet};
 use hume_ops::search::SearchDirection;
 use hume_test_fixtures::testing::{parse_state, serialize_state};
 use hume_treesitter::parse_worker::InlineParseBackend;
@@ -287,38 +285,7 @@ impl Editor {
         Self {
             state: EditorState {
                 buffers,
-                config: super::ConfigState::new(false, 0),
-                mode: Mode::Normal,
-                pending_keys: Vec::new(),
-                count: None,
-                wait_char: None,
-                pending_char: None,
-                registers: RegisterSet::new(),
-                kill_ring: KillRing::new(),
-                clipboard: super::clipboard::SystemClipboard::new_unavailable(),
-                register_prefix: None,
-                paste_stamp: None,
-                should_quit: false,
-                terminate_exit_code: std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0)),
-                minibuf: None,
-                minibuf_completion: None,
-                status_msg: None,
-                summary_ttl: 0,
-                message_log: super::message_log::MessageLog::new(),
                 settings,
-                last_find: None,
-                force_full_redraw: false,
-                inline_output: super::InlineOutputDispatch::Inactive,
-                #[cfg(test)]
-                inline_output_entered: false,
-                last_repeatable_action: None,
-                selection_recipe: Vec::new(),
-                pending_repeat: None,
-                insert_session: None,
-                autoindent_pending: false,
-                explicit_count: false,
-                pending_ctrl_extend: false,
-                search: SearchState::default(),
                 panes: {
                     let mut jumps = SecondaryMap::new();
                     jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
@@ -337,34 +304,8 @@ impl Editor {
                 },
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
                 focused_pane_id: pane_id,
-                motion_format_scratch: hume_engine::format::FormatScratch::new(),
-                visual_move_target_display_cols: Vec::new(),
-                macro_recording: None,
-                macro_pending: None,
-                replay_queue: VecDeque::new(),
-                skip_macro_record: false,
-                dispatching_typed_command: false,
-                is_replaying: false,
-                message_logged_this_input: false,
-                last_entered_buffer: None,
-                mouse_drag_anchor: None,
                 cwd: std::env::temp_dir(),
-                lsp_completion_dismiss_pending: false,
-                completion_menu_view: Arc::new(RwLock::new(None)),
-                minibuf_completion_view: Arc::new(RwLock::new(None)),
-                diagnostic_text_scopes: None,
-                diagnostic_gutter_scopes: None,
-                inlay_hint_scope: None,
-                virtual_text_fallback_scope: None,
-                bracket_match_scope: None,
-                search_match_scope: None,
-                runtime_scope_cache: rustc_hash::FxHashMap::default(),
-                popup_view: Arc::new(RwLock::new(None)),
-                popup_band_view: Arc::new(RwLock::new(None)),
-                menu_view: Arc::new(RwLock::new(None)),
-                drawer_view: Arc::new(RwLock::new(None)),
-                picker_view: Arc::new(RwLock::new(None)),
-                wake: Arc::new(|| {}),
+                ..Default::default()
             },
             view: engine_view,
             kitty_enabled: false,

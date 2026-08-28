@@ -66,13 +66,15 @@ impl SystemClipboard {
     /// All read/write calls return `Err`, hitting the in-memory fallback.
     /// The virtual mock is inactive — `force_unavailable()` on an already-inactive
     /// instance is also a no-op.
-    /// Used by `Editor::for_testing` so proptest never reaches the real
-    /// NSPasteboard (which throws uncatchable ObjC exceptions in test threads).
-    #[cfg(test)]
+    /// The inert baseline in `EditorState::default()`, so proptest never reaches
+    /// the real NSPasteboard (which throws uncatchable ObjC exceptions in test
+    /// threads); `Editor::open` overrides it with a real handle via `new()`.
     pub(crate) fn new_unavailable() -> Self {
         Self {
             handle: None,
+            #[cfg(test)]
             mock_active: false,
+            #[cfg(test)]
             mock_content: None,
         }
     }

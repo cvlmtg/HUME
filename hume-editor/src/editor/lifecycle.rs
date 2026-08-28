@@ -11,8 +11,8 @@ use hume_engine::types::EditorMode;
 use hume_platform::screen::Screen;
 use hume_platform::terminal::SharedTerm;
 
+use super::Editor;
 use super::event::EditorEvent;
-use super::{Editor, Mode};
 
 impl Editor {
     // ── Kitty keybinds ──────────────────────────────────────────────────────────
@@ -47,7 +47,6 @@ impl Editor {
         wake: Arc<dyn Fn() + Send + Sync>,
     ) -> io::Result<Self> {
         use super::clipboard;
-        use super::message_log::MessageLog;
         use crate::editor::buffer::Buffer;
         use crate::editor::buffer::store::BufferStore;
         use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
@@ -56,9 +55,7 @@ impl Editor {
         use hume_editing::selection::{Selection, SelectionSet};
         use hume_editing::text::BufferText;
         use hume_engine::pipeline::LayoutTree;
-        use hume_ops::register::{KillRing, RegisterSet};
         use slotmap::SecondaryMap;
-        use std::collections::VecDeque;
 
         let startup_cwd = std::env::current_dir()?;
         let mut doc = match file_path {
@@ -152,39 +149,8 @@ impl Editor {
         let mut editor = Self {
             state: super::EditorState {
                 buffers,
-                // `kitty_enabled: false` below matches: the real probe result
-                // isn't known until `set_kitty_support` runs, after `open`.
-                config: super::ConfigState::new(false, 0),
-                mode: Mode::Normal,
-                pending_keys: Vec::new(),
-                count: None,
-                wait_char: None,
-                pending_char: None,
-                registers: RegisterSet::new(),
-                kill_ring: KillRing::new(),
                 clipboard: clipboard::SystemClipboard::new(),
-                register_prefix: None,
-                paste_stamp: None,
-                should_quit: false,
-                terminate_exit_code: Arc::new(std::sync::atomic::AtomicI32::new(0)),
-                minibuf: None,
-                minibuf_completion: None,
-                status_msg: None,
-                summary_ttl: 0,
-                message_log: MessageLog::new(),
                 settings,
-                last_find: None,
-                force_full_redraw: false,
-                inline_output: super::InlineOutputDispatch::Inactive,
-                #[cfg(test)]
-                inline_output_entered: false,
-                last_repeatable_action: None,
-                selection_recipe: Vec::new(),
-                insert_session: None,
-                autoindent_pending: false,
-                explicit_count: false,
-                pending_ctrl_extend: false,
-                search: super::search::SearchState::default(),
                 panes: {
                     let mut jumps = SecondaryMap::new();
                     jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
@@ -201,35 +167,16 @@ impl Editor {
                 },
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
                 focused_pane_id: pane_id,
-                motion_format_scratch: hume_engine::format::FormatScratch::new(),
-                visual_move_target_display_cols: Vec::new(),
-                macro_recording: None,
-                macro_pending: None,
-                replay_queue: VecDeque::new(),
-                pending_repeat: None,
-                skip_macro_record: false,
-                dispatching_typed_command: false,
-                is_replaying: false,
-                message_logged_this_input: false,
-                last_entered_buffer: None,
-                mouse_drag_anchor: None,
                 cwd: startup_cwd,
-                lsp_completion_dismiss_pending: false,
                 completion_menu_view,
                 minibuf_completion_view,
-                diagnostic_text_scopes: None,
-                diagnostic_gutter_scopes: None,
-                inlay_hint_scope: None,
-                virtual_text_fallback_scope: None,
-                bracket_match_scope: None,
-                search_match_scope: None,
-                runtime_scope_cache: rustc_hash::FxHashMap::default(),
                 popup_view,
                 popup_band_view,
                 menu_view,
                 drawer_view,
                 picker_view,
                 wake: Arc::clone(&wake),
+                ..Default::default()
             },
             view: engine_view,
             kitty_enabled: false,
