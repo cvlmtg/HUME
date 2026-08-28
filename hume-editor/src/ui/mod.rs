@@ -108,7 +108,9 @@ pub(crate) fn build_pane(
     let mut providers = ProviderSet::new();
     let mut sign_column = SignColumn::new(linenr_scope);
     // Plugin signs registered after diagnostics so a plugin can override at
-    // equal priority (`SignColumn`'s tie-break: later-registered wins).
+    // an equal slot (`SignColumn`'s tie-break: later-registered wins) — a
+    // slot collision means two sources resolved to the same priority on
+    // `Editor::update_sign_providers`'s buffer-wide ladder.
     sign_column.add_source(Box::new(SharedSignSource::new(Arc::clone(
         &signs.diagnostics,
     ))));

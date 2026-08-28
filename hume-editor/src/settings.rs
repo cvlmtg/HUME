@@ -88,40 +88,54 @@ impl FromStr for SignColumnMode {
     }
 }
 
-/// Sign column configuration: visibility mode and number of sign slots.
+/// Sign column configuration: visibility mode and, optionally, a pinned
+/// number of sign slots.
 ///
 /// Wire format: `"always"`, `"always:N"`, `"auto"`, `"auto:N"` where N is the
-/// number of sign slots (1–127). The gutter width is `slots + 1` (one cell
-/// per sign plus one padding column). Default is `"always"` (= `"always:1"`,
-/// width 2).
+/// number of sign slots (1–127). Bare `"always"`/`"auto"` (`slots: None`)
+/// auto-sizes the column to the buffer's live sign-priority ladder (see
+/// `Editor::update_sign_providers`, the sole place that resolves `None` into
+/// an actual count); `":N"` pins the count regardless of the ladder. Default
+/// is bare `"always"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SignColumnConfig {
     pub mode: SignColumnMode,
-    /// Number of sign slots. Width = `slots + 1` (padding).
-    pub slots: u8,
+    /// Explicit slot count from a `:N` suffix, or `None` to auto-size.
+    pub slots: Option<u8>,
 }
 
 impl Default for SignColumnConfig {
     fn default() -> Self {
         Self {
             mode: SignColumnMode::Always,
-            slots: 1,
+            slots: None,
         }
     }
 }
 
 impl SignColumnConfig {
-    /// Gutter width in cells: one cell per sign slot plus one padding column.
-    pub fn width(self) -> u8 {
-        self.slots.saturating_add(1)
+    /// Resolves the configured slot count against `ladder_len` — the number
+    /// of distinct sign priorities currently live in the buffer. An explicit
+    /// `:N` pins the count regardless of `ladder_len`; auto-size never goes
+    /// below 1, so the column stays visible under `always` even with zero
+    /// signs. Gutter width (the `+1` padding column) is derived at the call
+    /// site, not here — `Editor::update_sign_providers` is the only caller
+    /// and it needs the bare slot count to stamp each `Sign`'s slot too.
+    pub fn slots_for(self, ladder_len: usize) -> u8 {
+        self.slots
+            .unwrap_or_else(|| ladder_len.clamp(1, u8::MAX as usize) as u8)
     }
 
-    pub const VALUES: &'static [&'static str] = &["always", "auto", "always:1", "auto:1"];
+    pub const VALUES: &'static [&'static str] =
+        &["always", "auto", "always:1", "auto:1", "always:2", "auto:2"];
 }
 
 impl fmt::Display for SignColumnConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.mode, self.slots)
+        match self.slots {
+            Some(n) => write!(f, "{}:{}", self.mode, n),
+            None => write!(f, "{}", self.mode),
+        }
     }
 }
 
@@ -144,9 +158,9 @@ impl FromStr for SignColumnConfig {
                         "invalid signcolumn slots: expected 1–127, got '{n}'"
                     ));
                 }
-                n
+                Some(n)
             }
-            None => 1,
+            None => None,
         };
         Ok(Self { mode, slots })
     }

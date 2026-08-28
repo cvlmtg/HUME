@@ -28,19 +28,46 @@ impl SignSource for FixedSign {
 }
 
 #[test]
-fn higher_priority_sign_wins_on_the_same_line() {
+fn sign_renders_in_its_own_resolved_slot() {
     let mut registry = ScopeRegistry::new();
     let diag_scope = registry.intern("diagnostic");
-    let git_scope = registry.intern("git");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut lane = SignColumn::new(blank_scope);
+    let mut lane = SignColumn::with_width(3, blank_scope); // 2 sign slots
     lane.add_source(Box::new(FixedSign {
         line: 3,
         sign: Sign {
             text: "!".into(),
             scope: diag_scope,
-            priority: 10,
+            slot: 1,
+        },
+    }));
+
+    let rope = ropey::Rope::new();
+    let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 3 }, &ctx(&rope));
+    assert_eq!(cells[0].as_str(), " ", "slot 0 unclaimed — stays blank");
+    assert_eq!(
+        cells[1].as_str(),
+        "!",
+        "sign lands in its own resolved slot 1"
+    );
+    assert_eq!(cells[1].scope, diag_scope);
+}
+
+#[test]
+fn later_registered_source_wins_a_contended_slot() {
+    let mut registry = ScopeRegistry::new();
+    let diag_scope = registry.intern("diagnostic");
+    let git_scope = registry.intern("git");
+    let blank_scope = registry.intern("ui.linenr");
+
+    let mut lane = SignColumn::new(blank_scope); // 1 sign slot
+    lane.add_source(Box::new(FixedSign {
+        line: 3,
+        sign: Sign {
+            text: "!".into(),
+            scope: diag_scope,
+            slot: 0,
         },
     }));
     lane.add_source(Box::new(FixedSign {
@@ -48,7 +75,7 @@ fn higher_priority_sign_wins_on_the_same_line() {
         sign: Sign {
             text: "+".into(),
             scope: git_scope,
-            priority: 5,
+            slot: 0,
         },
     }));
 
@@ -58,36 +85,40 @@ fn higher_priority_sign_wins_on_the_same_line() {
         .into_iter()
         .next()
         .unwrap();
-    assert_eq!(cell.as_str(), "!", "priority 10 beats priority 5");
-    assert_eq!(cell.scope, diag_scope);
+    assert_eq!(
+        cell.as_str(),
+        "+",
+        "both sources claim slot 0 — later-registered wins"
+    );
+    assert_eq!(cell.scope, git_scope);
 }
 
 #[test]
-fn removing_the_winner_reveals_the_next_highest() {
+fn removing_the_later_source_reveals_the_earlier_ones_sign() {
     let mut registry = ScopeRegistry::new();
     let diag_scope = registry.intern("diagnostic");
     let git_scope = registry.intern("git");
     let blank_scope = registry.intern("ui.linenr");
 
-    let mut lane = SignColumn::new(blank_scope);
-    let winner_id = lane.add_source(Box::new(FixedSign {
+    let mut lane = SignColumn::new(blank_scope); // 1 sign slot
+    lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "!".into(),
             scope: diag_scope,
-            priority: 10,
+            slot: 0,
         },
     }));
-    lane.add_source(Box::new(FixedSign {
+    let later_id = lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "+".into(),
             scope: git_scope,
-            priority: 5,
+            slot: 0,
         },
     }));
 
-    assert!(lane.remove_source(winner_id));
+    assert!(lane.remove_source(later_id));
 
     let rope = ropey::Rope::new();
     let cell = lane
@@ -97,8 +128,8 @@ fn removing_the_winner_reveals_the_next_highest() {
         .unwrap();
     assert_eq!(
         cell.as_str(),
-        "+",
-        "with the priority-10 sign gone, 5 shows"
+        "!",
+        "with the later (contending) source gone, the earlier one's sign shows"
     );
 }
 
@@ -127,7 +158,7 @@ fn sign_absent_on_wrap_virtual_and_filler_rows() {
         sign: Sign {
             text: "!".into(),
             scope,
-            priority: 1,
+            slot: 0,
         },
     }));
     let rope = ropey::Rope::new();
@@ -187,7 +218,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         sign: Sign {
             text: "▶▶▶".into(),
             scope,
-            priority: 1,
+            slot: 0,
         },
     }));
 
@@ -277,7 +308,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         sign: Sign {
             text: "!".into(),
             scope,
-            priority: 1,
+            slot: 0,
         },
     }));
 
@@ -376,7 +407,7 @@ fn sign_scope_resolves_via_baked_theme() {
         sign: Sign {
             text: "!".into(),
             scope: scope_id,
-            priority: 1,
+            slot: 0,
         },
     }));
     let rope = ropey::Rope::new();
@@ -389,7 +420,7 @@ fn sign_scope_resolves_via_baked_theme() {
 }
 
 #[test]
-fn multi_slot_column_keeps_top_n_signs_by_priority() {
+fn multi_slot_column_places_each_sign_in_its_own_slot() {
     let mut registry = ScopeRegistry::new();
     let a = registry.intern("a");
     let b = registry.intern("b");
@@ -402,7 +433,7 @@ fn multi_slot_column_keeps_top_n_signs_by_priority() {
         sign: Sign {
             text: "!".into(),
             scope: a,
-            priority: 10,
+            slot: 0,
         },
     }));
     lane.add_source(Box::new(FixedSign {
@@ -410,23 +441,24 @@ fn multi_slot_column_keeps_top_n_signs_by_priority() {
         sign: Sign {
             text: "+".into(),
             scope: b,
-            priority: 5,
+            slot: 1,
         },
     }));
+    // Ranked below the column's 2 configured slots — silently dropped.
     lane.add_source(Box::new(FixedSign {
         line: 0,
         sign: Sign {
             text: "~".into(),
             scope: c,
-            priority: 1,
+            slot: 2,
         },
     }));
 
     let rope = ropey::Rope::new();
     let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
     assert_eq!(cells.len(), 2, "width-3 column = 2 sign slots");
-    assert_eq!(cells[0].as_str(), "!", "priority 10 first");
-    assert_eq!(cells[1].as_str(), "+", "priority 5 second");
+    assert_eq!(cells[0].as_str(), "!", "slot 0");
+    assert_eq!(cells[1].as_str(), "+", "slot 1");
 }
 
 #[test]
@@ -441,7 +473,7 @@ fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
         sign: Sign {
             text: "!".into(),
             scope: a,
-            priority: 10,
+            slot: 0,
         },
     }));
 
@@ -449,11 +481,15 @@ fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
     let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
     assert_eq!(cells.len(), 2, "still 2 cells — padded to slot count");
     assert_eq!(cells[0].as_str(), "!");
-    assert_eq!(cells[1].as_str(), " ", "unused slot is blank");
+    assert_eq!(cells[1].as_str(), " ", "unclaimed slot is blank");
 }
 
 #[test]
-fn multi_slot_column_ties_go_to_later_registered_source() {
+fn multi_slot_column_contended_slot_hides_the_earlier_sources_sign() {
+    // Two sources both resolved to slot 0 (e.g. two producers picked the same
+    // priority) — the later-registered one wins slot 0, and slot 1 stays
+    // blank since nothing claims it. Unlike the old priority-packing scheme,
+    // the loser is not spilled into a neighboring slot.
     let mut registry = ScopeRegistry::new();
     let a = registry.intern("a");
     let b = registry.intern("b");
@@ -465,7 +501,7 @@ fn multi_slot_column_ties_go_to_later_registered_source() {
         sign: Sign {
             text: "A".into(),
             scope: a,
-            priority: 10,
+            slot: 0,
         },
     }));
     lane.add_source(Box::new(FixedSign {
@@ -473,14 +509,18 @@ fn multi_slot_column_ties_go_to_later_registered_source() {
         sign: Sign {
             text: "B".into(),
             scope: b,
-            priority: 10,
+            slot: 0,
         },
     }));
 
     let rope = ropey::Rope::new();
     let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
-    assert_eq!(cells[0].as_str(), "B", "same priority — later source wins");
-    assert_eq!(cells[1].as_str(), "A");
+    assert_eq!(
+        cells[0].as_str(),
+        "B",
+        "slot 0 contended — later source wins"
+    );
+    assert_eq!(cells[1].as_str(), " ", "slot 1 unclaimed by either source");
 }
 
 #[test]
@@ -495,7 +535,7 @@ fn width_one_column_keeps_no_signs() {
         sign: Sign {
             text: "!".into(),
             scope: a,
-            priority: 10,
+            slot: 0,
         },
     }));
 
@@ -521,7 +561,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
         sign: Sign {
             text: "!".into(),
             scope: a,
-            priority: 10,
+            slot: 0,
         },
     }));
     lane.add_source(Box::new(FixedSign {
@@ -529,7 +569,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
         sign: Sign {
             text: "+".into(),
             scope: b,
-            priority: 5,
+            slot: 1,
         },
     }));
 

@@ -134,7 +134,7 @@ fn set_completer_value_signcolumn() {
     let result = set_result("set buffer signcolumn=");
     assert_eq!(
         names_of(&result),
-        vec!["always", "always:1", "auto", "auto:1"]
+        vec!["always", "always:1", "always:2", "auto", "auto:1", "auto:2"]
     );
 }
 

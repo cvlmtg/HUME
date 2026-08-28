@@ -19,28 +19,32 @@ pub struct Sign {
     /// Already-interned — same contract as every `DecorationSource`: intern
     /// at provider-construction time, before the first render.
     pub scope: ScopeId,
-    /// Higher wins when multiple sources fire for the same line. Ties
-    /// resolve to the later-registered source (registration order in
-    /// `SignColumn::sources`).
-    pub priority: i16,
+    /// Which slot of the column this sign occupies — stable for the whole
+    /// buffer, resolved upstream from the buffer's live sign-priority ladder
+    /// (see `Editor::update_sign_providers`), not recomputed here from this
+    /// line's signs alone. A slot `>=` the column's configured slot count is
+    /// silently dropped by `SignColumn::render_row_cells`.
+    pub slot: u8,
 }
 
 /// A source of signs for buffer lines (diagnostics, git status, breakpoints,
-/// bookmarks, ...). Multiple sources can share one `SignColumn`, which keeps
-/// the top N priority-ordered signs per line (where N = configured sign slots)
-/// — this is what lets several features merge into one gutter column, with
-/// the column's width deciding how many coexisting signs actually show.
+/// bookmarks, ...). Multiple sources can share one `SignColumn`, each sign
+/// landing in its own resolved `slot` — this is what lets several features
+/// merge into one gutter column without their signs colliding or reordering
+/// each other from line to line.
 pub trait SignSource {
-    /// Signs for one buffer line, ordered by the source's own preference
-    /// (highest priority first when it has several). Called per `LineStart`
-    /// row per frame — implementations should be cheap lookups into their
-    /// own state (same contract as `DecorationSource`).
+    /// Signs for one buffer line. Order doesn't matter — each sign carries
+    /// its own `slot` — but two signs from the same source claiming the same
+    /// slot on one line is a source bug (undefined which wins). Called per
+    /// `LineStart` row per frame — implementations should be cheap lookups
+    /// into their own state (same contract as `DecorationSource`).
     fn signs_for_line(&self, line_idx: usize, ctx: &GutterRowCtx) -> Vec<Sign>;
 }
 
 /// Built-in gutter column that merges signs from multiple `SignSource`s,
-/// keeping the top N priority-ordered signs per line (where N = configured
-/// sign slots = `width - 1`). Lower-priority signs that don't fit are hidden.
+/// placing each sign into its own resolved `slot` (where slot count =
+/// configured sign slots = `width - 1`). A sign whose slot doesn't fit the
+/// configured width is hidden.
 ///
 /// Registered like any other `GutterColumn` via
 /// `ProviderSet::add_gutter_column`, which returns the column's own
@@ -135,42 +139,27 @@ impl GutterColumn for SignColumn {
             return Vec::new();
         }
 
-        let mut collected: Vec<(Sign, usize)> = self
-            .sources
-            .iter()
-            .enumerate()
-            .flat_map(|(src_idx, (_, src))| {
-                src.signs_for_line(line_idx, ctx)
-                    .into_iter()
-                    .map(move |s| (s, src_idx))
-            })
-            .collect();
-        // Sort by (priority desc, source_index desc) — higher priority first,
-        // ties resolve to the later-registered source (matches the documented
-        // tie-break rule). This is the *only* place in the sign pipeline that
-        // makes an explicit same-priority tie-break decision: the editor's
-        // plugin-sign pre-merge (`Editor::update_sign_providers`,
-        // hume-editor/src/editor/decoration_providers.rs) sorts by priority only and
-        // relies on this being the sole arbiter — it must stay that way, or a
-        // same-priority sign could be discarded upstream by a rule that
-        // disagrees with this one. Diagnostics' severity collapse (many
-        // diagnostics on a line -> the one worst) is a distinct, unrelated
-        // reduction that happens before a diagnostic ever becomes a `Sign`.
-        collected.sort_by(|a, b| b.0.priority.cmp(&a.0.priority).then(b.1.cmp(&a.1)));
-        collected.truncate(max_signs);
-
-        let mut cells: Vec<GutterCell> = collected
-            .into_iter()
-            .map(|(sign, _)| GutterCell {
-                content: GutterCellContent::Text(sign.text),
-                scope: sign.scope,
-            })
-            .collect();
-        // Pad any unused slots with blanks so the cell count equals the
-        // configured sign slots — `compose_gutter` relies on this to lay
-        // out the column at its full width.
-        while cells.len() < max_signs {
-            cells.push(GutterCell::blank(self.blank_scope));
+        let mut cells = vec![GutterCell::blank(self.blank_scope); max_signs];
+        // Each sign carries its own resolved `slot` — this loop places, it
+        // never ranks. Sources are visited in registration order, so if two
+        // sources ever did claim the same slot on the same line (a source
+        // bug per `SignSource::signs_for_line`'s contract — slot collisions
+        // are supposed to be resolved upstream, before a sign is ever
+        // constructed) the later-registered source wins, matching every
+        // other equal-priority tie-break in the sign pipeline
+        // (`SourceStore`'s ascending-source-name order,
+        // `Editor::update_sign_providers`'s per-slot merge). A slot `>=
+        // max_signs` (ladder entry ranked below the configured width) is
+        // silently dropped, same as before.
+        for (_, src) in &self.sources {
+            for sign in src.signs_for_line(line_idx, ctx) {
+                if let Some(cell) = cells.get_mut(sign.slot as usize) {
+                    *cell = GutterCell {
+                        content: GutterCellContent::Text(sign.text),
+                        scope: sign.scope,
+                    };
+                }
+            }
         }
         cells
     }

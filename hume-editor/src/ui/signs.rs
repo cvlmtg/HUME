@@ -14,8 +14,10 @@ use crate::lock_ext::LockExt;
 use hume_engine::builtins::sign_column::{Sign, SignSource};
 use hume_engine::providers::GutterRowCtx;
 
-/// Shared per-frame sign data: up to N priority-ordered `Sign`s per line
-/// (where N = the buffer's configured `signcolumn` columns).
+/// Shared per-frame sign data: at most one `Sign` per resolved slot per
+/// line (a line's `Vec` holds whichever slots this map's signs actually
+/// claimed — never padded, and never more entries than the buffer's
+/// resolved `signcolumn` slot count).
 pub(crate) type SignMap = Arc<RwLock<FxHashMap<usize, Vec<Sign>>>>;
 
 /// The pair of sign maps every pane owns: diagnostics (Rust-owned) and

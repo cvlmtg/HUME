@@ -14,6 +14,22 @@ use crate::lock_ext::LockExt;
 use hume_editing::lines::{char_to_line_byte, line_break_char, line_segments};
 use hume_ops::pair::find_bracket_pair;
 
+/// Fixed priority every diagnostic sign carries, regardless of severity
+/// (severity only picks the scope/glyph-adjacent styling; per-line
+/// severity collapse happens before a diagnostic ever becomes a `Sign`).
+/// Used both to place `10` on the buffer's sign-priority ladder (when a
+/// diagnostic exists anywhere in the buffer) and to look its resolved
+/// slot back up.
+const DIAGNOSTIC_SIGN_PRIORITY: i16 = 10;
+
+/// Upper bound on how many slots `signcolumn=always`/`auto` (no explicit
+/// `:N`) auto-sizes to. The ladder is plugin-controlled — a plugin whose
+/// `set-signs!` priority varies per line could otherwise grow the column
+/// without bound and eat the pane. A user who wants more pins
+/// `signcolumn=always:N` explicitly, which ignores this cap entirely
+/// (`SignColumnConfig::slots_for` never applies it to a pinned count).
+const MAX_AUTO_SIGN_SLOTS: u8 = 4;
+
 impl Editor {
     /// Snapshot of every pane's `(PaneId, BufferId)` — the entry point every
     /// render bridge below starts with, so its loop body can freely mutate
@@ -317,16 +333,12 @@ impl Editor {
             let visible = self.visible_char_range(pid, bid);
             let visible_lines = self.visible_line_range(pid, bid);
 
-            // Compute the buffer's `signcolumn` setting up front — the
-            // configured slot count decides how many signs per line the
-            // plugin merge keeps (the rest is dropped before the map write).
             let signcolumn = self
                 .state
                 .buffers
                 .get(bid)
                 .overrides
                 .signcolumn(&self.state.settings);
-            let max_plugin_signs = signcolumn.slots as usize;
 
             // Both the diagnostics and plugin-sign passes below need to turn
             // a char offset back into a line — diagnostics store char ranges
@@ -341,6 +353,39 @@ impl Editor {
             // last char) still marks the buffer's last real line rather than
             // resolving to the trailing phantom line and vanishing.
             let last_content_char = text.len_chars().saturating_sub(1);
+
+            // Buffer-wide sign-priority ladder: the distinct priorities live
+            // anywhere in the buffer right now (not just the viewport),
+            // highest first. A sign's slot is its priority's position in
+            // this list — stable for the whole buffer, so scrolling never
+            // renumbers a channel's column, and a channel with no signs
+            // anywhere in the buffer claims no slot at all (see
+            // `docs/LSP.md`'s `set-signs!` contract).
+            let mut ladder: Vec<i16> = self
+                .state
+                .config
+                .decorations
+                .signs_for_buffer(bid)
+                .map(|(_, e)| e.priority.clamp(i16::MIN as i64, i16::MAX as i64) as i16)
+                .collect();
+            let has_diagnostic = self
+                .lsp
+                .diagnostics_for_range(bid, 0..text.len_chars(), floor)
+                .next()
+                .is_some();
+            if has_diagnostic {
+                ladder.push(DIAGNOSTIC_SIGN_PRIORITY);
+            }
+            ladder.sort_unstable_by(|a, b| b.cmp(a));
+            ladder.dedup();
+            let slot_of: rustc_hash::FxHashMap<i16, u8> = ladder
+                .iter()
+                .enumerate()
+                .map(|(slot, &priority)| (priority, slot as u8))
+                .collect();
+            // Auto-size (`slots: None`) is capped at `MAX_AUTO_SIGN_SLOTS`;
+            // an explicit `:N` ignores the cap and the ladder length both.
+            let slots = signcolumn.slots_for(ladder.len().min(MAX_AUTO_SIGN_SLOTS as usize));
 
             // Diagnostics: every line a diagnostic touches gets a marker;
             // the most severe diagnostic wins when several touch one line.
@@ -375,33 +420,40 @@ impl Editor {
             {
                 let mut guard = diag_map.write_or_panic();
                 guard.clear();
-                for (line, severity) in diag_best {
-                    guard.insert(
-                        line,
-                        vec![Sign {
-                            text: std::borrow::Cow::Borrowed("●"),
-                            scope: diag_scopes[severity as usize],
-                            priority: 10,
-                        }],
+                if !diag_best.is_empty() {
+                    // Guaranteed present: a non-empty `diag_best` means at
+                    // least one diagnostic exists in the buffer's visible
+                    // range, which is a subset of the whole-buffer range
+                    // that set `has_diagnostic` and pushed this priority
+                    // onto `ladder` above.
+                    let diag_slot = *slot_of.get(&DIAGNOSTIC_SIGN_PRIORITY).expect(
+                        "diag_best non-empty implies has_diagnostic pushed this onto the ladder",
                     );
+                    for (line, severity) in diag_best {
+                        guard.insert(
+                            line,
+                            vec![Sign {
+                                text: std::borrow::Cow::Borrowed("●"),
+                                scope: diag_scopes[severity as usize],
+                                slot: diag_slot,
+                            }],
+                        );
+                    }
                 }
             }
 
-            // Plugin signs (`set-signs!`): top N signs per line by priority,
-            // where N = the buffer's configured `signcolumn` columns.
-            // Pre-truncating to N here (rather than passing everything
-            // through downstream) bounds memory — an unbounded per-line Vec
-            // would get cloned every frame by
-            // `SharedSignSource::signs_for_line`. Safe only because the sort
-            // below is priority-only: same-priority ties resolve by the
-            // input order, which `signs_for_buffer` (`SourceStore::for_buffer`)
-            // already yields ascending by source name — no local re-sort
-            // needed, not a second tie-break rule invented here. The only
-            // other explicit priority-tie decision in the sign pipeline is
-            // `SignColumn::render_row_cells`'s own sort
-            // (hume-engine/src/builtins/sign_column.rs, arbitrates plugin vs
-            // diagnostics map by source-registration order) — this sort
-            // must stay priority-only so it never overrides that.
+            // Plugin signs (`set-signs!`): each entry's priority resolves to
+            // its slot via the ladder above; an entry whose slot doesn't fit
+            // the buffer's resolved `slots` is dropped here rather than
+            // passed through — bounds the per-line `Vec`
+            // `SharedSignSource::signs_for_line` clones every frame, same as
+            // the truncate this replaced. On a tie (two sources whose
+            // priorities resolve to the same slot) the first entry wins:
+            // `signs_for_buffer` (`SourceStore::for_buffer`) already yields
+            // entries ascending by source name, and `visible_line_anchored`
+            // preserves that order, so this is the same deterministic
+            // source-name tie-break the pipeline has always used — just
+            // applied per slot now instead of via a stable priority sort.
             let plugin_raw = visible_line_anchored(
                 text,
                 &visible_lines,
@@ -409,28 +461,40 @@ impl Editor {
                 |e| e.pos,
             );
 
-            let mut plugin_all: rustc_hash::FxHashMap<usize, Vec<(String, String, i64)>> =
+            let mut plugin_all: rustc_hash::FxHashMap<usize, Vec<(u8, String, String)>> =
                 rustc_hash::FxHashMap::default();
             for (_, line, e) in plugin_raw {
-                plugin_all
-                    .entry(line)
-                    .or_default()
-                    .push((e.text, e.scope, e.priority));
+                let priority = e.priority.clamp(i16::MIN as i64, i16::MAX as i64) as i16;
+                let slot = *slot_of
+                    .get(&priority)
+                    .expect("ladder was built from every priority signs_for_buffer(bid) yields");
+                if slot as usize >= slots as usize {
+                    continue;
+                }
+                let line_entries = plugin_all.entry(line).or_default();
+                if line_entries.iter().any(|(s, _, _)| *s == slot) {
+                    continue; // slot already claimed by an earlier (ascending-name) source
+                }
+                line_entries.push((slot, e.text, e.scope));
             }
             {
                 let mut guard = plugin_map.write_or_panic();
                 guard.clear();
                 for (line, mut entries) in plugin_all {
-                    entries.sort_by_key(|e| std::cmp::Reverse(e.2));
-                    entries.truncate(max_plugin_signs);
+                    // Slot-ascending, so a line's stored `Vec<Sign>` reads
+                    // left-to-right the same way the gutter renders it —
+                    // `SignColumn::render_row_cells` itself doesn't need
+                    // this (it places by `sign.slot`, not by position), but
+                    // nothing downstream should have to guess the order.
+                    entries.sort_unstable_by_key(|(slot, _, _)| *slot);
                     let signs: Vec<Sign> = entries
                         .into_iter()
-                        .map(|(text, scope_name, priority)| {
+                        .map(|(slot, text, scope_name)| {
                             let scope = self.runtime_scope(&scope_name);
                             Sign {
                                 text: std::borrow::Cow::Owned(text),
                                 scope,
-                                priority: priority.clamp(i16::MIN as i64, i16::MAX as i64) as i16,
+                                slot,
                             }
                         })
                         .collect();
@@ -449,11 +513,10 @@ impl Editor {
                 !(diag_empty && plugin_empty)
             };
             let width = match signcolumn.mode {
-                // display-width-safe: SignColumnConfig::width is a slot count, not display width.
-                crate::settings::SignColumnMode::Always => signcolumn.width(),
+                crate::settings::SignColumnMode::Always => slots.saturating_add(1),
                 crate::settings::SignColumnMode::Auto => {
                     if has_signs {
-                        signcolumn.width() // display-width-safe: slot count, not display width
+                        slots.saturating_add(1)
                     } else {
                         0
                     }

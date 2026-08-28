@@ -127,7 +127,10 @@ fn error_line_gets_a_sign_with_the_error_scope() {
     let sign = signs[&0].first().expect("one sign on the error line");
     assert_eq!(sign.text, "●");
     assert_eq!(sign.scope, error_scope);
-    assert_eq!(sign.priority, 10);
+    assert_eq!(
+        sign.slot, 0,
+        "diagnostics are this buffer's only sign channel — slot 0"
+    );
 }
 
 #[test]
@@ -238,6 +241,22 @@ fn gutter_width_auto_2_expands_when_signs_exist() {
     );
 }
 
+#[test]
+fn always_2_pins_width_even_with_only_one_channel_present() {
+    let mut c = setup_with_diagnostics("abcdefgh\n", &[((0, 0), (0, 1), 1)]);
+    let bid = c.ed.focused_buffer_id();
+    c.ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:2".parse().unwrap());
+    let mut ctx = RenderContext::new();
+    c.ed.sync_viewport_dims(80, 25);
+    c.ed.settle();
+    c.ed.prepare_frame(&mut ctx);
+    assert_eq!(
+        sign_column_width(&c.ed, c.pid),
+        3,
+        "pinned width stays fixed even though only one channel (diagnostics) is live"
+    );
+}
+
 // ── Plugin signs ──────────────────────────────────────────────────────────────
 
 #[test]
@@ -270,7 +289,10 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
     assert_eq!(signs.len(), 1);
     let sign = signs[&0].first().expect("one sign on the line");
     assert_eq!(sign.text, "!");
-    assert_eq!(sign.priority, 7);
+    assert_eq!(
+        sign.slot, 0,
+        "this plugin sign is the buffer's only sign channel — slot 0"
+    );
     let warn_scope = ed.view.registry.get("warn-scope").unwrap();
     assert_eq!(sign.scope, warn_scope);
 
@@ -281,8 +303,15 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
     );
 }
 
+/// With no `signcolumn` override, `always` auto-sizes to the buffer's
+/// live sign-priority ladder — two plugin sources at distinct priorities
+/// on the same line both claim their own slot, ordered highest-priority
+/// first, without the user having to pin `always:2` for it. This is the
+/// behavior the wandering-`+`-column bug report asked for: a channel's
+/// column position is a property of its priority, stable buffer-wide, not
+/// a function of what else happens to share the line.
 #[test]
-fn two_plugin_sources_on_the_same_line_keep_the_higher_priority_first() {
+fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
@@ -313,28 +342,74 @@ fn two_plugin_sources_on_the_same_line_keep_the_higher_priority_first() {
     let line_signs = &signs[&0];
     assert_eq!(
         line_signs.len(),
-        1,
-        "default `signcolumn` columns=1 keeps only the winner"
+        2,
+        "two distinct priorities on the ladder — both get their own slot, unpinned"
     );
+    assert_eq!(line_signs[0].text, "+", "priority 9 (vcs) — slot 0");
+    assert_eq!(line_signs[1].text, "!", "priority 3 (linter) — slot 1");
     assert_eq!(
-        line_signs[0].text, "+",
-        "priority 9 (vcs) beats priority 3 (linter)"
+        sign_column_width(&ed, pid),
+        3,
+        "auto-sized to 2 slots + 1 padding"
     );
 }
 
-/// Regression for consolidating sign-priority tie-breaking to a single
-/// decision point: two plugin sources at the *same* priority must resolve
-/// deterministically by source name (ascending), not by call order. The
-/// plugin merge's own sort (`update_sign_providers`) is priority-only now —
-/// on a tie it preserves the stable order set by the earlier
-/// `plugin_raw.sort_by` (source name) rather than inventing its own
-/// secondary key, so `SignColumn`'s sort (the only other place a
-/// same-priority decision could be made) never gets a say between two
-/// plugin sources — both arrive through the single plugin `SharedSignSource`
-/// with an identical `source_index`. `"vcs"` is armed before `"linter"` here
-/// specifically to prove the winner is name order, not call order.
+/// Pinning `always:1` caps the column at one slot regardless of how many
+/// distinct priorities the ladder holds — the lower-priority channel is
+/// hidden buffer-wide, not just squeezed off this one line.
 #[test]
-fn two_plugin_sources_at_equal_priority_resolve_by_source_name() {
+fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
+    let tmp = safe_tempdir();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.feed_key(key('i'));
+    for ch in "abcdefgh".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_esc());
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:1".parse().unwrap());
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "arm" "" (lambda ()
+             (set-signs! "linter" (current-buffer) (list (list 0 "!" "a" 3)))
+             (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b" 9)))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    let pid = ed.state.focused_pane_id;
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    let signs = plugin_signs(&ed, pid);
+    let line_signs = &signs[&0];
+    assert_eq!(
+        line_signs.len(),
+        1,
+        "always:1 pins exactly one slot — the other priority's slot doesn't fit"
+    );
+    assert_eq!(
+        line_signs[0].text, "+",
+        "priority 9 (vcs) beats priority 3 (linter) for the one slot"
+    );
+}
+
+/// Priority *is* the slot: two plugin sources at the *same* priority resolve
+/// to the *same* slot and contend for it, even with `always:2` pinned — the
+/// second slot goes unclaimed rather than absorbing the loser, because
+/// nothing else on this line asked for it. The tie itself still resolves
+/// deterministically by source name (ascending), not by call order:
+/// `signs_for_buffer` (`SourceStore::for_buffer`) yields entries ascending
+/// by source name, and the plugin merge (`update_sign_providers`) keeps the
+/// first entry per slot — so `"linter"` wins even though `"vcs"` is armed
+/// first here.
+#[test]
+fn two_plugin_sources_at_equal_priority_contend_for_one_slot() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
@@ -366,20 +441,24 @@ fn two_plugin_sources_at_equal_priority_resolve_by_source_name() {
     let line_signs = &signs[&0];
     assert_eq!(
         line_signs.len(),
-        2,
-        "both equal-priority signs survive with 2 slots"
+        1,
+        "both signs share one priority — one slot, one winner, even at width 2"
     );
     assert_eq!(
         line_signs[0].text, "!",
         "equal priority — \"linter\" wins the tie by source name (alphabetically \
          first), even though \"vcs\" was armed first"
     );
-    assert_eq!(line_signs[1].text, "+");
+    assert_eq!(
+        line_signs[0].slot, 0,
+        "priority 5 is the buffer's only channel — slot 0"
+    );
 }
 
-/// With `signcolumn=always:2` the plugin merge keeps the top 2 signs per line
-/// (sorted by priority desc), so both sources survive to the render stage —
-/// the `SignColumn` then lays them out left-to-right in the 2-slot gutter.
+/// With `signcolumn=always:2` pinned, both distinct-priority sources fit
+/// their own slot regardless of the ladder's actual length — same outcome
+/// as auto-size here (2 live priorities), but via the pinned path instead
+/// of `SignColumnConfig::slots_for`'s ladder-length fallback.
 #[test]
 fn wider_signcolumn_keeps_multiple_signs_per_line() {
     let tmp = safe_tempdir();
@@ -478,12 +557,52 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
     assert_eq!(
         cells[0].as_str(),
         "!",
-        "plugin sign priority 20 beats the diagnostic's fixed priority 10"
+        "plugin sign priority 20 outranks the diagnostic's fixed priority 10 — slot 0"
     );
     assert_eq!(
         cells[1].as_str(),
         "●",
-        "diagnostic sign occupies the second slot"
+        "diagnostic's fixed priority 10 resolves to slot 1"
+    );
+}
+
+/// The sign-priority ladder is built from the whole buffer, not the current
+/// viewport — a diagnostic scrolled out of view still reserves its
+/// priority's slot, so a lower-priority plugin sign on a visible line
+/// doesn't slide into slot 0 just because the diagnostic isn't sharing this
+/// particular frame with it.
+#[test]
+fn ladder_is_buffer_wide_not_viewport_restricted() {
+    let content: String = "line\n".repeat(60);
+    let mut c = setup_with_diagnostics(&content, &[((50, 0), (50, 1), 1)]);
+
+    let tmp = safe_tempdir();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut c.ed,
+        &mut host,
+        r#"(define-command! "arm" "" (lambda ()
+             (set-signs! "git-diff" (current-buffer) (list (list 0 "+" "diff.plus.gutter" 0)))))"#,
+        tmp.path(),
+    );
+    c.ed.scripting = Some(host);
+    type_cmd(&mut c.ed, ":arm");
+
+    let mut ctx = RenderContext::new();
+    c.ed.sync_viewport_dims(80, 25);
+    c.ed.settle();
+    c.ed.prepare_frame(&mut ctx);
+
+    assert!(
+        diag_signs(&c.ed, c.pid).is_empty(),
+        "the diagnostic on line 50 is scrolled out of the 25-row viewport"
+    );
+    let signs = plugin_signs(&c.ed, c.pid);
+    let sign = signs[&0].first().expect("plugin sign on line 0");
+    assert_eq!(
+        sign.slot, 1,
+        "the off-screen diagnostic (priority 10) still reserves slot 0 on the \
+         buffer-wide ladder — the visible priority-0 git sign is pushed to slot 1"
     );
 }
 
