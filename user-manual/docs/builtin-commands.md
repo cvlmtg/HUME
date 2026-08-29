@@ -59,25 +59,25 @@ Select a delimited region around the cursor.
 
 | Command | Default key | Effect |
 |---------|-------------|--------|
-| `around-angle` | `m a <` | Select content including the nearest `<>`. |
+| `around-angle` | `m a <` / `m a >` | Select content including the nearest `<>`. |
 | `around-argument` | `m a a` | Select the argument and its separator comma. |
 | `around-backtick` | `` m a ` `` | Select content including the nearest backtick pair. |
-| `around-brace` | `m a {` | Select content including the nearest `{}`. |
-| `around-bracket` | `m a [` | Select content including the nearest `[]`. |
+| `around-brace` | `m a {` / `m a }` | Select content including the nearest `{}`. |
+| `around-bracket` | `m a [` / `m a ]` | Select content including the nearest `[]`. |
 | `around-double-quote` | `m a "` | Select content including the nearest `"`. |
 | `around-line` | `m a l` | Select the line including its newline. |
-| `around-paren` | `m a (` | Select content including the nearest `()`. |
+| `around-paren` | `m a (` / `m a )` | Select content including the nearest `()`. |
 | `around-single-quote` | `m a '` | Select content including the nearest `'`. |
 | `around-uppercase-word` | `m a W` | Select uppercase word plus one adjacent whitespace run. |
 | `around-word` | `m a w` | Select word plus one adjacent whitespace run. |
-| `inner-angle` | `m i <` | Select content inside the nearest `<>`. |
+| `inner-angle` | `m i <` / `m i >` | Select content inside the nearest `<>`. |
 | `inner-argument` | `m i a` | Select the argument at the cursor (trimmed). |
 | `inner-backtick` | `` m i ` `` | Select content inside the nearest backtick pair. |
-| `inner-brace` | `m i {` | Select content inside the nearest `{}`. |
-| `inner-bracket` | `m i [` | Select content inside the nearest `[]`. |
+| `inner-brace` | `m i {` / `m i }` | Select content inside the nearest `{}`. |
+| `inner-bracket` | `m i [` / `m i ]` | Select content inside the nearest `[]`. |
 | `inner-double-quote` | `m i "` | Select content inside the nearest `"`. |
 | `inner-line` | `m i l` | Select inner line content (excluding the newline). |
-| `inner-paren` | `m i (` | Select content inside the nearest `()`. |
+| `inner-paren` | `m i (` / `m i )` | Select content inside the nearest `()`. |
 | `inner-single-quote` | `m i '` | Select content inside the nearest `'`. |
 | `inner-uppercase-word` | `m i W` | Select inner uppercase word (whitespace-delimited). |
 | `inner-word` | `m i w` | Select inner word. |
@@ -109,7 +109,7 @@ Modify buffer text.
 | `delete-char-backward` | — | Delete the character before each cursor. |
 | `delete-char-forward` | — | Delete the character (or selection) under the cursor. |
 | `delete-selection` | — | Delete all selections. |
-| `delete-word-backward` | `Ctrl+w` | Delete the word before each cursor. |
+| `delete-word-backward` | `Ctrl+w` *(insert mode)* | Delete the word before each cursor. |
 | `make-text-capitalized` | `G C` | Capitalize each word in every selection (Title Case). |
 | `make-text-lowercase` | `G L` | Lowercase the text in each selection. |
 | `make-text-uppercase` | `G U` | Uppercase the text in each selection. |
@@ -124,7 +124,7 @@ Mode transitions, paste, search, scrolling, pane management, and more.
 | `bottom-view-on-cursor` | `z b` | Scroll so the primary selection head sits at the bottom of the viewport. |
 | `center-view-on-cursor` | `z z` | Scroll so the primary selection head sits at the vertical center of the viewport. |
 | `change` | `c` | Delete selections onto the kill ring, then enter insert mode (one undo group). |
-| `clear-search` | — | Clear search highlights (`:clear-search` / `:cs`). |
+| `clear-search` | — | Clear search highlights (`:clear-search`). |
 | `collapse-and-exit-extend` | `;` | Collapse each selection to its cursor and exit extend mode. |
 | `collapse-to-anchor-and-exit-extend` | `Ctrl+;` | Collapse each selection to its anchor and exit extend mode. |
 | `command-mode` | `:` | Open the command-mode mini-buffer. |

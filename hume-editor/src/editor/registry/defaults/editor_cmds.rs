@@ -345,7 +345,7 @@ impl CommandRegistry {
         .reg(self);
         ecmd(
             "clear-search",
-            "Clear search highlights (`:clear-search` / `:cs`).",
+            "Clear search highlights (`:clear-search`).",
             cmd_clear_search,
         )
         .reg(self);
