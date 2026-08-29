@@ -1,6 +1,6 @@
 # Command-line Flags
 
-HUME's command line is deliberately small — almost everything is configured in `init.scm` rather than passed as a flag. This page covers the `hume` command as run from a shell; for the in-editor `:` prompt, see [Commands](commands.md).
+HUME's command line is deliberately small — almost everything is configured in `init.scm` rather than passed as a flag. This page covers the `hume` command as run from a shell; for the in-editor `:` prompt, see [Command mode](command-mode.md).
 
 ## Synopsis
 

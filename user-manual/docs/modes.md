@@ -32,7 +32,7 @@ Extend mode works like Normal mode, but every motion *extends* the current selec
 
 Invoked with `:`, command mode opens the command line at the bottom of the screen. Type a command name and press `Enter` to execute. Press `Esc` to dismiss.
 
-See [Commands](commands.md) for a full list of commands.
+See [Command mode](command-mode.md) for a full list of commands.
 
 ## Search mode
 

@@ -117,7 +117,7 @@ export default defineConfig({
         text: 'Reference',
         items: [
           { text: 'Command-line Flags', link: '/cli' },
-          { text: 'Commands', link: '/commands' },
+          { text: 'Command mode', link: '/command-mode' },
           { text: 'Default Keys', link: '/default-keys' },
           { text: 'Plugin API', link: '/plugin-api' },
           { text: 'Builtin Commands', link: '/builtin-commands' },

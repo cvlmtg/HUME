@@ -1,4 +1,4 @@
-# Commands
+# Command mode
 
 Anything that doesn't deserve a keystroke lives behind `:`. Press `:` in Normal mode to open the command line, type a name, and press `Enter`. `Esc` dismisses without running.
 
