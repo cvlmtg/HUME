@@ -137,6 +137,8 @@ Both ends speak the same list shape, so `(write-register! "3" (read-register "3"
 
 ## Language servers
 
+These are editor-builtin commands any LSP plugin can drive — an LSP plugin registers and talks to a server through them rather than wiring its own protocol client.
+
 | Call | Effect |
 |------|--------|
 | `(register-lsp-server! language #:command #:args #:root-markers #:init-options #:settings #:env)` | Register (or replace) the server for `language` |
@@ -179,6 +181,8 @@ Not LSP-specific — any plugin can populate these — but LSP diagnostics and i
 
 ## Completion
 
+These are editor-builtin commands any completion plugin can drive — a source registers its triggers and feeds candidates through them rather than rendering its own UI.
+
 | Call | Effect |
 |------|--------|
 | `(register-trigger-chars! source language chars)` | Register 1-char trigger strings `chars` for `(source, language)` — feeds the `on-trigger-char` hook |
@@ -191,6 +195,8 @@ Not LSP-specific — any plugin can populate these — but LSP diagnostics and i
 A completion source registers its trigger characters, then reacts to the `on-trigger-char` hook by fetching candidates and calling `completion-begin!`; `on-completion-refilter` fires as the user keeps typing, and `on-completion-accept` once they pick a result. See [Hooks](plugins.md#hooks) for those three hooks' lambda signatures.
 
 ## Pickers
+
+These are editor-builtin commands any plugin can drive — a plugin opens a picker and pushes items through them rather than building its own fuzzy-finder.
 
 | Call | Effect |
 |------|--------|
