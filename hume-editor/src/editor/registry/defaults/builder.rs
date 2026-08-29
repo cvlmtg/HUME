@@ -15,6 +15,7 @@ pub(super) struct EditorCmdBuilder {
     visual_move: bool,
     extendable: bool,
     clears_extend: bool,
+    tracks_selection: bool,
 }
 impl EditorCmdBuilder {
     pub(super) fn repeatable(mut self) -> Self {
@@ -46,6 +47,14 @@ impl EditorCmdBuilder {
         self.clears_extend = true;
         self
     }
+    /// Opt this command into the dot-repeat selection recipe. Use only for a
+    /// command that builds a replayable selection extent but can't be a pure
+    /// `Selection` variant (needs `EditorState`/`EngineView` access) — see
+    /// [`crate::editor::registry::CmdMeta::tracks_selection`].
+    pub(super) fn tracks_selection(mut self) -> Self {
+        self.tracks_selection = true;
+        self
+    }
     pub(super) fn reg(self, r: &mut CommandRegistry) {
         r.register(MappableCommand::EditorCmd {
             name: Cow::Borrowed(self.name),
@@ -57,6 +66,7 @@ impl EditorCmdBuilder {
             visual_move: self.visual_move,
             extendable: self.extendable,
             clears_extend: self.clears_extend,
+            tracks_selection: self.tracks_selection,
         });
     }
 }
@@ -73,5 +83,6 @@ pub(super) fn ecmd(name: &'static str, doc: &'static str, fun: EditorCmdFn) -> E
         visual_move: false,
         extendable: false,
         clears_extend: false,
+        tracks_selection: false,
     }
 }

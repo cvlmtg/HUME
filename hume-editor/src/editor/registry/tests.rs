@@ -301,6 +301,7 @@ fn runtime_register_and_lookup() {
         visual_move: false,
         extendable: false,
         clears_extend: false,
+        tracks_selection: false,
     };
     reg.register(cmd);
 
@@ -399,6 +400,7 @@ fn steel_backed_names_filters_by_variant() {
         visual_move: false,
         extendable: false,
         clears_extend: false,
+        tracks_selection: false,
     });
 
     let mut names = reg.steel_backed_names();

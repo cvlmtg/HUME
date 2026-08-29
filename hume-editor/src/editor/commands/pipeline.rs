@@ -206,10 +206,10 @@ pub(in crate::editor) fn step_stamp_repeatable(
 /// Update the selection recipe buffer after a command dispatch.
 ///
 /// Accumulation rule:
-///   sel-builder + extend                           → append step
-///   sel-builder + move + non-collapsed + in-place  → reset + push establish
-///   sel-builder + move + reaching (or collapsed)   → clear
-///   everything else                                 → clear
+///   sel-builder + extend                          → append step
+///   sel-builder + move + in-place                 → reset + push establish
+///   sel-builder + move + reaching (or collapsed)  → clear
+///   everything else                               → clear
 ///
 /// Reaching motions (`select-next-word` / `-prev-word` / WORD variants) are
 /// not recorded in Move mode: replaying such a step advances past the cursor,
@@ -221,14 +221,12 @@ pub(in crate::editor) fn step_stamp_repeatable(
 #[allow(clippy::ptr_arg)]
 pub(super) fn step_update_recipe(
     state: &mut EditorState,
-    view: &EngineView,
     meta: &CmdMeta,
     name: &Cow<'static, str>,
     ctx: &CmdCtx,
     char_arg: Option<char>,
 ) {
     if meta.tracks_selection {
-        let sels = current_selections(state, view);
         if ctx.extend {
             state.selection_recipe.push(SelectionStep {
                 command: name.clone(),
@@ -236,7 +234,7 @@ pub(super) fn step_update_recipe(
                 char_arg,
                 extend: true,
             });
-        } else if !sels.primary().is_collapsed() && !meta.reaching {
+        } else if !meta.is_motion && !meta.reaching {
             state.selection_recipe.clear();
             state.selection_recipe.push(SelectionStep {
                 command: name.clone(),
@@ -302,6 +300,6 @@ pub(in crate::editor) fn run_dispatch_pipeline(
     // AFTER
     step_record_jump(state, view, pre_jump, meta.is_jump);
     step_stamp_repeatable(state, &name, ctx.count.unwrap_or(1), char_arg, pre_recipe);
-    step_update_recipe(state, view, &meta, &name, &ctx, char_arg);
+    step_update_recipe(state, &meta, &name, &ctx, char_arg);
     step_clear_extend(state, meta.clears_extend);
 }

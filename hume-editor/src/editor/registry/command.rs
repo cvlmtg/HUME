@@ -29,9 +29,14 @@ use hume_ops::MotionMode;
 pub(crate) struct CmdMeta {
     /// Whether this command updates the selection recipe after it runs.
     ///
-    /// `true` for Motion and Selection variants. The recipe accumulates the
-    /// sequence of selection-building steps so dot-repeat can re-establish the
-    /// selection before replaying an edit. All other commands clear the recipe.
+    /// Always `true` for Motion and Selection variants. `EditorCmd` opts in
+    /// per command (see [`MappableCommand::EditorCmd`]'s own field) for the
+    /// rare case where a command needs `EditorState`/`EngineView` access to
+    /// build a replayable selection extent — `select-all-matches` (`m/`)
+    /// reads the buffer's search pattern, which the pure `Selection` body
+    /// signature has no channel for. The recipe accumulates the sequence of
+    /// selection-building steps so dot-repeat can re-establish the selection
+    /// before replaying an edit. All other commands clear the recipe.
     pub tracks_selection: bool,
     /// Whether this command is a cursor motion (as opposed to a selection
     /// builder, edit, or editor action).
@@ -224,6 +229,10 @@ pub(crate) enum MappableCommand {
         /// Whether this command exits sticky Extend mode after it runs.
         /// See [`CmdMeta::clears_extend`] for the full rationale.
         clears_extend: bool,
+        /// Whether this command opts into the dot-repeat selection recipe.
+        /// See [`CmdMeta::tracks_selection`] for the full rationale. `false`
+        /// for every `EditorCmd` except `select-all-matches`.
+        tracks_selection: bool,
     },
     /// A command implemented as a Steel (Scheme) lambda.
     ///
@@ -341,9 +350,10 @@ impl MappableCommand {
                 jump,
                 visual_move,
                 clears_extend,
+                tracks_selection,
                 ..
             } => CmdMeta {
-                tracks_selection: false,
+                tracks_selection: *tracks_selection,
                 is_motion: false,
                 defers_paste_commit: *defers_paste_commit,
                 is_jump: *jump,

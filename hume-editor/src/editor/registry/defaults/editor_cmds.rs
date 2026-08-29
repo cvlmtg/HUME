@@ -357,11 +357,17 @@ impl CommandRegistry {
             cmd_select_within,
         )
         .reg(self);
+        // `EditorCmd`, not `selection!`: the body needs `EditorState` to read
+        // the buffer's search pattern, a channel `Selection`'s pure
+        // `fn(&BufferText, SelectionSet, ...)` signature has no room for.
+        // `.tracks_selection()` opts it into the dot-repeat recipe anyway —
+        // its whole-buffer result is safe to replay from any cursor.
         ecmd(
             "select-all-matches",
             "Turn every search match in the buffer into a selection.",
             cmd_select_all_matches,
         )
+        .tracks_selection()
         .reg(self);
         ecmd(
             "search-word-under-cursor",

@@ -553,10 +553,10 @@ fn undo_clears_selection_recipe() {
 /// already there; it establishes nothing on its own, so recording it would
 /// replay as "duplicate a bare cursor," silently dropping the `x` that built
 /// the real extent. `copy-selection-on-next-line` is an `EditorCmd` (it needs
-/// a `RowMap` for display-column placement), and `EditorCmd`'s `CmdMeta`
-/// hardcodes `tracks_selection: false` — this test pins that as intentional
-/// for this command, not an incidental side effect of the variant it happens
-/// to be implemented as.
+/// a `RowMap` for display-column placement); unlike `select-all-matches`
+/// (registered with `.tracks_selection()` — see `editor_cmds.rs`), it does
+/// not opt in — this test pins that as intentional for this command, not an
+/// incidental side effect of the variant it happens to be implemented as.
 #[test]
 fn copy_selection_on_next_line_does_not_enter_the_selection_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\n");
@@ -688,6 +688,180 @@ fn dot_repeat_reaching_select_acts_on_current_selection() {
         text.contains("baz"),
         "`.` must not advance past 'bar' and delete 'baz' — got: {text:?}"
     );
+}
+
+/// `ms(` (select surrounding `()` delimiters) is a selection-building step and
+/// must be recorded in the dot-repeat recipe, so `.` re-runs `ms(` + `d` on the
+/// next pair rather than just deleting the current selection.
+///
+/// Buffer "(foo) (bar) baz": cursor on the first 'o' of "foo", `ms(` selects
+/// the two parens, `d` deletes them → "foo (bar) baz". Collapse to one cursor,
+/// move to "bar", `.` must replay `ms(` + `d` on "(bar)" → "foo bar baz".
+///
+/// Fail oracle: if `ms(` is not recorded in the selection recipe (e.g.
+/// `surround-paren` is not `tracks_selection`, or is excluded as reaching), the
+/// recipe is empty and `.` deletes only the current "bar" selection, leaving
+/// "foo () baz" instead of "foo bar baz".
+#[test]
+fn dot_repeat_of_match_surround_deletes_both_parens() {
+    let mut ed = editor_from("(-[f]>oo) (bar) baz\n");
+
+    ed.feed_key(key('m'));
+    ed.feed_key(key('s'));
+    ed.feed_key(key('(')); // two cursors on the delimiters
+    ed.feed_key(key('d'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "foo (bar) baz\n",
+        "ms( then d must remove the surrounding parens"
+    );
+
+    ed.feed_key(key(','));
+    ed.feed_key(key('w'));
+    ed.feed_key(key('w')); // select "bar"
+    ed.feed_key(key('.')); // replay ms( + d on "(bar)"
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "foo bar baz\n",
+        "`.` must replay ms( + d and strip the (bar) parens",
+    );
+}
+
+#[test]
+fn dot_repeat_of_match_around_deletes_content() {
+    let mut ed = editor_from("(-[f]>oo) (bar) baz\n");
+
+    ed.feed_key(key('m'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key('('));
+    ed.feed_key(key('d'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        " (bar) baz\n",
+        "ma( then d must remove (foo)"
+    );
+
+    ed.feed_key(key('w'));
+    ed.feed_key(key('w')); // select "bar"
+    ed.feed_key(key('.')); // replay ma( + d on "(bar)"
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "  baz\n",
+        "`.` must replay ma( + d and remove (bar)",
+    );
+}
+
+#[test]
+fn dot_repeat_of_match_inner_deletes_content() {
+    let mut ed = editor_from("(-[f]>oo) (bar) baz\n");
+
+    ed.feed_key(key('m'));
+    ed.feed_key(key('i'));
+    ed.feed_key(key('('));
+    ed.feed_key(key('d'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "() (bar) baz\n",
+        "mi( then d must remove 'foo'"
+    );
+
+    ed.feed_key(key('w'));
+    ed.feed_key(key('w')); // select "bar"
+    ed.feed_key(key('.')); // replay mi( + d on "(bar)"
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "() () baz\n",
+        "`.` must replay mi( + d and remove 'bar'",
+    );
+}
+
+#[test]
+fn dot_repeat_of_select_all_matches_deletes_content() {
+    let mut ed = editor_from("-[f]>oo bar baz foo bar baz\n");
+
+    ed.handle_key(key('/'));
+    for ch in "foo".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(state(&ed), "-[foo]> bar baz foo bar baz\n");
+
+    ed.handle_key(key_enter());
+    ed.handle_key(key('m'));
+    ed.handle_key(key('/'));
+
+    assert_eq!(state(&ed), "-[foo]> bar baz -[foo]> bar baz\n");
+    assert_eq!(
+        ed.state.selection_recipe.len(),
+        1,
+        "select-all-matches must establish a 1-step recipe"
+    );
+
+    ed.feed_key(key('d'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        " bar baz  bar baz\n",
+        "m/ after a search then d must remove all occurrences of 'foo'"
+    );
+
+    ed.handle_key(key('/'));
+    for ch in "bar".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(state(&ed), " -[bar]> baz -[ ]>bar baz\n");
+
+    ed.handle_key(key_enter());
+    ed.feed_key(key('.')); // replay m/ + d
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "  baz   baz\n",
+        "`.` must replay m/ + d and remove all occurrences of 'bar'"
+    );
+}
+
+/// `mii` (`select-last-insertion`) is an `EditorCmd` that does not opt into
+/// the dot-repeat recipe via `.tracks_selection()` (unlike `select-all-matches`
+/// — see `editor_cmds.rs`), so unlike `ms(`/`mm` it can never push itself onto
+/// `state.selection_recipe`, and (being non-repeatable) it can never overwrite
+/// `last_repeatable_action` either. Running it between an insert and `.` must
+/// therefore be inert: `.` still replays the original insert verbatim, not
+/// some "reselect + act" recipe.
+///
+/// Independent oracle: `i "ab" Esc` on "x" gives "abx"; `mii` re-selects "ab"
+/// (the just-typed span, unrelated to where `.` will act); replaying the
+/// insert places "ab" again at the selection's start → "ab" + "ab" + "x" =
+/// "ababx". The buffer only grows — no delete ever happens — which is the
+/// signal that `.` ran the insert and nothing resembling "mii + d".
+///
+/// Fail oracle: if `mii` corrupted `last_repeatable_action` (e.g. by being
+/// misclassified as repeatable) or leaked into its frozen recipe, `.` would
+/// replay some other action (or reselect "ab" again as an operator target)
+/// instead of inserting — the buffer would not end up "ababx".
+#[test]
+fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
+    let mut ed = editor_from("-[x]>\n");
+
+    ed.feed_key(key('i')); // insert-before, cursor collapses to start
+    ed.feed_key(key('a'));
+    ed.feed_key(key('b'));
+    ed.feed_key(key_esc()); // back to Normal; buffer is "abx"
+    assert_eq!(ed.doc().text().to_string(), "abx\n");
+
+    ed.feed_key(key('m'));
+    ed.feed_key(key('i'));
+    ed.feed_key(key('i')); // mii: re-select "ab", the last insertion
+    assert_eq!(state(&ed), "-[ab]>x\n");
+
+    ed.feed_key(key('d'));
+    assert_eq!(state(&ed), "-[x]>\n");
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key('b'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "abx\n");
+
+    ed.feed_key(key('.')); // must replay the insert, not act on the mii selection
+    assert_eq!(ed.doc().text().to_string(), "ababx\n");
 }
 
 // ── Steel command dot-repeat tests ────────────────────────────────────────────
