@@ -303,16 +303,25 @@ pub fn advance_byte_point(row: usize, byte_col: usize, inserted: &str) -> (usize
 }
 
 /// Yield `(line, byte_start, byte_end)` for each line the *non-empty*
-/// `[start, end_char_excl)` char range touches, clipped to that line's own
-/// content (up to but excluding its trailing `\n`). Caller must check
-/// `start < end_char_excl` first.
+/// `[start, end_char_excl)` char range covers at least one char of content
+/// on, clipped to that line's own content (up to but excluding its trailing
+/// `\n`). Caller must check `start < end_char_excl` first.
 ///
 /// A single-line range yields one triple, byte-identical to converting
 /// `start`/`end_char_excl` directly with [`char_to_line_byte`]. A multi-line
-/// range yields one triple per touched line. The clip point is deliberately
-/// the `\n` char's own position, not [`line_end_exclusive`] — the latter is
-/// the *next* line's start, which `char_to_line_byte` would resolve to the
-/// wrong line (byte 0 of the line after).
+/// range yields one triple per line it covers content on. The clip point is
+/// deliberately the `\n` char's own position, not [`line_end_exclusive`] —
+/// the latter is the *next* line's start, which `char_to_line_byte` would
+/// resolve to the wrong line (byte 0 of the line after).
+///
+/// A range whose `start` lands exactly on a line's own `\n` (its author
+/// meant "right after this line's last char", e.g. an LSP diagnostic
+/// anchored at end-of-line) and continues onto the next line touches that
+/// first line's *position* but covers none of its content — `seg_start` and
+/// `seg_end` would both land on `line_newline` there. Skipped rather than
+/// yielded zero-width: every caller flattens these into non-overlapping spans
+/// downstream, and a zero-width span sorts its end before its own start at
+/// the same position, which that flattening rejects by contract.
 pub fn line_segments(
     rope: &Rope,
     start: usize,
@@ -321,10 +330,13 @@ pub fn line_segments(
     let last_char = end_char_excl - 1;
     let start_line = rope.char_to_line(start);
     let end_line = rope.char_to_line(last_char);
-    (start_line..=end_line).map(move |line| {
+    (start_line..=end_line).filter_map(move |line| {
         let line_newline = line_break_char(rope, line);
         let seg_start = start.max(rope.line_to_char(line));
         let seg_end = end_char_excl.min(line_newline);
+        if seg_start >= seg_end {
+            return None;
+        }
         // Both ends are clamped to `line` above, so the line each resolves to
         // is already known — subtracting this line's own byte offset gives the
         // same answer as `char_to_line_byte` without re-deriving the line or
@@ -332,7 +344,7 @@ pub fn line_segments(
         let line_start_byte = rope.line_to_byte(line);
         let byte_start = rope.char_to_byte(seg_start) - line_start_byte;
         let byte_end = rope.char_to_byte(seg_end) - line_start_byte;
-        (line, byte_start, byte_end)
+        Some((line, byte_start, byte_end))
     })
 }
 

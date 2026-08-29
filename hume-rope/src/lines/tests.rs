@@ -392,3 +392,29 @@ fn place_char_column_on_empty_line_lands_on_newline() {
     let buf = rope("a\n\nb\n");
     assert_eq!(place_char_column(&buf, 1, 3), 2);
 }
+
+#[test]
+fn line_segments_yields_one_triple_per_line_covered() {
+    // "abc\ndef\nghi\n" — a range spanning all of line 0's "abc" through
+    // line 2's "gh" covers content on three lines.
+    let buf = rope("abc\ndef\nghi\n");
+    let start = buf.line_to_char(0);
+    let end = buf.line_to_char(2) + 2; // through "gh" on line 2
+    let segs: Vec<_> = line_segments(&buf, start, end).collect();
+    assert_eq!(segs, vec![(0, 0, 3), (1, 0, 3), (2, 0, 2)]);
+}
+
+#[test]
+fn line_segments_skips_a_line_the_range_only_touches_at_its_own_newline() {
+    // "abc\ndef\n" — a range starting exactly on line 0's own '\n' (char 3,
+    // one past 'c') and continuing onto line 1 covers zero chars of line
+    // 0's content: an LSP diagnostic anchored at end-of-line looks exactly
+    // like this. Only line 1's segment should be yielded — a zero-width
+    // (3, 3) triple for line 0 would sort its end before its own start once
+    // downstream flattening builds start/end events from it.
+    let buf = rope("abc\ndef\n");
+    let start = buf.line_to_char(0) + 3; // line 0's own '\n'
+    let end = buf.line_to_char(1) + 2; // through "de" on line 1
+    let segs: Vec<_> = line_segments(&buf, start, end).collect();
+    assert_eq!(segs, vec![(1, 0, 2)]);
+}
