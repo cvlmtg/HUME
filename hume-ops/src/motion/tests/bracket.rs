@@ -219,3 +219,80 @@ fn goto_matching_pair_doctype_is_noop() {
         "-[<]>!DOCTYPE html>\n"
     );
 }
+
+#[test]
+fn goto_matching_pair_stray_close_does_not_drain_enclosing_open() {
+    // A `</span>` with no matching `<span>` must not discard `<div>` off a
+    // shared stack — `#` on `<div>` still finds its own `</div>`.
+    assert_state!(
+        "-[<]>div>\n</span>\n<b>x</b>\n</div>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<div>\n</span>\n<b>x</b>\n-[<]>/div>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_unspaced_comparison_does_not_swallow_next_tag() {
+    // `a<b` with no space read as a lexical `<` start, but the following
+    // `<div>` must still parse as its own tag rather than being consumed as
+    // part of `a<b`'s (nonexistent) markup.
+    assert_state!(
+        "a<b\n-[<]>div>x</div>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "a<b\n<div>x-[<]>/div>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_unspaced_comparison_body_text_is_noop() {
+    // The cursor sits in ordinary body text after an unspaced `a<b` — must
+    // not resolve as if it were inside `a<b`'s markup.
+    assert_state!(
+        "a<b -[t]>hen</b>x</b>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "a<b -[t]>hen</b>x</b>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_jsx_expression_attribute_resolves() {
+    // The arrow function's own `=>` must not be read as the tag's closing
+    // `>` — the real closing `>` is four characters later.
+    assert_state!(
+        "-[<]>div onClick={() => f()}>x</div>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<div onClick={() => f()}>x-[<]>/div>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_jsx_expression_attribute_ignores_quoted_close_tag() {
+    // A later attribute's quoted value contains literal `</div>` text — the
+    // partner must be the real closing tag, not the string.
+    assert_state!(
+        "-[<]>div onClick={() => f()} title=\"</div>\">x</div>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<div onClick={() => f()} title=\"</div>\">x-[<]>/div>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_abruptly_closed_comment_zero_dashes() {
+    // `<!-->` is HTML5's abrupt comment close (zero dashes before `>`) — the
+    // comment must not swallow the well-formed tag after it.
+    assert_state!(
+        "<!-->\n-[<]>div>x</div>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<!-->\n<div>x-[<]>/div>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_abruptly_closed_comment_one_dash() {
+    // `<!--->` is HTML5's other abrupt comment close (one dash before `>`).
+    assert_state!(
+        "<!--->\n-[<]>div>x</div>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<!--->\n<div>x-[<]>/div>\n"
+    );
+}
