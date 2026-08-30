@@ -544,21 +544,20 @@ fn undo_clears_selection_recipe() {
 }
 
 /// `x C` (select-line, then duplicate the selection onto the next line) must
-/// leave an EMPTY selection recipe, not `[copy-selection-on-next-line]`.
+/// APPEND `copy-selection-on-next-line` onto the recipe `x` already built,
+/// not reset it to a single `[C]` step.
 ///
-/// `RepeatableAction::selection_recipe`'s own invariant (see its doc comment)
-/// is "one in-place Move-mode establish, then extend appends" — a step that
-/// can be soundly replayed alone, from a fresh cursor, to rebuild the same
-/// extent. `copy-selection-on-next-line` duplicates whatever selection is
-/// already there; it establishes nothing on its own, so recording it would
-/// replay as "duplicate a bare cursor," silently dropping the `x` that built
-/// the real extent. `copy-selection-on-next-line` is an `EditorCmd` (it needs
-/// a `RowMap` for display-column placement); unlike `select-all-matches`
-/// (registered with `.tracks_selection()` — see `editor_cmds.rs`), it does
-/// not opt in — this test pins that as intentional for this command, not an
-/// incidental side effect of the variant it happens to be implemented as.
+/// `copy-selection-on-next-line` duplicates whatever selection is already
+/// there — it establishes nothing on its own, so recording it as a reset
+/// (`SelectionTracking::Establishes`) would replay `.` as "duplicate a bare
+/// cursor," silently dropping the `x` that built the real extent (see
+/// `dot_repeat_of_copy_selection_replays_the_whole_recipe` below for the
+/// end-to-end failure this would cause). Registered with
+/// `.composes_selection()` (`SelectionTracking::Composes`) precisely because
+/// it transforms the staged extent instead of establishing one — see
+/// `registry/defaults/selections.rs`.
 #[test]
-fn copy_selection_on_next_line_does_not_enter_the_selection_recipe() {
+fn copy_selection_on_next_line_appends_to_the_selection_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\n");
 
     ed.feed_key(key('x')); // select-line: "aaa\n" selected
@@ -571,8 +570,57 @@ fn copy_selection_on_next_line_does_not_enter_the_selection_recipe() {
     ed.feed_key(key('C')); // duplicate the selection onto "bbb\n"
     assert_eq!(
         ed.state.selection_recipe.len(),
-        0,
-        "copy-selection-on-next-line must not itself become a recipe step"
+        2,
+        "copy-selection-on-next-line must append onto the prior x step"
+    );
+    assert_eq!(ed.state.selection_recipe[0].command.as_ref(), "select-line");
+    assert_eq!(
+        ed.state.selection_recipe[1].command.as_ref(),
+        "copy-selection-on-next-line"
+    );
+}
+
+/// `mm C d` then `.` must replay the WHOLE recipe (`mm`, `C`, `d`), not just
+/// `d` against whatever selection happens to remain.
+///
+/// `mm` (word-select) is used as the establish step rather than `x`
+/// (select-line): `select-line` includes the line's trailing structural
+/// newline in the selection, and `copy-selection-on-next-line`'s
+/// `DisplayColTarget::NearestContent` clamps a display column landing past
+/// content back onto the last content char — so a `select-line` head (which
+/// sits ON that newline) does not reproduce the newline in the copy. That's
+/// existing, correct `C` behavior, orthogonal to this test; a word selection
+/// (all content chars, no newline in range) sidesteps it entirely.
+///
+/// Independent oracle: on `"foo\nbar\nfoo\nbar\n"`, `mm` selects "foo" (line
+/// 0), `C` duplicates it onto "bar" (line 1) at the same columns, `d`
+/// deletes both — each line's own newline survives, leaving
+/// `"\n\nfoo\nbar\n"`. Move down two buffer lines to the second "foo\nbar\n"
+/// pair; `.` must replay `mm` + `C` + `d` there too, leaving `"\n\n\n\n"`.
+///
+/// Fail oracle: if `copy-selection-on-next-line` reset the recipe instead of
+/// composing (`SelectionTracking::Establishes` instead of `Composes`), `.`
+/// would replay `[C, d]` from a bare cursor instead of `[mm, C, d]` — `C` on
+/// a collapsed cursor duplicates one cursor onto the next line, and `d`
+/// deletes two *characters*, leaving `"\n\nf\nar\n"`-shaped text instead of
+/// `"\n\n\n\n"`.
+#[test]
+fn dot_repeat_of_copy_selection_replays_the_whole_recipe() {
+    let mut ed = editor_from("-[f]>oo\nbar\nfoo\nbar\n");
+
+    ed.feed_key(key('m'));
+    ed.feed_key(key('m')); // select-word: "foo" (line 0)
+    ed.feed_key(key('C')); // + "bar" (line 1)
+    ed.feed_key(key('d')); // delete both
+    assert_eq!(ed.doc().text().to_string(), "\n\nfoo\nbar\n");
+
+    ed.feed_key(key('j'));
+    ed.feed_key(key('j')); // down to the second "foo" line — not in the recipe
+    ed.feed_key(key('.')); // replay mm, C, d
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\n\n\n\n",
+        "`.` must replay the full mm/C/d recipe, not just d"
     );
 }
 

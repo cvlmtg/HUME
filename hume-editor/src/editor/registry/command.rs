@@ -9,6 +9,27 @@ use hume_ops::MotionMode;
 
 // ── Command metadata for dispatch bookkeeping ────────────────────────────────
 
+/// How a command's post-dispatch selection interacts with the dot-repeat
+/// selection recipe (`EditorState::selection_recipe`). See
+/// [`CmdMeta::selection_tracking`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SelectionTracking {
+    /// Not a selection builder — clears the recipe.
+    Untracked,
+    /// Establishes an extent that is replayable on its own from a fresh
+    /// cursor (`select-line`, `ms(`, `m/`): resets the recipe to a single
+    /// step in Move mode, appends a step in Extend mode. Reaching motions
+    /// (`select-next-word` et al.) are excluded from the reset case — see
+    /// `step_update_recipe`.
+    Establishes,
+    /// Transforms whatever extent is already staged rather than
+    /// establishing one (`copy-selection-on-next-line`/`-prev-line`
+    /// duplicate the current selection onto an adjacent line). Always
+    /// appends, in both Move and Extend mode: replaying this step alone
+    /// from a fresh cursor would rebuild nothing.
+    Composes,
+}
+
 /// Declarative metadata extracted from a MappableCommand variant.
 ///
 /// Drives the dispatch pipeline — the pipeline reads this instead of matching
@@ -27,17 +48,18 @@ use hume_ops::MotionMode;
 /// pipeline, not carried in here.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CmdMeta {
-    /// Whether this command updates the selection recipe after it runs.
+    /// How this command updates the selection recipe after it runs.
     ///
-    /// Always `true` for Motion and Selection variants. `EditorCmd` opts in
-    /// per command (see [`MappableCommand::EditorCmd`]'s own field) for the
-    /// rare case where a command needs `EditorState`/`EngineView` access to
-    /// build a replayable selection extent — `select-all-matches` (`m/`)
-    /// reads the buffer's search pattern, which the pure `Selection` body
-    /// signature has no channel for. The recipe accumulates the sequence of
-    /// selection-building steps so dot-repeat can re-establish the selection
-    /// before replaying an edit. All other commands clear the recipe.
-    pub tracks_selection: bool,
+    /// Always `Establishes` for Motion and Selection variants. `EditorCmd`
+    /// opts in per command (see [`MappableCommand::EditorCmd`]'s own field)
+    /// for the rare case where a command needs `EditorState`/`EngineView`
+    /// access to build a replayable selection extent — `select-all-matches`
+    /// (`m/`) reads the buffer's search pattern, which the pure `Selection`
+    /// body signature has no channel for. The recipe accumulates the
+    /// sequence of selection-building steps so dot-repeat can re-establish
+    /// the selection before replaying an edit. All other commands clear the
+    /// recipe (`Untracked`).
+    pub selection_tracking: SelectionTracking,
     /// Whether this command is a cursor motion (as opposed to a selection
     /// builder, edit, or editor action).
     ///
@@ -229,10 +251,12 @@ pub(crate) enum MappableCommand {
         /// Whether this command exits sticky Extend mode after it runs.
         /// See [`CmdMeta::clears_extend`] for the full rationale.
         clears_extend: bool,
-        /// Whether this command opts into the dot-repeat selection recipe.
-        /// See [`CmdMeta::tracks_selection`] for the full rationale. `false`
-        /// for every `EditorCmd` except `select-all-matches`.
-        tracks_selection: bool,
+        /// How this command opts into the dot-repeat selection recipe.
+        /// See [`CmdMeta::selection_tracking`] for the full rationale.
+        /// `Untracked` for every `EditorCmd` except `select-all-matches`
+        /// (`Establishes`) and `copy-selection-on-{next,prev}-line`
+        /// (`Composes`).
+        selection_tracking: SelectionTracking,
     },
     /// A command implemented as a Steel (Scheme) lambda.
     ///
@@ -315,7 +339,7 @@ impl MappableCommand {
     pub(crate) fn meta(&self) -> CmdMeta {
         match self {
             Self::Motion { jump, reaching, .. } => CmdMeta {
-                tracks_selection: true,
+                selection_tracking: SelectionTracking::Establishes,
                 is_motion: true,
                 defers_paste_commit: false,
                 is_jump: *jump,
@@ -325,7 +349,7 @@ impl MappableCommand {
                 clears_extend: false,
             },
             Self::Selection { jump, .. } => CmdMeta {
-                tracks_selection: true,
+                selection_tracking: SelectionTracking::Establishes,
                 is_motion: false,
                 defers_paste_commit: false,
                 is_jump: *jump,
@@ -335,7 +359,7 @@ impl MappableCommand {
                 clears_extend: false,
             },
             Self::Edit { repeatable, .. } => CmdMeta {
-                tracks_selection: false,
+                selection_tracking: SelectionTracking::Untracked,
                 is_motion: false,
                 defers_paste_commit: false,
                 is_jump: false,
@@ -350,10 +374,10 @@ impl MappableCommand {
                 jump,
                 visual_move,
                 clears_extend,
-                tracks_selection,
+                selection_tracking,
                 ..
             } => CmdMeta {
-                tracks_selection: *tracks_selection,
+                selection_tracking: *selection_tracking,
                 is_motion: false,
                 defers_paste_commit: *defers_paste_commit,
                 is_jump: *jump,
@@ -363,7 +387,7 @@ impl MappableCommand {
                 clears_extend: *clears_extend,
             },
             Self::SteelBacked { repeatable, .. } => CmdMeta {
-                tracks_selection: false,
+                selection_tracking: SelectionTracking::Untracked,
                 is_motion: false,
                 defers_paste_commit: false,
                 is_jump: false,
@@ -373,7 +397,7 @@ impl MappableCommand {
                 clears_extend: false,
             },
             Self::Lazy { .. } => CmdMeta {
-                tracks_selection: false,
+                selection_tracking: SelectionTracking::Untracked,
                 is_motion: false,
                 defers_paste_commit: false,
                 is_jump: false,

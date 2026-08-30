@@ -1729,11 +1729,12 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
 /// The `selection_recipe` snapshot taken before the Steel body runs must NOT be
 /// clobbered by an inner `(call! "insert-before")` dispatch.
 ///
-/// Fail oracle (Gap A): without the pre-body `mem::take` snapshot in the Steel
-/// `dispatch` path, `insert-before`'s inner dispatch takes `selection_recipe` via
-/// `run_dispatch_pipeline`, leaving it empty. The white-box assertion
-/// `selection_recipe.len() == 1` catches
-/// this — it passes with the snapshot, fails without it.
+/// Fail oracle (Gap A): without the pre-body `.clone()` snapshot in the Steel
+/// `dispatch` path, `step_stamp_repeatable` would read whatever
+/// `insert-before`'s inner dispatch left `selection_recipe` as via
+/// `run_dispatch_pipeline`'s own `step_update_recipe` (an `EditorCmd` that is
+/// `Untracked`, so it clears). The white-box assertion `selection_recipe.len()
+/// == 1` catches this — it passes with the snapshot, fails without it.
 #[test]
 fn steel_repeatable_insert_preserves_prior_selection_recipe() {
     let f2 = termina::event::KeyEvent::new(
@@ -1780,6 +1781,89 @@ fn steel_repeatable_insert_preserves_prior_selection_recipe() {
     assert!(
         !action.selection_recipe[0].extend,
         "x step must be a Move (establish)"
+    );
+}
+
+/// A non-repeatable Steel command whose body dispatches
+/// `copy-selection-on-next-line` via `call!` must leave the live
+/// `selection_recipe` composed onto whatever the caller already staged —
+/// mirroring vim-keybind's `vim-change-to-eol-or-copy-line` wrapper around
+/// the native `C` binding (`runtime/plugins/core/vim-keybind/plugin.scm`).
+///
+/// Fail oracle: if `Editor::dispatch`'s Steel branch still `mem::take`s the
+/// recipe before running the body (instead of cloning), the inner `call!`
+/// would append onto an empty recipe and the `x` step would be lost —
+/// `selection_recipe.len()` would be 1, not 2.
+#[test]
+fn steel_wrapper_of_copy_selection_composes_onto_prior_recipe() {
+    let mut ed = editor_from("-[a]>aa\nbbb\n");
+    setup_steel_f2(
+        &mut ed,
+        r#"(define-command! "vim-copy-wrapper" "wraps copy-selection-on-next-line"
+             (lambda () (call! "copy-selection-on-next-line" 1)))"#,
+        "vim-copy-wrapper",
+    );
+
+    ed.feed_key(key('x')); // select-line: "aaa\n"
+    assert_eq!(
+        ed.state.selection_recipe.len(),
+        1,
+        "setup: x must push a recipe step"
+    );
+
+    let f2 = termina::event::KeyEvent::new(
+        termina::event::KeyCode::Function(2),
+        termina::event::Modifiers::NONE,
+    );
+    ed.feed_key(f2); // vim-copy-wrapper -> call! copy-selection-on-next-line
+
+    assert_eq!(
+        ed.state.selection_recipe.len(),
+        2,
+        "the inner copy-selection-on-next-line dispatch must compose onto \
+         the x step, not replace it"
+    );
+    assert_eq!(ed.state.selection_recipe[0].command.as_ref(), "select-line");
+    assert_eq!(
+        ed.state.selection_recipe[1].command.as_ref(),
+        "copy-selection-on-next-line"
+    );
+}
+
+/// A non-repeatable Steel command whose body dispatches NOTHING native at
+/// all must still clear the recipe — the same as any other Untracked
+/// command would — so a prior `x` doesn't leak into a later, unrelated edit.
+///
+/// Fail oracle: without the `selection_recipe_writes` guard in
+/// `Editor::dispatch`'s Steel branch, a pure-Steel body has no
+/// `step_update_recipe` call to make this decision for it, and the recipe
+/// would survive untouched — `selection_recipe.len()` would stay 1.
+#[test]
+fn steel_body_with_no_native_dispatch_clears_the_recipe() {
+    let mut ed = editor_from("-[a]>aa\nbbb\n");
+    setup_steel_f2(
+        &mut ed,
+        r#"(define-command! "pure-steel-noop" "" (lambda () (+ 1 0)))"#,
+        "pure-steel-noop",
+    );
+
+    ed.feed_key(key('x')); // select-line: "aaa\n"
+    assert_eq!(
+        ed.state.selection_recipe.len(),
+        1,
+        "setup: x must push a recipe step"
+    );
+
+    let f2 = termina::event::KeyEvent::new(
+        termina::event::KeyCode::Function(2),
+        termina::event::Modifiers::NONE,
+    );
+    ed.feed_key(f2); // pure-steel-noop, no call! at all
+
+    assert_eq!(
+        ed.state.selection_recipe.len(),
+        0,
+        "a body that dispatched nothing natively must still clear the recipe"
     );
 }
 

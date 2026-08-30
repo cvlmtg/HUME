@@ -83,15 +83,22 @@ impl Editor {
         // BEFORE
         commands::step_paste_commit(&mut self.state, &self.view, meta.defers_paste_commit);
         let char_arg = self.state.pending_char.take();
-        // Always snapshot the recipe before the body — inner dispatches via `call!`
-        // overwrite selection_recipe during the body, so the snapshot must be taken
-        // before they run (the native path uses step_snapshot_recipe, which gates on
-        // repeatable; here we snapshot unconditionally and decide after the body).
-        let pre_recipe = std::mem::take(&mut self.state.selection_recipe);
+        // Snapshot the recipe before the body by cloning, not `mem::take`: an
+        // inner `call!` dispatch (e.g. vim-keybind's `C` wrapper calling
+        // `copy-selection-on-next-line`) must see and compose onto whatever
+        // the user already staged, the same as if that inner command were
+        // dispatched directly from the keymap. `step_stamp_repeatable` below
+        // still reads this snapshot, not the (possibly further-mutated) live
+        // value, so a repeatable outer command's stamped recipe reflects
+        // state as of entry — not whatever an inner dispatch built on top of it.
+        let pre_recipe = self.state.selection_recipe.clone();
+        let pre_writes = self.state.selection_recipe_writes;
 
         // BODY — consumes `cmd`.
         if !self.run_steel_command(cmd, name.as_ref(), &ctx, char_arg) {
-            self.state.selection_recipe.clear();
+            // Failed command: undo whatever a partial inner dispatch wrote,
+            // so the failure has no residual effect on the recipe.
+            self.state.selection_recipe = pre_recipe;
             return;
         }
 
@@ -113,9 +120,21 @@ impl Editor {
                 char_arg,
                 Some(pre_recipe),
             );
+            // A repeatable command's recipe is consumed by the stamp above,
+            // not carried forward — matching the native `Edit` variant
+            // (always `Untracked`, so `step_update_recipe` clears it too),
+            // regardless of what an inner `call!` dispatch left behind.
+            self.state.selection_recipe.clear();
+        } else if self.state.selection_recipe_writes == pre_writes {
+            // The body dispatched no native command at all (a pure-Steel
+            // body, e.g. one that only calls `goto-location!`) — nothing ran
+            // `step_update_recipe` to make the usual accumulation decision
+            // for it, so this non-selection outer command must clear the
+            // recipe itself, the same as any other Untracked command would.
+            // A body that DID dispatch natively already got the correct
+            // decision from that inner call's own `step_update_recipe`.
+            self.state.selection_recipe.clear();
         }
-        // Non-repeatable outer: leave inner dispatch's repeatable action intact.
-        self.state.selection_recipe.clear();
         // Outer Steel commands skip step_record_jump and step_clear_extend: their meta
         // hardcodes is_jump = clears_extend = false. An inner native (call! …) still
         // fires both — it routes through run_dispatch_pipeline with its own meta.

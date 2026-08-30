@@ -11,7 +11,7 @@ use hume_engine::pipeline::{BufferId, EngineView};
 use crate::editor::dispatch::CmdCtx;
 use crate::editor::doc_ops;
 use crate::editor::jump_list::JumpEntry;
-use crate::editor::registry::{CmdMeta, MappableCommand};
+use crate::editor::registry::{CmdMeta, MappableCommand, SelectionTracking};
 use crate::editor::replay::{RepeatableAction, SelectionStep};
 use crate::editor::{EditorState, Mode, Severity};
 use hume_ops::MotionMode;
@@ -206,16 +206,21 @@ pub(in crate::editor) fn step_stamp_repeatable(
 /// Update the selection recipe buffer after a command dispatch.
 ///
 /// Accumulation rule:
-///   sel-builder + extend                          → append step
-///   sel-builder + move + in-place                 → reset + push establish
-///   sel-builder + move + reaching (or collapsed)  → clear
-///   everything else                               → clear
+///   Establishes + extend                          → append step
+///   Establishes + move + in-place                 → reset + push establish
+///   Establishes + move + reaching (or collapsed)  → clear
+///   Composes (any mode)                           → append step
+///   Untracked                                     → clear
 ///
 /// Reaching motions (`select-next-word` / `-prev-word` / WORD variants) are
 /// not recorded in Move mode: replaying such a step advances past the cursor,
 /// causing dot-repeat to act on the wrong word. Extend steps of reaching
 /// motions (`Ctrl+w`) are still recorded — extending grows an existing
 /// selection by a relative amount and is safe to replay.
+///
+/// `Composes` (`copy-selection-on-next-line`/`-prev-line`) always appends: it
+/// transforms whatever extent is already staged rather than establishing one,
+/// so replaying it alone from a fresh cursor would rebuild nothing.
 // `&Cow` not `&str`: `.clone()` must preserve Borrowed (built-ins) or Owned
 // (Steel) without an unconditional heap alloc.
 #[allow(clippy::ptr_arg)]
@@ -226,15 +231,25 @@ pub(super) fn step_update_recipe(
     ctx: &CmdCtx,
     char_arg: Option<char>,
 ) {
-    if meta.tracks_selection {
-        if ctx.extend {
+    state.selection_recipe_writes += 1;
+    match meta.selection_tracking {
+        SelectionTracking::Composes => {
+            state.selection_recipe.push(SelectionStep {
+                command: name.clone(),
+                count: ctx.count.unwrap_or(1),
+                char_arg,
+                extend: ctx.extend,
+            });
+        }
+        SelectionTracking::Establishes if ctx.extend => {
             state.selection_recipe.push(SelectionStep {
                 command: name.clone(),
                 count: ctx.count.unwrap_or(1),
                 char_arg,
                 extend: true,
             });
-        } else if !meta.is_motion && !meta.reaching {
+        }
+        SelectionTracking::Establishes if !meta.is_motion && !meta.reaching => {
             state.selection_recipe.clear();
             state.selection_recipe.push(SelectionStep {
                 command: name.clone(),
@@ -242,11 +257,10 @@ pub(super) fn step_update_recipe(
                 char_arg,
                 extend: false,
             });
-        } else {
+        }
+        SelectionTracking::Establishes | SelectionTracking::Untracked => {
             state.selection_recipe.clear();
         }
-    } else {
-        state.selection_recipe.clear();
     }
 }
 
@@ -284,7 +298,7 @@ pub(in crate::editor) fn run_dispatch_pipeline(
     // a new variant broke the invariant that step_stamp_repeatable and
     // step_update_recipe rely on for their unconditional sequencing.
     debug_assert!(
-        !(meta.repeatable && meta.tracks_selection),
+        !(meta.repeatable && meta.selection_tracking != SelectionTracking::Untracked),
         "command '{name}' is both repeatable and selection-tracking — \
          step_stamp_repeatable and step_update_recipe would both fire",
     );

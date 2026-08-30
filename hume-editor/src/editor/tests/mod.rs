@@ -809,9 +809,12 @@ impl Editor {
 /// (replay_dot, hooks, search-cache) are intentionally excluded — the former is
 /// seeding-dependent, the latter has dedicated tests.
 ///
-/// Deliberate exclusion — `selection_recipe`: the Steel dispatch branch clears it
-/// unconditionally (inner `call!` dispatches overwrite it, outer Steel AFTER always
-/// resets), so it legitimately diverges across paths and cannot be a parity field.
+/// Deliberate exclusion — `selection_recipe`: an inner `call!` dispatch inside
+/// a Steel body sets it via its own `step_update_recipe` decision, and the
+/// Steel `dispatch` branch only overrides that when the body dispatched
+/// nothing natively at all or the outer command is repeatable — divergence
+/// from the native path is intentional per command, not a parity bug, so it
+/// legitimately diverges and cannot be a parity field.
 #[derive(Debug, PartialEq)]
 pub(super) struct BookkeepingSnapshot {
     /// `ed.state.last_repeatable_action` — (command, count, char_arg) if set.

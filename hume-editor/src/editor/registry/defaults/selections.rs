@@ -74,12 +74,20 @@ impl CommandRegistry {
         // `visual_move.rs::copy_selection_vertically`. `.extendable()`
         // restores the extendability `Selection` carries implicitly — without
         // it, a one-shot Ctrl+key extend of this command is silently dropped
-        // (see the Ctrl+key guard in `mappings/normal.rs`).
+        // (see the Ctrl+key guard in `mappings/normal.rs`). `.composes_selection()`
+        // (not `.tracks_selection()`): this command transforms whatever
+        // selection is already staged rather than establishing a fresh one,
+        // so it must always append to the dot-repeat recipe, never reset it —
+        // see `SelectionTracking::Composes`. The recorded step's `extend`
+        // flag is inert on replay (`cmd_copy_selection_on_next_line` ignores
+        // `MotionMode`), but is still recorded faithfully for the recipe's
+        // own bookkeeping.
         ecmd(
             "copy-selection-on-next-line",
             "Duplicate each selection on the line below.",
             cmd_copy_selection_on_next_line,
         )
+        .composes_selection()
         .extendable()
         .reg(self);
         ecmd(
@@ -87,6 +95,7 @@ impl CommandRegistry {
             "Duplicate each selection on the line above.",
             cmd_copy_selection_on_prev_line,
         )
+        .composes_selection()
         .extendable()
         .reg(self);
     }

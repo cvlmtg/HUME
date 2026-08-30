@@ -387,8 +387,22 @@ pub(crate) struct EditorState {
     /// append or reset this buffer; repeatable edits snapshot it into
     /// `RepeatableAction::selection_recipe` (via `mem::take`) and clear it.
     /// Non-selection commands clear it. Invariant: `[]` or
-    /// `[Move-establish, Extend*]`.
+    /// `[Move-establish, (Extend | Compose)*]`.
     pub(super) selection_recipe: Vec<SelectionStep>,
+    /// Incremented once by every native dispatch's `step_update_recipe`
+    /// (`commands/pipeline.rs`), regardless of what it did to the recipe.
+    ///
+    /// `Editor::dispatch`'s Steel branch reads this before and after running
+    /// a command's body: unchanged means the body dispatched no native
+    /// command at all (a pure-Steel body), so `selection_recipe` — left
+    /// untouched from before the body ran — must still be cleared, the same
+    /// as any other non-selection command would. Changed means an inner
+    /// `call!` already ran `step_update_recipe` with its own correct
+    /// decision, which the Steel branch must not override. A plain
+    /// `selection_recipe == pre_recipe` snapshot comparison can't stand in
+    /// for this: it would misfire when a body re-establishes the identical
+    /// step it started with.
+    pub(super) selection_recipe_writes: u64,
     /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
     /// `replay_dot` at the tail of `handle_key`.
     pub(super) pending_repeat: Option<PendingRepeat>,
@@ -550,6 +564,7 @@ impl Default for EditorState {
             visual_move_target_display_cols: Vec::new(),
             last_repeatable_action: None,
             selection_recipe: Vec::new(),
+            selection_recipe_writes: 0,
             pending_repeat: None,
             insert_session: None,
             autoindent_pending: false,

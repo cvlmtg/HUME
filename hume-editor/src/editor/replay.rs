@@ -43,14 +43,18 @@ pub(crate) struct InsertSession {
 
 /// One selection-building step in a dot-repeat recipe.
 ///
-/// Recorded by `step_update_recipe` as Motion/Selection commands run, so that
-/// `replay_dot` can replay them before the edit, rebuilding the
+/// Recorded by `step_update_recipe` as Motion/Selection commands (or
+/// EditorCmds opting into `SelectionTracking::Establishes`/`Composes`) run,
+/// so that `replay_dot` can replay them before the edit, rebuilding the
 /// extent the edit originally acted on.
 ///
 /// Only in-place selections (e.g. `select-line`) appear as establish steps;
 /// reaching selections (`select-next-word` / `-prev-word` / uppercase-word variants) are
 /// not recorded in Move mode — replaying one would advance past the cursor and
 /// act on the wrong region. Extend steps of any selection are always recorded.
+/// A `Composes` command (`copy-selection-on-next-line` / `-prev-line`) is
+/// always recorded too, regardless of mode — it transforms the extent the
+/// preceding steps built rather than establishing its own.
 #[derive(Debug, Clone)]
 pub(crate) struct SelectionStep {
     /// Command name (e.g. `"select-line"`, `"find-char"`).
@@ -88,10 +92,14 @@ pub(crate) struct RepeatableAction {
     ///
     /// Invariant: `[]` (edit acted on pre-existing selection or after a reaching
     /// selection — `.` deletes the current selection as-is) or `[one in-place
-    /// Move-mode establish, then zero+ Extend appends]`. Reaching selections
-    /// (`select-next-word` / `-prev-word` / uppercase-word variants) are excluded from
-    /// establish steps because replaying them advances past the cursor. Rebuilt
-    /// from `EditorState::selection_recipe` each time a repeatable command is
+    /// Move-mode establish, then zero+ (Extend | Compose) appends]`. Reaching
+    /// selections (`select-next-word` / `-prev-word` / uppercase-word variants)
+    /// are excluded from establish steps because replaying them advances past
+    /// the cursor. A `Compose` step (`copy-selection-on-next-line` /
+    /// `-prev-line`) transforms the extent the preceding steps built rather
+    /// than establishing its own, so it only ever appears after at least one
+    /// establish step, never as the first. Rebuilt from
+    /// `EditorState::selection_recipe` each time a repeatable command is
     /// recorded.
     pub selection_recipe: Vec<SelectionStep>,
 }

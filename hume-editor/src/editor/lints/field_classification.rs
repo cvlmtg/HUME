@@ -80,6 +80,7 @@ const EDITOR_STATE_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
     ("visual_move_target_display_cols", "preserved"),
     ("last_repeatable_action", "preserved"),
     ("selection_recipe", "preserved"),
+    ("selection_recipe_writes", "preserved"),
     ("pending_repeat", "preserved"),
     ("insert_session", "preserved"),
     ("autoindent_pending", "preserved"),
