@@ -118,6 +118,8 @@
 - Quitting with an attached language server no longer leaves the screen frozen in the alternate screen while it shuts down: the terminal is restored first.
 - Fixed a bug where `d`/`c`/`p` on a read-only buffer could still overwrite the kill ring or a named register before refusing the edit.
 - Fixed a bug where a hover or diagnostic popup stayed on screen when you scrolled or clicked with the mouse; it now closes on any mouse input, the same as on any keypress.
+- Fixed `.` after `[`/`]` (paste-ring cycling) being a permanent no-op: `.` closed the still-open paste session before replaying the cycle, so the cycle itself never ran, and every following `.` inherited the same dead state.
+- Fixed `.` overwriting the last repeatable action with a no-op when the command it replayed was refused on a read-only buffer — the real action it replaced is now preserved instead.
 
 ## [0.10.0] - 2026-07-24
 

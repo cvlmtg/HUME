@@ -2004,8 +2004,11 @@ fn steel_dispatch_consumes_pending_char() {
     let mut init_host = live_host!(ed);
     host.eval_source(
         // Moves the cursor only when a pending char is visible to the body.
+        // `#:repeatable #t` so the dot-repeat extension below has an action
+        // to replay.
         r#"(define-command! "probe-char" ""
-             (lambda () (if (pending-char) (call! "move-right" 1) (+ 1 0))))"#,
+             (lambda () (if (pending-char) (call! "move-right" 1) (+ 1 0)))
+             #:repeatable #t)"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -2031,6 +2034,30 @@ fn steel_dispatch_consumes_pending_char() {
         state(&ed),
         "a-[b]>cdef\n",
         "stale pending_char must not leak into later dispatch"
+    );
+
+    // Extend: `Editor::replay_dot`'s Steel branch must not leak `pending_char`
+    // either. It passes `action.char_arg` straight into `run_steel_command`
+    // as an explicit parameter — unlike `Editor::dispatch`'s Steel branch
+    // (exercised above), which reads (and `.take()`s) `state.pending_char`
+    // itself — so there is no read of the state field on the replay path to
+    // consume a stray write.
+    //
+    // Fail oracle: have `replay_dot` set `self.state.pending_char =
+    // action.char_arg` unconditionally before dispatching (as it once did) —
+    // the assertion below then sees `Some('y')`.
+    ed.state.pending_char = Some('y');
+    ed.execute_keymap_command("probe-char".into(), Some(1), false, ArgSource::Keymap);
+    assert_eq!(
+        ed.state.last_repeatable_action.as_ref().map(|a| a.char_arg),
+        Some(Some('y')),
+        "setup: the stamped action must carry the pending char"
+    );
+
+    ed.feed_key(key('.')); // replay probe-char via replay_dot's Steel branch
+    assert!(
+        ed.state.pending_char.is_none(),
+        "replay_dot's Steel branch must not leave pending_char dangling"
     );
 }
 

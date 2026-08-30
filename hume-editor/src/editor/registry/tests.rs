@@ -521,7 +521,17 @@ fn selection_tracking_matches_expected_commands() {
     // `Establishes`: replayable on its own from a fresh cursor.
     // `select-all` is whole-buffer and position-independent, unlike its
     // `Composes` siblings above despite sharing their `Selection` variant.
-    for name in &["select-line", "select-all", "select-all-matches"] {
+    // `surround-paren` is a plain `selection!`-registered text object (the
+    // macro's default arm); `select-word-nearest-on-line` is the one
+    // `EditorCmd` that opts in via `.establishes_selection()` instead of a
+    // `Selection` variant's own hardcoded field.
+    for name in &[
+        "select-line",
+        "select-all",
+        "select-all-matches",
+        "surround-paren",
+        "select-word-nearest-on-line",
+    ] {
         let meta = reg
             .get_mappable(name)
             .unwrap_or_else(|| panic!("command '{name}' not found"))

@@ -145,7 +145,7 @@ impl CommandRegistry {
             "Cycle kill ring one step older and re-paste.",
             cmd_paste_ring_older,
         )
-        .paste_cycle()
+        .defers_paste_commit()
         .repeatable()
         .clears_extend()
         .reg(self);
@@ -154,7 +154,7 @@ impl CommandRegistry {
             "Cycle kill ring one step newer and re-paste.",
             cmd_paste_ring_newer,
         )
-        .paste_cycle()
+        .defers_paste_commit()
         .repeatable()
         .clears_extend()
         .reg(self);
@@ -307,11 +307,17 @@ impl CommandRegistry {
         // The handler sets EditorState::pending_repeat; replay_dot does
         // the actual replay with &mut Editor after handle_key returns — the
         // handler itself still takes only EditorCmdFn's shape, no &mut Editor.
+        //
+        // `.defers_paste_commit()`: this dispatch itself must not commit a
+        // paste session left open by a preceding `[`/`]` — replay_dot makes
+        // that call once it knows which command is being replayed (see its
+        // own `defers_paste_commit` builder doc for why).
         ecmd(
             "repeat-last-action",
             "Repeat the last editing action.",
             cmd_repeat,
         )
+        .defers_paste_commit()
         .reg(self);
 
         // ── Editor commands — search ──────────────────────────────────────────

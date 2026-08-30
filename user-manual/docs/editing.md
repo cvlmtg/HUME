@@ -76,7 +76,7 @@ Undo history is a tree rather than a straight line, so redoing after new edits f
 |-----|--------|
 | `.` | Repeat the last editing command |
 
-Dot-repeat replays the most recent insert session or editing command — delete, change, paste and so on, but not `y`. Give it a count to override the original: if `3w` set up the first change, `5.` repeats it over five words instead.
+Dot-repeat replays the most recent insert session or editing command — delete, change, paste and so on, but not `y`.
 
 ## Macros
 

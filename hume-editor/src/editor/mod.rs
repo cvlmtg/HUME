@@ -406,6 +406,20 @@ pub(crate) struct EditorState {
     /// for this: it would misfire when a body re-establishes the identical
     /// step it started with.
     pub(super) selection_recipe_writes: u64,
+    /// Set by `refuse_if_read_only` (and by a native `EditorCmd` body
+    /// returning `Err`) to tell `run_dispatch_pipeline`'s AFTER stage the
+    /// command's body did not do its job — a read-only refusal, or an error
+    /// mid-body. A repeatable command in that state must not stamp
+    /// `last_repeatable_action`: there is nothing new to repeat, and doing so
+    /// would silently discard whatever real action was recorded before (see
+    /// `commands/pipeline.rs`'s `step_stamp_repeatable` call site).
+    /// `run_dispatch_pipeline` resets this to `false` at its own BEFORE stage
+    /// and is the only reader, immediately after BODY in that same call — the
+    /// Steel dispatch path (`Editor::dispatch`) never reads or resets it
+    /// directly, but any native `call!` it makes goes through
+    /// `run_dispatch_pipeline` too, so a stale value from an earlier dispatch
+    /// can never leak in.
+    pub(super) command_refused: bool,
     /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
     /// `replay_dot` at the tail of `handle_key`.
     pub(super) pending_repeat: Option<PendingRepeat>,
@@ -568,6 +582,7 @@ impl Default for EditorState {
             last_repeatable_action: None,
             selection_recipe: Vec::new(),
             selection_recipe_writes: 0,
+            command_refused: false,
             pending_repeat: None,
             insert_session: None,
             autoindent_pending: false,

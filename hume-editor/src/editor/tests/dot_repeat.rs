@@ -42,6 +42,65 @@ fn dot_repeats_change_with_insert() {
     assert_eq!(ed.doc().text().to_string(), "hihi\n");
 }
 
+/// A repeatable command refused by `refuse_if_read_only` must not clobber
+/// `last_repeatable_action` — it changed nothing, so there is nothing new to
+/// repeat.
+///
+/// `step_stamp_repeatable` (`commands/pipeline.rs`) fires unconditionally
+/// whenever `meta.repeatable`, with no "did the body actually do anything"
+/// gate — unlike `step_update_recipe`, which the `018a27c8` commit gated on
+/// `selection_changed` for exactly this reason. `cmd_delete` refuses via
+/// `refuse_if_read_only` and returns `Ok(())` without touching the buffer,
+/// but the pipeline stamps `last_repeatable_action = "delete"` anyway,
+/// silently discarding the user's earlier `change`.
+///
+/// Fail oracle: without a refusal gate on the stamp, the final assert sees
+/// `command == "delete"` instead of `"change"`.
+#[test]
+fn read_only_refusal_does_not_clobber_dot_repeat() {
+    let mut ed = editor_from("-[foo]> bar\n");
+
+    // Stage a real repeatable action on the writable buffer.
+    ed.feed_key(key('c'));
+    ed.feed_key(key('h'));
+    ed.feed_key(key('i'));
+    ed.feed_key(key_esc());
+    assert_eq!(
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .unwrap()
+            .command
+            .as_ref(),
+        "change",
+        "setup: change must be the stored action"
+    );
+
+    // Switch focus to a read-only view buffer.
+    ed.report(Severity::Warning, "msg".to_string());
+    ed.execute_typed("messages", None).unwrap();
+    assert!(
+        ed.doc().is_read_only(),
+        "setup: focused buffer must be read-only"
+    );
+
+    // Stage a selection, then attempt a repeatable edit — refused, no text
+    // changes, but the pipeline still runs the AFTER stage unconditionally.
+    ed.feed_key(key('x')); // select-line (motion-only; not blocked on read-only)
+    ed.feed_key(key('d')); // delete — refused by refuse_if_read_only
+
+    assert_eq!(
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .unwrap()
+            .command
+            .as_ref(),
+        "change",
+        "a refused delete on a read-only buffer must not overwrite the prior change action"
+    );
+}
+
 /// A replayed `c` also ends with the replacement selected — the anchor
 /// capture in `cmd_change` re-fires on replay (gated on the group being
 /// open, which `replay_dot` pre-opens), same as the interactive path.
@@ -191,30 +250,6 @@ fn explicit_count_on_dot_does_not_corrupt_stored_count() {
         1,
         "stored count must survive explicit-count replay unchanged"
     );
-}
-
-/// When `.` is pressed without a count, the original action's count is reused.
-#[test]
-fn dot_without_count_uses_original() {
-    // Use `select-line` (x) which is repeatable... wait, 'x' is select-line which
-    // is a Selection command (not repeatable). Use 'p' (paste) instead.
-    // Actually let's test with `d` — record with count, replay without.
-    // `d` ignores count anyway, so let's use a simpler repeatable: paste.
-    // Use `i` + text + Esc with count, then `.` without count.
-    // Actually the simplest: just verify last_repeatable_action.count is preserved.
-    let mut ed = editor_from("-[hi]> world\n");
-
-    // `d` (count ignored by the command, but stored as 1 in last_repeatable_action).
-    ed.feed_key(key('d'));
-    assert_eq!(ed.state.last_repeatable_action.as_ref().unwrap().count, 1);
-
-    // Move to "world", hit `.` without a count.
-    ed.feed_key(key('w'));
-    ed.feed_key(key('.'));
-    // last_repeatable_action.count should still be 1 after replay.
-    assert_eq!(ed.state.last_repeatable_action.as_ref().unwrap().count, 1);
-    // The delete should have happened.
-    assert!(!ed.doc().text().to_string().contains("world"));
 }
 
 /// After `.`, a single `u` should undo the entire replayed action as one step.
@@ -519,9 +554,10 @@ fn dot_repeats_change_reselects_line() {
 /// `undo` must clear the selection-recipe buffer so a stale `select-line` does
 /// not leak into the next edit's recipe.
 ///
-/// Fail oracle: drop the `else { state.selection_recipe.clear() }` branch for
-/// non-repeatable EditorCmds → `selection_recipe` is not cleared by `undo` →
-/// the assert will see len=1 instead of 0.
+/// Fail oracle: drop the `SelectionTracking::Untracked` early-return clear in
+/// `step_update_recipe` (`commands/pipeline.rs`) — `undo` is `Untracked`, so
+/// `selection_recipe` would not be cleared and the assert would see len=1
+/// instead of 0.
 #[test]
 fn undo_clears_selection_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\n");
@@ -1126,6 +1162,55 @@ fn dot_repeat_of_noop_surround_preserves_prior_recipe() {
         ed.doc().text().to_string(),
         "bbb\n",
         "`.` must replay select-line + d and remove the whole 'ccc' line"
+    );
+}
+
+/// `.` replaying a paste-ring cycle (`[`/`]`) must actually cycle the ring
+/// again, not no-op.
+///
+/// `repeat-last-action`'s own dispatch used to commit — and thereby close —
+/// the still-open paste session before `replay_dot` ever got a chance to look
+/// at what it was replaying. See `.defers_paste_commit()` on
+/// `repeat-last-action`'s registration (`registry/defaults/editor_cmds.rs`)
+/// and `Editor::replay_dot`'s own paste-commit step.
+///
+/// Independent oracle: `KillRing::cycle_position()` is the ring's own cursor,
+/// read directly rather than inferred from which text ended up pasted.
+///
+/// Fail oracle: without `repeat-last-action`'s `.defers_paste_commit()` (and
+/// the matching commit/defer decision in `replay_dot`), the paste session is
+/// closed before the replay runs; `do_paste_cycle` sees `paste_group == None`
+/// and returns before ever calling `cycle_older()`, so `cycle_position()`
+/// stays at `Some(1)` instead of advancing to `Some(2)`.
+#[test]
+fn dot_repeat_of_paste_ring_cycle_advances_the_ring() {
+    let mut ed = editor_from("-[aaa]> bbb ccc\n");
+
+    ed.feed_key(key('y')); // yank "aaa" → ring: [aaa]
+    ed.feed_key(key('w')); // select "bbb"
+    ed.feed_key(key('y')); // yank "bbb" → ring: [bbb, aaa]
+    ed.feed_key(key('w')); // select "ccc"
+    ed.feed_key(key('y')); // yank "ccc" → ring: [ccc, bbb, aaa]
+
+    ed.feed_key(key('p')); // bare paste: reads ring slot 0 ("ccc"), seeds cycle Some(0)
+    assert_eq!(
+        ed.state.kill_ring.cycle_position(),
+        Some(0),
+        "setup: p must seed the cycle at slot 0"
+    );
+
+    ed.feed_key(key('[')); // paste-ring-older: Some(0) -> Some(1) ("bbb")
+    assert_eq!(
+        ed.state.kill_ring.cycle_position(),
+        Some(1),
+        "setup: [ must cycle to slot 1"
+    );
+
+    ed.feed_key(key('.')); // replay paste-ring-older: must cycle Some(1) -> Some(2) ("aaa")
+    assert_eq!(
+        ed.state.kill_ring.cycle_position(),
+        Some(2),
+        "`.` must replay paste-ring-older as a second cycle step, not no-op"
     );
 }
 

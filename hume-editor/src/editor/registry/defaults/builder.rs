@@ -35,9 +35,17 @@ impl EditorCmdBuilder {
         self.extendable = true;
         self
     }
-    /// Mark as a ring-cycle command ([ / ]). Suppresses paste-session
-    /// commit so ring cycles fold into one undo step with the original paste.
-    pub(super) fn paste_cycle(mut self) -> Self {
+    /// Suppress the automatic paste-session commit that normally runs before
+    /// this command's own dispatch, leaving that decision to whatever runs
+    /// next. Two distinct callers need this: the ring-cycle commands (`[`/`]`)
+    /// use it so a chain of cycles folds into one undo step with the
+    /// original paste; `repeat-last-action` uses it so a replayed ring-cycle
+    /// command (`.` after `[`/`]`) still finds the session open — its own
+    /// (non-deferring) dispatch would otherwise close it before the replay
+    /// even runs. `Editor::replay_dot` makes the real commit/defer decision
+    /// itself, from the REPLAYED command's own meta, once that command is
+    /// known.
+    pub(super) fn defers_paste_commit(mut self) -> Self {
         self.defers_paste_commit = true;
         self
     }

@@ -159,6 +159,7 @@ pub(super) fn refuse_if_read_only(state: &mut EditorState, view: &EngineView) ->
         return false;
     }
     state.register_prefix = None;
+    state.command_refused = true;
     state.report(Severity::Info, "Buffer is read-only".to_string());
     true
 }

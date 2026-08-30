@@ -188,6 +188,21 @@ impl Editor {
             return;
         };
 
+        // Commit (or defer) any paste session left open by the keypress that
+        // set up `.` itself, using the REPLAYED command's own meta rather
+        // than `repeat-last-action`'s (which always defers — see its
+        // registration). A session can only still be open here if the
+        // command being replayed is itself a ring-cycle command: every other
+        // dispatch commits unconditionally before running, so by the time
+        // `.` was pressed any unrelated session was already closed. This
+        // reproduces `p [ .` as one more ring-cycle step instead of losing
+        // the session to `repeat-last-action`'s own dispatch.
+        commands::step_paste_commit(
+            &mut self.state,
+            &self.view,
+            edit_cmd.meta().defers_paste_commit,
+        );
+
         // Pre-open the edit group — the "replay signal" used by
         // begin_insert_session to suppress keystroke recording.
         self.begin_edit_group_current();
@@ -197,15 +212,21 @@ impl Editor {
         // command is `Untracked` and so can never reach the recipe — so
         // unlike the edit body below, no step here needs it set.
         for step in &action.selection_recipe {
-            let Some(cmd) = self
+            // A recipe step is only ever pushed for a `selection_tracking !=
+            // Untracked` command, and `SteelBacked`/`Lazy` are always
+            // `Untracked` (`registry/command.rs`), so every step names a
+            // native command. Native entries are registered once at startup
+            // and can never be unregistered or shadowed
+            // (`Registry::unregister`/`register_command` both refuse
+            // anything but a `Lazy`/absent slot), so the lookup is
+            // guaranteed to resolve.
+            let cmd = self
                 .state
                 .config
                 .registry
                 .get_mappable(step.command.as_ref())
                 .cloned()
-            else {
-                continue;
-            };
+                .expect("a dot-repeat selection-recipe step always names a native command");
             commands::run_native_body(
                 &mut self.state,
                 &mut self.view,
@@ -214,8 +235,6 @@ impl Editor {
                 step.extend,
             );
         }
-
-        self.state.pending_char = action.char_arg;
 
         match &edit_cmd {
             MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
@@ -244,6 +263,12 @@ impl Editor {
                 self.state.selection_recipe.clear();
             }
             _ => {
+                // Native bodies that consume a char argument (`replace`,
+                // `surround-add`) read it via `state.pending_char.take()`
+                // themselves — set it here, not before the match, so the
+                // Steel arm above (which receives `action.char_arg` as an
+                // explicit parameter instead) never leaves it dangling.
+                self.state.pending_char = action.char_arg;
                 commands::run_native_body(
                     &mut self.state,
                     &mut self.view,

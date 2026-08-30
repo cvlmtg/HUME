@@ -94,6 +94,12 @@ pub(in crate::editor) fn run_native_body(
         MappableCommand::EditorCmd { fun, .. } => {
             if let Err(e) = fun(state, view, count, motion_mode) {
                 state.report(Severity::Error, e.message().to_owned());
+                // No live EditorCmd body returns Err today (every refusal
+                // path — read-only buffers — takes the Ok(()) early-return
+                // through refuse_if_read_only instead), but a future one
+                // that fails without editing must get the same rollback, not
+                // a stamped no-op — see EditorState::command_refused.
+                state.command_refused = true;
             }
         }
         MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
@@ -297,6 +303,7 @@ pub(in crate::editor) fn run_dispatch_pipeline(
     // command by `registry::tests::no_command_is_both_repeatable_and_selection_tracking`
     // rather than re-probed here on every dispatch.
     // BEFORE
+    state.command_refused = false;
     step_paste_commit(state, view, meta.defers_paste_commit);
     let pre_jump = step_capture_pre_jump(state, view, &meta);
     let char_arg = state.pending_char;
@@ -314,7 +321,16 @@ pub(in crate::editor) fn run_dispatch_pipeline(
 
     // AFTER
     step_record_jump(state, view, pre_jump, meta.is_jump);
-    step_stamp_repeatable(state, &name, ctx.count.unwrap_or(1), char_arg, pre_recipe);
+    // A refused/errored body has nothing new to repeat — see
+    // `EditorState::command_refused`. `pre_recipe` is simply dropped, not
+    // restored into `state.selection_recipe`: every repeatable command is
+    // `SelectionTracking::Untracked` (enforced by
+    // `registry::tests::no_command_is_both_repeatable_and_selection_tracking`),
+    // so `step_update_recipe` below clears it unconditionally regardless of
+    // this branch — restoring it first would be immediately undone.
+    if !state.command_refused {
+        step_stamp_repeatable(state, &name, ctx.count.unwrap_or(1), char_arg, pre_recipe);
+    }
     // A command whose own snapshot is `None` never reaches the `!selection_changed`
     // early return in step_update_recipe, so `true` here is inert filler.
     let selection_changed = match &pre_sels {

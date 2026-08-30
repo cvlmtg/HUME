@@ -280,8 +280,15 @@ pub(crate) fn cmd_collapse_to_anchor_and_exit_extend(
 /// Replay the last repeatable editing action.
 ///
 /// Count semantics: if the user typed an explicit count before `.`, that count
-/// overrides the original; otherwise the original count is reused. This mirrors
-/// Vim's behaviour (`3.` → repeat with 3; `.` alone → repeat with original count).
+/// replaces `RepeatableAction::count` and is forwarded to the replayed
+/// command's body (`replay_dot`); otherwise the original count is reused.
+/// This is narrower than Vim's `3.`: the selection recipe (`replay_dot`'s
+/// `for step in &action.selection_recipe` loop) always replays with each
+/// step's own recorded `step.count`, never the override, and no built-in
+/// repeatable command body reads its `count` parameter today — every one
+/// takes `_count: usize`. So for every native command, `3.` and `.` produce
+/// identical results; the override is currently observable only by a Steel
+/// `#:repeatable` command that reads its `count` lambda argument.
 ///
 /// The handler only enqueues a `PendingRepeat` marker; the actual replay
 /// (edit-group bracketing, re-dispatch, insert-key replay) runs in

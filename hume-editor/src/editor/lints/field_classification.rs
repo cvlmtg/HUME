@@ -81,6 +81,7 @@ const EDITOR_STATE_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
     ("last_repeatable_action", "preserved"),
     ("selection_recipe", "preserved"),
     ("selection_recipe_writes", "preserved"),
+    ("command_refused", "preserved"),
     ("pending_repeat", "preserved"),
     ("insert_session", "preserved"),
     ("autoindent_pending", "preserved"),
