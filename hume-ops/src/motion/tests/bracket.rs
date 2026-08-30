@@ -296,3 +296,29 @@ fn goto_matching_pair_abruptly_closed_comment_one_dash() {
         "<!--->\n<div>x-[<]>/div>\n"
     );
 }
+
+#[test]
+fn goto_matching_pair_lands_on_grapheme_boundary_not_mid_cluster() {
+    // U+0600 (ARABIC NUMBER SIGN) is a `GC_Prepend` codepoint that joins
+    // forward with the following ')' into one grapheme cluster. The raw
+    // partner offset falls on the ')' itself — one char into that cluster —
+    // so it must snap back to the cluster's start rather than land inside it.
+    assert_state!(
+        "-[(]>\u{0600})\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "(-[\u{0600}]>)\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_ignores_count() {
+    // `#` is an involution — folding it N times would make even counts a
+    // no-op and odd counts identical to a bare `#`. Vim's `count%` means "go
+    // to N% of the file", a different operation this motion doesn't
+    // implement, so count is ignored entirely rather than folded.
+    assert_state!(
+        "-[(]>hello)\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 2, MotionMode::Move),
+        "(hello-[)]>\n"
+    );
+}

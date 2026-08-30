@@ -22,11 +22,18 @@ pub enum FindKind {
 /// semantics (via `mode`) and multi-cursor bookkeeping.
 ///
 /// `count` controls how many times the motion is applied per selection.
-/// The motion is folded `count` times *inside* the `map` call — each selection
+/// The motion is applied `count` times *inside* the `map` call — each selection
 /// independently accumulates N steps before anchor/merge logic runs. This is
 /// semantically "move 3 words" (not "apply 1w to the whole selection set three
 /// times"), which prevents premature merging of multi-cursor selections between
 /// steps.
+///
+/// Stops early the moment one step returns the same position it started
+/// from — a motion is a pure function of buffer + position, so a fixed
+/// point can never move again. This is a no-op for a motion that always
+/// moves; it caps a clamping motion (buffer start/end) or an involution
+/// (`goto-matching-pair`) at one wasted step instead of repeating up to
+/// `count` times for nothing.
 ///
 /// Uses `map` (which always merges) so that selections which converge to the
 /// same position after the motion are automatically merged.
@@ -38,12 +45,17 @@ pub(crate) fn apply_motion(
     motion: impl Fn(&BufferText, usize) -> usize,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
-        // Apply the motion `count` times, feeding each result as the next
-        // input. `fold` starting from the current head position.
-        let new_head = (0..count).fold(sel.head(), |h, _| motion(text, h));
+        let mut head = sel.head();
+        for _ in 0..count {
+            let next = motion(text, head);
+            if next == head {
+                break;
+            }
+            head = next;
+        }
         match mode {
-            MotionMode::Move => Selection::collapsed(new_head),
-            MotionMode::Extend => Selection::new(sel.anchor(), new_head),
+            MotionMode::Move => Selection::collapsed(head),
+            MotionMode::Extend => Selection::new(sel.anchor(), head),
         }
     });
     result.debug_assert_valid(text);
@@ -124,8 +136,22 @@ motion_cmd!(/// Move or extend cursors to the `\n` terminating the current line.
 motion_cmd!(/// Move or extend cursors to the first non-blank character on their current line.
     cmd_goto_first_nonblank, goto_first_nonblank);
 
-motion_cmd!(/// Move or extend cursors to the matching bracket or tag (`#`).
-    cmd_goto_matching_pair, goto_matching_pair);
+/// Move or extend cursors to the matching bracket or tag (`#`).
+///
+/// Not a `motion_cmd!`: the motion is an involution (applying it twice
+/// returns to the start), so folding it `count` times the way every other
+/// motion does would make an even count a no-op and an odd count identical
+/// to a bare `#`. Vim's `count%` means "go to N% of the file" — a different
+/// operation this motion doesn't implement — so `count` is ignored rather
+/// than given a meaning nobody asked for.
+pub fn cmd_goto_matching_pair(
+    text: &BufferText,
+    sels: SelectionSet,
+    _count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
+    apply_motion(text, sels, mode, 1, goto_matching_pair)
+}
 
 // Paragraph motions.
 motion_cmd!(/// Move or extend cursors to the start of the next paragraph (`]p`).
