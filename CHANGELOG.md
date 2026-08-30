@@ -40,6 +40,7 @@
 - `,` (keep only the primary selection), `S` (split a selection into one per line), `_` (trim whitespace from a selection), `(`/`)` (cycle the primary selection), `Ctrl+,` (remove the primary selection), and `Ctrl+e` (flip anchor/head) preceding an edit are now replayable with `.` — each previously replayed only the edit against whatever selection happened to remain, instead of re-running the step that narrowed or reshaped the selection first.
 - `select-word-nearest-on-line` (bound by plugins, not a default key) is now replayable with `.` when it precedes an edit.
 - `m/` with a search pattern matching nothing, or `ms`/`ma`/`mi` finding no surrounding pair, no longer discards a selection step an earlier command in the same sequence had already built before an edit — `.` now re-runs that earlier step instead of replaying the edit against whatever selection happens to remain.
+- The alternate buffer (`Ctrl+6`/`goto-alternate-file`, `#`/`:b#`) now follows the order buffers were last visited rather than the order they were opened, so it keeps toggling with the buffer you actually came from after jumping around with a picker or another pane instead of falling back to whichever buffer opened just before the current one.
 
 ## [0.11.0] - 2026-08-25
 

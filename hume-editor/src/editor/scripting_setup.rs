@@ -343,10 +343,15 @@ impl Editor {
     /// rather than once before it, so a pane-focus move and a buffer switch
     /// in the same pass coalesce into one event, and a handler that itself
     /// switches buffers is caught by the very next pass.
+    ///
+    /// Also the MRU-promotion point behind `alternate_buffer()`/`Ctrl+6` —
+    /// "most-recently-focused" is the same derived join with the same absent
+    /// chokepoint, so it rides this diff instead of a second one.
     fn detect_buffer_enter(&mut self) {
         let now = self.focused_buffer_id();
         if self.state.last_entered_buffer != Some(now) {
             self.state.last_entered_buffer = Some(now);
+            self.state.buffers.touch_mru(now);
             self.state
                 .queue_event(EditorEvent::OnBufferEnter { buffer: now });
         }

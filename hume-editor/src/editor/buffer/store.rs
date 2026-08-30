@@ -23,7 +23,12 @@ pub(crate) struct BufferStore {
     buffers: SecondaryMap<BufferId, Buffer>,
     /// Open-order list. Used for `:bnext` / `:bprev` cycling.
     order: Vec<BufferId>,
-    /// Most-recently-used list, tail = most recent.
+    /// Most-recently-*focused* list, tail = most recently focused. Seeded at
+    /// open (see `open`'s own doc for why) and otherwise promoted only by
+    /// `Editor::detect_buffer_enter` (`scripting_setup.rs`) — the join of
+    /// `focused_pane_id` and `pane.buffer_id` has no write-site chokepoint of
+    /// its own, so promoting on a buffer-switch primitive alone would miss a
+    /// plain pane-focus move.
     /// Length is always ≤ `order.len()`; entries are unique.
     mru: Vec<BufferId>,
     /// Monotonic counter bumped once per user edit/undo/redo, in any open
@@ -61,6 +66,12 @@ impl BufferStore {
 
     /// Register a new buffer slot. Called from `Editor::open_buffer` after the
     /// engine slot is allocated.
+    ///
+    /// Seeds `mru` too, ahead of any focus it may never receive — a buffer
+    /// opened in a background pane and never focused still needs a valid
+    /// `close_buffer` replacement target (`mru_excluding`), and an absent
+    /// entry there would wrongly fall into the "last buffer" scratch-replace
+    /// branch instead.
     pub(crate) fn open(&mut self, id: BufferId, doc: Buffer) {
         self.buffers.insert(id, doc);
         self.order.push(id);
@@ -220,7 +231,10 @@ impl BufferStore {
         replacement
     }
 
-    /// Move `id` to the tail of the MRU list (call on every buffer switch).
+    /// Move `id` to the tail of the MRU list. Called from `open` (seed) and
+    /// from `Editor::detect_buffer_enter` (promote on focus) — never from a
+    /// buffer-switch primitive directly, since a plain pane-focus move must
+    /// promote too and only that observation point sees every path.
     pub(crate) fn touch_mru(&mut self, id: BufferId) {
         self.mru.retain(|&x| x != id);
         self.mru.push(id);
