@@ -37,6 +37,8 @@
 - Diagnostic gutter markers no longer render underlined. They were interning the same scope as the text-span squiggle, which every bundled theme underlines; the gutter now reads its own scope (`error`/`warning`/`info`/`hint`).
 - `m/` (select all search matches) and `ms` (surround selection, e.g. `ms(`) followed by an edit are now replayable with `.` — they previously replayed only the edit against whatever selection happened to remain, instead of re-running the selection step (every current search match, or the next surrounding delimiter pair) before repeating the edit.
 - `C` (`copy-selection-on-next-line`/`-prev-line`) preceding an edit is now replayable with `.` — it previously replayed only the edit against whatever selection happened to remain, instead of re-duplicating the selection onto the adjacent line first.
+- `,` (keep only the primary selection), `S` (split a selection into one per line), `_` (trim whitespace from a selection), `(`/`)` (cycle the primary selection), and `Ctrl+e` (flip anchor/head) preceding an edit are now replayable with `.` — each previously replayed only the edit against whatever selection happened to remain, instead of re-running the step that narrowed or reshaped the selection first.
+- `select-word-nearest-on-line` (bound by plugins, not a default key) is now replayable with `.` when it precedes an edit.
 
 ## [0.11.0] - 2026-08-25
 

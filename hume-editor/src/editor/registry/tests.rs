@@ -488,3 +488,87 @@ fn clears_extend_flag_matches_expected_commands() {
         );
     }
 }
+
+#[test]
+fn selection_tracking_matches_expected_commands() {
+    let reg = CommandRegistry::with_defaults();
+
+    // `Composes`: transforms or reduces whatever extent is already staged
+    // rather than establishing one of its own — see `SelectionTracking::Composes`.
+    for name in &[
+        "collapse-selection",
+        "flip-selections",
+        "keep-primary-selection",
+        "remove-primary-selection",
+        "cycle-primary-forward",
+        "cycle-primary-backward",
+        "split-selection-on-newlines",
+        "trim-selection-whitespace",
+        "copy-selection-on-next-line",
+        "copy-selection-on-prev-line",
+    ] {
+        let meta = reg
+            .get_mappable(name)
+            .unwrap_or_else(|| panic!("command '{name}' not found"))
+            .meta();
+        assert_eq!(
+            meta.selection_tracking,
+            SelectionTracking::Composes,
+            "'{name}' should have selection_tracking = Composes"
+        );
+    }
+
+    // `Establishes`: replayable on its own from a fresh cursor.
+    // `select-all` is whole-buffer and position-independent, unlike its
+    // `Composes` siblings above despite sharing their `Selection` variant.
+    for name in &["select-line", "select-all", "select-all-matches"] {
+        let meta = reg
+            .get_mappable(name)
+            .unwrap_or_else(|| panic!("command '{name}' not found"))
+            .meta();
+        assert_eq!(
+            meta.selection_tracking,
+            SelectionTracking::Establishes,
+            "'{name}' should have selection_tracking = Establishes"
+        );
+    }
+
+    // `Untracked`: not a selection builder. `move-left` (a `Motion`) is
+    // deliberately excluded here — every `Motion` carries `Establishes` in
+    // its raw `CmdMeta`, with the actual "never establishes" behavior
+    // enforced downstream by `step_update_recipe`'s `is_motion` check, not
+    // by this field.
+    for name in &["delete", "undo", "search-word-under-cursor"] {
+        let meta = reg
+            .get_mappable(name)
+            .unwrap_or_else(|| panic!("command '{name}' not found"))
+            .meta();
+        assert_eq!(
+            meta.selection_tracking,
+            SelectionTracking::Untracked,
+            "'{name}' should have selection_tracking = Untracked"
+        );
+    }
+}
+
+/// A command cannot be both repeatable (an edit that modifies the buffer)
+/// and a selection-builder (a pure cursor movement) — `step_stamp_repeatable`
+/// and `step_update_recipe` (`commands/pipeline.rs`) both fire off the same
+/// AFTER stage and would conflict. This property is fixed at registration
+/// time, so it is checked once here for every registered command rather than
+/// re-probed on every dispatch.
+#[test]
+fn no_command_is_both_repeatable_and_selection_tracking() {
+    let reg = CommandRegistry::with_defaults();
+
+    for name in reg.names() {
+        let Some(cmd) = reg.get_mappable(name) else {
+            continue; // typed (`:`) commands carry no CmdMeta
+        };
+        let meta = cmd.meta();
+        assert!(
+            !(meta.repeatable && meta.selection_tracking != SelectionTracking::Untracked),
+            "command '{name}' is both repeatable and selection-tracking"
+        );
+    }
+}

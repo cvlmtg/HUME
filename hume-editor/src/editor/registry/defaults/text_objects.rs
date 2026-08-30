@@ -1,7 +1,7 @@
 use crate::editor::commands::cmd_visual_select_word_nearest_on_line;
 use std::borrow::Cow;
 
-use crate::editor::registry::{CommandRegistry, MappableCommand};
+use crate::editor::registry::{CommandRegistry, MappableCommand, SelectionTracking};
 use hume_ops::text_object::{
     cmd_around_angle, cmd_around_argument, cmd_around_backtick, cmd_around_brace,
     cmd_around_bracket, cmd_around_double_quote, cmd_around_line, cmd_around_paren,
@@ -32,6 +32,11 @@ impl CommandRegistry {
 
         // ── Text objects — word ───────────────────────────────────────────────
         super::selection!(self, "inner-word", "Select inner word.", cmd_inner_word);
+        // `EditorCmd`, not `selection!`: needs a `RowMap` for wrap-aware
+        // nearest-word placement (see `visual_move.rs::cmd_visual_select_word_nearest_on_line`).
+        // `.establishes_selection()`: same in-place establishing semantics
+        // as `select-word` (`mm`, a plain `Selection`) — replayable on its
+        // own from a fresh cursor.
         ecmd(
             "select-word-nearest-on-line",
             "Select the word under the cursor, or the nearest word on the same visual line \
@@ -39,6 +44,7 @@ impl CommandRegistry {
             cmd_visual_select_word_nearest_on_line,
         )
         .extendable()
+        .establishes_selection()
         .reg(self);
         super::selection!(
             self,

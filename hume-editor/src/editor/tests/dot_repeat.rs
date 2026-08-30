@@ -698,9 +698,10 @@ fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
 /// selection), leaving "a   baz\n". The buggy version would re-run
 /// `select-next-word` from "bar", select "baz", and delete that instead.
 ///
-/// Fail oracle: remove the `&& !meta.reaching` guard from `step_update_recipe`
-/// → reaching `w` pushes an establish step → recipe is non-empty → `.` selects
-/// the NEXT word ("baz") → buffer would contain "bar" but not "baz".
+/// Fail oracle: remove the `!ctx.extend` / `meta.is_motion` exclusion from
+/// `step_update_recipe` → `w` (a `Motion`) pushes an establish step → recipe
+/// is non-empty → `.` selects the NEXT word ("baz") → buffer would contain
+/// "bar" but not "baz".
 #[test]
 fn dot_repeat_reaching_select_acts_on_current_selection() {
     let mut ed = editor_from("-[a]>  foo bar baz\n");
@@ -747,8 +748,8 @@ fn dot_repeat_reaching_select_acts_on_current_selection() {
 /// move to "bar", `.` must replay `ms(` + `d` on "(bar)" → "foo bar baz".
 ///
 /// Fail oracle: if `ms(` is not recorded in the selection recipe (e.g.
-/// `surround-paren` is not `tracks_selection`, or is excluded as reaching), the
-/// recipe is empty and `.` deletes only the current "bar" selection, leaving
+/// `surround-paren`'s `selection_tracking` were `Untracked`), the recipe is
+/// empty and `.` deletes only the current "bar" selection, leaving
 /// "foo () baz" instead of "foo bar baz".
 #[test]
 fn dot_repeat_of_match_surround_deletes_both_parens() {
@@ -775,6 +776,11 @@ fn dot_repeat_of_match_surround_deletes_both_parens() {
     );
 }
 
+/// `ma(` (select around `()`, including the delimiters) is characterization
+/// coverage, not regression coverage: unlike `ms(` (`dot_repeat_of_match_surround_deletes_both_parens`
+/// above), `ma(` on `(foo)` already leaves a non-collapsed selection, so the
+/// pre-fix `!is_collapsed()` gate already recorded it — this pins that it
+/// still replays correctly under the `!meta.is_motion` gate.
 #[test]
 fn dot_repeat_of_match_around_deletes_content() {
     let mut ed = editor_from("(-[f]>oo) (bar) baz\n");
@@ -799,6 +805,10 @@ fn dot_repeat_of_match_around_deletes_content() {
     );
 }
 
+/// `mi(` (select inner `()`, excluding the delimiters) — same characterization
+/// note as `dot_repeat_of_match_around_deletes_content` above: on `(foo)` it
+/// already leaves a non-collapsed selection, so this is coverage for the new
+/// `!meta.is_motion` gate rather than a regression test for it.
 #[test]
 fn dot_repeat_of_match_inner_deletes_content() {
     let mut ed = editor_from("(-[f]>oo) (bar) baz\n");
@@ -825,17 +835,10 @@ fn dot_repeat_of_match_inner_deletes_content() {
 
 #[test]
 fn dot_repeat_of_select_all_matches_deletes_content() {
-    let mut ed = editor_from("-[f]>oo bar baz foo bar baz\n");
+    let mut ed = editor_from("-[f]>oo bar baz foo bar baz\n").with_search_regex("foo");
 
-    ed.handle_key(key('/'));
-    for ch in "foo".chars() {
-        ed.handle_key(key(ch));
-    }
-    assert_eq!(state(&ed), "-[foo]> bar baz foo bar baz\n");
-
-    ed.handle_key(key_enter());
-    ed.handle_key(key('m'));
-    ed.handle_key(key('/'));
+    ed.feed_key(key('m'));
+    ed.feed_key(key('/'));
 
     assert_eq!(state(&ed), "-[foo]> bar baz -[foo]> bar baz\n");
     assert_eq!(
@@ -851,13 +854,7 @@ fn dot_repeat_of_select_all_matches_deletes_content() {
         "m/ after a search then d must remove all occurrences of 'foo'"
     );
 
-    ed.handle_key(key('/'));
-    for ch in "bar".chars() {
-        ed.handle_key(key(ch));
-    }
-    assert_eq!(state(&ed), " -[bar]> baz -[ ]>bar baz\n");
-
-    ed.handle_key(key_enter());
+    ed = ed.with_search_regex("bar");
     ed.feed_key(key('.')); // replay m/ + d
     assert_eq!(
         ed.doc().text().to_string(),
@@ -866,9 +863,113 @@ fn dot_repeat_of_select_all_matches_deletes_content() {
     );
 }
 
+/// `,` (`keep-primary-selection`) after `m/` must APPEND onto the recipe `m/`
+/// already built, not reset it — it reduces whatever is staged to the
+/// primary selection rather than establishing a fresh extent of its own.
+///
+/// Buffer "foo bar foo bar foo bar": `m/` selects all three "foo" matches,
+/// `,` keeps only the first (primary), `d` deletes it. `.` must replay
+/// `m/` + `,` + `d` — re-selecting all remaining "foo" matches, keeping the
+/// (new) primary, and deleting it too.
+///
+/// Fail oracle: if `keep-primary-selection` reset the recipe instead of
+/// composing, `.` would replay `[,, d]` from whatever selection happens to
+/// remain after the first delete — `,` on a single selection is a no-op, so
+/// `d` would just delete that leftover selection instead of re-running the
+/// search-driven `m/`.
+#[test]
+fn dot_repeat_of_keep_primary_selection_composes_onto_the_prior_recipe() {
+    let mut ed = editor_from("-[f]>oo bar foo bar foo bar\n").with_search_regex("foo");
+
+    ed.feed_key(key('m'));
+    ed.feed_key(key('/')); // select all three "foo" matches
+    assert_eq!(
+        ed.state.selection_recipe.len(),
+        1,
+        "m/ must establish a 1-step recipe"
+    );
+
+    ed.feed_key(key(',')); // keep-primary-selection: reduce to the first match
+    assert_eq!(
+        ed.state.selection_recipe.len(),
+        2,
+        ", must compose onto the m/ step, not reset it"
+    );
+    assert_eq!(
+        ed.state.selection_recipe[0].command.as_ref(),
+        "select-all-matches"
+    );
+    assert_eq!(
+        ed.state.selection_recipe[1].command.as_ref(),
+        "keep-primary-selection"
+    );
+
+    ed.feed_key(key('d')); // delete the first "foo"
+    assert_eq!(ed.doc().text().to_string(), " bar foo bar foo bar\n");
+
+    ed.feed_key(key('.')); // replay m/ + , + d
+    assert_eq!(
+        ed.doc().text().to_string(),
+        " bar  bar foo bar\n",
+        "`.` must replay m/ + , + d and remove the next 'foo'"
+    );
+}
+
+/// `S` (`split-selection-on-newlines`) after `x` + `Ctrl+x` must APPEND onto
+/// the recipe those steps already built, not reset it — it splits whatever
+/// multi-line extent is staged into per-line pieces rather than establishing
+/// a fresh extent of its own.
+///
+/// Buffer "aaa\nbbb\nccc\nddd\n": `x` selects "aaa\n", `Ctrl+x` extends to
+/// "aaa\nbbb\n", `S` splits into two per-line selections ("aaa" and "bbb\n").
+/// `d` deletes both: the first piece excludes its line's newline (so "aaa"
+/// → "", newline kept), the second piece runs through its own trailing
+/// newline (so "bbb\n" is removed whole) — net effect, one line disappears:
+/// "\nccc\nddd\n". `.` must replay `x` + `Ctrl+x` + `S` + `d` on the next two
+/// lines too, removing another: "\n\n".
+///
+/// Fail oracle: if `split-selection-on-newlines` reset the recipe instead of
+/// composing, `.` would replay `[S, d]` from whatever selection happens to
+/// remain — `S` on a single-line (already-collapsed) selection is a no-op,
+/// so `d` would delete only that leftover selection.
+#[test]
+fn dot_repeat_of_split_selection_on_newlines_composes_onto_the_prior_recipe() {
+    let mut ed = editor_from("-[a]>aa\nbbb\nccc\nddd\n");
+
+    ed.feed_key(key('x')); // select-line: "aaa\n"
+    ed.feed_key(key_ctrl('x')); // extend: "aaa\nbbb\n"
+    assert_eq!(
+        ed.state.selection_recipe.len(),
+        2,
+        "setup: x + Ctrl+x must push two recipe steps"
+    );
+
+    ed.feed_key(key('S')); // split into "aaa" + "bbb\n"
+    assert_eq!(
+        ed.state.selection_recipe.len(),
+        3,
+        "S must compose onto the x/Ctrl+x steps, not reset them"
+    );
+    assert_eq!(
+        ed.state.selection_recipe[2].command.as_ref(),
+        "split-selection-on-newlines"
+    );
+
+    ed.feed_key(key('d'));
+    assert_eq!(ed.doc().text().to_string(), "\nccc\nddd\n");
+
+    ed.feed_key(key('j')); // move onto "ccc"
+    ed.feed_key(key('.')); // replay x + Ctrl+x + S + d
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\n\n",
+        "`.` must replay x + Ctrl+x + S + d and clear 'ccc'/'ddd'"
+    );
+}
+
 /// `mii` (`select-last-insertion`) is an `EditorCmd` that does not opt into
-/// the dot-repeat recipe via `.tracks_selection()` (unlike `select-all-matches`
-/// — see `editor_cmds.rs`), so unlike `ms(`/`mm` it can never push itself onto
+/// the dot-repeat recipe via `.establishes_selection()` (unlike
+/// `select-all-matches` — see `editor_cmds.rs`), so unlike `ms(`/`mm` it can never push itself onto
 /// `state.selection_recipe`, and (being non-repeatable) it can never overwrite
 /// `last_repeatable_action` either. Running it between an insert and `.` must
 /// therefore be inert: `.` still replays the original insert verbatim, not
@@ -888,10 +989,7 @@ fn dot_repeat_of_select_all_matches_deletes_content() {
 fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
     let mut ed = editor_from("-[x]>\n");
 
-    ed.feed_key(key('i')); // insert-before, cursor collapses to start
-    ed.feed_key(key('a'));
-    ed.feed_key(key('b'));
-    ed.feed_key(key_esc()); // back to Normal; buffer is "abx"
+    type_text(&mut ed, "ab"); // insert-before, cursor collapses to start; buffer is "abx"
     assert_eq!(ed.doc().text().to_string(), "abx\n");
 
     ed.feed_key(key('m'));
@@ -902,14 +1000,50 @@ fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
     ed.feed_key(key('d'));
     assert_eq!(state(&ed), "-[x]>\n");
 
-    ed.feed_key(key('i'));
-    ed.feed_key(key('a'));
-    ed.feed_key(key('b'));
-    ed.feed_key(key_esc());
+    type_text(&mut ed, "ab");
     assert_eq!(ed.doc().text().to_string(), "abx\n");
 
     ed.feed_key(key('.')); // must replay the insert, not act on the mii selection
     assert_eq!(ed.doc().text().to_string(), "ababx\n");
+}
+
+/// `select-word-nearest-on-line` is the wrap-aware `EditorCmd` twin of
+/// `select-word` (`mm`, a `Selection` → `Establishes`) — same in-place
+/// establishing semantics, `EditorCmd` only because it needs a `RowMap`.
+/// Unbound by default, so this drives it directly via `execute_keymap_command`
+/// rather than a keypress. It must be replayable: `.` re-runs the selection
+/// step before repeating the edit, not just re-delete whatever selection
+/// happens to remain at the new cursor.
+///
+/// Buffer "foo bar\n": select-word-nearest-on-line selects "foo " (word plus
+/// trailing whitespace — the `word-selects-whitespace` default), `d` deletes
+/// it, leaving "bar\n" with the cursor collapsed to a 1-char selection on
+/// 'b'. `.` must replay select-word-nearest-on-line + d from there too,
+/// re-selecting the whole word "bar" rather than deleting just that 1-char
+/// cursor.
+///
+/// Fail oracle: `Untracked` (its state before this fix) means the recipe
+/// stays empty, so `.` would delete only the 1-char cursor left behind,
+/// leaving "ar\n" instead of "\n".
+#[test]
+fn dot_repeat_of_select_word_nearest_on_line_deletes_the_word() {
+    let mut ed = editor_from("-[f]>oo bar\n");
+
+    ed.execute_keymap_command(
+        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
+        Some(1),
+        false,
+        ArgSource::Keymap,
+    );
+    ed.feed_key(key('d'));
+    assert_eq!(ed.doc().text().to_string(), "bar\n");
+
+    ed.feed_key(key('.')); // replay select-word-nearest-on-line + d
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\n",
+        "`.` must replay select-word-nearest-on-line + d and remove the whole word 'bar'"
+    );
 }
 
 // ── Steel command dot-repeat tests ────────────────────────────────────────────

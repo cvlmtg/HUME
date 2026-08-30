@@ -24,30 +24,19 @@ macro_rules! motion {
             fun: $fun,
             around_fun: None,
             jump: true,
-            reaching: false,
-        })
-    };
-    ($reg:expr, $name:literal, $doc:literal, $fun:expr, reaching) => {
-        $reg.register(MappableCommand::Motion {
-            name: Cow::Borrowed($name),
-            doc: Cow::Borrowed($doc),
-            fun: $fun,
-            around_fun: None,
-            jump: false,
-            reaching: true,
         })
     };
     // Word motions: `around_fun` swaps in for `fun` when
-    // `word-selects-whitespace` is on (see `run_native_body`). All
-    // four are `reaching` — see the plain `reaching` arm above.
-    ($reg:expr, $name:literal, $doc:literal, $fun:expr, $around_fun:expr, reaching) => {
+    // `word-selects-whitespace` is on (see `run_native_body`). The `jump`
+    // arm above must be tried first — a bare identifier also parses as a
+    // valid `expr` and `macro_rules` does not backtrack once an arm matches.
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr, $around_fun:expr) => {
         $reg.register(MappableCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: $fun,
             around_fun: Some($around_fun),
             jump: false,
-            reaching: true,
         })
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
@@ -57,7 +46,6 @@ macro_rules! motion {
             fun: $fun,
             around_fun: None,
             jump: false,
-            reaching: false,
         })
     };
 }
@@ -69,6 +57,7 @@ macro_rules! selection {
             fun: $fun,
             around_fun: None,
             jump: false,
+            selection_tracking: SelectionTracking::Establishes,
         })
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump) => {
@@ -78,14 +67,26 @@ macro_rules! selection {
             fun: $fun,
             around_fun: None,
             jump: true,
+            selection_tracking: SelectionTracking::Establishes,
+        })
+    };
+    // Transforms whatever extent is already staged instead of establishing
+    // one — see `SelectionTracking::Composes`. Tried before the `$around_fun`
+    // arm below for the same reason `jump` is: a bare identifier also parses
+    // as a valid `expr` and macro_rules does not backtrack once an arm matches.
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr, composes) => {
+        $reg.register(MappableCommand::Selection {
+            name: Cow::Borrowed($name),
+            doc: Cow::Borrowed($doc),
+            fun: $fun,
+            around_fun: None,
+            jump: false,
+            selection_tracking: SelectionTracking::Composes,
         })
     };
     // `mm`/`MM` (select-word/select-uppercase-word): `around_fun` swaps in
-    // for `fun` when `word-selects-whitespace` is on. Tried last — the
-    // `jump` arm above must win when the 4th argument is literally the
-    // identifier `jump`, since a bare identifier also parses as a valid
-    // `expr` and macro_rules does not backtrack across arms once one
-    // matches.
+    // for `fun` when `word-selects-whitespace` is on. Tried last, for the
+    // same reason.
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, $around_fun:expr) => {
         $reg.register(MappableCommand::Selection {
             name: Cow::Borrowed($name),
@@ -93,6 +94,7 @@ macro_rules! selection {
             fun: $fun,
             around_fun: Some($around_fun),
             jump: false,
+            selection_tracking: SelectionTracking::Establishes,
         })
     };
 }

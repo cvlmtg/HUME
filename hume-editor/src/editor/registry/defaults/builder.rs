@@ -2,9 +2,10 @@ use std::borrow::Cow;
 
 use crate::editor::registry::{CommandRegistry, EditorCmdFn, MappableCommand, SelectionTracking};
 
-// Builder for EditorCmd registration. Each flag method sets one bool;
-// .reg(registry) terminates the chain. Adding a new flag costs one
-// method — existing call sites are unaffected.
+// Builder for EditorCmd registration. Each method sets one field (a bool,
+// except the two `selection_tracking` setters below); .reg(registry)
+// terminates the chain. Adding a new flag costs one method — existing call
+// sites are unaffected.
 pub(super) struct EditorCmdBuilder {
     name: &'static str,
     doc: &'static str,
@@ -52,14 +53,12 @@ impl EditorCmdBuilder {
     /// selection extent on its own but can't be a pure `Selection` variant
     /// (needs `EditorState`/`EngineView` access) — see
     /// [`crate::editor::registry::CmdMeta::selection_tracking`].
-    pub(super) fn tracks_selection(mut self) -> Self {
+    pub(super) fn establishes_selection(mut self) -> Self {
         self.selection_tracking = SelectionTracking::Establishes;
         self
     }
     /// Opt this command into the dot-repeat selection recipe as a composing
-    /// step: it transforms whatever extent is already staged rather than
-    /// establishing one, so it always appends. See
-    /// [`crate::editor::registry::CmdMeta::selection_tracking`].
+    /// step — see [`SelectionTracking::Composes`].
     pub(super) fn composes_selection(mut self) -> Self {
         self.selection_tracking = SelectionTracking::Composes;
         self

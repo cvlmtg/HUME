@@ -386,8 +386,8 @@ pub(crate) struct EditorState {
     /// Tracks how the current selection was built: Motion/Selection commands
     /// append or reset this buffer; repeatable edits snapshot it into
     /// `RepeatableAction::selection_recipe` (via `mem::take`) and clear it.
-    /// Non-selection commands clear it. Invariant: `[]` or
-    /// `[Move-establish, (Extend | Compose)*]`.
+    /// Non-selection commands clear it. See `RepeatableAction::selection_recipe`
+    /// for the invariant.
     pub(super) selection_recipe: Vec<SelectionStep>,
     /// Incremented once by every native dispatch's `step_update_recipe`
     /// (`commands/pipeline.rs`), regardless of what it did to the recipe.

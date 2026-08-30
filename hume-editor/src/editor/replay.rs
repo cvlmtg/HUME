@@ -46,22 +46,20 @@ pub(crate) struct InsertSession {
 /// Recorded by `step_update_recipe` as Motion/Selection commands (or
 /// EditorCmds opting into `SelectionTracking::Establishes`/`Composes`) run,
 /// so that `replay_dot` can replay them before the edit, rebuilding the
-/// extent the edit originally acted on.
-///
-/// Only in-place selections (e.g. `select-line`) appear as establish steps;
-/// reaching selections (`select-next-word` / `-prev-word` / uppercase-word variants) are
-/// not recorded in Move mode — replaying one would advance past the cursor and
-/// act on the wrong region. Extend steps of any selection are always recorded.
-/// A `Composes` command (`copy-selection-on-next-line` / `-prev-line`) is
-/// always recorded too, regardless of mode — it transforms the extent the
-/// preceding steps built rather than establishing its own.
+/// extent the edit originally acted on. See `SelectionTracking` for which
+/// commands are excluded (Move-mode motions) or always recorded (`Composes`).
 #[derive(Debug, Clone)]
 pub(crate) struct SelectionStep {
-    /// Command name (e.g. `"select-line"`, `"find-char"`).
+    /// Command name (e.g. `"select-line"`, `"surround-paren"`).
     pub command: Cow<'static, str>,
     /// Count prefix originally used.
     pub count: usize,
-    /// Char argument for wait-char selection commands (`f`/`t`); else `None`.
+    /// Char argument the step's command consumed, if any (e.g. the delimiter
+    /// `surround-paren` waits for); `None` for commands that don't consume one.
+    /// No command that can currently reach `SelectionStep` waits on a char —
+    /// every `wait_char!`-bound command (`f`/`t`/`r`/`w`) is `Untracked` — so
+    /// this field is unpopulated today; it exists for a future command that
+    /// both waits on a char and opts into the recipe.
     pub char_arg: Option<char>,
     /// `true` if this step ran in Extend mode (grew the existing selection).
     /// The first step in a recipe is always `false` (a fresh Move-mode establish).
@@ -90,15 +88,13 @@ pub(crate) struct RepeatableAction {
     pub insert_keys: Vec<InsertInput>,
     /// Selection-building recipe to replay BEFORE the edit.
     ///
-    /// Invariant: `[]` (edit acted on pre-existing selection or after a reaching
-    /// selection — `.` deletes the current selection as-is) or `[one in-place
-    /// Move-mode establish, then zero+ (Extend | Compose) appends]`. Reaching
-    /// selections (`select-next-word` / `-prev-word` / uppercase-word variants)
-    /// are excluded from establish steps because replaying them advances past
-    /// the cursor. A `Compose` step (`copy-selection-on-next-line` /
-    /// `-prev-line`) transforms the extent the preceding steps built rather
-    /// than establishing its own, so it only ever appears after at least one
-    /// establish step, never as the first. Rebuilt from
+    /// Invariant: `[]` (edit acted on pre-existing selection, or after a
+    /// Move-mode motion — `.` deletes the current selection as-is), or a
+    /// sequence of `Establishes`/`Composes` steps — see `SelectionTracking`
+    /// for what each records. A leading `Composes` step is legal: `C` from a
+    /// bare cursor (no prior establish) duplicates that cursor onto the
+    /// adjacent line and is itself the first (and only) recipe entry —
+    /// replaying it reproduces exactly what the user did. Rebuilt from
     /// `EditorState::selection_recipe` each time a repeatable command is
     /// recorded.
     pub selection_recipe: Vec<SelectionStep>,

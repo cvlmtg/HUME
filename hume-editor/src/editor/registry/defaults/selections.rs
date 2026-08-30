@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::editor::commands::{cmd_copy_selection_on_next_line, cmd_copy_selection_on_prev_line};
-use crate::editor::registry::{CommandRegistry, MappableCommand};
+use crate::editor::registry::{CommandRegistry, MappableCommand, SelectionTracking};
 use hume_ops::selection_cmd::{
     cmd_collapse_selection_to_head, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
     cmd_flip_selections, cmd_keep_primary_selection, cmd_remove_primary_selection, cmd_select_all,
@@ -13,23 +13,32 @@ use super::builder::ecmd;
 impl CommandRegistry {
     pub(super) fn register_selections(&mut self) {
         // ── Selection commands ────────────────────────────────────────────────
+        // The eight below are `composes`, not the macro's default
+        // `Establishes`: each transforms or reduces whatever extent is
+        // already staged rather than building a fresh one replayable on its
+        // own from a bare cursor — see `SelectionTracking::Composes`.
+        // `select-all` is not among them: whole-buffer and
+        // position-independent, it genuinely establishes.
         super::selection!(
             self,
             "collapse-selection",
             "Collapse each selection to a single cursor at the head.",
-            cmd_collapse_selection_to_head
+            cmd_collapse_selection_to_head,
+            composes
         );
         super::selection!(
             self,
             "flip-selections",
             "Swap anchor and head for each selection.",
-            cmd_flip_selections
+            cmd_flip_selections,
+            composes
         );
         super::selection!(
             self,
             "keep-primary-selection",
             "Remove all selections except the primary.",
-            cmd_keep_primary_selection
+            cmd_keep_primary_selection,
+            composes
         );
         super::selection!(
             self,
@@ -42,31 +51,36 @@ impl CommandRegistry {
             self,
             "remove-primary-selection",
             "Remove the primary selection, promoting the next.",
-            cmd_remove_primary_selection
+            cmd_remove_primary_selection,
+            composes
         );
         super::selection!(
             self,
             "cycle-primary-forward",
             "Cycle the primary selection forward.",
-            cmd_cycle_primary_forward
+            cmd_cycle_primary_forward,
+            composes
         );
         super::selection!(
             self,
             "cycle-primary-backward",
             "Cycle the primary selection backward.",
-            cmd_cycle_primary_backward
+            cmd_cycle_primary_backward,
+            composes
         );
         super::selection!(
             self,
             "split-selection-on-newlines",
             "Split each multi-line selection into one per line.",
-            cmd_split_selection_on_newlines
+            cmd_split_selection_on_newlines,
+            composes
         );
         super::selection!(
             self,
             "trim-selection-whitespace",
             "Trim leading and trailing whitespace from each selection.",
-            cmd_trim_selection_whitespace
+            cmd_trim_selection_whitespace,
+            composes
         );
         // EditorCmd, not the `selection!` macro (`MappableCommand::Selection`):
         // the display-column placement of each copy needs a `RowMap`, which
@@ -75,10 +89,7 @@ impl CommandRegistry {
         // restores the extendability `Selection` carries implicitly — without
         // it, a one-shot Ctrl+key extend of this command is silently dropped
         // (see the Ctrl+key guard in `mappings/normal.rs`). `.composes_selection()`
-        // (not `.tracks_selection()`): this command transforms whatever
-        // selection is already staged rather than establishing a fresh one,
-        // so it must always append to the dot-repeat recipe, never reset it —
-        // see `SelectionTracking::Composes`. The recorded step's `extend`
+        // — see `SelectionTracking::Composes`. The recorded step's `extend`
         // flag is inert on replay (`cmd_copy_selection_on_next_line` ignores
         // `MotionMode`), but is still recorded faithfully for the recipe's
         // own bookkeeping.

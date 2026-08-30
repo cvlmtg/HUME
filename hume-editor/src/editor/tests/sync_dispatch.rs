@@ -1636,7 +1636,7 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
 
 /// Helper: register all native command names, eval a Steel snippet, attach the
 /// host, and bind the named command to F2 in Normal mode.
-fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) {
+fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) -> termina::event::KeyEvent {
     use crate::editor::keymap::BindMode;
     use termina::event::KeyCode;
 
@@ -1665,6 +1665,7 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) {
         std::borrow::Cow::Owned(cmd_name.to_owned()),
         false,
     );
+    f2
 }
 
 /// A Steel `#:repeatable` command that calls `(call! "insert-before")` must
@@ -1677,12 +1678,8 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) {
 ///   at the raw cursor position instead of the recipe-established one.
 #[test]
 fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
-    let f2 = termina::event::KeyEvent::new(
-        termina::event::KeyCode::Function(2),
-        termina::event::Modifiers::NONE,
-    );
     let mut ed = editor_from("-[x]>\n");
-    setup_steel_f2(
+    let f2 = setup_steel_f2(
         &mut ed,
         r#"(define-command! "steel-ins" "enter insert before selection"
              (lambda () (call! "insert-before"))
@@ -1737,15 +1734,11 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
 /// == 1` catches this — it passes with the snapshot, fails without it.
 #[test]
 fn steel_repeatable_insert_preserves_prior_selection_recipe() {
-    let f2 = termina::event::KeyEvent::new(
-        termina::event::KeyCode::Function(2),
-        termina::event::Modifiers::NONE,
-    );
     // `x` (select-line) on "foo bar\n" selects the whole line — an in-place
     // selection that pushes a recipe step. (Reaching motions like `w` don't
     // push establish steps, so `x` is used here as the recipe-building command.)
     let mut ed = editor_from("-[f]>oo bar\n");
-    setup_steel_f2(
+    let f2 = setup_steel_f2(
         &mut ed,
         r#"(define-command! "steel-ins" "enter insert before selection"
              (lambda () (call! "insert-before"))
@@ -1797,7 +1790,7 @@ fn steel_repeatable_insert_preserves_prior_selection_recipe() {
 #[test]
 fn steel_wrapper_of_copy_selection_composes_onto_prior_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\n");
-    setup_steel_f2(
+    let f2 = setup_steel_f2(
         &mut ed,
         r#"(define-command! "vim-copy-wrapper" "wraps copy-selection-on-next-line"
              (lambda () (call! "copy-selection-on-next-line" 1)))"#,
@@ -1811,10 +1804,6 @@ fn steel_wrapper_of_copy_selection_composes_onto_prior_recipe() {
         "setup: x must push a recipe step"
     );
 
-    let f2 = termina::event::KeyEvent::new(
-        termina::event::KeyCode::Function(2),
-        termina::event::Modifiers::NONE,
-    );
     ed.feed_key(f2); // vim-copy-wrapper -> call! copy-selection-on-next-line
 
     assert_eq!(
@@ -1841,7 +1830,7 @@ fn steel_wrapper_of_copy_selection_composes_onto_prior_recipe() {
 #[test]
 fn steel_body_with_no_native_dispatch_clears_the_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\n");
-    setup_steel_f2(
+    let f2 = setup_steel_f2(
         &mut ed,
         r#"(define-command! "pure-steel-noop" "" (lambda () (+ 1 0)))"#,
         "pure-steel-noop",
@@ -1854,10 +1843,6 @@ fn steel_body_with_no_native_dispatch_clears_the_recipe() {
         "setup: x must push a recipe step"
     );
 
-    let f2 = termina::event::KeyEvent::new(
-        termina::event::KeyCode::Function(2),
-        termina::event::Modifiers::NONE,
-    );
     ed.feed_key(f2); // pure-steel-noop, no call! at all
 
     assert_eq!(
@@ -1874,12 +1859,8 @@ fn steel_body_with_no_native_dispatch_clears_the_recipe() {
 /// Mirrors `dot_is_single_undo_step` from dot_repeat.rs but drives insert via Steel.
 #[test]
 fn steel_repeatable_insert_dot_repeat_single_undo() {
-    let f2 = termina::event::KeyEvent::new(
-        termina::event::KeyCode::Function(2),
-        termina::event::Modifiers::NONE,
-    );
     let mut ed = editor_from("-[x]>y\n");
-    setup_steel_f2(
+    let f2 = setup_steel_f2(
         &mut ed,
         r#"(define-command! "steel-ins" "enter insert before selection"
              (lambda () (call! "insert-before"))
@@ -1915,12 +1896,8 @@ fn steel_repeatable_insert_dot_repeat_single_undo() {
 /// This guards that the edit-then-insert undo-group path remains safe.
 #[test]
 fn steel_repeatable_change_via_call_records_insert_keys() {
-    let f2 = termina::event::KeyEvent::new(
-        termina::event::KeyCode::Function(2),
-        termina::event::Modifiers::NONE,
-    );
     let mut ed = editor_from("-[foo]> bar\n");
-    setup_steel_f2(
+    let f2 = setup_steel_f2(
         &mut ed,
         r#"(define-command! "steel-chg" "change selection"
              (lambda () (call! "change"))

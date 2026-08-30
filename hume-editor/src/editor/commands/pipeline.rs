@@ -206,21 +206,21 @@ pub(in crate::editor) fn step_stamp_repeatable(
 /// Update the selection recipe buffer after a command dispatch.
 ///
 /// Accumulation rule:
-///   Establishes + extend                          → append step
-///   Establishes + move + in-place                 → reset + push establish
-///   Establishes + move + reaching (or collapsed)  → clear
-///   Composes (any mode)                           → append step
-///   Untracked                                     → clear
+///   Establishes + extend            → append step
+///   Establishes + move + selection  → reset + push establish
+///   Establishes + move + motion     → clear
+///   Composes (any mode)             → append step
+///   Untracked                       → clear
 ///
-/// Reaching motions (`select-next-word` / `-prev-word` / WORD variants) are
-/// not recorded in Move mode: replaying such a step advances past the cursor,
-/// causing dot-repeat to act on the wrong word. Extend steps of reaching
-/// motions (`Ctrl+w`) are still recorded — extending grows an existing
+/// A Move-mode motion is not recorded: it leaves a bare cursor, so replaying
+/// the step rebuilds no extent. The word motions (`select-next-word` et al.)
+/// do leave a selection, but one reached by navigating away from the cursor —
+/// replaying it would advance past the intended word (see their own
+/// registration comment in `registry/defaults/motions.rs`). Extend steps of
+/// any motion (`Ctrl+w`) are still recorded: extending grows an existing
 /// selection by a relative amount and is safe to replay.
 ///
-/// `Composes` (`copy-selection-on-next-line`/`-prev-line`) always appends: it
-/// transforms whatever extent is already staged rather than establishing one,
-/// so replaying it alone from a fresh cursor would rebuild nothing.
+/// `Composes` always appends — see `SelectionTracking::Composes`.
 // `&Cow` not `&str`: `.clone()` must preserve Borrowed (built-ins) or Owned
 // (Steel) without an unconditional heap alloc.
 #[allow(clippy::ptr_arg)]
@@ -233,35 +233,27 @@ pub(super) fn step_update_recipe(
 ) {
     state.selection_recipe_writes += 1;
     match meta.selection_tracking {
-        SelectionTracking::Composes => {
-            state.selection_recipe.push(SelectionStep {
-                command: name.clone(),
-                count: ctx.count.unwrap_or(1),
-                char_arg,
-                extend: ctx.extend,
-            });
-        }
-        SelectionTracking::Establishes if ctx.extend => {
-            state.selection_recipe.push(SelectionStep {
-                command: name.clone(),
-                count: ctx.count.unwrap_or(1),
-                char_arg,
-                extend: true,
-            });
-        }
-        SelectionTracking::Establishes if !meta.is_motion && !meta.reaching => {
+        SelectionTracking::Untracked => {
             state.selection_recipe.clear();
-            state.selection_recipe.push(SelectionStep {
-                command: name.clone(),
-                count: ctx.count.unwrap_or(1),
-                char_arg,
-                extend: false,
-            });
+            return;
         }
-        SelectionTracking::Establishes | SelectionTracking::Untracked => {
+        // A Move-mode establish restarts the recipe; a motion has no
+        // replayable extent to restart it with.
+        SelectionTracking::Establishes if !ctx.extend => {
             state.selection_recipe.clear();
+            if meta.is_motion {
+                return;
+            }
         }
+        // Extend steps and Composes steps both append to what is staged.
+        SelectionTracking::Establishes | SelectionTracking::Composes => {}
     }
+    state.selection_recipe.push(SelectionStep {
+        command: name.clone(),
+        count: ctx.count.unwrap_or(1),
+        char_arg,
+        extend: ctx.extend,
+    });
 }
 
 /// Exit sticky Extend mode after a selection-consuming edit.
@@ -294,14 +286,11 @@ pub(in crate::editor) fn run_dispatch_pipeline(
     // (every built-in) clones with no allocation; the AFTER steps reuse this.
     let name = cmd.name().clone();
     // A command cannot be both repeatable (an edit that modifies the buffer)
-    // and a selection-builder (a pure cursor movement). If this ever fires,
-    // a new variant broke the invariant that step_stamp_repeatable and
-    // step_update_recipe rely on for their unconditional sequencing.
-    debug_assert!(
-        !(meta.repeatable && meta.selection_tracking != SelectionTracking::Untracked),
-        "command '{name}' is both repeatable and selection-tracking — \
-         step_stamp_repeatable and step_update_recipe would both fire",
-    );
+    // and a selection-builder (a pure cursor movement) — step_stamp_repeatable
+    // and step_update_recipe would both fire. This is a property of the
+    // registry, fixed at registration time, so it's checked once for every
+    // command by `registry::tests::no_command_is_both_repeatable_and_selection_tracking`
+    // rather than re-probed here on every dispatch.
     // BEFORE
     step_paste_commit(state, view, meta.defers_paste_commit);
     let pre_jump = step_capture_pre_jump(state, view, &meta);

@@ -50,15 +50,17 @@ pub(crate) enum SelectionTracking {
 pub(crate) struct CmdMeta {
     /// How this command updates the selection recipe after it runs.
     ///
-    /// Always `Establishes` for Motion and Selection variants. `EditorCmd`
-    /// opts in per command (see [`MappableCommand::EditorCmd`]'s own field)
-    /// for the rare case where a command needs `EditorState`/`EngineView`
-    /// access to build a replayable selection extent — `select-all-matches`
-    /// (`m/`) reads the buffer's search pattern, which the pure `Selection`
-    /// body signature has no channel for. The recipe accumulates the
-    /// sequence of selection-building steps so dot-repeat can re-establish
-    /// the selection before replaying an edit. All other commands clear the
-    /// recipe (`Untracked`).
+    /// Always `Establishes` for Motion variants — a motion's Move-mode result
+    /// is a bare cursor, so it never composes. `Selection` and `EditorCmd`
+    /// each carry a `selection_tracking` field of their own (per-command
+    /// opt-in) — see [`MappableCommand::Selection`]/[`MappableCommand::EditorCmd`].
+    /// `EditorCmd` additionally covers the rare case where a command needs
+    /// `EditorState`/`EngineView` access to build a replayable selection
+    /// extent — `select-all-matches` (`m/`) reads the buffer's search
+    /// pattern, which the pure `Selection` body signature has no channel
+    /// for. The recipe accumulates the sequence of selection-building steps
+    /// so dot-repeat can re-establish the selection before replaying an
+    /// edit. All other commands clear the recipe (`Untracked`).
     pub selection_tracking: SelectionTracking,
     /// Whether this command is a cursor motion (as opposed to a selection
     /// builder, edit, or editor action).
@@ -82,14 +84,6 @@ pub(crate) struct CmdMeta {
     /// parallel `JUMP_COMMANDS` list, and the dispatch pipeline reads this rather
     /// than matching on the command variant.
     pub is_jump: bool,
-    /// Whether this motion's Move-mode result is a reaching selection (i.e. it
-    /// navigates away from the cursor to anchor on a new region). `true` for the
-    /// word motions (`select-next-word` / `-prev-word` / uppercase-word variants). `false`
-    /// for everything else.
-    ///
-    /// `step_update_recipe` uses this to suppress the establish step for reaching
-    /// Move results — replaying such a step would advance past the intended word.
-    pub reaching: bool,
     /// Whether this command is a visual-line motion (`move-down`/`move-up`).
     /// Read only by `step_capture_pre_jump`, alongside `is_jump`/`is_motion`,
     /// to decide whether to snapshot the pre-move selection for the jump
@@ -166,15 +160,6 @@ pub(crate) enum MappableCommand {
         /// Whether this motion always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for goto commands.
         jump: bool,
-        /// Whether this motion's Move-mode result anchors the selection on a
-        /// region reached by navigating *away* from the cursor (`select-next-word`
-        /// et al.). Reaching motions in Move mode do NOT push an establish step
-        /// onto the selection recipe — replaying such a step would advance past
-        /// the word under the cursor, causing dot-repeat to act on the wrong region.
-        ///
-        /// Extend-mode reaching steps (e.g. `Ctrl+w`) are still recorded; an
-        /// extend grows an existing selection by a relative amount and is safe.
-        reaching: bool,
     },
     /// Selection or text-object operation (accepts count).
     ///
@@ -198,6 +183,16 @@ pub(crate) enum MappableCommand {
         /// Whether this command always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for `select-all` (`%`).
         jump: bool,
+        /// How this command opts into the dot-repeat selection recipe.
+        /// See [`CmdMeta::selection_tracking`]. `Establishes` for most
+        /// selection commands (`select-line`, `ms(`, `select-all`: each
+        /// replayable on its own from a fresh cursor); `Composes` for the
+        /// handful that transform or reduce whatever is already staged
+        /// instead (`collapse-selection`, `flip-selections`,
+        /// `keep-primary-selection`, `remove-primary-selection`,
+        /// `cycle-primary-forward`/`-backward`, `split-selection-on-newlines`,
+        /// `trim-selection-whitespace`) — see `registry/defaults/selections.rs`.
+        selection_tracking: SelectionTracking,
     },
     /// BufferText-modifying edit with no extra arguments.
     ///
@@ -252,10 +247,9 @@ pub(crate) enum MappableCommand {
         /// See [`CmdMeta::clears_extend`] for the full rationale.
         clears_extend: bool,
         /// How this command opts into the dot-repeat selection recipe.
-        /// See [`CmdMeta::selection_tracking`] for the full rationale.
-        /// `Untracked` for every `EditorCmd` except `select-all-matches`
-        /// (`Establishes`) and `copy-selection-on-{next,prev}-line`
-        /// (`Composes`).
+        /// `Untracked` unless a specific registration opts in — see
+        /// [`CmdMeta::selection_tracking`] and each opt-in site's own comment
+        /// in `registry/defaults/`.
         selection_tracking: SelectionTracking,
     },
     /// A command implemented as a Steel (Scheme) lambda.
@@ -338,23 +332,25 @@ impl MappableCommand {
     /// string sets to decide what bookkeeping to run.
     pub(crate) fn meta(&self) -> CmdMeta {
         match self {
-            Self::Motion { jump, reaching, .. } => CmdMeta {
+            Self::Motion { jump, .. } => CmdMeta {
                 selection_tracking: SelectionTracking::Establishes,
                 is_motion: true,
                 defers_paste_commit: false,
                 is_jump: *jump,
                 is_visual_move: false,
-                reaching: *reaching,
                 repeatable: false,
                 clears_extend: false,
             },
-            Self::Selection { jump, .. } => CmdMeta {
-                selection_tracking: SelectionTracking::Establishes,
+            Self::Selection {
+                jump,
+                selection_tracking,
+                ..
+            } => CmdMeta {
+                selection_tracking: *selection_tracking,
                 is_motion: false,
                 defers_paste_commit: false,
                 is_jump: *jump,
                 is_visual_move: false,
-                reaching: false,
                 repeatable: false,
                 clears_extend: false,
             },
@@ -364,7 +360,6 @@ impl MappableCommand {
                 defers_paste_commit: false,
                 is_jump: false,
                 is_visual_move: false,
-                reaching: false,
                 repeatable: *repeatable,
                 clears_extend: false,
             },
@@ -382,7 +377,6 @@ impl MappableCommand {
                 defers_paste_commit: *defers_paste_commit,
                 is_jump: *jump,
                 is_visual_move: *visual_move,
-                reaching: false,
                 repeatable: *repeatable,
                 clears_extend: *clears_extend,
             },
@@ -392,7 +386,6 @@ impl MappableCommand {
                 defers_paste_commit: false,
                 is_jump: false,
                 is_visual_move: false,
-                reaching: false,
                 repeatable: *repeatable,
                 clears_extend: false,
             },
@@ -402,7 +395,6 @@ impl MappableCommand {
                 defers_paste_commit: false,
                 is_jump: false,
                 is_visual_move: false,
-                reaching: false,
                 repeatable: false,
                 clears_extend: false,
             },

@@ -104,13 +104,13 @@ impl Editor {
 
         // AFTER — re-query to get the resolved command's repeatable flag.
         // A Lazy stub becomes SteelBacked after activation; re-query reflects that.
-        if self
+        let repeatable = self
             .state
             .config
             .registry
             .get_mappable(name.as_ref())
-            .is_some_and(|c| c.meta().repeatable)
-        {
+            .is_some_and(|c| c.meta().repeatable);
+        if repeatable {
             // Outer-name-wins: stamp the outer command so `.` replays it, not
             // any inner native command the body dispatched via `call!`.
             commands::step_stamp_repeatable(
@@ -120,19 +120,17 @@ impl Editor {
                 char_arg,
                 Some(pre_recipe),
             );
-            // A repeatable command's recipe is consumed by the stamp above,
-            // not carried forward — matching the native `Edit` variant
-            // (always `Untracked`, so `step_update_recipe` clears it too),
-            // regardless of what an inner `call!` dispatch left behind.
-            self.state.selection_recipe.clear();
-        } else if self.state.selection_recipe_writes == pre_writes {
-            // The body dispatched no native command at all (a pure-Steel
-            // body, e.g. one that only calls `goto-location!`) — nothing ran
-            // `step_update_recipe` to make the usual accumulation decision
-            // for it, so this non-selection outer command must clear the
-            // recipe itself, the same as any other Untracked command would.
-            // A body that DID dispatch natively already got the correct
-            // decision from that inner call's own `step_update_recipe`.
+        }
+        // Clear only when this outer command owns the decision: a repeatable
+        // command's recipe was just consumed by the stamp above — matching
+        // the native `Edit` variant (always `Untracked`, so `step_update_recipe`
+        // clears it too) — and a body that dispatched nothing natively never
+        // ran `step_update_recipe` to decide for itself, so this non-selection
+        // outer command must clear it exactly as any other `Untracked`
+        // command would. A body that DID dispatch natively already got the
+        // correct decision from that inner call's own `step_update_recipe`,
+        // which must not be overridden.
+        if repeatable || self.state.selection_recipe_writes == pre_writes {
             self.state.selection_recipe.clear();
         }
         // Outer Steel commands skip step_record_jump and step_clear_extend: their meta
