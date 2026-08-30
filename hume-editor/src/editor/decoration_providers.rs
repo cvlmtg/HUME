@@ -12,7 +12,7 @@ use hume_engine::types::EditorMode;
 use super::Editor;
 use crate::lock_ext::LockExt;
 use hume_editing::lines::{char_to_line_byte, line_break_char, line_segments};
-use hume_ops::pair::find_bracket_pair;
+use hume_ops::pair::matching_bracket;
 
 /// One pane's identity plus its on-screen slice, as of the moment
 /// [`Editor::decorated_panes`] was called — every render bridge below reads
@@ -163,28 +163,13 @@ impl Editor {
                     .selections
                     .primary()
                     .head();
-                if let Some(ch) = text.char_at(head) {
-                    let pair = match ch {
-                        '(' | ')' => Some(('(', ')')),
-                        '[' | ']' => Some(('[', ']')),
-                        '{' | '}' => Some(('{', '}')),
-                        '<' | '>' => Some(('<', '>')),
-                        _ => None,
-                    };
-                    if let Some((open, close)) = pair
-                        && let Some((op, cp)) = find_bracket_pair(text, head, open, close)
-                    {
-                        let match_pos = if head == op { cp } else { op };
-                        let (line, byte) = char_to_line_byte(text, match_pos);
-                        // Single-char match: byte_end = byte + utf8 length of the char.
-                        let ch_len = text.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
-                        bracket_arc.write_or_panic().push((
-                            line,
-                            byte,
-                            byte + ch_len,
-                            bracket_scope,
-                        ));
-                    }
+                if let Some(match_pos) = matching_bracket(text, head) {
+                    let (line, byte) = char_to_line_byte(text, match_pos);
+                    // Single-char match: byte_end = byte + utf8 length of the char.
+                    let ch_len = text.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
+                    bracket_arc
+                        .write_or_panic()
+                        .push((line, byte, byte + ch_len, bracket_scope));
                 }
             }
         }

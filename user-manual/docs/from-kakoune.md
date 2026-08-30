@@ -113,10 +113,10 @@ Kakoune reaches objects with `<a-i>` and `<a-a>`. HUME puts them behind an `m` p
 |---------|------|
 | `<a-i>w` / `<a-a>w` | `m i w` / `m a w` |
 | `<a-i>(` / `<a-a>(` | `m i (` / `m a (` |
-| `m` (next matching pair) | `m s` + the delimiter |
+| `m` (jump to matching pair) | `#` |
 | `[` / `]` / `{` / `}` (to object start/end) | *(none)* |
 
-Two things to watch. `m s` needs you to name the delimiter — `m s (` for parens — where Kakoune's `m` finds the enclosing pair on its own. And `[`, `]`, `{`, `}` are all taken: `[` and `]` cycle the kill ring after a paste, `{` and `}` are paragraph motions.
+Two things to watch. Kakoune's `m` jumps to the matching bracket or tag; HUME's `m` prefix is the text-object key instead, so the jump moved to `#`. To select the surrounding pair rather than jump to it, use `m s` + the delimiter — `m s (` for parens — which needs you to name the delimiter, where Kakoune's `m` finds the enclosing pair on its own. And `[`, `]`, `{`, `}` are all taken: `[` and `]` cycle the kill ring after a paste, `{` and `}` are paragraph motions.
 
 The objects available are word (`w`), WORD (`W`), the bracket and quote pairs, argument (`a`), and line (`l`). HUME adds `m i i`, which selects the text you typed during your last insert, and `m w` + a delimiter, which wraps each selection in a pair.
 

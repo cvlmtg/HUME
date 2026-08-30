@@ -98,8 +98,11 @@ pub fn find_bracket_pair(
 /// this is the resolver `%`-style matching needs ("which pair is this
 /// delimiter part of, and where's the other end") that [`find_bracket_pair`]
 /// doesn't provide on its own, since that function is only ever called with
-/// one already-known pair.
-pub(crate) fn matching_bracket(text: &BufferText, pos: usize) -> Option<usize> {
+/// one already-known pair. Also the single resolver for the bracket-match
+/// cursor highlight (`hume-editor`'s `decoration_providers`) — both need the
+/// same answer to "what does this character pair with", so there is exactly
+/// one place `BRACKET_PAIRS` gets consulted for it.
+pub fn matching_bracket(text: &BufferText, pos: usize) -> Option<usize> {
     let ch = text.char_at(pos)?;
     let &(open, close) = BRACKET_PAIRS.iter().find(|&&(o, c)| ch == o || ch == c)?;
     let (open_pos, close_pos) = find_bracket_pair(text, pos, open, close)?;
