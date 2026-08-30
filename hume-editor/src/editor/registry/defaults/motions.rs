@@ -4,8 +4,8 @@ use std::borrow::Cow;
 use crate::editor::registry::{CommandRegistry, MappableCommand, SelectionTracking};
 use hume_ops::motion::{
     cmd_goto_first_line, cmd_goto_first_nonblank, cmd_goto_last_line, cmd_goto_line_end,
-    cmd_goto_line_start, cmd_move_left, cmd_move_right, cmd_next_paragraph, cmd_prev_paragraph,
-    cmd_select_line, cmd_select_line_backward, cmd_select_next_uppercase_word,
+    cmd_goto_line_start, cmd_goto_matching_pair, cmd_move_left, cmd_move_right, cmd_next_paragraph,
+    cmd_prev_paragraph, cmd_select_line, cmd_select_line_backward, cmd_select_next_uppercase_word,
     cmd_select_next_uppercase_word_around, cmd_select_next_word, cmd_select_next_word_around,
     cmd_select_prev_uppercase_word, cmd_select_prev_uppercase_word_around, cmd_select_prev_word,
     cmd_select_prev_word_around,
@@ -79,6 +79,13 @@ impl CommandRegistry {
             "goto-first-nonblank",
             "Move cursors to the first non-blank character on the line.",
             cmd_goto_first_nonblank
+        );
+        super::motion!(
+            self,
+            "goto-matching-pair",
+            "Move cursors to the matching bracket or tag.",
+            cmd_goto_matching_pair,
+            jump
         );
 
         // ── Word motions ──────────────────────────────────────────────────────

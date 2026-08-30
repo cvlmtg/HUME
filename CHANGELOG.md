@@ -12,6 +12,9 @@
   is per-buffer — a buffer neither `core:lsp` nor `core:git-diff` (nor any other plugin)
   ever registers a sign source for never reserves a gutter column for one.
 
+### Editing
+- New `goto-matching-pair` (`#`) jumps between a bracket and its partner (`(` `)` `[` `]` `{` `}`), or between an HTML/XML/JSX tag and its partner — vim's `%`, without disturbing HUME's own `%` (select-all).
+
 ### Appearance
 - Curly, dotted and dashed underlines now render on terminals that support them. Themes could already ask for them and HUME already parsed the request; it was being flattened to a plain underline on the way to the terminal.
 

@@ -1,3 +1,4 @@
+mod bracket;
 mod char_move;
 mod find;
 mod line;

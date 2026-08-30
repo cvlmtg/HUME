@@ -2,7 +2,7 @@ use super::*;
 
 /// Exhaustiveness guard: if a command is added without a registry entry,
 /// this test catches it.
-const EXPECTED_COMMAND_COUNT: usize = 158;
+const EXPECTED_COMMAND_COUNT: usize = 159;
 
 #[test]
 fn registry_has_expected_count() {
@@ -139,6 +139,7 @@ fn is_extendable_motion_and_selection_always_true() {
         "goto-line-start",
         "goto-line-end",
         "goto-first-nonblank",
+        "goto-matching-pair",
         "select-next-word",
         "select-prev-word",
         "next-paragraph",

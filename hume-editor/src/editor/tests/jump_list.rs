@@ -58,6 +58,24 @@ fn jump_backward_then_forward() {
     assert_eq!(state(&ed), at_top);
 }
 
+/// `#` (goto-matching-pair) jumps to the matching bracket and records the jump.
+#[test]
+fn goto_matching_pair_records_jump() {
+    let text = BufferText::from("foo(bar)\n");
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(3)); // on '('
+    let doc = Buffer::new(text, sels);
+    let mut ed = Editor::for_testing(doc);
+    ed.state.mode = Mode::Normal;
+    let before = state(&ed);
+
+    ed.handle_key(key('#'));
+    assert_eq!(ed.current_selections().primary().head(), 7); // on ')'
+
+    // jump-backward should restore the pre-jump position.
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), before);
+}
+
 /// A small motion (e.g. `2j`) does NOT record a jump.
 #[test]
 fn small_motion_does_not_record_jump() {

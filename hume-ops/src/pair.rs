@@ -11,6 +11,13 @@ use hume_editing::text::BufferText;
 // Bracket pairs
 // ---------------------------------------------------------------------------
 
+/// The bracket pairs `%`-style matching and the argument text object both
+/// scan for. `<>` is deliberately absent — in real code it's a comparison
+/// operator (`a < b`) far more often than a delimiter, which is why vim's own
+/// `matchpairs` default excludes it too; `<div>`/`</div>` tag matching is a
+/// separate scan ([`crate::tag`]).
+pub(crate) const BRACKET_PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
+
 /// Scan left from `pos` (exclusive) to find an unmatched `open` bracket.
 pub(crate) fn scan_left_for_open(
     text: &BufferText,
@@ -83,6 +90,20 @@ pub fn find_bracket_pair(
             Some((open_pos, close_pos))
         }
     }
+}
+
+/// Find the partner of the bracket at `pos`, in either direction.
+///
+/// `pos` must sit exactly on one of [`BRACKET_PAIRS`]'s open or close chars —
+/// this is the resolver `%`-style matching needs ("which pair is this
+/// delimiter part of, and where's the other end") that [`find_bracket_pair`]
+/// doesn't provide on its own, since that function is only ever called with
+/// one already-known pair.
+pub(crate) fn matching_bracket(text: &BufferText, pos: usize) -> Option<usize> {
+    let ch = text.char_at(pos)?;
+    let &(open, close) = BRACKET_PAIRS.iter().find(|&&(o, c)| ch == o || ch == c)?;
+    let (open_pos, close_pos) = find_bracket_pair(text, pos, open, close)?;
+    Some(if pos == open_pos { close_pos } else { open_pos })
 }
 
 // ---------------------------------------------------------------------------

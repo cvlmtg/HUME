@@ -7,7 +7,7 @@ use hume_editing::text::BufferText;
 
 use super::apply_text_object_by_mode;
 use crate::MotionMode;
-use crate::pair::find_bracket_pair;
+use crate::pair::{BRACKET_PAIRS, find_bracket_pair};
 
 /// One comma segment's inclusive `(start, end)` char range, leading and
 /// trailing whitespace included.
@@ -18,8 +18,7 @@ type Segment = (usize, usize);
 /// Tries all three bracket types and returns the pair with the smallest span.
 /// Tightest means innermost — for nested structures, we want the closest pair.
 fn find_tightest_bracket_pair(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
-    const PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
-    PAIRS
+    BRACKET_PAIRS
         .iter()
         .filter_map(|&(open, close)| find_bracket_pair(text, pos, open, close))
         .min_by_key(|&(o, c)| c - o)

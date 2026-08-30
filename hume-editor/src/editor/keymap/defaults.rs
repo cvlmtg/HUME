@@ -304,6 +304,13 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     // ── Whole-buffer selection ────────────────────────────────────────────────
     t.bind_leaf(key!('%'), cmd!("select-all"));
 
+    // ── Matching bracket/tag ───────────────────────────────────────────────────
+    // Vim's own key for this is `%`, but that's already select-all here (see
+    // above) and every other free letter under the `g` goto prefix is either
+    // taken by a core plugin (`core:pickers`'s `g m` is git-modified-files) or
+    // one an opt-in plugin might claim next. `#` is unbound everywhere.
+    t.bind_leaf(key!('#'), cmd!("goto-matching-pair"));
+
     // ── Selection manipulation ────────────────────────────────────────────────
     t.bind_leaf(key!(';'), cmd!("collapse-and-exit-extend"));
     t.bind_leaf(key!(','), cmd!("keep-primary-selection"));

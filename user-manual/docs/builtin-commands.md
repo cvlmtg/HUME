@@ -22,6 +22,7 @@ Move the cursor/selection. Callable as `(name)` or `(call! "name")`.
 | `goto-last-line` | `g e` | Move cursors to the first character of the last line. |
 | `goto-line-end` | `End` / `g l` | Move cursors to the last character on the line. |
 | `goto-line-start` | `Home` / `g h` | Move cursors to the start of the line. |
+| `goto-matching-pair` | `#` | Move cursors to the matching bracket or tag. |
 | `move-down` | `j` / `↓` | Move cursors down one visual line (one buffer line with a count). |
 | `move-left` | `h` / `←` | Move cursors one grapheme to the left. |
 | `move-right` | `l` / `→` | Move cursors one grapheme to the right. |

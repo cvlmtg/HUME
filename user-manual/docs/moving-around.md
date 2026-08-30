@@ -64,6 +64,14 @@ The idiomatic line movements live under the `g` prefix:
 | `Home` | Start of line |
 | `End` | End of line |
 
+## Matching pairs
+
+| Key | Movement |
+|-----|----------|
+| `#` | Jump to the matching bracket or tag |
+
+For a bracket, the cursor must sit exactly on `(` `)` `[` `]` `{` `}`. For an HTML/XML/JSX tag, anywhere inside the tag itself — its `<`, its `>`, the name, or an attribute — works, not just the two delimiter characters. Anywhere else, `#` does nothing. From an opening bracket or tag it jumps to the closing one, and back again from the closing side.
+
 ## Jump to a line by number
 
 Type `:` then a line number and press `Enter` to jump there:

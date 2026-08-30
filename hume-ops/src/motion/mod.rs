@@ -50,6 +50,8 @@ pub(crate) fn apply_motion(
     result
 }
 
+mod bracket;
+use bracket::goto_matching_pair;
 mod char_move;
 use char_move::{goto_first_line, goto_last_line, move_left, move_right};
 mod line;
@@ -121,6 +123,9 @@ motion_cmd!(/// Move or extend cursors to the `\n` terminating the current line.
     cmd_goto_line_newline, goto_line_newline);
 motion_cmd!(/// Move or extend cursors to the first non-blank character on their current line.
     cmd_goto_first_nonblank, goto_first_nonblank);
+
+motion_cmd!(/// Move or extend cursors to the matching bracket or tag (`#`).
+    cmd_goto_matching_pair, goto_matching_pair);
 
 // Paragraph motions.
 motion_cmd!(/// Move or extend cursors to the start of the next paragraph (`]p`).

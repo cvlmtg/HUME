@@ -23,6 +23,7 @@ Keys marked **kitty only** require the kitty keyboard protocol, auto-detected at
 | `End` | `goto-line-end` | End of line (idiomatic form is `g l`) |
 | `{` | `prev-paragraph` | Up to the blank line above this paragraph |
 | `}` | `next-paragraph` | Down to the start of the next paragraph |
+| `#` | `goto-matching-pair` | Jump to the matching bracket or tag |
 | `PageDown` / `PageUp` | `page-down` / `page-up` | Scroll one viewport down / up |
 | `Ctrl+d` / `Ctrl+u` | `half-page-down` / `half-page-up` | Scroll half a viewport down / up |
 | `Ctrl+o` | `jump-backward` | Jump list back |

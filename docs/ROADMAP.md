@@ -57,6 +57,7 @@ Structural work found during a cheap-wins sweep. Each is real but wants a design
 ## Open questions
 
 - Multiline quote text objects — currently line-bounded (parity scan gives wrong results across unmatched quotes on earlier lines); use tree-sitter to resolve when a grammar is loaded, fall back to line-bounded parity otherwise.
+- `goto-matching-pair` tag matching (`#` on `<tag>`) is a lexical scan, not tree-sitter-backed (`hume-ops` can't depend on `hume-treesitter`). Decide whether it should resolve the enclosing element node once tree-sitter structural navigation lands — same lexical-vs-tree-sitter tension as the multiline-quote question above.
 - Common-prefix auto-extend on Tab — extend input to the shared prefix of candidates before opening the popup, like readline/bash? Decide after more usage; risks surprising input mutation mid-type.
 - Plugin-defined languages × lazy loading — a plugin that defines its **own** language must register that identity eagerly; it can't be the sole provider of its own lazy-activation trigger. Deferred to a dedicated brainstorm.
 - `llvm-mir` / `llvm-mir-yaml` grammar mismatch — inherited from Helix; no HUME-specific fix until upstream resolves it.

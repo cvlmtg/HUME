@@ -6,6 +6,7 @@ pub mod register;
 pub mod search;
 pub mod selection_cmd;
 pub mod surround;
+mod tag;
 pub mod text_object;
 
 // ── MotionMode ────────────────────────────────────────────────────────────────

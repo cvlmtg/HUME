@@ -108,6 +108,7 @@
 (#%register-global "goto-line-end")
 (#%register-global "goto-line-start")
 (#%register-global "goto-location!")
+(#%register-global "goto-matching-pair")
 (#%register-global "grammar-highlights-path")
 (#%register-global "grammar-injections-path")
 (#%register-global "grammar-installed?")

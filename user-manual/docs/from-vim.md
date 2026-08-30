@@ -47,7 +47,7 @@ These keys exist in both editors and do different things. They are the ones most
 | `x` | Delete character | Select the current line | `d` — the cursor is already a one-character selection |
 | `s` | Substitute character | Filter each selection by a regex | `c` |
 | `e` | Move to end of word | Toggle Extend mode | `m m` selects the word under the cursor |
-| `%` | Jump to matching bracket | Select the whole buffer | `m s` + delimiter selects the surrounding pair |
+| `%` | Jump to matching bracket | Select the whole buffer | `#` jumps to the matching bracket or tag; `m s` + delimiter selects the surrounding pair |
 | `;` | Repeat last `f`/`t` | Collapse the selection | `=` |
 | `,` | Repeat last `f`/`t` backward | Keep only the primary selection | `-` |
 | `m` | Set a mark | Text-object prefix | — HUME has no marks; `Ctrl+o` / `Ctrl+i` walk the jump list |
