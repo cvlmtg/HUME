@@ -166,6 +166,11 @@ pub(super) fn step_snapshot_recipe(
 
 /// Record jump list entry if the command is a jump or the cursor moved
 /// past the threshold.
+///
+/// `moved` guards both branches: `JumpList::push` truncates forward history
+/// unconditionally, so a `jump: true` command that happens to be a no-op on
+/// this press (e.g. `#` on plain text, `goto-first-line` already on line 1)
+/// must not push at all, not just skip the threshold check.
 pub(super) fn step_record_jump(
     state: &mut EditorState,
     view: &EngineView,
@@ -173,10 +178,11 @@ pub(super) fn step_record_jump(
     is_jump: bool,
 ) {
     if let Some((pre_primary, pre_line, pre_bid)) = pre_jump {
-        let post_line = doc(state, view)
-            .text()
-            .char_to_line(current_selections(state, view).primary().head());
-        if is_jump || pre_line.abs_diff(post_line) > state.settings.jump_line_threshold {
+        let post_bid = focused_buffer_id(state, view);
+        let post_primary = current_selections(state, view).primary();
+        let post_line = doc(state, view).text().char_to_line(post_primary.head());
+        let moved = post_bid != pre_bid || post_primary.head() != pre_primary.head();
+        if moved && (is_jump || pre_line.abs_diff(post_line) > state.settings.jump_line_threshold) {
             state.panes.jumps[state.focused_pane_id].push(JumpEntry::from_pre_motion(
                 pre_primary,
                 pre_line,

@@ -258,6 +258,37 @@ fn select_all_records_jump() {
     );
 }
 
+/// A no-op `#` (cursor not on a bracket or tag) must not truncate forward
+/// jump-list history — `is_jump` alone used to record an entry regardless
+/// of whether the command actually moved, and `JumpList::push` truncates
+/// forward history unconditionally.
+#[test]
+fn goto_matching_pair_noop_does_not_clobber_forward_history() {
+    let mut ed = jump_editor(10);
+
+    // `gg` — records a jump, puts us at line 0.
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+    let at_top = state(&ed);
+
+    // Jump backward to the original line-10 position.
+    ed.handle_key(key_ctrl('o'));
+    let back_at_start = state(&ed);
+    assert_ne!(back_at_start, at_top);
+
+    // `#` on an ordinary character (not a bracket or tag) — a no-op.
+    ed.handle_key(key('#'));
+    assert_eq!(state(&ed), back_at_start, "# must not move on plain text");
+
+    // Forward history (the jump to line 0) must still be there.
+    ed.handle_key(key_ctrl('i'));
+    assert_eq!(
+        state(&ed),
+        at_top,
+        "a no-op # must not have truncated forward jump-list history"
+    );
+}
+
 /// search-next + jump-backward + jump-forward round-trip, all matches on different lines.
 #[test]
 fn search_n_ctrl_o_ctrl_i_different_lines() {
