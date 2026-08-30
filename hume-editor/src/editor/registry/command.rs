@@ -16,11 +16,17 @@ use hume_ops::MotionMode;
 pub(crate) enum SelectionTracking {
     /// Not a selection builder — clears the recipe.
     Untracked,
+    /// A motion's Move-mode result is a bare cursor — nothing to replay, so
+    /// the recipe clears. Extend-mode steps still append: extending grows an
+    /// existing selection by a relative amount and is safe to replay. Every
+    /// `Motion` variant carries this, including the word motions
+    /// (`select-next-word` et al.), whose Move-mode result *looks*
+    /// replayable (it lands on a selected word) but isn't — replaying it
+    /// would advance past the intended word instead of rebuilding it.
+    Extends,
     /// Establishes an extent that is replayable on its own from a fresh
     /// cursor (`select-line`, `ms(`, `m/`): resets the recipe to a single
-    /// step in Move mode, appends a step in Extend mode. Reaching motions
-    /// (`select-next-word` et al.) are excluded from the reset case — see
-    /// `step_update_recipe`.
+    /// step in Move mode, appends a step in Extend mode.
     Establishes,
     /// Transforms whatever extent is already staged rather than
     /// establishing one (`copy-selection-on-next-line`/`-prev-line`
@@ -50,8 +56,7 @@ pub(crate) enum SelectionTracking {
 pub(crate) struct CmdMeta {
     /// How this command updates the selection recipe after it runs.
     ///
-    /// Always `Establishes` for Motion variants — a motion's Move-mode result
-    /// is a bare cursor, so it never composes. `Selection` and `EditorCmd`
+    /// Always `Extends` for Motion variants. `Selection` and `EditorCmd`
     /// each carry a `selection_tracking` field of their own (per-command
     /// opt-in) — see [`MappableCommand::Selection`]/[`MappableCommand::EditorCmd`].
     /// `EditorCmd` additionally covers the rare case where a command needs
@@ -188,10 +193,7 @@ pub(crate) enum MappableCommand {
         /// selection commands (`select-line`, `ms(`, `select-all`: each
         /// replayable on its own from a fresh cursor); `Composes` for the
         /// handful that transform or reduce whatever is already staged
-        /// instead (`collapse-selection`, `flip-selections`,
-        /// `keep-primary-selection`, `remove-primary-selection`,
-        /// `cycle-primary-forward`/`-backward`, `split-selection-on-newlines`,
-        /// `trim-selection-whitespace`) — see `registry/defaults/selections.rs`.
+        /// instead — see `registry/defaults/selections.rs` for the full list.
         selection_tracking: SelectionTracking,
     },
     /// BufferText-modifying edit with no extra arguments.
@@ -333,7 +335,7 @@ impl MappableCommand {
     pub(crate) fn meta(&self) -> CmdMeta {
         match self {
             Self::Motion { jump, .. } => CmdMeta {
-                selection_tracking: SelectionTracking::Establishes,
+                selection_tracking: SelectionTracking::Extends,
                 is_motion: true,
                 defers_paste_commit: false,
                 is_jump: *jump,

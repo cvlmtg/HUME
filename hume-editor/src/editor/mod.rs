@@ -384,10 +384,13 @@ pub(crate) struct EditorState {
     /// Accumulating selection-recipe buffer for the *next* edit's dot-repeat.
     ///
     /// Tracks how the current selection was built: Motion/Selection commands
-    /// append or reset this buffer; repeatable edits snapshot it into
-    /// `RepeatableAction::selection_recipe` (via `mem::take`) and clear it.
-    /// Non-selection commands clear it. See `RepeatableAction::selection_recipe`
-    /// for the invariant.
+    /// append or reset this buffer; a repeatable edit snapshots it into
+    /// `RepeatableAction::selection_recipe` and clears it — the native path
+    /// (`step_snapshot_recipe`) via `mem::take`, the Steel path
+    /// (`Editor::dispatch`) via `.clone()` followed by an explicit clear, so
+    /// an inner `call!` dispatch still sees the pre-body value to compose
+    /// onto. Non-selection commands clear it. See
+    /// `RepeatableAction::selection_recipe` for the invariant.
     pub(super) selection_recipe: Vec<SelectionStep>,
     /// Incremented once by every native dispatch's `step_update_recipe`
     /// (`commands/pipeline.rs`), regardless of what it did to the recipe.

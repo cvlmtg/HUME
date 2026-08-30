@@ -1735,8 +1735,9 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
 #[test]
 fn steel_repeatable_insert_preserves_prior_selection_recipe() {
     // `x` (select-line) on "foo bar\n" selects the whole line — an in-place
-    // selection that pushes a recipe step. (Reaching motions like `w` don't
-    // push establish steps, so `x` is used here as the recipe-building command.)
+    // selection that pushes a recipe step. (Word motions like `w` are
+    // `SelectionTracking::Extends`, not `Establishes` — they don't push
+    // establish steps, so `x` is used here as the recipe-building command.)
     let mut ed = editor_from("-[f]>oo bar\n");
     let f2 = setup_steel_f2(
         &mut ed,

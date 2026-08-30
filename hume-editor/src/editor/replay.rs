@@ -54,15 +54,10 @@ pub(crate) struct SelectionStep {
     pub command: Cow<'static, str>,
     /// Count prefix originally used.
     pub count: usize,
-    /// Char argument the step's command consumed, if any (e.g. the delimiter
-    /// `surround-paren` waits for); `None` for commands that don't consume one.
-    /// No command that can currently reach `SelectionStep` waits on a char —
-    /// every `wait_char!`-bound command (`f`/`t`/`r`/`w`) is `Untracked` — so
-    /// this field is unpopulated today; it exists for a future command that
-    /// both waits on a char and opts into the recipe.
-    pub char_arg: Option<char>,
     /// `true` if this step ran in Extend mode (grew the existing selection).
-    /// The first step in a recipe is always `false` (a fresh Move-mode establish).
+    /// A recipe's first step can be `true`: `C` (a `Composes` step) run in
+    /// Extend mode against an empty recipe is itself the whole recipe — see
+    /// `RepeatableAction::selection_recipe`'s doc for the `C`-from-a-bare-cursor case.
     pub extend: bool,
 }
 
@@ -197,9 +192,11 @@ impl Editor {
         // begin_insert_session to suppress keystroke recording.
         self.begin_edit_group_current();
 
-        // Rebuild the selection extent the edit originally acted on.
+        // Rebuild the selection extent the edit originally acted on. No
+        // recipe-step command reads `pending_char` — every `wait_char!`-bound
+        // command is `Untracked` and so can never reach the recipe — so
+        // unlike the edit body below, no step here needs it set.
         for step in &action.selection_recipe {
-            self.state.pending_char = step.char_arg;
             let Some(cmd) = self
                 .state
                 .config

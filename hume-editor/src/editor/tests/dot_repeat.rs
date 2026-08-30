@@ -686,8 +686,8 @@ fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
     );
 }
 
-/// `w d` (reaching select then delete) must record an empty selection recipe.
-/// A bare `.` then deletes the *current* selection, NOT the next word.
+/// `w d` (word motion select then delete) must record an empty selection
+/// recipe. A bare `.` then deletes the *current* selection, NOT the next word.
 ///
 /// This is the dot-repeat drift bug: before the fix, `w` pushed an establish
 /// step, so `.` re-ran `select-next-word` from the new cursor position and
@@ -698,22 +698,22 @@ fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
 /// selection), leaving "a   baz\n". The buggy version would re-run
 /// `select-next-word` from "bar", select "baz", and delete that instead.
 ///
-/// Fail oracle: remove the `!ctx.extend` / `meta.is_motion` exclusion from
-/// `step_update_recipe` → `w` (a `Motion`) pushes an establish step → recipe
-/// is non-empty → `.` selects the NEXT word ("baz") → buffer would contain
-/// "bar" but not "baz".
+/// Fail oracle: remove the `!ctx.extend` exclusion from `step_update_recipe`'s
+/// `SelectionTracking::Extends` arm → `w` (a `Motion`, always `Extends`)
+/// pushes an establish step → recipe is non-empty → `.` selects the NEXT word
+/// ("baz") → buffer would contain "bar" but not "baz".
 #[test]
-fn dot_repeat_reaching_select_acts_on_current_selection() {
+fn dot_repeat_word_motion_acts_on_current_selection() {
     let mut ed = editor_from("-[a]>  foo bar baz\n");
     // This test is about the recipe/replay mechanism, not word-span shape —
     // pin bare-word selection so the buffer arithmetic in the doc comment
     // above holds regardless of word-selects-whitespace's default.
     ed.state.settings.word_selects_whitespace = false;
 
-    ed.feed_key(key('w')); // select "foo" (reaching, Move mode)
+    ed.feed_key(key('w')); // select "foo" (Move mode — Extends, not Establishes)
     ed.feed_key(key('d')); // delete "foo" → "a   bar baz\n"
 
-    // Recipe must be empty — reaching `w` must not create an establish step.
+    // Recipe must be empty — Move-mode `w` must not create an establish step.
     assert_eq!(
         ed.state
             .last_repeatable_action
@@ -722,7 +722,7 @@ fn dot_repeat_reaching_select_acts_on_current_selection() {
             .selection_recipe
             .len(),
         0,
-        "reaching select-next-word must not push an establish step"
+        "Move-mode select-next-word must not push an establish step"
     );
 
     ed.feed_key(key('w')); // select "bar" (cursor now on 'b')
@@ -1043,6 +1043,89 @@ fn dot_repeat_of_select_word_nearest_on_line_deletes_the_word() {
         ed.doc().text().to_string(),
         "\n",
         "`.` must replay select-word-nearest-on-line + d and remove the whole word 'bar'"
+    );
+}
+
+/// `x m/ d` where `m/`'s pattern matches nothing must record `[select-line,
+/// delete]`, not `[select-all-matches, delete]` — `select-all-matches`
+/// errors on no match (`cmd_select_all_matches` returns `Err("no matches")`)
+/// and leaves the selection untouched, so it established no replayable
+/// extent of its own and must not overwrite the `x` step that did.
+///
+/// Buffer "aaa\nbbb\nccc\n": `x` selects "aaa\n"; search pattern "zzz"
+/// matches nothing; `m/` no-ops (still "aaa\n" selected); `d` deletes it,
+/// leaving "bbb\nccc\n". Move to "ccc"; `.` must replay `select-line` + `d`
+/// there too, leaving "bbb\n".
+///
+/// Fail oracle: without the "selection unchanged" gate, `m/`'s failed run
+/// still resets the recipe to `[select-all-matches]` — `.` replays that
+/// (another no-op) then `delete`, which acts on the current 1-char cursor
+/// instead of the whole line, leaving "bb\n" instead of "bbb\n".
+#[test]
+fn dot_repeat_of_failed_select_all_matches_preserves_prior_recipe() {
+    let mut ed = editor_from("-[a]>aa\nbbb\nccc\n").with_search_regex("zzz");
+
+    ed.feed_key(key('x')); // select-line: "aaa\n"
+    ed.feed_key(key('m'));
+    ed.feed_key(key('/')); // no match — selection untouched, command errors
+    assert_eq!(
+        ed.state.selection_recipe.len(),
+        1,
+        "a failed select-all-matches must not overwrite the prior x step"
+    );
+    assert_eq!(ed.state.selection_recipe[0].command.as_ref(), "select-line");
+
+    ed.feed_key(key('d')); // delete "aaa\n"
+    assert_eq!(ed.doc().text().to_string(), "bbb\nccc\n");
+
+    ed.feed_key(key('j')); // move onto "ccc"
+    ed.feed_key(key('.')); // replay select-line + d
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "bbb\n",
+        "`.` must replay select-line + d and remove the whole 'ccc' line"
+    );
+}
+
+/// `x ms( d` where `ms(` finds no surrounding pair must record
+/// `[select-line, delete]`, not `[surround-paren, delete]` — `surround-paren`
+/// is infallible and leaves the selection unchanged on no-match (see
+/// `select_surround` in `hume-ops/src/surround.rs`), so like the
+/// `select-all-matches` case above it established no replayable extent and
+/// must not overwrite the prior `x` step.
+///
+/// Buffer "aaa\nbbb\nccc\n": `x` selects "aaa\n" (no parens on that line, so
+/// `ms(` on it would no-op); `d` deletes it, leaving "bbb\nccc\n". Move to
+/// "ccc"; `.` must replay `select-line` + `d` there too, leaving "bbb\n".
+///
+/// Fail oracle: without the "selection unchanged" gate, the no-op `ms(`
+/// still resets the recipe to `[surround-paren]` — `.` replays that (another
+/// no-op, cursor unchanged) then `delete`, which acts on the current 1-char
+/// cursor instead of the whole line, leaving "bb\n" instead of "bbb\n".
+#[test]
+fn dot_repeat_of_noop_surround_preserves_prior_recipe() {
+    let mut ed = editor_from("-[a]>aa\nbbb\nccc\n");
+
+    ed.feed_key(key('x')); // select-line: "aaa\n"
+    ed.feed_key(key('m'));
+    ed.feed_key(key('s'));
+    ed.feed_key(key('(')); // no parens on this line — selection untouched
+    assert_eq!(
+        ed.state.selection_recipe.len(),
+        1,
+        "a no-op surround-paren must not overwrite the prior x step"
+    );
+    assert_eq!(ed.state.selection_recipe[0].command.as_ref(), "select-line");
+
+    ed.feed_key(key('d')); // delete "aaa\n"
+    assert_eq!(ed.doc().text().to_string(), "bbb\nccc\n");
+
+    ed.feed_key(key('j')); // move onto "ccc"
+    ed.feed_key(key('.')); // replay select-line + d
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "bbb\n",
+        "`.` must replay select-line + d and remove the whole 'ccc' line"
     );
 }
 

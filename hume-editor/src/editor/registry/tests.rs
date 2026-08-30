@@ -533,11 +533,22 @@ fn selection_tracking_matches_expected_commands() {
         );
     }
 
-    // `Untracked`: not a selection builder. `move-left` (a `Motion`) is
-    // deliberately excluded here — every `Motion` carries `Establishes` in
-    // its raw `CmdMeta`, with the actual "never establishes" behavior
-    // enforced downstream by `step_update_recipe`'s `is_motion` check, not
-    // by this field.
+    // `Extends`: every `Motion` — a Move-mode result is a bare cursor (or,
+    // for the word motions, a selection reached by navigating away from the
+    // cursor), so it never establishes a step of its own.
+    for name in &["move-left", "select-next-word"] {
+        let meta = reg
+            .get_mappable(name)
+            .unwrap_or_else(|| panic!("command '{name}' not found"))
+            .meta();
+        assert_eq!(
+            meta.selection_tracking,
+            SelectionTracking::Extends,
+            "'{name}' should have selection_tracking = Extends"
+        );
+    }
+
+    // `Untracked`: not a selection builder.
     for name in &["delete", "undo", "search-word-under-cursor"] {
         let meta = reg
             .get_mappable(name)

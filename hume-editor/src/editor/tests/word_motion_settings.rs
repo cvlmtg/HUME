@@ -217,9 +217,10 @@ fn maw_unaffected_by_setting() {
     assert_eq!(state(&ed2), "-[hello ]>world\n");
 }
 
-/// `select-word` (`mm`) is a Selection command, so it pushes an establish
-/// step onto the dot-repeat recipe (unlike the reaching word motions) —
-/// replay re-runs it via `run_native_body`, which must re-resolve
+/// `select-word` (`mm`) is a Selection command (`SelectionTracking::Establishes`),
+/// so it pushes an establish step onto the dot-repeat recipe (unlike the word
+/// motions, which are `Extends`) — replay re-runs it via `run_native_body`,
+/// which must re-resolve
 /// `word-selects-whitespace` fresh each time rather than baking in whatever
 /// was true at the original keypress.
 #[test]
