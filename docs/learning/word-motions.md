@@ -1,5 +1,8 @@
 # Word Motions: Selecting the Whole Word
 
+Everything below assumes a fixed notion of "word" for clarity, but that
+notion is itself configurable per buffer — see [CharClass](charclass.md#word-is-a-policy-not-a-fact-about-the-text).
+
 ## A third framework
 
 Three distinct patterns exist for creating selections from cursor movement:

@@ -7,7 +7,7 @@ use hume_editing::grapheme::{
 };
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
-use hume_editing::word::is_word_boundary;
+use hume_editing::word::{WordChars, is_word_boundary};
 
 use super::{apply_edit, delete_one_grapheme, delete_sel_region};
 use crate::motion::prev_word_start;
@@ -139,6 +139,7 @@ pub fn dedent_tab_backward(
 pub fn delete_word_backward(
     text: BufferText,
     sels: SelectionSet,
+    chars: WordChars<'_>,
 ) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         if sel.is_collapsed() {
@@ -147,7 +148,7 @@ pub fn delete_word_backward(
             // (1) cursor at buffer start, (2) prior same-word cursor already consumed
             // past word_start — retain to `p` so this cursor lands at its own position.
             let word_start = if p > 0 {
-                let ws = prev_word_start(text, p, is_word_boundary);
+                let ws = prev_word_start(text, p, is_word_boundary, chars);
                 // `ws < b.old_pos()` means a prior cursor in the same word already
                 // consumed past `ws`. Treat as no-op so the cursor lands at `p`.
                 if ws >= b.old_pos() { ws } else { p }

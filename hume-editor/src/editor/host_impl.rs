@@ -605,13 +605,16 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         let Some(ch) = text.char_at(head) else {
             return String::new();
         };
-        if hume_editing::word::classify_char(ch) != hume_editing::word::CharClass::Word {
+        let word_chars = buf.overrides.word_chars(&self.state.settings);
+        let chars = hume_editing::word::WordChars::new(&word_chars);
+        if chars.classify(ch) != hume_editing::word::CharClass::Word {
             return String::new();
         }
         let Some((start, end)) = hume_ops::text_object::inner_word_impl(
             text,
             head,
             hume_editing::word::is_word_boundary,
+            chars,
         ) else {
             return String::new();
         };

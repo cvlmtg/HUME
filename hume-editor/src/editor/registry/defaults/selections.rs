@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::editor::commands::{cmd_copy_selection_on_next_line, cmd_copy_selection_on_prev_line};
-use crate::editor::registry::{CommandRegistry, MappableCommand, SelectionTracking};
+use crate::editor::registry::{CommandRegistry, MappableCommand, SelectionBody, SelectionTracking};
 use hume_ops::selection_cmd::{
     cmd_collapse_selection_to_head, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
     cmd_flip_selections, cmd_keep_primary_selection, cmd_remove_primary_selection, cmd_select_all,

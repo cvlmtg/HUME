@@ -74,6 +74,8 @@ Vim's `iw` / `aw` family lives behind the `m` prefix, and — as everywhere else
 
 The available objects are word (`w`), WORD (`W`), the bracket pairs (`(`, `[`, `{`, `<`), the quote pairs (`"`, `'`, `` ` ``), argument (`a`), and line (`l`) — each with an `i` (inner) and `a` (around) form. One extra has no Vim equivalent: `m i i` selects the text you typed during your last insert.
 
+Vim's `iskeyword` is `word-chars` — a buffer option listing extra characters that count as part of a word (see [Configuration](configuration.md)). HUME doesn't parse Vim's range syntax (`48-57`, `@`, `192-255`); list the characters directly, e.g. `-` for CSS.
+
 ### Search and replace
 
 There is no `:s`. Substitution is a selection built up and then changed:

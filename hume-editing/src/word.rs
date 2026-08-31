@@ -19,6 +19,13 @@ pub enum CharClass {
 /// found in real text: NBSP (U+00A0) and ideographic space (U+3000). Other
 /// Unicode whitespace (form feed, bare `\r`, …) stays `Punctuation` — rare
 /// enough that stopping on it is more useful than skipping it.
+///
+/// Callers that distinguish `Word` from `Punctuation` (word motions, text
+/// objects, `*`) must go through [`WordChars::classify`] instead, so a
+/// buffer's configured extra word characters are honored. Callers that only
+/// ask whether a char is `Space` or `Eol` may call this directly — a
+/// validated `word-chars` value can never contain either (see
+/// [`WordChars::validate`]), so that answer is invariant under it.
 pub fn classify_char(ch: char) -> CharClass {
     if ch == '\n' {
         CharClass::Eol
@@ -51,6 +58,54 @@ pub fn is_uppercase_word_boundary(a: CharClass, b: CharClass) -> bool {
         }
     };
     merge(a) != merge(b)
+}
+
+/// A buffer's extra word characters (Vim's `iskeyword`, minus the range
+/// syntax) — characters that classify as [`CharClass::Word`] on top of the
+/// built-in alphanumeric-plus-`_` rule. Borrowed and `Copy`: the owning
+/// `String` lives in the settings layer, and this rides inside a bare `fn`
+/// pointer's argument list without a clone per call.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct WordChars<'a>(&'a str);
+
+impl<'a> WordChars<'a> {
+    /// Wrap an already-validated `word-chars` value.
+    pub fn new(s: &'a str) -> Self {
+        Self(s)
+    }
+
+    /// Reject a value that would break every scan here: they all find a
+    /// word's end by hitting `Space` or `Eol`, so promoting one of those to
+    /// `Word` would leave a word run with no terminator.
+    ///
+    /// A char that is already `Word` (`a`, `_`) is accepted as a redundant
+    /// no-op rather than an error — "already a word char" depends on
+    /// `char::is_alphanumeric`'s Unicode tables, which shift between Rust
+    /// releases, so rejecting it would make a config file break on a
+    /// toolchain upgrade.
+    pub fn validate(s: &str) -> Result<(), String> {
+        for ch in s.chars() {
+            if matches!(classify_char(ch), CharClass::Space | CharClass::Eol) {
+                return Err(format!(
+                    "word-chars cannot contain whitespace or newline: {ch:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// [`classify_char`], with this buffer's extra word characters folded
+    /// in. Only the `Punctuation` arm does a lookup, so the common path
+    /// (letters, digits, space, newline) is exactly as fast as
+    /// `classify_char` alone — an empty `WordChars` never reaches the
+    /// lookup at all, matching `classify_char` byte-for-byte.
+    #[inline]
+    pub fn classify(self, ch: char) -> CharClass {
+        match classify_char(ch) {
+            CharClass::Punctuation if self.0.contains(ch) => CharClass::Word,
+            base => base,
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

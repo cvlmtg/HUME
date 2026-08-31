@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_editing::word::WordChars;
 use hume_test_fixtures::assert_state;
 
 // ── cmd_select_next_word (w) ──────────────────────────────────────────────
@@ -8,7 +9,7 @@ fn select_next_word_basic() {
     // From 'h', selects "world" (the next word). Fresh anchor at word start.
     assert_state!(
         "-[h]>ello world\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "hello -[world]>\n"
     );
 }
@@ -18,7 +19,7 @@ fn select_next_word_from_mid_word() {
     // Cursor in the middle of "hello" — still jumps to next word "world".
     assert_state!(
         "hel-[l]>o world\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "hello -[world]>\n"
     );
 }
@@ -28,7 +29,7 @@ fn select_next_word_from_whitespace() {
     // From the space between words, selects the next word "world".
     assert_state!(
         "hello-[ ]>world\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "hello -[world]>\n"
     );
 }
@@ -38,7 +39,7 @@ fn select_next_word_crosses_newline() {
     // w crosses the newline and selects the first word on the next line.
     assert_state!(
         "-[h]>ello\nworld\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "hello\n-[world]>\n"
     );
 }
@@ -48,7 +49,7 @@ fn select_next_word_crosses_multiple_blank_lines() {
     // Multiple blank lines between words — w still reaches the next word.
     assert_state!(
         "-[h]>ello\n\n\nworld\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "hello\n\n\n-[world]>\n"
     );
 }
@@ -58,7 +59,7 @@ fn select_next_word_at_last_word_is_noop() {
     // Cursor on the last word in the buffer — no-op.
     assert_state!(
         "hello -[world]>\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "hello -[world]>\n"
     );
 }
@@ -68,7 +69,7 @@ fn select_next_word_at_eof_is_noop() {
     // Cursor on trailing '\n' — no-op.
     assert_state!(
         "hello-[\n]>",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "hello-[\n]>"
     );
 }
@@ -77,7 +78,7 @@ fn select_next_word_at_eof_is_noop() {
 fn select_next_word_empty_buffer_is_noop() {
     assert_state!(
         "-[\n]>",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "-[\n]>"
     );
 }
@@ -87,7 +88,7 @@ fn select_next_word_word_to_punct() {
     // "hello" and "." are different word classes — w selects ".".
     assert_state!(
         "-[h]>ello.world\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "hello-[.]>world\n"
     );
 }
@@ -97,7 +98,7 @@ fn select_next_word_punct_to_word() {
     // From ".", the next word class token is "hello".
     assert_state!(
         "-[.]>hello\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         ".-[hello]>\n"
     );
 }
@@ -107,7 +108,7 @@ fn select_next_word_count_2() {
     // count=2: skips "world", selects "foo".
     assert_state!(
         "-[h]>ello world foo\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 2, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 2, WordCtx::bare(MotionMode::Move)),
         "hello world -[foo]>\n"
     );
 }
@@ -117,7 +118,7 @@ fn select_next_word_count_stops_at_last_word() {
     // count=3 but only 2 words remain after cursor — stops at "foo".
     assert_state!(
         "-[h]>ello world foo\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 3, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 3, WordCtx::bare(MotionMode::Move)),
         "hello world -[foo]>\n"
     );
 }
@@ -129,7 +130,7 @@ fn select_prev_word_basic() {
     // From "world", selects the previous word "hello".
     assert_state!(
         "hello -[world]>\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "-[hello]> world\n"
     );
 }
@@ -139,7 +140,7 @@ fn select_prev_word_from_mid_word() {
     // Cursor in the middle of "world" — jumps to previous word "hello".
     assert_state!(
         "hello wor-[l]>d\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "-[hello]> world\n"
     );
 }
@@ -149,7 +150,7 @@ fn select_prev_word_from_whitespace() {
     // From the space between words, selects the previous word "hello".
     assert_state!(
         "hello-[ ]>world\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "-[hello]> world\n"
     );
 }
@@ -159,7 +160,7 @@ fn select_prev_word_from_punct() {
     // Cursor on the '.' punctuation — selects the preceding word "hello".
     assert_state!(
         "hello-[.]>world\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "-[hello]>.world\n"
     );
 }
@@ -169,7 +170,7 @@ fn select_prev_word_from_trailing_newline() {
     // Cursor on the trailing '\n' — selects the last word on the line.
     assert_state!(
         "hello world-[\n]>",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "hello -[world]>\n"
     );
 }
@@ -179,7 +180,7 @@ fn select_prev_word_crosses_newline() {
     // b crosses the newline and selects the last word on the previous line.
     assert_state!(
         "hello\n-[world]>\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "-[hello]>\nworld\n"
     );
 }
@@ -189,7 +190,7 @@ fn select_prev_word_at_first_word_is_noop() {
     // Cursor on first word — no-op.
     assert_state!(
         "-[hello]> world\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "-[hello]> world\n"
     );
 }
@@ -199,7 +200,7 @@ fn select_prev_word_in_first_word_mid_is_noop() {
     // Cursor in the middle of the first word — no previous word, no-op.
     assert_state!(
         "hel-[l]>o world\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "hel-[l]>o world\n"
     );
 }
@@ -208,7 +209,7 @@ fn select_prev_word_in_first_word_mid_is_noop() {
 fn select_prev_word_at_buffer_start_is_noop() {
     assert_state!(
         "-[h]>ello\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "-[h]>ello\n"
     );
 }
@@ -217,7 +218,7 @@ fn select_prev_word_at_buffer_start_is_noop() {
 fn select_prev_word_empty_buffer_is_noop() {
     assert_state!(
         "-[\n]>",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "-[\n]>"
     );
 }
@@ -227,7 +228,7 @@ fn select_prev_word_count_2() {
     // count=2: from "foo", skips "world", selects "hello".
     assert_state!(
         "hello world -[foo]>\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 2, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 2, WordCtx::bare(MotionMode::Move)),
         "-[hello]> world foo\n"
     );
 }
@@ -237,7 +238,7 @@ fn select_prev_word_count_overshoots() {
     // count=5 but only 2 words precede "foo" — stops at "hello" rather than erroring.
     assert_state!(
         "hello world -[foo]>\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 5, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 5, WordCtx::bare(MotionMode::Move)),
         "-[hello]> world foo\n"
     );
 }
@@ -250,7 +251,12 @@ fn select_next_uppercase_word_skips_punct() {
     // W: "hello.world" is a single WORD — W selects it entirely.
     assert_state!(
         "-[h]>ello.world bar\n",
-        |(text, sels)| cmd_select_next_uppercase_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_uppercase_word(
+            &text,
+            sels,
+            1,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "hello.world -[bar]>\n"
     );
 }
@@ -261,7 +267,12 @@ fn select_next_uppercase_word_crosses_newline() {
     // W at end of a line crosses the newline and selects the first WORD on the next line.
     assert_state!(
         "-[h]>ello.world\nbar\n",
-        |(text, sels)| cmd_select_next_uppercase_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_uppercase_word(
+            &text,
+            sels,
+            1,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "hello.world\n-[bar]>\n"
     );
 }
@@ -271,7 +282,7 @@ fn select_next_word_stops_at_punct() {
     // w (lowercase): "hello" and "." are separate word-class tokens.
     assert_state!(
         "-[h]>ello.world bar\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "hello-[.]>world bar\n"
     );
 }
@@ -283,7 +294,12 @@ fn select_prev_uppercase_word_skips_punct() {
     // a WORD boundary), selecting the whole token.
     assert_state!(
         "hello.world -[bar]>\n",
-        |(text, sels)| cmd_select_prev_uppercase_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_uppercase_word(
+            &text,
+            sels,
+            1,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[hello.world]> bar\n"
     );
 }
@@ -294,7 +310,12 @@ fn select_prev_uppercase_word_crosses_newline() {
     // B at the start of a line crosses the newline and selects the last WORD on the previous line.
     assert_state!(
         "hello.world\n-[bar]>\n",
-        |(text, sels)| cmd_select_prev_uppercase_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_uppercase_word(
+            &text,
+            sels,
+            1,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[hello.world]>\nbar\n"
     );
 }
@@ -308,7 +329,7 @@ fn select_next_word_skips_combining_grapheme() {
     // boundary inside the grapheme cluster {e◌́}. w selects "world".
     assert_state!(
         "-[c]>afe\u{0301} world\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "cafe\u{0301} -[world]>\n"
     );
 }
@@ -320,7 +341,7 @@ fn select_prev_word_skips_combining_grapheme() {
     // and select all of "cafe\u{0301}" as one word.
     assert_state!(
         "cafe\u{0301} -[w]>orld\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "-[cafe\u{0301}]> world\n"
     );
 }
@@ -334,7 +355,7 @@ fn select_next_word_multi_cursor() {
     // Cursor 2 at 'f'(6): next word is "bar"(10..12).
     assert_state!(
         "-[h]>ello -[f]>oo bar\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "hello -[foo]> -[bar]>\n"
     );
 }
@@ -347,7 +368,7 @@ fn select_prev_word_multi_cursor() {
     // No merging because [0,2] and [4,8] are disjoint.
     assert_state!(
         "foo -[hello]> -[world]> bar\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)),
         "-[foo]> -[hello]> world bar\n"
     );
 }
@@ -369,7 +390,7 @@ fn select_next_word_around_leading_basic() {
     // instead, and are left untouched.
     assert_state!(
         "-[f]>oo bar   baz\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "foo-[ bar]>   baz\n"
     );
 }
@@ -379,7 +400,7 @@ fn select_next_word_around_leading_tab() {
     // Tab classifies as Space — counts as leading whitespace too.
     assert_state!(
         "-[f]>oo\tbar baz\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "foo-[\tbar]> baz\n"
     );
 }
@@ -389,7 +410,7 @@ fn select_next_word_around_leading_nbsp() {
     // U+00A0 (NBSP) classifies as Space too.
     assert_state!(
         "-[f]>oo\u{00A0}bar baz\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "foo-[\u{00A0}bar]> baz\n"
     );
 }
@@ -400,7 +421,7 @@ fn select_next_word_around_leading_mid_line_before_eol() {
     // leading space even though it's also the last word before EOL.
     assert_state!(
         "-[f]>oo bar\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "foo-[ bar]>\n"
     );
 }
@@ -410,7 +431,7 @@ fn select_next_word_around_leading_mid_line_before_punctuation() {
     // Same rule applies regardless of what follows the word.
     assert_state!(
         "-[f]>oo bar,baz\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "foo-[ bar]>,baz\n"
     );
 }
@@ -421,7 +442,7 @@ fn select_next_word_around_punctuation_destination_gets_leading_space() {
     // around treatment.
     assert_state!(
         "-[f]>oo , bar\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "foo-[ ,]> bar\n"
     );
 }
@@ -433,7 +454,7 @@ fn select_next_word_around_first_word_of_line_indented_takes_trailing() {
     // instead, same as the un-indented first-word case.
     assert_state!(
         "-[f]>oo\n  bar baz\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "foo\n  -[bar ]>baz\n"
     );
 }
@@ -445,7 +466,7 @@ fn select_next_word_around_first_word_of_line_indented_no_trailing_is_bare() {
     // and the result is bare.
     assert_state!(
         "x\n-[ ]>   foo\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "x\n    -[foo]>\n"
     );
 }
@@ -457,7 +478,7 @@ fn select_next_word_around_eol_never_consumed() {
     // extends. The around variant is a no-op here, same as bare `w`.
     assert_state!(
         "-[h]>ello\nworld\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "hello\n-[world]>\n"
     );
 }
@@ -469,7 +490,7 @@ fn select_next_word_around_at_last_word_is_noop() {
     // would otherwise be absorbed.
     assert_state!(
         "hello -[world]>\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "hello -[world]>\n"
     );
 }
@@ -482,7 +503,7 @@ fn select_next_word_around_count_2_expands_only_final_span() {
     // "hello   world  foo\n": positions 13-14 are the two spaces before "foo".
     assert_state!(
         "-[h]>ello   world  foo\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 2, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 2, WordCtx::around(MotionMode::Move)),
         "hello   world-[  foo]>\n"
     );
 }
@@ -497,9 +518,9 @@ fn select_next_word_around_second_press_advances_past_first_word() {
     assert_state!(
         "-[o]>ne two three four\n",
         |(text, sels)| {
-            let s1 = cmd_select_next_word_around(&text, sels, 1, MotionMode::Move); // " two"
-            let s2 = cmd_select_next_word_around(&text, s1, 1, MotionMode::Move); // " three"
-            cmd_select_next_word_around(&text, s2, 1, MotionMode::Move) // " four", not " three" again
+            let s1 = cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)); // " two"
+            let s2 = cmd_select_next_word(&text, s1, 1, WordCtx::around(MotionMode::Move)); // " three"
+            cmd_select_next_word(&text, s2, 1, WordCtx::around(MotionMode::Move)) // " four", not " three" again
         },
         "one two three-[ four]>\n"
     );
@@ -514,7 +535,7 @@ fn select_next_word_around_multi_cursor_adjacent_cursors_stay_disjoint() {
     // "foo bar baz\n": f=0..2,' '=3,b=4..6,' '=7,b=8..10,'\n'=11.
     assert_state!(
         "-[f]>oo -[b]>ar baz\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "foo-[ bar]>-[ baz]>\n"
     );
 }
@@ -525,7 +546,7 @@ fn select_next_word_around_skips_combining_grapheme() {
     // misread as a word-class char when scanning for the leading space.
     assert_state!(
         "-[c]>afe\u{0301} world\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "cafe\u{0301}-[ world]>\n"
     );
 }
@@ -537,7 +558,12 @@ fn select_next_uppercase_word_around_punct_leading() {
     // line-start, so "bar" takes its leading space.
     assert_state!(
         "-[f]>oo, bar\n",
-        |(text, sels)| cmd_select_next_uppercase_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_next_uppercase_word(
+            &text,
+            sels,
+            1,
+            WordCtx::around(MotionMode::Move)
+        ),
         "foo,-[ bar]>\n"
     );
 }
@@ -548,7 +574,7 @@ fn select_prev_word_around_first_word_of_buffer_takes_trailing() {
     // so it falls back to its trailing space (the one before "world").
     assert_state!(
         "hello -[world]>\n",
-        |(text, sels)| cmd_select_prev_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "-[hello ]>world\n"
     );
 }
@@ -559,7 +585,7 @@ fn select_prev_word_around_leading_mid_line() {
     // on its line, so it takes its leading space.
     assert_state!(
         "foo bar -[b]>az\n",
-        |(text, sels)| cmd_select_prev_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "foo-[ bar]> baz\n"
     );
 }
@@ -571,7 +597,7 @@ fn select_prev_word_around_leading_mid_line_before_punctuation() {
     // its leading space regardless of what follows.
     assert_state!(
         "foo bar-[,]>baz\n",
-        |(text, sels)| cmd_select_prev_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "foo-[ bar]>,baz\n"
     );
 }
@@ -583,7 +609,12 @@ fn select_prev_uppercase_word_around_first_word_of_buffer_takes_trailing() {
     // it falls back to its trailing space (before "bar").
     assert_state!(
         "hello.world -[bar]>\n",
-        |(text, sels)| cmd_select_prev_uppercase_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_uppercase_word(
+            &text,
+            sels,
+            1,
+            WordCtx::around(MotionMode::Move)
+        ),
         "-[hello.world ]>bar\n"
     );
 }
@@ -602,9 +633,9 @@ fn select_prev_word_around_second_press_advances_past_first_word() {
     assert_state!(
         "one two three -[f]>our\n",
         |(text, sels)| {
-            let s1 = cmd_select_prev_word_around(&text, sels, 1, MotionMode::Move); // " three"
-            let s2 = cmd_select_prev_word_around(&text, s1, 1, MotionMode::Move); // " two"
-            cmd_select_prev_word_around(&text, s2, 1, MotionMode::Move) // "one ", not " two" again
+            let s1 = cmd_select_prev_word(&text, sels, 1, WordCtx::around(MotionMode::Move)); // " three"
+            let s2 = cmd_select_prev_word(&text, s1, 1, WordCtx::around(MotionMode::Move)); // " two"
+            cmd_select_prev_word(&text, s2, 1, WordCtx::around(MotionMode::Move)) // "one ", not " two" again
         },
         "-[one ]>two three four\n"
     );
@@ -618,9 +649,11 @@ fn select_prev_uppercase_word_around_second_press_advances_past_first_word() {
     assert_state!(
         "one two three.x -[f]>our\n",
         |(text, sels)| {
-            let s1 = cmd_select_prev_uppercase_word_around(&text, sels, 1, MotionMode::Move); // " three.x"
-            let s2 = cmd_select_prev_uppercase_word_around(&text, s1, 1, MotionMode::Move); // " two"
-            cmd_select_prev_uppercase_word_around(&text, s2, 1, MotionMode::Move) // "one ", not " two" again
+            let s1 =
+                cmd_select_prev_uppercase_word(&text, sels, 1, WordCtx::around(MotionMode::Move)); // " three.x"
+            let s2 =
+                cmd_select_prev_uppercase_word(&text, s1, 1, WordCtx::around(MotionMode::Move)); // " two"
+            cmd_select_prev_uppercase_word(&text, s2, 1, WordCtx::around(MotionMode::Move)) // "one ", not " two" again
         },
         "-[one ]>two three.x four\n"
     );
@@ -636,8 +669,8 @@ fn select_word_around_w_then_b_round_trip() {
     assert_state!(
         "-[o]>ne two three four\n",
         |(text, sels)| {
-            let s1 = cmd_select_next_word_around(&text, sels, 1, MotionMode::Move); // " two"
-            cmd_select_prev_word_around(&text, s1, 1, MotionMode::Move) // "one ", back to start
+            let s1 = cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Move)); // " two"
+            cmd_select_prev_word(&text, s1, 1, WordCtx::around(MotionMode::Move)) // "one ", back to start
         },
         "-[one ]>two three four\n"
     );
@@ -653,8 +686,8 @@ fn select_word_around_b_then_w_round_trip() {
     assert_state!(
         "one -[t]>wo three four\n",
         |(text, sels)| {
-            let s1 = cmd_select_prev_word_around(&text, sels, 1, MotionMode::Move); // "one "
-            cmd_select_next_word_around(&text, s1, 1, MotionMode::Move) // " two", not stuck on "one"
+            let s1 = cmd_select_prev_word(&text, sels, 1, WordCtx::around(MotionMode::Move)); // "one "
+            cmd_select_next_word(&text, s1, 1, WordCtx::around(MotionMode::Move)) // " two", not stuck on "one"
         },
         "one-[ two]> three four\n"
     );
@@ -665,7 +698,7 @@ fn select_prev_word_around_at_buffer_start_is_noop() {
     // Guard: no previous word exists — no-op, no expansion attempted.
     assert_state!(
         "-[h]>ello\n",
-        |(text, sels)| cmd_select_prev_word_around(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::around(MotionMode::Move)),
         "-[h]>ello\n"
     );
 }
@@ -678,7 +711,7 @@ fn extend_select_next_word_around_grows_with_anchor_unit() {
     // whitespace is pulled in.
     assert_state!(
         "foo -[b]>ar baz\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Extend)),
         "foo-[ bar baz]>\n"
     );
 }
@@ -689,7 +722,7 @@ fn extend_select_prev_word_around_grows_backward_onto_leading_whitespace() {
     // into `head` — the selection can legitimately start on whitespace.
     assert_state!(
         "foo bar -[b]>az\n",
-        |(text, sels)| cmd_select_prev_word_around(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::around(MotionMode::Extend)),
         "foo<[ bar baz]-\n"
     );
 }
@@ -700,7 +733,7 @@ fn extend_select_prev_word_around_shrinks_to_anchor_unit() {
     // anchor's unit (" bar"), not further.
     assert_state!(
         "foo-[ bar baz]>\n",
-        |(text, sels)| cmd_select_prev_word_around(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::around(MotionMode::Extend)),
         "foo-[ bar]> baz\n"
     );
 }
@@ -715,10 +748,10 @@ fn extend_select_word_around_round_trip_across_anchor() {
     assert_state!(
         "a -[b]> c\n",
         |(text, sels)| {
-            let s1 = cmd_select_next_word_around(&text, sels, 1, MotionMode::Extend);
-            let s2 = cmd_select_prev_word_around(&text, s1, 1, MotionMode::Extend);
-            let s3 = cmd_select_prev_word_around(&text, s2, 1, MotionMode::Extend);
-            cmd_select_next_word_around(&text, s3, 1, MotionMode::Extend)
+            let s1 = cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Extend));
+            let s2 = cmd_select_prev_word(&text, s1, 1, WordCtx::around(MotionMode::Extend));
+            let s3 = cmd_select_prev_word(&text, s2, 1, WordCtx::around(MotionMode::Extend));
+            cmd_select_next_word(&text, s3, 1, WordCtx::around(MotionMode::Extend))
         },
         "a-[ b]> c\n"
     );
@@ -730,7 +763,7 @@ fn extend_select_prev_word_around_backward_edge_excludes_indentation() {
     // its leading run is indentation and is never absorbed into `head`.
     assert_state!(
         "  one -[t]>wo\n",
-        |(text, sels)| cmd_select_prev_word_around(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::around(MotionMode::Extend)),
         "  <[one two]-\n"
     );
 }
@@ -743,7 +776,7 @@ fn extend_select_next_word_around_whitespace_anchor_without_adjacent_word() {
     // panic). The extend still reaches "foo" on the next line.
     assert_state!(
         "-[ ]> \nfoo\n",
-        |(text, sels)| cmd_select_next_word_around(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Extend)),
         "-[  \nfoo]>\n"
     );
 }
@@ -755,8 +788,8 @@ fn extend_select_next_word_around_chained_grows_past_two_words() {
     assert_state!(
         "-[o]>ne two three\n",
         |(text, sels)| {
-            let s1 = cmd_select_next_word_around(&text, sels, 1, MotionMode::Extend); // "-[one two]>"
-            cmd_select_next_word_around(&text, s1, 1, MotionMode::Extend)
+            let s1 = cmd_select_next_word(&text, sels, 1, WordCtx::around(MotionMode::Extend)); // "-[one two]>"
+            cmd_select_next_word(&text, s1, 1, WordCtx::around(MotionMode::Extend))
         },
         "-[one two three]>\n"
     );
@@ -771,7 +804,7 @@ fn extend_select_next_word_from_cursor() {
     // the anchor's word, so the selection grows to cover both.
     assert_state!(
         "-[h]>ello world foo\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "-[hello world]> foo\n"
     );
 }
@@ -783,8 +816,8 @@ fn extend_select_next_word_grows_selection() {
     assert_state!(
         "-[h]>ello world foo\n",
         |(text, sels)| {
-            let s1 = cmd_select_next_word(&text, sels, 1, MotionMode::Move); // selects "world" (6,10)
-            cmd_select_next_word(&text, s1, 1, MotionMode::Extend) // grows to "world foo"
+            let s1 = cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)); // selects "world" (6,10)
+            cmd_select_next_word(&text, s1, 1, WordCtx::bare(MotionMode::Extend)) // grows to "world foo"
         },
         "hello -[world foo]>\n"
     );
@@ -799,8 +832,8 @@ fn extend_select_prev_word_extends_backward() {
     assert_state!(
         "-[h]>ello world\n",
         |(text, sels)| {
-            let s1 = cmd_select_next_word(&text, sels, 1, MotionMode::Move); // selects "world" (6,10)
-            cmd_select_prev_word(&text, s1, 1, MotionMode::Extend) // grows backward to "hello world"
+            let s1 = cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Move)); // selects "world" (6,10)
+            cmd_select_prev_word(&text, s1, 1, WordCtx::bare(MotionMode::Extend)) // grows backward to "hello world"
         },
         "<[hello world]-\n"
     );
@@ -817,7 +850,7 @@ fn extend_select_prev_word_from_multi_word_selection() {
     // "foo bar baz\n": f=0,o=1,o=2,' '=3,b=4,a=5,r=6,' '=7,b=8,a=9,z=10,'\n'=11
     assert_state!(
         "foo -[bar baz]>\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "foo -[bar]> baz\n"
     );
 }
@@ -828,7 +861,7 @@ fn extend_select_next_word_at_buffer_end_is_noop() {
     // no next word (only '\n' remains) and leaves the selection unchanged.
     assert_state!(
         "-[hello]>\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "-[hello]>\n"
     );
 }
@@ -838,7 +871,7 @@ fn extend_select_prev_word_at_buffer_start_is_noop() {
     // The selection starts at pos 0; there is no previous word. Noop.
     assert_state!(
         "-[hello]> world\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "-[hello]> world\n"
     );
 }
@@ -856,7 +889,7 @@ fn extend_select_next_word_multi_cursor() {
     // Results (0,6) and (8,14) are disjoint — no merge.
     assert_state!(
         "-[f]>oo bar -[b]>az qux\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "-[foo bar]> -[baz qux]>\n"
     );
 }
@@ -872,7 +905,7 @@ fn extend_select_next_word_multi_cursor() {
 fn word_shrink_scenario_step1_grows_forward() {
     assert_state!(
         "a -[b]> c\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "a -[b c]>\n"
     );
 }
@@ -883,7 +916,7 @@ fn word_shrink_scenario_step2_shrinks_to_anchor_word() {
     // anchor's own word — so the selection shrinks rather than growing past it.
     assert_state!(
         "a -[b c]>\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "a -[b]> c\n"
     );
 }
@@ -894,7 +927,7 @@ fn word_shrink_scenario_step3_crosses_anchor_flips_backward() {
     // anchor's word — the selection grows backward, flipping direction.
     assert_state!(
         "a -[b]> c\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "<[a b]- c\n"
     );
 }
@@ -906,7 +939,7 @@ fn word_shrink_scenario_step4_crosses_back_shrinks_forward() {
     // to forward.
     assert_state!(
         "<[a b]- c\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "a -[b]> c\n"
     );
 }
@@ -921,7 +954,7 @@ fn word_shrink_scenario_step4_crosses_back_shrinks_forward() {
 fn word_no_truncation_grows_forward() {
     assert_state!(
         "aaa -[bbb]> ccc\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "aaa -[bbb ccc]>\n"
     );
 }
@@ -932,7 +965,7 @@ fn word_no_truncation_shrinks_to_unit() {
     // trimmed to a single char.
     assert_state!(
         "aaa -[bbb ccc]>\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "aaa -[bbb]> ccc\n"
     );
 }
@@ -944,7 +977,7 @@ fn word_no_truncation_crossing_anchor_keeps_word_whole() {
     // the selection direction flips to backward.
     assert_state!(
         "aaa -[bbb]> ccc\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "<[aaa bbb]- ccc\n"
     );
 }
@@ -953,7 +986,7 @@ fn word_no_truncation_crossing_anchor_keeps_word_whole() {
 fn word_no_truncation_shrink_back_after_cross() {
     assert_state!(
         "<[aaa bbb]- ccc\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "aaa -[bbb]> ccc\n"
     );
 }
@@ -971,7 +1004,7 @@ fn word_extend_after_flip_shrinks_to_new_anchor_word() {
     // to it. Without the flip the same press is a no-op (no word after "c").
     assert_state!(
         "a <[b c]-\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "a b -[c]>\n"
     );
 }
@@ -983,7 +1016,7 @@ fn word_extend_backward_after_flip_grows_over_old_span() {
     // Without the flip the same press shrinks to "b" instead.
     assert_state!(
         "a <[b c]-\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "<[a b c]-\n"
     );
 }
@@ -996,7 +1029,12 @@ fn extend_select_next_uppercase_word_unit_spans_punctuation() {
     // just "foo". "foo-bar baz\n": f=0,o=1,o=2,-=3,b=4,a=5,r=6,' '=7,b=8..10.
     assert_state!(
         "-[f]>oo-bar baz\n",
-        |(text, sels)| cmd_select_next_uppercase_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_uppercase_word(
+            &text,
+            sels,
+            1,
+            WordCtx::bare(MotionMode::Extend)
+        ),
         "-[foo-bar baz]>\n"
     );
 }
@@ -1016,7 +1054,7 @@ fn extend_select_next_word_count_2_grows_two_words_forward() {
     // "foo bar baz qux\n": f=0..2,' '=3,b=4..6,' '=7,b=8..10,' '=11,q=12..14.
     assert_state!(
         "-[foo]> bar baz qux\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 2, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 2, WordCtx::bare(MotionMode::Extend)),
         "-[foo bar baz]> qux\n"
     );
 }
@@ -1034,7 +1072,7 @@ fn extend_select_next_word_count_2_flips_then_continues_forward() {
     // "a b c d e\n": a=0,' '=1,b=2,' '=3,c=4,' '=5,d=6,' '=7,e=8,'\n'=9.
     assert_state!(
         "a <[b c]- d e\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 2, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 2, WordCtx::bare(MotionMode::Extend)),
         "a b -[c d]> e\n"
     );
 }
@@ -1062,7 +1100,7 @@ fn extend_select_next_word_anchor_ending_in_combining_cluster_stays_whole() {
     // instead of keeping "café" whole.
     assert_state!(
         "foo <[cafe\u{0301}]- bar\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "foo -[cafe\u{0301} bar]>\n"
     );
 }
@@ -1074,7 +1112,7 @@ fn extend_select_prev_word_anchor_ending_in_combining_cluster_stays_whole() {
     // "café" whole rather than treating the accent as a separate unit.
     assert_state!(
         "foo <[cafe\u{0301}]- bar\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "<[foo cafe\u{0301}]- bar\n"
     );
 }
@@ -1086,7 +1124,7 @@ fn extend_select_next_word_whitespace_anchor_is_single_position() {
     // preserve or extend the whitespace run.
     assert_state!(
         "a -[ ]> b\n",
-        |(text, sels)| cmd_select_next_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "a -[  b]>\n"
     );
 }
@@ -1100,7 +1138,115 @@ fn extend_select_prev_word_multi_cursor_shrink_causes_merge() {
     // "foo bar baz\n": f=0..2,' '=3,b=4..6,' '=7,b=8..10,'\n'=11.
     assert_state!(
         "foo -[bar]> -[b]>az\n",
-        |(text, sels)| cmd_select_prev_word(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),
         "<[foo bar baz]-\n"
+    );
+}
+
+// ── word-chars (configurable extra word characters) ────────────────────────
+
+#[test]
+fn w_treats_extra_word_char_as_part_of_the_word() {
+    // With '-' configured as a word char, "foo-bar" is one word — `w` from
+    // its start jumps straight past it to "baz", not to the '-' or "bar".
+    let ctx = WordCtx {
+        mode: MotionMode::Move,
+        around: false,
+        chars: WordChars::new("-"),
+    };
+    assert_state!(
+        "-[f]>oo-bar baz\n",
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, ctx),
+        "foo-bar -[baz]>\n"
+    );
+}
+
+#[test]
+fn b_treats_extra_word_char_as_part_of_the_word() {
+    let ctx = WordCtx {
+        mode: MotionMode::Move,
+        around: false,
+        chars: WordChars::new("-"),
+    };
+    assert_state!(
+        "foo-bar -[b]>az\n",
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, ctx),
+        "-[foo-bar]> baz\n"
+    );
+}
+
+#[test]
+fn w_around_composes_with_extra_word_chars() {
+    // `around` (word-selects-whitespace) and `chars` are independent fields
+    // on the same ctx — both apply together.
+    let ctx = WordCtx {
+        mode: MotionMode::Move,
+        around: true,
+        chars: WordChars::new("-"),
+    };
+    assert_state!(
+        "-[x]> foo-bar\n",
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, ctx),
+        "x-[ foo-bar]>\n"
+    );
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn uppercase_word_is_unaffected_by_extra_word_chars() {
+    // W already merges Word and Punctuation via `is_uppercase_word_boundary`,
+    // so a hyphen is already inside the same WORD with or without it also
+    // being a configured word char — the result must be identical.
+    let with_chars = WordCtx {
+        mode: MotionMode::Move,
+        around: false,
+        chars: WordChars::new("-"),
+    };
+    let without_chars = WordCtx::bare(MotionMode::Move);
+    assert_state!(
+        "-[f]>oo-bar baz\n",
+        |(text, sels)| cmd_select_next_uppercase_word(&text, sels, 1, with_chars),
+        "foo-bar -[baz]>\n"
+    );
+    assert_state!(
+        "-[f]>oo-bar baz\n",
+        |(text, sels)| cmd_select_next_uppercase_word(&text, sels, 1, without_chars),
+        "foo-bar -[baz]>\n"
+    );
+}
+
+#[test]
+fn word_chars_does_not_split_a_combining_grapheme_cluster() {
+    // "café-bar" where é = e + U+0301 (combining acute), '-' configured as a
+    // word char. The scan must still step by grapheme boundary and classify
+    // only each cluster's leading codepoint — `w` must select "café-bar"
+    // whole, not stop at the combining mark or at '-'.
+    let ctx = WordCtx {
+        mode: MotionMode::Move,
+        around: false,
+        chars: WordChars::new("-"),
+    };
+    assert_state!(
+        "-[c]>afe\u{0301}-bar baz\n",
+        |(text, sels)| cmd_select_next_word(&text, sels, 1, ctx),
+        "cafe\u{0301}-bar -[baz]>\n"
+    );
+}
+
+#[test]
+fn extend_word_chars_anchor_ending_in_combining_cluster_stays_whole() {
+    // Anchor sits on the trailing combining mark of "café" (part of the
+    // hyphenated "café-bar" once '-' is a configured word char). Extending
+    // backward must snap to the cluster start before classifying, and must
+    // treat the whole hyphenated run as the anchor's unit.
+    let ctx = WordCtx {
+        mode: MotionMode::Extend,
+        around: false,
+        chars: WordChars::new("-"),
+    };
+    assert_state!(
+        "foo <[cafe\u{0301}-bar]- baz\n",
+        |(text, sels)| cmd_select_prev_word(&text, sels, 1, ctx),
+        "<[foo cafe\u{0301}-bar]- baz\n"
     );
 }

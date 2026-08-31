@@ -285,6 +285,9 @@ macro_rules! parse_setting {
     ($value:expr, $key:expr, show_newline) => {
         parse_show_newline($value)
     };
+    ($value:expr, $key:expr, word_chars) => {
+        parse_word_chars($value)
+    };
 }
 
 /// Dispatch from a parser-kind token to the `get-option`-facing
@@ -319,6 +322,9 @@ macro_rules! option_value {
     };
     ($value:expr, show_newline) => {
         hume_scripting::host::OptionValue::Str(format_show_newline($value).to_string())
+    };
+    ($value:expr, word_chars) => {
+        hume_scripting::host::OptionValue::Str($value)
     };
 }
 
@@ -367,6 +373,7 @@ macro_rules! option_value {
 /// | `from_str` | `value.parse()` (type inferred from field) |
 /// | `string` | `value.to_owned()` |
 /// | `show_newline` | `parse_show_newline(value)` (`none`/`all` wire format) |
+/// | `word_chars` | `parse_word_chars(value)` (validated, unlike `string`) |
 macro_rules! define_settings {
     (
         global {
@@ -723,11 +730,24 @@ define_settings! {
             parser: bool;
         // Word motions (`w`/`W`/`b`/`B`) and `mm`/`MM` cover the destination
         // word's whitespace bookend (leading, or trailing for the first
-        // word of a line) — see `word_select_cmd`/`run_native_body`'s
-        // `around_fun` swap.
+        // word of a line) — see `word_select_cmd`'s `ctx.around` read and
+        // `run_native_body`'s `SelectionBody::Word` arm, which resolves it.
         "word-selects-whitespace" => word_selects_whitespace: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
+        // Extra characters this buffer counts as part of a word, on top of
+        // the built-in alphanumeric-plus-`_` rule (Vim's `iskeyword`, minus
+        // the range syntax) — e.g. `-` makes `foo-bar` one word in CSS.
+        // Affects `w`/`W`/`b`/`B`, `mm`/`MM`, `miw`/`maw`, Ctrl-W, `*`, and
+        // `(symbol-under-cursor)`; the classifier itself is
+        // `hume_editing::word::WordChars`. No global default per language
+        // ships — set this per-language from an `on-language-set` hook (see
+        // `configuration.md`). Whitespace/newline are rejected at write time
+        // — promoting one to `Word` would leave a word run with no
+        // terminator (see `WordChars::validate`).
+        "word-chars" => word_chars: String = String::new(),
+            scope: [Scope::Global, Scope::Buffer],
+            parser: word_chars;
         "signcolumn" => signcolumn: SignColumnConfig = SignColumnConfig::default(),
             scope: [Scope::Global, Scope::Buffer],
             parser: from_str;
@@ -906,6 +926,15 @@ fn parse_tab_width(value: &str) -> Result<u8, String> {
         return Err("invalid tab-width: must be at least 1".into());
     }
     Ok(n)
+}
+
+/// `parser: string` (`Ok(value.to_owned())`, unconditionally) is not usable
+/// here — a `word-chars` value must reject whitespace/newline (see
+/// `WordChars::validate`), so it gets its own parser kind instead of the
+/// generic unvalidated string one.
+fn parse_word_chars(value: &str) -> Result<String, String> {
+    hume_editing::word::WordChars::validate(value)?;
+    Ok(value.to_owned())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

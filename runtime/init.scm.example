@@ -31,3 +31,11 @@
 ;;   (bind-key! 'normal "space d" "lsp-hover") ; adds a key binding.
 ;;
 ;; "space" is free by default, so it's a natural prefix for your own bindings:
+
+;; Per-language options: react to `on-language-set` instead of only setting
+;; fixed global defaults. This treats '-' as a word character in CSS-family
+;; buffers, so `w`/`b`/`mm`/`*` see "foo-bar" as one word instead of three.
+;; (register-hook! 'on-language-set
+;;   (lambda (bid lang)
+;;     (when (member lang '("css" "scss" "less"))
+;;       (set-buffer-option! bid "word-chars" "-"))))

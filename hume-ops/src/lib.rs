@@ -32,3 +32,46 @@ pub enum MotionMode {
     Move,
     Extend,
 }
+
+// ── WordCtx ──────────────────────────────────────────────────────────────────
+
+/// Context for the word-family motions and text objects (`w`/`W`/`b`/`B`,
+/// `mm`/`MM`, `miw`/`maw`), resolved once by the caller from buffer settings.
+///
+/// This family needs more than the shared `(text, sels, count, MotionMode)`
+/// shape — `hume-ops` cannot depend on `hume-editor`'s settings, so the
+/// caller resolves `around`/`chars` and passes them in, the same way
+/// `tab_width`/`TabStyle` are resolved and passed to `align_selections`/
+/// `insert_tab`. Keeping this as its own struct (rather than widening every
+/// `hume-ops` selection command's signature) means the ~28 word-unrelated
+/// commands never carry data they ignore.
+#[derive(Debug, Clone, Copy)]
+pub struct WordCtx<'a> {
+    pub mode: MotionMode,
+    /// Effective `word-selects-whitespace`: whether the destination word's
+    /// whitespace bookend is covered. `miw`/`maw`/`miW`/`maW` are fixed by
+    /// name and ignore this field, the same way a non-extendable command
+    /// ignores `mode`.
+    pub around: bool,
+    pub chars: hume_editing::word::WordChars<'a>,
+}
+
+impl<'a> WordCtx<'a> {
+    #[cfg(test)]
+    pub fn bare(mode: MotionMode) -> Self {
+        Self {
+            mode,
+            around: false,
+            chars: hume_editing::word::WordChars::default(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn around(mode: MotionMode) -> Self {
+        Self {
+            mode,
+            around: true,
+            chars: hume_editing::word::WordChars::default(),
+        }
+    }
+}

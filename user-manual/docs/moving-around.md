@@ -15,7 +15,7 @@ All movement happens in Normal mode. Motions move the cursor and change the curr
 | `w`/`W` | Select next word/WORD |
 | `b`/`B` | Select previous word/WORD |
 
-A `word` breaks at punctuation, so `don't` is three `words`. A `WORD` only breaks at spaces, so `don't` is one `WORD`.
+A `word` breaks at punctuation, so `don't` is three `words`. A `WORD` only breaks at spaces, so `don't` is one `WORD`. Set `word-chars` (see [Configuration](configuration.md)) to widen what counts as a word — e.g. `-` makes `foo-bar` one `word` instead of three.
 
 By default, `w`/`W`/`b`/`B` also cover the whitespace *before* the destination word — except the first word of a line, which takes its *trailing* whitespace instead, since a leading run there would be indentation. This means deleting a word never leaves a double space behind. Turn it off with `:set global word-selects-whitespace=false` (or per buffer) to select just the bare word instead — see [Configuration](configuration.md).
 
@@ -119,7 +119,7 @@ Press `z` followed by a second key to reposition the view (the cursor itself sta
 | `?pattern` | Search backward |
 | `n` | Next match |
 | `N` | Previous match |
-| `*` | Search the whole word under the cursor, ignoring any current selection. Words are wrapped in word boundaries (`\b…\b`); punctuation is searched literally. Does nothing on whitespace or a blank line |
+| `*` | Search the whole word under the cursor, ignoring any current selection. Words are wrapped in word boundaries (`\b…\b`); punctuation is searched literally. Does nothing on whitespace or a blank line. With `word-chars` configured, a match can still bleed into a longer run sharing the same edge character (e.g. searching `foo-bar` inside `foo-bar-baz` also matches there) |
 | `m /` | Turn every search match in the buffer into a selection |
 | `Ctrl+/` | Use the primary selection's text, literally, as the search pattern — no word expansion, no boundaries (kitty only). Does nothing when the selection is just a line ending |
 

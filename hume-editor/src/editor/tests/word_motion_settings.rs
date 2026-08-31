@@ -154,10 +154,10 @@ fn MM_with_setting_off_matches_miW() {
     assert_eq!(state(&ed2), "foo.bar -[baz.qux]> quux\n");
 }
 
-/// Every equivalence test above runs in Move mode only — `mm`/`MM` dispatch
-/// through the same `around_fun.unwrap_or(fun)` gate regardless of
-/// `MotionMode`, so this checks the pairing also holds once an existing
-/// selection is being *grown* (Extend), not just replaced.
+/// Every equivalence test above runs in Move mode only — `mm`/`MM` read
+/// `WordCtx.around` (resolved fresh by `run_native_body`'s `SelectionBody::Word`
+/// arm) regardless of `MotionMode`, so this checks the pairing also holds
+/// once an existing selection is being *grown* (Extend), not just replaced.
 #[test]
 fn mm_extend_mode_matches_maw_extend() {
     let mut ed = editor_from("one -[t]>wo three\n");

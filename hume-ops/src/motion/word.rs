@@ -1,11 +1,12 @@
 use super::MotionMode;
+use crate::WordCtx;
 use crate::text_object::{expand_word_unit, word_unit_at};
 use hume_editing::grapheme::{
     next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
 };
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
-use hume_editing::word::{CharClass, classify_char, is_uppercase_word_boundary, is_word_boundary};
+use hume_editing::word::{CharClass, WordChars, is_uppercase_word_boundary, is_word_boundary};
 
 // ── Word motions (inner) ──────────────────────────────────────────────────────
 
@@ -16,11 +17,13 @@ use hume_editing::word::{CharClass, classify_char, is_uppercase_word_boundary, i
 /// (but not newlines), and lands on the next word/punct start or on a newline.
 ///
 /// The `is_boundary` parameter is `is_word_boundary` for `w` and
-/// `is_uppercase_word_boundary` for `W`.
+/// `is_uppercase_word_boundary` for `W`. `chars` folds this buffer's extra
+/// word characters into every classification — see [`WordChars::classify`].
 pub(super) fn next_word_start(
     text: &BufferText,
     head: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
+    chars: WordChars<'_>,
 ) -> usize {
     let len = text.len_chars();
     if head >= len {
@@ -28,7 +31,7 @@ pub(super) fn next_word_start(
     }
 
     let mut pos = head;
-    let mut prev_class = classify_char(text.char_at(pos).expect("pos < len"));
+    let mut prev_class = chars.classify(text.char_at(pos).expect("pos < len"));
     // Advance by a full grapheme cluster so we never land mid-cluster.
     // This matters for combining sequences like e + U+0301 (combining acute):
     // stepping by 1 would land on the combining codepoint, which classify_char
@@ -36,7 +39,7 @@ pub(super) fn next_word_start(
     pos = next_grapheme_boundary(text, pos);
 
     while pos < len {
-        let cur_class = classify_char(text.char_at(pos).expect("pos < len"));
+        let cur_class = chars.classify(text.char_at(pos).expect("pos < len"));
         if is_boundary(prev_class, cur_class)
             && (cur_class == CharClass::Eol || cur_class != CharClass::Space)
         {
@@ -58,6 +61,7 @@ pub(crate) fn prev_word_start(
     text: &BufferText,
     head: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
+    chars: WordChars<'_>,
 ) -> usize {
     if head == 0 {
         return 0;
@@ -71,7 +75,7 @@ pub(crate) fn prev_word_start(
 
     // Phase 1: skip Space and Eol backward.
     loop {
-        let cat = classify_char(text.char_at(pos).expect("pos < len"));
+        let cat = chars.classify(text.char_at(pos).expect("pos < len"));
         if cat != CharClass::Space && cat != CharClass::Eol {
             break;
         }
@@ -82,13 +86,13 @@ pub(crate) fn prev_word_start(
     }
 
     // Phase 2: skip backward while in the same category.
-    let cat = classify_char(text.char_at(pos).expect("pos < len"));
+    let cat = chars.classify(text.char_at(pos).expect("pos < len"));
     while pos > 0 {
         // Use prev_grapheme_boundary rather than pos - 1 so we always examine
         // the first codepoint of each grapheme cluster (the base character),
         // not a combining codepoint that may report a different class.
         let prev_pos = prev_grapheme_boundary(text, pos);
-        let prev_cat = classify_char(text.char_at(prev_pos).expect("prev_pos < len"));
+        let prev_cat = chars.classify(text.char_at(prev_pos).expect("prev_pos < len"));
         if is_boundary(prev_cat, cat) {
             break;
         }
@@ -116,13 +120,14 @@ pub(super) fn find_word_end_from(
     text: &BufferText,
     start: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
+    chars: WordChars<'_>,
 ) -> usize {
     let len = text.len_chars();
     if start >= len {
         return start.saturating_sub(1);
     }
 
-    let cat = classify_char(text.char_at(start).expect("start < len"));
+    let cat = chars.classify(text.char_at(start).expect("start < len"));
     let mut pos = start;
 
     loop {
@@ -135,7 +140,7 @@ pub(super) fn find_word_end_from(
         if next_pos >= len {
             return next_pos - 1; // grapheme-safe: next_pos is a grapheme boundary; -1 is the last codepoint of the current cluster
         }
-        let next_cat = classify_char(text.char_at(next_pos).expect("next_pos < len"));
+        let next_cat = chars.classify(text.char_at(next_pos).expect("next_pos < len"));
         if is_boundary(cat, next_cat) {
             return next_pos - 1; // grapheme-safe: next_pos is a grapheme boundary; -1 is the last codepoint of the current cluster
         }
@@ -154,12 +159,13 @@ pub(super) fn find_word_start_from(
     text: &BufferText,
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
+    chars: WordChars<'_>,
 ) -> usize {
-    let cat = classify_char(text.char_at(pos).expect("pos < len"));
+    let cat = chars.classify(text.char_at(pos).expect("pos < len"));
     let mut pos = pos;
     while pos > 0 {
         let prev_pos = prev_grapheme_boundary(text, pos);
-        let prev_cat = classify_char(text.char_at(prev_pos).expect("prev_pos < len"));
+        let prev_cat = chars.classify(text.char_at(prev_pos).expect("prev_pos < len"));
         if is_boundary(prev_cat, cat) {
             break;
         }
@@ -179,6 +185,7 @@ pub(super) fn anchor_unit(
     text: &BufferText,
     anchor: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
+    chars: WordChars<'_>,
 ) -> (usize, usize) {
     // `anchor` may be *any* valid selection endpoint, including the last
     // codepoint of a multi-codepoint grapheme cluster — that's exactly what
@@ -191,13 +198,13 @@ pub(super) fn anchor_unit(
     // just that trailing mark. Snap to the start of the cluster containing
     // `anchor` first — a no-op when `anchor` already is a cluster start.
     let anchor = snap_to_cluster_start(text, anchor);
-    let cat = classify_char(text.char_at(anchor).expect("anchor < len"));
+    let cat = chars.classify(text.char_at(anchor).expect("anchor < len"));
     if cat == CharClass::Space || cat == CharClass::Eol {
         (anchor, anchor)
     } else {
         (
-            find_word_start_from(text, anchor, is_boundary),
-            find_word_end_from(text, anchor, is_boundary),
+            find_word_start_from(text, anchor, is_boundary, chars),
+            find_word_end_from(text, anchor, is_boundary, chars),
         )
     }
 }
@@ -214,18 +221,19 @@ pub(super) fn select_next_word(
     text: &BufferText,
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
+    chars: WordChars<'_>,
 ) -> Option<(usize, usize)> {
     let len = text.len_chars();
 
     // Find the start of the next word.
-    let mut word_start = next_word_start(text, pos, is_boundary);
+    let mut word_start = next_word_start(text, pos, is_boundary, chars);
 
     // If we landed on a newline that is NOT the trailing '\n', cross the line:
     // call next_word_start again from that newline to get to the next line's word.
     if word_start < len.saturating_sub(1) {
-        let cat = classify_char(text.char_at(word_start).expect("word_start < len"));
+        let cat = chars.classify(text.char_at(word_start).expect("word_start < len"));
         if cat == CharClass::Eol {
-            word_start = next_word_start(text, word_start, is_boundary);
+            word_start = next_word_start(text, word_start, is_boundary, chars);
         }
     }
 
@@ -236,12 +244,12 @@ pub(super) fn select_next_word(
     }
 
     // Guard: if we somehow landed on whitespace, also a no-op.
-    let cat = classify_char(text.char_at(word_start).expect("word_start < len"));
+    let cat = chars.classify(text.char_at(word_start).expect("word_start < len"));
     if cat == CharClass::Space || cat == CharClass::Eol {
         return None;
     }
 
-    let word_end = find_word_end_from(text, word_start, is_boundary);
+    let word_end = find_word_end_from(text, word_start, is_boundary, chars);
     Some((word_start, word_end))
 }
 
@@ -257,22 +265,23 @@ pub(super) fn select_prev_word(
     text: &BufferText,
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
+    chars: WordChars<'_>,
 ) -> Option<(usize, usize)> {
     if pos == 0 {
         return None;
     }
 
     // Find the start of the word `prev_word_start` would land on.
-    let word_start = prev_word_start(text, pos, is_boundary);
+    let word_start = prev_word_start(text, pos, is_boundary, chars);
 
     // If that position is whitespace (e.g. buffer starts with spaces), there
     // is no actual word to jump to.
-    let cat = classify_char(text.char_at(word_start).expect("word_start < len"));
+    let cat = chars.classify(text.char_at(word_start).expect("word_start < len"));
     if cat == CharClass::Space || cat == CharClass::Eol {
         return None;
     }
 
-    let word_end = find_word_end_from(text, word_start, is_boundary);
+    let word_end = find_word_end_from(text, word_start, is_boundary, chars);
 
     // If pos is within [word_start, word_end], prev_word_start landed on the
     // CURRENT word, not the previous one. We need one more step backward.
@@ -280,12 +289,12 @@ pub(super) fn select_prev_word(
         if word_start == 0 {
             return None; // already at the first word — no-op
         }
-        let prev_start = prev_word_start(text, word_start, is_boundary);
-        let prev_cat = classify_char(text.char_at(prev_start).expect("prev_start < len"));
+        let prev_start = prev_word_start(text, word_start, is_boundary, chars);
+        let prev_cat = chars.classify(text.char_at(prev_start).expect("prev_start < len"));
         if prev_cat == CharClass::Space || prev_cat == CharClass::Eol {
             return None; // no word before this one
         }
-        let prev_end = find_word_end_from(text, prev_start, is_boundary);
+        let prev_end = find_word_end_from(text, prev_start, is_boundary, chars);
         return Some((prev_start, prev_end));
     }
 
@@ -393,6 +402,7 @@ pub(super) fn apply_word_select_extend(
     count: usize,
     around: bool,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
+    chars: WordChars<'_>,
     motion: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
@@ -405,11 +415,12 @@ pub(super) fn apply_word_select_extend(
                     // the very start of the buffer) — fall back to the bare
                     // whitespace position, same as `anchor_unit` yields there.
                     let (unit_start, unit_end) = if around
-                        && let Some(unit) = word_unit_at(text, current.anchor(), is_boundary, 0)
+                        && let Some(unit) =
+                            word_unit_at(text, current.anchor(), is_boundary, 0, chars)
                     {
                         unit
                     } else {
-                        anchor_unit(text, current.anchor(), is_boundary)
+                        anchor_unit(text, current.anchor(), is_boundary, chars)
                     };
                     current = if word_start > unit_end {
                         Selection::new(unit_start, word_end) // target beyond anchor — grow forward
@@ -434,10 +445,10 @@ pub(super) fn apply_word_select_extend(
 }
 
 type IsBoundary = fn(CharClass, CharClass) -> bool;
-type SelectWord = fn(&BufferText, usize, IsBoundary) -> Option<(usize, usize)>;
+type SelectWord = fn(&BufferText, usize, IsBoundary, WordChars<'_>) -> Option<(usize, usize)>;
 
-/// Shared dispatch for the eight word-select commands below: branches on
-/// `mode` (fresh re-anchor for `Move`, grow/shrink for `Extend` — see
+/// Shared dispatch for the four word-select commands below: branches on
+/// `ctx.mode` (fresh re-anchor for `Move`, grow/shrink for `Extend` — see
 /// [`apply_word_select`]/[`apply_word_select_extend`]), parameterized by
 /// direction (`select_word`: [`select_next_word`] or [`select_prev_word`])
 /// and word class (`is_boundary`: [`is_word_boundary`] or
@@ -445,51 +456,54 @@ type SelectWord = fn(&BufferText, usize, IsBoundary) -> Option<(usize, usize)>;
 ///
 /// `backward` only affects the `Move` arm's search origin (see
 /// [`apply_word_select`]'s doc); `Extend`'s chaining always uses `head()` and
-/// has no analogous asymmetry. `around` affects both arms identically —
-/// whether whitespace is included in the unit.
-#[allow(clippy::too_many_arguments)]
+/// has no analogous asymmetry. `ctx.around` affects both arms identically —
+/// whether whitespace is included in the unit; it used to be a second `fn`
+/// pointer (`around_fun`) the registry swapped in, now it's just a field read
+/// here.
 fn word_select_cmd(
     text: &BufferText,
     sels: SelectionSet,
     count: usize,
-    mode: MotionMode,
-    around: bool,
+    ctx: WordCtx<'_>,
     backward: bool,
     is_boundary: IsBoundary,
     select_word: SelectWord,
 ) -> SelectionSet {
-    match mode {
-        MotionMode::Move => apply_word_select(text, sels, count, around, backward, |b, pos| {
-            select_word(b, pos, is_boundary)
+    match ctx.mode {
+        MotionMode::Move => apply_word_select(text, sels, count, ctx.around, backward, |b, pos| {
+            select_word(b, pos, is_boundary, ctx.chars)
         }),
-        MotionMode::Extend => {
-            apply_word_select_extend(text, sels, count, around, is_boundary, |b, pos| {
-                select_word(b, pos, is_boundary)
-            })
-        }
+        MotionMode::Extend => apply_word_select_extend(
+            text,
+            sels,
+            count,
+            ctx.around,
+            is_boundary,
+            ctx.chars,
+            |b, pos| select_word(b, pos, is_boundary, ctx.chars),
+        ),
     }
 }
 
 /// Generates one `cmd_select_*` fn delegating to [`word_select_cmd`].
 ///
-/// The command registry stores `fun`/`around_fun` as bare `fn` pointers (see
-/// `EditorCmdFn`'s doc), so each variant still needs its own named item —
+/// The command registry stores `fun` as a bare `fn` pointer (see
+/// `SelectionBody`'s doc), so each variant still needs its own named item —
 /// only the body is shared here, not the item itself.
 macro_rules! word_select_variant {
-    ($name:ident, $doc:expr, $around:expr, $backward:expr, $is_boundary:expr, $select_word:expr) => {
+    ($name:ident, $doc:expr, $backward:expr, $is_boundary:expr, $select_word:expr) => {
         #[doc = $doc]
         pub fn $name(
             text: &BufferText,
             sels: SelectionSet,
             count: usize,
-            mode: MotionMode,
+            ctx: WordCtx<'_>,
         ) -> SelectionSet {
             word_select_cmd(
                 text,
                 sels,
                 count,
-                mode,
-                $around,
+                ctx,
                 $backward,
                 $is_boundary,
                 $select_word,
@@ -500,18 +514,8 @@ macro_rules! word_select_variant {
 
 word_select_variant!(
     cmd_select_next_word,
-    "Select or extend to the next word (`w`).",
-    false,
-    false,
-    is_word_boundary,
-    select_next_word
-);
-word_select_variant!(
-    cmd_select_next_word_around,
     "Select or extend to the next word (`w`), covering its whitespace \
-     bookend in both modes — used when `word-selects-whitespace` is on. \
-     See [`cmd_select_next_word`].",
-    true,
+     bookend in both modes when `ctx.around` is set (`word-selects-whitespace`).",
     false,
     is_word_boundary,
     select_next_word
@@ -521,32 +525,13 @@ word_select_variant!(
     "Select or extend to the next WORD (`W`): like `w` but treats \
      word+punct as one class.",
     false,
-    false,
-    is_uppercase_word_boundary,
-    select_next_word
-);
-word_select_variant!(
-    cmd_select_next_uppercase_word_around,
-    "Select or extend to the next WORD (`W`), covering its whitespace \
-     bookend in both modes. See [`cmd_select_next_word_around`].",
-    true,
-    false,
     is_uppercase_word_boundary,
     select_next_word
 );
 word_select_variant!(
     cmd_select_prev_word,
-    "Select or extend to the previous word (`b`).",
-    false,
-    true,
-    is_word_boundary,
-    select_prev_word
-);
-word_select_variant!(
-    cmd_select_prev_word_around,
     "Select or extend to the previous word (`b`), covering its whitespace \
-     bookend in both modes. See [`cmd_select_next_word_around`].",
-    true,
+     bookend in both modes when `ctx.around` is set. See [`cmd_select_next_word`].",
     true,
     is_word_boundary,
     select_prev_word
@@ -555,16 +540,6 @@ word_select_variant!(
     cmd_select_prev_uppercase_word,
     "Select or extend to the previous WORD (`B`): like `b` but treats \
      word+punct as one class.",
-    false,
-    true,
-    is_uppercase_word_boundary,
-    select_prev_word
-);
-word_select_variant!(
-    cmd_select_prev_uppercase_word_around,
-    "Select or extend to the previous WORD (`B`), covering its whitespace \
-     bookend in both modes. See [`cmd_select_next_word_around`].",
-    true,
     true,
     is_uppercase_word_boundary,
     select_prev_word

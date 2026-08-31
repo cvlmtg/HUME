@@ -7,10 +7,12 @@ use hume_editing::grapheme::{
 use hume_editing::lines::line_end_exclusive;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
-use hume_editing::word::{CharClass, classify_char, is_uppercase_word_boundary, is_word_boundary};
+use hume_editing::word::{
+    CharClass, WordChars, classify_char, is_uppercase_word_boundary, is_word_boundary,
+};
 
 use super::apply_text_object_by_mode;
-use crate::MotionMode;
+use crate::{MotionMode, WordCtx};
 
 /// Inner word parameterised by boundary predicate.
 ///
@@ -21,8 +23,9 @@ pub fn inner_word_impl(
     text: &BufferText,
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
+    chars: WordChars<'_>,
 ) -> Option<(usize, usize)> {
-    let class = classify_char(text.char_at(pos)?);
+    let class = chars.classify(text.char_at(pos)?);
 
     // Scan left: walk back by grapheme cluster boundaries while the preceding
     // grapheme belongs to the same class. Using prev_grapheme_boundary ensures
@@ -31,7 +34,7 @@ pub fn inner_word_impl(
     let mut start = pos;
     while start > 0 {
         let prev_pos = prev_grapheme_boundary(text, start);
-        let prev = classify_char(text.char_at(prev_pos)?);
+        let prev = chars.classify(text.char_at(prev_pos)?);
         if is_boundary(prev, class) {
             break;
         }
@@ -48,7 +51,7 @@ pub fn inner_word_impl(
         if next_pos >= text.len_chars() {
             break;
         }
-        let next = classify_char(text.char_at(next_pos)?);
+        let next = chars.classify(text.char_at(next_pos)?);
         if is_boundary(class, next) {
             break;
         }
@@ -69,10 +72,10 @@ pub fn cmd_inner_word(
     text: &BufferText,
     sels: SelectionSet,
     _count: usize,
-    mode: MotionMode,
+    ctx: WordCtx<'_>,
 ) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, mode, |b, pos| {
-        inner_word_impl(b, pos, is_word_boundary)
+    apply_text_object_by_mode(text, sels, ctx.mode, |b, pos| {
+        inner_word_impl(b, pos, is_word_boundary, ctx.chars)
     })
 }
 
@@ -174,13 +177,14 @@ pub fn word_unit_at(
     pos: usize,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
     min_start: usize,
+    chars: WordChars<'_>,
 ) -> Option<(usize, usize)> {
     // `pos` may be any valid selection endpoint, including the trailing
     // codepoint of a multi-codepoint grapheme cluster — see `anchor_unit`'s
     // doc for why this snap to the cluster start matters before classifying.
     let pos = snap_to_cluster_start(text, pos);
-    let (start, end) = inner_word_impl(text, pos, is_boundary)?;
-    let class = classify_char(text.char_at(pos)?);
+    let (start, end) = inner_word_impl(text, pos, is_boundary, chars)?;
+    let class = chars.classify(text.char_at(pos)?);
     if class != CharClass::Space && class != CharClass::Eol {
         return Some(expand_word_unit(text, start, end, min_start));
     }
@@ -190,19 +194,19 @@ pub fn word_unit_at(
     // that one by the normal rule instead.
     let is_word = |c: CharClass| c != CharClass::Space && c != CharClass::Eol;
     let next_pos = next_grapheme_boundary(text, end);
-    let word_pos = if next_pos < text.len_chars() && is_word(classify_char(text.char_at(next_pos)?))
-    {
-        next_pos
-    } else if start > 0 {
-        let prev_pos = prev_grapheme_boundary(text, start);
-        if !is_word(classify_char(text.char_at(prev_pos)?)) {
+    let word_pos =
+        if next_pos < text.len_chars() && is_word(chars.classify(text.char_at(next_pos)?)) {
+            next_pos
+        } else if start > 0 {
+            let prev_pos = prev_grapheme_boundary(text, start);
+            if !is_word(chars.classify(text.char_at(prev_pos)?)) {
+                return None;
+            }
+            prev_pos
+        } else {
             return None;
-        }
-        prev_pos
-    } else {
-        return None;
-    };
-    let (start, end) = inner_word_impl(text, word_pos, is_boundary)?;
+        };
+    let (start, end) = inner_word_impl(text, word_pos, is_boundary, chars)?;
     Some(expand_word_unit(text, start, end, min_start))
 }
 
@@ -228,16 +232,17 @@ pub fn nearest_word_on_line(
     line_start: usize,
     line_end_excl: usize,
     around: bool,
+    chars: WordChars<'_>,
 ) -> Option<(usize, usize)> {
     let unit = |pos: usize| {
         if around {
-            word_unit_at(text, pos, is_word_boundary, line_start)
+            word_unit_at(text, pos, is_word_boundary, line_start, chars)
         } else {
-            inner_word_impl(text, pos, is_word_boundary)
+            inner_word_impl(text, pos, is_word_boundary, chars)
         }
     };
 
-    let class = classify_char(text.char_at(head)?);
+    let class = chars.classify(text.char_at(head)?);
 
     // Fast path: head is already on a word/punct — delegate to inner/around unit.
     if class != CharClass::Space && class != CharClass::Eol {
@@ -250,7 +255,7 @@ pub fn nearest_word_on_line(
         let mut found = None;
         while pos > line_start {
             pos = prev_grapheme_boundary(text, pos);
-            let c = classify_char(text.char_at(pos)?);
+            let c = chars.classify(text.char_at(pos)?);
             if c != CharClass::Space && c != CharClass::Eol {
                 found = Some(pos);
                 break;
@@ -268,7 +273,7 @@ pub fn nearest_word_on_line(
             if next_pos >= line_end_excl {
                 break;
             }
-            let c = classify_char(text.char_at(next_pos)?);
+            let c = chars.classify(text.char_at(next_pos)?);
             if c != CharClass::Space && c != CharClass::Eol {
                 found = Some(next_pos);
                 break;
@@ -347,28 +352,32 @@ pub fn cmd_select_word_nearest_on_line(
     _count: usize,
     mode: MotionMode,
     around: bool,
+    chars: WordChars<'_>,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         let line = text.char_to_line(sel.anchor());
         let line_start = text.line_to_char(line);
         let line_end_excl = line_end_exclusive(text, line);
-        let found = nearest_word_on_line(text, sel.anchor(), line_start, line_end_excl, around);
+        let found =
+            nearest_word_on_line(text, sel.anchor(), line_start, line_end_excl, around, chars);
         apply_nearest_word_result(sel, found, mode)
     });
     result.debug_assert_valid(text);
     result
 }
 
-/// Around word (`ma w`): same span as `mm` (see [`cmd_select_word_around`]),
-/// under a separate name because it stays available regardless of
-/// `word-selects-whitespace`.
+/// Around word (`ma w`): same span as `mm` when `word-selects-whitespace` is
+/// on (see [`cmd_select_word`]), under a separate name because it stays
+/// available — ignoring `ctx.around` — regardless of that setting.
 pub fn cmd_around_word(
     text: &BufferText,
     sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
+    _count: usize,
+    ctx: WordCtx<'_>,
 ) -> SelectionSet {
-    cmd_select_word_around(text, sels, count, mode)
+    apply_text_object_by_mode(text, sels, ctx.mode, |b, pos| {
+        word_unit_at(b, pos, is_word_boundary, 0, ctx.chars)
+    })
 }
 
 #[allow(non_snake_case)]
@@ -376,10 +385,10 @@ pub fn cmd_inner_uppercase_word(
     text: &BufferText,
     sels: SelectionSet,
     _count: usize,
-    mode: MotionMode,
+    ctx: WordCtx<'_>,
 ) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, mode, |b, pos| {
-        inner_word_impl(b, pos, is_uppercase_word_boundary)
+    apply_text_object_by_mode(text, sels, ctx.mode, |b, pos| {
+        inner_word_impl(b, pos, is_uppercase_word_boundary, ctx.chars)
     })
 }
 
@@ -388,37 +397,48 @@ pub fn cmd_inner_uppercase_word(
 pub fn cmd_around_uppercase_word(
     text: &BufferText,
     sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    cmd_select_uppercase_word_around(text, sels, count, mode)
-}
-
-/// Select the word under the cursor (`mm`), covering its surrounding
-/// whitespace per [`expand_word_unit`] — used when `word-selects-whitespace`
-/// is on. Both modes use the same unit; `Extend` unions it with the current
-/// selection via `apply_text_object_extend`. Also the body `maw` delegates
-/// to — [`cmd_around_word`] — the two select the same span.
-pub fn cmd_select_word_around(
-    text: &BufferText,
-    sels: SelectionSet,
     _count: usize,
-    mode: MotionMode,
+    ctx: WordCtx<'_>,
 ) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, mode, |b, pos| {
-        word_unit_at(b, pos, is_word_boundary, 0)
+    apply_text_object_by_mode(text, sels, ctx.mode, |b, pos| {
+        word_unit_at(b, pos, is_uppercase_word_boundary, 0, ctx.chars)
     })
 }
 
-/// Select the WORD under the cursor (`MM`); see [`cmd_select_word_around`].
-#[allow(non_snake_case)]
-pub fn cmd_select_uppercase_word_around(
+/// Select the word under the cursor (`mm`): the inner word, or (when
+/// `ctx.around` — the effective `word-selects-whitespace` — is set) the same
+/// unit `maw`/[`cmd_around_word`] selects, covering its surrounding
+/// whitespace per [`expand_word_unit`]. Both modes use the same unit;
+/// `Extend` unions it with the current selection via
+/// `apply_text_object_extend`.
+pub fn cmd_select_word(
     text: &BufferText,
     sels: SelectionSet,
     _count: usize,
-    mode: MotionMode,
+    ctx: WordCtx<'_>,
 ) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, mode, |b, pos| {
-        word_unit_at(b, pos, is_uppercase_word_boundary, 0)
+    apply_text_object_by_mode(text, sels, ctx.mode, |b, pos| {
+        if ctx.around {
+            word_unit_at(b, pos, is_word_boundary, 0, ctx.chars)
+        } else {
+            inner_word_impl(b, pos, is_word_boundary, ctx.chars)
+        }
+    })
+}
+
+/// Select the WORD under the cursor (`MM`); see [`cmd_select_word`].
+#[allow(non_snake_case)]
+pub fn cmd_select_uppercase_word(
+    text: &BufferText,
+    sels: SelectionSet,
+    _count: usize,
+    ctx: WordCtx<'_>,
+) -> SelectionSet {
+    apply_text_object_by_mode(text, sels, ctx.mode, |b, pos| {
+        if ctx.around {
+            word_unit_at(b, pos, is_uppercase_word_boundary, 0, ctx.chars)
+        } else {
+            inner_word_impl(b, pos, is_uppercase_word_boundary, ctx.chars)
+        }
     })
 }

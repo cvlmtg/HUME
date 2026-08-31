@@ -21,30 +21,26 @@ macro_rules! motion {
         $reg.register(MappableCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: $fun,
-            around_fun: None,
+            fun: SelectionBody::Plain($fun),
             jump: true,
-        })
-    };
-    // Word motions: `around_fun` swaps in for `fun` when
-    // `word-selects-whitespace` is on (see `run_native_body`). The `jump`
-    // arm above must be tried first — a bare identifier also parses as a
-    // valid `expr` and `macro_rules` does not backtrack once an arm matches.
-    ($reg:expr, $name:literal, $doc:literal, $fun:expr, $around_fun:expr) => {
-        $reg.register(MappableCommand::Motion {
-            name: Cow::Borrowed($name),
-            doc: Cow::Borrowed($doc),
-            fun: $fun,
-            around_fun: Some($around_fun),
-            jump: false,
         })
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
         $reg.register(MappableCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: $fun,
-            around_fun: None,
+            fun: SelectionBody::Plain($fun),
+            jump: false,
+        })
+    };
+}
+/// Word-family motions (`w`/`W`/`b`/`B`) — see [`SelectionBody::Word`].
+macro_rules! word_motion {
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
+        $reg.register(MappableCommand::Motion {
+            name: Cow::Borrowed($name),
+            doc: Cow::Borrowed($doc),
+            fun: SelectionBody::Word($fun),
             jump: false,
         })
     };
@@ -54,8 +50,7 @@ macro_rules! selection {
         $reg.register(MappableCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: $fun,
-            around_fun: None,
+            fun: SelectionBody::Plain($fun),
             jump: false,
             selection_tracking: SelectionTracking::Establishes,
         })
@@ -64,35 +59,31 @@ macro_rules! selection {
         $reg.register(MappableCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: $fun,
-            around_fun: None,
+            fun: SelectionBody::Plain($fun),
             jump: true,
             selection_tracking: SelectionTracking::Establishes,
         })
     };
     // Transforms whatever extent is already staged instead of establishing
-    // one — see `SelectionTracking::Composes`. Tried before the `$around_fun`
-    // arm below for the same reason `jump` is: a bare identifier also parses
-    // as a valid `expr` and macro_rules does not backtrack once an arm matches.
+    // one — see `SelectionTracking::Composes`.
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, composes) => {
         $reg.register(MappableCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: $fun,
-            around_fun: None,
+            fun: SelectionBody::Plain($fun),
             jump: false,
             selection_tracking: SelectionTracking::Composes,
         })
     };
-    // `mm`/`MM` (select-word/select-uppercase-word): `around_fun` swaps in
-    // for `fun` when `word-selects-whitespace` is on. Tried last, for the
-    // same reason.
-    ($reg:expr, $name:literal, $doc:literal, $fun:expr, $around_fun:expr) => {
+}
+/// Word-family selections/text objects (`mm`/`MM`, `miw`/`maw`) — see
+/// [`SelectionBody::Word`].
+macro_rules! word_selection {
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
         $reg.register(MappableCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: $fun,
-            around_fun: Some($around_fun),
+            fun: SelectionBody::Word($fun),
             jump: false,
             selection_tracking: SelectionTracking::Establishes,
         })
@@ -122,6 +113,8 @@ macro_rules! edit {
 pub(super) use edit;
 pub(super) use motion;
 pub(super) use selection;
+pub(super) use word_motion;
+pub(super) use word_selection;
 
 impl CommandRegistry {
     pub(super) fn register_defaults(&mut self) {

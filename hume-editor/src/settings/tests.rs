@@ -21,6 +21,7 @@ fn editor_settings_default_matches_old_constants() {
     assert!(s.auto_pairs_enabled);
     assert!(s.select_changed_text);
     assert!(s.word_selects_whitespace);
+    assert_eq!(s.word_chars, "");
     assert!(s.pane_dividers);
     assert!(s.statusline_mode_colors);
     assert_eq!(s.signcolumn, SignColumnConfig::default());
@@ -36,6 +37,7 @@ fn buffer_overrides_default_is_all_none() {
     assert!(ov.auto_pairs_enabled.is_none());
     assert!(ov.select_changed_text.is_none());
     assert!(ov.word_selects_whitespace.is_none());
+    assert!(ov.word_chars.is_none());
     assert!(ov.whitespace_space.is_none());
     assert!(ov.whitespace_tab.is_none());
     assert!(ov.whitespace_newline.is_none());
@@ -492,6 +494,19 @@ fn set_global_word_selects_whitespace() {
 }
 
 #[test]
+fn set_global_word_chars() {
+    assert_eq!(global("word-chars", "-").unwrap().word_chars, "-");
+}
+
+#[test]
+fn word_chars_rejects_whitespace() {
+    // Validated at the `write_global`/`write_buffer` chokepoint — a value
+    // containing whitespace or newline is refused, never stored.
+    assert!(global("word-chars", "- ").is_err());
+    assert!(buffer("word-chars", "-\n").is_err());
+}
+
+#[test]
 fn set_global_whitespace_space() {
     assert_eq!(
         global("whitespace-space", "all").unwrap().whitespace.space,
@@ -621,6 +636,13 @@ fn set_buffer_word_selects_whitespace() {
     let global = EditorSettings::default();
     let ov = buffer("word-selects-whitespace", "false").unwrap();
     assert!(!ov.word_selects_whitespace(&global));
+}
+
+#[test]
+fn set_buffer_word_chars() {
+    let global = EditorSettings::default();
+    let ov = buffer("word-chars", "-").unwrap();
+    assert_eq!(ov.word_chars(&global), "-");
 }
 
 #[test]

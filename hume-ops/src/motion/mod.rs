@@ -2,6 +2,11 @@ use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 
 use super::MotionMode;
+// Test-only: `motion::tests` reaches this via `super::super::*` (a
+// descendant module can see an ancestor's private `use` import), the same
+// way it already reaches `MotionMode` above.
+#[cfg(test)]
+use super::WordCtx;
 
 /// Whether an f/t motion places the cursor on the found character or adjacent to it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,9 +68,8 @@ use line::{goto_first_nonblank, goto_line_end, goto_line_newline, goto_line_star
 mod word;
 pub(crate) use word::prev_word_start;
 pub use word::{
-    cmd_select_next_uppercase_word, cmd_select_next_uppercase_word_around, cmd_select_next_word,
-    cmd_select_next_word_around, cmd_select_prev_uppercase_word,
-    cmd_select_prev_uppercase_word_around, cmd_select_prev_word, cmd_select_prev_word_around,
+    cmd_select_next_uppercase_word, cmd_select_next_word, cmd_select_prev_uppercase_word,
+    cmd_select_prev_word,
 };
 mod paragraph;
 use paragraph::{next_paragraph, prev_paragraph};

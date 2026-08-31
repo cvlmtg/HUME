@@ -35,6 +35,15 @@ The same word-finding logic powers both `w` and `W` (and the inner-word text
 objects) — the boundary rule is passed in as a parameter so there is no
 duplicated code.
 
+## Word is a policy, not a fact about the text
+
+The built-in Word/Punctuation split above is a default, not a universal
+truth: whether a hyphen belongs *inside* a word depends on what language
+you're editing. In CSS, `foo-bar` is one identifier; in most other languages
+it's subtraction. HUME lets a buffer widen its own Word class with extra
+characters (configured per language, typically), so the same four-class
+model still applies — only the boundary a hyphen draws changes.
+
 ## Why Eol is its own class
 
 `\n` could be treated as `Space` — it is whitespace, after all. But

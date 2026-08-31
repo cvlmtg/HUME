@@ -5,7 +5,7 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
-use hume_ops::MotionMode;
+use hume_ops::{MotionMode, WordCtx};
 
 // ── Command metadata for dispatch bookkeeping ────────────────────────────────
 
@@ -131,11 +131,26 @@ pub(crate) type EditorCmdFn = fn(
 
 // ── MappableCommand ───────────────────────────────────────────────────────────
 
-/// Signature shared by `Motion`/`Selection`'s `fun` and `around_fun` fields.
-/// Named only to keep `Option<fn(...)>` under clippy's type-complexity
-/// threshold — `fun` itself stays inline since the bare (non-`Option`) form
-/// doesn't trip it.
-type SelectionFn = fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet;
+/// Body shape for `Motion`/`Selection`'s `fun` field.
+///
+/// Every native motion/selection command takes `(&BufferText, SelectionSet,
+/// usize, MotionMode)` — except the word family (`w`/`W`/`b`/`B`, `mm`/`MM`,
+/// `miw`/`maw`), which additionally needs this buffer's configured
+/// `word-chars` and effective `word-selects-whitespace`, resolved from
+/// settings the same way `tab_width`/`TabStyle` are for `align_selections`/
+/// `insert_tab`. Rather than widening every command's signature for the ~28
+/// that would ignore the extra data, only the word family gets a second body
+/// shape — the same reasoning that makes `select-word-nearest-on-line` an
+/// `EditorCmd` rather than a `Selection` (it needs a `RowMap` the shared
+/// shape can't carry either). This also retires the old `around_fun`
+/// second-`fn`-pointer swap: `WordCtx::around` is now just a field read
+/// inside `word_select_cmd`/`cmd_select_word` instead of a second registered
+/// item per command.
+#[derive(Clone, Copy)]
+pub(crate) enum SelectionBody {
+    Plain(fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet),
+    Word(fn(&BufferText, SelectionSet, usize, WordCtx<'_>) -> SelectionSet),
+}
 
 /// A command that can be bound to a key in a keymap.
 ///
@@ -145,7 +160,9 @@ type SelectionFn = fn(&BufferText, SelectionSet, usize, MotionMode) -> Selection
 pub(crate) enum MappableCommand {
     /// Motion that repeats `count` times.
     ///
-    /// Signature: `fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet`
+    /// `fun` is a [`SelectionBody`] — `Plain(fn(&BufferText, SelectionSet,
+    /// usize, MotionMode) -> SelectionSet)` for almost every motion, `Word`
+    /// for the word family.
     ///
     /// Motions are always extendable. The `mode` parameter selects Move or Extend
     /// semantics at dispatch time — no separate extend-variant functions needed.
@@ -154,21 +171,14 @@ pub(crate) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet,
-        /// Alternate body used in place of `fun` when the focused buffer
-        /// resolves `word-selects-whitespace` to true (see
-        /// `run_native_body`'s dispatch swap). `None` for every motion except
-        /// the word motions (`select-next-word` et al.), which swap in their
-        /// `_around` twin — same signature, covers the destination word's
-        /// whitespace bookend in both `Move` and `Extend` modes.
-        around_fun: Option<SelectionFn>,
+        fun: SelectionBody,
         /// Whether this motion always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for goto commands.
         jump: bool,
     },
     /// Selection or text-object operation (accepts count).
     ///
-    /// Signature: `fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet`
+    /// `fun` is a [`SelectionBody`] — see [`MappableCommand::Motion`]'s doc.
     ///
     /// All selection commands receive `MotionMode`. Non-extendable ones accept
     /// `_mode` and ignore it; extendable text objects branch on it. The `usize`
@@ -178,13 +188,7 @@ pub(crate) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet,
-        /// Alternate body used in place of `fun` when the focused buffer
-        /// resolves `word-selects-whitespace` to true. `None` for every
-        /// selection command except `select-word`/`select-uppercase-word`
-        /// (`mm`/`MM`), which swap to their around-word body. See
-        /// `Motion::around_fun`.
-        around_fun: Option<SelectionFn>,
+        fun: SelectionBody,
         /// Whether this command always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for `select-all` (`%`).
         jump: bool,

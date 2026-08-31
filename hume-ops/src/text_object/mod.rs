@@ -3,6 +3,13 @@ use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 
 use crate::MotionMode;
+// Test-only: `text_object::tests` reaches these via `super::super::*` (a
+// descendant module can see an ancestor's private `use` import), the same
+// way it already reaches `MotionMode` above.
+#[cfg(test)]
+use crate::WordCtx;
+#[cfg(test)]
+use hume_editing::word::WordChars;
 
 mod argument;
 mod bracket;
@@ -22,9 +29,9 @@ pub use quote::{
 };
 pub use word::{
     apply_nearest_word_result, cmd_around_uppercase_word, cmd_around_word,
-    cmd_inner_uppercase_word, cmd_inner_word, cmd_select_uppercase_word_around,
-    cmd_select_word_around, cmd_select_word_nearest_on_line, expand_word_unit, inner_word_impl,
-    nearest_word_on_line, word_unit_at,
+    cmd_inner_uppercase_word, cmd_inner_word, cmd_select_uppercase_word, cmd_select_word,
+    cmd_select_word_nearest_on_line, expand_word_unit, inner_word_impl, nearest_word_on_line,
+    word_unit_at,
 };
 
 // ── Text object framework ──────────────────────────────────────────────────────

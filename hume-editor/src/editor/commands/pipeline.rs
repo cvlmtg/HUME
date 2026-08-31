@@ -11,10 +11,11 @@ use hume_engine::pipeline::{BufferId, EngineView};
 use crate::editor::dispatch::CmdCtx;
 use crate::editor::doc_ops;
 use crate::editor::jump_list::JumpEntry;
-use crate::editor::registry::{CmdMeta, MappableCommand, SelectionTracking};
+use crate::editor::registry::{CmdMeta, MappableCommand, SelectionBody, SelectionTracking};
 use crate::editor::replay::{RepeatableAction, SelectionStep};
 use crate::editor::{EditorState, Mode, Severity};
-use hume_ops::MotionMode;
+use hume_editing::word::WordChars;
+use hume_ops::{MotionMode, WordCtx};
 
 use super::{current_selections, doc, focused_buffer_id};
 
@@ -53,30 +54,37 @@ pub(in crate::editor) fn run_native_body(
     let buf = focused_buffer_id(state, view);
     let focused = state.focused_pane_id;
     match cmd {
-        MappableCommand::Motion {
-            fun, around_fun, ..
-        }
-        | MappableCommand::Selection {
-            fun, around_fun, ..
-        } => {
-            let fun = if state
-                .buffers
-                .get(buf)
-                .overrides
-                .word_selects_whitespace(&state.settings)
-            {
-                around_fun.unwrap_or(fun)
-            } else {
-                fun
-            };
-            doc_ops::apply_doc_motion(
-                &state.buffers,
-                &mut state.panes.state,
-                focused,
-                buf,
-                |b, s| fun(b, s, count, motion_mode),
-            );
-        }
+        MappableCommand::Motion { fun, .. } | MappableCommand::Selection { fun, .. } => match fun {
+            SelectionBody::Plain(fun) => {
+                doc_ops::apply_doc_motion(
+                    &state.buffers,
+                    &mut state.panes.state,
+                    focused,
+                    buf,
+                    |b, s| fun(b, s, count, motion_mode),
+                );
+            }
+            SelectionBody::Word(fun) => {
+                let overrides = &state.buffers.get(buf).overrides;
+                let around = overrides.word_selects_whitespace(&state.settings);
+                // Owned local: `apply_doc_motion` below takes `&mut
+                // state.panes.state`, so a borrow into `state.buffers` can't
+                // survive to the closure — resolve the value first.
+                let word_chars = overrides.word_chars(&state.settings);
+                let ctx = WordCtx {
+                    mode: motion_mode,
+                    around,
+                    chars: WordChars::new(&word_chars),
+                };
+                doc_ops::apply_doc_motion(
+                    &state.buffers,
+                    &mut state.panes.state,
+                    focused,
+                    buf,
+                    |b, s| fun(b, s, count, ctx),
+                );
+            }
+        },
         MappableCommand::Edit { fun, .. } => {
             // `apply_doc_edit` itself routes into the grouped path when an
             // edit group is already open (insert session or dot-repeat

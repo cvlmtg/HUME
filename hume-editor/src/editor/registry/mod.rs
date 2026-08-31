@@ -40,7 +40,8 @@ mod command;
 mod defaults;
 
 pub(crate) use command::{
-    ArgCompleter, CmdMeta, EditorCmdFn, MappableCommand, SelectionTracking, TypedCommand,
+    ArgCompleter, CmdMeta, EditorCmdFn, MappableCommand, SelectionBody, SelectionTracking,
+    TypedCommand,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -155,8 +155,8 @@ fn build_text_object_trie() -> KeyTrie {
     match_trie.bind(key!('w'), wait_char!("surround-add"));
     match_trie.bind_leaf(key!('/'), cmd!("select-all-matches"));
     // `mm` — select the word under the cursor. Follows
-    // `word-selects-whitespace` (see `select-word`'s `around_fun`), unlike
-    // `miw`/`maw` above which are never flag-affected.
+    // `word-selects-whitespace` (see `cmd_select_word`'s `ctx.around`
+    // branch), unlike `miw`/`maw` above which are never flag-affected.
     match_trie.bind_leaf(key!('m'), cmd!("select-word"));
     match_trie
 }

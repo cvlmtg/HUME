@@ -9,6 +9,7 @@
 
 use hume_editing::selection::{DisplayColOrigin, Selection, SelectionSet, StickyDisplayCol};
 use hume_editing::text::BufferText;
+use hume_editing::word::WordChars;
 use hume_engine::pipeline::EngineView;
 use hume_engine::rows::{BlockSlot, DisplayColTarget, RowMap};
 use hume_ops::MotionMode;
@@ -466,11 +467,16 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     let buf_id = focused_buffer_id(state, view);
     let doc = state.buffers.get(buf_id);
     let around = doc.overrides.word_selects_whitespace(&state.settings);
+    // Owned, not borrowed: the wrap-mode branch below re-borrows
+    // `state.buffers` mutably through `apply_doc_motion`, so a `&str` into
+    // it here couldn't survive to that closure.
+    let word_chars = doc.overrides.word_chars(&state.settings);
+    let chars = WordChars::new(&word_chars);
 
     if !effective_wrap_mode(doc, &state.settings, &view.panes[state.focused_pane_id]).is_wrapping()
     {
         apply_focused_motion(state, view, |text, sels| {
-            cmd_select_word_nearest_on_line(text, sels, 0, mode, around)
+            cmd_select_word_nearest_on_line(text, sels, 0, mode, around, chars)
         });
         return Ok(());
     }
@@ -500,8 +506,14 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
                         (ls, le)
                     });
 
-                let found =
-                    nearest_word_on_line(text, sel.anchor(), line_start, line_end_excl, around);
+                let found = nearest_word_on_line(
+                    text,
+                    sel.anchor(),
+                    line_start,
+                    line_end_excl,
+                    around,
+                    chars,
+                );
                 apply_nearest_word_result(sel, found, mode)
             });
             new_sels.debug_assert_valid(text);

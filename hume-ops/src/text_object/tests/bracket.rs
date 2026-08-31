@@ -190,7 +190,7 @@ fn extend_text_object_noop_on_no_match() {
     assert_state!(
         "-[h]>ello\n",
         |(text, sels)| {
-            let s1 = cmd_inner_word(&text, sels, 0, MotionMode::Move); // selects "hello" (0,4)
+            let s1 = cmd_inner_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)); // selects "hello" (0,4)
             cmd_inner_paren(&text, s1, 0, MotionMode::Extend) // no parens → no-op → "hello" unchanged
         },
         "-[hello]>\n"

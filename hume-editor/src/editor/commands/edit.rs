@@ -2,10 +2,11 @@ use hume_engine::pipeline::EngineView;
 
 use crate::editor::buffer::Buffer;
 use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::word::WordChars;
 use hume_ops::MotionMode;
 use hume_ops::edit::{
     align_selections, change_span, delete_selection, delete_selection_content,
-    join_lines_select_spaces, replace_selections,
+    delete_word_backward, join_lines_select_spaces, replace_selections,
 };
 use hume_ops::register::{CLIPBOARD_REGISTER, KILL_RING_REGISTER, yank_selections};
 use hume_ops::surround::wrap_each_selection;
@@ -289,6 +290,34 @@ pub(crate) fn cmd_align_selections(
         .tab_width(&state.settings);
     apply_focused_edit(state, view, move |text, sels| {
         align_selections(text, sels, tab_width)
+    });
+    Ok(())
+}
+
+/// Delete the word before each cursor (Ctrl-W in insert mode).
+///
+/// Promoted from a plain `MappableCommand::Edit` to an `EditorCmd` so it can
+/// resolve this buffer's `word-chars` and close over it — the same pattern
+/// [`cmd_align_selections`] uses for `tab_width`. Ctrl-W is a *word*
+/// operation by name: leaving it on the built-in word rule would mean `b`
+/// then `d` deletes a whole hyphenated run while Ctrl-W deletes only the
+/// last piece — a split a user would notice within a minute.
+pub(crate) fn cmd_delete_word_backward(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    let buf_id = focused_buffer_id(state, view);
+    // Owned, not borrowed: `apply_focused_edit` takes `&mut EditorState`, so
+    // a `&str` into `state.buffers` cannot outlive the resolution below.
+    let word_chars = state
+        .buffers
+        .get(buf_id)
+        .overrides
+        .word_chars(&state.settings);
+    apply_focused_edit(state, view, move |text, sels| {
+        delete_word_backward(text, sels, WordChars::new(&word_chars))
     });
     Ok(())
 }

@@ -1,14 +1,12 @@
 use crate::editor::commands::{cmd_visual_move_down, cmd_visual_move_up};
 use std::borrow::Cow;
 
-use crate::editor::registry::{CommandRegistry, MappableCommand, SelectionTracking};
+use crate::editor::registry::{CommandRegistry, MappableCommand, SelectionBody, SelectionTracking};
 use hume_ops::motion::{
     cmd_goto_first_line, cmd_goto_first_nonblank, cmd_goto_last_line, cmd_goto_line_end,
     cmd_goto_line_start, cmd_goto_matching_pair, cmd_move_left, cmd_move_right, cmd_next_paragraph,
     cmd_prev_paragraph, cmd_select_line, cmd_select_line_backward, cmd_select_next_uppercase_word,
-    cmd_select_next_uppercase_word_around, cmd_select_next_word, cmd_select_next_word_around,
-    cmd_select_prev_uppercase_word, cmd_select_prev_uppercase_word_around, cmd_select_prev_word,
-    cmd_select_prev_word_around,
+    cmd_select_next_word, cmd_select_prev_uppercase_word, cmd_select_prev_word,
 };
 
 use super::builder::ecmd;
@@ -97,36 +95,32 @@ impl CommandRegistry {
         // a word reached by navigating away from the cursor, so unlike a
         // plain motion's bare-cursor result, this one *looks* replayable and
         // isn't — replaying it positionally would advance past the intended
-        // word. Each carries an `_around` twin that covers the destination
-        // word's whitespace bookend in both modes — swapped in by
-        // `run_native_body` when `word-selects-whitespace` is on.
-        super::motion!(
+        // word. Each covers the destination word's whitespace bookend in both
+        // modes when the buffer's `word-selects-whitespace` resolves true —
+        // see `WordCtx::around`, read inside `word_select_cmd`.
+        super::word_motion!(
             self,
             "select-next-word",
             "Select the next word.",
-            cmd_select_next_word,
-            cmd_select_next_word_around
+            cmd_select_next_word
         );
-        super::motion!(
+        super::word_motion!(
             self,
             "select-next-uppercase-word",
             "Select the next uppercase word (whitespace-delimited).",
-            cmd_select_next_uppercase_word,
-            cmd_select_next_uppercase_word_around
+            cmd_select_next_uppercase_word
         );
-        super::motion!(
+        super::word_motion!(
             self,
             "select-prev-word",
             "Select the previous word.",
-            cmd_select_prev_word,
-            cmd_select_prev_word_around
+            cmd_select_prev_word
         );
-        super::motion!(
+        super::word_motion!(
             self,
             "select-prev-uppercase-word",
             "Select the previous uppercase word (whitespace-delimited).",
-            cmd_select_prev_uppercase_word,
-            cmd_select_prev_uppercase_word_around
+            cmd_select_prev_uppercase_word
         );
 
         // ── Paragraph motions ─────────────────────────────────────────────────

@@ -90,3 +90,55 @@ fn uppercase_word_boundary_merges_word_and_punctuation() {
     assert!(is_uppercase_word_boundary(Word, Eol));
     assert!(is_uppercase_word_boundary(Space, Eol));
 }
+
+// ── WordChars ────────────────────────────────────────────────────────────
+
+#[test]
+fn word_chars_promotes_listed_punctuation() {
+    assert_eq!(WordChars::new("-").classify('-'), CharClass::Word);
+}
+
+#[test]
+fn word_chars_leaves_unlisted_punctuation_alone() {
+    assert_eq!(WordChars::new("-").classify('.'), CharClass::Punctuation);
+}
+
+#[test]
+fn word_chars_empty_matches_classify_char() {
+    let chars = WordChars::default();
+    for ch in [
+        'a', 'Z', '5', '_', 'é', '文', '.', ',', '-', '+', ' ', '\t', '\u{A0}', '\u{3000}', '\n',
+        '\r', '\u{C}',
+    ] {
+        assert_eq!(chars.classify(ch), classify_char(ch), "mismatch for {ch:?}");
+    }
+}
+
+#[test]
+fn word_chars_cannot_promote_space_or_eol() {
+    // Defense in depth: even if a caller bypasses `validate`, `classify` must
+    // never turn whitespace/newline into `Word` — every scan here finds a
+    // word's end by hitting one of those two classes.
+    assert_eq!(WordChars::new(" ").classify(' '), CharClass::Space);
+    assert_eq!(WordChars::new("\n").classify('\n'), CharClass::Eol);
+}
+
+#[test]
+fn validate_rejects_space_and_eol_chars() {
+    for ch in [' ', '\t', '\u{A0}', '\u{3000}', '\n'] {
+        assert!(
+            WordChars::validate(&ch.to_string()).is_err(),
+            "expected {ch:?} to be rejected"
+        );
+    }
+}
+
+#[test]
+fn validate_accepts_redundant_word_char() {
+    assert!(WordChars::validate("_a").is_ok());
+}
+
+#[test]
+fn validate_accepts_punctuation() {
+    assert!(WordChars::validate("-*?!<>/").is_ok());
+}

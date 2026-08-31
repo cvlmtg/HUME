@@ -64,6 +64,13 @@ Sets the global default. The value is a string, boolean, or integer. Callable fr
   (lambda (bid lang)
     (when (equal? lang "markdown")
       (set-buffer-option! bid "wrap-mode" "word"))))
+
+; treat '-' as a word character in CSS-family buffers, so `w`/`b`/`mm`/`*`
+; see "foo-bar" as one word instead of three
+(register-hook! 'on-language-set
+  (lambda (bid lang)
+    (when (member lang '("css" "scss" "less"))
+      (set-buffer-option! bid "word-chars" "-"))))
 ```
 
 ## Global options
@@ -111,6 +118,7 @@ These options have a global default that every buffer without its own override r
 | `auto-pairs-enabled` | bool | `#t` | Enable auto-pair insertion |
 | `select-changed-text` | bool | `#t` | After `c` (change), keeps the selection on the text you changed |
 | `word-selects-whitespace` | bool | `#t` | `w`/`W`/`b`/`B` and `mm`/`MM` cover the whitespace before the destination word (trailing instead, for the first word of a line); `#f` selects the bare word instead |
+| `word-chars` | string | `""` | Extra characters counted as part of a word by `w`/`b`, `mm`, `miw`/`maw`, `Ctrl+W`, and `*` — e.g. `-` makes `foo-bar` one word instead of three. No global default ships; set it per language from an `on-language-set` hook (see below). Whitespace and newline characters are rejected |
 | `signcolumn` | `always[:N]` \| `auto[:N]` | `always` | Gutter column for plugin-supplied signs (diagnostics, git changes, etc). Bare `always`/`auto` sizes the column to one column per registered sign source — a source claims its column the moment the plugin registers it, so the width doesn't change as individual signs come and go; `:N` pins it to exactly N columns (1–127) instead, hiding whichever lower-priority sources don't fit. `auto` additionally collapses to zero width when no signs are visible |
 | `autoread` | bool | `#t` | Prompt to reload when the current buffer's file changes on disk. `#f` only warns — reload manually with `:e!` |
 | `whitespace-space` | `none` \| `all` \| `trailing` | `none` | When to render space indicators. Also reveals invisible Unicode spaces (non-breaking and ideographic) with a distinct `⍽` marker |

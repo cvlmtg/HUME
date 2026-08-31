@@ -433,6 +433,49 @@ fn set_buffer_option_from_hook_writes_target_override() {
     );
 }
 
+/// End-to-end version of the `word-chars` per-language recipe documented in
+/// `configuration.md`: an `on-language-set` hook sets `word-chars` for one
+/// language, and `w` immediately honors it in that buffer.
+#[test]
+fn on_language_set_hook_configures_word_chars() {
+    let mut ed = editor_from("-[f]>oo-bar baz\n");
+    crate::editor::tests::language::attach_host(
+        &mut ed,
+        r#"(register-hook! 'on-language-set
+             (lambda (bid lang)
+               (when (equal? lang "css") (set-buffer-option! bid "word-chars" "-"))))"#,
+    );
+    let bid = ed.focused_buffer_id();
+    let lang = ed.state.config.languages.intern("css");
+    ed.set_buffer_language(bid, Some(lang));
+    ed.settle();
+
+    assert_eq!(
+        ed.state.buffers.get(bid).overrides.word_chars.as_deref(),
+        Some("-")
+    );
+
+    ed.feed_key(key('w'));
+    assert_eq!(state(&ed), "foo-bar-[ baz]>\n");
+}
+
+/// `(get-option "word-chars" bid)` round-trips the raw string — covers the
+/// new `option_value!` arm.
+#[test]
+fn get_option_round_trips_word_chars() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state.settings.word_chars = "-".into();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "check" "" (lambda ()
+             (log! 'info (get-option (current-buffer) "word-chars"))))"#,
+    );
+    type_cmd(&mut ed, ":check");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "-");
+}
+
 /// The feature this scope layer exists for: setting wrap-mode per file type
 /// from an `on-language-set` hook via `set-buffer-option!`. The open pane
 /// (never explicitly `:wrap`'d or `:set pane`'d) picks up the change

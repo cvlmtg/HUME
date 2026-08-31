@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_editing::word::WordChars;
 use hume_test_fixtures::assert_state;
 use pretty_assertions::assert_eq;
 
@@ -339,7 +340,7 @@ fn delete_word_backward_at_end_of_word() {
     // Cursor after "hello"; Ctrl-W deletes the word; cursor at buffer start.
     assert_state!(
         "hello-[\n]>",
-        |(text, sels)| delete_word_backward(text, sels),
+        |(text, sels)| delete_word_backward(text, sels, WordChars::default()),
         "-[\n]>"
     );
 }
@@ -349,7 +350,7 @@ fn delete_word_backward_mid_word() {
     // Cursor at offset 3 (inside "hello" on 'l'); deletes "hel" → cursor after "lo".
     assert_state!(
         "hel-[l]>o\n",
-        |(text, sels)| delete_word_backward(text, sels),
+        |(text, sels)| delete_word_backward(text, sels, WordChars::default()),
         "-[l]>o\n"
     );
 }
@@ -359,7 +360,7 @@ fn delete_word_backward_skips_whitespace() {
     // Cursor after "hello world" whitespace + "world"; deletes back past whitespace.
     assert_state!(
         "hello world-[\n]>",
-        |(text, sels)| delete_word_backward(text, sels),
+        |(text, sels)| delete_word_backward(text, sels, WordChars::default()),
         "hello -[\n]>"
     );
 }
@@ -368,7 +369,7 @@ fn delete_word_backward_skips_whitespace() {
 fn delete_word_backward_at_start_is_noop() {
     assert_state!(
         "-[h]>ello\n",
-        |(text, sels)| delete_word_backward(text, sels),
+        |(text, sels)| delete_word_backward(text, sels, WordChars::default()),
         "-[h]>ello\n"
     );
 }
@@ -377,7 +378,7 @@ fn delete_word_backward_at_start_is_noop() {
 fn delete_word_backward_empty_buffer_is_noop() {
     assert_state!(
         "-[\n]>",
-        |(text, sels)| delete_word_backward(text, sels),
+        |(text, sels)| delete_word_backward(text, sels, WordChars::default()),
         "-[\n]>"
     );
 }
@@ -387,7 +388,7 @@ fn delete_word_backward_selection() {
     // Multi-char selection: delegates to delete_sel_region.
     assert_state!(
         "-[hell]>o\n",
-        |(text, sels)| delete_word_backward(text, sels),
+        |(text, sels)| delete_word_backward(text, sels, WordChars::default()),
         "-[o]>\n"
     );
 }
@@ -398,7 +399,7 @@ fn delete_word_backward_two_cursors() {
     // (offsets 0..5), second deletes "world" (offsets 6..11).
     assert_state!(
         "hello-[\n]>world-[\n]>",
-        |(text, sels)| delete_word_backward(text, sels),
+        |(text, sels)| delete_word_backward(text, sels, WordChars::default()),
         "-[\n]>-[\n]>"
     );
 }
@@ -412,7 +413,7 @@ fn delete_word_backward_two_cursors_same_word() {
     //   overlap-skip → retain [2,5) → cursor 2 at new offset 3, NOT 0.
     assert_state!(
         "fo-[o]>ba-[r]>\n",
-        |(text, sels)| delete_word_backward(text, sels),
+        |(text, sels)| delete_word_backward(text, sels, WordChars::default()),
         "-[o]>ba-[r]>\n"
     );
 }
@@ -422,7 +423,7 @@ fn delete_word_backward_punctuation_group() {
     // Cursor after "foo.bar()"; punctuation group "()" is one word.
     assert_state!(
         "foo.bar()-[\n]>",
-        |(text, sels)| delete_word_backward(text, sels),
+        |(text, sels)| delete_word_backward(text, sels, WordChars::default()),
         "foo.bar-[\n]>"
     );
 }
@@ -432,8 +433,19 @@ fn delete_word_backward_only_whitespace_goes_to_start() {
     // Buffer containing only whitespace before cursor.
     assert_state!(
         "   -[x]>\n",
-        |(text, sels)| delete_word_backward(text, sels),
+        |(text, sels)| delete_word_backward(text, sels, WordChars::default()),
         "-[x]>\n"
+    );
+}
+
+#[test]
+fn delete_word_backward_with_extra_word_char_deletes_whole_run() {
+    // With '-' configured as a word char, Ctrl-W after "foo-bar" deletes the
+    // whole hyphenated run in one press, not just "bar".
+    assert_state!(
+        "foo-bar-[\n]>",
+        |(text, sels)| delete_word_backward(text, sels, WordChars::new("-")),
+        "-[\n]>"
     );
 }
 
