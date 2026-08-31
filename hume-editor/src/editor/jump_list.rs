@@ -13,7 +13,8 @@
 
 use std::collections::VecDeque;
 
-use hume_engine::pipeline::BufferId;
+use hume_engine::pipeline::{BufferId, PaneId};
+use slotmap::SecondaryMap;
 
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::{Selection, SelectionSet};
@@ -113,13 +114,12 @@ impl JumpList {
     pub(crate) fn push(&mut self, entry: JumpEntry) {
         self.entries.truncate(self.cursor);
 
-        // Deduplicate against the immediately preceding entry only — same
-        // rule `translate_in_place`'s post-remap collapse pass applies, kept
-        // as one predicate (`same_slot`) so the two call sites can't drift.
+        // Deduplicate against the immediately preceding entry only, by (line,
+        // buffer) — cross-buffer same-line entries are distinct.
         match self
             .entries
             .back_mut()
-            .filter(|l| Self::same_slot(l, &entry))
+            .filter(|l| l.primary_line == entry.primary_line && l.buffer_id == entry.buffer_id)
         {
             Some(last) => *last = entry,
             None => self.entries.push_back(entry),
@@ -130,11 +130,6 @@ impl JumpList {
         }
 
         self.cursor = self.entries.len();
-    }
-
-    /// Same line AND same buffer — cross-buffer same-line entries are distinct.
-    fn same_slot(a: &JumpEntry, b: &JumpEntry) -> bool {
-        a.primary_line == b.primary_line && a.buffer_id == b.buffer_id
     }
 
     /// Remove all entries for `id`. Adjusts the cursor so its relative position
@@ -155,12 +150,16 @@ impl JumpList {
     }
 
     /// Remap every entry for `buf_id` through an edit, keeping stored
-    /// positions pointing at the same text rather than the same offset.
+    /// positions pointing at the same text rather than the same offset, and
+    /// merge any two adjacent entries an edit has newly collapsed onto one
+    /// line.
     ///
     /// Entries for any other buffer are left untouched — the jump list is
     /// cross-buffer (that's what makes cross-buffer Ctrl+O work), so a remap
     /// triggered by an edit in one buffer must not touch another buffer's
-    /// entries.
+    /// entries. This holds for the merge too: two untouched entries always
+    /// have equal pre- and post-edit lines, which the merge condition below
+    /// requires to *differ* — so it can never fire between them.
     ///
     /// Runs `PosMapCursor` once per entry rather than batching every entry's
     /// position through one shared cursor (the "batch `PosMapCursor`, never
@@ -168,71 +167,83 @@ impl JumpList {
     /// unlike a `SelectionSet`, entries are not sorted relative to one
     /// another (`backward`/`push` interleave buffers and lines freely), so a
     /// forward-only cursor can't walk them in one pass without first sorting
-    /// and later scattering results back — for `jump-list-capacity`'s default
-    /// of 100 entries against a typical single-keystroke changeset of a
-    /// handful of ops, that's more work than just re-walking the ops per
-    /// entry. `Selection`s *within* one entry are already sorted, so that
-    /// inner mapping (`SelectionSet::translate_in_place`) does share one
-    /// cursor across them.
+    /// and later scattering results back. Sound for a single keystroke's
+    /// changeset (a handful of ops against `jump-list-capacity`'s default of
+    /// 100 entries); a changeset with many ops (a multi-cursor edit, `:%s`,
+    /// an LSP whole-document format) pays `O(entries × ops)` here, the case
+    /// the batched form would instead win. `Selection`s *within* one entry
+    /// are already sorted, so that inner mapping
+    /// (`SelectionSet::translate_in_place_with`) does share one cursor across
+    /// them.
+    ///
+    /// `edits` must be `cs.edited_old_ranges()` — the caller computes it once
+    /// and passes it to every pane's list, rather than each list rebuilding
+    /// the same `Vec` from `cs`.
     ///
     /// `text_pre`/`text_post` must be the buffer text immediately before and
-    /// after the edit — `text_pre` for `translate_in_place`'s own sticky-column
-    /// invalidation, `text_post` to recompute `primary_line`, which is a
-    /// cached line index rather than an offset and so can't be mapped through
-    /// `cs` directly.
+    /// after the edit — `text_pre` for `translate_in_place_with`'s own
+    /// sticky-column invalidation, `text_post` to recompute `primary_line`,
+    /// which is a cached line index rather than an offset and so can't be
+    /// mapped through `cs` directly.
+    ///
+    /// Merging runs in the same pass as the remap, via the write-index
+    /// compaction `SelectionSet::merge_overlapping_in_place` uses: entries
+    /// are moved (`VecDeque::swap`), never cloned, and the common case — no
+    /// merge — costs one self-swap per entry, no allocation. The merge
+    /// condition is deliberately narrower than "same slot": `backward()`
+    /// deliberately appends a same-line entry without dedup (so `forward()`
+    /// can still return to it, e.g. two search matches on one line), so a
+    /// pre-existing same-slot pair must survive here. Only a pair whose lines
+    /// *differed* before this edit and *match* after it is a collision this
+    /// edit actually created — that's the one case worth merging, keeping the
+    /// newer entry, matching `push`'s own `*last = entry`. The cursor is
+    /// adjusted exactly as `prune_buffer` adjusts it for a removal: by how
+    /// many merged-away entries had an original index before it.
     pub(crate) fn translate_in_place(
         &mut self,
         buf_id: BufferId,
+        edits: &[(usize, usize)],
         cs: &ChangeSet,
         text_pre: &BufferText,
         text_post: &BufferText,
     ) {
-        let mut any_line_moved = false;
-        for entry in self.entries.iter_mut().filter(|e| e.buffer_id == buf_id) {
-            entry.selections.translate_in_place(cs, text_pre);
-            let new_line = text_post.char_to_line(entry.selections.primary().head());
-            any_line_moved |= new_line != entry.primary_line;
-            entry.primary_line = new_line;
-        }
-        // Two entries can only newly collide on (buffer_id, primary_line) if
-        // one of them just moved — skip the collapse walk on the common case
-        // of an edit that didn't cross any entry's line.
-        if any_line_moved {
-            self.collapse_adjacent_duplicates();
-        }
-    }
+        let mut write = 0usize;
+        let mut removed_before_cursor = 0usize;
+        // (buffer_id, pre-remap line, post-remap line, original index) of the
+        // entry currently kept at slot `write - 1`.
+        let mut last: Option<(BufferId, usize, usize, usize)> = None;
 
-    /// Merge adjacent entries that now share `(buffer_id, primary_line)` —
-    /// a deletion spanning multiple jump points can map them onto the same
-    /// spot. Only physically adjacent entries are checked, matching `push`'s
-    /// own dedup (which only ever compares against the immediately preceding
-    /// entry, not the whole list), so this can't merge entries `push` itself
-    /// would have kept apart.
-    ///
-    /// Keeps the newer (later-pushed, higher-index) entry of each run, same
-    /// as `push`'s `*last = entry`. Remaps `cursor` so it still addresses the
-    /// same conceptual position: a boundary is snapped to the start of the
-    /// group it falls in, so `cursor == entries.len()` (the present) still
-    /// maps to the new length.
-    fn collapse_adjacent_duplicates(&mut self) {
-        let n = self.entries.len();
-        let mut group_ends = Vec::new();
-        let mut merged = VecDeque::with_capacity(n);
-        let mut i = 0;
-        while i < n {
-            let mut j = i + 1;
-            while j < n && Self::same_slot(&self.entries[i], &self.entries[j]) {
-                j += 1;
+        for read in 0..self.entries.len() {
+            let bid = self.entries[read].buffer_id;
+            let pre_line = self.entries[read].primary_line;
+            if bid == buf_id {
+                let entry = &mut self.entries[read];
+                entry
+                    .selections
+                    .translate_in_place_with(edits, cs, text_pre);
+                entry.primary_line = text_post.char_to_line(entry.selections.primary().head());
             }
-            merged.push_back(self.entries[j - 1].clone());
-            group_ends.push(j);
-            i = j;
+            let post_line = self.entries[read].primary_line;
+
+            if let Some((lbid, lpre, lpost, lread)) = last
+                && lbid == bid
+                && lpost == post_line
+                && lpre != pre_line
+            {
+                // A collision this edit just created — overwrite the older
+                // entry's slot with this one.
+                write -= 1;
+                removed_before_cursor += usize::from(lread < self.cursor);
+            }
+            self.entries.swap(write, read);
+            last = Some((bid, pre_line, post_line, read));
+            write += 1;
         }
-        if merged.len() == self.entries.len() {
-            return; // No adjacent run had more than one member — nothing to merge.
-        }
-        self.cursor = group_ends.partition_point(|&end| end <= self.cursor);
-        self.entries = merged;
+        self.entries.truncate(write);
+        self.cursor = self
+            .cursor
+            .saturating_sub(removed_before_cursor)
+            .min(self.entries.len());
     }
 
     /// Navigate backward. If at the present, saves `current` first so that
@@ -287,6 +298,95 @@ impl JumpList {
     #[cfg(test)]
     pub(crate) fn entries_for_buffer(&self, id: BufferId) -> bool {
         self.entries.iter().any(|e| e.buffer_id == id)
+    }
+}
+
+// ── JumpLists ────────────────────────────────────────────────────────────────
+
+/// Every pane's [`JumpList`], keyed by `PaneId`.
+///
+/// A newtype rather than a bare `SecondaryMap` so "do X to every pane's jump
+/// list" — remap through an edit, drop a buffer's entries, apply a capacity
+/// change — is one named method instead of a `for jumps in
+/// …values_mut() { … }` loop hand-written at each call site.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct JumpLists(SecondaryMap<PaneId, JumpList>);
+
+impl JumpLists {
+    pub(crate) fn insert(&mut self, pid: PaneId, list: JumpList) {
+        self.0.insert(pid, list);
+    }
+
+    pub(crate) fn remove(&mut self, pid: PaneId) {
+        self.0.remove(pid);
+    }
+
+    /// Test-only: production seeding always goes through [`Self::insert`]
+    /// unconditionally (`open_pane`, `Editor::new`), never guarded by a
+    /// presence check — only the `switch_focused_pane` test choke-point
+    /// lazily seeds a pane it didn't create through the normal path.
+    #[cfg(test)]
+    pub(crate) fn contains_key(&self, pid: PaneId) -> bool {
+        self.0.contains_key(pid)
+    }
+
+    /// Remap every pane's jump-list entries for `buf_id` through `cs` — the
+    /// per-edit propagation step `doc_ops::finish_edit` and
+    /// `reload_buffer_in_place` both call.
+    ///
+    /// Unlike sibling-pane selection propagation, this does **not** filter by
+    /// which panes currently view `buf_id` — a pane's jump list holds entries
+    /// for buffers that pane isn't showing right now (that's what makes
+    /// cross-buffer Ctrl+O work), so every pane's list must be checked,
+    /// including the focused one (its own live cursor isn't a jump-list
+    /// entry, so nothing is mapped twice).
+    ///
+    /// `edits` must be `cs.edited_old_ranges()` — computed once by the
+    /// caller and shared across every pane's list; see
+    /// [`JumpList::translate_in_place`].
+    pub(crate) fn translate(
+        &mut self,
+        buf_id: BufferId,
+        edits: &[(usize, usize)],
+        cs: &ChangeSet,
+        text_pre: &BufferText,
+        text_post: &BufferText,
+    ) {
+        for jumps in self.0.values_mut() {
+            jumps.translate_in_place(buf_id, edits, cs, text_pre, text_post);
+        }
+    }
+
+    /// Drop every pane's entries for `id` — used when `id`'s content was
+    /// replaced wholesale (a full `Buffer` swap, or `set_view_content`'s
+    /// history-resetting in-place replace) rather than edited: there is no
+    /// `ChangeSet` to remap through, and same-buffer-id survival alone isn't
+    /// enough, since the new content shares nothing but its id with the old.
+    pub(crate) fn prune_buffer(&mut self, id: BufferId) {
+        for jumps in self.0.values_mut() {
+            jumps.prune_buffer(id);
+        }
+    }
+
+    /// Apply a `jump-list-capacity` change to every pane's list — takes
+    /// effect on each list's next `push`, per `JumpList::set_capacity`.
+    pub(crate) fn set_capacity(&mut self, capacity: usize) {
+        for jumps in self.0.values_mut() {
+            jumps.set_capacity(capacity);
+        }
+    }
+}
+
+impl std::ops::Index<PaneId> for JumpLists {
+    type Output = JumpList;
+    fn index(&self, pid: PaneId) -> &JumpList {
+        &self.0[pid]
+    }
+}
+
+impl std::ops::IndexMut<PaneId> for JumpLists {
+    fn index_mut(&mut self, pid: PaneId) -> &mut JumpList {
+        &mut self.0[pid]
     }
 }
 

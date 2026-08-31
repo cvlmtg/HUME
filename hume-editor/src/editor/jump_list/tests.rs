@@ -401,9 +401,10 @@ fn translate_in_place_shifts_offset_and_primary_line() {
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
+    let edits = cs.edited_old_ranges();
     let text_post = BufferText::from("XXaaaa\nbbbb\ncccc");
 
-    jl.translate_in_place(bid, &cs, &text_pre, &text_post);
+    jl.translate_in_place(bid, &edits, &cs, &text_pre, &text_post);
 
     let e = jl.backward(entry_for(0, 0, bid)).unwrap();
     assert_eq!(e.selections.primary().head(), 9);
@@ -425,9 +426,10 @@ fn translate_in_place_skips_entries_for_other_buffers() {
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
+    let edits = cs.edited_old_ranges();
     let text_post = BufferText::from("XXaaaa\nbbbb");
 
-    jl.translate_in_place(edited_bid, &cs, &text_pre, &text_post);
+    jl.translate_in_place(edited_bid, &edits, &cs, &text_pre, &text_post);
 
     let e = jl.backward(entry_for(0, 0, other_bid)).unwrap();
     assert_eq!(
@@ -452,9 +454,10 @@ fn translate_in_place_collapses_entry_inside_a_full_deletion() {
     b.delete(6); // remove "abcdef" entirely
     b.retain_rest();
     let cs = b.finish();
+    let edits = cs.edited_old_ranges();
     let text_post = BufferText::from("");
 
-    jl.translate_in_place(bid, &cs, &text_pre, &text_post);
+    jl.translate_in_place(bid, &edits, &cs, &text_pre, &text_post);
 
     let e = jl.backward(entry_for(99, 99, bid)).unwrap();
     assert_eq!(e.selections.primary().head(), 0);
@@ -481,9 +484,10 @@ fn translate_in_place_collapses_entries_that_land_on_the_same_line() {
     b.delete(10);
     b.retain_rest();
     let cs = b.finish();
+    let edits = cs.edited_old_ranges();
     let text_post = BufferText::from("cccc");
 
-    jl.translate_in_place(bid, &cs, &text_pre, &text_post);
+    jl.translate_in_place(bid, &edits, &cs, &text_pre, &text_post);
 
     assert_eq!(jl.len(), 1, "both entries collapsed into one");
     assert_eq!(jl.cursor, 1, "present remapped to the new length");
@@ -494,6 +498,45 @@ fn translate_in_place_collapses_entries_that_land_on_the_same_line() {
     assert!(
         jl.backward(entry_for(0, 0, bid)).is_none(),
         "only one entry survives the collapse"
+    );
+}
+
+/// `backward()` deliberately appends the save-current entry without dedup —
+/// two Ctrl+O stops that legitimately share a line (e.g. two search matches
+/// on one line) must both survive a later edit that merely shifts lines
+/// uniformly. The merge pass must tell that pre-existing pair apart from one
+/// an edit just created (the case the previous test covers).
+#[test]
+fn translate_in_place_preserves_a_backward_created_duplicate_pair() {
+    let (bid, _other) = two_buffer_ids();
+    let text_pre = BufferText::from("aaaa\nbbbb\ncccc");
+    let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
+
+    jl.push(entry_for(1, 0, bid)); // one entry on line 0
+    // At the present: `backward` saves `current` without dedup, even though
+    // it lands on the same line as the last recorded jump.
+    jl.backward(entry_for(3, 0, bid));
+    assert_eq!(
+        jl.len(),
+        2,
+        "backward saved a same-line duplicate, undeduped"
+    );
+
+    // Insert a line above both — a uniform shift, not a collision: both
+    // entries move from line 0 to line 1 together.
+    let mut b = ChangeSetBuilder::new(14);
+    b.insert("XXXX\n");
+    b.retain_rest();
+    let cs = b.finish();
+    let edits = cs.edited_old_ranges();
+    let text_post = BufferText::from("XXXX\naaaa\nbbbb\ncccc");
+
+    jl.translate_in_place(bid, &edits, &cs, &text_pre, &text_post);
+
+    assert_eq!(
+        jl.len(),
+        2,
+        "a uniform shift must not merge a pre-existing same-line pair"
     );
 }
 

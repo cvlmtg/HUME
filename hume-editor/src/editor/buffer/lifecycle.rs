@@ -17,7 +17,7 @@ use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::event::EditorEvent;
-use crate::editor::jump_list::{JumpEntry, JumpList};
+use crate::editor::jump_list::{JumpEntry, JumpLists};
 use crate::editor::lsp::LspState;
 use crate::editor::pane_state::{self, PaneBufferState};
 
@@ -144,7 +144,7 @@ pub(crate) fn switch_to_buffer_with_jump(
     ev: &mut EngineView,
     buffers: &BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
+    pane_jumps: &mut JumpLists,
     focused_pane_id: PaneId,
     current_buffer_id: BufferId,
     target: BufferId,
@@ -177,7 +177,7 @@ pub(crate) fn close_buffer(
     ev: &mut EngineView,
     buffers: &mut BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
+    pane_jumps: &mut JumpLists,
     focused_pane_id: PaneId,
     id: BufferId,
     undo_levels: usize,
@@ -289,7 +289,7 @@ pub(crate) fn replace_buffer_in_place(
     ev: &mut EngineView,
     buffers: &mut BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
+    pane_jumps: &mut JumpLists,
     id: BufferId,
     mut new_doc: Buffer,
 ) {
@@ -315,6 +315,28 @@ pub(crate) fn replace_buffer_in_place(
     // construction — the flip made this assignment alone sufficient to drop
     // any stale committed layers, since they now live inside Buffer.syntax).
     *buffers.get_mut(id) = new_doc;
+    reseed_panes_after_content_reset(ev, buffers, pane_state, pane_jumps, id);
+}
+
+/// Reseed every per-pane store keyed to `id` after its content was reset
+/// wholesale — a full `Buffer` swap ([`replace_buffer_in_place`]) or
+/// `set_view_content`'s history-resetting in-place replace
+/// (`Editor::open_read_only_view`) — as opposed to an edit, which has a
+/// `ChangeSet` to remap positions through instead of discarding them.
+///
+/// Resets `pane_state` (selections, search cursor, edit/paste groups) to
+/// [`pane_state::fresh_from_buf`] for every pane currently viewing `id`,
+/// drops `id`'s entries from every pane's jump list (cross-buffer, so not
+/// limited to viewers), and drops every pane's saved scroll for `id` (also
+/// not limited to viewers — a background pane's *saved* scroll for `id` is
+/// just as stale as a live one's).
+pub(crate) fn reseed_panes_after_content_reset(
+    ev: &mut EngineView,
+    buffers: &BufferStore,
+    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_jumps: &mut JumpLists,
+    id: BufferId,
+) {
     // Collect before mutating (borrow checker); n≈1 in the single-pane case.
     let pane_ids: Vec<PaneId> = ev
         .panes
@@ -323,13 +345,11 @@ pub(crate) fn replace_buffer_in_place(
         .map(|(pid, _)| pid)
         .collect();
     for pid in pane_ids {
-        // Unconditional overwrite: caller replaced the buffer, so old view state
+        // Unconditional overwrite: caller reset the content, so old view state
         // (selections, edit group) is stale and must be discarded.
         pane_state[pid].insert(id, pane_state::fresh_from_buf(buffers.get(id)));
     }
-    for jumps in pane_jumps.values_mut() {
-        jumps.prune_buffer(id);
-    }
+    pane_jumps.prune_buffer(id);
     for pane in ev.panes.values_mut() {
         pane.forget_buffer(id);
     }
@@ -340,7 +360,7 @@ pub(crate) fn replace_buffer_in_place(
 fn forget_buffer_in_all_panes(
     ev: &mut EngineView,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
+    pane_jumps: &mut JumpLists,
     id: BufferId,
 ) {
     for pane in ev.panes.values_mut() {
@@ -349,7 +369,5 @@ fn forget_buffer_in_all_panes(
     for buf_state in pane_state.values_mut() {
         buf_state.remove(id);
     }
-    for jumps in pane_jumps.values_mut() {
-        jumps.prune_buffer(id);
-    }
+    pane_jumps.prune_buffer(id);
 }

@@ -152,7 +152,7 @@ impl Editor {
                 clipboard: clipboard::SystemClipboard::new(),
                 settings,
                 panes: {
-                    let mut jumps = SecondaryMap::new();
+                    let mut jumps = super::jump_list::JumpLists::default();
                     jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
                     let mut transient = SecondaryMap::new();
                     transient.insert(pane_id, PaneTransient::default());

@@ -401,6 +401,20 @@ fn search_n_ctrl_o_ctrl_i_different_lines() {
 // correctly remapped one can otherwise look identical if the assertion
 // secretly reuses the same arithmetic.
 
+/// Assert the focused cursor sits exactly at the start of `marker` within
+/// `text`. `text` is passed in rather than read from `ed`, since several
+/// callers already hold an independently-known expected buffer content —
+/// reading it back from the editor here would make half of that comparison
+/// tautological.
+fn assert_cursor_at_marker(ed: &Editor, text: &str, marker: &str, msg: &str) {
+    let target = text.find(marker).expect("marker line present");
+    let expected = serialize_state(
+        &BufferText::from(text),
+        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target)),
+    );
+    assert_eq!(state(ed), expected, "{msg}");
+}
+
 /// Inserting a line above a recorded jump entry must not leave `Ctrl+O`
 /// landing on the entry's stale (now-wrong) line — it must follow the text.
 #[test]
@@ -418,15 +432,11 @@ fn insert_above_jump_entry_lands_on_marker_text() {
     ed.handle_key(key_ctrl('o'));
 
     let text_after = ed.doc().text().to_string();
-    let target = text_after.find("line 10\n").expect("marker line present");
-    let expected = serialize_state(
-        &BufferText::from(text_after.as_str()),
-        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target)),
-    );
-    assert_eq!(
-        state(&ed),
-        expected,
-        "Ctrl+O must land on the marker text, not the pre-edit line index"
+    assert_cursor_at_marker(
+        &ed,
+        &text_after,
+        "line 10\n",
+        "Ctrl+O must land on the marker text, not the pre-edit line index",
     );
 }
 
@@ -446,15 +456,11 @@ fn delete_above_jump_entry_lands_on_marker_text() {
     ed.handle_key(key_ctrl('o'));
 
     let text_after = ed.doc().text().to_string();
-    let target = text_after.find("line 10\n").expect("marker line present");
-    let expected = serialize_state(
-        &BufferText::from(text_after.as_str()),
-        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target)),
-    );
-    assert_eq!(
-        state(&ed),
-        expected,
-        "Ctrl+O must land on the marker text after a deletion above it"
+    assert_cursor_at_marker(
+        &ed,
+        &text_after,
+        "line 10\n",
+        "Ctrl+O must land on the marker text after a deletion above it",
     );
 }
 
@@ -467,7 +473,6 @@ fn undo_after_edit_remaps_jump_entry_back() {
     ed.handle_key(key('g')); // records a jump entry at line 10, lands at line 0
 
     let text_before = ed.doc().text().to_string();
-    let target_before = text_before.find("line 10\n").expect("marker line present");
 
     ed.handle_key(key('O'));
     ed.handle_key(key_esc());
@@ -475,14 +480,11 @@ fn undo_after_edit_remaps_jump_entry_back() {
 
     ed.handle_key(key_ctrl('o'));
 
-    let expected = serialize_state(
-        &BufferText::from(text_before.as_str()),
-        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target_before)),
-    );
-    assert_eq!(
-        state(&ed),
-        expected,
-        "undo's inverse ChangeSet must remap the entry back to its original position"
+    assert_cursor_at_marker(
+        &ed,
+        &text_before,
+        "line 10\n",
+        "undo's inverse ChangeSet must remap the entry back to its original position",
     );
 }
 
@@ -512,18 +514,14 @@ fn edit_remaps_jump_entries_in_every_pane_viewing_the_buffer() {
     ed.handle_key(key_esc());
 
     let text_after = ed.doc().text().to_string();
-    let target = text_after.find("line 10\n").expect("marker line present");
-    let expected = serialize_state(
-        &BufferText::from(text_after.as_str()),
-        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target)),
-    );
 
     ed.switch_focused_pane(pid_a);
     ed.handle_key(key_ctrl('o'));
-    assert_eq!(
-        state(&ed),
-        expected,
-        "pane A's entry must be remapped even though pane B made the edit"
+    assert_cursor_at_marker(
+        &ed,
+        &text_after,
+        "line 10\n",
+        "pane A's entry must be remapped even though pane B made the edit",
     );
 }
 
@@ -556,7 +554,6 @@ fn edit_in_one_buffer_does_not_move_a_jump_entry_for_another_buffer() {
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
     let file1_text = ed.doc().text().to_string();
-    let target = file1_text.find("line 10\n").expect("marker line present");
 
     // `:e file2` records a second entry — (file1, line 0), the switch-away
     // point — then focuses file2.
@@ -576,14 +573,11 @@ fn edit_in_one_buffer_does_not_move_a_jump_entry_for_another_buffer() {
     ed.handle_key(key_ctrl('o'));
     assert_eq!(ed.focused_buffer_id(), buf1, "landed back in file1");
 
-    let expected = serialize_state(
-        &BufferText::from(file1_text.as_str()),
-        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target)),
-    );
-    assert_eq!(
-        state(&ed),
-        expected,
-        "file1's jump entry must be untouched by edits made in file2"
+    assert_cursor_at_marker(
+        &ed,
+        &file1_text,
+        "line 10\n",
+        "file1's jump entry must be untouched by edits made in file2",
     );
 }
 
@@ -619,15 +613,11 @@ fn reload_remaps_jump_entries_through_line_diff() {
 
     ed.handle_key(key_ctrl('o'));
 
-    let target = new_content.find("line 10\n").expect("marker line present");
-    let expected = serialize_state(
-        &BufferText::from(new_content.as_str()),
-        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target)),
-    );
-    assert_eq!(
-        state(&ed),
-        expected,
-        "Ctrl+O must land on the marker text after :e! shifted it"
+    assert_cursor_at_marker(
+        &ed,
+        &new_content,
+        "line 10\n",
+        "Ctrl+O must land on the marker text after :e! shifted it",
     );
 }
 
@@ -656,5 +646,43 @@ fn view_buffer_refresh_drops_its_jump_entries() {
     assert!(
         !ed.state.panes.jumps[pid].entries_for_buffer(bid),
         "a regenerated view buffer's stale jump entries must be dropped"
+    );
+}
+
+/// A view buffer refresh must reseed every pane viewing it, not just the
+/// focused one — otherwise a sibling pane keeps a selection computed against
+/// content that no longer exists, potentially pointing past the new
+/// content's end.
+#[test]
+fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
+    let mut ed = editor_from("-[a]>b\n");
+    let pid_a = ed.state.focused_pane_id;
+    ed.open_read_only_view("[jump-list-test]", "one\ntwo\nthree\nfour\nfive\n", 0);
+
+    // Split so a second pane also views the view buffer; focus moves to it.
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_a, pid_b, "focus moved to the new pane");
+    let bid = ed.focused_buffer_id();
+
+    // Move pane B's cursor off line 0, deep into content that won't exist
+    // after the refresh below.
+    ed.handle_key(key('g'));
+    ed.handle_key(key('e')); // goto-last-line
+    assert_ne!(
+        ed.current_selections().primary().head(),
+        0,
+        "cursor actually moved off the initial position"
+    );
+
+    // Refresh from pane A (still focused there), with content too short for
+    // pane B's stale offset to remain valid.
+    ed.switch_focused_pane(pid_a);
+    ed.open_read_only_view("[jump-list-test]", "x\n", 0);
+
+    assert_eq!(
+        ed.state.panes.state[pid_b][bid].selections,
+        ed.state.buffers.get(bid).initial_sels(),
+        "a sibling pane's selection must be reseeded on a view-buffer refresh, not left stale"
     );
 }

@@ -359,8 +359,27 @@ impl SelectionSet {
     /// position mapping walk their respective changeset data with a single
     /// forward-only cursor shared across all selections, instead of
     /// re-scanning the whole changeset per selection.
+    ///
+    /// Thin wrapper over [`Self::translate_in_place_with`] for a caller
+    /// translating a single `SelectionSet` — see that method for a caller
+    /// translating many.
     pub fn translate_in_place(&mut self, cs: &ChangeSet, text_pre: &BufferText) {
-        let edits = cs.edited_old_ranges();
+        self.translate_in_place_with(&cs.edited_old_ranges(), cs, text_pre);
+    }
+
+    /// Same as [`Self::translate_in_place`], but takes `cs`'s edited ranges
+    /// precomputed by the caller — for translating many independent
+    /// `SelectionSet`s through the same `ChangeSet` (e.g. one jump-list entry
+    /// per pane), so [`ChangeSet::edited_old_ranges`]'s `Vec` build is paid
+    /// once rather than once per `SelectionSet`. `edits` must be
+    /// `cs.edited_old_ranges()` — passing ranges from a different changeset
+    /// silently mis-maps every selection.
+    pub fn translate_in_place_with(
+        &mut self,
+        edits: &[(usize, usize)],
+        cs: &ChangeSet,
+        text_pre: &BufferText,
+    ) {
         let mut edit_idx = 0usize;
         let mut mapper = PosMapCursor::new(cs.ops());
 

@@ -14,7 +14,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::decorations::DecorationStores;
-use crate::editor::jump_list::JumpList;
+use crate::editor::jump_list::JumpLists;
 use crate::editor::pane_state::PaneBufferState;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
@@ -27,7 +27,7 @@ pub(crate) type ApplyDocFn = fn(
     &mut BufferStore,
     &DecorationStores,
     &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    &mut SecondaryMap<PaneId, JumpList>,
+    &mut JumpLists,
     PaneId,
     BufferId,
 );
@@ -90,7 +90,7 @@ fn finish_edit(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
+    pane_jumps: &mut JumpLists,
     focused_pane_id: PaneId,
     buf_id: BufferId,
     new_sels: SelectionSet,
@@ -110,32 +110,16 @@ fn finish_edit(
         return;
     }
     buffers.bump_edit_seq();
-    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, cs, text_pre);
-    let text_gen = buffers.get(buf_id).text_gen;
-    let text_post = buffers.get(buf_id).text();
-    propagate_cs_to_jumps(pane_jumps, buf_id, cs, text_pre, text_post);
+    // Computed once and shared by both propagation steps below — each would
+    // otherwise rebuild the same `Vec` from `cs` (once per sibling pane here,
+    // once per pane per jump-list entry there).
+    let edits = cs.edited_old_ranges();
+    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &edits, cs, text_pre);
+    let buf = buffers.get(buf_id);
+    let text_gen = buf.text_gen;
+    pane_jumps.translate(buf_id, &edits, cs, text_pre, buf.text());
     record_syntax_edits(buffers, buf_id, text_gen, cs, rope_pre);
     record_lsp_edits(buffers, decorations, buf_id, text_gen, cs, rope_pre);
-}
-
-/// Remap every pane's jump-list entries for `buf_id` through `cs`.
-///
-/// Unlike [`propagate_cs_to_panes`], this does **not** filter by which panes
-/// currently view `buf_id` — a pane's jump list holds entries for buffers
-/// that pane isn't showing right now (that's what makes cross-buffer
-/// Ctrl+O work), so every pane's list must be checked, including the
-/// focused one (its own live cursor isn't a jump-list entry, so nothing is
-/// mapped twice).
-fn propagate_cs_to_jumps(
-    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
-    buf_id: BufferId,
-    cs: &ChangeSet,
-    text_pre: &BufferText,
-    text_post: &BufferText,
-) {
-    for jumps in pane_jumps.values_mut() {
-        jumps.translate_in_place(buf_id, cs, text_pre, text_post);
-    }
 }
 
 /// Apply an edit to the focused buffer and propagate the resulting
@@ -158,7 +142,7 @@ pub(crate) fn apply_doc_edit(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
+    pane_jumps: &mut JumpLists,
     focused_pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
@@ -212,7 +196,7 @@ pub(crate) fn apply_doc_edit_grouped(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
+    pane_jumps: &mut JumpLists,
     focused_pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
@@ -257,7 +241,7 @@ pub(crate) fn apply_doc_edit_regrouped(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
+    pane_jumps: &mut JumpLists,
     focused_pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
@@ -292,7 +276,7 @@ pub(crate) fn apply_doc_undo(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
+    pane_jumps: &mut JumpLists,
     focused_pane_id: PaneId,
     buf_id: BufferId,
 ) {
@@ -330,7 +314,7 @@ pub(crate) fn apply_doc_redo(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
+    pane_jumps: &mut JumpLists,
     focused_pane_id: PaneId,
     buf_id: BufferId,
 ) {
@@ -421,9 +405,11 @@ pub(crate) fn commit_edit_group(
 /// Propagate `cs` to every pane except `focused_pane_id` that views `buf_id`,
 /// keeping their selections valid after an edit the focused pane performed.
 ///
-/// `text_pre` must be the buffer text **before** the edit — `translate_in_place`
+/// `text_pre` must be the buffer text **before** the edit — `translate_in_place_with`
 /// uses it to identify which line each head was on pre-edit, which governs
 /// whether `Selection.sticky_display_col` is reset after the translation.
+/// `edits` must be `cs.edited_old_ranges()`; see `finish_edit`, this
+/// function's one caller, for why it's computed there instead of here.
 ///
 /// Engine pane mirrors are **not** updated here; `sync_all_pane_mirrors` in
 /// the next `prepare_frame` handles that. Only the authoritative `SelectionSet`
@@ -433,6 +419,7 @@ pub(crate) fn propagate_cs_to_panes(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
+    edits: &[(usize, usize)],
     cs: &ChangeSet,
     text_pre: &hume_editing::text::BufferText,
 ) {
@@ -446,6 +433,6 @@ pub(crate) fn propagate_cs_to_panes(
     for pid in affected {
         pane_state[pid][buf_id]
             .selections
-            .translate_in_place(cs, text_pre);
+            .translate_in_place_with(edits, cs, text_pre);
     }
 }

@@ -272,10 +272,12 @@ impl Editor {
             .reload_from_text(new_text, pre_sels, post_sels);
         let mutated = reload_cs.is_some();
         if let Some(cs) = &reload_cs {
+            let edits = cs.edited_old_ranges();
             let text_post = self.state.buffers.get(id).text();
-            for jumps in self.state.panes.jumps.values_mut() {
-                jumps.translate_in_place(id, cs, &text_pre, text_post);
-            }
+            self.state
+                .panes
+                .jumps
+                .translate(id, &edits, cs, &text_pre, text_post);
         }
         self.state.buffers.get_mut(id).file_meta = new_file_meta;
         // Flush any didChange already queued for this buffer *before* the
@@ -455,16 +457,18 @@ impl Editor {
         let text = BufferText::from(content);
         let bid = if let Some(existing) = self.state.buffers.find_by_label(label) {
             self.state.buffers.get_mut(existing).set_view_content(text);
-            // `set_view_content` resets history — there is no `ChangeSet` to
-            // remap jump entries through, and a regenerated view buffer
+            // `set_view_content` resets history — a regenerated view buffer
             // (`[messages]`, `[buffers]`) shares nothing but its id with the
-            // old content, so a stale offset into it would point at
-            // arbitrary text. Drop them outright, same call
-            // `reload_buffer_in_place` makes for saved scrolls it can't
-            // meaningfully clamp.
-            for jumps in self.state.panes.jumps.values_mut() {
-                jumps.prune_buffer(existing);
-            }
+            // old content, so every per-pane store keyed to it is stale, not
+            // just the jump list. Same reseed `replace_buffer_in_place` runs
+            // after a full `Buffer` swap.
+            lifecycle::reseed_panes_after_content_reset(
+                &mut self.view,
+                &self.state.buffers,
+                &mut self.state.panes.state,
+                &mut self.state.panes.jumps,
+                existing,
+            );
             existing
         } else {
             let doc = Buffer::read_only_view(text, label.to_owned());

@@ -494,8 +494,12 @@ impl ChangeSet {
     /// Used by `SelectionSet::translate_in_place` — one O(ops) walk here lets
     /// the caller check every selection's line against these ranges with a
     /// single forward-only cursor, instead of re-walking `self.ops` per
-    /// selection.
-    pub(crate) fn edited_old_ranges(&self) -> Vec<(usize, usize)> {
+    /// selection. `pub` (not `pub(crate)`) so a caller translating many
+    /// independent `SelectionSet`s through the same `ChangeSet` — HUME's
+    /// per-pane jump lists — can compute this once and feed it to
+    /// [`crate::selection::SelectionSet::translate_in_place_with`] for each,
+    /// rather than paying the O(ops) walk again per list.
+    pub fn edited_old_ranges(&self) -> Vec<(usize, usize)> {
         let mut ranges: Vec<(usize, usize)> = Vec::new();
         let mut old = 0usize;
         for op in &self.ops {

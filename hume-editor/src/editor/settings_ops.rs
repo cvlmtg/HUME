@@ -111,10 +111,10 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, key: &st
             true
         }
         "jump-list-capacity" => {
-            let capacity = state.settings.jump_list_capacity;
-            for jumps in state.panes.jumps.values_mut() {
-                jumps.set_capacity(capacity);
-            }
+            state
+                .panes
+                .jumps
+                .set_capacity(state.settings.jump_list_capacity);
             true
         }
         THEME_KEY if !state.settings.theme.is_empty() => theme::load_theme_by_name(

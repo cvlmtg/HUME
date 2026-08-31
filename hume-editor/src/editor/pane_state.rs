@@ -171,7 +171,7 @@ pub(crate) struct PaneTransient {
 pub(crate) struct PaneView {
     pub(crate) state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pub(crate) transient: SecondaryMap<PaneId, PaneTransient>,
-    pub(crate) jumps: SecondaryMap<PaneId, super::jump_list::JumpList>,
+    pub(crate) jumps: super::jump_list::JumpLists,
     pub(crate) render: SecondaryMap<PaneId, crate::ui::PaneRenderHandles>,
 }
 
