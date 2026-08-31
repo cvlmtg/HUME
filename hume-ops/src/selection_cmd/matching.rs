@@ -145,7 +145,11 @@ pub fn cmd_trim_selection_whitespace(
         // Walk forward from start, skipping whitespace (grapheme boundary steps).
         // `blank_class` is the authoritative whitespace definition for this
         // codebase — Space covers ' '/'\t', Eol covers '\n'.
-        while start <= end && text.char_at(start).is_some_and(|c| blank_class(c).is_some()) {
+        while start <= end
+            && text
+                .char_at(start)
+                .is_some_and(|c| blank_class(c).is_some())
+        {
             start = next_grapheme_boundary(text, start);
         }
 
@@ -156,7 +160,11 @@ pub fn cmd_trim_selection_whitespace(
 
         // Walk backward from end, skipping whitespace (grapheme boundary steps).
         let mut new_end = end;
-        while new_end > start && text.char_at(new_end).is_some_and(|c| blank_class(c).is_some()) {
+        while new_end > start
+            && text
+                .char_at(new_end)
+                .is_some_and(|c| blank_class(c).is_some())
+        {
             new_end = prev_grapheme_boundary(text, new_end);
         }
 

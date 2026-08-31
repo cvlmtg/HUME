@@ -139,7 +139,9 @@ fn validate_rejects_space_and_eol_chars() {
 /// disagree with the word runs `miw`/`mm` compute.
 #[test]
 fn validate_rejects_every_unicode_whitespace_char() {
-    for ch in ['\r', '\u{B}', '\u{C}', '\u{85}', '\u{2028}', '\u{2029}', '\u{202F}'] {
+    for ch in [
+        '\r', '\u{B}', '\u{C}', '\u{85}', '\u{2028}', '\u{2029}', '\u{202F}',
+    ] {
         assert!(
             WordChars::validate(&ch.to_string()).is_err(),
             "expected {ch:?} to be rejected"

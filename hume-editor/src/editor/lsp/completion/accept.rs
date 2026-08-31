@@ -341,8 +341,10 @@ impl CompletionSession {
                 typed,
                 forward,
             } => {
-                let word_chars =
-                    crate::editor::commands::word_chars_owned(state.buffers.get(self.bid), &state.settings);
+                let word_chars = crate::editor::commands::word_chars_owned(
+                    state.buffers.get(self.bid),
+                    &state.settings,
+                );
                 crate::editor::doc_ops::apply_doc_edit_grouped(
                     &mut state.buffers,
                     &state.config.decorations,

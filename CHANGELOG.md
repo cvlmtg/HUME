@@ -13,7 +13,7 @@
   ever registers a sign source for never reserves a gutter column for one.
 
 ### Editing
-- New `goto-matching-pair` (`#`) jumps between a bracket and its partner (`(` `)` `[` `]` `{` `}`), or between an HTML/XML/JSX tag and its partner — vim's `%`, without disturbing HUME's own `%` (select-all). For brackets on a single line, it resolves against the whole selection, not just the character the cursor sits on — so `#` still jumps after a motion like `w` leaves the cursor on the whitespace past a bracket rather than on the bracket itself.
+- New `goto-matching-pair` (`#`) jumps between a bracket and its partner (`(` `)` `[` `]` `{` `}`), or between an HTML/XML/JSX tag and its partner — vim's `%`, without disturbing HUME's own `%` (select-all). For single line selections, it scans for brackets against the whole selection, not just the character the cursor sits on — so `#` still jumps after a motion like `w` leaves the cursor on the whitespace past a bracket rather than on the bracket itself.
 - `w`/`b`, `mm`, `miw`/`maw`, `Ctrl+W`, `*`, auto-pair suppression, and the LSP completion fallback replace span now honor a buffer's configured `word-chars` (see the new setting below) — e.g. with `-` configured, `foo-bar` is one word instead of three. `W`/`B`/`MM` are unaffected: they already treat punctuation and word characters as one class. With `word-chars` configured, `*` can now still bleed into a longer run sharing the same edge character (e.g. searching `foo-bar` inside `foo-bar-baz` also matches there).
 
 ### Appearance
