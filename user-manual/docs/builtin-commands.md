@@ -137,6 +137,7 @@ Mode transitions, paste, search, scrolling, pane management, and more.
 | `goto-alternate-file` | — | Switch to the most-recently-focused other buffer. |
 | `half-page-down` | `Ctrl+d` | Scroll down by half a viewport height. |
 | `half-page-up` | `Ctrl+u` | Scroll up by half a viewport height. |
+| `indent` | `>` | Indent every line touched by a selection by one level. |
 | `insert-after` | — | Enter insert mode after the cursor (move one grapheme right). |
 | `insert-at-line-end` | `A` | Enter insert mode after the last character on the line. |
 | `insert-at-line-start` | `I` | Enter insert mode at the first non-blank character on the line. |
@@ -183,4 +184,5 @@ Mode transitions, paste, search, scrolling, pane management, and more.
 | `toggle-extend` | `e` | Toggle sticky extend mode. |
 | `top-view-on-cursor` | `z t` | Scroll so the primary selection head sits at the top of the viewport. |
 | `undo` | `u` | Undo the last change. |
+| `unindent` | `<` | Unindent every line touched by a selection by one level. |
 | `yank` | `y` | Copy selections to the clipboard and kill ring without deleting. |

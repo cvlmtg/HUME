@@ -6,6 +6,7 @@ use hume_editing::text::BufferText;
 mod align;
 mod case;
 mod delete;
+mod indent;
 mod insert;
 mod join;
 mod paste;
@@ -18,6 +19,7 @@ pub use delete::{
     change_span, dedent_tab_backward, delete_char_backward, delete_char_forward, delete_selection,
     delete_selection_content, delete_word_backward,
 };
+pub use indent::{indent_lines, unindent_lines};
 pub use insert::{
     blank_line_ws_range, clear_blank_line_indent, insert_char, insert_newline_indent, insert_str,
     insert_tab,

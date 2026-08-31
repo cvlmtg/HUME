@@ -174,6 +174,22 @@ impl CommandRegistry {
         .repeatable()
         .clears_extend()
         .reg(self);
+        ecmd(
+            "indent",
+            "Indent every line touched by a selection by one level.",
+            cmd_indent,
+        )
+        .repeatable()
+        .clears_extend()
+        .reg(self);
+        ecmd(
+            "unindent",
+            "Unindent every line touched by a selection by one level.",
+            cmd_unindent,
+        )
+        .repeatable()
+        .clears_extend()
+        .reg(self);
         ecmd("undo", "Undo the last change.", cmd_undo).reg(self);
         ecmd("redo", "Redo the last undone change.", cmd_redo).reg(self);
 

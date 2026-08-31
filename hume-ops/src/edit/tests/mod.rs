@@ -1,6 +1,7 @@
 mod align;
 mod case;
 mod delete;
+mod indent;
 mod insert;
 mod join;
 mod paste;

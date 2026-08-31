@@ -9,6 +9,7 @@ HUME shares Helix's core editing model — select-then-act, selections as first-
 - `:` command line, `/` search
 - `d`, `c`, `y`, `p` for delete/change/yank/paste
 - `u` / `U` undo / redo
+- `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`) — HUME additionally re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount, so a mixed-tabs-and-spaces indent gets normalized as a side effect
 
 ::: tip
 Unlike Helix, HUME's `c` keeps the selection on the text you changed: select a word, change it, and once you leave Insert mode the new text is still selected, ready to act on again — delete it, surround it, search for it. Disable this with the `select-changed-text` option (see [Configuration](configuration.md)).

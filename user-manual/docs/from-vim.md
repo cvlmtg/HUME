@@ -60,6 +60,8 @@ These keys exist in both editors and do different things. They are the ones most
 
 `f`, `F`, `t`, `T` behave as they do in Vim, and `{` / `}` are still paragraph motions. Only the *repeat* keys moved: use `=` and `-`, because `;` and `,` are taken.
 
+`>` and `<` indent/unindent directly, select-then-act style — no operator-pending step and no doubled key, so `>` alone does what Vim's `>>` does. A count still works (`3>`), and unlike a bare `>>`/`<<`, HUME re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount.
+
 ### Text objects
 
 Vim's `iw` / `aw` family lives behind the `m` prefix, and — as everywhere else — you select first and act second. `diw` becomes `m i w` then `d`.

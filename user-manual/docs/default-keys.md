@@ -99,6 +99,8 @@ Text objects (use the `m` prefix):
 | `r` + char | `replace` | Replace every selected character (line endings are left alone). `Enter`/`Tab` count as the character, replacing with a newline/tab |
 | `J` | `join-lines-select-spaces` | Join the selected lines into one |
 | `&` | `align-selections` | Align selections into a column |
+| `>` | `indent` | Indent lines touched by a selection |
+| `<` | `unindent` | Unindent lines touched by a selection |
 | `u` | `undo` | Undo |
 | `U` / `Ctrl+r` | `redo` | Redo |
 | `.` | `repeat-last-action` | Repeat last editing action |

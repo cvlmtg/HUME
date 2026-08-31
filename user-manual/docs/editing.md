@@ -54,12 +54,16 @@ Line endings inside the selection are left alone, so replacing across several li
 |-----|--------|
 | `J` | Join the selected lines into one |
 | `&` | Align selections into a column |
+| `>` | Indent lines touched by a selection |
+| `<` | Unindent lines touched by a selection |
 
 `J` replaces each line break with a single space and drops the next line's indentation, so joining wrapped code or prose doesn't leave a gap in the middle. When the next line is empty or only whitespace, the lines are joined with no space at all. Joining several lines at once leaves one cursor on each inserted space, ready to act on.
 
 `&` lines up your selections using the primary selection's line as the starting point. Spaces are inserted at the left edge of each selection to reach that column, and if some other line needs more room, the column widens for everybody — which means the primary selection can shift right too. Multi-line selections are left alone. Where a selection sits too far right already, the run of spaces or tabs immediately to its left is squeezed down (never below one).
 
 You can align to the left or the right depending on which end of the selection is the anchor; `Ctrl+e` swaps anchor and head. See [Selections](selections.md#flipping-and-collapsing-the-selection).
+
+`>`/`<` shift every line touched by a selection by one indent level, using the buffer's `tab-width` and `tab-style` (see [Configuration](configuration.md)) — a prefix count shifts by that many levels at once (`3>`). A blank or whitespace-only line inside the selection is left alone, so it never picks up trailing whitespace. Each touched line's whole indent is re-rendered to the new width in the current `tab-style`, not just prepended to or trimmed from — so `>` after `<` (or vice versa) always gets you back to exactly where you started.
 
 ## Undo and redo
 

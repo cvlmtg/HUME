@@ -1899,3 +1899,29 @@ fn gu_dot_repeats() {
     ed.feed_key(key('.')); // replay make-text-lowercase
     assert_eq!(state(&ed), "hello\n-[world\n]>");
 }
+
+// ── `>` / `<` indent / unindent ─────────────────────────────────────────────
+
+#[test]
+fn angle_bracket_indents_and_unindents() {
+    // Default settings: tab-style=hard, tab-width=4.
+    let mut ed = editor_from("-[f]>oo\n");
+    ed.handle_key(key('>'));
+    assert_eq!(state(&ed), "\t-[f]>oo\n");
+    ed.handle_key(key('<'));
+    assert_eq!(state(&ed), "-[f]>oo\n");
+}
+
+/// A count reaches the pure op (proving the keymap→`EditorCmd` count plumbing
+/// works for `indent`, same as `cmd_align_selections`), and the whole `3>`
+/// composes into a single undo step rather than three.
+#[test]
+fn three_indent_is_one_undo_step() {
+    let mut ed = editor_from("-[f]>oo\n");
+    ed.feed_keys([key('3'), key('>')]);
+    assert_eq!(state(&ed), "\t\t\t-[f]>oo\n");
+
+    ed.handle_key(key('u'));
+    assert_eq!(state(&ed), "-[f]>oo\n");
+    assert!(!ed.doc().can_undo());
+}

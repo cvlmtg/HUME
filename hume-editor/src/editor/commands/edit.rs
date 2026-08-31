@@ -6,7 +6,8 @@ use hume_editing::word::WordChars;
 use hume_ops::MotionMode;
 use hume_ops::edit::{
     align_selections, change_span, delete_selection, delete_selection_content,
-    delete_word_backward, join_lines_select_spaces, replace_selections,
+    delete_word_backward, indent_lines, join_lines_select_spaces, replace_selections,
+    unindent_lines,
 };
 use hume_ops::register::{CLIPBOARD_REGISTER, KILL_RING_REGISTER, yank_selections};
 use hume_ops::surround::wrap_each_selection;
@@ -291,6 +292,40 @@ pub(crate) fn cmd_align_selections(
         .tab_width(&state.settings);
     apply_focused_edit(state, view, move |text, sels| {
         align_selections(text, sels, tab_width)
+    });
+    Ok(())
+}
+
+/// Indent every line touched by a selection by `count` levels (`>`).
+pub(crate) fn cmd_indent(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    let buf_id = focused_buffer_id(state, view);
+    let overrides = &state.buffers.get(buf_id).overrides;
+    let style = overrides.tab_style(&state.settings);
+    let tab_width = overrides.tab_width(&state.settings);
+    apply_focused_edit(state, view, move |text, sels| {
+        indent_lines(text, sels, style, tab_width, count)
+    });
+    Ok(())
+}
+
+/// Unindent every line touched by a selection by `count` levels (`<`).
+pub(crate) fn cmd_unindent(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    let buf_id = focused_buffer_id(state, view);
+    let overrides = &state.buffers.get(buf_id).overrides;
+    let style = overrides.tab_style(&state.settings);
+    let tab_width = overrides.tab_width(&state.settings);
+    apply_focused_edit(state, view, move |text, sels| {
+        unindent_lines(text, sels, style, tab_width, count)
     });
     Ok(())
 }

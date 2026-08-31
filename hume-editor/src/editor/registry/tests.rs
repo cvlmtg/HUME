@@ -2,7 +2,7 @@ use super::*;
 
 /// Exhaustiveness guard: if a command is added without a registry entry,
 /// this test catches it.
-const EXPECTED_COMMAND_COUNT: usize = 159;
+const EXPECTED_COMMAND_COUNT: usize = 161;
 
 #[test]
 fn registry_has_expected_count() {
