@@ -531,13 +531,12 @@ fn right_arrow_then_enter_dismisses_instead_of_swallowing_the_passed_over_char()
 
 #[test]
 fn ctrl_w_dismisses_the_session_instead_of_leaving_a_stale_anchor() {
-    // `Ctrl+W` (delete-word-backward) is a `MappableCommand::Edit` bound in
-    // the insert trie — it runs through `run_native_body`, not
-    // `apply_insert_edit`, so it can never call `observe_edit` to keep the
-    // session's anchor in sync (the lint `single native-dispatch funnel
-    // discipline` forbids routing it any other way). Before this fix the
-    // session survived with a now-meaningless anchor; post-fix, any
-    // trie-matched key (this one included) dismisses the session outright.
+    // `Ctrl+W` (delete-word-backward) is bound in the insert trie and, being
+    // an edit rather than a motion, reaches the buffer without ever calling
+    // `apply_insert_edit` — so it can never call `observe_edit` to keep the
+    // session's anchor in sync. Before this fix the session survived with a
+    // now-meaningless anchor; post-fix, any trie-matched key (this one
+    // included) dismisses the session outright.
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     for ch in "pri".chars() {

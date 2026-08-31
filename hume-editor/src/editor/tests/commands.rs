@@ -55,6 +55,21 @@ fn c_esc_without_typing_stays_collapsed() {
     assert_eq!(state(&ed), "-[o]>\n");
 }
 
+/// Ctrl-W (delete-word-backward) inside a `c` session must not clear the
+/// insertion pin — it's a text edit within the session, not a cursor motion
+/// away from it. `select-changed-text` must still select what survived.
+#[test]
+fn c_type_ctrl_w_esc_selects_surviving_typed_run() {
+    let mut ed = editor_from("-[hell]>o\n");
+    ed.handle_key(key('c'));
+    for ch in "foo bar".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_ctrl('w')); // deletes "bar", keeps "foo "
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "-[foo ]>o\n");
+}
+
 #[test]
 fn c_multi_cursor_selects_each_replacement() {
     let mut ed = editor_from("-[foo]> -[bar]>\n");
@@ -229,6 +244,21 @@ fn mii_works_after_c_with_setting_off() {
     assert_eq!(state(&ed), "hi-[o]>\n");
     mii(&mut ed);
     assert_eq!(state(&ed), "-[hi]>o\n");
+}
+
+/// Ctrl-W during an `i`-entered session is a text edit, not a cursor motion
+/// — it must not clear the pinned anchor `mii` reconstructs from.
+#[test]
+fn mii_after_insert_with_ctrl_w_selects_surviving_typed_run() {
+    let mut ed = editor_from("-[x]>\n");
+    ed.handle_key(key('i'));
+    for ch in "hello world".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_ctrl('w')); // deletes "world", keeps "hello "
+    ed.handle_key(key_esc());
+    mii(&mut ed);
+    assert_eq!(state(&ed), "-[hello ]>x\n");
 }
 
 #[test]

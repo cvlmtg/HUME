@@ -86,9 +86,11 @@ impl Editor {
                 // Every key that resolves to a trie leaf is a cursor motion
                 // or an edit command — Esc, arrows, Ctrl-W, any user-bound
                 // insert key. None of them route through `apply_insert_edit`
-                // (motions bypass it entirely; `MappableCommand::Edit` below
-                // goes through `run_native_body` instead, which cannot hand
-                // its `ChangeSet` back here — see that branch), so an open
+                // (motions bypass it entirely; an edit command reaches the
+                // buffer either via `MappableCommand::Edit` below through
+                // `run_native_body`, or — like Ctrl-W's `EditorCmd` — through
+                // the ordinary `execute_keymap_command` dispatch further
+                // down; neither hands its `ChangeSet` back here), so an open
                 // completion session can't stay correctly anchored past one:
                 // a motion moves the cursor off the token, and an edit
                 // command mutates outside the one chokepoint that keeps the
@@ -118,11 +120,17 @@ impl Editor {
                     );
                     return;
                 }
-                // Any cursor-motion command (arrows, Home/End, …) invalidates
-                // a pinned "typed run" — its anchor would otherwise select
-                // across text the cursor jumped away from. exit-insert is the
-                // finalizer itself and must not clear the pins it consumes.
-                if cmd.name.as_ref() != "exit-insert" {
+                // Any cursor-motion command (arrows, Home/End, goto-*, …)
+                // invalidates a pinned "typed run" — its anchor would
+                // otherwise select across text the cursor jumped away from.
+                // `CmdMeta`'s motion flags are the source of truth for "this
+                // moved the cursor rather than editing" — not the command's
+                // variant or name, since an edit command (delete-word-backward)
+                // can equally be an `EditorCmd` and must NOT clear the pins.
+                // exit-insert is the finalizer itself and must not clear the
+                // pins it consumes, and correctly sets none of these flags.
+                let meta = reg_cmd.meta();
+                if meta.is_motion || meta.is_visual_move || meta.is_jump {
                     let pid = self.state.focused_pane_id;
                     let bid = self.focused_buffer_id();
                     self.state.panes.state[pid][bid].pinned_anchors = None;
