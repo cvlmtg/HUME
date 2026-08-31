@@ -148,6 +148,11 @@ impl Editor {
         // running it here would trade a per-keystroke cost for a per-render
         // one. `#` still jumps to a tag's partner; it just isn't highlighted.
         //
+        // Resolves against the whole primary selection, nearest the head —
+        // the same rule `#` itself uses — so a `w`-motion selection like
+        // `") "` still shows its bracket highlighted even though the head
+        // sits on the trailing space, not the bracket.
+        //
         // Clear every pane first: a bracket match lingers only on whichever
         // pane last had focus, so moving focus away must blank the old one.
         for p in panes {
@@ -165,11 +170,10 @@ impl Editor {
                 .map(|r| Arc::clone(&r.highlights.bracket))
             {
                 let text = self.doc().text();
-                let head = self.state.panes.state[focused][self.focused_buffer_id()]
+                let primary = self.state.panes.state[focused][self.focused_buffer_id()]
                     .selections
-                    .primary()
-                    .head();
-                if let Some(match_pos) = matching_bracket(text, head) {
+                    .primary();
+                if let Some(match_pos) = matching_bracket(text, &primary) {
                     let (line, byte) = char_to_line_byte(text, match_pos);
                     // Single-char match: byte_end = byte + utf8 length of the char.
                     let ch_len = text.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);

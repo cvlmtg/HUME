@@ -858,6 +858,7 @@ mod alternate;
 mod async_job_steel;
 mod async_source;
 mod auto_pairs;
+mod bracket_match_highlight;
 mod bracketed_paste;
 mod buffer;
 mod buffer_store;

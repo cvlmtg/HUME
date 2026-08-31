@@ -79,6 +79,78 @@ fn goto_matching_pair_extend_keeps_anchor() {
     );
 }
 
+// ── Selection-wide resolution ────────────────────────────────────────────
+//
+// A `w`-style selection ends on the whitespace following a bracket, not on
+// the bracket itself (word-selects-whitespace is by design). `#` must still
+// resolve from anywhere in the selection, not just the head.
+
+#[test]
+fn goto_matching_pair_head_on_whitespace_after_close_resolves() {
+    // Forward selection, head past the ')' — head is the selection's own
+    // far edge, so resolution walks inward (leftward) toward the anchor.
+    assert_state!(
+        "pub(crate-[) ]>foo\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "pub-[(]>crate) foo\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_backward_selection_head_before_open_resolves() {
+    // Backward selection, head before the '(' — head is again the
+    // selection's near edge, so resolution walks inward (rightward).
+    assert_state!(
+        "x<[ (y)]- z\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "x (y-[)]> z\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_picks_nearest_bracket_not_leftmost() {
+    // Selection spans two independent pairs, "(a)(b". The nearest bracket to
+    // the head is the second pair's '(' (distance 1) — not the leftmost
+    // bracket in the selection, the first pair's '(' (distance 4), which
+    // would jump somewhere else entirely.
+    assert_state!(
+        "-[(a)(b]>)\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "(a)(b-[)]>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_extend_from_non_head_bracket_keeps_anchor() {
+    assert_state!(
+        "(-[x) ]>z\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Extend),
+        "<[(x]-) z\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_no_bracket_in_selection_is_noop() {
+    // Move mode always collapses to the (unchanged) head, same as any other
+    // no-op — a multi-char selection with nothing to jump to still collapses.
+    assert_state!(
+        "a-[bc de]>f\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "abc d-[e]>f\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_tag_in_selection_but_not_under_head_is_noop() {
+    // Brackets-only span-wide resolution: a tag fully inside the selection
+    // doesn't make `#` jump when the head itself isn't on the tag's markup.
+    assert_state!(
+        "-[<div>x]>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<div>-[x]>\n"
+    );
+}
+
 // ── Tags ──────────────────────────────────────────────────────────────────
 
 #[test]

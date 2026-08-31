@@ -130,13 +130,28 @@ motion_cmd!(/// Move or extend cursors to the first non-blank character on their
 /// to a bare `#`. Vim's `count%` means "go to N% of the file" — a different
 /// operation this motion doesn't implement — so `count` is ignored rather
 /// than given a meaning nobody asked for.
+///
+/// Also can't ride `apply_motion`: bracket resolution needs the whole
+/// selection (nearest bracket to the head, not just the head's own
+/// grapheme cluster — see [`goto_matching_pair`]'s doc comment), but
+/// `apply_motion`'s inner `motion` only ever receives a head position. Maps
+/// over the set directly instead, the same shape `line_select::cmd_select_line`
+/// uses for the same reason.
 pub fn cmd_goto_matching_pair(
     text: &BufferText,
     sels: SelectionSet,
     _count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    apply_motion(text, sels, mode, 1, goto_matching_pair)
+    let result = sels.map(|sel| {
+        let new_head = goto_matching_pair(text, &sel);
+        match mode {
+            MotionMode::Move => Selection::collapsed(new_head),
+            MotionMode::Extend => Selection::new(sel.anchor(), new_head),
+        }
+    });
+    result.debug_assert_valid(text);
+    result
 }
 
 // Paragraph motions.

@@ -6,6 +6,7 @@
 
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::lines::line_end_exclusive;
+use hume_editing::selection::Selection;
 use hume_editing::text::BufferText;
 
 // ---------------------------------------------------------------------------
@@ -93,18 +94,67 @@ pub(crate) fn find_bracket_pair(
     }
 }
 
-/// Find the partner of the bracket in the grapheme cluster at `pos`, in
-/// either direction.
+/// The bracket pair `ch` belongs to, if any.
+fn bracket_pair_for(ch: char) -> Option<(char, char)> {
+    BRACKET_PAIRS
+        .iter()
+        .copied()
+        .find(|&(o, c)| ch == o || ch == c)
+}
+
+/// The first bracket char `indices` yields, with the pair it belongs to.
+/// Direction (and thus which bracket counts as "nearest") is entirely up to
+/// the caller's iterator — a plain `Range` scans left to right, `.rev()`'d
+/// scans right to left.
+fn first_bracket_in(
+    text: &BufferText,
+    mut indices: impl Iterator<Item = usize>,
+) -> Option<(usize, char, char)> {
+    indices.find_map(|i| {
+        let ch = text.char_at(i)?;
+        let (o, c) = bracket_pair_for(ch)?;
+        Some((i, o, c))
+    })
+}
+
+/// Find the bracket nearest `sel`'s head, considering the whole selection —
+/// not just the head's own grapheme cluster.
 ///
-/// `pos` need not sit exactly on the bracket codepoint — it may be anywhere
-/// in the grapheme cluster the bracket belongs to. A bracket char is always
-/// ASCII and never itself combines forward, but a `GC_Prepend` codepoint
-/// immediately before one (e.g. U+0600 ARABIC NUMBER SIGN) joins *into* it,
-/// so `pos` landing on that leading codepoint — exactly where
+/// `sel`'s head is always one extremity of the selection (`start()` or
+/// `end()`; for a collapsed selection the two coincide) — never interior —
+/// so "nearest to head, within the selection" only ever means "closest to
+/// head, walking inward toward the anchor". That collapses the search to a
+/// single direction: the head's own cluster first (exactly what the old
+/// head-only resolver checked, preserved unchanged so a collapsed selection
+/// behaves identically to before), then one scan from there toward the
+/// anchor, stopping at the first hit — which is, by construction, the
+/// nearest one.
+fn nearest_bracket(text: &BufferText, sel: &Selection) -> Option<(usize, char, char)> {
+    let head = sel.head();
+    let cluster_end = next_grapheme_boundary(text, head);
+    if let Some(found) = first_bracket_in(text, head..cluster_end) {
+        return Some(found);
+    }
+    if head == sel.start() {
+        first_bracket_in(text, cluster_end..sel.end_inclusive(text) + 1)
+    } else {
+        first_bracket_in(text, (sel.start()..head).rev())
+    }
+}
+
+/// Find the partner of the bracket nearest `sel`'s head, within `sel`.
+///
+/// Resolution prefers the head's own grapheme cluster — a bracket char is
+/// always ASCII and never itself combines forward, but a `GC_Prepend`
+/// codepoint immediately before one (e.g. U+0600 ARABIC NUMBER SIGN) joins
+/// *into* it, so a head landing on that leading codepoint — exactly where
 /// [`hume_editing::grapheme::snap_to_cluster_start`] leaves a motion after
 /// matching such a bracket — must still resolve, or a second `%`-style press
 /// (an involution) finds nothing and the cursor-match highlight goes dark on
-/// a bracket the cursor is visibly beside.
+/// a bracket the cursor is visibly beside. Failing that, it falls back to the
+/// nearest bracket anywhere else in the selection — e.g. a `w`-motion
+/// selection like `") "` with the head on the trailing space rather than the
+/// bracket itself.
 ///
 /// This is the resolver `%`-style matching needs ("which pair is this
 /// delimiter part of, and where's the other end") that [`find_bracket_pair`]
@@ -113,13 +163,8 @@ pub(crate) fn find_bracket_pair(
 /// cursor highlight (`hume-editor`'s `decoration_providers`) — both need the
 /// same answer to "what does this character pair with", so there is exactly
 /// one place `BRACKET_PAIRS` gets consulted for it.
-pub fn matching_bracket(text: &BufferText, pos: usize) -> Option<usize> {
-    let cluster_end = next_grapheme_boundary(text, pos);
-    let (bracket_pos, open, close) = (pos..cluster_end).find_map(|i| {
-        let ch = text.char_at(i)?;
-        let &(o, c) = BRACKET_PAIRS.iter().find(|&&(o, c)| ch == o || ch == c)?;
-        Some((i, o, c))
-    })?;
+pub fn matching_bracket(text: &BufferText, sel: &Selection) -> Option<usize> {
+    let (bracket_pos, open, close) = nearest_bracket(text, sel)?;
     let (open_pos, close_pos) = find_bracket_pair(text, bracket_pos, open, close)?;
     Some(if bracket_pos == open_pos {
         close_pos

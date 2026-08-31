@@ -70,7 +70,7 @@ The idiomatic line movements live under the `g` prefix:
 |-----|----------|
 | `#` | Jump to the matching bracket or tag |
 
-For a bracket, the cursor must sit exactly on `(` `)` `[` `]` `{` `}`. For an HTML/XML/JSX tag, anywhere inside the tag itself — its `<`, its `>`, the name, or an attribute — works, not just the two delimiter characters. Anywhere else, `#` does nothing. From an opening bracket or tag it jumps to the closing one, and back again from the closing side. A count has no effect — `#` always jumps to the immediate partner.
+For a bracket, `#` looks at the whole selection, not just where the cursor sits — so it still finds `(` `)` `[` `]` `{` `}` after a selecting motion leaves the cursor just past one. For an HTML/XML/JSX tag, the cursor itself must be inside the tag's own markup — its `<`, its `>`, the name, or an attribute — not just anywhere in the selection. Anywhere else, `#` does nothing. From an opening bracket or tag it jumps to the closing one, and back again from the closing side. A count has no effect — `#` always jumps to the immediate partner.
 
 ## Jump to a line by number
 
