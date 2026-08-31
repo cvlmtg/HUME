@@ -161,13 +161,15 @@ pub(crate) type EditorCmdFn = fn(
 /// `miw`/`maw`), which additionally needs this buffer's configured
 /// `word-chars` and effective `word-selects-whitespace`, resolved from
 /// settings the same way `tab_width`/`TabStyle` are for `align_selections`/
-/// `insert_tab`. Rather than widening every command's signature for the ~28
-/// that would ignore the extra data, only the word family gets a second body
-/// shape here in the registry — the four `w`/`W`/`b`/`B` motions specifically
-/// (rather than joining `select-word-nearest-on-line` as an `EditorCmd`,
-/// which also resolves settings, via a `RowMap`) because `MappableCommand::meta`
-/// only ever sets `CmdMeta::is_motion` true for the `Motion` variant, and Move
-/// mode's jump-list/dot-repeat handling depends on that flag.
+/// `insert_tab`. Rather than widening every command's signature for the large
+/// majority of registrations that would ignore the extra data, only the word
+/// family — the four `w`/`W`/`b`/`B` motions and six word-tagged selections —
+/// gets a second body shape here in the registry. The four motions
+/// specifically stay `Motion` rather than joining `select-word-nearest-on-line`
+/// as an `EditorCmd` (which also resolves settings, via a `RowMap`) because
+/// `MappableCommand::meta` only ever sets `CmdMeta::is_motion` true for the
+/// `Motion` variant, and Move mode's jump-list/dot-repeat handling depends on
+/// that flag.
 #[derive(Clone, Copy)]
 pub(crate) enum SelectionBody {
     Plain(fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet),

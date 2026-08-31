@@ -43,8 +43,8 @@ pub enum MotionMode {
 /// caller resolves `around`/`chars` and passes them in, the same way
 /// `tab_width`/`TabStyle` are resolved and passed to `align_selections`/
 /// `insert_tab`. Keeping this as its own struct (rather than widening every
-/// `hume-ops` selection command's signature) means the ~28 word-unrelated
-/// commands never carry data they ignore.
+/// `hume-ops` selection command's signature) means the large majority of
+/// registrations — the word-unrelated ones — never carry data they ignore.
 #[derive(Debug, Clone, Copy)]
 pub struct WordCtx<'a> {
     pub mode: MotionMode,

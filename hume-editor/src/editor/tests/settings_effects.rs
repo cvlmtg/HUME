@@ -459,7 +459,7 @@ fn on_language_set_hook_configures_word_chars() {
     assert_eq!(state(&ed), "foo-bar-[ baz]>\n");
 }
 
-/// `(get-option "word-chars" bid)` round-trips the raw string — covers the
+/// `(get-option bid "word-chars")` round-trips the raw string — covers the
 /// new `option_value!` arm.
 #[test]
 fn get_option_round_trips_word_chars() {
