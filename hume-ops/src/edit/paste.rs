@@ -14,7 +14,7 @@ use crate::register;
 ///
 /// | `before` | charwise content           | linewise content (ends `\n`)   |
 /// |----------|----------------------------|--------------------------------|
-/// | `false`  | one past the cursor char   | start of the next line         |
+/// | `false`  | one past the cursor char, clamped to the line's own `\n` | start of the next line |
 /// | `true`   | at the cursor char         | start of the cursor's line     |
 ///
 /// Non-collapsed selections:
@@ -81,7 +81,12 @@ fn paste_impl(
                 let insert_at = if before {
                     sel.start()
                 } else {
-                    (sel.end_inclusive(text) + 1).min(text.len_chars() - 1)
+                    // "After the cursor" must not cross the line break: on an
+                    // empty line the cursor sits on the '\n' itself (there is
+                    // no other char to land on), so stepping one past it
+                    // would drop the text at the start of the next line.
+                    let end_incl = sel.end_inclusive(text);
+                    (end_incl + 1).min(line_break_char(text, text.char_to_line(end_incl)))
                 };
                 b.retain(insert_at - b.old_pos());
                 if content.is_empty() {

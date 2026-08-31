@@ -52,6 +52,39 @@ fn paste_after_cursor_on_structural_newline() {
 }
 
 #[test]
+fn paste_after_cursor_on_empty_line_stays_on_that_line() {
+    // Cursor on an empty line (its only char is the line's own '\n'). Paste
+    // must land on that line, not cross into the next one.
+    assert_state!(
+        "ab\n-[\n]>cd\n",
+        |(text, sels)| pa(text, sels, &["XY".to_string()]),
+        "ab\n-[XY]>\ncd\n"
+    );
+}
+
+#[test]
+fn paste_after_cursor_on_interior_newline_stays_on_that_line() {
+    // Same escape via a non-empty line's own terminator — "after the cursor"
+    // must not cross the line break here either.
+    assert_state!(
+        "ab-[\n]>cd\n",
+        |(text, sels)| pa(text, sels, &["XY".to_string()]),
+        "ab-[XY]>\ncd\n"
+    );
+}
+
+#[test]
+fn paste_before_cursor_on_empty_line_stays_on_that_line() {
+    // Characterization: paste-before is already correct here (inserts at
+    // sel.start(), which is the empty line's own position).
+    assert_state!(
+        "ab\n-[\n]>cd\n",
+        |(text, sels)| pb(text, sels, &["XY".to_string()]),
+        "ab\n-[XY]>\ncd\n"
+    );
+}
+
+#[test]
 fn paste_after_two_cursors_n_to_n() {
     // Two cursors (pos 0 and 4); two values — each cursor gets its own slot.
     assert_state!(

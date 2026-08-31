@@ -35,6 +35,7 @@
 - `core:git-diff` now also drives a `"steel:git-branch"` statusline element for the focused buffer — place it with `configure-statusline!` and it shows the current branch, e.g. `(main)`, with no extra Steel required.
 
 ### Fixes
+- `p` on an empty line now pastes charwise register content onto that line instead of at the start of the next one.
 - `:reload-config` no longer leaves an `on-buffer-enter`-driven `"steel:<name>"` statusline element (e.g. `core:git-diff`'s `steel:git-branch`) blank until the next buffer switch or save — it now re-fires `on-buffer-enter` for the focused buffer as part of its usual buffer-lifecycle replay.
 - The sign column no longer shuffles a channel's marker sideways depending on what else shares its line, and no longer changes width as a channel's individual signs come and go. `signcolumn` (bare `always`/`auto`, no `:N`) now sizes the column to one slot per registered sign source (see `register-sign-source!` above), reserved the moment a plugin registers rather than derived from whatever priorities happen to be present in the buffer right now; pin `signcolumn=always:N`/`auto:N` for a fixed width, as before.
 - Diagnostic gutter markers no longer render underlined. They were interning the same scope as the text-span squiggle, which every bundled theme underlines; the gutter now reads its own scope (`error`/`warning`/`info`/`hint`).
