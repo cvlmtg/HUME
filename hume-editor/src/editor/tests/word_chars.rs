@@ -117,6 +117,34 @@ fn select_word_nearest_on_line_follows_word_chars() {
     assert_eq!(state(&ed), "-[foo-bar ]>baz\n");
 }
 
+/// The test above already exercises the wrap branch of
+/// `cmd_visual_select_word_nearest_on_line` — wrap is on by default
+/// (`wrap-mode = indent`, width 0). What it doesn't reach is a buffer line
+/// that actually splits into two visual sub-rows, where the wrap-aware path
+/// hands `nearest_word_on_line` a `line_start` bounded to the cursor's own
+/// sub-row rather than the whole buffer line.
+///
+/// Wrapping at column 12 puts "hello world " on row 0 and "foo-bar" on row 1.
+/// Fail oracle, both halves at once: dropping `word-chars` from the wrap
+/// branch selects "bar" alone; losing the sub-row bound absorbs row 0's
+/// trailing space.
+#[test]
+fn select_word_nearest_on_line_follows_word_chars_across_a_wrapped_row() {
+    let mut ed = editor_from("hello world foo-b-[a]>r\n");
+    ed.state.settings.word_chars = "-".into();
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::Indent { width: 12 }),
+        saved: None,
+    });
+    ed.execute_keymap_command(
+        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
+        Some(1),
+        false,
+        ArgSource::Keymap,
+    );
+    assert_eq!(state(&ed), "hello world -[foo-bar]>\n");
+}
+
 #[test]
 fn invalid_word_chars_is_rejected() {
     let result = crate::editor::commands::typed_set(

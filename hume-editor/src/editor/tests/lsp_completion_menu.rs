@@ -739,6 +739,31 @@ fn accepting_a_completion_lands_at_every_cursor_not_just_the_primary() {
     assert_eq!(ed.doc().text().to_string(), "std std\n");
 }
 
+/// `ReplaceSpan::TokenBefore` resolves the primary cursor's token start from
+/// the session anchor and every other cursor's from `head - typed` — two
+/// different expressions of the same idea, each of which must honor this
+/// buffer's `word-chars`. Typing "x-" before `begin_session` and "st" after
+/// it makes `typed` non-zero, so the non-primary arm's subtraction is
+/// actually exercised, not just its head.
+///
+/// Fail oracle: drop `chars` from either arm and that cursor keeps its "x-"
+/// prefix — "x-std x-std\n" instead of "std std\n".
+#[test]
+fn accepting_a_completion_replaces_the_whole_word_chars_token_at_every_cursor() {
+    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    ed.state.settings.word_chars = "-".into();
+    ed.feed_key(key('c'));
+    for ch in "x-".chars() {
+        ed.feed_key(key(ch));
+    }
+    begin_session(&mut ed, &[("std", None)]);
+    for ch in "st".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_enter());
+    assert_eq!(ed.doc().text().to_string(), "std std\n");
+}
+
 #[test]
 fn accepting_a_server_text_edit_also_lands_at_every_cursor() {
     let mut ed = editor_from("-[foo]> -[bar]>\n");

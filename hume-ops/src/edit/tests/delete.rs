@@ -449,6 +449,25 @@ fn delete_word_backward_with_extra_word_char_deletes_whole_run() {
     );
 }
 
+#[test]
+fn delete_word_backward_two_cursors_in_one_word_chars_run() {
+    // `delete_word_backward_two_cursors_same_word`'s overlap-skip rule, with
+    // '-' a word char widening the run the two cursors share. Heads at 2 ('o')
+    // and 6 ('r') in "foo-bar\n" — with '-' a word char, "foo-bar" (0..6) is
+    // one run, not three.
+    // Cursor 1 (head=2): word_start=0 >= old_pos=0 → delete [0,2) → cursor 1
+    //   at new offset 0.
+    // Cursor 2 (head=6): word_start=0 < old_pos=2 (prior cursor consumed
+    //   there) → overlap-skip → retain [2,6) → cursor 2 at new offset 4,
+    //   deleting nothing. Under the default word rule its run would start at
+    //   4 instead, and "ba" would go.
+    assert_state!(
+        "fo-[o]>-ba-[r]>\n",
+        |(text, sels)| delete_word_backward(text, sels, WordChars::new("-")),
+        "-[o]>-ba-[r]>\n"
+    );
+}
+
 // ── delete_selection ──────────────────────────────────────────────────────
 
 #[test]
