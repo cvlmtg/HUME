@@ -298,3 +298,55 @@ fn setting_off_does_not_clear_an_unrelated_sources_hints() {
          source it doesn't own"
     );
 }
+
+#[test]
+fn deleting_a_line_drops_its_inlay_hint_and_undo_does_not_resurrect_it() {
+    // The reported bug: an inlay hint anchored mid-line survived `x`
+    // (select-line, `\n` included) + `d` (delete), re-anchored to whatever
+    // text moved into the deleted line's place, and then `u` (undo)
+    // re-inserted the line and pinned the hint at its very start — see
+    // `SourceStore::remap_points`'s doc.
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    type_text(&mut ed, "foo\nbar\nbaz");
+    let bid = ed.focused_buffer_id();
+    // Buffer is "foo\nbar\nbaz\n" — pos 5 is the 'a' in "bar".
+    ed.state.config.decorations.set_inlay_hints(
+        "test".to_string(),
+        bid,
+        vec![InlayHintEntry {
+            pos: 5,
+            text: ": i32".to_string(),
+            before: false,
+        }],
+    );
+
+    ed.feed_key(key_up()); // from "baz" onto "bar"
+    ed.feed_key(key('x')); // select-line: "bar\n"
+    ed.feed_key(key('d')); // delete
+    ed.settle(); // flush the decoration remap
+
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count(),
+        0,
+        "a hint anchored inside the deleted line must not survive, \
+         re-anchored to whatever text moved into its place"
+    );
+
+    ed.feed_key(key('u')); // undo
+    ed.settle();
+
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count(),
+        0,
+        "undo restores the line's text, not the hint — nothing snapshots \
+         decorations across undo, so the dropped hint must stay dropped"
+    );
+}

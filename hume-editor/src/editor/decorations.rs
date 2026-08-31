@@ -20,7 +20,7 @@ use std::ops::Range;
 
 use rustc_hash::FxHashMap;
 
-use hume_editing::changeset::{Assoc, ChangeSet};
+use hume_editing::changeset::{Assoc, ChangeSet, PosMapCursor};
 use hume_engine::pipeline::BufferId;
 use hume_engine::types::ScopeId;
 
@@ -400,10 +400,15 @@ impl<K: Ord, T: Positioned> SourceStore<K, T> {
 }
 
 impl<K, T: PointAnchored> SourceStore<K, T> {
-    /// Remaps every point-anchored entry for `bid` through `cs`, one batch
-    /// `ChangeSet::map_positions` call per source, using `T::ASSOC`. Returns
-    /// whether `bid` had any entry to remap — callers use this to skip a
-    /// dirty-tracking stamp bump when `bid` had nothing for this kind.
+    /// Remaps every point-anchored entry for `bid` through `cs`, one
+    /// `PosMapCursor` pass per source, using `T::ASSOC`. Drops an entry whose
+    /// anchor character a deletion consumed — same policy `remap_ranges`
+    /// already applies to a range a deletion collapses — rather than parking
+    /// the decoration on whatever text moved into the gap (the "reappearing
+    /// inlay hint" bug: a deleted line's hint used to survive, re-anchored
+    /// to the deletion point). Returns whether `bid` had any entry to remap
+    /// — callers use this to skip a dirty-tracking stamp bump when `bid` had
+    /// nothing for this kind.
     fn remap_points(&mut self, bid: BufferId, cs: &ChangeSet) -> bool {
         let mut touched = false;
         for entries in self.sources_mut(bid) {
@@ -411,11 +416,15 @@ impl<K, T: PointAnchored> SourceStore<K, T> {
                 continue;
             }
             touched = true;
-            let mut positions: Vec<usize> = entries.iter().map(Positioned::pos).collect();
-            cs.map_positions(&mut positions, T::ASSOC);
-            for (entry, pos) in entries.iter_mut().zip(positions) {
-                entry.set_pos(pos);
-            }
+            let mut cursor = PosMapCursor::new(cs.ops());
+            entries.retain_mut(|entry| {
+                let mapped = cursor.map_anchor(entry.pos(), T::ASSOC);
+                if mapped.anchor_deleted {
+                    return false;
+                }
+                entry.set_pos(mapped.pos);
+                true
+            });
         }
         touched
     }

@@ -185,17 +185,35 @@ impl<'a> PosMapCursor<'a> {
     /// Map `pos` from old-doc to new-doc space. `pos` must be `>=` every
     /// position passed to a prior call on this cursor — see struct docs.
     ///
+    /// Thin shorthand over [`Self::map_anchor`] for callers that don't care
+    /// whether the position's anchor character survived the edit (selections,
+    /// cursors — a collapsed-to-the-deletion-point result is exactly what
+    /// they want).
+    pub fn map(&mut self, pos: usize, assoc: Assoc) -> usize {
+        self.map_anchor(pos, assoc).pos
+    }
+
+    /// Map `pos` from old-doc to new-doc space, additionally reporting
+    /// whether `pos` named a character a `Delete` op consumed — the mapped
+    /// value is then the deletion point, a *neighbour* of the vanished
+    /// anchor rather than the anchor itself. Callers that treat `pos` as
+    /// naming a specific character (a decoration anchor, not a cursor) use
+    /// this to tell "moved" from "its character is gone" apart.
+    ///
     /// Walks forward from `(idx, old, new)` — wherever the previous call left
     /// off — rather than restarting at op 0, since ops fully behind a past
     /// query can never matter again for a non-decreasing sequence of queries.
     /// `ChangeSet::map_pos` is a one-shot convenience built on top of this:
     /// it opens a fresh cursor and delegates a single query to it.
-    pub fn map(&mut self, pos: usize, assoc: Assoc) -> usize {
+    pub fn map_anchor(&mut self, pos: usize, assoc: Assoc) -> MappedPos {
         while self.idx < self.ops.len() {
             match &self.ops[self.idx] {
                 Operation::Retain(n) => {
                     if pos < self.old + n {
-                        return self.new + (pos - self.old);
+                        return MappedPos {
+                            pos: self.new + (pos - self.old),
+                            anchor_deleted: false,
+                        };
                     }
                     self.old += n;
                     self.new += n;
@@ -203,7 +221,10 @@ impl<'a> PosMapCursor<'a> {
                 }
                 Operation::Delete(n) => {
                     if pos < self.old + n {
-                        return self.new;
+                        return MappedPos {
+                            pos: self.new,
+                            anchor_deleted: true,
+                        };
                     }
                     self.old += n;
                     self.idx += 1;
@@ -211,9 +232,13 @@ impl<'a> PosMapCursor<'a> {
                 Operation::Insert(s) => {
                     let len = s.chars().count();
                     if pos == self.old {
-                        return match assoc {
+                        let pos = match assoc {
                             Assoc::Before => self.new,
                             Assoc::After => self.new + len,
+                        };
+                        return MappedPos {
+                            pos,
+                            anchor_deleted: false,
                         };
                     }
                     self.new += len;
@@ -221,8 +246,20 @@ impl<'a> PosMapCursor<'a> {
                 }
             }
         }
-        self.new + (pos - self.old)
+        MappedPos {
+            pos: self.new + (pos - self.old),
+            anchor_deleted: false,
+        }
     }
+}
+
+/// A mapped position, plus whether the character it was anchored to was
+/// deleted (the position then names the deletion point — a *neighbour* of
+/// the anchor, not the anchor).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MappedPos {
+    pub pos: usize,
+    pub anchor_deleted: bool,
 }
 
 // ── ChangeSet impl ───────────────────────────────────────────────────────────

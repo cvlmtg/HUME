@@ -420,6 +420,61 @@ fn indent_guide_drawn_at_inner_tab_stops() {
 }
 
 #[test]
+fn indent_guide_accounts_for_a_leading_inline_insert() {
+    // An inlay hint at byte 0 (`push_virtual_cells`'s empty `byte_range`,
+    // format.rs) shifts where the buffer line's own columns actually start
+    // on screen. The line is "  foo" with indent_depth=2, tab_width=4 (a
+    // guide would land at buffer column 4 with no insert) — but 6 virtual
+    // cells precede it, so the real leading whitespace now sits at display
+    // columns 6..8 and the guide must land at 6+4=10, not 4 (which is
+    // inside the insert's own text and would overwrite it).
+    let mut graphemes: Vec<Grapheme> = (0..6u32)
+        .map(|i| Grapheme {
+            byte_range: 0..0, // virtual: no buffer bytes
+            char_offset: usize::MAX,
+            display_col: i,
+            width: 1,
+            content: CellContent::Virtual { start: i, len: 1 },
+            indent_depth: 2,
+            scope: None,
+        })
+        .collect();
+    graphemes.extend((0..3u32).map(|i| Grapheme {
+        byte_range: (i as usize)..(i as usize + 1),
+        char_offset: i as usize,
+        display_col: 6 + i,
+        width: 1,
+        content: CellContent::Grapheme,
+        indent_depth: 2,
+        scope: None,
+    }));
+    let row = simple_row(0..graphemes.len());
+    let styles = vec![ResolvedStyle::default(); graphemes.len()];
+    let visible = PaneGeometry {
+        content_height: 5,
+        content_width: 20,
+        gutter_width: 0,
+        last_line_idx: 0,
+    };
+    let viewport = ViewportState::new(20, 5);
+    let buf = do_compose_row(
+        "  foo", "abcdef", &row, &graphemes, &styles, visible, viewport, 4, 20, 5,
+    );
+    for (x, expected) in [(0, "a"), (1, "b"), (2, "c"), (3, "d"), (4, "e"), (5, "f")] {
+        assert_eq!(
+            buf.cell(x, 0).unwrap().text(),
+            expected,
+            "an indent guide must not overwrite the inline insert that precedes the real line content"
+        );
+    }
+    assert_eq!(
+        buf.cell(10, 0).unwrap().text(),
+        INDENT_GUIDE_GLYPH,
+        "the guide shifts past the insert to the buffer line's own indent column"
+    );
+}
+
+#[test]
 fn indent_guide_hidden_when_show_indent_guides_is_false() {
     // Same fixture as indent_guide_drawn_at_inner_tab_stops (depth=2,
     // tab_width=4, guide expected at display_col 4) but with the setting off —

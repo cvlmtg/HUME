@@ -652,10 +652,20 @@ pub(crate) fn compose_row(
     if compose_ctx.show_indent_guides && matches!(row.kind, RowKind::LineStart { .. }) {
         let depth = row_graphemes.first().map(|g| g.indent_depth).unwrap_or(0);
         let tw = hume_rope::width::indent_stop(1, compose_ctx.tab_width);
+        // `indent_stop` counts buffer columns from the *line's* column 0 —
+        // not the row's, when a leading inline insert (an inlay hint at
+        // byte 0) precedes the real text. A virtual cell carries an empty
+        // `byte_range`, so the first non-empty one marks where the buffer
+        // line's own columns actually begin on screen.
+        let indent_origin = row_graphemes
+            .iter()
+            .find(|g| !g.byte_range.is_empty())
+            .map_or(0, |g| g.display_col);
         // Draw a guide at each inner tab-stop. These positions are
         // guaranteed to lie within the leading whitespace.
         for k in 1..depth {
-            let guide_display_col = hume_rope::width::indent_stop(k as u32, compose_ctx.tab_width);
+            let guide_display_col =
+                indent_origin + hume_rope::width::indent_stop(k as u32, compose_ctx.tab_width);
             // Account for horizontal scroll.
             if guide_display_col + tw > h_offset {
                 let content_x = guide_display_col.saturating_sub(h_offset);

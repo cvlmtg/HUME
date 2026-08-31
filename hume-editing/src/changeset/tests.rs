@@ -431,6 +431,73 @@ fn pos_map_cursor_handles_repeated_pos_with_both_assocs() {
     assert_eq!(cursor.map(4, Assoc::After), cs.map_pos(4, Assoc::After));
 }
 
+// ── map_anchor tests ─────────────────────────────────────────────────────
+
+#[test]
+fn map_anchor_reports_deleted_for_a_position_inside_a_deletion() {
+    // Retain(2), Delete(3), Retain(5) on a 10-char doc — same shape as
+    // map_pos_inside_deletion. Positions 2..5 (old-doc) name characters the
+    // Delete op consumes.
+    let mut b = ChangeSetBuilder::new(10);
+    b.retain(2);
+    b.delete(3);
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut cursor = PosMapCursor::new(cs.ops());
+    assert_eq!(
+        cursor.map_anchor(2, Assoc::Before),
+        MappedPos {
+            pos: 2,
+            anchor_deleted: true
+        },
+        "position 2 names the deletion's first consumed character"
+    );
+    let mut cursor = PosMapCursor::new(cs.ops());
+    assert_eq!(
+        cursor.map_anchor(3, Assoc::Before),
+        MappedPos {
+            pos: 2,
+            anchor_deleted: true
+        },
+    );
+    let mut cursor = PosMapCursor::new(cs.ops());
+    assert_eq!(
+        cursor.map_anchor(4, Assoc::Before),
+        MappedPos {
+            pos: 2,
+            anchor_deleted: true
+        },
+    );
+    let mut cursor = PosMapCursor::new(cs.ops());
+    assert_eq!(
+        cursor.map_anchor(5, Assoc::Before),
+        MappedPos {
+            pos: 2,
+            anchor_deleted: false
+        },
+        "position right after the deletion names a surviving character"
+    );
+}
+
+#[test]
+fn map_anchor_is_not_deleted_at_a_retain_or_insert_boundary() {
+    // Retain(3), Insert("XX"), Retain(2) — no Delete op at all, so every
+    // position's anchor survives regardless of Assoc.
+    let mut b = ChangeSetBuilder::new(5);
+    b.retain(3);
+    b.insert("XX");
+    b.retain_rest();
+    let cs = b.finish();
+
+    for &pos in &[0usize, 3, 4] {
+        for assoc in [Assoc::Before, Assoc::After] {
+            let mut cursor = PosMapCursor::new(cs.ops());
+            assert!(!cursor.map_anchor(pos, assoc).anchor_deleted);
+        }
+    }
+}
+
 // ── map_positions tests ───────────────────────────────────────────────────
 
 #[test]

@@ -334,3 +334,59 @@ fn remap_through_only_touches_a_buffer_that_has_decorations() {
          virtual-lines resync cache"
     );
 }
+
+fn inlay(pos: usize, text: &str, before: bool) -> InlayHintEntry {
+    InlayHintEntry {
+        pos,
+        text: text.into(),
+        before,
+    }
+}
+
+/// A deletion that swallows a point-anchored entry's whole anchor character
+/// must drop the entry, not park it on whatever text moved into the gap —
+/// the "reappearing inlay hint" bug (`x` selects a line including its `\n`,
+/// `d` deletes it; the hint used to survive, re-anchored to the deleted
+/// line's replacement text). A survivor past the deletion still shifts, same
+/// as before.
+#[test]
+fn remap_points_drops_an_entry_whose_anchor_was_deleted() {
+    use hume_editing::changeset::ChangeSetBuilder;
+
+    let mut store = DecorationStores::default();
+    let (a, _b) = make_two_bids();
+    // "foo\nbar\nbaz\n" (12 chars): a hint anchored inside "bar\n" (deleted
+    // below) and a sign at the start of "baz" (pos 8), which must survive
+    // and shift left by 4 once "bar\n" is gone.
+    store.set_inlay_hints(
+        "lsp-inlay-hints".to_string(),
+        a,
+        vec![inlay(5, ": i32", false)],
+    );
+    store.set_signs("linter".to_string(), a, vec![sign(8, "!")]);
+
+    // Retain(4) "foo\n", Delete(4) "bar\n", Retain(4) "baz\n".
+    let mut b = ChangeSetBuilder::new(12);
+    b.retain(4);
+    b.delete(4);
+    b.retain_rest();
+    let cs = b.finish();
+
+    store.remap_through(a, &cs);
+
+    assert!(
+        store.inlay_hints_for_buffer(a).next().is_none(),
+        "a hint anchored inside the deleted line must be dropped, not \
+         re-anchored to whatever text now sits at the deletion point"
+    );
+    let signs: Vec<(usize, &str)> = store
+        .signs_for("linter", a)
+        .iter()
+        .map(|s| (s.pos, &*s.text))
+        .collect();
+    assert_eq!(
+        signs,
+        vec![(4, "!")],
+        "a sign past the deletion still remaps, just shifted"
+    );
+}
