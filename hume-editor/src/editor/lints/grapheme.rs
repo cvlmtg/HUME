@@ -3,7 +3,10 @@
 //! All position advances in motion and selection code must go through
 //! `next_grapheme_boundary` / `prev_grapheme_boundary` — never raw
 //! `pos += 1` / `pos -= 1`, which skip over combining codepoints (e.g. `é` =
-//! U+0065 + U+0301) instead of advancing a full grapheme cluster.
+//! U+0065 + U+0301) instead of advancing a full grapheme cluster. The same
+//! hazard has a `&str` spelling: `s.chars().next_back()` / `s.chars().last()`
+//! return `s`'s last *codepoint*, not the base char of its last grapheme
+//! cluster — `hume_rope::grapheme::prev_str_boundary` is the fix.
 //!
 //! `no_raw_char_stepping_in_motion_code` recursively scans `hume-ops/src/`,
 //! `hume-editing/src/lines.rs`, `hume-editing/src/word.rs` +
@@ -75,6 +78,12 @@ fn no_raw_char_stepping_in_motion_code() {
         "char_at(head - 1)",
         "char_at(anchor + 1)",
         "char_at(anchor - 1)",
+        // ── &str last-codepoint forms ───────────────────────────────────────
+        // The last codepoint of a string is not the base char of its last
+        // grapheme cluster (a trailing combining mark, e.g.) — use
+        // `hume_rope::grapheme::prev_str_boundary` to find the cluster first.
+        "chars().next_back()",
+        "chars().last()",
     ];
 
     // `// grapheme-safe: <reason>` opt-out: lines where raw +1/-1 is
@@ -95,7 +104,8 @@ fn no_raw_char_stepping_in_motion_code() {
     assert!(
         violations.is_empty(),
         "\nRaw char-level stepping detected in motion/selection code.\n\
-         Use next_grapheme_boundary(text, pos) or prev_grapheme_boundary(text, pos) instead.\n\
+         Use next_grapheme_boundary(text, pos) / prev_grapheme_boundary(text, pos), or for a\n\
+         &str, prev_str_boundary(s, s.len()) to find the base char of the last cluster.\n\
          Violations:\n{}\n",
         violations.join("\n")
     );
