@@ -142,6 +142,12 @@ impl Editor {
         }
 
         // ── Bracket match highlight — cursor concept, focused pane only ──────
+        // Brackets only, not `goto-matching-pair`'s tag partner too: unlike
+        // `matching_bracket`, `hume_ops::tag::matching_tag` isn't O(1) to rule
+        // out (its backward tag-boundary scan runs unbounded per frame), so
+        // running it here would trade a per-keystroke cost for a per-render
+        // one. `#` still jumps to a tag's partner; it just isn't highlighted.
+        //
         // Clear every pane first: a bracket match lingers only on whichever
         // pane last had focus, so moving focus away must blank the old one.
         for p in panes {

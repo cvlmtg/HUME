@@ -1,7 +1,9 @@
 //! Word/WORD text objects (`iw`/`aw`, `iW`/`aW`) and the position-based
 //! `mm`/`MM`/nearest-word-on-line family they share with visual-move.
 
-use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::grapheme::{
+    next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
+};
 use hume_editing::lines::line_end_exclusive;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
@@ -176,7 +178,7 @@ pub fn word_unit_at(
     // `pos` may be any valid selection endpoint, including the trailing
     // codepoint of a multi-codepoint grapheme cluster — see `anchor_unit`'s
     // doc for why this snap to the cluster start matters before classifying.
-    let pos = prev_grapheme_boundary(text, next_grapheme_boundary(text, pos));
+    let pos = snap_to_cluster_start(text, pos);
     let (start, end) = inner_word_impl(text, pos, is_boundary)?;
     let class = classify_char(text.char_at(pos)?);
     if class != CharClass::Space && class != CharClass::Eol {

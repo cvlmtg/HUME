@@ -484,6 +484,46 @@ fn goto_location_same_buffer_char_indexed_shape() {
     let _ = bid;
 }
 
+/// `goto-location!` to the position the cursor is already on is a no-op and
+/// must not truncate forward jump-list history.
+#[test]
+fn goto_location_noop_does_not_clobber_forward_history() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (goto-location! (list (current-buffer) 0 0))))"#,
+    );
+
+    // `%` — jump-flagged, moves elsewhere, records a jump.
+    ed.handle_key(key('%'));
+    let after_percent = state(&ed);
+
+    // Jump backward to the original head-0 position.
+    ed.handle_key(key_ctrl('o'));
+    let back_at_start = state(&ed);
+    assert_ne!(back_at_start, after_percent);
+    assert_eq!(ed.current_selections().primary().head(), 0);
+
+    // `:go` targets char 0 — already there — a no-op.
+    type_cmd(&mut ed, ":go");
+    assert_eq!(
+        state(&ed),
+        back_at_start,
+        ":go to the current position must not move"
+    );
+
+    // Forward history (the jump from `%`) must still be there.
+    ed.handle_key(key_ctrl('i'));
+    assert_eq!(
+        state(&ed),
+        after_percent,
+        "a no-op goto-location! must not have truncated forward jump-list history"
+    );
+}
+
 #[test]
 fn goto_location_other_open_buffer_by_path_string() {
     let tmp = safe_tempdir();

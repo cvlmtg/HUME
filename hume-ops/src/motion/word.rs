@@ -1,6 +1,8 @@
 use super::MotionMode;
 use crate::text_object::{expand_word_unit, word_unit_at};
-use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::grapheme::{
+    next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
+};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, classify_char, is_uppercase_word_boundary, is_word_boundary};
@@ -188,7 +190,7 @@ pub(super) fn anchor_unit(
     // which misreads the anchor's own class and truncates the word down to
     // just that trailing mark. Snap to the start of the cluster containing
     // `anchor` first — a no-op when `anchor` already is a cluster start.
-    let anchor = prev_grapheme_boundary(text, next_grapheme_boundary(text, anchor));
+    let anchor = snap_to_cluster_start(text, anchor);
     let cat = classify_char(text.char_at(anchor).expect("anchor < len"));
     if cat == CharClass::Space || cat == CharClass::Eol {
         (anchor, anchor)

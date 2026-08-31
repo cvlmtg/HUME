@@ -138,12 +138,17 @@ pub(super) fn step_capture_pre_jump(
     view: &EngineView,
     meta: &CmdMeta,
 ) -> Option<(Selection, usize, BufferId)> {
-    (meta.is_jump || meta.is_visual_move || meta.is_motion).then(|| {
-        let bid = focused_buffer_id(state, view);
-        let primary = current_selections(state, view).primary();
-        let line = doc(state, view).text().char_to_line(primary.head());
-        (primary, line, bid)
-    })
+    (meta.is_jump || meta.is_visual_move || meta.is_motion).then(|| jump_position(state, view))
+}
+
+/// The primary selection, its line, and the focused buffer — what a jump
+/// entry is built from and what `step_record_jump` compares against, before
+/// and after a command runs.
+fn jump_position(state: &EditorState, view: &EngineView) -> (Selection, usize, BufferId) {
+    let bid = focused_buffer_id(state, view);
+    let primary = current_selections(state, view).primary();
+    let line = doc(state, view).text().char_to_line(primary.head());
+    (primary, line, bid)
 }
 
 /// Snapshot selection recipe before body for dot-repeat recording.
@@ -170,7 +175,10 @@ pub(super) fn step_snapshot_recipe(
 /// `moved` guards both branches: `JumpList::push` truncates forward history
 /// unconditionally, so a `jump: true` command that happens to be a no-op on
 /// this press (e.g. `#` on plain text, `goto-first-line` already on line 1)
-/// must not push at all, not just skip the threshold check.
+/// must not push at all, not just skip the threshold check. Compares the
+/// whole `Selection`, not just `head` — the entry being guarded stores the
+/// whole thing (anchor included), and `select-all` from the buffer's own
+/// last char moves only the anchor, leaving `head` unchanged.
 pub(super) fn step_record_jump(
     state: &mut EditorState,
     view: &EngineView,
@@ -178,10 +186,8 @@ pub(super) fn step_record_jump(
     is_jump: bool,
 ) {
     if let Some((pre_primary, pre_line, pre_bid)) = pre_jump {
-        let post_bid = focused_buffer_id(state, view);
-        let post_primary = current_selections(state, view).primary();
-        let post_line = doc(state, view).text().char_to_line(post_primary.head());
-        let moved = post_bid != pre_bid || post_primary.head() != pre_primary.head();
+        let (post_primary, post_line, post_bid) = jump_position(state, view);
+        let moved = post_bid != pre_bid || post_primary != pre_primary;
         if moved && (is_jump || pre_line.abs_diff(post_line) > state.settings.jump_line_threshold) {
             state.panes.jumps[state.focused_pane_id].push(JumpEntry::from_pre_motion(
                 pre_primary,

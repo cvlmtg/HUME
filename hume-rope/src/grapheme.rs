@@ -112,6 +112,19 @@ pub fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: usize) -> usize
     }
 }
 
+/// Floor `char_offset` to the start of its own grapheme cluster — a no-op
+/// when it's already a cluster start, otherwise the start of the cluster it
+/// sits inside.
+///
+/// `next` then `prev` rather than `prev` alone: [`prev_grapheme_boundary`]
+/// answers "where does the *preceding* cluster start," which is one cluster
+/// too far back when `char_offset` is already a boundary. Advancing to the
+/// next boundary first — identity if already on one — then retreating lands
+/// on the boundary that actually opens `char_offset`'s own cluster.
+pub fn snap_to_cluster_start(slice: RopeSlice<'_>, char_offset: usize) -> usize {
+    prev_grapheme_boundary(slice, next_grapheme_boundary(slice, char_offset))
+}
+
 /// Byte offset of the start of the grapheme cluster ending at `byte_pos` —
 /// the `&str` sibling of [`prev_grapheme_boundary`], for the short, already
 /// contiguous strings the UI edits in place (a minibuffer prompt, a picker

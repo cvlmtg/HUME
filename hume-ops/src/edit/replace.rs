@@ -2,7 +2,9 @@
 //! completion's fallback insert path) and word-boundary lookup.
 
 use hume_editing::changeset::ChangeSet;
-use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::grapheme::{
+    next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
+};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 
@@ -55,15 +57,9 @@ pub fn replace_span_around_cursors(
         // mid-cluster when this cursor's surrounding text differs from the
         // one the span was derived from (e.g. a combining mark). Snap
         // outward — floor `start` down, ceil `end` up — to the enclosing
-        // cluster boundary rather than splitting it; the round-trip is
-        // identity when already on a boundary, since `next_grapheme_boundary`
-        // always advances strictly and `prev_grapheme_boundary` always
-        // retreats strictly except at 0, which it clamps to instead of
-        // signaling "no earlier boundary" — harmless here since `start`'s
-        // round trip through both directions still lands at 0 in that case.
+        // cluster boundary rather than splitting it.
         let raw_start = start_of(text, head);
-        let start =
-            prev_grapheme_boundary(text, next_grapheme_boundary(text, raw_start)).max(b.old_pos());
+        let start = snap_to_cluster_start(text, raw_start).max(b.old_pos());
         // Capped at `len_chars()` (not `len_chars() - 1`) so the boundary
         // lookups below never see an out-of-range offset; the structural
         // newline itself is protected by the overshoot check just after.
@@ -71,6 +67,9 @@ pub fn replace_span_around_cursors(
         let ceiled = if raw_end == 0 {
             0
         } else {
+            // Ceil is `start`'s mirror: `prev` then `next` is identity when
+            // `raw_end` is already a boundary, otherwise the start of the
+            // next cluster.
             next_grapheme_boundary(text, prev_grapheme_boundary(text, raw_end))
         };
         // `len_chars() - 1` is the buffer's structural trailing `\n` — never

@@ -502,8 +502,9 @@ fn resolve_goto_target(
 }
 
 /// Moves the focused pane to `(bid, char_pos)`, recording a jump entry only
-/// if resolution succeeded — same "commit point" discipline as `:goto`
-/// (`typed_misc.rs`) and buffer switches (`switch_to_buffer_with_jump`).
+/// if resolution succeeded and it actually lands somewhere else — same
+/// "commit point" discipline as `:goto` (`typed_misc.rs`) and buffer
+/// switches (`switch_to_buffer_with_jump`).
 pub(crate) fn goto_location(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -522,7 +523,6 @@ pub(crate) fn goto_location(
     let char_pos = char_pos.min(len_chars.saturating_sub(1));
 
     let entry = crate::editor::commands::current_jump_entry(state, view);
-    state.panes.jumps[state.focused_pane_id].push(entry);
 
     let pid = state.focused_pane_id;
     crate::editor::buffer::lifecycle::switch_pane_to_buffer(
@@ -536,6 +536,7 @@ pub(crate) fn goto_location(
     state.panes.state[pid][bid].selections = hume_editing::selection::SelectionSet::single(
         hume_editing::selection::Selection::collapsed(char_pos),
     );
+    crate::editor::commands::record_jump_if_moved(state, view, entry);
 
     // Center by display row, the same way `zz` does (`scroll_cursor_to_row`)
     // — not by buffer line, which only agrees with it when nothing wraps.

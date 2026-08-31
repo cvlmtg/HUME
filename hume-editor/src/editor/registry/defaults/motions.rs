@@ -80,6 +80,8 @@ impl CommandRegistry {
             "Move cursors to the first non-blank character on the line.",
             cmd_goto_first_nonblank
         );
+
+        // ── Matching pairs ─────────────────────────────────────────────────────
         super::motion!(
             self,
             "goto-matching-pair",

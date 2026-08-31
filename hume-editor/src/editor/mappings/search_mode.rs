@@ -33,12 +33,17 @@ impl Editor {
                 // Persist pattern in 's' register for future n/N.
                 self.state.registers.set_search_register(pattern);
                 // Record the pre-search position in the jump list before
-                // discarding it — the search moved the cursor to the match.
+                // discarding it, unless the match confirmed is the position
+                // search started from (record_jump_if_moved).
                 let pid = self.state.focused_pane_id;
                 if let Some(sels) = self.state.panes.transient[pid].pre_search_sels.take() {
                     let bid = self.focused_buffer_id();
                     let entry = JumpEntry::new(sels, self.doc().text(), bid);
-                    self.state.panes.jumps[self.state.focused_pane_id].push(entry);
+                    super::super::commands::record_jump_if_moved(
+                        &mut self.state,
+                        &self.view,
+                        entry,
+                    );
                 }
                 // search_pattern stays alive on the buffer for immediate n/N without recompile.
                 // set_mode does not touch search state, so it is safe to call here.

@@ -22,18 +22,11 @@ pub enum FindKind {
 /// semantics (via `mode`) and multi-cursor bookkeeping.
 ///
 /// `count` controls how many times the motion is applied per selection.
-/// The motion is applied `count` times *inside* the `map` call — each selection
+/// The motion is folded `count` times *inside* the `map` call — each selection
 /// independently accumulates N steps before anchor/merge logic runs. This is
 /// semantically "move 3 words" (not "apply 1w to the whole selection set three
 /// times"), which prevents premature merging of multi-cursor selections between
 /// steps.
-///
-/// Stops early the moment one step returns the same position it started
-/// from — a motion is a pure function of buffer + position, so a fixed
-/// point can never move again. This is a no-op for a motion that always
-/// moves; it caps a clamping motion (buffer start/end) or an involution
-/// (`goto-matching-pair`) at one wasted step instead of repeating up to
-/// `count` times for nothing.
 ///
 /// Uses `map` (which always merges) so that selections which converge to the
 /// same position after the motion are automatically merged.
@@ -45,25 +38,18 @@ pub(crate) fn apply_motion(
     motion: impl Fn(&BufferText, usize) -> usize,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
-        let mut head = sel.head();
-        for _ in 0..count {
-            let next = motion(text, head);
-            if next == head {
-                break;
-            }
-            head = next;
-        }
+        let new_head = (0..count).fold(sel.head(), |h, _| motion(text, h));
         match mode {
-            MotionMode::Move => Selection::collapsed(head),
-            MotionMode::Extend => Selection::new(sel.anchor(), head),
+            MotionMode::Move => Selection::collapsed(new_head),
+            MotionMode::Extend => Selection::new(sel.anchor(), new_head),
         }
     });
     result.debug_assert_valid(text);
     result
 }
 
-mod bracket;
-use bracket::goto_matching_pair;
+mod matching_pair;
+use matching_pair::goto_matching_pair;
 mod char_move;
 use char_move::{goto_first_line, goto_last_line, move_left, move_right};
 mod line;

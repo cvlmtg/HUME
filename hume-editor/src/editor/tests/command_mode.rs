@@ -1256,6 +1256,39 @@ fn colon_goto_records_jump() {
     );
 }
 
+/// `:goto` to the line the cursor is already on is a no-op and must not
+/// truncate forward jump-list history.
+#[test]
+fn colon_goto_noop_does_not_clobber_forward_history() {
+    let mut ed = jump_editor(10);
+
+    // `gg` — records a jump, puts us at line 0.
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+    let at_top = state(&ed);
+
+    // Jump backward to the original line-10 position.
+    ed.handle_key(key_ctrl('o'));
+    let back_at_start = state(&ed);
+    assert_ne!(back_at_start, at_top);
+
+    // `:goto 11` — already on line 11 (index 10) — a no-op.
+    type_cmd(&mut ed, ":goto 11");
+    assert_eq!(
+        state(&ed),
+        back_at_start,
+        ":goto to the current line must not move"
+    );
+
+    // Forward history (the jump to line 0) must still be there.
+    ed.handle_key(key_ctrl('i'));
+    assert_eq!(
+        state(&ed),
+        at_top,
+        "a no-op :goto must not have truncated forward jump-list history"
+    );
+}
+
 // ── :sort ─────────────────────────────────────────────────────────────────────
 
 #[test]

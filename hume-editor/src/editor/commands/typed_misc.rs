@@ -4,7 +4,7 @@ use hume_scripting::host::DecorationHost;
 
 use super::super::Editor;
 use super::super::Severity;
-use super::current_jump_entry;
+use super::{current_jump_entry, record_jump_if_moved};
 use crate::editor::error::CommandError;
 use crate::editor::host_impl::EditorHostImpl;
 use crate::settings::THEME_KEY;
@@ -375,11 +375,12 @@ pub(crate) fn typed_goto_line(
     let target = line0.min(last);
     let char_pos = ed.doc().text().line_to_char(target);
 
-    // Record pre-jump position before moving so Ctrl+O can return here.
+    // Snapshot before moving so Ctrl+O can return here — pushed only if
+    // `:goto` actually lands somewhere else (record_jump_if_moved).
     let entry = current_jump_entry(&ed.state, &ed.view);
-    ed.state.panes.jumps[ed.state.focused_pane_id].push(entry);
 
     ed.set_current_selections(SelectionSet::single(Selection::collapsed(char_pos)));
+    record_jump_if_moved(&mut ed.state, &ed.view, entry);
     Ok(())
 }
 

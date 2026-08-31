@@ -71,6 +71,41 @@ fn p7_cross_buffer_ctrl_o() {
     assert_eq!(state(&ed), line0_state_f1, "cursor restored in file1");
 }
 
+/// `switch_to_buffer_with_jump` to the buffer already focused (e.g. `:tutor`
+/// run a second time while already viewing it) is a no-op and must not
+/// truncate forward jump-list history.
+#[test]
+fn p7_switch_to_buffer_with_jump_same_buffer_is_noop() {
+    let mut ed = jump_editor(10);
+
+    // `gg` — records a jump, puts us at line 0.
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+    let at_top = state(&ed);
+
+    // Jump backward to the original line-10 position.
+    ed.handle_key(key_ctrl('o'));
+    let back_at_start = state(&ed);
+    assert_ne!(back_at_start, at_top);
+
+    // Switch to the buffer already focused — a no-op.
+    let current = ed.focused_buffer_id();
+    ed.switch_to_buffer_with_jump(current);
+    assert_eq!(
+        state(&ed),
+        back_at_start,
+        "switching to the already-focused buffer must not move"
+    );
+
+    // Forward history (the jump to line 0) must still be there.
+    ed.handle_key(key_ctrl('i'));
+    assert_eq!(
+        state(&ed),
+        at_top,
+        "a no-op switch_to_buffer_with_jump must not have truncated forward jump-list history"
+    );
+}
+
 /// Closing a buffer prunes its entries from pane_jumps.
 #[test]
 fn p7_close_buffer_prunes_pane_jumps() {

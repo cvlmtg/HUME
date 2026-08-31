@@ -66,7 +66,7 @@ pub(crate) fn scan_right_for_close(
 /// If the cursor is ON an open bracket, that bracket itself is the start.
 /// If ON a close bracket, that bracket is the end.
 /// Otherwise, scans both directions for the enclosing pair.
-pub fn find_bracket_pair(
+pub(crate) fn find_bracket_pair(
     text: &BufferText,
     pos: usize,
     open: char,

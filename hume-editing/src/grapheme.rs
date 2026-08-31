@@ -14,6 +14,11 @@ pub fn prev_grapheme_boundary(text: &BufferText, char_offset: usize) -> usize {
     hume_rope::grapheme::prev_grapheme_boundary(text.full_slice(), char_offset)
 }
 
+/// See [`hume_rope::grapheme::snap_to_cluster_start`].
+pub fn snap_to_cluster_start(text: &BufferText, char_offset: usize) -> usize {
+    hume_rope::grapheme::snap_to_cluster_start(text.full_slice(), char_offset)
+}
+
 /// See [`hume_rope::grapheme::grapheme_col_in_line`].
 pub fn grapheme_col_in_line(text: &BufferText, line_idx: usize, char_pos: usize) -> usize {
     hume_rope::grapheme::grapheme_col_in_line(text.full_slice(), line_idx, char_pos)

@@ -140,6 +140,52 @@ fn search_confirm_records_jump() {
     assert_eq!(state(&ed), before);
 }
 
+/// Confirming a search whose only match sits at the cursor (so `n`'s wrap
+/// lands right back on the start) is a no-op and must not truncate forward
+/// jump-list history.
+#[test]
+fn search_confirm_noop_does_not_clobber_forward_history() {
+    // Selection already spans the whole (only) match — exactly the shape
+    // `search_sel` itself builds — so confirming search truly changes
+    // nothing, not just "landed near where it started".
+    let text = BufferText::from("foo\n");
+    let sels = SelectionSet::single(hume_editing::selection::Selection::new(0, 2));
+    let doc = Buffer::new(text, sels);
+    let mut ed = Editor::for_testing(doc);
+    ed.state.mode = Mode::Normal;
+
+    // `%` — jump-flagged, moves elsewhere, records a jump.
+    ed.handle_key(key('%'));
+    let after_percent = state(&ed);
+
+    // Jump backward to the original selection.
+    ed.handle_key(key_ctrl('o'));
+    let back_at_start = state(&ed);
+    assert_ne!(back_at_start, after_percent);
+
+    // Search for "foo" — the buffer's only occurrence, already selected —
+    // wraps around and lands right back on the same span.
+    ed.handle_key(key('/'));
+    for ch in "foo".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(
+        state(&ed),
+        back_at_start,
+        "search confirm on the buffer's only match, already under the cursor, must not move"
+    );
+
+    // Forward history (the jump from `%`) must still be there.
+    ed.handle_key(key_ctrl('i'));
+    assert_eq!(
+        state(&ed),
+        after_percent,
+        "a no-op search confirm must not have truncated forward jump-list history"
+    );
+}
+
 /// Search cancel (Esc) does NOT record a jump.
 #[test]
 fn search_cancel_does_not_record_jump() {
@@ -256,6 +302,35 @@ fn select_all_records_jump() {
         before,
         "jump-backward should restore the pre-% position"
     );
+}
+
+/// `%` (select-all) from the buffer's own last char must still record a
+/// jump — the head doesn't move (it was already `%`'s own landing spot), so
+/// a `moved` check that compares heads alone sees no movement and drops the
+/// entry, even though the anchor moved and the selection is now different.
+#[test]
+fn select_all_from_last_char_still_records_jump() {
+    let text = BufferText::from("foo\nbar\n");
+    let last = text.len_chars() - 1;
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(last));
+    let doc = Buffer::new(text, sels);
+    let mut ed = Editor::for_testing(doc);
+    ed.state.mode = Mode::Normal;
+
+    ed.handle_key(key('%'));
+    let after = ed.current_selections().primary();
+    assert_eq!(
+        after.head(),
+        last,
+        "head shouldn't move — already on the last char"
+    );
+    assert_eq!(after.anchor(), 0, "% should still select the whole buffer");
+
+    // Ctrl-o must restore the pre-% collapsed cursor.
+    ed.handle_key(key_ctrl('o'));
+    let restored = ed.current_selections().primary();
+    assert_eq!(restored.anchor(), last);
+    assert_eq!(restored.head(), last);
 }
 
 /// A no-op `#` (cursor not on a bracket or tag) must not truncate forward

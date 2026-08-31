@@ -296,6 +296,22 @@ pub(super) fn current_jump_entry(state: &EditorState, view: &EngineView) -> Jump
     JumpEntry::new(sels, state.buffers.get(bid).text(), bid)
 }
 
+/// Push `pre` — a [`current_jump_entry`] snapshot taken before some
+/// navigation, however long ago — only if the focused buffer or its
+/// selections have actually changed since. `JumpList::push` truncates
+/// forward history unconditionally, so a caller that pushes unconditionally
+/// (`:42` already on line 42, `goto-definition` invoked on the definition
+/// itself, a search confirmed on the match already under the cursor) can
+/// wipe Ctrl+I history for a keypress that moved nothing. Mirrors the
+/// native command pipeline's own `moved` guard (`step_record_jump`) for the
+/// callers here that push directly instead of going through `CmdMeta`.
+pub(super) fn record_jump_if_moved(state: &mut EditorState, view: &EngineView, pre: JumpEntry) {
+    let post_bid = focused_buffer_id(state, view);
+    if pre.buffer_id != post_bid || pre.selections != *current_selections(state, view) {
+        state.panes.jumps[state.focused_pane_id].push(pre);
+    }
+}
+
 /// Redirect the focused pane to `target` without recording a jump.
 pub(super) fn switch_to_buffer_without_jump(
     state: &mut EditorState,

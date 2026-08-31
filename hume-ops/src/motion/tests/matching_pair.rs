@@ -192,6 +192,18 @@ fn goto_matching_pair_gt_inside_quoted_attribute_is_not_tag_end() {
 }
 
 #[test]
+fn goto_matching_pair_tag_gt_after_quoted_lt_attribute_resolves() {
+    // The opening tag's own attribute value contains a literal '<'. `#` on
+    // the tag's real closing '>' must still walk past that quoted '<' to
+    // find the tag's own '<', not bail out at it.
+    assert_state!(
+        "<a t=\"<\"-[>]>x</a>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<a t=\"<\">x-[<]>/a>\n"
+    );
+}
+
+#[test]
 fn goto_matching_pair_angle_generic_is_noop() {
     // `Vec<String>` — parses as a plausible open tag lexically, but there is
     // no matching `</String>` anywhere, so it never resolves.
@@ -240,6 +252,19 @@ fn goto_matching_pair_unspaced_comparison_does_not_swallow_next_tag() {
         "a<b\n-[<]>div>x</div>\n",
         |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
         "a<b\n<div>x-[<]>/div>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_doubled_lt_does_not_hide_nested_same_name_open() {
+    // The stray second '<' in "<<div>" fails to parse as a tag itself, but
+    // scanning must still rediscover the *inner* "<div>" starting right
+    // after it — missing that open would leave its depth uncounted, and the
+    // outer "</div>" would wrongly resolve to the inner tag's own close.
+    assert_state!(
+        "-[<]>div><<div>x</div></div>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<div><<div>x</div>-[<]>/div>\n"
     );
 }
 

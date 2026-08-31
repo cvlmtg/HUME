@@ -130,7 +130,13 @@ pub(crate) fn switch_pane_to_buffer(
 // ── switch_to_buffer_with_jump ────────────────────────────────────────────────
 
 /// Redirect the focused pane to `target`, pushing the outgoing position onto
-/// `pane_jumps[focused_pane_id]`.
+/// `pane_jumps[focused_pane_id]` — unless `target` is the buffer already
+/// focused, which would be a no-op switch (e.g. `:tutor` run a second time
+/// while already viewing it): `push` truncates forward history
+/// unconditionally, so recording a jump to nowhere would corrupt it for
+/// nothing. Most callers already avoid this (`enter_buffer` gates on it
+/// explicitly), but not all do, so the guard lives here instead of being
+/// re-derived at each one.
 ///
 /// Caller contract: all fallible steps must succeed before calling this —
 /// `push` truncates forward history.
@@ -143,15 +149,17 @@ pub(crate) fn switch_to_buffer_with_jump(
     current_buffer_id: BufferId,
     target: BufferId,
 ) {
-    let sels = pane_state[focused_pane_id][current_buffer_id]
-        .selections
-        .clone();
-    let entry = JumpEntry::new(
-        sels,
-        buffers.get(current_buffer_id).text(),
-        current_buffer_id,
-    );
-    pane_jumps[focused_pane_id].push(entry);
+    if current_buffer_id != target {
+        let sels = pane_state[focused_pane_id][current_buffer_id]
+            .selections
+            .clone();
+        let entry = JumpEntry::new(
+            sels,
+            buffers.get(current_buffer_id).text(),
+            current_buffer_id,
+        );
+        pane_jumps[focused_pane_id].push(entry);
+    }
     switch_pane_to_buffer(ev, buffers, pane_state, focused_pane_id, target);
 }
 
