@@ -142,6 +142,34 @@ fn goto_matching_pair_bracket_outside_selection_is_noop() {
 }
 
 #[test]
+fn goto_matching_pair_multiline_selection_ignores_bracket_elsewhere_in_span() {
+    // The '(' is inside the selection but on a different line than the head
+    // — a multi-line selection only ever probes the head's own cluster
+    // (bounding the scan to O(line) instead of O(selection length), since
+    // this resolver also runs once per frame for the bracket-match
+    // highlight). `w`/`W`/`maw` selections never cross a line (their
+    // whitespace bookend stops at a newline), so this never loses the
+    // motivating `") "` case.
+    assert_state!(
+        "-[(x\ny]>)\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "(x\n-[y]>)\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_multiline_selection_head_on_bracket_still_resolves() {
+    // Same multi-line shape, but the head itself sits on the bracket — the
+    // single-line restriction only narrows the *fallback* scan; it must
+    // never stop the head's own cluster from resolving.
+    assert_state!(
+        "-[x\n(]>y)\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "x\n(y-[)]>\n"
+    );
+}
+
+#[test]
 fn goto_matching_pair_tag_in_selection_but_not_under_head_is_noop() {
     // Brackets-only span-wide resolution: a tag fully inside the selection
     // doesn't make `#` jump when the head itself isn't on the tag's markup.

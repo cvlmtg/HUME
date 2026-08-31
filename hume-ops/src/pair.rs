@@ -4,6 +4,7 @@
 //! `a"`, etc.) and [`super::surround`] (to find the delimiter pair that wraps
 //! the cursor before replacing or deleting it).
 
+use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::lines::line_end_exclusive;
 use hume_editing::selection::Selection;
 use hume_editing::text::BufferText;
@@ -93,7 +94,7 @@ pub(crate) fn find_bracket_pair(
     }
 }
 
-/// Find the bracket nearest `sel`'s head, scanning the whole selection span.
+/// Find the bracket nearest `sel`'s head, scanning the selection span.
 ///
 /// `sel`'s head is always one extremity of the span (`start()` or `end()`;
 /// for a collapsed selection the two coincide) — never interior — so
@@ -102,14 +103,31 @@ pub(crate) fn find_bracket_pair(
 /// Uses `chars_at` rather than indexed `char_at` calls so the scan pays
 /// ropey's O(log n) tree descent once, not once per char (same reason
 /// `scan_left_for_open`/`scan_right_for_close` above use it).
+///
+/// The span scanned is the selection itself only when it sits on one line —
+/// this resolver also runs once per frame for the bracket-match highlight,
+/// so scanning a selection of unbounded length (e.g. `%` select-all) would
+/// put an unbounded-cost scan on every keystroke. A selection crossing a
+/// line boundary falls back to probing just the head's own cluster, the
+/// same one-cluster check the resolver made before it went selection-wide.
+/// This never loses the motivating `") "` case: `expand_word_unit`'s
+/// whitespace bookend stops at a newline, so a `w`/`W`/`maw` selection never
+/// crosses one.
 fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(usize, char, char)> {
     let classify = |(i, ch): (usize, char)| {
         let &(o, c) = BRACKET_PAIRS.iter().find(|&(o, c)| ch == *o || ch == *c)?;
         Some((i, o, c))
     };
-    let span = sel.start()..sel.end_inclusive(text) + 1;
-    if sel.head() == span.start {
-        text.chars_at(span.start).take(span.len()).find_map(classify)
+    let head = sel.head();
+    let span = if text.char_to_line(sel.start()) == text.char_to_line(sel.end()) {
+        sel.start()..sel.end_inclusive(text) + 1
+    } else {
+        head..next_grapheme_boundary(text, head)
+    };
+    if head == span.start {
+        text.chars_at(span.start)
+            .take(span.len())
+            .find_map(classify)
     } else {
         let mut cursor = text.chars_at(span.end);
         while let Some(hit) = cursor.prev() {
