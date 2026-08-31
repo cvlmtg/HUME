@@ -75,8 +75,16 @@ impl<'a> WordChars<'a> {
     }
 
     /// Reject a value that would break every scan here: they all find a
-    /// word's end by hitting `Space` or `Eol`, so promoting one of those to
-    /// `Word` would leave a word run with no terminator.
+    /// word's end by hitting a blank (`Space` or `Eol` in `classify_char`'s
+    /// terms), so promoting one to `Word` would leave a word run with no
+    /// terminator. Checked with `char::is_whitespace()` rather than
+    /// `classify_char` itself — `classify_char` only calls out five specific
+    /// blanks (` `, `\t`, NBSP, ideographic space, `\n`) and leaves every
+    /// other Unicode whitespace character `Punctuation` on purpose (see its
+    /// doc), which is too narrow a check here: several of those (`\r`,
+    /// U+2028, U+2029) are ropey line breaks, so accepting one as a word char
+    /// would make `char_to_line`/`line_end_exclusive` disagree with the word
+    /// runs `miw`/`mm` compute on the same buffer.
     ///
     /// A char that is already `Word` (`a`, `_`) is accepted as a redundant
     /// no-op rather than an error — "already a word char" depends on
@@ -85,7 +93,7 @@ impl<'a> WordChars<'a> {
     /// toolchain upgrade.
     pub fn validate(s: &str) -> Result<(), String> {
         for ch in s.chars() {
-            if matches!(classify_char(ch), CharClass::Space | CharClass::Eol) {
+            if ch.is_whitespace() {
                 return Err(format!(
                     "word-chars cannot contain whitespace or newline: {ch:?}"
                 ));

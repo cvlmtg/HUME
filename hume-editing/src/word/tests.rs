@@ -133,6 +133,20 @@ fn validate_rejects_space_and_eol_chars() {
     }
 }
 
+/// `validate` must reject every Unicode whitespace character, not just the
+/// five `classify_char` calls `Space`/`Eol`. `\r`/U+2028/U+2029 are ropey
+/// line breaks — configuring one as a word char would make `char_to_line`
+/// disagree with the word runs `miw`/`mm` compute.
+#[test]
+fn validate_rejects_every_unicode_whitespace_char() {
+    for ch in ['\r', '\u{B}', '\u{C}', '\u{85}', '\u{2028}', '\u{2029}', '\u{202F}'] {
+        assert!(
+            WordChars::validate(&ch.to_string()).is_err(),
+            "expected {ch:?} to be rejected"
+        );
+    }
+}
+
 #[test]
 fn validate_accepts_redundant_word_char() {
     assert!(WordChars::validate("_a").is_ok());
