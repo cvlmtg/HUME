@@ -336,6 +336,22 @@ fn goto_matching_pair_lands_on_grapheme_boundary_not_mid_cluster() {
 }
 
 #[test]
+fn goto_matching_pair_twice_is_involution_across_prepend_cluster() {
+    // A second `#` press from the grapheme-snapped landing position (see
+    // the test above) must still resolve — `matching_bracket` has to
+    // recognize the bracket even when `pos` sits on the GC_Prepend
+    // codepoint leading its cluster, not on the bracket char itself.
+    assert_state!(
+        "-[(]>\u{0600})\n",
+        |(text, sels)| {
+            let once = cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move);
+            cmd_goto_matching_pair(&text, once, 1, MotionMode::Move)
+        },
+        "-[(]>\u{0600})\n"
+    );
+}
+
+#[test]
 fn goto_matching_pair_ignores_count() {
     // `#` is an involution — folding it N times would make even counts a
     // no-op and odd counts identical to a bare `#`. Vim's `count%` means "go

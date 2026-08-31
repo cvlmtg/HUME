@@ -4,6 +4,7 @@
 //! `a"`, etc.) and [`super::surround`] (to find the delimiter pair that wraps
 //! the cursor before replacing or deleting it).
 
+use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::lines::line_end_exclusive;
 use hume_editing::text::BufferText;
 
@@ -92,10 +93,20 @@ pub(crate) fn find_bracket_pair(
     }
 }
 
-/// Find the partner of the bracket at `pos`, in either direction.
+/// Find the partner of the bracket in the grapheme cluster at `pos`, in
+/// either direction.
 ///
-/// `pos` must sit exactly on one of [`BRACKET_PAIRS`]'s open or close chars —
-/// this is the resolver `%`-style matching needs ("which pair is this
+/// `pos` need not sit exactly on the bracket codepoint — it may be anywhere
+/// in the grapheme cluster the bracket belongs to. A bracket char is always
+/// ASCII and never itself combines forward, but a `GC_Prepend` codepoint
+/// immediately before one (e.g. U+0600 ARABIC NUMBER SIGN) joins *into* it,
+/// so `pos` landing on that leading codepoint — exactly where
+/// [`hume_editing::grapheme::snap_to_cluster_start`] leaves a motion after
+/// matching such a bracket — must still resolve, or a second `%`-style press
+/// (an involution) finds nothing and the cursor-match highlight goes dark on
+/// a bracket the cursor is visibly beside.
+///
+/// This is the resolver `%`-style matching needs ("which pair is this
 /// delimiter part of, and where's the other end") that [`find_bracket_pair`]
 /// doesn't provide on its own, since that function is only ever called with
 /// one already-known pair. Also the single resolver for the bracket-match
@@ -103,10 +114,18 @@ pub(crate) fn find_bracket_pair(
 /// same answer to "what does this character pair with", so there is exactly
 /// one place `BRACKET_PAIRS` gets consulted for it.
 pub fn matching_bracket(text: &BufferText, pos: usize) -> Option<usize> {
-    let ch = text.char_at(pos)?;
-    let &(open, close) = BRACKET_PAIRS.iter().find(|&&(o, c)| ch == o || ch == c)?;
-    let (open_pos, close_pos) = find_bracket_pair(text, pos, open, close)?;
-    Some(if pos == open_pos { close_pos } else { open_pos })
+    let cluster_end = next_grapheme_boundary(text, pos);
+    let (bracket_pos, open, close) = (pos..cluster_end).find_map(|i| {
+        let ch = text.char_at(i)?;
+        let &(o, c) = BRACKET_PAIRS.iter().find(|&&(o, c)| ch == o || ch == c)?;
+        Some((i, o, c))
+    })?;
+    let (open_pos, close_pos) = find_bracket_pair(text, bracket_pos, open, close)?;
+    Some(if bracket_pos == open_pos {
+        close_pos
+    } else {
+        open_pos
+    })
 }
 
 // ---------------------------------------------------------------------------
