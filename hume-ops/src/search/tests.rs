@@ -414,7 +414,7 @@ fn word_search_pattern_anchors_a_combining_sequence_on_its_base_char() {
 }
 
 /// U+FF3F (FULLWIDTH LOW LINE) is `\p{Pc}` — a word character to
-/// `regex_syntax::is_word_character` — but HUME classifies it as
+/// `regex_syntax::try_is_word_character` — but HUME classifies it as
 /// `Punctuation` (not `_`, not in `word-chars`). Anchoring on the
 /// regex-syntax answer alone produces `\b＿\b`, which can never match:
 /// rust-regex also sees both neighbours as word characters, so neither
@@ -429,4 +429,24 @@ fn word_search_pattern_skips_boundary_hume_does_not_consider_a_word_char() {
     let b = buf("\u{FF41}\u{FF3F}\u{FF42}\n"); // fullwidth a, the char under test, fullwidth b
     let matches = find_all_matches(&b, &r);
     assert_eq!(matches.len(), 1, "the punctuation run must still match");
+}
+
+/// The opposite direction from the two tests above: `chars` *wider* than
+/// rust-regex's `\w`. With `-` a word char, "foo-bar" is one run and both
+/// edges anchor — but rust-regex still reads `-` itself as non-word, so
+/// `\bfoo-bar\b` also holds inside "foo-bar-baz". `word_search_pattern`'s doc
+/// accepts this over-match (rust-regex has neither a configurable `\w` class
+/// nor lookbehind to express the wider rule); pinned here so a future
+/// anchoring change can't alter it silently.
+#[test]
+fn word_search_pattern_over_matches_a_wider_word_chars_run() {
+    let chars = hume_editing::word::WordChars::new("-");
+    let pattern = word_search_pattern("foo-bar", chars);
+    assert_eq!(pattern, r"\bfoo-bar\b");
+
+    let r = re(&pattern);
+    let b = buf("foo-bar-baz\n");
+    let matches = find_all_matches(&b, &r);
+    assert_eq!(matches.len(), 1, "the anchors hold inside the longer run");
+    assert_eq!(matches[0], (0, 6)); // inclusive end: 'r' is char index 6
 }
