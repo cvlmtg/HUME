@@ -6,7 +6,7 @@ use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::lines::line_content_end;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
-use hume_editing::word::{CharClass, classify_char};
+use hume_editing::word::blank_class;
 
 // ── Split on newlines ─────────────────────────────────────────────────────────
 
@@ -143,14 +143,9 @@ pub fn cmd_trim_selection_whitespace(
         let forward = sel.anchor() <= sel.head();
 
         // Walk forward from start, skipping whitespace (grapheme boundary steps).
-        // `classify_char` is the authoritative whitespace definition for this
+        // `blank_class` is the authoritative whitespace definition for this
         // codebase — Space covers ' '/'\t', Eol covers '\n'.
-        while start <= end
-            && matches!(
-                text.char_at(start).map(classify_char),
-                Some(CharClass::Space | CharClass::Eol)
-            )
-        {
+        while start <= end && text.char_at(start).is_some_and(|c| blank_class(c).is_some()) {
             start = next_grapheme_boundary(text, start);
         }
 
@@ -161,12 +156,7 @@ pub fn cmd_trim_selection_whitespace(
 
         // Walk backward from end, skipping whitespace (grapheme boundary steps).
         let mut new_end = end;
-        while new_end > start
-            && matches!(
-                text.char_at(new_end).map(classify_char),
-                Some(CharClass::Space | CharClass::Eol)
-            )
-        {
+        while new_end > start && text.char_at(new_end).is_some_and(|c| blank_class(c).is_some()) {
             new_end = prev_grapheme_boundary(text, new_end);
         }
 

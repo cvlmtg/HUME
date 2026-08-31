@@ -15,6 +15,7 @@ use super::super::{EditorState, Severity, doc_ops};
 use super::{
     apply_focused_edit, apply_focused_edit_grouped, apply_focused_motion,
     begin_insert_session_preserving_register, doc, focused_buffer_id, pin_insert_anchors,
+    word_chars_owned,
 };
 use crate::editor::error::CommandError;
 
@@ -309,14 +310,7 @@ pub(crate) fn cmd_delete_word_backward(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let buf_id = focused_buffer_id(state, view);
-    // Owned, not borrowed: `apply_focused_edit` takes `&mut EditorState`, so
-    // a `&str` into `state.buffers` cannot outlive the resolution below.
-    let word_chars = state
-        .buffers
-        .get(buf_id)
-        .overrides
-        .word_chars(&state.settings)
-        .to_owned();
+    let word_chars = word_chars_owned(state.buffers.get(buf_id), &state.settings);
     apply_focused_edit(state, view, move |text, sels| {
         delete_word_backward(text, sels, WordChars::new(&word_chars))
     });

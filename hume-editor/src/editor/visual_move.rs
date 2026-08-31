@@ -17,7 +17,9 @@ use hume_ops::text_object::{
 };
 use hume_ops::{MotionMode, WordCtx};
 
-use super::commands::{apply_focused_motion, effective_wrap_mode, focused_buffer_id, pane_row_map};
+use super::commands::{
+    apply_focused_motion, effective_wrap_mode, focused_buffer_id, pane_row_map, word_chars_owned,
+};
 use super::{EditorState, doc_ops};
 use crate::editor::error::CommandError;
 
@@ -471,7 +473,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     // `apply_focused_motion(state, ...)`, which takes `&mut EditorState` as
     // one opaque argument — a live borrow into `state.buffers`/`state.settings`
     // (what a borrowed `chars` would be) can't survive across that call.
-    let word_chars = doc.overrides.word_chars(&state.settings).to_owned();
+    let word_chars = word_chars_owned(doc, &state.settings);
     let chars = WordChars::new(&word_chars);
     let ctx = WordCtx {
         mode,

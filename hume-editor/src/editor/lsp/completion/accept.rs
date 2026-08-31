@@ -341,15 +341,8 @@ impl CompletionSession {
                 typed,
                 forward,
             } => {
-                // Owned, not borrowed: the call below takes `&mut
-                // state.buffers`, so a `&str` into it couldn't survive to
-                // the closure.
-                let word_chars = state
-                    .buffers
-                    .get(self.bid)
-                    .overrides
-                    .word_chars(&state.settings)
-                    .to_owned();
+                let word_chars =
+                    crate::editor::commands::word_chars_owned(state.buffers.get(self.bid), &state.settings);
                 crate::editor::doc_ops::apply_doc_edit_grouped(
                     &mut state.buffers,
                     &state.config.decorations,

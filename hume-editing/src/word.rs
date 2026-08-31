@@ -20,13 +20,14 @@ pub enum CharClass {
 /// Unicode whitespace (form feed, bare `\r`, …) stays `Punctuation` — rare
 /// enough that stopping on it is more useful than skipping it.
 ///
-/// Callers that distinguish `Word` from `Punctuation` (word motions, text
-/// objects, `*`) must go through [`WordChars::classify`] instead, so a
-/// buffer's configured extra word characters are honored. Callers that only
-/// ask whether a char is `Space` or `Eol` may call this directly — a
-/// validated `word-chars` value can never contain either (see
-/// [`WordChars::validate`]), so that answer is invariant under it.
-pub fn classify_char(ch: char) -> CharClass {
+/// Crate-private: a caller that distinguishes `Word` from `Punctuation`
+/// (word motions, text objects, `*`) must go through [`WordChars::classify`]
+/// instead, so a buffer's configured extra word characters are honored — and
+/// a caller that only asks whether a char is blank must go through
+/// [`blank_class`] instead. Keeping this function itself unreachable from
+/// outside `hume-editing` makes bypassing either funnel a compile error
+/// rather than a doc paragraph to remember.
+pub(crate) fn classify_char(ch: char) -> CharClass {
     if ch == '\n' {
         CharClass::Eol
     } else if matches!(ch, ' ' | '\t' | '\u{A0}' | '\u{3000}') {
@@ -35,6 +36,20 @@ pub fn classify_char(ch: char) -> CharClass {
         CharClass::Word
     } else {
         CharClass::Punctuation
+    }
+}
+
+/// `ch`'s blank class — `Some(Space)`, `Some(Eol)`, or `None` for every
+/// non-blank character (`Word` or `Punctuation`). The one question about a
+/// character a buffer's `word-chars` can never change: [`WordChars::validate`]
+/// rejects any value that would promote a blank to `Word`, so this answer is
+/// invariant under it, unlike [`WordChars::classify`]'s `Word`/`Punctuation`
+/// split. Every caller that only distinguishes blank from non-blank — never
+/// `Word` from `Punctuation` — goes through this rather than `classify_char`.
+pub fn blank_class(ch: char) -> Option<CharClass> {
+    match classify_char(ch) {
+        c @ (CharClass::Space | CharClass::Eol) => Some(c),
+        CharClass::Word | CharClass::Punctuation => None,
     }
 }
 

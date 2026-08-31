@@ -224,17 +224,23 @@ fn format_overrides(doc: &Buffer, settings: &EditorSettings) -> (u8, WhitespaceC
 }
 
 /// `doc`'s effective `word-chars`: buffer override → global default. The one
-/// place this precedence is applied — every word-family dispatch site
-/// (`pipeline.rs`, `search.rs`, `host_impl.rs`) reads through this instead of
-/// re-resolving the setting by hand. `edit.rs`'s Ctrl-W and `visual_move.rs`'s
-/// wrap-aware nearest-word-on-line hold `&mut EditorState` across their
-/// closure and can't borrow `doc`/`settings` that long, so they call
-/// `doc.overrides.word_chars(settings).to_owned()` directly instead.
+/// place this precedence is applied — every word-family dispatch site reads
+/// through this or [`word_chars_owned`] instead of re-resolving the setting
+/// by hand.
 pub(super) fn effective_word_chars<'a>(
     doc: &'a Buffer,
     settings: &'a EditorSettings,
 ) -> hume_editing::word::WordChars<'a> {
     hume_editing::word::WordChars::new(doc.overrides.word_chars(settings))
+}
+
+/// [`effective_word_chars`], owned rather than borrowed. For a caller that
+/// holds `&mut EditorState` across the closure that consumes the result
+/// (`apply_focused_edit`/`apply_doc_edit_grouped` and friends all take it by
+/// value) — a borrow into `state.buffers`/`state.settings` can't survive
+/// that call.
+pub(super) fn word_chars_owned(doc: &Buffer, settings: &EditorSettings) -> String {
+    doc.overrides.word_chars(settings).to_owned()
 }
 
 /// `pane`'s effective wrap mode for the buffer it currently views: pane

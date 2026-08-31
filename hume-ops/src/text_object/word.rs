@@ -8,7 +8,7 @@ use hume_editing::lines::line_end_exclusive;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_editing::word::{
-    CharClass, WordChars, classify_char, is_uppercase_word_boundary, is_word_boundary,
+    CharClass, WordChars, blank_class, is_uppercase_word_boundary, is_word_boundary,
 };
 
 use super::apply_text_object_by_mode;
@@ -107,10 +107,10 @@ pub fn expand_word_unit(
     min_start: usize,
 ) -> (usize, usize) {
     let min_start_is_bol = min_start == 0
-        || classify_char(
+        || blank_class(
             text.char_at(prev_grapheme_boundary(text, min_start))
                 .expect("min_start > 0 implies a preceding char"),
-        ) == CharClass::Eol;
+        ) == Some(CharClass::Eol);
 
     // Leading scan: walk back over Space graphemes from `start`. Stopping on
     // Eol means the run touches the start of the line — indentation.
@@ -118,9 +118,9 @@ pub fn expand_word_unit(
     let mut hit_eol = false;
     while run_start > min_start {
         let prev_pos = prev_grapheme_boundary(text, run_start);
-        match classify_char(text.char_at(prev_pos).expect("prev_pos < len")) {
-            CharClass::Space => run_start = prev_pos,
-            CharClass::Eol => {
+        match blank_class(text.char_at(prev_pos).expect("prev_pos < len")) {
+            Some(CharClass::Space) => run_start = prev_pos,
+            Some(CharClass::Eol) => {
                 hit_eol = true;
                 break;
             }
@@ -141,7 +141,7 @@ pub fn expand_word_unit(
         if next_pos >= text.len_chars() {
             break;
         }
-        if classify_char(text.char_at(next_pos).expect("next_pos < len")) != CharClass::Space {
+        if blank_class(text.char_at(next_pos).expect("next_pos < len")) != Some(CharClass::Space) {
             break;
         }
         run_end_start = next_pos;
