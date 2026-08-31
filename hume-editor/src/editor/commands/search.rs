@@ -334,13 +334,14 @@ pub(crate) fn cmd_search_word_under_cursor(
     else {
         return Ok(());
     };
-    // Computed here (before set_primary_selection) so the immutable `text`
-    // borrow ends before we mutably borrow state.
+    // Computed here (before set_primary_selection) so the immutable `text`/
+    // `chars` borrows end before we mutably borrow state.
     let word = text.slice(start..end_incl + 1).to_string();
+    let pattern = word_search_pattern(&word, chars);
 
     set_primary_selection(state, view, Selection::new(start, end_incl));
 
-    set_search_pattern(state, view, word_search_pattern(&word))
+    set_search_pattern(state, view, pattern)
 }
 
 // ── Search selection (Ctrl+/) ────────────────────────────────────────────────

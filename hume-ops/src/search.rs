@@ -14,6 +14,7 @@
 use regex_cursor::{Input, RopeyCursor, engines::meta::Regex};
 
 use hume_editing::text::BufferText;
+use hume_editing::word::{CharClass, WordChars};
 
 /// Direction for `search-forward` / `search-backward` and `search-next` / `search-prev`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -168,26 +169,33 @@ pub fn escape_regex(s: &str) -> String {
 /// `\b` anchoring each edge independently rather than the run as a whole.
 ///
 /// `word` is always an already-resolved word/punct run (`inner_word_impl`'s
-/// result) — that run's own first and last character decide the two edges,
-/// via [`regex_syntax::is_word_character`], the exact Unicode `\w` class
-/// rust-regex's own `\b` is defined against (`\p{Alphabetic} + \p{M} + \d +
-/// \p{Pc} + \p{Join_Control}`). This buffer's `word-chars`-aware notion of
-/// "word" (`hume_editing::word::WordChars`) can be *wider* than that — e.g.
-/// `-` configured as a word char merges "foo-bar" into one run, but rust-regex
-/// still sees `-` itself as non-word — so `\bfoo-bar\b` still matches inside
-/// "foo-bar-baz" (rust-regex has neither a configurable `\w` class nor
-/// lookbehind to express the wider rule). `*` can over-match at an edge like
-/// this; it never under-matches.
-pub fn word_search_pattern(word: &str) -> String {
+/// result) — that run's own first and last character decide the two edges.
+/// An edge is anchored only when *both* notions of "word character" agree:
+/// `chars` (this buffer's `word-chars`-aware `hume_editing::word::WordChars`,
+/// the rule that decided the run) and [`regex_syntax::try_is_word_character`]
+/// (the exact Unicode `\w` class rust-regex's own `\b` is defined against —
+/// `\p{Alphabetic} + \p{M} + \d + \p{Pc} + \p{Join_Control}`). Requiring
+/// agreement matters in both directions:
+/// - `chars` can be *wider* — e.g. `-` configured as a word char merges
+///   "foo-bar" into one run, but rust-regex still sees `-` itself as
+///   non-word, so `\bfoo-bar\b` still matches inside "foo-bar-baz" (rust-regex
+///   has neither a configurable `\w` class nor lookbehind to express the
+///   wider rule). `*` can over-match at an edge like this.
+/// - rust-regex's class is *wider* on marks, non-`_` connector punctuation,
+///   and join controls, which `chars` (absent that char in `word-chars`)
+///   classifies as `Punctuation` — e.g. U+FF3F. Anchoring on rust-regex's
+///   answer alone there would emit `\b＿\b`, which can never match: the
+///   neighbouring characters are word characters to rust-regex too, so
+///   neither boundary can hold. Requiring `chars` to agree drops the anchor
+///   on that edge instead, so `*` never under-matches.
+pub fn word_search_pattern(word: &str, chars: WordChars<'_>) -> String {
     let escaped = escape_regex(word);
-    let lead = word
-        .chars()
-        .next()
-        .is_some_and(regex_syntax::is_word_character);
-    let trail = word
-        .chars()
-        .next_back()
-        .is_some_and(regex_syntax::is_word_character);
+    let is_anchorable = |c: char| {
+        chars.classify(c) == CharClass::Word
+            && regex_syntax::try_is_word_character(c).unwrap_or(false)
+    };
+    let lead = word.chars().next().is_some_and(is_anchorable);
+    let trail = word.chars().next_back().is_some_and(is_anchorable);
     format!(
         "{}{escaped}{}",
         if lead { r"\b" } else { "" },
