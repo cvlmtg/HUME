@@ -95,24 +95,6 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
     }
 }
 
-fn diagnostics_arc(ed: &Editor, pid: PaneId) -> Vec<(usize, usize, usize, ScopeId)> {
-    ed.state.panes.render[pid]
-        .highlights
-        .diagnostics
-        .read()
-        .unwrap()
-        .clone()
-}
-
-fn extra_arc(ed: &Editor, pid: PaneId) -> Vec<(usize, usize, usize, ScopeId)> {
-    ed.state.panes.render[pid]
-        .highlights
-        .extra
-        .read()
-        .unwrap()
-        .clone()
-}
-
 // ── Diagnostic underlines ────────────────────────────────────────────────────
 
 #[test]
@@ -120,7 +102,7 @@ fn single_line_error_diagnostic_gets_the_error_scope() {
     let c = setup_with_diagnostics("abcdefgh\n", &[((0, 2), (0, 5), 1)]);
     let error_scope = scope(&c.ed, "diagnostic.error");
     assert_eq!(
-        diagnostics_arc(&c.ed, c.pid),
+        pane_highlights(&c.ed, c.pid, |h| &h.diagnostics),
         vec![(0, 2, 5, error_scope)],
         "single-line ASCII diagnostic: byte offsets equal char offsets"
     );
@@ -135,7 +117,7 @@ fn severity_floor_hides_less_severe_diagnostics() {
     let error_scope = scope(&c.ed, "diagnostic.error");
     let hint_scope = scope(&c.ed, "diagnostic.hint");
     assert_eq!(
-        diagnostics_arc(&c.ed, c.pid),
+        pane_highlights(&c.ed, c.pid, |h| &h.diagnostics),
         vec![(0, 0, 1, error_scope), (0, 6, 7, hint_scope)],
         "sanity: default floor (Hint) keeps everything"
     );
@@ -152,7 +134,7 @@ fn severity_floor_hides_less_severe_diagnostics() {
     c.ed.prepare_frame(&mut ctx);
 
     assert_eq!(
-        diagnostics_arc(&c.ed, c.pid),
+        pane_highlights(&c.ed, c.pid, |h| &h.diagnostics),
         vec![(0, 0, 1, error_scope)],
         "raising the floor to warning must drop the hint but keep the error"
     );
@@ -168,7 +150,7 @@ fn multiline_diagnostic_splits_into_per_line_spans() {
     let c = setup_with_diagnostics("abc\ndef\n", &[((0, 2), (1, 3), 1)]);
     let error_scope = scope(&c.ed, "diagnostic.error");
     assert_eq!(
-        diagnostics_arc(&c.ed, c.pid),
+        pane_highlights(&c.ed, c.pid, |h| &h.diagnostics),
         vec![(0, 2, 3, error_scope), (1, 0, 3, error_scope)],
         "line 0 gets 'c' clipped before its own '\\n' (byte 2..3); \
          line 1 gets 'def' from its own start (byte 0..3)"
@@ -179,7 +161,7 @@ fn multiline_diagnostic_splits_into_per_line_spans() {
 fn zero_diagnostics_produce_empty_provider_output() {
     let c = setup_with_diagnostics("abcdefgh\n", &[]);
     assert!(
-        diagnostics_arc(&c.ed, c.pid).is_empty(),
+        pane_highlights(&c.ed, c.pid, |h| &h.diagnostics).is_empty(),
         "no diagnostics published — the diagnostics Arc must stay empty"
     );
 }
@@ -191,7 +173,7 @@ fn zero_diagnostics_produce_empty_provider_output() {
 fn diagnostics_stay_visible_in_insert_mode() {
     let mut c = setup_with_diagnostics("abcdefgh\n", &[((0, 0), (0, 1), 1)]);
     assert!(
-        !diagnostics_arc(&c.ed, c.pid).is_empty(),
+        !pane_highlights(&c.ed, c.pid, |h| &h.diagnostics).is_empty(),
         "sanity: visible in Normal mode"
     );
 
@@ -201,7 +183,7 @@ fn diagnostics_stay_visible_in_insert_mode() {
     c.ed.settle();
     c.ed.prepare_frame(&mut ctx);
     assert!(
-        !diagnostics_arc(&c.ed, c.pid).is_empty(),
+        !pane_highlights(&c.ed, c.pid, |h| &h.diagnostics).is_empty(),
         "diagnostics must stay visible in Insert mode"
     );
 
@@ -210,7 +192,7 @@ fn diagnostics_stay_visible_in_insert_mode() {
     c.ed.settle();
     c.ed.prepare_frame(&mut ctx);
     assert!(
-        !diagnostics_arc(&c.ed, c.pid).is_empty(),
+        !pane_highlights(&c.ed, c.pid, |h| &h.diagnostics).is_empty(),
         "still visible back in Normal mode"
     );
 }
@@ -241,7 +223,7 @@ fn extra_highlight_gets_its_runtime_interned_scope() {
 
     let unused_scope = scope(&ed, "unused");
     assert_eq!(
-        extra_arc(&ed, pid),
+        pane_highlights(&ed, pid, |h| &h.extra),
         vec![(0, 1, 4, unused_scope)],
         "the plugin's 'unused' scope string must be interned and used verbatim"
     );
@@ -272,7 +254,7 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    let spans = extra_arc(&ed, pid);
+    let spans = pane_highlights(&ed, pid, |h| &h.extra);
     assert_eq!(spans.len(), 2);
     assert_eq!(
         spans[0].3, spans[1].3,
@@ -314,7 +296,7 @@ fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
 
     let aaa_scope = scope(&ed, "aaa-scope");
     assert_eq!(
-        extra_arc(&ed, pid),
+        pane_highlights(&ed, pid, |h| &h.extra),
         vec![(0, 1, 4, aaa_scope)],
         "the alphabetically first source (\"aaa\") must win the overlap \
          regardless of which source called set-extra-highlights! first"

@@ -22,13 +22,9 @@ fn bracket_match_highlight_resolves_nearest_bracket_in_selection() {
 
     render(&mut ed);
 
-    let spans: Vec<(usize, usize, usize)> = ed.state.panes.render[pid]
-        .highlights
-        .bracket
-        .read()
-        .unwrap()
-        .iter()
-        .map(|&(line, start, end, _)| (line, start, end))
+    let spans: Vec<(usize, usize, usize)> = pane_highlights(&ed, pid, |h| &h.bracket)
+        .into_iter()
+        .map(|(line, start, end, _)| (line, start, end))
         .collect();
     assert_eq!(
         spans,

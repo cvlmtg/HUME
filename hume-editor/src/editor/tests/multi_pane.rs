@@ -1571,13 +1571,9 @@ fn multiline_search_match_splits_into_per_line_highlight_spans() {
     // Every span shares the one search-match scope (`ScopedHighlighter`
     // carries it per-span now, not fixed on the provider) — dropped here
     // since this test is about span geometry, not scope resolution.
-    let matches: Vec<(usize, usize, usize)> = ed.state.panes.render[pid]
-        .highlights
-        .search
-        .read()
-        .unwrap()
-        .iter()
-        .map(|&(line, start, end, _)| (line, start, end))
+    let matches: Vec<(usize, usize, usize)> = pane_highlights(&ed, pid, |h| &h.search)
+        .into_iter()
+        .map(|(line, start, end, _)| (line, start, end))
         .collect();
     assert_eq!(
         matches,

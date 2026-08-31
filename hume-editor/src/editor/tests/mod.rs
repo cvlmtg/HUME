@@ -11,6 +11,7 @@ use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
 use crate::editor::search::SearchPattern;
 use crate::settings::EditorSettings;
+use crate::ui::highlight_providers::{PaneHighlights, ScopedHighlightRanges};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_engine::pane::Pane;
@@ -193,6 +194,20 @@ fn pane_signs(
     pid: PaneId,
 ) -> rustc_hash::FxHashMap<usize, Vec<hume_engine::builtins::sign_column::Sign>> {
     ed.state.panes.render[pid].signs.read().unwrap().clone()
+}
+
+/// The highlight spans synced onto pane `pid`'s given tier (bracket, search,
+/// diagnostics, or extra) — the read side every highlight test asserts
+/// against.
+fn pane_highlights(
+    ed: &Editor,
+    pid: PaneId,
+    tier: impl Fn(&PaneHighlights) -> &ScopedHighlightRanges,
+) -> Vec<(usize, usize, usize, ScopeId)> {
+    tier(&ed.state.panes.render[pid].highlights)
+        .read()
+        .unwrap()
+        .clone()
 }
 
 /// The sign column's currently synced gutter width for pane `pid`.

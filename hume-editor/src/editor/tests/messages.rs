@@ -6,17 +6,8 @@
 // has registered the pane's `PaneHighlights` providers.
 
 use super::*;
-use hume_engine::pipeline::{PaneId, RenderContext};
+use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
-
-fn extra_arc(ed: &Editor, pid: PaneId) -> Vec<(usize, usize, usize, ScopeId)> {
-    ed.state.panes.render[pid]
-        .highlights
-        .extra
-        .read()
-        .unwrap()
-        .clone()
-}
 
 /// Regression test for the reported crash: `:messages` interns its severity
 /// scope names synchronously during command dispatch, then the very next
@@ -119,10 +110,10 @@ fn messages_spans_reach_the_pane_extra_highlight_arc() {
     let err_badge = scope(&ed, "diagnostic.error.message");
     let err_text = scope(&ed, "diagnostic.error.message-text");
 
-    // Line-relative byte offsets, matching `lsp_render.rs`'s `extra_arc`
-    // convention: line 0 is "[warning] bad key", line 1 is "[error] crash".
+    // Line-relative byte offsets: line 0 is "[warning] bad key", line 1 is
+    // "[error] crash".
     assert_eq!(
-        extra_arc(&ed, pid),
+        pane_highlights(&ed, pid, |h| &h.extra),
         vec![
             (0, 0, 9, warn_badge),
             (0, 10, 17, warn_text),
