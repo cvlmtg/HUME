@@ -39,7 +39,9 @@ the line. The scan resolves this automatically.
 
 Bracket text objects walk the entire buffer and track depth — they work
 correctly across lines because `(` and `)` are asymmetric. The scanner can
-always tell which direction it is going.
+always tell which direction it is going. See
+[Matching Pairs](matching-pairs.md) for how that same asymmetry is used to
+jump between a bracket and its partner.
 
 The parity scan cannot be extended to multiple lines with the same correctness
 guarantee. Consider a file where line 1 has an unmatched `"` (a string that

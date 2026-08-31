@@ -32,6 +32,7 @@ produce selections.
 | CharClass: Word Boundaries and the Eol Split | [learning/charclass.md](learning/charclass.md) |
 | Inner vs Around: The Text Object Convention | [learning/inner-vs-around.md](learning/inner-vs-around.md) |
 | Quote Scanning: Parity Instead of Depth | [learning/quote-scanning.md](learning/quote-scanning.md) |
+| Matching Pairs: Depth Tracking and Two Accepted Limitations | [learning/matching-pairs.md](learning/matching-pairs.md) |
 
 ### Architecture
 
