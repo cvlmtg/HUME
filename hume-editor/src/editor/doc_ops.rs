@@ -82,9 +82,13 @@ fn record_lsp_edits(
 /// is the one place that sequence is spelled out.
 ///
 /// The first six parameters are the same threading sextet every function in
-/// this file already receives; the last four are each caller's own
-/// pre/post-edit state. Bundling either group into a struct would only move
-/// the field list, not shrink it.
+/// this file already receives — all six are fields of `EditorState`, which
+/// every caller already holds and destructures at the call site; collapsing
+/// them into one `&mut EditorState` param is a real, verified-safe
+/// simplification, just not done yet. The last four genuinely can't collapse
+/// the same way: none is an `EditorState` field, and `text_pre`/`rope_pre` are
+/// pre-mutation snapshots this function couldn't re-derive from `state.buffers`
+/// even if it wanted to, since it runs after the mutation.
 #[allow(clippy::too_many_arguments)]
 fn finish_edit(
     buffers: &mut BufferStore,
