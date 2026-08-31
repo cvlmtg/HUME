@@ -390,6 +390,29 @@ fn word_search_pattern_anchors_a_plain_word() {
     assert_eq!(word_search_pattern("hello", chars), r"\bhello\b");
 }
 
+/// NFD "café" (c, a, f, e, U+0301) ends on a *combining mark*, not on its
+/// cluster's base char. Judging the trailing edge with `chars().next_back()`
+/// hands `classify` the mark — `Punctuation` to HUME — dropping the `\b` and
+/// letting `*` match the "café" prefix of "cafétéria". The edge belongs to
+/// the cluster's base 'e', and `\b` after the mark holds because rust-regex's
+/// own `\w` includes `\p{M}`.
+#[test]
+fn word_search_pattern_anchors_a_combining_sequence_on_its_base_char() {
+    let chars = hume_editing::word::WordChars::default();
+    let pattern = word_search_pattern("cafe\u{301}", chars);
+    assert_eq!(pattern, "\\bcafe\u{301}\\b");
+
+    let r = re(&pattern);
+    let b = buf("cafe\u{301} cafe\u{301}teria\n");
+    let matches = find_all_matches(&b, &r);
+    assert_eq!(
+        matches.len(),
+        1,
+        "the standalone word matches; the prefix of \"cafétéria\" must not"
+    );
+    assert_eq!(matches[0], (0, 4));
+}
+
 /// U+FF3F (FULLWIDTH LOW LINE) is `\p{Pc}` — a word character to
 /// `regex_syntax::is_word_character` — but HUME classifies it as
 /// `Punctuation` (not `_`, not in `word-chars`). Anchoring on the

@@ -15,6 +15,7 @@ use regex_cursor::{Input, RopeyCursor, engines::meta::Regex};
 
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
+use hume_rope::grapheme::prev_str_boundary;
 
 /// Direction for `search-forward` / `search-backward` and `search-next` / `search-prev`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,7 +170,8 @@ pub fn escape_regex(s: &str) -> String {
 /// `\b` anchoring each edge independently rather than the run as a whole.
 ///
 /// `word` is always an already-resolved word/punct run (`inner_word_impl`'s
-/// result) — that run's own first and last character decide the two edges.
+/// result) — that run's own first and last grapheme *cluster* decide the two
+/// edges.
 /// An edge is anchored only when *both* notions of "word character" agree:
 /// `chars` (this buffer's `word-chars`-aware `hume_editing::word::WordChars`,
 /// the rule that decided the run) and [`regex_syntax::try_is_word_character`]
@@ -190,12 +192,23 @@ pub fn escape_regex(s: &str) -> String {
 ///   on that edge instead, so `*` never under-matches.
 pub fn word_search_pattern(word: &str, chars: WordChars<'_>) -> String {
     let escaped = escape_regex(word);
-    let is_anchorable = |c: char| {
-        chars.classify(c) == CharClass::Word
-            && regex_syntax::try_is_word_character(c).unwrap_or(false)
+    // Each edge is judged by its own cluster's *base* char — the first
+    // codepoint of that cluster, never a trailing combining mark.
+    let anchorable_at = |s: &str| {
+        s.chars().next().is_some_and(|c| {
+            chars.classify(c) == CharClass::Word
+                && regex_syntax::try_is_word_character(c).unwrap_or(false)
+        })
     };
-    let lead = word.chars().next().is_some_and(is_anchorable);
-    let trail = word.chars().next_back().is_some_and(is_anchorable);
+    let lead = anchorable_at(word);
+    // The trailing edge needs the cluster boundary; the leading one doesn't
+    // (`s.chars().next()` is by definition the base char of `s`'s first
+    // cluster). `word.chars().next_back()` would hand `classify` the
+    // combining mark of an NFD "café" (U+0301 — `Punctuation` to HUME),
+    // silently dropping the `\b` so `*` also matches inside "cafétéria".
+    // Anchoring *after* a mark is right: rust-regex's `\w` includes `\p{M}`,
+    // so the boundary holds against whatever letter follows.
+    let trail = anchorable_at(&word[prev_str_boundary(word, word.len())..]);
     format!(
         "{}{escaped}{}",
         if lead { r"\b" } else { "" },
