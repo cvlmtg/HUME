@@ -248,31 +248,63 @@ fn close_after(text: &BufferText, open: &Tag) -> Option<usize> {
     None
 }
 
-/// Forward scan from the start of the buffer for the tag that `close`
-/// closes: the innermost still-open same-name tag at the point `close`
-/// appears. Unlike [`close_after`], this can't start at `close` and walk
-/// backward — an unmatched same-name open earlier in the buffer (e.g. a void
-/// element written without a self-closing slash) must not be mistaken for
-/// the partner, so the same forward, depth-tracked pairing `close_after`
-/// does is run from 0 up to `close` itself. Cheaper than a full [`Tag`]
-/// stack: only same-name open positions are pushed.
-fn open_before(text: &BufferText, close: &Tag) -> Option<usize> {
-    let mut opens: Vec<usize> = Vec::new();
-    let mut cursor = text.chars_at(0);
-    while let Some(tag) = next_tag(text, &mut cursor) {
-        if tag.lt_pos >= close.lt_pos {
-            break;
+/// Backward counterpart to [`next_tag`]: the nearest tag construct strictly
+/// before `before`, skipping comments and any `<` that doesn't parse as a
+/// well-formed tag — the same two exemptions [`tag_at`] uses. Reuses the
+/// forward [`parse_tag_at`] rather than a mirrored reverse lexer: finding
+/// `<` backward is unambiguous, but a lexer that also had to un-consume a
+/// quoted attribute or braced JSX expression in reverse would duplicate
+/// [`parse_tag`]'s whole state machine for zero correctness gain over just
+/// parsing forward from each candidate.
+///
+/// That reuse has a real gap: a `<` inside an *enclosing* tag's own quoted
+/// attribute or JSX brace — `title="</div>"`, `<!-- <div> -->` — is
+/// invisible to the forward lexer (consumed whole as part of the enclosing
+/// tag's own parse) but can itself parse as a well-formed tag when found
+/// this way, corrupting [`open_before`]'s depth count. An unbalanced
+/// fragment there (one tag-shaped construct, not a real pair) triggers it; a
+/// balanced one cancels itself out and is harmless. Accepted as a known
+/// limitation of the lexical scanner rather than fixed, since a
+/// tree-sitter-backed matcher is expected to supersede this path.
+fn prev_tag(text: &BufferText, before: usize) -> Option<Tag> {
+    let mut cursor = text.chars_at(before);
+    while let Some((i, ch)) = cursor.prev() {
+        if ch == '<'
+            && !is_comment_start(text, i)
+            && let Some(tag) = parse_tag_at(text, i)
+        {
+            return Some(tag);
         }
+    }
+    None
+}
+
+/// Depth-tracked backward walk from `close` for the innermost still-open
+/// same-name tag: the same technique [`crate::pair::scan_left_for_open`]
+/// uses for brackets, applied via [`prev_tag`] instead of a raw char scan.
+/// Scans outward from the cursor rather than from the start of the buffer —
+/// depth-tracked matching is direction-symmetric, so this returns the same
+/// answer [`close_after`]'s forward, from-open-tag scan would give in
+/// reverse, while typically touching only the handful of tags between
+/// `close` and its partner instead of the whole preceding buffer. See
+/// [`prev_tag`]'s doc for the one case this reuse doesn't handle.
+fn open_before(text: &BufferText, close: &Tag) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut before = close.lt_pos;
+    while let Some(tag) = prev_tag(text, before) {
+        before = tag.lt_pos;
         if tag.self_closing || !same_name(text, tag.name, close.name) {
             continue;
         }
         if tag.closing {
-            opens.pop();
+            depth += 1;
+        } else if depth == 0 {
+            return Some(tag.lt_pos);
         } else {
-            opens.push(tag.lt_pos);
+            depth -= 1;
         }
     }
-    opens.pop()
+    None
 }
 
 /// Find the matching partner of the tag at `pos`: given the cursor anywhere

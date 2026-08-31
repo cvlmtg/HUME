@@ -269,6 +269,58 @@ fn goto_matching_pair_doubled_lt_does_not_hide_nested_same_name_open() {
 }
 
 #[test]
+fn goto_matching_pair_tag_close_to_open_nested_same_name() {
+    // Mirror of `_tag_nested_same_name`, in the close-to-open direction:
+    // from the outer close, must walk past the inner (already-matched) pair
+    // to land on the outer open, not stop at the inner one.
+    assert_state!(
+        "<div><div>x</div>-[<]>/div>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "-[<]>div><div>x</div></div>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_tag_close_to_open_picks_innermost_unclosed_open() {
+    // Two opens, one close: the close must pair with the nearer
+    // (innermost) open, leaving the outer one permanently unmatched — the
+    // "unmatched same-name open earlier in the buffer" case the old from-0
+    // scan was designed around.
+    assert_state!(
+        "<div>\n<div>x-[<]>/div>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<div>\n-[<]>div>x</div>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_tag_close_to_open_doubled_lt_does_not_stop_walk() {
+    // Backward mirror of `_doubled_lt_does_not_hide_nested_same_name_open`:
+    // the stray second '<' between the outer and inner open must not stop
+    // the backward walk before it reaches the outer open.
+    assert_state!(
+        "<div><<div>x</div>-[<]>/div>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "-[<]>div><<div>x</div></div>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_tag_quoted_close_tag_before_partner_is_known_limitation() {
+    // Known limitation of the backward scan: a `<` inside an enclosing
+    // tag's own quoted attribute can itself parse as a well-formed tag when
+    // found by walking backward for `<` (the forward lexer never sees it,
+    // since the whole attribute is consumed by one `parse_tag` call). Here
+    // it throws off the depth count enough that the real open is never
+    // reached — accepted rather than fixed; see `prev_tag`'s doc comment.
+    assert_state!(
+        "<div title=\"</div>\">x-[<]>/div>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<div title=\"</div>\">x-[<]>/div>\n"
+    );
+}
+
+#[test]
 fn goto_matching_pair_unspaced_comparison_body_text_is_noop() {
     // The cursor sits in ordinary body text after an unspaced `a<b` — must
     // not resolve as if it were inside `a<b`'s markup.
