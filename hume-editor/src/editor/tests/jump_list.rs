@@ -390,3 +390,271 @@ fn search_n_ctrl_o_ctrl_i_different_lines() {
     ed.handle_key(key_ctrl('i'));
     assert_eq!(state(&ed), state_after_n2);
 }
+
+// ── Remapping through edits ─────────────────────────────────────────────────
+//
+// `finish_edit` (`doc_ops.rs`) remaps every pane's jump list through each
+// edit's `ChangeSet`, same chokepoint sibling panes' selections go through.
+// Every test below locates its expected landing spot independently (via
+// `str::find` on the post-edit text), never by re-deriving the offset the
+// code under test itself computed — a stale-but-in-range offset and a
+// correctly remapped one can otherwise look identical if the assertion
+// secretly reuses the same arithmetic.
+
+/// Inserting a line above a recorded jump entry must not leave `Ctrl+O`
+/// landing on the entry's stale (now-wrong) line — it must follow the text.
+#[test]
+fn insert_above_jump_entry_lands_on_marker_text() {
+    let mut ed = jump_editor(10);
+
+    // `gg` records a jump entry at line 10, lands the cursor at line 0.
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+
+    // Open a blank line above line 0 — every original line shifts down by one.
+    ed.handle_key(key('O'));
+    ed.handle_key(key_esc());
+
+    ed.handle_key(key_ctrl('o'));
+
+    let text_after = ed.doc().text().to_string();
+    let target = text_after.find("line 10\n").expect("marker line present");
+    let expected = serialize_state(
+        &BufferText::from(text_after.as_str()),
+        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target)),
+    );
+    assert_eq!(
+        state(&ed),
+        expected,
+        "Ctrl+O must land on the marker text, not the pre-edit line index"
+    );
+}
+
+/// Deleting a line above a recorded jump entry must shift it up along with
+/// the text, not leave it pointing at whatever now occupies the old offset.
+#[test]
+fn delete_above_jump_entry_lands_on_marker_text() {
+    let mut ed = jump_editor(10);
+
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g')); // records a jump entry at line 10, lands at line 0
+
+    // Delete line 0 entirely — every remaining line shifts up by one.
+    ed.handle_key(key('x')); // select-line
+    ed.handle_key(key('d')); // delete selection
+
+    ed.handle_key(key_ctrl('o'));
+
+    let text_after = ed.doc().text().to_string();
+    let target = text_after.find("line 10\n").expect("marker line present");
+    let expected = serialize_state(
+        &BufferText::from(text_after.as_str()),
+        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target)),
+    );
+    assert_eq!(
+        state(&ed),
+        expected,
+        "Ctrl+O must land on the marker text after a deletion above it"
+    );
+}
+
+/// Undoing an edit must remap jump entries back too — the inverse
+/// `ChangeSet` goes through the same `finish_edit` chokepoint as any edit.
+#[test]
+fn undo_after_edit_remaps_jump_entry_back() {
+    let mut ed = jump_editor(10);
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g')); // records a jump entry at line 10, lands at line 0
+
+    let text_before = ed.doc().text().to_string();
+    let target_before = text_before.find("line 10\n").expect("marker line present");
+
+    ed.handle_key(key('O'));
+    ed.handle_key(key_esc());
+    ed.handle_key(key('u')); // undo the insert
+
+    ed.handle_key(key_ctrl('o'));
+
+    let expected = serialize_state(
+        &BufferText::from(text_before.as_str()),
+        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target_before)),
+    );
+    assert_eq!(
+        state(&ed),
+        expected,
+        "undo's inverse ChangeSet must remap the entry back to its original position"
+    );
+}
+
+/// An edit made from one pane must remap jump entries in every pane viewing
+/// the buffer, not just the pane that performed the edit — jump lists are
+/// per-pane, but the edit chokepoint doesn't know or care which pane a given
+/// list belongs to.
+#[test]
+fn edit_remaps_jump_entries_in_every_pane_viewing_the_buffer() {
+    let mut ed = jump_editor(10);
+    let pid_a = ed.state.focused_pane_id;
+
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g')); // pane A records a jump entry at line 10
+
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_a, pid_b, "focus moved to the new pane");
+    assert_eq!(
+        ed.state.panes.jumps[pid_b].len(),
+        1,
+        "split clones the source pane's jump list"
+    );
+
+    // Edit from pane B — inserts a blank line above line 0.
+    ed.handle_key(key('O'));
+    ed.handle_key(key_esc());
+
+    let text_after = ed.doc().text().to_string();
+    let target = text_after.find("line 10\n").expect("marker line present");
+    let expected = serialize_state(
+        &BufferText::from(text_after.as_str()),
+        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target)),
+    );
+
+    ed.switch_focused_pane(pid_a);
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(
+        state(&ed),
+        expected,
+        "pane A's entry must be remapped even though pane B made the edit"
+    );
+}
+
+/// A jump entry for a buffer that wasn't edited must not move when a
+/// different buffer is edited — the jump list is cross-buffer, so a remap
+/// triggered by buffer B's edit must skip buffer A's entries entirely.
+#[test]
+fn edit_in_one_buffer_does_not_move_a_jump_entry_for_another_buffer() {
+    let dir = safe_tempdir();
+    let file1 = dir.path().join("file1.txt");
+    let file2 = dir.path().join("file2.txt");
+    let content: String = (0..20).map(|i| format!("line {i}\n")).collect();
+    std::fs::write(&file1, &content).unwrap();
+    std::fs::write(&file2, "other\nfile\n").unwrap();
+
+    let mut ed = Editor::for_testing(Buffer::new(
+        BufferText::from("scratch\n"),
+        SelectionSet::default(),
+    ));
+    ed.execute_typed("e", Some(file1.to_str().unwrap()))
+        .unwrap();
+    let buf1 = ed.focused_buffer_id();
+
+    // Move to line 10 with per-step motions (below the jump threshold, so no
+    // entry is recorded for the walk itself), then `gg` records an entry at
+    // (file1, line 10) and lands the cursor at line 0.
+    for _ in 0..10 {
+        ed.handle_key(key('j'));
+    }
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+    let file1_text = ed.doc().text().to_string();
+    let target = file1_text.find("line 10\n").expect("marker line present");
+
+    // `:e file2` records a second entry — (file1, line 0), the switch-away
+    // point — then focuses file2.
+    ed.execute_typed("e", Some(file2.to_str().unwrap()))
+        .unwrap();
+    assert_ne!(ed.focused_buffer_id(), buf1, "focus moved to file2");
+
+    // Edit file2 — must have zero effect on file1's entries.
+    ed.handle_key(key('O'));
+    ed.handle_key(key_esc());
+    ed.handle_key(key('O'));
+    ed.handle_key(key_esc());
+
+    // First Ctrl+O returns to the switch-away point in file1; second Ctrl+O
+    // reaches the earlier (file1, line 10) entry.
+    ed.handle_key(key_ctrl('o'));
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(ed.focused_buffer_id(), buf1, "landed back in file1");
+
+    let expected = serialize_state(
+        &BufferText::from(file1_text.as_str()),
+        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target)),
+    );
+    assert_eq!(
+        state(&ed),
+        expected,
+        "file1's jump entry must be untouched by edits made in file2"
+    );
+}
+
+/// `:e!` reloads through a line-diff `ChangeSet` (`Buffer::reload_from_text`)
+/// that bypasses the ordinary edit chokepoint — jump entries must still be
+/// remapped through it, not just entries produced by in-editor edits.
+#[test]
+fn reload_remaps_jump_entries_through_line_diff() {
+    let dir = safe_tempdir();
+    let path = dir.path().join("reload.txt");
+    let content: String = (0..20).map(|i| format!("line {i}\n")).collect();
+    std::fs::write(&path, &content).unwrap();
+
+    let mut ed = Editor::for_testing(Buffer::new(
+        BufferText::from("scratch\n"),
+        SelectionSet::default(),
+    ));
+    ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+
+    for _ in 0..10 {
+        ed.handle_key(key('j'));
+    }
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g')); // records an entry at line 10, lands at line 0
+    // 2 entries: `:e` itself recorded leaving the initial scratch buffer,
+    // then `gg` recorded line 10.
+    assert_eq!(ed.state.panes.jumps[ed.state.focused_pane_id].len(), 2);
+
+    // Reload with 3 new lines prepended on disk.
+    let new_content = format!("new0\nnew1\nnew2\n{content}");
+    std::fs::write(&path, &new_content).unwrap();
+    ed.execute_typed("e!", None).unwrap();
+
+    ed.handle_key(key_ctrl('o'));
+
+    let target = new_content.find("line 10\n").expect("marker line present");
+    let expected = serialize_state(
+        &BufferText::from(new_content.as_str()),
+        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target)),
+    );
+    assert_eq!(
+        state(&ed),
+        expected,
+        "Ctrl+O must land on the marker text after :e! shifted it"
+    );
+}
+
+/// A view buffer refreshed via `open_read_only_view` (e.g. re-running
+/// `:messages`) resets its history — there is no `ChangeSet` to remap jump
+/// entries through, so they must be dropped outright rather than left
+/// pointing at arbitrary text in the regenerated content.
+#[test]
+fn view_buffer_refresh_drops_its_jump_entries() {
+    let mut ed = editor_from("-[a]>b\n");
+    let bid = ed.open_read_only_view("[jump-list-test]", "one\ntwo\nthree\nfour\nfive\n", 0);
+
+    // `ge` (goto-last-line) records an entry tagged with this view buffer.
+    ed.handle_key(key('g'));
+    ed.handle_key(key('e'));
+
+    let pid = ed.state.focused_pane_id;
+    assert!(
+        ed.state.panes.jumps[pid].entries_for_buffer(bid),
+        "goto-last-line should have recorded an entry for the view buffer"
+    );
+
+    // Re-open the same label — refreshes content in place via `set_view_content`.
+    ed.open_read_only_view("[jump-list-test]", "brand new content\n", 0);
+
+    assert!(
+        !ed.state.panes.jumps[pid].entries_for_buffer(bid),
+        "a regenerated view buffer's stale jump entries must be dropped"
+    );
+}

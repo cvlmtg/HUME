@@ -428,18 +428,20 @@ impl Buffer {
     /// delete-all + insert-all. `saved_revision` is bumped after recording so
     /// the reloaded buffer is `!is_dirty()`.
     ///
-    /// Returns `true` if the text actually changed (`set_text` ran, `text_gen`
-    /// moved) — `false` for an identical-to-disk no-op. The caller uses this to
-    /// decide whether state computed against the pre-reload content (the
-    /// engine syntax tree, LSP diagnostics/decorations, the `didChange` wire
-    /// message) is still valid or needs discarding — `reload_from_text` is the
-    /// only place that already knows which branch ran.
+    /// Returns the forward `ChangeSet` if the text actually changed
+    /// (`set_text` ran, `text_gen` moved) — `None` for an identical-to-disk
+    /// no-op. The caller uses this both to decide whether state computed
+    /// against the pre-reload content (the engine syntax tree, LSP
+    /// diagnostics/decorations, the `didChange` wire message) is still valid
+    /// or needs discarding, and to remap jump-list entries through the
+    /// reload — `reload_from_text` is the only place that already knows
+    /// which branch ran and already has the CS in hand.
     pub(crate) fn reload_from_text(
         &mut self,
         new_text: BufferText,
         pre_sels: SelectionSet,
         post_sels: SelectionSet,
-    ) -> bool {
+    ) -> Option<ChangeSet> {
         // Reloading from disk is, by definition, catching up to whatever is
         // there now — clear regardless of which branch below runs.
         self.disk_state = disk::DiskState::InSync;
@@ -456,15 +458,15 @@ impl Buffer {
         // disk. `pre_sels`/`post_sels` are dropped — there is nothing to undo to.
         if forward.is_identity() {
             self.saved_revision = Some(self.history.current_id());
-            return false;
+            return None;
         }
 
         // `set_text` only bumps `text_gen`; it does NOT reset history
         // (`set_view_content` is the only writer that resets history).
         self.set_text(new_text);
-        self.record_revision(forward, inverse, pre_sels, post_sels);
+        self.record_revision(forward.clone(), inverse, pre_sels, post_sels);
         self.saved_revision = Some(self.history.current_id());
-        true
+        Some(forward)
     }
 
     /// `true` if the buffer has unsaved changes.

@@ -1,5 +1,7 @@
 use super::*;
+use hume_editing::changeset::ChangeSetBuilder;
 use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::text::BufferText;
 
 /// Helper: build a JumpEntry with a cursor at `char_pos` on `line`.
 /// Bypasses `JumpEntry::new` since unit tests don't have a BufferText.
@@ -374,6 +376,125 @@ fn prune_buffer_all_entries_removed_resets_cursor() {
 
     assert_eq!(jl.len(), 0);
     assert_eq!(jl.cursor, 0, "cursor = 0 when all entries removed");
+}
+
+// ── translate_in_place ────────────────────────────────────────────────────
+
+/// Count newlines before `pos` in `text` — independent of `BufferText`'s own
+/// `char_to_line`, which is what `translate_in_place` uses internally to
+/// recompute `primary_line`.
+fn line_of(text: &str, pos: usize) -> usize {
+    text.chars().take(pos).filter(|&c| c == '\n').count()
+}
+
+/// Inserting text before an entry shifts both its stored offset and its
+/// cached `primary_line`.
+#[test]
+fn translate_in_place_shifts_offset_and_primary_line() {
+    let (bid, _other) = two_buffer_ids();
+    let text_pre = BufferText::from("aaaa\nbbbb\ncccc");
+    let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
+    jl.push(entry_for(7, 1, bid)); // head=7 sits inside "bbbb" on line 1
+
+    // Insert "XX" at position 0 — shifts everything after it by 2.
+    let mut b = ChangeSetBuilder::new(14);
+    b.insert("XX");
+    b.retain_rest();
+    let cs = b.finish();
+    let text_post = BufferText::from("XXaaaa\nbbbb\ncccc");
+
+    jl.translate_in_place(bid, &cs, &text_pre, &text_post);
+
+    let e = jl.backward(entry_for(0, 0, bid)).unwrap();
+    assert_eq!(e.selections.primary().head(), 9);
+    assert_eq!(e.primary_line, line_of("XXaaaa\nbbbb\ncccc", 9));
+    assert_eq!(e.primary_line, 1, "insert landed entirely before line 1");
+}
+
+/// An entry tagged with a different buffer is untouched by a remap targeting
+/// another buffer — the jump list is cross-buffer, so a call must only ever
+/// touch entries for the buffer that was actually edited.
+#[test]
+fn translate_in_place_skips_entries_for_other_buffers() {
+    let (edited_bid, other_bid) = two_buffer_ids();
+    let text_pre = BufferText::from("aaaa\nbbbb");
+    let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
+    jl.push(entry_for(2, 0, other_bid));
+
+    let mut b = ChangeSetBuilder::new(9);
+    b.insert("XX");
+    b.retain_rest();
+    let cs = b.finish();
+    let text_post = BufferText::from("XXaaaa\nbbbb");
+
+    jl.translate_in_place(edited_bid, &cs, &text_pre, &text_post);
+
+    let e = jl.backward(entry_for(0, 0, other_bid)).unwrap();
+    assert_eq!(
+        e.selections.primary().head(),
+        2,
+        "untouched — different buffer"
+    );
+    assert_eq!(e.primary_line, 0, "untouched — different buffer");
+}
+
+/// A deletion that fully covers an entry's position collapses it to the
+/// deletion point rather than dropping it — same semantics `SelectionSet`
+/// already gives sibling panes' cursors.
+#[test]
+fn translate_in_place_collapses_entry_inside_a_full_deletion() {
+    let (bid, _other) = two_buffer_ids();
+    let text_pre = BufferText::from("abcdef");
+    let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
+    jl.push(entry_for(1, 0, bid));
+
+    let mut b = ChangeSetBuilder::new(6);
+    b.delete(6); // remove "abcdef" entirely
+    b.retain_rest();
+    let cs = b.finish();
+    let text_post = BufferText::from("");
+
+    jl.translate_in_place(bid, &cs, &text_pre, &text_post);
+
+    let e = jl.backward(entry_for(99, 99, bid)).unwrap();
+    assert_eq!(e.selections.primary().head(), 0);
+    assert_eq!(e.primary_line, 0);
+}
+
+/// A deletion that merges two entries' positions onto the same post-edit line
+/// collapses them into one, keeping the newer entry, and remaps `cursor` (at
+/// the present) to the new length.
+#[test]
+fn translate_in_place_collapses_entries_that_land_on_the_same_line() {
+    let (bid, _other) = two_buffer_ids();
+    // line0 = "aaaa\n" [0,5), line1 = "bbbb\n" [5,10), line2 = "cccc" [10,14)
+    let text_pre = BufferText::from("aaaa\nbbbb\ncccc");
+    let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
+    jl.push(entry_for(1, 0, bid)); // older: inside line0
+    jl.push(entry_for(7, 1, bid)); // newer: inside line1
+    assert_eq!(jl.len(), 2);
+    assert_eq!(jl.cursor, 2, "at the present before the remap");
+
+    // Delete "aaaa\nbbbb\n" (positions 0..10) — both entries fall inside it
+    // and collapse onto the same post-edit point.
+    let mut b = ChangeSetBuilder::new(14);
+    b.delete(10);
+    b.retain_rest();
+    let cs = b.finish();
+    let text_post = BufferText::from("cccc");
+
+    jl.translate_in_place(bid, &cs, &text_pre, &text_post);
+
+    assert_eq!(jl.len(), 1, "both entries collapsed into one");
+    assert_eq!(jl.cursor, 1, "present remapped to the new length");
+
+    let e = jl.backward(entry_for(99, 99, bid)).unwrap();
+    assert_eq!(e.selections.primary().head(), 0);
+    assert_eq!(e.primary_line, 0);
+    assert!(
+        jl.backward(entry_for(0, 0, bid)).is_none(),
+        "only one entry survives the collapse"
+    );
 }
 
 /// After pruning, backward/forward still work correctly on the remaining entries.

@@ -15,6 +15,7 @@ use std::collections::VecDeque;
 
 use hume_engine::pipeline::BufferId;
 
+use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 
@@ -112,11 +113,13 @@ impl JumpList {
     pub(crate) fn push(&mut self, entry: JumpEntry) {
         self.entries.truncate(self.cursor);
 
-        // Deduplicate: same line AND same buffer — cross-buffer same-line entries are distinct.
+        // Deduplicate against the immediately preceding entry only — same
+        // rule `translate_in_place`'s post-remap collapse pass applies, kept
+        // as one predicate (`same_slot`) so the two call sites can't drift.
         match self
             .entries
             .back_mut()
-            .filter(|l| l.primary_line == entry.primary_line && l.buffer_id == entry.buffer_id)
+            .filter(|l| Self::same_slot(l, &entry))
         {
             Some(last) => *last = entry,
             None => self.entries.push_back(entry),
@@ -127,6 +130,11 @@ impl JumpList {
         }
 
         self.cursor = self.entries.len();
+    }
+
+    /// Same line AND same buffer — cross-buffer same-line entries are distinct.
+    fn same_slot(a: &JumpEntry, b: &JumpEntry) -> bool {
+        a.primary_line == b.primary_line && a.buffer_id == b.buffer_id
     }
 
     /// Remove all entries for `id`. Adjusts the cursor so its relative position
@@ -144,6 +152,87 @@ impl JumpList {
             .cursor
             .saturating_sub(removed_before)
             .min(self.entries.len());
+    }
+
+    /// Remap every entry for `buf_id` through an edit, keeping stored
+    /// positions pointing at the same text rather than the same offset.
+    ///
+    /// Entries for any other buffer are left untouched — the jump list is
+    /// cross-buffer (that's what makes cross-buffer Ctrl+O work), so a remap
+    /// triggered by an edit in one buffer must not touch another buffer's
+    /// entries.
+    ///
+    /// Runs `PosMapCursor` once per entry rather than batching every entry's
+    /// position through one shared cursor (the "batch `PosMapCursor`, never
+    /// per-position" rule `docs/LSP.md` sets for diagnostics/decorations):
+    /// unlike a `SelectionSet`, entries are not sorted relative to one
+    /// another (`backward`/`push` interleave buffers and lines freely), so a
+    /// forward-only cursor can't walk them in one pass without first sorting
+    /// and later scattering results back — for `jump-list-capacity`'s default
+    /// of 100 entries against a typical single-keystroke changeset of a
+    /// handful of ops, that's more work than just re-walking the ops per
+    /// entry. `Selection`s *within* one entry are already sorted, so that
+    /// inner mapping (`SelectionSet::translate_in_place`) does share one
+    /// cursor across them.
+    ///
+    /// `text_pre`/`text_post` must be the buffer text immediately before and
+    /// after the edit — `text_pre` for `translate_in_place`'s own sticky-column
+    /// invalidation, `text_post` to recompute `primary_line`, which is a
+    /// cached line index rather than an offset and so can't be mapped through
+    /// `cs` directly.
+    pub(crate) fn translate_in_place(
+        &mut self,
+        buf_id: BufferId,
+        cs: &ChangeSet,
+        text_pre: &BufferText,
+        text_post: &BufferText,
+    ) {
+        let mut any_line_moved = false;
+        for entry in self.entries.iter_mut().filter(|e| e.buffer_id == buf_id) {
+            entry.selections.translate_in_place(cs, text_pre);
+            let new_line = text_post.char_to_line(entry.selections.primary().head());
+            any_line_moved |= new_line != entry.primary_line;
+            entry.primary_line = new_line;
+        }
+        // Two entries can only newly collide on (buffer_id, primary_line) if
+        // one of them just moved — skip the collapse walk on the common case
+        // of an edit that didn't cross any entry's line.
+        if any_line_moved {
+            self.collapse_adjacent_duplicates();
+        }
+    }
+
+    /// Merge adjacent entries that now share `(buffer_id, primary_line)` —
+    /// a deletion spanning multiple jump points can map them onto the same
+    /// spot. Only physically adjacent entries are checked, matching `push`'s
+    /// own dedup (which only ever compares against the immediately preceding
+    /// entry, not the whole list), so this can't merge entries `push` itself
+    /// would have kept apart.
+    ///
+    /// Keeps the newer (later-pushed, higher-index) entry of each run, same
+    /// as `push`'s `*last = entry`. Remaps `cursor` so it still addresses the
+    /// same conceptual position: a boundary is snapped to the start of the
+    /// group it falls in, so `cursor == entries.len()` (the present) still
+    /// maps to the new length.
+    fn collapse_adjacent_duplicates(&mut self) {
+        let n = self.entries.len();
+        let mut group_ends = Vec::new();
+        let mut merged = VecDeque::with_capacity(n);
+        let mut i = 0;
+        while i < n {
+            let mut j = i + 1;
+            while j < n && Self::same_slot(&self.entries[i], &self.entries[j]) {
+                j += 1;
+            }
+            merged.push_back(self.entries[j - 1].clone());
+            group_ends.push(j);
+            i = j;
+        }
+        if merged.len() == self.entries.len() {
+            return; // No adjacent run had more than one member — nothing to merge.
+        }
+        self.cursor = group_ends.partition_point(|&end| end <= self.cursor);
+        self.entries = merged;
     }
 
     /// Navigate backward. If at the present, saves `current` first so that

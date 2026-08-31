@@ -329,6 +329,7 @@ impl CompletionSession {
                     &mut state.buffers,
                     &state.config.decorations,
                     &mut state.panes.state,
+                    &mut state.panes.jumps,
                     pid,
                     self.bid,
                     move |b, s| replace_around_cursors(b, s, back, forward, &new_text),
@@ -343,6 +344,7 @@ impl CompletionSession {
                 &mut state.buffers,
                 &state.config.decorations,
                 &mut state.panes.state,
+                &mut state.panes.jumps,
                 pid,
                 self.bid,
                 move |b, s| {

@@ -86,6 +86,7 @@ pub(in crate::editor) fn run_native_body(
                 &mut state.buffers,
                 &state.config.decorations,
                 &mut state.panes.state,
+                &mut state.panes.jumps,
                 focused,
                 buf,
                 fun,

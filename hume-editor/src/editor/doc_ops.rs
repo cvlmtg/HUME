@@ -14,6 +14,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::decorations::DecorationStores;
+use crate::editor::jump_list::JumpList;
 use crate::editor::pane_state::PaneBufferState;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
@@ -26,6 +27,7 @@ pub(crate) type ApplyDocFn = fn(
     &mut BufferStore,
     &DecorationStores,
     &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    &mut SecondaryMap<PaneId, JumpList>,
     PaneId,
     BufferId,
 );
@@ -73,14 +75,14 @@ fn record_lsp_edits(
 }
 
 /// Shared post-mutation bookkeeping for every text-mutating path: bump the
-/// edit seq, write `new_sels` back, propagate `cs` to sibling panes, and feed
-/// both the syntax and LSP/decoration remap streams. A path that forgets one
-/// of these steps would silently drift decorations or leave a stale syntax
-/// tree, with no compile error — so this is the one place that sequence is
-/// spelled out.
+/// edit seq, write `new_sels` back, propagate `cs` to sibling panes and every
+/// pane's jump list, and feed both the syntax and LSP/decoration remap
+/// streams. A path that forgets one of these steps would silently drift
+/// decorations or leave a stale syntax tree, with no compile error — so this
+/// is the one place that sequence is spelled out.
 ///
-/// The first five parameters are the same threading quintet every function
-/// in this file already receives; the last four are each caller's own
+/// The first six parameters are the same threading sextet every function in
+/// this file already receives; the last four are each caller's own
 /// pre/post-edit state. Bundling either group into a struct would only move
 /// the field list, not shrink it.
 #[allow(clippy::too_many_arguments)]
@@ -88,6 +90,7 @@ fn finish_edit(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
     new_sels: SelectionSet,
@@ -109,8 +112,30 @@ fn finish_edit(
     buffers.bump_edit_seq();
     propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, cs, text_pre);
     let text_gen = buffers.get(buf_id).text_gen;
+    let text_post = buffers.get(buf_id).text();
+    propagate_cs_to_jumps(pane_jumps, buf_id, cs, text_pre, text_post);
     record_syntax_edits(buffers, buf_id, text_gen, cs, rope_pre);
     record_lsp_edits(buffers, decorations, buf_id, text_gen, cs, rope_pre);
+}
+
+/// Remap every pane's jump-list entries for `buf_id` through `cs`.
+///
+/// Unlike [`propagate_cs_to_panes`], this does **not** filter by which panes
+/// currently view `buf_id` — a pane's jump list holds entries for buffers
+/// that pane isn't showing right now (that's what makes cross-buffer
+/// Ctrl+O work), so every pane's list must be checked, including the
+/// focused one (its own live cursor isn't a jump-list entry, so nothing is
+/// mapped twice).
+fn propagate_cs_to_jumps(
+    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
+    buf_id: BufferId,
+    cs: &ChangeSet,
+    text_pre: &BufferText,
+    text_post: &BufferText,
+) {
+    for jumps in pane_jumps.values_mut() {
+        jumps.translate_in_place(buf_id, cs, text_pre, text_post);
+    }
 }
 
 /// Apply an edit to the focused buffer and propagate the resulting
@@ -133,6 +158,7 @@ pub(crate) fn apply_doc_edit(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
@@ -145,6 +171,7 @@ pub(crate) fn apply_doc_edit(
             buffers,
             decorations,
             pane_state,
+            pane_jumps,
             focused_pane_id,
             buf_id,
             cmd,
@@ -160,6 +187,7 @@ pub(crate) fn apply_doc_edit(
         buffers,
         decorations,
         pane_state,
+        pane_jumps,
         focused_pane_id,
         buf_id,
         new_sels,
@@ -184,6 +212,7 @@ pub(crate) fn apply_doc_edit_grouped(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
@@ -207,6 +236,7 @@ pub(crate) fn apply_doc_edit_grouped(
         buffers,
         decorations,
         pane_state,
+        pane_jumps,
         focused_pane_id,
         buf_id,
         new_sels,
@@ -227,6 +257,7 @@ pub(crate) fn apply_doc_edit_regrouped(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
@@ -245,6 +276,7 @@ pub(crate) fn apply_doc_edit_regrouped(
         buffers,
         decorations,
         pane_state,
+        pane_jumps,
         focused_pane_id,
         buf_id,
         new_sels,
@@ -260,6 +292,7 @@ pub(crate) fn apply_doc_undo(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
 ) {
@@ -280,6 +313,7 @@ pub(crate) fn apply_doc_undo(
             buffers,
             decorations,
             pane_state,
+            pane_jumps,
             focused_pane_id,
             buf_id,
             new_sels,
@@ -296,6 +330,7 @@ pub(crate) fn apply_doc_redo(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_jumps: &mut SecondaryMap<PaneId, JumpList>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
 ) {
@@ -313,6 +348,7 @@ pub(crate) fn apply_doc_redo(
             buffers,
             decorations,
             pane_state,
+            pane_jumps,
             focused_pane_id,
             buf_id,
             new_sels,

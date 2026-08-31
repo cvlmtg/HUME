@@ -208,6 +208,7 @@ fn history_step(
             &mut state.buffers,
             &state.config.decorations,
             &mut state.panes.state,
+            &mut state.panes.jumps,
             focused,
             buf,
         );

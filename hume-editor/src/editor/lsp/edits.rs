@@ -147,6 +147,7 @@ fn commit_changeset(state: &mut EditorState, bid: BufferId, cs: ChangeSet) -> Ch
         &mut state.buffers,
         &state.config.decorations,
         &mut state.panes.state,
+        &mut state.panes.jumps,
         state.focused_pane_id,
         bid,
         move |text, mut sels| {

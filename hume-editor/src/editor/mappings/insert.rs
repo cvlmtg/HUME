@@ -42,6 +42,7 @@ impl Editor {
             &mut self.state.buffers,
             &self.state.config.decorations,
             &mut self.state.panes.state,
+            &mut self.state.panes.jumps,
             focused,
             buf,
             cmd,

@@ -193,7 +193,8 @@ impl Editor {
     /// same buffer ride the inverse `ChangeSet` via `propagate_cs_to_panes`
     /// like any edit.
     ///
-    /// Survives the reload: jump list, per-buffer search state (match cache
+    /// Survives the reload: jump list (remapped through the reload's forward
+    /// `ChangeSet`, same as any edit), per-buffer search state (match cache
     /// rebuilds lazily). Dropped as stale: in-progress edit groups/paste
     /// sessions, the engine-side syntax tree, and saved scrolls.
     ///
@@ -260,11 +261,22 @@ impl Editor {
         let new_file_meta = std::mem::take(&mut new_doc.file_meta);
         drop(new_doc);
 
-        let mutated = self
+        // Captured before the reload mutates `self.text` — `translate_in_place`
+        // needs the pre-reload content to identify which lines the reload
+        // touched, same requirement as any other edit's `text_pre`.
+        let text_pre = self.state.buffers.get(id).text().clone();
+        let reload_cs = self
             .state
             .buffers
             .get_mut(id)
             .reload_from_text(new_text, pre_sels, post_sels);
+        let mutated = reload_cs.is_some();
+        if let Some(cs) = &reload_cs {
+            let text_post = self.state.buffers.get(id).text();
+            for jumps in self.state.panes.jumps.values_mut() {
+                jumps.translate_in_place(id, cs, &text_pre, text_post);
+            }
+        }
         self.state.buffers.get_mut(id).file_meta = new_file_meta;
         // Flush any didChange already queued for this buffer *before* the
         // whole-document one below — otherwise, under macro replay (an edit
@@ -330,8 +342,9 @@ impl Editor {
         // line, but a saved `top_row_offset`/`horizontal_offset` for a
         // scroll position that no longer exists is still worth discarding
         // outright rather than recalling a clamped-but-arbitrary spot. The
-        // jump list is preserved — the same buffer id survives, so existing
-        // jumps still reference valid positions.
+        // jump list was already remapped through `reload_cs` above (Phase 2b)
+        // — same-buffer-id survival alone isn't enough, since the reload can
+        // shift or delete the text an entry pointed at.
         for pane in self.view.panes.values_mut() {
             pane.forget_buffer(id);
         }
@@ -442,6 +455,16 @@ impl Editor {
         let text = BufferText::from(content);
         let bid = if let Some(existing) = self.state.buffers.find_by_label(label) {
             self.state.buffers.get_mut(existing).set_view_content(text);
+            // `set_view_content` resets history — there is no `ChangeSet` to
+            // remap jump entries through, and a regenerated view buffer
+            // (`[messages]`, `[buffers]`) shares nothing but its id with the
+            // old content, so a stale offset into it would point at
+            // arbitrary text. Drop them outright, same call
+            // `reload_buffer_in_place` makes for saved scrolls it can't
+            // meaningfully clamp.
+            for jumps in self.state.panes.jumps.values_mut() {
+                jumps.prune_buffer(existing);
+            }
             existing
         } else {
             let doc = Buffer::read_only_view(text, label.to_owned());

@@ -1331,6 +1331,7 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
         &mut ed.state.buffers,
         &ed.state.config.decorations,
         &mut ed.state.panes.state,
+        &mut ed.state.panes.jumps,
         focused,
         bid,
         |text, sels| hume_ops::edit::insert_char(text, sels, 'z'),
@@ -1582,6 +1583,7 @@ fn identity_edit_fires_no_on_text_changed() {
         &mut ed.state.buffers,
         &ed.state.config.decorations,
         &mut ed.state.panes.state,
+        &mut ed.state.panes.jumps,
         focused,
         bid,
         |text, sels| {
@@ -1646,6 +1648,7 @@ fn identity_edit_records_no_undo_revision() {
         &mut ed.state.buffers,
         &ed.state.config.decorations,
         &mut ed.state.panes.state,
+        &mut ed.state.panes.jumps,
         focused,
         bid,
         |text, sels| {
