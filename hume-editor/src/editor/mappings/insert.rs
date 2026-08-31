@@ -123,14 +123,13 @@ impl Editor {
                 // Any cursor-motion command (arrows, Home/End, goto-*, …)
                 // invalidates a pinned "typed run" — its anchor would
                 // otherwise select across text the cursor jumped away from.
-                // `CmdMeta`'s motion flags are the source of truth for "this
-                // moved the cursor rather than editing" — not the command's
-                // variant or name, since an edit command (delete-word-backward)
-                // can equally be an `EditorCmd` and must NOT clear the pins.
-                // exit-insert is the finalizer itself and must not clear the
-                // pins it consumes, and correctly sets none of these flags.
-                let meta = reg_cmd.meta();
-                if meta.is_motion || meta.is_visual_move || meta.is_jump {
+                // `CmdMeta::moves_cursor` decides, not the command's variant
+                // or name: an edit command (delete-word-backward) can equally
+                // be an `EditorCmd` and must NOT clear the pins. exit-insert
+                // is the finalizer itself and must not clear the pins it
+                // consumes, and correctly sets none of these flags. See that
+                // predicate's doc for the Steel blind spot both callers share.
+                if reg_cmd.meta().moves_cursor() {
                     let pid = self.state.focused_pane_id;
                     let bid = self.focused_buffer_id();
                     self.state.panes.state[pid][bid].pinned_anchors = None;

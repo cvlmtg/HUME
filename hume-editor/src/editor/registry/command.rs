@@ -46,6 +46,10 @@ pub(crate) enum SelectionTracking {
 /// Adding a new behavior = add one field here + one `step_*` function that reads
 /// it — no existing fields or call sites are affected.
 ///
+/// The one derived reading is [`CmdMeta::moves_cursor`], a disjunction of the
+/// three motion flags that two dispatch stages both need. It adds no state and
+/// no category: each flag is still set independently at its own `meta()` arm.
+///
 /// `Copy` and name-free on purpose: the variant→property mapping lives in
 /// `MappableCommand::meta()` and nowhere else, so `meta()` must be cheap enough
 /// that no caller is ever tempted to re-`match` the variant for a single bit
@@ -112,6 +116,25 @@ pub(crate) struct CmdMeta {
     /// selection commands. Mirrors Vim visual-mode: any operator on a visual
     /// selection returns to normal. Read by the dispatch pipeline's AFTER step.
     pub clears_extend: bool,
+}
+
+impl CmdMeta {
+    /// Returns `true` if this command moved the cursor rather than editing —
+    /// the disjunction of `is_motion`, `is_jump`, and `is_visual_move`.
+    ///
+    /// Two stages want exactly this set and nothing else: `step_capture_pre_jump`
+    /// (snapshot the pre-body position for the jump list) and the Insert-mode
+    /// trie's pinned-anchor invalidation (`mappings/insert.rs`). Derived in one
+    /// place so the two can't drift apart on a future flag.
+    ///
+    /// **Blind spot**: [`MappableCommand::meta`] hardcodes all three flags
+    /// `false` for `SteelBacked` and `Lazy`, since a Steel command has no way to
+    /// declare its own motion semantics. A user-bound Steel motion therefore
+    /// answers `false` here — the jump list won't record it, and a pinned typed
+    /// run survives it. Both callers accept that rather than guess.
+    pub(crate) fn moves_cursor(&self) -> bool {
+        self.is_motion || self.is_jump || self.is_visual_move
+    }
 }
 
 /// Function pointer for an [`EditorCmd`] handler.

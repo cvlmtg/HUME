@@ -141,7 +141,7 @@ pub(super) fn step_capture_pre_jump(
     view: &EngineView,
     meta: &CmdMeta,
 ) -> Option<(Selection, usize, BufferId)> {
-    (meta.is_jump || meta.is_visual_move || meta.is_motion).then(|| jump_position(state, view))
+    meta.moves_cursor().then(|| jump_position(state, view))
 }
 
 /// The primary selection, its line, and the focused buffer — what a jump
