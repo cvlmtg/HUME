@@ -16,16 +16,20 @@ pub enum FindKind {
 
 /// Apply an inner motion to every selection in the set, repeated `count` times.
 ///
-/// `motion` is a plain function `fn(&BufferText, head) -> new_head`. It knows
-/// nothing about anchors or multi-cursor — it computes exactly one new
-/// position from one old position. `apply_motion` handles the anchor
-/// semantics (via `mode`) and multi-cursor bookkeeping.
+/// `motion` computes one new head position, given the whole current
+/// selection — most motions only read `sel.head()`, but a motion that needs
+/// to resolve against the whole span (e.g. [`goto_matching_pair`]) can too.
+/// `apply_motion` handles the anchor semantics (via `mode`) and multi-cursor
+/// bookkeeping.
 ///
-/// `count` controls how many times the motion is applied per selection.
-/// The motion is folded `count` times *inside* the `map` call — each selection
-/// independently accumulates N steps before anchor/merge logic runs. This is
-/// semantically "move 3 words" (not "apply 1w to the whole selection set three
-/// times"), which prevents premature merging of multi-cursor selections between
+/// `count` controls how many times the motion is applied per selection. Each
+/// fold step rebuilds a `Selection` pinned to the *original* anchor with the
+/// latest head, so a multi-step motion sees a selection shaped like its
+/// caller would see it after one step, not a bare head. The motion is folded
+/// `count` times *inside* the `map` call — each selection independently
+/// accumulates N steps before anchor/merge logic runs. This is semantically
+/// "move 3 words" (not "apply 1w to the whole selection set three times"),
+/// which prevents premature merging of multi-cursor selections between
 /// steps.
 ///
 /// Uses `map` (which always merges) so that selections which converge to the
@@ -35,10 +39,12 @@ pub(crate) fn apply_motion(
     sels: SelectionSet,
     mode: MotionMode,
     count: usize,
-    motion: impl Fn(&BufferText, usize) -> usize,
+    motion: impl Fn(&BufferText, &Selection) -> usize,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
-        let new_head = (0..count).fold(sel.head(), |h, _| motion(text, h));
+        let new_head = (0..count)
+            .fold(sel, |s, _| Selection::new(s.anchor(), motion(text, &s)))
+            .head();
         match mode {
             MotionMode::Move => Selection::collapsed(new_head),
             MotionMode::Extend => Selection::new(sel.anchor(), new_head),
@@ -83,7 +89,7 @@ mod tests;
 // data — name, mode, motion — with no repeated scaffolding.
 
 /// Generate a named motion command whose motion function takes only
-/// `(&BufferText, head)`:
+/// `(&BufferText, head)` — wrapped to fit `apply_motion`'s `&Selection` param:
 /// ```text
 /// motion_cmd!(/// doc, cmd_move_right, move_right);
 /// ```
@@ -96,7 +102,7 @@ macro_rules! motion_cmd {
         $(#[$attr])*
         #[allow(non_snake_case)]
         pub fn $name(text: &BufferText, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
-            apply_motion(text, sels, mode, count, $motion)
+            apply_motion(text, sels, mode, count, |t, s: &Selection| $motion(t, s.head()))
         }
     };
 }
@@ -130,28 +136,13 @@ motion_cmd!(/// Move or extend cursors to the first non-blank character on their
 /// to a bare `#`. Vim's `count%` means "go to N% of the file" — a different
 /// operation this motion doesn't implement — so `count` is ignored rather
 /// than given a meaning nobody asked for.
-///
-/// Also can't ride `apply_motion`: bracket resolution needs the whole
-/// selection (nearest bracket to the head, not just the head's own
-/// grapheme cluster — see [`goto_matching_pair`]'s doc comment), but
-/// `apply_motion`'s inner `motion` only ever receives a head position. Maps
-/// over the set directly instead, the same shape `line_select::cmd_select_line`
-/// uses for the same reason.
 pub fn cmd_goto_matching_pair(
     text: &BufferText,
     sels: SelectionSet,
     _count: usize,
     mode: MotionMode,
 ) -> SelectionSet {
-    let result = sels.map(|sel| {
-        let new_head = goto_matching_pair(text, &sel);
-        match mode {
-            MotionMode::Move => Selection::collapsed(new_head),
-            MotionMode::Extend => Selection::new(sel.anchor(), new_head),
-        }
-    });
-    result.debug_assert_valid(text);
-    result
+    apply_motion(text, sels, mode, 1, goto_matching_pair)
 }
 
 // Paragraph motions.

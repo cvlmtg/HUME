@@ -4,7 +4,6 @@
 //! `a"`, etc.) and [`super::surround`] (to find the delimiter pair that wraps
 //! the cursor before replacing or deleting it).
 
-use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::lines::line_end_exclusive;
 use hume_editing::selection::Selection;
 use hume_editing::text::BufferText;
@@ -94,67 +93,51 @@ pub(crate) fn find_bracket_pair(
     }
 }
 
-/// The bracket pair `ch` belongs to, if any.
-fn bracket_pair_for(ch: char) -> Option<(char, char)> {
-    BRACKET_PAIRS
-        .iter()
-        .copied()
-        .find(|&(o, c)| ch == o || ch == c)
-}
-
-/// The first bracket char `indices` yields, with the pair it belongs to.
-/// Direction (and thus which bracket counts as "nearest") is entirely up to
-/// the caller's iterator — a plain `Range` scans left to right, `.rev()`'d
-/// scans right to left.
-fn first_bracket_in(
-    text: &BufferText,
-    mut indices: impl Iterator<Item = usize>,
-) -> Option<(usize, char, char)> {
-    indices.find_map(|i| {
-        let ch = text.char_at(i)?;
-        let (o, c) = bracket_pair_for(ch)?;
-        Some((i, o, c))
-    })
-}
-
-/// Find the bracket nearest `sel`'s head, considering the whole selection —
-/// not just the head's own grapheme cluster.
+/// Find the bracket nearest `sel`'s head, scanning the whole selection span.
 ///
-/// `sel`'s head is always one extremity of the selection (`start()` or
-/// `end()`; for a collapsed selection the two coincide) — never interior —
-/// so "nearest to head, within the selection" only ever means "closest to
-/// head, walking inward toward the anchor". That collapses the search to a
-/// single direction: the head's own cluster first (exactly what the old
-/// head-only resolver checked, preserved unchanged so a collapsed selection
-/// behaves identically to before), then one scan from there toward the
-/// anchor, stopping at the first hit — which is, by construction, the
-/// nearest one.
-fn nearest_bracket(text: &BufferText, sel: &Selection) -> Option<(usize, char, char)> {
-    let head = sel.head();
-    let cluster_end = next_grapheme_boundary(text, head);
-    if let Some(found) = first_bracket_in(text, head..cluster_end) {
-        return Some(found);
-    }
-    if head == sel.start() {
-        first_bracket_in(text, cluster_end..sel.end_inclusive(text) + 1)
+/// `sel`'s head is always one extremity of the span (`start()` or `end()`;
+/// for a collapsed selection the two coincide) — never interior — so
+/// "nearest to head, within the selection" is just "scan the span from the
+/// head's end inward"; the first hit is, by construction, the nearest one.
+/// Uses `chars_at` rather than indexed `char_at` calls so the scan pays
+/// ropey's O(log n) tree descent once, not once per char (same reason
+/// `scan_left_for_open`/`scan_right_for_close` above use it).
+fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(usize, char, char)> {
+    let classify = |(i, ch): (usize, char)| {
+        let &(o, c) = BRACKET_PAIRS.iter().find(|&(o, c)| ch == *o || ch == *c)?;
+        Some((i, o, c))
+    };
+    let span = sel.start()..sel.end_inclusive(text) + 1;
+    if sel.head() == span.start {
+        text.chars_at(span.start).take(span.len()).find_map(classify)
     } else {
-        first_bracket_in(text, (sel.start()..head).rev())
+        let mut cursor = text.chars_at(span.end);
+        while let Some(hit) = cursor.prev() {
+            if hit.0 < span.start {
+                return None;
+            }
+            if let Some(found) = classify(hit) {
+                return Some(found);
+            }
+        }
+        None
     }
 }
 
 /// Find the partner of the bracket nearest `sel`'s head, within `sel`.
 ///
-/// Resolution prefers the head's own grapheme cluster — a bracket char is
-/// always ASCII and never itself combines forward, but a `GC_Prepend`
-/// codepoint immediately before one (e.g. U+0600 ARABIC NUMBER SIGN) joins
-/// *into* it, so a head landing on that leading codepoint — exactly where
+/// Resolves against the whole selection, not just the head's own grapheme
+/// cluster — a `w`-motion selection like `") "` leaves the head on the
+/// trailing space rather than the bracket itself (`word-selects-whitespace`
+/// is by design), and `%`-style matching should still find the `)`. The
+/// head's own cluster is always checked first: a bracket char is always
+/// ASCII and never itself combines forward, but a `GC_Prepend` codepoint
+/// immediately before one (e.g. U+0600 ARABIC NUMBER SIGN) joins *into* it,
+/// so a head landing on that leading codepoint — exactly where
 /// [`hume_editing::grapheme::snap_to_cluster_start`] leaves a motion after
 /// matching such a bracket — must still resolve, or a second `%`-style press
 /// (an involution) finds nothing and the cursor-match highlight goes dark on
-/// a bracket the cursor is visibly beside. Failing that, it falls back to the
-/// nearest bracket anywhere else in the selection — e.g. a `w`-motion
-/// selection like `") "` with the head on the trailing space rather than the
-/// bracket itself.
+/// a bracket the cursor is visibly beside.
 ///
 /// This is the resolver `%`-style matching needs ("which pair is this
 /// delimiter part of, and where's the other end") that [`find_bracket_pair`]
@@ -163,7 +146,7 @@ fn nearest_bracket(text: &BufferText, sel: &Selection) -> Option<(usize, char, c
 /// cursor highlight (`hume-editor`'s `decoration_providers`) — both need the
 /// same answer to "what does this character pair with", so there is exactly
 /// one place `BRACKET_PAIRS` gets consulted for it.
-pub fn matching_bracket(text: &BufferText, sel: &Selection) -> Option<usize> {
+pub fn matching_bracket(text: &BufferText, sel: Selection) -> Option<usize> {
     let (bracket_pos, open, close) = nearest_bracket(text, sel)?;
     let (open_pos, close_pos) = find_bracket_pair(text, bracket_pos, open, close)?;
     Some(if bracket_pos == open_pos {

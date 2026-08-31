@@ -142,16 +142,11 @@ impl Editor {
         }
 
         // ── Bracket match highlight — cursor concept, focused pane only ──────
-        // Brackets only, not `goto-matching-pair`'s tag partner too: unlike
-        // `matching_bracket`, `hume_ops::tag::matching_tag` isn't O(1) to rule
-        // out (its backward tag-boundary scan runs unbounded per frame), so
-        // running it here would trade a per-keystroke cost for a per-render
-        // one. `#` still jumps to a tag's partner; it just isn't highlighted.
-        //
-        // Resolves against the whole primary selection, nearest the head —
-        // the same rule `#` itself uses — so a `w`-motion selection like
-        // `") "` still shows its bracket highlighted even though the head
-        // sits on the trailing space, not the bracket.
+        // Brackets only, not `goto-matching-pair`'s tag partner too:
+        // `hume_ops::tag::matching_tag`'s backward tag-boundary scan is
+        // unbounded per position, so running it here would add an unbounded
+        // per-render cost on top of `matching_bracket`'s own selection-wide
+        // scan. `#` still jumps to a tag's partner; it just isn't highlighted.
         //
         // Clear every pane first: a bracket match lingers only on whichever
         // pane last had focus, so moving focus away must blank the old one.
@@ -173,7 +168,7 @@ impl Editor {
                 let primary = self.state.panes.state[focused][self.focused_buffer_id()]
                     .selections
                     .primary();
-                if let Some(match_pos) = matching_bracket(text, &primary) {
+                if let Some(match_pos) = matching_bracket(text, primary) {
                     let (line, byte) = char_to_line_byte(text, match_pos);
                     // Single-char match: byte_end = byte + utf8 length of the char.
                     let ch_len = text.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);

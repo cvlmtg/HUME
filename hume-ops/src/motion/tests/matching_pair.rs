@@ -130,13 +130,14 @@ fn goto_matching_pair_extend_from_non_head_bracket_keeps_anchor() {
 }
 
 #[test]
-fn goto_matching_pair_no_bracket_in_selection_is_noop() {
-    // Move mode always collapses to the (unchanged) head, same as any other
-    // no-op — a multi-char selection with nothing to jump to still collapses.
+fn goto_matching_pair_bracket_outside_selection_is_noop() {
+    // '(f)' sits past the selection's own end, so it must not be picked up —
+    // resolution is bounded by the selection, not the whole line. Move mode
+    // still collapses to the (unchanged) head, same as any other no-op.
     assert_state!(
-        "a-[bc de]>f\n",
+        "a-[bc d]>e(f)\n",
         |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
-        "abc d-[e]>f\n"
+        "abc -[d]>e(f)\n"
     );
 }
 

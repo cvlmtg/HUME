@@ -1,7 +1,7 @@
 use super::{FindKind, MotionMode, apply_motion};
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::lines::line_break_char;
-use hume_editing::selection::SelectionSet;
+use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 
 // ── Find/till character motions ───────────────────────────────────────────────
@@ -70,7 +70,8 @@ pub fn find_char_forward(
     ch: char,
     kind: FindKind,
 ) -> SelectionSet {
-    apply_motion(text, sels, mode, count, |b, head| {
+    apply_motion(text, sels, mode, count, |b, s: &Selection| {
+        let head = s.head();
         match find_char_on_line_forward(b, head, ch) {
             Some(pos) => match kind {
                 FindKind::Inclusive => pos,
@@ -99,7 +100,8 @@ pub fn find_char_backward(
     ch: char,
     kind: FindKind,
 ) -> SelectionSet {
-    apply_motion(text, sels, mode, count, |b, head| {
+    apply_motion(text, sels, mode, count, |b, s: &Selection| {
+        let head = s.head();
         match find_char_on_line_backward(b, head, ch) {
             Some(pos) => match kind {
                 FindKind::Inclusive => pos,
