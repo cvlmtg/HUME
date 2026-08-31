@@ -757,13 +757,18 @@ define_settings! {
         // Extra characters this buffer counts as part of a word, on top of
         // the built-in alphanumeric-plus-`_` rule (Vim's `iskeyword`, minus
         // the range syntax) — e.g. `-` makes `foo-bar` one word in CSS.
-        // Affects `w`/`W`/`b`/`B`, `mm`/`MM`, `miw`/`maw`, Ctrl-W, `*`, and
-        // `(symbol-under-cursor)`; the classifier itself is
-        // `hume_editing::word::WordChars`. No global default per language
-        // ships — set this per-language from an `on-language-set` hook (see
-        // `configuration.md`). Whitespace/newline are rejected at write time
-        // — promoting one to `Word` would leave a word run with no
-        // terminator (see `WordChars::validate`).
+        // Affects `w`/`b`, `mm`, `miw`/`maw`, Ctrl-W, `*`, `(symbol-under-cursor)`,
+        // symmetric auto-pair suppression, and the LSP completion fallback
+        // replace span (no server `textEdit`); the classifier itself is
+        // `hume_editing::word::WordChars`. Does NOT affect `W`/`B`/`MM` —
+        // they already merge punctuation into `Word` before comparing, so
+        // widening `Word` further is a no-op for them. No global default per
+        // language ships — set this per-language from an `on-language-set`
+        // hook (see `configuration.md`). Whitespace (any `char::is_whitespace`
+        // char, not just the five `classify_char` calls blank) is rejected
+        // at write time — promoting one to `Word` would leave a word run
+        // with no terminator, and several (`\r`, U+2028, U+2029) are ropey
+        // line breaks (see `WordChars::validate`).
         "word-chars" => word_chars: String = String::new(),
             scope: [Scope::Global, Scope::Buffer],
             parser: word_chars;
