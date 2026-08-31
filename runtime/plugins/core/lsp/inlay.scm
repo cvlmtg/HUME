@@ -36,8 +36,9 @@
                "range" (hash "start" (hash "line" first "character" 0)
                               "end" (hash "line" end "character" 0))))))
 
-;;; Debounced (200ms) per buffer, re-run from both on-viewport-change and
-;;; on-diagnostics-changed. `debounce-by`, not `debounce` — see README.
+;;; Debounced (200ms) per buffer, re-run from on-viewport-change,
+;;; on-diagnostics-changed, and on-text-changed. `debounce-by`, not
+;;; `debounce` — see README.
 (define lsp/refresh-hints
   (debounce-by 200
     (lambda (bid)
@@ -63,6 +64,13 @@
   (lambda (bid first end) (lsp/refresh-hints bid)))
 
 (register-hook! 'on-diagnostics-changed
+  (lambda (bid) (lsp/refresh-hints bid)))
+
+;;; Covers undo/redo (and any other edit that doesn't scroll the viewport or
+;;; provoke a diagnostics republish) — a hint dropped because its anchor
+;;; character was deleted must come back once that edit is undone, not stay
+;;; gone until an unrelated scroll or diagnostics event happens to refresh it.
+(register-hook! 'on-text-changed
   (lambda (bid) (lsp/refresh-hints bid)))
 
 ;;; `refresh-hints` silently skips once `bid` has no attached server, so

@@ -202,11 +202,13 @@ from the same `diagnostics-for-buffer` call.
 
 ### Inlay hints
 
-Off by default (`:set global lsp.inlay-hints=true` opts in). Refreshed on both
-`on-viewport-change` and `on-diagnostics-changed`, debounced 200ms per buffer via
-`debounce-by` (not `debounce`) so a diagnostics batch touching two buffers can't have the
-second buffer's call cancel the first's pending refresh. A hint whose wire position can't be
-converted to a buffer offset — the buffer detached between the request firing and the
+Off by default (`:set global lsp.inlay-hints=true` opts in). Refreshed on `on-viewport-change`,
+`on-diagnostics-changed`, and `on-text-changed` — the last covers undo/redo and any other edit
+that neither scrolls the viewport nor provokes a diagnostics republish, so a hint dropped
+because its anchor character was deleted comes back once that edit is undone. Debounced 200ms
+per buffer via `debounce-by` (not `debounce`) so a diagnostics batch touching two buffers can't
+have the second buffer's call cancel the first's pending refresh. A hint whose wire position
+can't be converted to a buffer offset — the buffer detached between the request firing and the
 response arriving — is silently dropped rather than raising. A legitimate empty/null response
 still clears any hints left from a prior, larger response; only a genuine request error leaves
 the existing display untouched. The render bridge itself is deliberately *not* gated on the

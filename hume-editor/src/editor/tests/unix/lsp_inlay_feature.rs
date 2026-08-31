@@ -726,3 +726,43 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
          capabilities and send the request there, not the focused buffer's server"
     );
 }
+
+/// Reproduces the "hint doesn't come back after undo" bug: a hint dropped by
+/// `remap_points`'s deletion-anchor fix (`decorations.rs`) must be
+/// re-requested once the deleting edit is undone — `on-text-changed` fires
+/// for undo exactly like any other edit (`event.rs`'s doc comment), so
+/// `inlay.scm` hooking it must pick this up without any viewport scroll or
+/// diagnostics republish.
+#[test]
+fn undo_also_refreshes_hints() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
+        backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
+    });
+    ed.state.settings.lsp_inlay_hints = true;
+
+    // Insert a character and settle — its own on-text-changed fire is the
+    // baseline (1). No `fire_viewport_change`/`prepare_frame` call in the
+    // mix: that helper arms Rust's own viewport-debounce timer as a side
+    // effect (`frame.rs`'s `debounce_viewport_change`), which would cascade
+    // into a second, unrelated `on-viewport-change` fire during the next
+    // `settle_after_debounce`'s sleep — noise this test doesn't want.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key_esc());
+    settle_after_debounce(&mut ed);
+    assert_eq!(request_count(&requests, "textDocument/inlayHint"), 1);
+
+    ed.feed_key(key('u')); // undo
+    settle_after_debounce(&mut ed);
+
+    assert_eq!(
+        request_count(&requests, "textDocument/inlayHint"),
+        2,
+        "undo must also trigger a refresh via on-text-changed — it bumps \
+         text_gen exactly like the insert above did"
+    );
+}
