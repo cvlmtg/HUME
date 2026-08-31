@@ -68,17 +68,6 @@ pub fn inner_word_impl(
     Some((start, end))
 }
 
-pub fn cmd_inner_word(
-    text: &BufferText,
-    sels: SelectionSet,
-    _count: usize,
-    ctx: WordCtx<'_>,
-) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, ctx.mode, |b, pos| {
-        inner_word_impl(b, pos, is_word_boundary, ctx.chars)
-    })
-}
-
 /// Grow a word/punct span `(start, end)` to include an adjacent whitespace
 /// run: leading preferred, trailing when the leading run is indentation or
 /// absent.
@@ -370,44 +359,85 @@ pub fn cmd_select_word_nearest_on_line(
     result
 }
 
-/// Around word (`ma w`): same span as `mm` when `word-selects-whitespace` is
-/// on (see [`cmd_select_word`]), under a separate name because it stays
-/// available — ignoring `ctx.around` — regardless of that setting.
-pub fn cmd_around_word(
+type IsBoundary = fn(CharClass, CharClass) -> bool;
+type WordUnitFn = fn(&BufferText, usize, IsBoundary, WordChars<'_>) -> Option<(usize, usize)>;
+
+/// [`word_unit_at`] with `min_start` pinned to `0` — the shape every
+/// text-object command below needs, as opposed to the sticky-column motion
+/// path (`motion/word.rs`), which passes a nonzero visual-row floor.
+fn around_unit(
+    text: &BufferText,
+    pos: usize,
+    is_boundary: IsBoundary,
+    chars: WordChars<'_>,
+) -> Option<(usize, usize)> {
+    word_unit_at(text, pos, is_boundary, 0, chars)
+}
+
+/// Shared dispatch for the four word-object commands below: resolves the
+/// unit at each selection's position, parameterized by word class
+/// (`is_boundary`: [`is_word_boundary`] or [`is_uppercase_word_boundary`])
+/// and inner-vs-around (`word_unit`: [`inner_word_impl`] or [`around_unit`]).
+fn word_object_cmd(
     text: &BufferText,
     sels: SelectionSet,
-    _count: usize,
     ctx: WordCtx<'_>,
+    is_boundary: IsBoundary,
+    word_unit: WordUnitFn,
 ) -> SelectionSet {
     apply_text_object_by_mode(text, sels, ctx.mode, |b, pos| {
-        word_unit_at(b, pos, is_word_boundary, 0, ctx.chars)
+        word_unit(b, pos, is_boundary, ctx.chars)
     })
 }
 
-#[allow(non_snake_case)]
-pub fn cmd_inner_uppercase_word(
-    text: &BufferText,
-    sels: SelectionSet,
-    _count: usize,
-    ctx: WordCtx<'_>,
-) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, ctx.mode, |b, pos| {
-        inner_word_impl(b, pos, is_uppercase_word_boundary, ctx.chars)
-    })
+/// Generates one `cmd_*_word` fn delegating to [`word_object_cmd`].
+///
+/// The command registry stores `fun` as a bare `fn` pointer (see
+/// `hume-editor`'s `SelectionBody` doc), so each variant still needs its own
+/// named item — only the body is shared here, not the item itself.
+macro_rules! word_object_variant {
+    ($(#[$meta:meta])* $name:ident, $doc:expr, $is_boundary:expr, $word_unit:expr) => {
+        $(#[$meta])*
+        #[doc = $doc]
+        pub fn $name(
+            text: &BufferText,
+            sels: SelectionSet,
+            _count: usize,
+            ctx: WordCtx<'_>,
+        ) -> SelectionSet {
+            word_object_cmd(text, sels, ctx, $is_boundary, $word_unit)
+        }
+    };
 }
 
-/// Around WORD (`ma W`); see [`cmd_around_word`].
-#[allow(non_snake_case)]
-pub fn cmd_around_uppercase_word(
-    text: &BufferText,
-    sels: SelectionSet,
-    _count: usize,
-    ctx: WordCtx<'_>,
-) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, ctx.mode, |b, pos| {
-        word_unit_at(b, pos, is_uppercase_word_boundary, 0, ctx.chars)
-    })
-}
+word_object_variant!(
+    cmd_inner_word,
+    "Inner word (`mi w`): the run of same-class characters touching the cursor.",
+    is_word_boundary,
+    inner_word_impl
+);
+word_object_variant!(
+    cmd_around_word,
+    "Around word (`ma w`): same span as `mm` when `word-selects-whitespace` is \
+     on (see [`cmd_select_word`]), under a separate name because it stays \
+     available — ignoring `ctx.around` — regardless of that setting.",
+    is_word_boundary,
+    around_unit
+);
+word_object_variant!(
+    #[allow(non_snake_case)]
+    cmd_inner_uppercase_word,
+    "Inner WORD (`mi W`); see [`cmd_inner_word`].",
+    is_uppercase_word_boundary,
+    inner_word_impl
+);
+word_object_variant!(
+    #[allow(non_snake_case)]
+    cmd_around_uppercase_word,
+    "Around WORD (`ma W`); see [`cmd_around_word`].",
+    is_uppercase_word_boundary,
+    around_unit
+);
 
 /// Select the word under the cursor (`mm`): the inner word, or (when
 /// `ctx.around` — the effective `word-selects-whitespace` — is set) the same
