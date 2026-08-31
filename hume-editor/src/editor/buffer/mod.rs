@@ -436,6 +436,7 @@ impl Buffer {
     /// or needs discarding, and to remap jump-list entries through the
     /// reload — `reload_from_text` is the only place that already knows
     /// which branch ran and already has the CS in hand.
+    #[must_use]
     pub(crate) fn reload_from_text(
         &mut self,
         new_text: BufferText,

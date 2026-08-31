@@ -540,6 +540,68 @@ fn translate_in_place_preserves_a_backward_created_duplicate_pair() {
     );
 }
 
+/// The `removed_before_cursor` cursor adjustment fires when a merge happens
+/// mid-navigation (cursor not at the present) and the merged pair's kept
+/// entry sits at an original index the cursor has already passed — the case
+/// none of the tests above exercise, since they all remap from "at the
+/// present" (`cursor == entries.len()`).
+#[test]
+fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
+    let (bid, _other) = two_buffer_ids();
+    // line0="aaaa\n"[0,5) line1="bbbb\n"[5,10) line2="cccc\n"[10,15) line3="dddd"[15,19)
+    let text_pre = BufferText::from("aaaa\nbbbb\ncccc\ndddd");
+    let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
+    jl.push(entry_for(1, 0, bid)); // A: inside line0, original index 0
+    jl.push(entry_for(7, 1, bid)); // B: inside line1, original index 1
+    jl.push(entry_for(17, 3, bid)); // C: inside line3, original index 2
+    assert_eq!(jl.len(), 3);
+
+    // Simulate mid-navigation: the user is currently viewing C (original
+    // index 2), with A and B both behind it. Set directly rather than
+    // through `backward()`, whose "save current" branch would add an
+    // unrelated fourth entry to this scenario.
+    jl.cursor = 2;
+
+    // Delete "aaaa\nbbbb\n" (0..10) — A and B both fall inside it and
+    // collapse onto the same post-edit point; C, past the deletion, merely
+    // shifts and lands on a different line.
+    let mut b = ChangeSetBuilder::new(19);
+    b.delete(10);
+    b.retain_rest();
+    let cs = b.finish();
+    let edits = cs.edited_old_ranges();
+    let text_post = BufferText::from("cccc\ndddd");
+
+    jl.translate_in_place(bid, &edits, &cs, &text_pre, &text_post);
+
+    assert_eq!(
+        jl.len(),
+        2,
+        "A and B collapsed into one entry, C survives separately"
+    );
+    assert_eq!(
+        jl.cursor, 1,
+        "cursor shifts down by one merged-away entry that sat before it — A/B's \
+         kept entry (original index 1) was behind the cursor's original index 2"
+    );
+
+    // Oldest-to-newest: the merged A/B entry, then C — `backward` then
+    // `forward` walks both without disturbing which one the cursor lands on.
+    let kept_ab = jl.backward(entry_for(99, 99, bid)).unwrap();
+    assert_eq!(kept_ab.selections.primary().head(), 0);
+    assert_eq!(
+        kept_ab.primary_line, 0,
+        "A and B both collapsed onto line 0 of the post-edit text"
+    );
+    let survivor_c = jl.forward().unwrap();
+    assert_eq!(
+        survivor_c.selections.primary().head(),
+        7,
+        "C merely shifts by the 10-char deletion, unaffected by the A/B merge"
+    );
+    assert_eq!(survivor_c.primary_line, 1);
+}
+
 /// After pruning, backward/forward still work correctly on the remaining entries.
 #[test]
 fn prune_buffer_remaining_entries_navigable() {

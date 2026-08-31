@@ -69,7 +69,10 @@ impl DocHelper {
     /// helper's live `self.sels`.
     fn reload_from(&mut self, new_text: BufferText, post_sels: SelectionSet) {
         let pre_sels = self.sels.clone();
-        self.buf
+        // Helper's callers assert against `self.buf`/`self.sels` afterward,
+        // not the returned ChangeSet.
+        let _ = self
+            .buf
             .reload_from_text(new_text, pre_sels, post_sels.clone());
         self.sels = post_sels;
     }

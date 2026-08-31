@@ -297,8 +297,8 @@ impl Editor {
         // perfectly good syntax highlighting/diagnostics for nothing.
         if mutated {
             // `reload_from_text` bumped text_gen via set_text but produced no
-            // ChangeSet the LSP pending-queue mechanism can consume — send the
-            // reload as a whole-document didChange instead.
+            // *queued incremental* change the LSP pending-queue mechanism can
+            // consume — send the reload as a whole-document didChange instead.
             self.lsp_did_change_whole_document(id);
             // Diagnostics and LSP-sourced decorations were computed against the
             // pre-reload text — their char offsets are meaningless (and

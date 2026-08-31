@@ -327,9 +327,11 @@ pub(crate) fn replace_buffer_in_place(
 /// Resets `pane_state` (selections, search cursor, edit/paste groups) to
 /// [`pane_state::fresh_from_buf`] for every pane currently viewing `id`,
 /// drops `id`'s entries from every pane's jump list (cross-buffer, so not
-/// limited to viewers), and drops every pane's saved scroll for `id` (also
-/// not limited to viewers — a background pane's *saved* scroll for `id` is
-/// just as stale as a live one's).
+/// limited to viewers), and — via `Pane::forget_buffer` — drops every pane's
+/// saved scroll *and* wrap-mode pin for `id` (also not limited to viewers —
+/// a background pane's *saved* scroll or pin for `id` is just as stale as a
+/// live one's; a regenerated view buffer starts unpinned again, same as a
+/// freshly opened one would).
 pub(crate) fn reseed_panes_after_content_reset(
     ev: &mut EngineView,
     buffers: &BufferStore,
@@ -337,6 +339,16 @@ pub(crate) fn reseed_panes_after_content_reset(
     pane_jumps: &mut JumpLists,
     id: BufferId,
 ) {
+    // Drop every pane's cached state for `id`, not just current viewers' —
+    // a pane that viewed `id` and switched away still holds a `pane_state`
+    // entry for it, and that entry is exactly as stale as a live viewer's
+    // (see this function's own doc). Leaving it in place would surface the
+    // old, possibly out-of-bounds selection the moment that pane switches
+    // back; `pane_state::ensure`'s `or_insert_with` only seeds a *missing*
+    // entry, so removal is what makes that reseed happen.
+    for buf_state in pane_state.values_mut() {
+        buf_state.remove(id);
+    }
     // Collect before mutating (borrow checker); n≈1 in the single-pane case.
     let pane_ids: Vec<PaneId> = ev
         .panes
@@ -345,8 +357,8 @@ pub(crate) fn reseed_panes_after_content_reset(
         .map(|(pid, _)| pid)
         .collect();
     for pid in pane_ids {
-        // Unconditional overwrite: caller reset the content, so old view state
-        // (selections, edit group) is stale and must be discarded.
+        // Current viewers need their entry seeded immediately, not lazily on
+        // next switch — a live viewer is rendered this frame.
         pane_state[pid].insert(id, pane_state::fresh_from_buf(buffers.get(id)));
     }
     pane_jumps.prune_buffer(id);

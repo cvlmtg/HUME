@@ -488,6 +488,33 @@ fn undo_after_edit_remaps_jump_entry_back() {
     );
 }
 
+/// Redoing an edit must remap jump entries forward again too — `redo`
+/// replays the edit's own forward `ChangeSet` through the same `finish_edit`
+/// chokepoint as any other edit, a separate call site from `undo`'s.
+#[test]
+fn redo_after_undo_remaps_jump_entry_forward_again() {
+    let mut ed = jump_editor(10);
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g')); // records a jump entry at line 10, lands at line 0
+
+    ed.handle_key(key('O'));
+    ed.handle_key(key_esc());
+
+    let text_after_insert = ed.doc().text().to_string();
+
+    ed.handle_key(key('u')); // undo the insert
+    ed.handle_key(key('U')); // redo it
+
+    ed.handle_key(key_ctrl('o'));
+
+    assert_cursor_at_marker(
+        &ed,
+        &text_after_insert,
+        "line 10\n",
+        "redo's forward ChangeSet must remap the entry forward again",
+    );
+}
+
 /// An edit made from one pane must remap jump entries in every pane viewing
 /// the buffer, not just the pane that performed the edit — jump lists are
 /// per-pane, but the edit chokepoint doesn't know or care which pane a given
@@ -684,5 +711,53 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
         ed.state.panes.state[pid_b][bid].selections,
         ed.state.buffers.get(bid).initial_sels(),
         "a sibling pane's selection must be reseeded on a view-buffer refresh, not left stale"
+    );
+}
+
+/// A view-buffer refresh must also reseed a pane that *used to* view it but
+/// switched to a different buffer before the refresh — not just panes
+/// viewing it at refresh time. Otherwise switching that pane back finds a
+/// selection computed against content the refresh already discarded,
+/// potentially pointing past the new content's end.
+#[test]
+fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
+    let mut ed = editor_from("-[a]>b\n");
+    let bid_scratch = ed.focused_buffer_id();
+    let pid_a = ed.state.focused_pane_id;
+    let bid = ed.open_read_only_view("[jump-list-test]", "one\ntwo\nthree\nfour\nfive\n", 0);
+
+    // Split so pane B also views the view buffer; focus moves to it.
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    assert_ne!(pid_a, pid_b, "focus moved to the new pane");
+
+    // Pane A moves deep into content that won't exist after the refresh below.
+    ed.switch_focused_pane(pid_a);
+    ed.handle_key(key('g'));
+    ed.handle_key(key('e')); // goto-last-line
+    assert_ne!(
+        ed.current_selections().primary().head(),
+        0,
+        "cursor actually moved off the initial position"
+    );
+
+    // Pane A switches away to a different buffer — it is no longer a viewer
+    // of the view buffer when it gets refreshed below.
+    ed.switch_to_buffer_without_jump(bid_scratch);
+
+    // Refresh from pane B, with content too short for pane A's stale cached
+    // selection to remain valid.
+    ed.switch_focused_pane(pid_b);
+    ed.open_read_only_view("[jump-list-test]", "x\n", 0);
+
+    // Pane A switches back to the view buffer — its cached selection for
+    // `bid` must have been reseeded by the refresh, not left stale.
+    ed.switch_focused_pane(pid_a);
+    ed.switch_to_buffer_without_jump(bid);
+    assert_eq!(
+        ed.current_selections(),
+        &ed.state.buffers.get(bid).initial_sels(),
+        "a pane that switched away before a view-buffer refresh must still be reseeded, \
+         not just panes that were viewing it at refresh time"
     );
 }

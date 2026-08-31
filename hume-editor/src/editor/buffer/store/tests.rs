@@ -128,7 +128,8 @@ fn reload_from_text_does_not_bump_edit_seq() {
     let id = make_id(&mut ev);
     store.open(id, make_buf());
     let before = store.edit_seq();
-    store.get_mut(id).reload_from_text(
+    // This test asserts on `edit_seq`, not the returned ChangeSet.
+    let _ = store.get_mut(id).reload_from_text(
         BufferText::from("reloaded\n"),
         SelectionSet::default(),
         SelectionSet::default(),

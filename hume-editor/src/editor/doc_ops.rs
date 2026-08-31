@@ -82,13 +82,18 @@ fn record_lsp_edits(
 /// is the one place that sequence is spelled out.
 ///
 /// The first six parameters are the same threading sextet every function in
-/// this file already receives — all six are fields of `EditorState`, which
-/// every caller already holds and destructures at the call site; collapsing
-/// them into one `&mut EditorState` param is a real, verified-safe
-/// simplification, just not done yet. The last four genuinely can't collapse
-/// the same way: none is an `EditorState` field, and `text_pre`/`rope_pre` are
-/// pre-mutation snapshots this function couldn't re-derive from `state.buffers`
-/// even if it wanted to, since it runs after the mutation.
+/// this file already receives. Four of them (`buffers`, `decorations`,
+/// `pane_state`, `pane_jumps`) are fields reachable from a single
+/// `&EditorState`/`&mut EditorState` — `decorations` through `state.config`,
+/// the rest directly. `focused_pane_id` and `buf_id` are not: `buf_id` in
+/// particular is derived from `EngineView` (`view.panes[focused_pane_id]
+/// .buffer_id`), which this function doesn't receive, so collapsing the
+/// other four alone wouldn't shrink this list — every caller would still
+/// need to pass `buf_id` (and thus keep `view` in scope to compute it). The
+/// last four genuinely can't collapse the same way: none is an `EditorState`
+/// field, and `text_pre`/`rope_pre` are pre-mutation snapshots this function
+/// couldn't re-derive from `state.buffers` even if it wanted to, since it
+/// runs after the mutation.
 #[allow(clippy::too_many_arguments)]
 fn finish_edit(
     buffers: &mut BufferStore,

@@ -36,10 +36,18 @@ pub(crate) struct JumpEntry {
 }
 
 impl JumpEntry {
+    /// `primary_line`'s one derivation — the primary selection's head, resolved
+    /// to a line via `text`. Shared by [`Self::new`] (constructing an entry) and
+    /// [`JumpList::translate_in_place`] (recomputing it after an edit moved the
+    /// head), so the two never drift apart.
+    fn primary_line_of(selections: &SelectionSet, text: &BufferText) -> usize {
+        text.char_to_line(selections.primary().head())
+    }
+
     /// Build a jump entry from the current selection state, deriving
     /// `primary_line` from the buffer so callers don't have to.
     pub(crate) fn new(selections: SelectionSet, text: &BufferText, buffer_id: BufferId) -> Self {
-        let primary_line = text.char_to_line(selections.primary().head());
+        let primary_line = Self::primary_line_of(&selections, text);
         Self {
             buffer_id,
             selections,
@@ -221,7 +229,7 @@ impl JumpList {
                 entry
                     .selections
                     .translate_in_place_with(edits, cs, text_pre);
-                entry.primary_line = text_post.char_to_line(entry.selections.primary().head());
+                entry.primary_line = JumpEntry::primary_line_of(&entry.selections, text_post);
             }
             let post_line = self.entries[read].primary_line;
 
