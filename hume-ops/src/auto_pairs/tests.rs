@@ -1,4 +1,5 @@
 use super::*;
+use hume_editing::word::WordChars;
 use hume_test_fixtures::assert_state;
 
 // ── insert_pair_close — cursor ────────────────────────────────────────────
@@ -150,7 +151,13 @@ fn auto_pair_next_alphanumeric_rejects_asymmetric() {
     // Cursor at 0, next char 'b' — should NOT auto-pair `(`.
     let text = BufferText::from("bar");
     let pairs = default_pairs();
-    assert!(!should_auto_pair_at(&text, 0, &paren(), &pairs));
+    assert!(!should_auto_pair_at(
+        &text,
+        0,
+        &paren(),
+        &pairs,
+        WordChars::default()
+    ));
 }
 
 #[test]
@@ -158,7 +165,13 @@ fn auto_pair_next_alphanumeric_rejects_symmetric() {
     // Cursor at 0, next char 'b' — should NOT auto-pair `"`.
     let text = BufferText::from("bar");
     let pairs = default_pairs();
-    assert!(!should_auto_pair_at(&text, 0, &quote(), &pairs));
+    assert!(!should_auto_pair_at(
+        &text,
+        0,
+        &quote(),
+        &pairs,
+        WordChars::default()
+    ));
 }
 
 #[test]
@@ -166,7 +179,13 @@ fn auto_pair_next_space_accepts() {
     // Cursor at 4 (space between words) — next char is space.
     let text = BufferText::from("foo bar");
     let pairs = default_pairs();
-    assert!(should_auto_pair_at(&text, 3, &paren(), &pairs));
+    assert!(should_auto_pair_at(
+        &text,
+        3,
+        &paren(),
+        &pairs,
+        WordChars::default()
+    ));
 }
 
 #[test]
@@ -174,7 +193,13 @@ fn auto_pair_next_newline_accepts() {
     // Cursor on the structural `\n` — next char is newline.
     let text = BufferText::from("hello");
     let pairs = default_pairs();
-    assert!(should_auto_pair_at(&text, 5, &paren(), &pairs));
+    assert!(should_auto_pair_at(
+        &text,
+        5,
+        &paren(),
+        &pairs,
+        WordChars::default()
+    ));
 }
 
 #[test]
@@ -182,7 +207,13 @@ fn auto_pair_next_closing_bracket_accepts() {
     // Cursor at 1 (inside `()`), next char is `)`.
     let text = BufferText::from("()");
     let pairs = default_pairs();
-    assert!(should_auto_pair_at(&text, 1, &paren(), &pairs));
+    assert!(should_auto_pair_at(
+        &text,
+        1,
+        &paren(),
+        &pairs,
+        WordChars::default()
+    ));
 }
 
 #[test]
@@ -191,7 +222,13 @@ fn auto_pair_symmetric_prev_alphanumeric_rejects() {
     // Should NOT auto-pair the quote.
     let text = BufferText::from("don't");
     let pairs = default_pairs();
-    assert!(!should_auto_pair_at(&text, 3, &quote(), &pairs));
+    assert!(!should_auto_pair_at(
+        &text,
+        3,
+        &quote(),
+        &pairs,
+        WordChars::default()
+    ));
 }
 
 #[test]
@@ -199,7 +236,13 @@ fn auto_pair_symmetric_prev_space_accepts() {
     // `say ` — cursor at 4 (the `\n`), prev char is space.
     let text = BufferText::from("say ");
     let pairs = default_pairs();
-    assert!(should_auto_pair_at(&text, 4, &quote(), &pairs));
+    assert!(should_auto_pair_at(
+        &text,
+        4,
+        &quote(),
+        &pairs,
+        WordChars::default()
+    ));
 }
 
 #[test]
@@ -208,7 +251,13 @@ fn auto_pair_symmetric_at_position_zero_accepts() {
     // No prev char and next char is `\n` (whitespace) → should auto-pair.
     let text = BufferText::from("");
     let pairs = default_pairs();
-    assert!(should_auto_pair_at(&text, 0, &quote(), &pairs));
+    assert!(should_auto_pair_at(
+        &text,
+        0,
+        &quote(),
+        &pairs,
+        WordChars::default()
+    ));
 }
 
 #[test]
@@ -216,7 +265,13 @@ fn auto_pair_symmetric_prev_open_bracket_accepts() {
     // `( ` — cursor at 1 (space), prev char is `(` (not alphanumeric), next is space.
     let text = BufferText::from("( foo");
     let pairs = default_pairs();
-    assert!(should_auto_pair_at(&text, 1, &quote(), &pairs));
+    assert!(should_auto_pair_at(
+        &text,
+        1,
+        &quote(),
+        &pairs,
+        WordChars::default()
+    ));
 }
 
 #[test]
@@ -225,5 +280,28 @@ fn auto_pair_asymmetric_ignores_prev_word_char() {
     // only the next-char rule applies; next is space → accept.
     let text = BufferText::from("x foo");
     let pairs = default_pairs();
-    assert!(should_auto_pair_at(&text, 1, &paren(), &pairs));
+    assert!(should_auto_pair_at(
+        &text,
+        1,
+        &paren(),
+        &pairs,
+        WordChars::default()
+    ));
+}
+
+#[test]
+fn auto_pair_symmetric_prev_extra_word_char_rejects() {
+    // `foo-` with '-' configured as a word char: the '-' now counts as a
+    // word character, so pairing right after it must be suppressed the same
+    // way it already is right after 'o' — matching every other word
+    // operation's word-chars-aware notion of "word".
+    let text = BufferText::from("foo-");
+    let pairs = default_pairs();
+    assert!(!should_auto_pair_at(
+        &text,
+        4,
+        &quote(),
+        &pairs,
+        WordChars::new("-")
+    ));
 }

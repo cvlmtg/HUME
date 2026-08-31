@@ -3,13 +3,6 @@ use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 
 use crate::MotionMode;
-// Test-only: `text_object::tests` reaches these via `super::super::*` (a
-// descendant module can see an ancestor's private `use` import), the same
-// way it already reaches `MotionMode` above.
-#[cfg(test)]
-use crate::WordCtx;
-#[cfg(test)]
-use hume_editing::word::WordChars;
 
 mod argument;
 mod bracket;

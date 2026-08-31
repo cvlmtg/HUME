@@ -3,7 +3,7 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
-use hume_editing::word::{CharClass, classify_char};
+use hume_editing::word::{CharClass, WordChars};
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -123,13 +123,20 @@ pub fn delete_pair(text: BufferText, sels: SelectionSet) -> (BufferText, Selecti
 /// 1. The character at `head` (what the cursor sits on) is "innocuous":
 ///    whitespace, newline, EOF, or a configured closing-pair character.
 /// 2. For symmetric pairs (quotes/backticks): the character immediately before
-///    `head` must NOT be a word character (alphanumeric or `_`). This prevents
-///    auto-pairing inside words (e.g. typing `'` in `don't`) or after
-///    identifier characters.
+///    `head` must NOT be a word character (this buffer's configured
+///    `word-chars` folded in via `chars`, same as every other word
+///    operation). This prevents auto-pairing inside words (e.g. typing `'`
+///    in `don't`) or after identifier characters.
 ///
 /// Callers are responsible for the all-or-nothing multi-cursor check; this
 /// function evaluates a single cursor position.
-pub fn should_auto_pair_at(text: &BufferText, head: usize, pair: &Pair, ap_pairs: &[Pair]) -> bool {
+pub fn should_auto_pair_at(
+    text: &BufferText,
+    head: usize,
+    pair: &Pair,
+    ap_pairs: &[Pair],
+    chars: WordChars<'_>,
+) -> bool {
     // Check 1: next char (the char the cursor sits on) must be innocuous.
     let next_ok = match text.char_at(head) {
         None => true,                                     // EOF
@@ -145,7 +152,7 @@ pub fn should_auto_pair_at(text: &BufferText, head: usize, pair: &Pair, ap_pairs
         let prev_pos = prev_grapheme_boundary(text, head);
         if text
             .char_at(prev_pos)
-            .is_some_and(|c| classify_char(c) == CharClass::Word)
+            .is_some_and(|c| chars.classify(c) == CharClass::Word)
         {
             return false;
         }

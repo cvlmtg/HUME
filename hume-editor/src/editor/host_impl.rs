@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::lines::strip_line_break;
 
+use crate::editor::commands::effective_word_chars;
 use crate::editor::diff_bridge;
 use crate::editor::lsp::LspState;
 use crate::editor::register_ops;
@@ -605,8 +606,7 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         let Some(ch) = text.char_at(head) else {
             return String::new();
         };
-        let word_chars = buf.overrides.word_chars(&self.state.settings);
-        let chars = hume_editing::word::WordChars::new(&word_chars);
+        let chars = effective_word_chars(buf, &self.state.settings);
         if chars.classify(ch) != hume_editing::word::CharClass::Word {
             return String::new();
         }

@@ -2,11 +2,6 @@ use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 
 use super::MotionMode;
-// Test-only: `motion::tests` reaches this via `super::super::*` (a
-// descendant module can see an ancestor's private `use` import), the same
-// way it already reaches `MotionMode` above.
-#[cfg(test)]
-use super::WordCtx;
 
 /// Whether an f/t motion places the cursor on the found character or adjacent to it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

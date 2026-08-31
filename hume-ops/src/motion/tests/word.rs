@@ -1,4 +1,5 @@
 use super::super::*;
+use crate::WordCtx;
 use hume_editing::word::WordChars;
 use hume_test_fixtures::assert_state;
 
@@ -1149,11 +1150,7 @@ fn extend_select_prev_word_multi_cursor_shrink_causes_merge() {
 fn w_treats_extra_word_char_as_part_of_the_word() {
     // With '-' configured as a word char, "foo-bar" is one word — `w` from
     // its start jumps straight past it to "baz", not to the '-' or "bar".
-    let ctx = WordCtx {
-        mode: MotionMode::Move,
-        around: false,
-        chars: WordChars::new("-"),
-    };
+    let ctx = WordCtx::bare(MotionMode::Move).with_chars(WordChars::new("-"));
     assert_state!(
         "-[f]>oo-bar baz\n",
         |(text, sels)| cmd_select_next_word(&text, sels, 1, ctx),
@@ -1163,11 +1160,7 @@ fn w_treats_extra_word_char_as_part_of_the_word() {
 
 #[test]
 fn b_treats_extra_word_char_as_part_of_the_word() {
-    let ctx = WordCtx {
-        mode: MotionMode::Move,
-        around: false,
-        chars: WordChars::new("-"),
-    };
+    let ctx = WordCtx::bare(MotionMode::Move).with_chars(WordChars::new("-"));
     assert_state!(
         "foo-bar -[b]>az\n",
         |(text, sels)| cmd_select_prev_word(&text, sels, 1, ctx),
@@ -1179,11 +1172,7 @@ fn b_treats_extra_word_char_as_part_of_the_word() {
 fn w_around_composes_with_extra_word_chars() {
     // `around` (word-selects-whitespace) and `chars` are independent fields
     // on the same ctx — both apply together.
-    let ctx = WordCtx {
-        mode: MotionMode::Move,
-        around: true,
-        chars: WordChars::new("-"),
-    };
+    let ctx = WordCtx::around(MotionMode::Move).with_chars(WordChars::new("-"));
     assert_state!(
         "-[x]> foo-bar\n",
         |(text, sels)| cmd_select_next_word(&text, sels, 1, ctx),
@@ -1192,16 +1181,11 @@ fn w_around_composes_with_extra_word_chars() {
 }
 
 #[test]
-#[allow(non_snake_case)]
 fn uppercase_word_is_unaffected_by_extra_word_chars() {
     // W already merges Word and Punctuation via `is_uppercase_word_boundary`,
     // so a hyphen is already inside the same WORD with or without it also
     // being a configured word char — the result must be identical.
-    let with_chars = WordCtx {
-        mode: MotionMode::Move,
-        around: false,
-        chars: WordChars::new("-"),
-    };
+    let with_chars = WordCtx::bare(MotionMode::Move).with_chars(WordChars::new("-"));
     let without_chars = WordCtx::bare(MotionMode::Move);
     assert_state!(
         "-[f]>oo-bar baz\n",
@@ -1221,11 +1205,7 @@ fn word_chars_does_not_split_a_combining_grapheme_cluster() {
     // word char. The scan must still step by grapheme boundary and classify
     // only each cluster's leading codepoint — `w` must select "café-bar"
     // whole, not stop at the combining mark or at '-'.
-    let ctx = WordCtx {
-        mode: MotionMode::Move,
-        around: false,
-        chars: WordChars::new("-"),
-    };
+    let ctx = WordCtx::bare(MotionMode::Move).with_chars(WordChars::new("-"));
     assert_state!(
         "-[c]>afe\u{0301}-bar baz\n",
         |(text, sels)| cmd_select_next_word(&text, sels, 1, ctx),
@@ -1239,11 +1219,7 @@ fn extend_word_chars_anchor_ending_in_combining_cluster_stays_whole() {
     // hyphenated "café-bar" once '-' is a configured word char). Extending
     // backward must snap to the cluster start before classifying, and must
     // treat the whole hyphenated run as the anchor's unit.
-    let ctx = WordCtx {
-        mode: MotionMode::Extend,
-        around: false,
-        chars: WordChars::new("-"),
-    };
+    let ctx = WordCtx::bare(MotionMode::Extend).with_chars(WordChars::new("-"));
     assert_state!(
         "foo <[cafe\u{0301}-bar]- baz\n",
         |(text, sels)| cmd_select_prev_word(&text, sels, 1, ctx),

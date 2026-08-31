@@ -65,7 +65,7 @@ pub fn is_uppercase_word_boundary(a: CharClass, b: CharClass) -> bool {
 /// built-in alphanumeric-plus-`_` rule. Borrowed and `Copy`: the owning
 /// `String` lives in the settings layer, and this rides inside a bare `fn`
 /// pointer's argument list without a clone per call.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct WordChars<'a>(&'a str);
 
 impl<'a> WordChars<'a> {
@@ -97,8 +97,7 @@ impl<'a> WordChars<'a> {
     /// [`classify_char`], with this buffer's extra word characters folded
     /// in. Only the `Punctuation` arm does a lookup, so the common path
     /// (letters, digits, space, newline) is exactly as fast as
-    /// `classify_char` alone — an empty `WordChars` never reaches the
-    /// lookup at all, matching `classify_char` byte-for-byte.
+    /// `classify_char` alone.
     #[inline]
     pub fn classify(self, ch: char) -> CharClass {
         match classify_char(ch) {

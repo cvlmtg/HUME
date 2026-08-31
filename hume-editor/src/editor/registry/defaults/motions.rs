@@ -98,29 +98,33 @@ impl CommandRegistry {
         // word. Each covers the destination word's whitespace bookend in both
         // modes when the buffer's `word-selects-whitespace` resolves true —
         // see `WordCtx::around`, read inside `word_select_cmd`.
-        super::word_motion!(
+        super::motion!(
             self,
             "select-next-word",
             "Select the next word.",
-            cmd_select_next_word
+            cmd_select_next_word,
+            word
         );
-        super::word_motion!(
+        super::motion!(
             self,
             "select-next-uppercase-word",
             "Select the next uppercase word (whitespace-delimited).",
-            cmd_select_next_uppercase_word
+            cmd_select_next_uppercase_word,
+            word
         );
-        super::word_motion!(
+        super::motion!(
             self,
             "select-prev-word",
             "Select the previous word.",
-            cmd_select_prev_word
+            cmd_select_prev_word,
+            word
         );
-        super::word_motion!(
+        super::motion!(
             self,
             "select-prev-uppercase-word",
             "Select the previous uppercase word (whitespace-delimited).",
-            cmd_select_prev_uppercase_word
+            cmd_select_prev_uppercase_word,
+            word
         );
 
         // ── Paragraph motions ─────────────────────────────────────────────────

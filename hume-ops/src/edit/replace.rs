@@ -7,19 +7,24 @@ use hume_editing::grapheme::{
 };
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_editing::word::{CharClass, WordChars};
 
 use super::apply_edit;
 
 /// Scans backward from `pos` over identifier (`Word`-class) chars, stopping
 /// at the first non-`Word` boundary — the start of the token immediately
 /// preceding `pos`. Grapheme-safe (steps via `prev_grapheme_boundary`, never
-/// a raw `-= 1`).
-pub fn word_start_before(text: &BufferText, pos: usize) -> usize {
+/// a raw `-= 1`). `chars` folds this buffer's extra word characters into the
+/// scan, so a configured run (e.g. `foo-bar` with `-` as a word char) is
+/// treated as one token — matching every other word operation, including
+/// what the LSP completion fallback this backs is replacing on the buffer's
+/// behalf.
+pub fn word_start_before(text: &BufferText, pos: usize, chars: WordChars<'_>) -> usize {
     let mut cursor = pos;
     while cursor > 0 {
         let prev = prev_grapheme_boundary(text, cursor);
         let Some(ch) = text.char_at(prev) else { break };
-        if hume_editing::word::classify_char(ch) != hume_editing::word::CharClass::Word {
+        if chars.classify(ch) != CharClass::Word {
             break;
         }
         cursor = prev;

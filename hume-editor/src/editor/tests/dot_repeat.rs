@@ -816,7 +816,8 @@ fn dot_repeat_of_match_surround_deletes_both_parens() {
 /// coverage, not regression coverage: unlike `ms(` (`dot_repeat_of_match_surround_deletes_both_parens`
 /// above), `ma(` on `(foo)` already leaves a non-collapsed selection, so the
 /// pre-fix `!is_collapsed()` gate already recorded it — this pins that it
-/// still replays correctly under the `!meta.is_motion` gate.
+/// still replays correctly under `SelectionTracking::Establishes` (restarts
+/// the dot-repeat recipe in Move mode — see `step_update_recipe`).
 #[test]
 fn dot_repeat_of_match_around_deletes_content() {
     let mut ed = editor_from("(-[f]>oo) (bar) baz\n");
@@ -843,8 +844,8 @@ fn dot_repeat_of_match_around_deletes_content() {
 
 /// `mi(` (select inner `()`, excluding the delimiters) — same characterization
 /// note as `dot_repeat_of_match_around_deletes_content` above: on `(foo)` it
-/// already leaves a non-collapsed selection, so this is coverage for the new
-/// `!meta.is_motion` gate rather than a regression test for it.
+/// already leaves a non-collapsed selection, so this is coverage for
+/// `SelectionTracking::Establishes` rather than a regression test for it.
 #[test]
 fn dot_repeat_of_match_inner_deletes_content() {
     let mut ed = editor_from("(-[f]>oo) (bar) baz\n");

@@ -350,17 +350,21 @@ pub fn cmd_select_word_nearest_on_line(
     text: &BufferText,
     sels: SelectionSet,
     _count: usize,
-    mode: MotionMode,
-    around: bool,
-    chars: WordChars<'_>,
+    ctx: WordCtx<'_>,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         let line = text.char_to_line(sel.anchor());
         let line_start = text.line_to_char(line);
         let line_end_excl = line_end_exclusive(text, line);
-        let found =
-            nearest_word_on_line(text, sel.anchor(), line_start, line_end_excl, around, chars);
-        apply_nearest_word_result(sel, found, mode)
+        let found = nearest_word_on_line(
+            text,
+            sel.anchor(),
+            line_start,
+            line_end_excl,
+            ctx.around,
+            ctx.chars,
+        );
+        apply_nearest_word_result(sel, found, ctx.mode)
     });
     result.debug_assert_valid(text);
     result
@@ -414,16 +418,14 @@ pub fn cmd_around_uppercase_word(
 pub fn cmd_select_word(
     text: &BufferText,
     sels: SelectionSet,
-    _count: usize,
+    count: usize,
     ctx: WordCtx<'_>,
 ) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, ctx.mode, |b, pos| {
-        if ctx.around {
-            word_unit_at(b, pos, is_word_boundary, 0, ctx.chars)
-        } else {
-            inner_word_impl(b, pos, is_word_boundary, ctx.chars)
-        }
-    })
+    if ctx.around {
+        cmd_around_word(text, sels, count, ctx)
+    } else {
+        cmd_inner_word(text, sels, count, ctx)
+    }
 }
 
 /// Select the WORD under the cursor (`MM`); see [`cmd_select_word`].
@@ -431,14 +433,12 @@ pub fn cmd_select_word(
 pub fn cmd_select_uppercase_word(
     text: &BufferText,
     sels: SelectionSet,
-    _count: usize,
+    count: usize,
     ctx: WordCtx<'_>,
 ) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, ctx.mode, |b, pos| {
-        if ctx.around {
-            word_unit_at(b, pos, is_uppercase_word_boundary, 0, ctx.chars)
-        } else {
-            inner_word_impl(b, pos, is_uppercase_word_boundary, ctx.chars)
-        }
-    })
+    if ctx.around {
+        cmd_around_uppercase_word(text, sels, count, ctx)
+    } else {
+        cmd_inner_uppercase_word(text, sels, count, ctx)
+    }
 }

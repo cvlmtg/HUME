@@ -25,22 +25,20 @@ macro_rules! motion {
             jump: true,
         })
     };
+    // Word-family motions (`w`/`W`/`b`/`B`) — see [`SelectionBody::Word`].
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr, word) => {
+        $reg.register(MappableCommand::Motion {
+            name: Cow::Borrowed($name),
+            doc: Cow::Borrowed($doc),
+            fun: SelectionBody::Word($fun),
+            jump: false,
+        })
+    };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
         $reg.register(MappableCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: SelectionBody::Plain($fun),
-            jump: false,
-        })
-    };
-}
-/// Word-family motions (`w`/`W`/`b`/`B`) — see [`SelectionBody::Word`].
-macro_rules! word_motion {
-    ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
-        $reg.register(MappableCommand::Motion {
-            name: Cow::Borrowed($name),
-            doc: Cow::Borrowed($doc),
-            fun: SelectionBody::Word($fun),
             jump: false,
         })
     };
@@ -75,11 +73,9 @@ macro_rules! selection {
             selection_tracking: SelectionTracking::Composes,
         })
     };
-}
-/// Word-family selections/text objects (`mm`/`MM`, `miw`/`maw`) — see
-/// [`SelectionBody::Word`].
-macro_rules! word_selection {
-    ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
+    // Word-family selections/text objects (`mm`/`MM`, `miw`/`maw`) — see
+    // [`SelectionBody::Word`].
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr, word) => {
         $reg.register(MappableCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
@@ -113,8 +109,6 @@ macro_rules! edit {
 pub(super) use edit;
 pub(super) use motion;
 pub(super) use selection;
-pub(super) use word_motion;
-pub(super) use word_selection;
 
 impl CommandRegistry {
     pub(super) fn register_defaults(&mut self) {

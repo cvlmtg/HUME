@@ -31,9 +31,9 @@ impl CommandRegistry {
             delete_selection
         );
         // `EditorCmd`, not `edit!`: needs to resolve this buffer's
-        // `word-chars` (see `cmd_delete_word_backward`'s doc). Every flag
-        // below matches the plain `Edit` registration it replaces: not
-        // repeatable, no jump, not extendable.
+        // `word-chars` (see `cmd_delete_word_backward`'s doc). No builder
+        // flags set below — `ecmd`'s defaults (not repeatable, no jump, not
+        // extendable) already match plain `Edit`'s own defaults.
         ecmd(
             "delete-word-backward",
             "Delete the word before each cursor.",

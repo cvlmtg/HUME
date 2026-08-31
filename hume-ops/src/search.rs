@@ -164,6 +164,37 @@ pub fn escape_regex(s: &str) -> String {
     escaped
 }
 
+/// Build a `*` (search-word-under-cursor) pattern: `word`, escaped, with
+/// `\b` anchoring each edge independently rather than the run as a whole.
+///
+/// `word` is always an already-resolved word/punct run (`inner_word_impl`'s
+/// result) — that run's own first and last character decide the two edges,
+/// via [`regex_syntax::is_word_character`], the exact Unicode `\w` class
+/// rust-regex's own `\b` is defined against (`\p{Alphabetic} + \p{M} + \d +
+/// \p{Pc} + \p{Join_Control}`). This buffer's `word-chars`-aware notion of
+/// "word" (`hume_editing::word::WordChars`) can be *wider* than that — e.g.
+/// `-` configured as a word char merges "foo-bar" into one run, but rust-regex
+/// still sees `-` itself as non-word — so `\bfoo-bar\b` still matches inside
+/// "foo-bar-baz" (rust-regex has neither a configurable `\w` class nor
+/// lookbehind to express the wider rule). `*` can over-match at an edge like
+/// this; it never under-matches.
+pub fn word_search_pattern(word: &str) -> String {
+    let escaped = escape_regex(word);
+    let lead = word
+        .chars()
+        .next()
+        .is_some_and(regex_syntax::is_word_character);
+    let trail = word
+        .chars()
+        .next_back()
+        .is_some_and(regex_syntax::is_word_character);
+    format!(
+        "{}{escaped}{}",
+        if lead { r"\b" } else { "" },
+        if trail { r"\b" } else { "" },
+    )
+}
+
 // ── search_match_info ─────────────────────────────────────────────────────────
 
 /// Return `(current_1based, total)` for a pre-computed match list.

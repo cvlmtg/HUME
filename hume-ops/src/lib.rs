@@ -57,7 +57,7 @@ pub struct WordCtx<'a> {
 }
 
 impl<'a> WordCtx<'a> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-util"))]
     pub fn bare(mode: MotionMode) -> Self {
         Self {
             mode,
@@ -66,12 +66,20 @@ impl<'a> WordCtx<'a> {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-util"))]
     pub fn around(mode: MotionMode) -> Self {
         Self {
             mode,
             around: true,
             chars: hume_editing::word::WordChars::default(),
         }
+    }
+
+    /// Swap in a non-default `word-chars` value, keeping `mode`/`around` —
+    /// for tests that need a configured char without hand-writing the whole
+    /// struct literal.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn with_chars(self, chars: hume_editing::word::WordChars<'a>) -> Self {
+        Self { chars, ..self }
     }
 }

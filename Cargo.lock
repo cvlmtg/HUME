@@ -884,6 +884,7 @@ dependencies = [
  "hume-test-fixtures",
  "pretty_assertions",
  "regex-cursor",
+ "regex-syntax",
  "rustc-hash",
  "termina",
  "unicode-segmentation",

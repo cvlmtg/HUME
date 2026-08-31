@@ -14,6 +14,7 @@ test-util = []
 hume-editing = { path = "../hume-editing" }
 hume-rope = { path = "../hume-rope" }
 regex-cursor = "0.1.5"
+regex-syntax = "0.8"
 unicode-segmentation.workspace = true
 rustc-hash.workspace = true
 termina = "0.3.3"

@@ -140,12 +140,11 @@ pub(crate) type EditorCmdFn = fn(
 /// settings the same way `tab_width`/`TabStyle` are for `align_selections`/
 /// `insert_tab`. Rather than widening every command's signature for the ~28
 /// that would ignore the extra data, only the word family gets a second body
-/// shape — the same reasoning that makes `select-word-nearest-on-line` an
-/// `EditorCmd` rather than a `Selection` (it needs a `RowMap` the shared
-/// shape can't carry either). This also retires the old `around_fun`
-/// second-`fn`-pointer swap: `WordCtx::around` is now just a field read
-/// inside `word_select_cmd`/`cmd_select_word` instead of a second registered
-/// item per command.
+/// shape here in the registry — the four `w`/`W`/`b`/`B` motions specifically
+/// (rather than joining `select-word-nearest-on-line` as an `EditorCmd`,
+/// which also resolves settings, via a `RowMap`) because `MappableCommand::meta`
+/// only ever sets `CmdMeta::is_motion` true for the `Motion` variant, and Move
+/// mode's jump-list/dot-repeat handling depends on that flag.
 #[derive(Clone, Copy)]
 pub(crate) enum SelectionBody {
     Plain(fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet),

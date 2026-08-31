@@ -3,19 +3,19 @@ use std::sync::Arc;
 use super::super::search::SearchPattern;
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::word::{CharClass, WordChars, classify_char, is_word_boundary};
+use hume_editing::word::{CharClass, is_word_boundary};
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
 use hume_ops::search::{
     SearchDirection, compile_search_regex, escape_regex, find_all_matches, find_match_from_cache,
-    find_next_match,
+    find_next_match, word_search_pattern,
 };
 use hume_ops::text_object::inner_word_impl;
 
 use super::super::{EditorState, MiniBuffer, Mode};
 use super::{
-    current_selections, doc, focused_buffer_id, search_pattern, set_current_selections,
-    set_primary_selection,
+    current_selections, doc, effective_word_chars, focused_buffer_id, search_pattern,
+    set_current_selections, set_primary_selection,
 };
 use crate::editor::error::CommandError;
 
@@ -314,12 +314,7 @@ pub(crate) fn cmd_search_word_under_cursor(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let buf_id = focused_buffer_id(state, view);
-    let word_chars = state
-        .buffers
-        .get(buf_id)
-        .overrides
-        .word_chars(&state.settings);
-    let chars = WordChars::new(&word_chars);
+    let chars = effective_word_chars(state.buffers.get(buf_id), &state.settings);
     let text = doc(state, view).text();
     let primary = current_selections(state, view).primary();
 
@@ -339,39 +334,13 @@ pub(crate) fn cmd_search_word_under_cursor(
     else {
         return Ok(());
     };
-    let word = text.slice(start..end_incl + 1).to_string();
-
-    // `\b` is rust-regex's own word-boundary, fixed to its built-in `\w`
-    // ([0-9A-Za-z_]) — it knows nothing about this buffer's `word-chars`, so
-    // `\b--foo\b` can never match `--foo`. Anchor each edge independently,
-    // using the *base* classifier (not `chars`) as the proxy for what the
-    // regex engine itself will treat as a word character: an edge only gets
-    // a `\b` when it's a built-in word char, regardless of whether `chars`
-    // also promoted the run's *interior* punctuation to `Word`.
-    //
-    // With no `word-chars` configured, `inner_word_impl` always returns a
-    // uniform-class run, so both edges agree and this collapses to the old
-    // single-flag behaviour exactly. The one case this still gets wrong:
-    // `\bfoo-bar\b` also matches inside `foo-bar-baz` — rust-regex has
-    // neither a configurable `\w` class nor lookbehind, so Vim's `\<`/`\>`
-    // (which reads `iskeyword` on both sides) isn't reachable here. `*` can
-    // over-match at an edge where an extra word character abuts the run; it
-    // never under-matches.
-    //
     // Computed here (before set_primary_selection) so the immutable `text`
     // borrow ends before we mutably borrow state.
-    let lead = classify_char(text.char_at(start).unwrap_or('\n')) == CharClass::Word;
-    let trail = classify_char(text.char_at(end_incl).unwrap_or('\n')) == CharClass::Word;
+    let word = text.slice(start..end_incl + 1).to_string();
 
     set_primary_selection(state, view, Selection::new(start, end_incl));
 
-    let escaped = escape_regex(&word);
-    let pattern = format!(
-        "{}{escaped}{}",
-        if lead { r"\b" } else { "" },
-        if trail { r"\b" } else { "" },
-    );
-    set_search_pattern(state, view, pattern)
+    set_search_pattern(state, view, word_search_pattern(&word))
 }
 
 // ── Search selection (Ctrl+/) ────────────────────────────────────────────────

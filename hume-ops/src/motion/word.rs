@@ -457,9 +457,7 @@ type SelectWord = fn(&BufferText, usize, IsBoundary, WordChars<'_>) -> Option<(u
 /// `backward` only affects the `Move` arm's search origin (see
 /// [`apply_word_select`]'s doc); `Extend`'s chaining always uses `head()` and
 /// has no analogous asymmetry. `ctx.around` affects both arms identically —
-/// whether whitespace is included in the unit; it used to be a second `fn`
-/// pointer (`around_fun`) the registry swapped in, now it's just a field read
-/// here.
+/// a plain field read deciding whether whitespace is included in the unit.
 fn word_select_cmd(
     text: &BufferText,
     sels: SelectionSet,

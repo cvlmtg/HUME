@@ -183,6 +183,27 @@ fn accept_with_no_text_edit_replaces_the_prefix_typed_before_completion_began() 
 }
 
 #[test]
+fn accept_with_no_text_edit_replaces_the_whole_configured_word_chars_run() {
+    let tmp = safe_tempdir();
+    // With '-' configured as a word char, "foo-ba" (up to the cursor) is one
+    // token — the fallback replace span must cover it whole, the same way
+    // every other word operation in this buffer would, not stop at the '-'
+    // the way the built-in word rule does.
+    let mut ed = editor_from("foo-ba-[ ]>bar\n");
+    ed.state.settings.word_chars = "-".into();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "foo-bar" "insertText" "foo-bar")))
+             (completion-accept! 0)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(ed.doc().text().to_string(), "foo-bar bar\n");
+}
+
+#[test]
 fn accept_with_a_text_edit_extends_the_range_to_cover_chars_typed_after_begin() {
     let tmp = safe_tempdir();
     // Buffer already holds "for" — standing in for "the user typed one more

@@ -340,29 +340,41 @@ impl CompletionSession {
                 anchor,
                 typed,
                 forward,
-            } => crate::editor::doc_ops::apply_doc_edit_grouped(
-                &mut state.buffers,
-                &state.config.decorations,
-                &mut state.panes.state,
-                &mut state.panes.jumps,
-                pid,
-                self.bid,
-                move |b, s| {
-                    replace_span_around_cursors(
-                        b,
-                        s,
-                        move |text, head| {
-                            if head == primary_head {
-                                word_start_before(text, anchor)
-                            } else {
-                                word_start_before(text, head.saturating_sub(typed))
-                            }
-                        },
-                        forward,
-                        &new_text,
-                    )
-                },
-            ),
+            } => {
+                // Owned, not borrowed: the call below takes `&mut
+                // state.buffers`, so a `&str` into it couldn't survive to
+                // the closure.
+                let word_chars = state
+                    .buffers
+                    .get(self.bid)
+                    .overrides
+                    .word_chars(&state.settings)
+                    .to_owned();
+                crate::editor::doc_ops::apply_doc_edit_grouped(
+                    &mut state.buffers,
+                    &state.config.decorations,
+                    &mut state.panes.state,
+                    &mut state.panes.jumps,
+                    pid,
+                    self.bid,
+                    move |b, s| {
+                        let chars = hume_editing::word::WordChars::new(&word_chars);
+                        replace_span_around_cursors(
+                            b,
+                            s,
+                            move |text, head| {
+                                if head == primary_head {
+                                    word_start_before(text, anchor, chars)
+                                } else {
+                                    word_start_before(text, head.saturating_sub(typed), chars)
+                                }
+                            },
+                            forward,
+                            &new_text,
+                        )
+                    },
+                )
+            }
         };
 
         if opened_group {

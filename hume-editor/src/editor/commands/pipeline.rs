@@ -14,10 +14,9 @@ use crate::editor::jump_list::JumpEntry;
 use crate::editor::registry::{CmdMeta, MappableCommand, SelectionBody, SelectionTracking};
 use crate::editor::replay::{RepeatableAction, SelectionStep};
 use crate::editor::{EditorState, Mode, Severity};
-use hume_editing::word::WordChars;
 use hume_ops::{MotionMode, WordCtx};
 
-use super::{current_selections, doc, focused_buffer_id};
+use super::{current_selections, doc, effective_word_chars, focused_buffer_id};
 
 // ── Native command body execution ───────────────────────────────────────────
 
@@ -65,16 +64,11 @@ pub(in crate::editor) fn run_native_body(
                 );
             }
             SelectionBody::Word(fun) => {
-                let overrides = &state.buffers.get(buf).overrides;
-                let around = overrides.word_selects_whitespace(&state.settings);
-                // Owned local: `apply_doc_motion` below takes `&mut
-                // state.panes.state`, so a borrow into `state.buffers` can't
-                // survive to the closure — resolve the value first.
-                let word_chars = overrides.word_chars(&state.settings);
+                let doc = state.buffers.get(buf);
                 let ctx = WordCtx {
                     mode: motion_mode,
-                    around,
-                    chars: WordChars::new(&word_chars),
+                    around: doc.overrides.word_selects_whitespace(&state.settings),
+                    chars: effective_word_chars(doc, &state.settings),
                 };
                 doc_ops::apply_doc_motion(
                     &state.buffers,

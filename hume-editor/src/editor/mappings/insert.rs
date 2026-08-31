@@ -500,9 +500,16 @@ impl Editor {
         ap_pairs: &[hume_ops::auto_pairs::Pair],
     ) -> bool {
         let text = self.doc().text();
+        let chars = commands::effective_word_chars(self.doc(), &self.state.settings);
         self.current_selections().iter_sorted().all(|sel| {
             !sel.is_collapsed()
-                || hume_ops::auto_pairs::should_auto_pair_at(text, sel.head(), pair, ap_pairs)
+                || hume_ops::auto_pairs::should_auto_pair_at(
+                    text,
+                    sel.head(),
+                    pair,
+                    ap_pairs,
+                    chars,
+                )
         })
     }
 }

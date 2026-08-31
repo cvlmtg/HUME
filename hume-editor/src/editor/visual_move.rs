@@ -12,10 +12,10 @@ use hume_editing::text::BufferText;
 use hume_editing::word::WordChars;
 use hume_engine::pipeline::EngineView;
 use hume_engine::rows::{BlockSlot, DisplayColTarget, RowMap};
-use hume_ops::MotionMode;
 use hume_ops::text_object::{
     apply_nearest_word_result, cmd_select_word_nearest_on_line, nearest_word_on_line,
 };
+use hume_ops::{MotionMode, WordCtx};
 
 use super::commands::{apply_focused_motion, effective_wrap_mode, focused_buffer_id, pane_row_map};
 use super::{EditorState, doc_ops};
@@ -467,16 +467,22 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     let buf_id = focused_buffer_id(state, view);
     let doc = state.buffers.get(buf_id);
     let around = doc.overrides.word_selects_whitespace(&state.settings);
-    // Owned, not borrowed: the wrap-mode branch below re-borrows
-    // `state.buffers` mutably through `apply_doc_motion`, so a `&str` into
-    // it here couldn't survive to that closure.
-    let word_chars = doc.overrides.word_chars(&state.settings);
+    // Owned, not borrowed: the no-wrap branch below calls
+    // `apply_focused_motion(state, ...)`, which takes `&mut EditorState` as
+    // one opaque argument — a live borrow into `state.buffers`/`state.settings`
+    // (what a borrowed `chars` would be) can't survive across that call.
+    let word_chars = doc.overrides.word_chars(&state.settings).to_owned();
     let chars = WordChars::new(&word_chars);
+    let ctx = WordCtx {
+        mode,
+        around,
+        chars,
+    };
 
     if !effective_wrap_mode(doc, &state.settings, &view.panes[state.focused_pane_id]).is_wrapping()
     {
         apply_focused_motion(state, view, |text, sels| {
-            cmd_select_word_nearest_on_line(text, sels, 0, mode, around, chars)
+            cmd_select_word_nearest_on_line(text, sels, 0, ctx)
         });
         return Ok(());
     }

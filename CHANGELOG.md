@@ -14,7 +14,7 @@
 
 ### Editing
 - New `goto-matching-pair` (`#`) jumps between a bracket and its partner (`(` `)` `[` `]` `{` `}`), or between an HTML/XML/JSX tag and its partner — vim's `%`, without disturbing HUME's own `%` (select-all). For brackets on a single line, it resolves against the whole selection, not just the character the cursor sits on — so `#` still jumps after a motion like `w` leaves the cursor on the whitespace past a bracket rather than on the bracket itself.
-- `w`/`W`/`b`/`B`, `mm`/`MM`, `miw`/`maw`, `Ctrl+W`, and `*` now honor a buffer's configured `word-chars` (see the new setting below) — e.g. with `-` configured, `foo-bar` is one word instead of three. `*` anchors each edge of the search pattern independently rather than as one whole-word flag, so a run like `--foo` gets a trailing `\b` even though its leading `-` isn't itself a built-in word character.
+- `w`/`W`/`b`/`B`, `mm`/`MM`, `miw`/`maw`, `Ctrl+W`, and `*` now honor a buffer's configured `word-chars` (see the new setting below) — e.g. with `-` configured, `foo-bar` is one word instead of three. With `word-chars` configured, `*` can now still bleed into a longer run sharing the same edge character (e.g. searching `foo-bar` inside `foo-bar-baz` also matches there).
 
 ### Appearance
 - Curly, dotted and dashed underlines now render on terminals that support them. Themes could already ask for them and HUME already parsed the request; it was being flattened to a plain underline on the way to the terminal.

@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_editing::word::WordChars;
 use hume_test_fixtures::assert_state;
 use pretty_assertions::assert_eq;
 
@@ -139,7 +140,13 @@ fn replace_span_around_cursors_word_start_before_uses_each_cursors_own_token_len
     // hardcoded `back = 3`, so it isn't circular against the fix.
     assert_state!(
         "foo-[ ]>x(o-[)]>\n",
-        |(text, sels)| replace_span_around_cursors(text, sels, word_start_before, 0, "Z"),
+        |(text, sels)| replace_span_around_cursors(
+            text,
+            sels,
+            |text, pos| word_start_before(text, pos, WordChars::default()),
+            0,
+            "Z"
+        ),
         "Z-[ ]>x(Z-[)]>\n"
     );
 }
@@ -159,7 +166,11 @@ fn replace_span_around_cursors_skips_typed_chars_before_scanning_each_cursors_pr
         |(text, sels)| replace_span_around_cursors(
             text,
             sels,
-            move |text, head| word_start_before(text, head.saturating_sub(typed)),
+            move |text, head| word_start_before(
+                text,
+                head.saturating_sub(typed),
+                WordChars::default()
+            ),
             0,
             "Z"
         ),

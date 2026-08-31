@@ -223,6 +223,20 @@ fn format_overrides(doc: &Buffer, settings: &EditorSettings) -> (u8, WhitespaceC
     )
 }
 
+/// `doc`'s effective `word-chars`: buffer override → global default. The one
+/// place this precedence is applied — every word-family dispatch site
+/// (`pipeline.rs`, `search.rs`, `host_impl.rs`) reads through this instead of
+/// re-resolving the setting by hand. `edit.rs`'s Ctrl-W and `visual_move.rs`'s
+/// wrap-aware nearest-word-on-line hold `&mut EditorState` across their
+/// closure and can't borrow `doc`/`settings` that long, so they call
+/// `doc.overrides.word_chars(settings).to_owned()` directly instead.
+pub(super) fn effective_word_chars<'a>(
+    doc: &'a Buffer,
+    settings: &'a EditorSettings,
+) -> hume_editing::word::WordChars<'a> {
+    hume_editing::word::WordChars::new(doc.overrides.word_chars(settings))
+}
+
 /// `pane`'s effective wrap mode for the buffer it currently views: pane
 /// override → buffer override → global default. `Pane::wrap().mode` is
 /// `Some` only once `:wrap` or `:set pane wrap-mode=…` has pinned this pane

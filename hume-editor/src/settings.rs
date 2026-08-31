@@ -324,7 +324,29 @@ macro_rules! option_value {
         hume_scripting::host::OptionValue::Str(format_show_newline($value).to_string())
     };
     ($value:expr, word_chars) => {
-        hume_scripting::host::OptionValue::Str($value)
+        hume_scripting::host::OptionValue::Str($value.to_string())
+    };
+}
+
+/// Dispatch from a parser-kind token to a `BufferOverrides` accessor.
+///
+/// Every buffer setting but `word-chars` is `Copy`, so cloning it to resolve
+/// buffer-override-or-global is free — the default arm does that. `word_chars`
+/// is the one `String`-typed buffer setting; borrowing instead of cloning is
+/// what lets [`hume_editing::word::WordChars`] stay borrowed-and-`Copy` per
+/// its own doc, rather than every caller paying a heap clone per keystroke.
+macro_rules! buffer_accessor {
+    ($bname:ident, $btype:ty, word_chars) => {
+        /// Effective value: buffer override → global default.
+        pub(crate) fn $bname<'a>(&'a self, global: &'a EditorSettings) -> &'a str {
+            self.$bname.as_deref().unwrap_or(&global.$bname)
+        }
+    };
+    ($bname:ident, $btype:ty, $bparser:ident) => {
+        /// Effective value: buffer override → global default.
+        pub(crate) fn $bname(&self, global: &EditorSettings) -> $btype {
+            self.$bname.clone().unwrap_or_else(|| global.$bname.clone())
+        }
     };
 }
 
@@ -437,12 +459,7 @@ macro_rules! define_settings {
         }
 
         impl BufferOverrides {
-            $(
-                /// Effective value: buffer override → global default.
-                pub(crate) fn $bname(&self, global: &EditorSettings) -> $btype {
-                    self.$bname.clone().unwrap_or_else(|| global.$bname.clone())
-                }
-            )*
+            $( buffer_accessor!($bname, $btype, $bparser); )*
         }
 
         // ── write_global / write_buffer ───────────────────────────────────────
@@ -530,13 +547,15 @@ macro_rules! define_settings {
         ) -> Option<hume_scripting::host::OptionValue> {
             match key {
                 $( $gkey => Some(option_value!(settings.$gname.clone(), $gparser)), )*
-                $( $bkey => {
-                    let value = match overrides {
-                        Some(o) => o.$bname(settings),
-                        None => settings.$bname.clone(),
-                    };
-                    Some(option_value!(value, $bparser))
-                } )*
+                // `option_value!` is called separately in each branch, not
+                // hoisted after a shared `let value = …`: the `word_chars`
+                // accessor returns `&str` while the global fallback is an
+                // owned `String` clone, so the two branches don't unify to
+                // one type the way every `Copy` buffer setting's do.
+                $( $bkey => match overrides {
+                    Some(o) => Some(option_value!(o.$bname(settings), $bparser)),
+                    None => Some(option_value!(settings.$bname.clone(), $bparser)),
+                }, )*
                 $( $skey => {
                     let value = match overrides {
                         Some(o) => o.$sfield.unwrap_or(settings.$sglobal.$ssub),

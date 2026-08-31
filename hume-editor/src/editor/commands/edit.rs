@@ -315,7 +315,8 @@ pub(crate) fn cmd_delete_word_backward(
         .buffers
         .get(buf_id)
         .overrides
-        .word_chars(&state.settings);
+        .word_chars(&state.settings)
+        .to_owned();
     apply_focused_edit(state, view, move |text, sels| {
         delete_word_backward(text, sels, WordChars::new(&word_chars))
     });

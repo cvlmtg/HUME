@@ -1,5 +1,7 @@
 use super::super::*;
+use crate::WordCtx;
 use hume_editing::selection::{DisplayColOrigin, Selection, SelectionSet, StickyDisplayCol};
+use hume_editing::word::WordChars;
 use hume_test_fixtures::assert_state;
 
 /// Test-only shorthand: these tests exercise the word-snap pass-through, not
@@ -124,7 +126,7 @@ fn inner_uppercase_word_spans_punctuation() {
 
 // ── select-word / select-uppercase-word (mm/MM around-word body) ──────────
 //
-// mm/MM (`cmd_select_word_around`/`cmd_select_uppercase_word_around`) and
+// mm/MM (`cmd_select_word`/`cmd_select_uppercase_word`) and
 // maw/maW (`cmd_around_word`/`cmd_around_uppercase_word`) share the same
 // word_unit_at body and select identical spans — leading-preferred, trailing
 // fallback for the first word of a line, same as w/W/b/B. `mm`/`MM` only
@@ -465,9 +467,7 @@ fn nearest_on_word_selects_inner_word() {
             &text,
             sels,
             0,
-            MotionMode::Move,
-            false,
-            WordChars::default()
+            WordCtx::bare(MotionMode::Move)
         ),
         "hello -[world]> foo\n"
     );
@@ -483,9 +483,7 @@ fn nearest_on_whitespace_prev_closer() {
             &text,
             sels,
             0,
-            MotionMode::Move,
-            false,
-            WordChars::default()
+            WordCtx::bare(MotionMode::Move)
         ),
         "-[foo]>   bar\n"
     );
@@ -501,9 +499,7 @@ fn nearest_on_whitespace_next_closer() {
             &text,
             sels,
             0,
-            MotionMode::Move,
-            false,
-            WordChars::default()
+            WordCtx::bare(MotionMode::Move)
         ),
         "foo   -[bar]>\n"
     );
@@ -519,9 +515,7 @@ fn nearest_on_whitespace_tie_picks_prev() {
             &text,
             sels,
             0,
-            MotionMode::Move,
-            false,
-            WordChars::default()
+            WordCtx::bare(MotionMode::Move)
         ),
         "-[foo]>   bar\n"
     );
@@ -537,9 +531,7 @@ fn nearest_at_line_start_whitespace_no_cross_to_prev_line() {
             &text,
             sels,
             0,
-            MotionMode::Move,
-            false,
-            WordChars::default()
+            WordCtx::bare(MotionMode::Move)
         ),
         "end\n -[start]>\n"
     );
@@ -556,9 +548,7 @@ fn nearest_at_line_end_whitespace_no_cross_to_next_line() {
             &text,
             sels,
             0,
-            MotionMode::Move,
-            false,
-            WordChars::default()
+            WordCtx::bare(MotionMode::Move)
         ),
         "-[end]>  \nnext\n"
     );
@@ -573,9 +563,7 @@ fn nearest_on_blank_line_is_noop() {
             &text,
             sels,
             0,
-            MotionMode::Move,
-            false,
-            WordChars::default()
+            WordCtx::bare(MotionMode::Move)
         ),
         "hello\n-[\n]>world\n"
     );
@@ -590,9 +578,7 @@ fn nearest_on_whitespace_only_line_is_noop() {
             &text,
             sels,
             0,
-            MotionMode::Move,
-            false,
-            WordChars::default()
+            WordCtx::bare(MotionMode::Move)
         ),
         "hello\n-[ ]>  \nworld\n"
     );
@@ -603,14 +589,7 @@ fn nearest_preserves_sticky_display_col_on_word() {
     // sel.sticky_display_col = Some(5) must survive the snap to a word.
     let text = BufferText::from("hello world\n");
     let sels = SelectionSet::single(Selection::with_sticky_display_col(6, 6, sticky(5)));
-    let result = cmd_select_word_nearest_on_line(
-        &text,
-        sels,
-        0,
-        MotionMode::Move,
-        false,
-        WordChars::default(),
-    );
+    let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Move));
     let sel = result.primary();
     // "world" spans chars 6–10.
     assert_eq!((sel.anchor(), sel.head()), (6, 10), "expected word range");
@@ -629,14 +608,7 @@ fn nearest_preserves_sticky_display_col_on_whitespace() {
     //                    0123456789
     // spaces at 2,3,4; head=3 (space), prev word = "hi" ends at 1.
     let sels = SelectionSet::single(Selection::with_sticky_display_col(3, 3, sticky(3)));
-    let result = cmd_select_word_nearest_on_line(
-        &text,
-        sels,
-        0,
-        MotionMode::Move,
-        false,
-        WordChars::default(),
-    );
+    let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Move));
     let sel = result.primary();
     assert_eq!((sel.anchor(), sel.head()), (0, 1), "expected 'hi' range");
     assert_eq!(
@@ -652,14 +624,7 @@ fn nearest_no_sticky_display_col_is_cleared() {
     // sticky_display_col=None.
     let text = BufferText::from("hello world\n");
     let sels = SelectionSet::single(Selection::new(6, 6));
-    let result = cmd_select_word_nearest_on_line(
-        &text,
-        sels,
-        0,
-        MotionMode::Move,
-        false,
-        WordChars::default(),
-    );
+    let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Move));
     let sel = result.primary();
     assert_eq!(
         sel.sticky_display_col(),
@@ -679,14 +644,7 @@ fn nearest_extend_grows_selection_to_snapped_word() {
     // new_end = max(10, 4) = 10 → selection stays (0, 10); head is already past "hello".
     let text = BufferText::from("hello\n     world\n");
     let sels = SelectionSet::single(Selection::new(0, 10)); // anchor=0, head=10 (space)
-    let result = cmd_select_word_nearest_on_line(
-        &text,
-        sels,
-        0,
-        MotionMode::Extend,
-        false,
-        WordChars::default(),
-    );
+    let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Extend));
     let sel = result.primary();
     assert_eq!(
         (sel.anchor(), sel.head()),
@@ -700,14 +658,7 @@ fn nearest_extend_grows_selection_to_snapped_word() {
 fn nearest_extend_preserves_sticky_display_col() {
     let text = BufferText::from("hello world\n");
     let sels = SelectionSet::single(Selection::with_sticky_display_col(0, 5, sticky(7))); // anchor=0, head=5 (space)
-    let result = cmd_select_word_nearest_on_line(
-        &text,
-        sels,
-        0,
-        MotionMode::Extend,
-        false,
-        WordChars::default(),
-    );
+    let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Extend));
     assert_eq!(
         result.primary().sticky_display_col(),
         Some(sticky(7)),
@@ -735,9 +686,7 @@ fn nearest_on_word_around_absorbs_leading_whitespace() {
             &text,
             sels,
             0,
-            MotionMode::Move,
-            true,
-            WordChars::default()
+            WordCtx::around(MotionMode::Move)
         ),
         "hello-[ world]> foo\n"
     );
@@ -755,9 +704,7 @@ fn nearest_on_whitespace_around_expands_snapped_word() {
             &text,
             sels,
             0,
-            MotionMode::Move,
-            true,
-            WordChars::default()
+            WordCtx::around(MotionMode::Move)
         ),
         "foo-[   bar]>\n"
     );
@@ -776,9 +723,7 @@ fn nearest_on_whitespace_around_keeps_indentation_protected() {
             &text,
             sels,
             0,
-            MotionMode::Move,
-            true,
-            WordChars::default()
+            WordCtx::around(MotionMode::Move)
         ),
         "end\n -[start]>\n"
     );
@@ -790,11 +735,7 @@ fn nearest_on_whitespace_around_keeps_indentation_protected() {
 fn inner_word_with_extra_word_char_selects_whole_run() {
     // `-` configured as a word char: `miw` on "foo-bar" selects it whole,
     // not just the "bar" half the cursor sits in.
-    let ctx = WordCtx {
-        mode: MotionMode::Move,
-        around: false,
-        chars: WordChars::new("-"),
-    };
+    let ctx = WordCtx::bare(MotionMode::Move).with_chars(WordChars::new("-"));
     assert_state!(
         "foo-b-[a]>r\n",
         |(text, sels)| cmd_inner_word(&text, sels, 0, ctx),
@@ -804,11 +745,7 @@ fn inner_word_with_extra_word_char_selects_whole_run() {
 
 #[test]
 fn around_word_with_extra_word_char_absorbs_leading_space() {
-    let ctx = WordCtx {
-        mode: MotionMode::Move,
-        around: false,
-        chars: WordChars::new("-"),
-    };
+    let ctx = WordCtx::bare(MotionMode::Move).with_chars(WordChars::new("-"));
     assert_state!(
         "x -[f]>oo-bar\n",
         |(text, sels)| cmd_around_word(&text, sels, 0, ctx),
@@ -818,11 +755,7 @@ fn around_word_with_extra_word_char_absorbs_leading_space() {
 
 #[test]
 fn select_word_mm_with_extra_word_char_selects_whole_run() {
-    let ctx = WordCtx {
-        mode: MotionMode::Move,
-        around: false,
-        chars: WordChars::new("-"),
-    };
+    let ctx = WordCtx::bare(MotionMode::Move).with_chars(WordChars::new("-"));
     assert_state!(
         "foo-b-[a]>r\n",
         |(text, sels)| cmd_select_word(&text, sels, 0, ctx),
@@ -841,9 +774,7 @@ fn nearest_word_on_line_with_extra_word_char_selects_whole_run() {
             &text,
             sels,
             0,
-            MotionMode::Move,
-            false,
-            WordChars::new("-")
+            WordCtx::bare(MotionMode::Move).with_chars(WordChars::new("-"))
         ),
         "-[foo-bar]>\n"
     );

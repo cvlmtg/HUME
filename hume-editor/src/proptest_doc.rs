@@ -18,7 +18,6 @@ mod tests {
     use hume_editing::changeset::ChangeSet;
     use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
-    use hume_editing::word::WordChars;
     use hume_ops::edit::{
         delete_char_backward, delete_char_forward, delete_selection, insert_char,
     };
@@ -32,7 +31,7 @@ mod tests {
         cmd_flip_selections, cmd_keep_primary_selection,
     };
     use hume_ops::text_object::{
-        cmd_around_word, cmd_inner_line, cmd_inner_word, cmd_select_uppercase_word, cmd_select_word,
+        cmd_around_word, cmd_inner_line, cmd_inner_word, cmd_select_uppercase_word,
     };
     use hume_ops::{MotionMode, WordCtx};
 
@@ -275,7 +274,6 @@ mod tests {
         SelectPrevUppercaseWordAround,
         InnerWord,
         AroundWord,
-        SelectWordAround,
         SelectUppercaseWordAround,
         InnerLine,
         CollapseSelection,
@@ -301,7 +299,6 @@ mod tests {
             Just(PureOp::SelectPrevUppercaseWordAround),
             Just(PureOp::InnerWord),
             Just(PureOp::AroundWord),
-            Just(PureOp::SelectWordAround),
             Just(PureOp::SelectUppercaseWordAround),
             Just(PureOp::InnerLine),
             Just(PureOp::CollapseSelection),
@@ -316,31 +313,13 @@ mod tests {
         prop_oneof![Just(MotionMode::Move), Just(MotionMode::Extend)]
     }
 
-    /// `WordCtx` with no configured `word-chars` and `around: false` —
-    /// there is no per-buffer settings layer here to resolve a real one
-    /// from, and none of these proptests exercise `word-chars` itself (that
-    /// is covered by `hume-editor/src/editor/tests/word_chars.rs`).
-    fn bare_ctx(mode: MotionMode) -> WordCtx<'static> {
-        WordCtx {
-            mode,
-            around: false,
-            chars: WordChars::default(),
-        }
-    }
-
-    /// Same as [`bare_ctx`], with `around: true` (effective
-    /// `word-selects-whitespace`) — for the `PureOp` variants that exercise
-    /// the destination word's whitespace-bookend behaviour.
-    fn around_ctx(mode: MotionMode) -> WordCtx<'static> {
-        WordCtx {
-            mode,
-            around: true,
-            chars: WordChars::default(),
-        }
-    }
-
     /// Apply a `PureOp` with the given `MotionMode`, returning the new
     /// `SelectionSet` (buffer unchanged).
+    ///
+    /// Word-family ops use `WordCtx::bare`/`WordCtx::around` (no configured
+    /// `word-chars`) — there is no per-buffer settings layer here to resolve
+    /// a real one from, and none of these proptests exercise `word-chars`
+    /// itself (that is covered by `hume-editor/src/editor/tests/word_chars.rs`).
     fn apply_pure_op(
         text: &BufferText,
         sels: SelectionSet,
@@ -352,30 +331,32 @@ mod tests {
             PureOp::MoveLeft => cmd_move_left(text, sels, 1, mode),
             PureOp::GotoLineStart => cmd_goto_line_start(text, sels, 1, mode),
             PureOp::GotoLineEnd => cmd_goto_line_end(text, sels, 1, mode),
-            PureOp::SelectNextWord => cmd_select_next_word(text, sels, 1, bare_ctx(mode)),
-            PureOp::SelectPrevWord => cmd_select_prev_word(text, sels, 1, bare_ctx(mode)),
+            PureOp::SelectNextWord => cmd_select_next_word(text, sels, 1, WordCtx::bare(mode)),
+            PureOp::SelectPrevWord => cmd_select_prev_word(text, sels, 1, WordCtx::bare(mode)),
             PureOp::SelectNextUppercaseWord => {
-                cmd_select_next_uppercase_word(text, sels, 1, bare_ctx(mode))
+                cmd_select_next_uppercase_word(text, sels, 1, WordCtx::bare(mode))
             }
             PureOp::SelectPrevUppercaseWord => {
-                cmd_select_prev_uppercase_word(text, sels, 1, bare_ctx(mode))
+                cmd_select_prev_uppercase_word(text, sels, 1, WordCtx::bare(mode))
             }
             // "Around" variants exercise the same command with `around: true`
-            // (effective `word-selects-whitespace`) — folded into `WordCtx`
-            // since `around_fun`'s registry-level swap was retired.
-            PureOp::SelectNextWordAround => cmd_select_next_word(text, sels, 1, around_ctx(mode)),
-            PureOp::SelectPrevWordAround => cmd_select_prev_word(text, sels, 1, around_ctx(mode)),
+            // (effective `word-selects-whitespace`).
+            PureOp::SelectNextWordAround => {
+                cmd_select_next_word(text, sels, 1, WordCtx::around(mode))
+            }
+            PureOp::SelectPrevWordAround => {
+                cmd_select_prev_word(text, sels, 1, WordCtx::around(mode))
+            }
             PureOp::SelectNextUppercaseWordAround => {
-                cmd_select_next_uppercase_word(text, sels, 1, around_ctx(mode))
+                cmd_select_next_uppercase_word(text, sels, 1, WordCtx::around(mode))
             }
             PureOp::SelectPrevUppercaseWordAround => {
-                cmd_select_prev_uppercase_word(text, sels, 1, around_ctx(mode))
+                cmd_select_prev_uppercase_word(text, sels, 1, WordCtx::around(mode))
             }
-            PureOp::InnerWord => cmd_inner_word(text, sels, 0, bare_ctx(mode)),
-            PureOp::AroundWord => cmd_around_word(text, sels, 0, bare_ctx(mode)),
-            PureOp::SelectWordAround => cmd_select_word(text, sels, 0, around_ctx(mode)),
+            PureOp::InnerWord => cmd_inner_word(text, sels, 0, WordCtx::bare(mode)),
+            PureOp::AroundWord => cmd_around_word(text, sels, 0, WordCtx::bare(mode)),
             PureOp::SelectUppercaseWordAround => {
-                cmd_select_uppercase_word(text, sels, 0, around_ctx(mode))
+                cmd_select_uppercase_word(text, sels, 0, WordCtx::around(mode))
             }
             PureOp::InnerLine => cmd_inner_line(text, sels, 0, mode),
             // Selection-manipulation commands don't use mode; pass it anyway for API uniformity.

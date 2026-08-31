@@ -30,7 +30,13 @@ impl CommandRegistry {
         );
 
         // ── Text objects — word ───────────────────────────────────────────────
-        super::word_selection!(self, "inner-word", "Select inner word.", cmd_inner_word);
+        super::selection!(
+            self,
+            "inner-word",
+            "Select inner word.",
+            cmd_inner_word,
+            word
+        );
         // `EditorCmd`, not `selection!`: needs a `RowMap` for wrap-aware
         // nearest-word placement (see `visual_move.rs::cmd_visual_select_word_nearest_on_line`).
         // `.establishes_selection()`: same in-place establishing semantics
@@ -45,40 +51,45 @@ impl CommandRegistry {
         .extendable()
         .establishes_selection()
         .reg(self);
-        super::word_selection!(
+        super::selection!(
             self,
             "around-word",
             "Select word plus one adjacent whitespace run.",
-            cmd_around_word
+            cmd_around_word,
+            word
         );
-        super::word_selection!(
+        super::selection!(
             self,
             "inner-uppercase-word",
             "Select inner uppercase word (whitespace-delimited).",
-            cmd_inner_uppercase_word
+            cmd_inner_uppercase_word,
+            word
         );
-        super::word_selection!(
+        super::selection!(
             self,
             "around-uppercase-word",
             "Select uppercase word plus one adjacent whitespace run.",
-            cmd_around_uppercase_word
+            cmd_around_uppercase_word,
+            word
         );
         // `mm`/`MM`: select the word/WORD under the cursor. Unlike
         // `inner-word`/`around-word` (`miw`/`maw`, never flag-affected), these
         // cover the destination word's whitespace bookend when
         // `word-selects-whitespace` resolves true — see `WordCtx::around`,
         // read inside `cmd_select_word`/`cmd_select_uppercase_word`.
-        super::word_selection!(
+        super::selection!(
             self,
             "select-word",
             "Select the word under the cursor.",
-            cmd_select_word
+            cmd_select_word,
+            word
         );
-        super::word_selection!(
+        super::selection!(
             self,
             "select-uppercase-word",
             "Select the uppercase word (WORD) under the cursor.",
-            cmd_select_uppercase_word
+            cmd_select_uppercase_word,
+            word
         );
 
         // ── Text objects — brackets ───────────────────────────────────────────
