@@ -94,15 +94,9 @@ impl CompletionSession {
         }
         let pid = self.pane_id;
         let head_now = {
-            let pbs = state
-                .panes
-                .state
-                .get(pid)
-                .and_then(|by_buf| by_buf.get(self.bid))
-                .ok_or_else(|| {
-                    "completion-accept!: buffer is no longer shown in the session's pane"
-                        .to_string()
-                })?;
+            let pbs = state.panes.buffer_state(pid, self.bid).ok_or_else(|| {
+                "completion-accept!: buffer is no longer shown in the session's pane".to_string()
+            })?;
             // The "as if typed at each cursor" model has no meaning for a
             // real selection — typing over one is a different edit than
             // completing at it, and `replace_*_cursors` force-collapses

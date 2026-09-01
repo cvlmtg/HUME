@@ -175,6 +175,26 @@ pub(crate) struct PaneView {
     pub(crate) render: SecondaryMap<PaneId, crate::ui::PaneRenderHandles>,
 }
 
+impl PaneView {
+    /// The seeded [`PaneBufferState`] for `(pid, bid)`, or `None` when the
+    /// pane has no map yet or never showed `bid`. Read-side counterpart of
+    /// [`ensure`], which seeds rather than reporting absence.
+    pub(crate) fn buffer_state(&self, pid: PaneId, bid: BufferId) -> Option<&PaneBufferState> {
+        self.state.get(pid)?.get(bid)
+    }
+}
+
+impl super::EditorState {
+    /// `bid`'s state *as seen in the focused pane*, or `None` when `bid` is
+    /// unseeded there — a stale id, or `bid` not open in the focused pane.
+    /// `bid` is caller-supplied (e.g. from a Steel `(current-buffer)` call or
+    /// an async LSP response) rather than assumed to name the focused buffer,
+    /// so this always looks the pane state up by the explicit id.
+    pub(crate) fn focused_buffer_state(&self, bid: BufferId) -> Option<&PaneBufferState> {
+        self.panes.buffer_state(self.focused_pane_id, bid)
+    }
+}
+
 impl Editor {
     // ── Pane-state accessors ──────────────────────────────────────────────────
 

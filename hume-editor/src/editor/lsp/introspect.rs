@@ -168,15 +168,9 @@ pub(crate) fn registered_for_language(lsp: &LspState, language: &str) -> bool {
 /// there, else the first pane (any) that has `id` seeded — a buffer can be
 /// open in a non-focused pane, or in no pane at all (background buffer).
 fn pane_buffer_state(state: &EditorState, id: BufferId) -> Option<&PaneBufferState> {
-    if let Some(pbs) = state
-        .panes
-        .state
-        .get(state.focused_pane_id)
-        .and_then(|m| m.get(id))
-    {
-        return Some(pbs);
-    }
-    state.panes.state.values().find_map(|m| m.get(id))
+    state
+        .focused_buffer_state(id)
+        .or_else(|| state.panes.state.values().find_map(|m| m.get(id)))
 }
 
 /// Shared setup for both params builders: the buffer's URI and its attached

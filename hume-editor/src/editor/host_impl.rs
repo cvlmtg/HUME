@@ -103,23 +103,6 @@ impl<'a> EditorHostImpl<'a> {
         self.state.buffers.try_get(id)
     }
 
-    /// Seeded pane-buffer state for `bid` *as seen in the focused pane*, or
-    /// `None` when unseeded (stale id, or `bid` not open in the focused
-    /// pane) — the shared guard behind every live cursor/selection read.
-    /// `bid` is caller-supplied (e.g. from a Steel `(current-buffer)` call
-    /// or `focused_buffer_id`), so this always looks the pane state up by
-    /// the explicit id rather than assuming it matches the focused buffer.
-    fn focused_pane_buffer_state(
-        &self,
-        bid: BufferId,
-    ) -> Option<&crate::editor::pane_state::PaneBufferState> {
-        self.state
-            .panes
-            .state
-            .get(self.state.focused_pane_id)?
-            .get(bid)
-    }
-
     /// `bid`'s buffer and selections *as seen in the focused pane*. Shared
     /// by every `CursorHost` method that reads selection geometry for an
     /// arbitrary `bid` in the focused pane.
@@ -132,7 +115,7 @@ impl<'a> EditorHostImpl<'a> {
     )> {
         Some((
             self.buffer(bid)?,
-            &self.focused_pane_buffer_state(bid)?.selections,
+            &self.state.focused_buffer_state(bid)?.selections,
         ))
     }
 
@@ -584,13 +567,13 @@ impl<'a> RegisterHost for EditorHostImpl<'a> {
 impl<'a> CursorHost for EditorHostImpl<'a> {
     fn current_line_number(&self) -> Option<usize> {
         let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
-        let pbs = self.focused_pane_buffer_state(buf_id)?;
+        let pbs = self.state.focused_buffer_state(buf_id)?;
         self.char_index_to_line(pbs.selections.primary().head())
     }
 
     fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
         let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
-        let pbs = self.focused_pane_buffer_state(buf_id)?;
+        let pbs = self.state.focused_buffer_state(buf_id)?;
         let primary_index = pbs.selections.primary_index();
         Some(
             pbs.selections

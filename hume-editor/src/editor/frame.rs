@@ -447,12 +447,7 @@ impl Editor {
         let state = &mut self.state;
         let view = &mut self.view;
         for (pid, pane) in view.panes.iter_mut() {
-            if let Some(pbs) = state
-                .panes
-                .state
-                .get(pid)
-                .and_then(|m| m.get(pane.buffer_id))
-            {
+            if let Some(pbs) = state.panes.buffer_state(pid, pane.buffer_id) {
                 write_pane_mirror(pane, &pbs.selections);
             }
         }
