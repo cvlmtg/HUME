@@ -308,6 +308,51 @@ fn disjoint_full_line_selections_send_one_ranges_formatting_request_when_support
     );
 }
 
+/// A single full-line selection stays on the `rangeFormatting` path even
+/// when the server advertises `rangesSupport` — that capability only
+/// changes how *multiple* ranges are sent (one `rangesFormatting` request
+/// instead of a fan-out), and one range has nothing to batch with.
+#[test]
+fn single_full_line_selection_sends_range_formatting_even_when_ranges_supported() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard) = setup_with_caps(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        serde_json::json!({"capabilities": {
+            "documentFormattingProvider": true,
+            "documentRangeFormattingProvider": {"rangesSupport": true}
+        }}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(0, 0, 1, 0, "RANGE_FORMATTED\n")]),
+            );
+            // Decoys proving neither the whole-buffer nor the
+            // rangesFormatting path was taken instead.
+            backend.respond_to(
+                "textDocument/formatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
+            );
+            backend.respond_to(
+                "textDocument/rangesFormatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_RANGES_PATH\n")]),
+            );
+        },
+    );
+    select_full_line_1(&mut ed);
+
+    run_fmt(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "RANGE_FORMATTED\nline2\nline3\n",
+        "a single linewise selection must send rangeFormatting, not \
+         rangesFormatting or whole-buffer formatting, even when the server \
+         advertises rangesSupport"
+    );
+}
+
 /// A whole-line selection and a sub-line selection together are ambiguous
 /// — `:lsp-fmt` warns and formats nothing, rather than guessing which
 /// reading the user meant.
