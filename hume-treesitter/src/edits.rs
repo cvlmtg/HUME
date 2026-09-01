@@ -36,8 +36,30 @@ pub(crate) fn input_edits_from_changeset(
                 pre_char = old_end_char;
             }
             Operation::Insert(ins_s) => {
-                // Pure insert: old document position doesn't advance.
-                edits.push(make_input_edit(pre_char, pre_char, ins_s.as_str(), rope));
+                // A replacement reaches here in either op order: every
+                // `hume-ops` builder emits delete-then-insert (handled by the
+                // lookahead above), but `ChangeSet::invert` emits
+                // insert-then-delete for every undone replacement, `compose`
+                // can produce either, and `indent`/`unindent` deliberately
+                // emit insert-then-delete (see `hume-ops/src/edit/indent.rs`)
+                // so their own position remap can use `Assoc`. A following
+                // Delete is consumed together so both orders still coalesce
+                // into one edit.
+                let del_n = match ops.as_slice().first() {
+                    Some(Operation::Delete(n)) => {
+                        let n = *n;
+                        ops.next();
+                        n
+                    }
+                    _ => 0,
+                };
+                edits.push(make_input_edit(
+                    pre_char,
+                    pre_char + del_n,
+                    ins_s.as_str(),
+                    rope,
+                ));
+                pre_char += del_n;
             }
         }
     }

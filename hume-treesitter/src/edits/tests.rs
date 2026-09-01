@@ -93,6 +93,29 @@ fn replace_within_one_line() {
 }
 
 #[test]
+fn replace_within_one_line_insert_before_delete() {
+    // Same replacement as `replace_within_one_line`, but with the op order
+    // `invert`/`compose` can produce for a replace (insert before delete,
+    // rather than the delete-before-insert order every `hume-ops` builder
+    // emits) — must coalesce into the same single edit either way.
+    let rope = ropey::Rope::from_str("hello world\n");
+    let mut b = ChangeSetBuilder::new(rope.len_chars());
+    b.retain(6);
+    b.insert("Rust");
+    b.delete(5);
+    b.retain_rest();
+    let cs = b.finish();
+
+    let edits = input_edits_from_changeset(&cs, &rope);
+    assert_eq!(edits.len(), 1);
+    let e = &edits[0];
+    assert_eq!(e.start_byte, 6);
+    assert_eq!(e.old_end_byte, 11);
+    assert_eq!(e.new_end_byte, 10);
+    assert_eq!(e.new_end_position.column, 10);
+}
+
+#[test]
 fn multiline_insert_new_end_position() {
     let rope = ropey::Rope::from_str("ab\n");
     let mut b = ChangeSetBuilder::new(rope.len_chars());
