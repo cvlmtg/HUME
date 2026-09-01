@@ -37,6 +37,7 @@ use crate::SteelCtx;
 use crate::attribution::Owner;
 use crate::log::LogLevel;
 use crate::types::SteelCmdDef;
+use hume_engine::types::MAX_COUNT;
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
@@ -229,14 +230,17 @@ pub(crate) fn lookup_plugin_proc(ctx: &mut SteelCtx, name: String) -> SteelResul
 /// boundary and `0` is otherwise unreachable as an explicit count. `None`
 /// makes `move-down`/`move-up` move by visual row instead of buffer line
 /// (see `EditorHost::run_command_sync`); every other native command treats
-/// it the same as `Some(1)`. Negative counts still clamp to `Some(1)`.
+/// it the same as `Some(1)`. Negative counts clamp to `Some(1)`; counts above
+/// [`MAX_COUNT`] clamp there — a script has no digit-by-digit accumulator to
+/// cap, so this is the only ceiling standing between an arbitrary `isize` and
+/// a command that loops the count with no fixed-point exit.
 ///
 pub(crate) fn parse_count_extend(args: &[SteelVal]) -> Result<(Option<usize>, bool), String> {
     fn decode(n: isize) -> Option<usize> {
         if n == 0 {
             None
         } else {
-            Some(n.max(1) as usize)
+            Some((n.max(1) as usize).min(MAX_COUNT))
         }
     }
     match args {

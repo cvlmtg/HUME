@@ -99,7 +99,7 @@ Recording is ignored in read-only buffers, and while a macro is already recordin
 
 ## Numeric count
 
-Prefix a command with digits to repeat it. The first digit must be `1`–`9`; `0` counts only once a count is already under way. So `12w` moves forward 12 words and `10j` moves down 10 lines.
+Prefix a command with digits to repeat it. The first digit must be `1`–`9`; `0` counts only once a count is already under way. So `12w` moves forward 12 words and `10j` moves down 10 lines. Counts above 10,000 are capped at 10,000.
 
 | Example | Effect |
 |---------|--------|

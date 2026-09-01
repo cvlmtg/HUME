@@ -154,6 +154,18 @@ fn parse_count_extend_zero_means_no_count() {
     );
 }
 
+/// A script has no digit-by-digit accumulator to overflow, but can still
+/// pass an arbitrary `isize` count straight through — must clamp to the same
+/// ceiling the keyboard accumulator enforces, or a command that loops the
+/// count with no fixed-point exit (e.g. macro replay) can be made to hang.
+#[test]
+fn parse_count_extend_caps_at_max_count() {
+    assert_eq!(
+        parse_count_extend(&[SteelVal::IntV(isize::MAX)]).unwrap(),
+        (Some(MAX_COUNT), false)
+    );
+}
+
 #[test]
 fn parse_count_extend_string_arg_is_err() {
     let bad = &[SteelVal::StringV("garbage".into())];

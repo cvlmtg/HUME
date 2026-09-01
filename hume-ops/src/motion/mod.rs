@@ -23,9 +23,9 @@ pub enum FindKind {
 /// bookkeeping.
 ///
 /// `count` controls how many times the motion is applied per selection. Each
-/// fold step rebuilds a `Selection` pinned to the *original* anchor with the
+/// step rebuilds a `Selection` pinned to the *original* anchor with the
 /// latest head, so a multi-step motion sees a selection shaped like its
-/// caller would see it after one step, not a bare head. The motion is folded
+/// caller would see it after one step, not a bare head. The motion is applied
 /// `count` times *inside* the `map` call — each selection independently
 /// accumulates N steps before anchor/merge logic runs. This is semantically
 /// "move 3 words" (not "apply 1w to the whole selection set three times"),
@@ -42,9 +42,20 @@ pub(crate) fn apply_motion(
     motion: impl Fn(&BufferText, &Selection) -> usize,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
-        let new_head = (0..count)
-            .fold(sel, |s, _| Selection::new(s.anchor(), motion(text, &s)))
-            .head();
+        // Stop at a fixed point. Every motion here is a pure function of
+        // (text, selection), so once a step stops moving the head — clamped
+        // at a buffer edge, or no further match for f/t — every later step
+        // returns the same head. Without this a large count does O(count)
+        // work instead of O(distance moved).
+        let mut s = sel;
+        for _ in 0..count {
+            let head = motion(text, &s);
+            if head == s.head() {
+                break;
+            }
+            s = Selection::new(s.anchor(), head);
+        }
+        let new_head = s.head();
         match mode {
             MotionMode::Move => Selection::collapsed(new_head),
             MotionMode::Extend => Selection::new(sel.anchor(), new_head),

@@ -193,6 +193,17 @@ impl Selection {
     }
 }
 
+/// Ceiling on a command's numeric count prefix (e.g. the `3` in `3w`).
+///
+/// Shared by the keyboard accumulator (`hume-editor`'s `Editor::handle_normal`,
+/// which builds a count one digit at a time and would otherwise overflow
+/// `usize` past ~20 digits) and Steel's `parse_count_extend`, which decodes a
+/// script-supplied count with no digit-by-digit limit of its own. Without a
+/// shared ceiling, a count from either origin can still make a command loop
+/// `count` times with no fixed-point exit (e.g. macro replay growing its
+/// replay queue by `count × macro length`) run long enough to hang the editor.
+pub const MAX_COUNT: usize = 10_000;
+
 /// Editor mode — determines cursor shape and highlight behavior.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub enum EditorMode {

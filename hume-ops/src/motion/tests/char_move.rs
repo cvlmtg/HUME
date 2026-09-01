@@ -339,6 +339,29 @@ fn move_right_count_clamps_at_eof() {
     );
 }
 
+// A `usize::MAX` count must return instantly (proving `apply_motion`'s
+// fixed-point early exit) rather than looping `usize::MAX` times: each of
+// these hangs forever without the early exit, since a naive `(0..count).fold`
+// has no way to notice the motion already clamped.
+
+#[test]
+fn move_right_huge_count_clamps_instantly() {
+    assert_state!(
+        "-[h]>ello\n",
+        |(text, sels)| cmd_move_right(&text, sels, usize::MAX, MotionMode::Move),
+        "hello-[\n]>"
+    );
+}
+
+#[test]
+fn move_left_huge_count_clamps_instantly() {
+    assert_state!(
+        "hello-[\n]>",
+        |(text, sels)| cmd_move_left(&text, sels, usize::MAX, MotionMode::Move),
+        "-[h]>ello\n"
+    );
+}
+
 #[test]
 fn move_left_count_3() {
     // \n(5) → o(4) → l(3) → l(2)

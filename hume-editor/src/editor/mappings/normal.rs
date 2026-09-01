@@ -9,7 +9,7 @@ use hume_ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_regis
 use super::super::Editor;
 use super::super::register_ops::RegisterPrefix;
 use super::super::replay::MacroPending;
-use hume_engine::types::EditorMode;
+use hume_engine::types::{EditorMode, MAX_COUNT};
 
 /// Enqueue the keys stored in `reg` into the editor's replay queue.
 ///
@@ -180,15 +180,13 @@ impl Editor {
         // trie (unbound by default; core:vim-keybind binds it to goto-line-start).
         // NOTE: this runs AFTER macro_pending so that `Q1`/`q1` treat `1` as a
         // register name, not as a count digit.
+        // Clamped to MAX_COUNT — see its doc comment for why.
         if self.state.pending_keys.is_empty() && key.modifiers == Modifiers::NONE {
             match key.code {
-                KeyCode::Char(d @ '1'..='9') => {
-                    let n = self.state.count.unwrap_or(0) * 10 + (d as usize - '0' as usize);
-                    self.state.count = Some(n);
-                    return;
-                }
-                KeyCode::Char('0') if self.state.count.is_some() => {
-                    self.state.count = self.state.count.map(|c| c * 10);
+                KeyCode::Char(d @ '0'..='9') if d != '0' || self.state.count.is_some() => {
+                    let digit = d as usize - '0' as usize;
+                    let n = self.state.count.unwrap_or(0) * 10 + digit;
+                    self.state.count = Some(n.min(MAX_COUNT));
                     return;
                 }
                 _ => {}
