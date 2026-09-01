@@ -561,12 +561,14 @@ pub(crate) fn primary_range_params(
 }
 
 /// Ready-made range params spanning every selection in `id`'s buffer — the
-/// hull from the first selection's start to the last one's end. Valid only
-/// because `SelectionSet` keeps selections sorted by `start()` and
-/// non-overlapping (day-one invariant), so the first and last bound the rest.
-/// Used where the caller already gated on `(selections-linewise? id)`
-/// (`:lsp-fmt`'s range branch), which promises every selection in between is
-/// itself linewise — so the hull never includes a partial line.
+/// hull from the first selection's start to the last one's end. `None` if
+/// any two adjacent selections (by `start()`) leave a gap between them, not
+/// just when either builder input is invalid: an LSP range is one contiguous
+/// span, so a hull built across a gap would silently pull an untouched line
+/// into the request along with the selected ones. Used where the caller
+/// already gated on `(selections-linewise? id)` (`:lsp-fmt`'s range branch),
+/// which promises every selection in between is itself linewise — so a hull
+/// that *is* returned never includes a partial line, only ever whole ones.
 pub(crate) fn selections_range_params(
     state: &EditorState,
     view: &EngineView,
@@ -574,8 +576,15 @@ pub(crate) fn selections_range_params(
     id: BufferId,
 ) -> Option<serde_json::Value> {
     let selections = &state.shown_buffer_state(view, id)?.selections;
-    let start_c = selections.iter_sorted().next()?.start();
-    let end_c = selections.iter_sorted().last()?.end();
+    let mut sels = selections.iter_sorted();
+    let first = sels.next()?;
+    let (start_c, mut end_c) = (first.start(), first.end());
+    for sel in sels {
+        if sel.start() != end_c + 1 {
+            return None;
+        }
+        end_c = sel.end();
+    }
     char_range_params(state, lsp, id, start_c, end_c)
 }
 

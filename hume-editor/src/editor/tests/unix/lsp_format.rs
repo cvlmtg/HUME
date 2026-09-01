@@ -83,6 +83,22 @@ fn select_full_line_1(ed: &mut Editor) {
     pbs.selections = SelectionSet::single(Selection::new(0, 5));
 }
 
+fn select_full_lines_1_and_3(ed: &mut Editor) {
+    // Two disjoint linewise selections: 'line1\n' (chars [0, 6)) and
+    // 'line3\n' (chars [12, 17]) — 'line2\n' in between is untouched by
+    // either.
+    let bid = ed.focused_buffer_id();
+    let pid = ed.state.focused_pane_id;
+    let pbs = ed
+        .state
+        .panes
+        .state
+        .get_mut(pid)
+        .and_then(|by_buf| by_buf.get_mut(bid))
+        .expect("pane buffer state must exist");
+    pbs.selections = SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(12, 17)], 0);
+}
+
 fn run_fmt(ed: &mut Editor) {
     type_cmd(ed, ":lsp-fmt");
     ed.settle();
@@ -188,6 +204,44 @@ fn full_line_selection_sends_range_formatting() {
         ed.doc().text().to_string(),
         "RANGE_FORMATTED\nline2\nline3\n",
         "a full-line selection must send rangeFormatting, not whole-buffer formatting"
+    );
+}
+
+/// Two disjoint linewise selections (line 1 and line 3, with line 2
+/// untouched by either) can't be expressed as one LSP range without also
+/// covering the untouched line in between — `:lsp-fmt` must fall back to
+/// whole-document formatting rather than send a hull range that reformats
+/// line 2 too.
+#[test]
+fn disjoint_full_line_selections_fall_back_to_whole_buffer() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/formatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "WHOLE_BUFFER_DISJOINT\n")]),
+            );
+            // If the decision were wrong and the disjoint selections sent a
+            // hull rangeFormatting request instead, this response would
+            // apply and the assertion below would fail loudly.
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_HULL_RANGE_PATH\n")]),
+            );
+        },
+    );
+    select_full_lines_1_and_3(&mut ed);
+
+    run_fmt(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "WHOLE_BUFFER_DISJOINT\n",
+        "disjoint linewise selections must fall back to whole-buffer formatting, \
+         not a hull range that includes the untouched line between them"
     );
 }
 

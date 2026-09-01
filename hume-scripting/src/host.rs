@@ -664,7 +664,11 @@ pub trait LspHost {
 
     /// Same shape as [`lsp_primary_range_params`](Self::lsp_primary_range_params)
     /// but spanning every selection in `id`'s buffer — the hull from the
-    /// first selection's start to the last one's end.
+    /// first selection's start to the last one's end. `None` (in addition to
+    /// every reason `lsp_primary_range_params` can return `None`) if two
+    /// selections leave a gap between them: an LSP range is one contiguous
+    /// span, and a hull spanning a gap would silently reformat the untouched
+    /// text between the selections along with them.
     fn lsp_selections_range_params(&self, id: BufferId) -> Option<serde_json::Value>;
 
     /// Wire `(line, character)` → char offset in `id`'s attached server's

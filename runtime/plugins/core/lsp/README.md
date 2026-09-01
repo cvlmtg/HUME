@@ -287,6 +287,8 @@ bare-`Location` branch is simply unreached: `textDocument/references` only ever 
 Format-on-save is not wired by default — v1 is manual `:lsp-fmt` only; `format.scm` carries a
 commented-out `on-buffer-save` hook to opt in. `:lsp-fmt` picks range vs. whole-buffer
 formatting (and the matching capability to guard on) based on whether every selection
-spans one or more complete lines. Rename has no tree-sitter fallback in v1 — a buffer with no
-attached server just reports "not supported" via the ordinary capability guard, the same as
-any other unsupported feature.
+spans one or more complete lines and, when there's more than one, they're contiguous — an
+LSP range is one span, so a gap between two linewise selections falls back to whole-buffer
+formatting rather than reformatting the untouched lines between them. Rename has no
+tree-sitter fallback in v1 — a buffer with no attached server just reports "not supported"
+via the ordinary capability guard, the same as any other unsupported feature.

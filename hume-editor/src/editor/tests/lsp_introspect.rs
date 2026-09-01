@@ -282,13 +282,16 @@ fn lsp_primary_range_params_reflects_the_primary_selection() {
 /// The hull spans the first selection's start to the last selection's end,
 /// not just the primary one — the shape `:lsp-fmt`'s range branch needs once
 /// `(selections-linewise? bid)` has already confirmed every selection in
-/// between is itself linewise.
+/// between is itself linewise. The two selections here are contiguous
+/// (selection 2 starts exactly where selection 1 ends), so the hull covers
+/// no untouched text — see `lsp_selections_range_params_is_false_for_a_gap`
+/// for the case where it would.
 #[test]
 fn lsp_selections_range_params_spans_first_start_to_last_end() {
     let tmp = safe_tempdir();
     // "abcdef\nxyz\n": selection 1 covers "bcd" (chars 1..=3), selection 2
-    // covers "xy" (chars 7..=8, inclusive) on the next line.
-    let mut ed = editor_from("a-[bcd]>ef\n-[xy]>z\n");
+    // covers "ef\nxy" (chars 4..=8, inclusive) starting right after it.
+    let mut ed = editor_from("a-[bcd]>-[ef\nxy]>z\n");
     ed.doc_mut().set_path(Some(
         tmp.path().join("fake-lsp-introspect-selections-range.rs"),
     ));
@@ -310,6 +313,36 @@ fn lsp_selections_range_params_spans_first_start_to_last_end() {
     assert!(
         fired,
         "range params must span from the first selection's start to the last selection's end"
+    );
+}
+
+/// A gap between two linewise selections can't be expressed as one LSP
+/// range without also covering the untouched text in between — the
+/// contiguity check `:lsp-fmt`'s fallback to whole-buffer formatting relies
+/// on (see `disjoint_full_line_selections_fall_back_to_whole_buffer` in
+/// `tests/unix/lsp_format.rs`).
+#[test]
+fn lsp_selections_range_params_is_false_for_a_gap() {
+    let tmp = safe_tempdir();
+    // "abcdef\nxyz\n": selection 1 covers "bcd" (chars 1..=3), selection 2
+    // covers "xy" (chars 7..=8) — "ef\n" (chars 4..=6) sits untouched
+    // between them.
+    let mut ed = editor_from("a-[bcd]>ef\n-[xy]>z\n");
+    ed.doc_mut().set_path(Some(
+        tmp.path()
+            .join("fake-lsp-introspect-selections-range-gap.rs"),
+    ));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (lsp-selections-range-params (current-buffer)) #f)"#,
+    );
+    assert!(
+        fired,
+        "range params must be #f when two selections leave a gap between them"
     );
 }
 

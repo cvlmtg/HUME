@@ -15,7 +15,7 @@ pub fn indent_lines(
     tab_width: u8,
     levels: usize,
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    let delta_display_col = indent_stop(levels as u32, tab_width) as isize;
+    let delta_display_col = indent_stop(clamp_levels(levels, tab_width), tab_width) as isize;
     shift_indent(text, sels, style, tab_width, delta_display_col)
 }
 
@@ -27,8 +27,20 @@ pub fn unindent_lines(
     tab_width: u8,
     levels: usize,
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    let delta_display_col = -(indent_stop(levels as u32, tab_width) as isize);
+    let delta_display_col = -(indent_stop(clamp_levels(levels, tab_width), tab_width) as isize);
     shift_indent(text, sels, style, tab_width, delta_display_col)
+}
+
+/// Clamp `levels` to the largest value `indent_stop(levels, tab_width)` can
+/// compute without overflowing its `u32` multiply. The editor's own
+/// dispatch caps `levels` (the count prefix) at `hume_engine::types::MAX_COUNT`
+/// (10,000) long before this matters, but `hume-ops`'s functions are a
+/// public API with no such guarantee — a direct caller passing
+/// `usize::MAX` must clamp here rather than overflow (debug-panic, or wrap
+/// to a wrong and possibly negative delta in release) inside `indent_stop`.
+fn clamp_levels(levels: usize, tab_width: u8) -> u32 {
+    let tw = (tab_width as u64).max(1);
+    (levels as u64).min(u32::MAX as u64 / tw) as u32
 }
 
 /// Render a leading-whitespace run of exactly `width` display columns in
@@ -58,8 +70,13 @@ fn render_indent(width: usize, style: TabStyle, tab_width: u8) -> String {
 /// re-rendered in `style` — an indent that isn't already a whole number of
 /// levels (e.g. a continuation line hand-aligned to an open paren) shifts by
 /// the requested amount without being rounded onto a tab stop first. This
-/// also makes `<` exactly invert `>` (Vim's default, no `shiftround`);
-/// snapping to levels first would make round-tripping lossy.
+/// also makes a `<` immediately after a `>` restore the exact prior width
+/// (Vim's default, no `shiftround`); snapping to levels first would make
+/// that round trip lossy. Not a full inverse in general, though: `new_width`
+/// saturates at 0 (see below), so `<` on an indent narrower than one level
+/// flattens it rather than going negative, and re-rendering in `style` means
+/// a mixed tabs-and-spaces indent normalizes rather than surviving
+/// byte-for-byte.
 ///
 /// Iterates lines directly rather than going through [`super::apply_edit`]
 /// (built for one edit per *selection*, not per *line*) — same reason

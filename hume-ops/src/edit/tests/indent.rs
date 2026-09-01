@@ -74,6 +74,17 @@ fn indent_two_levels_at_once() {
     );
 }
 
+/// `hume-ops`'s functions are a public API — a caller (not just the
+/// editor's own count-prefix dispatch, which caps at `MAX_COUNT`) can pass
+/// an arbitrary `levels`. `indent_stop(levels as u32, tab_width)`'s `u32`
+/// multiply must not overflow for it — this must simply not panic (and not
+/// hang: the new width still saturates like any other huge indent).
+#[test]
+fn indent_huge_levels_does_not_overflow() {
+    let (text, sels) = hume_test_fixtures::testing::parse_state("-[f]>oo\n");
+    let _ = indent_lines(text, sels, TabStyle::Soft, 4, usize::MAX);
+}
+
 #[test]
 fn indent_tab_width_eight() {
     assert_state!(
@@ -255,5 +266,37 @@ fn indent_then_unindent_round_trips() {
             unindent_lines(text, sels, TabStyle::Soft, 4, 1)
         },
         "  -[f]>oo\n"
+    );
+}
+
+#[test]
+fn indent_then_unindent_round_trips_under_hard_style() {
+    // Same round-trip as `indent_then_unindent_round_trips`, but under
+    // TabStyle::Hard — the width doubles as a re-render, from spaces to a
+    // tab-plus-spaces mix and back, not just a resize of the same characters.
+    assert_state!(
+        "  -[f]>oo\n",
+        |(text, sels)| {
+            let (text, sels, _) = indent_lines(text, sels, TabStyle::Hard, 4, 1);
+            unindent_lines(text, sels, TabStyle::Hard, 4, 1)
+        },
+        "  -[f]>oo\n"
+    );
+}
+
+#[test]
+fn unindent_then_indent_does_not_round_trip_below_one_level() {
+    // `<` saturates at width 0 rather than going negative (see
+    // `shift_indent`'s doc comment), so — unlike `indent_then_unindent_round_trips`
+    // — going the other direction first is lossy: unindenting a 2-column
+    // indent (narrower than one 4-column level) flattens it to 0, and `>`
+    // afterward lands on a full level (4), not back at 2.
+    assert_state!(
+        "  -[f]>oo\n",
+        |(text, sels)| {
+            let (text, sels, _) = unindent_lines(text, sels, TabStyle::Soft, 4, 1);
+            indent_lines(text, sels, TabStyle::Soft, 4, 1)
+        },
+        "    -[f]>oo\n"
     );
 }

@@ -103,6 +103,15 @@ impl<'a> EditorHostImpl<'a> {
         self.state.buffers.try_get(id)
     }
 
+    /// The focused pane's own buffer state — the focused buffer as seen in
+    /// the focused pane, never a caller-supplied `bid`. Shared by every
+    /// `CursorHost` method that reads "the current cursor/selections" with
+    /// no `bid` parameter of its own to resolve against.
+    fn focused_pane_buffer_state(&self) -> Option<&crate::editor::pane_state::PaneBufferState> {
+        let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
+        self.state.focused_buffer_state(buf_id)
+    }
+
     /// `bid`'s buffer and selections as seen in the pane currently showing
     /// it (see `EditorState::shown_buffer_state`). Shared by every
     /// `CursorHost` method that reads selection geometry for an arbitrary
@@ -567,14 +576,12 @@ impl<'a> RegisterHost for EditorHostImpl<'a> {
 
 impl<'a> CursorHost for EditorHostImpl<'a> {
     fn current_line_number(&self) -> Option<usize> {
-        let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
-        let pbs = self.state.focused_buffer_state(buf_id)?;
+        let pbs = self.focused_pane_buffer_state()?;
         self.char_index_to_line(pbs.selections.primary().head())
     }
 
     fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
-        let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
-        let pbs = self.state.focused_buffer_state(buf_id)?;
+        let pbs = self.focused_pane_buffer_state()?;
         let primary_index = pbs.selections.primary_index();
         Some(
             pbs.selections
