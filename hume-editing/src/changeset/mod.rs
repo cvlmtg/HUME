@@ -38,11 +38,16 @@ pub enum Operation {
 ///           After  → 5  (cursor moves past the inserted text)
 /// ```
 ///
-/// `Assoc` is only relevant when re-anchoring positions that were not
-/// produced by the edit itself (e.g. external bookmarks or LSP diagnostic
-/// ranges) via [`PosMapCursor`]. Edit operations compute result positions
-/// directly from the builder, and undo/redo restores selections from the
-/// stored inverse transaction — neither path needs position mapping.
+/// `Assoc` is primarily for re-anchoring positions that were not produced by
+/// the edit itself (e.g. external bookmarks or LSP diagnostic ranges) via
+/// [`PosMapCursor`]. Most edit operations compute result positions directly
+/// from the builder instead, and undo/redo restores selections from the
+/// stored inverse transaction — neither needs position mapping. The one
+/// exception is `>`/`<` (`hume-ops/src/edit/indent.rs`): it deliberately
+/// orders each rewritten line's ops `Insert` before `Delete` so a selection
+/// endpoint sitting at the line start resolves through `PosMapCursor` by
+/// `Assoc` — `Before` for a linewise selection's start, `After` everywhere
+/// else — rather than through a hand-kept before/after position table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Assoc {
     /// Stay before inserted text ("sticky left").

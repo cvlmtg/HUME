@@ -342,6 +342,43 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
     );
 }
 
+/// A sibling pane's plain cursor at a rewritten line's column 0 clamps past
+/// the new indent, via the same `ChangeSet` `>` uses to remap the acting
+/// pane's own selections — `translate_in_place` (every command's sibling-pane
+/// path) always maps with `Assoc::After`, and `>`'s own remap uses that same
+/// association for anything but a linewise selection's start. Both paths only
+/// agree because the `ChangeSet` puts the new indent's `Insert` op before the
+/// `Delete`: with the opposite order, a position exactly at the line start
+/// falls straight into the `Delete` regardless of `Assoc` and collapses to
+/// the *old* line start instead.
+#[test]
+fn indent_sibling_pane_cursor_at_line_start_clamps_past_new_indent() {
+    use hume_editing::selection::{Selection, SelectionSet};
+
+    // "  foo\n" — two spaces of existing indent.
+    let mut ed = editor_from("  -[f]>oo\n");
+    let bid = ed.focused_buffer_id();
+    let pid_a = ed.state.focused_pane_id;
+    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
+
+    // Pane B's cursor sits at column 0 — an ordinary cursor that merely
+    // happens to be at the line start, not a linewise selection.
+    ed.switch_focused_pane(pid_b);
+    ed.set_current_selections(SelectionSet::single(Selection::collapsed(0)));
+
+    // Pane A indents the line. Default settings: tab-style=hard, tab-width=4;
+    // the existing 2-space indent (width 2) shifts to width 6, rendered as
+    // one tab plus 2 spaces ("\t  ", 3 chars).
+    ed.switch_focused_pane(pid_a);
+    ed.handle_key(key('>'));
+
+    assert_eq!(
+        ed.selections_for(pid_b, bid).unwrap().primary().head(),
+        3,
+        "pane B's cursor clamps past the new indent, not back to the old line start"
+    );
+}
+
 /// Multi-cursor propagation: a deletion that spans two selections in pane B
 /// merges them into one (proves translate_in_place calls merge_overlapping_in_place).
 #[test]

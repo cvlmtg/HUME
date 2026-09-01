@@ -1,6 +1,6 @@
 //! `>` / `<` — shift every line touched by a selection by whole indent levels.
 
-use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
+use hume_editing::changeset::{Assoc, ChangeSet, ChangeSetBuilder, PosMapCursor};
 use hume_editing::lines::leading_indent;
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
 use hume_editing::tab_style::TabStyle;
@@ -47,25 +47,6 @@ fn render_indent(width: usize, style: TabStyle, tab_width: u8) -> String {
     }
 }
 
-/// One rewritten line's before/after geometry — enough to remap selections
-/// afterward via a binary search on `line`, without re-scanning the buffer.
-/// The `new_*` fields are read straight off [`ChangeSetBuilder::new_pos`] at
-/// the moment each is known, rather than carried through a hand-kept delta
-/// accumulator — the builder already tracks that (its own doc: "no separate
-/// delta accumulator needed").
-#[derive(Clone, Copy)]
-struct LineEdit {
-    line: usize,
-    line_start: usize,
-    /// End of the line's *old* leading-whitespace run — the clamp target for
-    /// a selection endpoint that sat inside the old indent.
-    ws_end: usize,
-    /// `line_start`'s position in the new buffer.
-    new_line_start: usize,
-    /// End of the line's *new* leading-whitespace run.
-    new_ws_end: usize,
-}
-
 /// Shared implementation for [`indent_lines`]/[`unindent_lines`]: one signed
 /// display-column delta (positive indents, negative unindents), since the two
 /// are otherwise identical. Callers pass columns — via
@@ -101,7 +82,7 @@ fn shift_indent(
     lines.dedup();
 
     let mut b = ChangeSetBuilder::new(text.len_chars());
-    let mut edits: Vec<LineEdit> = Vec::new();
+    let mut touched_any = false;
 
     for line in lines {
         let line_start = text.line_to_char(line);
@@ -126,76 +107,63 @@ fn shift_indent(
         let old_len = ws_end - line_start;
 
         b.retain(line_start - b.old_pos());
-        let new_line_start = b.new_pos();
-        b.delete(old_len);
+        // Insert before delete (not the delete-then-insert order every other
+        // `hume-ops` edit uses): it puts the new indent's `Insert` op at
+        // exactly the old-doc position of the touched line's start, so
+        // `PosMapCursor` resolves an endpoint sitting there by `Assoc`
+        // instead of unconditionally collapsing it into the following
+        // `Delete` — that's what lets the remap below reuse the ChangeSet
+        // itself rather than a hand-kept table of before/after line offsets.
         b.insert(&new_indent);
-        let new_ws_end = b.new_pos();
-
-        edits.push(LineEdit {
-            line,
-            line_start,
-            ws_end,
-            new_line_start,
-            new_ws_end,
-        });
-    }
-
-    if edits.is_empty() {
-        // No touched line changed width (all blank, or a `<` saturating at
-        // an already-flush indent) — every position is already correct as
-        // is. Not needed for undo bookkeeping (an identity `ChangeSet`
-        // already short-circuits before a revision is recorded — see
-        // `Buffer::apply_edit`/`doc_ops::finish_edit`); this just skips the
-        // no-op rope clone/apply and the selection remap below.
-        let len = text.len_chars();
-        return (text, sels, ChangeSet::identity(len));
+        b.delete(old_len);
+        touched_any = true;
     }
 
     b.retain_rest();
     let cs = b.finish();
+    if !touched_any {
+        // No touched line changed width (all blank, or a `<` saturating at
+        // an already-flush indent) — every position is already correct as
+        // is. `cs` is `ChangeSet::identity` here (only `retain_rest` ran).
+        // Not needed for undo bookkeeping (an identity `ChangeSet` already
+        // short-circuits before a revision is recorded — see
+        // `Buffer::apply_edit`/`doc_ops::finish_edit`); this just skips the
+        // no-op rope clone/apply and the selection remap below.
+        debug_assert!(cs.is_identity());
+        return (text, sels, cs);
+    }
     let new_text = cs
         .apply(&text)
         .expect("indent/unindent produced an invalid changeset — this is a bug");
 
-    // Maps one original-buffer position through every rewritten line at or
-    // before it. A position strictly inside a rewritten line's old indent
-    // clamps to the end of the new indent — shifting it by the line's raw
-    // char delta would walk it onto the wrong line when the indent shrinks by
-    // more than the position's own offset into it. `keep_at_line_start` is
-    // the one exception: a linewise selection's start is exactly the line
-    // start by definition (`is_selection_linewise`), and must stay there
-    // (rather than clamp forward past the new indent) so the selection still
-    // covers the whole rewritten line, indent included — an ordinary cursor
-    // that merely happens to sit at column 0 gets no such exception, and
-    // clamps like any other in-indent position. Everywhere else — content
-    // past the old indent, or any other line entirely — shifts by the
-    // nearest preceding rewritten line's own net width change.
-    let shift = |p: usize, e: &LineEdit| p - e.ws_end + e.new_ws_end;
-    let map_pos = |p: usize, keep_at_line_start: bool| -> usize {
-        let line = text.char_to_line(p);
-        match edits.binary_search_by_key(&line, |e| e.line) {
-            Ok(idx) => {
-                let e = edits[idx];
-                if keep_at_line_start && p == e.line_start {
-                    e.new_line_start
-                } else if p < e.ws_end {
-                    e.new_ws_end
-                } else {
-                    shift(p, &e)
-                }
-            }
-            Err(idx) => idx.checked_sub(1).map_or(p, |j| shift(p, &edits[j])),
-        }
-    };
-
+    // One monotone `PosMapCursor` pass over every selection endpoint, same
+    // shape as `SelectionSet::translate_in_place_with`. A linewise
+    // selection's start is exactly a rewritten line's start by definition
+    // (`is_selection_linewise`) and must stay there — `Assoc::Before` sticks
+    // to what was left of the insertion point, landing on the new line
+    // start. Every other endpoint — an ordinary cursor that merely happens
+    // to sit at column 0, or one buried in the old indent — clamps past the
+    // new indent instead: `Assoc::After` moves past the `Insert`, and any
+    // deeper old-indent position falls into the following `Delete` and
+    // collapses to that same point regardless of `Assoc` (a position inside
+    // a deletion is never ambiguous).
+    let mut mapper = PosMapCursor::new(cs.ops());
     let new_sels: Vec<Selection> = sels
         .iter_sorted()
         .map(|sel| {
-            let linewise = is_selection_linewise(&text, sel);
-            Selection::new(
-                map_pos(sel.anchor(), linewise),
-                map_pos(sel.head(), linewise),
-            )
+            let assoc = if is_selection_linewise(&text, sel) {
+                Assoc::Before
+            } else {
+                Assoc::After
+            };
+            let forward = sel.anchor() <= sel.head();
+            let lo = mapper.map(sel.start(), assoc);
+            let hi = mapper.map(sel.end(), assoc);
+            if forward {
+                Selection::new(lo, hi)
+            } else {
+                Selection::new(hi, lo)
+            }
         })
         .collect();
     let new_sel_set = SelectionSet::from_vec(new_sels, sels.primary_index());

@@ -1,8 +1,26 @@
 use super::super::*;
+use hume_editing::changeset::Operation;
 use hume_editing::tab_style::TabStyle;
 use hume_test_fixtures::assert_state;
 
 // ── indent_lines ──────────────────────────────────────────────────────────
+
+#[test]
+fn indent_emits_insert_before_delete() {
+    // Pins the op order the selection remap relies on: PosMapCursor must
+    // reach the Insert before the Delete so an in-indent endpoint resolves
+    // via Assoc rather than collapsing to the deletion point.
+    let (text, sels) = hume_test_fixtures::testing::parse_state("  -[f]>oo\n");
+    let (_, _, cs) = indent_lines(text, sels, TabStyle::Soft, 4, 1);
+    assert_eq!(
+        cs.ops(),
+        &[
+            Operation::Insert("      ".to_string()),
+            Operation::Delete(2),
+            Operation::Retain(4),
+        ]
+    );
+}
 
 #[test]
 fn indent_soft_flush_line() {
