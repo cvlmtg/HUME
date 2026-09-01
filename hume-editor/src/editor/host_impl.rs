@@ -103,9 +103,10 @@ impl<'a> EditorHostImpl<'a> {
         self.state.buffers.try_get(id)
     }
 
-    /// `bid`'s buffer and selections *as seen in the focused pane*. Shared
-    /// by every `CursorHost` method that reads selection geometry for an
-    /// arbitrary `bid` in the focused pane.
+    /// `bid`'s buffer and selections as seen in the pane currently showing
+    /// it (see `EditorState::shown_buffer_state`). Shared by every
+    /// `CursorHost` method that reads selection geometry for an arbitrary
+    /// caller-supplied `bid`, which may name a buffer in a non-focused pane.
     fn buffer_and_selections(
         &self,
         bid: BufferId,
@@ -115,7 +116,7 @@ impl<'a> EditorHostImpl<'a> {
     )> {
         Some((
             self.buffer(bid)?,
-            &self.state.focused_buffer_state(bid)?.selections,
+            &self.state.shown_buffer_state(self.view, bid)?.selections,
         ))
     }
 
@@ -869,16 +870,27 @@ impl<'a> LspHost for EditorHostImpl<'a> {
     }
 
     fn lsp_position_params(&self, id: BufferId) -> Option<serde_json::Value> {
-        crate::editor::lsp::introspect::position_params(self.state, self.lsp.as_deref()?, id)
+        crate::editor::lsp::introspect::position_params(
+            self.state,
+            self.view,
+            self.lsp.as_deref()?,
+            id,
+        )
     }
 
     fn lsp_primary_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
-        crate::editor::lsp::introspect::primary_range_params(self.state, self.lsp.as_deref()?, id)
+        crate::editor::lsp::introspect::primary_range_params(
+            self.state,
+            self.view,
+            self.lsp.as_deref()?,
+            id,
+        )
     }
 
     fn lsp_selections_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
         crate::editor::lsp::introspect::selections_range_params(
             self.state,
+            self.view,
             self.lsp.as_deref()?,
             id,
         )

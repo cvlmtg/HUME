@@ -7,7 +7,7 @@
 use std::ops::Range;
 
 use hume_engine::pane::Pane;
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::{BufferId, EngineView};
 use hume_lsp::backend::ServerId;
 
 use super::LspState;
@@ -15,7 +15,6 @@ use super::diagnostics::DiagSeverity;
 use super::registry::LanguageName;
 use crate::editor::Editor;
 use crate::editor::EditorState;
-use crate::editor::pane_state::PaneBufferState;
 
 /// Resolves `server` — a registered language name, or `None` for "the
 /// focused buffer's attached server" — to a running `ServerId`.
@@ -164,15 +163,6 @@ pub(crate) fn registered_for_language(lsp: &LspState, language: &str) -> bool {
     lsp.configs.contains_key(language)
 }
 
-/// The seeded `PaneBufferState` for `(state.focused_pane_id, id)` if seeded
-/// there, else the first pane (any) that has `id` seeded — a buffer can be
-/// open in a non-focused pane, or in no pane at all (background buffer).
-fn pane_buffer_state(state: &EditorState, id: BufferId) -> Option<&PaneBufferState> {
-    state
-        .focused_buffer_state(id)
-        .or_else(|| state.panes.state.values().find_map(|m| m.get(id)))
-}
-
 /// Shared setup for both params builders: the buffer's URI and its attached
 /// server's negotiated encoding. `None` if `id` has no path or no attached
 /// (tracked) server.
@@ -190,14 +180,15 @@ fn uri_and_encoding<'a>(
 }
 
 /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
-/// params from `id`'s primary cursor head.
+/// params from `id`'s primary cursor head, in the pane currently showing it.
 pub(crate) fn position_params(
     state: &EditorState,
+    view: &EngineView,
     lsp: &LspState,
     id: BufferId,
 ) -> Option<serde_json::Value> {
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
-    let pbs = pane_buffer_state(state, id)?;
+    let pbs = state.shown_buffer_state(view, id)?;
     let rope = state.buffers.get(id).text().rope();
     let (line, character) =
         hume_rope::position_encoding::char_to_wire(rope, pbs.selections.primary().head(), encoding);
@@ -561,10 +552,11 @@ fn char_range_params(
 /// (`lsp/primary-selection-range` in `actions.scm`) is primary-scoped too.
 pub(crate) fn primary_range_params(
     state: &EditorState,
+    view: &EngineView,
     lsp: &LspState,
     id: BufferId,
 ) -> Option<serde_json::Value> {
-    let sel = pane_buffer_state(state, id)?.selections.primary();
+    let sel = state.shown_buffer_state(view, id)?.selections.primary();
     char_range_params(state, lsp, id, sel.start(), sel.end())
 }
 
@@ -577,10 +569,11 @@ pub(crate) fn primary_range_params(
 /// itself linewise — so the hull never includes a partial line.
 pub(crate) fn selections_range_params(
     state: &EditorState,
+    view: &EngineView,
     lsp: &LspState,
     id: BufferId,
 ) -> Option<serde_json::Value> {
-    let selections = &pane_buffer_state(state, id)?.selections;
+    let selections = &state.shown_buffer_state(view, id)?.selections;
     let start_c = selections.iter_sorted().next()?.start();
     let end_c = selections.iter_sorted().last()?.end();
     char_range_params(state, lsp, id, start_c, end_c)
@@ -607,25 +600,6 @@ pub(crate) fn pane_visible_range(pane: &Pane, content_lines: usize) -> Range<usi
     first_line..end_line
 }
 
-/// The pane currently showing buffer `id`: the focused pane if it shows `id`,
-/// else the first pane (by `SlotMap` iteration order) that does, else `None`
-/// if `id` isn't open in any pane. Mirrors [`pane_buffer_state`]'s
-/// focused-first/any-fallback policy, but resolves against `EngineView`'s
-/// live pane geometry rather than the seeded per-(pane,buffer) cursor state.
-fn pane_showing_buffer(state: &EditorState, view: &EngineView, id: BufferId) -> Option<PaneId> {
-    if view
-        .panes
-        .get(state.focused_pane_id)
-        .is_some_and(|p| p.buffer_id == id)
-    {
-        return Some(state.focused_pane_id);
-    }
-    view.panes
-        .iter()
-        .find(|(_, p)| p.buffer_id == id)
-        .map(|(pid, _)| pid)
-}
-
 /// `(viewport-range bid)` — the visible line range (end-exclusive) currently
 /// visible for `id`, or `None` if `id` isn't shown in any pane (a background
 /// or hidden buffer). With the same buffer open in two panes, the focused
@@ -637,7 +611,7 @@ pub(crate) fn viewport_range(
     view: &EngineView,
     id: BufferId,
 ) -> Option<Range<usize>> {
-    let pane_id = pane_showing_buffer(state, view, id)?;
+    let pane_id = state.pane_showing_buffer(view, id)?;
     let pane = view.panes.get(pane_id)?;
     let content_lines = state.buffers.try_get(id)?.text().content_line_count();
     Some(pane_visible_range(pane, content_lines))

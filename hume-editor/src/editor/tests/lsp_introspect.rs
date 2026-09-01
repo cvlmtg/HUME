@@ -6,6 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use super::*;
+use crate::editor::commands::open_pane;
 use crate::editor::lsp::LspState;
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
@@ -467,6 +468,76 @@ fn viewport_range_is_false_for_a_buffer_not_shown_in_any_pane() {
     assert!(
         fired,
         "a buffer not shown in any pane must yield #f from viewport-range"
+    );
+}
+
+/// Pins `LspHost::lsp_position_params`'s own trait doc: `#f` once `id`
+/// "isn't currently shown in any pane" — even though `id` is attached to a
+/// running server and still has a seeded (now stale) pane state.
+#[test]
+fn lsp_position_params_is_false_for_a_buffer_shown_in_no_pane() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-introspect-hidden.rs")));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+
+    let extra = tmp.path().join("other.rs");
+    std::fs::write(&extra, "fn other() {}\n").unwrap();
+    ed.open_extra_files(std::slice::from_ref(&extra));
+    let other_bid = ed
+        .state
+        .buffers
+        .find_by_path(&std::fs::canonicalize(&extra).unwrap())
+        .expect("extra file must be open in the buffer list");
+    ed.switch_to_buffer_with_jump(other_bid);
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
+             (equal? (lsp-position-params hidden) #f))"#,
+    );
+    assert!(
+        fired,
+        "lsp-position-params must return #f once the buffer is shown in no pane, not the stale cursor's position"
+    );
+}
+
+/// Characterization (behavior unchanged, no red run needed): a buffer shown
+/// in a *non-focused* pane still resolves — this is the inlay-hints-in-a-
+/// split path (`inlay.scm`'s refresh fires from `on-viewport-change`, which
+/// fires for any pane, not just the focused one).
+#[test]
+fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-introspect-split.rs")));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+
+    let extra = tmp.path().join("other.rs");
+    std::fs::write(&extra, "fn other() {}\n").unwrap();
+    ed.open_extra_files(std::slice::from_ref(&extra));
+    let other_bid = ed
+        .state
+        .buffers
+        .find_by_path(&std::fs::canonicalize(&extra).unwrap())
+        .expect("extra file must be open in the buffer list");
+    let other_pid = open_pane(&mut ed.state, &mut ed.view, other_bid);
+    ed.state.focused_pane_id = other_pid;
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
+             (and (lsp-position-params hidden) #t))"#,
+    );
+    assert!(
+        fired,
+        "lsp-position-params must still resolve a buffer shown in a non-focused pane"
     );
 }
 

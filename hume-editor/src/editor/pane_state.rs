@@ -16,7 +16,7 @@
 //! the focus-switch-Normal-only invariant can be maintained without
 //! per-buffer group bookkeeping (at most one pane is ever in Insert).
 
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use slotmap::SecondaryMap;
 
 use super::Editor;
@@ -187,11 +187,53 @@ impl PaneView {
 impl super::EditorState {
     /// `bid`'s state *as seen in the focused pane*, or `None` when `bid` is
     /// unseeded there — a stale id, or `bid` not open in the focused pane.
-    /// `bid` is caller-supplied (e.g. from a Steel `(current-buffer)` call or
-    /// an async LSP response) rather than assumed to name the focused buffer,
-    /// so this always looks the pane state up by the explicit id.
+    /// `bid` is caller-supplied (e.g. from a Steel `(current-buffer)` call),
+    /// so this always looks the pane state up by the explicit id rather than
+    /// assuming it matches the focused buffer. Strictly focused-pane callers
+    /// only — a `bid` that may be shown in a *different* pane, or in none,
+    /// wants [`shown_buffer_state`](Self::shown_buffer_state) instead.
     pub(crate) fn focused_buffer_state(&self, bid: BufferId) -> Option<&PaneBufferState> {
         self.panes.buffer_state(self.focused_pane_id, bid)
+    }
+
+    /// The pane currently showing `bid`: the focused pane if it shows `bid`,
+    /// else the first pane (by `SlotMap` iteration order) that does, else
+    /// `None` if `bid` isn't open in any pane (a background buffer).
+    pub(crate) fn pane_showing_buffer(&self, view: &EngineView, bid: BufferId) -> Option<PaneId> {
+        if view
+            .panes
+            .get(self.focused_pane_id)
+            .is_some_and(|p| p.buffer_id == bid)
+        {
+            return Some(self.focused_pane_id);
+        }
+        view.panes
+            .iter()
+            .find(|(_, p)| p.buffer_id == bid)
+            .map(|(pid, _)| pid)
+    }
+
+    /// `bid`'s state as seen in the pane currently showing it, or `None`
+    /// when no pane shows `bid`.
+    ///
+    /// A `PaneBufferState` outlives the pane's visit to `bid` — that's what
+    /// restores your cursor when you switch back to a buffer — so scanning
+    /// the *seeded* maps for "any pane that ever showed `bid`" can answer
+    /// with the cursor of a pane that moved on long ago. Resolving against
+    /// `EngineView`'s live `pane.buffer_id` instead is what makes one `bid`
+    /// mean one cursor across every surface that asks: `symbol-under-cursor`,
+    /// `selections-linewise?`, and the `lsp-*-params` builders all read
+    /// through this rather than `focused_buffer_state`, since a caller-
+    /// supplied `bid` (a Steel `(current-buffer)` snapshot, or one carried
+    /// across a debounce or an async LSP round-trip) may no longer be the
+    /// buffer the focused pane shows, or may be shown in a different pane.
+    pub(crate) fn shown_buffer_state(
+        &self,
+        view: &EngineView,
+        bid: BufferId,
+    ) -> Option<&PaneBufferState> {
+        self.panes
+            .buffer_state(self.pane_showing_buffer(view, bid)?, bid)
     }
 }
 

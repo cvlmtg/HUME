@@ -2,6 +2,8 @@
 // on-confirm #:prefill text), (symbol-under-cursor bid).
 
 use super::*;
+use crate::editor::commands::open_pane;
+use hume_scripting::ScriptingHost;
 
 #[test]
 fn prompt_confirm_calls_callback_with_typed_text() {
@@ -177,4 +179,67 @@ fn symbol_under_cursor_on_punctuation_returns_empty() {
     );
     type_cmd(&mut ed, ":check");
     assert_eq!(ed.state.status_msg.clone().unwrap(), "[  ]");
+}
+
+#[test]
+fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("foo -[b]>ar baz\n");
+
+    // Open a second buffer in a second pane, then focus that pane — `bid`
+    // stays open (with its "bar" cursor) in the now-unfocused first pane.
+    let extra = tmp.path().join("other.rs");
+    std::fs::write(&extra, "fn other() {}\n").unwrap();
+    ed.open_extra_files(std::slice::from_ref(&extra));
+    let other_bid = ed
+        .state
+        .buffers
+        .find_by_path(&std::fs::canonicalize(&extra).unwrap())
+        .expect("extra file must be open in the buffer list");
+    let other_pid = open_pane(&mut ed.state, &mut ed.view, other_bid);
+    ed.state.focused_pane_id = other_pid;
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
+             (equal? (symbol-under-cursor hidden) "bar"))"#,
+    );
+    assert!(
+        fired,
+        "symbol-under-cursor must resolve bid in whichever pane currently shows it, not just the focused one"
+    );
+}
+
+#[test]
+fn symbol_under_cursor_is_empty_once_no_pane_shows_the_buffer() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("foo -[b]>ar baz\n");
+
+    // Redirect the sole pane to a different buffer. `bid`'s PaneBufferState
+    // stays seeded (stale) in that pane's map — `pane_state::ensure` never
+    // removes an entry — but the pane's live `buffer_id` no longer points
+    // at it, so no pane currently shows it.
+    let extra = tmp.path().join("other.rs");
+    std::fs::write(&extra, "fn other() {}\n").unwrap();
+    ed.open_extra_files(std::slice::from_ref(&extra));
+    let other_bid = ed
+        .state
+        .buffers
+        .find_by_path(&std::fs::canonicalize(&extra).unwrap())
+        .expect("extra file must be open in the buffer list");
+    ed.switch_to_buffer_with_jump(other_bid);
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
+             (equal? (symbol-under-cursor hidden) ""))"#,
+    );
+    assert!(
+        fired,
+        "symbol-under-cursor must return \"\" once the buffer is shown in no pane, not the stale cursor's word"
+    );
 }

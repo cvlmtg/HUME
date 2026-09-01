@@ -2,6 +2,7 @@
 // `selections-linewise?`.
 
 use super::*;
+use crate::editor::commands::open_pane;
 use crate::editor::message_log::Severity;
 use hume_scripting::ScriptingHost;
 
@@ -424,6 +425,39 @@ fn selections_linewise_false_when_one_of_several_selections_is_partial() {
         "-[abc\n]>-[de]>f\n",
         false,
         "one non-linewise selection among several must make the whole set non-linewise",
+    );
+}
+
+/// A buffer's linewise selection must still resolve through
+/// `selections-linewise?` when the buffer is shown only in a *non-focused*
+/// pane — the same pane-resolution policy `symbol-under-cursor` and the
+/// `lsp-*-params` builders share (see `shown_buffer_state`).
+#[test]
+fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[abc\n]>def\n");
+
+    let extra = tmp.path().join("other.rs");
+    std::fs::write(&extra, "fn other() {}\n").unwrap();
+    ed.open_extra_files(std::slice::from_ref(&extra));
+    let other_bid = ed
+        .state
+        .buffers
+        .find_by_path(&std::fs::canonicalize(&extra).unwrap())
+        .expect("extra file must be open in the buffer list");
+    let other_pid = open_pane(&mut ed.state, &mut ed.view, other_bid);
+    ed.state.focused_pane_id = other_pid;
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
+             (selections-linewise? hidden))"#,
+    );
+    assert!(
+        fired,
+        "selections-linewise? must resolve bid's selections in whichever pane shows it, not just the focused one"
     );
 }
 

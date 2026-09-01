@@ -218,12 +218,15 @@ pub trait CursorHost {
     /// exists) or when `idx` is out of range (> `len_chars()`).
     fn char_index_to_line(&self, idx: usize) -> Option<usize>;
 
-    /// `(symbol-under-cursor bid)` — the word at the primary cursor head,
-    /// `""` on whitespace/punctuation.
+    /// `(symbol-under-cursor bid)` — the word at the primary cursor head in
+    /// the pane currently showing `bid`, `""` on whitespace/punctuation or
+    /// when `bid` isn't shown in any pane.
     fn symbol_under_cursor(&self, bid: BufferId) -> String;
 
-    /// `(selections-linewise? bid)` — every selection in `bid`'s pane state
-    /// is linewise (spans whole lines, anchor to trailing `\n`).
+    /// `(selections-linewise? bid)` — every selection in `bid`'s state, as
+    /// seen in the pane currently showing it, is linewise (spans whole
+    /// lines, anchor to trailing `\n`). `false` when `bid` isn't shown in
+    /// any pane.
     fn selections_linewise(&self, bid: BufferId) -> bool;
 }
 
