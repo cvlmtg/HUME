@@ -47,22 +47,53 @@ fn content_line_count_asserts_the_trailing_newline_invariant() {
 }
 
 #[test]
-fn strip_line_break_strips_every_unicode_line_break() {
-    // Independent oracle: each expected value is a literal, not derived
-    // from LINE_BREAKS — a bug that drops one break char from the const
-    // still fails this.
-    assert_eq!(strip_line_break("hello\n"), "hello");
-    assert_eq!(strip_line_break("hello\r"), "hello");
-    assert_eq!(strip_line_break("hello\u{0B}"), "hello"); // VT
-    assert_eq!(strip_line_break("hello\u{0C}"), "hello"); // FF
-    assert_eq!(strip_line_break("hello\u{85}"), "hello"); // NEL
-    assert_eq!(strip_line_break("hello\u{2028}"), "hello"); // LS
-    assert_eq!(strip_line_break("hello\u{2029}"), "hello"); // PS
+fn line_breaks_matches_the_workspace_ropey_feature_pin() {
+    // Pins the workspace's ropey feature set (Cargo.toml: neither `cr_lines`
+    // nor `unicode_lines`) to what it actually makes `Rope::lines()` split
+    // on. Cargo feature unification is additive: a future dependency pulling
+    // in ropey's defaults would silently widen the break set with no diff to
+    // Cargo.toml, and only this test would notice.
+    assert_eq!(
+        Rope::from_str("a\nb").len_lines(),
+        2,
+        "LF must be a ropey line break"
+    );
+    for c in ['\r', '\u{0B}', '\u{0C}', '\u{85}', '\u{2028}', '\u{2029}'] {
+        assert_eq!(
+            Rope::from_str(&format!("a{c}b")).len_lines(),
+            1,
+            "{c:?} must NOT be a ropey line break — LF is the only one"
+        );
+    }
+    // CRLF is recognized unconditionally by ropey, but only because of its
+    // LF: the pair is one break, so this is still two lines, not three.
+    assert_eq!(Rope::from_str("a\r\nb").len_lines(), 2);
 }
 
 #[test]
-fn strip_line_break_collapses_crlf_in_one_pass() {
-    assert_eq!(strip_line_break("hello\r\n"), "hello");
+fn strip_line_break_strips_lf() {
+    assert_eq!(strip_line_break("hello\n"), "hello");
+}
+
+#[test]
+fn strip_line_break_leaves_non_lf_unicode_breaks_alone() {
+    // None of these terminate a line under this workspace's ropey config —
+    // ordinary content, must survive untouched.
+    assert_eq!(strip_line_break("hello\r"), "hello\r"); // CR
+    assert_eq!(strip_line_break("hello\u{0B}"), "hello\u{0B}"); // VT
+    assert_eq!(strip_line_break("hello\u{0C}"), "hello\u{0C}"); // FF
+    assert_eq!(strip_line_break("hello\u{85}"), "hello\u{85}"); // NEL
+    assert_eq!(strip_line_break("hello\u{2028}"), "hello\u{2028}"); // LS
+    assert_eq!(strip_line_break("hello\u{2029}"), "hello\u{2029}"); // PS
+}
+
+#[test]
+fn strip_line_break_keeps_the_cr_of_a_crlf() {
+    // A `\r\n` token loses its `\n` and keeps its `\r` as content — the CR
+    // was never a terminator, so nothing normalizes it away here. No live
+    // buffer holds one (`hume_editing` normalizes every insertion), so this
+    // pins the raw-rope contract, not an editor-visible behavior.
+    assert_eq!(strip_line_break("hello\r\n"), "hello\r");
 }
 
 #[test]
@@ -263,6 +294,32 @@ fn line_content_end_combining_grapheme_before_newline() {
     assert_eq!(line_content_end(&buf, 0), 3);
 }
 
+#[test]
+fn line_content_end_treats_a_bare_cr_as_content() {
+    // "ab\rcd\n" is one line, not two: `\r` is ordinary content here, so the
+    // cursor's last landing spot is 'd' (offset 4), not 'b'.
+    let buf = rope("ab\rcd\n");
+    assert_eq!(line_content_end(&buf, 0), 4);
+}
+
+#[test]
+fn line_content_end_stops_on_the_cr_of_a_crlf() {
+    // "ab\r\ncd\n" — line 0 is "ab\r\n", terminated by the `\n` alone, so
+    // the `\r` is the line's own last content char and the cursor lands on
+    // it (offset 2), one further than a plain "ab\n" would give.
+    let buf = rope("ab\r\ncd\n");
+    assert_eq!(line_content_end(&buf, 0), 2);
+}
+
+#[test]
+fn line_content_end_crlf_only_line_is_not_empty() {
+    // "a\n\r\nb\n" — line 1 is "\r\n": one content char (the `\r`) plus its
+    // terminator, so the cursor lands on the `\r` (offset 2) as content, not
+    // as the empty-line fallback.
+    let buf = rope("a\n\r\nb\n");
+    assert_eq!(line_content_end(&buf, 1), 2);
+}
+
 // ── snap_to_grapheme_boundary ─────────────────────────────────────────────
 
 #[test]
@@ -319,6 +376,14 @@ fn is_empty_line_false_for_whitespace_only_line() {
     // "   \n" — whitespace-only is NOT empty (Helix semantics).
     let buf = rope("   \n");
     assert!(!is_empty_line(&buf, 0));
+}
+
+#[test]
+fn is_empty_line_false_for_a_cr_only_line() {
+    // "a\n\r\nb\n" — line 1 is "\r\n". The `\r` is content, not part of the
+    // terminator, so the line has one char and is not empty.
+    let buf = rope("a\n\r\nb\n");
+    assert!(!is_empty_line(&buf, 1));
 }
 
 // ── char_col_in_line ─────────────────────────────────────────────────────

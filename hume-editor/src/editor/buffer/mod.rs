@@ -370,14 +370,15 @@ impl Buffer {
         self.display_path.as_deref()
     }
 
-    /// First line of buffer content, capped at 64 bytes, stripped of trailing newlines.
+    /// First line of buffer content, capped at 64 bytes, stopping at the
+    /// line's `\n`.
     /// Returns `None` when the first line is empty. Used for shebang detection.
     /// Iterates codepoints, not grapheme clusters — safe because shebang lines are ASCII-only.
     pub(crate) fn first_line(&self) -> Option<String> {
         const CAP: usize = 64;
         let mut out = String::with_capacity(CAP);
         for ch in self.text.rope().chars() {
-            if ch == '\n' || ch == '\r' {
+            if ch == '\n' {
                 break;
             }
             if out.len() + ch.len_utf8() > CAP {

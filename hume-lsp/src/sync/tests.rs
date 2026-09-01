@@ -48,6 +48,37 @@ fn single_insert() {
     }
 }
 
+/// A `\r` must count as one ordinary content char on both sides of the wire
+/// conversion — never as a line break. "a\rb\n" is one ropey line here (`\n`
+/// is the only break), so an insert at char 2 goes out as (line 0, character
+/// 2); an oracle that treated the `\r` as a break would place it on a
+/// nonexistent line 1 and desync the mirror.
+///
+/// Doesn't use `check()`: that helper's `expected` goes through
+/// `BufferText::from`, which normalizes a bare `\r` away, so it can't
+/// produce this test's fixture. `expected` here is instead the literal,
+/// independently-derivable result of inserting `"X"` at char offset 2 in
+/// the same raw string `changeset_to_content_changes` itself saw.
+#[test]
+fn single_insert_on_a_buffer_containing_a_bare_cr() {
+    let before = "a\rb\n";
+    for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
+        let rope = Rope::from_str(before);
+        let mut builder = ChangeSetBuilder::new(rope.len_chars());
+        builder.retain(2);
+        builder.insert("X");
+        builder.retain_rest();
+        let cs = builder.finish();
+
+        let events = changeset_to_content_changes(&rope, &cs, enc);
+        let mirrored = apply_events_to_string_mirror(before.to_owned(), &events, enc);
+        assert_eq!(
+            mirrored, "a\rXb\n",
+            "oracle mismatch for enc={enc:?}, events={events:?}"
+        );
+    }
+}
+
 #[test]
 fn single_delete() {
     for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {

@@ -147,9 +147,10 @@ impl<'a> EditorHostImpl<'a> {
                 .iter_sorted()
                 .filter_map(|sel| hume_editing::selection::linewise_classification(text, sel))
                 .peekable();
-            match classified.peek() {
-                None => pred(false),
-                Some(_) => classified.all(pred),
+            if classified.peek().is_none() {
+                pred(false)
+            } else {
+                classified.all(pred)
             }
         })
     }

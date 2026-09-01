@@ -165,6 +165,23 @@ fn insert_str_two_cursors() {
 }
 
 #[test]
+fn insert_str_normalizes_line_endings() {
+    // Insert-mode paste and dot-repeat replay both land here, and neither
+    // guarantees LF — the builder normalizes every insertion, so no op in
+    // this crate has to.
+    assert_state!(
+        "-[h]>ello\n",
+        |(text, sels)| insert_str(text, sels, "x\r\ny"),
+        "x\ny-[h]>ello\n"
+    );
+    assert_state!(
+        "-[h]>ello\n",
+        |(text, sels)| insert_str(text, sels, "x\ry"),
+        "x\ny-[h]>ello\n"
+    );
+}
+
+#[test]
 fn insert_str_unicode_grapheme() {
     // Pasted text itself contains a combining sequence (é = e + combining
     // acute). Cursor lands after the whole pasted span via new_pos(), never

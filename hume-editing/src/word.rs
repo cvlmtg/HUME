@@ -96,10 +96,9 @@ impl<'a> WordChars<'a> {
     /// `classify_char` itself — `classify_char` only calls out five specific
     /// blanks (` `, `\t`, NBSP, ideographic space, `\n`) and leaves every
     /// other Unicode whitespace character `Punctuation` on purpose (see its
-    /// doc), which is too narrow a check here: several of those (`\r`,
-    /// U+2028, U+2029) are ropey line breaks, so accepting one as a word char
-    /// would make `char_to_line`/`line_end_exclusive` disagree with the word
-    /// runs `miw`/`mm` compute on the same buffer.
+    /// doc), which is too narrow a check here: a word run has to end
+    /// *somewhere*, and promoting an arbitrary Unicode blank to `Word` is how
+    /// a run ends up with no terminator at all on a line built from one.
     ///
     /// A char that is already `Word` (`a`, `_`) is accepted as a redundant
     /// no-op rather than an error — "already a word char" depends on

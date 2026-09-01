@@ -161,6 +161,26 @@ fn accept_with_no_text_edit_inserts_insert_text_at_the_anchor_span() {
     assert_eq!(ed.doc().text().to_string(), "hellocdef\n");
 }
 
+/// A server's `insertText`/`textEdit.newText` isn't guaranteed `\n`-only —
+/// accept must normalize it the same way `apply-text-edits!` does, since
+/// both converge on the same changeset-building chokepoint.
+#[test]
+fn accept_normalizes_crlf_in_insert_text() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "foobar" "insertText" "hel\r\nlo")))
+             (completion-update-filter! "fo")
+             (completion-accept! 0)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(ed.doc().text().to_string(), "hel\nlocdef\n");
+}
+
 #[test]
 fn accept_with_no_text_edit_replaces_the_prefix_typed_before_completion_began() {
     let tmp = safe_tempdir();

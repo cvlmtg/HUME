@@ -94,35 +94,28 @@ fn crlf_ref_is_normalized_like_the_buffer() {
     assert_eq!(line_hunks("a\r\nb\r\n", "a\nb\n"), Vec::new());
 }
 
-/// Fail oracle: strip only `'\n'` in `strip_newlines` — `BufferText::line_tokens`
-/// is backed by `Rope::lines()`, which (ropey's default `unicode_lines`
-/// feature) breaks on far more than LF, and `BufferText::from` only normalizes
-/// `\r\n` pairs, so a form feed (U+000C) or bare `\r` reaches a `DiffHunk`
-/// line string still carrying its terminator — exactly the control char a
-/// plugin would then render straight into a `set-virtual-lines!` row.
+/// `\n` is the only line break under this workspace's ropey config, so a
+/// form feed (U+000C) here must not split a line into two diff hunks; the
+/// whole line (FF included) is one changed line.
 #[test]
-fn line_hunks_strips_non_lf_unicode_line_breaks() {
-    // The change sits on the FF-terminated line itself (not a later
-    // LF-terminated line) — otherwise `strip_suffix('\n')` alone would
-    // still pass, since the *changed* line would happen to end in `\n`.
+fn line_hunks_treats_non_lf_unicode_breaks_as_content() {
     assert_eq!(
         line_hunks("a\u{0C}b\n", "x\u{0C}b\n"),
         vec![DiffHunk {
             old_start: 0,
             new_start: 0,
-            old_lines: vec!["a".to_string()],
-            new_lines: vec!["x".to_string()],
+            old_lines: vec!["a\u{0C}b".to_string()],
+            new_lines: vec!["x\u{0C}b".to_string()],
         }]
     );
 }
 
-/// Mirror of `line_hunks_strips_non_lf_unicode_line_breaks` — a bare `\r`
-/// (old Mac), which `BufferText::from` explicitly leaves untouched
-/// (`hume-editing/src/text.rs`'s `normalize_crlf` doc) unlike a `\r\n` pair.
+/// A bare `\r` (old Mac): `BufferText::from` normalizes it to `\n` before
+/// `line_hunks` even tokenizes, same as `\r\n` — pinned here so the diff
+/// payload stays clean even if that normalization were ever removed from
+/// one side and not the other.
 #[test]
-fn line_hunks_strips_bare_cr_line_break() {
-    // Same shape as `line_hunks_strips_non_lf_unicode_line_breaks`: the
-    // change sits on the CR-terminated line itself.
+fn line_hunks_normalizes_bare_cr_to_a_line_break() {
     assert_eq!(
         line_hunks("a\rb\n", "x\rb\n"),
         vec![DiffHunk {

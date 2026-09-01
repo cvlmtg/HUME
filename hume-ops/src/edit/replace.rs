@@ -78,12 +78,10 @@ pub fn replace_span_around_cursors(
             next_grapheme_boundary(text, prev_grapheme_boundary(text, raw_end))
         };
         // `len_chars() - 1` is the buffer's structural trailing `\n` — never
-        // consume it. The cap above must not run *after* the ceil: a
-        // mid-cluster `raw_end` capped early and then ceiled (e.g. the final
-        // cluster is `\r\n` — a lone `\r` survives normalization and gets a
-        // structural `\n` appended after it) would ceil right back past the
-        // newline. Floor back to that cluster's own start instead of
-        // splitting it.
+        // consume it. The cap above must not run *after* the ceil: `raw_end`
+        // reaching `len_chars()` always ceils one cluster past `last` (the
+        // `\n`'s own single-char cluster), which would otherwise consume the
+        // structural newline. Floor back to that cluster's own start instead.
         let last = text.len_chars() - 1;
         let end = if ceiled > last {
             prev_grapheme_boundary(text, ceiled).max(start)

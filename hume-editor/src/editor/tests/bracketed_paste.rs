@@ -40,7 +40,7 @@ fn empty_paste_is_a_noop_in_normal_mode() {
 #[test]
 fn newline_only_paste_flattens_to_empty_and_is_a_noop_in_command_mode() {
     // Distinct from the top-level empty-text guard: "\n\n" survives
-    // `normalize_paste_newlines` (it's non-empty), but `flatten_for_minibuf`
+    // `normalize_line_endings` (it's non-empty), but `flatten_for_minibuf`
     // trims all of it away, and the Command/Search/Select arm's own
     // empty-after-flatten guard must catch that.
     let mut ed = editor_from("-[h]>ello\n");

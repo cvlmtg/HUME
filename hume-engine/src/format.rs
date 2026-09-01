@@ -227,14 +227,11 @@ pub fn format_buffer_line(
     for chunk in line_slice.chunks() {
         scratch.line_texts.push_str(chunk);
     }
-    // Strip the trailing line break that ropey includes for non-final lines
-    // (any of `hume_rope::LINE_BREAKS`, not just `\n`) and detect it by
-    // length delta rather than `ends_with('\n')` — a line terminated by a
-    // non-LF break (bare `\r`, VT, FF, NEL, LS, PS) must still get the EOL
-    // sentinel below; testing only `'\n'` would silently drop it.
-    let len_before = scratch.line_texts.len();
+    // Strip the trailing `\n` ropey includes for every non-final line, noting
+    // whether there was one — the EOL sentinel below is emitted only for a
+    // line that actually ends in a break.
+    let had_newline = scratch.line_texts.ends_with('\n');
     strip_line_ending(&mut scratch.line_texts);
-    let had_newline = scratch.line_texts.len() != len_before;
 
     let line_str = &scratch.line_texts[text_start..];
 
@@ -930,11 +927,10 @@ fn should_render_whitespace(render: WhitespaceRender, is_trailing: bool) -> bool
 // Utility helpers
 // ---------------------------------------------------------------------------
 
-/// Remove a trailing line break from a string buffer in-place — any of
-/// ropey's `unicode_lines` break sequences (`hume_rope::LINE_BREAKS`), not
-/// just `\n`, so a line terminated by e.g. NEL or LS doesn't render that
-/// terminator as a literal trailing character. A `\r\n` pair is removed as
-/// one unit.
+/// Remove a trailing `\n` from a string buffer in-place, so a line's own
+/// terminator doesn't render as a literal trailing character. `\n` is the
+/// only break there is to remove — see [`hume_rope::lines::strip_line_break`],
+/// which this delegates to.
 pub(crate) fn strip_line_ending(buf: &mut String) {
     let stripped_len = hume_rope::lines::strip_line_break(buf).len();
     buf.truncate(stripped_len);

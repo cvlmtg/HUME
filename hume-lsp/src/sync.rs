@@ -103,9 +103,12 @@ pub fn wire_version(text_gen: u64) -> i32 {
     i32::try_from(text_gen).expect("text_gen overflowed i32 — over 2 billion edits to one buffer")
 }
 
-/// `(line, character)` → byte offset in `text`, via plain string scanning
-/// (LF-only lines — HUME buffers never contain `\r`, it's normalized away
-/// on load; see `hume_editing::text`).
+/// `(line, character)` → byte offset in `text`, via plain string scanning —
+/// deliberately re-implemented rather than delegating to
+/// `hume_rope::position_encoding` so this stays an independent oracle.
+/// Splits on `\n` alone, matching the workspace's ropey config (neither
+/// `cr_lines` nor `unicode_lines`): no other character terminates a line, in
+/// a rope or in this oracle's own string mirror.
 #[cfg(any(test, feature = "test-util"))]
 fn wire_pos_to_byte(text: &str, pos: Position, enc: PositionEncoding) -> usize {
     let mut line_start = 0usize;

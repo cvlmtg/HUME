@@ -4,11 +4,10 @@
 //! distinct from the register/kill-ring `p`/`P` "paste" commands in
 //! `editor::commands::paste`, which are an unrelated feature.
 
-use std::borrow::Cow;
-
 use super::super::minibuf::history::{HistoryKind, HistoryStore};
 use super::super::replay::InsertInput;
 use super::super::{Editor, Mode, doc_ops};
+use hume_editing::text::normalize_line_endings;
 use hume_ops::edit::insert_str;
 
 impl Editor {
@@ -21,7 +20,13 @@ impl Editor {
     /// character. See [`Editor::apply_insert_mode_paste`] for the Insert-mode
     /// path, shared with dot-repeat replay.
     pub(crate) fn handle_terminal_paste(&mut self, text: String) {
-        let text = normalize_paste_newlines(&text);
+        // Normalized here, at the terminal boundary, rather than left to the
+        // changeset builder: this text also reaches the minibuffer (via
+        // `flatten_for_minibuf`, whose contract is already-normalized input)
+        // and the insert-session replay log, neither of which is behind that
+        // builder. Terminals commonly transmit CR or CRLF for a newline in a
+        // bracketed paste regardless of the source's own convention.
+        let text = normalize_line_endings(&text);
         if text.is_empty() {
             return;
         }
@@ -137,33 +142,6 @@ impl Editor {
             Mode::Normal | Mode::Extend | Mode::Insert => {}
         }
     }
-}
-
-/// Normalize terminal line-ending conventions in pasted text: `\r\n` and lone
-/// `\r` both become `\n`. Terminals commonly transmit CR (or CRLF) for
-/// newlines in a bracketed paste regardless of the source file's own
-/// convention.
-///
-/// Single pass, and a borrow (no allocation at all) on the common case of a
-/// paste with no `\r` — the two-`.replace()` version always allocated twice
-/// regardless of whether anything matched.
-fn normalize_paste_newlines(text: &str) -> Cow<'_, str> {
-    if !text.contains('\r') {
-        return Cow::Borrowed(text);
-    }
-    let mut out = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\r' {
-            if chars.peek() == Some(&'\n') {
-                chars.next();
-            }
-            out.push('\n');
-        } else {
-            out.push(c);
-        }
-    }
-    Cow::Owned(out)
 }
 
 /// Flatten already-newline-normalized text for a single-line minibuffer

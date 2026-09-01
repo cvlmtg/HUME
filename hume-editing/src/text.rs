@@ -6,12 +6,15 @@ use std::ops::Range;
 /// Whether the original file used LF or CRLF line endings.
 ///
 /// Stored in the buffer so we can write the file back with the same endings.
-/// Internally, `\r\n` pairs are normalized to `\n` (see `normalize_crlf`) —
-/// but a bare `\r` (old Mac) is left as-is, and because the strip is a single
-/// forward pass, an input like `"\r\r\n"` still leaves a literal `\r\n` in the
-/// rope (the first `\r` isn't followed by `\n` so it's kept; only the second
-/// `\r` pairs with the following `\n`). `\r` is therefore not guaranteed absent
-/// from the rope after loading.
+/// A buffer's content never carries a `\r` at all: the only two ways text
+/// becomes buffer content — [`BufferText::from`] and
+/// [`crate::changeset::ChangeSetBuilder::insert`] — both normalize through
+/// [`normalize_line_endings`] first, and `ChangeSet`'s fields are private, so
+/// no third way exists to construct one. This flag therefore governs only
+/// *how `\n` is written back out*, never what the rope holds.
+///
+/// A CRLF file round-trips; a CR-only (old Mac) file does not — it has no
+/// `\r\n` pair to detect, so it loads as `Lf` and saves back as LF.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LineEnding {
     /// Unix / macOS (default)
@@ -20,26 +23,54 @@ pub enum LineEnding {
     CrLf,
 }
 
-/// Strip `\r` from `\r\n` pairs (CRLF → LF). Bare `\r` (old Mac) is left as-is.
+/// Collapse every line-ending convention (`\r\n`, bare `\r`) to `\n`.
 ///
-/// Returns the normalized text (borrowed if no CRLF found, owned otherwise)
-/// and the detected `LineEnding`. If any `\r\n` pair is present, `CrLf` is
-/// returned even if some lines use LF only ("mixed" files are treated as CRLF).
+/// Called from the two constructors that turn outside text into buffer
+/// content ([`BufferText::from`] and
+/// [`crate::changeset::ChangeSetBuilder::insert`]), which is what makes the
+/// `\r`-free rope a property of the types rather than a rule call sites
+/// remember. Also called directly at the terminal-paste boundary, whose text
+/// reaches the minibuffer as well as the buffer.
+///
+/// A borrow (no allocation) on the common case of text with no `\r` at all.
+pub fn normalize_line_endings(text: &str) -> Cow<'_, str> {
+    normalize_crlf(text).0
+}
+
+/// [`normalize_line_endings`], also reporting whether the *original* input
+/// contained a `\r\n` pair — the one thing detectable about a file's
+/// convention that survives normalization, and what `BufferText::from`
+/// records so a save can re-expand. A bare `\r` (old-Mac-style) forms no such
+/// pair and reads as plain `Lf`. If any `\r\n` is present, `CrLf` is returned
+/// even when other lines use LF alone ("mixed" files are treated as CRLF).
+///
+/// Detection rides along with the rewrite rather than pre-scanning for
+/// `"\r\n"`: the loop already has to look at every `\r` and its successor to
+/// decide how many chars to skip, so the pair is free to notice there.
+///
+/// One `memchr`-backed scan for `\r` per run of clean text between them,
+/// copying each run with `push_str` rather than pushing one `char` at a time
+/// — the difference between a handful of memcpys and millions of pushes on a
+/// large CRLF file.
 fn normalize_crlf(text: &str) -> (Cow<'_, str>, LineEnding) {
     if !text.contains('\r') {
         return (Cow::Borrowed(text), LineEnding::Lf);
     }
     let mut out = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
+    let mut rest = text;
     let mut found_crlf = false;
-    while let Some(ch) = chars.next() {
-        if ch == '\r' && chars.peek() == Some(&'\n') {
+    while let Some(i) = rest.find('\r') {
+        out.push_str(&rest[..i]);
+        out.push('\n');
+        rest = &rest[i + 1..];
+        // Only the `\r` is dropped here — the `\n` it paired with is skipped
+        // so the pair yields one break, not two.
+        if let Some(after_lf) = rest.strip_prefix('\n') {
             found_crlf = true;
-            // Skip the \r; the \n will be pushed on the next iteration.
-            continue;
+            rest = after_lf;
         }
-        out.push(ch);
     }
+    out.push_str(rest);
     let ending = if found_crlf {
         LineEnding::CrLf
     } else {
@@ -96,8 +127,10 @@ impl BufferText {
     /// `line_ending` must be propagated from the source buffer so that CRLF
     /// metadata is preserved across edits and correctly written back on save.
     pub(crate) fn from_rope(rope: Rope, line_ending: LineEnding) -> Self {
-        // Raw constructor for ChangeSet::apply — no CRLF normalization needed
-        // because the source buffer was already normalized on load.
+        // Raw constructor for ChangeSet::apply — no line-ending normalization
+        // needed: the rope it hands over is the source buffer's own (already
+        // `\r`-free) content plus insertions the changeset builder normalized
+        // as it recorded them.
         debug_assert!(
             is_valid_buffer_rope(&rope),
             "BufferText invariant violated: rope must end with '\\n' (len={})",
@@ -213,12 +246,9 @@ impl BufferText {
     /// `RopeSlice::as_str()` where a line sits in a single rope chunk (the
     /// common case); owns only when it straddles a chunk boundary.
     ///
-    /// The break set is ropey's default `unicode_lines` feature — LF, CR,
-    /// CRLF, VT, FF, NEL, LS, PS — **not** just `\n`. `BufferText::from` only
-    /// normalizes `\r\n` pairs to `\n`; every other form reaches the rope
-    /// as-is and terminates a token here. A consumer that needs the bare
-    /// line content must strip whichever of these trails the token, not
-    /// just `'\n'`.
+    /// Backed by `Rope::lines()`, which splits on `\n` alone under this
+    /// workspace's ropey config (see [`hume_rope::lines::strip_line_break`]),
+    /// so every token but the last is `\n`-terminated.
     ///
     /// One rope traversal (`Rope::lines()`), not one `O(log n)` descent per
     /// line.

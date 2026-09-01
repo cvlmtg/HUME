@@ -20,6 +20,15 @@
 //!   user-facing line counts and content-bounds checks want.
 //!
 //! All line ranges produced by this crate are end-exclusive `Range<usize>`.
+//!
+//! ## LF is the only line break
+//!
+//! This workspace compiles ropey with neither `cr_lines` nor `unicode_lines`,
+//! so `Rope::lines()` splits on `\n` alone. A `\r` — like VT, FF, NEL, LS and
+//! PS — is ordinary content that never terminates a line, whatever rope it
+//! reaches this crate in. Line-terminator logic here is correspondingly
+//! single-char: there is no two-char terminator to look behind for, and no
+//! break set to test membership in.
 
 pub mod cursor;
 pub mod grapheme;
@@ -32,10 +41,11 @@ pub mod width;
 pub(crate) mod test_support {
     use ropey::Rope;
 
-    /// Mirrors `hume_editing::text::BufferText::from`'s trailing-newline invariant
-    /// (minus CRLF normalization, unneeded by these tests) so the algorithms
-    /// under test are exercised against the same buffer shape production
-    /// code always hands them.
+    /// Mirrors `hume_editing::text::BufferText::from`'s trailing-newline
+    /// invariant, so the algorithms under test are exercised against the same
+    /// buffer shape production code always hands them. Line-ending
+    /// normalization is not mirrored: it changes no rope this crate's tests
+    /// build, since `\n` is the only break here.
     pub(crate) fn rope(s: &str) -> Rope {
         if s.ends_with('\n') {
             Rope::from_str(s)

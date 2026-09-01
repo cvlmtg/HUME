@@ -134,9 +134,8 @@ fn validate_rejects_space_and_eol_chars() {
 }
 
 /// `validate` must reject every Unicode whitespace character, not just the
-/// five `classify_char` calls `Space`/`Eol`. `\r`/U+2028/U+2029 are ropey
-/// line breaks — configuring one as a word char would make `char_to_line`
-/// disagree with the word runs `miw`/`mm` compute.
+/// five `classify_char` calls `Space`/`Eol` — a word run promoted over one of
+/// the others would have no terminator on a line built from it.
 #[test]
 fn validate_rejects_every_unicode_whitespace_char() {
     for ch in [

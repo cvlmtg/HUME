@@ -56,47 +56,24 @@ fn eol_sentinel_emitted_on_non_empty_line() {
 }
 
 #[test]
-fn eol_sentinel_emitted_for_non_lf_line_break() {
-    // "a\rb\n" — ropey (unicode_lines) splits line 0 at the bare '\r'
-    // ("a\r"), which `BufferText::from` never normalizes (only "\r\n" pairs are
-    // collapsed). The sentinel must still be emitted: `had_newline` has to
-    // be derived from what `strip_line_ending` actually removed, not from
-    // an `ends_with('\n')` check that a non-LF terminator never satisfies.
+fn a_cr_is_line_content_not_a_line_break() {
+    // "a\rb\n" is one line, not two: `\n` is the only break ropey splits on
+    // here. A live buffer can't hold a `\r` at all (`BufferText::from`
+    // normalizes it away), and `do_format` builds a `Rope::from_str`
+    // directly, so this pins the raw-rope contract — the `\r` sits in the
+    // row like any other char instead of ending it. The empty-line sentinel
+    // invariant this used to exercise via a `\r`-only line is covered by
+    // `empty_line_produces_empty_sentinel_grapheme` below, on a real one.
     let (rows, graphemes) = do_format("a\rb\n", WrapMode::None);
-    assert_eq!(rows.len(), 3, "\"a\\r\", \"b\\n\", \"\" (trailing)");
+    assert_eq!(rows.len(), 2, "\"a\\rb\\n\", \"\" (trailing)");
     let row0_gs = &graphemes[rows[0].graphemes.clone()];
-    assert_eq!(row0_gs.len(), 2, "1 content grapheme + eol sentinel");
-    let sentinel = &row0_gs[1];
+    assert_eq!(row0_gs.len(), 4, "3 content graphemes + eol sentinel");
+    let sentinel = &row0_gs[3];
     assert!(
         matches!(sentinel.content, CellContent::Empty),
         "sentinel must be Empty"
     );
-    assert_eq!(sentinel.display_col, 1, "sentinel one past 'a'");
-    assert_eq!(sentinel.char_offset, 1, "sentinel at the '\\r' char offset");
-}
-
-#[test]
-fn empty_line_terminated_by_non_lf_break_still_gets_a_sentinel_row() {
-    // "\rx\n" — line 0 is just "\r" (empty content, non-LF terminator).
-    // Every content row must have at least one grapheme (rows.rs's
-    // `locate_in_line` documents this as an invariant); a `had_newline`
-    // check narrowed to '\n' would strip nothing, leave the '\r' as
-    // content, and never hit this path at all — regressing to a row with
-    // zero graphemes for a line that ends with a break ropey doesn't
-    // consider '\n'.
-    let (rows, graphemes) = do_format("\rx\n", WrapMode::None);
-    assert_eq!(rows.len(), 3, "\"\\r\", \"x\\n\", \"\" (trailing)");
-    let row0_gs = &graphemes[rows[0].graphemes.clone()];
-    assert_eq!(row0_gs.len(), 1, "exactly one sentinel grapheme");
-    assert!(
-        matches!(row0_gs[0].content, CellContent::Empty),
-        "sentinel must be Empty"
-    );
-    assert_eq!(row0_gs[0].display_col, 0);
-    assert_eq!(
-        row0_gs[0].char_offset, 0,
-        "sentinel at the '\\r' char offset"
-    );
+    assert_eq!(sentinel.char_offset, 3, "sentinel at the '\\n' char offset");
 }
 
 #[test]
@@ -712,22 +689,24 @@ fn strip_line_ending_no_newline_unchanged() {
 }
 
 #[test]
-fn strip_line_ending_crlf_stripped_as_one_unit() {
-    // A literal "\r\n" pair can reach the rope (BufferText::from's CRLF strip
-    // leaves one behind in the "\r\r\n" edge case) — both chars go, not
-    // just the \n.
+fn strip_line_ending_takes_the_lf_of_a_crlf_and_leaves_the_cr() {
+    // `\n` is the whole terminator; the `\r` before it is content and stays.
     let mut buf = "hello\r\n".to_string();
     strip_line_ending(&mut buf);
-    assert_eq!(buf, "hello");
+    assert_eq!(buf, "hello\r");
 }
 
 #[test]
-fn strip_line_ending_non_lf_unicode_break_stripped() {
-    // NEL (U+0085) is one of ropey's unicode_lines break chars — a line
-    // terminated by it must not render the NEL as a literal trailing char.
+fn strip_line_ending_leaves_non_lf_break_chars_untouched() {
+    // Neither CR nor NEL (U+0085) terminates a line under this workspace's
+    // ropey config — ordinary content, must survive untouched.
+    let mut buf = "hello\r".to_string();
+    strip_line_ending(&mut buf);
+    assert_eq!(buf, "hello\r");
+
     let mut buf = "hello\u{85}".to_string();
     strip_line_ending(&mut buf);
-    assert_eq!(buf, "hello");
+    assert_eq!(buf, "hello\u{85}");
 }
 
 // ── h_window clipping ─────────────────────────────────────────────────

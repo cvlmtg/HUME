@@ -3,7 +3,10 @@
 /// `arboard::Clipboard` is not `Send + Sync` — must stay on the single-threaded
 /// `Editor`. Initialisation failures (headless CI, SSH without X11 forwarding)
 /// yield `handle = None`; subsequent calls return `Err(String)`, triggering the
-/// in-memory fallback in the caller. CRLF normalisation is applied on read.
+/// in-memory fallback in the caller. `read()` returns the OS clipboard's raw
+/// text — nothing normalizes line endings here, so a Steel
+/// `(read-register "c")` sees exactly what the OS gave; the changeset builder
+/// normalizes on the way into a buffer, wherever the text came from.
 ///
 /// In test builds, `mock_active` gates a virtual clipboard: when active,
 /// `read()` returns `mock_content` (or `Err` if not yet written) and `write()`
@@ -41,10 +44,7 @@ impl SystemClipboard {
                 .ok_or_else(|| arboard::Error::ClipboardNotSupported.to_string());
         }
         match self.handle.as_mut() {
-            Some(cb) => cb
-                .get_text()
-                .map(|t| t.replace("\r\n", "\n"))
-                .map_err(|e| e.to_string()),
+            Some(cb) => cb.get_text().map_err(|e| e.to_string()),
             None => Err(arboard::Error::ClipboardNotSupported.to_string()),
         }
     }

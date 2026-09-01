@@ -77,22 +77,12 @@ pub fn content_lines_range(rope: &Rope) -> Range<usize> {
     0..content_line_count(rope)
 }
 
-/// The line breaks ropey's `Rope::lines()` (and hence line tokenization)
-/// splits on — its default `unicode_lines` feature: LF, CR, CRLF, VT, FF,
-/// NEL, LS, PS. `hume_editing::text::BufferText::from` only collapses `\r\n`
-/// pairs, so every other form survives into the rope and can terminate a
-/// line token.
-pub(crate) const LINE_BREAKS: [char; 7] = [
-    '\n', '\r', '\u{0B}', '\u{0C}', '\u{85}', '\u{2028}', '\u{2029}',
-];
-
-/// Strips a single trailing line break from a line-tokenization token —
-/// never just `'\n'`, since the break set above is wider. A break char
-/// always terminates a token, never sits interior to one, so the greedy
-/// `trim_end_matches` is exact — including collapsing a two-char `"\r\n"`
-/// token in one pass.
+/// Strips the trailing line break from a line-tokenization token. `'\n'` is
+/// the only break there is to strip: this workspace compiles ropey with
+/// neither `cr_lines` nor `unicode_lines`, so `Rope::lines()` splits on LF
+/// alone and CR, VT, FF, NEL, LS and PS are ordinary content.
 pub fn strip_line_break(line: &str) -> &str {
-    line.trim_end_matches(LINE_BREAKS)
+    line.strip_suffix('\n').unwrap_or(line)
 }
 
 /// Exclusive end of `line`: char offset of the first char on the *next*
@@ -105,22 +95,21 @@ pub fn line_end_exclusive(rope: &Rope, line: usize) -> usize {
     }
 }
 
-/// Char offset of the line-break char that terminates `line` — the
-/// inclusive counterpart to [`line_end_exclusive`].
+/// Char offset of the `\n` that terminates `line` — the inclusive
+/// counterpart to [`line_end_exclusive`], and the content-domain face of
+/// [`line_terminator_start`].
 ///
-/// Content domain: `line` must be a real content line. On the phantom
-/// trailing line this would return the *previous* line's terminator, so
-/// that case is debug-asserted rather than silently mis-answered.
-///
-/// With a `\r\n` terminator this is the `\n`, not the `\r` — `BufferText::from`
-/// normalizes CRLF, so a HUME buffer never has one.
+/// Content domain: `line` must be a real content line, which is exactly the
+/// condition under which a terminator exists. The phantom trailing line has
+/// none, so that case is debug-asserted rather than silently answered with
+/// the line's own start.
 pub fn line_break_char(rope: &Rope, line: usize) -> usize {
     debug_assert!(
         line < content_line_count(rope),
         "line_break_char: line {line} is not a real content line (buffer has {} content lines)",
         content_line_count(rope)
     );
-    line_end_exclusive(rope, line) - 1
+    line_terminator_start(rope, line)
 }
 
 /// Char offset one past the last content char on `line` — the offset the
@@ -193,42 +182,50 @@ pub(crate) fn snap_to_grapheme_boundary(rope: &Rope, line_start: usize, target: 
     }
 }
 
-/// Returns `true` if `line` is an empty line — either zero chars or exactly
-/// one newline. Whitespace-only lines are NOT empty (matching Helix semantics).
+/// Char offset of `line`'s terminating `\n`, or `line`'s exclusive end when
+/// it has none (the last ropey line, which by definition is unterminated).
+///
+/// Every ropey line but the last ends in exactly one `\n` — ropey splits on
+/// LF alone here (see [`strip_line_break`]), so the terminator is always that
+/// one char and needs no lookbehind to identify.
+///
+/// Single source of truth for the terminator rule: [`is_empty_line`],
+/// [`line_content_end`], and [`crate::position_encoding::wire_to_line_char_col`]'s
+/// wire-domain end-of-line are each one expression over this value. The wire
+/// and motion domains still disagree for an empty line by design — they
+/// differ in what they do with this offset, not in how they find it.
+pub(crate) fn line_terminator_start(rope: &Rope, line: usize) -> usize {
+    let end_excl = line_end_exclusive(rope, line);
+    if line + 1 < ropey_line_count(rope) {
+        end_excl - 1
+    } else {
+        end_excl
+    }
+}
+
+/// Returns `true` if `line` is an empty line — zero content chars before its
+/// terminating `\n`. Whitespace-only lines are NOT empty (matching Helix
+/// semantics).
 pub fn is_empty_line(rope: &Rope, line: usize) -> bool {
-    let start = rope.line_to_char(line);
-    let end = line_end_exclusive(rope, line);
-    // Zero chars (last line of an empty buffer) or exactly one '\n'.
-    end == start || (end == start + 1 && rope.get_char(start) == Some('\n'))
+    line_terminator_start(rope, line) == rope.line_to_char(line)
 }
 
 /// The last char offset a cursor can land on for `line`.
 ///
-/// Returns the last non-`\n` char on the line, or the `\n` itself when the
+/// Returns the last char before the line's `\n`, or the `\n` itself when the
 /// line is empty (no other character to sit on).
 ///
 /// This is the motion-domain "end of line": where a cursor may land,
 /// including a position sitting *on* the `\n`. [`crate::position_encoding`]'s
-/// `line_content_end_char` is the wire-domain counterpart — defined by
-/// content length instead — and the two disagree by design for an empty
-/// line; do not substitute one for the other.
+/// wire-domain counterpart is defined by content length instead, and the two
+/// disagree by design for an empty line; do not substitute one for the other.
 pub fn line_content_end(rope: &Rope, line: usize) -> usize {
     let line_start = rope.line_to_char(line);
-    let end_excl = line_end_exclusive(rope, line);
-
-    if end_excl == line_start {
-        return line_start; // empty buffer (no content at all)
-    }
-
-    let last = end_excl - 1;
-    if rope.get_char(last) == Some('\n') {
-        if last == line_start {
-            line_start // empty line — cursor on the `\n`
-        } else {
-            crate::grapheme::prev_grapheme_boundary(rope.slice(..), last) // step back past the `\n`
-        }
+    let term_start = line_terminator_start(rope, line);
+    if term_start == line_start {
+        line_start // empty line — cursor on the `\n` itself
     } else {
-        crate::grapheme::prev_grapheme_boundary(rope.slice(..), end_excl) // last line with no trailing newline
+        crate::grapheme::prev_grapheme_boundary(rope.slice(..), term_start)
     }
 }
 

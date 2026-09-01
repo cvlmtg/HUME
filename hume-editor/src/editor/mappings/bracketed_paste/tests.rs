@@ -1,19 +1,4 @@
-use super::{flatten_for_minibuf, normalize_paste_newlines};
-
-#[test]
-fn normalizes_crlf() {
-    assert_eq!(normalize_paste_newlines("a\r\nb"), "a\nb");
-}
-
-#[test]
-fn normalizes_lone_cr() {
-    assert_eq!(normalize_paste_newlines("a\rb"), "a\nb");
-}
-
-#[test]
-fn normalize_is_noop_on_lf() {
-    assert_eq!(normalize_paste_newlines("a\nb"), "a\nb");
-}
+use super::flatten_for_minibuf;
 
 #[test]
 fn flatten_drops_trailing_newline() {

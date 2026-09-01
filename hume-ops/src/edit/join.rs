@@ -57,7 +57,7 @@ pub fn join_lines_select_spaces(
                 let mut p = next_start;
                 while p < next_end_excl {
                     match text.char_at(p) {
-                        Some(c) if c == ' ' || c == '\t' || c == '\r' => p += 1,
+                        Some(c) if c == ' ' || c == '\t' => p += 1,
                         _ => break,
                     }
                 }

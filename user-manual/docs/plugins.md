@@ -418,7 +418,7 @@ Two functions compute a line-level diff — useful for anything that shows what 
 (diff-lines old-text new-text)
 ```
 
-Splits both `old-text` and `new-text` into lines the same way HUME treats file content — CRLF line endings become LF, and a missing trailing newline doesn't count as a change — then returns the list of hunks where they differ. Unchanged lines are left out entirely. Each hunk is:
+Splits both `old-text` and `new-text` into lines the same way HUME treats file content — every line ending becomes LF, and a missing trailing newline doesn't count as a change — then returns the list of hunks where they differ. Unchanged lines are left out entirely. Each hunk is:
 
 ```scheme
 (old-start old-count new-start new-count old-lines new-lines)

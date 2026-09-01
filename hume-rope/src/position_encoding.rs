@@ -90,7 +90,7 @@ pub fn wire_to_line_char_col(
 ) -> (usize, usize) {
     let line = line.min(last_ropey_line(text));
     let line_start = text.line_to_char(line);
-    let content = text.slice(line_start..line_content_end_char(text, line));
+    let content = text.slice(line_start..crate::lines::line_terminator_start(text, line));
     (line, wire_offset_to_char(content, character, enc))
 }
 
@@ -147,30 +147,6 @@ pub fn wire_offsets_to_byte_range(
     let start_byte = slice.char_to_byte(wire_offset_to_char(slice, start, enc));
     let end_byte = slice.char_to_byte(wire_offset_to_char(slice, end, enc));
     start_byte..end_byte.max(start_byte)
-}
-
-/// The char offset one past the last content char on `line` — the position
-/// of `line`'s terminator (`\n` or `\r\n`), or the line's own start when it
-/// has none (the buffer's trailing empty line, guaranteed by the "buffer
-/// always ends with `\n`" invariant).
-///
-/// This is the wire-domain "end of line": defined by content length, not by
-/// where a cursor may land. `hume_editing::lines`' motion-domain helpers
-/// (e.g. `line_content_end`) define the latter — including a position sitting
-/// *on* the `\n` — and must not be reused here; the two disagree by design
-/// for an empty line, and wire math needs this one.
-fn line_content_end_char(text: &Rope, line: usize) -> usize {
-    if line >= last_ropey_line(text) {
-        return text.len_chars();
-    }
-    let next_start = text.line_to_char(line + 1);
-    // A non-final line's span always contains at least its terminator, so
-    // `next_start > line_to_char(line) >= 0` and this lookup is in-bounds.
-    if next_start >= 2 && text.char(next_start - 1) == '\n' && text.char(next_start - 2) == '\r' {
-        next_start - 2
-    } else {
-        next_start - 1
-    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

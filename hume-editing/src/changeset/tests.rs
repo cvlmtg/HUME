@@ -130,6 +130,43 @@ fn builder_tracks_positions() {
 }
 
 #[test]
+fn builder_insert_normalizes_line_endings() {
+    // The one chokepoint where text becomes buffer content: whatever
+    // convention a caller hands in, only `\n` gets stored. Expected values
+    // are literals, derived from the input by hand rather than by calling
+    // the normalizer — an independent oracle.
+    let mut b = ChangeSetBuilder::new(0);
+    b.insert("a\r\nb");
+    let cs = b.finish();
+    assert_eq!(cs.ops(), &[Operation::Insert("a\nb".to_string())]);
+
+    let mut b = ChangeSetBuilder::new(0);
+    b.insert("a\rb");
+    let cs = b.finish();
+    assert_eq!(cs.ops(), &[Operation::Insert("a\nb".to_string())]);
+}
+
+#[test]
+fn builder_insert_counts_positions_in_normalized_chars() {
+    // A `\r\n` collapses to one char, so `new_pos` (and `len_after`) must
+    // count 3, not 4 — a cursor landed at `new_pos()` after this insert
+    // would otherwise sit one char past the text that actually exists.
+    let mut b = ChangeSetBuilder::new(0);
+    b.insert("a\r\nb");
+    assert_eq!(b.new_pos(), 3);
+    let cs = b.finish();
+    assert_eq!(cs.len_after(), 3);
+}
+
+#[test]
+fn builder_insert_char_normalizes_a_lone_cr() {
+    let mut b = ChangeSetBuilder::new(0);
+    b.insert_char('\r');
+    let cs = b.finish();
+    assert_eq!(cs.ops(), &[Operation::Insert("\n".to_string())]);
+}
+
+#[test]
 #[should_panic(expected = "old_pos (3) != doc_len (10)")]
 fn builder_finish_panics_on_unconsumed() {
     let mut b = ChangeSetBuilder::new(10);

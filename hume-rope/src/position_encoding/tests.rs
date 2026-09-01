@@ -110,29 +110,27 @@ fn char_range_to_wire_range_astral_char_diverges_utf8_vs_utf16() {
     );
 }
 
-// ── CRLF line terminator ─────────────────────────────────────────────────
+// ── A `\r` in the rope is content ────────────────────────────────────────
 //
-// `hume_editing::text::BufferText` normalizes `\r\n` to `\n` on load, but a `\r\n`
-// can still reach a live rope in one edge case: `BufferText::from`'s single-pass
-// CRLF strip leaves a literal `\r\n` behind when the input has a bare `\r`
-// immediately before a `\r\n` pair (e.g. `"\r\r\n"` → `"\r\n"` — see
-// `text::tests::from_str_cr_then_crlf_leaves_bare_cr`). These functions take
-// a raw `&Rope`, not a `&BufferText`, so a `\r\n`-bearing rope is constructed
-// directly here rather than routing through that edge case.
+// A live `hume_editing::text::BufferText` never carries a `\r` at all — every
+// text-insertion path normalizes it to `\n` first. These functions take a raw
+// `&Rope`, not a `&BufferText`, so one is built directly here to pin what the
+// wire math does with a `\r` it can only meet this way: nothing special. `\n`
+// alone terminates a line (see `lib.rs`), so a `\r` counts toward the line's
+// content length like any other char.
 
 #[test]
-fn line_content_end_stops_before_crlf_not_just_lf() {
-    // "ab\r\ncd\n": line 0's terminator is the 2-char "\r\n" pair, not a bare
-    // '\n'. content_end must land on the '\r' (char 2), one further back than
-    // it would for a plain '\n' terminator (which would land on char 3) —
-    // this is `line_content_end_char`'s CRLF-aware `next_start - 2` branch,
-    // not the "\n"-only `next_start - 1` branch.
+fn wire_to_char_counts_a_cr_as_line_content() {
+    // "ab\r\ncd\n": line 0 is "ab\r\n", terminated by the `\n` alone, so its
+    // content is the 3 chars "ab\r". A character past the line end clamps to
+    // char 3 (the `\n`), not to 2 — the `\r` is inside the content, not part
+    // of a two-char terminator.
     let text = Rope::from_str("ab\r\ncd\n");
     for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
         assert_eq!(
             wire_to_char(&text, 0, 9_999, enc),
-            2,
-            "character past line end must clamp before the \\r, not the \\n, for {enc:?}"
+            3,
+            "character past line end must clamp to the \\n, counting the \\r as content, for {enc:?}"
         );
     }
 }

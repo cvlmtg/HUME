@@ -123,11 +123,11 @@ fn locate_argument(text: &BufferText, pos: usize) -> Option<(Vec<Segment>, usize
 /// mis-step on multi-byte clusters.
 fn trim_segment(text: &BufferText, (raw_start, raw_end): Segment) -> Option<(usize, usize)> {
     let mut start = raw_start;
-    while start <= raw_end && matches!(text.char_at(start), Some(' ' | '\t' | '\n' | '\r')) {
+    while start <= raw_end && matches!(text.char_at(start), Some(' ' | '\t' | '\n')) {
         start = next_grapheme_boundary(text, start);
     }
     let mut end = raw_end;
-    while end > start && matches!(text.char_at(end), Some(' ' | '\t' | '\n' | '\r')) {
+    while end > start && matches!(text.char_at(end), Some(' ' | '\t' | '\n')) {
         end = prev_grapheme_boundary(text, end);
     }
     // Segment is entirely whitespace — nothing to select.

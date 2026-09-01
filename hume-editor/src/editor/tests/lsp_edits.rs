@@ -61,6 +61,25 @@ fn apply_text_edits_single_edit() {
     let _ = bid;
 }
 
+/// A server can send `new_text` in its own platform's line-ending
+/// convention — nothing guarantees it's `\n`-only. `apply-text-edits!` must
+/// normalize it the same way every other text-insertion path does.
+#[test]
+fn apply_text_edits_normalizes_crlf_in_new_text() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    attach_running_utf8_server(&mut ed);
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (apply-text-edits! (current-buffer)
+               (list (list (cons 0 1) (cons 0 3) "X\r\nY")))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(ed.doc().text().to_string(), "aX\nYdef\n");
+}
+
 /// The encoding oracle: on line "aébcdef", `é` is 1 char but 2 UTF-8 bytes
 /// and only 1 UTF-16 code unit, so byte offset 3 and code-unit offset 3 name
 /// different characters (`b` vs `c`). A wire edit of `(0,3)-(0,4)` must

@@ -82,6 +82,17 @@ fn replace_around_cursors_snaps_start_outward_past_a_combining_mark() {
 }
 
 #[test]
+fn replace_around_cursors_normalizes_crlf_in_replacement() {
+    // LSP completion's insertText/textEdit fallback isn't guaranteed
+    // `\n`-only — this is the sole insertion point for that whole path.
+    assert_state!(
+        "he-[l]>lo\n",
+        |(text, sels)| replace_around_cursors(text, sels, 2, 0, "X\r\nY"),
+        "X\nY-[l]>lo\n"
+    );
+}
+
+#[test]
 fn replace_around_cursors_zero_span_matches_insert_str() {
     // back=0 forward=0 degenerates to a pure multi-cursor insert.
     // Independent oracle: insert_str is a separately implemented op, so
@@ -98,25 +109,20 @@ fn replace_around_cursors_zero_span_matches_insert_str() {
 }
 
 #[test]
-fn replace_around_cursors_does_not_delete_the_structural_trailing_newline_after_a_bare_cr() {
-    // A source ending in a lone `\r` (old-Mac line ending) is left as-is by
-    // `normalize_crlf` (only `\r\n` pairs are stripped), then `BufferText::from`
-    // appends the buffer's own structural trailing `\n` — so the rope ends
-    // in the two-char cluster `\r\n`. `forward` reaching past the end must
-    // floor back to that cluster's start instead of ceiling through it and
-    // deleting the structural newline.
-    let text = BufferText::from("ab\r");
-    assert_eq!(
-        text.to_string(),
-        "ab\r\n",
-        "sanity: bare CR survives, \\n is appended"
-    );
+fn replace_around_cursors_forward_past_the_end_does_not_delete_the_structural_newline() {
+    // `forward` reaching (or exceeding) the buffer's length always makes
+    // `raw_end == len_chars()`, one past the structural trailing `\n`'s own
+    // single-char cluster — `ceiled` then lands past `last` (the `\n`'s
+    // position) on every such buffer, not just one with an unusual
+    // multi-char terminator cluster. Floor back to that cluster's start
+    // instead of ceiling through it and deleting the structural newline.
+    let text = BufferText::from("ab\n");
     let sels = SelectionSet::from_vec(vec![Selection::collapsed(0)], 0);
     let (new_text, new_sels, _cs) = replace_around_cursors(text, sels, 0, 10, "X");
     assert_eq!(
         new_text.to_string(),
-        "X\r\n",
-        "structural trailing newline (and the CR before it) must survive"
+        "X\n",
+        "structural trailing newline must survive"
     );
     assert!(
         new_sels.primary().head() < new_text.len_chars(),

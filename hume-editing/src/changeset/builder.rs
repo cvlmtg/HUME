@@ -76,9 +76,23 @@ impl ChangeSetBuilder {
     }
 
     /// Insert `text` into the new document at the current position.
+    ///
+    /// `text` is normalized to LF here (see
+    /// [`crate::text::normalize_line_endings`]). This is the one place text
+    /// from outside the editing model — a pasted clipboard, a register, a
+    /// language server's edit — becomes buffer content through an edit, and
+    /// `ChangeSet`'s fields are private, so normalizing here is what makes
+    /// "a live rope never carries a `\r`" a property of the type rather than
+    /// a rule every call site has to remember. The other half of the
+    /// guarantee is [`crate::text::BufferText::from`], which covers text that
+    /// becomes a buffer without going through an edit at all.
+    ///
+    /// `new_pos` advances by the *normalized* length, so a caller reading
+    /// `new_pos()` to place a cursor lands on text that actually exists.
     pub fn insert(&mut self, text: &str) -> &mut Self {
+        let text = crate::text::normalize_line_endings(text);
         let len = text.chars().count();
-        push_merge(&mut self.ops, Operation::Insert(text.to_string()));
+        push_merge(&mut self.ops, Operation::Insert(text.into_owned()));
         self.new_pos += len;
         // old_pos doesn't advance — insertion doesn't consume old chars.
         self

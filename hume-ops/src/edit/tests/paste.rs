@@ -273,6 +273,37 @@ fn paste_before_multiline_text() {
     );
 }
 
+// ── register content normalization ────────────────────────────────────────
+
+#[test]
+fn paste_after_normalizes_crlf_in_register_content() {
+    assert_state!(
+        "-[h]>ello\n",
+        |(text, sels)| pa(text, sels, &["foo\r\nbar".to_string()]),
+        "h-[foo\nbar]>ello\n"
+    );
+}
+
+#[test]
+fn paste_after_normalizes_bare_cr_in_register_content() {
+    assert_state!(
+        "-[h]>ello\n",
+        |(text, sels)| pa(text, sels, &["foo\rbar".to_string()]),
+        "h-[foo\nbar]>ello\n"
+    );
+}
+
+#[test]
+fn paste_over_selection_normalizes_bare_cr_in_register_content() {
+    // Non-collapsed (selection-replace) path — a separate code path from the
+    // collapsed-cursor insert above, and its own `b.insert` site.
+    assert_state!(
+        "-[hel]>lo\n",
+        |(text, sels)| pa(text, sels, &["foo\rbar".to_string()]),
+        "-[foo\nbar]>lo\n"
+    );
+}
+
 // ── linewise paste (content ending in '\n') ───────────────────────────────
 
 #[test]

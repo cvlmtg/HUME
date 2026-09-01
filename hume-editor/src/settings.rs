@@ -777,8 +777,7 @@ define_settings! {
         // hook (see `configuration.md`). Whitespace (any `char::is_whitespace`
         // char, not just the five `classify_char` calls blank) is rejected
         // at write time — promoting one to `Word` would leave a word run
-        // with no terminator, and several (`\r`, U+2028, U+2029) are ropey
-        // line breaks (see `WordChars::validate`).
+        // with no terminator (see `WordChars::validate`).
         "word-chars" => word_chars: String = String::new(),
             scope: [Scope::Global, Scope::Buffer],
             parser: word_chars;

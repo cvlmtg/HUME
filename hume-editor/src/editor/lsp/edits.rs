@@ -95,8 +95,9 @@ fn build_edit_changeset(
 /// char offsets above) and the completion-resolve path (already char
 /// offsets, mapped forward through the accept edit) — sort, overlap-check,
 /// then walk once to build the `ChangeSet`. `edits` need not arrive sorted;
-/// `new_text` borrows from the caller's own edit list, so this never
-/// allocates a copy of the replacement text.
+/// `new_text` borrows from the caller's own edit list. A server's `new_text`
+/// is under no obligation to use LF, but needs no handling here — the
+/// changeset builder normalizes every insertion.
 fn build_changeset_from_char_edits(
     len_before: usize,
     mut char_edits: Vec<(usize, usize, &str)>,

@@ -55,23 +55,41 @@ fn from_str_mixed_crlf_lf() {
 }
 
 #[test]
-fn from_str_bare_cr_preserved() {
-    // Old Mac bare \r is left as-is (treated as content, not a line ending).
+fn from_str_bare_cr_normalized() {
+    // Old Mac bare \r normalizes to \n, same as a \r\n pair.
     let text = BufferText::from("hello\rworld\n");
-    assert_eq!(text.to_string(), "hello\rworld\n");
+    assert_eq!(text.to_string(), "hello\nworld\n");
     assert_eq!(text.line_ending(), LineEnding::Lf);
 }
 
 #[test]
-fn from_str_cr_then_crlf_leaves_bare_cr() {
-    // "\r\r\n": normalize_crlf is a single forward pass, so the first '\r' is
-    // not itself followed by '\n' (its lookahead is the second '\r') and is
-    // pushed as-is; only the second '\r' pairs with the following '\n' and is
-    // dropped. The rope therefore still contains a literal "\r\n" — this is
-    // the case that disproves "content is always \r-free after loading".
+fn from_str_cr_then_crlf_fully_normalizes() {
+    // "\r\r\n": the first '\r' (not itself followed by '\n' — its lookahead
+    // is the second '\r') normalizes to '\n' on its own; the second '\r'
+    // pairs with the following '\n' and normalizes to a single '\n' too.
+    // Two real line breaks in, two '\n's out — no literal '\r' survives.
     let text = BufferText::from("\r\r\n");
-    assert_eq!(text.to_string(), "\r\n");
+    assert_eq!(text.to_string(), "\n\n");
+    // Detection only looks at the original input for a \r\n pair, which is
+    // present (the second '\r' + the '\n'), so this still reads as CrLf.
     assert_eq!(text.line_ending(), LineEnding::CrLf);
+}
+
+// ── normalize_line_endings ───────────────────────────────────────────────
+
+#[test]
+fn normalize_line_endings_crlf() {
+    assert_eq!(normalize_line_endings("a\r\nb"), "a\nb");
+}
+
+#[test]
+fn normalize_line_endings_lone_cr() {
+    assert_eq!(normalize_line_endings("a\rb"), "a\nb");
+}
+
+#[test]
+fn normalize_line_endings_is_noop_on_lf() {
+    assert_eq!(normalize_line_endings("a\nb"), "a\nb");
 }
 
 #[test]
@@ -90,13 +108,21 @@ fn line_tokens_count_matches_ropey_line_count_and_keeps_terminators() {
 }
 
 #[test]
-fn line_tokens_splits_on_non_lf_unicode_breaks() {
-    // ropey's default `unicode_lines` feature breaks on far more than `\n` —
-    // form feed (U+000C) here. `BufferText::from` only collapses `\r\n`, so a bare
-    // FF reaches the rope untouched and still terminates a token.
+fn line_tokens_treats_every_non_lf_break_char_as_content() {
+    // `\n` is the only line break under this workspace's ropey config, so a
+    // form feed doesn't split a token. Nor would a `\r`, which additionally
+    // can't reach a live buffer at all — `BufferText::from` normalizes it to
+    // `\n`, so it becomes a real break by being rewritten, not by ropey
+    // recognizing it.
     let text = BufferText::from("a\u{0C}b\n");
-    let tokens: Vec<_> = text.line_tokens().collect();
-    assert_eq!(tokens, vec!["a\u{0C}", "b\n", ""]);
+    assert_eq!(
+        text.line_tokens().collect::<Vec<_>>(),
+        vec!["a\u{0C}b\n", ""]
+    );
+
+    let cr = BufferText::from("a\rb\n");
+    assert_eq!(cr.to_string(), "a\nb\n");
+    assert_eq!(cr.line_tokens().collect::<Vec<_>>(), vec!["a\n", "b\n", ""]);
 }
 
 #[test]
