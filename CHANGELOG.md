@@ -11,8 +11,14 @@
   for that buffer now errors instead of silently rendering nothing. A source's gutter slot
   is per-buffer — a buffer neither `core:lsp` nor `core:git-diff` (nor any other plugin)
   ever registers a sign source for never reserves a gutter column for one.
-- **Breaking**: `(selection-spans-full-line? bid)` is now `(selections-linewise? bid)`, and
-  checks every selection in the buffer instead of just the primary one.
+- **Breaking**: `(selection-spans-full-line? bid)` is now `(selections-linewise? bid)`: it
+  checks every selection in the buffer instead of just the primary one, and each selection
+  may now span any number of whole lines instead of exactly one.
+- **Breaking**: `(lsp-range-params bid)` is now `(lsp-primary-range-params bid)` (same shape,
+  from `bid`'s primary selection alone), plus a new `(lsp-selections-range-params bid)` that
+  spans every selection in `bid`'s buffer instead. `:lsp-fmt`'s range branch now sends the
+  latter, so range-formatting several linewise selections formats all of them instead of
+  silently dropping every selection but the primary.
 
 ### Editing
 - New `goto-matching-pair` (`#`) jumps between a bracket and its partner (`(` `)` `[` `]` `{` `}`), or between an HTML/XML/JSX tag and its partner — vim's `%`, without disturbing HUME's own `%` (select-all). For single line selections, it scans for brackets against the whole selection, not just the character the cursor sits on — so `#` still jumps after a motion like `w` leaves the cursor on the whitespace past a bracket rather than on the bracket itself.

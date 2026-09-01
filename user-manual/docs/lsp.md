@@ -248,7 +248,7 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 | `g n` | `goto-next-diagnostic`       | Jump to the next error/warning after the cursor (wraps) |
 | `g p` | `goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
 | —     | `:diagnostics`               | List every diagnostic in the buffer |
-| —     | `:lsp-fmt`                   | Format the buffer, or just the selected lines if the selection spans whole lines |
+| —     | `:lsp-fmt`                   | Format the buffer, or just the selected lines if every selection spans whole lines |
 | `Ctrl+Space` (Insert) | `lsp-completion-trigger` | Show completions at the cursor |
 
 Jumping to a definition, declaration, type, implementation, or reference in another file
@@ -320,7 +320,7 @@ returns its generated code:
 ```
 
 The shape is always the same three steps: send a request built from `lsp-position-params` or
-`lsp-range-params`, transform the server's response, and hand the result to a UI or store
+`lsp-primary-range-params`, transform the server's response, and hand the result to a UI or store
 builtin (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`,
 `apply-workspace-edit!`, …). `err` and `res` are never both set — check `err` first and stop
 on it, the way every built-in feature does.

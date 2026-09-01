@@ -521,8 +521,8 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
     );
 }
 
-/// Regression: `(lsp-position-params bid)`/`(lsp-range-params bid)` return
-/// `#f` when `bid` has no attached server or isn't shown in any pane, and
+/// Regression: `(lsp-position-params bid)`/`(lsp-primary-range-params bid)`
+/// return `#f` when `bid` has no attached server or isn't shown in any pane, and
 /// callers pass that result straight through as `params`. Without a check,
 /// `#f` would silently reach the wire as JSON `params: false` instead of
 /// erroring at the boundary.

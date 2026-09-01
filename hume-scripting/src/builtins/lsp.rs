@@ -304,12 +304,25 @@ pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResul
     ))
 }
 
-/// `(lsp-range-params bid)` → same shape but a `"range"` from the primary
-/// selection.
-pub(crate) fn lsp_range_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+/// `(lsp-primary-range-params bid)` → same shape but a `"range"` from
+/// `bid`'s primary selection alone.
+pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;
     Ok(json_or_false(
-        ctx.host.lsp().and_then(|lsp| lsp.lsp_range_params(id)),
+        ctx.host
+            .lsp()
+            .and_then(|lsp| lsp.lsp_primary_range_params(id)),
+    ))
+}
+
+/// `(lsp-selections-range-params bid)` → same shape but a `"range"` spanning
+/// every selection in `bid`'s buffer.
+pub(crate) fn lsp_selections_range_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
+    Ok(json_or_false(
+        ctx.host
+            .lsp()
+            .and_then(|lsp| lsp.lsp_selections_range_params(id)),
     ))
 }
 

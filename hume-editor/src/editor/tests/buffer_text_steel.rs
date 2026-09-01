@@ -365,82 +365,65 @@ fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
 
 // ── selections-linewise? ─────────────────────────────────────────────────────
 
+/// `initial` must make `(selections-linewise? (current-buffer))` equal
+/// `expected`; `why` is the assertion message on failure.
+fn assert_selections_linewise(initial: &str, expected: bool, why: &str) {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from(initial);
+    let probe = if expected {
+        "(selections-linewise? (current-buffer))"
+    } else {
+        "(not (selections-linewise? (current-buffer)))"
+    };
+    let fired = run_probe(&mut ed, ScriptingHost::new(), tmp.path(), probe);
+    assert!(fired, "{why}");
+}
+
 #[test]
 fn selections_linewise_true_for_a_full_line_selection() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[abc\n]>def\n");
-    let fired = run_probe(
-        &mut ed,
-        ScriptingHost::new(),
-        tmp.path(),
-        r#"(selections-linewise? (current-buffer))"#,
+    assert_selections_linewise(
+        "-[abc\n]>def\n",
+        true,
+        "a single full-line selection must be linewise",
     );
-    assert!(fired, "a single full-line selection must be linewise");
 }
 
 #[test]
 fn selections_linewise_false_for_a_partial_selection() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[ab]>cdef\n");
-    let fired = run_probe(
-        &mut ed,
-        ScriptingHost::new(),
-        tmp.path(),
-        r#"(not (selections-linewise? (current-buffer)))"#,
+    assert_selections_linewise(
+        "-[ab]>cdef\n",
+        false,
+        "a partial-line selection must not be linewise",
     );
-    assert!(fired, "a partial-line selection must not be linewise");
 }
 
-/// The predicate `selection-spans-full-line?` used to back — primary
-/// selection only, exactly one line — returned `#f` here, even though the
-/// selection spans two whole lines start-to-newline. That mismatch was a
-/// live bug in `lsp-fmt`'s range-format gate (`core:lsp/format.scm`), whose
-/// own docstring already promised "one or more complete lines".
+/// A selection spanning two whole lines, start to trailing newline, must be
+/// linewise — the case `lsp-fmt`'s range-format gate (`core:lsp/format.scm`)
+/// depends on to offer "one or more complete lines", not just one.
 #[test]
 fn selections_linewise_true_for_a_multi_line_whole_line_selection() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[abc\ndef\n]>ghi\n");
-    let fired = run_probe(
-        &mut ed,
-        ScriptingHost::new(),
-        tmp.path(),
-        r#"(selections-linewise? (current-buffer))"#,
-    );
-    assert!(
-        fired,
-        "a selection spanning two whole lines must be linewise"
+    assert_selections_linewise(
+        "-[abc\ndef\n]>ghi\n",
+        true,
+        "a selection spanning two whole lines must be linewise",
     );
 }
 
 #[test]
 fn selections_linewise_true_for_several_linewise_selections() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[abc\n]>-[def\n]>ghi\n");
-    let fired = run_probe(
-        &mut ed,
-        ScriptingHost::new(),
-        tmp.path(),
-        r#"(selections-linewise? (current-buffer))"#,
-    );
-    assert!(
-        fired,
-        "several selections that are each individually linewise must be linewise"
+    assert_selections_linewise(
+        "-[abc\n]>-[def\n]>ghi\n",
+        true,
+        "several selections that are each individually linewise must be linewise",
     );
 }
 
 #[test]
 fn selections_linewise_false_when_one_of_several_selections_is_partial() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[abc\n]>-[de]>f\n");
-    let fired = run_probe(
-        &mut ed,
-        ScriptingHost::new(),
-        tmp.path(),
-        r#"(not (selections-linewise? (current-buffer)))"#,
-    );
-    assert!(
-        fired,
-        "one non-linewise selection among several must make the whole set non-linewise"
+    assert_selections_linewise(
+        "-[abc\n]>-[de]>f\n",
+        false,
+        "one non-linewise selection among several must make the whole set non-linewise",
     );
 }
 

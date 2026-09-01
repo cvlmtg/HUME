@@ -103,39 +103,37 @@ impl<'a> EditorHostImpl<'a> {
         self.state.buffers.try_get(id)
     }
 
-    /// Seeded pane-buffer state for the focused (pane, buffer), or `None` when
-    /// unseeded (stale or never-focused ids) — the shared guard behind every
-    /// live cursor/selection read.
-    fn focused_pane_buffer_state(&self) -> Option<&crate::editor::pane_state::PaneBufferState> {
-        let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
+    /// Seeded pane-buffer state for `bid` *as seen in the focused pane*, or
+    /// `None` when unseeded (stale id, or `bid` not open in the focused
+    /// pane) — the shared guard behind every live cursor/selection read.
+    /// `bid` is caller-supplied (e.g. from a Steel `(current-buffer)` call
+    /// or `focused_buffer_id`), so this always looks the pane state up by
+    /// the explicit id rather than assuming it matches the focused buffer.
+    fn focused_pane_buffer_state(
+        &self,
+        bid: BufferId,
+    ) -> Option<&crate::editor::pane_state::PaneBufferState> {
         self.state
             .panes
             .state
             .get(self.state.focused_pane_id)?
-            .get(buf_id)
+            .get(bid)
     }
 
-    /// `bid`'s buffer and selections *as seen in the focused pane*, not
-    /// necessarily the focused buffer — `bid` is caller-supplied (e.g. from
-    /// a Steel `(current-buffer)` call), so this looks the pane state up by
-    /// that explicit id rather than by `focused_buffer_id`. Shared by every
-    /// `CursorHost` method that reads selection geometry for an arbitrary
-    /// `bid` in the focused pane.
-    fn pane_buffer_and_selections(
+    /// `bid`'s buffer and selections *as seen in the focused pane*. Shared
+    /// by every `CursorHost` method that reads selection geometry for an
+    /// arbitrary `bid` in the focused pane.
+    fn buffer_and_selections(
         &self,
         bid: BufferId,
     ) -> Option<(
         &crate::editor::buffer::Buffer,
         &hume_editing::selection::SelectionSet,
     )> {
-        let buf = self.state.buffers.try_get(bid)?;
-        let pbs = self
-            .state
-            .panes
-            .state
-            .get(self.state.focused_pane_id)?
-            .get(bid)?;
-        Some((buf, &pbs.selections))
+        Some((
+            self.buffer(bid)?,
+            &self.focused_pane_buffer_state(bid)?.selections,
+        ))
     }
 
     /// Delegates to the shared `clear_completion_menu(state, lsp)` free fn
@@ -585,12 +583,14 @@ impl<'a> RegisterHost for EditorHostImpl<'a> {
 
 impl<'a> CursorHost for EditorHostImpl<'a> {
     fn current_line_number(&self) -> Option<usize> {
-        let pbs = self.focused_pane_buffer_state()?;
+        let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
+        let pbs = self.focused_pane_buffer_state(buf_id)?;
         self.char_index_to_line(pbs.selections.primary().head())
     }
 
     fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
-        let pbs = self.focused_pane_buffer_state()?;
+        let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
+        let pbs = self.focused_pane_buffer_state(buf_id)?;
         let primary_index = pbs.selections.primary_index();
         Some(
             pbs.selections
@@ -611,7 +611,7 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
     }
 
     fn symbol_under_cursor(&self, bid: BufferId) -> String {
-        let Some((buf, sels)) = self.pane_buffer_and_selections(bid) else {
+        let Some((buf, sels)) = self.buffer_and_selections(bid) else {
             return String::new();
         };
         let text = buf.text();
@@ -635,12 +635,11 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
     }
 
     fn selections_linewise(&self, bid: BufferId) -> bool {
-        match self.pane_buffer_and_selections(bid) {
-            Some((buf, sels)) => sels
-                .iter_sorted()
-                .all(|sel| hume_editing::selection::is_selection_linewise(buf.text(), sel)),
-            None => false,
-        }
+        self.buffer_and_selections(bid).is_some_and(|(buf, sels)| {
+            let text = buf.text();
+            sels.iter_sorted()
+                .all(|sel| hume_editing::selection::is_selection_linewise(text, sel))
+        })
     }
 }
 
@@ -890,8 +889,16 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         crate::editor::lsp::introspect::position_params(self.state, self.lsp.as_deref()?, id)
     }
 
-    fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
-        crate::editor::lsp::introspect::range_params(self.state, self.lsp.as_deref()?, id)
+    fn lsp_primary_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
+        crate::editor::lsp::introspect::primary_range_params(self.state, self.lsp.as_deref()?, id)
+    }
+
+    fn lsp_selections_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
+        crate::editor::lsp::introspect::selections_range_params(
+            self.state,
+            self.lsp.as_deref()?,
+            id,
+        )
     }
 
     fn lsp_wire_to_char(&self, id: BufferId, line: usize, character: usize) -> Option<usize> {

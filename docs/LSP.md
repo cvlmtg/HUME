@@ -177,7 +177,7 @@ Every Steel-visible surface the LSP platform introduces — the lookup table for
 | `(lsp-server-status)` → list of status records | builtin |
 | `(lsp-server-for-buffer bid)` → server name or `#f` | builtin |
 | `(buffer-generation bid)` → int | builtin |
-| `(lsp-position-params bid)` / `(lsp-range-params bid)` → ready-made params hashmaps (encoding-correct) | builtin |
+| `(lsp-position-params bid)` / `(lsp-primary-range-params bid)` / `(lsp-selections-range-params bid)` → ready-made params hashmaps (encoding-correct) | builtin |
 | `(lsp-position->offset bid position)` → char offset for wire `{"line" "character"}` `position`, or `#f` if `bid` has no attached server | builtin |
 | `(lsp-range->offsets bid range)` → `(start . end)` half-open char offsets for wire `{"start" {…} "end" {…}}` `range`, or `#f` | builtin |
 | `(lsp-label-offsets->text bid label offsets)` → the slice of `label` a `ParameterInformation.label` `(start end)` wire offset pair names, or `#f` if `bid` has no attached server. `offsets` is the raw two-element list off the wire. The only wire offsets that index a *server-authored string* rather than a document, so no rope is involved and `bid` names only the server whose negotiated encoding they count in — signature help's offset-form parameter labels, which HUME asks for by declaring `labelOffsetSupport` | builtin |

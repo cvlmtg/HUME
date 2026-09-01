@@ -529,26 +529,21 @@ pub(crate) fn location_display_parts(
         .collect()
 }
 
-/// Ready-made `{"textDocument" {"uri"} "range" {"start" "end"}}` params from
-/// `id`'s primary selection. HUME selections are inclusive (`head` names the
-/// last included char); LSP ranges are half-open, so `end` is one grapheme
-/// cluster past — `next_grapheme_boundary`, not a raw `+ 1`, since `end_c`
-/// may be the first char of a multi-char cluster (`é` = e + U+0301, a ZWJ
-/// emoji sequence): stepping by one raw char would land the wire range
-/// mid-cluster.
-pub(crate) fn range_params(
+/// Shared tail for both range-params builders below: turn a char range into
+/// `{"textDocument" {"uri"} "range" {"start" "end"}}`. HUME selections are
+/// inclusive (`end_c` names the last included char); LSP ranges are
+/// half-open, so `end` is one grapheme cluster past — `next_grapheme_boundary`,
+/// not a raw `+ 1`, since `end_c` may be the first char of a multi-char
+/// cluster (`é` = e + U+0301, a ZWJ emoji sequence): stepping by one raw char
+/// would land the wire range mid-cluster.
+fn char_range_params(
     state: &EditorState,
     lsp: &LspState,
     id: BufferId,
+    start_c: usize,
+    end_c: usize,
 ) -> Option<serde_json::Value> {
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
-    let pbs = pane_buffer_state(state, id)?;
-    let sel = pbs.selections.primary();
-    let (start_c, end_c) = if sel.anchor() <= sel.head() {
-        (sel.anchor(), sel.head())
-    } else {
-        (sel.head(), sel.anchor())
-    };
     let text = state.buffers.get(id).text();
     let end_exclusive = hume_editing::grapheme::next_grapheme_boundary(text, end_c);
     let ((start_line, start_char), (end_line, end_char)) =
@@ -565,6 +560,36 @@ pub(crate) fn range_params(
             "end": {"line": end_line, "character": end_char},
         },
     }))
+}
+
+/// Ready-made range params from `id`'s primary selection alone — the shape
+/// `:lsp-code-actions` needs, since its diagnostics context
+/// (`lsp/primary-selection-range` in `actions.scm`) is primary-scoped too.
+pub(crate) fn primary_range_params(
+    state: &EditorState,
+    lsp: &LspState,
+    id: BufferId,
+) -> Option<serde_json::Value> {
+    let sel = pane_buffer_state(state, id)?.selections.primary();
+    char_range_params(state, lsp, id, sel.start(), sel.end())
+}
+
+/// Ready-made range params spanning every selection in `id`'s buffer — the
+/// hull from the first selection's start to the last one's end. Valid only
+/// because `SelectionSet` keeps selections sorted by `start()` and
+/// non-overlapping (day-one invariant), so the first and last bound the rest.
+/// Used where the caller already gated on `(selections-linewise? id)`
+/// (`:lsp-fmt`'s range branch), which promises every selection in between is
+/// itself linewise — so the hull never includes a partial line.
+pub(crate) fn selections_range_params(
+    state: &EditorState,
+    lsp: &LspState,
+    id: BufferId,
+) -> Option<serde_json::Value> {
+    let selections = &pane_buffer_state(state, id)?.selections;
+    let start_c = selections.iter_sorted().next()?.start();
+    let end_c = selections.iter_sorted().last()?.end();
+    char_range_params(state, lsp, id, start_c, end_c)
 }
 
 /// `pane`'s visible line range, end-exclusive, clamped to a buffer of

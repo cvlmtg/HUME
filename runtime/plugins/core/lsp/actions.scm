@@ -77,7 +77,7 @@
                  (context (hash "diagnostics" (map (lambda (d) (hash-ref d "raw")) diags)
                                 "triggerKind" 1)))
             (lsp-request #f "textDocument/codeAction"
-              (hash-insert (lsp-range-params bid) "context" context)
+              (hash-insert (lsp-primary-range-params bid) "context" context)
               (lambda (err res)
                 (cond
                   (err (lsp/report-error "code action" err))

@@ -153,7 +153,8 @@ These are editor-builtin commands any LSP plugin can drive — an LSP plugin reg
 | `(lsp-server-for-buffer bid)` | Registered language name attached to `bid`, or `#f` |
 | `(lsp-registered-for-language? language)` | `#t` if a server is registered for `language` |
 | `(lsp-position-params bid)` | `{"textDocument" {"uri"} "position" {"line" "character"}}` from `bid`'s primary cursor, or `#f` |
-| `(lsp-range-params bid)` | Same shape, `"range"` from `bid`'s primary selection |
+| `(lsp-primary-range-params bid)` | Same shape, `"range"` from `bid`'s primary selection alone |
+| `(lsp-selections-range-params bid)` | Same shape, `"range"` spanning every selection in `bid`'s buffer |
 | `(lsp-position->offset bid position)` | `bid`'s char offset for a wire `{"line" "character"}` hashmap, or `#f` |
 | `(lsp-range->offsets bid range)` | `(start . end)` char offsets for a wire `{"start" ... "end" ...}` range, or `#f` |
 | `(lsp-label-offsets->text bid label offsets)` | The slice of `label` a `ParameterInformation`-style `(start end)` wire offset pair names, or `#f` |

@@ -1,7 +1,7 @@
 // Introspection builtins: lsp-capabilities,
 // lsp-server-status, lsp-server-for-buffer, buffer-generation,
-// lsp-position-params, lsp-range-params, lsp-position->offset,
-// lsp-range->offsets.
+// lsp-position-params, lsp-primary-range-params, lsp-selections-range-params,
+// lsp-position->offset, lsp-range->offsets.
 
 use std::path::{Path, PathBuf};
 
@@ -254,7 +254,7 @@ fn lsp_position_params_uses_the_negotiated_utf8_encoding_for_multibyte_chars() {
 }
 
 #[test]
-fn lsp_range_params_reflects_the_primary_selection() {
+fn lsp_primary_range_params_reflects_the_primary_selection() {
     let tmp = safe_tempdir();
     // Selection covers "bcd" (chars 1..=3, inclusive head at 3): half-open
     // wire range must be [1, 4).
@@ -267,7 +267,7 @@ fn lsp_range_params_reflects_the_primary_selection() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let* ((p (lsp-range-params (current-buffer)))
+        r#"(let* ((p (lsp-primary-range-params (current-buffer)))
                   (r (hash-ref p "range")))
              (and (equal? (hash-ref (hash-ref r "start") "character") 1)
                   (equal? (hash-ref (hash-ref r "end") "character") 4)))"#,
@@ -278,12 +278,46 @@ fn lsp_range_params_reflects_the_primary_selection() {
     );
 }
 
+/// The hull spans the first selection's start to the last selection's end,
+/// not just the primary one — the shape `:lsp-fmt`'s range branch needs once
+/// `(selections-linewise? bid)` has already confirmed every selection in
+/// between is itself linewise.
+#[test]
+fn lsp_selections_range_params_spans_first_start_to_last_end() {
+    let tmp = safe_tempdir();
+    // "abcdef\nxyz\n": selection 1 covers "bcd" (chars 1..=3), selection 2
+    // covers "xy" (chars 7..=8, inclusive) on the next line.
+    let mut ed = editor_from("a-[bcd]>ef\n-[xy]>z\n");
+    ed.doc_mut().set_path(Some(
+        tmp.path().join("fake-lsp-introspect-selections-range.rs"),
+    ));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(let* ((p (lsp-selections-range-params (current-buffer)))
+                  (r (hash-ref p "range"))
+                  (start (hash-ref r "start"))
+                  (end (hash-ref r "end")))
+             (and (equal? (hash-ref start "line") 0)
+                  (equal? (hash-ref start "character") 1)
+                  (equal? (hash-ref end "line") 1)
+                  (equal? (hash-ref end "character") 2)))"#,
+    );
+    assert!(
+        fired,
+        "range params must span from the first selection's start to the last selection's end"
+    );
+}
+
 /// L3 regression: the wire range's `end` must land after a full grapheme
 /// cluster, never mid-cluster. `char_to_wire(rope, end_c + 1, ..)` (a raw
 /// `+ 1`) would split `é` (`e` + U+0301, two chars, one cluster) if the
 /// selection's inclusive `head` sits on the cluster's first char.
 #[test]
-fn lsp_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
+fn lsp_primary_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
     use hume_editing::selection::Selection;
 
     let tmp = safe_tempdir();
@@ -307,7 +341,7 @@ fn lsp_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let* ((p (lsp-range-params (current-buffer)))
+        r#"(let* ((p (lsp-primary-range-params (current-buffer)))
                   (r (hash-ref p "range")))
              (equal? (hash-ref (hash-ref r "end") "character") 5))"#,
     );

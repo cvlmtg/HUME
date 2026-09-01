@@ -656,8 +656,13 @@ pub trait LspHost {
 
     /// Same as [`lsp_position_params`](Self::lsp_position_params) but a
     /// `{"textDocument" {"uri"} "range" {"start" "end"}}` shape from the
-    /// primary selection.
-    fn lsp_range_params(&self, id: BufferId) -> Option<serde_json::Value>;
+    /// primary selection alone.
+    fn lsp_primary_range_params(&self, id: BufferId) -> Option<serde_json::Value>;
+
+    /// Same shape as [`lsp_primary_range_params`](Self::lsp_primary_range_params)
+    /// but spanning every selection in `id`'s buffer — the hull from the
+    /// first selection's start to the last one's end.
+    fn lsp_selections_range_params(&self, id: BufferId) -> Option<serde_json::Value>;
 
     /// Wire `(line, character)` → char offset in `id`'s attached server's
     /// negotiated encoding — backs `lsp-range->offsets`. `None` if `id` is
