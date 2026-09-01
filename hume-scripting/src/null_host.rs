@@ -208,6 +208,9 @@ impl CursorHost for NullHost {
     fn selections_linewise(&self, _bid: BufferId) -> bool {
         false
     }
+    fn selections_charwise(&self, _bid: BufferId) -> bool {
+        false
+    }
 }
 
 /// Like [`NullHost`] but `register_command` fails.

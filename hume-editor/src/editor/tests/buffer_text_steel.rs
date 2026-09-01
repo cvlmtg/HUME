@@ -1,5 +1,5 @@
 // End-to-end Steel coverage for `buffer-text` / `buffer-lines` /
-// `selections-linewise?`.
+// `selections-linewise?` / `selections-charwise?`.
 
 use super::*;
 use crate::editor::commands::open_pane;
@@ -364,25 +364,29 @@ fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
     );
 }
 
-// ── selections-linewise? ─────────────────────────────────────────────────────
+// ── selections-linewise? / selections-charwise? ─────────────────────────────
 
-/// `initial` must make `(selections-linewise? (current-buffer))` equal
-/// `expected`; `why` is the assertion message on failure.
-fn assert_selections_linewise(initial: &str, expected: bool, why: &str) {
+/// `initial` must make `(<builtin> (current-buffer))` equal `expected`;
+/// `why` is the assertion message on failure. `builtin` is `"selections-linewise?"`
+/// or `"selections-charwise?"` — the two predicates share every fixture below
+/// since together they classify the same three-way verdict (all/none/mixed)
+/// `:lsp-fmt`'s range-format gate needs.
+fn assert_selections_predicate(builtin: &str, initial: &str, expected: bool, why: &str) {
     let tmp = safe_tempdir();
     let mut ed = editor_from(initial);
     let probe = if expected {
-        "(selections-linewise? (current-buffer))"
+        format!("({builtin} (current-buffer))")
     } else {
-        "(not (selections-linewise? (current-buffer)))"
+        format!("(not ({builtin} (current-buffer)))")
     };
-    let fired = run_probe(&mut ed, ScriptingHost::new(), tmp.path(), probe);
+    let fired = run_probe(&mut ed, ScriptingHost::new(), tmp.path(), &probe);
     assert!(fired, "{why}");
 }
 
 #[test]
 fn selections_linewise_true_for_a_full_line_selection() {
-    assert_selections_linewise(
+    assert_selections_predicate(
+        "selections-linewise?",
         "-[abc\n]>def\n",
         true,
         "a single full-line selection must be linewise",
@@ -390,11 +394,32 @@ fn selections_linewise_true_for_a_full_line_selection() {
 }
 
 #[test]
+fn selections_charwise_false_for_a_full_line_selection() {
+    assert_selections_predicate(
+        "selections-charwise?",
+        "-[abc\n]>def\n",
+        false,
+        "an all-linewise selection set must not be charwise",
+    );
+}
+
+#[test]
 fn selections_linewise_false_for_a_partial_selection() {
-    assert_selections_linewise(
+    assert_selections_predicate(
+        "selections-linewise?",
         "-[ab]>cdef\n",
         false,
         "a partial-line selection must not be linewise",
+    );
+}
+
+#[test]
+fn selections_charwise_true_for_a_partial_selection() {
+    assert_selections_predicate(
+        "selections-charwise?",
+        "-[ab]>cdef\n",
+        true,
+        "a single partial-line selection must be charwise",
     );
 }
 
@@ -403,7 +428,8 @@ fn selections_linewise_false_for_a_partial_selection() {
 /// depends on to offer "one or more complete lines", not just one.
 #[test]
 fn selections_linewise_true_for_a_multi_line_whole_line_selection() {
-    assert_selections_linewise(
+    assert_selections_predicate(
+        "selections-linewise?",
         "-[abc\ndef\n]>ghi\n",
         true,
         "a selection spanning two whole lines must be linewise",
@@ -412,7 +438,8 @@ fn selections_linewise_true_for_a_multi_line_whole_line_selection() {
 
 #[test]
 fn selections_linewise_true_for_several_linewise_selections() {
-    assert_selections_linewise(
+    assert_selections_predicate(
+        "selections-linewise?",
         "-[abc\n]>-[def\n]>ghi\n",
         true,
         "several selections that are each individually linewise must be linewise",
@@ -421,10 +448,33 @@ fn selections_linewise_true_for_several_linewise_selections() {
 
 #[test]
 fn selections_linewise_false_when_one_of_several_selections_is_partial() {
-    assert_selections_linewise(
+    assert_selections_predicate(
+        "selections-linewise?",
         "-[abc\n]>-[de]>f\n",
         false,
         "one non-linewise selection among several must make the whole set non-linewise",
+    );
+}
+
+/// The mixed case is the state the old single-predicate API could not
+/// express: neither all-linewise nor all-charwise.
+#[test]
+fn selections_charwise_false_for_a_mixed_selection_set() {
+    assert_selections_predicate(
+        "selections-charwise?",
+        "-[abc\n]>-[de]>f\n",
+        false,
+        "one linewise selection among several partial ones must make the whole set not charwise",
+    );
+}
+
+#[test]
+fn selections_charwise_true_for_several_partial_selections() {
+    assert_selections_predicate(
+        "selections-charwise?",
+        "-[ab]>c-[de]>f\n",
+        true,
+        "several selections that are each individually partial must be charwise",
     );
 }
 

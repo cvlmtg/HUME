@@ -129,6 +129,20 @@ impl<'a> EditorHostImpl<'a> {
         ))
     }
 
+    /// `true` if every selection in `bid`'s state satisfies `pred`, `false`
+    /// if `bid` isn't shown in any pane. Shared by `selections_linewise` and
+    /// `selections_charwise` — the two differ only in `pred`'s polarity.
+    fn all_selections(
+        &self,
+        bid: BufferId,
+        pred: impl Fn(&hume_editing::text::BufferText, &hume_editing::selection::Selection) -> bool,
+    ) -> bool {
+        self.buffer_and_selections(bid).is_some_and(|(buf, sels)| {
+            let text = buf.text();
+            sels.iter_sorted().all(|sel| pred(text, sel))
+        })
+    }
+
     /// Delegates to the shared `clear_completion_menu(state, lsp)` free fn
     /// (`lsp/completion.rs`) — this struct holds disjoint `state`/`lsp`
     /// borrows, not a full `Editor`, so it can't call `Editor`'s method of
@@ -626,10 +640,12 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
     }
 
     fn selections_linewise(&self, bid: BufferId) -> bool {
-        self.buffer_and_selections(bid).is_some_and(|(buf, sels)| {
-            let text = buf.text();
-            sels.iter_sorted()
-                .all(|sel| hume_editing::selection::is_selection_linewise(text, sel))
+        self.all_selections(bid, hume_editing::selection::is_selection_linewise)
+    }
+
+    fn selections_charwise(&self, bid: BufferId) -> bool {
+        self.all_selections(bid, |text, sel| {
+            !hume_editing::selection::is_selection_linewise(text, sel)
         })
     }
 }

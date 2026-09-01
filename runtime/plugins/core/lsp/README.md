@@ -289,12 +289,13 @@ bare-`Location` branch is simply unreached: `textDocument/references` only ever 
 ### Formatting and rename
 
 Format-on-save is not wired by default — v1 is manual `:lsp-fmt` only; `format.scm` carries a
-commented-out `on-buffer-save` hook to opt in. `:lsp-fmt` reads `(selections-linewise? bid)`
-and `(lsp-linewise-ranges-params bid)`'s `"ranges"` together: all selections linewise formats
-those ranges (touching selections coalesced, disjoint ones kept separate — an LSP range is one
-contiguous span, so a gap can't be expressed as a single range), none linewise formats the
-whole buffer, and a mix of the two warns and formats nothing rather than guessing which
-reading was meant. Disjoint ranges go out as one `textDocument/rangesFormatting` request (LSP
+commented-out `on-buffer-save` hook to opt in. `:lsp-fmt` classifies the selection set with
+`(selections-linewise? bid)` and `(selections-charwise? bid)`, and reads
+`(lsp-linewise-ranges-params bid)`'s `"ranges"` as payload only: all selections linewise
+formats those ranges (touching selections coalesced, disjoint ones kept separate — an LSP
+range is one contiguous span, so a gap can't be expressed as a single range), none linewise
+formats the whole buffer, and a mix of the two warns and formats nothing rather than guessing
+which reading was meant. Disjoint ranges go out as one `textDocument/rangesFormatting` request (LSP
 3.18) when the server advertises `rangesSupport`, otherwise one `rangeFormatting` request per
 range, capped at `lsp.format-max-ranges` — past the cap, `:lsp-fmt` warns and formats nothing,
 the same refusal a mixed selection set gets, rather than silently narrowing to one selection.

@@ -199,6 +199,7 @@ Every Steel-visible surface the LSP platform introduces — the lookup table for
 | `(apply-workspace-edit! wsedit)` | builtin |
 | `(goto-location! loc)` | builtin |
 | `(selections-linewise? bid)` → bool (range-format gate) | builtin |
+| `(selections-charwise? bid)` → bool (range-format gate, complements `selections-linewise?`) | builtin |
 | `on-lsp-attach` (server ready for buffer) | hook |
 | `on-lsp-detach` (buffer detached by `:lsp-stop`/`:lsp-restart`; args `(bid server-name)`) — a plugin's only signal to clear buffer-scoped state it derived from the now-gone server (e.g. inlay hints), since nothing keeps that state in sync once the buffer has no attached server | hook |
 | `on-diagnostics-changed` (signal only; pull via `diagnostics-for-buffer`) | hook |

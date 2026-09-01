@@ -317,7 +317,12 @@ pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, bid: BidArg) -> Steel
 
 /// `(lsp-linewise-ranges-params bid)` → `{"textDocument" {"uri"} "ranges"
 /// [...]}`, one wire range per linewise selection in `bid`'s buffer
-/// (touching selections coalesced into one range apiece).
+/// (touching selections coalesced into one range apiece). Carries no
+/// all/none/mixed verdict — `:lsp-fmt` gets that from `selections-linewise?`/
+/// `selections-charwise?` instead, since every `lsp-*-params` builtin's
+/// return value is a wire-ready params hash forwarded to `lsp-request`
+/// unchanged or with a protocol key inserted, and a non-protocol key here
+/// would break that (see `CursorHost::selections_linewise`'s doc comment).
 pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;
     Ok(json_or_false(

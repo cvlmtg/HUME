@@ -13,7 +13,10 @@
   ever registers a sign source for never reserves a gutter column for one.
 - **Breaking**: `(selection-spans-full-line? bid)` is now `(selections-linewise? bid)`: it
   checks every selection in the buffer instead of just the primary one, and each selection
-  may now span any number of whole lines instead of exactly one.
+  may now span any number of whole lines instead of exactly one. New `(selections-charwise?
+  bid)` complements it — `#t` when none of `bid`'s selections is linewise — so `:lsp-fmt`'s
+  three-way verdict (all linewise / none linewise / mixed) is two plain predicates rather than
+  one boolean plus an inferred third state.
 - **Breaking**: `(lsp-range-params bid)` is now `(lsp-primary-range-params bid)` (same shape,
   from `bid`'s primary selection alone), plus a new `(lsp-linewise-ranges-params bid)` that
   returns one wire range per linewise selection in `bid`'s buffer (touching selections

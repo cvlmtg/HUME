@@ -357,6 +357,12 @@ pub(crate) fn selections_linewise(ctx: &mut SteelCtx, bid: BidArg) -> SteelResul
     Ok(SteelVal::BoolV(ctx.host.cursor().selections_linewise(id)))
 }
 
+/// `(selections-charwise? bid)`.
+pub(crate) fn selections_charwise(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let id = bid.0;
+    Ok(SteelVal::BoolV(ctx.host.cursor().selections_charwise(id)))
+}
+
 /// `(symbol-under-cursor bid)`.
 pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;

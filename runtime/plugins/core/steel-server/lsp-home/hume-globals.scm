@@ -253,6 +253,7 @@
 (#%register-global "select-within")
 (#%register-global "select-word")
 (#%register-global "select-word-nearest-on-line")
+(#%register-global "selections-charwise?")
 (#%register-global "selections-linewise?")
 (#%register-global "set-buffer-language!")
 (#%register-global "set-buffer-option!")

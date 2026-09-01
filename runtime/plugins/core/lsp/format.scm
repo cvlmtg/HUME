@@ -90,7 +90,7 @@
                  (gen (buffer-generation bid)))
             (cond
               ((selections-linewise? bid) (lsp/format-linewise! bid gen td ranges))
-              ((null? ranges)
+              ((selections-charwise? bid)
                (lsp/guard-capability "documentFormattingProvider"
                  (lambda ()
                    (lsp-request #f "textDocument/formatting"

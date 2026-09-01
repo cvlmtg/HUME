@@ -227,7 +227,25 @@ pub trait CursorHost {
     /// seen in the pane currently showing it, is linewise (spans whole
     /// lines, anchor to trailing `\n`). `false` when `bid` isn't shown in
     /// any pane.
+    ///
+    /// Paired with [`Self::selections_charwise`] to express `:lsp-fmt`'s
+    /// three-way verdict (all linewise / none linewise / mixed) as two
+    /// booleans rather than a symbol on `lsp-linewise-ranges-params`'s wire
+    /// params — every other `lsp-*-params` builtin returns a hash forwarded
+    /// to `lsp-request` verbatim or with a *protocol* key inserted, and a
+    /// non-protocol verdict key would break that. Because both predicates
+    /// answer `false` for a buffer shown in no pane, `(false, false)` from
+    /// the pair means *mixed or not-shown* — ambiguous only to a caller that
+    /// invokes one predicate alone; `:lsp-fmt` never does, since
+    /// `lsp-linewise-ranges-params` already returns `#f` first for an
+    /// unshown buffer and returns early.
     fn selections_linewise(&self, bid: BufferId) -> bool;
+
+    /// `(selections-charwise? bid)` — no selection in `bid`'s state, as seen
+    /// in the pane currently showing it, is linewise. `false` when `bid`
+    /// isn't shown in any pane. See [`Self::selections_linewise`] for why
+    /// this is a second predicate rather than a verdict field elsewhere.
+    fn selections_charwise(&self, bid: BufferId) -> bool;
 }
 
 /// Command registry queries, synchronous native dispatch, and Steel command

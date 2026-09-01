@@ -343,4 +343,7 @@ impl CursorHost for MockHost {
     fn selections_linewise(&self, _bid: BufferId) -> bool {
         false
     }
+    fn selections_charwise(&self, _bid: BufferId) -> bool {
+        false
+    }
 }
