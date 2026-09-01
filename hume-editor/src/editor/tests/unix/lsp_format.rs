@@ -27,6 +27,7 @@ fn setup(
     setup_with_caps(
         file,
         tmp,
+        "line1\nline2\nline3\n",
         serde_json::json!({"capabilities": {
             "documentFormattingProvider": true,
             "documentRangeFormattingProvider": true
@@ -35,17 +36,20 @@ fn setup(
     )
 }
 
-/// Same as `setup`, with the handshake's `initialize` result under caller
-/// control — for the `rangesSupport` tests, which need it to differ from
-/// the common case above.
+/// Same as `setup`, with the file content and the handshake's `initialize`
+/// result both under caller control — content for tests needing a
+/// different line shape (e.g. a blank line), the handshake result for the
+/// `rangesSupport` tests, which need it to differ from the common case
+/// above.
 fn setup_with_caps(
     file: &Path,
     tmp: &Path,
+    content: &str,
     initialize_result: serde_json::Value,
     configure: impl FnOnce(&mut InlineLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard) {
     let guard = RealRuntimeGuard::new();
-    std::fs::write(file, "line1\nline2\nline3\n").unwrap();
+    std::fs::write(file, content).unwrap();
 
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", initialize_result);
@@ -106,6 +110,16 @@ fn select_full_line_1_and_a_sub_line_selection(ed: &mut Editor) {
     let (pid, bid) = (ed.state.focused_pane_id, ed.focused_buffer_id());
     ed.state.panes.state[pid][bid].selections =
         SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(6, 8)], 0);
+}
+
+/// For `"line1\n\nline3\n"` (a blank line2): a real charwise selection on
+/// "in" within line1 (chars 1..=2), plus a collapsed cursor on the blank
+/// line2 (char 6) — the shape a multi-cursor command can leave behind when
+/// one cursor happens to land on a blank line.
+fn select_mid_line_and_a_blank_line_cursor(ed: &mut Editor) {
+    let (pid, bid) = (ed.state.focused_pane_id, ed.focused_buffer_id());
+    ed.state.panes.state[pid][bid].selections =
+        SelectionSet::from_vec(vec![Selection::new(1, 2), Selection::collapsed(6)], 0);
 }
 
 fn run_fmt(ed: &mut Editor) {
@@ -270,6 +284,7 @@ fn disjoint_full_line_selections_send_one_ranges_formatting_request_when_support
     let (mut ed, _guard) = setup_with_caps(
         &file_dir.path().join("main.rs"),
         tmp.path(),
+        "line1\nline2\nline3\n",
         serde_json::json!({"capabilities": {
             "documentFormattingProvider": true,
             "documentRangeFormattingProvider": {"rangesSupport": true}
@@ -319,6 +334,7 @@ fn single_full_line_selection_sends_range_formatting_even_when_ranges_supported(
     let (mut ed, _guard) = setup_with_caps(
         &file_dir.path().join("main.rs"),
         tmp.path(),
+        "line1\nline2\nline3\n",
         serde_json::json!({"capabilities": {
             "documentFormattingProvider": true,
             "documentRangeFormattingProvider": {"rangesSupport": true}
@@ -364,6 +380,7 @@ fn ranges_formatting_is_not_capped_by_format_max_ranges() {
     let (mut ed, _guard) = setup_with_caps(
         &file_dir.path().join("main.rs"),
         tmp.path(),
+        "line1\nline2\nline3\n",
         serde_json::json!({"capabilities": {
             "documentFormattingProvider": true,
             "documentRangeFormattingProvider": {"rangesSupport": true}
@@ -500,6 +517,51 @@ fn mixed_linewise_and_sub_line_selections_warn_and_format_nothing() {
     assert!(
         msg.to_lowercase().contains("mixed"),
         "expected a warning naming the mixed selection, got {msg:?}"
+    );
+}
+
+/// A collapsed cursor that happens to land on a blank line reads as
+/// linewise by `is_selection_linewise`'s own definition, but must not make
+/// an otherwise all-charwise selection set read as mixed: it's ambiguous
+/// (see `linewise_classification`), not a deliberate whole-line selection,
+/// so `:lsp-fmt` still whole-buffer-formats through
+/// `documentFormattingProvider` — this is the end-to-end regression the
+/// `selections-charwise?`/`lsp-linewise-ranges-params` fixes cover at the
+/// unit level.
+#[test]
+fn stray_blank_line_cursor_does_not_trigger_the_mixed_selection_refusal() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard) = setup_with_caps(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        "line1\n\nline3\n",
+        serde_json::json!({"capabilities": {
+            "documentFormattingProvider": true,
+            "documentRangeFormattingProvider": true
+        }}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/formatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "WHOLE_BUFFER\n")]),
+            );
+            // Decoy proving the range path (mixed refusal's usual
+            // companion) was not taken instead.
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_RANGE_PATH\n")]),
+            );
+        },
+    );
+    select_mid_line_and_a_blank_line_cursor(&mut ed);
+
+    run_fmt(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "WHOLE_BUFFER\n",
+        "a real charwise selection plus a stray blank-line cursor must whole-buffer \
+         format, not warn about a mixed selection set"
     );
 }
 

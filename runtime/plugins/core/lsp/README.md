@@ -295,7 +295,11 @@ commented-out `on-buffer-save` hook to opt in. `:lsp-fmt` classifies the selecti
 formats those ranges (touching selections coalesced, disjoint ones kept separate — an LSP
 range is one contiguous span, so a gap can't be expressed as a single range), none linewise
 formats the whole buffer, and a mix of the two warns and formats nothing rather than guessing
-which reading was meant. Disjoint ranges go out as one `textDocument/rangesFormatting` request (LSP
+which reading was meant. A collapsed cursor that happens to land on a blank line is ambiguous
+either way, so it's excluded from all three of `selections-linewise?`, `selections-charwise?`,
+and `lsp-linewise-ranges-params`'s ranges — it never masks a real selection elsewhere in the
+set into "mixed", and never bridges two real linewise selections it happens to touch on both
+sides into one coalesced range. Disjoint ranges go out as one `textDocument/rangesFormatting` request (LSP
 3.18) when the server advertises `rangesSupport`, otherwise one `rangeFormatting` request per
 range, capped at `lsp.format-max-ranges` — past the cap, `:lsp-fmt` warns and formats nothing,
 the same refusal a mixed selection set gets, rather than silently narrowing to one selection.

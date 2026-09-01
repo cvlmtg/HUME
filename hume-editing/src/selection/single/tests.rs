@@ -133,6 +133,33 @@ fn is_selection_linewise_whole_last_line() {
     assert!(is_selection_linewise(&text, &sel));
 }
 
+// ── linewise_classification ──────────────────────────────────────────────
+
+#[test]
+fn linewise_classification_none_for_a_collapsed_selection_on_an_empty_line() {
+    // "a\n\nb\n" — collapsed cursor on the empty line (char 2, the '\n').
+    // Ambiguous: satisfies is_selection_linewise by construction (the
+    // line's one char is both its own start and its own '\n'), not because
+    // it was deliberately extended across a whole line.
+    let (text, _) = parse_state("-[a]>\n\nb\n");
+    let sel = Selection::collapsed(2);
+    assert_eq!(linewise_classification(&text, &sel), None);
+}
+
+#[test]
+fn linewise_classification_some_true_for_a_full_line_selection() {
+    let (text, _) = parse_state("-[hello]>\nworld\n");
+    let sel = Selection::new(0, 5); // same fixture as is_selection_linewise_whole_single_line
+    assert_eq!(linewise_classification(&text, &sel), Some(true));
+}
+
+#[test]
+fn linewise_classification_some_false_for_a_mid_line_selection() {
+    let (text, _) = parse_state("-[h]>ello\n");
+    let sel = Selection::new(1, 2); // same fixture as is_selection_linewise_false_mid_line_selection
+    assert_eq!(linewise_classification(&text, &sel), Some(false));
+}
+
 // ── Selection ─────────────────────────────────────────────────────────────
 
 #[test]

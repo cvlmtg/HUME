@@ -566,9 +566,13 @@ pub(crate) fn primary_range_params(
 /// non-linewise selection is simply skipped — the caller decides what an
 /// all-linewise, all-partial, or mixed selection set means
 /// (`(selections-linewise? id)` is the "all of them" read; `ranges` empty
-/// here is the "none of them" read). `None` only when `id` has no path, no
-/// attached server, or isn't shown in any pane, matching every other params
-/// builder in this file.
+/// here is the "none of them" read). A selection `linewise_classification`
+/// finds ambiguous (collapsed on an empty line) is skipped the same way a
+/// non-linewise one is — including from the touch check, so it can't bridge
+/// two real linewise neighbors into one coalesced range that silently
+/// reformats the blank line between them too. `None` only when `id` has no
+/// path, no attached server, or isn't shown in any pane, matching every
+/// other params builder in this file.
 pub(crate) fn linewise_ranges_params(
     state: &EditorState,
     view: &EngineView,
@@ -581,7 +585,7 @@ pub(crate) fn linewise_ranges_params(
 
     let linewise: Vec<_> = selections
         .iter_sorted()
-        .filter(|sel| hume_editing::selection::is_selection_linewise(text, sel))
+        .filter(|sel| hume_editing::selection::linewise_classification(text, sel) == Some(true))
         .collect();
     let ranges: Vec<_> = linewise
         .chunk_by(|a, b| b.start() == a.end() + 1)

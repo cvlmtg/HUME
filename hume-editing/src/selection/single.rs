@@ -241,6 +241,18 @@ pub fn is_selection_linewise(text: &BufferText, sel: &Selection) -> bool {
     sel.ends_on_newline(text) && is_line_start(text, sel)
 }
 
+/// A selection collapsed onto a single empty line satisfies
+/// [`is_selection_linewise`] by construction — the line's one char is
+/// simultaneously its own start and its own trailing `\n` — not because it
+/// was deliberately extended across a whole line the way a non-collapsed
+/// linewise selection was. Classification is ambiguous for that one case
+/// (`None`); every other selection is `Some(is_selection_linewise(text,
+/// sel))`, unambiguously either linewise or charwise.
+pub fn linewise_classification(text: &BufferText, sel: &Selection) -> Option<bool> {
+    let linewise = is_selection_linewise(text, sel);
+    (!(sel.is_collapsed() && linewise)).then_some(linewise)
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

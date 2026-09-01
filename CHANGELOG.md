@@ -16,7 +16,11 @@
   may now span any number of whole lines instead of exactly one. New `(selections-charwise?
   bid)` complements it — `#t` when none of `bid`'s selections is linewise — so `:lsp-fmt`'s
   three-way verdict (all linewise / none linewise / mixed) is two plain predicates rather than
-  one boolean plus an inferred third state.
+  one boolean plus an inferred third state. A collapsed cursor sitting alone on a blank line
+  doesn't count toward either predicate — it neither breaks an otherwise-linewise set into
+  "mixed" nor counts as a deliberate whole-line selection on its own — and `#f` from
+  `selections-linewise?` (`#t` from `selections-charwise?`) when every selection is such a
+  cursor, matching a bare cursor's usual behavior.
 - **Breaking**: `(lsp-range-params bid)` is now `(lsp-primary-range-params bid)` (same shape,
   from `bid`'s primary selection alone), plus a new `(lsp-linewise-ranges-params bid)` that
   returns one wire range per linewise selection in `bid`'s buffer (touching selections

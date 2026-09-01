@@ -375,6 +375,63 @@ fn lsp_linewise_ranges_params_splits_on_a_gap() {
     );
 }
 
+/// A selection collapsed onto an empty line reads as linewise by
+/// `is_selection_linewise`'s definition, but is ambiguous (see
+/// `linewise_classification`), not a deliberate selection — it must not
+/// bridge two real linewise selections it happens to touch on both sides
+/// into one coalesced range that silently reformats the blank line's
+/// neighbors together.
+#[test]
+fn lsp_linewise_ranges_params_does_not_bridge_across_a_collapsed_blank_line_selection() {
+    let tmp = safe_tempdir();
+    // "line1\n\nline3\n": selection 1 covers line0 whole (0..=5), selection
+    // 2 is a collapsed cursor on the empty line1 (char 6, touching both
+    // neighbors), selection 3 covers line2 whole (7..=12).
+    let mut ed = editor_from("-[line1\n]>-[\n]>-[line3\n]>");
+    ed.doc_mut().set_path(Some(
+        tmp.path().join("fake-lsp-linewise-ranges-blank-bridge.rs"),
+    ));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (length (hash-ref (lsp-linewise-ranges-params (current-buffer)) "ranges")) 2)"#,
+    );
+    assert!(
+        fired,
+        "a collapsed selection on the blank line between two real linewise \
+         selections must not bridge them into one coalesced range"
+    );
+}
+
+/// A lone collapsed selection on an empty line is the sole selection —
+/// ambiguous, not linewise, so it contributes no range (distinct from
+/// `lsp_linewise_ranges_params_is_empty_when_nothing_is_linewise`, whose
+/// selection is a genuine, unambiguous partial-line one).
+#[test]
+fn lsp_linewise_ranges_params_is_empty_for_a_lone_collapsed_blank_line_selection() {
+    let tmp = safe_tempdir();
+    // "a\n\nb\n": collapsed cursor on the empty line1 (char 2).
+    let mut ed = editor_from("a\n-[\n]>b\n");
+    ed.doc_mut().set_path(Some(
+        tmp.path().join("fake-lsp-linewise-ranges-lone-blank.rs"),
+    ));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (hash-ref (lsp-linewise-ranges-params (current-buffer)) "ranges") '())"#,
+    );
+    assert!(
+        fired,
+        "a lone collapsed selection on an empty line must yield an empty ranges list"
+    );
+}
+
 /// A non-linewise selection is skipped, not an error — only the linewise
 /// one among a mixed set shows up in `ranges`. `:lsp-fmt` itself treats a
 /// mixed set as ambiguous and warns instead of formatting (see

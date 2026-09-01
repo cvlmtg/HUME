@@ -478,6 +478,74 @@ fn selections_charwise_true_for_several_partial_selections() {
     );
 }
 
+// ── Ambiguous case: a collapsed selection on an empty line ─────────────────
+//
+// Such a selection satisfies `is_selection_linewise` by construction (an
+// empty line's one char is both its own start and its own `\n`), not
+// because it was deliberately extended across a whole line — so it must
+// carry no vote either way, rather than force a mixed/false verdict onto an
+// otherwise-uniform selection set.
+
+#[test]
+fn selections_linewise_true_with_a_stray_collapsed_selection_on_a_blank_line() {
+    assert_selections_predicate(
+        "selections-linewise?",
+        "-[abc\n]>-[\n]>def\n",
+        true,
+        "a real linewise selection plus an unrelated blank-line cursor must still be linewise",
+    );
+}
+
+#[test]
+fn selections_charwise_false_for_a_real_linewise_selection_plus_a_blank_line_selection() {
+    assert_selections_predicate(
+        "selections-charwise?",
+        "-[abc\n]>-[\n]>def\n",
+        false,
+        "a real linewise selection must not be masked into charwise by an unrelated blank-line cursor",
+    );
+}
+
+#[test]
+fn selections_charwise_true_with_a_stray_collapsed_selection_on_a_blank_line() {
+    assert_selections_predicate(
+        "selections-charwise?",
+        "-[ab]>c\n-[\n]>def\n",
+        true,
+        "a real partial-line selection plus an unrelated blank-line cursor must still be charwise",
+    );
+}
+
+#[test]
+fn selections_linewise_false_for_a_real_charwise_selection_plus_a_blank_line_selection() {
+    assert_selections_predicate(
+        "selections-linewise?",
+        "-[ab]>c\n-[\n]>def\n",
+        false,
+        "a real partial-line selection must not be masked into linewise by an unrelated blank-line cursor",
+    );
+}
+
+#[test]
+fn selections_linewise_false_for_a_lone_collapsed_selection_on_a_blank_line() {
+    assert_selections_predicate(
+        "selections-linewise?",
+        "a\n-[\n]>b\n",
+        false,
+        "a lone collapsed selection on a blank line must default to not-linewise",
+    );
+}
+
+#[test]
+fn selections_charwise_true_for_a_lone_collapsed_selection_on_a_blank_line() {
+    assert_selections_predicate(
+        "selections-charwise?",
+        "a\n-[\n]>b\n",
+        true,
+        "a lone collapsed selection on a blank line must default to charwise, matching a bare cursor",
+    );
+}
+
 /// A buffer's linewise selection must still resolve through
 /// `selections-linewise?` when the buffer is shown only in a *non-focused*
 /// pane — the same pane-resolution policy `symbol-under-cursor` and the
