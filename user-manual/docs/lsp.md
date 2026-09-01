@@ -267,13 +267,9 @@ its end.
 
 ## Settings
 
-| Setting | Default | Effect |
-|---------|---------|--------|
-| `lsp.inlay-hints` | `false` | Show inferred types and parameter names inline, next to the code they describe |
-| `lsp.request-timeout-ms` | `10000` | How long to wait for a server response before giving up |
-| `lsp.viewport-debounce-ms` | `150` | How long to wait after scrolling settles before refreshing viewport-driven features (like inlay hints) |
-| `lsp.diagnostics-severity-floor` | `hint` | The lowest diagnostic severity shown (`error`, `warning`, `info`, or `hint`) |
-| `lsp.format-max-ranges` | `16` | Above this many disjoint ranges, `:lsp-fmt` warns and formats nothing, instead of sending one request per range (a server that batches ranges into a single request isn't capped) |
+All `lsp.*` settings are global options, described in full in
+[Global options](configuration.md#global-options). Set them the same way as any other
+global option:
 
 ```scheme
 (set-option! "lsp.inlay-hints" #t)

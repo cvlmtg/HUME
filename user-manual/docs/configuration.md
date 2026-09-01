@@ -97,7 +97,12 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 | `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |
 | `statusline` | `left` \| `center` \| `right` | see [Statusline](#statusline) | Three `\|`-separated sections, each a comma-separated list of element names (empty sections allowed), e.g. `Mode,FileName\|\|Position` |
 | `statusline.mode-colors` | bool | `#t` | Tint the whole statusline with the current mode's color; off shows the theme's base `ui.statusline` color in every mode |
-| `lsp.inlay-hints` | bool | `#f` | Show inlay hints from the language server |
+
+The `lsp.*` options below configure `core:lsp` — see [Language Servers](lsp.md) for setup, commands, and how they're used.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `lsp.inlay-hints` | bool | `#f` | Show inferred types and parameter names inline, next to the code they describe |
 | `lsp.diagnostics-severity-floor` | `error` \| `warning` \| `info` \| `hint` | `hint` | Lowest diagnostic severity to display |
 | `lsp.request-timeout-ms` | integer ≥ 1 | `10000` | How long to wait for a language-server reply |
 | `lsp.viewport-debounce-ms` | integer ≥ 1 | `150` | Delay before re-requesting hints after scrolling |
