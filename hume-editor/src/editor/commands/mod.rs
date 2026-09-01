@@ -17,6 +17,7 @@
 pub(super) const DEFAULT_THEME_LABEL: &str = "default (built-in)";
 
 use hume_editing::selection::SelectionSet;
+use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
 use hume_engine::format::FormatScratch;
 use hume_engine::pane::{Pane, ViewportState, WhitespaceConfig};
@@ -220,6 +221,20 @@ fn format_overrides(doc: &Buffer, settings: &EditorSettings) -> (u8, WhitespaceC
     (
         doc.overrides.tab_width(settings),
         doc.overrides.whitespace(settings),
+    )
+}
+
+/// `doc`'s effective `tab-style`/`tab-width` pair: buffer override → global
+/// default for each. The one place a caller needing *both* settings together
+/// (Tab dispatch, `>`/`<` indent/unindent) reads them, rather than repeating
+/// the two `overrides.tab_style(...)`/`overrides.tab_width(...)` calls at
+/// each site. A caller needing only `tab_width` (e.g. `cmd_align_selections`,
+/// dedent-on-Backspace) has no use for the other half and reads
+/// `overrides.tab_width` directly instead.
+pub(super) fn tab_format(doc: &Buffer, settings: &EditorSettings) -> (TabStyle, u8) {
+    (
+        doc.overrides.tab_style(settings),
+        doc.overrides.tab_width(settings),
     )
 }
 

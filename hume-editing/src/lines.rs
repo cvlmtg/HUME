@@ -31,6 +31,11 @@ pub fn leading_whitespace_end(text: &BufferText, line: usize) -> usize {
     hume_rope::lines::leading_whitespace_end(text.rope(), line)
 }
 
+/// See [`hume_rope::lines::leading_indent`].
+pub fn leading_indent(text: &BufferText, line: usize, tab_width: u8) -> (usize, usize) {
+    hume_rope::lines::leading_indent(text.rope(), line, tab_width)
+}
+
 /// See [`hume_rope::lines::is_empty_line`].
 pub fn is_empty_line(text: &BufferText, line: usize) -> bool {
     hume_rope::lines::is_empty_line(text.rope(), line)

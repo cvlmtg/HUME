@@ -21,10 +21,10 @@ pub struct SortOpts {
 
 /// Why [`sort_rows`] declined to produce an edit.
 ///
-/// A distinct type (not an identity `ChangeSet`) is load-bearing: `Buffer::apply_edit`
-/// records an undo revision unconditionally, so an identity edit would still push a
-/// revision and mark a clean buffer dirty. Returning `Err` lets the caller skip
-/// applying anything.
+/// A distinct type (not an identity `ChangeSet`) is load-bearing: the caller
+/// (`:sort`'s typed-command handler) reports *why* nothing happened —
+/// "nothing to sort" vs. "already sorted" — which an identity `ChangeSet`
+/// alone can't distinguish.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortRefusal {
     /// No selection spans two or more line-adjacent rows.

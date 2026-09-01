@@ -196,6 +196,40 @@ fn leading_whitespace_end_empty_line_equals_line_start() {
     assert_eq!(leading_whitespace_end(&buf, 1), line_start);
 }
 
+// ── leading_indent ────────────────────────────────────────────────────────
+
+#[test]
+fn leading_indent_agrees_with_leading_whitespace_end() {
+    // The `.0` half must match the standalone function on every case above —
+    // it's a thin wrapper over this, not an independent implementation.
+    let buf = rope("\t  x\n");
+    assert_eq!(
+        leading_indent(&buf, 0, 4).0,
+        leading_whitespace_end(&buf, 0)
+    );
+}
+
+#[test]
+fn leading_indent_spaces_width_is_char_count() {
+    let buf = rope("   x\n");
+    assert_eq!(leading_indent(&buf, 0, 4), (3, 3));
+}
+
+#[test]
+fn leading_indent_tab_width_expands_to_next_stop() {
+    // One tab at column 0, tab_width 4 — advances to column 4, not 1.
+    let buf = rope("\tx\n");
+    assert_eq!(leading_indent(&buf, 0, 4), (1, 4));
+}
+
+#[test]
+fn leading_indent_mixed_tab_then_spaces_is_not_a_whole_multiple() {
+    // Tab (0 -> 4) then 2 spaces (4 -> 6): 6 is not a multiple of tab_width,
+    // same off-stop shape `>`/`<` must round-trip on.
+    let buf = rope("\t  x\n");
+    assert_eq!(leading_indent(&buf, 0, 4), (3, 6));
+}
+
 // ── line_content_end ──────────────────────────────────────────────────────
 
 #[test]

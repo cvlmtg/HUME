@@ -140,29 +140,38 @@ pub fn line_end_exclusive_byte(rope: &Rope, line: usize) -> usize {
 ///
 /// Single source of truth for "where does leading whitespace end": the
 /// editor's auto-indent-on-Enter and dedent-on-Backspace paths both consult
-/// it so they agree on the boundary.
-///
-/// Leading whitespace is always ASCII (`' '`/`'\t'`), and those are single
-/// bytes in UTF-8, so a byte-level scan of the rope slice advances char-by-char
-/// without needing grapheme iteration.
+/// it so they agree on the boundary. Thin wrapper over [`leading_indent`] for
+/// callers that don't also need the indent's display width.
 pub fn leading_whitespace_end(rope: &Rope, line: usize) -> usize {
+    leading_indent(rope, line, 1).0
+}
+
+/// [`leading_whitespace_end`], plus the leading whitespace run's display
+/// width in `tab_width` — one scan instead of two. A caller needing both
+/// (e.g. `>`/`<` indent/unindent, which must know both where the old indent
+/// ends and how wide it is) would otherwise measure the same ASCII prefix
+/// twice: once here, once through `crate::grapheme::display_col_in_line`,
+/// which re-walks it with full grapheme-cluster machinery it doesn't need —
+/// leading whitespace is always ASCII (`' '`/`'\t'`).
+pub fn leading_indent(rope: &Rope, line: usize, tab_width: u8) -> (usize, usize) {
     let line_start = rope.line_to_char(line);
     let end_excl = line_end_exclusive(rope, line);
     let slice = rope.slice(line_start..end_excl);
-    // Count leading whitespace bytes. Each is ASCII (single byte == single
-    // char), so the byte count is also the char count — no grapheme stepping
-    // needed.
+    // Each whitespace char is ASCII (single byte == single char), so the
+    // byte count is also the char count — no grapheme stepping needed.
     let mut n = 0usize;
+    let mut display_width = 0usize;
     for chunk in slice.chunks() {
         for b in chunk.bytes() {
-            if b == b' ' || b == b'\t' {
-                n += 1;
-            } else {
-                return line_start + n;
+            match b {
+                b' ' => display_width += 1,
+                b'\t' => display_width += crate::width::tab_advance(display_width, tab_width),
+                _ => return (line_start + n, display_width),
             }
+            n += 1;
         }
     }
-    line_start + n
+    (line_start + n, display_width)
 }
 
 /// Snap `target` back to the nearest grapheme boundary at or before it,

@@ -229,8 +229,7 @@ impl Editor {
             // Soft inserts spaces to the next tab stop (width from `tab-width`).
             KeyCode::Tab => {
                 self.state.autoindent_pending = false;
-                let style = self.doc().overrides.tab_style(&self.state.settings);
-                let tw = self.doc().overrides.tab_width(&self.state.settings);
+                let (style, tw) = commands::tab_format(self.doc(), &self.state.settings);
                 self.apply_insert_edit(move |b, s| insert_tab(b, s, style, tw));
             }
 

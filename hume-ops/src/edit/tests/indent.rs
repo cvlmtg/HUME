@@ -1,7 +1,6 @@
 use super::super::*;
 use hume_editing::tab_style::TabStyle;
 use hume_test_fixtures::assert_state;
-use pretty_assertions::assert_eq;
 
 // ── indent_lines ──────────────────────────────────────────────────────────
 
@@ -112,6 +111,16 @@ fn indent_all_blank_selection_is_noop() {
     );
 }
 
+#[test]
+fn indent_all_blank_selection_returns_identity_changeset() {
+    // Same input as `indent_all_blank_selection_is_noop`, but pinning the
+    // property that test can't see: the identity fast path, not a full
+    // retain-everything edit that happens to look like a no-op.
+    let (text, sels) = hume_test_fixtures::testing::parse_state("-[\n\n]>\n");
+    let (_, _, cs) = indent_lines(text, sels, TabStyle::Soft, 4, 1);
+    assert!(cs.is_identity());
+}
+
 // ── selection endpoints ───────────────────────────────────────────────────
 
 #[test]
@@ -199,6 +208,15 @@ fn unindent_flush_line_is_noop() {
 }
 
 #[test]
+fn unindent_flush_line_returns_identity_changeset() {
+    // Same input as `unindent_flush_line_is_noop`, pinning the identity fast
+    // path rather than just its externally-indistinguishable no-op result.
+    let (text, sels) = hume_test_fixtures::testing::parse_state("-[f]>oo\n");
+    let (_, _, cs) = unindent_lines(text, sels, TabStyle::Soft, 4, 1);
+    assert!(cs.is_identity());
+}
+
+#[test]
 fn unindent_hard_tab_by_one_level() {
     assert_state!(
         "\t-[f]>oo\n",
@@ -212,11 +230,12 @@ fn indent_then_unindent_round_trips() {
     // Width-preserving normalization: > followed by < with the same
     // tab-width/style must reproduce the original indent exactly, even
     // starting from an off-stop width.
-    let (text, sels) = hume_test_fixtures::testing::parse_state("  -[f]>oo\n");
-    let (text, sels, _) = indent_lines(text, sels, TabStyle::Soft, 4, 1);
-    let (text, sels, _) = unindent_lines(text, sels, TabStyle::Soft, 4, 1);
-    assert_eq!(
-        hume_test_fixtures::testing::serialize_state(&text, &sels),
+    assert_state!(
+        "  -[f]>oo\n",
+        |(text, sels)| {
+            let (text, sels, _) = indent_lines(text, sels, TabStyle::Soft, 4, 1);
+            unindent_lines(text, sels, TabStyle::Soft, 4, 1)
+        },
         "  -[f]>oo\n"
     );
 }

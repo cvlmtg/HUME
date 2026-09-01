@@ -16,7 +16,7 @@ use super::super::{EditorState, Severity, doc_ops};
 use super::{
     apply_focused_edit, apply_focused_edit_grouped, apply_focused_motion,
     begin_insert_session_preserving_register, doc, focused_buffer_id, pin_insert_anchors,
-    word_chars_owned,
+    tab_format, word_chars_owned,
 };
 use crate::editor::error::CommandError;
 
@@ -304,9 +304,7 @@ pub(crate) fn cmd_indent(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let buf_id = focused_buffer_id(state, view);
-    let overrides = &state.buffers.get(buf_id).overrides;
-    let style = overrides.tab_style(&state.settings);
-    let tab_width = overrides.tab_width(&state.settings);
+    let (style, tab_width) = tab_format(state.buffers.get(buf_id), &state.settings);
     apply_focused_edit(state, view, move |text, sels| {
         indent_lines(text, sels, style, tab_width, count)
     });
@@ -321,9 +319,7 @@ pub(crate) fn cmd_unindent(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let buf_id = focused_buffer_id(state, view);
-    let overrides = &state.buffers.get(buf_id).overrides;
-    let style = overrides.tab_style(&state.settings);
-    let tab_width = overrides.tab_width(&state.settings);
+    let (style, tab_width) = tab_format(state.buffers.get(buf_id), &state.settings);
     apply_focused_edit(state, view, move |text, sels| {
         unindent_lines(text, sels, style, tab_width, count)
     });
