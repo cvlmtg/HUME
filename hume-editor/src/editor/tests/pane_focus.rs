@@ -5,7 +5,7 @@ use crate::editor::commands::{
     cmd_pane_focus_up, open_pane,
 };
 use crate::editor::error::CommandError;
-use hume_engine::pipeline::{Direction, EngineView, PaneId, RenderContext};
+use hume_engine::pipeline::{Direction, EngineView, LayoutTree, PaneId, RenderContext};
 use hume_ops::MotionMode;
 
 type Cmd = fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>;
@@ -21,17 +21,15 @@ fn build_2x2() -> (Editor, [PaneId; 4]) {
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id; // top-left
     let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
-    ed.view
-        .layout
-        .split_leaf(pid_a, pid_b, Direction::Vertical, 0.5); // stack a over b
+    ed.view.layout.split_leaf(pid_a, pid_b, Direction::Vertical); // stack a over b
     let pid_c = open_pane(&mut ed.state, &mut ed.view, bid);
     ed.view
         .layout
-        .split_leaf(pid_a, pid_c, Direction::Horizontal, 0.5); // a | c (top row)
+        .split_leaf(pid_a, pid_c, Direction::Horizontal); // a | c (top row)
     let pid_d = open_pane(&mut ed.state, &mut ed.view, bid);
     ed.view
         .layout
-        .split_leaf(pid_b, pid_d, Direction::Horizontal, 0.5); // b | d (bottom row)
+        .split_leaf(pid_b, pid_d, Direction::Horizontal); // b | d (bottom row)
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(100, 51);
     ed.settle();
@@ -98,13 +96,22 @@ fn t4_tie_break_uses_center_distance_not_origin() {
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
     let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
-    ed.view
-        .layout
-        .split_leaf(pid_a, pid_b, Direction::Horizontal, 0.5); // a | b
     let pid_c = open_pane(&mut ed.state, &mut ed.view, bid);
-    ed.view
-        .layout
-        .split_leaf(pid_b, pid_c, Direction::Vertical, 0.3); // b (top, short) / c (bottom, tall)
+    // Built directly (not via `split_leaf`, which now equalizes every
+    // same-axis split to 0.5) so `b`/`c` keep the deliberate short/tall
+    // asymmetry this tie-break test needs.
+    ed.view.layout = LayoutTree::Split {
+        direction: Direction::Horizontal,
+        ratio: 0.5,
+        children: Box::new((
+            LayoutTree::Leaf(pid_a),
+            LayoutTree::Split {
+                direction: Direction::Vertical,
+                ratio: 0.3,
+                children: Box::new((LayoutTree::Leaf(pid_b), LayoutTree::Leaf(pid_c))),
+            },
+        )),
+    };
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(100, 51);
     ed.settle();

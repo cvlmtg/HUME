@@ -74,6 +74,7 @@
 - `m/` with a search pattern matching nothing, or `ms`/`ma`/`mi` finding no surrounding pair, no longer discards a selection step an earlier command in the same sequence had already built before an edit — `.` now re-runs that earlier step instead of replaying the edit against whatever selection happens to remain.
 - The alternate buffer (`Ctrl+6`/`goto-alternate-file`, `#`/`:b#`) now follows the order buffers were last visited rather than the order they were opened, so it keeps toggling with the buffer you actually came from after jumping around with a picker or another pane instead of falling back to whichever buffer opened just before the current one.
 - `:lsp-fmt` now range-formats a multi-line selection that spans only complete lines, instead of silently formatting the whole document.
+- `:split`/`:vsplit` now resize every pane sharing that split axis to an equal size, instead of halving whatever pane was split (three `:vsplit`s in a row now gives three equal columns, not 50/25/25). Closing a pane redistributes its space equally between the survivors rather than handing it all to one neighbour.
 
 ## [0.11.0] - 2026-08-25
 

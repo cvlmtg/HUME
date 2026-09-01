@@ -1219,7 +1219,7 @@ fn junction_glyph_at_t_and_cross_scenarios_matches_collect_seam_arms() {
 fn split_leaf_on_root() {
     let [a, b] = pane_ids();
     let mut tree = LayoutTree::Leaf(a);
-    assert!(tree.split_leaf(a, b, Direction::Vertical, 0.5));
+    assert!(tree.split_leaf(a, b, Direction::Vertical));
     assert_eq!(
         tree,
         LayoutTree::Split {
@@ -1234,7 +1234,7 @@ fn split_leaf_on_root() {
 fn split_leaf_missing_target_is_noop() {
     let [a, b, missing] = pane_ids();
     let mut tree = LayoutTree::Leaf(a);
-    assert!(!tree.split_leaf(missing, b, Direction::Vertical, 0.5));
+    assert!(!tree.split_leaf(missing, b, Direction::Vertical));
     assert_eq!(tree, LayoutTree::Leaf(a));
 }
 
@@ -1246,7 +1246,7 @@ fn split_leaf_on_nested_target() {
         ratio: 0.5,
         children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
     };
-    assert!(tree.split_leaf(b, c, Direction::Vertical, 0.5));
+    assert!(tree.split_leaf(b, c, Direction::Vertical));
     assert_eq!(
         tree,
         LayoutTree::Split {
@@ -1262,6 +1262,93 @@ fn split_leaf_on_nested_target() {
             )),
         }
     );
+}
+
+#[test]
+fn split_leaf_thrice_gives_equal_thirds() {
+    let [a, b, c] = pane_ids();
+    let mut tree = LayoutTree::Leaf(a);
+    assert!(tree.split_leaf(a, b, Direction::Horizontal));
+    assert!(tree.split_leaf(a, c, Direction::Horizontal));
+
+    // `a` is split again, so it (now paired with `c`) occupies 2 of the 3
+    // slots on the horizontal axis — hence 2/3, not 1/3 — with the nested
+    // (a, c) pair itself split 0.5. The two ratios compose to an equal third
+    // apiece, checked below against rendered widths.
+    assert_eq!(
+        tree,
+        LayoutTree::Split {
+            direction: Direction::Horizontal,
+            ratio: 2.0 / 3.0,
+            children: Box::new((
+                LayoutTree::Split {
+                    direction: Direction::Horizontal,
+                    ratio: 0.5,
+                    children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(c))),
+                },
+                LayoutTree::Leaf(b),
+            )),
+        }
+    );
+
+    // Independent oracle: read the rects back, not the ratios again.
+    let mut out = Vec::new();
+    tree.collect_rects_into(rect(0, 0, 99, 10), false, &mut out);
+    assert_eq!(out.len(), 3);
+    let widths: Vec<u16> = out.iter().map(|(_, r)| r.width).collect();
+    let min = *widths.iter().min().unwrap();
+    let max = *widths.iter().max().unwrap();
+    assert!(
+        max - min <= 1,
+        "widths {widths:?} not within 1 of each other"
+    );
+}
+
+#[test]
+fn split_leaf_counts_perpendicular_subtree_as_one_slot() {
+    let [a, b, c, d] = pane_ids();
+    let mut tree = LayoutTree::Split {
+        direction: Direction::Horizontal,
+        ratio: 0.5,
+        children: Box::new((
+            LayoutTree::Leaf(a),
+            LayoutTree::Split {
+                direction: Direction::Vertical,
+                ratio: 0.5,
+                children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
+            },
+        )),
+    };
+    assert!(tree.split_leaf(a, d, Direction::Horizontal));
+    let LayoutTree::Split { ratio, .. } = &tree else {
+        panic!("root must still be a split");
+    };
+    assert_eq!(*ratio, 2.0 / 3.0);
+
+    let mut out = Vec::new();
+    tree.collect_rects_into(rect(0, 0, 99, 10), false, &mut out);
+    let widths: Vec<u16> = out.iter().map(|(_, r)| r.width).collect();
+    let min = *widths.iter().min().unwrap();
+    let max = *widths.iter().max().unwrap();
+    assert!(
+        max - min <= 1,
+        "widths {widths:?} not within 1 of each other"
+    );
+}
+
+#[test]
+fn split_leaf_on_other_axis_leaves_parent_ratio_untouched() {
+    let [a, b, c] = pane_ids();
+    let mut tree = LayoutTree::Split {
+        direction: Direction::Horizontal,
+        ratio: 0.5,
+        children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
+    };
+    assert!(tree.split_leaf(b, c, Direction::Vertical));
+    let LayoutTree::Split { ratio, .. } = &tree else {
+        panic!("root must still be a split");
+    };
+    assert_eq!(*ratio, 0.5);
     let mut out = Vec::new();
     tree.collect_rects_into(rect(0, 0, 100, 100), true, &mut out);
     assert_eq!(out.len(), 3);
@@ -1324,6 +1411,24 @@ fn remove_leaf_missing_target_is_noop() {
     let before = tree.clone();
     assert_eq!(tree.remove_leaf(missing), None);
     assert_eq!(tree, before);
+}
+
+#[test]
+fn remove_leaf_equalizes_survivors() {
+    let [a, b, c] = pane_ids();
+    let mut tree = LayoutTree::Leaf(a);
+    assert!(tree.split_leaf(a, b, Direction::Horizontal));
+    assert!(tree.split_leaf(a, c, Direction::Horizontal));
+
+    assert_eq!(tree.remove_leaf(c), Some(a));
+    assert_eq!(
+        tree,
+        LayoutTree::Split {
+            direction: Direction::Horizontal,
+            ratio: 0.5,
+            children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
+        }
+    );
 }
 
 // ── Bottom band partition ──────────────────────────────────────────────

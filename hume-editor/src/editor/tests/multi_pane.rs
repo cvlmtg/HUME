@@ -667,6 +667,90 @@ fn split_sizes_both_panes_stacked() {
     assert_eq!(ed.view.panes[pid_b].viewport.width, 80);
 }
 
+/// A third `:vsplit` must resize all three panes to equal widths, not just
+/// halve the space of whichever pane was split.
+#[test]
+fn vsplit_twice_sizes_three_panes_equally() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("vsplit", None).unwrap();
+    ed.execute_typed("vsplit", None).unwrap();
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.sync_viewport_dims(100, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    let widths: Vec<u16> = ed.view.panes.values().map(|p| p.viewport.width).collect();
+    assert_eq!(widths.len(), 3);
+    let min = *widths.iter().min().unwrap();
+    let max = *widths.iter().max().unwrap();
+    assert!(
+        max - min <= 1,
+        "widths {widths:?} not within 1 of each other"
+    );
+    assert_eq!(
+        widths.iter().sum::<u16>() + 2,
+        100,
+        "three panes plus two 1-column seams must tile the full terminal width"
+    );
+}
+
+/// The stacked counterpart of [`vsplit_twice_sizes_three_panes_equally`]:
+/// a third `:split` must resize all three panes to equal heights.
+#[test]
+fn split_twice_sizes_three_panes_equally() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("split", None).unwrap();
+    ed.execute_typed("split", None).unwrap();
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.sync_viewport_dims(80, 41);
+    ed.settle();
+    ed.prepare_frame(&mut ctx); // 41 rows → 40 usable after statusline
+
+    let heights: Vec<u16> = ed.view.panes.values().map(|p| p.viewport.height).collect();
+    assert_eq!(heights.len(), 3);
+    let min = *heights.iter().min().unwrap();
+    let max = *heights.iter().max().unwrap();
+    assert!(
+        max - min <= 1,
+        "heights {heights:?} not within 1 of each other"
+    );
+    assert_eq!(
+        heights.iter().sum::<u16>() + 2,
+        40,
+        "three panes plus two 1-row seams must tile the full usable height"
+    );
+}
+
+/// Closing the middle pane of three equal-width panes must redistribute its
+/// space equally between the survivors, not hand it all to one neighbour.
+#[test]
+fn close_pane_redistributes_space_equally() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focused_pane_id;
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_b = ed.state.focused_pane_id;
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_c = ed.state.focused_pane_id;
+
+    ed.state.focused_pane_id = pid_b;
+    ed.execute_typed("quit", None).unwrap();
+    assert_eq!(ed.view.panes.len(), 2);
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.sync_viewport_dims(100, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    let wa = ed.view.panes[pid_a].viewport.width;
+    let wc = ed.view.panes[pid_c].viewport.width;
+    assert!(
+        wa.abs_diff(wc) <= 1,
+        "widths {wa} vs {wc} not within 1 of each other after close"
+    );
+}
+
 // ── T4: Split-too-small guard ────────────────────────────────────────────────
 
 /// `:vsplit` on a pane too narrow to fit two minimum-width panes plus the

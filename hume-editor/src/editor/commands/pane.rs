@@ -136,7 +136,7 @@ pub(in crate::editor) fn split_pane_onto(
     let old_buffer_id = view.panes[old_focused].buffer_id;
     let new_pid = open_pane(state, view, bid);
 
-    let found = view.layout.split_leaf(old_focused, new_pid, direction, 0.5);
+    let found = view.layout.split_leaf(old_focused, new_pid, direction);
     if !found {
         // `open_pane` already inserted `new_pid`'s state before the layout
         // mutation could fail — undo it rather than leaving an orphaned pane

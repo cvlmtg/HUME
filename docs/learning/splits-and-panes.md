@@ -81,6 +81,14 @@ the source pane's current view state (scroll position, and any wrap-mode
 override it had) as its starting point, then diverges independently from
 there as you scroll or re-wrap it.
 
+Every split also resizes all panes sharing that split's axis back to equal
+size, so splitting a third time gives three equal thirds rather than halving
+whichever pane you split. A group of stacked panes counts as a single column
+(or a group of side-by-side panes as a single row) when it's measured against
+the panes beside or above it, matching how most terminal multiplexers balance
+a mixed grid. Closing a pane works the same way in reverse: its space is
+handed back equally to the panes that remain, not all to one neighbour.
+
 ---
 
 ## See also

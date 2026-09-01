@@ -40,7 +40,10 @@ pub enum LayoutTree {
     Leaf(PaneId),
     Split {
         direction: Direction,
-        /// Fraction (0.0–1.0) allocated to the first child.
+        /// Fraction (0.0–1.0) allocated to the first child. Derived by
+        /// `equalize` from the two children's [`Self::slots_along`] counts —
+        /// not chosen by whatever split produced this node — so every pane
+        /// sharing a split axis stays equal-sized regardless of split order.
         ratio: f32,
         children: Box<(LayoutTree, LayoutTree)>,
     },
@@ -167,28 +170,36 @@ impl LayoutTree {
         }
     }
 
-    /// Replace `Leaf(target)` with a `Split` of `(Leaf(target), Leaf(new_pane))`.
-    /// Returns whether `target` was found.
-    pub fn split_leaf(
-        &mut self,
-        target: PaneId,
-        new_pane: PaneId,
-        direction: Direction,
-        ratio: f32,
-    ) -> bool {
+    /// Replace `Leaf(target)` with a `Split` of `(Leaf(target), Leaf(new_pane))`,
+    /// then re-derive every split ratio in the tree so panes sharing a split
+    /// axis stay equal-sized (see [`Self::equalize`]). Returns whether
+    /// `target` was found.
+    pub fn split_leaf(&mut self, target: PaneId, new_pane: PaneId, direction: Direction) -> bool {
+        let found = self.insert_split(target, new_pane, direction);
+        if found {
+            self.equalize();
+        }
+        found
+    }
+
+    /// The recursive body of [`Self::split_leaf`], without the equalize pass
+    /// — kept separate so equalization runs once at the root instead of once
+    /// per level of recursion.
+    fn insert_split(&mut self, target: PaneId, new_pane: PaneId, direction: Direction) -> bool {
         match self {
             LayoutTree::Leaf(id) if *id == target => {
                 *self = LayoutTree::Split {
                     direction,
-                    ratio,
+                    // Overwritten by the `equalize()` call in `split_leaf`.
+                    ratio: 0.5,
                     children: Box::new((LayoutTree::Leaf(target), LayoutTree::Leaf(new_pane))),
                 };
                 true
             }
             LayoutTree::Leaf(_) => false,
             LayoutTree::Split { children, .. } => {
-                children.0.split_leaf(target, new_pane, direction, ratio)
-                    || children.1.split_leaf(target, new_pane, direction, ratio)
+                children.0.insert_split(target, new_pane, direction)
+                    || children.1.insert_split(target, new_pane, direction)
             }
         }
     }
@@ -201,10 +212,66 @@ impl LayoutTree {
         }
     }
 
-    /// Prune `Leaf(target)`, collapsing its parent `Split` onto the sibling.
-    /// Returns the leftmost leaf of the promoted sibling (the new focus target),
-    /// or `None` if `self` is the sole leaf.
+    /// How many side-by-side slots this subtree occupies along `direction`'s
+    /// axis — the unit [`Self::equalize`] balances a split's two children in.
+    /// A leaf is always one slot. A split *on* `direction`'s axis is the sum
+    /// of its children's slots, since each becomes its own share of that
+    /// axis. A split on the *other* axis (a stacked or side-by-side group)
+    /// counts as a single slot when measured across its own axis — matching
+    /// the `CTRL-W =` convention most terminal multiplexers use, where a
+    /// group of stacked panes shares one column's width rather than each
+    /// stacked pane claiming its own.
+    fn slots_along(&self, direction: Direction) -> u32 {
+        match self {
+            LayoutTree::Leaf(_) => 1,
+            LayoutTree::Split {
+                direction: split_dir,
+                children,
+                ..
+            } if *split_dir == direction => {
+                children.0.slots_along(direction) + children.1.slots_along(direction)
+            }
+            LayoutTree::Split { .. } => 1,
+        }
+    }
+
+    /// Re-derive every split's `ratio` from its two children's
+    /// [`Self::slots_along`] counts on that split's own axis, so every pane
+    /// sharing a split axis ends up the same size regardless of the order
+    /// splits and closes happened in. Recurses into both children first so a
+    /// nested split's ratio is set from its own children before this level
+    /// reads `slots_along` on it.
+    fn equalize(&mut self) {
+        if let LayoutTree::Split {
+            direction,
+            ratio,
+            children,
+        } = self
+        {
+            children.0.equalize();
+            children.1.equalize();
+            let slots0 = children.0.slots_along(*direction);
+            let slots1 = children.1.slots_along(*direction);
+            *ratio = slots0 as f32 / (slots0 + slots1) as f32;
+        }
+    }
+
+    /// Prune `Leaf(target)`, collapsing its parent `Split` onto the sibling,
+    /// then re-derive every split ratio so the survivors stay equal-sized
+    /// (see [`Self::equalize`]). Returns the leftmost leaf of the promoted
+    /// sibling (the new focus target), or `None` if `target` wasn't found or
+    /// `self` is the sole leaf.
     pub fn remove_leaf(&mut self, target: PaneId) -> Option<PaneId> {
+        let survivor = self.prune_leaf(target);
+        if survivor.is_some() {
+            self.equalize();
+        }
+        survivor
+    }
+
+    /// The recursive body of [`Self::remove_leaf`], without the equalize pass
+    /// — kept separate for the same reason as [`Self::insert_split`].
+    fn prune_leaf(&mut self, target: PaneId) -> Option<PaneId> {
         match self {
             LayoutTree::Leaf(_) => None,
             LayoutTree::Split { children, .. } => {
@@ -225,8 +292,8 @@ impl LayoutTree {
                 } else {
                     children
                         .0
-                        .remove_leaf(target)
-                        .or_else(|| children.1.remove_leaf(target))
+                        .prune_leaf(target)
+                        .or_else(|| children.1.prune_leaf(target))
                 }
             }
         }
