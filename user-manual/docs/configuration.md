@@ -101,7 +101,7 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 | `lsp.diagnostics-severity-floor` | `error` \| `warning` \| `info` \| `hint` | `hint` | Lowest diagnostic severity to display |
 | `lsp.request-timeout-ms` | integer ≥ 1 | `10000` | How long to wait for a language-server reply |
 | `lsp.viewport-debounce-ms` | integer ≥ 1 | `150` | Delay before re-requesting hints after scrolling |
-| `lsp.format-max-ranges` | integer ≥ 1 | `16` | Above this many disjoint ranges, `:lsp-fmt` warns and formats nothing instead of sending one request per range |
+| `lsp.format-max-ranges` | integer ≥ 1 | `16` | Above this many disjoint ranges, `:lsp-fmt` warns and formats nothing instead of sending one request per range (a server that batches ranges into a single request isn't capped) |
 
 ## Buffer options
 

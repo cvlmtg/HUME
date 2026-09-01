@@ -25,7 +25,7 @@
   (hash-ref action "title"))
 
 (define (lsp/action-resolve-provider?)
-  (equal? (lsp/cap-field (lsp-capabilities #f) "codeActionProvider" "resolveProvider" #f) #t))
+  (lsp/cap-flag? "codeActionProvider" "resolveProvider"))
 
 ;;; `cmd-obj`: a Command `{title, command, arguments?}` (either the bare
 ;;; top-level shape or a CodeAction's nested "command" field).

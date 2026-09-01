@@ -3,7 +3,7 @@
 
 (provide lsp/supports? lsp/supports-for-buffer? lsp/guard-capability lsp/report-error
          lsp/visible-lines lsp/show-locations! lsp/text-edit->tuple
-         lsp/setup-trigger-chars! lsp/format-position lsp/cap-field)
+         lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
 
@@ -40,6 +40,12 @@
             (hash-ref cap field)
             default))
       default))
+
+;;; #t if the focused buffer's server advertises `cap-key`'s `field` as
+;;; exactly `#t` (e.g. rangeFormatting's `rangesSupport`, codeAction's
+;;; `resolveProvider`).
+(define (lsp/cap-flag? cap-key field)
+  (equal? (lsp/cap-field (lsp-capabilities #f) cap-key field #f) #t))
 
 ;; ── Popup dismissal ─────────────────────────────────────────────────────────
 ;; Shared by every feature using a popup (hover, sighelp, …).

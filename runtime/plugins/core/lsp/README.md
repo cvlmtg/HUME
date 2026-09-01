@@ -301,3 +301,11 @@ range, capped at `lsp.format-max-ranges` — past the cap, `:lsp-fmt` warns and 
 the same refusal a mixed selection set gets, rather than silently narrowing to one selection.
 Rename has no tree-sitter fallback in v1 — a buffer with no attached server just reports "not
 supported" via the ordinary capability guard, the same as any other unsupported feature.
+
+`lsp/format-fan-out!`'s join (see the "Per-range formatting fan-out join" row above) tracks
+three boxes: `pending` (requests still in flight), `edits` (accumulated so far), `aborted`.
+`aborted` only suppresses duplicate error log lines when two or more ranges fail — the
+no-partial-format guarantee comes from `pending` never reaching zero after an error, not from
+this flag. Responses can land in any order (`aborted` set means the fan-out is already dead;
+otherwise the fold order doesn't matter) — `apply-text-edits!` sorts edits by position before
+applying, and coalescing guarantees no two ranges can tie.

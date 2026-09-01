@@ -698,7 +698,9 @@ define_settings! {
         // One round trip per range, so a stray select-all-matches leaving
         // hundreds of cursors would burst hundreds of requests at the
         // server; past this many `:lsp-fmt` warns and formats nothing,
-        // rather than silently narrowing to one selection.
+        // rather than silently narrowing to one selection. Doesn't bound a
+        // server advertising `rangesSupport` — every range there rides one
+        // `rangesFormatting` request, so there's nothing to burst.
         "lsp.format-max-ranges" => lsp_format_max_ranges: usize = 16,
             scope: [Scope::Global],
             parser: usize_nonzero;

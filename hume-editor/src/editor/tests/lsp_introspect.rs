@@ -13,9 +13,9 @@ use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
-/// Wires a scripted backend, drives its handshake to completion (so
-/// `capabilities_json` gets cached the same way production does), and
-/// attaches the focused buffer to it under language `"rust"`.
+/// Wires a scripted backend, drives its handshake to completion (so the
+/// client records `caps_json` the way production does), and attaches the
+/// focused buffer to it under language `"rust"`.
 fn attach_running_server(ed: &mut Editor, initialize_result: serde_json::Value) -> ServerId {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", initialize_result);
@@ -40,7 +40,7 @@ fn attach_running_server(ed: &mut Editor, initialize_result: serde_json::Value) 
 }
 
 #[test]
-fn lsp_capabilities_decodes_after_handshake() {
+fn lsp_capabilities_reads_raw_wire_caps_after_handshake() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     attach_running_server(
@@ -56,17 +56,17 @@ fn lsp_capabilities_decodes_after_handshake() {
     );
     assert!(
         fired,
-        "lsp-capabilities must decode the cached ServerCapabilities"
+        "lsp-capabilities must return the server's raw wire capabilities"
     );
 }
 
 /// `lsp-capabilities` must read the server's raw wire JSON, not a
-/// re-serialization of the typed `lsp_types::ServerCapabilities` — that
+/// re-serialization of a typed `lsp_types::ServerCapabilities` decode — that
 /// round-trip silently drops any field the pinned crate version doesn't
 /// model. `documentRangeFormattingProvider.rangesSupport` (LSP 3.18) is
 /// exactly such a field: `lsp_types` 0.97 has no representation for it at
 /// all, so this is a regression guard on `LspClient::capabilities_json`
-/// carrying the raw value through rather than `capabilities()`.
+/// carrying the raw value through.
 #[test]
 fn lsp_capabilities_surfaces_a_field_lsp_types_does_not_model() {
     let tmp = safe_tempdir();

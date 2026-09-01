@@ -9,11 +9,6 @@
   (hash "tabSize" (get-option "tab-width")
         "insertSpaces" (equal? (get-option "tab-style") "soft")))
 
-(define (lsp/ranges-support?)
-  (equal? (lsp/cap-field (lsp-capabilities #f) "documentRangeFormattingProvider"
-                          "rangesSupport" #f)
-          #t))
-
 (define (lsp/format-edits res)
   (if (or (void? res) (null? res))
       (list)
@@ -30,9 +25,6 @@
         (lsp/report-error "lsp-fmt" err)
         (lsp/format-apply! bid gen (lsp/format-edits res)))))
 
-;;; `aborted` only suppresses duplicate error lines when two or more ranges
-;;; fail — the no-partial-format guarantee comes from `pending` never
-;;; reaching zero after an error, not from this box.
 (define (lsp/format-fan-out! bid gen td ranges)
   (let ((pending (box (length ranges)))
         (edits (box (list)))
@@ -49,14 +41,6 @@
                     (set-box! aborted #t)
                     (lsp/report-error "lsp-fmt" err))
                   (begin
-                    ;; append is O(ranges^2), but measured against Steel's actual
-                    ;; im_lists::UnrolledList (node-level relinking, 64-element
-                    ;; nodes) and the lsp.format-max-ranges cap: low thousands of
-                    ;; Rc bumps, not measurable. A cons + reverse rewrite isn't
-                    ;; easier to read, so it earns nothing here. Order is safe to
-                    ;; change either way — build_changeset_from_char_edits
-                    ;; stable-sorts by start offset, and coalescing guarantees
-                    ;; distinct ranges can't tie.
                     (set-box! edits (append (unbox edits) (lsp/format-edits res)))
                     (set-box! pending (- (unbox pending) 1))
                     (when (= (unbox pending) 0)
@@ -66,17 +50,18 @@
 (define (lsp/format-linewise! bid gen td ranges)
   (lsp/guard-capability "documentRangeFormattingProvider"
     (lambda ()
-      (let ((n (length ranges)))
+      (let ((n (length ranges))
+            (cap (get-option "lsp.format-max-ranges")))
         (cond
-          ((and (> n 1) (lsp/ranges-support?))
+          ((and (> n 1) (lsp/cap-flag? "documentRangeFormattingProvider" "rangesSupport"))
            (lsp-request #f "textDocument/rangesFormatting"
              (hash "textDocument" td "ranges" ranges "options" (lsp/format-options))
              (lsp/format-callback bid gen)))
-          ((> n (get-option "lsp.format-max-ranges"))
+          ((> n cap)
            (log! 'warn
                  (string-append (number->string n)
                                  " ranges exceeds lsp.format-max-ranges ("
-                                 (number->string (get-option "lsp.format-max-ranges"))
+                                 (number->string cap)
                                  ") — nothing formatted")))
           (else (lsp/format-fan-out! bid gen td ranges)))))))
 
@@ -86,10 +71,11 @@
     (let* ((bid (current-buffer))
            (rp (lsp-linewise-ranges-params bid)))
       (if (not rp)
-          ;; No path or no attached server — `lsp-server-for-buffer`
-          ;; distinguishes the two, since a capability guard can't: without
-          ;; a server there's no `lsp-capabilities` to check in the first
-          ;; place.
+          ;; No path or no attached server (the third reason `rp` can be #f
+          ;; — `bid` shown in no pane — can't happen for `(current-buffer)`)
+          ;; — `lsp-server-for-buffer` distinguishes the two, since a
+          ;; capability guard can't: without a server there's no
+          ;; `lsp-capabilities` to check in the first place.
           (log! 'info (if (lsp-server-for-buffer bid)
                            "buffer has no path — nothing to format"
                            "no LSP server attached to this buffer"))

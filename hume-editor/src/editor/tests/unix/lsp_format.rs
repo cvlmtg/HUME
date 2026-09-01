@@ -353,6 +353,117 @@ fn single_full_line_selection_sends_range_formatting_even_when_ranges_supported(
     );
 }
 
+/// Same shape as `disjoint_full_line_selections_send_two_range_formatting_requests`,
+/// but past `lsp.format-max-ranges` — a server advertising `rangesSupport` sends every
+/// range in one `rangesFormatting` request, so the cap (which bounds one-request-per-
+/// range fan-out) has nothing to bound and never fires.
+#[test]
+fn ranges_formatting_is_not_capped_by_format_max_ranges() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard) = setup_with_caps(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        serde_json::json!({"capabilities": {
+            "documentFormattingProvider": true,
+            "documentRangeFormattingProvider": {"rangesSupport": true}
+        }}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/rangesFormatting",
+                serde_json::json!([
+                    text_edit(0, 0, 1, 0, "RANGE1\n"),
+                    text_edit(2, 0, 3, 0, "RANGE3\n")
+                ]),
+            );
+        },
+    );
+    type_cmd(&mut ed, ":set global lsp.format-max-ranges=1");
+    select_full_lines_1_and_3(&mut ed);
+
+    run_fmt(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "RANGE1\nline2\nRANGE3\n",
+        "a rangesSupport server must format both ranges in one request even when \
+         their count exceeds lsp.format-max-ranges — the cap only bounds the \
+         one-request-per-range fan-out path"
+    );
+}
+
+/// A buffer with no attached server reports that, and sends no request — the
+/// coverage `lsp/guard-capability` used to give this case before
+/// `lsp-linewise-ranges-params` (which returns `#f` for it) replaced the
+/// direct capability check.
+#[test]
+fn no_attached_server_reports_and_sends_nothing() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            // Decoy proving no request at all is sent.
+            backend.respond_to(
+                "textDocument/formatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
+            );
+        },
+    );
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).lsp_server = None;
+    let before = ed.doc().text().to_string();
+
+    run_fmt(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before,
+        "no attached server must format nothing"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("no lsp server attached"),
+        "expected a no-server warning, got {msg:?}"
+    );
+}
+
+/// A buffer with an attached server but no path (e.g. a scratch buffer)
+/// reports that distinctly from the no-server case above, and sends no
+/// request.
+#[test]
+fn buffer_with_no_path_reports_and_sends_nothing() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            // Decoy proving no request at all is sent.
+            backend.respond_to(
+                "textDocument/formatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
+            );
+        },
+    );
+    ed.doc_mut().set_path(None);
+    let before = ed.doc().text().to_string();
+
+    run_fmt(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before,
+        "a pathless buffer must format nothing"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("no path"),
+        "expected a no-path warning, got {msg:?}"
+    );
+}
+
 /// A whole-line selection and a sub-line selection together are ambiguous
 /// — `:lsp-fmt` warns and formats nothing, rather than guessing which
 /// reading the user meant.
@@ -426,6 +537,38 @@ fn fan_out_past_the_cap_warns_and_formats_nothing() {
     assert!(
         msg.to_lowercase().contains("lsp.format-max-ranges") && msg.contains('1'),
         "expected a warning naming the setting and its value, got {msg:?}"
+    );
+}
+
+/// The cap is exclusive — exactly `lsp.format-max-ranges` ranges still fans
+/// out normally, only `n > cap` refuses.
+#[test]
+fn fan_out_at_the_cap_formats_normally() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
+            );
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(2, 0, 3, 0, "RANGE3\n")]),
+            );
+        },
+    );
+    type_cmd(&mut ed, ":set global lsp.format-max-ranges=2");
+    select_full_lines_1_and_3(&mut ed);
+
+    run_fmt(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "RANGE1\nline2\nRANGE3\n",
+        "a range count equal to the cap must still format, not refuse"
     );
 }
 
