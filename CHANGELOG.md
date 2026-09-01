@@ -21,8 +21,8 @@
   disjoint linewise selections as several ranges instead of falling back to the whole buffer:
   one `textDocument/rangesFormatting` request (LSP 3.18) when the server advertises
   `rangesSupport`, otherwise one `rangeFormatting` request per range — capped at the new
-  `lsp.format-max-ranges` setting (default 16), past which only the primary selection is
-  formatted, with a warning. A mix of whole-line and partial-line selections now warns and
+  `lsp.format-max-ranges` setting (default 16), past which nothing is formatted, with a
+  warning naming the cap. A mix of whole-line and partial-line selections now warns and
   formats nothing, rather than silently reformatting the whole buffer.
 
 ### Editing

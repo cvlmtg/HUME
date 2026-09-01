@@ -79,9 +79,9 @@ pub(super) fn server_language(lsp: &LspState, server_id: ServerId) -> Option<Lan
     lsp.servers.get(&server_id)?.language.clone()
 }
 
-/// Decoded `ServerCapabilities`, cached at handshake completion
-/// (`Editor::dispatch_lsp_action`'s `BecameRunning` arm) rather than
-/// reconverted on every call.
+/// The server's raw wire capabilities — see `LspClient::capabilities_json`'s
+/// doc comment for why this, not the typed decode, is what
+/// `(lsp-capabilities …)` must hand to Steel.
 pub(crate) fn capabilities(
     state: &EditorState,
     lsp: &LspState,
@@ -89,7 +89,7 @@ pub(crate) fn capabilities(
     server: Option<&str>,
 ) -> Option<serde_json::Value> {
     let sid = resolve_server(state, lsp, focused_bid, server).ok()?;
-    lsp.servers.get(&sid)?.capabilities_json.clone()
+    lsp.servers.get(&sid)?.client.capabilities_json().cloned()
 }
 
 /// One entry per running (language, root) server — `:lsp-status`'s data in
@@ -578,24 +578,14 @@ pub(crate) fn linewise_ranges_params(
     let text = state.buffers.get(id).text();
     let selections = &state.shown_buffer_state(view, id)?.selections;
 
-    let mut ranges = Vec::new();
-    let mut run: Option<(usize, usize)> = None;
-    for sel in selections
+    let linewise: Vec<_> = selections
         .iter_sorted()
         .filter(|sel| hume_editing::selection::is_selection_linewise(text, sel))
-    {
-        run = Some(match run {
-            Some((start_c, end_c)) if sel.start() == end_c + 1 => (start_c, sel.end()),
-            Some((start_c, end_c)) => {
-                ranges.push(char_range_to_wire(text, encoding, start_c, end_c));
-                (sel.start(), sel.end())
-            }
-            None => (sel.start(), sel.end()),
-        });
-    }
-    if let Some((start_c, end_c)) = run {
-        ranges.push(char_range_to_wire(text, encoding, start_c, end_c));
-    }
+        .collect();
+    let ranges: Vec<_> = linewise
+        .chunk_by(|a, b| b.start() == a.end() + 1)
+        .map(|run| char_range_to_wire(text, encoding, run[0].start(), run[run.len() - 1].end()))
+        .collect();
 
     Some(serde_json::json!({
         "textDocument": {"uri": uri},

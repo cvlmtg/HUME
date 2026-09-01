@@ -296,7 +296,7 @@ contiguous span, so a gap can't be expressed as a single range), none linewise f
 whole buffer, and a mix of the two warns and formats nothing rather than guessing which
 reading was meant. Disjoint ranges go out as one `textDocument/rangesFormatting` request (LSP
 3.18) when the server advertises `rangesSupport`, otherwise one `rangeFormatting` request per
-range, capped at `lsp.format-max-ranges` — past the cap, only the primary selection is
-formatted, with a warning. Rename has no tree-sitter fallback in v1 — a buffer with no attached
-server just reports "not supported" via the ordinary capability guard, the same as any other
-unsupported feature.
+range, capped at `lsp.format-max-ranges` — past the cap, `:lsp-fmt` warns and formats nothing,
+the same refusal a mixed selection set gets, rather than silently narrowing to one selection.
+Rename has no tree-sitter fallback in v1 — a buffer with no attached server just reports "not
+supported" via the ordinary capability guard, the same as any other unsupported feature.

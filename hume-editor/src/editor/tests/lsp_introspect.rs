@@ -318,23 +318,14 @@ fn lsp_primary_range_params_reflects_the_primary_selection() {
 /// the case where two selections don't touch.
 #[test]
 fn lsp_linewise_ranges_params_coalesces_touching_selections() {
-    use hume_editing::selection::Selection;
-
     let tmp = safe_tempdir();
-    // "line1\nline2\nline3\n": line0 = chars [0,6), line1 = chars [6,12).
-    // Selection 1 covers line0 whole (0..=5), selection 2 covers line1
-    // whole (6..=11) — they touch, so the hull is one range [0, 12).
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("line1\nline2\nline3\n"),
-        SelectionSet::default(),
-    ));
+    // "line1\nline2\nline3\n": selection 1 covers line0 whole (0..=5),
+    // selection 2 covers line1 whole (6..=11) — they touch, so the hull is
+    // one range [0, 12).
+    let mut ed = editor_from("-[line1\n]>-[line2\n]>line3\n");
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-linewise-ranges-touch.rs")));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
-    let bid = ed.focused_buffer_id();
-    let focused = ed.state.focused_pane_id;
-    ed.state.panes.state[focused][bid].selections =
-        SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(6, 11)], 0);
 
     let fired = run_probe(
         &mut ed,
@@ -364,22 +355,13 @@ fn lsp_linewise_ranges_params_coalesces_touching_selections() {
 /// consequence).
 #[test]
 fn lsp_linewise_ranges_params_splits_on_a_gap() {
-    use hume_editing::selection::Selection;
-
     let tmp = safe_tempdir();
     // "line1\nline2\nline3\n": selection 1 covers line0 (0..=5), selection 2
     // covers line2 (12..=17) — line1 sits untouched between them.
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("line1\nline2\nline3\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = editor_from("-[line1\n]>line2\n-[line3\n]>");
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-linewise-ranges-gap.rs")));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
-    let bid = ed.focused_buffer_id();
-    let focused = ed.state.focused_pane_id;
-    ed.state.panes.state[focused][bid].selections =
-        SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(12, 17)], 0);
 
     let fired = run_probe(
         &mut ed,
@@ -401,22 +383,13 @@ fn lsp_linewise_ranges_params_splits_on_a_gap() {
 /// own, narrower contract.
 #[test]
 fn lsp_linewise_ranges_params_skips_non_linewise_selections() {
-    use hume_editing::selection::Selection;
-
     let tmp = safe_tempdir();
     // "line1\nline2\n": selection 1 covers line0 whole (0..=5, linewise),
     // selection 2 covers just "lin" on line1 (6..=8, not linewise).
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("line1\nline2\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = editor_from("-[line1\n]>-[lin]>e2\n");
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-linewise-ranges-mixed.rs")));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
-    let bid = ed.focused_buffer_id();
-    let focused = ed.state.focused_pane_id;
-    ed.state.panes.state[focused][bid].selections =
-        SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(6, 8)], 0);
 
     let fired = run_probe(
         &mut ed,

@@ -33,12 +33,6 @@
                            (let ((name (lsp-server-for-buffer (current-buffer))))
                              (if name name "server"))))))
 
-;;; A provider capability is either the bare `#t` or an options hash — only
-;;; the hash form can carry a sub-field (e.g. `codeActionProvider`'s
-;;; `resolveProvider`, `completionProvider`'s `triggerCharacters`,
-;;; `documentRangeFormattingProvider`'s `rangesSupport`). `default` covers
-;;; every miss alike: `caps` absent, `cap-key` not present, the bare `#t`
-;;; form, or a hash without `field`.
 (define (lsp/cap-field caps cap-key field default)
   (if (and caps (hash-contains? caps cap-key))
       (let ((cap (hash-ref caps cap-key)))

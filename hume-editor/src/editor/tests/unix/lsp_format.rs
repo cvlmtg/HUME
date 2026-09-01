@@ -87,47 +87,25 @@ fn setup_with_caps(
 
 fn select_full_line_1(ed: &mut Editor) {
     // 'line1\n' — chars [0, 6).
-    let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
-    let pbs = ed
-        .state
-        .panes
-        .state
-        .get_mut(pid)
-        .and_then(|by_buf| by_buf.get_mut(bid))
-        .expect("pane buffer state must exist");
-    pbs.selections = SelectionSet::single(Selection::new(0, 5));
+    let (pid, bid) = (ed.state.focused_pane_id, ed.focused_buffer_id());
+    ed.state.panes.state[pid][bid].selections = SelectionSet::single(Selection::new(0, 5));
 }
 
 fn select_full_lines_1_and_3(ed: &mut Editor) {
     // Two disjoint linewise selections: 'line1\n' (chars [0, 6)) and
     // 'line3\n' (chars [12, 17]) — 'line2\n' in between is untouched by
     // either.
-    let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
-    let pbs = ed
-        .state
-        .panes
-        .state
-        .get_mut(pid)
-        .and_then(|by_buf| by_buf.get_mut(bid))
-        .expect("pane buffer state must exist");
-    pbs.selections = SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(12, 17)], 0);
+    let (pid, bid) = (ed.state.focused_pane_id, ed.focused_buffer_id());
+    ed.state.panes.state[pid][bid].selections =
+        SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(12, 17)], 0);
 }
 
 fn select_full_line_1_and_a_sub_line_selection(ed: &mut Editor) {
     // 'line1\n' whole (chars [0, 6)), plus "lin" on line 2 (chars 6..=8) —
     // not linewise.
-    let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
-    let pbs = ed
-        .state
-        .panes
-        .state
-        .get_mut(pid)
-        .and_then(|by_buf| by_buf.get_mut(bid))
-        .expect("pane buffer state must exist");
-    pbs.selections = SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(6, 8)], 0);
+    let (pid, bid) = (ed.state.focused_pane_id, ed.focused_buffer_id());
+    ed.state.panes.state[pid][bid].selections =
+        SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(6, 8)], 0);
 }
 
 fn run_fmt(ed: &mut Editor) {
@@ -369,37 +347,40 @@ fn mixed_linewise_and_sub_line_selections_warn_and_format_nothing() {
     );
 }
 
-/// Past `lsp.format-max-ranges`, `:lsp-fmt` formats only the primary
-/// selection and warns about the rest instead of bursting one request per
-/// range at the server.
+/// Past `lsp.format-max-ranges`, `:lsp-fmt` refuses and warns instead of
+/// silently narrowing an N-region request into a 1-region one — the same
+/// contract the mixed-selection case above uses for "can't do this
+/// unambiguously".
 #[test]
-fn fan_out_past_the_cap_formats_the_primary_selection_and_warns() {
+fn fan_out_past_the_cap_warns_and_formats_nothing() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let (mut ed, _guard) = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         |backend, _sid| {
+            // Decoy proving no request at all is sent past the cap.
             backend.respond_to(
                 "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(0, 0, 1, 0, "PRIMARY_ONLY\n")]),
+                serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_PRIMARY_ONLY_PATH\n")]),
             );
         },
     );
     type_cmd(&mut ed, ":set global lsp.format-max-ranges=1");
+    let before = ed.doc().text().to_string();
     select_full_lines_1_and_3(&mut ed);
 
     run_fmt(&mut ed);
 
     assert_eq!(
         ed.doc().text().to_string(),
-        "PRIMARY_ONLY\nline2\nline3\n",
-        "only the primary selection's range must be formatted past the cap"
+        before,
+        "exceeding the cap must format nothing, not narrow to the primary selection"
     );
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
-        msg.to_lowercase().contains("lsp.format-max-ranges"),
-        "expected a warning naming the setting, got {msg:?}"
+        msg.to_lowercase().contains("lsp.format-max-ranges") && msg.contains('1'),
+        "expected a warning naming the setting and its value, got {msg:?}"
     );
 }
 

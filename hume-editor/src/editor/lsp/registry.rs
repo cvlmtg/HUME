@@ -231,7 +231,6 @@ impl Editor {
                             client,
                             language: Some(language.clone()),
                             name: config.command.clone(),
-                            capabilities_json: None,
                             progress: Vec::new(),
                         },
                     );

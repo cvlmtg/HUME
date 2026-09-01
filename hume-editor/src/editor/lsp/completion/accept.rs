@@ -416,7 +416,7 @@ impl CompletionSession {
         let resolve_provider = lsp
             .servers
             .get(&server_id)
-            .and_then(|e| e.capabilities_json.as_ref())
+            .and_then(|e| e.client.capabilities_json())
             .and_then(|caps| caps.get("completionProvider"))
             .and_then(|cp| cp.get("resolveProvider"))
             .and_then(|v| v.as_bool())

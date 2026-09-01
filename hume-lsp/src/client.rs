@@ -199,14 +199,18 @@ const SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 pub struct LspClient {
     id: ServerId,
     state: ServerState,
+    /// Typed decode of `caps_json`, read only by `change_sync` (needs the
+    /// `TextDocumentSyncCapability` enum's `Kind`/`Options` distinction) —
+    /// lossy, since `ServerCapabilities` only models whatever the pinned
+    /// `lsp_types` version knows about, so this is never the answer to "what
+    /// did the server advertise". `caps_json` is that answer.
     caps: Option<ServerCapabilities>,
-    /// The server's raw `capabilities` object off the wire, kept alongside
-    /// the typed `caps` above rather than re-derived from it — `caps` only
-    /// round-trips through whatever `lsp_types::ServerCapabilities` models,
-    /// silently dropping any capability the pinned crate version doesn't
-    /// know about (e.g. LSP 3.18's `documentRangeFormattingProvider.
-    /// rangesSupport`). `capabilities_json` below is what `(lsp-capabilities
-    /// …)` actually hands to Steel, so it must see the wire value verbatim.
+    /// The server's raw `capabilities` object, verbatim off the wire —
+    /// the capabilities source of truth. Every consumer outside this file
+    /// reads this, not `caps`: a typed round-trip through `caps` silently
+    /// drops any field the pinned `lsp_types` version doesn't model (e.g.
+    /// LSP 3.18's `documentRangeFormattingProvider.rangesSupport`), and
+    /// `(lsp-capabilities …)` must hand Steel the wire value verbatim.
     caps_json: Option<serde_json::Value>,
     /// Negotiated position encoding; UTF-16 until `initialize` proves UTF-8.
     /// A decode-once cache of `caps.position_encoding` — `handle_initialize_
@@ -270,13 +274,7 @@ impl LspClient {
         self.state
     }
 
-    pub fn capabilities(&self) -> Option<&ServerCapabilities> {
-        self.caps.as_ref()
-    }
-
-    /// The server's raw `capabilities` object, verbatim off the wire — see
-    /// `caps_json`'s doc comment for why this is what `(lsp-capabilities …)`
-    /// must read instead of re-serializing `capabilities()`.
+    /// See `caps_json`'s doc comment.
     pub fn capabilities_json(&self) -> Option<&serde_json::Value> {
         self.caps_json.as_ref()
     }
@@ -609,10 +607,7 @@ impl LspClient {
                 }];
             }
         };
-        // Captured before `from_value` below consumes `value` — the typed
-        // parse below is lossy (see `caps_json`'s doc comment), so the raw
-        // object is the only place `rangesSupport` and any other capability
-        // outside the pinned `lsp_types` version survive.
+        // Captured before `from_value` below consumes `value`.
         let raw_caps = value.get("capabilities").cloned();
         let parsed: InitializeResult = match serde_json::from_value(value) {
             Ok(r) => r,

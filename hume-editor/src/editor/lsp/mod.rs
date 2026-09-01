@@ -81,11 +81,6 @@ struct ServerEntry {
     /// used to prefix stderr/log lines so `:messages` reads legibly
     /// with multiple servers running.
     name: String,
-    /// Decoded `ServerCapabilities`, cached once at handshake completion
-    /// (`dispatch_lsp_action`'s `BecameRunning` arm) — the
-    /// `(lsp-capabilities …)` builtin reads this rather than reconverting the typed
-    /// caps on every call.
-    capabilities_json: Option<serde_json::Value>,
     /// Active `$/progress` tasks, in begin order — a server can run more
     /// than one concurrently (e.g. rust-analyzer indexing + a flycheck run).
     /// The statusline shows the most recent (last); a token is removed on
@@ -260,7 +255,6 @@ impl LspState {
                 client,
                 language: None,
                 name: "lsp".to_string(),
-                capabilities_json: None,
                 progress: Vec::new(),
             },
         );
