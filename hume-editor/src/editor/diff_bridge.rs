@@ -2,12 +2,13 @@
 //! Steel-facing [`DiffHunk`]/[`WordDiffHunk`] shapes.
 //!
 //! **Line diff** normalizes both sides through [`BufferText::from`] before
-//! tokenizing — CRLF-normalized and given a trailing newline if missing, the
-//! same as loading the text as a HUME buffer. This is deliberate: it matches
-//! how a plugin's git-ref text and the live buffer are actually compared (as
-//! buffer content, not raw bytes), and it means a ref blob missing its final
-//! newline — routine in git — produces no phantom trailing-line hunk against
-//! a buffer that (by HUME's own invariant) always has one.
+//! tokenizing — every line ending becomes LF and a trailing newline is added
+//! if missing, the same as loading the text as a HUME buffer. This is
+//! deliberate: it matches how a plugin's git-ref text and the live buffer are
+//! actually compared (as buffer content, not raw bytes), and it means a ref
+//! blob missing its final newline — routine in git — produces no phantom
+//! trailing-line hunk against a buffer that (by HUME's own invariant) always
+//! has one.
 //!
 //! **Word diff** does no such normalization and no re-slicing — see
 //! [`word_hunks`]'s doc.

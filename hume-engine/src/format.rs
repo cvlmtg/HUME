@@ -227,11 +227,9 @@ pub fn format_buffer_line(
     for chunk in line_slice.chunks() {
         scratch.line_texts.push_str(chunk);
     }
-    // Strip the trailing `\n` ropey includes for every non-final line, noting
-    // whether there was one — the EOL sentinel below is emitted only for a
-    // line that actually ends in a break.
-    let had_newline = scratch.line_texts.ends_with('\n');
-    strip_line_ending(&mut scratch.line_texts);
+    // Strip the trailing `\n` ropey includes for every non-final line — the
+    // EOL sentinel below is emitted only for a line that actually had one.
+    let had_newline = hume_rope::lines::truncate_line_break(&mut scratch.line_texts);
 
     let line_str = &scratch.line_texts[text_start..];
 
@@ -921,19 +919,6 @@ fn should_render_whitespace(render: WhitespaceRender, is_trailing: bool) -> bool
         WhitespaceRender::All => true,
         WhitespaceRender::Trailing => is_trailing,
     }
-}
-
-// ---------------------------------------------------------------------------
-// Utility helpers
-// ---------------------------------------------------------------------------
-
-/// Remove a trailing `\n` from a string buffer in-place, so a line's own
-/// terminator doesn't render as a literal trailing character. `\n` is the
-/// only break there is to remove — see [`hume_rope::lines::strip_line_break`],
-/// which this delegates to.
-pub(crate) fn strip_line_ending(buf: &mut String) {
-    let stripped_len = hume_rope::lines::strip_line_break(buf).len();
-    buf.truncate(stripped_len);
 }
 
 // ---------------------------------------------------------------------------

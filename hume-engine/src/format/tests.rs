@@ -61,9 +61,7 @@ fn a_cr_is_line_content_not_a_line_break() {
     // here. A live buffer can't hold a `\r` at all (`BufferText::from`
     // normalizes it away), and `do_format` builds a `Rope::from_str`
     // directly, so this pins the raw-rope contract — the `\r` sits in the
-    // row like any other char instead of ending it. The empty-line sentinel
-    // invariant this used to exercise via a `\r`-only line is covered by
-    // `empty_line_produces_empty_sentinel_grapheme` below, on a real one.
+    // row like any other char instead of ending it.
     let (rows, graphemes) = do_format("a\rb\n", WrapMode::None);
     assert_eq!(rows.len(), 2, "\"a\\rb\\n\", \"\" (trailing)");
     let row0_gs = &graphemes[rows[0].graphemes.clone()];
@@ -672,41 +670,26 @@ fn cjk_character_produces_width_continuation() {
     assert_eq!(graphemes[1].display_col, 2);
 }
 
-// ── strip_line_ending ─────────────────────────────────────────────────
+// ── truncate_line_break ─────────────────────────────────────────────────
+//
+// The break-set contract itself (LF only; CRLF keeps its CR; other Unicode
+// breaks are content) belongs to `hume-rope` and is pinned there
+// (`hume-rope/src/lines/tests.rs`). These two just cover what
+// `truncate_line_break` adds over `strip_line_break`: in-place truncation
+// and reporting whether a break was actually removed.
 
 #[test]
-fn strip_line_ending_removes_newline() {
+fn truncate_line_break_removes_newline_and_reports_true() {
     let mut buf = "hello\n".to_string();
-    strip_line_ending(&mut buf);
+    assert!(hume_rope::lines::truncate_line_break(&mut buf));
     assert_eq!(buf, "hello");
 }
 
 #[test]
-fn strip_line_ending_no_newline_unchanged() {
+fn truncate_line_break_no_newline_unchanged_and_reports_false() {
     let mut buf = "hello".to_string();
-    strip_line_ending(&mut buf);
+    assert!(!hume_rope::lines::truncate_line_break(&mut buf));
     assert_eq!(buf, "hello");
-}
-
-#[test]
-fn strip_line_ending_takes_the_lf_of_a_crlf_and_leaves_the_cr() {
-    // `\n` is the whole terminator; the `\r` before it is content and stays.
-    let mut buf = "hello\r\n".to_string();
-    strip_line_ending(&mut buf);
-    assert_eq!(buf, "hello\r");
-}
-
-#[test]
-fn strip_line_ending_leaves_non_lf_break_chars_untouched() {
-    // Neither CR nor NEL (U+0085) terminates a line under this workspace's
-    // ropey config — ordinary content, must survive untouched.
-    let mut buf = "hello\r".to_string();
-    strip_line_ending(&mut buf);
-    assert_eq!(buf, "hello\r");
-
-    let mut buf = "hello\u{85}".to_string();
-    strip_line_ending(&mut buf);
-    assert_eq!(buf, "hello\u{85}");
 }
 
 // ── h_window clipping ─────────────────────────────────────────────────

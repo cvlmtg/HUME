@@ -1,11 +1,9 @@
 //! `p`/`P` — paste register contents after/before each selection.
 
-use std::borrow::Cow;
-
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::lines::{is_line_start, line_break_char, line_end_exclusive};
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::{BufferText, normalize_line_endings};
+use hume_editing::text::BufferText;
 
 use super::apply_edit;
 use crate::register;
@@ -43,15 +41,6 @@ fn paste_impl(
         b.retain_rest();
         return (text, sels, b.finish());
     }
-
-    // Not for the rope's sake — the changeset builder normalizes every
-    // insertion — but for `is_register_linewise` below, which asks whether a
-    // value ends in `\n`. A register written by a plugin or filled from the
-    // OS clipboard can end in `\r\n` or a bare `\r`, and would otherwise be
-    // classified charwise and pasted inline despite being whole lines.
-    // Each `Cow` borrows (no allocation) when its own value has no `\r`.
-    let values: Vec<Cow<'_, str>> = values.iter().map(|v| normalize_line_endings(v)).collect();
-    let values = &values[..];
 
     let n_sels = sels.len();
     let n_vals = values.len();

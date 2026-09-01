@@ -138,8 +138,9 @@ mod tests {
     /// Generate a random BufferText with content up to `max_len` chars.
     ///
     /// Uses a small ASCII alphabet plus spaces and newlines. `BufferText::from`
-    /// normalises CRLF and appends the structural trailing `\n` if missing, so
-    /// every generated buffer already satisfies the buffer invariant.
+    /// normalises every line ending to LF and appends the structural trailing
+    /// `\n` if missing, so every generated buffer already satisfies the
+    /// buffer invariant.
     fn arb_buffer(max_len: usize) -> impl Strategy<Value = BufferText> {
         proptest::collection::vec(
             prop_oneof![

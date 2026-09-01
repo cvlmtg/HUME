@@ -44,6 +44,20 @@ fn clipboard_externally_modified_uses_clipboard() {
 }
 
 #[test]
+fn clipboard_externally_modified_with_crlf_normalizes() {
+    // Text copied from outside HUME can carry any line-ending convention;
+    // the value handed back must be LF like every other register.
+    let mut regs = seeded_registers(&["a", "b", "c"]);
+    regs.set_clipboard_blob("a\nb\nc".to_string());
+    let mut cb = mock_clipboard("x\r\ny");
+
+    let (values, _warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);
+    let values = values.unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0], "x\ny");
+}
+
+#[test]
 fn clipboard_no_blob_fresh_session_uses_clipboard() {
     let regs = RegisterSet::new();
     let mut cb = mock_clipboard("xyz");

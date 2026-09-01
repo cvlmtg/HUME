@@ -78,11 +78,21 @@ pub fn content_lines_range(rope: &Rope) -> Range<usize> {
 }
 
 /// Strips the trailing line break from a line-tokenization token. `'\n'` is
-/// the only break there is to strip: this workspace compiles ropey with
-/// neither `cr_lines` nor `unicode_lines`, so `Rope::lines()` splits on LF
-/// alone and CR, VT, FF, NEL, LS and PS are ordinary content.
+/// the only break there is to strip — see the crate doc's "LF is the only
+/// line break" section.
 pub fn strip_line_break(line: &str) -> &str {
     line.strip_suffix('\n').unwrap_or(line)
+}
+
+/// [`strip_line_break`], truncating `buf` in place and reporting whether a
+/// break was actually removed — the one signal a caller needs to tell a line
+/// that ended in a break from one that didn't, without re-deriving the break
+/// rule itself via a separate `ends_with('\n')`.
+pub fn truncate_line_break(buf: &mut String) -> bool {
+    let stripped_len = strip_line_break(buf).len();
+    let had_break = stripped_len != buf.len();
+    buf.truncate(stripped_len);
+    had_break
 }
 
 /// Exclusive end of `line`: char offset of the first char on the *next*
@@ -189,11 +199,10 @@ pub(crate) fn snap_to_grapheme_boundary(rope: &Rope, line_start: usize, target: 
 /// LF alone here (see [`strip_line_break`]), so the terminator is always that
 /// one char and needs no lookbehind to identify.
 ///
-/// Single source of truth for the terminator rule: [`is_empty_line`],
-/// [`line_content_end`], and [`crate::position_encoding::wire_to_line_char_col`]'s
-/// wire-domain end-of-line are each one expression over this value. The wire
-/// and motion domains still disagree for an empty line by design — they
-/// differ in what they do with this offset, not in how they find it.
+/// Single source of truth for the terminator rule — every caller reduces to
+/// one expression over this value. The wire and motion domains still
+/// disagree for an empty line by design — they differ in what they do with
+/// this offset, not in how they find it.
 pub(crate) fn line_terminator_start(rope: &Rope, line: usize) -> usize {
     let end_excl = line_end_exclusive(rope, line);
     if line + 1 < ropey_line_count(rope) {

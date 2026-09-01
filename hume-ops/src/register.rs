@@ -1,10 +1,11 @@
+use std::borrow::Cow;
 use std::collections::VecDeque;
 
 use rustc_hash::FxHashMap;
 use termina::event::KeyEvent;
 
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::BufferText;
+use hume_editing::text::{BufferText, normalize_line_endings};
 
 // ── Register name constants ────────────────────────────────────────────────────
 //
@@ -138,6 +139,22 @@ pub struct RegisterSet {
     clipboard_blob: Option<String>,
 }
 
+/// Normalizes every value to LF in place, replacing an element only when the
+/// normalizer had to allocate. Register text is `\r`-free by construction —
+/// the same guarantee [`normalize_line_endings`] gives `BufferText`/
+/// `ChangeSetBuilder::insert` — applied at the two funnels every in-memory
+/// register write goes through (`RegisterSet::write_text`, `KillRing::push`),
+/// so a register filled from the OS clipboard or a plugin can't smuggle a
+/// foreign line ending past `is_register_linewise` or a byte-exact
+/// repeat-paste comparison downstream.
+fn normalize_values(values: &mut [String]) {
+    for v in values {
+        if let Cow::Owned(normalized) = normalize_line_endings(v) {
+            *v = normalized;
+        }
+    }
+}
+
 impl RegisterSet {
     pub fn new() -> Self {
         Self::default()
@@ -157,7 +174,8 @@ impl RegisterSet {
     /// Write text to a register, replacing its previous contents.
     ///
     /// Writes to the black-hole register (`'b'`) are silently discarded.
-    pub fn write_text(&mut self, name: char, values: Vec<String>) {
+    pub fn write_text(&mut self, name: char, mut values: Vec<String>) {
+        normalize_values(&mut values);
         self.write(name, RegisterContent::Text(values));
     }
 
@@ -243,7 +261,8 @@ impl KillRing {
     /// (every string, every char `is_whitespace`), the new entry overwrites
     /// it in place instead of taking a fresh slot. This keeps from filling the
     /// ring with entries you never want to cycle back to.
-    pub fn push(&mut self, values: Vec<String>) {
+    pub fn push(&mut self, mut values: Vec<String>) {
+        normalize_values(&mut values);
         if let Some(pos) = self.entries.iter().position(|entry| *entry == values) {
             if pos == 0 {
                 return;

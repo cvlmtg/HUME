@@ -13,7 +13,7 @@ use std::ops::Range;
 
 use ropey::{Rope, RopeSlice};
 
-use crate::lines::last_ropey_line;
+use crate::lines::{last_ropey_line, line_terminator_start};
 
 /// Wire-format position encoding negotiated with an LSP server.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,7 +90,7 @@ pub fn wire_to_line_char_col(
 ) -> (usize, usize) {
     let line = line.min(last_ropey_line(text));
     let line_start = text.line_to_char(line);
-    let content = text.slice(line_start..crate::lines::line_terminator_start(text, line));
+    let content = text.slice(line_start..line_terminator_start(text, line));
     (line, wire_offset_to_char(content, character, enc))
 }
 

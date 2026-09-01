@@ -14,7 +14,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
-use hume_rope::lines::strip_line_break;
+use hume_rope::lines::truncate_line_break;
 
 use crate::editor::commands::effective_word_chars;
 use crate::editor::diff_bridge;
@@ -339,7 +339,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
                     // copies a `Borrowed` line, `Owned` is already a copy —
                     // so truncating in place covers both without a match.
                     let mut s = line.into_owned();
-                    s.truncate(strip_line_break(&s).len());
+                    truncate_line_break(&mut s);
                     s
                 })
                 .collect(),

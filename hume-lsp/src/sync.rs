@@ -106,9 +106,9 @@ pub fn wire_version(text_gen: u64) -> i32 {
 /// `(line, character)` → byte offset in `text`, via plain string scanning —
 /// deliberately re-implemented rather than delegating to
 /// `hume_rope::position_encoding` so this stays an independent oracle.
-/// Splits on `\n` alone, matching the workspace's ropey config (neither
-/// `cr_lines` nor `unicode_lines`): no other character terminates a line, in
-/// a rope or in this oracle's own string mirror.
+/// Splits on `\n` alone, matching `hume_rope`'s "LF is the only line break"
+/// crate doc: no other character terminates a line, in a rope or in this
+/// oracle's own string mirror.
 #[cfg(any(test, feature = "test-util"))]
 fn wire_pos_to_byte(text: &str, pos: Position, enc: PositionEncoding) -> usize {
     let mut line_start = 0usize;

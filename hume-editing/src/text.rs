@@ -6,12 +6,10 @@ use std::ops::Range;
 /// Whether the original file used LF or CRLF line endings.
 ///
 /// Stored in the buffer so we can write the file back with the same endings.
-/// A buffer's content never carries a `\r` at all: the only two ways text
-/// becomes buffer content — [`BufferText::from`] and
-/// [`crate::changeset::ChangeSetBuilder::insert`] — both normalize through
-/// [`normalize_line_endings`] first, and `ChangeSet`'s fields are private, so
-/// no third way exists to construct one. This flag therefore governs only
-/// *how `\n` is written back out*, never what the rope holds.
+/// A buffer's content never carries a `\r` at all — see
+/// [`crate::changeset::ChangeSetBuilder::insert`] for why. This flag
+/// therefore governs only *how `\n` is written back out*, never what the
+/// rope holds.
 ///
 /// A CRLF file round-trips; a CR-only (old Mac) file does not — it has no
 /// `\r\n` pair to detect, so it loads as `Lf` and saves back as LF.
@@ -23,18 +21,13 @@ pub enum LineEnding {
     CrLf,
 }
 
-/// Collapse every line-ending convention (`\r\n`, bare `\r`) to `\n`.
-///
-/// Called from the two constructors that turn outside text into buffer
-/// content ([`BufferText::from`] and
-/// [`crate::changeset::ChangeSetBuilder::insert`]), which is what makes the
-/// `\r`-free rope a property of the types rather than a rule call sites
-/// remember. Also called directly at the terminal-paste boundary, whose text
-/// reaches the minibuffer as well as the buffer.
+/// Collapse every line-ending convention (`\r\n`, bare `\r`) to `\n` — see
+/// [`crate::changeset::ChangeSetBuilder::insert`] for why every text-insertion
+/// path funnels through this.
 ///
 /// A borrow (no allocation) on the common case of text with no `\r` at all.
 pub fn normalize_line_endings(text: &str) -> Cow<'_, str> {
-    normalize_crlf(text).0
+    normalize_line_endings_detecting(text).0
 }
 
 /// [`normalize_line_endings`], also reporting whether the *original* input
@@ -48,23 +41,21 @@ pub fn normalize_line_endings(text: &str) -> Cow<'_, str> {
 /// `"\r\n"`: the loop already has to look at every `\r` and its successor to
 /// decide how many chars to skip, so the pair is free to notice there.
 ///
-/// One `memchr`-backed scan for `\r` per run of clean text between them,
-/// copying each run with `push_str` rather than pushing one `char` at a time
-/// — the difference between a handful of memcpys and millions of pushes on a
-/// large CRLF file.
-fn normalize_crlf(text: &str) -> (Cow<'_, str>, LineEnding) {
-    if !text.contains('\r') {
+/// One `find`-per-run scan for `\r`, copying each clean run with `push_str`
+/// rather than pushing one `char` at a time — on a large CRLF file that's a
+/// `push_str` per line instead of a `push` per byte.
+fn normalize_line_endings_detecting(text: &str) -> (Cow<'_, str>, LineEnding) {
+    let Some(first) = text.find('\r') else {
         return (Cow::Borrowed(text), LineEnding::Lf);
-    }
+    };
     let mut out = String::with_capacity(text.len());
-    let mut rest = text;
+    let mut rest = &text[first..];
+    out.push_str(&text[..first]);
     let mut found_crlf = false;
     while let Some(i) = rest.find('\r') {
         out.push_str(&rest[..i]);
         out.push('\n');
         rest = &rest[i + 1..];
-        // Only the `\r` is dropped here — the `\n` it paired with is skipped
-        // so the pair yields one break, not two.
         if let Some(after_lf) = rest.strip_prefix('\n') {
             found_crlf = true;
             rest = after_lf;
@@ -385,7 +376,7 @@ impl BufferText {
 // with a `String` must be explicit: `BufferText::from(my_string.as_str())`.
 impl From<&str> for BufferText {
     fn from(text: &str) -> Self {
-        let (normalized, line_ending) = normalize_crlf(text);
+        let (normalized, line_ending) = normalize_line_endings_detecting(text);
         // O(1) byte check on the &str before building the rope, avoiding the
         // O(log n) rope traversal that `ensure_trailing_newline` would need.
         let rope = if normalized.ends_with('\n') {

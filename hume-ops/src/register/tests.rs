@@ -25,6 +25,18 @@ fn overwrite_replaces_previous() {
 }
 
 #[test]
+fn write_text_normalizes_line_endings() {
+    // Register text is `\r`-free by construction, same as buffer content —
+    // a plugin or the OS clipboard can write either convention.
+    let mut regs = RegisterSet::new();
+    regs.write_text('"', vec!["a\r\nb".to_string(), "c\rd".to_string()]);
+    assert_eq!(
+        regs.read('"').unwrap().as_text(),
+        Some(vec!["a\nb".to_string(), "c\nd".to_string()].as_slice())
+    );
+}
+
+#[test]
 fn read_empty_register_returns_none() {
     let regs = RegisterSet::new();
     assert!(regs.read('0').is_none());
@@ -196,6 +208,13 @@ fn yank_empty_buffer() {
 
 fn vs(s: &str) -> Vec<String> {
     vec![s.to_string()]
+}
+
+#[test]
+fn kill_ring_push_normalizes_line_endings() {
+    let mut ring = KillRing::new();
+    ring.push(vec!["a\r\nb".to_string()]);
+    assert_eq!(ring.head(), Some(vs("a\nb").as_slice()));
 }
 
 #[test]

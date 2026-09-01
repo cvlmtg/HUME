@@ -4,9 +4,9 @@
 /// `Editor`. Initialisation failures (headless CI, SSH without X11 forwarding)
 /// yield `handle = None`; subsequent calls return `Err(String)`, triggering the
 /// in-memory fallback in the caller. `read()` returns the OS clipboard's raw
-/// text — nothing normalizes line endings here, so a Steel
-/// `(read-register "c")` sees exactly what the OS gave; the changeset builder
-/// normalizes on the way into a buffer, wherever the text came from.
+/// text — nothing normalizes line endings here; `register_ops::read_register_text`
+/// normalizes on the way from this raw accessor into register values, so a
+/// Steel `(read-register "c")` sees LF like every other register.
 ///
 /// In test builds, `mock_active` gates a virtual clipboard: when active,
 /// `read()` returns `mock_content` (or `Err` if not yet written) and `write()`
