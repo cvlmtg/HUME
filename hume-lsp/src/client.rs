@@ -200,6 +200,14 @@ pub struct LspClient {
     id: ServerId,
     state: ServerState,
     caps: Option<ServerCapabilities>,
+    /// The server's raw `capabilities` object off the wire, kept alongside
+    /// the typed `caps` above rather than re-derived from it — `caps` only
+    /// round-trips through whatever `lsp_types::ServerCapabilities` models,
+    /// silently dropping any capability the pinned crate version doesn't
+    /// know about (e.g. LSP 3.18's `documentRangeFormattingProvider.
+    /// rangesSupport`). `capabilities_json` below is what `(lsp-capabilities
+    /// …)` actually hands to Steel, so it must see the wire value verbatim.
+    caps_json: Option<serde_json::Value>,
     /// Negotiated position encoding; UTF-16 until `initialize` proves UTF-8.
     /// A decode-once cache of `caps.position_encoding` — `handle_initialize_
     /// response` is the only writer of either field, an invariant field
@@ -241,6 +249,7 @@ impl LspClient {
             id,
             state: ServerState::Starting,
             caps: None,
+            caps_json: None,
             encoding: PositionEncoding::Utf16,
             root,
             init_options: None,
@@ -263,6 +272,13 @@ impl LspClient {
 
     pub fn capabilities(&self) -> Option<&ServerCapabilities> {
         self.caps.as_ref()
+    }
+
+    /// The server's raw `capabilities` object, verbatim off the wire — see
+    /// `caps_json`'s doc comment for why this is what `(lsp-capabilities …)`
+    /// must read instead of re-serializing `capabilities()`.
+    pub fn capabilities_json(&self) -> Option<&serde_json::Value> {
+        self.caps_json.as_ref()
     }
 
     /// Sets `initializationOptions` for the upcoming `initialize` request —
@@ -494,11 +510,12 @@ impl LspClient {
             },
         );
 
-        let params = serde_json::to_value(build_initialize_params(
+        let mut params = serde_json::to_value(build_initialize_params(
             &self.root,
             self.init_options.clone(),
         ))
         .expect("InitializeParams always serializes");
+        advertise_ranges_support(&mut params);
 
         // Sent directly, never via `send_or_queue` — `initialize` is the one
         // request legal on the wire before `initialized`; routing it through
@@ -592,6 +609,11 @@ impl LspClient {
                 }];
             }
         };
+        // Captured before `from_value` below consumes `value` — the typed
+        // parse below is lossy (see `caps_json`'s doc comment), so the raw
+        // object is the only place `rangesSupport` and any other capability
+        // outside the pinned `lsp_types` version survive.
+        let raw_caps = value.get("capabilities").cloned();
         let parsed: InitializeResult = match serde_json::from_value(value) {
             Ok(r) => r,
             Err(e) => {
@@ -611,6 +633,7 @@ impl LspClient {
             PositionEncoding::Utf16
         };
         self.caps = Some(parsed.capabilities);
+        self.caps_json = raw_caps;
         self.state = ServerState::Running;
 
         let mut send = vec![Message::Notification {
@@ -673,6 +696,24 @@ impl LspClient {
             );
         }
         self.state = ServerState::Dead;
+    }
+}
+
+/// Sets `capabilities.textDocument.rangeFormatting.rangesSupport = true` on
+/// the serialized `initialize` params, advertising LSP 3.18's
+/// `textDocument/rangesFormatting`. `lsp_types` 0.97 predates that
+/// extension — `DocumentRangeFormattingClientCapabilities` is a bare
+/// `DynamicRegistrationClientCapabilities` alias with no `rangesSupport`
+/// field — so the flag is unrepresentable in the typed `ClientCapabilities`
+/// built by `build_client_capabilities` and must be patched into the
+/// already-serialized JSON instead. `range_formatting: Some(Default::
+/// default())` there guarantees this pointer resolves to an (empty) object.
+fn advertise_ranges_support(params: &mut serde_json::Value) {
+    if let Some(range_formatting) = params
+        .pointer_mut("/capabilities/textDocument/rangeFormatting")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        range_formatting.insert("rangesSupport".to_string(), serde_json::Value::Bool(true));
     }
 }
 

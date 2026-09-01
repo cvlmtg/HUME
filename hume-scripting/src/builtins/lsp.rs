@@ -315,14 +315,15 @@ pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, bid: BidArg) -> Steel
     ))
 }
 
-/// `(lsp-selections-range-params bid)` → same shape but a `"range"` spanning
-/// every selection in `bid`'s buffer.
-pub(crate) fn lsp_selections_range_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+/// `(lsp-linewise-ranges-params bid)` → `{"textDocument" {"uri"} "ranges"
+/// [...]}`, one wire range per linewise selection in `bid`'s buffer
+/// (touching selections coalesced into one range apiece).
+pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;
     Ok(json_or_false(
         ctx.host
             .lsp()
-            .and_then(|lsp| lsp.lsp_selections_range_params(id)),
+            .and_then(|lsp| lsp.lsp_linewise_ranges_params(id)),
     ))
 }
 

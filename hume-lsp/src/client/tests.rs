@@ -280,6 +280,32 @@ fn initialize_request_carries_initialization_options_when_set() {
 }
 
 #[test]
+fn initialize_request_advertises_ranges_formatting_support() {
+    // Unrepresentable in the typed `ClientCapabilities` lsp_types 0.97
+    // builds (`DocumentRangeFormattingClientCapabilities` predates LSP
+    // 3.18's `rangesSupport` field) — patched into the wire JSON directly
+    // by `advertise_ranges_support`, so this asserts on the sent bytes
+    // rather than on `build_initialize_params`'s typed return.
+    let mut backend = InlineLspBackend::new();
+    let sid = backend
+        .start("x", &[], std::path::Path::new("."), &[])
+        .unwrap();
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+
+    client.start_handshake(&mut backend);
+
+    match &backend.sent[0] {
+        (_, Message::Request { params, .. }) => {
+            assert_eq!(
+                params["capabilities"]["textDocument"]["rangeFormatting"]["rangesSupport"],
+                true
+            );
+        }
+        other => panic!("expected the initialize request, got {other:?}"),
+    }
+}
+
+#[test]
 fn initialize_request_omits_initialization_options_when_unset() {
     let mut backend = InlineLspBackend::new();
     let sid = backend

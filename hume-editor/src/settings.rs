@@ -695,6 +695,13 @@ define_settings! {
         "lsp.request-timeout-ms" => lsp_request_timeout_ms: usize = 10_000,
             scope: [Scope::Global],
             parser: usize_nonzero;
+        // One round trip per range, so a stray select-all-matches leaving
+        // hundreds of cursors would burst hundreds of requests at the
+        // server; past this many `:lsp-fmt` formats the primary selection
+        // and says so.
+        "lsp.format-max-ranges" => lsp_format_max_ranges: usize = 16,
+            scope: [Scope::Global],
+            parser: usize_nonzero;
         // Scroll bursts (page-down held, mouse wheel) must collapse to one
         // OnViewportChange fire, not one per frame.
         "lsp.viewport-debounce-ms" => lsp_viewport_debounce_ms: usize = 150,

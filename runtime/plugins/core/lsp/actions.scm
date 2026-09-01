@@ -24,16 +24,8 @@
 (define (lsp/action-title action)
   (hash-ref action "title"))
 
-;;; `codeActionProvider` is `#t` or a CodeActionOptions hash — only the
-;;; hash form can carry `resolveProvider`.
 (define (lsp/action-resolve-provider?)
-  (let ((caps (lsp-capabilities #f)))
-    (and caps
-         (hash-contains? caps "codeActionProvider")
-         (let ((cap (hash-ref caps "codeActionProvider")))
-           (and (hash? cap)
-                (hash-contains? cap "resolveProvider")
-                (equal? (hash-ref cap "resolveProvider") #t))))))
+  (equal? (lsp/cap-field (lsp-capabilities #f) "codeActionProvider" "resolveProvider" #f) #t))
 
 ;;; `cmd-obj`: a Command `{title, command, arguments?}` (either the bare
 ;;; top-level shape or a CodeAction's nested "command" field).

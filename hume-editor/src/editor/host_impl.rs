@@ -894,8 +894,8 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         )
     }
 
-    fn lsp_selections_range_params(&self, id: BufferId) -> Option<serde_json::Value> {
-        crate::editor::lsp::introspect::selections_range_params(
+    fn lsp_linewise_ranges_params(&self, id: BufferId) -> Option<serde_json::Value> {
+        crate::editor::lsp::introspect::linewise_ranges_params(
             self.state,
             self.view,
             self.lsp.as_deref()?,

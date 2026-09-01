@@ -514,22 +514,18 @@ pub(crate) fn location_display_parts(
         .collect()
 }
 
-/// Shared tail for both range-params builders below: turn a char range into
-/// `{"textDocument" {"uri"} "range" {"start" "end"}}`. HUME selections are
-/// inclusive (`end_c` names the last included char); LSP ranges are
-/// half-open, so `end` is one grapheme cluster past — `next_grapheme_boundary`,
-/// not a raw `+ 1`, since `end_c` may be the first char of a multi-char
-/// cluster (`é` = e + U+0301, a ZWJ emoji sequence): stepping by one raw char
-/// would land the wire range mid-cluster.
-fn char_range_params(
-    state: &EditorState,
-    lsp: &LspState,
-    id: BufferId,
+/// Char range → wire `{"start" "end"}`. HUME selections are inclusive
+/// (`end_c` names the last included char); LSP ranges are half-open, so
+/// `end` is one grapheme cluster past — `next_grapheme_boundary`, not a raw
+/// `+ 1`, since `end_c` may be the first char of a multi-char cluster (`é` =
+/// e + U+0301, a ZWJ emoji sequence): stepping by one raw char would land
+/// the wire range mid-cluster.
+fn char_range_to_wire(
+    text: &hume_editing::text::BufferText,
+    encoding: hume_rope::position_encoding::PositionEncoding,
     start_c: usize,
     end_c: usize,
-) -> Option<serde_json::Value> {
-    let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
-    let text = state.buffers.get(id).text();
+) -> serde_json::Value {
     let end_exclusive = hume_editing::grapheme::next_grapheme_boundary(text, end_c);
     let ((start_line, start_char), (end_line, end_char)) =
         hume_rope::position_encoding::char_range_to_wire_range(
@@ -538,13 +534,10 @@ fn char_range_params(
             end_exclusive,
             encoding,
         );
-    Some(serde_json::json!({
-        "textDocument": {"uri": uri},
-        "range": {
-            "start": {"line": start_line, "character": start_char},
-            "end": {"line": end_line, "character": end_char},
-        },
-    }))
+    serde_json::json!({
+        "start": {"line": start_line, "character": start_char},
+        "end": {"line": end_line, "character": end_char},
+    })
 }
 
 /// Ready-made range params from `id`'s primary selection alone — the shape
@@ -556,36 +549,58 @@ pub(crate) fn primary_range_params(
     lsp: &LspState,
     id: BufferId,
 ) -> Option<serde_json::Value> {
+    let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
     let sel = state.shown_buffer_state(view, id)?.selections.primary();
-    char_range_params(state, lsp, id, sel.start(), sel.end())
+    let text = state.buffers.get(id).text();
+    Some(serde_json::json!({
+        "textDocument": {"uri": uri},
+        "range": char_range_to_wire(text, encoding, sel.start(), sel.end()),
+    }))
 }
 
-/// Ready-made range params spanning every selection in `id`'s buffer — the
-/// hull from the first selection's start to the last one's end. `None` if
-/// any two adjacent selections (by `start()`) leave a gap between them, not
-/// just when either builder input is invalid: an LSP range is one contiguous
-/// span, so a hull built across a gap would silently pull an untouched line
-/// into the request along with the selected ones. Used where the caller
-/// already gated on `(selections-linewise? id)` (`:lsp-fmt`'s range branch),
-/// which promises every selection in between is itself linewise — so a hull
-/// that *is* returned never includes a partial line, only ever whole ones.
-pub(crate) fn selections_range_params(
+/// Ready-made `{"textDocument" {"uri"} "ranges" [...]}` params covering
+/// every *linewise* selection in `id`'s buffer, run-length-coalesced: a run
+/// of selections that touch end-to-end (`next.start() == prev.end() + 1`)
+/// collapses into one range, since an LSP range is naturally contiguous and
+/// splitting a touching run into separate ranges would buy nothing. A
+/// non-linewise selection is simply skipped — the caller decides what an
+/// all-linewise, all-partial, or mixed selection set means
+/// (`(selections-linewise? id)` is the "all of them" read; `ranges` empty
+/// here is the "none of them" read). `None` only when `id` has no path or
+/// no attached server, matching every other params builder in this file.
+pub(crate) fn linewise_ranges_params(
     state: &EditorState,
     view: &EngineView,
     lsp: &LspState,
     id: BufferId,
 ) -> Option<serde_json::Value> {
+    let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
+    let text = state.buffers.get(id).text();
     let selections = &state.shown_buffer_state(view, id)?.selections;
-    let mut sels = selections.iter_sorted();
-    let first = sels.next()?;
-    let (start_c, mut end_c) = (first.start(), first.end());
-    for sel in sels {
-        if sel.start() != end_c + 1 {
-            return None;
-        }
-        end_c = sel.end();
+
+    let mut ranges = Vec::new();
+    let mut run: Option<(usize, usize)> = None;
+    for sel in selections
+        .iter_sorted()
+        .filter(|sel| hume_editing::selection::is_selection_linewise(text, sel))
+    {
+        run = Some(match run {
+            Some((start_c, end_c)) if sel.start() == end_c + 1 => (start_c, sel.end()),
+            Some((start_c, end_c)) => {
+                ranges.push(char_range_to_wire(text, encoding, start_c, end_c));
+                (sel.start(), sel.end())
+            }
+            None => (sel.start(), sel.end()),
+        });
     }
-    char_range_params(state, lsp, id, start_c, end_c)
+    if let Some((start_c, end_c)) = run {
+        ranges.push(char_range_to_wire(text, encoding, start_c, end_c));
+    }
+
+    Some(serde_json::json!({
+        "textDocument": {"uri": uri},
+        "ranges": ranges,
+    }))
 }
 
 /// `pane`'s visible line range, end-exclusive, clamped to a buffer of

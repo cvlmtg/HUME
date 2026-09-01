@@ -1,6 +1,6 @@
 // Introspection builtins: lsp-capabilities,
 // lsp-server-status, lsp-server-for-buffer, buffer-generation,
-// lsp-position-params, lsp-primary-range-params, lsp-selections-range-params,
+// lsp-position-params, lsp-primary-range-params, lsp-linewise-ranges-params,
 // lsp-position->offset, lsp-range->offsets.
 
 use std::path::{Path, PathBuf};
@@ -57,6 +57,38 @@ fn lsp_capabilities_decodes_after_handshake() {
     assert!(
         fired,
         "lsp-capabilities must decode the cached ServerCapabilities"
+    );
+}
+
+/// `lsp-capabilities` must read the server's raw wire JSON, not a
+/// re-serialization of the typed `lsp_types::ServerCapabilities` — that
+/// round-trip silently drops any field the pinned crate version doesn't
+/// model. `documentRangeFormattingProvider.rangesSupport` (LSP 3.18) is
+/// exactly such a field: `lsp_types` 0.97 has no representation for it at
+/// all, so this is a regression guard on `LspClient::capabilities_json`
+/// carrying the raw value through rather than `capabilities()`.
+#[test]
+fn lsp_capabilities_surfaces_a_field_lsp_types_does_not_model() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    attach_running_server(
+        &mut ed,
+        serde_json::json!({"capabilities": {
+            "documentRangeFormattingProvider": {"rangesSupport": true}
+        }}),
+    );
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (hash-ref (hash-ref (lsp-capabilities #f) "documentRangeFormattingProvider")
+                             "rangesSupport")
+                   #t)"#,
+    );
+    assert!(
+        fired,
+        "rangesSupport must survive to Steel even though lsp_types can't model it"
     );
 }
 
@@ -279,70 +311,150 @@ fn lsp_primary_range_params_reflects_the_primary_selection() {
     );
 }
 
-/// The hull spans the first selection's start to the last selection's end,
-/// not just the primary one — the shape `:lsp-fmt`'s range branch needs once
-/// `(selections-linewise? bid)` has already confirmed every selection in
-/// between is itself linewise. The two selections here are contiguous
-/// (selection 2 starts exactly where selection 1 ends), so the hull covers
-/// no untouched text — see `lsp_selections_range_params_is_false_for_a_gap`
-/// for the case where it would.
+/// A run of linewise selections that touch end-to-end (the next one starts
+/// exactly where the previous one ends) coalesces into a single wire range
+/// — an LSP range is naturally contiguous, so splitting a touching run
+/// would buy nothing. See `lsp_linewise_ranges_params_splits_on_a_gap` for
+/// the case where two selections don't touch.
 #[test]
-fn lsp_selections_range_params_spans_first_start_to_last_end() {
+fn lsp_linewise_ranges_params_coalesces_touching_selections() {
+    use hume_editing::selection::Selection;
+
     let tmp = safe_tempdir();
-    // "abcdef\nxyz\n": selection 1 covers "bcd" (chars 1..=3), selection 2
-    // covers "ef\nxy" (chars 4..=8, inclusive) starting right after it.
-    let mut ed = editor_from("a-[bcd]>-[ef\nxy]>z\n");
-    ed.doc_mut().set_path(Some(
-        tmp.path().join("fake-lsp-introspect-selections-range.rs"),
+    // "line1\nline2\nline3\n": line0 = chars [0,6), line1 = chars [6,12).
+    // Selection 1 covers line0 whole (0..=5), selection 2 covers line1
+    // whole (6..=11) — they touch, so the hull is one range [0, 12).
+    let mut ed = Editor::for_testing(Buffer::new(
+        BufferText::from("line1\nline2\nline3\n"),
+        SelectionSet::default(),
     ));
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-linewise-ranges-touch.rs")));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let bid = ed.focused_buffer_id();
+    let focused = ed.state.focused_pane_id;
+    ed.state.panes.state[focused][bid].selections =
+        SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(6, 11)], 0);
 
     let fired = run_probe(
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let* ((p (lsp-selections-range-params (current-buffer)))
-                  (r (hash-ref p "range"))
+        r#"(let* ((p (lsp-linewise-ranges-params (current-buffer)))
+                  (ranges (hash-ref p "ranges"))
+                  (r (car ranges))
                   (start (hash-ref r "start"))
                   (end (hash-ref r "end")))
-             (and (equal? (hash-ref start "line") 0)
-                  (equal? (hash-ref start "character") 1)
-                  (equal? (hash-ref end "line") 1)
-                  (equal? (hash-ref end "character") 2)))"#,
+             (and (equal? (length ranges) 1)
+                  (equal? (hash-ref start "line") 0)
+                  (equal? (hash-ref start "character") 0)
+                  (equal? (hash-ref end "line") 2)
+                  (equal? (hash-ref end "character") 0)))"#,
     );
     assert!(
         fired,
-        "range params must span from the first selection's start to the last selection's end"
+        "two touching linewise selections must coalesce into one range"
     );
 }
 
 /// A gap between two linewise selections can't be expressed as one LSP
-/// range without also covering the untouched text in between — the
-/// contiguity check `:lsp-fmt`'s fallback to whole-buffer formatting relies
-/// on (see `disjoint_full_line_selections_fall_back_to_whole_buffer` in
-/// `tests/unix/lsp_format.rs`).
+/// range without also covering the untouched line in between — it stays two
+/// ranges instead (see `disjoint_full_line_selections_send_two_range_
+/// formatting_requests` in `tests/unix/lsp_format.rs` for the command-level
+/// consequence).
 #[test]
-fn lsp_selections_range_params_is_false_for_a_gap() {
+fn lsp_linewise_ranges_params_splits_on_a_gap() {
+    use hume_editing::selection::Selection;
+
     let tmp = safe_tempdir();
-    // "abcdef\nxyz\n": selection 1 covers "bcd" (chars 1..=3), selection 2
-    // covers "xy" (chars 7..=8) — "ef\n" (chars 4..=6) sits untouched
-    // between them.
-    let mut ed = editor_from("a-[bcd]>ef\n-[xy]>z\n");
-    ed.doc_mut().set_path(Some(
-        tmp.path()
-            .join("fake-lsp-introspect-selections-range-gap.rs"),
+    // "line1\nline2\nline3\n": selection 1 covers line0 (0..=5), selection 2
+    // covers line2 (12..=17) — line1 sits untouched between them.
+    let mut ed = Editor::for_testing(Buffer::new(
+        BufferText::from("line1\nline2\nline3\n"),
+        SelectionSet::default(),
     ));
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-linewise-ranges-gap.rs")));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let bid = ed.focused_buffer_id();
+    let focused = ed.state.focused_pane_id;
+    ed.state.panes.state[focused][bid].selections =
+        SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(12, 17)], 0);
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (length (hash-ref (lsp-linewise-ranges-params (current-buffer)) "ranges")) 2)"#,
+    );
+    assert!(
+        fired,
+        "a gap between two linewise selections must yield two ranges, not one hull"
+    );
+}
+
+/// A non-linewise selection is skipped, not an error — only the linewise
+/// one among a mixed set shows up in `ranges`. `:lsp-fmt` itself treats a
+/// mixed set as ambiguous and warns instead of formatting (see
+/// `mixed_linewise_and_sub_line_selections_warn_and_format_nothing` in
+/// `tests/unix/lsp_format.rs`); this test pins the introspection builtin's
+/// own, narrower contract.
+#[test]
+fn lsp_linewise_ranges_params_skips_non_linewise_selections() {
+    use hume_editing::selection::Selection;
+
+    let tmp = safe_tempdir();
+    // "line1\nline2\n": selection 1 covers line0 whole (0..=5, linewise),
+    // selection 2 covers just "lin" on line1 (6..=8, not linewise).
+    let mut ed = Editor::for_testing(Buffer::new(
+        BufferText::from("line1\nline2\n"),
+        SelectionSet::default(),
+    ));
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-linewise-ranges-mixed.rs")));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let bid = ed.focused_buffer_id();
+    let focused = ed.state.focused_pane_id;
+    ed.state.panes.state[focused][bid].selections =
+        SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(6, 8)], 0);
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(let* ((p (lsp-linewise-ranges-params (current-buffer)))
+                  (ranges (hash-ref p "ranges"))
+                  (r (car ranges))
+                  (end (hash-ref r "end")))
+             (and (equal? (length ranges) 1)
+                  (equal? (hash-ref end "line") 1)
+                  (equal? (hash-ref end "character") 0)))"#,
+    );
+    assert!(fired, "only the linewise selection must appear in ranges");
+}
+
+/// No linewise selection at all still resolves (`textDocument` present) —
+/// `ranges` is simply empty, distinct from the no-server/no-path `#f`.
+#[test]
+fn lsp_linewise_ranges_params_is_empty_when_nothing_is_linewise() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("a<[bcd]-ef\n");
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-linewise-ranges-none.rs")));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
 
     let fired = run_probe(
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (lsp-selections-range-params (current-buffer)) #f)"#,
+        r#"(let ((p (lsp-linewise-ranges-params (current-buffer))))
+             (and p
+                  (hash-contains? p "textDocument")
+                  (equal? (hash-ref p "ranges") '())))"#,
     );
     assert!(
         fired,
-        "range params must be #f when two selections leave a gap between them"
+        "no linewise selection must yield an empty ranges list, not #f"
     );
 }
 

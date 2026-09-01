@@ -15,13 +15,15 @@
   checks every selection in the buffer instead of just the primary one, and each selection
   may now span any number of whole lines instead of exactly one.
 - **Breaking**: `(lsp-range-params bid)` is now `(lsp-primary-range-params bid)` (same shape,
-  from `bid`'s primary selection alone), plus a new `(lsp-selections-range-params bid)` that
-  spans every selection in `bid`'s buffer instead (`#f` if two selections leave a gap between
-  them, since a single LSP range can't skip the untouched text). `:lsp-fmt`'s range branch now
-  sends the latter, so range-formatting several contiguous linewise selections formats all of
-  them instead of silently dropping every selection but the primary; a set of selections with a
-  gap between them falls back to whole-document formatting instead of reformatting the
-  untouched lines in between.
+  from `bid`'s primary selection alone), plus a new `(lsp-linewise-ranges-params bid)` that
+  returns one wire range per linewise selection in `bid`'s buffer (touching selections
+  coalesced into one range apiece), empty if none are linewise. `:lsp-fmt` now formats a set of
+  disjoint linewise selections as several ranges instead of falling back to the whole buffer:
+  one `textDocument/rangesFormatting` request (LSP 3.18) when the server advertises
+  `rangesSupport`, otherwise one `rangeFormatting` request per range — capped at the new
+  `lsp.format-max-ranges` setting (default 16), past which only the primary selection is
+  formatted, with a warning. A mix of whole-line and partial-line selections now warns and
+  formats nothing, rather than silently reformatting the whole buffer.
 
 ### Editing
 - New `goto-matching-pair` (`#`) jumps between a bracket and its partner (`(` `)` `[` `]` `{` `}`), or between an HTML/XML/JSX tag and its partner — vim's `%`, without disturbing HUME's own `%` (select-all). For single line selections, it scans for brackets against the whole selection, not just the character the cursor sits on — so `#` still jumps after a motion like `w` leaves the cursor on the whitespace past a bracket rather than on the bracket itself.

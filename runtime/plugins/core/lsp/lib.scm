@@ -3,7 +3,7 @@
 
 (provide lsp/supports? lsp/supports-for-buffer? lsp/guard-capability lsp/report-error
          lsp/visible-lines lsp/show-locations! lsp/text-edit->tuple
-         lsp/setup-trigger-chars! lsp/format-position)
+         lsp/setup-trigger-chars! lsp/format-position lsp/cap-field)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
 
@@ -33,6 +33,20 @@
                            (let ((name (lsp-server-for-buffer (current-buffer))))
                              (if name name "server"))))))
 
+;;; A provider capability is either the bare `#t` or an options hash — only
+;;; the hash form can carry a sub-field (e.g. `codeActionProvider`'s
+;;; `resolveProvider`, `completionProvider`'s `triggerCharacters`,
+;;; `documentRangeFormattingProvider`'s `rangesSupport`). `default` covers
+;;; every miss alike: `caps` absent, `cap-key` not present, the bare `#t`
+;;; form, or a hash without `field`.
+(define (lsp/cap-field caps cap-key field default)
+  (if (and caps (hash-contains? caps cap-key))
+      (let ((cap (hash-ref caps cap-key)))
+        (if (and (hash? cap) (hash-contains? cap field))
+            (hash-ref cap field)
+            default))
+      default))
+
 ;; ── Popup dismissal ─────────────────────────────────────────────────────────
 ;; Shared by every feature using a popup (hover, sighelp, …).
 (register-hook! 'on-mode-change (lambda (old-mode new-mode) (close-popup!)))
@@ -48,11 +62,8 @@
     (lambda (bid server-name)
       (let ((caps (lsp-capabilities server-name)))
         (when (and caps (hash-contains? caps cap-key))
-          (let* ((provider (hash-ref caps cap-key))
-                 (triggers (if (hash-contains? provider "triggerCharacters")
-                               (hash-ref provider "triggerCharacters")
-                               (list))))
-            (register-trigger-chars! source-name server-name (append extra-chars triggers)))))))
+          (register-trigger-chars! source-name server-name
+            (append extra-chars (lsp/cap-field caps cap-key "triggerCharacters" (list))))))))
   (register-hook! 'on-lsp-detach
     (lambda (bid server-name)
       (register-trigger-chars! source-name server-name '())))

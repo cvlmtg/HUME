@@ -17,22 +17,38 @@ use hume_scripting::ScriptingHost;
 
 /// "line1\nline2\nline3\n" — char offsets: line0 'line1' = 0..5 (+\n at 5),
 /// line1 'line2' = 6..11 (+\n at 11), line2 'line3' = 12..17 (+\n at 17).
+/// Handshake caps advertise `rangeFormatting` without `rangesSupport` — the
+/// common case, and what every fan-out test wants.
 fn setup(
     file: &Path,
     tmp: &Path,
+    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
+) -> (Editor, RealRuntimeGuard) {
+    setup_with_caps(
+        file,
+        tmp,
+        serde_json::json!({"capabilities": {
+            "documentFormattingProvider": true,
+            "documentRangeFormattingProvider": true
+        }}),
+        configure,
+    )
+}
+
+/// Same as `setup`, with the handshake's `initialize` result under caller
+/// control — for the `rangesSupport` tests, which need it to differ from
+/// the common case above.
+fn setup_with_caps(
+    file: &Path,
+    tmp: &Path,
+    initialize_result: serde_json::Value,
     configure: impl FnOnce(&mut InlineLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard) {
     let guard = RealRuntimeGuard::new();
     std::fs::write(file, "line1\nline2\nline3\n").unwrap();
 
     let mut backend = InlineLspBackend::new();
-    backend.respond_to(
-        "initialize",
-        serde_json::json!({"capabilities": {
-            "documentFormattingProvider": true,
-            "documentRangeFormattingProvider": true
-        }}),
-    );
+    backend.respond_to("initialize", initialize_result);
     let sid = backend
         .start("rust-analyzer", &[], Path::new("."), &[])
         .unwrap();
@@ -97,6 +113,21 @@ fn select_full_lines_1_and_3(ed: &mut Editor) {
         .and_then(|by_buf| by_buf.get_mut(bid))
         .expect("pane buffer state must exist");
     pbs.selections = SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(12, 17)], 0);
+}
+
+fn select_full_line_1_and_a_sub_line_selection(ed: &mut Editor) {
+    // 'line1\n' whole (chars [0, 6)), plus "lin" on line 2 (chars 6..=8) —
+    // not linewise.
+    let bid = ed.focused_buffer_id();
+    let pid = ed.state.focused_pane_id;
+    let pbs = ed
+        .state
+        .panes
+        .state
+        .get_mut(pid)
+        .and_then(|by_buf| by_buf.get_mut(bid))
+        .expect("pane buffer state must exist");
+    pbs.selections = SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(6, 8)], 0);
 }
 
 fn run_fmt(ed: &mut Editor) {
@@ -209,27 +240,33 @@ fn full_line_selection_sends_range_formatting() {
 
 /// Two disjoint linewise selections (line 1 and line 3, with line 2
 /// untouched by either) can't be expressed as one LSP range without also
-/// covering the untouched line in between — `:lsp-fmt` must fall back to
-/// whole-document formatting rather than send a hull range that reformats
-/// line 2 too.
+/// covering the untouched line in between — `:lsp-fmt` sends one
+/// `rangeFormatting` per range instead (the server here doesn't advertise
+/// `rangesSupport`), and applies both edits as a single transaction.
 #[test]
-fn disjoint_full_line_selections_fall_back_to_whole_buffer() {
+fn disjoint_full_line_selections_send_two_range_formatting_requests() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let (mut ed, _guard) = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         |backend, _sid| {
-            backend.respond_to(
-                "textDocument/formatting",
-                serde_json::json!([text_edit(0, 0, 3, 0, "WHOLE_BUFFER_DISJOINT\n")]),
-            );
-            // If the decision were wrong and the disjoint selections sent a
-            // hull rangeFormatting request instead, this response would
-            // apply and the assertion below would fail loudly.
+            // FIFO per method: line 1's request gets this one first...
             backend.respond_to(
                 "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_HULL_RANGE_PATH\n")]),
+                serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
+            );
+            // ...line 3's request gets this one second.
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(2, 0, 3, 0, "RANGE3\n")]),
+            );
+            // If the decision were wrong and this sent one whole-buffer
+            // request instead, this response would apply and the assertion
+            // below would fail loudly.
+            backend.respond_to(
+                "textDocument/formatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
             );
         },
     );
@@ -239,9 +276,193 @@ fn disjoint_full_line_selections_fall_back_to_whole_buffer() {
 
     assert_eq!(
         ed.doc().text().to_string(),
-        "WHOLE_BUFFER_DISJOINT\n",
-        "disjoint linewise selections must fall back to whole-buffer formatting, \
-         not a hull range that includes the untouched line between them"
+        "RANGE1\nline2\nRANGE3\n",
+        "a gap between two linewise selections must send one rangeFormatting \
+         per range and apply both edits, not fall back to the whole buffer"
+    );
+}
+
+/// Same shape as above, but the server advertises `rangesSupport` — one
+/// `textDocument/rangesFormatting` request carrying both ranges, not two
+/// separate `rangeFormatting` round trips.
+#[test]
+fn disjoint_full_line_selections_send_one_ranges_formatting_request_when_supported() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard) = setup_with_caps(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        serde_json::json!({"capabilities": {
+            "documentFormattingProvider": true,
+            "documentRangeFormattingProvider": {"rangesSupport": true}
+        }}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/rangesFormatting",
+                serde_json::json!([
+                    text_edit(0, 0, 1, 0, "RANGE1\n"),
+                    text_edit(2, 0, 3, 0, "RANGE3\n")
+                ]),
+            );
+            // Decoys proving neither the whole-buffer nor the per-range
+            // fan-out path was taken instead.
+            backend.respond_to(
+                "textDocument/formatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
+            );
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_FAN_OUT_PATH\n")]),
+            );
+        },
+    );
+    select_full_lines_1_and_3(&mut ed);
+
+    run_fmt(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "RANGE1\nline2\nRANGE3\n",
+        "a server advertising rangesSupport must get one rangesFormatting request \
+         carrying both ranges — a fan-out or whole-buffer request instead would \
+         either apply a decoy edit or (fan-out, with only one decoy queued) leave \
+         the buffer unchanged, neither of which matches"
+    );
+}
+
+/// A whole-line selection and a sub-line selection together are ambiguous
+/// — `:lsp-fmt` warns and formats nothing, rather than guessing which
+/// reading the user meant.
+#[test]
+fn mixed_linewise_and_sub_line_selections_warn_and_format_nothing() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            // Decoys proving no request at all is sent for a mixed set.
+            backend.respond_to(
+                "textDocument/formatting",
+                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
+            );
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_RANGE_PATH\n")]),
+            );
+        },
+    );
+    let before = ed.doc().text().to_string();
+    select_full_line_1_and_a_sub_line_selection(&mut ed);
+
+    run_fmt(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before,
+        "a mixed linewise/partial selection set must format nothing"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("mixed"),
+        "expected a warning naming the mixed selection, got {msg:?}"
+    );
+}
+
+/// Past `lsp.format-max-ranges`, `:lsp-fmt` formats only the primary
+/// selection and warns about the rest instead of bursting one request per
+/// range at the server.
+#[test]
+fn fan_out_past_the_cap_formats_the_primary_selection_and_warns() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(0, 0, 1, 0, "PRIMARY_ONLY\n")]),
+            );
+        },
+    );
+    type_cmd(&mut ed, ":set global lsp.format-max-ranges=1");
+    select_full_lines_1_and_3(&mut ed);
+
+    run_fmt(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "PRIMARY_ONLY\nline2\nline3\n",
+        "only the primary selection's range must be formatted past the cap"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("lsp.format-max-ranges"),
+        "expected a warning naming the setting, got {msg:?}"
+    );
+}
+
+/// The fan-out's edits land as one undo step, same as the whole-buffer and
+/// single-range paths.
+#[test]
+fn fan_out_applies_as_one_undo_step() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
+            );
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(2, 0, 3, 0, "RANGE3\n")]),
+            );
+        },
+    );
+    let before = ed.doc().text().to_string();
+    select_full_lines_1_and_3(&mut ed);
+
+    run_fmt(&mut ed);
+    assert_eq!(ed.doc().text().to_string(), "RANGE1\nline2\nRANGE3\n");
+
+    ed.handle_key(key('u'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before,
+        "a single 'u' must fully restore the pre-format text"
+    );
+}
+
+/// One range's error response aborts the whole fan-out — no partial
+/// format from the range that did succeed.
+#[test]
+fn fan_out_error_response_applies_nothing() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
+            );
+            backend.fail_with("textDocument/rangeFormatting", -32603, "boom");
+        },
+    );
+    let before = ed.doc().text().to_string();
+    select_full_lines_1_and_3(&mut ed);
+
+    run_fmt(&mut ed);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before,
+        "an error on any one range must abort the whole fan-out with no partial edit"
     );
 }
 

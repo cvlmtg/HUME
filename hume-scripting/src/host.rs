@@ -662,14 +662,16 @@ pub trait LspHost {
     /// primary selection alone.
     fn lsp_primary_range_params(&self, id: BufferId) -> Option<serde_json::Value>;
 
-    /// Same shape as [`lsp_primary_range_params`](Self::lsp_primary_range_params)
-    /// but spanning every selection in `id`'s buffer — the hull from the
-    /// first selection's start to the last one's end. `None` (in addition to
-    /// every reason `lsp_primary_range_params` can return `None`) if two
-    /// selections leave a gap between them: an LSP range is one contiguous
-    /// span, and a hull spanning a gap would silently reformat the untouched
-    /// text between the selections along with them.
-    fn lsp_selections_range_params(&self, id: BufferId) -> Option<serde_json::Value>;
+    /// `{"textDocument" {"uri"} "ranges" [...]}` — one wire range per
+    /// *linewise* selection in `id`'s buffer, coalescing any run of
+    /// selections that touch end-to-end into a single range (an LSP range
+    /// is naturally contiguous, so a touching run needs no splitting). A
+    /// non-linewise selection is skipped, not an error — `ranges` is simply
+    /// empty when none of `id`'s selections are linewise. `None` (as
+    /// opposed to an empty `ranges`) only for the same reasons
+    /// `lsp_primary_range_params` returns `None`: no path, no attached
+    /// server, or the buffer isn't shown in any pane.
+    fn lsp_linewise_ranges_params(&self, id: BufferId) -> Option<serde_json::Value>;
 
     /// Wire `(line, character)` → char offset in `id`'s attached server's
     /// negotiated encoding — backs `lsp-range->offsets`. `None` if `id` is

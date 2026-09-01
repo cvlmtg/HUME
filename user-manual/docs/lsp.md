@@ -248,7 +248,7 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 | `g n` | `goto-next-diagnostic`       | Jump to the next error/warning after the cursor (wraps) |
 | `g p` | `goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
 | —     | `:diagnostics`               | List every diagnostic in the buffer |
-| —     | `:lsp-fmt`                   | Format the buffer, or just the selected lines if every selection spans whole, contiguous lines |
+| —     | `:lsp-fmt`                   | Format the selected lines if every selection spans one or more whole lines, the whole buffer if none do, or (with a warning) nothing if it's a mix of the two |
 | `Ctrl+Space` (Insert) | `lsp-completion-trigger` | Show completions at the cursor |
 
 Jumping to a definition, declaration, type, implementation, or reference in another file
@@ -273,6 +273,7 @@ its end.
 | `lsp.request-timeout-ms` | `10000` | How long to wait for a server response before giving up |
 | `lsp.viewport-debounce-ms` | `150` | How long to wait after scrolling settles before refreshing viewport-driven features (like inlay hints) |
 | `lsp.diagnostics-severity-floor` | `hint` | The lowest diagnostic severity shown (`error`, `warning`, `info`, or `hint`) |
+| `lsp.format-max-ranges` | `16` | Above this many disjoint selections, `:lsp-fmt` formats only the primary selection and warns about the rest, instead of sending one request per selection |
 
 ```scheme
 (set-option! "lsp.inlay-hints" #t)

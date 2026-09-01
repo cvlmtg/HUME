@@ -150,6 +150,10 @@ moment it fires must stay reviewable afterward.
 - **Popup dismissal** — one `on-mode-change` registration closes whatever popup is open,
   shared by every feature that uses one (hover, signature help) rather than each registering
   its own.
+- **Capability sub-fields** — `lsp/cap-field` reads a nested field off a provider capability
+  that can be the bare `#t` or an options hash (`codeActionProvider.resolveProvider`,
+  `completionProvider.triggerCharacters`, `documentRangeFormattingProvider.rangesSupport`),
+  returning a caller-supplied default on every kind of miss alike.
 - **Trigger-char lifecycle** — `lsp/setup-trigger-chars!` wires `on-lsp-attach`/
   `on-lsp-detach`/`on-trigger-char` for a feature (completion, signature help). It's keyed
   `(source, language)` on the Rust side, so a second language attaching under the same
@@ -285,10 +289,14 @@ bare-`Location` branch is simply unreached: `textDocument/references` only ever 
 ### Formatting and rename
 
 Format-on-save is not wired by default — v1 is manual `:lsp-fmt` only; `format.scm` carries a
-commented-out `on-buffer-save` hook to opt in. `:lsp-fmt` picks range vs. whole-buffer
-formatting (and the matching capability to guard on) based on whether every selection
-spans one or more complete lines and, when there's more than one, they're contiguous — an
-LSP range is one span, so a gap between two linewise selections falls back to whole-buffer
-formatting rather than reformatting the untouched lines between them. Rename has no
-tree-sitter fallback in v1 — a buffer with no attached server just reports "not supported"
-via the ordinary capability guard, the same as any other unsupported feature.
+commented-out `on-buffer-save` hook to opt in. `:lsp-fmt` reads `(selections-linewise? bid)`
+and `(lsp-linewise-ranges-params bid)`'s `"ranges"` together: all selections linewise formats
+those ranges (touching selections coalesced, disjoint ones kept separate — an LSP range is one
+contiguous span, so a gap can't be expressed as a single range), none linewise formats the
+whole buffer, and a mix of the two warns and formats nothing rather than guessing which
+reading was meant. Disjoint ranges go out as one `textDocument/rangesFormatting` request (LSP
+3.18) when the server advertises `rangesSupport`, otherwise one `rangeFormatting` request per
+range, capped at `lsp.format-max-ranges` — past the cap, only the primary selection is
+formatted, with a warning. Rename has no tree-sitter fallback in v1 — a buffer with no attached
+server just reports "not supported" via the ordinary capability guard, the same as any other
+unsupported feature.

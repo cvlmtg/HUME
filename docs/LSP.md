@@ -131,7 +131,7 @@ Compact model of the protocol as HUME uses it. Full spec: <https://microsoft.git
 | Rename (F5) | `textDocument/rename` | result: `WorkspaceEdit` (`changes` **or** `documentChanges` — handle both) |
 | References (F6) | `textDocument/references` | params include `context.includeDeclaration` |
 | Signature help (F7) | `textDocument/signatureHelp` | `SignatureHelp { signatures, activeSignature, activeParameter }` |
-| Formatting (F8) | `textDocument/formatting` / `rangeFormatting` | result: `TextEdit[]` — apply as one transaction (B6) |
+| Formatting (F8) | `textDocument/formatting` / `rangeFormatting` / `rangesFormatting` (LSP 3.18) | result: `TextEdit[]` — apply as one transaction (B6) |
 | Code actions (F9) | `textDocument/codeAction`, `workspace/executeCommand` | result: `(Command \| CodeAction)[]`; actions carry `edit` and/or `command` |
 | Inlay hints (F10) | `textDocument/inlayHint` | params: visible range; result: `InlayHint[]` |
 | Cancel (C6) | `$/cancelRequest` | notification, best-effort |
@@ -177,7 +177,7 @@ Every Steel-visible surface the LSP platform introduces — the lookup table for
 | `(lsp-server-status)` → list of status records | builtin |
 | `(lsp-server-for-buffer bid)` → server name or `#f` | builtin |
 | `(buffer-generation bid)` → int | builtin |
-| `(lsp-position-params bid)` / `(lsp-primary-range-params bid)` / `(lsp-selections-range-params bid)` → ready-made params hashmaps (encoding-correct) | builtin |
+| `(lsp-position-params bid)` / `(lsp-primary-range-params bid)` / `(lsp-linewise-ranges-params bid)` → ready-made params hashmaps (encoding-correct); the last returns `"ranges"` (one per linewise selection, touching runs coalesced), empty when none are linewise | builtin |
 | `(lsp-position->offset bid position)` → char offset for wire `{"line" "character"}` `position`, or `#f` if `bid` has no attached server | builtin |
 | `(lsp-range->offsets bid range)` → `(start . end)` half-open char offsets for wire `{"start" {…} "end" {…}}` `range`, or `#f` | builtin |
 | `(lsp-label-offsets->text bid label offsets)` → the slice of `label` a `ParameterInformation.label` `(start end)` wire offset pair names, or `#f` if `bid` has no attached server. `offsets` is the raw two-element list off the wire. The only wire offsets that index a *server-authored string* rather than a document, so no rope is involved and `bid` names only the server whose negotiated encoding they count in — signature help's offset-form parameter labels, which HUME asks for by declaring `labelOffsetSupport` | builtin |
@@ -214,7 +214,7 @@ Every Steel-visible surface the LSP platform introduces — the lookup table for
 | `(show-drawer-list! items on-select)` / `(close-drawer!)` — `items` is a flat list of pre-formatted display strings; `on-select` receives an index and may fire more than once (drawer stays open until `Esc`/`close-drawer!`, which calls it with `#f`) | builtin |
 | `:lsp-status`, `:lsp-stop`, `:lsp-restart` | `core:lsp` typed commands over `(lsp-show-status!)`/`(lsp-stop! lang)`/`(lsp-restart! lang)` builtins — see the "LSP server lifecycle ownership" row above |
 | `(get-option [bid] key)` → the effective value (buffer override, else global), typed `bool`/`int`/`string` per the setting's parser kind; `Err` on an unknown key | builtin |
-| Settings knobs (`lsp.request-timeout-ms`, `lsp.diagnostics-severity-floor`, `lsp.inlay-hints` (default `false`), …) | via existing `:set` / `set-option!` / `get-option` |
+| Settings knobs (`lsp.request-timeout-ms`, `lsp.diagnostics-severity-floor`, `lsp.inlay-hints` (default `false`), `lsp.format-max-ranges` (default `16`), …) | via existing `:set` / `set-option!` / `get-option` |
 
 ## Testing playbook
 

@@ -160,14 +160,20 @@ impl Editor {
                 for msg in send {
                     self.lsp.backend.send(server_id, msg);
                 }
-                // Decode once here rather than per `(lsp-capabilities …)`
-                // call — conversion is per-server-startup, not per-call.
+                // Cached once here rather than cloned per `(lsp-capabilities
+                // …)` call — cloning is per-server-startup, not per-call.
+                // Reads the server's *raw* wire JSON (`capabilities_json()`),
+                // not a re-serialization of the typed `capabilities()` —
+                // that round-trip silently drops any capability the pinned
+                // `lsp_types` version doesn't model (e.g. `documentRange
+                // FormattingProvider.rangesSupport`), and Steel needs to see
+                // those too.
                 let json = self
                     .lsp
                     .servers
                     .get(&server_id)
-                    .and_then(|e| e.client.capabilities())
-                    .and_then(|caps| serde_json::to_value(caps).ok());
+                    .and_then(|e| e.client.capabilities_json())
+                    .cloned();
                 if let Some(json) = json
                     && let Some(entry) = self.lsp.servers.get_mut(&server_id)
                 {
