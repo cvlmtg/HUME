@@ -13,7 +13,7 @@
   ":lsp-fmt — format the buffer via LSP, or just the selected lines if the selection spans one or more complete lines."
   (lambda ()
     (let* ((bid (current-buffer))
-           (range? (selection-spans-full-line? bid))
+           (range? (selections-linewise? bid))
            (cap (if range? "documentRangeFormattingProvider" "documentFormattingProvider")))
       (lsp/guard-capability cap
         (lambda ()

@@ -438,7 +438,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "%apply-text-edits!" edits::apply_text_edits(bid: args::BidArg, edits: SteelVal, expect_gen: SteelVal);
         cmd "%apply-workspace-edit!" edits::apply_workspace_edit(wsedit: SteelVal);
         cmd "goto-location!" edits::goto_location(loc: SteelVal);
-        cmd "selection-spans-full-line?" buffers::selection_spans_full_line(bid: args::BidArg);
+        cmd "selections-linewise?" buffers::selections_linewise(bid: args::BidArg);
 
         // Minibuffer prompt.
         cmd "%prompt!" ui::prompt(label: SteelVal, prefill: SteelVal, on_confirm: SteelVal);

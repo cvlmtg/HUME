@@ -1,6 +1,6 @@
 // Edit + navigation primitives: apply-text-edits!,
-// apply-workspace-edit!, goto-location!, selection-spans-full-line?, and the
-// workspace/applyEdit server-request swap.
+// apply-workspace-edit!, goto-location!, and the workspace/applyEdit
+// server-request swap.
 
 use std::path::Path;
 
@@ -702,38 +702,6 @@ fn goto_missing_path_opens_new_file_buffer() {
         "goto must have switched to the new-file buffer"
     );
     assert!(ed.doc().is_new_file());
-}
-
-// ── selection-spans-full-line? ───────────────────────────────────────────────
-
-#[test]
-fn selection_spans_full_line_true_for_a_full_line_selection() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[abc\n]>def\n");
-    let bid = ed.focused_buffer_id();
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(define-command! "check" "" (lambda ()
-             (log! 'info (to-string (selection-spans-full-line? (current-buffer))))))"#,
-    );
-    type_cmd(&mut ed, ":check");
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#true");
-    let _ = bid;
-}
-
-#[test]
-fn selection_spans_full_line_false_for_a_partial_selection() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[ab]>cdef\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(define-command! "check" "" (lambda ()
-             (log! 'info (to-string (selection-spans-full-line? (current-buffer))))))"#,
-    );
-    type_cmd(&mut ed, ":check");
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
 }
 
 // ── workspace/applyEdit server-request swap ──────────────────────────────────

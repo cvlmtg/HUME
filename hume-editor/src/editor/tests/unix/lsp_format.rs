@@ -1,5 +1,5 @@
 // Formatting: `:lsp-fmt`, composing `lsp-request`,
-// `lsp-capabilities`, `selection-spans-full-line?`, `apply-text-edits!`.
+// `lsp-capabilities`, `selections-linewise?`, `apply-text-edits!`.
 // Loads the real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not

@@ -99,7 +99,7 @@ See [Hooks](plugins.md#hooks) for the full table of hook names and their lambda 
 | `(buffer-language bid)` | Language name string, or `#f` |
 | `(set-buffer-language! bid lang)` | Set (or clear, with `#f`) a buffer's language override |
 | `(buffer-generation bid)` | Int, bumped by every mutation to `bid` — a staleness token for comparing against a stored snapshot |
-| `(selection-spans-full-line? bid)` | `#t` if `bid`'s primary selection covers a whole line |
+| `(selections-linewise? bid)` | `#t` if every one of `bid`'s selections covers whole lines |
 | `(symbol-under-cursor bid)` | The identifier under `bid`'s primary cursor, as a string |
 | `(buffer-id? v)`, `(pane-id? v)` | `#t` if `v` is an opaque BufferId/PaneId |
 | `(buffer-id=? a b)`, `(pane-id=? a b)` | Value-equality for two BufferId/PaneId handles |

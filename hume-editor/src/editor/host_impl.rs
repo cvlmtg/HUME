@@ -115,6 +115,29 @@ impl<'a> EditorHostImpl<'a> {
             .get(buf_id)
     }
 
+    /// `bid`'s buffer and selections *as seen in the focused pane*, not
+    /// necessarily the focused buffer — `bid` is caller-supplied (e.g. from
+    /// a Steel `(current-buffer)` call), so this looks the pane state up by
+    /// that explicit id rather than by `focused_buffer_id`. Shared by every
+    /// `CursorHost` method that reads selection geometry for an arbitrary
+    /// `bid` in the focused pane.
+    fn pane_buffer_and_selections(
+        &self,
+        bid: BufferId,
+    ) -> Option<(
+        &crate::editor::buffer::Buffer,
+        &hume_editing::selection::SelectionSet,
+    )> {
+        let buf = self.state.buffers.try_get(bid)?;
+        let pbs = self
+            .state
+            .panes
+            .state
+            .get(self.state.focused_pane_id)?
+            .get(bid)?;
+        Some((buf, &pbs.selections))
+    }
+
     /// Delegates to the shared `clear_completion_menu(state, lsp)` free fn
     /// (`lsp/completion.rs`) — this struct holds disjoint `state`/`lsp`
     /// borrows, not a full `Editor`, so it can't call `Editor`'s method of
@@ -588,21 +611,11 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
     }
 
     fn symbol_under_cursor(&self, bid: BufferId) -> String {
-        let Some(buf) = self.state.buffers.try_get(bid) else {
-            return String::new();
-        };
-        let pid = self.state.focused_pane_id;
-        let Some(pbs) = self
-            .state
-            .panes
-            .state
-            .get(pid)
-            .and_then(|by_buf| by_buf.get(bid))
-        else {
+        let Some((buf, sels)) = self.pane_buffer_and_selections(bid) else {
             return String::new();
         };
         let text = buf.text();
-        let head = pbs.selections.primary().head();
+        let head = sels.primary().head();
         let Some(ch) = text.char_at(head) else {
             return String::new();
         };
@@ -621,8 +634,13 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         text.slice(start..end + 1).to_string()
     }
 
-    fn selection_spans_full_line(&self, bid: BufferId) -> bool {
-        crate::editor::lsp::edits::selection_spans_full_line(self.state, bid)
+    fn selections_linewise(&self, bid: BufferId) -> bool {
+        match self.pane_buffer_and_selections(bid) {
+            Some((buf, sels)) => sels
+                .iter_sorted()
+                .all(|sel| hume_editing::selection::is_selection_linewise(buf.text(), sel)),
+            None => false,
+        }
     }
 }
 

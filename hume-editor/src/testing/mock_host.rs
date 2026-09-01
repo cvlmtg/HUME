@@ -340,7 +340,7 @@ impl CursorHost for MockHost {
     fn symbol_under_cursor(&self, _bid: BufferId) -> String {
         String::new()
     }
-    fn selection_spans_full_line(&self, _bid: BufferId) -> bool {
+    fn selections_linewise(&self, _bid: BufferId) -> bool {
         false
     }
 }

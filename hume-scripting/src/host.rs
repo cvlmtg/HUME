@@ -222,8 +222,9 @@ pub trait CursorHost {
     /// `""` on whitespace/punctuation.
     fn symbol_under_cursor(&self, bid: BufferId) -> String;
 
-    /// `(selection-spans-full-line? bid)`.
-    fn selection_spans_full_line(&self, bid: BufferId) -> bool;
+    /// `(selections-linewise? bid)` — every selection in `bid`'s pane state
+    /// is linewise (spans whole lines, anchor to trailing `\n`).
+    fn selections_linewise(&self, bid: BufferId) -> bool;
 }
 
 /// Command registry queries, synchronous native dispatch, and Steel command

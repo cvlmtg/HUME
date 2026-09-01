@@ -351,12 +351,10 @@ pub(crate) fn viewport_range(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     }
 }
 
-/// `(selection-spans-full-line? bid)`.
-pub(crate) fn selection_spans_full_line(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+/// `(selections-linewise? bid)`.
+pub(crate) fn selections_linewise(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;
-    Ok(SteelVal::BoolV(
-        ctx.host.cursor().selection_spans_full_line(id),
-    ))
+    Ok(SteelVal::BoolV(ctx.host.cursor().selections_linewise(id)))
 }
 
 /// `(symbol-under-cursor bid)`.

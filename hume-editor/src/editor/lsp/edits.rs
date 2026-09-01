@@ -1,5 +1,5 @@
 //! Edit + navigation primitives: `apply-text-edits!`,
-//! `apply-workspace-edit!`, `goto-location!`, `selection-spans-full-line?`.
+//! `apply-workspace-edit!`, `goto-location!`.
 //!
 //! Everything but `Editor::apply_edit_request_response` is state/view-only
 //! (no `&mut Editor` needed) so those are callable directly from
@@ -10,7 +10,6 @@
 //! with `apply-workspace-edit!` and belongs next to it.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::grapheme::next_grapheme_boundary;
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_lsp::codec::ResponseError;
 use hume_rope::position_encoding::{PositionEncoding, wire_to_line_char_col};
@@ -554,31 +553,6 @@ pub(crate) fn goto_location(
     crate::editor::scroll::scroll_cursor_to_row(viewport, &mut rm, char_pos, height / 2);
 
     Ok(())
-}
-
-/// `(selection-spans-full-line? bid)` — the primary selection covers exactly
-/// one line, start to (and including) its trailing newline.
-pub(crate) fn selection_spans_full_line(state: &EditorState, bid: BufferId) -> bool {
-    let Some(buf) = state.buffers.try_get(bid) else {
-        return false;
-    };
-    let pid = state.focused_pane_id;
-    let Some(pbs) = state
-        .panes
-        .state
-        .get(pid)
-        .and_then(|by_buf| by_buf.get(bid))
-    else {
-        return false;
-    };
-    let text = buf.text();
-    let sel = pbs.selections.primary();
-    let start = sel.start();
-    let end_exclusive = next_grapheme_boundary(text, sel.end());
-    let line = text.char_to_line(start);
-    let line_start = text.line_to_char(line);
-    let line_end = hume_editing::lines::line_end_exclusive(text, line);
-    start == line_start && end_exclusive == line_end
 }
 
 impl Editor {

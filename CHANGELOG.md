@@ -11,6 +11,8 @@
   for that buffer now errors instead of silently rendering nothing. A source's gutter slot
   is per-buffer — a buffer neither `core:lsp` nor `core:git-diff` (nor any other plugin)
   ever registers a sign source for never reserves a gutter column for one.
+- **Breaking**: `(selection-spans-full-line? bid)` is now `(selections-linewise? bid)`, and
+  checks every selection in the buffer instead of just the primary one.
 
 ### Editing
 - New `goto-matching-pair` (`#`) jumps between a bracket and its partner (`(` `)` `[` `]` `{` `}`), or between an HTML/XML/JSX tag and its partner — vim's `%`, without disturbing HUME's own `%` (select-all). For single line selections, it scans for brackets against the whole selection, not just the character the cursor sits on — so `#` still jumps after a motion like `w` leaves the cursor on the whitespace past a bracket rather than on the bracket itself.
@@ -51,6 +53,7 @@
 - `select-word-nearest-on-line` (bound by plugins, not a default key) is now replayable with `.` when it precedes an edit.
 - `m/` with a search pattern matching nothing, or `ms`/`ma`/`mi` finding no surrounding pair, no longer discards a selection step an earlier command in the same sequence had already built before an edit — `.` now re-runs that earlier step instead of replaying the edit against whatever selection happens to remain.
 - The alternate buffer (`Ctrl+6`/`goto-alternate-file`, `#`/`:b#`) now follows the order buffers were last visited rather than the order they were opened, so it keeps toggling with the buffer you actually came from after jumping around with a picker or another pane instead of falling back to whichever buffer opened just before the current one.
+- `:lsp-fmt` now range-formats a multi-line selection that spans only complete lines, instead of silently formatting the whole document.
 
 ## [0.11.0] - 2026-08-25
 
