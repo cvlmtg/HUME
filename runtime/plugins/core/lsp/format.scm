@@ -49,6 +49,14 @@
                     (set-box! aborted #t)
                     (lsp/report-error "lsp-fmt" err))
                   (begin
+                    ;; append is O(ranges^2), but measured against Steel's actual
+                    ;; im_lists::UnrolledList (node-level relinking, 64-element
+                    ;; nodes) and the lsp.format-max-ranges cap: low thousands of
+                    ;; Rc bumps, not measurable. A cons + reverse rewrite isn't
+                    ;; easier to read, so it earns nothing here. Order is safe to
+                    ;; change either way — build_changeset_from_char_edits
+                    ;; stable-sorts by start offset, and coalescing guarantees
+                    ;; distinct ranges can't tie.
                     (set-box! edits (append (unbox edits) (lsp/format-edits res)))
                     (set-box! pending (- (unbox pending) 1))
                     (when (= (unbox pending) 0)

@@ -166,9 +166,9 @@ pub(crate) fn registered_for_language(lsp: &LspState, language: &str) -> bool {
 /// Shared setup for both params builders: the buffer's URI and its attached
 /// server's negotiated encoding. `None` if `id` has no path or no attached
 /// (tracked) server.
-fn uri_and_encoding<'a>(
-    state: &'a EditorState,
-    lsp: &'a LspState,
+fn uri_and_encoding(
+    state: &EditorState,
+    lsp: &LspState,
     id: BufferId,
 ) -> Option<(String, hume_rope::position_encoding::PositionEncoding)> {
     let buf = state.buffers.try_get(id)?;
