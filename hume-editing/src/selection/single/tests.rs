@@ -138,9 +138,6 @@ fn is_selection_linewise_whole_last_line() {
 #[test]
 fn linewise_classification_none_for_a_collapsed_selection_on_an_empty_line() {
     // "a\n\nb\n" — collapsed cursor on the empty line (char 2, the '\n').
-    // Ambiguous: satisfies is_selection_linewise by construction (the
-    // line's one char is both its own start and its own '\n'), not because
-    // it was deliberately extended across a whole line.
     let (text, _) = parse_state("-[a]>\n\nb\n");
     let sel = Selection::collapsed(2);
     assert_eq!(linewise_classification(&text, &sel), None);
@@ -154,9 +151,11 @@ fn linewise_classification_some_true_for_a_full_line_selection() {
 }
 
 #[test]
-fn linewise_classification_some_false_for_a_mid_line_selection() {
-    let (text, _) = parse_state("-[h]>ello\n");
-    let sel = Selection::new(1, 2); // same fixture as is_selection_linewise_false_mid_line_selection
+fn linewise_classification_some_false_for_a_collapsed_mid_line_selection() {
+    // Collapsed (unlike a plain mid-line selection) but not on an empty
+    // line — the guard must only fire when the selection is *also* linewise.
+    let (text, _) = parse_state("h-[e]>llo\n");
+    let sel = Selection::collapsed(1);
     assert_eq!(linewise_classification(&text, &sel), Some(false));
 }
 

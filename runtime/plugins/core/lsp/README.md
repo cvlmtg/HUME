@@ -299,10 +299,11 @@ which reading was meant. A collapsed cursor that happens to land on a blank line
 either way, so it's excluded from all three of `selections-linewise?`, `selections-charwise?`,
 and `lsp-linewise-ranges-params`'s ranges — it never masks a real selection elsewhere in the
 set into "mixed", and never bridges two real linewise selections it happens to touch on both
-sides into one coalesced range. Disjoint ranges go out as one `textDocument/rangesFormatting` request (LSP
-3.18) when the server advertises `rangesSupport`, otherwise one `rangeFormatting` request per
-range, capped at `lsp.format-max-ranges` — past the cap, `:lsp-fmt` warns and formats nothing,
-the same refusal a mixed selection set gets, rather than silently narrowing to one selection.
+sides into one coalesced range. Disjoint ranges go out as one `textDocument/rangesFormatting`
+request (LSP 3.18) when the server advertises `rangesSupport`, otherwise one `rangeFormatting`
+request per range, capped at `lsp.format-max-ranges` — past the cap, `:lsp-fmt` warns and
+formats nothing, the same refusal a mixed selection set gets, rather than silently narrowing
+to one selection.
 Rename has no tree-sitter fallback in v1 — a buffer with no attached server just reports "not
 supported" via the ordinary capability guard, the same as any other unsupported feature.
 

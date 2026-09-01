@@ -478,13 +478,8 @@ fn selections_charwise_true_for_several_partial_selections() {
     );
 }
 
-// ── Ambiguous case: a collapsed selection on an empty line ─────────────────
-//
-// Such a selection satisfies `is_selection_linewise` by construction (an
-// empty line's one char is both its own start and its own `\n`), not
-// because it was deliberately extended across a whole line — so it must
-// carry no vote either way, rather than force a mixed/false verdict onto an
-// otherwise-uniform selection set.
+// ── Ambiguous case: a cursor collapsed on a blank line (see
+// `linewise_classification`) votes in neither predicate. ───────────────────
 
 #[test]
 fn selections_linewise_true_with_a_stray_collapsed_selection_on_a_blank_line() {

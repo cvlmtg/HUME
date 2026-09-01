@@ -129,34 +129,27 @@ impl<'a> EditorHostImpl<'a> {
         ))
     }
 
-    /// `true` if every *unambiguous* selection in `bid`'s state satisfies
-    /// `pred` (see `hume_editing::selection::linewise_classification`) —
-    /// a selection collapsed on an empty line carries no vote either way
-    /// and is skipped. `default` is the answer when every selection in the
-    /// set is ambiguous (e.g. the sole selection is a lone cursor on a
-    /// blank line) — `Iterator::all` would otherwise agree `true` for both
-    /// `selections_linewise` and `selections_charwise` on that same buffer
-    /// over an empty sequence, contradicting the "exactly one of these, or
-    /// neither (mixed)" contract callers rely on. `false` if `bid` isn't
-    /// shown in any pane, regardless of `default`. Shared by
-    /// `selections_linewise` and `selections_charwise` — the two differ
-    /// only in `pred`'s polarity and `default`.
-    fn all_unambiguous_selections(
-        &self,
-        bid: BufferId,
-        pred: impl Fn(bool) -> bool,
-        default: bool,
-    ) -> bool {
+    /// `true` if every *unambiguous* selection in `bid`'s state satisfies `pred`
+    /// (see `hume_editing::selection::linewise_classification`) — a selection
+    /// collapsed on an empty line carries no vote either way and is skipped.
+    /// A set where every selection is ambiguous votes `pred(false)`: it reads as
+    /// charwise, the default a bare collapsed cursor already gets. Deriving that
+    /// from `pred` rather than taking it separately is what keeps the "exactly
+    /// one of these, or neither (mixed)" contract callers rely on true by
+    /// construction — `Iterator::all` alone would agree `true` with both
+    /// polarities over an empty sequence. `false` if `bid` isn't shown in any
+    /// pane. Shared by `selections_linewise` and `selections_charwise`, which
+    /// differ only in `pred`'s polarity.
+    fn all_unambiguous_selections(&self, bid: BufferId, pred: impl Fn(bool) -> bool) -> bool {
         self.buffer_and_selections(bid).is_some_and(|(buf, sels)| {
             let text = buf.text();
             let mut classified = sels
                 .iter_sorted()
                 .filter_map(|sel| hume_editing::selection::linewise_classification(text, sel))
                 .peekable();
-            if classified.peek().is_none() {
-                default
-            } else {
-                classified.all(pred)
+            match classified.peek() {
+                None => pred(false),
+                Some(_) => classified.all(pred),
             }
         })
     }
@@ -658,11 +651,11 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
     }
 
     fn selections_linewise(&self, bid: BufferId) -> bool {
-        self.all_unambiguous_selections(bid, |linewise| linewise, false)
+        self.all_unambiguous_selections(bid, |linewise| linewise)
     }
 
     fn selections_charwise(&self, bid: BufferId) -> bool {
-        self.all_unambiguous_selections(bid, |linewise| !linewise, true)
+        self.all_unambiguous_selections(bid, |linewise| !linewise)
     }
 }
 

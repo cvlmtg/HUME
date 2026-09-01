@@ -233,7 +233,11 @@ impl Selection {
 /// A partial line that merely happens to include a trailing `\n` returns
 /// `false` because its start is not at a line boundary. Use this (not just
 /// `ends_on_newline`) as the single source of truth for "this selection is
-/// linewise" in the selection-geometry domain.
+/// linewise" in the selection-geometry domain — it answers `true` for a
+/// selection collapsed on an empty line, since that line's one char is both
+/// its own start and its own `\n`, even when the cursor is merely incidental
+/// there. For *user intent* ("was this deliberately extended across whole
+/// lines?"), use [`linewise_classification`] instead.
 ///
 /// Counterpart to `is_register_linewise` in `ops::register`, which answers
 /// "is this *register text* linewise?" at paste time.
@@ -246,11 +250,12 @@ pub fn is_selection_linewise(text: &BufferText, sel: &Selection) -> bool {
 /// simultaneously its own start and its own trailing `\n` — not because it
 /// was deliberately extended across a whole line the way a non-collapsed
 /// linewise selection was. Classification is ambiguous for that one case
-/// (`None`); every other selection is `Some(is_selection_linewise(text,
-/// sel))`, unambiguously either linewise or charwise.
+/// (`None`).
 pub fn linewise_classification(text: &BufferText, sel: &Selection) -> Option<bool> {
-    let linewise = is_selection_linewise(text, sel);
-    (!(sel.is_collapsed() && linewise)).then_some(linewise)
+    match is_selection_linewise(text, sel) {
+        true if sel.is_collapsed() => None,
+        linewise => Some(linewise),
+    }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────

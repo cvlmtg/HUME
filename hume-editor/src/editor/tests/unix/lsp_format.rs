@@ -15,8 +15,12 @@ use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
-/// "line1\nline2\nline3\n" — char offsets: line0 'line1' = 0..5 (+\n at 5),
-/// line1 'line2' = 6..11 (+\n at 11), line2 'line3' = 12..17 (+\n at 17).
+/// Every test's buffer content unless a test needs a different line shape.
+/// Char offsets: line0 'line1' = 0..5 (+\n at 5), line1 'line2' = 6..11
+/// (+\n at 11), line2 'line3' = 12..17 (+\n at 17) — the selection helpers
+/// below reference these offsets directly.
+const THREE_LINES: &str = "line1\nline2\nline3\n";
+
 /// Handshake caps advertise `rangeFormatting` without `rangesSupport` — the
 /// common case, and what every fan-out test wants.
 fn setup(
@@ -24,10 +28,21 @@ fn setup(
     tmp: &Path,
     configure: impl FnOnce(&mut InlineLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard) {
+    setup_with_content(file, tmp, THREE_LINES, configure)
+}
+
+/// Same as `setup`, with the file content under caller control — for a test
+/// needing a different line shape (e.g. a blank line).
+fn setup_with_content(
+    file: &Path,
+    tmp: &Path,
+    content: &str,
+    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
+) -> (Editor, RealRuntimeGuard) {
     setup_with_caps(
         file,
         tmp,
-        "line1\nline2\nline3\n",
+        content,
         serde_json::json!({"capabilities": {
             "documentFormattingProvider": true,
             "documentRangeFormattingProvider": true
@@ -36,11 +51,9 @@ fn setup(
     )
 }
 
-/// Same as `setup`, with the file content and the handshake's `initialize`
-/// result both under caller control — content for tests needing a
-/// different line shape (e.g. a blank line), the handshake result for the
-/// `rangesSupport` tests, which need it to differ from the common case
-/// above.
+/// Same as `setup_with_content`, with the handshake's `initialize` result
+/// also under caller control — for the `rangesSupport` tests, which need it
+/// to differ from the common case above.
 fn setup_with_caps(
     file: &Path,
     tmp: &Path,
@@ -91,25 +104,26 @@ fn setup_with_caps(
 
 fn select_full_line_1(ed: &mut Editor) {
     // 'line1\n' — chars [0, 6).
-    let (pid, bid) = (ed.state.focused_pane_id, ed.focused_buffer_id());
-    ed.state.panes.state[pid][bid].selections = SelectionSet::single(Selection::new(0, 5));
+    ed.set_current_selections(SelectionSet::single(Selection::new(0, 5)));
 }
 
 fn select_full_lines_1_and_3(ed: &mut Editor) {
     // Two disjoint linewise selections: 'line1\n' (chars [0, 6)) and
     // 'line3\n' (chars [12, 17]) — 'line2\n' in between is untouched by
     // either.
-    let (pid, bid) = (ed.state.focused_pane_id, ed.focused_buffer_id());
-    ed.state.panes.state[pid][bid].selections =
-        SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(12, 17)], 0);
+    ed.set_current_selections(SelectionSet::from_vec(
+        vec![Selection::new(0, 5), Selection::new(12, 17)],
+        0,
+    ));
 }
 
 fn select_full_line_1_and_a_sub_line_selection(ed: &mut Editor) {
     // 'line1\n' whole (chars [0, 6)), plus "lin" on line 2 (chars 6..=8) —
     // not linewise.
-    let (pid, bid) = (ed.state.focused_pane_id, ed.focused_buffer_id());
-    ed.state.panes.state[pid][bid].selections =
-        SelectionSet::from_vec(vec![Selection::new(0, 5), Selection::new(6, 8)], 0);
+    ed.set_current_selections(SelectionSet::from_vec(
+        vec![Selection::new(0, 5), Selection::new(6, 8)],
+        0,
+    ));
 }
 
 /// For `"line1\n\nline3\n"` (a blank line2): a real charwise selection on
@@ -117,9 +131,10 @@ fn select_full_line_1_and_a_sub_line_selection(ed: &mut Editor) {
 /// line2 (char 6) — the shape a multi-cursor command can leave behind when
 /// one cursor happens to land on a blank line.
 fn select_mid_line_and_a_blank_line_cursor(ed: &mut Editor) {
-    let (pid, bid) = (ed.state.focused_pane_id, ed.focused_buffer_id());
-    ed.state.panes.state[pid][bid].selections =
-        SelectionSet::from_vec(vec![Selection::new(1, 2), Selection::collapsed(6)], 0);
+    ed.set_current_selections(SelectionSet::from_vec(
+        vec![Selection::new(1, 2), Selection::collapsed(6)],
+        0,
+    ));
 }
 
 fn run_fmt(ed: &mut Editor) {
@@ -284,7 +299,7 @@ fn disjoint_full_line_selections_send_one_ranges_formatting_request_when_support
     let (mut ed, _guard) = setup_with_caps(
         &file_dir.path().join("main.rs"),
         tmp.path(),
-        "line1\nline2\nline3\n",
+        THREE_LINES,
         serde_json::json!({"capabilities": {
             "documentFormattingProvider": true,
             "documentRangeFormattingProvider": {"rangesSupport": true}
@@ -334,7 +349,7 @@ fn single_full_line_selection_sends_range_formatting_even_when_ranges_supported(
     let (mut ed, _guard) = setup_with_caps(
         &file_dir.path().join("main.rs"),
         tmp.path(),
-        "line1\nline2\nline3\n",
+        THREE_LINES,
         serde_json::json!({"capabilities": {
             "documentFormattingProvider": true,
             "documentRangeFormattingProvider": {"rangesSupport": true}
@@ -380,7 +395,7 @@ fn ranges_formatting_is_not_capped_by_format_max_ranges() {
     let (mut ed, _guard) = setup_with_caps(
         &file_dir.path().join("main.rs"),
         tmp.path(),
-        "line1\nline2\nline3\n",
+        THREE_LINES,
         serde_json::json!({"capabilities": {
             "documentFormattingProvider": true,
             "documentRangeFormattingProvider": {"rangesSupport": true}
@@ -520,26 +535,18 @@ fn mixed_linewise_and_sub_line_selections_warn_and_format_nothing() {
     );
 }
 
-/// A collapsed cursor that happens to land on a blank line reads as
-/// linewise by `is_selection_linewise`'s own definition, but must not make
-/// an otherwise all-charwise selection set read as mixed: it's ambiguous
-/// (see `linewise_classification`), not a deliberate whole-line selection,
-/// so `:lsp-fmt` still whole-buffer-formats through
-/// `documentFormattingProvider` — this is the end-to-end regression the
-/// `selections-charwise?`/`lsp-linewise-ranges-params` fixes cover at the
-/// unit level.
+/// A stray blank-line cursor is ambiguous (see `linewise_classification`),
+/// not a deliberate whole-line selection — end-to-end through `:lsp-fmt`,
+/// on top of the unit coverage in `buffer_text_steel.rs` and
+/// `lsp_introspect.rs`.
 #[test]
 fn stray_blank_line_cursor_does_not_trigger_the_mixed_selection_refusal() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup_with_caps(
+    let (mut ed, _guard) = setup_with_content(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         "line1\n\nline3\n",
-        serde_json::json!({"capabilities": {
-            "documentFormattingProvider": true,
-            "documentRangeFormattingProvider": true
-        }}),
         |backend, _sid| {
             backend.respond_to(
                 "textDocument/formatting",

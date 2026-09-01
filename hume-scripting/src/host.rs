@@ -228,12 +228,9 @@ pub trait CursorHost {
     /// (spans whole lines, anchor to trailing `\n`). A selection collapsed
     /// onto a single empty line is ambiguous (see
     /// `hume_editing::selection::linewise_classification`) and carries no
-    /// vote either way — a lone cursor that happens to land on a blank line
-    /// doesn't count as a deliberate whole-line selection, but doesn't mask
-    /// a real linewise selection elsewhere in the set into "mixed" either.
-    /// `false` when every selection is ambiguous (e.g. the sole selection
-    /// is such a cursor) — matching an ordinary collapsed cursor's default —
-    /// and `false` when `bid` isn't shown in any pane.
+    /// vote either way. `false` when every selection is ambiguous, matching
+    /// an ordinary collapsed cursor's default, and `false` when `bid` isn't
+    /// shown in any pane.
     ///
     /// Paired with [`Self::selections_charwise`] to express `:lsp-fmt`'s
     /// three-way verdict (all linewise / none linewise / mixed) as two
@@ -241,21 +238,18 @@ pub trait CursorHost {
     /// params — every other `lsp-*-params` builtin returns a hash forwarded
     /// to `lsp-request` verbatim or with a *protocol* key inserted, and a
     /// non-protocol verdict key would break that. `(false, false)` from the
-    /// pair means *mixed or not-shown*; `(false, true)` additionally covers
-    /// *every selection ambiguous* — three distinguishable outcomes from
-    /// two booleans, ambiguous only to a caller that invokes one predicate
-    /// alone; `:lsp-fmt` never does, since `lsp-linewise-ranges-params`
-    /// already returns `#f` first for an unshown buffer and returns early.
+    /// pair means *mixed or not-shown*; an all-ambiguous set answers
+    /// `(false, true)`, deliberately indistinguishable from all-charwise,
+    /// which is the default it's meant to take.
     fn selections_linewise(&self, bid: BufferId) -> bool;
 
     /// `(selections-charwise? bid)` — no *unambiguous* selection in `bid`'s
     /// state, as seen in the pane currently showing it, is linewise. `true`
     /// when every selection is ambiguous (the complementary default to
-    /// [`Self::selections_linewise`]'s `false` in that same case) — a bare
-    /// collapsed cursor, or several, none deliberately spanning a line,
-    /// reads as charwise. `false` when `bid` isn't shown in any pane. See
-    /// [`Self::selections_linewise`] for why this is a second predicate
-    /// rather than a verdict field elsewhere.
+    /// [`Self::selections_linewise`]'s `false` in that same case). `false`
+    /// when `bid` isn't shown in any pane. See [`Self::selections_linewise`]
+    /// for why this is a second predicate rather than a verdict field
+    /// elsewhere.
     fn selections_charwise(&self, bid: BufferId) -> bool;
 }
 
