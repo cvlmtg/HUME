@@ -205,16 +205,36 @@ fn goto_prev_function_with_count_two_advances_two_objects_backward() {
     assert_eq!(selected_text(&ed), "fn second() {\n    2;\n}");
 }
 
-/// Extend mode keeps the anchor pinned; only the head moves backward to the
-/// found object's start.
+/// Backward search from inside a function lands on that function's own
+/// start (Helix's start-keyed backward rule), so the union with the current
+/// (collapsed, already-inside) selection is the whole function — the same
+/// "target is the anchor's own unit" case `apply_word_select_extend`
+/// selects wholly rather than partially.
 #[test]
-fn goto_prev_function_extend_keeps_the_anchor() {
+fn goto_prev_function_extend_from_inside_selects_the_whole_enclosing_function() {
     let mut ed = rust_editor("fn alpha() {\n    1;\n}\n\nfn beta() {\n    -[2]>;\n}\n");
-    let anchor_before = ed.current_selections().primary().anchor();
     ed.execute_keymap_command("goto-prev-function".into(), None, true, ArgSource::Keymap);
-    let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor(), anchor_before);
-    assert_ne!(sel.head(), anchor_before);
+    assert_eq!(selected_text(&ed), "fn beta() {\n    2;\n}");
+}
+
+/// Extending after a Move-mode result keeps the just-selected function fully
+/// covered while growing onto the next one — the union with the previous
+/// selection, not a plain replacement, since a Move result's own anchor sits
+/// at the object's far edge (see `apply_object_motion`'s doc in `hume-ops`).
+/// No nested closure here (unlike `NAV_SRC`): that case only ever absorbs
+/// silently into the current selection on one press, covered instead by
+/// `hume-ops`'s own `extend_forward_into_a_nested_object_does_not_shrink_the_selection`.
+#[test]
+fn goto_next_function_extend_after_move_keeps_both_functions_selected() {
+    let mut ed = rust_editor(
+        "-[/]>/ c\nfn first() {\n    1;\n}\n\nfn second() {\n    2;\n}\n",
+    );
+    ed.execute_keymap_command("goto-next-function".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-function".into(), None, true, ArgSource::Keymap);
+    assert_eq!(
+        selected_text(&ed),
+        "fn first() {\n    1;\n}\n\nfn second() {\n    2;\n}"
+    );
 }
 
 /// `count` 2 from before the first function lands on the second, not the

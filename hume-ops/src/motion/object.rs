@@ -15,10 +15,11 @@ use hume_editing::text::BufferText;
 ///
 /// Unlike [`super::apply_motion`], which maps a search origin to a new head
 /// position, `finder` maps an origin to a whole object span. `backward`
-/// selects which edge of the current selection each step searches from and
-/// which edge of the found span becomes the new head in `Extend` mode — the
-/// `apply_word_select` convention, taken rather than importing
-/// `hume_treesitter::textobjects::Direction` at this crate's boundary.
+/// selects which edge of the current selection each step searches from in
+/// `Move` mode, and which edge of the found span becomes the new head in
+/// both modes — the `apply_word_select` convention, taken rather than
+/// importing `hume_treesitter::textobjects::Direction` at this crate's
+/// boundary.
 ///
 /// **Move**: origin is `current.end()` going forward, `current.start()`
 /// going backward. Searching from the far edge of the selection just made
@@ -29,11 +30,26 @@ use hume_editing::text::BufferText;
 /// viewport lands on the object's signature and a following `w` walks into
 /// its body.
 ///
-/// **Extend**: origin is always `current.head()`; the anchor stays pinned to
-/// the *original* selection's anchor across every step, as
-/// [`super::apply_motion`] does, while each step's head becomes the found
-/// span's start (backward) or end (forward) — growing the selection to
-/// cover the object.
+/// **Extend**: origin is always `current.head()`, as in [`super::apply_motion`]
+/// and `apply_word_select_extend` — never the far edge Move reads. A Move
+/// result's anchor sits at the object's end and head at its start (reversed
+/// from the usual anchor-at-start shape), so searching from the anchor would
+/// skip every object between the anchor and the head.
+///
+/// The result is the *union* of the current selection with the found span —
+/// `Selection::new(current.start().min(start), current.end().max(end))`
+/// forward, edges swapped backward — rather than a plain replacement of the
+/// anchor-opposite edge: `adjacent` only guarantees `start > origin` (or `<`
+/// backward), not that the found span extends past the current selection's
+/// far edge. Searching from `head()` on a Move result can land on an object
+/// nested *inside* the object just selected (its own start satisfies the
+/// origin check; its end doesn't), and a plain replacement would then throw
+/// away everything past that nested object's end — the same anchor-loss bug
+/// a naive fix for that Move-result case would reintroduce, just reached
+/// through nesting instead. The union absorbs a nested find with no visible
+/// change; the *next* Extend press is then forward-shaped (head back at the
+/// far edge) and escapes past it, self-correcting exactly as
+/// `apply_word_select_extend`'s own union-based growth does.
 ///
 /// `finder` returning `None` stops the loop early for that selection and
 /// keeps its last result, so a `count` past the last object leaves the
@@ -56,10 +72,10 @@ pub fn apply_object_motion(
     let result = sels.map(|sel| {
         let mut current = sel;
         for _ in 0..count {
-            let origin = if backward {
-                current.start()
-            } else {
-                current.end()
+            let origin = match mode {
+                MotionMode::Move if backward => current.start(),
+                MotionMode::Move => current.end(),
+                MotionMode::Extend => current.head(),
             };
             let Some((start, end)) = finder(text, origin) else {
                 break;
@@ -67,7 +83,13 @@ pub fn apply_object_motion(
             current = match mode {
                 MotionMode::Move => Selection::new(end, start),
                 MotionMode::Extend => {
-                    Selection::new(sel.anchor(), if backward { start } else { end })
+                    let new_start = current.start().min(start);
+                    let new_end = current.end().max(end);
+                    if backward {
+                        Selection::new(new_end, new_start)
+                    } else {
+                        Selection::new(new_start, new_end)
+                    }
                 }
             };
         }

@@ -116,6 +116,49 @@ fn extend_backward_keeps_anchor() {
     );
 }
 
+/// Extending after a Move-mode result must keep the just-selected object
+/// fully covered while growing onto the next one. A Move result's anchor
+/// sits at the object's *end* (`abcdef` in reverse: anchor 5, head 2);
+/// reusing that anchor verbatim while extending forward would drop
+/// everything between the head and the newly found span.
+#[test]
+fn extend_forward_after_a_move_keeps_the_selected_object() {
+    assert_state!(
+        "ab<[cdef]-ghijklmnopqrstuvwxyz\n",
+        |(text, sels)| cmd_goto(&text, sels, 1, MotionMode::Extend, false),
+        "ab-[cdefghijklmno]>pqrstuvwxyz\n"
+    );
+}
+
+/// A found span nested *inside* the current selection (its start satisfies
+/// `start > origin`, but its end doesn't reach past what's already
+/// selected) must not shrink the selection — the union with the current
+/// extent absorbs it with no visible change, rather than replacing the
+/// selection outright.
+#[test]
+fn extend_forward_into_a_nested_object_does_not_shrink_the_selection() {
+    assert_state!(
+        "abcdefghij<[klmno]-pqrstuvwxyz\n",
+        |(text, sels)| cmd_goto(&text, sels, 1, MotionMode::Extend, false),
+        "abcdefghij-[klmno]>pqrstuvwxyz\n"
+    );
+}
+
+/// A span reachable only from the selection's head, not its far edge —
+/// proves Extend's search origin is `head()`, matching [`apply_motion`] and
+/// `apply_word_select_extend`, not `start()`/`end()` as `Move` uses.
+#[test]
+fn extend_searches_from_the_head_not_the_far_edge() {
+    let finder = |_: &BufferText, pos: usize| -> Option<(usize, usize)> {
+        (pos < 3).then_some((3, 4))
+    };
+    assert_state!(
+        "ab<[cd]-efghijklmnopqrstuvwxyz\n",
+        |(text, sels)| apply_object_motion(&text, sels, MotionMode::Extend, 1, false, finder),
+        "ab-[cde]>fghijklmnopqrstuvwxyz\n"
+    );
+}
+
 #[test]
 fn multi_cursor_convergence_merges() {
     // Both cursors' forward search lands on OBJ1 — `map`'s always-merge
