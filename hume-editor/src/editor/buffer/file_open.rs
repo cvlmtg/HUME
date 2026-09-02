@@ -332,8 +332,13 @@ impl Editor {
         // group against pre-reload text cannot compose against the new text).
         let last_line = self.state.buffers.get(id).text().last_content_line();
         for &(pid, head) in &post_heads {
-            self.state.panes.state[pid][id].selections =
-                SelectionSet::single(Selection::collapsed(head));
+            crate::editor::pane_state::write_cursor(
+                &mut self.state.panes.state,
+                &self.state.buffers,
+                pid,
+                id,
+                head,
+            );
             self.state.panes.state[pid][id].edit_group = None;
             self.state.panes.state[pid][id].paste_group = None;
             // Clamp scroll: a shrunken file must not leave top_line past last_line.

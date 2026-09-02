@@ -5,6 +5,14 @@
 
 use std::path::{Path, PathBuf};
 
+/// Error text for a `0` in either position of a `:goto` target or a CLI
+/// `path:line[:col]` position — both contracts are 1-based. Lives here
+/// (rather than beside `:goto` itself, `editor/commands/typed_misc.rs`)
+/// because this module is reachable crate-wide while `editor`'s internals
+/// are not; `typed_goto_line` imports it from here so the two error
+/// messages can't drift apart.
+pub(crate) const LINE_NUMBERS_START_AT_1: &str = "line numbers start at 1";
+
 /// A 1-based startup cursor position, in the units the statusline shows:
 /// `line` counts buffer lines, `grapheme_col` counts grapheme clusters
 /// within that line (see `hume_editing::lines::place_grapheme_column`) —
@@ -31,8 +39,8 @@ pub struct FileArg {
 /// the CLI. Only when the literal path doesn't exist is a trailing
 /// `:<line>` or `:<line>:<col>` peeled off (a lone trailing `:` is
 /// tolerated: `foo.rs:12:` behaves like `foo.rs:12`). Both numbers are
-/// 1-based; `0` in either position is an error, matching `:goto`'s own
-/// "line numbers start at 1" contract.
+/// 1-based; `0` in either position is an error (see
+/// [`LINE_NUMBERS_START_AT_1`]), matching `:goto`'s own contract.
 pub fn parse_file_arg(raw: &Path) -> Result<FileArg, String> {
     let literal = || FileArg {
         path: raw.to_path_buf(),
@@ -67,7 +75,7 @@ pub fn parse_file_arg(raw: &Path) -> Result<FileArg, String> {
         None => (rest, last, 1),
     };
     if line == 0 || grapheme_col == 0 {
-        return Err("line numbers start at 1".to_string());
+        return Err(LINE_NUMBERS_START_AT_1.to_string());
     }
     Ok(FileArg {
         path: PathBuf::from(path_str),

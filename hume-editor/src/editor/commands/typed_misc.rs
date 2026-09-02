@@ -360,8 +360,6 @@ pub(crate) fn typed_goto_line(
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    use hume_editing::selection::{Selection, SelectionSet};
-
     let raw = arg.ok_or_else(|| CommandError::new(":goto requires a line number"))?;
     let n: usize = raw
         .trim()
@@ -369,17 +367,22 @@ pub(crate) fn typed_goto_line(
         .map_err(|_| CommandError::new(format!("invalid line number: {raw}")))?;
     let line0 = n
         .checked_sub(1)
-        .ok_or_else(|| CommandError::new("line numbers start at 1"))?;
-
-    let last = ed.doc().text().last_content_line();
-    let target = line0.min(last);
-    let char_pos = ed.doc().text().line_to_char(target);
+        .ok_or_else(|| CommandError::new(crate::cli::LINE_NUMBERS_START_AT_1))?;
 
     // Snapshot before moving so Ctrl+O can return here — pushed only if
     // `:goto` actually lands somewhere else (record_jump_if_moved).
     let entry = current_jump_entry(&ed.state, &ed.view);
 
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(char_pos)));
+    let pid = ed.state.focused_pane_id;
+    let bid = ed.focused_buffer_id();
+    crate::editor::pane_state::park_cursor_at(
+        &mut ed.state.panes.state,
+        &ed.state.buffers,
+        pid,
+        bid,
+        line0,
+        0,
+    );
     record_jump_if_moved(&mut ed.state, &ed.view, entry);
     Ok(())
 }

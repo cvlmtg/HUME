@@ -82,7 +82,7 @@ fn line_zero_is_rejected() {
     let tmp = safe_tempdir();
     let arg = tmp.path().join("foo.rs:0");
     let err = parse_file_arg(&arg).unwrap_err();
-    assert!(err.contains("line numbers start at 1"), "got: {err}");
+    assert!(err.contains(LINE_NUMBERS_START_AT_1), "got: {err}");
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn column_zero_is_rejected() {
     let tmp = safe_tempdir();
     let arg = tmp.path().join("foo.rs:12:0");
     let err = parse_file_arg(&arg).unwrap_err();
-    assert!(err.contains("line numbers start at 1"), "got: {err}");
+    assert!(err.contains(LINE_NUMBERS_START_AT_1), "got: {err}");
 }
 
 #[cfg(unix)]
