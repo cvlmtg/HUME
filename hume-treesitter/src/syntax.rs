@@ -244,12 +244,17 @@ impl Syntax {
     /// next frame's `frame_tick`.
     ///
     /// Bakes pending edits first, same as `frame_tick`; when the chain is
-    /// intact this reparse is incremental and sub-frame. A full parse only
-    /// happens before the worker has delivered the buffer's first tree, or
-    /// after a broken edit chain — both already bounded by
+    /// intact the *root* tree's reparse is incremental and sub-frame — a full
+    /// parse only happens before the worker has delivered the buffer's first
+    /// tree, or after a broken edit chain — both already bounded by
     /// `syntax-highlight-max-bytes` refusing to attach syntax at all above
     /// that size. Inside a macro or dot-repeat batch, every step after the
-    /// first sees an intact chain and reparses incrementally.
+    /// first sees an intact chain and reparses the root incrementally. Every
+    /// *injected* layer (a fenced code block, `markdown.inline`) is always a
+    /// full parse regardless — incremental parsing is root-only by design
+    /// (`parse_worker::run_parse`'s doc) — so on a buffer with many injected
+    /// layers this call's cost scales with their combined size, not just the
+    /// edit.
     ///
     /// Deliberately leaves `in_flight` untouched: an asynchronous request
     /// already posted for an earlier generation is left to arrive and be

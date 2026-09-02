@@ -31,10 +31,6 @@
   `lsp.format-max-ranges` setting (default 16), past which nothing is formatted, with a
   warning naming the cap. A mix of whole-line and partial-line selections now warns and
   formats nothing, rather than silently reformatting the whole buffer.
-- **Breaking**: `(register-grammar! name grammar-path symbol highlights-path ...)` now takes its
-  injections and text-object queries as keyword arguments, `#:injections` and `#:textobjects`,
-  instead of positional fourth and fifth arguments. A language that defines only a textobjects
-  query no longer needs to pad an injections slot with `#f` to reach it.
 
 ### Editing
 - New `goto-matching-pair` (`#`) jumps between a bracket and its partner (`(` `)` `[` `]` `{` `}`), or between an HTML/XML/JSX tag and its partner — vim's `%`, without disturbing HUME's own `%` (select-all). For single line selections, it scans for brackets against the whole selection, not just the character the cursor sits on — so `#` still jumps after a motion like `w` leaves the cursor on the whitespace past a bracket rather than on the bracket itself.
@@ -68,6 +64,9 @@
 - New buffer option `word-chars` (Vim's `iskeyword`, minus the range syntax): extra characters counted as part of a word. Ships with no default set — configure it per language from an `on-language-set` hook (see the manual's [Configuration](https://cvlmtg.github.io/HUME/configuration.html) page).
 
 ### Plugins
+- `register-grammar!` gains an optional 6th positional argument, a `textobjects.scm` path. A
+  language that defines textobjects but nothing embedded passes `#f` for the 5th argument
+  (`injections-path`) to reach it.
 - `picker!` gains `#:query`, which prefills the input line and filters the (still empty, until seeded) item list against it.
 - `picker!` and `live-picker!` gain `#:truncate`, which end of an over-long row the panel clips: `'head` (default, unchanged) or `'tail`, for rows whose distinguishing part sits at the front (a grep match's path, say, ahead of the line preview).
 - New `live-picker!` opens a picker whose query drives an external source instead of the local fuzzy filter — a live grep, say, that re-runs its search per pattern instead of only locally filtering already-fetched rows.

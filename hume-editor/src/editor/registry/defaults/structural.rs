@@ -7,12 +7,16 @@ use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
 
 /// One row of the structural text-object / navigation family: the kind, its
 /// `m i` / `m a` third-level key, the four command names it registers, and
-/// their four doc strings — static rather than templated from a shared noun,
-/// since "including its delimiters" is wrong for an argument (a separator
-/// comma, never brackets) and a function (its signature, not delimiters).
-/// One table drives both registration (`register_structural`, below) and the
-/// keymap (`keymap/defaults::build_text_object_trie`) — a kind added here
-/// needs no change anywhere else. Doc wording mirrors
+/// the `inner`/`around` pair's doc strings, static rather than templated
+/// from `noun` — "including its delimiters" is wrong for an argument (a
+/// separator comma, never brackets) and a function (its signature, not
+/// delimiters). `next`/`prev`'s docs carry no such per-kind irregularity
+/// ("Select the next/previous `<noun>`." is exact for all six), so
+/// `register_structural` derives them from `noun` instead of a fifth and
+/// sixth static string. One table drives both registration
+/// (`register_structural`, below) and the keymap
+/// (`keymap/defaults::build_text_object_trie`) — a kind added here needs no
+/// change anywhere else. Doc wording mirrors
 /// `user-manual/docs/builtin-commands.md`'s rows for these commands — update
 /// both together.
 pub(in crate::editor) struct StructuralObject {
@@ -23,9 +27,10 @@ pub(in crate::editor) struct StructuralObject {
     pub(in crate::editor) around: &'static str,
     pub(in crate::editor) around_doc: &'static str,
     pub(in crate::editor) next: &'static str,
-    pub(in crate::editor) next_doc: &'static str,
     pub(in crate::editor) prev: &'static str,
-    pub(in crate::editor) prev_doc: &'static str,
+    /// The kind's name as it reads in "Select the next/previous `<noun>`." —
+    /// e.g. `"function"`, `"class or type"`.
+    pub(in crate::editor) noun: &'static str,
 }
 
 /// Keys follow Helix (`t` = type, for `class`). `a` (argument) reuses the
@@ -41,9 +46,8 @@ pub(in crate::editor) const STRUCTURAL_OBJECTS: &[StructuralObject] = &[
         around_doc: "Select the function including its signature (and attributes/decorators). \
                       Requires a grammar with a `textobjects.scm`.",
         next: "goto-next-function",
-        next_doc: "Select the next function.",
         prev: "goto-prev-function",
-        prev_doc: "Select the previous function.",
+        noun: "function",
     },
     StructuralObject {
         kind: ObjectKind::Class,
@@ -54,9 +58,8 @@ pub(in crate::editor) const STRUCTURAL_OBJECTS: &[StructuralObject] = &[
         around_doc: "Select the class or type including its header. Requires a grammar with a \
                       `textobjects.scm`.",
         next: "goto-next-class",
-        next_doc: "Select the next class or type.",
         prev: "goto-prev-class",
-        prev_doc: "Select the previous class or type.",
+        noun: "class or type",
     },
     StructuralObject {
         kind: ObjectKind::Parameter,
@@ -68,9 +71,8 @@ pub(in crate::editor) const STRUCTURAL_OBJECTS: &[StructuralObject] = &[
         around_doc: "Select the argument and its separator comma. Structure-aware — uses the \
                       language's `parameter` object when the grammar defines one.",
         next: "goto-next-argument",
-        next_doc: "Select the next argument.",
         prev: "goto-prev-argument",
-        prev_doc: "Select the previous argument.",
+        noun: "argument",
     },
     StructuralObject {
         kind: ObjectKind::Comment,
@@ -81,9 +83,8 @@ pub(in crate::editor) const STRUCTURAL_OBJECTS: &[StructuralObject] = &[
         around_doc: "Select the whole comment block. Requires a grammar with a \
                       `textobjects.scm`.",
         next: "goto-next-comment",
-        next_doc: "Select the next comment.",
         prev: "goto-prev-comment",
-        prev_doc: "Select the previous comment.",
+        noun: "comment",
     },
     StructuralObject {
         kind: ObjectKind::Test,
@@ -95,9 +96,8 @@ pub(in crate::editor) const STRUCTURAL_OBJECTS: &[StructuralObject] = &[
         around_doc: "Select the whole test, including its attribute or decorator. Requires a \
                       grammar with a `textobjects.scm`.",
         next: "goto-next-test",
-        next_doc: "Select the next test.",
         prev: "goto-prev-test",
-        prev_doc: "Select the previous test.",
+        noun: "test",
     },
     StructuralObject {
         kind: ObjectKind::Entry,
@@ -109,9 +109,8 @@ pub(in crate::editor) const STRUCTURAL_OBJECTS: &[StructuralObject] = &[
         around_doc: "Select an array/tuple/struct entry plus its separator comma. Requires a \
                       grammar with a `textobjects.scm`.",
         next: "goto-next-entry",
-        next_doc: "Select the next array/tuple/struct entry.",
         prev: "goto-prev-entry",
-        prev_doc: "Select the previous array/tuple/struct entry.",
+        noun: "array/tuple/struct entry",
     },
 ];
 
@@ -162,7 +161,7 @@ impl CommandRegistry {
             });
             self.register(MappableCommand::Motion {
                 name: Cow::Borrowed(obj.next),
-                doc: Cow::Borrowed(obj.next_doc),
+                doc: Cow::Owned(format!("Select the next {}.", obj.noun)),
                 fun: SelectionBody::Structural(StructuralBody::Goto {
                     kind: obj.kind,
                     dir: Direction::Forward,
@@ -171,7 +170,7 @@ impl CommandRegistry {
             });
             self.register(MappableCommand::Motion {
                 name: Cow::Borrowed(obj.prev),
-                doc: Cow::Borrowed(obj.prev_doc),
+                doc: Cow::Owned(format!("Select the previous {}.", obj.noun)),
                 fun: SelectionBody::Structural(StructuralBody::Goto {
                     kind: obj.kind,
                     dir: Direction::Backward,

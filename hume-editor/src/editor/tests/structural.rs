@@ -65,16 +65,19 @@ fn rust_editor(source: &str) -> Editor {
     ed
 }
 
-/// The text covered by the focused buffer's primary selection (inclusive of
-/// the grapheme at `end()`). A slice rather than the marker-annotated
-/// `state()` string: Rust source is multi-line, and hand-computing exact
-/// marker offsets across a whole function body is more error-prone than
-/// checking the selected substring itself.
-fn selected_text(ed: &Editor) -> String {
-    let text = ed.doc().text();
-    let sel = ed.current_selections().primary();
+/// The text a selection covers (inclusive of the grapheme at `end()`).
+fn text_of(text: &BufferText, sel: Selection) -> String {
     let end = next_grapheme_boundary(text, sel.end_inclusive(text));
     text.slice(sel.start()..end).to_string()
+}
+
+/// The text covered by the focused buffer's primary selection. A slice
+/// rather than the marker-annotated `state()` string: Rust source is
+/// multi-line, and hand-computing exact marker offsets across a whole
+/// function body is more error-prone than checking the selected substring
+/// itself.
+fn selected_text(ed: &Editor) -> String {
+    text_of(ed.doc().text(), ed.current_selections().primary())
 }
 
 /// The text covered by every selection, sorted by position — for
@@ -83,10 +86,7 @@ fn selection_texts(ed: &Editor) -> Vec<String> {
     let text = ed.doc().text();
     ed.current_selections()
         .iter_sorted()
-        .map(|sel| {
-            let end = next_grapheme_boundary(text, sel.end_inclusive(text));
-            text.slice(sel.start()..end).to_string()
-        })
+        .map(|&sel| text_of(text, sel))
         .collect()
 }
 

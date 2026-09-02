@@ -72,16 +72,15 @@ pub(in crate::editor) fn ensure_syntax_current(state: &mut EditorState, bid: Buf
     if buf.text().len_bytes() > state.settings.syntax_highlight_max_bytes {
         return;
     }
-    let has_textobjects = syn.bundle().textobjects.is_some()
-        || layers
-            .layers
-            .iter()
-            .any(|layer| layer.bundle.textobjects.is_some());
+    let has_textobjects = layers
+        .layers
+        .iter()
+        .any(|layer| layer.bundle.textobjects.is_some());
     if !has_textobjects {
         return;
     }
 
-    let text = state.buffers.get(bid).text().clone();
+    let text = buf.text().clone();
     let langs = state.config.languages.grammar_snapshot();
     let syn = state
         .buffers
@@ -146,14 +145,11 @@ impl StructuralBody {
             StructuralBody::Select { .. } => {
                 apply_text_object_by_mode(text, sels, mode, |_, p| spans.enclosing(p))
             }
-            StructuralBody::Goto { dir, .. } => apply_object_motion(
-                text,
-                sels,
-                mode,
-                count,
-                dir == Direction::Backward,
-                |_, p| spans.adjacent(p, dir),
-            ),
+            StructuralBody::Goto { dir, .. } => {
+                apply_object_motion(text, sels, mode, count, dir == Direction::Backward, |p| {
+                    spans.adjacent(p, dir)
+                })
+            }
             StructuralBody::Argument { around: false } => {
                 apply_text_object_by_mode(text, sels, mode, |t, p| {
                     spans.enclosing(p).or_else(|| inner_argument(t, p))

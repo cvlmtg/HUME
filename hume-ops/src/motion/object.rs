@@ -1,7 +1,7 @@
 //! Structural object navigation — the Move/Extend/count policy behind
 //! `goto-next-<kind>` / `goto-prev-<kind>`, parameterized over a `finder`
 //! rather than a tree: this crate cannot depend on `hume-treesitter`, so the
-//! caller (`hume-editor`) supplies `finder` as
+//! caller (`hume-editor`) supplies `finder` as a closure over
 //! `hume_treesitter::textobjects::ObjectSpans::adjacent`, whose
 //! `Option<(usize, usize)>` contract this module's `finder` parameter
 //! matches exactly.
@@ -67,7 +67,7 @@ pub fn apply_object_motion(
     mode: MotionMode,
     count: usize,
     backward: bool,
-    finder: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
+    finder: impl Fn(usize) -> Option<(usize, usize)>,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         let mut current = sel;
@@ -77,7 +77,7 @@ pub fn apply_object_motion(
                 MotionMode::Move => current.end(),
                 MotionMode::Extend => current.head(),
             };
-            let Some((start, end)) = finder(text, origin) else {
+            let Some((start, end)) = finder(origin) else {
                 break;
             };
             current = match mode {

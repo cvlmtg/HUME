@@ -1,8 +1,41 @@
 use super::*;
 
+use hume_treesitter::textobjects::ObjectKind;
+
 /// Exhaustiveness guard: if a command is added without a registry entry,
 /// this test catches it.
 const EXPECTED_COMMAND_COUNT: usize = 183;
+
+/// `STRUCTURAL_OBJECTS` is the only link between `ObjectKind` and the four
+/// commands (plus the `m i`/`m a` key) each kind ships. Nothing in the type
+/// system ties the two together: a variant added to `ObjectKind` but not to
+/// the table still compiles, still collects spans, and silently ships zero
+/// commands and zero keybindings — a quieter failure than the out-of-bounds
+/// panic `object_enum!`'s own generated `ALL` exists to prevent.
+///
+/// Flip: delete a row and this fails naming the orphaned kind;
+/// `registry_has_expected_count` alone would only report a number.
+#[test]
+fn structural_objects_cover_every_object_kind() {
+    for kind in ObjectKind::ALL {
+        let rows = STRUCTURAL_OBJECTS
+            .iter()
+            .filter(|o| o.kind == *kind)
+            .count();
+        assert_eq!(
+            rows, 1,
+            "ObjectKind::{kind:?} must have exactly one STRUCTURAL_OBJECTS row, found {rows}"
+        );
+    }
+
+    // The `m i`/`m a` third-level keys are bound from this same table, so a
+    // duplicate key would silently shadow one kind's text objects.
+    let mut keys: Vec<char> = STRUCTURAL_OBJECTS.iter().map(|o| o.key).collect();
+    keys.sort_unstable();
+    let unique = keys.len();
+    keys.dedup();
+    assert_eq!(keys.len(), unique, "duplicate `m i`/`m a` key in {keys:?}");
+}
 
 #[test]
 fn registry_has_expected_count() {

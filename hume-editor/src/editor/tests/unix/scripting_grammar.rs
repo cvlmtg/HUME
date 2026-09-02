@@ -12,6 +12,7 @@ use super::*;
 use hume_grid::Rect;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use super::super::render_snapshot::render_to_styled_string;
 use super::super::scripting_grammar::{
@@ -20,6 +21,7 @@ use super::super::scripting_grammar::{
 use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::ScriptingHost;
 use hume_test_fixtures::require_grammars;
+use hume_treesitter::registry::GrammarBundle;
 
 /// Blobless-clone `url` at `rev` into `dest`, test-fixture-only — mirrors the
 /// two-step shape `plum/install-grammar` now runs via `run-inline-output!`
@@ -123,6 +125,44 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     );
 }
 
+/// Write `register_grammar_call` (a full `(register-grammar! ...)` form) into
+/// a fresh init.scm, prefixed with the real prelude so the macro is in
+/// scope, eval it, apply its queued effect (init-mode `register-grammar!`
+/// only queues an `Effect::LanguageReg` — this is what `init_scripting`
+/// would do next), and return the resulting `json` grammar bundle. Shared by
+/// `register_grammar_textobjects_only_populates_textobjects_not_injections`
+/// and `register_grammar_injections_only_populates_injections`, which differ
+/// only in which trailing query path the call passes and which of the
+/// bundle's two optional queries they assert on.
+fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
+    let tmp = safe_tempdir();
+    let init_path = tmp.path().join("init.scm");
+    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
+    std::fs::write(&init_path, prelude_src + "\n" + register_grammar_call).unwrap();
+
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let mut host = ScriptingHost::new();
+    let effects = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init");
+    ed.apply_script_effects(effects);
+
+    let id = ed
+        .state
+        .config
+        .languages
+        .id_of("json")
+        .expect("json must be interned");
+    ed.state
+        .config
+        .languages
+        .grammar(id)
+        .expect("json must have an attached grammar bundle")
+        .clone()
+}
+
 /// A `register-grammar!` call passing `#f` for `injections` and a real path
 /// for `textobjects` — the motivating shape: a language with structural
 /// objects but nothing embedded — populates the bundle's `textobjects` and
@@ -138,39 +178,14 @@ fn register_grammar_textobjects_only_populates_textobjects_not_injections() {
     let tmp = safe_tempdir();
     let to_path = tmp.path().join("textobjects.scm");
     std::fs::write(&to_path, "(pair) @entry.inside\n").unwrap();
-    let init_path = tmp.path().join("init.scm");
-    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
     let body = format!(
         r#"(register-grammar! "json" "{}" "tree_sitter_json" "{}" #f "{}")"#,
         parser.display(),
         hl.display(),
         to_path.display(),
     );
-    std::fs::write(&init_path, prelude_src + "\n" + &body).unwrap();
 
-    let mut ed = editor_from("-[{]>\"x\": 1}\n");
-    let mut host = ScriptingHost::new();
-    let effects = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("eval_init");
-    // Init-mode `register-grammar!` only queues an `Effect::LanguageReg` —
-    // apply it, as `init_scripting` would, to actually attach the grammar.
-    ed.apply_script_effects(effects);
-
-    let id = ed
-        .state
-        .config
-        .languages
-        .id_of("json")
-        .expect("json must be interned");
-    let bundle = ed
-        .state
-        .config
-        .languages
-        .grammar(id)
-        .expect("json must have an attached grammar bundle");
+    let bundle = attach_json_via_init(&body);
     assert!(
         bundle.textobjects.is_some(),
         "the textobjects path must populate the bundle's textobjects query"
@@ -195,39 +210,14 @@ fn register_grammar_injections_only_populates_injections() {
         r#"((_) @injection.content (#set! injection.language "markdown"))"#,
     )
     .unwrap();
-    let init_path = tmp.path().join("init.scm");
-    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
     let body = format!(
         r#"(register-grammar! "json" "{}" "tree_sitter_json" "{}" "{}")"#,
         parser.display(),
         hl.display(),
         inj_path.display(),
     );
-    std::fs::write(&init_path, prelude_src + "\n" + &body).unwrap();
 
-    let mut ed = editor_from("-[{]>\"x\": 1}\n");
-    let mut host = ScriptingHost::new();
-    let effects = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("eval_init");
-    // Init-mode `register-grammar!` only queues an `Effect::LanguageReg` —
-    // apply it, as `init_scripting` would, to actually attach the grammar.
-    ed.apply_script_effects(effects);
-
-    let id = ed
-        .state
-        .config
-        .languages
-        .id_of("json")
-        .expect("json must be interned");
-    let bundle = ed
-        .state
-        .config
-        .languages
-        .grammar(id)
-        .expect("json must have an attached grammar bundle");
+    let bundle = attach_json_via_init(&body);
     assert!(
         bundle.injections.is_some(),
         "the injections path must populate the bundle's injections query"

@@ -11,12 +11,12 @@
 
 // ── ObjectKind / ObjectSpan ──────────────────────────────────────────────
 
-/// Emits an object-kind/span enum, its dense `ALL` array, and its
+/// Emits an object-kind/span enum, its dense `ALL` slice, and its
 /// `capture_name`/`from_capture_name` pair from one variant↦capture-name
 /// list. `TextObjectsQuery`'s capture table is sized
 /// `[[Option<u32>; ObjectSpan::ALL.len()]; ObjectKind::ALL.len()]` and
 /// indexed by `kind as usize`/`span as usize` — a variant added to the enum
-/// but not to a hand-synced `ALL` array compiles fine and panics out of
+/// but not to a hand-synced `ALL` list compiles fine and panics out of
 /// bounds on the first query attach. One list generating all three closes
 /// that: there is nothing left to forget to update in step.
 macro_rules! object_enum {
@@ -31,26 +31,27 @@ macro_rules! object_enum {
         }
 
         impl $enum_name {
-            pub const ALL: [$enum_name; object_enum!(@count $($variant)+)] =
-                [$($enum_name::$variant),+];
+            /// Every variant, in declaration order. `pub` because
+            /// `hume-editor` checks its own structural-command table
+            /// against this list — a kind here with no commands there
+            /// would otherwise ship silently.
+            pub const ALL: &'static [$enum_name] = &[$($enum_name::$variant),+];
 
             /// The half of a capture name this type names, e.g.
             /// `@function.inside` has kind half `"function"` and span half
             /// `"inside"`. Single source of truth: also used in reverse by
             /// [`Self::from_capture_name`].
-            pub fn capture_name(self) -> &'static str {
+            fn capture_name(self) -> &'static str {
                 match self {
                     $($enum_name::$variant => $capture),+
                 }
             }
 
             fn from_capture_name(name: &str) -> Option<Self> {
-                Self::ALL.into_iter().find(|v| v.capture_name() == name)
+                Self::ALL.iter().copied().find(|v| v.capture_name() == name)
             }
         }
     };
-    (@count $head:ident $($tail:ident)*) => { 1 + object_enum!(@count $($tail)*) };
-    (@count) => { 0 };
 }
 
 object_enum! {
@@ -98,9 +99,9 @@ pub enum Direction {
 /// dot, but no Helix query defines such a name today). Names that don't
 /// parse as `<kind>.<span>` (`@_helper`, `@function.x`) map to nothing.
 pub struct TextObjectsQuery {
-    /// Read directly by `ObjectSpans::collect`'s span-collection executor,
-    /// which needs the compiled `Query` itself, not just this table.
-    pub query: tree_sitter::Query,
+    /// Read directly by [`collect_hulls`], which needs the compiled `Query`
+    /// itself, not just this table.
+    query: tree_sitter::Query,
     captures: [[Option<u32>; ObjectSpan::ALL.len()]; ObjectKind::ALL.len()],
 }
 
@@ -127,8 +128,12 @@ impl TextObjectsQuery {
         self.captures[kind as usize][span as usize]
     }
 
-    /// Whether this query defines a `<kind>.<span>` capture.
-    pub fn defines(&self, kind: ObjectKind, span: ObjectSpan) -> bool {
+    /// Whether this query defines a `<kind>.<span>` capture. Test-only —
+    /// the collection paths want the index itself, not just its presence,
+    /// so they call [`Self::capture_index`]; this exists because
+    /// `.capture_index(..).is_some()` reads poorly in an assertion.
+    #[cfg(test)]
+    pub(crate) fn defines(&self, kind: ObjectKind, span: ObjectSpan) -> bool {
         self.capture_index(kind, span).is_some()
     }
 }
@@ -185,15 +190,7 @@ impl ObjectSpans {
         kind: ObjectKind,
         span: ObjectSpan,
     ) -> Self {
-        let mut spans = Vec::new();
-        for layer in &layers.layers {
-            if let Some(query) = layer.bundle.textobjects.as_ref()
-                && let Some(idx) = query.capture_index(kind, span)
-            {
-                collect_hulls(query, idx, layer, text, &mut spans);
-            }
-        }
-        Self::finish(spans)
+        Self::collect_with(layers, text, |query| query.capture_index(kind, span))
     }
 
     /// Navigation spans for `kind`: per layer, the first span in priority
@@ -225,15 +222,27 @@ impl ObjectSpans {
         } else {
             DEFAULT_PRIORITY
         };
+        Self::collect_with(layers, text, |query| {
+            priority
+                .into_iter()
+                .find_map(|span| query.capture_index(kind, span))
+        })
+    }
+
+    /// Shared walk behind [`Self::collect`] and
+    /// [`Self::collect_for_navigation`]: every layer whose bundle defines a
+    /// textobjects query, hulled at the capture index `pick` picks for that
+    /// query — a layer whose `pick` returns `None` contributes nothing.
+    fn collect_with(
+        layers: &SyntaxLayers,
+        text: &BufferText,
+        pick: impl Fn(&TextObjectsQuery) -> Option<u32>,
+    ) -> Self {
         let mut spans = Vec::new();
         for layer in &layers.layers {
-            let Some(query) = layer.bundle.textobjects.as_ref() else {
-                continue;
-            };
-            let Some(chosen) = priority.into_iter().find(|&span| query.defines(kind, span)) else {
-                continue;
-            };
-            if let Some(idx) = query.capture_index(kind, chosen) {
+            if let Some(query) = layer.bundle.textobjects.as_ref()
+                && let Some(idx) = pick(query)
+            {
                 collect_hulls(query, idx, layer, text, &mut spans);
             }
         }
@@ -281,7 +290,7 @@ impl ObjectSpans {
                 // sharing that start (the descending-`end` sort puts the
                 // largest-end tie-break winner there).
                 let idx = self.spans.partition_point(|&(start, _)| start < pos);
-                let (target_start, _) = *self.spans.get(idx.checked_sub(1)?)?;
+                let (target_start, _) = *self.spans[..idx].last()?;
                 let run_start =
                     self.spans[..idx].partition_point(|&(start, _)| start < target_start);
                 self.spans.get(run_start).copied()

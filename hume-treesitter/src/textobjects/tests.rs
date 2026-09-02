@@ -33,7 +33,7 @@ fn every_kind_span_capture_name_resolves_to_its_own_index() {
          (field_expression) @entry.inside
          (field_expression) @entry.around",
     );
-    for kind in ObjectKind::ALL {
+    for &kind in ObjectKind::ALL {
         for span in [ObjectSpan::Inside, ObjectSpan::Around] {
             assert!(
                 q.defines(kind, span),
@@ -62,8 +62,8 @@ fn underscore_prefixed_and_unknown_suffix_captures_resolve_to_nothing() {
 fn defines_is_false_for_a_pair_the_query_omits() {
     let q = compile("(function_item) @function.inside");
     assert!(q.defines(ObjectKind::Function, ObjectSpan::Inside));
-    for kind in ObjectKind::ALL {
-        for span in ObjectSpan::ALL {
+    for &kind in ObjectKind::ALL {
+        for &span in ObjectSpan::ALL {
             if (kind, span) == (ObjectKind::Function, ObjectSpan::Inside) {
                 continue;
             }
@@ -78,7 +78,7 @@ fn defines_is_false_for_a_pair_the_query_omits() {
 #[test]
 fn real_helix_rust_textobjects_defines_expected_pairs() {
     require_grammars(&["rust"]);
-    let path = hume_test_fixtures::helix_textobjects_path("rust")
+    let path = helix_textobjects_path("rust")
         .expect("rust helix-textobjects.scm fixture (run scripts/fetch-test-grammars.sh)");
     let source = std::fs::read_to_string(path).expect("read helix-textobjects.scm");
     let q = compile(&source);
@@ -192,12 +192,20 @@ fn span_text(text: &BufferText, span: (usize, usize)) -> String {
     text.slice(span.0..span.1 + 1).to_string()
 }
 
+/// Parse `source` as rust with the real Helix `textobjects.scm` attached.
+/// Returns the `Syntax` rather than its layers: `layers()` borrows from it,
+/// so the caller has to hold it — every test below takes the borrow on its
+/// own next line.
+fn rust_syntax(source: &str) -> (Syntax, BufferText) {
+    let text = BufferText::from(source);
+    let syn = Syntax::attach_sync(rust_bundle_with_real_textobjects(), &text, &empty_langs());
+    (syn, text)
+}
+
 #[test]
 fn function_around_on_an_attributed_function_includes_the_attributes() {
-    let bundle = rust_bundle_with_real_textobjects();
     let source = "#[inline]\nfn foo() {\n    1\n}\n";
-    let text = BufferText::from(source);
-    let syn = Syntax::attach_sync(bundle, &text, &empty_langs());
+    let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
     let pos = text.byte_to_char(source.find('1').unwrap());
 
@@ -216,10 +224,8 @@ fn function_around_on_an_attributed_function_includes_the_attributes() {
 
 #[test]
 fn parameter_around_probed_at_a_non_last_argument_includes_its_trailing_comma() {
-    let bundle = rust_bundle_with_real_textobjects();
     let source = "fn add(a: i32, b: i32) -> i32 { a + b }\n";
-    let text = BufferText::from(source);
-    let syn = Syntax::attach_sync(bundle, &text, &empty_langs());
+    let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
     let pos = text.byte_to_char(source.find("a: i32").unwrap());
 
@@ -232,10 +238,8 @@ fn parameter_around_probed_at_a_non_last_argument_includes_its_trailing_comma() 
 
 #[test]
 fn parameter_inside_at_the_same_argument_excludes_the_comma() {
-    let bundle = rust_bundle_with_real_textobjects();
     let source = "fn add(a: i32, b: i32) -> i32 { a + b }\n";
-    let text = BufferText::from(source);
-    let syn = Syntax::attach_sync(bundle, &text, &empty_langs());
+    let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
     let pos = text.byte_to_char(source.find("a: i32").unwrap());
 
@@ -248,10 +252,8 @@ fn parameter_inside_at_the_same_argument_excludes_the_comma() {
 
 #[test]
 fn collect_for_navigation_parameter_yields_inside_spans_no_trailing_comma() {
-    let bundle = rust_bundle_with_real_textobjects();
     let source = "fn add(a: i32, b: i32) -> i32 { a + b }\n";
-    let text = BufferText::from(source);
-    let syn = Syntax::attach_sync(bundle, &text, &empty_langs());
+    let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
     let pos = text.byte_to_char(source.find("a: i32").unwrap());
 
@@ -297,10 +299,8 @@ fn collect_for_navigation_parameter_falls_back_to_around_without_inside() {
 // same-end nesting in delimiter-less languages.
 #[test]
 fn comment_around_on_the_last_line_of_a_block_is_the_whole_block() {
-    let bundle = rust_bundle_with_real_textobjects();
     let source = "// line one\n// line two\n// line three\nfn foo() {}\n";
-    let text = BufferText::from(source);
-    let syn = Syntax::attach_sync(bundle, &text, &empty_langs());
+    let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
     let pos = text.byte_to_char(source.find("line three").unwrap());
 
@@ -328,10 +328,8 @@ fn comment_around_on_the_last_line_of_a_block_is_the_whole_block() {
 // `collect_hulls` wires one in, not just an assertion on the resulting span.
 #[test]
 fn test_around_spans_attribute_and_body() {
-    let bundle = rust_bundle_with_real_textobjects();
     let source = "#[test]\nfn it_works() {\n    assert!(true);\n}\n";
-    let text = BufferText::from(source);
-    let syn = Syntax::attach_sync(bundle, &text, &empty_langs());
+    let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
     let pos = text.byte_to_char(source.find("assert!").unwrap());
 
@@ -354,10 +352,8 @@ fn test_around_spans_attribute_and_body() {
 // own block.
 #[test]
 fn class_inside_in_an_impl_method_body_picks_the_impl_body() {
-    let bundle = rust_bundle_with_real_textobjects();
     let source = "impl Foo {\n    fn bar() {\n        1\n    }\n}\n";
-    let text = BufferText::from(source);
-    let syn = Syntax::attach_sync(bundle, &text, &empty_langs());
+    let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
     let pos = text.byte_to_char(source.find('1').unwrap());
 

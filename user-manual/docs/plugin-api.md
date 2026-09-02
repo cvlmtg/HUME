@@ -131,7 +131,7 @@ Both ends speak the same list shape, so `(write-register! "3" (read-register "3"
 | Call | Effect |
 |------|--------|
 | `(define-language! name exts globs shebangs #:language-id)` | Define or override a language identity |
-| `(register-grammar! name grammar-path symbol highlights-path injections-path textobjects-path)` | Register an already-compiled tree-sitter grammar |
+| `(register-grammar! name grammar-path symbol highlights-path [injections-path [textobjects-path]])` | Register an already-compiled tree-sitter grammar |
 | `(language-has-grammar? name)` | `#t` if `name` has an attached grammar |
 
 `define-language!`/`register-grammar!` are covered with examples in [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language).
