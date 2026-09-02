@@ -625,6 +625,60 @@ fn install_recovers_from_a_parse_failed_for_the_same_generation() {
     );
 }
 
+// ── is_current ────────────────────────────────────────────────────────────
+
+/// The freshness predicate every caller gates on. After a `ParseFailed` for
+/// a generation, `parsed_gen` has advanced to it but `layers`/`tree_gen`
+/// still describe the *previous* generation — so `parsed_gen` alone reports
+/// "current" over a tree that predates the edit, which is exactly the state
+/// that lets a structural query hand `byte_to_char` an offset past the
+/// buffer's end.
+///
+/// Flip: drop the `tree_gen` half of `is_current` and the final assertion
+/// flips to `true`, restoring that bug.
+#[test]
+fn is_current_is_false_when_a_failed_parse_advanced_parsed_gen_over_older_layers() {
+    require_grammars(&["json"]);
+    let bundle = make_bundle("json", "tree_sitter_json");
+    let bid = fresh_bid();
+    let (mut syn, _req) = Syntax::attach(
+        Arc::clone(&bundle),
+        bid,
+        0,
+        &BufferText::from("{}\n"),
+        &empty_langs(),
+    );
+    // Gen 0 lands: layers installed, tree_gen == parsed_gen == 0.
+    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
+    assert!(syn.is_current(0), "gen 0 is genuinely current");
+
+    // An edit moves the text to gen 1, then gen 1's parse fails.
+    let rope_pre = ropey::Rope::from_str("{}\n");
+    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    b.retain(1);
+    b.insert("\"a\":1");
+    b.retain_rest();
+    syn.record_edit(1, &b.finish(), &rope_pre);
+    syn.install(
+        ParseDone {
+            bid,
+            text_gen: 1,
+            bundle: Arc::clone(&bundle),
+            outcome: ParseOutcome::ParseFailed,
+        },
+        1,
+    );
+
+    // `parsed_gen` alone would now claim gen 1 is current...
+    assert_eq!(syn.parsed_gen(), Some(1));
+    // ...but the committed layers still describe gen 0.
+    assert_eq!(syn.tree_gen(), 0);
+    assert!(
+        !syn.is_current(1),
+        "layers predate gen 1 — is_current must not report it as current"
+    );
+}
+
 // ── ensure_current ────────────────────────────────────────────────────────
 
 #[test]

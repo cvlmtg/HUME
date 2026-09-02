@@ -145,6 +145,14 @@ impl Editor {
 
             // frame_tick is a no-op once parsed_gen == text_gen — check that
             // before paying for the text clone and grammar-snapshot Arc bump.
+            //
+            // Deliberately `parsed_gen`, not `Syntax::is_current`: this asks
+            // "should another request be posted for this generation?", and a
+            // generation whose parse failed has already been attempted. The
+            // stronger `is_current` here would re-post it every frame forever.
+            // The on-demand path (`commands::structural::ensure_syntax_current`)
+            // asks the other question — "are the layers safe to read?" — and
+            // must use `is_current`.
             if buf
                 .syntax
                 .as_ref()

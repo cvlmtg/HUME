@@ -63,7 +63,10 @@ pub(in crate::editor) fn ensure_syntax_current(state: &mut EditorState, bid: Buf
     let Some(syn) = buf.syntax.as_ref() else {
         return;
     };
-    if syn.parsed_gen() == Some(text_gen) {
+    // Must be `is_current`, not `parsed_gen() == Some(text_gen)`: the weaker
+    // form returns early on a generation whose parse failed, leaving the
+    // stale-layer window `Syntax::ensure_current` exists to close wide open.
+    if syn.is_current(text_gen) {
         return;
     }
     let Some(layers) = syn.layers() else {

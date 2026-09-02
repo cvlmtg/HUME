@@ -371,6 +371,67 @@ fn structural_command_before_the_first_parse_lands_is_a_no_op() {
     assert_eq!(selected_text(&ed), "{\n    let y = 2;\n}");
 }
 
+/// A parse that *failed* for the current generation advances `parsed_gen`
+/// without advancing `tree_gen` or replacing `layers`. `ensure_syntax_current`
+/// must still reparse in that state: the committed layers describe the
+/// pre-edit text, so reading them would resolve spans against byte offsets
+/// the buffer no longer has.
+///
+/// Flip: gate `ensure_syntax_current` on `parsed_gen() == Some(text_gen)`
+/// instead of `Syntax::is_current` and it returns early here, leaving `m i f`
+/// to collect from the stale gen-0 tree — which selects the pre-edit body
+/// text (or trips `collect_hulls`'s `end_byte <= len_bytes` debug assert).
+#[test]
+fn structural_command_after_a_failed_parse_reparses_instead_of_reading_stale_layers() {
+    use hume_treesitter::parse_worker::{ParseDone, ParseOutcome};
+
+    let mut ed = rust_editor("fn target() {\n    -[l]>et y = 2;\n}\n");
+    let bid = ed.focused_buffer_id();
+
+    // `x d` deletes the `let` line, so the committed gen-0 layers no longer
+    // describe the buffer. `feed_key` bypasses `settle`, so nothing drains.
+    ed.feed_key(key('x'));
+    ed.feed_key(key('d'));
+    assert_eq!(ed.doc().text().to_string(), "fn target() {\n}\n");
+
+    // That generation's parse fails: parsed_gen advances, layers do not.
+    let text_gen = ed.state.buffers.get(bid).text_gen;
+    let bundle = {
+        let syn = ed.state.buffers.get(bid).syntax.as_ref().expect("syntax");
+        std::sync::Arc::clone(syn.bundle())
+    };
+    ed.state
+        .buffers
+        .get_mut(bid)
+        .syntax
+        .as_mut()
+        .expect("syntax")
+        .install(
+            ParseDone {
+                bid,
+                text_gen,
+                bundle,
+                outcome: ParseOutcome::ParseFailed,
+            },
+            text_gen,
+        );
+    let syn = ed.state.buffers.get(bid).syntax.as_ref().expect("syntax");
+    assert_eq!(syn.parsed_gen(), Some(text_gen));
+    assert!(
+        !syn.is_current(text_gen),
+        "layers must still predate the edit — otherwise this test proves nothing"
+    );
+
+    for ch in "mif".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(
+        selected_text(&ed),
+        "{\n}",
+        "m i f must reflect the post-edit tree, not the stale gen-0 layers"
+    );
+}
+
 // ── Dot-repeat ───────────────────────────────────────────────────────────────
 
 /// `m a f` `d` deletes the function under the cursor; `.` replays both steps

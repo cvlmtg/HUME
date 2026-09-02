@@ -267,16 +267,8 @@ impl Syntax {
         text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> Option<ChainBreak> {
-        // `parsed_gen` alone is not enough: `install`'s `ParseFailed` arm
-        // advances `parsed_gen` to the failed generation while leaving
-        // `layers`/`tree_gen` exactly where they were, so a failed parse
-        // after a broken edit chain would otherwise report "current" over a
-        // tree that predates the edit — and a caller reading it next (a
-        // structural query) can hand `byte_to_char` an offset past the
-        // buffer's own length. Requiring `tree_gen == text_gen` too closes
-        // that: a `ParseFailed` generation never satisfies it, so the retry
-        // below runs again on the next call instead of trusting stale layers.
-        if self.parsed_gen == Some(text_gen) && self.tree_gen == text_gen {
+        // See `is_current` for why `parsed_gen` alone is the wrong gate here.
+        if self.is_current(text_gen) {
             return None;
         }
 
@@ -461,6 +453,28 @@ impl Syntax {
 
     pub fn parsed_gen(&self) -> Option<u64> {
         self.parsed_gen
+    }
+
+    /// Whether the committed layers describe `text_gen` exactly — the
+    /// freshness question every caller actually means, and the gate
+    /// [`Self::ensure_current`] skips its reparse on.
+    ///
+    /// Both halves are load-bearing, and `parsed_gen` alone is the tempting
+    /// wrong answer: `install`'s `ParseFailed` arm advances `parsed_gen` to
+    /// the failed generation while leaving `layers`/`tree_gen` exactly where
+    /// they were. A caller gating on `parsed_gen` alone therefore reports
+    /// "current" over a tree that predates the edit, and the next reader — a
+    /// structural text-object query — hands `byte_to_char` an offset past the
+    /// buffer's own length. Requiring `tree_gen == text_gen` too closes that:
+    /// a `ParseFailed` generation never satisfies it, so the caller reparses
+    /// instead of trusting stale layers.
+    ///
+    /// Not the same question as `install`'s "already installed" guard, which
+    /// additionally requires `layers.is_some()` — that one asks whether this
+    /// generation's `Ok` result was already committed, not whether the layers
+    /// are current.
+    pub fn is_current(&self, text_gen: u64) -> bool {
+        self.parsed_gen == Some(text_gen) && self.tree_gen == text_gen
     }
 
     #[cfg(any(test, feature = "test-util"))]
