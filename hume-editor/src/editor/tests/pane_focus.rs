@@ -98,8 +98,8 @@ fn t4_tie_break_uses_center_distance_not_origin() {
     let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
     let pid_c = open_pane(&mut ed.state, &mut ed.view, bid);
     // Built directly (not via `split_leaf`, which now equalizes every
-    // same-axis split to 0.5) so `b`/`c` keep the deliberate short/tall
-    // asymmetry this tie-break test needs.
+    // same-axis split) so `b`/`c` keep the deliberate short/tall asymmetry
+    // this tie-break test needs.
     ed.view.layout = LayoutTree::Split {
         direction: Direction::Horizontal,
         ratio: 0.5,

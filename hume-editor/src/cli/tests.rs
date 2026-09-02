@@ -70,7 +70,12 @@ fn non_digit_suffix_is_a_literal_path() {
 #[test]
 fn bare_colon_number_with_no_path_is_literal() {
     let tmp = safe_tempdir();
-    // rsplit_once(':') on ":12" yields an empty remainder — no path to open.
+    // `tmp.path().join(":12")` is `/tmp/…/:12` — rsplit_once(':') leaves a
+    // remainder ending in the path separator (`/tmp/…/`), which
+    // `split_trailing_number`'s `rest.ends_with(is_separator)` check rejects
+    // as naming no file. A relative `":12"` (remainder truly empty, not just
+    // separator-terminated) exercises the check's other arm — see
+    // `relative_bare_colon_number_is_literal` below.
     let arg = tmp.path().join(":12");
     let parsed = parse_file_arg(&arg).unwrap();
     assert_eq!(parsed.path, arg);
