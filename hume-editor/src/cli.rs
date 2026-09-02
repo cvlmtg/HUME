@@ -12,10 +12,10 @@ use std::path::{Path, PathBuf};
 /// are not; `typed_goto_line` imports it from here so the two error
 /// messages can't drift apart.
 pub(crate) const LINE_NUMBERS_START_AT_1: &str = "line numbers start at 1";
-/// Error text for a `0` column in a CLI `path:line:col` position. No `:goto`
-/// counterpart to share with — `:goto` only ever takes a line — so this
-/// stays private to the CLI parser.
-const COLUMN_NUMBERS_START_AT_1: &str = "column numbers start at 1";
+/// Error text for a `0` column (a `CliPosition::grapheme_col`) in a CLI
+/// `path:line:col` position. No `:goto` counterpart to share with — `:goto`
+/// only ever takes a line — so this stays private to the CLI parser.
+const GRAPHEME_COL_NUMBERS_START_AT_1: &str = "column numbers start at 1";
 
 /// A 1-based startup cursor position, in the units the statusline shows:
 /// `line` counts buffer lines, `grapheme_col` counts grapheme clusters
@@ -45,7 +45,7 @@ pub struct FileArg {
 /// tolerated: `foo.rs:12:` behaves like `foo.rs:12`). Both numbers are
 /// 1-based; `0` in either position is an error naming both the offending
 /// argument and which number was rejected — [`LINE_NUMBERS_START_AT_1`]
-/// (matching `:goto`'s own contract) or [`COLUMN_NUMBERS_START_AT_1`].
+/// (matching `:goto`'s own contract) or [`GRAPHEME_COL_NUMBERS_START_AT_1`].
 pub fn parse_file_arg(raw: &Path) -> Result<FileArg, String> {
     let literal = || FileArg {
         path: raw.to_path_buf(),
@@ -83,7 +83,10 @@ pub fn parse_file_arg(raw: &Path) -> Result<FileArg, String> {
         return Err(format!("{}: {LINE_NUMBERS_START_AT_1}", raw.display()));
     }
     if grapheme_col == 0 {
-        return Err(format!("{}: {COLUMN_NUMBERS_START_AT_1}", raw.display()));
+        return Err(format!(
+            "{}: {GRAPHEME_COL_NUMBERS_START_AT_1}",
+            raw.display()
+        ));
     }
     Ok(FileArg {
         path: PathBuf::from(path_str),

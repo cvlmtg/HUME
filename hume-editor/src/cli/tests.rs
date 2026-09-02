@@ -113,7 +113,7 @@ fn column_zero_is_rejected() {
     let err = parse_file_arg(&arg).unwrap_err();
     // A valid line paired with a bad column must not blame the line — the
     // two 1-based contracts get distinct error text.
-    assert!(err.contains(COLUMN_NUMBERS_START_AT_1), "got: {err}");
+    assert!(err.contains(GRAPHEME_COL_NUMBERS_START_AT_1), "got: {err}");
     assert!(
         !err.contains(LINE_NUMBERS_START_AT_1),
         "line was valid — must not be blamed, got: {err}"
