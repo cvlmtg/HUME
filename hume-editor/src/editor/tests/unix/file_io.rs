@@ -516,6 +516,46 @@ fn apply_startup_positions_places_focused_cursor() {
     assert_eq!(ed.current_selections().primary().head(), 14);
 }
 
+/// The `cmd_view_center` call inside `apply_startup_positions` — and its
+/// ordering after `sync_viewport_dims` — has no coverage from the other
+/// startup-position tests, which all use files short enough that the whole
+/// buffer fits on screen and centering is a no-op. A file taller than the
+/// viewport is required to prove the viewport actually moved.
+#[test]
+fn apply_startup_positions_centers_the_focused_buffers_viewport() {
+    let f = safe_named_tempfile();
+    // 200 short lines — well past a 24-row terminal, and each far under 80
+    // columns so nothing soft-wraps regardless of the buffer's wrap-mode
+    // default, keeping the buffer-line-to-display-row mapping 1:1.
+    let content: String = (1..=200).map(|n| format!("line {n}\n")).collect();
+    std::fs::write(f.path(), &content).unwrap();
+    let canonical = std::fs::canonicalize(f.path()).unwrap();
+
+    let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
+    let bid = ed.focused_buffer_id();
+
+    ed.sync_viewport_dims(80, 24); // 24 rows -> 23 usable after the statusline
+    ed.queue_startup_position(
+        bid,
+        CliPosition {
+            line: 150,
+            grapheme_col: 1,
+        },
+    );
+    ed.apply_startup_positions();
+
+    // cmd_view_center's target row is height/2 = 23/2 = 11; cursor sits on
+    // (0-based) buffer line 149 with a 1:1 line-to-row mapping, so
+    // top_line = 149 - 11 = 138 — hand derived, not read back from the
+    // viewport under test. Fails if `apply_startup_positions` dropped the
+    // `cmd_view_center` call, or ran it before `sync_viewport_dims` (which
+    // would center against `Pane::new`'s 80x24 placeholder instead).
+    assert_eq!(
+        ed.view.panes[ed.state.focused_pane_id].viewport.top_line,
+        138
+    );
+}
+
 #[test]
 fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() {
     use hume_editing::selection::SelectionSet;

@@ -535,6 +535,30 @@ fn place_grapheme_column_on_empty_line_lands_on_newline() {
 }
 
 #[test]
+fn grapheme_col_in_line_is_the_inverse_of_place_grapheme_column() {
+    // Round-trip over a line with a combining sequence — the pairing the
+    // CLI `path:line:col` feature and the statusline's `line:col` both rest
+    // on: the statusline displays `grapheme_col_in_line(head) + 1`, and the
+    // CLI feeds a number read off that display straight back through
+    // `place_grapheme_column`. `char_col_in_line`/`place_char_column` have
+    // exactly this round-trip test already
+    // (`char_col_in_line_is_the_inverse_of_place_char_column`, above) — this
+    // is its grapheme-unit sibling, on a line where the two units disagree.
+    //
+    // "e\u{0301}x\n" — 'e' + combining acute (one cluster, grapheme col 0),
+    // then 'x' (grapheme col 1). char_col 1 would land mid-cluster (on the
+    // combining mark itself), so this line is required to actually exercise
+    // the grapheme/char distinction, not just restate the char-column test.
+    let buf = rope("e\u{0301}x\n");
+    let grapheme_col = 1;
+    let pos = place_grapheme_column(&buf, 0, grapheme_col);
+    assert_eq!(
+        crate::grapheme::grapheme_col_in_line(buf.slice(..), 0, pos),
+        grapheme_col
+    );
+}
+
+#[test]
 fn line_segments_yields_one_triple_per_line_covered() {
     // "abc\ndef\nghi\n" — a range spanning all of line 0's "abc" through
     // line 2's "gh" covers content on three lines.

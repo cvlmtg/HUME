@@ -83,6 +83,18 @@ fn bare_colon_number_with_no_path_is_literal() {
 }
 
 #[test]
+fn relative_bare_colon_number_is_literal() {
+    // A *relative* ":12" (no directory component at all, unlike
+    // `tmp.path().join(":12")` above) is the shape that actually leaves
+    // `split_trailing_number`'s `rsplit_once(':')` remainder empty —
+    // exercising `rest.is_empty()` rather than `rest.ends_with(is_separator)`.
+    let arg = PathBuf::from(":12");
+    let parsed = parse_file_arg(&arg).unwrap();
+    assert_eq!(parsed.path, arg);
+    assert_eq!(parsed.pos, None);
+}
+
+#[test]
 fn line_zero_is_rejected() {
     let tmp = safe_tempdir();
     let arg = tmp.path().join("foo.rs:0");
@@ -123,6 +135,24 @@ fn a_real_file_named_with_a_colon_opens_literally() {
     assert_eq!(
         parsed.pos, None,
         "an existing literal path must never be split"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_broken_symlink_named_with_a_colon_opens_literally() {
+    // `symlink_metadata` (not `.exists()`, which follows symlinks and would
+    // report this one absent) is the deliberate disambiguation probe here —
+    // a dangling symlink still names a path the user chose on disk, so it
+    // must win over splitting the same as a real file does.
+    let tmp = safe_tempdir();
+    let path = tmp.path().join("weird:12");
+    std::os::unix::fs::symlink(tmp.path().join("does-not-exist-target"), &path).unwrap();
+    let parsed = parse_file_arg(&path).unwrap();
+    assert_eq!(parsed.path, path);
+    assert_eq!(
+        parsed.pos, None,
+        "a broken symlink still counts as the user's chosen path — must never be split"
     );
 }
 
