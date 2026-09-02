@@ -1,5 +1,6 @@
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("HUME_VERSION_SUFFIX"));
 
+pub mod cli;
 pub(crate) mod editor;
 mod lock_ext;
 pub mod settings;
@@ -98,7 +99,7 @@ pub fn run_keys(
 /// are safe to run even if `init` was never reached — every escape sequence
 /// `restore` emits is a documented no-op for a mode that was never entered.
 pub fn run(
-    file_paths: Vec<std::path::PathBuf>,
+    files: Vec<cli::FileArg>,
     config_path: Option<std::path::PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let shared = hume_platform::terminal::create()?;
@@ -134,12 +135,12 @@ pub fn run(
         eprintln!("hume: failed to start terminator: {e}");
     }
 
-    let (first, rest) = match file_paths.split_first() {
+    let (first, rest) = match files.split_first() {
         Some((first, rest)) => (Some(first.clone()), rest),
         None => (None, &[][..]),
     };
 
-    let mut editor = editor::Editor::open(first, wake)?;
+    let mut editor = editor::Editor::open(first.as_ref().map(|f| f.path.clone()), wake)?;
     editor.attach_terminate_flag(terminate.clone());
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
     editor.set_kitty_support(kitty_enabled);
@@ -150,8 +151,21 @@ pub fn run(
         editor.set_config_path(path);
     }
     editor.init_scripting(&mut Default::default());
-    // Open remaining paths after scripting init so OnBufferOpen hooks fire.
-    editor.open_extra_files(rest);
+    // Collect (buffer, position) pairs before opening the trailing files:
+    // `first`'s buffer is already open via `Editor::open` above, so its id
+    // is read straight off the focused buffer. Open remaining paths after
+    // scripting init so OnBufferOpen hooks fire.
+    let mut startup_positions = Vec::new();
+    if let Some(pos) = first.as_ref().and_then(|f| f.pos) {
+        startup_positions.push((editor.focused_buffer_id(), pos));
+    }
+    let rest_paths: Vec<std::path::PathBuf> = rest.iter().map(|f| f.path.clone()).collect();
+    let rest_bids = editor.open_extra_files(&rest_paths);
+    for (arg, bid) in rest.iter().zip(rest_bids) {
+        if let (Some(pos), Some(bid)) = (arg.pos, bid) {
+            startup_positions.push((bid, pos));
+        }
+    }
     // No explicit startup drain: work queued during init (OnBufferOpen,
     // OnLanguageSet, etc.) sits in `pending_work` until `Editor::run`'s loop
     // reaches its first `settle()` — which now runs before the first
@@ -164,6 +178,12 @@ pub fn run(
         editor.state.settings.mouse_select,
         kitty_enabled,
     )?;
+    // After `terminal::init`, not before: centring a startup position reads
+    // the focused pane's viewport height, which `apply_startup_positions`
+    // itself syncs from a real terminal size — doing this any earlier would
+    // center against `Pane::new`'s 80x24 placeholder instead.
+    let (term_width, term_height) = term.size()?;
+    editor.apply_startup_positions(&startup_positions, term_width, term_height);
     let result = editor.run(&mut term);
     // Restore the terminal (cursor shape/colour, leave alt-screen, cooked
     // mode) before the LSP grace window below, not after: `lsp_shutdown_all`

@@ -56,6 +56,11 @@ pub fn place_char_column(text: &BufferText, line: usize, char_col: usize) -> usi
     hume_rope::lines::place_char_column(text.rope(), line, char_col)
 }
 
+/// See [`hume_rope::lines::place_grapheme_column`].
+pub fn place_grapheme_column(text: &BufferText, line: usize, grapheme_col: usize) -> usize {
+    hume_rope::lines::place_grapheme_column(text.rope(), line, grapheme_col)
+}
+
 /// See [`hume_rope::lines::char_to_line_byte`].
 pub fn char_to_line_byte(text: &BufferText, char_pos: usize) -> (usize, usize) {
     hume_rope::lines::char_to_line_byte(text.rope(), char_pos)

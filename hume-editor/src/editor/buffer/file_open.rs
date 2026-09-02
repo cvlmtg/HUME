@@ -96,24 +96,32 @@ impl Editor {
     /// of erroring (see `resolve_open_path`) and reports Info `[new file]`,
     /// matching `:e` — otherwise a mistyped trailing CLI argument would
     /// silently open an empty buffer with no feedback at all.
-    pub(crate) fn open_extra_files(&mut self, paths: &[PathBuf]) {
-        for path in paths {
-            match self.try_open_extra(path) {
+    ///
+    /// Returns the resulting buffer id per input path, `None` where opening
+    /// failed (index-aligned with `paths`) — callers that need to act on the
+    /// buffer a particular CLI argument opened (e.g. placing a startup
+    /// cursor) can zip this back against their own arg list.
+    pub(crate) fn open_extra_files(&mut self, paths: &[PathBuf]) -> Vec<Option<BufferId>> {
+        paths
+            .iter()
+            .map(|path| match self.try_open_extra(path) {
                 Ok((bid, is_new)) => {
                     let buf = self.state.buffers.get(bid);
                     if is_new && buf.is_new_file() {
                         let name = buf.display_name();
                         self.report(Severity::Info, format!("{name} [new file]"));
                     }
+                    Some(bid)
                 }
                 Err(e) => {
                     self.report(
                         Severity::Warning,
                         format!("Failed to open {}: {e}", path.display()),
                     );
+                    None
                 }
-            }
-        }
+            })
+            .collect()
     }
 
     /// Resolve a path argument to an open buffer, opening the file if it isn't

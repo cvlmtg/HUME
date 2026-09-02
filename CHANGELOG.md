@@ -45,6 +45,7 @@
 
 ### Configuration & options
 - New `--config <FILE>` flag loads an arbitrary Steel config file instead of the default `init.scm`; `:reload-config` re-evaluates the same file. Themes and the data directory still resolve from the standard directories. Not valid with `--keys`.
+- Command-line file arguments now accept a trailing `:LINE` or `:LINE:COLUMN` position — `hume src/main.rs:42:5` opens the file with the cursor placed there, matching the `file:line:col` shape most tools print in diagnostics. A path that exists on disk exactly as typed always opens as-is, so a file genuinely named with a colon is unaffected.
 - New buffer option `word-chars` (Vim's `iskeyword`, minus the range syntax): extra characters counted as part of a word. Ships with no default set — configure it per language from an `on-language-set` hook (see the manual's [Configuration](https://cvlmtg.github.io/HUME/configuration.html) page).
 
 ### Plugins

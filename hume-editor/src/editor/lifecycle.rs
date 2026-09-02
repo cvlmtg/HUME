@@ -7,6 +7,7 @@ use termina::event::{Event as TerminalEvent, KeyEvent, KeyEventKind};
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, RenderContext};
 use hume_engine::types::EditorMode;
+use hume_ops::MotionMode;
 
 use hume_platform::screen::Screen;
 use hume_platform::terminal::SharedTerm;
@@ -232,6 +233,58 @@ impl Editor {
     /// override is read once resolution starts.
     pub(crate) fn set_config_path(&mut self, path: std::path::PathBuf) {
         self.config_path_override = Some(path);
+    }
+
+    /// Seed `bid`'s cursor in the focused pane from a 1-based CLI position
+    /// (`hume foo.rs:12:24`), in the grapheme-column units the statusline
+    /// shows. No jump entry is recorded — a startup position is the
+    /// buffer's origin, not a jump away from one, so `Ctrl+o` has nothing to
+    /// return to here (unlike `:goto` and `goto-location!`, which both do).
+    fn place_startup_cursor(&mut self, bid: BufferId, pos: crate::cli::CliPosition) {
+        use hume_editing::selection::{Selection, SelectionSet};
+
+        let pid = self.state.focused_pane_id;
+        let text = self.state.buffers.get(bid).text();
+        let line = (pos.line - 1).min(text.last_content_line());
+        let char_pos = hume_editing::lines::place_grapheme_column(text, line, pos.grapheme_col - 1);
+
+        super::pane_state::ensure(&mut self.state.panes.state, &self.state.buffers, pid, bid);
+        self.state.panes.state[pid][bid].selections =
+            SelectionSet::single(Selection::collapsed(char_pos));
+    }
+
+    /// Apply every startup cursor placement `hume_editor::run` collected
+    /// from CLI file arguments (`hume a.rs:10 b.rs:20`), then center the
+    /// focused buffer's viewport on its cursor the same way `zz`/
+    /// `goto-location!` do.
+    ///
+    /// Must run after a real terminal size is known but before `run`'s event
+    /// loop starts: centring reads the focused pane's height, and before
+    /// the loop's own first `sync_viewport_dims` call that height is still
+    /// `Pane::new`'s 80x24 placeholder — calling it here first is what makes
+    /// a startup line past that placeholder height still center correctly
+    /// on the very first frame.
+    pub(crate) fn apply_startup_positions(
+        &mut self,
+        placements: &[(BufferId, crate::cli::CliPosition)],
+        terminal_width: u16,
+        terminal_height: u16,
+    ) {
+        if placements.is_empty() {
+            return;
+        }
+        self.sync_viewport_dims(terminal_width, terminal_height);
+
+        let focused_bid = self.focused_buffer_id();
+        let mut center_focused = false;
+        for &(bid, pos) in placements {
+            self.place_startup_cursor(bid, pos);
+            center_focused |= bid == focused_bid;
+        }
+        if center_focused {
+            super::commands::cmd_view_center(&mut self.state, &mut self.view, 1, MotionMode::Move)
+                .expect("cmd_view_center takes no path that can fail");
+        }
     }
 
     /// Process one key event — dispatch it, sync the search cache, drain any

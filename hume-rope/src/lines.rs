@@ -286,6 +286,30 @@ pub fn place_char_column(rope: &Rope, line: usize, char_col: usize) -> usize {
     }
 }
 
+/// Place the cursor at `grapheme_col` **grapheme clusters** from the start of
+/// `line` (0-based), clamping to the line's last content cluster.
+///
+/// The grapheme-unit sibling of [`place_char_column`], for callers whose
+/// column came from somewhere a user reads it back — the statusline's
+/// `line:col`, or a CLI `path:line:col` argument — rather than from an
+/// addressing protocol. A char-indexed placement would land wrong on any
+/// line with a multi-char grapheme (`é` = `e` + U+0301, a ZWJ emoji):
+/// `place_char_column` counts each combining char as its own column, this
+/// counts the whole cluster as one, matching what the caller displayed.
+pub fn place_grapheme_column(rope: &Rope, line: usize, grapheme_col: usize) -> usize {
+    let line_start = rope.line_to_char(line);
+    let content_end = line_content_end(rope, line);
+    let mut pos = line_start;
+    for _ in 0..grapheme_col {
+        let next = crate::grapheme::next_grapheme_boundary(rope.slice(..), pos);
+        if next > content_end || next == pos {
+            break;
+        }
+        pos = next;
+    }
+    pos
+}
+
 /// Convert a char-offset position to a line-relative byte offset.
 ///
 /// Returns `(line_idx, byte_in_line)` — the byte offset from the start of

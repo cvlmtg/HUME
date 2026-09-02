@@ -487,6 +487,124 @@ fn open_extra_files_opens_all_paths() {
     );
 }
 
+// ── CLI startup cursor positions ─────────────────────────────────────────
+
+#[test]
+fn apply_startup_positions_places_focused_cursor() {
+    use crate::cli::CliPosition;
+
+    let f = safe_named_tempfile();
+    // "line one\n" is 9 chars, so line 1 (0-based) starts at char 9; column
+    // 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two" — hand
+    // counted, not derived from `place_grapheme_column` itself.
+    std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
+    let canonical = std::fs::canonicalize(f.path()).unwrap();
+
+    let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
+    let bid = ed.focused_buffer_id();
+
+    ed.apply_startup_positions(
+        &[(
+            bid,
+            CliPosition {
+                line: 2,
+                grapheme_col: 6,
+            },
+        )],
+        80,
+        24,
+    );
+
+    assert_eq!(ed.current_selections().primary().head(), 14);
+}
+
+#[test]
+fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() {
+    use crate::cli::CliPosition;
+    use hume_editing::selection::SelectionSet;
+
+    let f1 = safe_named_tempfile();
+    let f2 = safe_named_tempfile();
+    std::fs::write(f1.path(), "hello\n").unwrap();
+    // "alpha\n" (6 chars) then "beta\n" (5 chars) — line 2 (0-based) starts
+    // at char 11; column 2 (grapheme index 1) lands one grapheme in.
+    std::fs::write(f2.path(), "alpha\nbeta\ngamma\n").unwrap();
+    let canonical1 = std::fs::canonicalize(f1.path()).unwrap();
+    let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
+
+    let mut ed = Editor::open(Some(canonical1), std::sync::Arc::new(|| {})).unwrap();
+    let focused_bid = ed.focused_buffer_id();
+    let extra_bid = ed
+        .open_extra_files(&[canonical2])
+        .into_iter()
+        .next()
+        .unwrap()
+        .unwrap();
+
+    ed.apply_startup_positions(
+        &[(
+            extra_bid,
+            CliPosition {
+                line: 3,
+                grapheme_col: 2,
+            },
+        )],
+        80,
+        24,
+    );
+
+    let pid = ed.state.focused_pane_id;
+    assert_eq!(
+        ed.state.panes.state[pid][extra_bid].selections,
+        SelectionSet::single(hume_editing::selection::Selection::collapsed(12)),
+        "non-focused buffer's parked pane state must hold the requested position"
+    );
+    assert_eq!(
+        ed.focused_buffer_id(),
+        focused_bid,
+        "a startup placement on another buffer must not move focus"
+    );
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        0,
+        "the focused buffer, which got no placement, must be untouched"
+    );
+}
+
+#[test]
+fn apply_startup_positions_clamps_a_line_past_the_end() {
+    use crate::cli::CliPosition;
+
+    let f = safe_named_tempfile();
+    // "line one\n" and "line two\n" are 9 chars each, so the last content
+    // line ("last line") starts at char 18 — hand counted, distinct from
+    // both 0 and any line-999-sized offset, so a wrong clamp (or none)
+    // can't coincidentally match.
+    std::fs::write(f.path(), "line one\nline two\nlast line\n").unwrap();
+    let canonical = std::fs::canonicalize(f.path()).unwrap();
+
+    let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
+    let bid = ed.focused_buffer_id();
+
+    ed.apply_startup_positions(
+        &[(
+            bid,
+            CliPosition {
+                line: 999,
+                grapheme_col: 1,
+            },
+        )],
+        80,
+        24,
+    );
+
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        18,
+        "a line past the buffer's end must clamp to the last content line, not error"
+    );
+}
+
 /// `hume newfile.txt` (the *first* CLI file argument, `Editor::open`'s own
 /// `Buffer::from_file(path)?` branch — distinct from `open_extra_files`,
 /// which only handles trailing args) must open a new-file buffer instead of

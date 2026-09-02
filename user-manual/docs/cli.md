@@ -12,7 +12,9 @@ hume [OPTIONS] [FILE...]
 
 | Argument | Description |
 |----------|-------------|
-| `FILE...` | One or more files to open. With no arguments, HUME opens a scratch buffer named `*scratch*`. |
+| `FILE...` | One or more files to open, each optionally suffixed with `:LINE` or `:LINE:COLUMN` to place the cursor there on open — e.g. `src/main.rs:42:5`. Both numbers are 1-based, matching the `line:col` the statusline shows. With no arguments, HUME opens a scratch buffer named `*scratch*`. |
+
+A path that exists on disk exactly as typed always opens as-is — a file genuinely named `notes:2024` is never split. Only when the literal path doesn't exist is a trailing position peeled off, so a nonexistent `foo.rs:42` opens `foo.rs` at line 42 (a lone trailing colon, `foo.rs:42:`, is tolerated too). This makes it safe to paste a `file:line:col` diagnostic from a compiler, linter, or `grep` straight onto the command line.
 
 ## Options
 
@@ -33,6 +35,8 @@ HUME has no flags for overriding the log level, theme, or tutor. The runtime dir
 ```sh
 hume README.md                # open a file
 hume src/a.rs src/b.rs        # open multiple files
+hume src/main.rs:42           # open at line 42
+hume src/main.rs:42:5         # open at line 42, column 5
 hume                          # scratch buffer
 hume --version
 hume --keys 'dwwx' --output out.txt in.txt   # headless replay

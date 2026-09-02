@@ -36,7 +36,7 @@ enum Mode {
         output: PathBuf,
     },
     Normal {
-        files: Vec<PathBuf>,
+        files: Vec<hume_editor::cli::FileArg>,
         config: Option<PathBuf>,
     },
 }
@@ -92,10 +92,12 @@ fn resolve(cli: Cli) -> Result<Mode, String> {
                 }
                 None => None,
             };
-            Ok(Mode::Normal {
-                files: cli.files,
-                config,
-            })
+            let files = cli
+                .files
+                .iter()
+                .map(|p| hume_editor::cli::parse_file_arg(p))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Mode::Normal { files, config })
         }
     }
 }
@@ -125,6 +127,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hume_editor::cli::FileArg;
 
     // ── clap layer: parse from argv strings ──────────────────────────────────
 
@@ -239,11 +242,58 @@ mod tests {
     #[test]
     fn resolve_normal_carries_all_files() {
         let files = vec![PathBuf::from("x.rs"), PathBuf::from("y.rs")];
-        let mode = resolve(make_normal(files.clone(), None)).expect("normal mode should succeed");
+        let mode = resolve(make_normal(files, None)).expect("normal mode should succeed");
         let Mode::Normal { files: got, .. } = mode else {
             panic!("expected Mode::Normal");
         };
-        assert_eq!(got, files);
+        assert_eq!(
+            got,
+            vec![
+                FileArg {
+                    path: PathBuf::from("x.rs"),
+                    pos: None
+                },
+                FileArg {
+                    path: PathBuf::from("y.rs"),
+                    pos: None
+                },
+            ]
+        );
+    }
+
+    // `resolve` runs every positional file through `cli::parse_file_arg` —
+    // this pins that wiring at the `resolve` layer, complementing
+    // `cli::tests`' coverage of the parser itself.
+    #[test]
+    fn resolve_normal_splits_a_line_column_suffix() {
+        let files = vec![PathBuf::from("does-not-exist.rs:12:24")];
+        let mode = resolve(make_normal(files, None)).expect("normal mode should succeed");
+        let Mode::Normal { files: got, .. } = mode else {
+            panic!("expected Mode::Normal");
+        };
+        assert_eq!(
+            got,
+            vec![FileArg {
+                path: PathBuf::from("does-not-exist.rs"),
+                pos: Some(hume_editor::cli::CliPosition {
+                    line: 12,
+                    grapheme_col: 24
+                })
+            }]
+        );
+    }
+
+    // A `--keys`-mode input path is the golf harness's literal single
+    // argument, never a `path:line:col` diagnostic pasted onto the command
+    // line — `resolve` must leave it untouched by `cli::parse_file_arg`.
+    #[test]
+    fn resolve_headless_input_path_is_never_split() {
+        let cli = make_headless(vec![PathBuf::from("weird:12")]);
+        let mode = resolve(cli).expect("one input file should succeed");
+        let Mode::Headless { input, .. } = mode else {
+            panic!("expected Mode::Headless");
+        };
+        assert_eq!(input, PathBuf::from("weird:12"));
     }
 
     #[test]

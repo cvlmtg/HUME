@@ -611,7 +611,7 @@ static TEST_GLOBALS: TestGlobals = TestGlobals::new();
 /// created during their lifetime) should use this instead of a bare
 /// `tempfile::tempdir()`. Safe to call from inside a held guard on the same
 /// thread — [`TestGlobals::enter`] is reentrant.
-fn safe_tempdir() -> tempfile::TempDir {
+pub(crate) fn safe_tempdir() -> tempfile::TempDir {
     let _lock = TEST_GLOBALS.enter();
     tempfile::tempdir().expect("tempdir")
 }
@@ -619,7 +619,7 @@ fn safe_tempdir() -> tempfile::TempDir {
 /// [`safe_tempdir`]'s twin for a single named file — for a test that keeps
 /// the `NamedTempFile` itself alive (e.g. to reopen or persist it), rather
 /// than [`temp_file`]'s write-content-and-hand-back-a-path shape.
-fn safe_named_tempfile() -> tempfile::NamedTempFile {
+pub(crate) fn safe_named_tempfile() -> tempfile::NamedTempFile {
     let _lock = TEST_GLOBALS.enter();
     tempfile::NamedTempFile::new().expect("named tempfile")
 }

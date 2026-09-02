@@ -492,6 +492,48 @@ fn place_char_column_on_empty_line_lands_on_newline() {
     assert_eq!(place_char_column(&buf, 1, 3), 2);
 }
 
+// ── place_grapheme_column ────────────────────────────────────────────────
+
+#[test]
+fn place_grapheme_column_within_line() {
+    // "hello\nworld\n" — grapheme col 2 of line 1 lands on 'r' (offset 8),
+    // same as the char-column case here since every grapheme is one char.
+    let buf = rope("hello\nworld\n");
+    assert_eq!(place_grapheme_column(&buf, 1, 2), 8);
+}
+
+#[test]
+fn place_grapheme_column_counts_combining_marks_as_one_column() {
+    // "e\u{0301}x\n" — 'e' + combining acute (one grapheme cluster) then 'x'.
+    // Column 0 is the cluster start; column 1 is 'x'; char_col would have
+    // landed column 1 on the combining mark itself instead.
+    let buf = rope("e\u{0301}x\n");
+    assert_eq!(place_grapheme_column(&buf, 0, 0), 0);
+    assert_eq!(place_grapheme_column(&buf, 0, 1), 2);
+}
+
+#[test]
+fn place_grapheme_column_overshoot_clamps_to_line_content_end() {
+    // "hi\nhello\n" — line 0 only has 2 grapheme clusters; column 10 clamps
+    // to 'i' (offset 1).
+    let buf = rope("hi\nhello\n");
+    assert_eq!(place_grapheme_column(&buf, 0, 10), 1);
+}
+
+#[test]
+fn place_grapheme_column_zero_is_line_start() {
+    let buf = rope("hello\nworld\n");
+    assert_eq!(place_grapheme_column(&buf, 1, 0), 6);
+}
+
+#[test]
+fn place_grapheme_column_on_empty_line_lands_on_newline() {
+    // "a\n\nb\n" — line 1 is empty; any grapheme column lands on its '\n'
+    // (offset 2).
+    let buf = rope("a\n\nb\n");
+    assert_eq!(place_grapheme_column(&buf, 1, 3), 2);
+}
+
 #[test]
 fn line_segments_yields_one_triple_per_line_covered() {
     // "abc\ndef\nghi\n" — a range spanning all of line 0's "abc" through
