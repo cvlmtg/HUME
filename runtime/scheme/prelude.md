@@ -24,7 +24,6 @@ it.
 ## What it defines
 
 Five forms: `bind-keys!`, `bind-keys-extend!`, `unbind-keys!`, `define-language!`,
-`register-grammar!`. For signatures, keyword arguments, and usage examples, see the user
-manual:
+`register-grammar!`. For signatures and usage examples, see the user manual:
 - [Configuration — Key bindings](https://cvlmtg.github.io/HUME/configuration.html#key-bindings)
 - [Syntax Highlighting — Teach HUME a new language](https://cvlmtg.github.io/HUME/syntax-highlighting.html#teach-hume-a-new-language)

@@ -560,14 +560,42 @@ though every *production* call site (`runtime/scheme/grammars.scm`,
 `runtime/plugins/core/plum/grammars.scm`) already supplies both keywords
 explicitly and was unaffected.
 
+**A second, independent trigger** surfaced while fixing the above: a plain
+`define` with a `. rest` parameter (no `#:kw` sugar at all) that scans `rest`
+at runtime for keyword markers *also* miscompiles — not on nesting, but when
+two or more differently-shaped keyword calls to the same function appear in
+one compiled program (`FreeIdentifier: ... ##restN`, confirmed the same way,
+directly against `Engine`). `hume-scripting`'s `init_scripting`
+(`hume-editor/src/editor/scripting_setup.rs`) compiles `prelude.scm`,
+`languages.scm`, `grammars.scm`, and a user's `init.scm` as *separate*
+programs, so this specific trigger is scoped to keyword calls within a
+single file — but nothing stops a user's own `init.scm` from registering two
+grammars with different keyword combinations in one file and hitting it with
+no warning. This means the prevention rule below (spell out every keyword at
+a nested call site) is not a complete safety net for `#:kw`-style call syntax
+in general — it covers only the first trigger.
+
+**Resolution:** `register-grammar!` was reverted to a pure positional
+`define-syntax` macro (three arms, extending the pre-`cafc071a` two-arm
+form by one more optional trailing argument for the textobjects path) — no
+`#:kw` sugar and no bare `#:keyword val` tokens in its call syntax at all,
+which is immune to both triggers simultaneously rather than working around
+either one. The two test call sites above no longer need to spell out
+anything explicit; both keywords were dropped along with the sugar. See
+`runtime/scheme/prelude.scm` and `user-manual/docs/syntax-highlighting.md`.
+
 **Prevention rule:** A `#:kw`-sugared Steel function's call site should
 spell out every keyword explicitly when the call itself is nested inside
 another keyword-arg call's argument position (a lambda passed to
 `define-command!`, `debounce`, a picker callback, etc.) — omission is safe
-at a top-level or otherwise unnested call site. This is a workaround for a
-third-party interpreter limitation, not a HUME style rule to apply blindly:
-prefer it only where the nesting pattern actually occurs, and re-check
-against a newer `steel-core` release before assuming it still applies.
+at a top-level or otherwise unnested call site, *for that one trigger only*
+(see the second trigger above, which this does not prevent). This is a
+workaround for a third-party interpreter limitation, not a HUME style rule
+to apply blindly: for a form users can call from inside `define-command!`,
+prefer a pure positional `define-syntax` macro over `#:kw` sugar outright,
+as `register-grammar!` now does, rather than relying on callers to spell
+keywords out correctly. Re-check both findings against a newer `steel-core`
+release before assuming either still applies.
 
 **Files:** `hume-editor/src/editor/tests/unix/scripting_grammar.rs`
-(both call sites), `runtime/scheme/prelude.scm` (`register-grammar!`).
+(all affected call sites), `runtime/scheme/prelude.scm` (`register-grammar!`).

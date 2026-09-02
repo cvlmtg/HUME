@@ -119,29 +119,43 @@ The fields are, in order:
 - language name (define it with `define-language!` first)
 - path to the compiled library
 - the C symbol that library exposes (each grammar's repo documents this)
-- a highlight query file.
+- a highlight query file
+- optionally, an injections query file
+- optionally, a textobjects query file.
 
-If `my-lang` embeds other languages (like Markdown's fenced code blocks), add `#:injections` pointing at its injections query:
-
-```scheme
-(register-grammar! "my-lang"
-  "/path/to/my_grammar.so"
-  "tree_sitter_my_lang"
-  "/path/to/highlights.scm"
-  #:injections "/path/to/injections.scm")
-```
-
-If it defines structural text objects and navigation (functions, classes, arguments, …), add `#:textobjects` pointing at its textobjects query:
+If `my-lang` embeds other languages (like Markdown's fenced code blocks), add its injections query as a fifth argument:
 
 ```scheme
 (register-grammar! "my-lang"
   "/path/to/my_grammar.so"
   "tree_sitter_my_lang"
   "/path/to/highlights.scm"
-  #:textobjects "/path/to/textobjects.scm")
+  "/path/to/injections.scm")
 ```
 
-Both keywords can be combined. Omit either for a language with nothing to offer there.
+If it also defines structural text objects and navigation (functions, classes, arguments, …), add its textobjects query as a sixth:
+
+```scheme
+(register-grammar! "my-lang"
+  "/path/to/my_grammar.so"
+  "tree_sitter_my_lang"
+  "/path/to/highlights.scm"
+  "/path/to/injections.scm"
+  "/path/to/textobjects.scm")
+```
+
+A language with textobjects but no injections passes `#f` for the fifth argument to reach the sixth:
+
+```scheme
+(register-grammar! "my-lang"
+  "/path/to/my_grammar.so"
+  "tree_sitter_my_lang"
+  "/path/to/highlights.scm"
+  #f
+  "/path/to/textobjects.scm")
+```
+
+Omit both trailing arguments for a language with nothing to offer there.
 
 ## Manage installed grammars
 

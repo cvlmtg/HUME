@@ -21,7 +21,11 @@
                           #:language-id [language-id #f])
   (%define-language! name exts globs shebangs language-id))
 
-(define (register-grammar! name grammar-path symbol highlights-path
-                           #:injections [injections-path #f]
-                           #:textobjects [textobjects-path #f])
-  (%register-grammar! name grammar-path symbol highlights-path injections-path textobjects-path))
+(define-syntax register-grammar!
+  (syntax-rules ()
+    ((_ name grammar-path symbol highlights-path)
+     (%register-grammar! name grammar-path symbol highlights-path #f #f))
+    ((_ name grammar-path symbol highlights-path injections-path)
+     (%register-grammar! name grammar-path symbol highlights-path injections-path #f))
+    ((_ name grammar-path symbol highlights-path injections-path textobjects-path)
+     (%register-grammar! name grammar-path symbol highlights-path injections-path textobjects-path))))
