@@ -188,6 +188,35 @@ fn goto_prev_function_from_inside_a_function_selects_that_function() {
     assert_eq!(selected_text(&ed), "fn beta() {\n    2;\n}");
 }
 
+/// `count` 2 backward: the first step lands on the enclosing function (the
+/// cursor's own, per the start-keyed backward rule above), the second step
+/// re-searches from *that* function's start and so does not re-select it.
+#[test]
+fn goto_prev_function_with_count_two_advances_two_objects_backward() {
+    let mut ed = rust_editor(
+        "fn first() {\n    1;\n}\n\nfn second() {\n    2;\n}\n\nfn third() {\n    -[3]>;\n}\n",
+    );
+    ed.execute_keymap_command(
+        "goto-prev-function".into(),
+        Some(2),
+        false,
+        ArgSource::Keymap,
+    );
+    assert_eq!(selected_text(&ed), "fn second() {\n    2;\n}");
+}
+
+/// Extend mode keeps the anchor pinned; only the head moves backward to the
+/// found object's start.
+#[test]
+fn goto_prev_function_extend_keeps_the_anchor() {
+    let mut ed = rust_editor("fn alpha() {\n    1;\n}\n\nfn beta() {\n    -[2]>;\n}\n");
+    let anchor_before = ed.current_selections().primary().anchor();
+    ed.execute_keymap_command("goto-prev-function".into(), None, true, ArgSource::Keymap);
+    let sel = ed.current_selections().primary();
+    assert_eq!(sel.anchor(), anchor_before);
+    assert_ne!(sel.head(), anchor_before);
+}
+
 /// `count` 2 from before the first function lands on the second, not the
 /// third — each count step re-searches from the previous step's own end.
 #[test]
@@ -401,4 +430,141 @@ fn inner_argument_in_a_scratch_buffer_with_no_grammar_still_works() {
         ed.handle_key(key(ch));
     }
     assert_eq!(state(&ed), "foo(-[aaa]>, bbb);\n");
+}
+
+// ── Other kinds: class / comment / test / entry ─────────────────────────────
+//
+// Only `Function` and `Parameter` get exercised above; these cover the
+// remaining four `STRUCTURAL_OBJECTS` rows through the real Helix rust
+// `textobjects.scm`, one representative select + navigate case per kind.
+
+#[test]
+fn inner_class_selects_the_body_inside_a_struct() {
+    let mut ed = rust_editor("struct Widget {\n    -[n]>ame: String,\n}\n");
+    for ch in "mit".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(selected_text(&ed), "{\n    name: String,\n}");
+}
+
+#[test]
+fn around_class_on_a_struct_includes_the_declaration() {
+    let mut ed = rust_editor("struct Widget {\n    -[n]>ame: String,\n}\n");
+    for ch in "mat".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(selected_text(&ed), "struct Widget {\n    name: String,\n}");
+}
+
+#[test]
+fn goto_next_class_selects_the_whole_next_struct() {
+    let mut ed =
+        rust_editor("-[/]>/ c\nstruct Alpha {\n    a: i32,\n}\n\nstruct Beta {\n    b: i32,\n}\n");
+    ed.execute_keymap_command("goto-next-class".into(), None, false, ArgSource::Keymap);
+    assert_eq!(selected_text(&ed), "struct Alpha {\n    a: i32,\n}");
+    let sel = ed.current_selections().primary();
+    assert_eq!(sel.head(), sel.start());
+}
+
+/// `comment.inside` captures a single `line_comment` node with no grouping
+/// quantifier (unlike `comment.around`'s `(line_comment)+`) — `m i c` selects
+/// only the line under the cursor, never the whole contiguous block.
+#[test]
+fn inner_comment_selects_only_the_line_at_the_cursor() {
+    let mut ed = rust_editor("// line -[o]>ne\n// line two\nstruct S {}\n");
+    for ch in "mic".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(selected_text(&ed), "// line one");
+}
+
+#[test]
+fn around_comment_selects_the_whole_contiguous_block() {
+    let mut ed = rust_editor("// line -[o]>ne\n// line two\nstruct S {}\n");
+    for ch in "mac".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(selected_text(&ed), "// line one\n// line two");
+}
+
+#[test]
+fn goto_next_comment_selects_the_whole_block() {
+    let mut ed = rust_editor("-[s]>truct S {}\n\n// line one\n// line two\n");
+    ed.execute_keymap_command("goto-next-comment".into(), None, false, ArgSource::Keymap);
+    assert_eq!(selected_text(&ed), "// line one\n// line two");
+}
+
+#[test]
+fn inner_test_selects_the_test_functions_body() {
+    let mut ed = rust_editor("#[test]\nfn it_works() {\n    -[a]>ssert!(true);\n}\n");
+    for ch in "miT".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(selected_text(&ed), "{\n    assert!(true);\n}");
+}
+
+#[test]
+fn around_test_includes_the_test_attribute() {
+    let mut ed = rust_editor("#[test]\nfn it_works() {\n    -[a]>ssert!(true);\n}\n");
+    for ch in "maT".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(
+        selected_text(&ed),
+        "#[test]\nfn it_works() {\n    assert!(true);\n}"
+    );
+}
+
+/// `test.around`'s `(#eq? @_test_attribute "test")` predicate must actually
+/// filter — a plain function ahead of the real `#[test]` one is skipped.
+#[test]
+fn goto_next_test_skips_a_plain_function_and_lands_on_the_test() {
+    let mut ed = rust_editor(
+        "-[/]>/ c\nfn plain() {\n    1;\n}\n\n#[test]\nfn it_works() {\n    assert!(true);\n}\n",
+    );
+    ed.execute_keymap_command("goto-next-test".into(), None, false, ArgSource::Keymap);
+    assert_eq!(
+        selected_text(&ed),
+        "#[test]\nfn it_works() {\n    assert!(true);\n}"
+    );
+}
+
+/// `entry.inside`/`entry.around` on a struct's `field_declaration` — a
+/// different pattern from the array/tuple case below (one match per named
+/// child, each its own inside span; the same enclosing `field_declaration`
+/// as the around span).
+#[test]
+fn inner_entry_selects_a_struct_fields_name() {
+    let mut ed = rust_editor("struct Point {\n    -[x]>: i32,\n}\n");
+    for ch in "mie".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(selected_text(&ed), "x");
+}
+
+#[test]
+fn around_entry_selects_the_whole_field_declaration() {
+    let mut ed = rust_editor("struct Point {\n    -[x]>: i32,\n}\n");
+    for ch in "mae".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(selected_text(&ed), "x: i32");
+}
+
+/// `(array_expression (_) @entry.around)` captures each element on its own —
+/// no grouping, no separator, unlike the `parameter` family.
+#[test]
+fn around_entry_on_an_array_element_selects_just_that_element() {
+    let mut ed = rust_editor("fn make_arr() {\n    let arr = [10, -[2]>0, 30];\n}\n");
+    for ch in "mae".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(selected_text(&ed), "20");
+}
+
+#[test]
+fn goto_next_entry_walks_array_elements() {
+    let mut ed = rust_editor("fn make_arr2() {\n    let arr = [-[1]>0, 20, 30];\n}\n");
+    ed.execute_keymap_command("goto-next-entry".into(), None, false, ArgSource::Keymap);
+    assert_eq!(selected_text(&ed), "20");
 }
