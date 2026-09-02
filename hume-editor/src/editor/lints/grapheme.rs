@@ -9,8 +9,9 @@
 //! cluster — `hume_rope::grapheme::prev_str_boundary` is the fix.
 //!
 //! `no_raw_char_stepping_in_motion_code` recursively scans `hume-ops/src/`,
-//! `hume-editing/src/lines.rs`, `hume-editing/src/word.rs` +
-//! `hume-rope/src/lines.rs` for the forbidden patterns.
+//! `hume-editing/src/lines.rs`, `hume-editing/src/word.rs`,
+//! `hume-rope/src/lines.rs` + `hume-treesitter/src/textobjects.rs` for the
+//! forbidden patterns.
 //!
 //! **Opt-out**: annotate a line with `// grapheme-safe: <reason>` (e.g.
 //! ASCII-only delimiter scanning, grapheme-boundary-aligned bound conversion).
@@ -51,6 +52,9 @@ fn no_raw_char_stepping_in_motion_code() {
     // boundary-detection implementation itself) and cursor.rs (CharCursor,
     // deliberately char-level) stay out of scope.
     paths.push(workspace_root.join("hume-rope/src/lines.rs"));
+    // Converts tree-sitter byte ends to inclusive char ends — selection code,
+    // same as the paths above.
+    paths.push(workspace_root.join("hume-treesitter/src/textobjects.rs"));
 
     // Forbidden patterns — raw +1/-1 steps on char-position variables.
     // Stepping by 1 skips over combining codepoints (e.g. é = U+0065 + U+0301)
