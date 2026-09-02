@@ -523,3 +523,51 @@ doc now names it) so it doesn't need re-discovering at each new spawn site.
 `hume-editor/src/editor/tests/unix/picker_source.rs`,
 `hume-editor/src/editor/tests/unix/async_job_steel.rs`,
 `hume-editor/src/editor/tests/unix/picker_source_steel.rs`.
+
+## L12 — Steel 0.8.2 miscompiles a keyword-arg call nested inside another keyword-arg call (2026-09-02)
+
+**Root cause:** Steel's `(define (f a #:kw [b default]) ...)` sugar desugars
+each definition *and each call site that omits a keyword* through a
+generated `####%list-argsN` dispatcher. When one such omitting call sits as
+a sub-expression of another omitting call (e.g. `(outer-kw-fn (lambda ()
+(inner-kw-fn positional-args-only)))`, both `outer-kw-fn` and `inner-kw-fn`
+defined with `#:kw [x default]` sugar), the compiler emits the inner
+dispatcher's reference before its own definition in the compiled unit,
+raising `FreeIdentifier: Cannot reference an identifier before its
+definition: ####%list-argsN` — a compile-time failure with no runtime
+component. Confirmed with a minimal reproduction directly against
+`steel_core::steel_vm::engine::Engine` (bypassing HUME entirely): two
+top-level `#:kw`-sugared definitions, called from an unrelated top-level
+`define`, compile and run fine; the same two definitions, with the second
+called from inside a lambda passed as an argument to a third `#:kw`-sugared
+function (mirroring `define-command!`), fail identically. Supplying every
+keyword explicitly at the *inner* call site avoids the bug outright — the
+miscompilation is specific to keyword *omission* at a nested call site, not
+to keyword-arg sugar in general.
+
+**Concrete instance:** `register-grammar!` (`runtime/scheme/prelude.scm`)
+moved from a `define-syntax` macro (positional-only, expanded away before
+Steel ever needed keyword dispatch) to a `#:kw`-sugared `define` when
+`#:textobjects` joined `#:injections`. Two tests
+(`register_grammar_command_mode_attaches_and_sweeps`,
+`install_real_json_grammar_e2e` in
+`hume-editor/src/editor/tests/unix/scripting_grammar.rs`) build an init.scm
+containing `(define-command! "attach-json" ... (lambda () (register-grammar!
+"json" ... )))` — `register-grammar!`'s call omits both keywords, nested
+inside `define-command!`'s own `#:repeatable`/`#:inline-output`-omitting
+call. Both failed to compile with the exact `####%list-args2` error, even
+though every *production* call site (`runtime/scheme/grammars.scm`,
+`runtime/plugins/core/plum/grammars.scm`) already supplies both keywords
+explicitly and was unaffected.
+
+**Prevention rule:** A `#:kw`-sugared Steel function's call site should
+spell out every keyword explicitly when the call itself is nested inside
+another keyword-arg call's argument position (a lambda passed to
+`define-command!`, `debounce`, a picker callback, etc.) — omission is safe
+at a top-level or otherwise unnested call site. This is a workaround for a
+third-party interpreter limitation, not a HUME style rule to apply blindly:
+prefer it only where the nesting pattern actually occurs, and re-check
+against a newer `steel-core` release before assuming it still applies.
+
+**Files:** `hume-editor/src/editor/tests/unix/scripting_grammar.rs`
+(both call sites), `runtime/scheme/prelude.scm` (`register-grammar!`).

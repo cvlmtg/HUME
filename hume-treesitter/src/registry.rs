@@ -9,6 +9,7 @@ use crate::highlight::TreeSitterHighlighter;
 use hume_engine::theme::ScopeRegistry;
 
 use crate::injections::InjectionsQuery;
+use crate::textobjects::TextObjectsQuery;
 
 // ── LanguageId ────────────────────────────────────────────────────────────────
 
@@ -54,10 +55,27 @@ pub struct GrammarBundle {
     /// Compiled `injections.scm`, if the grammar has one. `None` means this
     /// language never injects embedded languages.
     pub injections: Option<InjectionsQuery>,
+    /// Compiled `textobjects.scm`, if the grammar has one. `None` means this
+    /// language ships no structural text objects or navigation.
+    pub textobjects: Option<TextObjectsQuery>,
     /// Unique per attach, issued by `LanguageRegistry::next_gen`. Grammar-swap
     /// / staleness checks compare this instead of `Arc::ptr_eq` — a plain
     /// integer identity that survives across the worker-thread boundary.
     pub config_gen: u32,
+}
+
+// ── QueryPaths ─────────────────────────────────────────────────────────────
+
+/// The query files `attach_grammar` may compile for a grammar. `highlights`
+/// is required; `injections` and `textobjects` are each independently
+/// optional — a named struct instead of two more positional
+/// `Option<&Path>` parameters, since the parameter list was already at its
+/// limit before a third optional query joined it.
+#[derive(Clone, Copy)]
+pub struct QueryPaths<'a> {
+    pub highlights: &'a Path,
+    pub injections: Option<&'a Path>,
+    pub textobjects: Option<&'a Path>,
 }
 
 // ── LanguageRegistry ──────────────────────────────────────────────────────────
@@ -109,6 +127,10 @@ pub enum RegisterError {
     InjectionsRead(std::io::Error),
     /// Failed to compile the injections query.
     InjectionsQueryBuild(tree_sitter::QueryError),
+    /// Failed to read the textobjects query file.
+    TextObjectsRead(std::io::Error),
+    /// Failed to compile the textobjects query.
+    TextObjectsQueryBuild(tree_sitter::QueryError),
     /// Grammar ABI version is outside the range the bundled tree-sitter
     /// library supports.  Recompile the grammar with a compatible generator.
     AbiIncompatible {
@@ -127,6 +149,10 @@ impl std::fmt::Display for RegisterError {
             Self::QueryBuild(e) => write!(f, "highlight query compilation failed: {e}"),
             Self::InjectionsRead(e) => write!(f, "injections.scm read failed: {e}"),
             Self::InjectionsQueryBuild(e) => write!(f, "injections query compilation failed: {e}"),
+            Self::TextObjectsRead(e) => write!(f, "textobjects.scm read failed: {e}"),
+            Self::TextObjectsQueryBuild(e) => {
+                write!(f, "textobjects query compilation failed: {e}")
+            }
             Self::AbiIncompatible {
                 name,
                 abi,
@@ -372,14 +398,15 @@ impl LanguageRegistry {
     ///
     /// Reads the highlights query file, compiles it, builds the shared
     /// highlighter (interning its capture names into `scope_reg`), optionally
-    /// reads and compiles `injections_path` if given, then installs the
-    /// resulting `GrammarBundle` for `name`'s id — detection indices
-    /// (`by_ext`/globs/shebangs) are never touched.
+    /// reads and compiles `queries.injections` / `queries.textobjects` if
+    /// given, then installs the resulting `GrammarBundle` for `name`'s id —
+    /// detection indices (`by_ext`/globs/shebangs) are never touched.
     ///
-    /// A broken `injections.scm` fails the whole attach, same as a broken
-    /// `highlights.scm` — both come from the same trusted pinned source, so
-    /// there is no separate soft-degrade path. All fallible work happens
-    /// before any registry mutation, so a failed attach leaves no partial state.
+    /// A broken `injections.scm` or `textobjects.scm` fails the whole attach,
+    /// same as a broken `highlights.scm` — all three come from the same
+    /// trusted pinned source, so there is no separate soft-degrade path. All
+    /// fallible work happens before any registry mutation, so a failed
+    /// attach leaves no partial state.
     ///
     /// Auto-registers a bare identity (no extensions/globs/shebangs) if the
     /// language name has none yet.
@@ -388,8 +415,7 @@ impl LanguageRegistry {
         name: &str,
         grammar_path: &Path,
         symbol: &str,
-        highlights_path: &Path,
-        injections_path: Option<&Path>,
+        queries: QueryPaths<'_>,
         scope_reg: &mut ScopeRegistry,
     ) -> Result<Arc<GrammarBundle>, RegisterError> {
         let grammar =
@@ -405,13 +431,14 @@ impl LanguageRegistry {
             });
         }
         let highlights_src =
-            std::fs::read_to_string(highlights_path).map_err(RegisterError::HighlightsRead)?;
+            std::fs::read_to_string(queries.highlights).map_err(RegisterError::HighlightsRead)?;
         let query = Arc::new(
             tree_sitter::Query::new(grammar.language(), &highlights_src)
                 .map_err(RegisterError::QueryBuild)?,
         );
         let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(query, scope_reg));
-        let injections = injections_path
+        let injections = queries
+            .injections
             .map(|path| {
                 let src = std::fs::read_to_string(path).map_err(RegisterError::InjectionsRead)?;
                 let query = Arc::new(
@@ -419,6 +446,15 @@ impl LanguageRegistry {
                         .map_err(RegisterError::InjectionsQueryBuild)?,
                 );
                 Ok::<_, RegisterError>(InjectionsQuery::new(query))
+            })
+            .transpose()?;
+        let textobjects = queries
+            .textobjects
+            .map(|path| {
+                let src = std::fs::read_to_string(path).map_err(RegisterError::TextObjectsRead)?;
+                let query = tree_sitter::Query::new(grammar.language(), &src)
+                    .map_err(RegisterError::TextObjectsQueryBuild)?;
+                Ok::<_, RegisterError>(TextObjectsQuery::new(query))
             })
             .transpose()?;
 
@@ -431,6 +467,7 @@ impl LanguageRegistry {
             grammar,
             highlighter,
             injections,
+            textobjects,
             config_gen,
         });
         self.grammars[id.0 as usize] = Some(Arc::clone(&bundle));

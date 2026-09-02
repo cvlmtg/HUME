@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use super::render_snapshot::render_to_styled_string;
 use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
+use hume_treesitter::registry::QueryPaths;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -89,8 +90,11 @@ fn attach_then_set_language_attaches_syntax() {
             "json",
             &parser,
             "tree_sitter_json",
-            &hl,
-            None,
+            QueryPaths {
+                highlights: &hl,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -140,8 +144,11 @@ fn reset_config_state_clears_buffer_syntax_not_just_language() {
             "json",
             &parser,
             "tree_sitter_json",
-            &hl,
-            None,
+            QueryPaths {
+                highlights: &hl,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -182,8 +189,11 @@ fn clear_language_detaches_syntax_keeps_identity() {
             "json",
             &parser,
             "tree_sitter_json",
-            &hl,
-            None,
+            QueryPaths {
+                highlights: &hl,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -230,8 +240,11 @@ fn sweep_attaches_syntax_on_matching_language() {
             "json",
             &parser,
             "tree_sitter_json",
-            &hl,
-            None,
+            QueryPaths {
+                highlights: &hl,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -276,8 +289,11 @@ fn sweep_no_op_for_nonmatching_language() {
             "json",
             &parser,
             "tree_sitter_json",
-            &hl,
-            None,
+            QueryPaths {
+                highlights: &hl,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -308,8 +324,11 @@ fn reparse_advances_parsed_gen_after_edit() {
             "json",
             &parser,
             "tree_sitter_json",
-            &hl,
-            None,
+            QueryPaths {
+                highlights: &hl,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -399,8 +418,11 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
             "json",
             &parser,
             "tree_sitter_json",
-            &hl,
-            None,
+            QueryPaths {
+                highlights: &hl,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -451,8 +473,11 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
             "json",
             &parser,
             "tree_sitter_json",
-            &hl,
-            None,
+            QueryPaths {
+                highlights: &hl,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -488,8 +513,11 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
             "json",
             &parser,
             "tree_sitter_json",
-            &hl,
-            None,
+            QueryPaths {
+                highlights: &hl,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -539,8 +567,11 @@ fn reparse_reattaches_after_shrink_under_cap() {
             "json",
             &parser,
             "tree_sitter_json",
-            &hl,
-            None,
+            QueryPaths {
+                highlights: &hl,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -617,8 +648,11 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
             "json",
             &parser,
             "tree_sitter_json",
-            &hl,
-            None,
+            QueryPaths {
+                highlights: &hl,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -736,8 +770,11 @@ fn parse_worker_result_is_async_then_installed() {
             "json",
             &parser,
             "tree_sitter_json",
-            &hl,
-            None,
+            QueryPaths {
+                highlights: &hl,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -815,8 +852,11 @@ fn grammar_swap_clears_stale_in_flight() {
             "json",
             &parser_json,
             "tree_sitter_json",
-            &hl_json,
-            None,
+            QueryPaths {
+                highlights: &hl_json,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -833,8 +873,11 @@ fn grammar_swap_clears_stale_in_flight() {
             "rust",
             &parser_rust,
             "tree_sitter_rust",
-            &hl_rust,
-            None,
+            QueryPaths {
+                highlights: &hl_rust,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap();
@@ -924,8 +967,11 @@ fn rust_function_highlight_snapshot() {
             "rust",
             &parser,
             "tree_sitter_rust",
-            &hl,
-            None,
+            QueryPaths {
+                highlights: &hl,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .expect("attach rust grammar");

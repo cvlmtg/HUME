@@ -79,12 +79,18 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     let (parser, hl) = grammar_fixture("json");
     let tmp = safe_tempdir();
     let init_path = tmp.path().join("init.scm");
-    // `register-grammar!` is a prelude.scm macro (like `define-language!`) —
-    // prepend the real prelude source so it's in scope, since this test evals
-    // `init_path` directly rather than through the full `init_scripting` path.
+    // `register-grammar!` is defined in prelude.scm — prepend the real prelude
+    // source so it's in scope, since this test evals `init_path` directly
+    // rather than through the full `init_scripting` path.
+    //
+    // Both keywords are spelled out explicitly here rather than omitted: a
+    // keyword-arg call that omits defaults, nested inside another
+    // keyword-arg call (`define-command!`'s own `#:repeatable`/
+    // `#:inline-output`), trips a Steel 0.8.2 compiler bug
+    // (`FreeIdentifier: ... ####%list-args2`) — see `docs/LESSONS.md`.
     let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
     let body = format!(
-        r#"(define-command! "attach-json" "Attach JSON grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
+        r#"(define-command! "attach-json" "Attach JSON grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}" #:injections #f #:textobjects #f)))"#,
         parser.display(),
         hl.display(),
     );
@@ -123,6 +129,120 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     );
 }
 
+/// A `#:textobjects`-only `register-grammar!` call — the motivating shape:
+/// a language with structural objects but nothing embedded — populates the
+/// bundle's `textobjects` and leaves `injections` `None`.
+///
+/// Flip: if the Steel wrapper dropped or swapped the 5th/6th positional
+/// argument it forwards to `%register-grammar!`, this would see `injections`
+/// populated instead (or `textobjects` still `None`).
+#[test]
+fn register_grammar_textobjects_only_populates_textobjects_not_injections() {
+    require_grammars(&["json"]);
+    let (parser, hl) = grammar_fixture("json");
+    let tmp = safe_tempdir();
+    let to_path = tmp.path().join("textobjects.scm");
+    std::fs::write(&to_path, "(pair) @entry.inside\n").unwrap();
+    let init_path = tmp.path().join("init.scm");
+    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
+    let body = format!(
+        r#"(register-grammar! "json" "{}" "tree_sitter_json" "{}" #:textobjects "{}")"#,
+        parser.display(),
+        hl.display(),
+        to_path.display(),
+    );
+    std::fs::write(&init_path, prelude_src + "\n" + &body).unwrap();
+
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let mut host = ScriptingHost::new();
+    let effects = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init");
+    // Init-mode `register-grammar!` only queues an `Effect::LanguageReg` —
+    // apply it, as `init_scripting` would, to actually attach the grammar.
+    ed.apply_script_effects(effects);
+
+    let id = ed
+        .state
+        .config
+        .languages
+        .id_of("json")
+        .expect("json must be interned");
+    let bundle = ed
+        .state
+        .config
+        .languages
+        .grammar(id)
+        .expect("json must have an attached grammar bundle");
+    assert!(
+        bundle.textobjects.is_some(),
+        "#:textobjects path must populate the bundle's textobjects query"
+    );
+    assert!(
+        bundle.injections.is_none(),
+        "omitted #:injections must leave the bundle's injections None"
+    );
+}
+
+/// The `#:injections` keyword still populates `injections` (unaffected by
+/// `#:textobjects` joining it) — the sibling half of
+/// `register_grammar_textobjects_only_populates_textobjects_not_injections`.
+#[test]
+fn register_grammar_injections_keyword_still_populates_injections() {
+    require_grammars(&["json"]);
+    let (parser, hl) = grammar_fixture("json");
+    let tmp = safe_tempdir();
+    let inj_path = tmp.path().join("injections.scm");
+    std::fs::write(
+        &inj_path,
+        r#"((_) @injection.content (#set! injection.language "markdown"))"#,
+    )
+    .unwrap();
+    let init_path = tmp.path().join("init.scm");
+    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
+    let body = format!(
+        r#"(register-grammar! "json" "{}" "tree_sitter_json" "{}" #:injections "{}")"#,
+        parser.display(),
+        hl.display(),
+        inj_path.display(),
+    );
+    std::fs::write(&init_path, prelude_src + "\n" + &body).unwrap();
+
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let mut host = ScriptingHost::new();
+    let effects = {
+        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init");
+    // Init-mode `register-grammar!` only queues an `Effect::LanguageReg` —
+    // apply it, as `init_scripting` would, to actually attach the grammar.
+    ed.apply_script_effects(effects);
+
+    let id = ed
+        .state
+        .config
+        .languages
+        .id_of("json")
+        .expect("json must be interned");
+    let bundle = ed
+        .state
+        .config
+        .languages
+        .grammar(id)
+        .expect("json must have an attached grammar bundle");
+    assert!(
+        bundle.injections.is_some(),
+        "#:injections path must populate the bundle's injections query"
+    );
+    assert!(
+        bundle.textobjects.is_none(),
+        "omitted #:textobjects must leave the bundle's textobjects None"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Startup (call! …) during init
 // ---------------------------------------------------------------------------
@@ -154,7 +274,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     std::fs::copy(&hl, &hl_dest).unwrap();
 
     let init_path = tmp.path().join("init.scm");
-    // `register-grammar!` is a prelude.scm macro — prepend the real prelude
+    // `register-grammar!` is defined in prelude.scm — prepend the real prelude
     // source so it's in scope (see `register_grammar_command_mode_attaches_and_sweeps`).
     let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
     let body = format!(
@@ -270,13 +390,17 @@ fn install_real_json_grammar_e2e() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     let init_path = tmp.path().join("init.scm");
-    // `register-grammar!` is a prelude.scm macro — prepend the real prelude
+    // `register-grammar!` is defined in prelude.scm — prepend the real prelude
     // source so it's in scope (see `register_grammar_command_mode_attaches_and_sweeps`).
     // Command name must not contain digits: parse_typed_command stops the name
     // scan at the first non-[A-Za-z_-] char (Vim convention — digits are args).
+    //
+    // Both keywords are spelled out explicitly — see the sibling test's
+    // comment (and `docs/LESSONS.md` L12) for why a nested keyword-omitting
+    // call trips a Steel 0.8.2 compiler bug here.
     let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
     let body = format!(
-        r#"(define-command! "attach-json" "attach json grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
+        r#"(define-command! "attach-json" "attach json grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}" #:injections #f #:textobjects #f)))"#,
         out_path.display(),
         hl_path.display(),
     );

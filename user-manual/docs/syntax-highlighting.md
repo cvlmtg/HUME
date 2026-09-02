@@ -121,17 +121,27 @@ The fields are, in order:
 - the C symbol that library exposes (each grammar's repo documents this)
 - a highlight query file.
 
-If `my-lang` embeds other languages (like Markdown's fenced code blocks), add a fifth argument pointing at its injections query:
+If `my-lang` embeds other languages (like Markdown's fenced code blocks), add `#:injections` pointing at its injections query:
 
 ```scheme
 (register-grammar! "my-lang"
   "/path/to/my_grammar.so"
   "tree_sitter_my_lang"
   "/path/to/highlights.scm"
-  "/path/to/injections.scm")
+  #:injections "/path/to/injections.scm")
 ```
 
-Omit it for a language with nothing embedded.
+If it defines structural text objects and navigation (functions, classes, arguments, …), add `#:textobjects` pointing at its textobjects query:
+
+```scheme
+(register-grammar! "my-lang"
+  "/path/to/my_grammar.so"
+  "tree_sitter_my_lang"
+  "/path/to/highlights.scm"
+  #:textobjects "/path/to/textobjects.scm")
+```
+
+Both keywords can be combined. Omit either for a language with nothing to offer there.
 
 ## Manage installed grammars
 

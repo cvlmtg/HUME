@@ -10,6 +10,7 @@ use super::*;
 
 use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
 use hume_treesitter::grammar::LoadedGrammar;
+use hume_treesitter::registry::QueryPaths;
 
 use crate::editor::buffer::Buffer;
 use hume_editing::selection::SelectionSet;
@@ -33,8 +34,11 @@ fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
             "json",
             &parser_path,
             "tree_sitter_json",
-            &hl_path,
-            None,
+            QueryPaths {
+                highlights: &hl_path,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .expect("attach json grammar");
@@ -368,8 +372,11 @@ fn grammar_swap_clears_pending_and_full_reparses() {
             "json",
             &parser_path,
             "tree_sitter_json",
-            &hl_path,
-            None,
+            QueryPaths {
+                highlights: &hl_path,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .expect("re-attach");

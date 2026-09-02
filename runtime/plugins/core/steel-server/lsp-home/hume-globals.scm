@@ -122,6 +122,7 @@
 (#%register-global "grammar-source-url")
 (#%register-global "grammar-sources")
 (#%register-global "grammar-sources-dir")
+(#%register-global "grammar-textobjects-path")
 (#%register-global "grammars-dir")
 (#%register-global "half-page-down")
 (#%register-global "half-page-up")

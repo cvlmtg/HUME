@@ -371,6 +371,7 @@ pub trait LanguageHost {
         symbol: &str,
         highlights_path: &Path,
         injections_path: Option<&Path>,
+        textobjects_path: Option<&Path>,
     ) -> Result<(), String>;
 
     fn has_grammar(&self, language: &str) -> bool;

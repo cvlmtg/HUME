@@ -12,7 +12,7 @@ use hume_test_fixtures::{grammar_query_path, require_fixture_file, require_gramm
 fn make_bundle(name: &str, symbol: &str, injections_src: Option<&str>) -> Arc<GrammarBundle> {
     let highlights_src =
         std::fs::read_to_string(grammar_query_path(name)).expect("read highlights.scm");
-    crate::test_support::make_bundle(name, symbol, &highlights_src, injections_src)
+    crate::test_support::make_bundle(name, symbol, &highlights_src, injections_src, None)
 }
 
 fn parse(bundle: &GrammarBundle, source: &str) -> (tree_sitter::Parser, tree_sitter::Tree) {

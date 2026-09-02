@@ -16,6 +16,7 @@ use crate::grammar::LoadedGrammar;
 use crate::highlight::TreeSitterHighlighter;
 use crate::injections::InjectionsQuery;
 use crate::registry::GrammarBundle;
+use crate::textobjects::TextObjectsQuery;
 
 /// Distinct per call, mirroring `LanguageRegistry`'s `config_gen` invariant
 /// so tests that compare bundles by gen see real identity.
@@ -32,13 +33,14 @@ pub(crate) fn open_grammar(name: &str, symbol: &str) -> LoadedGrammar {
 
 /// Build a `GrammarBundle` for `name`. `highlights_src` is compiled as the
 /// highlight query — pass `""` when a test only needs a parse tree, not real
-/// highlighting. `injections_src`, if given, compiles as the grammar's
-/// `injections.scm` query.
+/// highlighting. `injections_src` / `textobjects_src`, if given, compile as
+/// the grammar's `injections.scm` / `textobjects.scm` query respectively.
 pub(crate) fn make_bundle(
     name: &str,
     symbol: &str,
     highlights_src: &str,
     injections_src: Option<&str>,
+    textobjects_src: Option<&str>,
 ) -> Arc<GrammarBundle> {
     let grammar = open_grammar(name, symbol);
     let query = Arc::new(
@@ -54,10 +56,15 @@ pub(crate) fn make_bundle(
             Arc::new(tree_sitter::Query::new(grammar.language(), src).expect("compile injections"));
         InjectionsQuery::new(q)
     });
+    let textobjects = textobjects_src.map(|src| {
+        let q = tree_sitter::Query::new(grammar.language(), src).expect("compile textobjects");
+        TextObjectsQuery::new(q)
+    });
     Arc::new(GrammarBundle {
         grammar,
         highlighter,
         injections,
+        textobjects,
         config_gen: next_test_config_gen(),
     })
 }

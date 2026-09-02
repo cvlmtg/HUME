@@ -127,6 +127,17 @@
         (plum/fetch-query! name "injections.scm" path)
         path))))
 
+;;; Same contract as `plum/try-fetch-injections!`, for textobjects.scm.
+(define (plum/try-fetch-textobjects! name)
+  (let ((path (grammar-textobjects-path name)))
+    (with-handler
+      (lambda (err)
+        (log! 'trace (string-append "PLUM: no textobjects.scm for " name " (" (to-string err) ")"))
+        #f)
+      (begin
+        (plum/fetch-query! name "textobjects.scm" path)
+        path))))
+
 ;; ── Grammar discovery ─────────────────────────────────────────────────────────
 
 ;;; #t if `name` has no compiled grammar on disk yet.
@@ -181,7 +192,9 @@
     ;; done or errors, which on a slow grammar reads as a hang.
     (displayln (string-append "Compiling grammar for " name "..."))
     (compile-grammar! build-dir out-path)
-    (register-grammar! name out-path symbol hl-path (plum/try-fetch-injections! name))))
+    (register-grammar! name out-path symbol hl-path
+                       #:injections (plum/try-fetch-injections! name)
+                       #:textobjects (plum/try-fetch-textobjects! name))))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 

@@ -116,6 +116,9 @@ absent from `init.scm`.
   `<data>/grammars/sources/` to reclaim disk) is repairable — it warns instead, pointing at
   `:plum-install-grammar`, so `:plum-list-grammars` doesn't keep reporting it "installed" with
   no highlighting and no explanation.
+- **`injections.scm` and `textobjects.scm` are both optional, `highlights.scm` isn't.** Each is
+  passed as `#f` when absent from the grammar's source directory — only a missing
+  `highlights.scm` blocks registration.
 
 ## The prelude
 

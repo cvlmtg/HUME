@@ -94,25 +94,26 @@ fetch_grammar() {
   fi
 }
 
-# Fetch the *Helix-maintained* injections.scm for `name` — distinct from
-# (and can differ from!) the grammar's own bundled queries/injections.scm.
-# PLUM installs the Helix version, so injection tests need it too — a test
-# fixture built from the grammar-bundled file instead would validate a
-# query PLUM never actually installs. Best-effort: not every grammar has one.
+# Fetch a *Helix-maintained* query file for `name` — distinct from (and can
+# differ from!) the grammar's own bundled queries/<file>. PLUM installs the
+# Helix version, so tests need it too — a test fixture built from the
+# grammar-bundled file instead would validate a query PLUM never actually
+# installs. Best-effort: not every grammar has every query file.
 HELIX_PIN="$(grep -v '^;' "$REPO_ROOT/runtime/scheme/helix-pin.scm" | tr -d '"[:space:]')"
-fetch_helix_injections() {
+fetch_helix_query() {
   local name="$1"
-  local out="$FIXTURES/$name/helix-injections.scm"
+  local file="$2"
+  local out="$FIXTURES/$name/helix-$file"
   if [[ -f "$out" ]]; then
-    echo "  $name: helix-injections.scm up to date"
+    echo "  $name: helix-$file up to date"
     return
   fi
-  local url="https://raw.githubusercontent.com/helix-editor/helix/$HELIX_PIN/runtime/queries/$name/injections.scm"
+  local url="https://raw.githubusercontent.com/helix-editor/helix/$HELIX_PIN/runtime/queries/$name/$file"
   if curl -fsSL -o "$out" "$url"; then
-    echo "  $name: fetched helix-injections.scm"
+    echo "  $name: fetched helix-$file"
   else
     rm -f "$out"
-    echo "  $name: no injections.scm on Helix (skipped)"
+    echo "  $name: no $file on Helix (skipped)"
   fi
 }
 
@@ -121,5 +122,8 @@ fetch_grammar "rust"
 fetch_grammar "json"
 fetch_grammar "markdown"
 fetch_grammar "markdown.inline"
-fetch_helix_injections "markdown"
+fetch_helix_query "markdown" "injections.scm"
+# rust/textobjects.scm has no `; inherits:` header, so a plain fetch is
+# complete — a language whose file inherits would need PLUM's resolver.
+fetch_helix_query "rust" "textobjects.scm"
 echo "Done."

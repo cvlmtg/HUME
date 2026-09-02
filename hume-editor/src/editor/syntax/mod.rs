@@ -8,7 +8,7 @@
 mod parse;
 
 use hume_engine::pipeline::BufferId;
-use hume_treesitter::registry::{LanguageId, detect_language};
+use hume_treesitter::registry::{LanguageId, QueryPaths, detect_language};
 
 use super::Editor;
 use super::event::EditorEvent;
@@ -203,13 +203,17 @@ impl Editor {
                     symbol,
                     highlights_path,
                     injections_path,
+                    textobjects_path,
                 } => {
                     match self.state.config.languages.attach_grammar(
                         &name,
                         &grammar_path,
                         &symbol,
-                        &highlights_path,
-                        injections_path.as_deref(),
+                        QueryPaths {
+                            highlights: &highlights_path,
+                            injections: injections_path.as_deref(),
+                            textobjects: textobjects_path.as_deref(),
+                        },
                         &mut self.view.registry,
                     ) {
                         Ok(_) => grammar_sweeps.push(

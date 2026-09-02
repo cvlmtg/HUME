@@ -2,15 +2,18 @@ use std::path::Path;
 
 use globset::Glob;
 
-use super::{LanguageRegistry, detect_language};
+use super::{LanguageRegistry, QueryPaths, detect_language};
 use hume_engine::theme::ScopeRegistry;
-use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
+use hume_test_fixtures::{
+    grammar_parser_path, grammar_query_path, helix_textobjects_path, require_fixture_file,
+    require_grammars,
+};
 
-/// Write `src` to a temp file and return its path (kept alive via the
+/// Write `src` to `<tmp>/<filename>` and return its path (kept alive via the
 /// returned `TempDir`).
-fn write_temp_scm(src: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+fn write_temp_scm(filename: &str, src: &str) -> (tempfile::TempDir, std::path::PathBuf) {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("injections.scm");
+    let path = dir.path().join(filename);
     std::fs::write(&path, src).unwrap();
     (dir, path)
 }
@@ -29,8 +32,10 @@ fn attach_grammar_with_valid_injections_populates_bundle() {
     require_grammars(&["rust"]);
     let parser_path = grammar_parser_path("rust");
     let hl_path = grammar_query_path("rust");
-    let (_dir, inj_path) =
-        write_temp_scm(r#"((_) @injection.content (#set! injection.language "markdown"))"#);
+    let (_dir, inj_path) = write_temp_scm(
+        "injections.scm",
+        r#"((_) @injection.content (#set! injection.language "markdown"))"#,
+    );
 
     let mut reg = LanguageRegistry::new();
     let mut scope_reg = ScopeRegistry::new();
@@ -39,8 +44,11 @@ fn attach_grammar_with_valid_injections_populates_bundle() {
             "rust",
             &parser_path,
             "tree_sitter_rust",
-            &hl_path,
-            Some(&inj_path),
+            QueryPaths {
+                highlights: &hl_path,
+                injections: Some(&inj_path),
+                textobjects: None,
+            },
             &mut scope_reg,
         )
         .expect("attach with valid injections must succeed");
@@ -74,8 +82,11 @@ fn attach_grammar_without_injections_path_leaves_injections_none() {
             "rust",
             &parser_path,
             "tree_sitter_rust",
-            &hl_path,
-            None,
+            QueryPaths {
+                highlights: &hl_path,
+                injections: None,
+                textobjects: None,
+            },
             &mut scope_reg,
         )
         .expect("attach without injections must succeed");
@@ -95,7 +106,10 @@ fn attach_grammar_with_broken_injections_fails_whole_attach() {
     require_grammars(&["rust"]);
     let parser_path = grammar_parser_path("rust");
     let hl_path = grammar_query_path("rust");
-    let (_dir, inj_path) = write_temp_scm("(this is not valid tree-sitter query syntax");
+    let (_dir, inj_path) = write_temp_scm(
+        "injections.scm",
+        "(this is not valid tree-sitter query syntax",
+    );
 
     let mut reg = LanguageRegistry::new();
     let mut scope_reg = ScopeRegistry::new();
@@ -103,8 +117,11 @@ fn attach_grammar_with_broken_injections_fails_whole_attach() {
         "rust",
         &parser_path,
         "tree_sitter_rust",
-        &hl_path,
-        Some(&inj_path),
+        QueryPaths {
+            highlights: &hl_path,
+            injections: Some(&inj_path),
+            textobjects: None,
+        },
         &mut scope_reg,
     );
     let Err(err) = result else {
@@ -113,6 +130,110 @@ fn attach_grammar_with_broken_injections_fails_whole_attach() {
     assert!(
         matches!(err, super::RegisterError::InjectionsQueryBuild(_)),
         "broken injections.scm must surface as InjectionsQueryBuild, got: {err:?}"
+    );
+    assert!(
+        reg.by_name("rust").is_none(),
+        "a failed attach must not leave a partial identity behind"
+    );
+}
+
+#[test]
+fn attach_grammar_with_valid_textobjects_populates_bundle() {
+    require_grammars(&["rust"]);
+    let parser_path = grammar_parser_path("rust");
+    let hl_path = grammar_query_path("rust");
+    let to_path = helix_textobjects_path("rust")
+        .expect("rust helix-textobjects.scm fixture (run scripts/fetch-test-grammars.sh)");
+    require_fixture_file(&to_path, "rust helix-textobjects.scm");
+
+    let mut reg = LanguageRegistry::new();
+    let mut scope_reg = ScopeRegistry::new();
+    let bundle = reg
+        .attach_grammar(
+            "rust",
+            &parser_path,
+            "tree_sitter_rust",
+            QueryPaths {
+                highlights: &hl_path,
+                injections: None,
+                textobjects: Some(&to_path),
+            },
+            &mut scope_reg,
+        )
+        .expect("attach with valid textobjects must succeed");
+
+    let textobjects = bundle
+        .textobjects
+        .as_ref()
+        .expect("textobjects query must be populated");
+    assert!(
+        textobjects.defines(
+            crate::textobjects::ObjectKind::Function,
+            crate::textobjects::ObjectSpan::Around
+        ),
+        "function.around must be defined by the real rust textobjects query"
+    );
+}
+
+#[test]
+fn attach_grammar_without_textobjects_path_leaves_textobjects_none() {
+    require_grammars(&["rust"]);
+    let parser_path = grammar_parser_path("rust");
+    let hl_path = grammar_query_path("rust");
+
+    let mut reg = LanguageRegistry::new();
+    let mut scope_reg = ScopeRegistry::new();
+    let bundle = reg
+        .attach_grammar(
+            "rust",
+            &parser_path,
+            "tree_sitter_rust",
+            QueryPaths {
+                highlights: &hl_path,
+                injections: None,
+                textobjects: None,
+            },
+            &mut scope_reg,
+        )
+        .expect("attach without textobjects must succeed");
+
+    assert!(
+        bundle.textobjects.is_none(),
+        "no textobjects_path given → textobjects must stay None"
+    );
+}
+
+/// A broken textobjects.scm hard-fails the whole attach — same policy as a
+/// broken injections.scm (see `attach_grammar_with_broken_injections_fails_whole_attach`).
+#[test]
+fn attach_grammar_with_broken_textobjects_fails_whole_attach() {
+    require_grammars(&["rust"]);
+    let parser_path = grammar_parser_path("rust");
+    let hl_path = grammar_query_path("rust");
+    let (_dir, to_path) = write_temp_scm(
+        "textobjects.scm",
+        "(this is not valid tree-sitter query syntax",
+    );
+
+    let mut reg = LanguageRegistry::new();
+    let mut scope_reg = ScopeRegistry::new();
+    let result = reg.attach_grammar(
+        "rust",
+        &parser_path,
+        "tree_sitter_rust",
+        QueryPaths {
+            highlights: &hl_path,
+            injections: None,
+            textobjects: Some(&to_path),
+        },
+        &mut scope_reg,
+    );
+    let Err(err) = result else {
+        panic!("broken textobjects.scm must fail the attach");
+    };
+    assert!(
+        matches!(err, super::RegisterError::TextObjectsQueryBuild(_)),
+        "broken textobjects.scm must surface as TextObjectsQueryBuild, got: {err:?}"
     );
     assert!(
         reg.by_name("rust").is_none(),
@@ -242,8 +363,11 @@ fn attached_grammar_survives_identity_re_registration() {
         "rust",
         &parser_path,
         "tree_sitter_rust",
-        &hl_path,
-        None,
+        QueryPaths {
+            highlights: &hl_path,
+            injections: None,
+            textobjects: None,
+        },
         &mut scope_reg,
     )
     .expect("attach must succeed");

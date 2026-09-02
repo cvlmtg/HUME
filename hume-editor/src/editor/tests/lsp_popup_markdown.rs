@@ -11,6 +11,7 @@ use hume_grid::Rect;
 use super::*;
 use hume_engine::pipeline::RenderContext;
 use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
+use hume_treesitter::registry::QueryPaths;
 
 /// Attach the real `markdown` grammar fixture, no injections — these tests
 /// only check that top-level spans reach the popup, not fenced-code
@@ -30,8 +31,11 @@ fn register_markdown(ed: &mut Editor) {
             "markdown",
             &parser_path,
             "tree_sitter_markdown",
-            &hl_path,
-            None,
+            QueryPaths {
+                highlights: &hl_path,
+                injections: None,
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap_or_else(|e| panic!("attach markdown: {e}"));

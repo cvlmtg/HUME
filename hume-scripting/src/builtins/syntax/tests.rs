@@ -163,6 +163,7 @@ fn register_grammar_init_mode_queues_pending_reg() {
             str_val("tree_sitter_rust"),
             str_val("/tmp/highlights.scm"),
             steel::rvals::SteelVal::BoolV(false),
+            steel::rvals::SteelVal::BoolV(false),
         );
         assert!(result.is_ok(), "register-grammar! in init must succeed");
     }
@@ -189,6 +190,7 @@ fn register_grammar_command_mode_calls_host() {
             str_val("/tmp/rust.so"),
             str_val("tree_sitter_rust"),
             str_val("/tmp/highlights.scm"),
+            steel::rvals::SteelVal::BoolV(false),
             steel::rvals::SteelVal::BoolV(false),
         );
         // NullHost.attach_grammar returns Err.
@@ -221,6 +223,7 @@ fn register_grammar_with_injections_path_populates_pending_reg() {
             str_val("tree_sitter_markdown"),
             str_val("/tmp/highlights.scm"),
             str_val("/tmp/injections.scm"),
+            steel::rvals::SteelVal::BoolV(false),
         );
         assert!(result.is_ok());
     }
@@ -230,6 +233,38 @@ fn register_grammar_with_injections_path_populates_pending_reg() {
         } => assert_eq!(
             injections_path.as_deref(),
             Some(std::path::Path::new("/tmp/injections.scm")),
+        ),
+        other => panic!("expected a Grammar entry, got: {other:?}"),
+    }
+}
+
+/// A string (not `#f`) in the 6th position must reach
+/// `PendingLanguageReg::Grammar.textobjects_path` as `Some`.
+///
+/// Flip: if `optional_path_arg` ignored the string branch, this would be
+/// `None` — same as the `#f` case in the tests above.
+#[test]
+fn register_grammar_with_textobjects_path_populates_pending_reg() {
+    let mut h = SteelCtxTestHarness::new();
+    {
+        let mut ctx = h.ctx_init();
+        let result = register_grammar(
+            &mut ctx,
+            str_val("rust"),
+            str_val("/tmp/rust.so"),
+            str_val("tree_sitter_rust"),
+            str_val("/tmp/highlights.scm"),
+            steel::rvals::SteelVal::BoolV(false),
+            str_val("/tmp/textobjects.scm"),
+        );
+        assert!(result.is_ok());
+    }
+    match lang_regs(&h)[0] {
+        PendingLanguageReg::Grammar {
+            textobjects_path, ..
+        } => assert_eq!(
+            textobjects_path.as_deref(),
+            Some(std::path::Path::new("/tmp/textobjects.scm")),
         ),
         other => panic!("expected a Grammar entry, got: {other:?}"),
     }

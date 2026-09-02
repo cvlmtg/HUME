@@ -43,6 +43,7 @@ pub enum PendingLanguageReg {
         symbol: String,
         highlights_path: std::path::PathBuf,
         injections_path: Option<std::path::PathBuf>,
+        textobjects_path: Option<std::path::PathBuf>,
     },
 }
 

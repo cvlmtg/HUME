@@ -392,7 +392,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Language identity and grammar builtins
         config "%define-language!" syntax::define_language(name: SteelVal, exts_val: SteelVal, globs_val: SteelVal, shebangs_val: SteelVal, lsp_language_id_val: SteelVal);
-        open   "%register-grammar!" syntax::register_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, injections_path: SteelVal);
+        open   "%register-grammar!" syntax::register_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, injections_path: SteelVal, textobjects_path: SteelVal);
 
         // LSP server registration — last-wins, queued (like language regs) and
         // applied at the end of the current eval, from init, plugin activation,

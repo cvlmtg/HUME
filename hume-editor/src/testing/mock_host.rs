@@ -245,6 +245,7 @@ impl LanguageHost for MockHost {
         _symbol: &str,
         highlights_path: &std::path::Path,
         _injections_path: Option<&std::path::Path>,
+        _textobjects_path: Option<&std::path::Path>,
     ) -> Result<(), String> {
         if !grammar_path.exists() {
             return Err(format!(

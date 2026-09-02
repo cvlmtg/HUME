@@ -80,15 +80,17 @@ ever loads. It finds them by listing `<data>/grammars/` rather than probing ever
 entry, and reads `runtime/scheme/grammar-sources.scm` only on first use, so a setup with no
 grammars installed pays a single `path-exists?` for the whole subsystem. PLUM's `grammars.scm`
 calls those same bindings for its install pipeline; it doesn't declare its own copy.
-Syntax-highlighting queries
-(`highlights.scm`, `injections.scm`) aren't authored in HUME — they're fetched from the Helix
-project's `runtime/queries/` at a pinned commit (`runtime/scheme/helix-pin.scm`, read once at
-PLUM's own load), so HUME rides Helix's query-file curation without vendoring it.
+Syntax-highlighting and structural-text-object queries
+(`highlights.scm`, `injections.scm`, `textobjects.scm`) aren't authored in HUME — they're
+fetched from the Helix project's `runtime/queries/` at a pinned commit
+(`runtime/scheme/helix-pin.scm`, read once at PLUM's own load), so HUME rides Helix's
+query-file curation without vendoring it.
 
-`plum/try-fetch-injections!` tolerates a missing `injections.scm` (most grammars don't have
-one) instead of letting a 404 abort the whole install — an unusual case where letting the
-failure fail silently, rather than fail fast, is correct: no query file just means no
-injection highlighting for that grammar, not a broken install.
+`plum/try-fetch-injections!` and `plum/try-fetch-textobjects!` each tolerate a missing query
+file (most grammars don't have every kind) instead of letting a 404 abort the whole install —
+an unusual case where letting the failure fail silently, rather than fail fast, is correct: no
+query file just means no injection highlighting, or no structural text objects, for that
+grammar, not a broken install.
 
 A query file can declare `; inherits: dep,dep,...` instead of writing out its own patterns —
 a directive naming other query sources whose patterns should be spliced in (the JS-family
@@ -117,7 +119,8 @@ for a grammar left in a failed state (e.g. a source tree cloned but never compil
 5. Compile: tree-sitter build → shared lib (preceded by a status line — the C compiler itself
    is silent, which on a slow grammar would otherwise read as a hang).
 6. Download the Helix injections query, if any (best-effort — most grammars have none).
-7. Register the grammar for its language in this session.
+7. Download the Helix textobjects query, if any (best-effort — most grammars have none).
+8. Register the grammar for its language in this session.
 
 ### Grammar dependencies
 

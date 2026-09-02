@@ -410,6 +410,7 @@ impl<'a> LanguageHost for EditorHostImpl<'a> {
         symbol: &str,
         highlights_path: &Path,
         injections_path: Option<&Path>,
+        textobjects_path: Option<&Path>,
     ) -> Result<(), String> {
         self.state
             .config
@@ -418,8 +419,11 @@ impl<'a> LanguageHost for EditorHostImpl<'a> {
                 name,
                 grammar_path,
                 symbol,
-                highlights_path,
-                injections_path,
+                hume_treesitter::registry::QueryPaths {
+                    highlights: highlights_path,
+                    injections: injections_path,
+                    textobjects: textobjects_path,
+                },
                 &mut self.view.registry,
             )
             .map_err(|e| format!("register-grammar! '{name}': {e}"))?;

@@ -1,9 +1,10 @@
 # The Scheme prelude
 
 `prelude.scm` is evaluated at startup, right after `bootstrap.scm` and before `languages.scm` —
-see this directory's `README.md` for the full load order. It defines `syntax-rules` macros
-that improve ergonomics over the raw Rust-registered builtins; every macro it defines is
-visible in `init.scm` (evaluated globally) and inside plugin modules loaded via `(require)`.
+see this directory's `README.md` for the full load order. It defines the ergonomic forms —
+`syntax-rules` macros and plain keyword-argument functions alike — that wrap the raw
+Rust-registered builtins; every form it defines is visible in `init.scm` (evaluated globally)
+and inside plugin modules loaded via `(require)`.
 
 ## The `%` convention
 

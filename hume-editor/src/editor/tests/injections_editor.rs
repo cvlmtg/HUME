@@ -10,6 +10,7 @@ use hume_test_fixtures::{
     grammar_parser_path, grammar_query_path, helix_injections_path, require_fixture_file,
     require_grammars,
 };
+use hume_treesitter::registry::QueryPaths;
 
 /// Attach the fixture grammar `name` (source name == attach identity — true
 /// for every real PLUM install; there is no renaming split in production).
@@ -26,8 +27,11 @@ fn attach(ed: &mut Editor, name: &str, symbol: &str, injections: bool) {
             name,
             &parser_path,
             symbol,
-            &hl_path,
-            inj_path.as_deref(),
+            QueryPaths {
+                highlights: &hl_path,
+                injections: inj_path.as_deref(),
+                textobjects: None,
+            },
             &mut ed.view.registry,
         )
         .unwrap_or_else(|e| panic!("attach {name}: {e}"));

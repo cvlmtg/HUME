@@ -46,6 +46,7 @@ fn attach_grammar_errs_for_bad_path() {
             "rust_language",
             Path::new("/no/such/highlights.scm"),
             None,
+            None,
         )
         .unwrap_err();
     assert!(

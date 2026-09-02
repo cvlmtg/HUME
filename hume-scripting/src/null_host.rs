@@ -153,6 +153,7 @@ impl LanguageHost for NullHost {
         _sym: &str,
         _hl: &Path,
         _inj: Option<&Path>,
+        _to: Option<&Path>,
     ) -> Result<(), String> {
         Err("NullHost: attach_grammar not available".into())
     }

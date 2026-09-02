@@ -54,6 +54,9 @@
 (define (grammar-injections-path name)
   (path-join (grammar-source-dir name) "injections.scm"))
 
+(define (grammar-textobjects-path name)
+  (path-join (grammar-source-dir name) "textobjects.scm"))
+
 (define (platform-grammar-ext)
   (let ((target (hume-target)))
     (cond ((and (string? target) (starts-with? target "darwin")) "dylib")
@@ -90,12 +93,14 @@
               (log! 'warn (string-append
                             "grammar \"" name "\" is compiled but missing its highlights "
                             "query — run :plum-install-grammar " name " to repair"))
-              (let ((inj (grammar-injections-path name)))
+              (let ((inj (grammar-injections-path name))
+                    (to (grammar-textobjects-path name)))
                 (register-grammar! name
                                    (grammar-output-path name)
                                    (grammar-source-symbol name)
                                    hl
-                                   (if (path-exists? inj) inj #f)))))))
+                                   #:injections (if (path-exists? inj) inj #f)
+                                   #:textobjects (if (path-exists? to) to #f)))))))
     (installed-grammars)))
 
 (when (data-dir)

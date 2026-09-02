@@ -83,6 +83,7 @@ mod mock_host {
                 "rust_language",
                 &highlights,
                 None,
+                None,
             )
             .expect_err("missing grammar path must be rejected");
         assert!(
@@ -109,6 +110,7 @@ mod mock_host {
                 "rust_language",
                 std::path::Path::new("/no/such/highlights.scm"),
                 None,
+                None,
             )
             .expect_err("missing highlights path must be rejected");
         assert!(
@@ -126,7 +128,7 @@ mod mock_host {
         std::fs::write(&grammar, "").unwrap();
         std::fs::write(&highlights, "").unwrap();
 
-        mock.attach_grammar("rust", &grammar, "rust_language", &highlights, None)
+        mock.attach_grammar("rust", &grammar, "rust_language", &highlights, None, None)
             .expect("both paths existing must succeed");
         assert!(mock.has_grammar("rust"));
     }

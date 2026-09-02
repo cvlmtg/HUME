@@ -61,6 +61,14 @@ pub fn helix_injections_path(name: &str) -> Option<PathBuf> {
     path.exists().then_some(path)
 }
 
+/// Absolute path to the *Helix-maintained* textobjects query for `name`,
+/// fetched by `scripts/fetch-test-grammars.sh` from the pinned Helix commit.
+/// `None` if the fetch script found no Helix textobjects query for `name`.
+pub fn helix_textobjects_path(name: &str) -> Option<PathBuf> {
+    let path = fixtures_root().join(name).join("helix-textobjects.scm");
+    path.exists().then_some(path)
+}
+
 /// Require `names`' compiled grammar fixtures to be present.
 ///
 /// Panics naming every missing fixture (not just the first) when one or more

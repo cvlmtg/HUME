@@ -42,10 +42,11 @@ pub(crate) fn define_language(
     Ok(SteelVal::Void)
 }
 
-/// `(%register-grammar! name grammar-path symbol highlights-path injections-path)`
-/// — init or command. `injections-path` is a string or `#f`. The Scheme-side
-/// `register-grammar!` macro (`prelude.scm`) supplies `#f` when the caller
-/// omits it.
+/// `(%register-grammar! name grammar-path symbol highlights-path injections-path
+/// textobjects-path)` — init or command. `injections-path` and
+/// `textobjects-path` are each a string or `#f`; the Scheme-side
+/// `register-grammar!` wrapper (`prelude.scm`) supplies `#f` for either
+/// keyword the caller omits.
 ///
 /// - **Init mode**: pushes an `Effect::LanguageReg(PendingLanguageReg::Grammar)`.
 /// - **Command mode**: attaches immediately via the editor host and pushes
@@ -57,12 +58,15 @@ pub(crate) fn register_grammar(
     symbol: SteelVal,
     highlights_path: SteelVal,
     injections_path: SteelVal,
+    textobjects_path: SteelVal,
 ) -> SteelResult {
     let name = string_arg(name, "register-grammar! name")?;
     let grammar_path = path_arg(grammar_path, "register-grammar! grammar-path")?;
     let symbol = string_arg(symbol, "register-grammar! symbol")?;
     let highlights_path = path_arg(highlights_path, "register-grammar! highlights-path")?;
     let injections_path = optional_path_arg(injections_path, "register-grammar! injections-path")?;
+    let textobjects_path =
+        optional_path_arg(textobjects_path, "register-grammar! textobjects-path")?;
 
     if ctx.session == crate::context::EvalSession::Init {
         ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Grammar {
@@ -71,6 +75,7 @@ pub(crate) fn register_grammar(
             symbol,
             highlights_path,
             injections_path,
+            textobjects_path,
         }));
         return Ok(SteelVal::Void);
     }
@@ -86,6 +91,7 @@ pub(crate) fn register_grammar(
             &symbol,
             &highlights_path,
             injections_path.as_deref(),
+            textobjects_path.as_deref(),
         )
         .map_err(generic_err)?;
     ctx.push_effect(Effect::GrammarSweep(name));
