@@ -419,18 +419,21 @@ surface — landed once, directly as specified; no intermediate positional six-a
 
 ### Phase 2 — Query layer and layer model (`hume-treesitter`)
 
-- [ ] `layers.rs`: `SyntaxLayer.bundle: Arc<GrammarBundle>` replaces `highlighter`; `highlight.rs`
+- [x] `layers.rs`: `SyntaxLayer.bundle: Arc<GrammarBundle>` replaces `highlighter`; `highlight.rs`
       reads `layer.bundle.highlighter`; `syntax.rs::install` stores the root's and each injection's
-      bundle; new `test_support.rs::root_layers(bundle: &Arc<GrammarBundle>, source: &str) ->
-      SyntaxLayers` (one root layer, no injections); `layers/tests.rs` builds its layer from
-      `make_bundle` instead of a hand-built highlighter.
-- [ ] Hull-per-match span collection (`matches()` over `RopeProvider` + `nodes_for_capture_index`,
+      bundle; `layers/tests.rs` builds its layer from `test_support::make_bundle` instead of a
+      hand-built highlighter. No `test_support::root_layers` helper: `Syntax::attach_sync` already is
+      that path (root parse → injections → install), so tests use it directly instead of a second
+      layer-construction path. `hume-treesitter/tests/grammar_integration.rs` — an external
+      integration test, so the `#[cfg(test)]`-gated `test_support` is out of reach — builds a
+      `GrammarBundle` inline (every field is `pub`) via a new `bundle_for` helper.
+- [x] Hull-per-match span collection (`matches()` over `RopeProvider` + `nodes_for_capture_index`,
       zero-width dropped, `prev_grapheme_boundary` end, `debug_assert` on `len_bytes`), with the
       `set_byte_range` rejection recorded on it.
-- [ ] `ObjectSpans`: `collect`, `collect_for_navigation` (with the `Parameter` → `Inside` exception),
+- [x] `ObjectSpans`: `collect`, `collect_for_navigation` (with the `Parameter` → `Inside` exception),
       `enclosing`, `adjacent`, with the layer-merge rationale on `collect` and the start-keyed
       rationale on `adjacent`.
-- [ ] `textobjects/tests.rs`:
+- [x] `textobjects/tests.rs`:
       - synthetic-span tests for `enclosing` (nesting → smallest, no containment → `None`, cursor on
         the last char of a span) and `adjacent` (forward/backward, ties → largest end, buffer
         edges → `None`, start-keyed backward lands on the enclosing object);
@@ -447,7 +450,7 @@ surface — landed once, directly as specified; no intermediate positional six-a
       - layers with the markdown + rust fixtures: a cursor inside a fenced Rust function selects it
         via `collect`; a cursor in prose yields `None`; a cursor in a fence outside any function
         yields `None` for `Function` (markdown defines no objects) — proving the merge, not a walk.
-- [ ] `hume-editor/src/editor/lints/grapheme.rs`: add `hume-treesitter/src/textobjects.rs` to the
+- [x] `hume-editor/src/editor/lints/grapheme.rs`: add `hume-treesitter/src/textobjects.rs` to the
       scanned set (it is selection code) — the path list, the lint's module doc that enumerates it,
       and the matching "Enforced" sentence in `CLAUDE.md`.
 
