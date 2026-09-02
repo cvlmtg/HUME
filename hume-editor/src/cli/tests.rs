@@ -88,6 +88,10 @@ fn line_zero_is_rejected() {
     let arg = tmp.path().join("foo.rs:0");
     let err = parse_file_arg(&arg).unwrap_err();
     assert!(err.contains(LINE_NUMBERS_START_AT_1), "got: {err}");
+    assert!(
+        err.contains(&arg.display().to_string()),
+        "error must name the offending argument, got: {err}"
+    );
 }
 
 #[test]
@@ -95,7 +99,17 @@ fn column_zero_is_rejected() {
     let tmp = safe_tempdir();
     let arg = tmp.path().join("foo.rs:12:0");
     let err = parse_file_arg(&arg).unwrap_err();
-    assert!(err.contains(LINE_NUMBERS_START_AT_1), "got: {err}");
+    // A valid line paired with a bad column must not blame the line — the
+    // two 1-based contracts get distinct error text.
+    assert!(err.contains(COLUMN_NUMBERS_START_AT_1), "got: {err}");
+    assert!(
+        !err.contains(LINE_NUMBERS_START_AT_1),
+        "line was valid — must not be blamed, got: {err}"
+    );
+    assert!(
+        err.contains(&arg.display().to_string()),
+        "error must name the offending argument, got: {err}"
+    );
 }
 
 #[cfg(unix)]
