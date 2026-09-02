@@ -398,6 +398,7 @@ mod paste;
 mod pipeline;
 mod scroll;
 mod search;
+mod structural;
 mod typed_buffer;
 mod typed_file;
 mod typed_misc;

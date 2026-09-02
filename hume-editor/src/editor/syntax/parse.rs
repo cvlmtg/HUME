@@ -3,9 +3,29 @@ use std::sync::Arc;
 use hume_engine::pipeline::BufferId;
 use hume_treesitter::parse_worker::ParseDone;
 use hume_treesitter::registry::LanguageId;
-use hume_treesitter::syntax::Syntax;
+use hume_treesitter::syntax::{ChainBreak, Syntax};
 
-use crate::editor::{Editor, Severity};
+use crate::editor::{Editor, EditorState, Severity};
+
+/// Trace-log a broken pending-edit chain. Shared by `reparse_stale_buffers`
+/// (the per-frame path, `&mut Editor`) and `commands::structural::
+/// ensure_syntax_current` (the synchronous on-demand path, only `&mut
+/// EditorState`) — one message, never a second copy of the string.
+pub(in crate::editor) fn report_chain_break(
+    state: &mut EditorState,
+    bid: BufferId,
+    brk: &ChainBreak,
+) {
+    state.report(
+        Severity::Trace,
+        format!(
+            "syntax: pending-edit chain broken for {bid:?} — \
+             tree_gen={}, text_gen={}, first={:?}, last={:?}; \
+             full reparse triggered",
+            brk.tree_gen, brk.text_gen, brk.first, brk.last,
+        ),
+    );
+}
 
 impl Editor {
     /// Attach the tree-sitter highlighter for `bid`.
@@ -145,15 +165,7 @@ impl Editor {
             let outcome = syn.frame_tick(bid, text_gen, &text, &langs);
 
             if let Some(brk) = outcome.chain_break {
-                self.report(
-                    Severity::Trace,
-                    format!(
-                        "syntax: pending-edit chain broken for {bid:?} — \
-                         tree_gen={}, text_gen={}, first={:?}, last={:?}; \
-                         full reparse triggered",
-                        brk.tree_gen, brk.text_gen, brk.first, brk.last,
-                    ),
-                );
+                report_chain_break(&mut self.state, bid, &brk);
             }
             if let Some(req) = outcome.request {
                 self.parse_worker.post(req);
@@ -163,7 +175,6 @@ impl Editor {
 
     fn surface_parse_worker_disconnect(&mut self) {
         if !self.parse_worker_disconnect_logged {
-            use crate::editor::Severity;
             self.state.message_log.push(
                 Severity::Error,
                 "parse worker disconnected — syntax highlighting suspended".to_owned(),

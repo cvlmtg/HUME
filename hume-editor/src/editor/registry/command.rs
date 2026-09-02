@@ -6,6 +6,7 @@ use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
 use hume_ops::{MotionMode, WordCtx};
+use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
 
 // ── Command metadata for dispatch bookkeeping ────────────────────────────────
 
@@ -174,6 +175,29 @@ pub(crate) type EditorCmdFn = fn(
 pub(crate) enum SelectionBody {
     Plain(fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet),
     Word(fn(&BufferText, SelectionSet, usize, WordCtx<'_>) -> SelectionSet),
+    Structural(StructuralBody),
+}
+
+/// Data, not a fn pointer: kind × span (`Select`) and kind × direction
+/// (`Goto`) are enumerable, so one interpreter in the dispatch funnel
+/// (`commands/structural.rs::StructuralBody::apply`) replaces what would
+/// otherwise be 22 near-identical thin functions, one per structural
+/// command name.
+#[derive(Clone, Copy)]
+pub(crate) enum StructuralBody {
+    /// `m i <k>` / `m a <k>`: the smallest captured `<kind>.<span>` object at
+    /// each cursor. Extend mode grows outward through
+    /// `apply_text_object_extend`'s past-end retry, so an object that shares
+    /// its end with its parent (a nested `def` closing where its class
+    /// closes) cannot grow to that parent — the same limit the bracket
+    /// objects have, accepted rather than special-cased.
+    Select { kind: ObjectKind, span: ObjectSpan },
+    /// `goto-next-<k>` / `goto-prev-<k>`.
+    Goto { kind: ObjectKind, dir: Direction },
+    /// `m i a` / `m a a`: `parameter.inside` with the lexical scan as
+    /// fallback — one structure-aware argument family rather than a
+    /// separate `parameter` object.
+    Argument { around: bool },
 }
 
 /// A command that can be bound to a key in a keymap.

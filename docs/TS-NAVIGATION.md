@@ -486,17 +486,17 @@ surface — landed once, directly as specified; no intermediate positional six-a
 
 ### Phase 5 — Editor wiring (`hume-editor`)
 
-- [ ] `SelectionBody::Structural` + `StructuralBody` (§5) in `registry/command.rs`.
-- [ ] `commands/structural.rs`: `ensure_syntax_current` (the `ChainBreak` trace report
+- [x] `SelectionBody::Structural` + `StructuralBody` (§5) in `registry/command.rs`.
+- [x] `commands/structural.rs`: `ensure_syntax_current` (the `ChainBreak` trace report
       `reparse_stale_buffers` inlines today becomes the one helper both call), `object_spans`,
       `StructuralBody::apply`.
-- [ ] The `Structural` arm in `run_native_body`'s inner `match fun`.
-- [ ] `registry/defaults/structural.rs` table + `register_structural()`; `register_defaults` calls
+- [x] The `Structural` arm in `run_native_body`'s inner `match fun`.
+- [x] `registry/defaults/structural.rs` table + `register_structural()`; `register_defaults` calls
       it; `EXPECTED_COMMAND_COUNT` → 183; the lexical `inner-argument`/`around-argument`
       registrations in `defaults/text_objects.rs` are removed (their names now register here).
-- [ ] `keymap/defaults.rs`: `mi`/`ma` rows from the table; the `a` row leaves the lexical list.
-- [ ] Regenerate `hume-globals.scm` (twice, diffed).
-- [ ] `hume-editor/src/editor/tests/structural.rs` (`rust` fixture grammar + fetched
+- [x] `keymap/defaults.rs`: `mi`/`ma` rows from the table; the `a` row leaves the lexical list.
+- [x] Regenerate `hume-globals.scm` (twice, diffed).
+- [x] `hume-editor/src/editor/tests/structural.rs` (`rust` fixture grammar + fetched
       `helix-textobjects.scm`, attached through `ed.state.config.languages.attach_grammar(..)` with
       `QueryPaths { textobjects: Some(..), .. }` as `tests/injections_editor.rs` does; keys fed
       through the real keymap):

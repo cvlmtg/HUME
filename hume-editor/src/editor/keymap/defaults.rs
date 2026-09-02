@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::{KeyTrie, KeyTrieNode, Keymap, KeymapCommand, WaitCharPending};
+use crate::editor::registry::STRUCTURAL_OBJECTS;
 
 // ── Macros ────────────────────────────────────────────────────────────────────
 // Lifted to `defaults.rs` (where they're primarily used).
@@ -77,10 +78,12 @@ macro_rules! key {
 /// ```text
 /// m ─┬─ i ─┬─ w  → inner-word
 ///    │      ├─ (  → inner-paren
+///    │      ├─ f  → inner-function
 ///    │      ├─ i  → select-last-insertion
 ///    │      └─ …
 ///    ├─ a ─┬─ w  → around-word
 ///    │      ├─ (  → around-paren
+///    │      ├─ f  → around-function
 ///    │      └─ …
 ///    ├─ s ─┬─ (  → surround-paren
 ///    │      └─ …
@@ -103,8 +106,6 @@ fn build_text_object_trie() -> KeyTrie {
         (&['"'],             "inner-double-quote",   "around-double-quote"),
         (&['\''],            "inner-single-quote",   "around-single-quote"),
         (&['`'],             "inner-backtick",       "around-backtick"),
-        // ── Arguments ────────────────────────────────────────────────────
-        (&['a'],             "inner-argument",       "around-argument"),
         // ── Line ─────────────────────────────────────────────────────────
         (&['l'],             "inner-line",           "around-line"),
     ];
@@ -118,6 +119,16 @@ fn build_text_object_trie() -> KeyTrie {
             inner_trie.bind_leaf(k, cmd!(inner_name));
             around_trie.bind_leaf(k, cmd!(around_name));
         }
+    }
+    // Structural kinds (function/class/argument/comment/test/entry) — one
+    // table shared with `register_structural` (`registry/defaults/
+    // structural.rs`), so a kind added there needs no change here. `a`
+    // (argument) reuses the same two names the lexical scan registered
+    // before this feature — see `StructuralObject`'s doc.
+    for obj in STRUCTURAL_OBJECTS {
+        let k = KeyEvent::new(KeyCode::Char(obj.key), Modifiers::NONE);
+        inner_trie.bind_leaf(k, cmd!(obj.inner));
+        around_trie.bind_leaf(k, cmd!(obj.around));
     }
     // `mii` — select the text typed during the last completed insert
     // session. No `mai` counterpart: an insertion has no "around" — there

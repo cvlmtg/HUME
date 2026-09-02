@@ -3,12 +3,12 @@ use std::borrow::Cow;
 
 use crate::editor::registry::{CommandRegistry, MappableCommand, SelectionBody, SelectionTracking};
 use hume_ops::text_object::{
-    cmd_around_angle, cmd_around_argument, cmd_around_backtick, cmd_around_brace,
-    cmd_around_bracket, cmd_around_double_quote, cmd_around_line, cmd_around_paren,
-    cmd_around_single_quote, cmd_around_uppercase_word, cmd_around_word, cmd_inner_angle,
-    cmd_inner_argument, cmd_inner_backtick, cmd_inner_brace, cmd_inner_bracket,
-    cmd_inner_double_quote, cmd_inner_line, cmd_inner_paren, cmd_inner_single_quote,
-    cmd_inner_uppercase_word, cmd_inner_word, cmd_select_uppercase_word, cmd_select_word,
+    cmd_around_angle, cmd_around_backtick, cmd_around_brace, cmd_around_bracket,
+    cmd_around_double_quote, cmd_around_line, cmd_around_paren, cmd_around_single_quote,
+    cmd_around_uppercase_word, cmd_around_word, cmd_inner_angle, cmd_inner_backtick,
+    cmd_inner_brace, cmd_inner_bracket, cmd_inner_double_quote, cmd_inner_line, cmd_inner_paren,
+    cmd_inner_single_quote, cmd_inner_uppercase_word, cmd_inner_word, cmd_select_uppercase_word,
+    cmd_select_word,
 };
 
 use super::builder::ecmd;
@@ -180,18 +180,8 @@ impl CommandRegistry {
             cmd_around_backtick
         );
 
-        // ── Text objects — arguments ──────────────────────────────────────────
-        super::selection!(
-            self,
-            "inner-argument",
-            "Select the argument at the cursor (trimmed).",
-            cmd_inner_argument
-        );
-        super::selection!(
-            self,
-            "around-argument",
-            "Select the argument and its separator comma.",
-            cmd_around_argument
-        );
+        // `inner-argument` / `around-argument` register from
+        // `register_structural` (structural.rs): structure-aware, with this
+        // module's lexical scan as their no-grammar/no-match fallback.
     }
 }

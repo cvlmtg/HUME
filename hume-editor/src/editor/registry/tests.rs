@@ -2,7 +2,7 @@ use super::*;
 
 /// Exhaustiveness guard: if a command is added without a registry entry,
 /// this test catches it.
-const EXPECTED_COMMAND_COUNT: usize = 161;
+const EXPECTED_COMMAND_COUNT: usize = 183;
 
 #[test]
 fn registry_has_expected_count() {
@@ -532,6 +532,7 @@ fn selection_tracking_matches_expected_commands() {
         "select-all-matches",
         "surround-paren",
         "select-word-nearest-on-line",
+        "inner-function",
     ] {
         let meta = reg
             .get_mappable(name)
@@ -547,7 +548,7 @@ fn selection_tracking_matches_expected_commands() {
     // `Extends`: every `Motion` — a Move-mode result is a bare cursor (or,
     // for the word motions, a selection reached by navigating away from the
     // cursor), so it never establishes a step of its own.
-    for name in &["move-left", "select-next-word"] {
+    for name in &["move-left", "select-next-word", "goto-next-function"] {
         let meta = reg
             .get_mappable(name)
             .unwrap_or_else(|| panic!("command '{name}' not found"))

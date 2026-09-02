@@ -41,8 +41,9 @@ mod defaults;
 
 pub(crate) use command::{
     ArgCompleter, CmdMeta, EditorCmdFn, MappableCommand, SelectionBody, SelectionTracking,
-    TypedCommand,
+    StructuralBody, TypedCommand,
 };
+pub(in crate::editor) use defaults::structural::STRUCTURAL_OBJECTS;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

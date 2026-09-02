@@ -5,6 +5,7 @@ mod editor_cmds;
 mod edits;
 mod motions;
 mod selections;
+pub(in crate::editor) mod structural;
 mod surround;
 mod text_objects;
 mod typed;
@@ -115,6 +116,7 @@ impl CommandRegistry {
         self.register_motions();
         self.register_selections();
         self.register_text_objects();
+        self.register_structural();
         self.register_surround();
         self.register_edits();
         self.register_editor_cmds();

@@ -16,6 +16,7 @@ use crate::editor::replay::{RepeatableAction, SelectionStep};
 use crate::editor::{EditorState, Mode, Severity};
 use hume_ops::{MotionMode, WordCtx};
 
+use super::structural::{ensure_syntax_current, object_spans};
 use super::{current_selections, doc, effective_word_chars, focused_buffer_id};
 
 // ── Native command body execution ───────────────────────────────────────────
@@ -76,6 +77,26 @@ pub(in crate::editor) fn run_native_body(
                     focused,
                     buf,
                     |b, s| fun(b, s, count, ctx),
+                );
+            }
+            SelectionBody::Structural(body) => {
+                // Bring the tree up to date before collecting spans from it:
+                // a structural command can run after `settle`'s async
+                // reparse tick, or mid macro/dot-repeat batch with no settle
+                // between steps, and a stale tree yields wrong spans (or a
+                // panic on an out-of-range byte offset).
+                ensure_syntax_current(state, buf);
+                // Collected before `apply_doc_motion`'s call below, which
+                // needs `&state.buffers` and `&mut state.panes.state` at
+                // once — `ObjectSpans` is owned precisely so its tree borrow
+                // ends here, before that call.
+                let spans = object_spans(state.buffers.get(buf), body);
+                doc_ops::apply_doc_motion(
+                    &state.buffers,
+                    &mut state.panes.state,
+                    focused,
+                    buf,
+                    |t, s| body.apply(t, s, count, motion_mode, &spans),
                 );
             }
         },

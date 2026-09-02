@@ -158,6 +158,13 @@ use crate::layers::{SyntaxLayer, SyntaxLayers};
 /// resulting selection, so the tree borrow this collects from must end
 /// before that, and N cursors × `count` navigation steps then probe a
 /// vector instead of re-running the query per step.
+///
+/// `Default` is the empty set: a buffer with no syntax attached (no grammar,
+/// or the first parse hasn't landed) has no layers to collect from, and the
+/// editor's dispatch path needs a probe target that answers "no object
+/// here" through the same `enclosing`/`adjacent` calls every other buffer
+/// uses, rather than a second, `Option`-shaped "nothing to collect" case.
+#[derive(Default)]
 pub struct ObjectSpans {
     /// Inclusive `(start, end)` char spans, sorted by `(start, Reverse(end))`
     /// and deduplicated — both `enclosing` and `adjacent` walk this exact
