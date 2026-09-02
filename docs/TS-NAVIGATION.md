@@ -471,14 +471,14 @@ surface — landed once, directly as specified; no intermediate positional six-a
 
 ### Phase 4 — Selection policy (`hume-ops`)
 
-- [ ] `apply_text_object_by_mode` → `pub` with its contract in its doc; `argument` finders reachable
+- [x] `apply_text_object_by_mode` → `pub` with its contract in its doc; `argument` finders reachable
       from `hume-editor`.
-- [ ] `motion/object.rs::apply_object_motion` (§4), re-exported from `motion/mod.rs`, with
+- [x] `motion/object.rs::apply_object_motion` (§4), re-exported from `motion/mod.rs`, with
       `motion/tests/object.rs` state triples: Move forward from a cursor, from a selected object
       (nested objects skipped), backward from inside an object (lands on it, head at start), `count`
       2, no next object (unchanged), Extend forward/backward (anchor kept), multi-cursor convergence
       merges.
-- [ ] `around_from_inner` with state triples in `text_object/tests/argument.rs` — the initial state
+- [x] `around_from_inner` with state triples in `text_object/tests/argument.rs` — the initial state
       selects the inner span (`foo(aaa, -[bbb]>, ccc)`), the expected state is the around span:
       first / middle / last / only / multi-line `,\n    arg`; lexical `around_argument` refactored
       onto it — the existing characterization triples unchanged with no red run, plus the one pinned

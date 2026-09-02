@@ -3,9 +3,11 @@
 //! resolves to, and [`ObjectSpans`], which runs that query over a buffer's
 //! syntax layers into a sorted list of inclusive char spans.
 //!
-//! Freshness (the tree matches the text before a command runs) and
-//! selection policy (Move/Extend, count, multi-cursor) are later phases —
-//! this module only collects spans and answers two lookups over them.
+//! Freshness (the tree matches the text before a command runs) is
+//! `Syntax::ensure_current`; selection policy (Move/Extend, count,
+//! multi-cursor) is `hume-ops`'s `apply_text_object_by_mode` and
+//! `apply_object_motion` — this module only collects spans and answers two
+//! lookups over them.
 
 // ── ObjectKind ─────────────────────────────────────────────────────────────
 
@@ -318,8 +320,8 @@ fn collect_hulls(
         }
         // A stale tree (an edit recorded but not yet baked/reparsed) would
         // let a node's byte range run past the live buffer's own length —
-        // freshness (a later phase) makes that impossible by construction,
-        // so a violation here is a bug, not a case to paper over silently.
+        // `Syntax::ensure_current` makes that impossible by construction, so
+        // a violation here is a bug, not a case to paper over silently.
         debug_assert!(
             end_byte <= text.len_bytes(),
             "text-object span end {end_byte} exceeds buffer length {} — tree is stale",
