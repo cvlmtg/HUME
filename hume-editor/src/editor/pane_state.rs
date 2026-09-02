@@ -132,11 +132,29 @@ pub(crate) fn ensure<'a>(
         .or_insert_with(|| fresh_from_buf(buffers.get(bid)))
 }
 
+/// Collapse `pane_state[pid][bid]`'s selection onto `char_pos`, without
+/// switching focus or recording a jump entry. The primitive every cursor
+/// placement outside the focused-buffer fast path (`set_current_selections`)
+/// reduces to: [`park_cursor_at`] is its line/grapheme-column convenience for
+/// a caller with no char position yet, and `goto_location`
+/// (`editor/lsp/edits.rs`) — whose target is already char-indexed — calls
+/// this directly.
+pub(crate) fn write_cursor(
+    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    buffers: &BufferStore,
+    pid: PaneId,
+    bid: BufferId,
+    char_pos: usize,
+) {
+    ensure(pane_state, buffers, pid, bid).selections =
+        SelectionSet::single(Selection::collapsed(char_pos));
+}
+
 /// Collapse `pane_state[pid][bid]`'s selection onto a 0-based
 /// `(line, grapheme_col)`, clamping the line to the buffer's last content
-/// line. Shared by every caller that parks a cursor at a line/column pair
-/// without switching focus or recording a jump entry — a read-only view's
-/// opening position and a CLI startup position both reduce to this.
+/// line. Shared by every caller that parks a cursor at a line/column pair —
+/// a read-only view's opening position and a CLI startup position both
+/// reduce to this.
 pub(crate) fn park_cursor_at(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     buffers: &BufferStore,
@@ -148,8 +166,7 @@ pub(crate) fn park_cursor_at(
     let text = buffers.get(bid).text();
     let line = line0.min(text.last_content_line());
     let char_pos = hume_editing::lines::place_grapheme_column(text, line, grapheme_col0);
-    ensure(pane_state, buffers, pid, bid).selections =
-        SelectionSet::single(Selection::collapsed(char_pos));
+    write_cursor(pane_state, buffers, pid, bid, char_pos);
 }
 
 // ── PaneTransient ────────────────────────────────────────────────────────────

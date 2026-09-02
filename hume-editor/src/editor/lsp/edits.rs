@@ -533,25 +533,13 @@ pub(crate) fn goto_location(
         pid,
         bid,
     );
-    pane_state::ensure(&mut state.panes.state, &state.buffers, pid, bid);
-    state.panes.state[pid][bid].selections = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(char_pos),
-    );
+    pane_state::write_cursor(&mut state.panes.state, &state.buffers, pid, bid, char_pos);
     crate::editor::commands::record_jump_if_moved(state, view, entry);
 
-    // Center by display row, the same way `zz` does (`scroll_cursor_to_row`)
-    // — not by buffer line, which only agrees with it when nothing wraps.
-    // A hand-rolled `top_line = cursor_line - height/2` also never touches
-    // `top_row_offset`, leaving it stale; `scroll_cursor_to_row` writes both
-    // together so the pair stays self-consistent.
-    let height = view.panes[pid].viewport.height as usize;
-    let (mut rm, viewport) = crate::editor::commands::pane_row_map_mut(
-        state.buffers.get(bid),
-        &state.settings,
-        &mut view.panes[pid],
-        &mut state.motion_format_scratch,
-    );
-    crate::editor::scroll::scroll_cursor_to_row(viewport, &mut rm, char_pos, height / 2);
+    // Center by display row, the same way `zz` does — not by buffer line,
+    // which only agrees with it when nothing wraps.
+    crate::editor::commands::cmd_view_center(state, view, 1, hume_ops::MotionMode::Move)
+        .expect("cmd_view_center takes no path that can fail");
 
     Ok(())
 }
