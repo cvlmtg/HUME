@@ -10,7 +10,9 @@ mod line;
 mod quote;
 mod word;
 
-pub use argument::{cmd_around_argument, cmd_inner_argument};
+pub use argument::{
+    around_argument, around_from_inner, cmd_around_argument, cmd_inner_argument, inner_argument,
+};
 pub use bracket::{
     cmd_around_angle, cmd_around_brace, cmd_around_bracket, cmd_around_paren, cmd_inner_angle,
     cmd_inner_brace, cmd_inner_bracket, cmd_inner_paren,
@@ -101,9 +103,16 @@ pub(crate) fn apply_text_object_extend(
     result
 }
 
-/// Dispatch to [`apply_text_object`] or [`apply_text_object_extend`] based on `mode`.
+/// Apply a text object to every selection in the set, honoring `mode`: `Move`
+/// replaces each selection with the matched range; `Extend` unions the match
+/// with the current selection, retrying past the selection's end when the
+/// first match would not grow it (the outward-walk described above). A
+/// selection with no match is preserved unchanged in both modes. The second,
+/// cross-crate caller of this exact contract is `hume-editor`'s structural
+/// text objects, dispatching through a tree-sitter-backed finder rather than
+/// a lexical one.
 #[inline]
-fn apply_text_object_by_mode(
+pub fn apply_text_object_by_mode(
     text: &BufferText,
     sels: SelectionSet,
     mode: MotionMode,
