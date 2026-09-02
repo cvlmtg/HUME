@@ -87,16 +87,22 @@ const MIN_PANE_HEIGHT: u16 = 3;
 /// needs more horizontal room than vertical to stay usable.
 const MIN_PANE_WIDTH: u16 = 10;
 
-/// Whether the focused pane's current on-screen rect has room for another
-/// split on `direction`, including the 1-cell seam divider drawn between the
-/// two resulting panes (see `hume_engine::pipeline::split_rect`).
+/// Whether splitting the focused pane on `direction` would leave every pane
+/// sharing that axis — not just the two new ones — at or above the minimum
+/// size, including the 1-cell seam divider drawn between siblings (see
+/// `hume_engine::pipeline::split_rect`).
 ///
-/// Recomputes geometry from `view.last_pane_area` on every call (see
-/// `EngineView::pane_rect`) rather than trusting a cross-frame cache, so a
-/// split issued right after a close/split earlier in the same replay batch
-/// always sees current geometry. Before the first `prepare_frame` there is
-/// no real terminal area yet — allow the split; `prepare_frame` sizes it
-/// correctly on the next frame regardless.
+/// Simulates the split via `LayoutTree::predicted_split_rect` rather than
+/// halving the focused pane's current rect: since `equalize` resizes every
+/// pane on the split's axis, not just the pair being split, a pane deep in a
+/// row of several can be pushed under the minimum by a split that never
+/// touches it directly.
+///
+/// Recomputes geometry from `view.last_pane_area` on every call rather than
+/// trusting a cross-frame cache, so a split issued right after a close/split
+/// earlier in the same replay batch always sees current geometry. Before the
+/// first `prepare_frame` there is no real terminal area yet — allow the
+/// split; `prepare_frame` sizes it correctly on the next frame regardless.
 pub(in crate::editor) fn fits_split(
     state: &EditorState,
     view: &EngineView,
@@ -105,12 +111,17 @@ pub(in crate::editor) fn fits_split(
     if view.last_pane_area.area() == 0 {
         return true;
     }
-    let Some(rect) = view.pane_rect(state.focused_pane_id) else {
+    let Some(rect) = view.layout.predicted_split_rect(
+        state.focused_pane_id,
+        view.last_pane_area,
+        view.reserve_seam,
+        direction,
+    ) else {
         return true;
     };
     match direction {
-        Direction::Vertical => rect.height > 2 * MIN_PANE_HEIGHT,
-        Direction::Horizontal => rect.width > 2 * MIN_PANE_WIDTH,
+        Direction::Vertical => rect.height >= MIN_PANE_HEIGHT,
+        Direction::Horizontal => rect.width >= MIN_PANE_WIDTH,
     }
 }
 

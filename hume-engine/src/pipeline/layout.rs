@@ -44,9 +44,14 @@ pub enum LayoutTree {
         /// `equalize` from the two children's [`Self::slots_along`] counts —
         /// not chosen by whatever split produced this node — so every pane
         /// sharing a split axis stays equal-sized regardless of split order.
-        /// Kept as stored (not derived-on-read) state: a future manual pane
-        /// resize needs somewhere to write a value `equalize` won't
-        /// immediately overwrite.
+        /// Kept as stored (not derived-on-read) state because `LayoutTree`
+        /// is `pub` and constructible directly with an arbitrary ratio (see
+        /// the tie-break test in `hume-editor`'s `pane_focus` tests) — a
+        /// derived-on-read field couldn't hold a ratio nothing equalized.
+        /// `equalize` currently rewrites every ratio in the whole tree on
+        /// every split/close; a future manual pane resize will need to keep
+        /// its own ratio scoped out of that pass rather than being
+        /// overwritten by an unrelated split elsewhere.
         ratio: f32,
         children: Box<(LayoutTree, LayoutTree)>,
     },
@@ -257,6 +262,34 @@ impl LayoutTree {
             let slots1 = children.1.slots_along(*direction);
             *ratio = slots0 as f32 / (slots0 + slots1) as f32;
         }
+    }
+
+    /// Predicts the rect `target` would end up with after a real
+    /// `split_leaf(target, _, direction)` call, without mutating this tree or
+    /// requiring a real `new_pane` id. `equalize` runs whole-tree, so the two
+    /// panes a split produces are not simply half of `target`'s current rect
+    /// — anything else sharing the split axis may resize too; this simulates
+    /// the actual insert-then-equalize sequence to get the real answer
+    /// instead of approximating it. `None` when `target` isn't in this tree.
+    ///
+    /// `target`'s side of the new split is always this method's answer or
+    /// smaller: `insert_split` makes `target` the first child, and
+    /// `split_rect`'s integer truncation always rounds the first child's
+    /// share down — so checking only `target`'s predicted rect against a
+    /// minimum is the conservative (never-too-generous) choice.
+    pub fn predicted_split_rect(
+        &self,
+        target: PaneId,
+        area: Rect,
+        reserve_seam: bool,
+        direction: Direction,
+    ) -> Option<Rect> {
+        let mut probe = self.clone();
+        if !probe.insert_split(target, PaneId::default(), direction) {
+            return None;
+        }
+        probe.equalize();
+        probe.find_rect(target, area, reserve_seam)
     }
 
     /// Prune `Leaf(target)`, collapsing its parent `Split` onto the sibling,

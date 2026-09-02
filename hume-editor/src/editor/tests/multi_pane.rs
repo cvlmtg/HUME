@@ -851,6 +851,44 @@ fn split_at_minimum_height_still_splits() {
     );
 }
 
+/// `fits_split` must judge the *post-equalize* size a split would produce,
+/// not the pre-split rect of whichever pane is being split — since
+/// `equalize` resizes every pane sharing the axis, a stack of several
+/// equal-height panes can still have room for one more even though halving
+/// any single pane's current height would not fit.
+///
+/// 24 rows -> 23 usable after the statusline. 4 stacked panes (3 splits) at
+/// 3 seams: (23-3)/4 ≈ 5 rows each — well above `MIN_PANE_HEIGHT`(3), so a
+/// naive "halve this pane's current rect" guard (5 > 2*3 is false) would
+/// wrongly reject a 5th pane; the actual post-equalize height once there are
+/// 5 panes is (23-4)/5 ≈ 3.8 -> 3, which clears the minimum.
+#[test]
+fn fifth_pane_split_succeeds_when_post_equalize_size_still_fits() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.sync_viewport_dims(80, 24);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    for _ in 0..3 {
+        ed.execute_typed("split", None).unwrap();
+    }
+    assert_eq!(ed.view.panes.len(), 4, "setup: 4 stacked panes");
+
+    ed.execute_typed("split", None).unwrap();
+
+    assert_eq!(
+        ed.view.panes.len(),
+        5,
+        "the split producing a 5th pane must succeed — post-equalize height still fits"
+    );
+    assert_ne!(
+        ed.state.status_msg.as_deref(),
+        Some("pane too small to split"),
+    );
+}
+
 /// A zero-height render area (e.g. a terminal reporting height 0 on early
 /// startup) must not panic. `EngineView::render` must guard the statusline
 /// (and tab bar) provider's synthesized `Rect` on `area.height` — an
