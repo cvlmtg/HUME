@@ -51,8 +51,21 @@ Text objects select structured regions in one step. They use the `m` prefix — 
 | `` m i ` `` / `` m a ` `` | Inside `` `…` `` / including `` `…` `` |
 | `m i a` / `m a a` | Argument (trimmed) / argument + separator comma |
 | `m i l` / `m a l` | Line content (no newline) / full line (with newline) |
+| `m i f` / `m a f` | Inside a function / the function including its signature (and attributes, decorators, …) |
+| `m i t` / `m a t` | Inside a class or type / the class or type including its header |
+| `m i c` / `m a c` | Inside a comment / the whole comment block |
+| `m i T` / `m a T` | Inside a test function's body / the whole test, including its attribute or decorator |
+| `m i e` / `m a e` | Inside an array/tuple/struct entry / the entry plus its separator comma |
 
 Closing brackets work as well as opening ones: `m i )` is the same as `m i (`, and likewise for `]`, `}`, and `>`.
+
+`m i a` / `m a a` and the last five rows above (`f`, `t`, `c`, `T`, `e`) are structure-aware: for a
+language whose grammar ships a `textobjects.scm` (PLUM installs one alongside highlights where the
+upstream grammar has one), they select the actual function, class, comment, test, or entry node —
+falling back to a lexical scan for `m i a` / `m a a` wherever the grammar doesn't cover the cursor
+(a syntax error, a buffer with no grammar at all). Without a grammar, `f`/`t`/`c`/`T`/`e` are a
+silent no-op. Because the argument object is now structure-aware, a nested list, tuple, or struct
+literal passed as a call argument is itself the argument — use `m i e` / `m a e` for its members.
 
 Two shortcuts select the word under the cursor directly:
 

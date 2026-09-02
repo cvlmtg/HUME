@@ -90,7 +90,7 @@ Steel (Scheme) scripting host — owns the Steel `Engine`, the plugin loading/ac
 ### Used by
 - hume-editor
 ## Description
-Tree-sitter integration: language/grammar registry with dynamic loading, the background incremental-parse worker, syntax highlighting, and embedded-language injection resolution. Editor-domain glue (hooks, lazy-plugin activation, the per-frame orchestration that ties this crate's parse backend to a live `Editor`) stays in `hume-editor`; this crate only knows about buffers, ropes, and grammars.
+Tree-sitter integration: language/grammar registry with dynamic loading, the background incremental-parse worker, syntax highlighting, embedded-language injection resolution, and structural text-object/navigation queries (function/class/argument/comment/test/entry spans). Editor-domain glue (hooks, lazy-plugin activation, the per-frame orchestration that ties this crate's parse backend to a live `Editor`) stays in `hume-editor`; this crate only knows about buffers, ropes, and grammars.
 
 # hume-test-fixtures
 ### Depends on

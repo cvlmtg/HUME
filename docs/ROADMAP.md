@@ -5,8 +5,6 @@
 ### Editor — new features
 
 - [ ] Tabline UI — engine-rendered buffer/tab bar; `TabBarProvider` slot already exists.
-- [ ] Tree-sitter text objects — `textobjects.scm` / `locals.scm` (structural select).
-- [ ] Tree-sitter structural navigation — jump to next/prev function, argument, class, etc. (structural move, distinct from text-object select).
 - [ ] Scope-aware local rename — tree-sitter locals, LSP fallback via `core:lsp`.
 - [ ] Code folding — tree-sitter-powered collapse/expand.
 - [ ] Class A docked panes — fixed-row-count `LayoutTree` variant alongside ratio-based splits. Clients: quickfix list, LSP references/diagnostics, embedded terminal/REPL, build/test runner, `:help` pager, DAP debugger views. Deferred until the first concrete client is scoped.

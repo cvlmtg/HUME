@@ -23,6 +23,18 @@ Move the cursor/selection. Callable as `(name)` or `(call! "name")`.
 | `goto-line-end` | `End` / `g l` | Move cursors to the last character on the line. |
 | `goto-line-start` | `Home` / `g h` | Move cursors to the start of the line. |
 | `goto-matching-pair` | `#` | Move cursors to the matching bracket or tag. |
+| `goto-next-argument` | — | Select the next argument. |
+| `goto-next-class` | — | Select the next class or type. |
+| `goto-next-comment` | — | Select the next comment. |
+| `goto-next-entry` | — | Select the next array/tuple/struct entry. |
+| `goto-next-function` | — | Select the next function. |
+| `goto-next-test` | — | Select the next test. |
+| `goto-prev-argument` | — | Select the previous argument. |
+| `goto-prev-class` | — | Select the previous class or type. |
+| `goto-prev-comment` | — | Select the previous comment. |
+| `goto-prev-entry` | — | Select the previous array/tuple/struct entry. |
+| `goto-prev-function` | — | Select the previous function. |
+| `goto-prev-test` | — | Select the previous test. |
 | `move-down` | `j` / `↓` | Move cursors down one visual line (one buffer line with a count). |
 | `move-left` | `h` / `←` | Move cursors one grapheme to the left. |
 | `move-right` | `l` / `→` | Move cursors one grapheme to the right. |
@@ -61,25 +73,35 @@ Select a delimited region around the cursor.
 | Command | Default key | Effect |
 |---------|-------------|--------|
 | `around-angle` | `m a <` / `m a >` | Select content including the nearest `<>`. |
-| `around-argument` | `m a a` | Select the argument and its separator comma. |
+| `around-argument` | `m a a` | Select the argument and its separator comma. Structure-aware — uses the language's `parameter` object when the grammar defines one. |
 | `around-backtick` | `` m a ` `` | Select content including the nearest backtick pair. |
 | `around-brace` | `m a {` / `m a }` | Select content including the nearest `{}`. |
 | `around-bracket` | `m a [` / `m a ]` | Select content including the nearest `[]`. |
+| `around-class` | `m a t` | Select the class or type including its header. Requires a grammar with a `textobjects.scm`. |
+| `around-comment` | `m a c` | Select the whole comment block. Requires a grammar with a `textobjects.scm`. |
 | `around-double-quote` | `m a "` | Select content including the nearest `"`. |
+| `around-entry` | `m a e` | Select an array/tuple/struct entry plus its separator comma. Requires a grammar with a `textobjects.scm`. |
+| `around-function` | `m a f` | Select the function including its signature (and attributes/decorators). Requires a grammar with a `textobjects.scm`. |
 | `around-line` | `m a l` | Select the line including its newline. |
 | `around-paren` | `m a (` / `m a )` | Select content including the nearest `()`. |
 | `around-single-quote` | `m a '` | Select content including the nearest `'`. |
+| `around-test` | `m a T` | Select the whole test, including its attribute or decorator. Requires a grammar with a `textobjects.scm`. |
 | `around-uppercase-word` | `m a W` | Select uppercase word plus one adjacent whitespace run. |
 | `around-word` | `m a w` | Select word plus one adjacent whitespace run. |
 | `inner-angle` | `m i <` / `m i >` | Select content inside the nearest `<>`. |
-| `inner-argument` | `m i a` | Select the argument at the cursor (trimmed). |
+| `inner-argument` | `m i a` | Select the argument at the cursor (trimmed). Structure-aware — uses the language's `parameter` object when the grammar defines one. |
 | `inner-backtick` | `` m i ` `` | Select content inside the nearest backtick pair. |
 | `inner-brace` | `m i {` / `m i }` | Select content inside the nearest `{}`. |
 | `inner-bracket` | `m i [` / `m i ]` | Select content inside the nearest `[]`. |
+| `inner-class` | `m i t` | Select inside a class or type. Requires a grammar with a `textobjects.scm`. |
+| `inner-comment` | `m i c` | Select inside a comment. Requires a grammar with a `textobjects.scm`. |
 | `inner-double-quote` | `m i "` | Select content inside the nearest `"`. |
+| `inner-entry` | `m i e` | Select inside an array/tuple/struct entry. Requires a grammar with a `textobjects.scm`. |
+| `inner-function` | `m i f` | Select inside a function. Requires a grammar with a `textobjects.scm`. |
 | `inner-line` | `m i l` | Select inner line content (excluding the newline). |
 | `inner-paren` | `m i (` / `m i )` | Select content inside the nearest `()`. |
 | `inner-single-quote` | `m i '` | Select content inside the nearest `'`. |
+| `inner-test` | `m i T` | Select inside a test function's body. Requires a grammar with a `textobjects.scm`. |
 | `inner-uppercase-word` | `m i W` | Select inner uppercase word (whitespace-delimited). |
 | `inner-word` | `m i w` | Select inner word. |
 | `select-uppercase-word` | `M M` | Select the uppercase word (WORD) under the cursor. |

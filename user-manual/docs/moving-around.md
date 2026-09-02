@@ -72,6 +72,33 @@ The idiomatic line movements live under the `g` prefix:
 
 For a bracket on a single line, `#` looks at the whole selection, not just where the cursor sits — so it still finds `(` `)` `[` `]` `{` `}` after a selecting motion leaves the cursor just past one. A selection spanning multiple lines only looks at the character the cursor sits on, same as a tag. For an HTML/XML/JSX tag, the cursor itself must be inside the tag's own markup — its `<`, its `>`, the name, or an attribute — not just anywhere in the selection. Anywhere else, `#` does nothing. From an opening bracket or tag it jumps to the closing one, and back again from the closing side. A count has no effect — `#` always jumps to the immediate partner.
 
+## Structural navigation
+
+For a language whose grammar ships a `textobjects.scm` (PLUM installs one alongside highlights where
+the upstream grammar has one), these commands jump to the next/previous instance of a structural kind
+and select it as a whole — cursor (head) on its first character:
+
+| Command | Selects |
+|---------|---------|
+| `goto-next-function` / `goto-prev-function` | The next/previous function |
+| `goto-next-class` / `goto-prev-class` | The next/previous class or type |
+| `goto-next-argument` / `goto-prev-argument` | The next/previous argument |
+| `goto-next-comment` / `goto-prev-comment` | The next/previous comment |
+| `goto-next-test` / `goto-prev-test` | The next/previous test |
+| `goto-next-entry` / `goto-prev-entry` | The next/previous array/tuple/struct entry |
+
+None of these ship with a default key — bind the ones you use, e.g.:
+
+```scheme
+(bind-key! 'normal "g f" "goto-next-function")
+(bind-key! 'normal "g F" "goto-prev-function")
+```
+
+(`[` and `]` are taken by the kill-ring cycle today, so they aren't the default home for these.) Any
+of them also runs unbound from the command line, e.g. `:goto-next-function`. They stop at either end
+of the buffer instead of wrapping, and each records a jump-list entry, so `Ctrl+o` returns to where
+you jumped from. Without a matching grammar, every one of these commands is a silent no-op.
+
 ## Jump to a line by number
 
 Type `:` then a line number and press `Enter` to jump there:

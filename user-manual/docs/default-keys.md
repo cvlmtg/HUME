@@ -77,8 +77,13 @@ Text objects (use the `m` prefix):
 | `m i "` / `m a "` | `inner-double-quote` / `around-double-quote` | Inner / around `"…"` |
 | `m i '` / `m a '` | `inner-single-quote` / `around-single-quote` | Inner / around `'…'` |
 | `` m i ` `` / `` m a ` `` | `inner-backtick` / `around-backtick` | Inner / around `` `…` `` |
-| `m i a` / `m a a` | `inner-argument` / `around-argument` | Inner / around argument |
+| `m i a` / `m a a` | `inner-argument` / `around-argument` | Inner / around argument (structure-aware) |
 | `m i l` / `m a l` | `inner-line` / `around-line` | Inner / around line |
+| `m i f` / `m a f` | `inner-function` / `around-function` | Inner / around function |
+| `m i t` / `m a t` | `inner-class` / `around-class` | Inner / around class or type |
+| `m i c` / `m a c` | `inner-comment` / `around-comment` | Inner / around comment |
+| `m i T` / `m a T` | `inner-test` / `around-test` | Inner / around test |
+| `m i e` / `m a e` | `inner-entry` / `around-entry` | Inner / around array/tuple/struct entry |
 | `m i i` | `select-last-insertion` | Select the text typed during the last insert |
 | `m m` | `select-word` | Select the word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b` — see `word-selects-whitespace`) |
 | `M M` | `select-uppercase-word` | WORD variant of `m m` |

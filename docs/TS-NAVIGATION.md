@@ -523,26 +523,26 @@ surface — landed once, directly as specified; no intermediate positional six-a
 
 ### Phase 6 — Docs, changelog, roadmap
 
-- [ ] `CHANGELOG.md` under *Unreleased*: a **Breaking** bullet for `register-grammar!`; feature
+- [x] `CHANGELOG.md` under *Unreleased*: a **Breaking** bullet for `register-grammar!`; feature
       bullets for the structural objects (with keys), the structure-aware argument object (noting
       that inside a call a nested list is now the argument — `m i e` for its members), and the
       unbound navigation commands (how to bind them).
-- [ ] `user-manual/docs/selections.md`: rows for `m i f`/`m a f`, `m i t`/`m a t`, `m i c`/`m a c`,
+- [x] `user-manual/docs/selections.md`: rows for `m i f`/`m a f`, `m i t`/`m a t`, `m i c`/`m a c`,
       `m i T`/`m a T`, `m i e`/`m a e`; the `m i a`/`m a a` row notes it is structure-aware when
       the language's grammar provides objects; one sentence that these need a grammar with a
       `textobjects.scm` (installed by PLUM alongside highlights) and are otherwise no-ops.
-- [ ] `user-manual/docs/default-keys.md`: mirror the text-object rows.
-- [ ] `user-manual/docs/builtin-commands.md`: the 22 new command rows (navigation rows with no key).
-- [ ] `user-manual/docs/moving-around.md`: a "Structural navigation" section listing the twelve
+- [x] `user-manual/docs/default-keys.md`: mirror the text-object rows.
+- [x] `user-manual/docs/builtin-commands.md`: the 22 new command rows (navigation rows with no key).
+- [x] `user-manual/docs/moving-around.md`: a "Structural navigation" section listing the twelve
       commands, what they select, that `:goto-next-function` runs them from the command line, and a
       `bind-key!` example.
-- [ ] `docs/learning/tree-sitter-pipeline.md`: a section on text-object queries at the concept
+- [x] `docs/learning/tree-sitter-pipeline.md`: a section on text-object queries at the concept
       level — captures grouped into one object, smallest-enclosing for select, nearest-start for
       navigation, why injected layers need no special handling, why the tree is brought up to date
       before a query. No file paths or function names.
-- [ ] `docs/CRATES.md` and `hume-treesitter/src/lib.rs`'s crate paragraph: add structural text
+- [x] `docs/CRATES.md` and `hume-treesitter/src/lib.rs`'s crate paragraph: add structural text
       objects and navigation to what the crate owns.
-- [ ] `docs/ROADMAP.md`: remove both tree-sitter items (the file's convention is removal, not
+- [x] `docs/ROADMAP.md`: remove both tree-sitter items (the file's convention is removal, not
       `[x]`); `locals.scm` stays covered by the "Scope-aware local rename" item; the open question
       on `goto-matching-pair`'s lexical tag matching stays open — it is the `xml-element` follow-up.
 

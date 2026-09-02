@@ -31,6 +31,10 @@
   `lsp.format-max-ranges` setting (default 16), past which nothing is formatted, with a
   warning naming the cap. A mix of whole-line and partial-line selections now warns and
   formats nothing, rather than silently reformatting the whole buffer.
+- **Breaking**: `(register-grammar! name grammar-path symbol highlights-path ...)` now takes its
+  injections and text-object queries as keyword arguments, `#:injections` and `#:textobjects`,
+  instead of positional fourth and fifth arguments. A language that defines only a textobjects
+  query no longer needs to pad an injections slot with `#f` to reach it.
 
 ### Editing
 - New `goto-matching-pair` (`#`) jumps between a bracket and its partner (`(` `)` `[` `]` `{` `}`), or between an HTML/XML/JSX tag and its partner — vim's `%`, without disturbing HUME's own `%` (select-all). For single line selections, it scans for brackets against the whole selection, not just the character the cursor sits on — so `#` still jumps after a motion like `w` leaves the cursor on the whitespace past a bracket rather than on the bracket itself.
@@ -39,6 +43,21 @@
 - A numeric count prefix (`3w`, `12j`) is now capped at 10,000, whether typed or supplied by a script's `(call! "cmd" count)`. A large count no longer risks an overflow, and no longer slows down motions like `w`/`h`/`l` past their buffer clamp — they now stop as soon as the motion stops moving instead of repeating the full count.
 - Pasting or inserting a vertical tab, form feed, NEL, or Unicode line/paragraph separator character no longer splits the buffer into an extra editor line — it's ordinary content now, rendered like any other control character, matching every other editor and the line-break definition language servers use.
 - Every line-ending convention now normalizes to `\n` wherever text enters a buffer, not just at load: pasting, `p`/`P` register paste, a language server's edit or completion, and a plugin's own insertion all collapse a `\r\n` or a bare `\r` (old Mac) the way file load already did for `\r\n`. A buffer's lines always end in `\n` regardless of where the text came from. A file written with bare `\r` line endings is still read correctly, but that convention is not preserved on save: it loads as `LF` and saves with `\n`.
+- New tree-sitter structural text objects, for a language whose grammar ships a `textobjects.scm`
+  (PLUM installs one alongside highlights where the upstream grammar has one): `m i f`/`m a f`
+  (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i T`/`m a T` (test),
+  `m i e`/`m a e` (array/tuple/struct entry). Each is a silent no-op without a matching grammar.
+- `m i a`/`m a a` (argument) is now structure-aware: where the grammar defines a `parameter` object
+  it's used in preference to the lexical scan, which still covers everything the grammar doesn't (a
+  region under a syntax error, a language with no grammar at all). This changes what counts as "the
+  argument" inside a call: a nested list, tuple, or struct literal is now one argument rather than
+  the lexical scan's innermost comma-delimited fragment — reach its members with `m i e`/`m a e`.
+- New unbound `goto-next-<kind>`/`goto-prev-<kind>` commands, one pair per structural kind above
+  plus `goto-next-argument`/`goto-prev-argument`, select the next/previous object of that kind as a
+  whole selection with the cursor on its start; they don't wrap past either end of the buffer and
+  each records a jump-list entry (`Ctrl+o` returns). Bind them yourself, e.g. `(bind-key! 'normal
+  "g f" "goto-next-function")`; they also run unbound from the command line, e.g.
+  `:goto-next-function`.
 
 ### Appearance
 - Curly, dotted and dashed underlines now render on terminals that support them. Themes could already ask for them and HUME already parsed the request; it was being flattened to a plain underline on the way to the terminal.

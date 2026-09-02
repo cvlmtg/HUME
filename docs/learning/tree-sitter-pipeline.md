@@ -120,6 +120,68 @@ the regions themselves (a code fence, a script tag) are typically small
 enough that a full parse is cheap. The expensive parse — the whole buffer —
 stays incremental; the small ones are recomputed.
 
+## Text objects: selecting and navigating by structure
+
+A highlight query answers "what is this node?" An injection query answers "what language is this
+region?" A third kind of query — a text-object query — answers a different question: "where does the
+function, class, comment, or argument around this cursor begin and end?" It is the same mechanism
+(a `.scm` file of patterns compiled against the grammar) turned toward a different purpose: instead
+of naming nodes for the theme, its captures name whole structural objects for selection and
+navigation to use.
+
+### One object, several captures
+
+A structural object is not always one node. A function preceded by an attribute or decorator is,
+conceptually, one selectable unit — the attribute plus the function it attaches to — even though the
+grammar represents them as two adjacent nodes. A block comment is a run of several single-line
+comment nodes read as one paragraph. A query pattern can tag more than one node with the same object
+name in a single match, and the object those captures describe is the *span from the earliest node's
+start to the latest node's end* — a hull drawn around every node the pattern singled out, not any one
+node in isolation. This is what lets "select the function" include its attribute without the query
+author having to special-case attributes at every call site.
+
+### Selecting: smallest wins
+
+When you ask to select "the enclosing function," there may be several functions whose span contains
+the cursor — an inner closure inside an outer method, say. The rule is simply: the *smallest* span
+that contains the cursor wins. This is exactly the intuition "select the closest enclosing thing," and
+it composes naturally with nesting of any depth without needing a special case for how deep the
+nesting goes.
+
+### Navigating: nearest start wins
+
+Jumping to the "next" or "previous" object is a different question — not "which object contains the
+cursor" but "which object's boundary is closest in the given direction." Moving forward, that is the
+object whose start comes soonest after the cursor; moving backward, the object whose start comes
+soonest before it. Keying both directions off an object's *start* (rather than, say, its end) means a
+backward jump from inside an object lands on that object's own beginning first, before walking further
+back to an earlier one — matching how a reader would describe "go back to the start of this thing,"
+one step at a time.
+
+### Why layering needs no special handling
+
+A document can hold more than one syntax tree at once (see [Layers](#layers) above) — a Markdown file
+with a fenced Rust block has a Markdown tree and a Rust tree, each queried independently for
+structural objects. A structural object found inside an injected layer's tree always sits at a
+position inside the region that layer covers, which itself sits inside the host document's own
+structure. Combined with "smallest span wins," an object from the more deeply nested layer is
+automatically preferred over anything coarser the host layer might have offered for the same
+position — no separate rule is needed to prefer "the more specific parse." A layer whose language
+defines no structural objects at all simply contributes nothing, and the search continues in whichever
+layer does.
+
+### Why the tree must be current first
+
+A structural query answers in terms of *positions* — where a span starts and ends. If the cursor has
+moved because of an edit since the tree was last built, but the tree itself hasn't been rebuilt yet,
+those positions describe where the code used to be, not where it is now. Ordinary highlighting can
+tolerate a tree that lags an edit by a frame or two — the visual difference is invisible for that
+long. A structural command cannot: it would select the wrong span, at best, and could ask for a
+position that no longer exists in the buffer at all. So a structural command always brings the tree
+up to date with the buffer's current text before it asks its query anything, even if that means doing
+a small amount of parsing work synchronously rather than waiting for the background parser to catch up
+on its own.
+
 ## Plum: the grammar manager
 
 `plum` is HUME's built-in plugin manager. It is written in Scheme and ships
