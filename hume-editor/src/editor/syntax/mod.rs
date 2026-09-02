@@ -7,7 +7,7 @@
 
 mod parse;
 
-pub(in crate::editor) use parse::report_chain_break;
+pub(in crate::editor) use parse::ensure_syntax_current;
 
 use hume_engine::pipeline::BufferId;
 use hume_treesitter::registry::{LanguageId, QueryPaths, detect_language};

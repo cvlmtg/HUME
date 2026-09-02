@@ -7,15 +7,25 @@ use hume_treesitter::syntax::{ChainBreak, Syntax};
 
 use crate::editor::{Editor, EditorState, Severity};
 
+impl EditorState {
+    /// Whether `bid` is small enough to carry a syntax tree, per
+    /// `syntax-highlight-max-bytes`.
+    ///
+    /// The single spelling of that comparison. Three paths ask it — attach
+    /// refusal, the per-frame detach/re-attach sweep, and the on-demand
+    /// freshness check below — and before this predicate they asked it
+    /// inline, two of them with `>` and one with `<=`, which is how half of
+    /// a future cap change would have slipped through.
+    pub(in crate::editor) fn syntax_size_ok(&self, bid: BufferId) -> bool {
+        self.buffers.get(bid).text().len_bytes() <= self.settings.syntax_highlight_max_bytes
+    }
+}
+
 /// Trace-log a broken pending-edit chain. Shared by `reparse_stale_buffers`
-/// (the per-frame path, `&mut Editor`) and `commands::structural::
-/// ensure_syntax_current` (the synchronous on-demand path, only `&mut
-/// EditorState`) — one message, never a second copy of the string.
-pub(in crate::editor) fn report_chain_break(
-    state: &mut EditorState,
-    bid: BufferId,
-    brk: &ChainBreak,
-) {
+/// (the per-frame path, `&mut Editor`) and [`ensure_syntax_current`] (the
+/// synchronous on-demand path, only `&mut EditorState`) — one message, never
+/// a second copy of the string.
+fn report_chain_break(state: &mut EditorState, bid: BufferId, brk: &ChainBreak) {
     state.report(
         Severity::Trace,
         format!(
@@ -44,9 +54,7 @@ impl Editor {
             None => return,
         };
 
-        if self.state.buffers.get(bid).text().len_bytes()
-            > self.state.settings.syntax_highlight_max_bytes
-        {
+        if !self.state.syntax_size_ok(bid) {
             return;
         }
 
@@ -113,15 +121,13 @@ impl Editor {
             .filter(|bid| seen.insert(*bid))
             .collect();
 
-        let max_bytes = self.state.settings.syntax_highlight_max_bytes;
-
         for bid in visible {
+            let size_ok = self.state.syntax_size_ok(bid);
             let buf = self.state.buffers.get(bid);
             let text_gen = buf.text_gen;
-            let byte_len = buf.text().len_bytes();
 
             // Detach if grown past cap.
-            if buf.syntax.is_some() && byte_len > max_bytes {
+            if buf.syntax.is_some() && !size_ok {
                 self.state.buffers.get_mut(bid).syntax = None;
                 continue;
             }
@@ -130,7 +136,7 @@ impl Editor {
             // Covers: buffers that opened over-cap and later shrank, or that had their
             // syntax detached by the growth branch above.
             if buf.syntax.is_none() {
-                if byte_len <= max_bytes
+                if size_ok
                     && self
                         .state
                         .buffers
@@ -180,7 +186,93 @@ impl Editor {
             }
         }
     }
+}
 
+/// Bring `bid`'s committed tree up to date with its current text,
+/// synchronously, before a structural command reads it.
+///
+/// The on-demand twin of [`Editor::reparse_stale_buffers`] above, and it
+/// lives beside it for that reason: both decide when a buffer's tree may be
+/// reparsed, and they share the byte cap ([`EditorState::syntax_size_ok`])
+/// and the chain-break report. A **free function on `&mut EditorState`**, not
+/// an `Editor` method, because the command dispatch funnel that calls it
+/// (`commands::pipeline::run_native_body`) never holds an `Editor` — which is
+/// also why it must parse inline rather than post to `Editor`'s worker.
+///
+/// A structural command runs after `Editor::settle` has already ticked the
+/// frame's async reparse for the *previous* edit, and a macro or dot-repeat
+/// batch replays several edits with no settle in between — either way the
+/// committed tree can be a generation behind by the time this query needs
+/// it. `Syntax::ensure_current` closes that window; this wrapper resolves
+/// the borrows it needs (an `Arc` grammar snapshot, an O(1) rope clone) and
+/// routes any `ChainBreak` through [`report_chain_break`].
+///
+/// No-op when the buffer has no syntax attached at all (no grammar, or over
+/// `syntax-highlight-max-bytes`) — the caller's `object_spans` then collects
+/// nothing, which is the same "no grammar" no-op every structural command
+/// already has. Also a no-op — rather than a blocking parse — in three cases
+/// a fresh reparse here cannot help:
+///
+/// - **No committed tree yet.** Before the worker's first parse lands,
+///   `build_request` has no `old_tree` to diff against, so this would run a
+///   full parse of the whole buffer (up to `syntax-highlight-max-bytes`) on
+///   the UI thread while the worker parses the identical bytes in the
+///   background. `object_spans` already returns `ObjectSpans::default()`
+///   when `layers` is `None`, so the command reads as the same "no grammar"
+///   no-op until the next frame installs the worker's result.
+/// - **Over the byte cap.** `reparse_stale_buffers` detaches syntax from an
+///   over-cap buffer, but only once a frame — a paste that grows a buffer
+///   past the cap is not yet detached if a structural keypress lands in the
+///   same input batch. Checked here too rather than parsing the whole buffer
+///   once before the next frame catches up.
+/// - **No layer defines a textobjects query.** A grammar with no
+///   `textobjects.scm` (most of them — PLUM's fetch is best-effort) can
+///   never make `object_spans` return anything either way, so reparsing to
+///   answer it is wasted work, worst on a `.`-repeat or macro batch that
+///   pays it once per step. Misses one case: an edit that introduces a
+///   *new* injected layer carrying a textobjects query is missed for this
+///   one keypress — the next command call sees it.
+pub(in crate::editor) fn ensure_syntax_current(state: &mut EditorState, bid: BufferId) {
+    let size_ok = state.syntax_size_ok(bid);
+    let buf = state.buffers.get(bid);
+    let text_gen = buf.text_gen;
+    let Some(syn) = buf.syntax.as_ref() else {
+        return;
+    };
+    // Must be `is_current`, not `parsed_gen() == Some(text_gen)`: the weaker
+    // form returns early on a generation whose parse failed, leaving the
+    // stale-layer window `Syntax::ensure_current` exists to close wide open.
+    if syn.is_current(text_gen) {
+        return;
+    }
+    let Some(layers) = syn.layers() else {
+        return;
+    };
+    if !size_ok {
+        return;
+    }
+    let has_textobjects = layers
+        .layers
+        .iter()
+        .any(|layer| layer.bundle.textobjects.is_some());
+    if !has_textobjects {
+        return;
+    }
+
+    let text = buf.text().clone();
+    let langs = state.config.languages.grammar_snapshot();
+    let syn = state
+        .buffers
+        .get_mut(bid)
+        .syntax
+        .as_mut()
+        .expect("syntax is_some checked above");
+    if let Some(brk) = syn.ensure_current(bid, text_gen, &text, &langs) {
+        report_chain_break(state, bid, &brk);
+    }
+}
+
+impl Editor {
     fn surface_parse_worker_disconnect(&mut self) {
         if !self.parse_worker_disconnect_logged {
             self.state.message_log.push(

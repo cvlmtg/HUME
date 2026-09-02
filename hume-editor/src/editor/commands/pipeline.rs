@@ -16,7 +16,9 @@ use crate::editor::replay::{RepeatableAction, SelectionStep};
 use crate::editor::{EditorState, Mode, Severity};
 use hume_ops::{MotionMode, WordCtx};
 
-use super::structural::{ensure_syntax_current, object_spans};
+use crate::editor::syntax::ensure_syntax_current;
+
+use super::structural::object_spans;
 use super::{current_selections, doc, effective_word_chars, focused_buffer_id};
 
 // ── Native command body execution ───────────────────────────────────────────
