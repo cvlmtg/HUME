@@ -34,11 +34,7 @@ fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
             "json",
             &parser_path,
             "tree_sitter_json",
-            QueryPaths {
-                highlights: &hl_path,
-                injections: None,
-                textobjects: None,
-            },
+            QueryPaths::highlights_only(&hl_path),
             &mut ed.view.registry,
         )
         .expect("attach json grammar");
@@ -372,11 +368,7 @@ fn grammar_swap_clears_pending_and_full_reparses() {
             "json",
             &parser_path,
             "tree_sitter_json",
-            QueryPaths {
-                highlights: &hl_path,
-                injections: None,
-                textobjects: None,
-            },
+            QueryPaths::highlights_only(&hl_path),
             &mut ed.view.registry,
         )
         .expect("re-attach");

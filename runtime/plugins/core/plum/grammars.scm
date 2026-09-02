@@ -113,30 +113,26 @@
         (plum/install-grammar dep)))
     (plum/grammar-deps name)))
 
-;;; Fetch `name`'s injections.scm to its declared path, tolerating a missing
-;;; file (most grammars have none) — a 404 makes `plum/fetch-query!` raise,
-;;; which would otherwise abort the whole grammar install for no reason.
-;;; Returns the path on success, `#f` if there is no injections query to fetch.
-(define (plum/try-fetch-injections! name)
-  (let ((path (grammar-injections-path name)))
+;;; Fetch `name`'s `filename` query to the path `path-fn` computes for it,
+;;; tolerating a missing file (most grammars have no injections or no
+;;; textobjects query) — a 404 makes `plum/fetch-query!` raise, which would
+;;; otherwise abort the whole grammar install for no reason. Returns the
+;;; path on success, `#f` if there is no such query to fetch.
+(define (plum/try-fetch-query! name filename path-fn)
+  (let ((path (path-fn name)))
     (with-handler
       (lambda (err)
-        (log! 'trace (string-append "PLUM: no injections.scm for " name " (" (to-string err) ")"))
+        (log! 'trace (string-append "PLUM: no " filename " for " name " (" (to-string err) ")"))
         #f)
       (begin
-        (plum/fetch-query! name "injections.scm" path)
+        (plum/fetch-query! name filename path)
         path))))
 
-;;; Same contract as `plum/try-fetch-injections!`, for textobjects.scm.
+(define (plum/try-fetch-injections! name)
+  (plum/try-fetch-query! name "injections.scm" grammar-injections-path))
+
 (define (plum/try-fetch-textobjects! name)
-  (let ((path (grammar-textobjects-path name)))
-    (with-handler
-      (lambda (err)
-        (log! 'trace (string-append "PLUM: no textobjects.scm for " name " (" (to-string err) ")"))
-        #f)
-      (begin
-        (plum/fetch-query! name "textobjects.scm" path)
-        path))))
+  (plum/try-fetch-query! name "textobjects.scm" grammar-textobjects-path))
 
 ;; ── Grammar discovery ─────────────────────────────────────────────────────────
 

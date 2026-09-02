@@ -401,8 +401,7 @@ impl Syntax {
         if text_gen != current_text_gen {
             return;
         }
-        if self.parsed_gen == Some(text_gen) && self.tree_gen == text_gen && self.layers.is_some()
-        {
+        if self.parsed_gen == Some(text_gen) && self.tree_gen == text_gen && self.layers.is_some() {
             return;
         }
 

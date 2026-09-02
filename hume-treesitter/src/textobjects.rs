@@ -9,80 +9,73 @@
 //! `apply_object_motion` — this module only collects spans and answers two
 //! lookups over them.
 
-// ── ObjectKind ─────────────────────────────────────────────────────────────
+// ── ObjectKind / ObjectSpan ──────────────────────────────────────────────
 
-/// A structural object a `textobjects.scm` query may define, named after the
-/// `<kind>` half of its capture names (`function.inside`, `class.around`, …).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ObjectKind {
-    Function,
-    Class,
-    Parameter,
-    Comment,
-    Test,
-    Entry,
-}
-
-impl ObjectKind {
-    pub const ALL: [ObjectKind; 6] = [
-        ObjectKind::Function,
-        ObjectKind::Class,
-        ObjectKind::Parameter,
-        ObjectKind::Comment,
-        ObjectKind::Test,
-        ObjectKind::Entry,
-    ];
-
-    /// The `<kind>` half of a capture name, e.g. `@function.inside` names
-    /// `"function"`. Single source of truth: also used in reverse by
-    /// [`Self::from_capture_name`].
-    pub fn capture_name(self) -> &'static str {
-        match self {
-            ObjectKind::Function => "function",
-            ObjectKind::Class => "class",
-            ObjectKind::Parameter => "parameter",
-            ObjectKind::Comment => "comment",
-            ObjectKind::Test => "test",
-            ObjectKind::Entry => "entry",
+/// Emits an object-kind/span enum, its dense `ALL` array, and its
+/// `capture_name`/`from_capture_name` pair from one variant↦capture-name
+/// list. `TextObjectsQuery`'s capture table is sized
+/// `[[Option<u32>; ObjectSpan::ALL.len()]; ObjectKind::ALL.len()]` and
+/// indexed by `kind as usize`/`span as usize` — a variant added to the enum
+/// but not to a hand-synced `ALL` array compiles fine and panics out of
+/// bounds on the first query attach. One list generating all three closes
+/// that: there is nothing left to forget to update in step.
+macro_rules! object_enum {
+    (
+        $(#[$enum_doc:meta])*
+        $enum_name:ident { $($variant:ident = $capture:literal),+ $(,)? }
+    ) => {
+        $(#[$enum_doc])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum $enum_name {
+            $($variant),+
         }
-    }
 
-    fn from_capture_name(name: &str) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|kind| kind.capture_name() == name)
-    }
-}
+        impl $enum_name {
+            pub const ALL: [$enum_name; object_enum!(@count $($variant)+)] =
+                [$($enum_name::$variant),+];
 
-// ── ObjectSpan ─────────────────────────────────────────────────────────────
+            /// The half of a capture name this type names, e.g.
+            /// `@function.inside` has kind half `"function"` and span half
+            /// `"inside"`. Single source of truth: also used in reverse by
+            /// [`Self::from_capture_name`].
+            pub fn capture_name(self) -> &'static str {
+                match self {
+                    $($enum_name::$variant => $capture),+
+                }
+            }
 
-/// Which part of an object a capture spans. `Movement` is Helix's optional
-/// navigation-only capture (a function's name node, say) — narrower than
-/// `Around`, consumed only by navigation, never by selection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ObjectSpan {
-    Inside,
-    Around,
-    Movement,
-}
-
-impl ObjectSpan {
-    pub const ALL: [ObjectSpan; 3] = [ObjectSpan::Inside, ObjectSpan::Around, ObjectSpan::Movement];
-
-    /// The `<span>` half of a capture name, e.g. `@function.inside` names
-    /// `"inside"`.
-    pub fn capture_name(self) -> &'static str {
-        match self {
-            ObjectSpan::Inside => "inside",
-            ObjectSpan::Around => "around",
-            ObjectSpan::Movement => "movement",
+            fn from_capture_name(name: &str) -> Option<Self> {
+                Self::ALL.into_iter().find(|v| v.capture_name() == name)
+            }
         }
-    }
+    };
+    (@count $head:ident $($tail:ident)*) => { 1 + object_enum!(@count $($tail)*) };
+    (@count) => { 0 };
+}
 
-    fn from_capture_name(name: &str) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|span| span.capture_name() == name)
+object_enum! {
+    /// A structural object a `textobjects.scm` query may define, named after
+    /// the `<kind>` half of its capture names (`function.inside`,
+    /// `class.around`, …).
+    ObjectKind {
+        Function = "function",
+        Class = "class",
+        Parameter = "parameter",
+        Comment = "comment",
+        Test = "test",
+        Entry = "entry",
+    }
+}
+
+object_enum! {
+    /// Which part of an object a capture spans. `Movement` is Helix's
+    /// optional navigation-only capture (a function's name node, say) —
+    /// narrower than `Around`, consumed only by navigation, never by
+    /// selection.
+    ObjectSpan {
+        Inside = "inside",
+        Around = "around",
+        Movement = "movement",
     }
 }
 
@@ -105,9 +98,8 @@ pub enum Direction {
 /// dot, but no Helix query defines such a name today). Names that don't
 /// parse as `<kind>.<span>` (`@_helper`, `@function.x`) map to nothing.
 pub struct TextObjectsQuery {
-    /// Read directly by Phase 2's span-collection executor
-    /// (`ObjectSpans::collect`), which needs the compiled `Query` itself,
-    /// not just this table.
+    /// Read directly by `ObjectSpans::collect`'s span-collection executor,
+    /// which needs the compiled `Query` itself, not just this table.
     pub query: tree_sitter::Query,
     captures: [[Option<u32>; ObjectSpan::ALL.len()]; ObjectKind::ALL.len()],
 }
@@ -167,8 +159,10 @@ use crate::layers::{SyntaxLayer, SyntaxLayers};
 #[derive(Default)]
 pub struct ObjectSpans {
     /// Inclusive `(start, end)` char spans, sorted by `(start, Reverse(end))`
-    /// and deduplicated — both `enclosing` and `adjacent` walk this exact
-    /// ordering rather than re-deriving it per call.
+    /// and deduplicated — `adjacent`'s `partition_point` walk depends on this
+    /// exact ordering. `enclosing` is a full linear scan and doesn't need
+    /// it, but keeps the same sorted-and-deduplicated data rather than a
+    /// second representation.
     spans: Vec<(usize, usize)>,
 }
 
@@ -202,37 +196,42 @@ impl ObjectSpans {
         Self::finish(spans)
     }
 
-    /// Navigation spans for `kind`: per layer, the first of `Movement`,
-    /// `Around`, `Inside` that layer's query defines — Helix's rule that
-    /// `.movement` exists precisely for the languages where `.around` is a
-    /// poor navigation target (a whole function body vs. just its name).
+    /// Navigation spans for `kind`: per layer, the first span in priority
+    /// order that layer's query defines — Helix's rule that `.movement`
+    /// exists precisely for the languages where `.around` is a poor
+    /// navigation target (a whole function body vs. just its name).
     ///
-    /// One exception: `Parameter` always navigates `Inside`, skipping that
-    /// priority order. Helix's `parameter.around` hull is the argument
+    /// `Parameter` reorders rather than following the default priority:
+    /// `Inside` first, since Helix's `parameter.around` hull is the argument
     /// *plus its trailing comma* — a wart `m i a` / `m a a` reject for
     /// selection (`around_from_inner` recomputes the separator itself) —
     /// while `parameter.inside` is exactly the span `m i a` selects, so
-    /// `goto-next-argument` lands on that same trimmed span.
+    /// `goto-next-argument` lands on that same trimmed span. `Movement` and
+    /// `Around` stay as fallbacks (reordered, not dropped) for a query that
+    /// defines only one of them — a grammar with `@parameter.around` but no
+    /// `@parameter.inside` still gets a navigable span rather than a silent
+    /// no-op.
     pub fn collect_for_navigation(
         layers: &SyntaxLayers,
         text: &BufferText,
         kind: ObjectKind,
     ) -> Self {
-        const PRIORITY: [ObjectSpan; 3] =
+        const DEFAULT_PRIORITY: [ObjectSpan; 3] =
             [ObjectSpan::Movement, ObjectSpan::Around, ObjectSpan::Inside];
+        const PARAMETER_PRIORITY: [ObjectSpan; 3] =
+            [ObjectSpan::Inside, ObjectSpan::Movement, ObjectSpan::Around];
+        let priority = if kind == ObjectKind::Parameter {
+            PARAMETER_PRIORITY
+        } else {
+            DEFAULT_PRIORITY
+        };
         let mut spans = Vec::new();
         for layer in &layers.layers {
             let Some(query) = layer.bundle.textobjects.as_ref() else {
                 continue;
             };
-            let chosen = if kind == ObjectKind::Parameter {
-                ObjectSpan::Inside
-            } else {
-                let Some(span) = PRIORITY.into_iter().find(|&span| query.defines(kind, span))
-                else {
-                    continue;
-                };
-                span
+            let Some(chosen) = priority.into_iter().find(|&span| query.defines(kind, span)) else {
+                continue;
             };
             if let Some(idx) = query.capture_index(kind, chosen) {
                 collect_hulls(query, idx, layer, text, &mut spans);
@@ -337,6 +336,16 @@ fn collect_hulls(
         let start = text.byte_to_char(start_byte);
         let end_exclusive = text.byte_to_char(end_byte);
         let end = prev_grapheme_boundary(text, end_exclusive);
+        // The byte-space guard above doesn't survive the grapheme-boundary
+        // step: a hull whose byte range covers only a combining mark or ZWJ
+        // continuation (its own token in some grammars) converts to a
+        // one-char span, and stepping back to that cluster's start can land
+        // `end` before `start` — `enclosing`'s `end - start` would then
+        // underflow. Same "not a real object" treatment as the byte-space
+        // degenerate case above.
+        if end < start {
+            continue;
+        }
         out.push((start, end));
     }
 }

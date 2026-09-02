@@ -2,11 +2,9 @@
 //! arguments, array items, object fields, or any comma list inside brackets.
 
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
+use hume_editing::word::{CharClass, blank_class};
 
-use super::apply_text_object_by_mode;
-use crate::MotionMode;
 use crate::pair::{BRACKET_PAIRS, find_bracket_pair};
 
 /// One comma segment's inclusive `(start, end)` char range, leading and
@@ -115,21 +113,26 @@ fn locate_argument(text: &BufferText, pos: usize) -> Option<(Vec<Segment>, usize
     Some((segments, idx, pos))
 }
 
-/// Whitespace HUME's argument separator rule treats as blank: space, tab, or
-/// newline. Shared by [`trim_segment`] (leading/trailing trim) and
-/// [`around_from_inner`] (searching either side of an inner span for its
-/// separator comma).
+/// Whitespace HUME's argument separator rule treats as blank: anything
+/// [`blank_class`] classifies as `Space` or `Eol` — space, tab, NBSP,
+/// ideographic space, or newline. Shared by [`trim_segment`]
+/// (leading/trailing trim) and [`around_from_inner`] (searching either side
+/// of an inner span for its separator comma). Routed through `blank_class`
+/// rather than a hand-rolled char match so `m a a` agrees with `m a w` on
+/// which characters count as blank.
 fn is_blank(text: &BufferText, pos: usize) -> bool {
-    matches!(text.char_at(pos), Some(' ' | '\t' | '\n'))
+    text.char_at(pos)
+        .is_some_and(|ch| blank_class(ch).is_some())
 }
 
-/// Narrower than [`is_blank`]: space or tab only, no newline. Used only for
-/// the run trailing a separator comma in [`around_from_inner`] — a line
+/// Narrower than [`is_blank`]: `Space`-classified only, no `Eol`. Used only
+/// for the run trailing a separator comma in [`around_from_inner`] — a line
 /// break there belongs to the *next* argument's indentation, not to this
 /// one's trailing whitespace, so `foo(\n    a,\n    b\n)` around `a` eats
 /// `a,` and leaves the newline.
 fn is_inline_blank(text: &BufferText, pos: usize) -> bool {
-    matches!(text.char_at(pos), Some(' ' | '\t'))
+    text.char_at(pos)
+        .is_some_and(|ch| blank_class(ch) == Some(CharClass::Space))
 }
 
 /// Extends `pos` forward while the char immediately after it is blank,
@@ -205,13 +208,17 @@ pub fn inner_argument(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
 /// **Preceding separator first**: if the blank run immediately before
 /// `start` is bounded by a comma, this argument is not first — the comma
 /// and everything back to it becomes the new start, and `end` extends
-/// forward over its own trailing blanks (a no-op for every argument but the
-/// last, which has none to eat). Otherwise, if the blank run immediately
-/// after `end` is bounded by a comma, this argument is first: `start`
-/// extends backward over blanks — reaching the opening delimiter, never a
-/// comma, since the first rule would have fired otherwise — and `end`
-/// extends through the comma plus its inline blank run (space/tab only, see
-/// [`is_inline_blank`]). An only argument matches neither rule and is
+/// forward over its own trailing blank run (newline-inclusive, [`is_blank`]
+/// — a no-op for every argument but the last, which has none to eat *except*
+/// the newline before a multi-line list's closing delimiter, which this
+/// branch does consume; matches the lexical scan's pre-existing behavior,
+/// not a new asymmetry). Otherwise, if the blank run immediately after `end`
+/// is bounded by a comma, this argument is first: `start` extends backward
+/// over blanks — reaching the opening delimiter, never a comma, since the
+/// first rule would have fired otherwise — and `end` extends through the
+/// comma plus its inline blank run only (space/tab, no newline, see
+/// [`is_inline_blank`]) — a line break there belongs to the *next*
+/// argument's indentation. An only argument matches neither rule and is
 /// returned unchanged.
 pub fn around_from_inner(text: &BufferText, (start, end): (usize, usize)) -> (usize, usize) {
     let before = extend_backward_while(text, start, is_blank);
@@ -226,9 +233,8 @@ pub fn around_from_inner(text: &BufferText, (start, end): (usize, usize)) -> (us
     let after = extend_forward_while(text, end, is_blank);
     let comma = next_grapheme_boundary(text, after);
     if text.char_at(comma) == Some(',') {
-        let new_start = extend_backward_while(text, start, is_blank);
         let new_end = extend_forward_while(text, comma, is_inline_blank);
-        return (new_start, new_end);
+        return (before, new_end);
     }
 
     (start, end)
@@ -250,22 +256,4 @@ pub fn around_argument(text: &BufferText, pos: usize) -> Option<(usize, usize)> 
 
     let inner = trim_segment(text, segments[idx])?;
     Some(around_from_inner(text, inner))
-}
-
-pub fn cmd_inner_argument(
-    text: &BufferText,
-    sels: SelectionSet,
-    _count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, mode, inner_argument)
-}
-
-pub fn cmd_around_argument(
-    text: &BufferText,
-    sels: SelectionSet,
-    _count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, mode, around_argument)
 }

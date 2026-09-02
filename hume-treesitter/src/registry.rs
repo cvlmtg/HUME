@@ -78,6 +78,19 @@ pub struct QueryPaths<'a> {
     pub textobjects: Option<&'a Path>,
 }
 
+impl<'a> QueryPaths<'a> {
+    /// `highlights` alone, no injections or textobjects query — the common
+    /// shape: most grammars (and most test fixtures) have nothing else to
+    /// offer.
+    pub fn highlights_only(highlights: &'a Path) -> Self {
+        Self {
+            highlights,
+            injections: None,
+            textobjects: None,
+        }
+    }
+}
+
 // ── LanguageRegistry ──────────────────────────────────────────────────────────
 
 /// Global registry of configured language identities. Lives on `Editor`.

@@ -10,9 +10,7 @@ mod line;
 mod quote;
 mod word;
 
-pub use argument::{
-    around_argument, around_from_inner, cmd_around_argument, cmd_inner_argument, inner_argument,
-};
+pub use argument::{around_argument, around_from_inner, inner_argument};
 pub use bracket::{
     cmd_around_angle, cmd_around_brace, cmd_around_bracket, cmd_around_paren, cmd_inner_angle,
     cmd_inner_brace, cmd_inner_bracket, cmd_inner_paren,

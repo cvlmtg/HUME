@@ -235,9 +235,7 @@ fn goto_prev_function_extend_from_inside_selects_the_whole_enclosing_function() 
 /// `hume-ops`'s own `extend_forward_into_a_nested_object_does_not_shrink_the_selection`.
 #[test]
 fn goto_next_function_extend_after_move_keeps_both_functions_selected() {
-    let mut ed = rust_editor(
-        "-[/]>/ c\nfn first() {\n    1;\n}\n\nfn second() {\n    2;\n}\n",
-    );
+    let mut ed = rust_editor("-[/]>/ c\nfn first() {\n    1;\n}\n\nfn second() {\n    2;\n}\n");
     ed.execute_keymap_command("goto-next-function".into(), None, false, ArgSource::Keymap);
     ed.execute_keymap_command("goto-next-function".into(), None, true, ArgSource::Keymap);
     assert_eq!(
@@ -503,11 +501,7 @@ fn inner_argument_with_a_grammar_but_no_textobjects_query_falls_back_to_the_lexi
             "rust",
             &grammar_parser_path("rust"),
             "tree_sitter_rust",
-            QueryPaths {
-                highlights: &grammar_query_path("rust"),
-                injections: None,
-                textobjects: None,
-            },
+            QueryPaths::highlights_only(&grammar_query_path("rust")),
             &mut ed.view.registry,
         )
         .expect("attach rust grammar");

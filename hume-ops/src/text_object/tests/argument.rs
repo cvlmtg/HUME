@@ -1,6 +1,29 @@
 use super::super::*;
 use hume_test_fixtures::assert_state;
 
+// `inner_argument`/`around_argument` register from `register_structural`
+// (hume-editor's `commands/structural.rs`) as closures, not through a
+// `cmd_*` wrapper — these two exist only so the tests below can drive the
+// bare functions through the same `apply_text_object_by_mode` dispatch the
+// shipped closures use.
+fn cmd_inner_argument(
+    text: &BufferText,
+    sels: SelectionSet,
+    _count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
+    apply_text_object_by_mode(text, sels, mode, inner_argument)
+}
+
+fn cmd_around_argument(
+    text: &BufferText,
+    sels: SelectionSet,
+    _count: usize,
+    mode: MotionMode,
+) -> SelectionSet {
+    apply_text_object_by_mode(text, sels, mode, around_argument)
+}
+
 // ── Arguments ─────────────────────────────────────────────────────────────
 
 // ── inner_argument ────────────────────────────────────────────────────────
@@ -165,6 +188,18 @@ fn inner_argument_multi_cursor() {
     );
 }
 
+#[test]
+fn inner_argument_trims_nbsp_matching_blank_class() {
+    // NBSP (U+00A0) is `Space`-classified by `hume_editing::word::blank_class`
+    // — the same rule `m a w` uses — so it must trim like an ordinary space,
+    // not survive as part of the selected argument.
+    assert_state!(
+        "foo(aaa,\u{a0}-[b]>bb)\n",
+        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        "foo(aaa,\u{a0}-[bbb]>)\n"
+    );
+}
+
 // ── around_argument ───────────────────────────────────────────────────────
 
 #[test]
@@ -247,8 +282,8 @@ fn around_argument_empty_slot_is_noop() {
 // ── around_from_inner ────────────────────────────────────────────────────
 //
 // Exercises the separator rule directly, on an inner span that need not have
-// come from the lexical scan above — the same rule Phase 5 applies to a
-// tree-sitter `parameter.inside` capture.
+// come from the lexical scan above — the same rule hume-editor's structural
+// dispatch applies to a tree-sitter `parameter.inside` capture.
 
 fn cmd_around_from_inner(
     text: &BufferText,
@@ -308,6 +343,20 @@ fn around_from_inner_multiline() {
         "foo(\n    -[a]>,\n    b\n)\n",
         |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
         "foo(-[\n    a,]>\n    b\n)\n"
+    );
+}
+
+#[test]
+fn around_from_inner_multiline_last_argument_eats_the_trailing_newline() {
+    // Unlike the first-argument case above (inline blank only, no newline),
+    // the preceding-comma branch extends `end` through a newline-inclusive
+    // blank run — the last argument in a multi-line list eats the newline
+    // before the closing delimiter. Matches the pre-existing lexical scan's
+    // behavior exactly; not a new asymmetry introduced alongside it.
+    assert_state!(
+        "foo(\n    a,\n    -[b]>\n)\n",
+        |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
+        "foo(\n    a-[,\n    b\n]>)\n"
     );
 }
 

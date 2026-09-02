@@ -95,13 +95,12 @@ fn real_helix_rust_textobjects_defines_expected_pairs() {
 // so these build an `ObjectSpans` directly from a literal list rather than
 // through a real query — pure lookup-logic tests with no grammar involved.
 
-/// Build an `ObjectSpans` from an arbitrary-order list, sorted the same way
-/// `ObjectSpans::finish` sorts real collection results — `enclosing` and
-/// `adjacent` both assume that ordering.
+/// Build an `ObjectSpans` from an arbitrary-order list through the same
+/// `ObjectSpans::finish` a real collection result goes through — `enclosing`
+/// and `adjacent` both assume its sort-and-dedup, so a test double must not
+/// re-implement that comparator independently.
 fn spans_from(list: &[(usize, usize)]) -> ObjectSpans {
-    let mut spans = list.to_vec();
-    spans.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
-    ObjectSpans { spans }
+    ObjectSpans::finish(list.to_vec())
 }
 
 #[test]
@@ -261,6 +260,32 @@ fn collect_for_navigation_parameter_yields_inside_spans_no_trailing_comma() {
         .enclosing(pos)
         .expect("navigation span at the first argument");
     assert_eq!(span_text(&text, span), "a: i32");
+}
+
+/// A query defining only `@parameter.around` (no `@parameter.inside`) must
+/// still fall back to it for navigation, not yield nothing — Parameter's
+/// priority is `Inside` first, but `Movement`/`Around` stay as fallbacks
+/// rather than being dropped entirely when `Inside` is undefined.
+#[test]
+fn collect_for_navigation_parameter_falls_back_to_around_without_inside() {
+    let bundle = crate::test_support::make_bundle(
+        "rust",
+        "tree_sitter_rust",
+        "",
+        None,
+        Some("(parameters (_) @parameter.around)"),
+    );
+    let source = "fn add(a: i32, b: i32) -> i32 { a + b }\n";
+    let text = BufferText::from(source);
+    let syn = Syntax::attach_sync(bundle, &text, &empty_langs());
+    let layers = syn.layers().expect("layers installed");
+    let pos = text.byte_to_char(source.find("a: i32").unwrap());
+
+    let nav = ObjectSpans::collect_for_navigation(layers, &text, ObjectKind::Parameter);
+    assert!(
+        nav.enclosing(pos).is_some(),
+        "an around-only query must still produce a navigable span"
+    );
 }
 
 // Pins a tree-sitter query-engine behavior, not a HUME one: it discards a

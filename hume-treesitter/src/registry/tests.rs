@@ -82,11 +82,7 @@ fn attach_grammar_without_injections_path_leaves_injections_none() {
             "rust",
             &parser_path,
             "tree_sitter_rust",
-            QueryPaths {
-                highlights: &hl_path,
-                injections: None,
-                textobjects: None,
-            },
+            QueryPaths::highlights_only(&hl_path),
             &mut scope_reg,
         )
         .expect("attach without injections must succeed");
@@ -188,11 +184,7 @@ fn attach_grammar_without_textobjects_path_leaves_textobjects_none() {
             "rust",
             &parser_path,
             "tree_sitter_rust",
-            QueryPaths {
-                highlights: &hl_path,
-                injections: None,
-                textobjects: None,
-            },
+            QueryPaths::highlights_only(&hl_path),
             &mut scope_reg,
         )
         .expect("attach without textobjects must succeed");
@@ -363,11 +355,7 @@ fn attached_grammar_survives_identity_re_registration() {
         "rust",
         &parser_path,
         "tree_sitter_rust",
-        QueryPaths {
-            highlights: &hl_path,
-            injections: None,
-            textobjects: None,
-        },
+        QueryPaths::highlights_only(&hl_path),
         &mut scope_reg,
     )
     .expect("attach must succeed");

@@ -31,11 +31,7 @@ fn register_markdown(ed: &mut Editor) {
             "markdown",
             &parser_path,
             "tree_sitter_markdown",
-            QueryPaths {
-                highlights: &hl_path,
-                injections: None,
-                textobjects: None,
-            },
+            QueryPaths::highlights_only(&hl_path),
             &mut ed.view.registry,
         )
         .unwrap_or_else(|e| panic!("attach markdown: {e}"));

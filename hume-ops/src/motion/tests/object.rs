@@ -149,9 +149,8 @@ fn extend_forward_into_a_nested_object_does_not_shrink_the_selection() {
 /// `apply_word_select_extend`, not `start()`/`end()` as `Move` uses.
 #[test]
 fn extend_searches_from_the_head_not_the_far_edge() {
-    let finder = |_: &BufferText, pos: usize| -> Option<(usize, usize)> {
-        (pos < 3).then_some((3, 4))
-    };
+    let finder =
+        |_: &BufferText, pos: usize| -> Option<(usize, usize)> { (pos < 3).then_some((3, 4)) };
     assert_state!(
         "ab<[cd]-efghijklmnopqrstuvwxyz\n",
         |(text, sels)| apply_object_motion(&text, sels, MotionMode::Extend, 1, false, finder),
