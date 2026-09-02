@@ -548,8 +548,8 @@ surface — landed once, directly as specified; no intermediate positional six-a
 
 ### Phase 7 — Verification
 
-- [ ] `cargo fmt`, then `scripts/test-all.sh` once (fetches the grammar fixtures, runs doctests).
-- [ ] Manual smoke: open a `.rs` file with the `rust` grammar and PLUM-fetched `textobjects.scm`;
+- [x] `cargo fmt`, then `scripts/test-all.sh` once (fetches the grammar fixtures, runs doctests).
+- [x] Manual smoke: open a `.rs` file with the `rust` grammar and PLUM-fetched `textobjects.scm`;
       `m i f` / `m a f` inside a method; `m a f` on an attributed function includes the attribute;
       `m a a` on the last parameter then `d` leaves no dangling `, `; `:goto-next-function` from
       the command line (any mappable command runs there without a binding) selects the next
