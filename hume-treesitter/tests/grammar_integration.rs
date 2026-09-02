@@ -5,14 +5,11 @@ use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_gramma
 use hume_treesitter::grammar::LoadedGrammar;
 use hume_treesitter::highlight::{TreeSitterHighlighter, layer_highlights_for_line};
 use hume_treesitter::layers::{SyntaxLayer, SyntaxLayers};
+use hume_treesitter::registry::GrammarBundle;
 
 /// Load `name`'s compiled grammar fixture and parse `source` with it —
 /// shared by every test below that needs a working tree.
-fn open_and_parse(
-    name: &str,
-    symbol: &str,
-    source: &str,
-) -> (LoadedGrammar, tree_sitter::Tree, ropey::Rope) {
+fn open_and_parse(name: &str, symbol: &str, source: &str) -> (tree_sitter::Tree, ropey::Rope) {
     let gpath = grammar_parser_path(name);
     let grammar = LoadedGrammar::open(&gpath, symbol).expect("open grammar");
     let mut parser = tree_sitter::Parser::new();
@@ -21,35 +18,48 @@ fn open_and_parse(
         .expect("set language");
     let tree = parser.parse(source, None).expect("parse should succeed");
     let rope = ropey::Rope::from_str(source);
-    (grammar, tree, rope)
+    (tree, rope)
 }
 
-/// Compile `query_src` against `grammar`'s language into a highlighter,
-/// interning captures into a fresh [`ScopeRegistry`].
-fn highlighter_for(
-    grammar: &LoadedGrammar,
-    query_src: &str,
-) -> (TreeSitterHighlighter, ScopeRegistry) {
+/// Open `name`'s grammar fresh (leaked/mmap'd once per process, so a second
+/// open of a fixture already opened by `open_and_parse` is free) and compile
+/// `query_src` against it as a minimal `GrammarBundle` — no injections, no
+/// textobjects — interning captures into a fresh [`ScopeRegistry`]. A layer
+/// now carries its whole bundle, not just a highlighter, so integration
+/// tests exercising `layer_highlights_for_line` need one too.
+fn bundle_for(name: &str, symbol: &str, query_src: &str) -> (Arc<GrammarBundle>, ScopeRegistry) {
+    let gpath = grammar_parser_path(name);
+    let grammar = LoadedGrammar::open(&gpath, symbol).expect("open grammar");
     let query =
         Arc::new(tree_sitter::Query::new(grammar.language(), query_src).expect("compile query"));
     let mut scope_reg = ScopeRegistry::new();
-    let highlighter = TreeSitterHighlighter::from_shared_query(query, &mut scope_reg);
-    (highlighter, scope_reg)
+    let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(
+        query,
+        &mut scope_reg,
+    ));
+    let bundle = Arc::new(GrammarBundle {
+        grammar,
+        highlighter,
+        injections: None,
+        textobjects: None,
+        config_gen: 0,
+    });
+    (bundle, scope_reg)
 }
 
-/// Wrap a single parsed tree + highlighter into a one-layer `SyntaxLayers`
-/// (the root layer, whole-buffer `ranges`) and run the real per-line
-/// highlight collection path used by the renderer.
+/// Wrap a single parsed tree + bundle into a one-layer `SyntaxLayers` (the
+/// root layer, whole-buffer `ranges`) and run the real per-line highlight
+/// collection path used by the renderer.
 fn highlights_for_line(
     tree: tree_sitter::Tree,
-    highlighter: TreeSitterHighlighter,
+    bundle: Arc<GrammarBundle>,
     rope: &ropey::Rope,
     line_idx: usize,
 ) -> Vec<(usize, usize, hume_engine::types::ScopeId)> {
     let layers = SyntaxLayers {
         layers: vec![SyntaxLayer {
             tree,
-            highlighter: Arc::new(highlighter),
+            bundle,
             ranges: vec![],
             depth: 0,
         }],
@@ -103,7 +113,7 @@ fn loads_json_grammar() {
 #[test]
 fn parses_rust_function_signature() {
     require_grammars(&["rust"]);
-    let (_grammar, tree, _rope) = open_and_parse(
+    let (tree, _rope) = open_and_parse(
         "rust",
         "tree_sitter_rust",
         "fn foo(x: u32) -> u32 { x + 1 }",
@@ -119,7 +129,7 @@ fn parses_rust_function_signature() {
 #[test]
 fn parses_json_object() {
     require_grammars(&["json"]);
-    let (_grammar, tree, _rope) = open_and_parse("json", "tree_sitter_json", "{\"a\":1}");
+    let (tree, _rope) = open_and_parse("json", "tree_sitter_json", "{\"a\":1}");
     let root = tree.root_node();
 
     assert!(!root.has_error(), "parse produced errors");
@@ -134,13 +144,13 @@ fn parses_json_object() {
 #[test]
 fn highlights_emit_keyword_event() {
     require_grammars(&["rust"]);
-    let (grammar, tree, rope) = open_and_parse("rust", "tree_sitter_rust", "fn foo() {}\n");
+    let (tree, rope) = open_and_parse("rust", "tree_sitter_rust", "fn foo() {}\n");
 
     let highlights_source =
         std::fs::read_to_string(grammar_query_path("rust")).expect("highlights.scm should exist");
-    let (highlighter, scope_reg) = highlighter_for(&grammar, &highlights_source);
+    let (bundle, scope_reg) = bundle_for("rust", "tree_sitter_rust", &highlights_source);
 
-    let out = highlights_for_line(tree, highlighter, &rope, 0);
+    let out = highlights_for_line(tree, bundle, &rope, 0);
 
     assert!(
         !out.is_empty(),
@@ -161,14 +171,13 @@ fn highlights_emit_keyword_event() {
 #[test]
 fn highlights_for_line_correct_on_nonzero_line() {
     require_grammars(&["rust"]);
-    let (grammar, tree, rope) =
-        open_and_parse("rust", "tree_sitter_rust", "fn foo() {}\nlet x = 1;\n");
+    let (tree, rope) = open_and_parse("rust", "tree_sitter_rust", "fn foo() {}\nlet x = 1;\n");
 
     let highlights_source =
         std::fs::read_to_string(grammar_query_path("rust")).expect("highlights.scm");
-    let (highlighter, scope_reg) = highlighter_for(&grammar, &highlights_source);
+    let (bundle, scope_reg) = bundle_for("rust", "tree_sitter_rust", &highlights_source);
 
-    let out = highlights_for_line(tree, highlighter, &rope, 1);
+    let out = highlights_for_line(tree, bundle, &rope, 1);
 
     assert!(!out.is_empty(), "line 1 should emit highlight events");
     // `let` starts at line-relative offset 0, ends at 3.
@@ -194,12 +203,12 @@ fn highlights_for_line_correct_on_nonzero_line() {
 #[test]
 fn highlight_overlap_shorter_wins_at_shared_start() {
     require_grammars(&["rust"]);
-    let (grammar, tree, rope) = open_and_parse("rust", "tree_sitter_rust", "fn foo() {}\n");
+    let (tree, rope) = open_and_parse("rust", "tree_sitter_rust", "fn foo() {}\n");
 
     let query_src = "(function_item) @function\n\"fn\" @keyword";
-    let (highlighter, scope_reg) = highlighter_for(&grammar, query_src);
+    let (bundle, scope_reg) = bundle_for("rust", "tree_sitter_rust", query_src);
 
-    let out = highlights_for_line(tree, highlighter, &rope, 0);
+    let out = highlights_for_line(tree, bundle, &rope, 0);
 
     assert!(out.len() >= 2, "expected at least 2 spans; got: {out:?}");
     let keyword_span = out
@@ -229,12 +238,12 @@ fn highlight_overlap_shorter_wins_at_shared_start() {
 #[test]
 fn highlight_overlap_fully_contained_is_dropped() {
     require_grammars(&["json"]);
-    let (grammar, tree, rope) = open_and_parse("json", "tree_sitter_json", "\"hello\"\n");
+    let (tree, rope) = open_and_parse("json", "tree_sitter_json", "\"hello\"\n");
 
     let query_src = "(string) @string\n(string) @string.duplicate";
-    let (highlighter, scope_reg) = highlighter_for(&grammar, query_src);
+    let (bundle, scope_reg) = bundle_for("json", "tree_sitter_json", query_src);
 
-    let out = highlights_for_line(tree, highlighter, &rope, 0);
+    let out = highlights_for_line(tree, bundle, &rope, 0);
 
     let string_spans: Vec<_> = out.iter().filter(|&&(s, e, _)| s == 0 && e == 7).collect();
     assert_eq!(
@@ -261,13 +270,12 @@ fn highlight_overlap_fully_contained_is_dropped() {
 #[test]
 fn highlight_later_pattern_wins_on_same_node() {
     require_grammars(&["rust"]);
-    let (grammar, tree, rope) =
-        open_and_parse("rust", "tree_sitter_rust", "fn main() { foo(1); }\n");
+    let (tree, rope) = open_and_parse("rust", "tree_sitter_rust", "fn main() { foo(1); }\n");
 
     let query_src = "(identifier) @variable\n(call_expression function: (identifier) @function)";
-    let (highlighter, scope_reg) = highlighter_for(&grammar, query_src);
+    let (bundle, scope_reg) = bundle_for("rust", "tree_sitter_rust", query_src);
 
-    let out = highlights_for_line(tree, highlighter, &rope, 0);
+    let out = highlights_for_line(tree, bundle, &rope, 0);
 
     // `foo` is at byte offset 12..15 in `fn main() { foo(1); }`.
     let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
@@ -293,13 +301,12 @@ fn highlight_later_pattern_wins_on_same_node() {
 #[test]
 fn highlight_pattern_order_controls_winner_not_specificity() {
     require_grammars(&["rust"]);
-    let (grammar, tree, rope) =
-        open_and_parse("rust", "tree_sitter_rust", "fn main() { foo(1); }\n");
+    let (tree, rope) = open_and_parse("rust", "tree_sitter_rust", "fn main() { foo(1); }\n");
 
     let query_src = "(call_expression function: (identifier) @function)\n(identifier) @variable";
-    let (highlighter, scope_reg) = highlighter_for(&grammar, query_src);
+    let (bundle, scope_reg) = bundle_for("rust", "tree_sitter_rust", query_src);
 
-    let out = highlights_for_line(tree, highlighter, &rope, 0);
+    let out = highlights_for_line(tree, bundle, &rope, 0);
 
     let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
     let (_, _, scope_id) = *foo_span.unwrap_or_else(|| {
@@ -324,13 +331,12 @@ fn highlight_pattern_order_controls_winner_not_specificity() {
 #[test]
 fn highlight_underscore_captures_are_ignored() {
     require_grammars(&["rust"]);
-    let (grammar, tree, rope) =
-        open_and_parse("rust", "tree_sitter_rust", "fn main() { foo(1); }\n");
+    let (tree, rope) = open_and_parse("rust", "tree_sitter_rust", "fn main() { foo(1); }\n");
 
     // Only-underscore query: must yield zero spans for `foo`.
     let helper_only_query = "(call_expression function: (identifier) @_helper)";
-    let (highlighter, _scope_reg) = highlighter_for(&grammar, helper_only_query);
-    let out = highlights_for_line(tree.clone(), highlighter, &rope, 0);
+    let (bundle, _scope_reg) = bundle_for("rust", "tree_sitter_rust", helper_only_query);
+    let out = highlights_for_line(tree.clone(), bundle, &rope, 0);
     assert!(
         out.is_empty(),
         "a query with only an underscore capture must emit no spans; got: {out:?}"
@@ -339,8 +345,8 @@ fn highlight_underscore_captures_are_ignored() {
     // Underscore capture alongside a real one on the same node: the real
     // capture must win, never the (dropped) underscore capture.
     let mixed_query = "(call_expression function: (identifier) @_helper)\n(identifier) @variable";
-    let (highlighter, scope_reg) = highlighter_for(&grammar, mixed_query);
-    let out = highlights_for_line(tree, highlighter, &rope, 0);
+    let (bundle, scope_reg) = bundle_for("rust", "tree_sitter_rust", mixed_query);
+    let out = highlights_for_line(tree, bundle, &rope, 0);
     let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
     let (_, _, scope_id) = *foo_span.unwrap_or_else(|| {
         panic!(

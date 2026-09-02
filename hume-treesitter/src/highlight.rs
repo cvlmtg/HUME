@@ -194,7 +194,7 @@ pub fn layer_highlights_for_line(
     raw.clear();
     for layer in &layers.layers {
         if layer_covers_line(layer, line_start, line_end) {
-            layer.highlighter.collect_line_spans(
+            layer.bundle.highlighter.collect_line_spans(
                 &layer.tree,
                 rope,
                 line_start,

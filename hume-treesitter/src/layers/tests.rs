@@ -1,11 +1,7 @@
-use std::sync::Arc;
-
-use hume_engine::theme::ScopeRegistry;
 use hume_test_fixtures::require_grammars;
 
 use super::{SyntaxLayer, layer_covers_line};
-use crate::highlight::TreeSitterHighlighter;
-use crate::test_support::{open_grammar, range};
+use crate::test_support::{make_bundle, open_grammar, range};
 
 // `layer_covers_line` only ever reads `ranges` — the tree's actual
 // content is irrelevant, so every test case shares one parsed layer and
@@ -17,15 +13,10 @@ fn injected_layer(ranges: Vec<tree_sitter::Range>) -> SyntaxLayer {
         .set_language(grammar.language())
         .expect("set language");
     let tree = parser.parse("{}\n", None).expect("parse");
-    let query = Arc::new(tree_sitter::Query::new(grammar.language(), "").expect("empty query"));
-    let mut registry = ScopeRegistry::new();
-    let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(
-        query,
-        &mut registry,
-    ));
+    let bundle = make_bundle("json", "tree_sitter_json", "", None, None);
     SyntaxLayer {
         tree,
-        highlighter,
+        bundle,
         ranges,
         depth: 1, // an injected layer — depth 0 (root) always short-circuits on empty ranges
     }

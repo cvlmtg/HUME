@@ -310,18 +310,17 @@ impl Syntax {
 
         match outcome {
             ParseOutcome::Ok(parsed) => {
-                let root_highlighter = Arc::clone(&bundle.highlighter);
                 let mut layers = Vec::with_capacity(1 + parsed.injected.len());
                 layers.push(SyntaxLayer {
                     tree: parsed.root,
-                    highlighter: root_highlighter,
+                    bundle: Arc::clone(&bundle),
                     ranges: Vec::new(),
                     depth: 0,
                 });
                 for injected in parsed.injected {
                     layers.push(SyntaxLayer {
                         tree: injected.tree,
-                        highlighter: Arc::clone(&injected.bundle.highlighter),
+                        bundle: injected.bundle,
                         ranges: injected.ranges,
                         depth: injected.depth,
                     });

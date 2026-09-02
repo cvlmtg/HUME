@@ -85,7 +85,8 @@ pub struct ParsedLayers {
 
 /// One resolved and parsed injection layer.
 pub struct ParsedInjection {
-    /// The injected layer's grammar bundle — read for its highlighter on install.
+    /// The injected layer's grammar bundle — becomes the installed
+    /// `SyntaxLayer`'s own `bundle` field.
     pub bundle: Arc<GrammarBundle>,
     pub tree: tree_sitter::Tree,
     /// Absolute byte ranges this layer was parsed over, sorted by start.

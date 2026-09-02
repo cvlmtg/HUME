@@ -1,15 +1,19 @@
 use std::sync::Arc;
 
-use crate::highlight::TreeSitterHighlighter;
+use crate::registry::GrammarBundle;
 
 /// One parsed layer of a buffer's syntax tree: the root grammar, or one
 /// embedded-language injection (a fenced code block, a combined
 /// `markdown.inline` layer, etc.).
 pub struct SyntaxLayer {
     pub tree: tree_sitter::Tree,
-    /// Shared per-language highlighter — `Arc`'d from the language's
-    /// `GrammarBundle`, not owned per-buffer.
-    pub highlighter: Arc<TreeSitterHighlighter>,
+    /// The layer's language bundle — `Arc`'d from the `LanguageRegistry`,
+    /// not owned per-buffer. Carries the whole bundle, not just its
+    /// highlighter: any per-language query a layer may later need
+    /// (`locals.scm`) comes for free, and it's what makes an injected
+    /// layer's `textobjects` query reachable at all — a highlighter-only
+    /// field left it unreachable.
+    pub bundle: Arc<GrammarBundle>,
     /// Absolute byte ranges this layer's tree was parsed over, sorted by
     /// `start_byte`. Empty means "the whole buffer" — true only for the root
     /// layer (index 0).
