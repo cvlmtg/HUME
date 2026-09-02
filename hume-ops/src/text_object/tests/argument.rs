@@ -231,6 +231,86 @@ fn around_argument_single_on_outer_bracket_descends_into_nested() {
     );
 }
 
+#[test]
+fn around_argument_empty_slot_is_noop() {
+    // All-whitespace segment (empty argument slot): `trim_segment` yields
+    // `None` here exactly as it already does for `inner_argument` — matches
+    // that existing no-op rather than the old raw-segment fallback, which
+    // used to select " , ".
+    assert_state!(
+        "foo(-[ ]>, bbb)\n",
+        |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
+        "foo(-[ ]>, bbb)\n"
+    );
+}
+
+// ── around_from_inner ────────────────────────────────────────────────────
+//
+// Exercises the separator rule directly, on an inner span that need not have
+// come from the lexical scan above — the same rule Phase 5 applies to a
+// tree-sitter `parameter.inside` capture.
+
+fn cmd_around_from_inner(
+    text: &BufferText,
+    sels: SelectionSet,
+    _count: usize,
+    _mode: MotionMode,
+) -> SelectionSet {
+    sels.map(|sel| {
+        let (start, end) = around_from_inner(text, (sel.start(), sel.end()));
+        Selection::new(start, end)
+    })
+}
+
+#[test]
+fn around_from_inner_first() {
+    assert_state!(
+        "foo(-[aaa]>, bbb, ccc)\n",
+        |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
+        "foo(-[aaa, ]>bbb, ccc)\n"
+    );
+}
+
+#[test]
+fn around_from_inner_middle() {
+    assert_state!(
+        "foo(aaa, -[bbb]>, ccc)\n",
+        |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
+        "foo(aaa-[, bbb]>, ccc)\n"
+    );
+}
+
+#[test]
+fn around_from_inner_last() {
+    assert_state!(
+        "foo(aaa, bbb, -[ccc]>)\n",
+        |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
+        "foo(aaa, bbb-[, ccc]>)\n"
+    );
+}
+
+#[test]
+fn around_from_inner_only_is_unchanged() {
+    // No comma on either side — nothing to extend into.
+    assert_state!(
+        "foo(-[aaa]>)\n",
+        |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
+        "foo(-[aaa]>)\n"
+    );
+}
+
+#[test]
+fn around_from_inner_multiline() {
+    // First argument on its own line: eats its leading indentation and the
+    // trailing comma, but leaves the following line's indentation for the
+    // next argument (only space/tab count as inline blank).
+    assert_state!(
+        "foo(\n    -[a]>,\n    b\n)\n",
+        |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
+        "foo(-[\n    a,]>\n    b\n)\n"
+    );
+}
+
 // ── extend mode ───────────────────────────────────────────────────────────
 
 #[test]

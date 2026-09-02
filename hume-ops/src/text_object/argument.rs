@@ -115,19 +115,67 @@ fn locate_argument(text: &BufferText, pos: usize) -> Option<(Vec<Segment>, usize
     Some((segments, idx, pos))
 }
 
+/// Whitespace HUME's argument separator rule treats as blank: space, tab, or
+/// newline. Shared by [`trim_segment`] (leading/trailing trim) and
+/// [`around_from_inner`] (searching either side of an inner span for its
+/// separator comma).
+fn is_blank(text: &BufferText, pos: usize) -> bool {
+    matches!(text.char_at(pos), Some(' ' | '\t' | '\n'))
+}
+
+/// Narrower than [`is_blank`]: space or tab only, no newline. Used only for
+/// the run trailing a separator comma in [`around_from_inner`] — a line
+/// break there belongs to the *next* argument's indentation, not to this
+/// one's trailing whitespace, so `foo(\n    a,\n    b\n)` around `a` eats
+/// `a,` and leaves the newline.
+fn is_inline_blank(text: &BufferText, pos: usize) -> bool {
+    matches!(text.char_at(pos), Some(' ' | '\t'))
+}
+
+/// Extends `pos` forward while the char immediately after it is blank,
+/// returning the last position still covered by the run (`pos` itself if
+/// the very next char isn't blank).
+fn extend_forward_while(
+    text: &BufferText,
+    mut pos: usize,
+    blank: impl Fn(&BufferText, usize) -> bool,
+) -> usize {
+    loop {
+        let next = next_grapheme_boundary(text, pos);
+        if next == pos || !blank(text, next) {
+            return pos;
+        }
+        pos = next;
+    }
+}
+
+/// Extends `pos` backward while the char immediately before it is blank,
+/// returning the position at the start of the run (`pos` itself if the
+/// preceding char isn't blank).
+fn extend_backward_while(
+    text: &BufferText,
+    mut pos: usize,
+    blank: impl Fn(&BufferText, usize) -> bool,
+) -> usize {
+    while pos > 0 {
+        let prev = prev_grapheme_boundary(text, pos);
+        if !blank(text, prev) {
+            break;
+        }
+        pos = prev;
+    }
+    pos
+}
+
 /// Trim leading and trailing whitespace from a raw segment span. Returns
 /// `None` if the segment is entirely whitespace.
-///
-/// `next_grapheme_boundary`/`prev_grapheme_boundary` are required here
-/// because `start`/`end` are text positions — raw `+= 1`/`-= 1` would
-/// mis-step on multi-byte clusters.
 fn trim_segment(text: &BufferText, (raw_start, raw_end): Segment) -> Option<(usize, usize)> {
     let mut start = raw_start;
-    while start <= raw_end && matches!(text.char_at(start), Some(' ' | '\t' | '\n')) {
+    while start <= raw_end && is_blank(text, start) {
         start = next_grapheme_boundary(text, start);
     }
     let mut end = raw_end;
-    while end > start && matches!(text.char_at(end), Some(' ' | '\t' | '\n')) {
+    while end > start && is_blank(text, end) {
         end = prev_grapheme_boundary(text, end);
     }
     // Segment is entirely whitespace — nothing to select.
@@ -143,21 +191,53 @@ fn trim_segment(text: &BufferText, (raw_start, raw_end): Segment) -> Option<(usi
 ///
 /// Works for function arguments `foo(a, b)`, array items `[1, 2]`, object
 /// fields `{x: 1, y: 2}`, and any comma-separated list inside brackets.
-fn inner_argument(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
+pub fn inner_argument(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
     let (segments, idx, _) = locate_argument(text, pos)?;
     trim_segment(text, segments[idx])
 }
 
-/// Around argument: the item plus its separator comma, so that deleting around
-/// leaves a clean, properly-spaced list.
+/// Derives an argument's "around" span from its "inner" span by locating its
+/// separator comma — HUME's own rule, independent of how the inner span was
+/// found (the lexical scan below, or a tree-sitter `parameter.inside`
+/// capture), so `m i a`/`m a a` stay one structure-aware family rather than
+/// two separate objects.
 ///
-/// - **Only arg**: same as inner (no separator to consume).
-/// - **First arg**: extend end through the trailing comma and any whitespace
-///   leading into the next argument, so `delete(around aaa)` in `foo(aaa, bbb)`
-///   yields `foo(bbb)` with no leading space.
-/// - **Non-first arg**: extend start back to include the preceding comma,
-///   so `delete(around bbb)` in `foo(aaa, bbb)` yields `foo(aaa)`.
-fn around_argument(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
+/// **Preceding separator first**: if the blank run immediately before
+/// `start` is bounded by a comma, this argument is not first — the comma
+/// and everything back to it becomes the new start, and `end` extends
+/// forward over its own trailing blanks (a no-op for every argument but the
+/// last, which has none to eat). Otherwise, if the blank run immediately
+/// after `end` is bounded by a comma, this argument is first: `start`
+/// extends backward over blanks — reaching the opening delimiter, never a
+/// comma, since the first rule would have fired otherwise — and `end`
+/// extends through the comma plus its inline blank run (space/tab only, see
+/// [`is_inline_blank`]). An only argument matches neither rule and is
+/// returned unchanged.
+pub fn around_from_inner(text: &BufferText, (start, end): (usize, usize)) -> (usize, usize) {
+    let before = extend_backward_while(text, start, is_blank);
+    if before > 0 {
+        let comma = prev_grapheme_boundary(text, before);
+        if text.char_at(comma) == Some(',') {
+            let new_end = extend_forward_while(text, end, is_blank);
+            return (comma, new_end);
+        }
+    }
+
+    let after = extend_forward_while(text, end, is_blank);
+    let comma = next_grapheme_boundary(text, after);
+    if text.char_at(comma) == Some(',') {
+        let new_start = extend_backward_while(text, start, is_blank);
+        let new_end = extend_forward_while(text, comma, is_inline_blank);
+        return (new_start, new_end);
+    }
+
+    (start, end)
+}
+
+/// Around argument: the item plus its separator comma, so that deleting
+/// around leaves a clean, properly-spaced list. See [`around_from_inner`]
+/// for the separator rule itself.
+pub fn around_argument(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
     let (segments, idx, nudged_pos) = locate_argument(text, pos)?;
 
     if segments.len() == 1 {
@@ -168,25 +248,8 @@ fn around_argument(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
         return inner_argument(text, nudged_pos);
     }
 
-    let (raw_start, raw_end) = segments[idx];
-    if idx == 0 {
-        // First arg: eat the trailing comma and skip whitespace to the start
-        // of the next argument's content, so no orphan space is left behind.
-        let (next_raw_start, next_raw_end) = segments[1];
-        let mut end = next_raw_start;
-        while end <= next_raw_end && matches!(text.char_at(end), Some(' ' | '\t')) {
-            end = next_grapheme_boundary(text, end);
-        }
-        // `end` is now the first content char of the next segment.
-        // Our range is raw_start ..= (end - 1), eating "aaa, ".
-        Some((raw_start, end - 1)) // grapheme-safe: end was advanced by next_grapheme_boundary; -1 is the last codepoint of the preceding (whitespace) cluster
-    } else {
-        // Non-first arg: eat the preceding comma (it sits at prev_raw_end + 1).
-        // The raw segment already includes any leading space after the comma,
-        // so this range covers ", bbb" naturally.
-        let prev_raw_end = segments[idx - 1].1;
-        Some((prev_raw_end + 1, raw_end)) // grapheme-safe: comma is single-codepoint ASCII
-    }
+    let inner = trim_segment(text, segments[idx])?;
+    Some(around_from_inner(text, inner))
 }
 
 pub fn cmd_inner_argument(
