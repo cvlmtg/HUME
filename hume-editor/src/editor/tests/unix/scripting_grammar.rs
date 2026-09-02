@@ -672,7 +672,7 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
         .parsed_gen();
     assert_eq!(
         parsed_gen,
-        ed.state.buffers.get(bid).text_gen,
+        Some(ed.state.buffers.get(bid).text_gen),
         "parsed_gen must catch up to text_gen after the drain"
     );
 }

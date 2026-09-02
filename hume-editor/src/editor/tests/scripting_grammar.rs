@@ -346,7 +346,7 @@ fn reparse_advances_parsed_gen_after_edit() {
             .as_ref()
             .unwrap()
             .parsed_gen(),
-        gen0,
+        Some(gen0),
         "parsed_gen must equal text_gen after initial setup",
     );
 
@@ -364,7 +364,7 @@ fn reparse_advances_parsed_gen_after_edit() {
             .as_ref()
             .unwrap()
             .parsed_gen(),
-        gen0,
+        Some(gen0),
         "parsed_gen must lag behind text_gen before reparse",
     );
 
@@ -380,7 +380,7 @@ fn reparse_advances_parsed_gen_after_edit() {
             .as_ref()
             .unwrap()
             .parsed_gen(),
-        gen1,
+        Some(gen1),
         "reparse must advance parsed_gen to current text_gen",
     );
 
@@ -394,7 +394,7 @@ fn reparse_advances_parsed_gen_after_edit() {
             .as_ref()
             .unwrap()
             .parsed_gen(),
-        gen1,
+        Some(gen1),
         "third reparse must be a no-op when gen already matches",
     );
 }
@@ -801,7 +801,7 @@ fn parse_worker_result_is_async_then_installed() {
             .as_ref()
             .unwrap()
             .parsed_gen(),
-        gen0,
+        Some(gen0),
         "parsed_gen must still lag after first reparse_stale_buffers (result not yet drained)",
     );
 
@@ -815,7 +815,7 @@ fn parse_worker_result_is_async_then_installed() {
             .as_ref()
             .unwrap()
             .parsed_gen(),
-        gen1,
+        Some(gen1),
         "parsed_gen must equal text_gen after second reparse_stale_buffers",
     );
 }

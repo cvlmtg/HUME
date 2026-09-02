@@ -128,7 +128,7 @@ impl Editor {
             if buf
                 .syntax
                 .as_ref()
-                .is_some_and(|s| s.parsed_gen() == text_gen)
+                .is_some_and(|s| s.parsed_gen() == Some(text_gen))
             {
                 continue;
             }

@@ -259,7 +259,7 @@ fn stale_gen_discards_whole_layer_set() {
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
     assert_eq!(
         syn.parsed_gen(),
-        gen0,
+        Some(gen0),
         "stale result must be discarded whole — parsed_gen must stay at the \
          initial install, not advance to the stale request's generation"
     );
@@ -268,7 +268,7 @@ fn stale_gen_discards_whole_layer_set() {
     // the full fresh layer set on the next drain.
     ed.reparse_stale_buffers();
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
-    assert_eq!(syn.parsed_gen(), gen2, "fresh result must install");
+    assert_eq!(syn.parsed_gen(), Some(gen2), "fresh result must install");
     let layers = &syn.layers().unwrap().layers;
     assert!(
         layers.len() >= 2,

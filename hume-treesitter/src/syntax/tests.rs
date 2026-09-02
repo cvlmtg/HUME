@@ -90,7 +90,7 @@ fn attach_nonempty_text_returns_request_and_sets_in_flight() {
     );
     assert_eq!(
         syn.parsed_gen(),
-        0,
+        None,
         "parsed_gen must not advance before install"
     );
 }
@@ -438,7 +438,7 @@ fn install_stale_text_gen_discarded() {
     syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 5);
     assert_eq!(
         syn.parsed_gen(),
-        0,
+        None,
         "parsed_gen must NOT advance on a discarded stale result"
     );
     assert!(
@@ -476,7 +476,7 @@ fn install_config_gen_mismatch_discarded_without_clearing_newer_in_flight() {
     );
     assert_eq!(
         syn.parsed_gen(),
-        0,
+        None,
         "stale-config result must not advance parsed_gen"
     );
     assert!(syn.layers().is_none());
@@ -534,7 +534,7 @@ fn install_matching_done_clears_in_flight_and_drains_pending() {
     syn.install(parse_done_for(&bundle, bid, 1, "{x}\n"), 1);
 
     assert!(!syn.is_in_flight(), "a matching done must clear in_flight");
-    assert_eq!(syn.parsed_gen(), 1);
+    assert_eq!(syn.parsed_gen(), Some(1));
     assert_eq!(syn.tree_gen(), 1);
     assert!(
         syn.pending_edits().is_empty(),
@@ -564,7 +564,7 @@ fn install_parse_failed_advances_parsed_gen_only() {
     syn.install(done, 0);
     assert_eq!(
         syn.parsed_gen(),
-        0,
+        Some(0),
         "parsed_gen must advance even on ParseFailed"
     );
     assert_eq!(
@@ -575,6 +575,207 @@ fn install_parse_failed_advances_parsed_gen_only() {
     assert!(
         syn.layers().is_none(),
         "layers must stay unset on ParseFailed"
+    );
+}
+
+// ── ensure_current ────────────────────────────────────────────────────────
+
+#[test]
+fn ensure_current_parses_a_never_parsed_attachment() {
+    require_grammars(&["json"]);
+    let bundle = make_bundle("json", "tree_sitter_json");
+    let bid = fresh_bid();
+    let (mut syn, _req) = Syntax::attach(
+        Arc::clone(&bundle),
+        bid,
+        0,
+        &BufferText::from("{}\n"),
+        &empty_langs(),
+    );
+
+    let outcome = syn.ensure_current(bid, 0, &BufferText::from("{}\n"), &empty_langs());
+    assert!(
+        outcome.is_none(),
+        "the first-ever parse is not a chain break"
+    );
+    assert!(
+        syn.layers().is_some(),
+        "ensure_current must install a tree even though nothing was ever \
+         installed before — parsed_gen and text_gen are both 0 here, which \
+         must not be mistaken for 'already up to date'"
+    );
+    assert_eq!(
+        syn.layers()
+            .unwrap()
+            .root_tree()
+            .unwrap()
+            .root_node()
+            .end_byte(),
+        "{}\n".len(),
+        "independent oracle: the installed root must span the source string"
+    );
+    assert_eq!(syn.parsed_gen(), Some(0));
+}
+
+#[test]
+fn ensure_current_reparses_a_stale_tree_after_a_recorded_edit() {
+    require_grammars(&["json"]);
+    let bundle = make_bundle("json", "tree_sitter_json");
+    let bid = fresh_bid();
+    let (mut syn, _req) = Syntax::attach(
+        Arc::clone(&bundle),
+        bid,
+        0,
+        &BufferText::from("{}\n"),
+        &empty_langs(),
+    );
+    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
+
+    // Record an edit but deliberately skip frame_tick — ensure_current must
+    // bake and reparse on its own, with no async round trip.
+    let rope_pre = ropey::Rope::from_str("{}\n");
+    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    b.retain(1);
+    b.insert("\"a\":1");
+    b.retain_rest();
+    let cs = b.finish();
+    syn.record_edit(1, &cs, &rope_pre);
+
+    let new_text = BufferText::from("{\"a\":1}\n");
+    let outcome = syn.ensure_current(bid, 1, &new_text, &empty_langs());
+    assert!(outcome.is_none(), "a contiguous chain is not a break");
+
+    // Independent oracle: computed from the new string, not the tree.
+    let expected_end_byte = "{\"a\":1}\n".len();
+    assert_eq!(
+        syn.layers()
+            .unwrap()
+            .root_tree()
+            .unwrap()
+            .root_node()
+            .end_byte(),
+        expected_end_byte
+    );
+    assert_eq!(syn.parsed_gen(), Some(1));
+    assert_eq!(syn.tree_gen(), 1);
+    assert!(syn.pending_edits().is_empty());
+}
+
+#[test]
+fn ensure_current_up_to_date_does_not_reparse() {
+    require_grammars(&["json"]);
+    let bundle = make_bundle("json", "tree_sitter_json");
+    let bid = fresh_bid();
+    let (mut syn, _req) = Syntax::attach(
+        Arc::clone(&bundle),
+        bid,
+        0,
+        &BufferText::from("{}\n"),
+        &empty_langs(),
+    );
+    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
+
+    // Pass a text that would parse to a different tree if ensure_current
+    // actually reparsed — proves the gen-gate short-circuits before that.
+    let outcome = syn.ensure_current(bid, 0, &BufferText::from("{\"a\":1}\n"), &empty_langs());
+    assert!(outcome.is_none());
+    assert_eq!(syn.tree_gen(), 0, "up-to-date attachment must not reparse");
+    assert_eq!(
+        syn.layers()
+            .unwrap()
+            .root_tree()
+            .unwrap()
+            .root_node()
+            .end_byte(),
+        "{}\n".len(),
+        "the committed tree must still be the original, unreparsed one"
+    );
+}
+
+#[test]
+fn ensure_current_reports_a_broken_chain_and_full_reparses() {
+    require_grammars(&["json"]);
+    let bundle = make_bundle("json", "tree_sitter_json");
+    let bid = fresh_bid();
+    let (mut syn, _req) = Syntax::attach(
+        Arc::clone(&bundle),
+        bid,
+        0,
+        &BufferText::from("{}\n"),
+        &empty_langs(),
+    );
+    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
+
+    // Record at gen 3, skipping 1 and 2 — a gapped chain.
+    let rope_pre = ropey::Rope::from_str("{}\n");
+    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    b.retain(1);
+    b.insert("x");
+    b.retain_rest();
+    let cs = b.finish();
+    syn.record_edit(3, &cs, &rope_pre);
+
+    let new_text = BufferText::from("{x}\n");
+    let outcome = syn.ensure_current(bid, 3, &new_text, &empty_langs());
+    let brk = outcome.expect("a gapped chain must be reported");
+    assert_eq!(brk.tree_gen, 0);
+    assert_eq!(brk.text_gen, 3);
+    assert_eq!(
+        syn.layers()
+            .unwrap()
+            .root_tree()
+            .unwrap()
+            .root_node()
+            .end_byte(),
+        "{x}\n".len(),
+        "a broken chain must still land on a full reparse of the new text"
+    );
+    assert_eq!(syn.parsed_gen(), Some(3));
+}
+
+#[test]
+fn install_discards_a_result_for_an_already_installed_generation() {
+    require_grammars(&["json"]);
+    let bundle = make_bundle("json", "tree_sitter_json");
+    let bid = fresh_bid();
+    let (mut syn, _req) = Syntax::attach(
+        Arc::clone(&bundle),
+        bid,
+        0,
+        &BufferText::from("{}\n"),
+        &empty_langs(),
+    );
+    // Reach gen 1 synchronously, as a structural command would.
+    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
+    let rope_pre = ropey::Rope::from_str("{}\n");
+    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    b.retain(1);
+    b.insert("\"a\":1");
+    b.retain_rest();
+    let cs = b.finish();
+    syn.record_edit(1, &cs, &rope_pre);
+    syn.ensure_current(bid, 1, &BufferText::from("{\"a\":1}\n"), &empty_langs());
+    assert_eq!(syn.parsed_gen(), Some(1));
+
+    // A late asynchronous result for the SAME generation, built from
+    // different (shorter) text, must not overwrite what ensure_current
+    // already installed.
+    let late_done = parse_done_for(&bundle, bid, 1, "{}\n");
+    syn.install(late_done, 1);
+
+    assert_eq!(
+        syn.layers()
+            .unwrap()
+            .root_tree()
+            .unwrap()
+            .root_node()
+            .end_byte(),
+        "{\"a\":1}\n".len(),
+        "a redundant same-generation result must not replace the already-installed tree"
+    );
+    assert!(
+        !syn.is_in_flight(),
+        "the redundant result must still be treated as answering any in-flight request"
     );
 }
 

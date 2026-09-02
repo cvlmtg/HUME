@@ -156,7 +156,11 @@ pub fn ensure_current(&mut self, bid: BufferId, text_gen: u64, text: &BufferText
                       langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>) -> Option<ChainBreak>
 ```
 
-- `parsed_gen == text_gen` → nothing to do, `None`.
+- `parsed_gen == Some(text_gen)` → nothing to do, `None`. `parsed_gen` is `Option<u64>`, not the
+  bare `u64` first drafted here: a freshly opened file sits at `text_gen: 0` and never bumps it on
+  open, so a bare `u64` starting at `0` would make "never parsed" indistinguishable from "generation
+  0 already installed" and silently discard the very first parse of every opened file. `None` is
+  that missing state; `install`'s guard below is phrased against it accordingly.
 - Otherwise: `bake(text_gen)` (existing), build a `ParseRequest` (`old_tree` when
   `tree_gen == text_gen` after the bake, `None` after a chain break or before the first install),
   run `parse_worker::do_parse` synchronously on a fresh `tree_sitter::Parser`, `install` the
@@ -164,9 +168,9 @@ pub fn ensure_current(&mut self, bid: BufferId, text_gen: u64, text: &BufferText
   carries inside `FrameTickOutcome`.
 - An in-flight asynchronous request is left alone. `install` gains one guard so its late result is
   dropped: after the existing config-gen check, the `in_flight` clear, and the stale-gen check,
-  **discard a result whose `text_gen == parsed_gen`** (already installed). Document the one edge
-  this creates: a synchronous `ParseFailed` (reachable only through cancellation) also makes a later
-  successful asynchronous result for that generation discarded; the next edit retries.
+  **discard a result whose `Some(text_gen) == parsed_gen`** (already installed). Document the one
+  edge this creates: a synchronous `ParseFailed` (reachable only through cancellation) also makes a
+  later successful asynchronous result for that generation discarded; the next edit retries.
 - Cost, recorded on the function: after a bake the reparse is incremental (sub-frame); a full parse
   happens only for the first structural command before the worker delivered the initial tree, or
   after a broken edit chain, and is bounded by `syntax-highlight-max-bytes`. Inside a macro or
@@ -456,10 +460,10 @@ surface — landed once, directly as specified; no intermediate positional six-a
 
 ### Phase 3 — Freshness (`hume-treesitter`)
 
-- [ ] `Syntax::ensure_current` as specified in §3; `install`'s `text_gen == parsed_gen` guard in the
-      stated position with the `ParseFailed` edge documented; `attach_sync` re-expressed through it,
-      empty-text early return kept.
-- [ ] `syntax/tests.rs`: stale tree (edit recorded, no `frame_tick`) → `ensure_current` installs a
+- [x] `Syntax::ensure_current` as specified in §3; `install`'s `Some(text_gen) == parsed_gen` guard
+      in the stated position with the `ParseFailed` edge documented; `attach_sync` re-expressed
+      through it, empty-text early return kept.
+- [x] `syntax/tests.rs`: stale tree (edit recorded, no `frame_tick`) → `ensure_current` installs a
       tree whose root spans the new text and sets `parsed_gen`; a same-generation `ParseDone`
       installed afterwards is discarded and still clears `in_flight`; a broken chain → full reparse
       with a `ChainBreak` returned; up to date → `None` and no change to `tree_gen`; `attach_sync`

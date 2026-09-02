@@ -68,7 +68,7 @@ fn first_parse_full_reparse_no_pending() {
     let syn = buf.syntax.as_ref().unwrap();
     assert_eq!(
         syn.parsed_gen(),
-        buf.text_gen,
+        Some(buf.text_gen),
         "initial parse must be up-to-date"
     );
     assert!(
@@ -120,7 +120,7 @@ fn reparse_after_edit_drains_pending() {
     );
     assert_eq!(
         syn.parsed_gen(),
-        gen_after_edit,
+        Some(gen_after_edit),
         "parsed_gen matches text_gen after edit"
     );
     assert!(syn.layers().is_some());
@@ -168,7 +168,7 @@ fn two_edits_batched_chain_resolves() {
         syn.pending_edits().is_empty(),
         "all pending edits drained after install"
     );
-    assert_eq!(syn.parsed_gen(), gen_2);
+    assert_eq!(syn.parsed_gen(), Some(gen_2));
 }
 
 #[test]
@@ -255,7 +255,7 @@ fn bake_aligns_committed_tree_before_precise_install() {
         "tree_gen must equal text_gen after bake"
     );
     assert!(
-        syn.parsed_gen() < text_gen_after,
+        syn.parsed_gen() < Some(text_gen_after),
         "parsed_gen must not yet equal text_gen — precise parse queued, not installed",
     );
     assert!(

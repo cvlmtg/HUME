@@ -57,8 +57,14 @@ pub struct Syntax {
     /// Committed parse layers. `None` until the first `ParseDone` installs.
     layers: Option<SyntaxLayers>,
     /// `text_gen` of the most recently installed (or failed) parse result.
-    /// Equal to `Buffer.text_gen` means the installed tree is up to date.
-    parsed_gen: u64,
+    /// `None` until `install` has run at least once — distinct from
+    /// `Some(0)`, which is a genuine installed generation zero (a freshly
+    /// opened file's `Buffer::text_gen` starts at 0 and never bumps on
+    /// open). Collapsing the two into a bare `u64` would make the very
+    /// first parse of every opened file indistinguishable from "already up
+    /// to date", discarding it. `Some(g) == Buffer.text_gen` means the
+    /// installed tree is up to date.
+    parsed_gen: Option<u64>,
     /// BufferText generation whose coordinates the committed `layers` describe.
     /// Advances on every successful bake and on every precise parse install.
     /// Distinct from `parsed_gen`: edits can outpace the worker, so
@@ -88,7 +94,7 @@ impl Syntax {
         Self {
             bundle,
             layers: None,
-            parsed_gen: 0,
+            parsed_gen: None,
             tree_gen: 0,
             pending_edits: Vec::new(),
             in_flight: None,
@@ -110,7 +116,7 @@ impl Syntax {
         let mut syn = Self::detached(Arc::clone(&bundle));
 
         if text.len_bytes() == 0 {
-            syn.parsed_gen = text_gen;
+            syn.parsed_gen = Some(text_gen);
             return (syn, None);
         }
 
@@ -148,18 +154,7 @@ impl Syntax {
             return syn;
         }
 
-        let req = ParseRequest {
-            bid: BufferId::default(),
-            text_gen: 1,
-            bundle,
-            text: text.clone(),
-            old_tree: None,
-            langs: Arc::clone(langs),
-        };
-        let mut parser = tree_sitter::Parser::new();
-        let cancel = std::sync::atomic::AtomicBool::new(false);
-        let done = crate::parse_worker::do_parse(&mut parser, req, &cancel);
-        syn.install(done, 1);
+        syn.ensure_current(BufferId::default(), 1, text, langs);
         syn
     }
 
@@ -184,7 +179,7 @@ impl Syntax {
         text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> FrameTickOutcome {
-        if self.parsed_gen == text_gen {
+        if self.parsed_gen == Some(text_gen) {
             return FrameTickOutcome {
                 request: None,
                 chain_break: None,
@@ -200,6 +195,25 @@ impl Syntax {
             };
         }
 
+        let req = self.build_request(bid, text_gen, text, langs);
+        self.in_flight = Some(text_gen);
+        FrameTickOutcome {
+            request: Some(req),
+            chain_break,
+        }
+    }
+
+    /// Build the next incremental (or, absent a baked tree at `text_gen`,
+    /// full) parse request — the shared tail of `frame_tick` and
+    /// `ensure_current`, which differ only in how the result reaches
+    /// `install` (posted to the async worker vs. run inline).
+    fn build_request(
+        &self,
+        bid: BufferId,
+        text_gen: u64,
+        text: &BufferText,
+        langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
+    ) -> ParseRequest {
         let old_tree = if self.tree_gen == text_gen {
             self.layers
                 .as_ref()
@@ -209,19 +223,56 @@ impl Syntax {
             None
         };
 
-        let req = ParseRequest {
+        ParseRequest {
             bid,
             text_gen,
             bundle: Arc::clone(&self.bundle),
             text: text.clone(),
             old_tree,
             langs: Arc::clone(langs),
-        };
-        self.in_flight = Some(text_gen);
-        FrameTickOutcome {
-            request: Some(req),
-            chain_break,
         }
+    }
+
+    /// Bring the committed tree up to date with `text_gen` *synchronously*,
+    /// bypassing the async worker entirely. A structural command (text
+    /// object, navigation) reads the tree after `frame_tick` has already run
+    /// for the frame, and a macro or dot-repeat batch replays several edits
+    /// with no settle in between — either way the committed tree can be a
+    /// generation behind by the time a query needs it, which would return
+    /// wrong spans (or panic on a byte offset past the pre-edit tree's end).
+    /// This closes that window at the query site instead of relying on the
+    /// next frame's `frame_tick`.
+    ///
+    /// Bakes pending edits first, same as `frame_tick`; when the chain is
+    /// intact this reparse is incremental and sub-frame. A full parse only
+    /// happens before the worker has delivered the buffer's first tree, or
+    /// after a broken edit chain — both already bounded by
+    /// `syntax-highlight-max-bytes` refusing to attach syntax at all above
+    /// that size. Inside a macro or dot-repeat batch, every step after the
+    /// first sees an intact chain and reparses incrementally.
+    ///
+    /// Deliberately leaves `in_flight` untouched: an asynchronous request
+    /// already posted for an earlier generation is left to arrive and be
+    /// discarded by `install`'s own generation guard, rather than cancelled
+    /// or raced here.
+    pub fn ensure_current(
+        &mut self,
+        bid: BufferId,
+        text_gen: u64,
+        text: &BufferText,
+        langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
+    ) -> Option<ChainBreak> {
+        if self.parsed_gen == Some(text_gen) {
+            return None;
+        }
+
+        let chain_break = self.bake(text_gen);
+        let req = self.build_request(bid, text_gen, text, langs);
+        let mut parser = tree_sitter::Parser::new();
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let done = crate::parse_worker::do_parse(&mut parser, req, &cancel);
+        self.install(done, text_gen);
+        chain_break
     }
 
     /// Bake `pending_edits` into the committed `layers`. No-op (and no
@@ -289,7 +340,17 @@ impl Syntax {
     /// fails the config match and must not clear a newer attachment's
     /// in-flight record). Discards the parse outcome itself (without
     /// touching `parsed_gen`) on a config-gen mismatch (grammar swapped
-    /// in flight) or a stale `text_gen` (text moved on since submission).
+    /// in flight), a stale `text_gen` (text moved on since submission), or a
+    /// `text_gen` already installed (a synchronous `ensure_current` beat an
+    /// asynchronous request to the same generation — the late arrival is
+    /// redundant, not stale, so it must not re-run the `ParseOutcome::Ok`
+    /// arm a second time). The already-installed check runs after the
+    /// `in_flight` clear above: an async result superseded this way still
+    /// answered its own posted request and must still clear it, or a later
+    /// `frame_tick` would dedup against a request that will never resolve.
+    /// One edge this creates: a `ParseFailed` install still advances
+    /// `parsed_gen`, so a later successful async result for that generation
+    /// is discarded too — the next edit retries the parse.
     pub fn install(&mut self, done: ParseDone, current_text_gen: u64) {
         let ParseDone {
             text_gen,
@@ -305,6 +366,9 @@ impl Syntax {
             self.in_flight = None;
         }
         if text_gen != current_text_gen {
+            return;
+        }
+        if self.parsed_gen == Some(text_gen) {
             return;
         }
 
@@ -336,7 +400,7 @@ impl Syntax {
             }
         }
 
-        self.parsed_gen = text_gen;
+        self.parsed_gen = Some(text_gen);
     }
 
     /// Committed layers for the renderer. `None` until the first install.
@@ -357,7 +421,7 @@ impl Syntax {
         &self.bundle
     }
 
-    pub fn parsed_gen(&self) -> u64 {
+    pub fn parsed_gen(&self) -> Option<u64> {
         self.parsed_gen
     }
 
