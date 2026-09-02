@@ -212,7 +212,7 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
 /// `settle()` or they silently defer.
 ///
 /// `lib.rs::run()` has no separate startup drain call of its own:
-/// `init_scripting` + `open_extra_files`
+/// `init_scripting` + `open_extra_file`
 /// enqueue `OnBufferOpen`/`OnLanguageSet` hooks before the terminal is even
 /// initialized, and the *first* iteration of `Editor::run`'s loop is what
 /// fires them, via its own `settle()` call — the same one that fires
@@ -239,7 +239,7 @@ fn queued_hooks_require_explicit_settle() {
     .unwrap();
     ed.scripting = Some(host);
 
-    // Simulate what open_extra_files / init_scripting do: enqueue the hook.
+    // Simulate what open_extra_file / init_scripting do: enqueue the hook.
     let bid = ed.focused_buffer_id();
     ed.state
         .queue_event(EditorEvent::OnBufferOpen { buffer: bid });

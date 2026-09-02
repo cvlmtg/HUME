@@ -394,6 +394,7 @@ impl Editor {
             tui_active: false,
             terminal: None,
             applied_mouse_mode: initial_mouse_mode,
+            startup_positions: Vec::new(),
         }
     }
 
@@ -619,7 +620,7 @@ pub(crate) fn safe_tempdir() -> tempfile::TempDir {
 /// [`safe_tempdir`]'s twin for a single named file — for a test that keeps
 /// the `NamedTempFile` itself alive (e.g. to reopen or persist it), rather
 /// than [`temp_file`]'s write-content-and-hand-back-a-path shape.
-pub(crate) fn safe_named_tempfile() -> tempfile::NamedTempFile {
+fn safe_named_tempfile() -> tempfile::NamedTempFile {
     let _lock = TEST_GLOBALS.enter();
     tempfile::NamedTempFile::new().expect("named tempfile")
 }

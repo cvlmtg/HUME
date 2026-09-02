@@ -48,7 +48,7 @@ pub fn parse_file_arg(raw: &Path) -> Result<FileArg, String> {
     // Probes the *expanded* form (`~/weird:12` → `$HOME/weird:12`) so a
     // quoted tilde path is disambiguated the same way it will actually be
     // opened, but returns the untransformed `raw` either way — same
-    // "display the typed form" convention `open_extra_files` follows.
+    // "display the typed form" convention `open_extra_file` follows.
     // `symlink_metadata`, not `.exists()`: this is a disambiguation probe,
     // not a pre-open gate, so a broken symlink still counts as "the user
     // meant this path", and a later TOCTOU race just falls through to the

@@ -24,7 +24,7 @@ use super::search::SearchCursor;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use hume_editing::changeset::ChangeSet;
-use hume_editing::selection::SelectionSet;
+use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 
 // ── EditGroup ────────────────────────────────────────────────────────────────
@@ -130,6 +130,26 @@ pub(crate) fn ensure<'a>(
         .entry(bid)
         .expect("bid must be a live BufferId")
         .or_insert_with(|| fresh_from_buf(buffers.get(bid)))
+}
+
+/// Collapse `pane_state[pid][bid]`'s selection onto a 0-based
+/// `(line, grapheme_col)`, clamping the line to the buffer's last content
+/// line. Shared by every caller that parks a cursor at a line/column pair
+/// without switching focus or recording a jump entry — a read-only view's
+/// opening position and a CLI startup position both reduce to this.
+pub(crate) fn park_cursor_at(
+    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    buffers: &BufferStore,
+    pid: PaneId,
+    bid: BufferId,
+    line0: usize,
+    grapheme_col0: usize,
+) {
+    let text = buffers.get(bid).text();
+    let line = line0.min(text.last_content_line());
+    let char_pos = hume_editing::lines::place_grapheme_column(text, line, grapheme_col0);
+    ensure(pane_state, buffers, pid, bid).selections =
+        SelectionSet::single(Selection::collapsed(char_pos));
 }
 
 // ── PaneTransient ────────────────────────────────────────────────────────────

@@ -91,37 +91,30 @@ impl Editor {
         Ok((bid, is_new))
     }
 
-    /// Open additional files without switching focus; errors are logged as
-    /// warnings. A path that doesn't exist opens a new-file buffer instead
-    /// of erroring (see `resolve_open_path`) and reports Info `[new file]`,
-    /// matching `:e` — otherwise a mistyped trailing CLI argument would
-    /// silently open an empty buffer with no feedback at all.
-    ///
-    /// Returns the resulting buffer id per input path, `None` where opening
-    /// failed (index-aligned with `paths`) — callers that need to act on the
-    /// buffer a particular CLI argument opened (e.g. placing a startup
-    /// cursor) can zip this back against their own arg list.
-    pub(crate) fn open_extra_files(&mut self, paths: &[PathBuf]) -> Vec<Option<BufferId>> {
-        paths
-            .iter()
-            .map(|path| match self.try_open_extra(path) {
-                Ok((bid, is_new)) => {
-                    let buf = self.state.buffers.get(bid);
-                    if is_new && buf.is_new_file() {
-                        let name = buf.display_name();
-                        self.report(Severity::Info, format!("{name} [new file]"));
-                    }
-                    Some(bid)
+    /// Open an additional file without switching focus; an error is logged
+    /// as a warning and yields `None`. A path that doesn't exist opens a
+    /// new-file buffer instead of erroring (see `resolve_open_path`) and
+    /// reports Info `[new file]`, matching `:e` — otherwise a mistyped
+    /// trailing CLI argument would silently open an empty buffer with no
+    /// feedback at all.
+    pub(crate) fn open_extra_file(&mut self, path: &std::path::Path) -> Option<BufferId> {
+        match self.try_open_extra(path) {
+            Ok((bid, is_new)) => {
+                let buf = self.state.buffers.get(bid);
+                if is_new && buf.is_new_file() {
+                    let name = buf.display_name();
+                    self.report(Severity::Info, format!("{name} [new file]"));
                 }
-                Err(e) => {
-                    self.report(
-                        Severity::Warning,
-                        format!("Failed to open {}: {e}", path.display()),
-                    );
-                    None
-                }
-            })
-            .collect()
+                Some(bid)
+            }
+            Err(e) => {
+                self.report(
+                    Severity::Warning,
+                    format!("Failed to open {}: {e}", path.display()),
+                );
+                None
+            }
+        }
     }
 
     /// Resolve a path argument to an open buffer, opening the file if it isn't
@@ -459,7 +452,6 @@ impl Editor {
         content: &str,
         cursor_line: usize,
     ) -> BufferId {
-        use hume_editing::selection::{Selection, SelectionSet};
         use hume_editing::text::BufferText;
 
         let text = BufferText::from(content);
@@ -490,11 +482,14 @@ impl Editor {
 
         // Position cursor at the requested line (clamped to last content line).
         let pid = self.state.focused_pane_id;
-        let text = self.state.buffers.get(bid).text();
-        let target_line = cursor_line.min(text.last_content_line());
-        let char_pos = text.line_to_char(target_line);
-        self.state.panes.state[pid][bid].selections =
-            SelectionSet::single(Selection::collapsed(char_pos));
+        crate::editor::pane_state::park_cursor_at(
+            &mut self.state.panes.state,
+            &self.state.buffers,
+            pid,
+            bid,
+            cursor_line,
+            0,
+        );
 
         bid
     }

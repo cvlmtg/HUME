@@ -190,7 +190,7 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
     // stays open (with its "bar" cursor) in the now-unfocused first pane.
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    ed.open_extra_files(std::slice::from_ref(&extra));
+    ed.open_extra_file(&extra);
     let other_bid = ed
         .state
         .buffers
@@ -223,7 +223,7 @@ fn symbol_under_cursor_is_empty_once_no_pane_shows_the_buffer() {
     // at it, so no pane currently shows it.
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    ed.open_extra_files(std::slice::from_ref(&extra));
+    ed.open_extra_file(&extra);
     let other_bid = ed
         .state
         .buffers

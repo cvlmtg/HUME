@@ -1,16 +1,13 @@
 use super::*;
 use crate::editor::tests::safe_tempdir;
 
-/// A path guaranteed not to exist on disk: `name` joined onto a freshly
-/// created (and otherwise empty) tempdir.
-fn missing(dir: &std::path::Path, name: &str) -> PathBuf {
-    dir.join(name)
-}
+// `tmp.path().join(name)` below is guaranteed absent from disk — `tmp` is a
+// freshly created, otherwise empty tempdir.
 
 #[test]
 fn line_only_suffix() {
     let tmp = safe_tempdir();
-    let arg = missing(tmp.path(), "foo.rs:12");
+    let arg = tmp.path().join("foo.rs:12");
     let parsed = parse_file_arg(&arg).unwrap();
     assert_eq!(parsed.path, tmp.path().join("foo.rs"));
     assert_eq!(
@@ -25,7 +22,7 @@ fn line_only_suffix() {
 #[test]
 fn line_and_column_suffix() {
     let tmp = safe_tempdir();
-    let arg = missing(tmp.path(), "foo.rs:12:24");
+    let arg = tmp.path().join("foo.rs:12:24");
     let parsed = parse_file_arg(&arg).unwrap();
     assert_eq!(parsed.path, tmp.path().join("foo.rs"));
     assert_eq!(
@@ -40,7 +37,7 @@ fn line_and_column_suffix() {
 #[test]
 fn trailing_colon_is_tolerated() {
     let tmp = safe_tempdir();
-    let arg = missing(tmp.path(), "foo.rs:12:");
+    let arg = tmp.path().join("foo.rs:12:");
     let parsed = parse_file_arg(&arg).unwrap();
     assert_eq!(parsed.path, tmp.path().join("foo.rs"));
     assert_eq!(
@@ -55,7 +52,7 @@ fn trailing_colon_is_tolerated() {
 #[test]
 fn no_suffix_is_a_plain_path() {
     let tmp = safe_tempdir();
-    let arg = missing(tmp.path(), "foo.rs");
+    let arg = tmp.path().join("foo.rs");
     let parsed = parse_file_arg(&arg).unwrap();
     assert_eq!(parsed.path, arg);
     assert_eq!(parsed.pos, None);
@@ -64,7 +61,7 @@ fn no_suffix_is_a_plain_path() {
 #[test]
 fn non_digit_suffix_is_a_literal_path() {
     let tmp = safe_tempdir();
-    let arg = missing(tmp.path(), "foo.rs:abc");
+    let arg = tmp.path().join("foo.rs:abc");
     let parsed = parse_file_arg(&arg).unwrap();
     assert_eq!(parsed.path, arg);
     assert_eq!(parsed.pos, None);
@@ -74,7 +71,7 @@ fn non_digit_suffix_is_a_literal_path() {
 fn bare_colon_number_with_no_path_is_literal() {
     let tmp = safe_tempdir();
     // rsplit_once(':') on ":12" yields an empty remainder — no path to open.
-    let arg = missing(tmp.path(), ":12");
+    let arg = tmp.path().join(":12");
     let parsed = parse_file_arg(&arg).unwrap();
     assert_eq!(parsed.path, arg);
     assert_eq!(parsed.pos, None);
@@ -83,7 +80,7 @@ fn bare_colon_number_with_no_path_is_literal() {
 #[test]
 fn line_zero_is_rejected() {
     let tmp = safe_tempdir();
-    let arg = missing(tmp.path(), "foo.rs:0");
+    let arg = tmp.path().join("foo.rs:0");
     let err = parse_file_arg(&arg).unwrap_err();
     assert!(err.contains("line numbers start at 1"), "got: {err}");
 }
@@ -91,7 +88,7 @@ fn line_zero_is_rejected() {
 #[test]
 fn column_zero_is_rejected() {
     let tmp = safe_tempdir();
-    let arg = missing(tmp.path(), "foo.rs:12:0");
+    let arg = tmp.path().join("foo.rs:12:0");
     let err = parse_file_arg(&arg).unwrap_err();
     assert!(err.contains("line numbers start at 1"), "got: {err}");
 }

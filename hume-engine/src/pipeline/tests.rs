@@ -1262,6 +1262,10 @@ fn split_leaf_on_nested_target() {
             )),
         }
     );
+
+    let mut out = Vec::new();
+    tree.collect_rects_into(rect(0, 0, 100, 100), true, &mut out);
+    assert_eq!(out.len(), 3);
 }
 
 #[test]
@@ -1334,24 +1338,6 @@ fn split_leaf_counts_perpendicular_subtree_as_one_slot() {
         max - min <= 1,
         "widths {widths:?} not within 1 of each other"
     );
-}
-
-#[test]
-fn split_leaf_on_other_axis_leaves_parent_ratio_untouched() {
-    let [a, b, c] = pane_ids();
-    let mut tree = LayoutTree::Split {
-        direction: Direction::Horizontal,
-        ratio: 0.5,
-        children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
-    };
-    assert!(tree.split_leaf(b, c, Direction::Vertical));
-    let LayoutTree::Split { ratio, .. } = &tree else {
-        panic!("root must still be a split");
-    };
-    assert_eq!(*ratio, 0.5);
-    let mut out = Vec::new();
-    tree.collect_rects_into(rect(0, 0, 100, 100), true, &mut out);
-    assert_eq!(out.len(), 3);
 }
 
 #[test]

@@ -583,12 +583,12 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
     let bid_a = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid_a).lsp_server = Some(sid_a);
 
-    ed.open_extra_files(std::slice::from_ref(&file_b));
+    ed.open_extra_file(&file_b);
     let bid_b = ed
         .state
         .buffers
         .find_by_path(&std::fs::canonicalize(&file_b).unwrap())
-        .expect("file_b opened via open_extra_files");
+        .expect("file_b opened via open_extra_file");
     ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
     // Both buffers must be *shown* — `lsp/refresh-hints` skips a hidden bid.
     open_pane(&mut ed.state, &mut ed.view, bid_b);
@@ -684,12 +684,12 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
     let bid_a = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid_a).lsp_server = Some(sid_a);
 
-    ed.open_extra_files(std::slice::from_ref(&file_b));
+    ed.open_extra_file(&file_b);
     let bid_b = ed
         .state
         .buffers
         .find_by_path(&std::fs::canonicalize(&file_b).unwrap())
-        .expect("file_b opened via open_extra_files");
+        .expect("file_b opened via open_extra_file");
     ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
     let pane_b = open_pane(&mut ed.state, &mut ed.view, bid_b);
 

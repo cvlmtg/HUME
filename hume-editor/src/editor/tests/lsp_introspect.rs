@@ -613,11 +613,11 @@ fn viewport_range_is_false_for_a_buffer_not_shown_in_any_pane() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
 
-    // `open_extra_files` opens a second buffer into the buffer list without
+    // `open_extra_file` opens a second buffer into the buffer list without
     // switching any pane to show it — it stays paneless.
     let extra = tmp.path().join("hidden.rs");
     std::fs::write(&extra, "fn hidden() {}\n").unwrap();
-    ed.open_extra_files(std::slice::from_ref(&extra));
+    ed.open_extra_file(&extra);
     let hidden_bid = ed
         .state
         .buffers
@@ -659,7 +659,7 @@ fn lsp_position_params_is_false_for_a_buffer_shown_in_no_pane() {
 
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    ed.open_extra_files(std::slice::from_ref(&extra));
+    ed.open_extra_file(&extra);
     let other_bid = ed
         .state
         .buffers
@@ -694,7 +694,7 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
 
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    ed.open_extra_files(std::slice::from_ref(&extra));
+    ed.open_extra_file(&extra);
     let other_bid = ed
         .state
         .buffers

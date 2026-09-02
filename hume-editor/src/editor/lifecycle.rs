@@ -199,6 +199,7 @@ impl Editor {
             tui_active: false,
             terminal: None,
             applied_mouse_mode: initial_mouse_mode,
+            startup_positions: Vec::new(),
         };
         // This buffer predates the scripting host, so it can't route through
         // `open_buffer_and_notify` — but it must end up in the state that
@@ -235,50 +236,42 @@ impl Editor {
         self.config_path_override = Some(path);
     }
 
-    /// Seed `bid`'s cursor in the focused pane from a 1-based CLI position
-    /// (`hume foo.rs:12:24`), in the grapheme-column units the statusline
-    /// shows. No jump entry is recorded — a startup position is the
-    /// buffer's origin, not a jump away from one, so `Ctrl+o` has nothing to
-    /// return to here (unlike `:goto` and `goto-location!`, which both do).
-    fn place_startup_cursor(&mut self, bid: BufferId, pos: crate::cli::CliPosition) {
-        use hume_editing::selection::{Selection, SelectionSet};
-
-        let pid = self.state.focused_pane_id;
-        let text = self.state.buffers.get(bid).text();
-        let line = (pos.line - 1).min(text.last_content_line());
-        let char_pos = hume_editing::lines::place_grapheme_column(text, line, pos.grapheme_col - 1);
-
-        super::pane_state::ensure(&mut self.state.panes.state, &self.state.buffers, pid, bid);
-        self.state.panes.state[pid][bid].selections =
-            SelectionSet::single(Selection::collapsed(char_pos));
+    /// Queue a 1-based CLI position (`hume foo.rs:12:24`) for `bid`, applied
+    /// by [`Self::apply_startup_positions`] once `run`'s event loop reaches
+    /// its first `settle()`. Called from `hume_editor::run` for every CLI
+    /// file argument that carried a `:line[:col]` suffix.
+    pub(crate) fn queue_startup_position(&mut self, bid: BufferId, pos: crate::cli::CliPosition) {
+        self.startup_positions.push((bid, pos));
     }
 
-    /// Apply every startup cursor placement `hume_editor::run` collected
-    /// from CLI file arguments (`hume a.rs:10 b.rs:20`), then center the
-    /// focused buffer's viewport on its cursor the same way `zz`/
-    /// `goto-location!` do.
+    /// Apply every startup cursor placement queued by
+    /// [`Self::queue_startup_position`], then center the focused buffer's
+    /// viewport on its cursor the same way `zz`/`goto-location!` do. No jump
+    /// entry is recorded — a startup position is the buffer's origin, not a
+    /// jump away from one, so `Ctrl+o` has nothing to return to here (unlike
+    /// `:goto` and `goto-location!`, which both do).
     ///
-    /// Must run after a real terminal size is known but before `run`'s event
-    /// loop starts: centring reads the focused pane's height, and before
-    /// the loop's own first `sync_viewport_dims` call that height is still
-    /// `Pane::new`'s 80x24 placeholder — calling it here first is what makes
-    /// a startup line past that placeholder height still center correctly
-    /// on the very first frame.
-    pub(crate) fn apply_startup_positions(
-        &mut self,
-        placements: &[(BufferId, crate::cli::CliPosition)],
-        terminal_width: u16,
-        terminal_height: u16,
-    ) {
+    /// Must run after `run`'s own first `sync_viewport_dims` call: centring
+    /// reads the focused pane's height, which is still `Pane::new`'s 80x24
+    /// placeholder until that first sync runs.
+    pub(crate) fn apply_startup_positions(&mut self) {
+        let placements = std::mem::take(&mut self.startup_positions);
         if placements.is_empty() {
             return;
         }
-        self.sync_viewport_dims(terminal_width, terminal_height);
 
         let focused_bid = self.focused_buffer_id();
+        let pid = self.state.focused_pane_id;
         let mut center_focused = false;
-        for &(bid, pos) in placements {
-            self.place_startup_cursor(bid, pos);
+        for (bid, pos) in placements {
+            crate::editor::pane_state::park_cursor_at(
+                &mut self.state.panes.state,
+                &self.state.buffers,
+                pid,
+                bid,
+                pos.line - 1,
+                pos.grapheme_col - 1,
+            );
             center_focused |= bid == focused_bid;
         }
         if center_focused {
@@ -414,6 +407,13 @@ impl Editor {
             let (term_width, term_height) = screen.size()?;
             self.sync_viewport_dims(term_width, term_height);
             self.settle();
+            // Startup cursor positions queued from CLI file arguments, applied
+            // once (drained on the first call, a no-op thereafter): after this
+            // frame's `settle()` so `OnBufferOpen`/`OnLanguageSet` hooks that
+            // can resize chrome already ran, and after `sync_viewport_dims`
+            // above so centring reads the real terminal size, not `Pane::new`'s
+            // 80x24 placeholder.
+            self.apply_startup_positions();
             // Observed here, downstream of `settle()` — not right after
             // dispatch. `should_quit` is also checked after dispatch below
             // (`:508`, `continue` rather than `break`), which keeps the loop

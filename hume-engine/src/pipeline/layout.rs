@@ -44,6 +44,9 @@ pub enum LayoutTree {
         /// `equalize` from the two children's [`Self::slots_along`] counts —
         /// not chosen by whatever split produced this node — so every pane
         /// sharing a split axis stays equal-sized regardless of split order.
+        /// Kept as stored (not derived-on-read) state: a future manual pane
+        /// resize needs somewhere to write a value `equalize` won't
+        /// immediately overwrite.
         ratio: f32,
         children: Box<(LayoutTree, LayoutTree)>,
     },

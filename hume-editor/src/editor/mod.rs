@@ -798,6 +798,14 @@ pub(crate) struct Editor {
     /// take effect immediately instead of only at the next restart — see
     /// `hume_platform::terminal::set_mouse_mode`.
     applied_mouse_mode: (bool, bool),
+    /// Startup cursor placements queued by `queue_startup_position` (one per
+    /// CLI `path:line[:col]` argument) before `run`'s event loop starts.
+    /// Applied and drained by `apply_startup_positions`, once, right after
+    /// the loop's own first `settle()` — early enough that `OnBufferOpen`/
+    /// `OnLanguageSet` hooks still get to run first, late enough that the
+    /// loop's first `sync_viewport_dims` has already replaced `Pane::new`'s
+    /// 80x24 placeholder with the real terminal size centring needs.
+    startup_positions: Vec<(BufferId, crate::cli::CliPosition)>,
 }
 
 impl Editor {

@@ -184,6 +184,11 @@ const EDITOR_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
          state.settings after a reload, same as any runtime \
          :set mouse-enabled/mouse-select change",
     ),
+    (
+        "startup_positions",
+        "preserved: drained by apply_startup_positions at the first settle, \
+         long before any :reload-config could run",
+    ),
 ];
 
 /// Exercises the tricky patterns actually present in `EditorState`: a

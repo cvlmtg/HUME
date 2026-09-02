@@ -456,7 +456,7 @@ fn buffer_by_path_finds_lexically_keyed_buffer_after_parent_dir_appears() {
 }
 
 #[test]
-fn open_extra_files_opens_all_paths() {
+fn open_extra_file_opens_the_path() {
     let f1 = safe_named_tempfile();
     let f2 = safe_named_tempfile();
     std::fs::write(f1.path(), "file one\n").unwrap();
@@ -468,7 +468,7 @@ fn open_extra_files_opens_all_paths() {
     let mut ed = Editor::open(Some(canonical1.clone()), std::sync::Arc::new(|| {})).unwrap();
     let first_id = ed.focused_buffer_id();
 
-    ed.open_extra_files(std::slice::from_ref(&canonical2));
+    ed.open_extra_file(&canonical2);
 
     assert_eq!(ed.state.buffers.len(), 2, "both files must be open");
     assert_eq!(
@@ -489,10 +489,10 @@ fn open_extra_files_opens_all_paths() {
 
 // ── CLI startup cursor positions ─────────────────────────────────────────
 
+use crate::cli::CliPosition;
+
 #[test]
 fn apply_startup_positions_places_focused_cursor() {
-    use crate::cli::CliPosition;
-
     let f = safe_named_tempfile();
     // "line one\n" is 9 chars, so line 1 (0-based) starts at char 9; column
     // 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two" — hand
@@ -503,24 +503,21 @@ fn apply_startup_positions_places_focused_cursor() {
     let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
     let bid = ed.focused_buffer_id();
 
-    ed.apply_startup_positions(
-        &[(
-            bid,
-            CliPosition {
-                line: 2,
-                grapheme_col: 6,
-            },
-        )],
-        80,
-        24,
+    ed.sync_viewport_dims(80, 24);
+    ed.queue_startup_position(
+        bid,
+        CliPosition {
+            line: 2,
+            grapheme_col: 6,
+        },
     );
+    ed.apply_startup_positions();
 
     assert_eq!(ed.current_selections().primary().head(), 14);
 }
 
 #[test]
 fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() {
-    use crate::cli::CliPosition;
     use hume_editing::selection::SelectionSet;
 
     let f1 = safe_named_tempfile();
@@ -534,24 +531,17 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
 
     let mut ed = Editor::open(Some(canonical1), std::sync::Arc::new(|| {})).unwrap();
     let focused_bid = ed.focused_buffer_id();
-    let extra_bid = ed
-        .open_extra_files(&[canonical2])
-        .into_iter()
-        .next()
-        .unwrap()
-        .unwrap();
+    let extra_bid = ed.open_extra_file(&canonical2).unwrap();
 
-    ed.apply_startup_positions(
-        &[(
-            extra_bid,
-            CliPosition {
-                line: 3,
-                grapheme_col: 2,
-            },
-        )],
-        80,
-        24,
+    ed.sync_viewport_dims(80, 24);
+    ed.queue_startup_position(
+        extra_bid,
+        CliPosition {
+            line: 3,
+            grapheme_col: 2,
+        },
     );
+    ed.apply_startup_positions();
 
     let pid = ed.state.focused_pane_id;
     assert_eq!(
@@ -573,8 +563,6 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
 
 #[test]
 fn apply_startup_positions_clamps_a_line_past_the_end() {
-    use crate::cli::CliPosition;
-
     let f = safe_named_tempfile();
     // "line one\n" and "line two\n" are 9 chars each, so the last content
     // line ("last line") starts at char 18 — hand counted, distinct from
@@ -586,17 +574,15 @@ fn apply_startup_positions_clamps_a_line_past_the_end() {
     let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
     let bid = ed.focused_buffer_id();
 
-    ed.apply_startup_positions(
-        &[(
-            bid,
-            CliPosition {
-                line: 999,
-                grapheme_col: 1,
-            },
-        )],
-        80,
-        24,
+    ed.sync_viewport_dims(80, 24);
+    ed.queue_startup_position(
+        bid,
+        CliPosition {
+            line: 999,
+            grapheme_col: 1,
+        },
     );
+    ed.apply_startup_positions();
 
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -606,7 +592,7 @@ fn apply_startup_positions_clamps_a_line_past_the_end() {
 }
 
 /// `hume newfile.txt` (the *first* CLI file argument, `Editor::open`'s own
-/// `Buffer::from_file(path)?` branch — distinct from `open_extra_files`,
+/// `Buffer::from_file(path)?` branch — distinct from `open_extra_file`,
 /// which only handles trailing args) must open a new-file buffer instead of
 /// exiting on ENOENT.
 #[test]
@@ -626,14 +612,15 @@ fn startup_with_missing_first_file_opens_new_file_buffer() {
 }
 
 #[test]
-fn open_extra_files_deduplicates() {
+fn open_extra_file_deduplicates() {
     let f1 = safe_named_tempfile();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
 
     let mut ed = Editor::open(Some(canonical.clone()), std::sync::Arc::new(|| {})).unwrap();
-    // Pass the same path twice — must still result in exactly one buffer.
-    ed.open_extra_files(&[canonical.clone(), canonical]);
+    // Open the same path twice — must still result in exactly one buffer.
+    ed.open_extra_file(&canonical);
+    ed.open_extra_file(&canonical);
 
     assert_eq!(
         ed.state.buffers.len(),
@@ -845,7 +832,7 @@ fn wa_skips_read_only_dirty_buffer() {
 }
 
 #[test]
-fn open_extra_files_nonexistent_opens_new_file_buffer() {
+fn open_extra_file_nonexistent_opens_new_file_buffer() {
     let f1 = safe_named_tempfile();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
@@ -855,7 +842,7 @@ fn open_extra_files_nonexistent_opens_new_file_buffer() {
     let nonexistent = dir.path().join("hume_test_nonexistent_xyz_404.txt");
     let canonical_dir = std::fs::canonicalize(dir.path()).unwrap();
 
-    ed.open_extra_files(std::slice::from_ref(&nonexistent));
+    ed.open_extra_file(&nonexistent);
 
     assert_eq!(
         ed.state.buffers.len(),
@@ -884,17 +871,17 @@ fn open_extra_files_nonexistent_opens_new_file_buffer() {
     );
 }
 
-/// The new-file buffer's display path must be the `PathBuf` `open_extra_files`
+/// The new-file buffer's display path must be the `PathBuf` `open_extra_file`
 /// was given, not anything derived from the internal `expand()`/canonicalize
 /// sequence `resolve_open_path` runs.
 ///
 /// A tilde-literal input is required to prove this: `expand()` is a no-op on
 /// inputs with no `~`/env-var sigil, so a plain absolute path (as in
-/// `open_extra_files_nonexistent_opens_new_file_buffer` above) can't tell
+/// `open_extra_file_nonexistent_opens_new_file_buffer` above) can't tell
 /// "typed-derived display form" apart from "expanded-but-unresolved path" —
 /// both would render identically for such input.
 #[test]
-fn open_extra_files_new_file_shows_untransformed_display_path() {
+fn open_extra_file_new_file_shows_untransformed_display_path() {
     let f1 = safe_named_tempfile();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
@@ -909,7 +896,7 @@ fn open_extra_files_new_file_shows_untransformed_display_path() {
     // exercises callers (e.g. Steel scripting) that may pass a literal `~`.
     let tilde_path = std::path::PathBuf::from("~/hume-test-no-such-file-xyz.txt");
 
-    ed.open_extra_files(&[tilde_path]);
+    ed.open_extra_file(&tilde_path);
 
     assert_eq!(ed.state.buffers.len(), 2);
     let display = ed
@@ -924,8 +911,8 @@ fn open_extra_files_new_file_shows_untransformed_display_path() {
     );
 }
 
-/// `open_extra_files`'s warning must echo the `PathBuf` it was given verbatim
-/// (`path.display()` in `open_extra_files`, not anything derived from the
+/// `open_extra_file`'s warning must echo the `PathBuf` it was given verbatim
+/// (`path.display()` in `open_extra_file`, not anything derived from the
 /// internal `expand()`/canonicalize sequence `resolve_open_path` runs).
 ///
 /// A tilde-literal input is required to prove this: `expand()` is a no-op on
@@ -934,11 +921,11 @@ fn open_extra_files_new_file_shows_untransformed_display_path() {
 /// resolved path" — both would render identically for such input. Targets
 /// `~` (home dir) itself, not a missing filename under it: a missing path
 /// now opens a new-file buffer instead of warning (see
-/// `open_extra_files_nonexistent_opens_new_file_buffer`) — a directory is
+/// `open_extra_file_nonexistent_opens_new_file_buffer`) — a directory is
 /// still a genuine open failure, so it's the only case left that still
 /// warns.
 #[test]
-fn open_extra_files_warns_with_untransformed_path() {
+fn open_extra_file_warns_with_untransformed_path() {
     let f1 = safe_named_tempfile();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
@@ -947,7 +934,7 @@ fn open_extra_files_warns_with_untransformed_path() {
     let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
     let tilde_path = std::path::PathBuf::from("~");
 
-    ed.open_extra_files(&[tilde_path]);
+    ed.open_extra_file(&tilde_path);
 
     assert!(
         ed.state

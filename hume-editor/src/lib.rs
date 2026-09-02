@@ -135,12 +135,11 @@ pub fn run(
         eprintln!("hume: failed to start terminator: {e}");
     }
 
-    let (first, rest) = match files.split_first() {
-        Some((first, rest)) => (Some(first.clone()), rest),
-        None => (None, &[][..]),
-    };
+    let (first, rest) = files
+        .split_first()
+        .map_or((None, &[][..]), |(f, r)| (Some(f), r));
 
-    let mut editor = editor::Editor::open(first.as_ref().map(|f| f.path.clone()), wake)?;
+    let mut editor = editor::Editor::open(first.map(|f| f.path.clone()), wake)?;
     editor.attach_terminate_flag(terminate.clone());
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
     editor.set_kitty_support(kitty_enabled);
@@ -151,19 +150,17 @@ pub fn run(
         editor.set_config_path(path);
     }
     editor.init_scripting(&mut Default::default());
-    // Collect (buffer, position) pairs before opening the trailing files:
-    // `first`'s buffer is already open via `Editor::open` above, so its id
-    // is read straight off the focused buffer. Open remaining paths after
-    // scripting init so OnBufferOpen hooks fire.
-    let mut startup_positions = Vec::new();
-    if let Some(pos) = first.as_ref().and_then(|f| f.pos) {
-        startup_positions.push((editor.focused_buffer_id(), pos));
+    // `first`'s buffer is already open via `Editor::open` above, so its id is
+    // read straight off the focused buffer. Open remaining paths after
+    // scripting init so OnBufferOpen hooks fire. Queued rather than applied
+    // immediately — `Editor::run`'s event loop applies them once it has a
+    // real terminal size to center against (`apply_startup_positions`'s doc).
+    if let Some(pos) = first.and_then(|f| f.pos) {
+        editor.queue_startup_position(editor.focused_buffer_id(), pos);
     }
-    let rest_paths: Vec<std::path::PathBuf> = rest.iter().map(|f| f.path.clone()).collect();
-    let rest_bids = editor.open_extra_files(&rest_paths);
-    for (arg, bid) in rest.iter().zip(rest_bids) {
-        if let (Some(pos), Some(bid)) = (arg.pos, bid) {
-            startup_positions.push((bid, pos));
+    for arg in rest {
+        if let (Some(bid), Some(pos)) = (editor.open_extra_file(&arg.path), arg.pos) {
+            editor.queue_startup_position(bid, pos);
         }
     }
     // No explicit startup drain: work queued during init (OnBufferOpen,
@@ -178,12 +175,6 @@ pub fn run(
         editor.state.settings.mouse_select,
         kitty_enabled,
     )?;
-    // After `terminal::init`, not before: centring a startup position reads
-    // the focused pane's viewport height, which `apply_startup_positions`
-    // itself syncs from a real terminal size — doing this any earlier would
-    // center against `Pane::new`'s 80x24 placeholder instead.
-    let (term_width, term_height) = term.size()?;
-    editor.apply_startup_positions(&startup_positions, term_width, term_height);
     let result = editor.run(&mut term);
     // Restore the terminal (cursor shape/colour, leave alt-screen, cooked
     // mode) before the LSP grace window below, not after: `lsp_shutdown_all`

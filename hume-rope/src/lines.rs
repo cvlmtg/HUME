@@ -299,9 +299,10 @@ pub fn place_char_column(rope: &Rope, line: usize, char_col: usize) -> usize {
 pub fn place_grapheme_column(rope: &Rope, line: usize, grapheme_col: usize) -> usize {
     let line_start = rope.line_to_char(line);
     let content_end = line_content_end(rope, line);
+    let slice = rope.slice(..);
     let mut pos = line_start;
     for _ in 0..grapheme_col {
-        let next = crate::grapheme::next_grapheme_boundary(rope.slice(..), pos);
+        let next = crate::grapheme::next_grapheme_boundary(slice, pos);
         if next > content_end || next == pos {
             break;
         }
