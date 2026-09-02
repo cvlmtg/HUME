@@ -87,6 +87,30 @@ impl Editor {
         }
     }
 
+    /// Install every parse result the worker has finished.
+    ///
+    /// Two callers, both on `Editor` because `parse_worker` is: the per-frame
+    /// [`Self::reparse_stale_buffers`] below, and `Editor::run`'s loop
+    /// immediately before it dispatches a terminal event. The second exists
+    /// because a key already buffered when a parse completes consumes the
+    /// worker's wake — `poll` returns that key rather than the `Ok(false)`
+    /// interrupt that would have sent the loop back to `settle()` — so
+    /// without this the dispatch would run `ensure_syntax_current`'s inline
+    /// reparse over a tree the worker already built, paying a full parse of
+    /// every injected layer for it.
+    ///
+    /// Drains even when the worker is disconnected: results buffered before
+    /// it exited are still valid and should land.
+    pub(in crate::editor) fn install_parse_results(&mut self) {
+        let dones = self.parse_worker.drain_done();
+        for done in dones {
+            self.install_parse_done(done);
+        }
+        if self.parse_worker.is_disconnected() {
+            self.surface_parse_worker_disconnect();
+        }
+    }
+
     /// Reparse any visible buffer whose text has changed since the last parse.
     ///
     /// Called from `Editor::settle` (via `drain_async_sources`), which runs
@@ -97,17 +121,12 @@ impl Editor {
     /// visible buffer drives `Syntax::frame_tick` (bake + gen-gate + in-flight
     /// dedup, all internal) and submits any returned reparse request.
     pub(in crate::editor) fn reparse_stale_buffers(&mut self) {
-        // Drain phase: runs even when disconnected — buffered results produced
-        // before the worker exited are still valid and should land.
-        let dones = self.parse_worker.drain_done();
-        for done in dones {
-            self.install_parse_done(done);
-        }
+        self.install_parse_results();
 
-        // Surface a one-shot warning if the worker exited unexpectedly and
-        // suspend further request submission for this session.
+        // Suspend further request submission for this session once the
+        // worker has exited; the warning itself is one-shot, raised by the
+        // drain above.
         if self.parse_worker.is_disconnected() {
-            self.surface_parse_worker_disconnect();
             return;
         }
 
@@ -200,10 +219,12 @@ impl Editor {
 /// also why it must parse inline rather than post to `Editor`'s worker.
 ///
 /// A structural command runs after `Editor::settle` has already ticked the
-/// frame's async reparse for the *previous* edit, and a macro or dot-repeat
-/// batch replays several edits with no settle in between — either way the
-/// committed tree can be a generation behind by the time this query needs
-/// it. `Syntax::ensure_current` closes that window; this wrapper resolves
+/// frame's async reparse for the *previous* edit, but that tick only posts a
+/// request — the worker may still be parsing it when this query runs, most
+/// reliably during macro replay, which settles between keys but dispatches
+/// the next one faster than tree-sitter finishes. Either way the committed
+/// tree can be a generation behind by the time this query needs it.
+/// `Syntax::ensure_current` closes that window; this wrapper resolves
 /// the borrows it needs (an `Arc` grammar snapshot, an O(1) rope clone) and
 /// routes any `ChainBreak` through [`report_chain_break`].
 ///

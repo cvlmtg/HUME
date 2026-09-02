@@ -236,12 +236,14 @@ impl Syntax {
     /// Bring the committed tree up to date with `text_gen` *synchronously*,
     /// bypassing the async worker entirely. A structural command (text
     /// object, navigation) reads the tree after `frame_tick` has already run
-    /// for the frame, and a macro or dot-repeat batch replays several edits
-    /// with no settle in between — either way the committed tree can be a
-    /// generation behind by the time a query needs it, which would return
-    /// wrong spans (or panic on a byte offset past the pre-edit tree's end).
-    /// This closes that window at the query site instead of relying on the
-    /// next frame's `frame_tick`.
+    /// for the frame, but `frame_tick` only *posts* a reparse request — the
+    /// worker may still be parsing it on another thread when the query runs,
+    /// most reliably during macro replay, which settles between keys but
+    /// dispatches the next one faster than tree-sitter finishes. Either way
+    /// the committed tree can be a generation behind by the time a query
+    /// needs it, which would return wrong spans (or panic on a byte offset
+    /// past the pre-edit tree's end). This closes that window at the query
+    /// site instead of relying on the next frame's `frame_tick`.
     ///
     /// Bakes pending edits first, same as `frame_tick`; when the chain is
     /// intact the *root* tree's reparse is incremental and sub-frame — a full

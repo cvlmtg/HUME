@@ -504,6 +504,13 @@ impl Editor {
                 Ok(false) => continue,
                 Err(e) => return Err(e),
             }
+            // A parse that finished while `poll` was blocked has its result
+            // waiting in the worker's channel, and the wake that would have
+            // carried the loop back to `settle()` was consumed by the input
+            // event about to be read. Install it here so a structural
+            // command in this dispatch reads a current tree instead of
+            // rebuilding one `ensure_syntax_current` would parse inline.
+            self.install_parse_results();
             match reader.read(|_| true)? {
                 // Release events arrive only with kitty keyboard protocol
                 // (REPORT_EVENT_TYPES flag). Ignore them — we act on Press and

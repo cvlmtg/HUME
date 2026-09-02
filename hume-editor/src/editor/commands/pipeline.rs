@@ -83,10 +83,12 @@ pub(in crate::editor) fn run_native_body(
             }
             SelectionBody::Structural(body) => {
                 // Bring the tree up to date before collecting spans from it:
-                // a structural command can run after `settle`'s async
-                // reparse tick, or mid macro/dot-repeat batch with no settle
-                // between steps, and a stale tree yields wrong spans (or a
-                // panic on an out-of-range byte offset).
+                // `settle`'s async reparse tick only posts a request, and the
+                // worker may still be parsing it when this runs — most
+                // reliably during macro replay, which dispatches the next
+                // key faster than tree-sitter finishes — so a stale tree
+                // would yield wrong spans (or a panic on an out-of-range
+                // byte offset).
                 ensure_syntax_current(state, buf);
                 // Collected before `apply_doc_motion`'s call below, which
                 // needs `&state.buffers` and `&mut state.panes.state` at
