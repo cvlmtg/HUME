@@ -80,6 +80,23 @@ object_enum! {
     }
 }
 
+// ── SpanSelector ───────────────────────────────────────────────────────────
+
+/// Which set of spans a caller wants collected — the whole input to
+/// [`ObjectSpans::for_selector`], and therefore its memo key.
+///
+/// Selection (`m i f`, `m a c`) names an exact `<kind>.<span>` capture;
+/// navigation (`goto-next-<kind>`) names only a kind and lets
+/// [`ObjectSpans::collect_for_navigation`] pick the span per layer. Making
+/// that a value rather than two call sites is what lets one cache serve both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpanSelector {
+    /// One `<kind>.<span>` capture, exactly as written.
+    Exact(ObjectKind, ObjectSpan),
+    /// The kind's best navigation span, per-layer priority.
+    Navigation(ObjectKind),
+}
+
 // ── Direction ──────────────────────────────────────────────────────────────
 
 /// The only direction enum for structural navigation. `hume-ops` takes a
@@ -139,6 +156,8 @@ impl TextObjectsQuery {
 }
 
 // ── ObjectSpans ────────────────────────────────────────────────────────────
+
+use std::sync::Arc;
 
 use hume_editing::grapheme::prev_grapheme_boundary;
 use hume_editing::text::BufferText;
@@ -227,6 +246,47 @@ impl ObjectSpans {
                 .into_iter()
                 .find_map(|span| query.capture_index(kind, span))
         })
+    }
+
+    /// [`Self::collect`] / [`Self::collect_for_navigation`] as `selector`
+    /// asks, memoized on `layers`.
+    ///
+    /// The entry point every structural command goes through. Collection
+    /// walks each layer's whole tree — `collect_hulls` cannot clip with
+    /// `set_byte_range` without truncating grouped hulls — so repeating a
+    /// command (key repeat on `goto-next-*`, a macro or `.`-repeat step)
+    /// would otherwise re-walk an unchanged tree every keypress.
+    ///
+    /// The memo lives on `SyntaxLayers` and dies with it; see
+    /// `SyntaxLayers::textobject_memo` for why that placement is what makes
+    /// invalidation total. The two collectors below stay public, pure and
+    /// uncached — they are the independent oracle this path is tested
+    /// against.
+    ///
+    /// Not in tension with `highlight.rs`'s documented refusal to cache
+    /// spans: that is the per-line highlight query, which `set_byte_range`
+    /// already clips to `O(tree depth + line)`. This one is unclipped and
+    /// whole-tree.
+    pub fn for_selector(
+        layers: &SyntaxLayers,
+        text: &BufferText,
+        selector: SpanSelector,
+    ) -> Arc<Self> {
+        let mut memo = layers
+            .textobject_memo
+            .lock()
+            .expect("textobject memo lock poisoned");
+        if let Some((cached, spans)) = memo.as_ref()
+            && *cached == selector
+        {
+            return Arc::clone(spans);
+        }
+        let spans = Arc::new(match selector {
+            SpanSelector::Exact(kind, span) => Self::collect(layers, text, kind, span),
+            SpanSelector::Navigation(kind) => Self::collect_for_navigation(layers, text, kind),
+        });
+        *memo = Some((selector, Arc::clone(&spans)));
+        spans
     }
 
     /// Shared walk behind [`Self::collect`] and

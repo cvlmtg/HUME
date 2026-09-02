@@ -12,37 +12,42 @@ use hume_ops::motion::apply_object_motion;
 use hume_ops::text_object::{
     apply_text_object_by_mode, around_argument, around_from_inner, inner_argument,
 };
+use std::sync::Arc;
+
 use hume_treesitter::syntax::Syntax;
-use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan, ObjectSpans};
+use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan, ObjectSpans, SpanSelector};
 
 use super::super::buffer::Buffer;
 use super::super::registry::StructuralBody;
 
-/// The `ObjectSpans` a `StructuralBody` probes against, for the object kind
-/// (and, for `Goto`, the navigation span priority) that body needs. Shared
-/// borrows only — the pipeline arm calling this still holds `&state.buffers`
-/// when it does. `ObjectSpans::default()` (empty) when the buffer has no
-/// syntax, no layers yet, or no layer defines the capture: `enclosing`/
-/// `adjacent` then answer "nothing here" through the same code path every
-/// other probe uses, making `Select`/`Goto` silent no-ops with no early
-/// return.
-pub(super) fn object_spans(buf: &Buffer, body: StructuralBody) -> ObjectSpans {
-    let Some(layers) = buf.syntax.as_ref().and_then(Syntax::layers) else {
-        return ObjectSpans::default();
-    };
-    let text = buf.text();
+/// The spans this body probes.
+///
+/// `Argument` resolves to `parameter.inside` — not `.around`, which Helix
+/// hulls with the trailing comma `m i a`/`m a a` deliberately reject, and the
+/// same span the lexical `inner_argument` fallback produces.
+fn selector_for(body: StructuralBody) -> SpanSelector {
     match body {
-        StructuralBody::Select { kind, span } => ObjectSpans::collect(layers, text, kind, span),
-        StructuralBody::Goto { kind, .. } => {
-            ObjectSpans::collect_for_navigation(layers, text, kind)
-        }
-        // `parameter.inside` (not `.around`, which Helix hulls with the
-        // trailing comma `m i a`/`m a a` deliberately reject) — the same
-        // span the lexical `inner_argument` fallback below produces.
+        StructuralBody::Select { kind, span } => SpanSelector::Exact(kind, span),
+        StructuralBody::Goto { kind, .. } => SpanSelector::Navigation(kind),
         StructuralBody::Argument { .. } => {
-            ObjectSpans::collect(layers, text, ObjectKind::Parameter, ObjectSpan::Inside)
+            SpanSelector::Exact(ObjectKind::Parameter, ObjectSpan::Inside)
         }
     }
+}
+
+/// The `ObjectSpans` a `StructuralBody` probes against. Shared borrows only —
+/// the pipeline arm calling this still holds `&state.buffers` when it does,
+/// and the memo behind `for_selector` is why that stays true.
+///
+/// An empty set (via `Arc<ObjectSpans>::default`) when the buffer has no
+/// syntax or no layers yet: `enclosing`/`adjacent` then answer "nothing here"
+/// through the same code path every other probe uses, making `Select`/`Goto`
+/// silent no-ops with no early return.
+pub(super) fn object_spans(buf: &Buffer, body: StructuralBody) -> Arc<ObjectSpans> {
+    let Some(layers) = buf.syntax.as_ref().and_then(Syntax::layers) else {
+        return Arc::default();
+    };
+    ObjectSpans::for_selector(layers, buf.text(), selector_for(body))
 }
 
 impl StructuralBody {

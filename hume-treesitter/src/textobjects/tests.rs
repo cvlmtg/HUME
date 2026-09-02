@@ -8,7 +8,8 @@ use hume_test_fixtures::{helix_injections_path, helix_textobjects_path, require_
 use super::*;
 use crate::registry::GrammarBundle;
 use crate::syntax::Syntax;
-use crate::test_support::{empty_langs, make_bundle};
+use crate::test_support::{empty_langs, fresh_bid, make_bundle};
+use hume_editing::changeset::ChangeSetBuilder;
 
 fn compile(source: &str) -> TextObjectsQuery {
     require_grammars(&["rust"]);
@@ -441,5 +442,97 @@ fn collect_merges_spans_across_root_and_injected_layers() {
         select.enclosing(pos_in_fence_not_function),
         None,
         "inside the fence but outside any function"
+    );
+}
+
+// ── ObjectSpans::for_selector — the per-layers memo ────────────────────────
+
+/// The same selector, twice, must hand back the *same* `ObjectSpans` rather
+/// than re-walking the tree.
+///
+/// Flip: drop the cache lookup in `for_selector` and the pointers differ.
+#[test]
+fn for_selector_returns_the_same_spans_for_a_repeated_selector() {
+    let (syn, text) = rust_syntax("fn foo() {\n    1\n}\n");
+    let layers = syn.layers().expect("layers installed");
+    let sel = SpanSelector::Exact(ObjectKind::Function, ObjectSpan::Around);
+
+    let first = ObjectSpans::for_selector(layers, &text, sel);
+    let second = ObjectSpans::for_selector(layers, &text, sel);
+    assert!(
+        Arc::ptr_eq(&first, &second),
+        "a repeated selector must hit the cache"
+    );
+}
+
+/// A different selector must not be answered from the previous selector's
+/// entry — the cache is keyed, not just "the last result".
+#[test]
+fn for_selector_does_not_answer_a_different_selector_from_the_cache() {
+    let (syn, text) = rust_syntax("fn foo(a: i32) {\n    1\n}\n");
+    let layers = syn.layers().expect("layers installed");
+
+    let around = ObjectSpans::for_selector(
+        layers,
+        &text,
+        SpanSelector::Exact(ObjectKind::Function, ObjectSpan::Around),
+    );
+    let inside = ObjectSpans::for_selector(
+        layers,
+        &text,
+        SpanSelector::Exact(ObjectKind::Function, ObjectSpan::Inside),
+    );
+    assert!(!Arc::ptr_eq(&around, &inside));
+
+    // Independent oracle: each must equal what the uncached collector returns.
+    let pos = text.byte_to_char("fn foo(a: i32) {\n    1".find('1').unwrap());
+    for (cached, span) in [(&around, ObjectSpan::Around), (&inside, ObjectSpan::Inside)] {
+        let fresh = ObjectSpans::collect(layers, &text, ObjectKind::Function, span);
+        assert_eq!(cached.enclosing(pos), fresh.enclosing(pos), "{span:?}");
+    }
+}
+
+/// `bake` edits every layer's tree *in place* — the one mutation that does
+/// not replace `SyntaxLayers` outright — so it must drop the cache too, or a
+/// structural command reads spans collected from the pre-edit tree.
+///
+/// Flip: remove `bake`'s cache clear and the second lookup returns the stale
+/// `Arc`, whose spans no longer match a fresh collect over the baked tree.
+#[test]
+fn for_selector_cache_does_not_survive_a_bake() {
+    let source = "fn foo() {\n    1\n}\n";
+    let (mut syn, text) = rust_syntax(source);
+    let sel = SpanSelector::Exact(ObjectKind::Function, ObjectSpan::Around);
+
+    let before = {
+        let layers = syn.layers().expect("layers installed");
+        ObjectSpans::for_selector(layers, &text, sel)
+    };
+
+    // Insert a line above the function, then bake it in — `frame_tick` bakes
+    // and hands back a reparse request we deliberately drop, leaving the
+    // layers edited-in-place and *not* replaced by an install.
+    let edited = format!("// lead\n{source}");
+    let rope_pre = ropey::Rope::from_str(source);
+    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    b.insert("// lead\n");
+    b.retain_rest();
+    // `attach_sync` installs at generation 1, so the edit is generation 2.
+    syn.record_edit(2, &b.finish(), &rope_pre);
+    let text = BufferText::from(edited.as_str());
+    let _req = syn.frame_tick(fresh_bid(), 2, &text, &empty_langs());
+
+    let layers = syn.layers().expect("layers installed");
+    let after = ObjectSpans::for_selector(layers, &text, sel);
+    assert!(
+        !Arc::ptr_eq(&before, &after),
+        "the cache must not survive a bake"
+    );
+    let fresh = ObjectSpans::collect(layers, &text, ObjectKind::Function, ObjectSpan::Around);
+    let pos = text.byte_to_char(edited.find('1').unwrap());
+    assert_eq!(
+        after.enclosing(pos),
+        fresh.enclosing(pos),
+        "post-bake spans must match a fresh collect over the baked tree"
     );
 }

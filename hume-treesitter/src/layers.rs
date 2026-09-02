@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::registry::GrammarBundle;
+use crate::textobjects::{ObjectSpans, SpanSelector};
 
 /// One parsed layer of a buffer's syntax tree: the root grammar, or one
 /// embedded-language injection (a fenced code block, a combined
@@ -28,12 +29,51 @@ pub struct SyntaxLayer {
 /// `layers[0]` is always the root layer (`ranges` empty, `depth` 0).
 pub struct SyntaxLayers {
     pub layers: Vec<SyntaxLayer>,
+    /// Memo for [`crate::textobjects::ObjectSpans::for_selector`]: the last
+    /// selector collected from *these* layers, and its result.
+    ///
+    /// It lives here, rather than on `Syntax` keyed by a generation, because
+    /// that placement is what makes invalidation total instead of careful.
+    /// `Syntax::install` replaces this whole struct and `clear_layers` drops
+    /// it, so both lose the memo for free; `Syntax::bake` is the only code
+    /// that mutates layers in place, and it clears this explicitly. A
+    /// `tree_gen` key could not do the same job: `bake` advances `tree_gen`
+    /// to a generation and a later `install` for that *same* generation
+    /// replaces the layers under an unchanged value.
+    ///
+    /// `Mutex` for the reason `Syntax::span_scratch` is one — the collection
+    /// entry point takes `&SyntaxLayers`, so the editor's dispatch path needs
+    /// no `&mut` and no signature change to reach it.
+    ///
+    /// Single-entry: the access pattern is the same structural command
+    /// pressed again (key repeat, a macro or `.`-repeat step), not an
+    /// alternating working set.
+    pub(crate) textobject_memo: Mutex<Option<(SpanSelector, Arc<ObjectSpans>)>>,
 }
 
 impl SyntaxLayers {
+    /// Wrap freshly parsed layers, memo empty. The only constructor —
+    /// `textobject_memo` is private so that nothing outside this module can
+    /// hand out a set of layers carrying someone else's cached spans.
+    pub fn new(layers: Vec<SyntaxLayer>) -> Self {
+        Self {
+            layers,
+            textobject_memo: Mutex::new(None),
+        }
+    }
+
     /// The root grammar's parse tree, if any layers are installed.
     pub fn root_tree(&self) -> Option<&tree_sitter::Tree> {
         self.layers.first().map(|l| &l.tree)
+    }
+
+    /// Drop the text-object memo. Called from `Syntax::bake`, the only path
+    /// that edits these layers without replacing them — see the field's doc.
+    pub(crate) fn clear_textobject_memo(&mut self) {
+        *self
+            .textobject_memo
+            .lock()
+            .expect("textobject memo lock poisoned") = None;
     }
 }
 

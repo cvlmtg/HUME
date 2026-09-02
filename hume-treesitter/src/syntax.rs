@@ -311,8 +311,13 @@ impl Syntax {
         if chain_ok {
             let edits: Vec<tree_sitter::InputEdit> =
                 self.pending_edits.iter().map(|(_, e)| *e).collect();
-            let layers = &mut self.layers.as_mut().expect("checked above").layers;
-            for layer in layers.iter_mut() {
+            let installed = self.layers.as_mut().expect("checked above");
+            // Every span the text-object memo holds was collected from these
+            // trees at their pre-edit positions. This is the one path that
+            // mutates layers without replacing them, so it is the one path
+            // that has to say so.
+            installed.clear_textobject_memo();
+            for layer in installed.layers.iter_mut() {
                 for edit in &edits {
                     layer.tree.edit(edit);
                 }
@@ -419,7 +424,7 @@ impl Syntax {
                         depth: injected.depth,
                     });
                 }
-                self.layers = Some(SyntaxLayers { layers });
+                self.layers = Some(SyntaxLayers::new(layers));
                 self.pending_edits.retain(|(g, _)| *g > text_gen);
                 self.tree_gen = text_gen;
             }

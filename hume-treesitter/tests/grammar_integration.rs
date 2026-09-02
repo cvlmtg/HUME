@@ -56,14 +56,12 @@ fn highlights_for_line(
     rope: &ropey::Rope,
     line_idx: usize,
 ) -> Vec<(usize, usize, hume_engine::types::ScopeId)> {
-    let layers = SyntaxLayers {
-        layers: vec![SyntaxLayer {
-            tree,
-            bundle,
-            ranges: vec![],
-            depth: 0,
-        }],
-    };
+    let layers = SyntaxLayers::new(vec![SyntaxLayer {
+        tree,
+        bundle,
+        ranges: vec![],
+        depth: 0,
+    }]);
     let mut raw = Vec::new();
     let mut stack = Vec::new();
     let mut events = Vec::new();
