@@ -1,10 +1,11 @@
-//! Vocabulary for tree-sitter structural text objects and navigation: kinds,
-//! spans, and the per-`(kind, span)` capture-index table a compiled
-//! `textobjects.scm` resolves to.
+//! Tree-sitter structural text objects and navigation: kinds, spans, the
+//! per-`(kind, span)` capture-index table a compiled `textobjects.scm`
+//! resolves to, and [`ObjectSpans`], which runs that query over a buffer's
+//! syntax layers into a sorted list of inclusive char spans.
 //!
-//! This module only names things and resolves capture indices at attach
-//! time — span collection (hulls over grouped matches), freshness, and
-//! selection policy are later phases.
+//! Freshness (the tree matches the text before a command runs) and
+//! selection policy (Move/Extend, count, multi-cursor) are later phases —
+//! this module only collects spans and answers two lookups over them.
 
 // ── ObjectKind ─────────────────────────────────────────────────────────────
 
@@ -127,9 +128,207 @@ impl TextObjectsQuery {
         Self { query, captures }
     }
 
+    /// The capture index for a `<kind>.<span>` pair, if this query defines it.
+    pub(crate) fn capture_index(&self, kind: ObjectKind, span: ObjectSpan) -> Option<u32> {
+        self.captures[kind as usize][span as usize]
+    }
+
     /// Whether this query defines a `<kind>.<span>` capture.
     pub fn defines(&self, kind: ObjectKind, span: ObjectSpan) -> bool {
-        self.captures[kind as usize][span as usize].is_some()
+        self.capture_index(kind, span).is_some()
+    }
+}
+
+// ── ObjectSpans ────────────────────────────────────────────────────────────
+
+use hume_editing::grapheme::prev_grapheme_boundary;
+use hume_editing::text::BufferText;
+use streaming_iterator::StreamingIterator;
+
+use crate::highlight::RopeProvider;
+use crate::layers::{SyntaxLayer, SyntaxLayers};
+
+/// A structural object's captured region, hull-collected from a
+/// `textobjects.scm` match and merged with every other match across a
+/// buffer's syntax layers: a sorted, deduplicated list of inclusive char
+/// spans. Owned rather than an iterator over the tree — `hume-editor` needs
+/// `&state.buffers` and `&mut state.panes.state` at once when it applies the
+/// resulting selection, so the tree borrow this collects from must end
+/// before that, and N cursors × `count` navigation steps then probe a
+/// vector instead of re-running the query per step.
+pub struct ObjectSpans {
+    /// Inclusive `(start, end)` char spans, sorted by `(start, Reverse(end))`
+    /// and deduplicated — both `enclosing` and `adjacent` walk this exact
+    /// ordering rather than re-deriving it per call.
+    spans: Vec<(usize, usize)>,
+}
+
+impl ObjectSpans {
+    /// Every `<kind>.<span>` object across every layer whose bundle defines
+    /// that capture, merged into one list.
+    ///
+    /// There is no innermost-layer walk and no "does this layer cover the
+    /// cursor" test: an injected layer's captured nodes always lie inside
+    /// the parent node that hosts the injection, so `enclosing`'s
+    /// smallest-span and `adjacent`'s nearest-start already prefer the
+    /// innermost object once every layer's spans are merged into one list —
+    /// and a layer without a `textobjects` query (Rust's `comment`
+    /// injection, markdown prose) simply contributes nothing. The outward
+    /// fallback to an enclosing language's own objects is a consequence of
+    /// the merge, not a mechanism this function implements.
+    pub fn collect(
+        layers: &SyntaxLayers,
+        text: &BufferText,
+        kind: ObjectKind,
+        span: ObjectSpan,
+    ) -> Self {
+        let mut spans = Vec::new();
+        for layer in &layers.layers {
+            if let Some(query) = layer.bundle.textobjects.as_ref()
+                && let Some(idx) = query.capture_index(kind, span)
+            {
+                collect_hulls(query, idx, layer, text, &mut spans);
+            }
+        }
+        Self::finish(spans)
+    }
+
+    /// Navigation spans for `kind`: per layer, the first of `Movement`,
+    /// `Around`, `Inside` that layer's query defines — Helix's rule that
+    /// `.movement` exists precisely for the languages where `.around` is a
+    /// poor navigation target (a whole function body vs. just its name).
+    ///
+    /// One exception: `Parameter` always navigates `Inside`, skipping that
+    /// priority order. Helix's `parameter.around` hull is the argument
+    /// *plus its trailing comma* — a wart `m i a` / `m a a` reject for
+    /// selection (`around_from_inner` recomputes the separator itself) —
+    /// while `parameter.inside` is exactly the span `m i a` selects, so
+    /// `goto-next-argument` lands on that same trimmed span.
+    pub fn collect_for_navigation(
+        layers: &SyntaxLayers,
+        text: &BufferText,
+        kind: ObjectKind,
+    ) -> Self {
+        const PRIORITY: [ObjectSpan; 3] =
+            [ObjectSpan::Movement, ObjectSpan::Around, ObjectSpan::Inside];
+        let mut spans = Vec::new();
+        for layer in &layers.layers {
+            let Some(query) = layer.bundle.textobjects.as_ref() else {
+                continue;
+            };
+            let chosen = if kind == ObjectKind::Parameter {
+                ObjectSpan::Inside
+            } else {
+                let Some(span) = PRIORITY.into_iter().find(|&span| query.defines(kind, span))
+                else {
+                    continue;
+                };
+                span
+            };
+            if let Some(idx) = query.capture_index(kind, chosen) {
+                collect_hulls(query, idx, layer, text, &mut spans);
+            }
+        }
+        Self::finish(spans)
+    }
+
+    fn finish(mut spans: Vec<(usize, usize)>) -> Self {
+        spans.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+        spans.dedup();
+        Self { spans }
+    }
+
+    /// The smallest span containing `pos` (`start <= pos <= end`).
+    pub fn enclosing(&self, pos: usize) -> Option<(usize, usize)> {
+        self.spans
+            .iter()
+            .copied()
+            .filter(|&(start, end)| start <= pos && pos <= end)
+            .min_by_key(|&(start, end)| end - start)
+    }
+
+    /// The next/previous object relative to `pos`.
+    ///
+    /// **Start-keyed in both directions** — not `end` for the backward
+    /// case, as Helix does: a backward press from inside an object must
+    /// land on that object's own start first (Vim `[m`), then walk further
+    /// back on a repeat. Keying backward on `end < pos` can never select
+    /// the object currently enclosing the cursor, since its end is `>= pos`
+    /// by definition.
+    ///
+    /// `Forward`: smallest `start > pos`, ties -> largest `end`.
+    /// `Backward`: largest `start < pos`, ties -> largest `end`.
+    pub fn adjacent(&self, pos: usize, dir: Direction) -> Option<(usize, usize)> {
+        match dir {
+            Direction::Forward => {
+                // First span past every `start <= pos` entry. Since ties
+                // are pre-sorted by descending `end`, that span is already
+                // the largest-end winner within its start.
+                let idx = self.spans.partition_point(|&(start, _)| start <= pos);
+                self.spans.get(idx).copied()
+            }
+            Direction::Backward => {
+                // First span with `start >= pos`; step back one to the
+                // largest `start < pos`, then walk to the first span
+                // sharing that start (the descending-`end` sort puts the
+                // largest-end tie-break winner there).
+                let idx = self.spans.partition_point(|&(start, _)| start < pos);
+                let (target_start, _) = *self.spans.get(idx.checked_sub(1)?)?;
+                let run_start =
+                    self.spans[..idx].partition_point(|&(start, _)| start < target_start);
+                self.spans.get(run_start).copied()
+            }
+        }
+    }
+}
+
+/// Run `query`'s matches over `layer`'s tree and, for every match that
+/// captures `capture_idx`, push the hull — `min(start_byte) ‥
+/// max(end_byte)` over every node that match captured under it — as an
+/// inclusive char span. A match without the capture contributes nothing; a
+/// zero-width hull (a `MISSING` node standing in for absent syntax) is
+/// dropped.
+///
+/// `set_byte_range` is deliberately never used here, unlike the highlighter:
+/// the cursor prunes children outside its range, which truncates a grouped
+/// hull — the trailing comma a `parameter.around` pattern captures after
+/// the argument, the leading attributes a `function.around` pattern
+/// captures before the function — rather than merely skipping matches that
+/// don't touch a queried region. So this always walks the whole tree.
+fn collect_hulls(
+    query: &TextObjectsQuery,
+    capture_idx: u32,
+    layer: &SyntaxLayer,
+    text: &BufferText,
+    out: &mut Vec<(usize, usize)>,
+) {
+    let mut cursor = tree_sitter::QueryCursor::new();
+    let root = layer.tree.root_node();
+    let mut matches = cursor.matches(&query.query, root, RopeProvider(text.rope()));
+    while let Some(m) = matches.next() {
+        let hull = m
+            .nodes_for_capture_index(capture_idx)
+            .map(|node| (node.start_byte(), node.end_byte()))
+            .reduce(|(hs, he), (start, end)| (hs.min(start), he.max(end)));
+        let Some((start_byte, end_byte)) = hull else {
+            continue;
+        };
+        if start_byte >= end_byte {
+            continue; // zero-width hull (MISSING nodes) — not a real object
+        }
+        // A stale tree (an edit recorded but not yet baked/reparsed) would
+        // let a node's byte range run past the live buffer's own length —
+        // freshness (a later phase) makes that impossible by construction,
+        // so a violation here is a bug, not a case to paper over silently.
+        debug_assert!(
+            end_byte <= text.len_bytes(),
+            "text-object span end {end_byte} exceeds buffer length {} — tree is stale",
+            text.len_bytes()
+        );
+        let start = text.byte_to_char(start_byte);
+        let end_exclusive = text.byte_to_char(end_byte);
+        let end = prev_grapheme_boundary(text, end_exclusive);
+        out.push((start, end));
     }
 }
 
