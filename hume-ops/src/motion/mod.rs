@@ -83,6 +83,8 @@ mod line_select;
 pub use line_select::{cmd_select_line, cmd_select_line_backward};
 mod find;
 pub use find::{find_char_backward, find_char_forward};
+mod object;
+pub use object::apply_object_motion;
 
 #[cfg(test)]
 mod tests;
