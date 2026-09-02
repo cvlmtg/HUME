@@ -17,24 +17,18 @@ use hume_treesitter::registry::QueryPaths;
 /// `injections` selects between the real Helix-maintained injections.scm
 /// (what PLUM actually installs) and none.
 fn attach(ed: &mut Editor, name: &str, symbol: &str, injections: bool) {
-    let parser_path = grammar_parser_path(name);
     let hl_path = grammar_query_path(name);
     let inj_path = injections.then(|| helix_injections_path(name)).flatten();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            name,
-            &parser_path,
-            symbol,
-            QueryPaths {
-                highlights: &hl_path,
-                injections: inj_path.as_deref(),
-                textobjects: None,
-            },
-            &mut ed.view.registry,
-        )
-        .unwrap_or_else(|e| panic!("attach {name}: {e}"));
+    attach_fixture_grammar_with(
+        ed,
+        name,
+        symbol,
+        QueryPaths {
+            highlights: &hl_path,
+            injections: inj_path.as_deref(),
+            textobjects: None,
+        },
+    );
 }
 
 /// Require this file's grammar fixtures — see

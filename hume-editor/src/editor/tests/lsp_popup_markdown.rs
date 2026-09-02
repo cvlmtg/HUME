@@ -10,31 +10,18 @@ use hume_grid::Rect;
 
 use super::*;
 use hume_engine::pipeline::RenderContext;
-use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
-use hume_treesitter::registry::QueryPaths;
+use hume_test_fixtures::require_grammars;
 
 /// Attach the real `markdown` grammar fixture, no injections — these tests
 /// only check that top-level spans reach the popup, not fenced-code
 /// injection (already covered end-to-end for buffers by `injections_editor.rs`).
 fn register_markdown(ed: &mut Editor) {
-    let parser_path = grammar_parser_path("markdown");
-    let hl_path = grammar_query_path("markdown");
     ed.state
         .config
         .languages
         .register_identity("markdown", &["md"], &[], &[], None)
         .unwrap();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "markdown",
-            &parser_path,
-            "tree_sitter_markdown",
-            QueryPaths::highlights_only(&hl_path),
-            &mut ed.view.registry,
-        )
-        .unwrap_or_else(|e| panic!("attach markdown: {e}"));
+    attach_fixture_grammar(ed, "markdown", "tree_sitter_markdown");
 }
 
 fn styled_rows(ed: &Editor) -> Option<Vec<crate::ui::popup::StyledRow>> {

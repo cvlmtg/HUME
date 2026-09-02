@@ -36,21 +36,16 @@ fn rust_editor_undrained(source: &str) -> Editor {
         .expect("rust helix-textobjects.scm fixture — run scripts/fetch-test-grammars.sh");
     let mut ed = editor_from(source);
     let bid = ed.focused_buffer_id();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "rust",
-            &grammar_parser_path("rust"),
-            "tree_sitter_rust",
-            QueryPaths {
-                highlights: &grammar_query_path("rust"),
-                injections: None,
-                textobjects: Some(&to_path),
-            },
-            &mut ed.view.registry,
-        )
-        .expect("attach rust grammar");
+    attach_fixture_grammar_with(
+        &mut ed,
+        "rust",
+        "tree_sitter_rust",
+        QueryPaths {
+            highlights: &grammar_query_path("rust"),
+            injections: None,
+            textobjects: Some(&to_path),
+        },
+    );
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     ed
@@ -555,17 +550,7 @@ fn inner_argument_with_a_grammar_but_no_textobjects_query_falls_back_to_the_lexi
     require_fixtures();
     let mut ed = editor_from("fn f() {\n    foo(-[a]>aa, bbb);\n}\n");
     let bid = ed.focused_buffer_id();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "rust",
-            &grammar_parser_path("rust"),
-            "tree_sitter_rust",
-            QueryPaths::highlights_only(&grammar_query_path("rust")),
-            &mut ed.view.registry,
-        )
-        .expect("attach rust grammar");
+    attach_fixture_grammar(&mut ed, "rust", "tree_sitter_rust");
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();

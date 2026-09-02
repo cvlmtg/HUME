@@ -15,7 +15,6 @@ use std::sync::Arc;
 
 use super::render_snapshot::render_to_styled_string;
 use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
-use hume_treesitter::registry::QueryPaths;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -75,7 +74,6 @@ pub(super) fn grammar_fixture(name: &str) -> (PathBuf, PathBuf) {
 #[test]
 fn attach_then_set_language_attaches_syntax() {
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
@@ -83,17 +81,7 @@ fn attach_then_set_language_attaches_syntax() {
         .languages
         .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
@@ -125,7 +113,6 @@ fn attach_then_set_language_attaches_syntax() {
 #[test]
 fn reset_config_state_clears_buffer_syntax_not_just_language() {
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
@@ -133,17 +120,7 @@ fn reset_config_state_clears_buffer_syntax_not_just_language() {
         .languages
         .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
@@ -166,7 +143,6 @@ fn reset_config_state_clears_buffer_syntax_not_just_language() {
 #[test]
 fn clear_language_detaches_syntax_keeps_identity() {
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
@@ -174,17 +150,7 @@ fn clear_language_detaches_syntax_keeps_identity() {
         .languages
         .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     assert!(ed.state.buffers.get(bid).syntax.is_some());
@@ -205,7 +171,6 @@ fn clear_language_detaches_syntax_keeps_identity() {
 #[test]
 fn sweep_attaches_syntax_on_matching_language() {
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
@@ -221,17 +186,7 @@ fn sweep_attaches_syntax_on_matching_language() {
         "no grammar → parser must be absent"
     );
 
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let json_id = ed.state.config.languages.intern("json");
     ed.sweep_buffers_for_grammars(vec![json_id]);
     assert!(
@@ -244,7 +199,6 @@ fn sweep_attaches_syntax_on_matching_language() {
 #[test]
 fn sweep_no_op_for_nonmatching_language() {
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
@@ -266,17 +220,7 @@ fn sweep_no_op_for_nonmatching_language() {
     );
 
     // Sanity flip: sweeping "json" does attach.
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let json_id = ed.state.config.languages.intern("json");
     ed.sweep_buffers_for_grammars(vec![json_id]);
     assert!(
@@ -289,7 +233,6 @@ fn sweep_no_op_for_nonmatching_language() {
 #[test]
 fn reparse_advances_parsed_gen_after_edit() {
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
@@ -297,17 +240,7 @@ fn reparse_advances_parsed_gen_after_edit() {
         .languages
         .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain the initial parse result
@@ -379,7 +312,6 @@ fn reparse_advances_parsed_gen_after_edit() {
 #[test]
 fn reparse_detaches_when_buffer_exceeds_max_bytes() {
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
@@ -387,17 +319,7 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
         .languages
         .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     assert!(
@@ -422,7 +344,6 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
 #[test]
 fn language_has_grammar_false_for_identity_only_true_after_attach() {
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[a]>b\n");
     ed.state
         .config
@@ -438,17 +359,7 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
         "unknown language → has_grammar false"
     );
 
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     assert!(
         ed.state.config.languages.has_grammar("json"),
         "has_grammar must be true after attach"
@@ -466,7 +377,6 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
 #[test]
 fn replace_buffer_in_place_clears_engine_syntax_state() {
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
@@ -474,17 +384,7 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
         .languages
         .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
@@ -516,7 +416,6 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
 #[test]
 fn reparse_reattaches_after_shrink_under_cap() {
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
@@ -524,17 +423,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
         .languages
         .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     assert!(
@@ -584,7 +473,6 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     use hume_editing::text::BufferText;
 
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
 
@@ -601,17 +489,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
         .languages
         .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
@@ -711,7 +589,6 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
 #[test]
 fn parse_worker_result_is_async_then_installed() {
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     ed.state
@@ -719,17 +596,7 @@ fn parse_worker_result_is_async_then_installed() {
         .languages
         .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain initial parse result
@@ -781,8 +648,6 @@ fn parse_worker_result_is_async_then_installed() {
 #[test]
 fn grammar_swap_clears_stale_in_flight() {
     require_grammars(&["json", "rust"]);
-    let (parser_json, hl_json) = grammar_fixture("json");
-    let (parser_rust, hl_rust) = grammar_fixture("rust");
     let mut ed = editor_from("-[f]>n main() {}\n");
     let bid = ed.focused_buffer_id();
 
@@ -797,34 +662,13 @@ fn grammar_swap_clears_stale_in_flight() {
         .languages
         .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser_json,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl_json),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain json parse result
 
     // Attach rust grammar and sweep — this should clear any json in-flight and post fresh.
-    let rust_bundle = ed
-        .state
-        .config
-        .languages
-        .attach_grammar(
-            "rust",
-            &parser_rust,
-            "tree_sitter_rust",
-            QueryPaths::highlights_only(&hl_rust),
-            &mut ed.view.registry,
-        )
-        .unwrap();
+    let rust_bundle = attach_fixture_grammar(&mut ed, "rust", "tree_sitter_rust");
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain rust parse result
@@ -892,7 +736,6 @@ fn rust_function_highlight_snapshot() {
     use hume_treesitter::highlight::layer_highlights_for_line;
 
     require_grammars(&["rust"]);
-    let (parser, hl) = grammar_fixture("rust");
     // Cursor on the trailing `\n` so no token cell is reverse-video in the snapshot.
     let mut ed = editor_from("// hi\nfn main() {\n    let x: u32 = 1;\n}-[\n]>");
     ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
@@ -904,17 +747,7 @@ fn rust_function_highlight_snapshot() {
         .languages
         .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "rust",
-            &parser,
-            "tree_sitter_rust",
-            QueryPaths::highlights_only(&hl),
-            &mut ed.view.registry,
-        )
-        .expect("attach rust grammar");
+    attach_fixture_grammar(&mut ed, "rust", "tree_sitter_rust");
     // Bake after scopes are interned so theme.resolve() returns correct styles.
     ed.view.theme.bake(&ed.view.registry);
 

@@ -20,6 +20,7 @@ use hume_engine::types::ScopeId;
 use hume_ops::search::SearchDirection;
 use hume_test_fixtures::testing::{parse_state, serialize_state};
 use hume_treesitter::parse_worker::InlineParseBackend;
+use hume_treesitter::registry::{GrammarBundle, QueryPaths};
 use slotmap::SecondaryMap;
 use termina::event::{
     Event as TerminalEvent, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind,
@@ -42,6 +43,44 @@ fn editor_from_kitty(input: &str) -> Editor {
     let mut ed = editor_from(input);
     ed.set_kitty_support(true);
     ed
+}
+
+/// Attach `name`'s compiled grammar fixture to `ed`, with its own
+/// `highlights.scm` and no other query.
+///
+/// The shape ~15 grammar tests need; [`attach_fixture_grammar_with`] covers
+/// the rest. Neither interns the language or sets it on a buffer, and neither
+/// drains the parse worker: which of those a test wants genuinely differs
+/// (some assert on the undrained state, some register an identity first), so
+/// folding them in here would flatten distinctions the tests are making.
+///
+/// Callers are responsible for `require_grammars` — a missing fixture must
+/// panic naming the fix, which is that helper's job, not this one's.
+fn attach_fixture_grammar(ed: &mut Editor, name: &str, symbol: &str) -> Arc<GrammarBundle> {
+    let highlights = hume_test_fixtures::grammar_query_path(name);
+    attach_fixture_grammar_with(ed, name, symbol, QueryPaths::highlights_only(&highlights))
+}
+
+/// [`attach_fixture_grammar`] for a grammar that also needs an injections or
+/// textobjects query. Both return the attached bundle, for the tests that
+/// compare identity across a re-attach.
+fn attach_fixture_grammar_with(
+    ed: &mut Editor,
+    name: &str,
+    symbol: &str,
+    queries: QueryPaths<'_>,
+) -> Arc<GrammarBundle> {
+    ed.state
+        .config
+        .languages
+        .attach_grammar(
+            name,
+            &hume_test_fixtures::grammar_parser_path(name),
+            symbol,
+            queries,
+            &mut ed.view.registry,
+        )
+        .unwrap_or_else(|e| panic!("attach {name} grammar: {e}"))
 }
 
 /// Serialize the editor's current buffer + selection state.

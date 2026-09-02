@@ -8,9 +8,8 @@
 
 use super::*;
 
-use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
+use hume_test_fixtures::{grammar_parser_path, require_grammars};
 use hume_treesitter::grammar::LoadedGrammar;
-use hume_treesitter::registry::QueryPaths;
 
 use crate::editor::buffer::Buffer;
 use hume_editing::selection::SelectionSet;
@@ -22,22 +21,10 @@ use hume_editing::text::BufferText;
 /// `reparse_stale_buffers` call — InlineParseBackend resolves it immediately,
 /// so the first drain installs it.
 fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
-    let parser_path = grammar_parser_path("json");
-    let hl_path = grammar_query_path("json");
     let buf = Buffer::new(BufferText::from(source), SelectionSet::default());
     let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser_path,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl_path),
-            &mut ed.view.registry,
-        )
-        .expect("attach json grammar");
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drains the initial parse (posted by setup_buffer_syntax)
@@ -196,8 +183,8 @@ fn incremental_tree_matches_full_reparse() {
 
     // Full reparse of the same source bytes that the incremental parse used.
     let source = ed.state.buffers.get(bid).text().to_string().into_bytes();
-    let parser_path = grammar_parser_path("json");
-    let grammar = LoadedGrammar::open(&parser_path, "tree_sitter_json").expect("load json grammar");
+    let grammar = LoadedGrammar::open(&grammar_parser_path("json"), "tree_sitter_json")
+        .expect("load json grammar");
     let mut parser = tree_sitter::Parser::new();
     parser
         .set_language(grammar.language())
@@ -358,20 +345,8 @@ fn grammar_swap_clears_pending_and_full_reparses() {
     // set_buffer_language(None) drops the whole Syntax attachment (and its
     // pending_edits with it). Then re-attaching creates a fresh Syntax that
     // starts with empty pending_edits.
-    let parser_path = grammar_parser_path("json");
-    let hl_path = grammar_query_path("json");
     ed.set_buffer_language(bid, None);
-    ed.state
-        .config
-        .languages
-        .attach_grammar(
-            "json",
-            &parser_path,
-            "tree_sitter_json",
-            QueryPaths::highlights_only(&hl_path),
-            &mut ed.view.registry,
-        )
-        .expect("re-attach");
+    attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
 
