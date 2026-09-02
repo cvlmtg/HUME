@@ -578,6 +578,53 @@ fn install_parse_failed_advances_parsed_gen_only() {
     );
 }
 
+/// A generation that failed to parse must still be installable if a later
+/// result for that *same* generation succeeds — whether a retried
+/// `ensure_current` call or a slow async result that finally lands. Keying
+/// the "already installed" guard on `parsed_gen` (which `ParseFailed` also
+/// advances) would discard this success permanently, leaving `layers` stuck
+/// on whatever they were before the failure until an unrelated edit bumps
+/// `text_gen` past this generation entirely.
+#[test]
+fn install_recovers_from_a_parse_failed_for_the_same_generation() {
+    require_grammars(&["json"]);
+    let bundle = make_bundle("json", "tree_sitter_json");
+    let bid = fresh_bid();
+    let (mut syn, _req) = Syntax::attach(
+        Arc::clone(&bundle),
+        bid,
+        0,
+        &BufferText::from("{}\n"),
+        &empty_langs(),
+    );
+    // Gen 0's own first parse attempt fails (e.g. cancelled mid-flight).
+    syn.install(
+        ParseDone {
+            bid,
+            text_gen: 0,
+            bundle: Arc::clone(&bundle),
+            outcome: ParseOutcome::ParseFailed,
+        },
+        0,
+    );
+    assert_eq!(syn.parsed_gen(), Some(0));
+    assert!(syn.layers().is_none());
+
+    // A later result for the SAME generation succeeds and must actually land.
+    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
+
+    assert_eq!(
+        syn.tree_gen(),
+        0,
+        "the successful retry must advance tree_gen"
+    );
+    assert!(
+        syn.layers().is_some(),
+        "the successful retry must install layers, not be discarded as \
+         'already installed' because gen 0 was already attempted"
+    );
+}
+
 // ── ensure_current ────────────────────────────────────────────────────────
 
 #[test]

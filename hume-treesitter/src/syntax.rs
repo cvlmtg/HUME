@@ -262,7 +262,16 @@ impl Syntax {
         text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> Option<ChainBreak> {
-        if self.parsed_gen == Some(text_gen) {
+        // `parsed_gen` alone is not enough: `install`'s `ParseFailed` arm
+        // advances `parsed_gen` to the failed generation while leaving
+        // `layers`/`tree_gen` exactly where they were, so a failed parse
+        // after a broken edit chain would otherwise report "current" over a
+        // tree that predates the edit — and a caller reading it next (a
+        // structural query) can hand `byte_to_char` an offset past the
+        // buffer's own length. Requiring `tree_gen == text_gen` too closes
+        // that: a `ParseFailed` generation never satisfies it, so the retry
+        // below runs again on the next call instead of trusting stale layers.
+        if self.parsed_gen == Some(text_gen) && self.tree_gen == text_gen {
             return None;
         }
 
@@ -341,16 +350,40 @@ impl Syntax {
     /// in-flight record). Discards the parse outcome itself (without
     /// touching `parsed_gen`) on a config-gen mismatch (grammar swapped
     /// in flight), a stale `text_gen` (text moved on since submission), or a
-    /// `text_gen` already installed (a synchronous `ensure_current` beat an
-    /// asynchronous request to the same generation — the late arrival is
-    /// redundant, not stale, so it must not re-run the `ParseOutcome::Ok`
-    /// arm a second time). The already-installed check runs after the
-    /// `in_flight` clear above: an async result superseded this way still
-    /// answered its own posted request and must still clear it, or a later
-    /// `frame_tick` would dedup against a request that will never resolve.
-    /// One edge this creates: a `ParseFailed` install still advances
-    /// `parsed_gen`, so a later successful async result for that generation
-    /// is discarded too — the next edit retries the parse.
+    /// `text_gen` whose layers are already installed (a synchronous
+    /// `ensure_current` beat an asynchronous request to the same generation —
+    /// the late arrival is redundant, not stale, so it must not re-run the
+    /// `ParseOutcome::Ok` arm a second time). The already-installed check
+    /// runs after the `in_flight` clear above: an async result superseded
+    /// this way still answered its own posted request and must still clear
+    /// it, or a later `frame_tick` would dedup against a request that will
+    /// never resolve.
+    ///
+    /// Requires all three of `parsed_gen == Some(text_gen)`, `tree_gen ==
+    /// text_gen`, *and* `layers.is_some()` — no single field distinguishes
+    /// "already installed" from every other state alone:
+    /// - `tree_gen` alone is not enough: `bake` also advances it, on the
+    ///   *mainline* path, before this very call — an intact edit chain bakes
+    ///   `tree_gen` up to `text_gen` and only then calls `install` with the
+    ///   freshly reparsed replacement, which is not redundant and must run.
+    /// - `parsed_gen` alone is not enough: `ParseFailed` advances it too, so
+    ///   a later result for that same generation — a retried `ensure_current`
+    ///   call, or a slow async request that finally lands — would hit this
+    ///   guard and be discarded even though it succeeded, leaving
+    ///   `layers`/`tree_gen` stuck on stale data until an unrelated edit
+    ///   bumps `text_gen` past this generation entirely.
+    /// - `layers.is_some()` resolves the generation-`0` ambiguity `tree_gen`
+    ///   would otherwise have on its own: it starts at plain `0`, coinciding
+    ///   with a buffer's genuine first parse (also generation `0`, per
+    ///   `Buffer`'s own starting `text_gen`) — the same ambiguity
+    ///   `parsed_gen` is `Option` to avoid.
+    ///
+    /// Together: `parsed_gen == Some(text_gen)` means an `install` call has
+    /// already *run* for this generation (either arm); `tree_gen ==
+    /// text_gen && layers.is_some()` means the layers it left behind
+    /// genuinely reflect that generation, not just a bake pending a
+    /// replacement. Only when both hold was this generation's `Ok` result
+    /// already committed.
     pub fn install(&mut self, done: ParseDone, current_text_gen: u64) {
         let ParseDone {
             text_gen,
@@ -368,7 +401,8 @@ impl Syntax {
         if text_gen != current_text_gen {
             return;
         }
-        if self.parsed_gen == Some(text_gen) {
+        if self.parsed_gen == Some(text_gen) && self.tree_gen == text_gen && self.layers.is_some()
+        {
             return;
         }
 

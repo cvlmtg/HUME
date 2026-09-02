@@ -28,8 +28,9 @@ fn require_fixtures() {
 
 /// Build an editor from the marker DSL with the `rust` grammar (plus its
 /// real Helix-maintained `textobjects.scm` — what `:plum-install-grammar`
-/// actually fetches) attached and the initial parse drained.
-fn rust_editor(source: &str) -> Editor {
+/// actually fetches) attached, but the initial parse *not yet* drained —
+/// the window `ensure_syntax_current`'s no-committed-tree gate covers.
+fn rust_editor_undrained(source: &str) -> Editor {
     require_fixtures();
     let to_path = helix_textobjects_path("rust")
         .expect("rust helix-textobjects.scm fixture — run scripts/fetch-test-grammars.sh");
@@ -52,6 +53,14 @@ fn rust_editor(source: &str) -> Editor {
         .expect("attach rust grammar");
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
+    ed
+}
+
+/// Build an editor from the marker DSL with the `rust` grammar (plus its
+/// real Helix-maintained `textobjects.scm` — what `:plum-install-grammar`
+/// actually fetches) attached and the initial parse drained.
+fn rust_editor(source: &str) -> Editor {
+    let mut ed = rust_editor_undrained(source);
     ed.reparse_stale_buffers(); // drains the initial full parse
     ed
 }
@@ -339,6 +348,31 @@ fn structural_commands_are_no_ops_without_a_grammar() {
     assert_eq!(before, state(&ed), "goto-next-function without a grammar");
 }
 
+/// Before the background worker's first parse lands, `ensure_syntax_current`
+/// no-ops rather than blocking the UI thread on a full synchronous parse of
+/// the whole buffer — the command reads as the same "no grammar" no-op until
+/// the next `reparse_stale_buffers` installs the worker's result.
+#[test]
+fn structural_command_before_the_first_parse_lands_is_a_no_op() {
+    let mut ed = rust_editor_undrained("fn target() {\n    -[l]>et y = 2;\n}\n");
+    let before = state(&ed);
+    for ch in "mif".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(
+        before,
+        state(&ed),
+        "m i f before the initial parse is drained"
+    );
+
+    // Draining now (as the next frame would) makes the same keys work.
+    ed.reparse_stale_buffers();
+    for ch in "mif".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(selected_text(&ed), "{\n    let y = 2;\n}");
+}
+
 // ── Dot-repeat ───────────────────────────────────────────────────────────────
 
 /// `m a f` `d` deletes the function under the cursor; `.` replays both steps
@@ -450,6 +484,41 @@ fn inner_argument_in_a_scratch_buffer_with_no_grammar_still_works() {
         ed.handle_key(key(ch));
     }
     assert_eq!(state(&ed), "foo(-[aaa]>, bbb);\n");
+}
+
+/// A grammar attached but with no `textobjects.scm` at all (`QueryPaths`
+/// leaves `textobjects: None`) — `object_spans` finds nothing, so `m i a`
+/// falls back to the lexical scan exactly as the no-grammar case does, and
+/// `ensure_syntax_current`'s no-textobjects-anywhere gate must not break
+/// that fallback along the way.
+#[test]
+fn inner_argument_with_a_grammar_but_no_textobjects_query_falls_back_to_the_lexical_scan() {
+    require_fixtures();
+    let mut ed = editor_from("fn f() {\n    foo(-[a]>aa, bbb);\n}\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .config
+        .languages
+        .attach_grammar(
+            "rust",
+            &grammar_parser_path("rust"),
+            "tree_sitter_rust",
+            QueryPaths {
+                highlights: &grammar_query_path("rust"),
+                injections: None,
+                textobjects: None,
+            },
+            &mut ed.view.registry,
+        )
+        .expect("attach rust grammar");
+    let lang = ed.state.config.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang));
+    ed.reparse_stale_buffers();
+
+    for ch in "mia".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(selected_text(&ed), "aaa");
 }
 
 // ── Other kinds: class / comment / test / entry ─────────────────────────────
