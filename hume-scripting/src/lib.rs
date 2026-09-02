@@ -62,7 +62,7 @@ pub use builtins::ids::SteelBufferId;
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{
-    Effect, EvalError, LspServerStatusEntry, PendingLanguageReg, PendingLspNotify,
+    Effect, EvalError, GrammarReg, LspServerStatusEntry, PendingLanguageReg, PendingLspNotify,
     PendingLspRequest, PendingLspServerOp, PendingLspServerReg, SteelCmdDef, SteelCmdResult,
     VirtualLineSpec,
 };

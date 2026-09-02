@@ -2,6 +2,7 @@
 
 mod mock_host {
     use super::super::mock_host::{MOCK_HOST_EVENT_NAMES, MockHost};
+    use hume_scripting::GrammarReg;
     use hume_scripting::host::{CommandHost, LanguageHost};
 
     /// `MOCK_HOST_EVENT_NAMES` is a hand-written mirror of `EditorEvent`'s
@@ -69,6 +70,20 @@ mod mock_host {
         );
     }
 
+    /// A `GrammarReg` for the two paths these tests vary; `MockHost` reads
+    /// only `name`, `grammar_path` and `highlights_path`, so the rest is
+    /// fixed.
+    fn reg(grammar_path: &std::path::Path, highlights_path: &std::path::Path) -> GrammarReg {
+        GrammarReg {
+            name: "rust".into(),
+            grammar_path: grammar_path.to_path_buf(),
+            symbol: "rust_language".into(),
+            highlights_path: highlights_path.to_path_buf(),
+            injections_path: None,
+            textobjects_path: None,
+        }
+    }
+
     #[test]
     fn attach_grammar_rejects_missing_grammar_path() {
         let mut mock = MockHost::new();
@@ -77,14 +92,10 @@ mod mock_host {
         std::fs::write(&highlights, "").unwrap();
 
         let err = mock
-            .attach_grammar(
-                "rust",
+            .attach_grammar(&reg(
                 std::path::Path::new("/no/such/lib.dylib"),
-                "rust_language",
                 &highlights,
-                None,
-                None,
-            )
+            ))
             .expect_err("missing grammar path must be rejected");
         assert!(
             err.contains("grammar library not found"),
@@ -104,14 +115,10 @@ mod mock_host {
         std::fs::write(&grammar, "").unwrap();
 
         let err = mock
-            .attach_grammar(
-                "rust",
+            .attach_grammar(&reg(
                 &grammar,
-                "rust_language",
                 std::path::Path::new("/no/such/highlights.scm"),
-                None,
-                None,
-            )
+            ))
             .expect_err("missing highlights path must be rejected");
         assert!(
             err.contains("highlights query not found"),
@@ -128,7 +135,7 @@ mod mock_host {
         std::fs::write(&grammar, "").unwrap();
         std::fs::write(&highlights, "").unwrap();
 
-        mock.attach_grammar("rust", &grammar, "rust_language", &highlights, None, None)
+        mock.attach_grammar(&reg(&grammar, &highlights))
             .expect("both paths existing must succeed");
         assert!(mock.has_grammar("rust"));
     }

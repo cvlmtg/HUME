@@ -169,7 +169,7 @@ fn register_grammar_init_mode_queues_pending_reg() {
     }
     assert_eq!(lang_regs(&h).len(), 1);
     assert!(
-        matches!(lang_regs(&h)[0], PendingLanguageReg::Grammar { name, .. } if name == "rust"),
+        matches!(lang_regs(&h)[0], PendingLanguageReg::Grammar(reg) if reg.name == "rust"),
         "pending reg must be a Grammar entry with name 'rust'"
     );
 }
@@ -228,10 +228,8 @@ fn register_grammar_with_injections_path_populates_pending_reg() {
         assert!(result.is_ok());
     }
     match lang_regs(&h)[0] {
-        PendingLanguageReg::Grammar {
-            injections_path, ..
-        } => assert_eq!(
-            injections_path.as_deref(),
+        PendingLanguageReg::Grammar(reg) => assert_eq!(
+            reg.injections_path.as_deref(),
             Some(std::path::Path::new("/tmp/injections.scm")),
         ),
         other => panic!("expected a Grammar entry, got: {other:?}"),
@@ -260,10 +258,8 @@ fn register_grammar_with_textobjects_path_populates_pending_reg() {
         assert!(result.is_ok());
     }
     match lang_regs(&h)[0] {
-        PendingLanguageReg::Grammar {
-            textobjects_path, ..
-        } => assert_eq!(
-            textobjects_path.as_deref(),
+        PendingLanguageReg::Grammar(reg) => assert_eq!(
+            reg.textobjects_path.as_deref(),
             Some(std::path::Path::new("/tmp/textobjects.scm")),
         ),
         other => panic!("expected a Grammar entry, got: {other:?}"),

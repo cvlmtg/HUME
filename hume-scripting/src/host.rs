@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::attribution::PluginId;
-use crate::types::{SteelCmdDef, VirtualLineSpec};
+use crate::types::{GrammarReg, SteelCmdDef, VirtualLineSpec};
 
 /// Key-binding mode, as recognised by `bind-key!`/`unbind-key!`.
 ///
@@ -364,15 +364,11 @@ pub trait RegisterHost {
 /// Grammar attachment and trigger-char registration — accessed through
 /// [`EditorHost::language`].
 pub trait LanguageHost {
-    fn attach_grammar(
-        &mut self,
-        name: &str,
-        grammar_path: &Path,
-        symbol: &str,
-        highlights_path: &Path,
-        injections_path: Option<&Path>,
-        textobjects_path: Option<&Path>,
-    ) -> Result<(), String>;
+    /// Compile and attach a grammar now, for command-mode `register-grammar!`.
+    /// Init mode takes the other route — the identical payload queued as
+    /// `Effect::LanguageReg(PendingLanguageReg::Grammar(..))` — and both land
+    /// on the same implementation behind this trait.
+    fn attach_grammar(&mut self, reg: &GrammarReg) -> Result<(), String>;
 
     fn has_grammar(&self, language: &str) -> bool;
 

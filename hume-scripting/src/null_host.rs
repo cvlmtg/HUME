@@ -23,7 +23,7 @@ use crate::host::{
     BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
     OutputHost, SettingsHost,
 };
-use crate::types::SteelCmdDef;
+use crate::types::{GrammarReg, SteelCmdDef};
 
 /// Event names `NullHost` reports as known — the names scripting-crate unit
 /// tests actually register (`on-buffer-open`, `on-buffer-save`), plus one
@@ -146,15 +146,7 @@ impl SettingsHost for NullHost {
 }
 
 impl LanguageHost for NullHost {
-    fn attach_grammar(
-        &mut self,
-        _name: &str,
-        _gp: &Path,
-        _sym: &str,
-        _hl: &Path,
-        _inj: Option<&Path>,
-        _to: Option<&Path>,
-    ) -> Result<(), String> {
+    fn attach_grammar(&mut self, _reg: &GrammarReg) -> Result<(), String> {
         Err("NullHost: attach_grammar not available".into())
     }
     fn has_grammar(&self, _language: &str) -> bool {

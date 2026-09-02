@@ -24,6 +24,7 @@ use crate::editor::registry::MappableCommand;
 use crate::editor::timer_bridge::TimerHandle;
 use crate::lock_ext::LockExt;
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
+use hume_scripting::GrammarReg;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
     DiffHost, DiffHunk, EditHost, EditorHost, EventHost, LanguageHost, LivePickerOpts,
@@ -403,30 +404,8 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
 }
 
 impl<'a> LanguageHost for EditorHostImpl<'a> {
-    fn attach_grammar(
-        &mut self,
-        name: &str,
-        grammar_path: &Path,
-        symbol: &str,
-        highlights_path: &Path,
-        injections_path: Option<&Path>,
-        textobjects_path: Option<&Path>,
-    ) -> Result<(), String> {
-        self.state
-            .config
-            .languages
-            .attach_grammar(
-                name,
-                grammar_path,
-                symbol,
-                hume_treesitter::registry::QueryPaths {
-                    highlights: highlights_path,
-                    injections: injections_path,
-                    textobjects: textobjects_path,
-                },
-                &mut self.view.registry,
-            )
-            .map_err(|e| format!("register-grammar! '{name}': {e}"))?;
+    fn attach_grammar(&mut self, reg: &GrammarReg) -> Result<(), String> {
+        crate::editor::syntax::attach_grammar_from_reg(self.state, self.view, reg)?;
         Ok(())
     }
 

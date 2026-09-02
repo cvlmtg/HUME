@@ -9,11 +9,57 @@ mod parse;
 
 pub(in crate::editor) use parse::ensure_syntax_current;
 
-use hume_engine::pipeline::BufferId;
+use hume_engine::pipeline::{BufferId, EngineView};
+use hume_scripting::GrammarReg;
 use hume_treesitter::registry::{LanguageId, QueryPaths, detect_language};
 
 use super::Editor;
+use super::EditorState;
 use super::event::EditorEvent;
+
+/// Compile and attach the grammar `reg` describes, returning the language's
+/// interned id.
+///
+/// The one implementation of `register-grammar!`. Both entry points reach it
+/// — `EditorHostImpl::attach_grammar` for a command-mode call, and
+/// `apply_pending_language_regs` for the init-mode effect — so the
+/// `QueryPaths` conversion and the user-facing error prefix exist once.
+/// They previously had a copy each, which is two implementations of one
+/// action.
+///
+/// Free function over `(&mut EditorState, &mut EngineView)` rather than an
+/// `Editor` method because `EditorHostImpl` borrows those two fields
+/// separately and never holds an `Editor` — the same constraint that shapes
+/// [`ensure_syntax_current`].
+///
+/// `Err` is the finished message, prefix included: the command path lifts it
+/// into a Steel error, the init path logs it as a warning.
+pub(in crate::editor) fn attach_grammar_from_reg(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    reg: &GrammarReg,
+) -> Result<LanguageId, String> {
+    state
+        .config
+        .languages
+        .attach_grammar(
+            &reg.name,
+            &reg.grammar_path,
+            &reg.symbol,
+            QueryPaths {
+                highlights: &reg.highlights_path,
+                injections: reg.injections_path.as_deref(),
+                textobjects: reg.textobjects_path.as_deref(),
+            },
+            &mut view.registry,
+        )
+        .map_err(|e| format!("register-grammar! '{}': {e}", reg.name))?;
+    Ok(state
+        .config
+        .languages
+        .id_of(&reg.name)
+        .expect("attach_grammar interns the name"))
+}
 
 impl Editor {
     /// Set the language identity for buffer `bid`, via plain detection —
@@ -199,36 +245,10 @@ impl Editor {
                     );
                     any_identity = true;
                 }
-                PendingLanguageReg::Grammar {
-                    name,
-                    grammar_path,
-                    symbol,
-                    highlights_path,
-                    injections_path,
-                    textobjects_path,
-                } => {
-                    match self.state.config.languages.attach_grammar(
-                        &name,
-                        &grammar_path,
-                        &symbol,
-                        QueryPaths {
-                            highlights: &highlights_path,
-                            injections: injections_path.as_deref(),
-                            textobjects: textobjects_path.as_deref(),
-                        },
-                        &mut self.view.registry,
-                    ) {
-                        Ok(_) => grammar_sweeps.push(
-                            self.state
-                                .config
-                                .languages
-                                .id_of(&name)
-                                .expect("attach_grammar interns the name"),
-                        ),
-                        Err(e) => self.state.message_log.push(
-                            super::Severity::Warning,
-                            format!("register-grammar! '{}': {}", name, e),
-                        ),
+                PendingLanguageReg::Grammar(reg) => {
+                    match attach_grammar_from_reg(&mut self.state, &mut self.view, &reg) {
+                        Ok(id) => grammar_sweeps.push(id),
+                        Err(e) => self.state.message_log.push(super::Severity::Warning, e),
                     }
                 }
             }

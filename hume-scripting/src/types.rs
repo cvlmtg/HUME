@@ -37,14 +37,31 @@ pub enum PendingLanguageReg {
         shebangs: Vec<String>,
         lsp_language_id: Option<String>,
     },
-    Grammar {
-        name: String,
-        grammar_path: std::path::PathBuf,
-        symbol: String,
-        highlights_path: std::path::PathBuf,
-        injections_path: Option<std::path::PathBuf>,
-        textobjects_path: Option<std::path::PathBuf>,
-    },
+    Grammar(GrammarReg),
+}
+
+/// Everything `(register-grammar! …)` supplies, in one payload.
+///
+/// A named struct rather than six fields inlined into the variant *and* six
+/// parameters on [`crate::host::LanguageHost::attach_grammar`], because both
+/// spellings feed the same registry call — an owned struct is what lets the
+/// init-mode effect and the command-mode host call reach one shared
+/// implementation instead of two adapters that must be kept identical.
+/// `SteelCmdDef` already crosses the host boundary this way.
+///
+/// Lives here, not as `hume_treesitter`'s `QueryPaths`: `hume-scripting` has
+/// no `hume-treesitter` dependency, so that type is not nameable at this
+/// layer. The editor converts on the far side, in one place.
+#[derive(Debug, Clone)]
+pub struct GrammarReg {
+    pub name: String,
+    pub grammar_path: std::path::PathBuf,
+    pub symbol: String,
+    pub highlights_path: std::path::PathBuf,
+    /// `None` when the language embeds nothing.
+    pub injections_path: Option<std::path::PathBuf>,
+    /// `None` when the language ships no structural text objects.
+    pub textobjects_path: Option<std::path::PathBuf>,
 }
 
 /// One `(set-virtual-lines! …)` entry, decoded from its Steel hashmap shape

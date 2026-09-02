@@ -40,14 +40,14 @@ fn attach_grammar_errs_for_bad_path() {
     ));
     let mut host = make_init_host(&mut ed.state, &mut ed.view);
     let err = host
-        .attach_grammar(
-            "rust",
-            Path::new("/no/such/lib.dylib"),
-            "rust_language",
-            Path::new("/no/such/highlights.scm"),
-            None,
-            None,
-        )
+        .attach_grammar(&hume_scripting::GrammarReg {
+            name: "rust".into(),
+            grammar_path: Path::new("/no/such/lib.dylib").to_path_buf(),
+            symbol: "rust_language".into(),
+            highlights_path: Path::new("/no/such/highlights.scm").to_path_buf(),
+            injections_path: None,
+            textobjects_path: None,
+        })
         .unwrap_err();
     assert!(
         err.contains("register-grammar!"),

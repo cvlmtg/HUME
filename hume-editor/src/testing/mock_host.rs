@@ -238,28 +238,22 @@ impl LanguageHost for MockHost {
     // has no reason to perform it. A path that exists but doesn't actually
     // parse as a valid grammar/query still succeeds here; no test needs that
     // finer-grained failure through `MockHost` today.
-    fn attach_grammar(
-        &mut self,
-        name: &str,
-        grammar_path: &std::path::Path,
-        _symbol: &str,
-        highlights_path: &std::path::Path,
-        _injections_path: Option<&std::path::Path>,
-        _textobjects_path: Option<&std::path::Path>,
-    ) -> Result<(), String> {
-        if !grammar_path.exists() {
+    fn attach_grammar(&mut self, reg: &hume_scripting::GrammarReg) -> Result<(), String> {
+        if !reg.grammar_path.exists() {
             return Err(format!(
-                "register-grammar! '{name}': grammar library not found: {}",
-                grammar_path.display()
+                "register-grammar! '{}': grammar library not found: {}",
+                reg.name,
+                reg.grammar_path.display()
             ));
         }
-        if !highlights_path.exists() {
+        if !reg.highlights_path.exists() {
             return Err(format!(
-                "register-grammar! '{name}': highlights query not found: {}",
-                highlights_path.display()
+                "register-grammar! '{}': highlights query not found: {}",
+                reg.name,
+                reg.highlights_path.display()
             ));
         }
-        self.grammars.insert(name.to_owned());
+        self.grammars.insert(reg.name.clone());
         Ok(())
     }
     fn has_grammar(&self, language: &str) -> bool {

@@ -2,7 +2,7 @@
 
 use steel::rvals::SteelVal;
 
-use crate::{Effect, PendingLanguageReg, SteelCtx};
+use crate::{Effect, GrammarReg, PendingLanguageReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{list_to_strings, optional_path_arg, optional_string_arg, path_arg, string_arg};
@@ -60,23 +60,20 @@ pub(crate) fn register_grammar(
     injections_path: SteelVal,
     textobjects_path: SteelVal,
 ) -> SteelResult {
-    let name = string_arg(name, "register-grammar! name")?;
-    let grammar_path = path_arg(grammar_path, "register-grammar! grammar-path")?;
-    let symbol = string_arg(symbol, "register-grammar! symbol")?;
-    let highlights_path = path_arg(highlights_path, "register-grammar! highlights-path")?;
-    let injections_path = optional_path_arg(injections_path, "register-grammar! injections-path")?;
-    let textobjects_path =
-        optional_path_arg(textobjects_path, "register-grammar! textobjects-path")?;
+    let reg = GrammarReg {
+        name: string_arg(name, "register-grammar! name")?,
+        grammar_path: path_arg(grammar_path, "register-grammar! grammar-path")?,
+        symbol: string_arg(symbol, "register-grammar! symbol")?,
+        highlights_path: path_arg(highlights_path, "register-grammar! highlights-path")?,
+        injections_path: optional_path_arg(injections_path, "register-grammar! injections-path")?,
+        textobjects_path: optional_path_arg(
+            textobjects_path,
+            "register-grammar! textobjects-path",
+        )?,
+    };
 
     if ctx.session == crate::context::EvalSession::Init {
-        ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Grammar {
-            name,
-            grammar_path,
-            symbol,
-            highlights_path,
-            injections_path,
-            textobjects_path,
-        }));
+        ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Grammar(reg)));
         return Ok(SteelVal::Void);
     }
 
@@ -85,16 +82,9 @@ pub(crate) fn register_grammar(
     // prefix; just lift its String error into a SteelErr without re-prefixing.
     ctx.host
         .language()
-        .attach_grammar(
-            &name,
-            &grammar_path,
-            &symbol,
-            &highlights_path,
-            injections_path.as_deref(),
-            textobjects_path.as_deref(),
-        )
+        .attach_grammar(&reg)
         .map_err(generic_err)?;
-    ctx.push_effect(Effect::GrammarSweep(name));
+    ctx.push_effect(Effect::GrammarSweep(reg.name));
     Ok(SteelVal::Void)
 }
 
