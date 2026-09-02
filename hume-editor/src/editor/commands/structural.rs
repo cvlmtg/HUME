@@ -5,6 +5,8 @@
 //! Tree *freshness* before a query is `syntax::ensure_syntax_current`, next to
 //! the per-frame reparse path it mirrors rather than here.
 
+use std::sync::Arc;
+
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_ops::MotionMode;
@@ -12,8 +14,6 @@ use hume_ops::motion::apply_object_motion;
 use hume_ops::text_object::{
     apply_text_object_by_mode, around_argument, around_from_inner, inner_argument,
 };
-use std::sync::Arc;
-
 use hume_treesitter::syntax::Syntax;
 use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan, ObjectSpans, SpanSelector};
 
