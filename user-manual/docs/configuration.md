@@ -198,6 +198,8 @@ A theme editor is available online — a single-file HTML tool you download and 
 (unbind-key! 'normal "ctrl-j")
 ```
 
+`bind-key!` takes an editor command's name — the same names in [Builtin Commands](builtin-commands.md) — never a typed (`:`-only) command; there's no way to bind one of those to a key.
+
 `bind-key!` — binds a key in the given mode (`'normal`, `'insert`, `'extend`).
 `unbind-key!` — removes a binding.
 `bind-key-extend!` — binds a key so it always extends the selection, as the one-shot `Ctrl+` motions do.

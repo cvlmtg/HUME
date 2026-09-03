@@ -30,26 +30,27 @@ load from the start, swap `declare-plugin` for `load-plugin`:
 ```
 
 Want activation to only trigger for specific languages, or a smaller set of commands?
-Pass `#:languages`/`#:commands`/`#:events` to `declare-plugin` yourself and it uses
-exactly what you list instead of the defaults:
+Pass `#:languages`/`#:commands`/`#:typed-commands`/`#:events` to `declare-plugin` yourself
+and it uses exactly what you list instead of the defaults:
 
 ```scheme
 (declare-plugin "core:lsp"
   #:languages '("rust")   ; only activate for languages you name here
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
-               "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"
-               "lsp-install" "lsp-uninstall" "lsp-servers" "lsp-rescan-servers"
-               "lsp-status" "lsp-stop" "lsp-restart"))
+               "goto-next-diagnostic" "goto-prev-diagnostic"
+               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger")
+  #:typed-commands '("diagnostics" "format-source"
+                      "lsp-install" "lsp-uninstall" "lsp-servers" "lsp-rescan-servers"
+                      "lsp-status" "lsp-stop" "lsp-restart"))
 ```
 
 ::: warning
 `#:events '(on-lsp-attach)` by itself never activates on its own — nothing
 is registered yet, so nothing attaches, so the event that would trigger activation never
 fires. List the languages you want servers for in `#:languages`, list the `lsp-*`
-commands in `#:commands` (as above), or load `core:lsp` eagerly — any one of these gets
-you a working `:lsp-install`.
+commands in `#:commands`/`#:typed-commands` (as above), or load `core:lsp` eagerly — any
+one of these gets you a working `:lsp-install`.
 :::
 
 Opening a file whose language matches a registered server spawns it automatically (once per
@@ -248,7 +249,7 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 | `g n` | `goto-next-diagnostic`       | Jump to the next error/warning after the cursor (wraps) |
 | `g p` | `goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
 | —     | `:diagnostics`               | List every diagnostic in the buffer |
-| —     | `:lsp-fmt`                   | Format the selected lines if every selection spans one or more whole lines, the whole buffer if none do, or (with a warning) nothing if it's a mix of the two |
+| —     | `:format-source`             | Format the selected lines if every selection spans one or more whole lines, the whole buffer if none do, or (with a warning) nothing if it's a mix of the two |
 | `Ctrl+Space` (Insert) | `lsp-completion-trigger` | Show completions at the cursor |
 
 Jumping to a definition, declaration, type, implementation, or reference in another file
@@ -277,7 +278,7 @@ global option:
 
 ### Format on save
 
-Not on by default. Add this to your `init.scm` to run `:lsp-fmt` every time you save:
+Not on by default. Add this to your `init.scm` to run `lsp-fmt` every time you save:
 
 ```scheme
 (register-hook! 'on-buffer-save

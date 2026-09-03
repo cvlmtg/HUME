@@ -1,6 +1,6 @@
 # Builtin Commands
 
-Every command below is a native editor command — owned by the editor itself (plugin id `"hume"`), not a Steel plugin. They are callable two ways from Scheme:
+These are editor commands — reached from a key binding or `(call! …)`, never from `:`. (Typed commands, the `:`-only kind, are listed on the [Command mode](command-mode.md) page instead.) Every command below is a native one — owned by the editor itself (plugin id `"hume"`), not a Steel plugin. They are callable two ways from Scheme:
 
 ```scheme
 ;; directly, as a bare binding
@@ -149,7 +149,7 @@ Mode transitions, paste, search, scrolling, pane management, and more.
 | `bottom-view-on-cursor` | `z j` | Scroll so the primary selection head sits at the bottom of the viewport. |
 | `center-view-on-cursor` | `z z` | Scroll so the primary selection head sits at the vertical center of the viewport. |
 | `change` | `c` | Delete selections onto the kill ring, then enter insert mode (one undo group). |
-| `clear-search` | — | Clear search highlights (`:clear-search`). |
+| `clear-search` | — | Clear search highlights. `Esc` also clears them; bind a key to run this directly. |
 | `collapse-and-exit-extend` | `;` | Collapse each selection to its cursor and exit extend mode. |
 | `collapse-to-anchor-and-exit-extend` | `Ctrl+;` | Collapse each selection to its anchor and exit extend mode. |
 | `command-mode` | `:` | Open the command-mode mini-buffer. |

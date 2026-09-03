@@ -64,17 +64,23 @@ There are two ways to bring a plugin into the editor from `init.scm`:
 
 A lazy plugin needs at least one activation entry, or it could never activate. Declare them yourself:
 
-- **`#:commands`** — command names the plugin provides. HUME creates placeholder stubs so the names appear in `:` Tab completion immediately; the first dispatch triggers real definition. A key you bind to one of these names in your own `init.scm` works the same way — pressing it activates the plugin, then runs the command, so a lazy plugin's commands are key-bindable from the start even though the plugin's *own* bindings aren't in place yet:
+- **`#:commands`** — editor-command names the plugin provides (defined with `define-command!`). HUME creates placeholder stubs so the names are key-bindable and reachable from `call!` immediately; the first dispatch triggers real definition. A key you bind to one of these names in your own `init.scm` works this way — pressing it activates the plugin, then runs the command, so a lazy plugin's commands are key-bindable from the start even though the plugin's *own* bindings aren't in place yet:
 
   ```scheme
   (declare-plugin "cvlmtg/grep.hume" #:commands '("picker-grep"))
   (bind-key! 'normal "space g" "picker-grep")
   ; pressing <space>g the first time loads cvlmtg/grep.hume, then runs picker-grep
   ```
+- **`#:typed-commands`** — typed-command names the plugin provides (defined with `define-typed-command!`). Same stub-then-activate behavior as `#:commands`, but the stub appears in `:` Tab completion and is reachable only from `:`, never from a key or `call!`:
+
+  ```scheme
+  (declare-plugin "cvlmtg/grep.hume" #:typed-commands '("grep-in"))
+  ; typing :grep-in the first time loads cvlmtg/grep.hume, then runs grep-in
+  ```
 - **`#:events`** — lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
 - **`#:languages`** — buffer language names that trigger loading.
 
-...or, if the plugin ships its own defaults, leave all three off:
+...or, if the plugin ships its own defaults, leave all four off:
 
 ```scheme
 (declare-plugin "cvlmtg/grep.hume")
@@ -87,26 +93,35 @@ A bare `declare-plugin` with no activation entries asks the plugin for its own d
 A plugin is a directory containing a `plugin.scm` — that file is the entry point HUME loads. For a plugin installed by PLUM, the directory is named after its GitHub owner and repo. The simplest `plugin.scm`:
 
 ```scheme
-(define-command! "hello"
+(define-typed-command! "hello"
   "Print a greeting from my plugin."
   (lambda ()
     (log! 'info "Hello from my plugin!")))
 ```
 
-This registers `:hello` as a typed command.
+This registers `:hello`, typed at the command line.
 
 ### Defining commands
+
+Two verbs, matching the two kinds of command described in [Command mode](command-mode.md):
 
 ```scheme
 (define-command! "command-name"
   "One-line description shown in command help."
   (lambda ()
     ...))
+
+(define-typed-command! "typed-command-name"
+  "One-line description shown in command help."
+  (lambda ()
+    ...))
 ```
 
-Registers a typed command available as `:command-name`. The second argument is a doc string shown in command help; the function is called when the command is dispatched.
+`define-command!` registers an editor command — bind it to a key, or dispatch it with `call!`; it's never reachable from `:`. `define-typed-command!` registers a typed command — reachable only as `:typed-command-name`; it's never bindable to a key and never reachable through `call!`. Both take the same first two arguments: a name and a doc string shown in command help.
 
-For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword. The alt-screen opens on the command's first real output — not eagerly at the start — so a run that produces no output (an already-up-to-date check, a validation error) never flashes an empty screen or waits on an unneeded keypress. Once something is printed, HUME waits for a keypress before returning to the editor, so the output stays on screen until you've read it.
+An editor command's lambda receives the leading arguments its declared arity asks for — `()`, `(count)`, or `(count extend)` — `count` is what a key press's count prefix injects (`0` means "no count typed"), `extend` whether Extend mode is active. A typed command's lambda instead receives `()`, `(arg)`, or `(arg force)` — `arg` is the text typed after the command name (a string, or `#f` if none was typed), `force` whether `!` was appended.
+
+For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword — accepted by both verbs. The alt-screen opens on the command's first real output — not eagerly at the start — so a run that produces no output (an already-up-to-date check, a validation error) never flashes an empty screen or waits on an unneeded keypress. Once something is printed, HUME waits for a keypress before returning to the editor, so the output stays on screen until you've read it.
 
 Plugins run with the same privileges as HUME itself, so any Scheme process/filesystem function is available — there's no separate "shell builtin" layer. The one exception: inside an `#:inline-output` command, spawn subprocesses whose output should reach the terminal via `run-inline-output!` rather than a raw `spawn-process`/`command` call — it isolates the child into its own process group so a Ctrl+C meant to interrupt the subprocess doesn't kill HUME too, and it's the trigger that opens the alt-screen:
 
@@ -120,7 +135,7 @@ Plugins run with the same privileges as HUME itself, so any Scheme process/files
   #:inline-output #t)
 ```
 
-For commands that should support dot-repeat (`.`), add `#:repeatable #t`. `#:repeatable` and `#:inline-output` are mutually exclusive:
+For editor commands that should support dot-repeat (`.`), add `#:repeatable #t` — `define-typed-command!` has no `#:repeatable` keyword, since dot-repeat has no meaning for a `:` command. `#:repeatable` and `#:inline-output` are mutually exclusive:
 
 ```scheme
 (define-command! "delete-and-repeat"
@@ -142,10 +157,10 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
     (call! "collapse-selection")))
 ```
 
-`call!` dispatches any command that can be bound to a key — built-in and Steel-defined alike — activating the target plugin on demand.
+`call!` dispatches any editor command — built-in and Steel-defined alike — activating the target plugin on demand.
 
-::: warning `call!` can't run `:` commands
-Typed commands like `write`, `quit`, or `edit` are not reachable through `call!`. Calling one logs an error and does nothing, so `(call! "write")` will not save. Only key-bindable commands work here.
+::: warning `call!` can't run typed commands
+Typed commands like `write`, `quit`, or `edit` are not reachable through `call!` — only editor commands work here. Calling one logs an error and does nothing, so `(call! "write")` will not save.
 :::
 
 When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed" — this is how `move-down`/`move-up` decide between visual-row and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would.
@@ -312,7 +327,7 @@ If most users would activate your plugin the same way, give them a one-liner: pu
   #:commands '("my-cmd" "my-other-cmd"))
 ```
 
-A user who writes `(declare-plugin "username/repo-name")` with no `#:commands`/`#:events`/`#:languages` gets your manifest's entries instead of an error. Passing any activation entry explicitly skips your manifest entirely — the user's list is authoritative, not merged with yours. A plugin with no `manifest.scm` can't be declared this way; users who want to use it lazily must list its activation entries themselves (or you can add one).
+A user who writes `(declare-plugin "username/repo-name")` with no `#:commands`/`#:typed-commands`/`#:events`/`#:languages` gets your manifest's entries instead of an error. Passing any activation entry explicitly skips your manifest entirely — the user's list is authoritative, not merged with yours. A plugin with no `manifest.scm` can't be declared this way; users who want to use it lazily must list its activation entries themselves (or you can add one).
 
 If your plugin reacts to a language but can't predict which ones a given user cares about, `#:languages '("*")` matches any buffer with a detected language:
 

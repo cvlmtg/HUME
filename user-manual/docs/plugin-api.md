@@ -36,20 +36,21 @@ See [Key bindings](configuration.md#key-bindings) for the key-string grammar and
 
 | Call | Effect |
 |------|--------|
-| `(define-command! name doc proc #:repeatable #:inline-output)` | Register `:name` as a typed command |
-| `(call! name args ...)` | Dispatch any key-bindable command (built-in or Steel-defined), activating its plugin on demand |
+| `(define-command! name doc proc #:repeatable #:inline-output)` | Register `name` as an editor command |
+| `(define-typed-command! name doc proc #:inline-output)` | Register `name` as a typed command, reachable as `:name` |
+| `(call! name args ...)` | Dispatch any editor command (built-in or Steel-defined), activating its plugin on demand |
 | `(request-wait-char! cmd-name)` | From inside a running command, dispatch `cmd-name` once the user types a character |
 | `(pending-char)` | Read the character captured by a `WaitChar` binding or `request-wait-char!`, or `#f` outside that context |
 | `(command-plugin name)` | The id string of the plugin that registered command `name` — `"user"` for a top-level `init.scm` definition, `"hume"` for a built-in |
 | `(hume/yield!)` | Check the interrupt/step-budget flag inside a long loop, aborting the script if it's set |
 
-`define-command!`, `call!`, `request-wait-char!`, and `pending-char` are covered with examples in [Defining commands](plugins.md#defining-commands), [Calling other commands](plugins.md#calling-other-commands), and [Pending character input](plugins.md#pending-character-input). `hume/yield!` only matters for a script doing real work in a loop — without it, a script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](configuration.md#global-options)) still runs to completion; interruption is cooperative, not preemptive.
+`define-command!`, `define-typed-command!`, `call!`, `request-wait-char!`, and `pending-char` are covered with examples in [Defining commands](plugins.md#defining-commands), [Calling other commands](plugins.md#calling-other-commands), and [Pending character input](plugins.md#pending-character-input). `hume/yield!` only matters for a script doing real work in a loop — without it, a script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](configuration.md#global-options)) still runs to completion; interruption is cooperative, not preemptive.
 
 ## Plugin lifecycle
 
 | Call | Effect |
 |------|--------|
-| `(declare-plugin name #:commands #:events #:languages #:config)` | Lazy plugin registration |
+| `(declare-plugin name #:commands #:typed-commands #:events #:languages #:config)` | Lazy plugin registration |
 | `(load-plugin name #:config)` | Eager plugin registration |
 | `(resolve-plugin-path name)` | The plugin's resolved file path if it exists on disk, else `#f`; raises for a malformed name |
 | `(loaded-plugins)` | List of plugin names that have finished activating |

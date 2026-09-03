@@ -2,7 +2,12 @@
 
 Anything that doesn't deserve a keystroke lives behind `:`. Press `:` in Normal mode to open the command line, type a name, and press `Enter`. `Esc` dismisses without running.
 
-Most commands have a short alias — both forms are listed below, and both work. Press `Tab` at any point for completion of names and, where it makes sense, arguments.
+Every command in this manual is one of two kinds, and each is reachable only its own way:
+
+- **Typed commands** — everything on this page. Reached only from `:`, take a text argument and an optional `!`, never a count.
+- **Editor commands** — everything in the [Builtin Commands](builtin-commands.md) reference. Reached only from a key, never from `:`.
+
+Most typed commands have a short alias — both forms are listed below, and both work. Press `Tab` at any point for completion of names and, where it makes sense, arguments.
 
 For running HUME from a shell instead, see [Command-line Flags](cli.md).
 
@@ -46,7 +51,7 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | `:bd`, `:buffer-delete` | Close the buffer. Refuses if there are unsaved changes; closing the last one leaves a scratch buffer |
 | `:bd!` | Close the buffer, discarding unsaved changes |
 
-`:b #` is the quickest way back to the previous buffer. There's no default key for it, but `:goto-alternate-buffer` can be bound to one — and `core:vim-keybind` binds it to `Ctrl+6` for you.
+`:b #` is the quickest way back to the previous buffer. The same jump is also an editor command, `goto-alternate-buffer`, for binding to a key — `core:vim-keybind` binds it to `Ctrl+6` for you.
 
 ## Panes
 
@@ -109,7 +114,6 @@ See [Configuration](configuration.md) for every option.
 | `:theme-debug` | Show the resolved styles for the main UI scopes |
 | `:wrap`, `:toggle-soft-wrap` | Toggle line wrapping in this pane — see [wrap styles](configuration.md#text-wrap) |
 | `:mes`, `:messages` | Show the message log in a read-only buffer |
-| `:clear-search` | Clear search highlights (`Esc` also clears them) |
 
 ## Navigation
 
@@ -128,12 +132,8 @@ See [Configuration](configuration.md) for every option.
 | `:ver`, `:version` | Show the editor version |
 | `:tutor` | Open the interactive tutorial |
 
-Plugins add commands of their own once you load them. The `:plum-*` commands (installing plugins and grammars) come from `core:plum`, and the `:lsp-*` and `:diagnostics` commands from `core:lsp` — neither is loaded until you ask for it in `init.scm`. See [Core Plugins](core-plugins.md).
+Plugins add commands of their own once you load them. The `:plum-*` commands (installing plugins and grammars) come from `core:plum`, and `:lsp-*`, `:diagnostics`, and `:format-source` from `core:lsp` — neither plugin is loaded until you ask for it in `init.scm`. See [Core Plugins](core-plugins.md).
 
 ## Finding a command
 
-There is no listing command. Open the command line with `:` and press `Tab` — completion shows every registered name and alias, including stubs for plugins that haven't loaded yet.
-
-## Running key commands from `:`
-
-Every command that can be bound to a key can also be typed at `:`, even without a short alias — `:undo`, `:select-all-matches`, `:goto-alternate-buffer`, and so on. Typed this way they take no count and run once.
+There is no listing command. Open the command line with `:` and press `Tab` — completion shows every registered typed name and alias, including stubs for plugins that haven't loaded yet. It never shows editor commands — those aren't reachable from `:` at all; see [Builtin Commands](builtin-commands.md) for the full list.

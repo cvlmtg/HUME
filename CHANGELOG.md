@@ -32,6 +32,20 @@
   warning naming the cap. A mix of whole-line and partial-line selections now warns and
   formats nothing, rather than silently reformatting the whole buffer.
 - **Breaking**: `goto-alternate-file` is renamed `goto-alternate-buffer`.
+- **Breaking**: `:` now resolves only typed commands — an editor (key-bindable) command's
+  name is no longer reachable from the command line, even though it still works from a key
+  binding or `(call! …)`. `(define-command! …)` keeps registering editor commands only; a
+  new `(define-typed-command! …)` registers a typed command instead, and `declare-plugin`
+  gained a matching `#:typed-commands` alongside `#:commands`. Third-party plugins whose
+  commands were reachable at `:` must switch to `define-typed-command!`/`#:typed-commands`.
+  `core:lsp`'s `lsp-install`, `lsp-uninstall`, `lsp-servers`, `lsp-rescan-servers`,
+  `lsp-status`, `lsp-stop`, `lsp-restart`, and `diagnostics`; `core:plum`'s
+  `plum-install-plugins`, `plum-cleanup-plugins`, `plum-update-plugins`, `plum-list-plugins`,
+  `plum-install-grammar`, `plum-list-grammars`, and `plum-cleanup-grammars`; and
+  `core:git-diff`'s `toggle-git-signs`/`toggle-inline-diff` and `core:steel-server`'s
+  `steel-server-install` all move to `define-typed-command!` in this release. `:lsp-fmt` is
+  replaced by a new typed `:format-source`; the key-bindable `lsp-fmt` (for `on-buffer-save`
+  hooks) is unchanged.
 
 ### Editing
 - **Breaking**: `goto-next-paragraph`/`goto-prev-paragraph` (`}`/`{`) now select the whole
