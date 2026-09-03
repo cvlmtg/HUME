@@ -246,7 +246,7 @@ fn kitty_ctrl_u_is_not_undo() {
 fn kitty_ctrl_close_brace_extends_next_paragraph() {
     let mut ed = editor_from_kitty("-[h]>ello\n\nworld\n");
     ed.handle_key(key_ctrl('}'));
-    // extend-next-paragraph: anchor stays at 0, head moves to 'w' in "world".
+    // extend-goto-next-paragraph: anchor stays at 0, head moves to 'w' in "world".
     assert_eq!(state(&ed), "-[hello\n\nw]>orld\n");
 }
 

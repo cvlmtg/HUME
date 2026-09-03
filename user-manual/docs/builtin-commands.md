@@ -27,20 +27,20 @@ Move the cursor/selection. Callable as `(name)` or `(call! "name")`.
 | `goto-next-class` | `g t` | Select the next class or type. |
 | `goto-next-comment` | `g c` | Select the next comment. |
 | `goto-next-function` | `g f` | Select the next function. |
+| `goto-next-paragraph` | `}` | Move cursors to the start of the next paragraph. |
 | `goto-next-test` | `g u` | Select the next unit test. |
 | `goto-next-value` | `g v` | Select the next array/tuple/struct value. |
 | `goto-prev-argument` | `g A` | Select the previous argument. |
 | `goto-prev-class` | `g T` | Select the previous class or type. |
 | `goto-prev-comment` | `g C` | Select the previous comment. |
 | `goto-prev-function` | `g F` | Select the previous function. |
+| `goto-prev-paragraph` | `{` | Move cursors to the first empty line above the current paragraph. |
 | `goto-prev-test` | `g U` | Select the previous unit test. |
 | `goto-prev-value` | `g V` | Select the previous array/tuple/struct value. |
 | `move-down` | `j` / `↓` | Move cursors down one visual line (one buffer line with a count). |
 | `move-left` | `h` / `←` | Move cursors one grapheme to the left. |
 | `move-right` | `l` / `→` | Move cursors one grapheme to the right. |
 | `move-up` | `k` / `↑` | Move cursors up one visual line (one buffer line with a count). |
-| `next-paragraph` | `}` | Move cursors to the start of the next paragraph. |
-| `prev-paragraph` | `{` | Move cursors to the first empty line above the current paragraph. |
 | `select-line` | `x` / `Ctrl+x` | Select the full current line (forward). |
 | `select-line-backward` | `X` / `Ctrl+X` | Select the full current line (backward). |
 | `select-next-uppercase-word` | `W` | Select the next uppercase word (whitespace-delimited). |

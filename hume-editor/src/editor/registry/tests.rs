@@ -175,8 +175,8 @@ fn is_extendable_motion_and_selection_always_true() {
         "goto-matching-pair",
         "select-next-word",
         "select-prev-word",
-        "next-paragraph",
-        "prev-paragraph",
+        "goto-next-paragraph",
+        "goto-prev-paragraph",
     ] {
         let cmd = reg
             .get_mappable(name)

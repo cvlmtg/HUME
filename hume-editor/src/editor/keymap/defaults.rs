@@ -311,8 +311,8 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!(End), cmd!("goto-line-end"));
 
     // ── Paragraph motion ──────────────────────────────────────────────────────
-    t.bind_leaf(key!('{'), cmd!("prev-paragraph"));
-    t.bind_leaf(key!('}'), cmd!("next-paragraph"));
+    t.bind_leaf(key!('{'), cmd!("goto-prev-paragraph"));
+    t.bind_leaf(key!('}'), cmd!("goto-next-paragraph"));
 
     // ── Line selection ────────────────────────────────────────────────────────
     t.bind_leaf(key!('x'), cmd!("select-line"));

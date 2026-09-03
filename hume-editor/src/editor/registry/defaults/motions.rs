@@ -4,9 +4,10 @@ use std::borrow::Cow;
 use crate::editor::registry::{CommandRegistry, MappableCommand, SelectionBody, SelectionTracking};
 use hume_ops::motion::{
     cmd_goto_first_line, cmd_goto_first_nonblank, cmd_goto_last_line, cmd_goto_line_end,
-    cmd_goto_line_start, cmd_goto_matching_pair, cmd_move_left, cmd_move_right, cmd_next_paragraph,
-    cmd_prev_paragraph, cmd_select_line, cmd_select_line_backward, cmd_select_next_uppercase_word,
-    cmd_select_next_word, cmd_select_prev_uppercase_word, cmd_select_prev_word,
+    cmd_goto_line_start, cmd_goto_matching_pair, cmd_goto_next_paragraph, cmd_goto_prev_paragraph,
+    cmd_move_left, cmd_move_right, cmd_select_line, cmd_select_line_backward,
+    cmd_select_next_uppercase_word, cmd_select_next_word, cmd_select_prev_uppercase_word,
+    cmd_select_prev_word,
 };
 
 use super::builder::ecmd;
@@ -130,15 +131,15 @@ impl CommandRegistry {
         // ── Paragraph motions ─────────────────────────────────────────────────
         super::motion!(
             self,
-            "next-paragraph",
+            "goto-next-paragraph",
             "Move cursors to the start of the next paragraph.",
-            cmd_next_paragraph
+            cmd_goto_next_paragraph
         );
         super::motion!(
             self,
-            "prev-paragraph",
+            "goto-prev-paragraph",
             "Move cursors to the first empty line above the current paragraph.",
-            cmd_prev_paragraph
+            cmd_goto_prev_paragraph
         );
 
         // ── Line selection ────────────────────────────────────────────────────

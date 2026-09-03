@@ -45,12 +45,12 @@ fn shift_a_still_inserts_at_line_end() {
     assert_eq!(state(&ed), "hello world-[\n]>");
 }
 
-/// `}` delivered as Char('}') + SHIFT must still run next-paragraph.
+/// `}` delivered as Char('}') + SHIFT must still run goto-next-paragraph.
 #[test]
-fn close_brace_next_paragraph_when_shift_set() {
+fn close_brace_goto_next_paragraph_when_shift_set() {
     let mut ed = editor_from("-[h]>ello\n\nworld\n");
     ed.handle_key(key_shift('}'));
-    // next-paragraph moves head to the first char of the next paragraph.
+    // goto-next-paragraph moves head to the first char of the next paragraph.
     assert_eq!(state(&ed), "hello\n\n-[w]>orld\n");
 }
 
