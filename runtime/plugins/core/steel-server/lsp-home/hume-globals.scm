@@ -105,7 +105,6 @@
 (#%register-global "find-backward")
 (#%register-global "find-forward")
 (#%register-global "flip-selections")
-(#%register-global "force-quit")
 (#%register-global "get-option")
 (#%register-global "goto-alternate-buffer")
 (#%register-global "goto-first-line")

@@ -157,7 +157,6 @@ Mode transitions, paste, search, scrolling, pane management, and more.
 | `exit-insert` | `Esc` / `Ctrl+c` | Return to normal mode from insert mode. |
 | `find-backward` | `F` + char | Find previous occurrence of a character (inclusive, backward). |
 | `find-forward` | `f` + char | Find next occurrence of a character (inclusive, forward). |
-| `force-quit` | — | Quit the whole editor unconditionally, discarding unsaved changes in every buffer (same as :qa!). |
 | `goto-alternate-buffer` | — | Switch to the most-recently-focused other buffer. |
 | `half-page-down` | `Ctrl+d` | Scroll down by half a viewport height. |
 | `half-page-up` | `Ctrl+u` | Scroll up by half a viewport height. |

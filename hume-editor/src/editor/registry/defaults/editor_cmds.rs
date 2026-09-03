@@ -425,14 +425,6 @@ impl CommandRegistry {
         .jump()
         .reg(self);
 
-        // ── Editor commands — misc ────────────────────────────────────────────
-        ecmd(
-            "force-quit",
-            "Quit the whole editor unconditionally, discarding unsaved changes in every buffer (same as :qa!).",
-            cmd_quit,
-        )
-        .reg(self);
-
         // ── Editor commands — pane focus stubs ────────────────────────────────
         ecmd(
             "pane-focus-next",

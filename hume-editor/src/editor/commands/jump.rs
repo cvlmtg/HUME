@@ -8,18 +8,6 @@ use super::{
 };
 use crate::editor::error::CommandError;
 
-// ── Misc ──────────────────────────────────────────────────────────────────────
-
-pub(crate) fn cmd_quit(
-    state: &mut EditorState,
-    _view: &mut EngineView,
-    _count: usize,
-    _mode: MotionMode,
-) -> Result<(), CommandError> {
-    state.request_quit();
-    Ok(())
-}
-
 // ── Jump list navigation ─────────────────────────────────────────────────────
 
 /// Shared tail for `cmd_jump_backward`/`cmd_jump_forward`: switch buffer (if

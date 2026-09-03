@@ -33,8 +33,8 @@ fn insert_char_is_no_match() {
 #[test]
 fn ctrl_bindings_in_normal_keymap() {
     let trie = default_normal_keymap();
-    // Ctrl+c is intentionally unbound in normal mode — force-quit must be
-    // invoked via :quit or :q to avoid accidental data loss.
+    // Ctrl+c is intentionally unbound in normal mode — quitting must go
+    // via :quit or :q to avoid accidental data loss.
     assert!(
         matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::NoMatch),
         "Ctrl+c must be unbound in normal mode"

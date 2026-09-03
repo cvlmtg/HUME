@@ -497,30 +497,6 @@ fn colon_qa_bang_quits_despite_dirty_buffers() {
 }
 
 #[test]
-fn force_quit_named_command_quits_despite_dirty_buffer() {
-    // force-quit (bindable named command, unbound by default) must behave like
-    // :qa! — unconditional quit, no dirty check — since it shares EditorState::
-    // request_quit with :qa!'s force path.
-    // Fail oracle: revert cmd_quit to a no-op and this assertion fails.
-    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    ed.handle_key(key('i'));
-    ed.handle_key(key('x'));
-    ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty());
-
-    {
-        let mut host = live_host!(ed);
-        host.run_command_sync("force-quit", None, false, None)
-            .expect("run_command_sync must not error for force-quit");
-    }
-
-    assert!(
-        ed.state.should_quit,
-        "force-quit must quit despite dirty buffer"
-    );
-}
-
-#[test]
 fn colon_qa_stays_on_focused_dirty_buffer() {
     // When the focused buffer is already dirty, :qa must stay on it — not jump
     // to another buffer — and still refuse to quit.

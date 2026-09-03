@@ -4,7 +4,7 @@ use hume_treesitter::textobjects::ObjectKind;
 
 /// Exhaustiveness guard: if a command is added without a registry entry,
 /// this test catches it.
-const EXPECTED_COMMAND_COUNT: usize = 185;
+const EXPECTED_COMMAND_COUNT: usize = 184;
 
 /// `STRUCTURAL_OBJECTS` is the only link between `ObjectKind` and the four
 /// commands (plus the `m i`/`m a` key) each kind ships. Nothing in the type
@@ -73,10 +73,8 @@ fn mappable_lookup_by_name_works() {
     assert!(matches!(cmd, MappableCommand::Edit { .. }));
 
     // EditorCmd
-    let cmd = reg
-        .get_mappable("force-quit")
-        .expect("force-quit should be registered");
-    assert_eq!(cmd.name().as_ref(), "force-quit");
+    let cmd = reg.get_mappable("undo").expect("undo should be registered");
+    assert_eq!(cmd.name().as_ref(), "undo");
     assert!(matches!(cmd, MappableCommand::EditorCmd { .. }));
 
     let cmd = reg
@@ -117,7 +115,6 @@ fn typed_lookup_does_not_return_mappable() {
     let reg = CommandRegistry::with_defaults();
     // Mappable commands are not accessible via get_typed.
     assert!(reg.get_typed("move-right").is_none());
-    assert!(reg.get_typed("force-quit").is_none());
     assert!(reg.get_typed("clear-search").is_none());
     assert!(reg.get_typed("select-all-matches").is_none());
 }
@@ -259,7 +256,6 @@ fn is_extendable_false_for_edits_and_non_extendable_editor_cmds() {
         "insert-after",
         "open-line-below",
         "open-line-above",
-        "force-quit",
         "exit-insert",
     ] {
         let cmd = reg
