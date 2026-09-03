@@ -82,8 +82,8 @@ Text objects (use the `m` prefix):
 | `m i f` / `m a f` | `inner-function` / `around-function` | Inner / around function |
 | `m i t` / `m a t` | `inner-class` / `around-class` | Inner / around class or type |
 | `m i c` / `m a c` | `inner-comment` / `around-comment` | Inner / around comment |
-| `m i T` / `m a T` | `inner-test` / `around-test` | Inner / around test |
-| `m i e` / `m a e` | `inner-entry` / `around-entry` | Inner / around array/tuple/struct entry |
+| `m i u` / `m a u` | `inner-test` / `around-test` | Inner / around unit test |
+| `m i v` / `m a v` | `inner-value` / `around-value` | Inner / around array/tuple/struct value |
 | `m i i` | `select-last-insertion` | Select the text typed during the last insert |
 | `m m` | `select-word` | Select the word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b` — see `word-selects-whitespace`) |
 | `M M` | `select-uppercase-word` | WORD variant of `m m` |
@@ -157,7 +157,8 @@ See [Register prefix](copy-and-paste.md#register-prefix) for the full register l
 
 ## Goto prefix (`g`)
 
-Press `g` then a second key:
+Press `g` then a second key. Every one names a destination — a place in the buffer, or (for
+the structural pairs) the next/previous instance of a kind, selected as a whole:
 
 | Key | Command | Action |
 |-----|---------|--------|
@@ -166,10 +167,19 @@ Press `g` then a second key:
 | `g h` | `goto-line-start` | Go to line start |
 | `g l` | `goto-line-end` | Go to line end |
 | `g s` | `goto-first-nonblank` | Go to first non-blank on line |
+| `g f` / `g F` | `goto-next-function` / `goto-prev-function` | Next/previous function |
+| `g t` / `g T` | `goto-next-class` / `goto-prev-class` | Next/previous class or type |
+| `g a` / `g A` | `goto-next-argument` / `goto-prev-argument` | Next/previous argument |
+| `g c` / `g C` | `goto-next-comment` / `goto-prev-comment` | Next/previous comment |
+| `g u` / `g U` | `goto-next-test` / `goto-prev-test` | Next/previous unit test |
+| `g v` / `g V` | `goto-next-value` / `goto-prev-value` | Next/previous array/tuple/struct value |
 
-## Case prefix (`G`)
+The structural pairs need a grammar with a `textobjects.scm` — see [Moving Around](moving-around.md#structural-navigation).
 
-Press `G` then a second key:
+## `G` prefix
+
+Press `G` then a second key. Not a "case prefix" — `G` holds the commands Vim files under
+`g` that aren't gotos (`G L`/`G U`/`G C` are Vim's `gu`/`gU`/`g~`):
 
 | Key | Command | Action |
 |-----|---------|--------|
@@ -177,15 +187,22 @@ Press `G` then a second key:
 | `G U` | `make-text-uppercase` | Uppercase the selection |
 | `G C` | `make-text-capitalized` | Capitalize each word in the selection |
 
+`G U`/`G C` differ from `g U`/`g C` (previous unit test / previous comment) only in the prefix's
+case — worth knowing before it's muscle memory. `core:lsp` adds a fourth key here, `G R` for
+`lsp-rename` — see [Language Servers](lsp.md).
+
 ## View prefix (`z`)
 
 Press `z` then a second key:
 
 | Key | Command | Action |
 |-----|---------|--------|
+| `z k` | `top-view-on-cursor` | Scroll cursor to top of screen |
 | `z z` | `center-view-on-cursor` | Center view on cursor |
-| `z t` | `top-view-on-cursor` | Scroll cursor to top of screen |
-| `z b` | `bottom-view-on-cursor` | Scroll cursor to bottom of screen |
+| `z j` | `bottom-view-on-cursor` | Scroll cursor to bottom of screen |
+
+`k` is up and `j` is down, the same axis the motion keys use. `core:pickers` and `core:lsp`
+add more keys under `z` — see [Fuzzy Finder](pickers.md) and [Language Servers](lsp.md).
 
 ## Pane prefix (`Ctrl+p`)
 

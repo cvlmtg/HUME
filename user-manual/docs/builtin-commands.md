@@ -23,18 +23,18 @@ Move the cursor/selection. Callable as `(name)` or `(call! "name")`.
 | `goto-line-end` | `End` / `g l` | Move cursors to the last character on the line. |
 | `goto-line-start` | `Home` / `g h` | Move cursors to the start of the line. |
 | `goto-matching-pair` | `#` | Move cursors to the matching bracket or tag. |
-| `goto-next-argument` | — | Select the next argument. |
-| `goto-next-class` | — | Select the next class or type. |
-| `goto-next-comment` | — | Select the next comment. |
-| `goto-next-entry` | — | Select the next array/tuple/struct entry. |
-| `goto-next-function` | — | Select the next function. |
-| `goto-next-test` | — | Select the next test. |
-| `goto-prev-argument` | — | Select the previous argument. |
-| `goto-prev-class` | — | Select the previous class or type. |
-| `goto-prev-comment` | — | Select the previous comment. |
-| `goto-prev-entry` | — | Select the previous array/tuple/struct entry. |
-| `goto-prev-function` | — | Select the previous function. |
-| `goto-prev-test` | — | Select the previous test. |
+| `goto-next-argument` | `g a` | Select the next argument. |
+| `goto-next-class` | `g t` | Select the next class or type. |
+| `goto-next-comment` | `g c` | Select the next comment. |
+| `goto-next-function` | `g f` | Select the next function. |
+| `goto-next-test` | `g u` | Select the next unit test. |
+| `goto-next-value` | `g v` | Select the next array/tuple/struct value. |
+| `goto-prev-argument` | `g A` | Select the previous argument. |
+| `goto-prev-class` | `g T` | Select the previous class or type. |
+| `goto-prev-comment` | `g C` | Select the previous comment. |
+| `goto-prev-function` | `g F` | Select the previous function. |
+| `goto-prev-test` | `g U` | Select the previous unit test. |
+| `goto-prev-value` | `g V` | Select the previous array/tuple/struct value. |
 | `move-down` | `j` / `↓` | Move cursors down one visual line (one buffer line with a count). |
 | `move-left` | `h` / `←` | Move cursors one grapheme to the left. |
 | `move-right` | `l` / `→` | Move cursors one grapheme to the right. |
@@ -80,13 +80,13 @@ Select a delimited region around the cursor.
 | `around-class` | `m a t` | Select the class or type including its header. Requires a grammar with a `textobjects.scm`. |
 | `around-comment` | `m a c` | Select the whole comment block. Requires a grammar with a `textobjects.scm`. |
 | `around-double-quote` | `m a "` | Select content including the nearest `"`. |
-| `around-entry` | `m a e` | Select an array/tuple/struct entry plus its separator comma. Requires a grammar with a `textobjects.scm`. |
 | `around-function` | `m a f` | Select the function including its signature (and attributes/decorators). Requires a grammar with a `textobjects.scm`. |
 | `around-line` | `m a l` | Select the line including its newline. |
 | `around-paren` | `m a (` / `m a )` | Select content including the nearest `()`. |
 | `around-single-quote` | `m a '` | Select content including the nearest `'`. |
-| `around-test` | `m a T` | Select the whole test, including its attribute or decorator. Requires a grammar with a `textobjects.scm`. |
+| `around-test` | `m a u` | Select the whole unit test, including its attribute or decorator. Requires a grammar with a `textobjects.scm`. |
 | `around-uppercase-word` | `m a W` | Select uppercase word plus one adjacent whitespace run. |
+| `around-value` | `m a v` | Select an array/tuple/struct value plus its separator comma. Requires a grammar with a `textobjects.scm`. |
 | `around-word` | `m a w` | Select word plus one adjacent whitespace run. |
 | `inner-angle` | `m i <` / `m i >` | Select content inside the nearest `<>`. |
 | `inner-argument` | `m i a` | Select the argument at the cursor (trimmed). Structure-aware — uses the language's `parameter` object when the grammar defines one. |
@@ -96,13 +96,13 @@ Select a delimited region around the cursor.
 | `inner-class` | `m i t` | Select inside a class or type. Requires a grammar with a `textobjects.scm`. |
 | `inner-comment` | `m i c` | Select inside a comment. Requires a grammar with a `textobjects.scm`. |
 | `inner-double-quote` | `m i "` | Select content inside the nearest `"`. |
-| `inner-entry` | `m i e` | Select inside an array/tuple/struct entry. Requires a grammar with a `textobjects.scm`. |
 | `inner-function` | `m i f` | Select inside a function. Requires a grammar with a `textobjects.scm`. |
 | `inner-line` | `m i l` | Select inner line content (excluding the newline). |
 | `inner-paren` | `m i (` / `m i )` | Select content inside the nearest `()`. |
 | `inner-single-quote` | `m i '` | Select content inside the nearest `'`. |
-| `inner-test` | `m i T` | Select inside a test function's body. Requires a grammar with a `textobjects.scm`. |
+| `inner-test` | `m i u` | Select inside a unit test function's body. Requires a grammar with a `textobjects.scm`. |
 | `inner-uppercase-word` | `m i W` | Select inner uppercase word (whitespace-delimited). |
+| `inner-value` | `m i v` | Select inside an array/tuple/struct value. Requires a grammar with a `textobjects.scm`. |
 | `inner-word` | `m i w` | Select inner word. |
 | `select-uppercase-word` | `M M` | Select the uppercase word (WORD) under the cursor. |
 | `select-word` | `m m` | Select the word under the cursor. |
@@ -144,7 +144,7 @@ Mode transitions, paste, search, scrolling, pane management, and more.
 | Command | Default key | Effect |
 |---------|-------------|--------|
 | `align-selections` | `&` | Align each selection's anchor to the primary selection's anchor column. |
-| `bottom-view-on-cursor` | `z b` | Scroll so the primary selection head sits at the bottom of the viewport. |
+| `bottom-view-on-cursor` | `z j` | Scroll so the primary selection head sits at the bottom of the viewport. |
 | `center-view-on-cursor` | `z z` | Scroll so the primary selection head sits at the vertical center of the viewport. |
 | `change` | `c` | Delete selections onto the kill ring, then enter insert mode (one undo group). |
 | `clear-search` | — | Clear search highlights (`:clear-search`). |
@@ -204,7 +204,7 @@ Mode transitions, paste, search, scrolling, pane management, and more.
 | `till-backward` | `T` + char | Move to just after previous occurrence of a character (exclusive). |
 | `till-forward` | `t` + char | Move to just before next occurrence of a character (exclusive). |
 | `toggle-extend` | `e` | Toggle sticky extend mode. |
-| `top-view-on-cursor` | `z t` | Scroll so the primary selection head sits at the top of the viewport. |
+| `top-view-on-cursor` | `z k` | Scroll so the primary selection head sits at the top of the viewport. |
 | `undo` | `u` | Undo the last change. |
 | `unindent` | `<` | Unindent every line touched by a selection by one level. |
 | `yank` | `y` | Copy selections to the clipboard and kill ring without deleting. |

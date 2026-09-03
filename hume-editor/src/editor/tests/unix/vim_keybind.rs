@@ -64,7 +64,7 @@ fn setup_vim_keybind_editor_with_config(
 
 // ── Plugin rebinds ─────────────────────────────────────────────────────────────
 //
-// `$`/`^`/`0`/`G`/`Ctrl+6` each just `bind-key!` an already-tested native
+// `$`/`^`/`0`/`Ctrl+6` each just `bind-key!` an already-tested native
 // command (see `hume-ops/src/motion/tests/` and
 // `tests/alternate.rs`) to a new key — one test spot-checks that the real
 // plugin file's `bind-key!` lines are wired to the right command names,
@@ -83,9 +83,6 @@ fn plugin_rebinds_line_and_alternate_motions() {
     ed.handle_key(key('0')); // start of line
     assert_eq!(state(&ed), "-[ ]> hello world\nfoo\nbar\n");
 
-    ed.handle_key(key('G')); // last line
-    assert_eq!(state(&ed), "  hello world\nfoo\n-[b]>ar\n");
-
     let f1 = safe_named_tempfile();
     std::fs::write(f1.path(), "file1\n").unwrap();
     let f2 = safe_named_tempfile();
@@ -101,6 +98,37 @@ fn plugin_rebinds_line_and_alternate_motions() {
         ed.focused_buffer_id(),
         id_a,
         "Ctrl+6 must switch to alternate"
+    );
+}
+
+/// The plugin does not bind bare `G`. `bind-key!` on a single key is a plain
+/// map insert over the trie slot (`keymap/mod.rs`'s `bind`/`bind_leaf`), so
+/// binding bare `G` to anything replaces the whole `G` node — silently
+/// taking `G L`/`G U`/`G C` down with it. This test guards that invariant:
+/// with the real plugin loaded, `G`'s case-transform subtree resolves, and
+/// bare `G` is a no-op (an `Interior` node, not a leaf) rather than jumping
+/// to the last line.
+#[test]
+fn vim_keybind_leaves_the_native_g_prefix_intact() {
+    use crate::editor::keymap::BindMode;
+
+    let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[HELLO]>\nworld\n");
+
+    ed.handle_key(key('G'));
+    ed.handle_key(key('L'));
+    assert_eq!(
+        state(&ed),
+        "-[hello]>\nworld\n",
+        "G L must still lowercase the selection with core:vim-keybind loaded"
+    );
+
+    assert_eq!(
+        ed.state
+            .config
+            .keymap
+            .lookup_command(BindMode::Normal, &[key('G')]),
+        None,
+        "bare G must not be a leaf — it's the case/rename prefix, not goto-last-line"
     );
 }
 
@@ -338,10 +366,10 @@ fn shift_c_with_change_to_eol_off_restores_copy_selection() {
     assert!(heads.contains(&6), "new cursor lands at col 0 line 1");
 }
 
-/// `#:config "change-to-eol" 'off` only affects `C` — `D` and `G` (which
-/// shadow nothing) stay bound to their vim behavior.
+/// `#:config "change-to-eol" 'off` only affects `C` — `D` (which shadows
+/// nothing) stays bound to its vim behavior.
 #[test]
-fn change_to_eol_off_does_not_affect_non_shadowing_bindings() {
+fn change_to_eol_off_leaves_d_bound_to_vim_delete() {
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_config(
         "-[h]>ello\nworld\n",
         Some(r#"(hash "change-to-eol" 'off)"#),
@@ -352,8 +380,6 @@ fn change_to_eol_off_does_not_affect_non_shadowing_bindings() {
         "\nworld\n",
         "D must still delete to end of line"
     );
-    ed.handle_key(key('G'));
-    assert_eq!(state(&ed), "\n-[w]>orld\n", "G must still go to last line");
 }
 
 /// `#:config (hash "change-to-eol" 'on)` makes `C` change to end of line

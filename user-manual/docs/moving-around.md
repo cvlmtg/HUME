@@ -78,26 +78,20 @@ For a language whose grammar ships a `textobjects.scm` (PLUM installs one alongs
 the upstream grammar has one), these commands jump to the next/previous instance of a structural kind
 and select it as a whole — cursor (head) on its first character:
 
-| Command | Selects |
-|---------|---------|
-| `goto-next-function` / `goto-prev-function` | The next/previous function |
-| `goto-next-class` / `goto-prev-class` | The next/previous class or type |
-| `goto-next-argument` / `goto-prev-argument` | The next/previous argument |
-| `goto-next-comment` / `goto-prev-comment` | The next/previous comment |
-| `goto-next-test` / `goto-prev-test` | The next/previous test |
-| `goto-next-entry` / `goto-prev-entry` | The next/previous array/tuple/struct entry |
+| Key | Command | Selects |
+|-----|---------|---------|
+| `g f` / `g F` | `goto-next-function` / `goto-prev-function` | The next/previous function |
+| `g t` / `g T` | `goto-next-class` / `goto-prev-class` | The next/previous class or type |
+| `g a` / `g A` | `goto-next-argument` / `goto-prev-argument` | The next/previous argument |
+| `g c` / `g C` | `goto-next-comment` / `goto-prev-comment` | The next/previous comment |
+| `g u` / `g U` | `goto-next-test` / `goto-prev-test` | The next/previous unit test |
+| `g v` / `g V` | `goto-next-value` / `goto-prev-value` | The next/previous array/tuple/struct value |
 
-None of these ship with a default key — bind the ones you use, e.g.:
-
-```scheme
-(bind-key! 'normal "g f" "goto-next-function")
-(bind-key! 'normal "g F" "goto-prev-function")
-```
-
-(`[` and `]` are taken by the kill-ring cycle today, so they aren't the default home for these.) Any
-of them also runs unbound from the command line, e.g. `:goto-next-function`. They stop at either end
-of the buffer instead of wrapping, and each records a jump-list entry, so `Ctrl+o` returns to where
-you jumped from. Without a matching grammar, every one of these commands is a silent no-op.
+Lowercase jumps forward, uppercase jumps backward — the same letter each kind uses as its
+[text object](selections.md) key. Each also runs from the command line, e.g.
+`:goto-next-function`. They stop at either end of the buffer instead of wrapping, and each
+records a jump-list entry, so `Ctrl+o` returns to where you jumped from. Without a matching
+grammar, every one of these commands is a silent no-op.
 
 ## Jump to a line by number
 
@@ -134,9 +128,11 @@ Press `z` followed by a second key to reposition the view (the cursor itself sta
 
 | Key | Effect |
 |-----|--------|
+| `z k` | Scroll cursor to top of screen |
 | `z z` | Center view on cursor |
-| `z t` | Scroll cursor to top of screen |
-| `z b` | Scroll cursor to bottom of screen |
+| `z j` | Scroll cursor to bottom of screen |
+
+`k` is up and `j` is down, the same axis the motion keys use.
 
 ## Search navigation
 

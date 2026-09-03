@@ -57,6 +57,8 @@ These keys exist in both editors and do different things. They are the ones most
 | `C` | Change to end of line | Copy the selection to the line below | `ctrl-g l c`, or `C` with `core:vim-keybind` |
 | `D` | Delete to end of line | *(unbound)* | `ctrl-g l d`, or `D` with `core:vim-keybind` |
 | `U` | Undo the whole line | Redo | — `Ctrl+r` also redoes |
+| `G` | Go to last line | Case/rename prefix (`G L`/`G U`/`G C`, plus `G R` with `core:lsp`) | `g e` — unaffected, and `core:vim-keybind` does not restore `G` |
+| `K` | Look up keyword (external `keywordprg`, e.g. `man`) | Show hover docs for the symbol under the cursor (with `core:lsp`) | — closest HUME gets; no external program |
 
 `f`, `F`, `t`, `T` behave as they do in Vim, and `{` / `}` are still paragraph motions. Only the *repeat* keys moved: use `=` and `-`, because `;` and `,` are taken.
 
@@ -76,11 +78,7 @@ Vim's `iw` / `aw` family lives behind the `m` prefix, and — as everywhere else
 
 The available objects are word (`w`), WORD (`W`), the bracket pairs (`(`, `[`, `{`, `<`), the quote pairs (`"`, `'`, `` ` ``), argument (`a`), and line (`l`) — each with an `i` (inner) and `a` (around) form. One extra has no Vim equivalent: `m i i` selects the text you typed during your last insert.
 
-For a language with a tree-sitter grammar that ships a textobjects query, HUME also adds `m i f`/`m a f` (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i T`/`m a T` (test), and `m i e`/`m a e` (array/tuple/struct entry) — vanilla Vim has nothing like these without a plugin. Each pairs with an unbound `goto-next-<kind>`/`goto-prev-<kind>` command (e.g. `goto-next-function`) that jumps to the next/previous one as a selection; bind them yourself:
-
-```scheme
-(bind-key! 'normal "g f" "goto-next-function")
-```
+For a language with a tree-sitter grammar that ships a textobjects query, HUME also adds `m i f`/`m a f` (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i u`/`m a u` (unit test), and `m i v`/`m a v` (array/tuple/struct value) — vanilla Vim has nothing like these without a plugin. Each pairs with a `goto-next-<kind>`/`goto-prev-<kind>` command that jumps to the next/previous one as a selection, on the same letter under `g` (lowercase forward, uppercase backward — e.g. `g f`/`g F`).
 
 Vim's `iskeyword` is `word-chars` — a buffer option listing extra characters that count as part of a word (see [Configuration](configuration.md)). HUME doesn't parse Vim's range syntax (`48-57`, `@`, `192-255`); list the characters directly, e.g. `-` for CSS.
 
@@ -156,12 +154,11 @@ Vim uses `[count]` before commands (e.g. `3dw`). HUME also supports count prefix
 
 ### Line motion
 
-HUME's idiom for line motions is the `g` prefix: `g h` (start), `g l` (end), `g s` (first non-blank), `g e` (last line). The vim keys `0` / `$` / `^` / `G` are not bound by default — load `(load-plugin "core:stdlib")` then `(load-plugin "core:vim-keybind")` in `init.scm` to get them back with their vim meaning, alongside `C` / `D` (change / delete to end of line) and `Ctrl+6` (see below).
+HUME's idiom for line motions is the `g` prefix: `g h` (start), `g l` (end), `g s` (first non-blank), `g e` (last line). The vim keys `0` / `$` / `^` are not bound by default — load `(load-plugin "core:stdlib")` then `(load-plugin "core:vim-keybind")` in `init.scm` to get them back with their vim meaning, alongside `C` / `D` (change / delete to end of line) and `Ctrl+6` (see below). `G` is bound, but not to Vim's meaning — see the muscle-memory traps table above — and `core:vim-keybind` does not restore it; `g e` reaches the last line either way.
 
 | Vim | HUME (native) | HUME (`core:vim-keybind`) |
 |-----|----------------|---------------------------|
 | `0` / `$` / `^` | `g h` / `g l` / `g s` | `0` / `$` / `^` |
-| `G` | `g e` | `G` |
 | `gg` | `g g` | `g g` |
 | `C` / `D` | `ctrl-g l c` / `ctrl-g l d` (kitty terminals only) | `C` (change to end of line on a bare cursor with no count; with a selection, or any count prefix, falls back to the default `copy-selection-on-next-line`) / `D` |
 | `o` (visual mode) | `Ctrl+e` (flips anchor and head, any mode) | `o` (in Extend mode) |

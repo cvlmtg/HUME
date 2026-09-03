@@ -196,6 +196,74 @@ fn default_keymap_omits_kitty_only_binds() {
     );
 }
 
+// ── `g`/`z` trie contents ───────────────────────────────────────────────────
+
+/// `g` holds only goto motions: the line gotos plus the six structural kinds,
+/// reachable as `g <key>`/`g <KEY>` (next/prev). It holds no picker or rename
+/// keys — those live under `z`/`G` (`core:pickers`/`core:lsp`, not native).
+#[test]
+fn goto_trie_holds_real_gotos_and_structural_navigation() {
+    let trie = default_normal_keymap();
+    let must_resolve: &[(KeyEvent, &str)] = &[
+        (key!('g'), "goto-first-line"),
+        (key!('e'), "goto-last-line"),
+        (key!('h'), "goto-line-start"),
+        (key!('l'), "goto-line-end"),
+        (key!('s'), "goto-first-nonblank"),
+        (key!('f'), "goto-next-function"),
+        (key!('F'), "goto-prev-function"),
+        (key!('t'), "goto-next-class"),
+        (key!('T'), "goto-prev-class"),
+        (key!('a'), "goto-next-argument"),
+        (key!('A'), "goto-prev-argument"),
+        (key!('c'), "goto-next-comment"),
+        (key!('C'), "goto-prev-comment"),
+        (key!('u'), "goto-next-test"),
+        (key!('U'), "goto-prev-test"),
+        (key!('v'), "goto-next-value"),
+        (key!('V'), "goto-prev-value"),
+    ];
+    for (k, name) in must_resolve {
+        match trie.walk(&[key!('g'), *k]) {
+            WalkResult::Leaf(ref cmd) => {
+                assert_eq!(cmd.name, *name, "g + {:?} should map to {:?}", k, name)
+            }
+            _ => panic!("g + {:?} should be a leaf bound to {:?}", k, name),
+        }
+    }
+    // Reserved for core:pickers (`z f`/`z b`/`z m`) and core:lsp (`G R`).
+    for reserved in [key!('b'), key!('m'), key!('r')] {
+        assert!(
+            matches!(trie.walk(&[key!('g'), reserved]), WalkResult::NoMatch),
+            "g + {:?} must be unbound in the native trie — it's a plugin key",
+            reserved
+        );
+    }
+}
+
+/// The native `z` trie: directional viewport keys, `zt`/`zb` freed for
+/// `core:pickers` (not asserted here — that's a plugin bind, not native).
+#[test]
+fn view_trie_is_directional_and_frees_vims_initials() {
+    let trie = default_normal_keymap();
+    assert!(
+        matches!(trie.walk(&[key!('z'), key!('z')]), WalkResult::Leaf(ref c) if c.name == "center-view-on-cursor")
+    );
+    assert!(
+        matches!(trie.walk(&[key!('z'), key!('k')]), WalkResult::Leaf(ref c) if c.name == "top-view-on-cursor")
+    );
+    assert!(
+        matches!(trie.walk(&[key!('z'), key!('j')]), WalkResult::Leaf(ref c) if c.name == "bottom-view-on-cursor")
+    );
+    for freed in [key!('t'), key!('b')] {
+        assert!(
+            matches!(trie.walk(&[key!('z'), freed]), WalkResult::NoMatch),
+            "z + {:?} must be unbound in the native trie",
+            freed
+        );
+    }
+}
+
 #[test]
 fn apply_kitty_defaults_binds_kitty_only_keys() {
     let mut km = Keymap::default();

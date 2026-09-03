@@ -59,7 +59,7 @@ pub(crate) fn cmd_half_page_up(
     scroll_page(state, view, mode, true, false)
 }
 
-// ── View-trie scroll (zz / zt / zb) ───────────────────────────────────────────
+// ── View-trie scroll (z z / z k / z j) ────────────────────────────────────────
 
 fn cmd_view_scroll_to_row(state: &mut EditorState, view: &mut EngineView, target_row: usize) {
     let cursor_char = current_selections(state, view).primary().head();

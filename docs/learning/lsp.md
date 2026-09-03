@@ -148,15 +148,20 @@ Everything else is *pulled* — the editor asks, the server answers once:
 
 | Feature | Key |
 |---------|-----|
-| Hover info | `z k` |
+| Hover info | `K` |
 | Goto definition / declaration / type / implementation | `g d` / `g D` / `g y` / `g i` |
 | Find references | `z r` |
-| Rename symbol | `g r` |
+| Rename symbol | `G R` |
 | Code actions | `z a` |
 | Completion | `ctrl-space`, or automatically on trigger characters (insert mode) |
 | Signature help | automatic, as you type a call (insert mode) |
 | Format buffer | `:lsp-fmt` |
 | Inlay hints | off by default; `:set global lsp.inlay-hints=true` |
+
+The layout follows what a request asks for, not what it returns: a goto jumps to a place, so
+it lives with the other jump keys; references and code actions open a panel over the buffer,
+so they live with the other panel-opening keys; hover is looked up often enough to earn a
+bare key of its own.
 
 ## When servers misbehave
 

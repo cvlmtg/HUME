@@ -199,7 +199,7 @@ fn wrap_cursor_within_bottom_margin_scrolls_down() {
     assert_eq!(v.top_row_offset, 0);
 }
 
-// ── zt / zb interaction with scrolloff ───────────────────────────────────
+// ── view-top / view-bottom interaction with scrolloff ────────────────────
 //
 // `cmd_view_top` calls `scroll_cursor_to_row(target=0)`. That alone places
 // the cursor at display row 0. `prepare_frame` then runs the standard
@@ -208,14 +208,14 @@ fn wrap_cursor_within_bottom_margin_scrolls_down() {
 // change to either function can't silently break the contract.
 
 #[test]
-fn zt_then_scrolloff_trims_cursor_inward() {
+fn view_top_then_scrolloff_trims_cursor_inward() {
     // 50 lines, no wrap, height=24, scrolloff=3. Cursor on line 25.
     let r = rope(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
     let cursor_char = r.line_to_char(25);
     let providers = no_providers();
 
-    // 1) `zt`: target_row = 0 → top_line = cursor_line.
+    // 1) view-top: target_row = 0 → top_line = cursor_line.
     let mut s = FormatScratch::new();
     scroll_cursor_to_row(
         &mut v,
@@ -223,7 +223,7 @@ fn zt_then_scrolloff_trims_cursor_inward() {
         cursor_char,
         0,
     );
-    assert_eq!(v.top_line, 25, "zt places top at cursor line");
+    assert_eq!(v.top_line, 25, "view-top places top at cursor line");
 
     // 2) Per-frame correction: scrolloff = 3 trims cursor inward by 3 rows.
     let mut s = FormatScratch::new();
@@ -237,7 +237,7 @@ fn zt_then_scrolloff_trims_cursor_inward() {
 }
 
 #[test]
-fn zb_then_scrolloff_trims_cursor_inward() {
+fn view_bottom_then_scrolloff_trims_cursor_inward() {
     // height=24, scrolloff=3. Cursor on line 25, target = height-1 = 23.
     let r = rope(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
@@ -251,7 +251,7 @@ fn zb_then_scrolloff_trims_cursor_inward() {
         cursor_char,
         23,
     );
-    assert_eq!(v.top_line, 2, "zb places cursor on display row 23");
+    assert_eq!(v.top_line, 2, "view-bottom places cursor on display row 23");
 
     let mut s = FormatScratch::new();
     ensure_cursor_visible(

@@ -248,19 +248,28 @@ fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
     );
 }
 
-/// Every default `g`- or `z`-prefixed binding `plugin.scm` adds dispatches to
-/// its named command without error, even fully unattached (no LSP server on
-/// the buffer at all) — each command's own capability guard degrades to an
-/// `'info` log line in that case, never `'error`. Exercises the bindings
-/// themselves (does `g d` actually reach `lsp-goto-definition`?); each
-/// feature's own test file exercises its LSP behavior once attached.
+/// Every default `core:lsp` binding dispatches to its named command without
+/// error, even fully unattached (no LSP server on the buffer at all) — each
+/// command's own capability guard degrades to an `'info` log line in that
+/// case, never `'error`. Exercises the bindings themselves (does `G R`
+/// actually reach `lsp-rename`?); each feature's own test file exercises
+/// its LSP behavior once attached.
+///
+/// `G R` and bare `K` are the two keys `core:lsp` shares a namespace with:
+/// `G` is otherwise the case-transform prefix, and `z k` (a plain viewport
+/// command, distinct from `K`) sits right next to `core:lsp`'s own `z r`/
+/// `z a`. `z k` is asserted below to still resolve to `top-view-on-cursor`,
+/// and `G L` is asserted via `lookup_command` after the loop, as load-order
+/// proofs that `core:lsp` slots in beside these rather than clobbering them.
 ///
 /// Flip: renaming a binding's target command in `plugin.scm` without
 /// updating this table (or vice versa) makes the matching iteration fail
 /// with "unknown command" — checked at least once by temporarily renaming
-/// `"g d"`'s target in `plugin.scm` to a typo and confirming this test fails.
+/// `"G R"`'s target in `plugin.scm` to a typo and confirming this test fails.
 #[test]
 fn every_default_lsp_binding_dispatches_without_error() {
+    use crate::editor::keymap::BindMode;
+
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
@@ -280,22 +289,25 @@ fn every_default_lsp_binding_dispatches_without_error() {
     );
     ed.scripting = Some(host);
 
-    let bindings: &[(char, char)] = &[
-        ('g', 'd'),
-        ('g', 'D'),
-        ('g', 'y'),
-        ('g', 'i'),
-        ('g', 'r'),
-        ('z', 'r'),
-        ('z', 'k'),
-        ('z', 'a'),
-        ('g', 'n'),
-        ('g', 'p'),
+    // Each entry is the key sequence to press — one key for `K`, two for
+    // every `g`/`z`/`G`-prefixed bind.
+    let bindings: &[&[char]] = &[
+        &['g', 'd'],
+        &['g', 'D'],
+        &['g', 'y'],
+        &['g', 'i'],
+        &['G', 'R'],
+        &['K'],
+        &['z', 'r'],
+        &['z', 'a'],
+        &['g', 'n'],
+        &['g', 'p'],
     ];
-    for &(first, second) in bindings {
+    for keys in bindings {
         ed.state.status_msg = None;
-        ed.handle_key(key(first));
-        ed.handle_key(key(second));
+        for &k in *keys {
+            ed.handle_key(key(k));
+        }
         ed.settle();
         ed.drain_lsp();
         ed.settle();
@@ -303,10 +315,28 @@ fn every_default_lsp_binding_dispatches_without_error() {
             assert!(
                 !msg.to_lowercase().contains("error")
                     && !msg.to_lowercase().contains("unknown command"),
-                "{first} {second} must dispatch cleanly on an unattached buffer, got: {msg}"
+                "{keys:?} must dispatch cleanly on an unattached buffer, got: {msg}"
             );
         }
     }
+
+    // Load-order proofs: core:lsp's binds sit beside these, not over them.
+    assert_eq!(
+        ed.state
+            .config
+            .keymap
+            .lookup_command(BindMode::Normal, &[key('z'), key('k')]),
+        Some(("top-view-on-cursor".to_string(), false)),
+        "z k must still be the native viewport command with core:lsp loaded"
+    );
+    assert_eq!(
+        ed.state
+            .config
+            .keymap
+            .lookup_command(BindMode::Normal, &[key('G'), key('L')]),
+        Some(("make-text-lowercase".to_string(), false)),
+        "G L must still be the case-transform command with core:lsp loaded"
+    );
     drop(guard);
 }
 

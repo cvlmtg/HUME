@@ -16,7 +16,9 @@ architecture and the *why* behind it, not a build log.
 
 - Object kinds: `function`, `class`, `parameter`, `comment`, `test`, `entry` — every kind Helix's
   query files define except `xml-element` (see *Future work*). Adding a kind is one enum variant,
-  one table row, one manual row.
+  one table row, one manual row. `entry`'s user-facing text-object/navigation commands are named
+  `value`, not `entry` — see `registry/defaults/structural.rs`'s entry row for why that split
+  exists (the tree-sitter capture name isn't HUME's to rename; the command name is).
 - Crate boundaries are compiler-enforced: `hume-editor` production code names no `tree_sitter::*`
   type (`tree-sitter` is a dev-dependency there); `hume-ops` depends on neither `tree-sitter` nor
   `hume-treesitter`. Consequently:
@@ -39,7 +41,7 @@ architecture and the *why* behind it, not a build log.
 |---|---|---|
 | Navigation's selected object | Whole object, cursor (head) at its **start** | The viewport lands on the object's signature and a following `w` walks into its body. |
 | Extend after a Move result | Union with the running selection, not a plain anchor-keep | A Move result's anchor sits at the object's *end* (reversed, for the head-at-start rule above); a plain "keep the anchor, move the head" replacement — the convention elsewhere in `hume-ops` — would drop everything between the object's near edge and a newly found span, or shrink the selection when the found span is nested inside what's already selected. Taking the min/max of the current selection and the found span with every step fixes both, self-correcting the same way `apply_word_select_extend`'s own union-based growth does. |
-| Navigation commands ship unbound | No default key | Binding them needs the `[`/`]` prefix, which the kill-ring cycle occupies today — see *Future work*. |
+| Navigation's default keys | `g <key>`/`g <KEY>` (lowercase next, uppercase previous), reusing each kind's `m i`/`m a` key | Slots into the `g` goto prefix — a structural jump is a goto like any other. Two kinds' letters diverge from Helix's own (`test` `T`→`u`, `entry` `e`→`v`) because deriving "previous" by uppercasing requires every key lowercase and no two uppercased forms to collide; `T` had no lowercase form, and `e` collides with `goto-last-line`. See `keymap/defaults::build_goto_trie` and `STRUCTURAL_OBJECTS`'s doc comment. |
 | `m i a` / `m a a` | One command family, structure-aware | `inner-argument`/`around-argument` use the grammar's `parameter` object when the buffer has one, the lexical scan otherwise, and HUME's own separator rule for "around" in both cases. There is no separate `parameter` object family. |
 | `register-grammar!` call syntax | Pure positional, no keyword arguments | A `#:kw`-sugared form was tried and reverted: Steel 0.8.2 miscompiles a keyword-arg call nested inside another (`define-command!`), and a keyword-free rest-arg workaround has its own, independent miscompile trigger. Positional-only sidesteps both — see `docs/LESSONS.md` L12. |
 
@@ -168,19 +170,12 @@ Recorded here so they are not re-proposed:
 - *`parameter.around` as the argument navigation target.* Same wart: `goto-next-argument` would
   select the trailing comma that `m a a` deliberately does not.
 - *Preferring a lexical inner span nested inside a tree parameter span.* A second rule so `2` stays
-  selectable inside `foo([1, 2, 3])`; `m i e` already covers members, and one rule is easier to
+  selectable inside `foo([1, 2, 3])`; `m i v` already covers members, and one rule is easier to
   predict.
 - *Keyword arguments (`#:injections`/`#:textobjects`) for `register-grammar!`.* Tried, reverted —
   see the Decisions table above and `docs/LESSONS.md` L12.
 
 ## Future work
 
-- **Default keys for navigation** — the complete set, Helix/unimpaired layout: `]f` / `[f`
-  function, `]t` / `[t` type (class), `]a` / `[a` argument, `]c` / `[c` comment, `]T` / `[T` test,
-  `]e` / `[e` entry. Prerequisite: `[` / `]` currently cycle the kill ring (`paste-ring-older` /
-  `paste-ring-newer`); they need a new home first (candidate: `Ctrl+y` older / `Ctrl+n` newer —
-  both legacy-terminal-safe control bytes, both unbound). Natural later residents of the same
-  prefix: `]d` / `[d` diagnostics (now `g n` / `g p` in `core:lsp`), `]g` / `[g` git hunks, `]p` /
-  `[p` paragraph (now `}` / `{`).
 - `xml-element` object kind (Helix defines it; HUME's lexical tag matcher is the current answer).
 - `locals.scm` (scope-aware rename) — stays a separate roadmap item.

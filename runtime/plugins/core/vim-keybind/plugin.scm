@@ -55,7 +55,7 @@
 ;; Portable form of vim's Ctrl+^; see README for legacy-terminal caveat.
 (bind-key! 'normal "ctrl-6" "goto-alternate-file")
 
-;; ── C / D / G ─────────────────────────────────────────────────────────────────
+;; ── C / D ─────────────────────────────────────────────────────────────────────
 ;; change-to-eol: 'smart (default) → context-sensitive C; 'on → unconditional
 ;; change-to-eol; 'off → leave C at HUME's default (copy-selection-on-next-line).
 (define cfg (plugin-config))
@@ -66,4 +66,3 @@
   ((equal? change-to-eol 'smart) (bind-key! 'normal "C" "vim-change-to-eol-or-copy-line"))
   ((equal? change-to-eol 'off)   (begin)))
 (bind-key! 'normal "D" "vim-delete-to-eol")
-(bind-key! 'normal "G" "goto-last-line")

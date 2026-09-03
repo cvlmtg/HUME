@@ -563,7 +563,7 @@ fn inner_argument_with_a_grammar_but_no_textobjects_query_falls_back_to_the_lexi
     assert_eq!(selected_text(&ed), "aaa");
 }
 
-// ── Other kinds: class / comment / test / entry ─────────────────────────────
+// ── Other kinds: class / comment / unit test / value ────────────────────────
 //
 // Only `Function` and `Parameter` get exercised above; these cover the
 // remaining four `STRUCTURAL_OBJECTS` rows through the real Helix rust
@@ -626,18 +626,18 @@ fn goto_next_comment_selects_the_whole_block() {
 }
 
 #[test]
-fn inner_test_selects_the_test_functions_body() {
+fn inner_unit_test_selects_the_functions_body() {
     let mut ed = rust_editor("#[test]\nfn it_works() {\n    -[a]>ssert!(true);\n}\n");
-    for ch in "miT".chars() {
+    for ch in "miu".chars() {
         ed.handle_key(key(ch));
     }
     assert_eq!(selected_text(&ed), "{\n    assert!(true);\n}");
 }
 
 #[test]
-fn around_test_includes_the_test_attribute() {
+fn around_unit_test_includes_the_test_attribute() {
     let mut ed = rust_editor("#[test]\nfn it_works() {\n    -[a]>ssert!(true);\n}\n");
-    for ch in "maT".chars() {
+    for ch in "mau".chars() {
         ed.handle_key(key(ch));
     }
     assert_eq!(
@@ -649,7 +649,7 @@ fn around_test_includes_the_test_attribute() {
 /// `test.around`'s `(#eq? @_test_attribute "test")` predicate must actually
 /// filter — a plain function ahead of the real `#[test]` one is skipped.
 #[test]
-fn goto_next_test_skips_a_plain_function_and_lands_on_the_test() {
+fn goto_next_unit_test_skips_a_plain_function_and_lands_on_the_test() {
     let mut ed = rust_editor(
         "-[/]>/ c\nfn plain() {\n    1;\n}\n\n#[test]\nfn it_works() {\n    assert!(true);\n}\n",
     );
@@ -663,20 +663,21 @@ fn goto_next_test_skips_a_plain_function_and_lands_on_the_test() {
 /// `entry.inside`/`entry.around` on a struct's `field_declaration` — a
 /// different pattern from the array/tuple case below (one match per named
 /// child, each its own inside span; the same enclosing `field_declaration`
-/// as the around span).
+/// as the around span). Command names/key say "value" — see
+/// `STRUCTURAL_OBJECTS`'s entry row for why the capture stays `entry`.
 #[test]
-fn inner_entry_selects_a_struct_fields_name() {
+fn inner_value_selects_a_struct_fields_name() {
     let mut ed = rust_editor("struct Point {\n    -[x]>: i32,\n}\n");
-    for ch in "mie".chars() {
+    for ch in "miv".chars() {
         ed.handle_key(key(ch));
     }
     assert_eq!(selected_text(&ed), "x");
 }
 
 #[test]
-fn around_entry_selects_the_whole_field_declaration() {
+fn around_value_selects_the_whole_field_declaration() {
     let mut ed = rust_editor("struct Point {\n    -[x]>: i32,\n}\n");
-    for ch in "mae".chars() {
+    for ch in "mav".chars() {
         ed.handle_key(key(ch));
     }
     assert_eq!(selected_text(&ed), "x: i32");
@@ -685,17 +686,17 @@ fn around_entry_selects_the_whole_field_declaration() {
 /// `(array_expression (_) @entry.around)` captures each element on its own —
 /// no grouping, no separator, unlike the `parameter` family.
 #[test]
-fn around_entry_on_an_array_element_selects_just_that_element() {
+fn around_value_on_an_array_element_selects_just_that_element() {
     let mut ed = rust_editor("fn make_arr() {\n    let arr = [10, -[2]>0, 30];\n}\n");
-    for ch in "mae".chars() {
+    for ch in "mav".chars() {
         ed.handle_key(key(ch));
     }
     assert_eq!(selected_text(&ed), "20");
 }
 
 #[test]
-fn goto_next_entry_walks_array_elements() {
+fn goto_next_value_walks_array_elements() {
     let mut ed = rust_editor("fn make_arr2() {\n    let arr = [-[1]>0, 20, 30];\n}\n");
-    ed.execute_keymap_command("goto-next-entry".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-value".into(), None, false, ArgSource::Keymap);
     assert_eq!(selected_text(&ed), "20");
 }

@@ -173,19 +173,21 @@ Scrolling moves the viewport without changing the cursor position.
 To reposition the viewport around the cursor:
 
 +----+--------------------------------------+
+| zk | place the cursor row at the top      |
++----+--------------------------------------+
 | zz | center the viewport on the cursor    |
 +----+--------------------------------------+
-| zt | place the cursor row at the top      |
+| zj | place the cursor row at the bottom   |
 +----+--------------------------------------+
-| zb | place the cursor row at the bottom   |
-+----+--------------------------------------+
+
+``k`` is up and ``j`` is down, the same axis the motion keys use.
 
 Exercise
 ~~~~~~~~
 
 Press ``Ctrl+d`` to scroll down half a page, then ``Ctrl+u`` to
-scroll back up. Then press ``zt`` to pull the current line to the
-top of the window, ``zz`` to center it, and ``zb`` to drop it to
+scroll back up. Then press ``zk`` to pull the current line to the
+top of the window, ``zz`` to center it, and ``zj`` to drop it to
 the bottom.
 
 1.6 Paragraph Motion
@@ -247,7 +249,7 @@ Summary
 +-----------------+---------------------------------------------+
 | Ctrl+d / Ctrl+u | scroll half-page down / up                  |
 +-----------------+---------------------------------------------+
-| zz / zt / zb    | center / top / bottom viewport              |
+| zk / zz / zj    | top / center / bottom viewport              |
 +-----------------+---------------------------------------------+
 | Ctrl+o / Ctrl+i | jump backward / forward in movement history |
 +-----------------+---------------------------------------------+

@@ -128,7 +128,7 @@ pub(super) fn ensure_cursor_visible_horizontal(
 }
 
 /// Scroll so the cursor's display row lands `target_row` rows below the top of
-/// the viewport. Used by `zz`/`zt`/`zb`-style commands.
+/// the viewport. Used by the `z z`/`z k`/`z j` view commands.
 ///
 /// Top-of-buffer is clamped to the document's first row; bottom-of-buffer is
 /// *not* clamped (vim/Helix semantics — empty rows past EOF are allowed).

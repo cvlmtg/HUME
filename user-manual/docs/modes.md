@@ -52,11 +52,11 @@ Some Normal-mode keys wait for a second key before doing anything. Either they o
 
 | Prefix | Keys | Purpose |
 |--------|------|---------|
-| Goto | `g` + key | Jump to a position in the buffer — see [Default Keys](default-keys.md) |
-| Case | `G` + key | Transform the selected text's case — see [Default Keys](default-keys.md) |
+| Goto | `g` + key | Jump to a position in the buffer, or to the next/previous instance of a structural kind — see [Default Keys](default-keys.md) |
+| `G` | `G` + key | Case transforms, and other non-goto commands Vim puts under `g` — see [Default Keys](default-keys.md) |
 | Match | `m` + key | Select text objects and surrounding delimiters — see [Selections](selections.md) |
 | Match WORD | `M M` | Select the WORD under the cursor — see [Selections](selections.md) |
-| View | `z` + key | Scroll the view to a position — see [Moving Around](moving-around.md) |
+| View | `z` + key | Scroll the view to a position, or open a fuzzy picker — see [Moving Around](moving-around.md) and [Fuzzy Finder](pickers.md) |
 | Pane | `Ctrl+p` + key | Move focus between panes — see [Default Keys](default-keys.md) |
 | Register | `"` + char | Target a specific register for yank, paste, or delete — see [Copy & Paste](copy-and-paste.md#register-prefix) |
 

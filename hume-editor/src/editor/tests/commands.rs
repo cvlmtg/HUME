@@ -1865,31 +1865,31 @@ fn extend_trie_wait_char_sequence_clears_pending_keys() {
     );
 }
 
-// ── gu / gU / gC case-transform keypath ──────────────────────────────────────
+// ── G L / G U / G C case-transform keypath ───────────────────────────────────
 
 #[test]
-fn gu_lowercases_selection() {
+fn g_shift_l_lowercases_selection() {
     let mut ed = editor_from("-[HELLO]> world\n");
     ed.feed_keys([key('G'), key('L')]);
     assert_eq!(state(&ed), "-[hello]> world\n");
 }
 
 #[test]
-fn g_uppercase_u_uppercases_selection() {
+fn g_shift_u_uppercases_selection() {
     let mut ed = editor_from("-[hello]> world\n");
     ed.feed_keys([key('G'), key('U')]);
     assert_eq!(state(&ed), "-[HELLO]> world\n");
 }
 
 #[test]
-fn gc_capitalizes_words_in_selection() {
+fn g_shift_c_capitalizes_words_in_selection() {
     let mut ed = editor_from("-[hELLO wORLD]>\n");
     ed.feed_keys([key('G'), key('C')]);
     assert_eq!(state(&ed), "-[Hello World]>\n");
 }
 
 #[test]
-fn gu_dot_repeats() {
+fn g_shift_l_dot_repeats() {
     // Confirms the full keymap-dispatch path (not just the pure op) stamps
     // make-text-lowercase as repeatable.
     let mut ed = editor_from("-[HELLO]>\nWORLD\n");

@@ -1,6 +1,6 @@
 # HUME — Fuzzy Finder (Picker) Roadmap
 
-The picker (`core:pickers`, `g f`/`g b`/`g m`) shipped. This file tracks only
+The picker (`core:pickers`, `z f`/`z b`/`z m`) shipped. This file tracks only
 what's left — nothing here describes shipped behavior; that lives with the
 code and is kept current there, not here. Delete this file once the
 remaining work below ships.

@@ -10,7 +10,7 @@ HUME shares Helix's core editing model — select-then-act, selections as first-
 - `d`, `c`, `y`, `p` for delete/change/yank/paste
 - `u` / `U` undo / redo
 - `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`) — HUME additionally re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount, so a mixed-tabs-and-spaces indent gets normalized as a side effect
-- `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i T`/`m a T` — the same letters as Helix's own match-mode textobjects, selecting the enclosing function, class/type, argument, comment, or test for any language with a tree-sitter grammar that ships a textobjects query
+- `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u` — the same letters as Helix's own match-mode textobjects except unit test (`T`→`u`; see below), selecting the enclosing function, class/type, argument, comment, or unit test for any language with a tree-sitter grammar that ships a textobjects query
 
 ::: tip
 Unlike Helix, HUME's `c` keeps the selection on the text you changed: select a word, change it, and once you leave Insert mode the new text is still selected, ready to act on again — delete it, surround it, search for it. Disable this with the `select-changed-text` option (see [Configuration](configuration.md)).
@@ -157,11 +157,7 @@ Enable the Helix-style bindings by loading the built-in plugin:
 
 Helix's match mode binds `m m` to jump to the matching bracket. HUME binds the same idea directly to `#` — no mode step — and also matches HTML/XML/JSX tag pairs, without disturbing `%` (select whole buffer) in either editor.
 
-Helix's bracket mode also binds `]f`/`[f`, `]t`/`[t`, `]a`/`[a`, `]c`/`[c`, and `]T`/`[T` by default, jumping straight to the next/previous function, class, argument, comment, or test. HUME's equivalents — `goto-next-function`/`goto-prev-function` and so on, plus `goto-next-entry`/`goto-prev-entry` for array/tuple/struct entries, which Helix's bracket mode doesn't have — ship unbound; bind them yourself, e.g.:
-
-```scheme
-(bind-key! 'normal "g f" "goto-next-function")
-```
+Helix's bracket mode also binds `]f`/`[f`, `]t`/`[t`, `]a`/`[a`, `]c`/`[c`, and `]T`/`[T` by default, jumping straight to the next/previous function, class, argument, comment, or unit test. HUME puts the same six kinds (plus `value`, for array/tuple/struct entries, which Helix's bracket mode doesn't have) on the `g` prefix instead of a separate bracket mode — lowercase jumps forward, uppercase jumps backward, on the same letter as the `m i`/`m a` text object: `g f`/`g F`, `g t`/`g T`, `g a`/`g A`, `g c`/`g C`, `g u`/`g U` (unit test), `g v`/`g V` (value).
 
 ### What we took from Helix
 

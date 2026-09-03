@@ -1,10 +1,10 @@
 use super::*;
 use pretty_assertions::assert_eq;
 
-// ── View-trie scroll (zz / zt / zb) ───────────────────────────────────────────
+// ── View-trie scroll (z z / z k / z j) ────────────────────────────────────────
 //
-// `zz` centres the cursor row, `zt` puts it at the top, `zb` puts it at the
-// bottom. Cursor position is unchanged — only the viewport moves.
+// `z z` centres the cursor row, `z k` puts it at the top, `z j` puts it at
+// the bottom. Cursor position is unchanged — only the viewport moves.
 //
 // for_testing gives an 80×24 viewport. With 50 single-char lines "a\n" the
 // content is 100 chars and char 2*N is the start of line N.
@@ -73,22 +73,22 @@ fn zz_allows_scrolling_past_eof() {
 }
 
 #[test]
-fn zt_puts_cursor_at_top() {
+fn zk_puts_cursor_at_top() {
     let mut ed = view_test_editor();
     seek_to_line(&mut ed, 25);
     ed.handle_key(key('z'));
-    ed.handle_key(key('t'));
+    ed.handle_key(key('k'));
     // target_row = 0 → top_line = cursor_line.
     assert_eq!(ed.viewport().top_line, 25);
     assert_eq!(ed.viewport().top_row_offset, 0);
 }
 
 #[test]
-fn zb_puts_cursor_at_bottom() {
+fn zj_puts_cursor_at_bottom() {
     let mut ed = view_test_editor();
     seek_to_line(&mut ed, 25);
     ed.handle_key(key('z'));
-    ed.handle_key(key('b'));
+    ed.handle_key(key('j'));
     // height=24, target=23; cursor on line 25 → top_line = 25 - 23 = 2.
     assert_eq!(ed.viewport().top_line, 2);
     assert_eq!(ed.viewport().top_row_offset, 0);
@@ -129,7 +129,7 @@ fn zz_in_wrap_mode_walks_display_rows() {
 }
 
 #[test]
-fn zt_in_wrap_mode_anchors_cursor_row_at_top() {
+fn zk_in_wrap_mode_anchors_cursor_row_at_top() {
     use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
 
@@ -147,7 +147,7 @@ fn zt_in_wrap_mode_anchors_cursor_row_at_top() {
     ed.viewport_mut().height = 4;
 
     ed.handle_key(key('z'));
-    ed.handle_key(key('t'));
+    ed.handle_key(key('k'));
 
     // target_row = 0 → top_line = cursor_line, top_row_offset = cursor_sub.
     assert_eq!(ed.viewport().top_line, 1);

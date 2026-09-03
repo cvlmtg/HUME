@@ -237,13 +237,13 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 
 | Key   | Command                    | Effect |
 |-------|------------------------------|--------|
-| `z k` | `lsp-hover`                  | Show docs for the symbol under the cursor |
+| `K`   | `lsp-hover`                  | Show docs for the symbol under the cursor — Vim's own keyword-lookup key |
 | `g d` | `lsp-goto-definition`        | Jump to the symbol's definition |
 | `g D` | `lsp-goto-declaration`       | Jump to the symbol's declaration |
 | `g y` | `lsp-goto-type-definition`   | Jump to the symbol's type's definition |
 | `g i` | `lsp-goto-implementation`    | Jump to the symbol's implementation |
 | `z r` | `lsp-references`             | List every reference to the symbol |
-| `g r` | `lsp-rename`                 | Rename the symbol under the cursor everywhere it's used |
+| `G R` | `lsp-rename`                 | Rename the symbol under the cursor everywhere it's used |
 | `z a` | `lsp-code-actions`           | Show fixes and refactors available at the cursor |
 | `g n` | `goto-next-diagnostic`       | Jump to the next error/warning after the cursor (wraps) |
 | `g p` | `goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |

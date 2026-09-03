@@ -82,7 +82,7 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     ed.set_cwd(&sandbox.path()).unwrap();
 
-    ed.feed_key(key('g'));
+    ed.feed_key(key('z'));
     ed.feed_key(key('f'));
     drain_until_picker_total(&mut ed, 3);
 
@@ -122,7 +122,7 @@ fn files_picker_esc_dismisses_cleanly() {
     ed.set_cwd(&sandbox.path()).unwrap();
     let starting_bid = ed.focused_buffer_id();
 
-    ed.feed_key(key('g'));
+    ed.feed_key(key('z'));
     ed.feed_key(key('f'));
     drain_until(&mut ed, |ed| {
         ed.state
@@ -235,7 +235,7 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     ed.set_cwd(&sandbox.path()).unwrap();
 
-    ed.feed_key(key('g'));
+    ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     drain_until_picker_total(&mut ed, 3);
 
@@ -274,7 +274,7 @@ fn git_modified_picker_is_pending_until_git_status_returns() {
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     ed.set_cwd(&sandbox.path()).unwrap();
 
-    ed.feed_key(key('g'));
+    ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     assert!(
         ed.state
@@ -326,7 +326,7 @@ fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory()
     // :pwd (which has no such file).
     ed.set_cwd(&sandbox.path().join("sub")).unwrap();
 
-    ed.feed_key(key('g'));
+    ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     drain_until_picker_total(&mut ed, 1);
     assert_eq!(
@@ -367,7 +367,7 @@ fn git_modified_picker_row_and_accept_handle_path_with_space() {
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     ed.set_cwd(&sandbox.path()).unwrap();
 
-    ed.feed_key(key('g'));
+    ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     drain_until_picker_total(&mut ed, 1);
 
@@ -411,7 +411,7 @@ fn git_modified_picker_accept_resolves_nested_relative_path() {
     // relative path instead.
     ed.set_cwd(&sandbox.path()).unwrap();
 
-    ed.feed_key(key('g'));
+    ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     drain_until_picker_total(&mut ed, 1);
     assert_eq!(
@@ -458,7 +458,7 @@ fn git_modified_picker_untracked_false_config_hides_untracked_files() {
     );
     ed.set_cwd(&sandbox.path()).unwrap();
 
-    ed.feed_key(key('g'));
+    ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     drain_until_picker_total(&mut ed, 1);
 
@@ -482,7 +482,7 @@ fn git_modified_picker_untracked_default_lists_files_inside_untracked_directory(
     let tmp = safe_tempdir();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     ed.set_cwd(&sandbox.path()).unwrap();
-    ed.feed_key(key('g'));
+    ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     drain_until_picker_total(&mut ed, 1);
     let rows: Vec<&str> = ed
@@ -569,7 +569,7 @@ fn git_modified_picker_clean_tree_opens_empty_picker() {
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     ed.set_cwd(&sandbox.path()).unwrap();
 
-    ed.feed_key(key('g'));
+    ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     // total_len() stays 0 whether the async `git status` callback has run
     // yet or not, so it can't be the drain predicate here — wait for the
@@ -655,7 +655,7 @@ fn git_modified_picker_esc_dismisses_cleanly() {
     ed.set_cwd(&sandbox.path()).unwrap();
     let starting_bid = ed.focused_buffer_id();
 
-    ed.feed_key(key('g'));
+    ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     assert!(ed.state.config.picker.is_some());
     assert_eq!(
@@ -714,7 +714,7 @@ fn buffers_picker_lists_switches_and_disambiguates() {
     type_cmd(&mut ed, ":e a/mod.rs");
     type_cmd(&mut ed, ":e b/mod.rs");
 
-    ed.feed_key(key('g'));
+    ed.feed_key(key('z'));
     ed.feed_key(key('b'));
     let picker = ed.state.config.picker.as_ref().expect("picker open");
     assert_eq!(picker.total_len(), 3);
@@ -746,7 +746,7 @@ fn buffers_picker_esc_is_a_no_op() {
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     let starting_bid = ed.focused_buffer_id();
 
-    ed.feed_key(key('g'));
+    ed.feed_key(key('z'));
     ed.feed_key(key('b'));
     assert!(ed.state.config.picker.is_some());
 

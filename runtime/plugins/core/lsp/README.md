@@ -67,12 +67,25 @@ or store builtin.
 
 ### Key layout
 
-Jump-shaped actions (goto/rename/diagnostic-nav) live under `g`; response/action-shaped ones
-(references list, hover popup, code-action menu) live under `z` instead, alongside view
-commands — freeing `g R`/`g k`/`g a` for the fuzzy-finder picker prefix (`core:pickers`).
-`z k` (hover) keeps the `k` mnemonic from `g k`, the same key Vim/Helix use for hover. No
-collisions with HUME's native leaves — `g`'s (`g g e h l s u U C`) or `z`'s (`z z t b`), per
-`keymap/defaults.rs`. `lsp-fmt` and `diagnostics` have no default key — typed-command only.
+Goto-shaped requests — the four `lsp-goto-*` plus diagnostic nav — live under `g`, alongside
+HUME's native line gotos and structural navigation, since each one names a destination.
+Requests that answer with a panel rather than a jump (references list, code-action menu) live
+under `z` instead, the view prefix, since what they do is open something over the buffer —
+the same shape `core:pickers`' fuzzy finders use.
+
+Two are neither. `lsp-rename` goes to `G R`: `G` is where the commands Vim files under `g`
+that aren't gotos live (`G L`/`G U`/`G C` are Vim's `gu`/`gU`/`g~`), and nvim's own rename
+default `grn` is no more a goto than those are. `lsp-hover` gets bare `K` — hover is used
+often enough that a prefix is a tax, and `K` is Vim's own keyword-lookup key, so it needs no
+learning.
+
+No collisions with HUME's native leaves — `g`'s (`g e h l s`, plus the structural
+`f F t T a A c C u U v V`), `G`'s (`L U C`), or `z`'s (`z k j`) — per
+`keymap/defaults.rs`. `z f`/`z b`/`z m` under the same view prefix belong to `core:pickers`.
+Every one of these is a two-key sequence or a fresh top-level key, never a bare key over an
+existing prefix — a single-key bind is a plain map insert and would drop the whole subtree
+under it (see `core:vim-keybind`'s README for the shape of that hazard). `lsp-fmt` and
+`diagnostics` have no default key — typed-command only.
 
 ### Server install and registration
 

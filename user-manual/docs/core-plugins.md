@@ -93,8 +93,8 @@ Installing requires `cargo` — install Rust from [rustup.rs](https://rustup.rs)
 
 ## core:pickers
 
-Fuzzy file, buffer, and modified-file finders: `g f` opens a file picker (git-index-backed
-inside a repo, `fd`-backed otherwise), `g b` opens a buffer switcher, `g m` opens a picker
+Fuzzy file, buffer, and modified-file finders: `z f` opens a file picker (git-index-backed
+inside a repo, `fd`-backed otherwise), `z b` opens a buffer switcher, `z m` opens a picker
 over files with staged or unstaged git changes.
 
 ```scheme
@@ -165,14 +165,14 @@ for them; HUME's four bundled themes do.
 
 ## core:vim-keybind
 
-Vim muscle memory: `$`, `^`, `0`, `G` (last line), `C` and `D` (change/delete to end of line), `Ctrl+6` (alternate file, kitty only), and `o` in Extend mode to swap the selection's ends.
+Vim muscle memory: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `Ctrl+6` (alternate file, kitty only), and `o` in Extend mode to swap the selection's ends. It does not bind `G` — that key is HUME's own prefix (`G L`/`G U`/`G C`, plus `G R` with `core:lsp`), and `g e` already goes to the last line.
 
 ```scheme
 (declare-plugin "core:stdlib")
 (load-plugin "core:vim-keybind")
 ```
 
-Must be loaded eagerly (`core:stdlib` only needs to be declared or loaded before it) — it replaces keys HUME already binds, and most of what it rebinds (`goto-line-start`, `goto-last-line`, and the rest) are built-in commands, not plugin commands, so there's no first dispatch to trigger loading. Declared lazily, `$`/`^`/`0`/`G` would keep doing HUME's default thing until something unrelated woke the plugin up.
+Must be loaded eagerly (`core:stdlib` only needs to be declared or loaded before it) — it replaces keys HUME already binds, and most of what it rebinds (`goto-line-start`, `goto-line-end`, and the rest) are built-in commands, not plugin commands, so there's no first dispatch to trigger loading. Declared lazily, `$`/`^`/`0` would keep doing HUME's default thing until something unrelated woke the plugin up.
 
 By default (`'smart`), `C` is context-sensitive: on a bare cursor with no count it changes to end of line as in vim, but with a real selection, or any count prefix (e.g. `3C`), it runs HUME's own `copy-selection-on-next-line`, so that command stays fully reachable. Change this with `#:config`:
 

@@ -62,7 +62,8 @@ impl StructuralBody {
     /// grammar all behave exactly as they did before this feature. Where a
     /// tree span exists it wins outright — `m i a` on `2` in `foo([1, 2,
     /// 3])` selects the whole array (the call's argument), not the lexical
-    /// scan's `2`; array/tuple/struct members are `entry` objects (`m i e`).
+    /// scan's `2`; array/tuple/struct members are `entry`-kind objects,
+    /// exposed as the `value` text object (`m i v`).
     pub(in crate::editor) fn apply(
         self,
         text: &BufferText,

@@ -41,19 +41,36 @@
 - Every line-ending convention now normalizes to `\n` wherever text enters a buffer, not just at load: pasting, `p`/`P` register paste, a language server's edit or completion, and a plugin's own insertion all collapse a `\r\n` or a bare `\r` (old Mac) the way file load already did for `\r\n`. A buffer's lines always end in `\n` regardless of where the text came from. A file written with bare `\r` line endings is still read correctly, but that convention is not preserved on save: it loads as `LF` and saves with `\n`.
 - New tree-sitter structural text objects, for a language whose grammar ships a `textobjects.scm`
   (PLUM installs one alongside highlights where the upstream grammar has one): `m i f`/`m a f`
-  (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i T`/`m a T` (test),
-  `m i e`/`m a e` (array/tuple/struct entry). Each is a silent no-op without a matching grammar.
+  (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i u`/`m a u` (unit test),
+  `m i v`/`m a v` (array/tuple/struct value). Each is a silent no-op without a matching grammar.
 - `m i a`/`m a a` (argument) is now structure-aware: where the grammar defines a `parameter` object
   it's used in preference to the lexical scan, which still covers everything the grammar doesn't (a
   region under a syntax error, a language with no grammar at all). This changes what counts as "the
   argument" inside a call: a nested list, tuple, or struct literal is now one argument rather than
-  the lexical scan's innermost comma-delimited fragment — reach its members with `m i e`/`m a e`.
-- New unbound `goto-next-<kind>`/`goto-prev-<kind>` commands, one pair per structural kind above
-  plus `goto-next-argument`/`goto-prev-argument`, select the next/previous object of that kind as a
-  whole selection with the cursor on its start; they don't wrap past either end of the buffer and
-  each records a jump-list entry (`Ctrl+o` returns). Bind them yourself, e.g. `(bind-key! 'normal
-  "g f" "goto-next-function")`; they also run unbound from the command line, e.g.
+  the lexical scan's innermost comma-delimited fragment — reach its members with `m i v`/`m a v`.
+- New `goto-next-<kind>`/`goto-prev-<kind>` commands, one pair per structural kind above plus
+  `goto-next-argument`/`goto-prev-argument`, select the next/previous object of that kind as a whole
+  selection with the cursor on its start; they don't wrap past either end of the buffer and each
+  records a jump-list entry (`Ctrl+o` returns). Bound by default under the `g` prefix, on the same
+  letter as each kind's text object — lowercase forward, uppercase backward: `g f`/`g F`, `g t`/`g T`,
+  `g a`/`g A`, `g c`/`g C`, `g u`/`g U`, `g v`/`g V`. Also run from the command line, e.g.
   `:goto-next-function`.
+- Case transforms moved from `gu`/`gU`/`gC` to `G L`/`G U`/`G C` — `G` is a dedicated prefix for
+  commands Vim files under `g` that aren't gotos, freeing `g` for goto motions and the structural
+  navigation above.
+- **Breaking**: several default keys moved so `g` holds only goto motions. `core:pickers`' fuzzy
+  finders move from `g f`/`g b`/`g m` to `z f`/`z b`/`z m` — a picker opens a panel over the
+  buffer, the same shape as `core:lsp`'s references list and code-action menu, already on `z`.
+  `core:lsp`'s `lsp-rename` moves from `g r` to `G R`, alongside the case transforms. `lsp-hover`
+  moves off the `z` prefix entirely to bare `K` — Vim's own keyword-lookup key, and common enough
+  to earn a single keystroke. The viewport triple becomes directional: `z t`/`z z`/`z b` are now
+  `z k`/`z z`/`z j`, the same up/down axis the motion keys use. `g f`, `g b`, `g m`, `g r`, and
+  `z t` are unbound; `z z`, `z r`, `z a`, and every other `g` goto are unchanged.
+- **Breaking**: `core:vim-keybind` no longer binds `G`. It was a single-key binding sitting on top
+  of HUME's own `G` prefix, which meant loading the plugin silently removed `G L`/`G U`/`G C` (and
+  would have removed `G R`) — a single-key bind replaces the whole trie node under it. `g e`
+  reaches the last line and is unaffected; every other binding the plugin adds (`0`, `^`, `$`, `C`,
+  `D`, `Ctrl+6`, Extend-mode `o`) is unchanged.
 
 ### Appearance
 - Curly, dotted and dashed underlines now render on terminals that support them. Themes could already ask for them and HUME already parsed the request; it was being flattened to a plain underline on the way to the terminal.

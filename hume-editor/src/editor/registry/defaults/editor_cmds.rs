@@ -297,7 +297,7 @@ impl CommandRegistry {
         .extendable()
         .reg(self);
 
-        // ── Editor commands — view-trie scroll (zz / zt / zb) ─────────────────
+        // ── Editor commands — view-trie scroll (z z / z k / z j) ──────────────
         // Reposition the viewport without moving the cursor.
         ecmd(
             "center-view-on-cursor",

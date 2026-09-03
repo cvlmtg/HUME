@@ -33,9 +33,18 @@ pub(in crate::editor) struct StructuralObject {
     pub(in crate::editor) noun: &'static str,
 }
 
-/// Keys follow Helix (`t` = type, for `class`). `a` (argument) reuses the
-/// `inner-argument`/`around-argument` names the lexical scan registered
+/// Keys mostly follow Helix (`t` = type, for `class`). `a` (argument) reuses
+/// the `inner-argument`/`around-argument` names the lexical scan registered
 /// before this feature — see `Argument`'s doc on `StructuralBody`.
+///
+/// `test` and `entry` deliberately diverge from Helix's own letters (`T` and
+/// `e`) to fit `keymap/defaults::build_goto_trie`'s `g <key>`/`g <KEY>`
+/// scheme, which derives the "previous" bind by uppercasing `key` — that
+/// requires every `key` here to be lowercase (enforced by a
+/// `debug_assert!` in that function) and every uppercased form to be
+/// distinct. Helix's `T` has no such lowercase form, and `e` collides with
+/// HUME's native `goto-last-line`. `u` ("unit test") and `v` ("value", for
+/// `entry`) are free in both this and the `g` trie.
 pub(in crate::editor) const STRUCTURAL_OBJECTS: &[StructuralObject] = &[
     StructuralObject {
         kind: ObjectKind::Function,
@@ -88,29 +97,34 @@ pub(in crate::editor) const STRUCTURAL_OBJECTS: &[StructuralObject] = &[
     },
     StructuralObject {
         kind: ObjectKind::Test,
-        key: 'T',
+        key: 'u',
         inner: "inner-test",
-        inner_doc: "Select inside a test function's body. Requires a grammar with a \
+        inner_doc: "Select inside a unit test function's body. Requires a grammar with a \
                      `textobjects.scm`.",
         around: "around-test",
-        around_doc: "Select the whole test, including its attribute or decorator. Requires a \
-                      grammar with a `textobjects.scm`.",
+        around_doc: "Select the whole unit test, including its attribute or decorator. Requires \
+                      a grammar with a `textobjects.scm`.",
         next: "goto-next-test",
         prev: "goto-prev-test",
-        noun: "test",
+        noun: "unit test",
     },
     StructuralObject {
+        // `ObjectKind::Entry` names the tree-sitter capture half
+        // (`@entry.inside`/`@entry.around`) in upstream Helix-format
+        // `textobjects.scm` files — not ours to rename. Only the
+        // user-facing command names, key, and doc strings below use
+        // "value" instead.
         kind: ObjectKind::Entry,
-        key: 'e',
-        inner: "inner-entry",
-        inner_doc: "Select inside an array/tuple/struct entry. Requires a grammar with a \
+        key: 'v',
+        inner: "inner-value",
+        inner_doc: "Select inside an array/tuple/struct value. Requires a grammar with a \
                      `textobjects.scm`.",
-        around: "around-entry",
-        around_doc: "Select an array/tuple/struct entry plus its separator comma. Requires a \
+        around: "around-value",
+        around_doc: "Select an array/tuple/struct value plus its separator comma. Requires a \
                       grammar with a `textobjects.scm`.",
-        next: "goto-next-entry",
-        prev: "goto-prev-entry",
-        noun: "array/tuple/struct entry",
+        next: "goto-next-value",
+        prev: "goto-prev-value",
+        noun: "array/tuple/struct value",
     },
 ];
 

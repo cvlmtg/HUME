@@ -36,6 +36,8 @@ HUME's uppercase keys are not extends. `W` and `B` are the WORD variants, the jo
 
 The `Ctrl` one-shots and `Ctrl+,` need the kitty keyboard protocol; Extend mode works on any terminal. See [Terminal compatibility](installation.md#terminal-compatibility).
 
+Bare `K` (no modifier) is not an extend at all in HUME — it shows LSP hover docs for the symbol under the cursor (with `core:lsp` loaded).
+
 ### Word motions
 
 Both editors re-anchor on every press, and both pull in a run of whitespace — but from opposite sides. Kakoune's `w` takes the word and the whitespace that *follows* it. HUME's `w` takes the word and the whitespace *before* it, except on the first word of a line, where a leading run would be indentation, so it takes the trailing whitespace instead.
@@ -123,11 +125,7 @@ Two things to watch. Kakoune's `m` jumps to the matching bracket or tag; HUME's 
 
 The objects available are word (`w`), WORD (`W`), the bracket and quote pairs, argument (`a`), and line (`l`). HUME adds `m i i`, which selects the text you typed during your last insert, and `m w` + a delimiter, which wraps each selection in a pair.
 
-For a language with a tree-sitter grammar that ships a textobjects query, HUME also adds `m i f`/`m a f` (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i T`/`m a T` (test), and `m i e`/`m a e` (array/tuple/struct entry) — Kakoune has no built-in equivalent. Each pairs with a `goto-next-<kind>`/`goto-prev-<kind>` command (e.g. `goto-next-function`) that jumps to the next/previous one as a selection; none are bound by default, so bind them yourself:
-
-```scheme
-(bind-key! 'normal "g f" "goto-next-function")
-```
+For a language with a tree-sitter grammar that ships a textobjects query, HUME also adds `m i f`/`m a f` (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i u`/`m a u` (unit test), and `m i v`/`m a v` (array/tuple/struct value) — Kakoune has no built-in equivalent. Each pairs with a `goto-next-<kind>`/`goto-prev-<kind>` command that jumps to the next/previous one as a selection, on the same letter under `g` (lowercase forward, uppercase backward — e.g. `g f`/`g F`).
 
 ### Registers, paste, and the clipboard
 

@@ -91,7 +91,7 @@ fn geometry_none_when_width_below_minimum() {
 
 #[test]
 fn draw_picker_panel_clips_overlong_row_to_inner_width() {
-    // A row wider than the panel (e.g. a deep file path from `gf`) must be
+    // A row wider than the panel (e.g. a deep file path from `zf`) must be
     // clipped to inner_width, keeping its tail behind a … marker, instead of
     // bleeding past the right border.
     let mut buf = Grid::new(40, 20);

@@ -43,7 +43,7 @@ fn down_no_wrap_clamps_at_last_real_line() {
     // 10 content lines (indices 0..9), viewport height 5. The clamp is the
     // last real content line, not a "keep the last line at the bottom"
     // max_top — same vim/helix "scrolling past EOF is allowed" convention
-    // already documented on `scroll_cursor_to_row` (zz/zb), and required so
+    // already documented on `scroll_cursor_to_row` (z z / z j), and required so
     // an `After(last_line)` virtual block anchored there can ever be
     // scrolled into view (a stricter "last line always at the bottom" clamp
     // would make such a block permanently unreachable).

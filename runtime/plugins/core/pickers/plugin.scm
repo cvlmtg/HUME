@@ -107,6 +107,6 @@
 
 ;; ── Keybindings ───────────────────────────────────────────────────────────────
 
-(bind-key! 'normal "g f" "picker-files")
-(bind-key! 'normal "g b" "picker-buffers")
-(bind-key! 'normal "g m" "picker-git-modified")
+(bind-key! 'normal "z f" "picker-files")
+(bind-key! 'normal "z b" "picker-buffers")
+(bind-key! 'normal "z m" "picker-git-modified")

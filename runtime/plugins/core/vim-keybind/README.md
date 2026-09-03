@@ -1,6 +1,6 @@
 # core:vim-keybind
 
-Vim muscle-memory keybindings — line-motion keys, C/D/G composites HUME doesn't bind
+Vim muscle-memory keybindings — line-motion keys, the `C`/`D` composites HUME doesn't bind
 natively, and the visual-mode `o` flip alias.
 
 ## Usage
@@ -10,7 +10,7 @@ natively, and the visual-mode `o` flip alias.
 (load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'smart))
 ```
 
-Loads eagerly: most of what it rebinds (`goto-line-start`, `goto-last-line`, …) are built-in
+Loads eagerly: most of what it rebinds (`goto-line-start`, `goto-line-end`, …) are built-in
 commands, not plugin commands, so there's no dispatch that could ever trigger it if it were
 declared lazily. Requires `core:stdlib` declared or loaded first — config validation
 (`"change-to-eol"`) calls `stdlib/config-enum` via `call!` at this plugin's own load time,
@@ -58,3 +58,10 @@ so `o` is purely a muscle-memory alias, not new capability.
 identical bytes. Under the kitty keyboard protocol this arrives as `Char('6')` + `CONTROL`;
 legacy terminals emit `0x1E`, which HUME does not currently surface as this binding (falls
 back to `:e #` on those terminals).
+
+`G` is deliberately **not** bound, though vim's `G` (last line) is exactly the kind of key
+this plugin exists to restore. `G` is a prefix in HUME's own keymap (`G L`/`G U`/`G C` case
+transforms, plus `G R` rename from `core:lsp`), and a single-key bind replaces the whole trie
+node it lands on — binding bare `G` here would silently take those three (and `G R`) down with
+it for anyone who loads the plugin. `g e` reaches the last line and is unaffected, so the trade
+is one alias against three-to-four working sequences.

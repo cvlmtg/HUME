@@ -54,18 +54,22 @@ Text objects select structured regions in one step. They use the `m` prefix — 
 | `m i f` / `m a f` | Inside a function / the function including its signature (and attributes, decorators, …) |
 | `m i t` / `m a t` | Inside a class or type / the class or type including its header |
 | `m i c` / `m a c` | Inside a comment / the whole comment block |
-| `m i T` / `m a T` | Inside a test function's body / the whole test, including its attribute or decorator |
-| `m i e` / `m a e` | Inside an array/tuple/struct entry / the entry plus its separator comma |
+| `m i u` / `m a u` | Inside a unit test function's body / the whole unit test, including its attribute or decorator |
+| `m i v` / `m a v` | Inside an array/tuple/struct value / the value plus its separator comma |
 
 Closing brackets work as well as opening ones: `m i )` is the same as `m i (`, and likewise for `]`, `}`, and `>`.
 
-`m i a` / `m a a` and the last five rows above (`f`, `t`, `c`, `T`, `e`) are structure-aware: for a
+`m i a` / `m a a` and the last five rows above (`f`, `t`, `c`, `u`, `v`) are structure-aware: for a
 language whose grammar ships a `textobjects.scm` (PLUM installs one alongside highlights where the
-upstream grammar has one), they select the actual function, class, comment, test, or entry node —
+upstream grammar has one), they select the actual function, class, comment, unit test, or value node —
 falling back to a lexical scan for `m i a` / `m a a` wherever the grammar doesn't cover the cursor
-(a syntax error, a buffer with no grammar at all). Without a grammar, `f`/`t`/`c`/`T`/`e` are a
+(a syntax error, a buffer with no grammar at all). Without a grammar, `f`/`t`/`c`/`u`/`v` are a
 silent no-op. Because the argument object is now structure-aware, a nested list, tuple, or struct
-literal passed as a call argument is itself the argument — use `m i e` / `m a e` for its members.
+literal passed as a call argument is itself the argument — use `m i v` / `m a v` for its members.
+
+Each of `f`/`t`/`a`/`c`/`u`/`v` also jumps to the next/previous instance of its kind under the
+`g` prefix (lowercase forward, uppercase backward, e.g. `g f`/`g F`) — see
+[Moving Around](moving-around.md#structural-navigation).
 
 Two shortcuts select the word under the cursor directly:
 

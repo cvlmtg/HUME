@@ -4,8 +4,11 @@
 
 Pressing `#` jumps from a bracket to its partner, or from an HTML/XML/JSX tag
 to its partner — the equivalent of Vim's `%`. HUME uses `#` instead because
-`%` already means select-all, and `g m` was already claimed by a picker.
-Watch for the muscle-memory trap if you're coming from Vim.
+`%` already means select-all, and a two-key sequence would be the wrong shape
+for it anyway: the jump is pressed at motion frequency, and it names a
+relationship to wherever the cursor already is rather than a destination, so
+it earns a single key instead of sharing the goto prefix. Watch for the
+muscle-memory trap if you're coming from Vim.
 
 Tag matching fires from anywhere inside the tag's own markup — the `<`, the
 `>`, the tag name, or an attribute — not just the two delimiter characters.

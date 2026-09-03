@@ -44,6 +44,13 @@ argument, rather than probing inline — a test seam that lets a test drive each
 no-repo, fd present / absent) via `call!` instead of manipulating `PATH` or a real git
 sandbox.
 
+### Key layout
+
+`z f`/`z b`/`z m`. A picker doesn't move the cursor to a named destination — it opens a panel
+over the buffer and waits — the same shape as `core:lsp`'s references list and code-action
+menu, also on `z`. `g` is left to commands that name a place. `z b` (buffers) is free because
+the native view trie's own triple is `z k`/`z z`/`z j`, per `keymap/defaults.rs`.
+
 ### File source
 
 `picker-files` picks its source per invocation (not at load time, so `:cd` re-scopes it):

@@ -120,7 +120,7 @@ fn build_text_object_trie() -> KeyTrie {
             around_trie.bind_leaf(k, cmd!(around_name));
         }
     }
-    // Structural kinds (function/class/argument/comment/test/entry) — one
+    // Structural kinds (function/class/argument/comment/unit-test/value) — one
     // table shared with `register_structural` (`registry/defaults/
     // structural.rs`), so a kind added there needs no change here. `a`
     // (argument) reuses the same two names the lexical scan registered
@@ -190,7 +190,8 @@ fn build_uppercase_match_trie() -> KeyTrie {
 ///    ├─ e  → goto-last-line
 ///    ├─ h  → goto-line-start
 ///    ├─ l  → goto-line-end
-///    └─ s  → goto-first-nonblank
+///    ├─ s  → goto-first-nonblank
+///    └─ <STRUCTURAL_OBJECTS' key/KEY>  → goto-next-<kind> / goto-prev-<kind>
 /// ```
 fn build_goto_trie() -> KeyTrie {
     let mut t = KeyTrie::new();
@@ -199,11 +200,37 @@ fn build_goto_trie() -> KeyTrie {
     t.bind_leaf(key!('h'), cmd!("goto-line-start"));
     t.bind_leaf(key!('l'), cmd!("goto-line-end"));
     t.bind_leaf(key!('s'), cmd!("goto-first-nonblank"));
+
+    // Structural navigation: lowercase key → next, uppercase → previous.
+    // Reuses the same `key` STRUCTURAL_OBJECTS assigns for `m i`/`m a` (see
+    // that table's doc comment for why each kind's letter is what it is).
+    // Can't use the `key!` macro here — it needs a literal token, and `key`
+    // is a runtime `char` — so `KeyEvent` is built directly, the same
+    // pattern `build_text_object_trie` uses below. Uppercasing `key` to
+    // derive "previous" requires every entry to be lowercase and no two
+    // uppercased forms to collide; both are asserted so a future table edit
+    // can't silently reintroduce a collision.
+    for obj in STRUCTURAL_OBJECTS {
+        debug_assert!(
+            obj.key.is_ascii_lowercase(),
+            "STRUCTURAL_OBJECTS key {:?} must be lowercase — build_goto_trie derives \
+             the \"previous\" bind by uppercasing it",
+            obj.key
+        );
+        let next = KeyEvent::new(KeyCode::Char(obj.key), Modifiers::NONE);
+        let prev = KeyEvent::new(KeyCode::Char(obj.key.to_ascii_uppercase()), Modifiers::NONE);
+        t.bind_leaf(next, cmd!(obj.next));
+        t.bind_leaf(prev, cmd!(obj.prev));
+    }
     t
 }
 
-/// Build the `G` sub-trie for case transforms.
-fn build_case_trie() -> KeyTrie {
+/// Build the `G` sub-trie: the commands Vim files under `g` that are *not*
+/// gotos. `G L`/`G U`/`G C` are Vim's `gu`/`gU`/`g~`; `core:lsp` adds `G R`
+/// (rename) on the same reasoning, since nvim's own LSP-rename default
+/// (`grn`) is no more a goto than a case transform is. `g` stays reserved
+/// for commands that name a destination.
+fn build_transform_trie() -> KeyTrie {
     let mut t = KeyTrie::new();
     t.bind_leaf(key!('L'), cmd!("make-text-lowercase"));
     t.bind_leaf(key!('U'), cmd!("make-text-uppercase"));
@@ -228,14 +255,17 @@ fn build_pane_trie() -> KeyTrie {
 
 // ── View (`z`) sub-trie ──────────────────────────────────────────────────────
 //
-// Vim-style viewport repositioning. `zz` centres the cursor row, `zt` puts it
-// at the top, `zb` puts it at the bottom. Cursor position is unchanged.
+// Viewport repositioning; the cursor itself never moves. The three leaves are
+// laid out directionally rather than by Vim's initials: `z k` (up/top),
+// `z z` (centre), `z j` (down/bottom), reusing the j/k axis every motion in
+// the editor already trains. Vim's `zt`/`zb` are deliberately not aliased —
+// `t` and `b` stay free under `z` for plugins (`core:pickers` claims `z b`).
 
 fn build_view_trie() -> KeyTrie {
     let mut t = KeyTrie::new();
     t.bind_leaf(key!('z'), cmd!("center-view-on-cursor"));
-    t.bind_leaf(key!('t'), cmd!("top-view-on-cursor"));
-    t.bind_leaf(key!('b'), cmd!("bottom-view-on-cursor"));
+    t.bind_leaf(key!('k'), cmd!("top-view-on-cursor"));
+    t.bind_leaf(key!('j'), cmd!("bottom-view-on-cursor"));
     t
 }
 
@@ -317,9 +347,11 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 
     // ── Matching bracket/tag ───────────────────────────────────────────────────
     // Vim's own key for this is `%`, but that's already select-all here (see
-    // above) and every other free letter under the `g` goto prefix is either
-    // taken by a core plugin (`core:pickers`'s `g m` is git-modified-files) or
-    // one an opt-in plugin might claim next. `#` is unbound everywhere.
+    // above). A bare key rather than a `g`-prefixed pair: `g` names a
+    // destination (first line, definition, next function) while a
+    // matching-pair jump names a relationship to wherever the cursor already
+    // is, and it's pressed at motion frequency — worth a single keystroke.
+    // `#` is unbound everywhere.
     t.bind_leaf(key!('#'), cmd!("goto-matching-pair"));
 
     // ── Selection manipulation ────────────────────────────────────────────────
@@ -400,12 +432,14 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     // `g` → second key (goto + structural-navigation commands, 2-key sequence).
     t.bind(key!('g'), KeyTrieNode::Node(build_goto_trie()));
 
-    // ── Case prefix ────────────────────────────────────────────────────────────
-    // `G` → second key (case transforms).
-    t.bind(key!('G'), KeyTrieNode::Node(build_case_trie()));
+    // ── `G` prefix ────────────────────────────────────────────────────────────
+    // `G` → second key. Must stay a Node: `bind`/`bind_leaf` is a plain map
+    // insert, so binding bare `G` to anything drops this whole subtree (and
+    // `core:lsp`'s `G R` with it). See `build_transform_trie` for what `G` means.
+    t.bind(key!('G'), KeyTrieNode::Node(build_transform_trie()));
 
     // ── View prefix ───────────────────────────────────────────────────────────
-    // `z` → second key (zz/zt/zb viewport repositioning).
+    // `z` → second key (`z k`/`z z`/`z j` viewport repositioning).
     t.bind(key!('z'), KeyTrieNode::Node(build_view_trie()));
 
     // ── Match prefix (`m` / `M`) ───────────────────────────────────────────────
