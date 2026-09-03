@@ -5,7 +5,10 @@ notion is itself configurable per buffer — see [CharClass](charclass.md#word-i
 
 ## A third framework
 
-Three distinct patterns exist for creating selections from cursor movement:
+Word select is one of several distinct patterns for creating selections from
+cursor movement — this doc covers the three most directly relevant to it;
+see [Motions vs Text Objects](motions-vs-text-objects.md) for a fourth,
+structural navigation over tree-sitter objects like functions and classes:
 
 | Pattern | Returns | Anchor (in Move mode) | Typical use |
 |---|---|---|---|

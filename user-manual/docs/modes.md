@@ -52,7 +52,8 @@ Some Normal-mode keys wait for a second key before doing anything. Either they o
 
 | Prefix | Keys | Purpose |
 |--------|------|---------|
-| Goto | `g` + key | Jump to a position in the buffer, or transform the selected text's case — see [Default Keys](default-keys.md) |
+| Goto | `g` + key | Jump to a position in the buffer — see [Default Keys](default-keys.md) |
+| Case | `G` + key | Transform the selected text's case — see [Default Keys](default-keys.md) |
 | Match | `m` + key | Select text objects and surrounding delimiters — see [Selections](selections.md) |
 | Match WORD | `M M` | Select the WORD under the cursor — see [Selections](selections.md) |
 | View | `z` + key | Scroll the view to a position — see [Moving Around](moving-around.md) |

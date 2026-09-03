@@ -11,6 +11,7 @@ These work the way you expect, same keys:
 - `%` select the whole buffer, `s` select regex matches within the selection
 - `&` align selections, `_` trim surrounding whitespace
 - `C` duplicate the selection onto the line below
+- `>` / `<` indent / unindent the lines a selection touches, same keys and idea — HUME additionally re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount (blank and whitespace-only lines are left alone), and flattens an indent narrower than one level to the left margin instead of going negative
 - `i` / `a` / `I` / `A` / `o` / `O` to enter Insert, `c` / `d` / `y` / `p` to change / delete / yank / paste
 - `Q` to record a macro and `q` to play it
 - `u` undo, `U` redo
@@ -56,6 +57,8 @@ HUME&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Lorem ipsum<span class="sel">&nbsp;dolo<span c
 With words separated by single spaces the two land on visually similar spans; they diverge around punctuation and line ends. Turn off `word-selects-whitespace` (see [Configuration](configuration.md)) if you would rather `w` selected the bare word.
 
 Kakoune's `e` has no counterpart — `e` toggles Extend mode here. To select the word the cursor already sits on, use `m m` (word plus one whitespace run) or `m i w` (bare word, Kakoune's `<a-i>w`).
+
+Kakoune's `extra_word_chars` option (default `_`) is HUME's `word-chars` buffer option — list the extra characters directly, e.g. `-` for CSS. HUME ships with no default set; configure it per language from an `on-language-set` hook (see [Configuration](configuration.md)).
 
 ### Line selection
 
@@ -119,6 +122,12 @@ Kakoune reaches objects with `<a-i>` and `<a-a>`. HUME puts them behind an `m` p
 Two things to watch. Kakoune's `m` jumps to the matching bracket or tag; HUME's `m` prefix is the text-object key instead, so the jump moved to `#`. To select the surrounding pair rather than jump to it, use `m s` + the delimiter — `m s (` for parens — which needs you to name the delimiter, where Kakoune's `m` finds the enclosing pair on its own. And `[`, `]`, `{`, `}` are all taken: `[` and `]` cycle the kill ring after a paste, `{` and `}` are paragraph motions.
 
 The objects available are word (`w`), WORD (`W`), the bracket and quote pairs, argument (`a`), and line (`l`). HUME adds `m i i`, which selects the text you typed during your last insert, and `m w` + a delimiter, which wraps each selection in a pair.
+
+For a language with a tree-sitter grammar that ships a textobjects query, HUME also adds `m i f`/`m a f` (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i T`/`m a T` (test), and `m i e`/`m a e` (array/tuple/struct entry) — Kakoune has no built-in equivalent. Each pairs with a `goto-next-<kind>`/`goto-prev-<kind>` command (e.g. `goto-next-function`) that jumps to the next/previous one as a selection; none are bound by default, so bind them yourself:
+
+```scheme
+(bind-key! 'normal "g f" "goto-next-function")
+```
 
 ### Registers, paste, and the clipboard
 
@@ -206,3 +215,4 @@ Language server support is a bundled plugin rather than a separate process you c
 - Dot-repeat covering arbitrary edits, not just insert-mode changes
 - An undo tree
 - Selecting every search match at once (`m /`)
+- Tree-sitter-backed structural text objects and navigation (functions, classes, arguments, comments, tests)

@@ -76,6 +76,12 @@ Vim's `iw` / `aw` family lives behind the `m` prefix, and — as everywhere else
 
 The available objects are word (`w`), WORD (`W`), the bracket pairs (`(`, `[`, `{`, `<`), the quote pairs (`"`, `'`, `` ` ``), argument (`a`), and line (`l`) — each with an `i` (inner) and `a` (around) form. One extra has no Vim equivalent: `m i i` selects the text you typed during your last insert.
 
+For a language with a tree-sitter grammar that ships a textobjects query, HUME also adds `m i f`/`m a f` (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i T`/`m a T` (test), and `m i e`/`m a e` (array/tuple/struct entry) — vanilla Vim has nothing like these without a plugin. Each pairs with an unbound `goto-next-<kind>`/`goto-prev-<kind>` command (e.g. `goto-next-function`) that jumps to the next/previous one as a selection; bind them yourself:
+
+```scheme
+(bind-key! 'normal "g f" "goto-next-function")
+```
+
 Vim's `iskeyword` is `word-chars` — a buffer option listing extra characters that count as part of a word (see [Configuration](configuration.md)). HUME doesn't parse Vim's range syntax (`48-57`, `@`, `192-255`); list the characters directly, e.g. `-` for CSS.
 
 ### Search and replace

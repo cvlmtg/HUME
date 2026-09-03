@@ -62,10 +62,21 @@ the edit as data, which enables:
    insertions and deletions. An association parameter (before/after) controls
    which side of an insertion the position sticks to.
 
-Edit operations and undo/redo never use position mapping. Edits compute
-result positions directly during construction; undo/redo restore selections
-from the stored transaction (see below). Position mapping serves everything
-*else* that holds a position not tied to the edit being made. One consumer is
+Almost every edit operation avoids position mapping: it computes result
+positions directly during construction, and undo/redo restore selections from
+the stored transaction (see below). Indent/unindent (shifting a line's
+leading whitespace by a level) is the one exception. Rewriting a line's
+indent is a replace — old whitespace out, new whitespace in — and a selection
+that happens to sit exactly at the line's start is genuinely ambiguous:
+should it stay pinned to the start of the line, or land past the freshly
+written indent? Rather than hand-deriving an answer per selection, indent
+lets position mapping resolve it: it writes the new indent into the
+changeset *before* removing the old one, so a position at the line start
+meets the insertion first and the answer becomes a plain choice of
+association — the start of a whole-line selection stays put (sticks before),
+every other position sitting there rides past the new indent (sticks after).
+Position mapping otherwise serves everything *else* that holds a position not
+tied to the edit being made. One consumer is
 **non-acting-pane cursor propagation**: when one pane edits a buffer that
 other panes also have open, the other panes' selections must ride the
 changeset to stay meaningful in the new text. Others are external positions

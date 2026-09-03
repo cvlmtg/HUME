@@ -29,8 +29,21 @@ Word motions (`w`/`b`/`W`/`B`) sit in between: navigational like motions but
 returning a full word range. They use a third framework, word select,
 described in [Word Motions](word-motions.md).
 
-This leads to three framework entry points — one per pattern: motion, text
-object, and word select.
+Structural navigation — `goto-next-function`/`goto-prev-function` and the
+matching pairs for the other tree-sitter object kinds (class, comment, test,
+argument) — is a fourth pattern, combining pieces of the other three. Like a
+text object, each step returns a whole object span rather than just a
+coordinate. Like a motion, it's a repeatable, count-driven search that can
+no-op: pressing it past the last object in the buffer leaves the selection
+where it already was rather than producing a new one. Its extend mode
+borrows the text object's growth rule rather than the plain motion one:
+instead of pinning the anchor and moving only the head, each further press
+*unites* the newly found object with whatever is already selected — so
+growing across several objects in a row, or over one nested inside the one
+just selected, never loses ground already covered.
+
+This leads to four framework entry points — one per pattern: motion, text
+object, word select, and structural navigation.
 
 ## The inner function pattern
 

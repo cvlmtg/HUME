@@ -2,7 +2,7 @@
 
 ## The invariants
 
-Every buffer in HUME must satisfy two invariants at all times:
+Every buffer in HUME must satisfy three invariants at all times:
 
 1. **Trailing newline**: the buffer always ends with a newline character. This
    is the "structural newline" — it guarantees every line has a terminator and
@@ -14,9 +14,19 @@ Every buffer in HUME must satisfy two invariants at all times:
    trailing newline but is worth naming explicitly because several algorithms
    assume it.
 
+3. **No raw carriage returns**: whatever line-ending convention a file, a
+   paste, or a language server's edit used on the way in, the buffer itself
+   only ever holds plain `\n`. A Windows-style pair and an old-Mac-style lone
+   carriage return both collapse to `\n` before the text becomes buffer
+   content. This means every line-splitting algorithm in the editor has
+   exactly one terminator to look for, never a family of them — and a
+   separate per-buffer flag remembers which convention the file used, purely
+   so saving can write it back the way it came. That flag describes the file
+   on disk; it never describes what the buffer holds in memory.
+
 Every cursor position must also satisfy:
 
-3. **In-bounds**: both ends of a selection must fall within the buffer's
+4. **In-bounds**: both ends of a selection must fall within the buffer's
    length. A selection pointing past the end of the buffer is nonsense.
 
 ## When an invariant is about to break: three options
@@ -95,6 +105,27 @@ narrow and well-defined.
 During development, internal code uses lightweight assertions that only run in
 debug builds. These assertions catch engine bugs during testing without paying
 any cost in release builds.
+
+## A fourth strategy: unreachable by construction
+
+The three options above — repair, crash, or reject-and-return-error — all
+assume the invariant is checked *after* a value already exists. The no-raw-
+carriage-return invariant takes a different approach, because checking it
+after the fact is expensive: the trailing-newline and in-bounds invariants
+can be checked in the time it takes to look at one position, but a stray `\r`
+could be anywhere in an arbitrarily large buffer, so confirming its absence
+means scanning every character.
+
+Instead of validating that expensive property on every edit, HUME makes it
+impossible to construct a violation at all. There are exactly two places
+where text from outside the editor becomes buffer content, and both convert
+line endings to `\n` before the text goes anywhere else. Every piece of code
+downstream of those two points can simply assume the property holds, the
+same way it assumes the trailing newline holds — the difference is *how* the
+guarantee is produced: by construction at a narrow choke point, rather than
+by checking a value that already exists. A lightweight debug-only assertion
+still confirms the invariant holds, purely to catch a bug in the editor
+itself — it plays no role in maintaining the guarantee for ordinary use.
 
 ## Reverting on failure without explicit cleanup
 

@@ -67,7 +67,7 @@ A **pane** is a viewport onto a buffer. A buffer is the open file itself; a pane
 | `Ctrl+p h` / `j` / `k` / `l` | Focus the pane to the left / below / above / to the right |
 | `Ctrl+p c` | Close the focused pane (does nothing if it's the only pane) |
 
-Splitting is refused with a message when the pane is already too small to divide.
+Splitting is refused with a message when the pane is already too small to divide. Every pane sharing a split axis is kept an equal size — three `:vsplit`s in a row give three equal columns, not one half and two quarters — and closing a pane redistributes its space equally between the survivors.
 
 `:q` is pane-aware: with multiple panes open it closes the focused pane and leaves the buffer in the buffer list. With a single pane it closes the current buffer and moves you to another one, quitting HUME only when there's nothing left to go back to. Unsaved changes block it — use `:q!` to discard them.
 

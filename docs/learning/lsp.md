@@ -77,14 +77,23 @@ editor's copy is the source of truth, and the editor tells the server about
 every change. (The rest of the project the server still reads from disk
 while indexing.)
 `textDocument/didOpen` sends the full text once. After that,
-`textDocument/didChange` sends *incremental* edits: small range-and-replacement
-descriptions rather than the whole file again. Each event in a batch is
-addressed against the document as it stood after the previous events in
-that same batch, not against the original text — the same "replay changes in
-order" idea covered in [Changesets](changesets.md), and worked through in
-detail below. Every message also carries a version number, so a server
-that's slow to respond can have its answer discarded if the document has
-since moved on.
+`textDocument/didChange` follows whatever sync form the server asked for
+during the handshake — another capability that degrades rather than being
+assumed, same as position encoding above. Most servers ask for *incremental*
+sync: small range-and-replacement descriptions rather than the whole file
+again. Each event in a batch is addressed against the document as it stood
+after the previous events in that same batch, not against the original
+text — the same "replay changes in order" idea covered in
+[Changesets](changesets.md), and worked through in detail below. A server
+that instead declares *full* sync wants the opposite of incremental: no
+ranges at all, just the entire document as one event, so every edit queued
+since the last flush is collapsed into a single whole-document notification
+rather than sent as separate ranged events (sending it a ranged event would
+desync its copy from the very first edit — it isn't equipped to apply a
+partial patch). A server that declares no sync interest at all gets no
+`didChange` calls whatsoever. Every message also carries a version number,
+so a server that's slow to respond can have its answer discarded if the
+document has since moved on.
 
 ## Translating edits, in both directions
 
