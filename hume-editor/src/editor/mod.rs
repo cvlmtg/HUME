@@ -28,6 +28,7 @@ mod diff_bridge;
 pub(crate) mod error;
 mod frame;
 pub(crate) mod host_impl;
+mod inline_output;
 mod lifecycle;
 mod overlay_sync;
 mod reload;
@@ -87,37 +88,7 @@ pub(crate) use message_log::Severity;
 // as an unqualified alias.
 pub(crate) use hume_engine::types::EditorMode as Mode;
 
-// ── InlineOutputDispatch ─────────────────────────────────────────────────────
-
-/// State of the `#:inline-output` terminal bracket for the command currently
-/// being dispatched. The alt-screen is entered lazily — only once a builtin
-/// actually has terminal output to produce (`ensure_inline_output_screen`) —
-/// so a command whose body only logs (`log!`, status line) never flashes an
-/// empty screen or blocks on a keypress nobody needed to answer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum InlineOutputDispatch {
-    /// Not dispatching an `#:inline-output` command.
-    Inactive,
-    /// Declared `#:inline-output #t` and `Editor::run` owns the terminal, but
-    /// no builtin has produced output yet — the alt-screen is still up.
-    /// Carries what `ensure_inline_output_screen` needs to enter: the kitty/
-    /// mouse state to restore on the way back, and the command name for the
-    /// running banner.
-    Armed {
-        kitty: bool,
-        mouse: bool,
-        name: String,
-    },
-    /// A builtin has produced output — the alt-screen has been left and the
-    /// running banner printed. Dispatch must close the bracket (press-any-key
-    /// prompt + restore the TUI) after the command body returns.
-    Entered,
-    /// Declared `#:inline-output #t` but off the event loop (tests, headless
-    /// `run_keys`) — there is no alt-screen to leave and no interactive user
-    /// to answer a keypress prompt. Raw stdout writes stay permitted (mirrors
-    /// `Entered`'s effect on `is_inline_output_command`) but no bracket runs.
-    Headless,
-}
+use self::inline_output::InlineOutput;
 
 // ── ConfigState ───────────────────────────────────────────────────────────────
 
@@ -359,28 +330,14 @@ pub(crate) struct EditorState {
     pub(super) history: self::minibuf::history::HistoryStore,
     /// Set by the inline-output dispatch arm to trigger a full repaint.
     pub(crate) force_full_redraw: bool,
-    /// State of the `#:inline-output` bracket for the Steel command currently
-    /// being dispatched. Set just before `call_steel_cmd`; read and driven by
-    /// `EditorHostImpl::ensure_inline_output_screen` / `is_inline_output_command`
-    /// so `SteelCtx` (and the gated print shims) know it's safe to
-    /// write to the real stdout, and so the screen is only entered lazily, on
-    /// the first byte of actual output. See [`InlineOutputDispatch`].
-    pub(crate) inline_output: InlineOutputDispatch,
-    /// Bracket states saved by `OutputHost::arm_inline_output` for a nested
-    /// `(call! name …)` to an `#:inline-output` command — pushed on arm,
-    /// popped by the matching `restore_inline_output`. Never touches
-    /// `inline_output` directly on its own: it's the stack a *later* dispatch
-    /// (or, if a raise skipped the matching restore, `reset_inline_output` at
-    /// the Steel session's tail) unwinds back through. Empty whenever no
-    /// nested arm is outstanding — the common case.
-    pub(crate) inline_output_saved: Vec<InlineOutputDispatch>,
-    /// Test-only seam: flips `true` when a command body actually enters the
-    /// inline-output terminal bracket (via `ensure_inline_output_screen`).
-    /// Lets tests assert the bracket was skipped (rather than merely that it
-    /// didn't hang, which depends on whether stdin happens to be a TTY)
-    /// without capturing real terminal I/O.
-    #[cfg(test)]
-    pub(crate) inline_output_entered: bool,
+    /// State of the `#:inline-output` bracket for the Steel command(s)
+    /// currently on the call stack — pushed/popped by `OutputHost::
+    /// arm_inline_output`/`restore_inline_output`, read and driven by
+    /// `EditorHostImpl::ensure_inline_output_screen`/`is_inline_output_command`
+    /// so `SteelCtx` (and the gated print shims) know it's safe to write to
+    /// the real stdout, and so the screen is only entered lazily, on the
+    /// first byte of actual output. See [`InlineOutput`].
+    pub(crate) inline_output: InlineOutput,
     /// Reusable scratch buffer for format operations in visual-line movement.
     pub(super) motion_format_scratch: hume_engine::format::FormatScratch,
     /// Reusable sticky-column buffer for vertical motion — shared by all
@@ -582,10 +539,7 @@ impl Default for EditorState {
             panes: PaneView::default(),
             history: minibuf::history::HistoryStore::new(history_capacity),
             force_full_redraw: false,
-            inline_output: InlineOutputDispatch::Inactive,
-            inline_output_saved: Vec::new(),
-            #[cfg(test)]
-            inline_output_entered: false,
+            inline_output: InlineOutput::default(),
             motion_format_scratch: hume_engine::format::FormatScratch::new(),
             visual_move_target_display_cols: Vec::new(),
             last_repeatable_action: None,

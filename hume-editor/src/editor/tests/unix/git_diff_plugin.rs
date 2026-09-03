@@ -1061,7 +1061,13 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
     let err = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect_err("a non-boolean \"signs\" value must fail eval_init");
@@ -1102,7 +1108,13 @@ fn missing_stdlib_errors_at_load() {
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
     let err = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect_err("core:git-diff without core:stdlib must fail eval_init");

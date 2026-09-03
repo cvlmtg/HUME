@@ -8,7 +8,7 @@
 
 use super::event::EditorEvent;
 use super::registry::MappableCommand;
-use super::{Editor, InlineOutputDispatch, Severity, commands};
+use super::{Editor, Severity, commands};
 
 // ── Command dispatch context ──────────────────────────────────────────────────
 
@@ -300,23 +300,16 @@ impl Editor {
         // command body's *first actual output* (see
         // `EditorHostImpl::ensure_inline_output_screen`), not eagerly here —
         // a body that only logs (`log!`) never flashes an empty screen or
-        // blocks on a keypress nobody needed to answer. `Armed` just primes
-        // the state SteelCtx reads through `is_inline_output_command`; off
-        // the event loop (tests, headless `run_keys`) there is no alt-screen
-        // to leave and no interactive user to answer a keypress prompt, so a
-        // declared command goes `Headless` instead — stdout writes stay
-        // permitted, but no bracket ever runs.
-        self.state.inline_output = if inline_output && self.tui_active {
-            InlineOutputDispatch::Armed {
-                kitty: self.kitty_enabled,
-                mouse: self.state.settings.mouse_enabled,
-                name: name.to_string(),
-            }
-        } else if inline_output {
-            InlineOutputDispatch::Headless
-        } else {
-            InlineOutputDispatch::Inactive
-        };
+        // blocks on a keypress nobody needed to answer. Pushing a frame just
+        // primes the state SteelCtx reads through `is_inline_output_command`;
+        // the same `push` a nested `call!` uses (`EditorHostImpl::
+        // arm_inline_output`), so top-level dispatch and `call!` share one
+        // arming implementation. A command not declared `#:inline-output`
+        // pushes nothing — `is_inline_output_command` must read closed for it
+        // even if its own body later `call!`s into a declared one.
+        if inline_output {
+            self.state.inline_output.push(name, self.tui_active);
+        }
 
         let Some(scripting) = self.scripting.as_mut() else {
             return false;
@@ -371,47 +364,50 @@ impl Editor {
     }
 
     /// Close the `#:inline-output` bracket if a builtin actually opened it,
-    /// and queue the disk-change sweep an entered/armed subprocess may
-    /// warrant. Scoped to whatever `state.inline_output` holds right now, so
-    /// it fits every Steel-session boundary that can arm one: the top-level
-    /// dispatch that owns the whole bracket lifecycle
+    /// and queue the disk-change sweep an entered/ran subprocess may
+    /// warrant. Fits every Steel-session boundary that can arm one: the
+    /// top-level dispatch that owns the whole bracket lifecycle
     /// ([`Self::call_steel_command_body`]), and a hook/queued-call batch
-    /// that only ever *arms* one indirectly, through a nested
-    /// `(call! …)` to an `#:inline-output` command
+    /// that only ever arms one indirectly, through a nested `(call! …)` to
+    /// an `#:inline-output` command
     /// (`hume_scripting::host::OutputHost::arm_inline_output`).
     ///
-    /// Reset unconditionally so stale state can't outlive this call and leak
-    /// into a later dispatch's `SteelCtx`.
+    /// By the time this runs, `InlineOutput`'s frame stack has already been
+    /// drained — every Steel session's own tail
+    /// (`hume_scripting::activation::run_steel_session`) does that
+    /// unconditionally, including for the top-level dispatch's own frame,
+    /// which nothing else ever pops. `entered`/`ran` survive that drain (see
+    /// `InlineOutput`'s own doc) — reading them here, once, is this
+    /// boundary's whole job.
     ///
-    /// `armed_or_entered` covers both shapes an inline-output command can
-    /// take: `Entered` (it produced output, so the alt-screen bracket needs
-    /// closing below) and `Armed` (it declared `#:inline-output` and ran, but
-    /// produced none — a formatter with no stdout, say — so there's no
-    /// bracket to close). Either way the subprocess ran with the real
-    /// terminal and may well have rewritten one of our open files, so both
-    /// are disk-change check trigger points; only `Headless`/`Inactive` (no
-    /// interactive user to answer a confirm) are excluded.
+    /// `take_entered` covers the shape that needs the physical close below
+    /// (a builtin produced output, so the alt-screen was left); `take_ran`
+    /// covers both that shape and a command that armed and ran with the
+    /// real terminal but produced none (a formatter with no stdout, say) —
+    /// either way the subprocess may well have rewritten one of our open
+    /// files, so both are disk-change check trigger points. A command that
+    /// never touched the terminal (not declared, or declared but off the
+    /// event loop) leaves both empty.
     pub(super) fn close_inline_output_bracket(&mut self) {
-        let armed_or_entered = matches!(
-            self.state.inline_output,
-            InlineOutputDispatch::Armed { .. } | InlineOutputDispatch::Entered
-        );
-        let entered = matches!(self.state.inline_output, InlineOutputDispatch::Entered);
-        self.state.inline_output = InlineOutputDispatch::Inactive;
-        if entered {
-            let term = self
-                .terminal
-                .as_ref()
-                .expect("Entered implies tui_active implies terminal is Some");
-            hume_platform::terminal::print_return_prompt();
-            hume_platform::terminal::wait_for_keypress(term);
-            let kitty = self.kitty_enabled;
-            let mouse = self.state.settings.mouse_enabled;
-            let mouse_select = self.state.settings.mouse_select;
-            let _ = hume_platform::terminal::leave_inline_output(term, kitty, mouse, mouse_select);
+        let ran = self.state.inline_output.take_ran();
+        if let Some(entered) = self.state.inline_output.take_entered() {
+            // `terminal` is `None` in tests that drive `tui_active: true`
+            // with no real terminal attached — the state transition still
+            // happened (see `ensure_inline_output_screen`), just with no
+            // terminal to receive the physical close.
+            if let Some(term) = self.terminal.as_ref() {
+                hume_platform::terminal::print_return_prompt();
+                hume_platform::terminal::wait_for_keypress(term);
+                let _ = hume_platform::terminal::leave_inline_output(
+                    term,
+                    entered.kitty,
+                    entered.mouse,
+                    entered.mouse_select,
+                );
+            }
             self.state.force_full_redraw = true;
         }
-        if armed_or_entered {
+        if ran {
             // The editor genuinely regained the terminal — same trigger class
             // as `TerminalEvent::FocusIn`, so it raises the same event rather
             // than sweeping directly; the reaction is `OnFocusGained`'s Rust

@@ -14,7 +14,13 @@ fn close_buffer_errs_when_id_unknown() {
         hume_editing::text::BufferText::empty(),
         hume_editing::selection::SelectionSet::default(),
     ));
-    let mut host = make_init_host(&mut ed.state, &mut ed.view);
+    let mut host = make_init_host(
+        &mut ed.state,
+        &mut ed.view,
+        ed.terminal.as_ref(),
+        ed.tui_active,
+        ed.kitty_enabled,
+    );
     // BufferId::default() is a zeroed key — not present in any live store.
     let err = host.close_buffer(BufferId::default()).unwrap_err();
     assert!(!err.is_empty(), "expected an error message");
@@ -27,7 +33,13 @@ fn switch_to_buffer_noop_when_same() {
         hume_editing::selection::SelectionSet::default(),
     ));
     let bid = ed.focused_buffer_id();
-    let mut host = make_init_host(&mut ed.state, &mut ed.view);
+    let mut host = make_init_host(
+        &mut ed.state,
+        &mut ed.view,
+        ed.terminal.as_ref(),
+        ed.tui_active,
+        ed.kitty_enabled,
+    );
     // Switching to the same buffer should not error.
     host.switch_to_buffer(bid, bid).expect("same-buffer switch");
 }
@@ -38,7 +50,13 @@ fn attach_grammar_errs_for_bad_path() {
         hume_editing::text::BufferText::empty(),
         hume_editing::selection::SelectionSet::default(),
     ));
-    let mut host = make_init_host(&mut ed.state, &mut ed.view);
+    let mut host = make_init_host(
+        &mut ed.state,
+        &mut ed.view,
+        ed.terminal.as_ref(),
+        ed.tui_active,
+        ed.kitty_enabled,
+    );
     let err = host
         .attach_grammar(&hume_scripting::GrammarReg {
             name: "rust".into(),

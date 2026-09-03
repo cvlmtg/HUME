@@ -21,7 +21,13 @@ fn setup_lazy_editor(init_body: &str, plugin_body: &str) -> (Editor, tempfile::T
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed in setup_lazy_editor");
@@ -385,7 +391,13 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     // Mirror real init_scripting order: eager command is in command_table
     // before declare-plugin runs, so the filter loop rejects "foo".
     let init_err = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     };
     // declare-plugin now hard-errors when all entries are filtered (collision
@@ -457,7 +469,13 @@ fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("lazy-vs-lazy collision must NOT abort init");
@@ -659,7 +677,13 @@ fn event_trigger_one_to_many_activates_all() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
@@ -789,7 +813,13 @@ fn declare_plugin_no_triggers_is_hard_error() {
     host.set_data_dir(dir.path().to_path_buf());
     let mut ed = editor_from("-[a]>b\n");
     let result = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     };
     assert!(
@@ -815,7 +845,13 @@ fn load_plugin_absent_top_level_silently_skips() {
     host.set_data_dir(dir.path().to_path_buf());
     let mut ed = editor_from("-[a]>b\n");
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("absent top-level load-plugin must not error");
@@ -867,7 +903,13 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
@@ -997,7 +1039,13 @@ fn nested_activation_multi_file_via_real_editor_host() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed — B's top-level call! must inline-activate multi-file A");
@@ -1072,7 +1120,13 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed — B must see its own #:config after nested-activating A");
@@ -1395,7 +1449,13 @@ fn language_trigger_one_to_many_activates_all() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
@@ -1553,7 +1613,13 @@ fn language_wildcard_and_specific_entry_coexist() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
@@ -1766,7 +1832,13 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     host.set_data_dir(dir.path().to_path_buf());
     let init_path = dir.path().join("init.scm");
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
@@ -2487,7 +2559,13 @@ fn setup_stdlib_editor() -> (Editor, ScriptingHost, HumeRuntimeGuard, tempfile::
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed loading core:stdlib");
@@ -2568,7 +2646,13 @@ fn core_stdlib_selection_commands() {
 "#;
 
     let result = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_source(assertions, &mut ih)
     };
     assert!(
@@ -2675,7 +2759,13 @@ fn core_stdlib_config_commands() {
 "#;
 
     let result = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_source(assertions, &mut ih)
     };
     assert!(
@@ -2712,7 +2802,13 @@ fn core_stdlib_list_subdirs_filters_stray_files() {
     );
 
     let result = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_source(&assertions, &mut ih)
     };
     assert!(
@@ -2748,7 +2844,13 @@ fn core_stdlib_run_covers_success_failure_and_spawn_error() {
 "#;
 
     let result = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_source(assertions, &mut ih)
     };
     assert!(
@@ -2789,7 +2891,13 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
       (error "resolve-lang-arg: non-string arg must fall back to the buffer's language"))))
 "#;
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_source(define_probe, &mut ih)
             .expect("define probe-resolve-lang-arg command");
     }
@@ -2847,7 +2955,13 @@ fn core_stdlib_git_probes_inside_a_work_tree() {
     );
 
     let result = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_source(&assertions, &mut ih)
     };
     assert!(
@@ -2875,7 +2989,13 @@ fn core_stdlib_git_probes_outside_a_work_tree() {
 "#;
 
     let result = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_source(assertions, &mut ih)
     };
     assert!(

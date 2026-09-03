@@ -1786,7 +1786,13 @@ fn inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm() {
 
     let mut host = ScriptingHost::new();
     {
-        let mut init_host = make_init_host(&mut ed.state, &mut ed.view);
+        let mut init_host = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_source(
             r#"(define-command! "lint-and-fix" "doc"
                  (lambda () (log! 'warn "lint: 1 issue auto-fixed")) #:inline-output #t)"#,

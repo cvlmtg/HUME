@@ -467,7 +467,16 @@ impl Editor {
     /// `tui_active` on `Editor`.
     #[cfg(all(test, unix))]
     pub(crate) fn inline_output_entered(&self) -> bool {
-        self.state.inline_output_entered
+        self.state.inline_output.ever_entered()
+    }
+
+    /// [`Self::inline_output_entered`]'s exact-count twin — lets a
+    /// (cross-platform) test pin that the alt-screen was entered exactly
+    /// once even through nested `call!`s, rather than merely "at least
+    /// once".
+    #[cfg(test)]
+    pub(crate) fn inline_output_enter_count(&self) -> usize {
+        self.state.inline_output.enter_count()
     }
 
     pub(crate) fn viewport_mut(&mut self) -> &mut hume_engine::pane::ViewportState {

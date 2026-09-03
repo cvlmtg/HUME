@@ -18,7 +18,13 @@ impl Editor {
             let Some(host) = self.scripting.as_mut() else {
                 return;
             };
-            let mut ih = make_init_host(&mut self.state, &mut self.view);
+            let mut ih = make_init_host(
+                &mut self.state,
+                &mut self.view,
+                self.terminal.as_ref(),
+                self.tui_active,
+                self.kitty_enabled,
+            );
             host.activate_plugin_inline(plugin, init_budget, &mut ih, &self.builtin_cmd_names)
         };
         self.apply_script_result(result, "");

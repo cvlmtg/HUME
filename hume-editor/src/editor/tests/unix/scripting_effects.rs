@@ -58,7 +58,13 @@ fn effect_log_preserves_emission_order_across_kinds() {
     host.set_data_dir(dir.path().to_path_buf());
     // declare-plugin queues no effects — nothing to apply from this eval.
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
@@ -68,7 +74,13 @@ fn effect_log_preserves_emission_order_across_kinds() {
         repo: "efx".to_string(),
     };
     let effects = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.activate_plugin_inline(&plugin_id, 10_000, &mut ih, &Default::default())
     }
     .expect("activation must succeed");
@@ -153,7 +165,13 @@ fn failed_command_delivers_committed_activation_effects() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
@@ -213,7 +231,13 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     let err = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect_err("eval_init must fail on the top-level error");
@@ -292,7 +316,13 @@ fn steel_open_buffer_detects_language() {
 
     let mut host = ScriptingHost::new();
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
@@ -335,7 +365,13 @@ fn steel_open_buffer_missing_path_opens_new_file() {
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut host = ScriptingHost::new();
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
@@ -395,7 +431,13 @@ fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
 
     let mut host = ScriptingHost::new();
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");

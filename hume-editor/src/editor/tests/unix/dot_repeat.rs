@@ -36,7 +36,13 @@ fn lazy_repeatable_round_trip() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");

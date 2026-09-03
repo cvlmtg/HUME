@@ -12,7 +12,6 @@
 //! done, without needing a real terminal.
 
 use super::*;
-use crate::editor::InlineOutputDispatch;
 use crate::editor::keymap::BindMode;
 use hume_scripting::ScriptingHost;
 
@@ -185,15 +184,15 @@ fn nested_call_bang_restores_the_outer_commands_state() {
 // ── Error unwind ─────────────────────────────────────────────────────────────
 
 /// A body that raises between `%arm-inline-output!` and
-/// `%restore-inline-output!` leaves `inline_output_saved` un-popped — the
-/// backstop is `run_steel_session`'s own unconditional drain at the tail of
-/// the session, not a Steel-side unwind (Steel has no unwind-safe hook to
-/// pair with here — nesting `with-handler` + a re-raised native error is the
+/// `%restore-inline-output!` leaves its frame un-popped — the backstop is
+/// `run_steel_session`'s own unconditional `drain_frames` at the tail of the
+/// session, not a Steel-side unwind (Steel has no unwind-safe hook to pair
+/// with here — nesting `with-handler` + a re-raised native error is the
 /// pinned VM-stack-corruption hazard).
 ///
 /// Fail oracle: remove the `ctx.host.output()...reset_inline_output()` call
-/// from `run_steel_session` (`activation.rs`) → `inline_output_saved` stays
-/// non-empty after the raising dispatch returns.
+/// from `run_steel_session` (`activation.rs`) → `is_open()` stays `true`
+/// after the raising dispatch returns.
 #[test]
 fn raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state() {
     let tmp = safe_tempdir();
@@ -209,25 +208,21 @@ fn raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state() {
     ed.feed_event(key('\\'));
 
     assert!(
-        ed.state.inline_output_saved.is_empty(),
-        "a raise between arm and restore must not leave a stale saved entry: {:?}",
-        ed.state.inline_output_saved
+        !ed.state.inline_output.is_open(),
+        "a raise between arm and restore must not leave a stale frame"
     );
-    assert!(matches!(
-        ed.state.inline_output,
-        InlineOutputDispatch::Inactive
-    ));
 }
 
 // ── Hook / timer paths ────────────────────────────────────────────────────────
 
 /// A timer thunk's own `call!` to an `#:inline-output` command must reach
 /// the gate too, and leave the bracket closed once the queued-call batch
-/// finishes — `run_call_batch` closes it the same way
-/// `call_steel_command_body` does for direct dispatch.
+/// finishes — `run_call_batch`'s own `apply_script_result` call closes it the
+/// same way `call_steel_command_body` does for direct dispatch (see
+/// `apply_script_result`'s own doc).
 ///
 /// Fail oracle: drop `self.close_inline_output_bracket()` from
-/// `run_call_batch` (`scripting_setup.rs`) → this test still passes (the
+/// `apply_script_result` (`scripting_setup.rs`) → this test still passes (the
 /// gate opens either way) but a later dispatch would inherit a stuck bracket
 /// — covered instead by asserting the reset here, immediately after the
 /// batch that armed it.
@@ -255,8 +250,285 @@ fn timer_call_bang_to_inline_output_command_opens_the_gate() {
         logged(&ed, "gate-open"),
         "a timer thunk's call! to an #:inline-output command must reach the print gate"
     );
-    assert!(matches!(
-        ed.state.inline_output,
-        InlineOutputDispatch::Inactive
-    ));
+    assert!(!ed.state.inline_output.is_open());
+}
+
+// ── Nesting: the alt-screen enters at most once per dispatch ─────────────────
+//
+// `ed.tui_active = true` with no real terminal attached — see
+// `disk_change.rs`'s `inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm`
+// for the same pattern: `Armed`/`Entered` transitions (and so `close_inline_output_bracket`'s
+// physical-teardown branch) only happen when `tui_active` is true, and
+// `ensure_inline_output_screen`/`close_inline_output_bracket` skip the real
+// I/O when there's no terminal to receive it, so this drives the state
+// machine without a real TTY.
+
+/// An outer `#:inline-output` command already past its first print (so
+/// `Entered`) that `call!`s a second declared command, and then prints again
+/// itself after the nested call returns, must still enter the alt-screen
+/// exactly once for the whole dispatch.
+///
+/// Fail oracle: in `InlineOutput::needs_enter`, drop the `entered.is_some()`
+/// early return — `enter_count()` reports `2`.
+#[test]
+fn nested_call_bang_after_entered_does_not_reenter_the_alt_screen() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    ed.tui_active = true;
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "reenter-inner" "" (lambda () (%stdout-gate!)) #:inline-output #t)
+           (define-command! "reenter-outer" ""
+             (lambda ()
+               (%stdout-gate!)
+               (call! "reenter-inner")
+               (%stdout-gate!))
+             #:inline-output #t)"#,
+    );
+    bind_backslash(&mut ed, "reenter-outer");
+
+    ed.feed_event(key('\\'));
+
+    assert_eq!(
+        ed.inline_output_enter_count(),
+        1,
+        "the alt-screen must be entered exactly once across the whole nested dispatch"
+    );
+    assert!(
+        !ed.state.inline_output.is_open(),
+        "bracket must be closed once dispatch returns"
+    );
+}
+
+/// The mirror case: an outer command `call!`s a nested declared command
+/// *before* its own first print — the nested call enters the alt-screen
+/// first, and the outer's own print (after the nested call returns) must not
+/// re-enter it either. This is the exact nesting order finding 3 describes:
+/// the outer is still only `Armed` (not yet `Entered`) at the moment it
+/// arms the nested frame.
+///
+/// Fail oracle: same as above — drop the `entered.is_some()` guard.
+#[test]
+fn nested_call_bang_before_outer_prints_does_not_reenter_the_alt_screen() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    ed.tui_active = true;
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "reenter-inner2" "" (lambda () (%stdout-gate!)) #:inline-output #t)
+           (define-command! "reenter-outer2" ""
+             (lambda ()
+               (call! "reenter-inner2")
+               (%stdout-gate!))
+             #:inline-output #t)"#,
+    );
+    bind_backslash(&mut ed, "reenter-outer2");
+
+    ed.feed_event(key('\\'));
+
+    assert_eq!(ed.inline_output_enter_count(), 1);
+    assert!(!ed.state.inline_output.is_open());
+}
+
+// ── Error unwind: a caught (not just an uncaught) raise ──────────────────────
+
+/// A `call!`-armed frame left unpaired by a *caught* Steel error (the raise
+/// never reaches dispatch as an `Err`, unlike
+/// `raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state`
+/// above) must still be gone, and the bracket still closed, once the whole
+/// dispatch returns — the `run_steel_session` tail drain is the backstop
+/// either way, not just for an uncaught raise.
+///
+/// Fail oracle: drop the `ctx.host.output()...reset_inline_output()` call
+/// from `run_steel_session` (`activation.rs`) → `is_open()` stays `true`
+/// after this dispatch, and the next dispatch's `SteelCtx` inherits an
+/// already-open gate it never armed.
+#[test]
+fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    ed.tui_active = true;
+    // Drain `editor_with_file`'s own `OnBufferEnter` disk check before the
+    // external rewrite below, so it can't produce a `confirm` of its own —
+    // see `hook_call_bang_…`'s identical drain.
+    ed.settle();
+    assert!(ed.state.config.confirm.is_none());
+    let scm_dir = safe_tempdir();
+
+    run(
+        &mut ed,
+        scm_dir.path(),
+        r#"(define-command! "raiser2" "" (lambda () (error "boom")) #:inline-output #t)
+           (define-command! "outer-catches" ""
+             (lambda ()
+               (with-handler (lambda (e) (log! 'warn "caught")) (call! "raiser2"))
+               (log! 'warn "outer-continued")))"#,
+    );
+    bind_backslash(&mut ed, "outer-catches");
+
+    // A different length than the fixture's original content, so the
+    // on-disk signature differs by size alone regardless of mtime
+    // resolution (see `disk_change.rs`'s `rewrite_externally`).
+    std::fs::write(&tmp, "hello, world!\n").unwrap();
+
+    ed.feed_event(key('\\'));
+
+    assert!(
+        logged(&ed, "outer-continued"),
+        "sanity: the outer body must have kept running past the caught raise"
+    );
+    assert!(
+        !ed.state.inline_output.is_open(),
+        "the leaked raiser2 frame must not survive the dispatch"
+    );
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "raiser2 still ran with the real terminal (tui_active), so the reload \
+         confirm its subprocess caused must still open even though its error \
+         was caught"
+    );
+}
+
+// ── Hook path closes the bracket too ──────────────────────────────────────────
+
+/// A hook body's own `call!` to a declared command must have its bracket
+/// closed by `fire_one_event` the same way `run_call_batch` closes it for a
+/// timer thunk — both now go through `apply_script_result`'s shared close.
+///
+/// `is_open()` alone can't tell whether the close actually ran: every Steel
+/// session's own tail (`run_steel_session`) drains the frame stack
+/// unconditionally regardless (see `caught_error_inside_call_bang_…`'s doc).
+/// The oracle here instead is `close_inline_output_bracket`'s *other*
+/// job — queuing `OnFocusGained` because the hook ran with the real
+/// terminal — which nothing else in this scenario produces: `OnBufferSave`
+/// itself triggers no disk check (`scripting_setup.rs`'s event-name match
+/// groups it with the events `react_to_event` does nothing extra for), and
+/// the initial `settle()` drains `editor_with_file`'s own `OnBufferEnter`
+/// disk check before the external rewrite below, so that one can't produce
+/// a `confirm` of its own either.
+///
+/// Fail oracle: drop `self.close_inline_output_bracket()` from
+/// `apply_script_result` → `confirm` stays `None`.
+#[test]
+fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    ed.tui_active = true;
+    ed.settle();
+    assert!(
+        ed.state.config.confirm.is_none(),
+        "sanity: nothing has changed on disk yet"
+    );
+
+    let scm_dir = safe_tempdir();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-command! "hook-inner-probe" "" (lambda () (%stdout-gate!)) #:inline-output #t)
+           (register-hook! 'on-buffer-save (lambda (bid) (call! "hook-inner-probe")))"#,
+        scm_dir.path(),
+    );
+    ed.scripting = Some(host);
+
+    // A different length than the fixture's original content, so the
+    // on-disk signature differs by size alone (see `disk_change.rs`'s
+    // `rewrite_externally`).
+    std::fs::write(&tmp, "hello, world!\n").unwrap();
+
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .queue_event(super::super::event::EditorEvent::OnBufferSave { buffer: bid });
+    ed.settle();
+
+    assert!(
+        ed.state.config.confirm.is_some(),
+        "hook-inner-probe ran with the real terminal (tui_active), so the \
+         hook path's close must queue the reload confirm its subprocess \
+         caused, the same way direct dispatch's close does"
+    );
+}
+
+// ── make_init_host threads the live terminal state ────────────────────────────
+
+/// `make_init_host` — the constructor behind every init/activation call site,
+/// including `Editor::activate_and_register`'s runtime lazy-plugin
+/// activation (`mappings/lazy.rs`) — must arm `tui_active`-aware rather than
+/// hardcoding it, since unlike `init.scm`'s own evals, a runtime activation
+/// can run with `Editor::run` already owning the terminal.
+///
+/// Drives the host `make_init_host` builds directly (bypassing the
+/// declare/activate plugin ceremony, which is orthogonal to this) with
+/// `tui_active` both `false` and `true`, asserting the alt-screen enters only
+/// in the latter case.
+///
+/// Fail oracle: hardcode `EditorHostImpl::init`'s `tui_active` parameter to
+/// `false` (restoring the old `EditorHostImpl::new` behavior) → `enter_count`
+/// stays `0` after the `tui_active: true` block too.
+#[test]
+fn make_init_host_threads_live_tui_active_into_arm() {
+    use hume_scripting::host::EditorHost;
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "init-host-probe" "" (lambda () (%stdout-gate!)) #:inline-output #t)"#,
+    );
+
+    // Off the event loop (`tui_active: false`) — the shape `init_scripting`'s
+    // own two evals always run in — arms a frame the gate opens for, but
+    // `ensure_inline_output_screen` must never enter the (nonexistent)
+    // alt-screen for it.
+    {
+        let mut host = crate::editor::scripting_setup::make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            None,
+            false,
+            false,
+        );
+        let output = host
+            .output()
+            .expect("EditorHostImpl always implements OutputHost");
+        assert!(output.arm_inline_output("init-host-probe"));
+        output
+            .ensure_inline_output_screen()
+            .expect("no real terminal to fail against");
+        output.restore_inline_output();
+    }
+    assert_eq!(
+        ed.inline_output_enter_count(),
+        0,
+        "tui_active: false must never enter the alt-screen"
+    );
+
+    // Live `Editor::run` (`tui_active: true`) — the shape a runtime lazy
+    // plugin activation can now be in. Before the fix, `make_init_host`
+    // always built a `tui_active: false` host regardless of this, silently
+    // letting a `call!`-armed nested command's raw stdout writes hit a live
+    // alt-screen instead of being bracketed.
+    {
+        let mut host = crate::editor::scripting_setup::make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            None,
+            true,
+            false,
+        );
+        let output = host
+            .output()
+            .expect("EditorHostImpl always implements OutputHost");
+        assert!(output.arm_inline_output("init-host-probe"));
+        output
+            .ensure_inline_output_screen()
+            .expect("terminal: None skips the real I/O");
+        output.restore_inline_output();
+    }
+    assert_eq!(
+        ed.inline_output_enter_count(),
+        1,
+        "tui_active: true must enter the alt-screen exactly once"
+    );
 }

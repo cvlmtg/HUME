@@ -1685,7 +1685,13 @@ fn setup_typed_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
     {
-        let mut init_host = make_init_host(&mut ed.state, &mut ed.view);
+        let mut init_host = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_source(src, &mut init_host).unwrap();
     }
     // Override arity/is_variadic so typed dispatch uses the test-supplied values.

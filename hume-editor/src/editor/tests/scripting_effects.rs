@@ -24,7 +24,13 @@ fn failed_command_eval_effects_do_not_leak() {
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut host = ScriptingHost::new();
     {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.eval_source(
             r#"(define-command! "efx-fail" ""
                  (lambda ()
@@ -38,7 +44,13 @@ fn failed_command_eval_effects_do_not_leak() {
     let pid = ed.state.focused_pane_id;
     let bid = ed.focused_buffer_id();
     let result = {
-        let mut ih = make_init_host(&mut ed.state, &mut ed.view);
+        let mut ih = make_init_host(
+            &mut ed.state,
+            &mut ed.view,
+            ed.terminal.as_ref(),
+            ed.tui_active,
+            ed.kitty_enabled,
+        );
         host.call_steel_cmd("efx-fail", None, vec![], pid, bid, &mut ih)
     };
     assert!(

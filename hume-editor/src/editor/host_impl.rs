@@ -72,26 +72,47 @@ pub(crate) struct EditorHostImpl<'a> {
 }
 
 impl<'a> EditorHostImpl<'a> {
-    /// Convenience constructor for the (common) case with no LSP/timer
-    /// access — init evals, and every non-LSP/non-timer test in the suite.
+    /// Constructor for `make_init_host`'s three production callers:
+    /// `init_scripting` (init.scm + runtime scheme evals), `typed_reload_config`'s
+    /// re-eval, and `Editor::activate_and_register`'s runtime lazy-plugin
+    /// activation (`mappings/lazy.rs`). Unlike `full`, has no LSP/timer access —
+    /// none of these three eval kinds reach an LSP or timer builtin
+    /// (`require_cmd_ctx!` blocks command-mode builtins during init; lazy
+    /// activation's body may itself later call a real command via `call!`,
+    /// which re-enters through `full`, not this path).
     ///
-    /// `tui_active: false` unconditionally: every caller is either an init
-    /// eval (no event loop running yet) or a direct Rust helper that never
-    /// reaches Steel dispatch at all — neither has a live alt-screen to
-    /// protect, so a `call!` to an `#:inline-output` command reached this way
-    /// arms `Headless`, matching what happens today by accident (stdout stays
-    /// permitted at init because `EvalSession::Init` allows it independently;
-    /// see `builtins::io::stdout_is_safe`).
-    pub(crate) fn new(state: &'a mut EditorState, view: &'a mut EngineView) -> Self {
+    /// Takes `terminal`/`tui_active`/`kitty_enabled` explicitly rather than
+    /// hardcoding them — unlike init.scm's own two evals (never a live
+    /// alt-screen), runtime lazy activation can run with `Editor::run`
+    /// already owning the terminal (see `arm_inline_output`'s doc), so a
+    /// hardcoded `tui_active: false` here would silently let a `call!`-armed
+    /// nested command corrupt a live screen.
+    pub(crate) fn init(
+        state: &'a mut EditorState,
+        view: &'a mut EngineView,
+        terminal: Option<&'a hume_platform::terminal::SharedTerm>,
+        tui_active: bool,
+        kitty_enabled: bool,
+    ) -> Self {
         Self {
             state,
             view,
             lsp: None,
             timers: None,
-            terminal: None,
-            tui_active: false,
-            kitty_enabled: false,
+            terminal,
+            tui_active,
+            kitty_enabled,
         }
+    }
+
+    /// Convenience constructor for callers with no terminal/`OutputHost`
+    /// needs — a Rust-side helper reaching for an unrelated capability
+    /// (`DecorationHost`, say) via `EditorHostImpl`, and most of the test
+    /// suite. Every caller that can reach an `#:inline-output` command
+    /// (init/activation, dispatch/hook/call-batch) goes through `init` or
+    /// `full` instead.
+    pub(crate) fn new(state: &'a mut EditorState, view: &'a mut EngineView) -> Self {
+        Self::init(state, view, None, false, false)
     }
 
     /// Constructor for the three call sites that thread every capability:
@@ -828,31 +849,29 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
 
 impl<'a> OutputHost for EditorHostImpl<'a> {
     fn is_inline_output_command(&self) -> bool {
-        !matches!(
-            self.state.inline_output,
-            super::InlineOutputDispatch::Inactive
-        )
+        self.state.inline_output.is_open()
     }
 
     fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
-        // Only `Armed` needs action: `Entered` already left the alt-screen,
-        // `Headless`/`Inactive` have no bracket to enter at all.
-        let super::InlineOutputDispatch::Armed { kitty, mouse, name } = &self.state.inline_output
-        else {
+        let Some(name) = self.state.inline_output.needs_enter() else {
             return Ok(());
         };
-        let (kitty, mouse, name) = (*kitty, *mouse, name.clone());
-        let term = self
-            .terminal
-            .expect("Armed implies tui_active implies terminal is Some");
-        hume_platform::terminal::enter_inline_output(term, kitty, mouse)
-            .map_err(|e| format!("inline-output enter failed: {e}"))?;
-        hume_platform::terminal::print_running_banner(&name);
-        self.state.inline_output = super::InlineOutputDispatch::Entered;
-        #[cfg(test)]
-        {
-            self.state.inline_output_entered = true;
+        let name = name.to_string();
+        let kitty = self.kitty_enabled;
+        let mouse = self.state.settings.mouse_enabled;
+        let mouse_select = self.state.settings.mouse_select;
+        // `terminal` is `None` in tests that drive `tui_active: true` with no
+        // real terminal attached (see `arm_inline_output`'s doc) — state
+        // still transitions to entered so the gate/close logic is exercised,
+        // just without the real I/O there's no terminal to receive it.
+        if let Some(term) = self.terminal {
+            hume_platform::terminal::enter_inline_output(term, kitty, mouse)
+                .map_err(|e| format!("inline-output enter failed: {e}"))?;
+            hume_platform::terminal::print_running_banner(&name);
         }
+        self.state
+            .inline_output
+            .mark_entered(kitty, mouse, mouse_select);
         Ok(())
     }
 
@@ -871,40 +890,16 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
         if !declared {
             return false;
         }
-        // Mirrors `Editor::call_steel_command_body`'s own arm — except when
-        // the state we're saving is already `Entered`: the alt-screen is
-        // already open for this exact session, so adopt it directly rather
-        // than manufacturing a fresh `Armed` that would re-enter the bracket
-        // and reprint the running banner for a screen already showing.
-        let saved = std::mem::replace(
-            &mut self.state.inline_output,
-            super::InlineOutputDispatch::Inactive,
-        );
-        self.state.inline_output = if matches!(saved, super::InlineOutputDispatch::Entered) {
-            super::InlineOutputDispatch::Entered
-        } else if self.tui_active {
-            super::InlineOutputDispatch::Armed {
-                kitty: self.kitty_enabled,
-                mouse: self.state.settings.mouse_enabled,
-                name: name.to_string(),
-            }
-        } else {
-            super::InlineOutputDispatch::Headless
-        };
-        self.state.inline_output_saved.push(saved);
+        self.state.inline_output.push(name, self.tui_active);
         true
     }
 
     fn restore_inline_output(&mut self) {
-        if let Some(saved) = self.state.inline_output_saved.pop() {
-            self.state.inline_output = saved;
-        }
+        self.state.inline_output.pop();
     }
 
     fn reset_inline_output(&mut self) {
-        while let Some(saved) = self.state.inline_output_saved.pop() {
-            self.state.inline_output = saved;
-        }
+        self.state.inline_output.drain_frames();
     }
 }
 
